@@ -9,6 +9,7 @@ import com.specagent.node.NodeRepository;
 import com.specagent.patch.AnswerPatch;
 import com.specagent.patch.AnswerPatchRepository;
 import com.specagent.route.Route;
+import com.specagent.route.RouteLifecycleStatus;
 import com.specagent.route.RouteRepository;
 import com.specagent.spec.SourceKind;
 import com.specagent.spec.SourceReference;
@@ -86,8 +87,16 @@ public class SpecSourceReferenceGuard {
                 Route route = routeRepository.findById(ref.refId()).orElse(null);
                 if (route == null) {
                     errors.add("Route source reference does not exist: " + ref.refId());
-                } else if (!route.projectId().equals(projectId)) {
-                    errors.add("Route source reference does not belong to project " + projectId);
+                } else {
+                    if (!route.projectId().equals(projectId)) {
+                        errors.add("Route source reference does not belong to project " + projectId);
+                    }
+                    if (!route.id().equals(routeId)) {
+                        errors.add("Route source reference is not the current route: " + ref.refId());
+                    }
+                    if (route.lifecycleStatus() != RouteLifecycleStatus.OPEN) {
+                        errors.add("Route source reference is not OPEN: " + ref.refId());
+                    }
                 }
             }
             case NODE -> {

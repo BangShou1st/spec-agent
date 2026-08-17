@@ -98,6 +98,35 @@ class SpecSourceReferenceGuardTest {
     }
 
     @Test
+    void acceptsCurrentRouteReference() {
+        Route currentRoute = new Route(routeId, projectId, nodeId, nodeId,
+                RouteLifecycleStatus.OPEN, "current", null, null, null, null, now, now);
+        when(routeRepository.findById(routeId)).thenReturn(Optional.of(currentRoute));
+        ContextSnapshot snapshot = contextSnapshot(List.of(answerId), List.of(patchId));
+
+        ReflectionResult result = guard.validate(projectId, routeId, snapshot,
+                List.of(SourceReference.of(SourceKind.ROUTE, routeId)));
+
+        assertThat(result.accepted()).isTrue();
+    }
+
+    @Test
+    void rejectsSameProjectSiblingRouteReference() {
+        UUID siblingRouteId = UUID.randomUUID();
+        Route siblingRoute = new Route(siblingRouteId, projectId, nodeId, nodeId,
+                RouteLifecycleStatus.OPEN, "sibling", null, null, null, null, now, now);
+        when(routeRepository.findById(siblingRouteId)).thenReturn(Optional.of(siblingRoute));
+        ContextSnapshot snapshot = contextSnapshot(List.of(answerId), List.of(patchId));
+
+        ReflectionResult result = guard.validate(projectId, routeId, snapshot,
+                List.of(SourceReference.of(SourceKind.ROUTE, siblingRouteId)));
+
+        assertThat(result.accepted()).isFalse();
+        assertThat(result.errors())
+                .anyMatch(e -> e.contains("not the current route"));
+    }
+
+    @Test
     void rejectsForeignRouteReference() {
         UUID foreignProjectId = UUID.randomUUID();
         Route foreignRoute = new Route(routeId, foreignProjectId, null, null,
