@@ -1,0 +1,33 @@
+spring:
+  application:
+    name: spec-agent
+  profiles:
+    active: local
+  datasource:
+    url: jdbc:postgresql://${SPEC_AGENT_DB_HOST:localhost}:${SPEC_AGENT_DB_PORT:5434}/${SPEC_AGENT_DB_NAME:spec_agent}
+    username: ${SPEC_AGENT_DB_USER:spec_agent}
+    password: ${SPEC_AGENT_DB_PASSWORD:spec_agent_dev}
+    driver-class-name: org.postgresql.Driver
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    validate-on-migrate: true
+
+server:
+  port: ${SERVER_PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.specagent: INFO
+    org.springframework.jdbc: WARN
+    org.flywaydb: INFO
