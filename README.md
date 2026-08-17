@@ -93,7 +93,7 @@ Domain knowledge may enter through user input, profiles, prompts, examples, or m
 
 - Backend: Java 21, Spring Boot, PostgreSQL, Flyway, jOOQ or MyBatis, SSE.
 - Frontend: Vue 3, TypeScript, Vite, Pinia.
-- AI integration: internal model gateway with structured JSON contracts.
+- AI integration: custom HTTP ModelGateway with structured JSON contracts; Spring AI is not the first-version default.
 - Testing: JUnit, integration tests, architecture tests, later Playwright for UI flows.
 
 ## Development Workflow
@@ -114,8 +114,10 @@ Read these before implementation:
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 - [`docs/AGENT_RUNTIME.md`](docs/AGENT_RUNTIME.md)
 - [`docs/CONTEXT_RULES.md`](docs/CONTEXT_RULES.md)
+- [`docs/MODEL_GATEWAY.md`](docs/MODEL_GATEWAY.md)
 - [`docs/ANTI_OVERFITTING.md`](docs/ANTI_OVERFITTING.md)
 - [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md)
+- [`docs/DEVELOPMENT_ENVIRONMENT.md`](docs/DEVELOPMENT_ENVIRONMENT.md)
 - [`docs/DEVELOPMENT_WORKFLOW.md`](docs/DEVELOPMENT_WORKFLOW.md)
 - [`AGENT.md`](AGENT.md)
 - [`CLAUDE.md`](CLAUDE.md)
