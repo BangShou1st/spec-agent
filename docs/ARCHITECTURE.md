@@ -41,11 +41,15 @@ Frontend:
 
 AI integration:
 
-- Internal model gateway.
-- OpenAI-compatible provider first.
+- Custom HTTP ModelGateway.
+- ProviderAdapter boundary.
+- OpenAI-compatible provider shape first.
+- Configurable provider base URL, model id, endpoint, API key, timeout, and headers.
+- Required support for configurable `User-Agent`, including `opencode/1.18.16` for opencode zen.
 - Structured JSON contracts.
 - Prompt versioning.
 - Agent run trace persistence.
+- Spring AI is not the first-version default.
 
 Testing:
 
@@ -96,6 +100,24 @@ Produces:
 
 It cannot directly mutate route, node, answer, or spec state.
 
+### Model Gateway
+
+The Model Gateway is the only model-provider boundary.
+
+The first version should use a thin custom HTTP gateway instead of Spring AI as the default integration.
+
+```text
+Agent Reasoning Layer
+→ ModelGateway
+→ ProviderAdapter
+→ HTTP client
+→ external model provider
+```
+
+The gateway owns provider protocol details, including base URL, endpoint, authentication header, `User-Agent`, timeout, request hashing, response hashing, and raw provider response handling.
+
+Runtime Kernel must not depend on the Model Gateway.
+
 ### Verification / Reflection Gates
 
 Validate model output before persistence.
@@ -121,6 +143,9 @@ com.specagent.agent
 com.specagent.spec
 com.specagent.profile
 com.specagent.model
+com.specagent.model.gateway
+com.specagent.model.provider
+com.specagent.model.contract
 com.specagent.trace
 com.specagent.common
 ```
@@ -134,6 +159,7 @@ model must not mutate route, node, answer, or spec state.
 agent may call model but must persist only through application services.
 spec may compose drafts but must not read global history directly.
 profile may define generic aspects but must not introduce runtime domain branches.
+provider adapters must not contain requirement-domain behavior.
 ```
 
 ## 5. Runtime Kernel Responsibilities
@@ -169,7 +195,21 @@ The Agent Reasoning Layer may produce:
 
 The Agent Reasoning Layer must not decide which historical route is valid. Route validity is determined by stored route lifecycle state and the current project pointer.
 
-## 7. Persistence Model
+## 7. Model Gateway Responsibilities
+
+See `docs/MODEL_GATEWAY.md` for the detailed model-provider boundary.
+
+The architecture-level rules are:
+
+- Use custom HTTP ModelGateway first.
+- Do not add Spring AI as the default first-version integration.
+- Hide provider-specific request and response JSON behind ProviderAdapter.
+- Support configurable headers, especially `User-Agent`.
+- Store model call metadata without storing secrets.
+- Validate model output before persistence.
+- Fail closed on invalid or unsupported model output.
+
+## 8. Persistence Model
 
 Core tables should map to these concepts:
 
@@ -185,7 +225,7 @@ Core tables should map to these concepts:
 
 PostgreSQL is sufficient for the first version. Recursive queries can reconstruct lineage from `tip_node_id` through `parent_node_id`. JSONB may be used for structured patch content, model trace summaries, and spec sections, while route, node, answer, and source identity fields should remain strongly typed columns.
 
-## 8. Transaction Boundaries
+## 9. Transaction Boundaries
 
 Operations that mutate route, node, answer, patch, or spec state should be transactional.
 
@@ -198,7 +238,7 @@ Examples:
 
 Do not let a model call partially mutate persistent state.
 
-## 9. Context Construction
+## 10. Context Construction
 
 Context is not global chat history. Context is built by deterministic replay:
 
@@ -214,7 +254,7 @@ Project.activeRouteId
 
 Sibling routes, superseded route patches, deleted route patches, and unsupported spec text are excluded by default.
 
-## 10. Profile Layer
+## 11. Profile Layer
 
 Profiles define generic requirement dimensions and output preferences. They are configuration, not code branches.
 
@@ -228,7 +268,7 @@ A profile may define:
 
 The first version should ship only one default profile: `generic_requirement`.
 
-## 11. API Shape
+## 12. API Shape
 
 The first API surface should be small:
 
@@ -248,7 +288,7 @@ GET    /api/projects/{projectId}/agent-runs/{runId}
 
 This API should be refined during implementation, but it should not expand into project management, task management, RAG, browser automation, code generation, or external tool APIs.
 
-## 12. Anti-Overfitting Architecture Tests
+## 13. Anti-Overfitting Architecture Tests
 
 Add architecture tests early. They should fail if:
 
@@ -259,7 +299,9 @@ Add architecture tests early. They should fail if:
 - Spec generation reads global project history instead of a ContextSnapshot.
 - Regeneration includes the old answer or child subtree in its ContextSnapshot.
 - Production code introduces a domain-specific generator, analyzer, planner, or spec builder.
+- Spring AI packages appear in production code before an explicit future design update.
+- Provider adapters contain requirement-domain behavior.
 
-## 13. Design Boundary
+## 14. Design Boundary
 
 Spec Agent is not a generic agent platform. The architecture may later become reusable, but the first version should serve one product: branchable requirement clarification.
