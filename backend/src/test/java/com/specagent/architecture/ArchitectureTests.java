@@ -63,4 +63,18 @@ class ArchitectureTests {
 
         rule.check(CLASSES);
     }
+
+    @Test
+    void runtimePackagesContainNoBusinessDomainClasses() {
+        ArchRule rule = noClasses()
+            .that().resideInAnyPackage("com.specagent.project..", "com.specagent.route..",
+                "com.specagent.node..", "com.specagent.answer..", "com.specagent.context..",
+                "com.specagent.patch..", "com.specagent.spec..", "com.specagent.profile..",
+                "com.specagent.common..")
+            .should().haveNameMatching(
+                "(?i).*(software|marketing|ecommerce|startup|student|course|sales|legal|pitch|assignment).*")
+            .because("Runtime packages must not contain concrete business-domain classes");
+
+        rule.check(CLASSES);
+    }
 }
