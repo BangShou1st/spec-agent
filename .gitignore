@@ -16,7 +16,6 @@ Thumbs.db
 # Local configuration
 *.local.yml
 application-local.yml
-application-test.yml
 
 # Logs
 *.log
