@@ -16,6 +16,7 @@ Model handles cognition.
 Runtime handles history.
 Model proposes.
 Runtime constrains.
+Answer records.
 Patch records.
 Spec summarizes.
 Sources prove.
@@ -25,9 +26,10 @@ Sources prove.
 
 ```text
 Deterministic Runtime Kernel
-  - Project, Route, Node, ContextSnapshot, AnswerPatch, SpecSnapshot.
+  - Project, Route, Node, Answer, ContextSnapshot, AnswerPatch, SpecSnapshot.
   - Lineage replay.
   - Route operations.
+  - Answer immutability.
   - Status transitions.
   - Source tracing.
 
@@ -62,6 +64,8 @@ Project
 - updatedAt
 ```
 
+`activeRouteId` is the current working focus. It is not the same thing as route lifecycle status.
+
 ### Route
 
 An explicit exploration route.
@@ -72,10 +76,11 @@ Route
 - projectId
 - rootNodeId
 - tipNodeId
-- status: active | superseded | archived | deleted
+- lifecycleStatus: open | superseded | archived | deleted
 - label
 - createdFromNodeId
 - supersedesRouteId
+- replacementOfNodeId
 - createdByRunId
 - createdAt
 - updatedAt
@@ -83,9 +88,16 @@ Route
 
 A route is a view over node lineage. It is not the source of all node content.
 
+Lifecycle status meanings:
+
+- `open`: normal route; may be selected as `Project.activeRouteId`.
+- `superseded`: replaced by regeneration; visible, inspectable, restorable, and forkable.
+- `archived`: intentionally hidden or deprioritized; recoverable.
+- `deleted`: soft-deleted; excluded from active context and normal workspace view.
+
 ### Node
 
-An immutable clarification unit in the exploration tree.
+An immutable clarification prompt in the exploration tree.
 
 ```text
 Node
@@ -93,20 +105,58 @@ Node
 - projectId
 - parentNodeId
 - createdByRunId
-- status: active | superseded | archived | deleted
 - supersedesNodeId
 - question
 - purpose
 - options
 - allowFreeAnswer
-- rawAnswer
-- interpretation
-- patchId
 - createdAt
-- updatedAt
 ```
 
-In the first version, a node may contain both the question and the user's answer. If the model becomes too large later, question, answer, interpretation, and patch can be split into separate tables.
+Node question fields are immutable after creation. Regeneration creates a replacement node; it does not edit the old node.
+
+### Answer
+
+An immutable user answer to a node.
+
+```text
+Answer
+- id
+- projectId
+- routeId
+- nodeId
+- selectedOptionId
+- freeText
+- createdByUser
+- createdAt
+```
+
+A historical answer must not be overwritten. Re-answering creates a new route, replacement node, or answer revision.
+
+### AnswerPatch
+
+Structured requirement changes derived from one Answer.
+
+```text
+AnswerPatch
+- id
+- projectId
+- routeId
+- sourceNodeId
+- sourceAnswerId
+- confirmedClaims
+- assumptions
+- constraints
+- openQuestions
+- conflicts
+- risks
+- createdByRunId
+- createdAt
+```
+
+The current RequirementState is built by replaying patches along the active route lineage.
+
+RequirementState may be cached, but cache is not source of truth.
 
 ### AgentRun
 
@@ -121,6 +171,7 @@ AgentRun
 - inputNodeId
 - contextSnapshotId
 - producedNodeId
+- producedAnswerId
 - producedPatchId
 - producedSpecSnapshotId
 - status: created | context_built | model_called | reflected | persisted | completed | failed
@@ -143,6 +194,7 @@ ContextSnapshot
 - tipNodeId
 - operationType
 - includedNodeIds
+- includedAnswerIds
 - includedPatchIds
 - excludedRouteIds
 - specialInputs
@@ -151,28 +203,6 @@ ContextSnapshot
 ```
 
 `specialInputs` may include old question text and user regeneration instructions for regenerate operations.
-
-### AnswerPatch
-
-Structured requirement changes derived from a user answer.
-
-```text
-AnswerPatch
-- id
-- projectId
-- routeId
-- sourceNodeId
-- confirmedClaims
-- assumptions
-- constraints
-- openQuestions
-- conflicts
-- risks
-- createdByRunId
-- createdAt
-```
-
-The current requirement state is built by replaying patches along the active route lineage.
 
 ### SpecSnapshot
 
@@ -213,32 +243,51 @@ The runtime decides whether the action is valid in the current operation.
 
 ## 5. AgentRun Lifecycle
 
-A normal answer flow:
+### Initial requirement flow
+
+```text
+User submits initial requirement
+→ create Project
+→ create root Node
+→ create open Route
+→ set Project.activeRouteId
+→ create AgentRun
+→ build ContextSnapshot
+→ run GapReflection
+→ draft first clarification Node
+→ run NodeReflection
+→ persist Node
+→ update Route.tipNodeId
+→ complete AgentRun
+```
+
+### Normal answer flow
 
 ```text
 User answers node
 → create AgentRun
 → build ContextSnapshot from active route lineage
+→ create immutable Answer
 → interpret answer
 → draft AnswerPatch
 → run PatchReflection
-→ persist answer and patch
-→ replay requirement state
+→ persist Answer and AnswerPatch
+→ replay RequirementState
 → run GapReflection
-→ draft next Node
-→ run NodeReflection
+→ draft next Node or stop
+→ run NodeReflection if a node is produced
 → persist next Node
 → update Route.tipNodeId
 → complete AgentRun
 ```
 
-A spec flow:
+### Spec flow
 
 ```text
 User requests spec
 → create AgentRun
 → build ContextSnapshot from active route lineage
-→ replay requirement state
+→ replay RequirementState
 → run SpecReflection
 → draft SpecSnapshot
 → verify source references
@@ -246,163 +295,154 @@ User requests spec
 → complete AgentRun
 ```
 
-A regenerate flow:
+### Regenerate flow
 
 ```text
 User regenerates node N with optional instruction
 → create AgentRun
-→ mark old route segment superseded
+→ mark selected route superseded
 → build ContextSnapshot from N.parent lineage
 → include old question text
+→ include old purpose if present
 → include user regeneration instruction
 → exclude old answer and children
 → draft replacement node N'
 → run NodeReflection
 → persist N'
-→ make replacement route active
+→ create replacement open Route
+→ set Project.activeRouteId to replacement Route
 → complete AgentRun
 ```
 
-## 6. Reflection Gates
+## 6. Context Contract
 
-Reflection is not free-form self-talk. It is a bounded verification step.
+The runtime must construct context before any model call.
 
-### Context Guard
-
-Checks that the model input uses only allowed context for the operation.
-
-It should fail if a context snapshot includes sibling route patches, deleted route patches, superseded child patches, old regenerate answers, or unsupported spec text.
-
-### Gap Reflection
-
-Before asking the next question, checks:
-
-- What requirement aspect is missing?
-- Why does it matter?
-- Is it worth asking now?
-- Is a spec already possible?
-
-### Node Reflection
-
-After drafting a node, checks:
-
-- The node asks one main question.
-- The purpose is clear.
-- Options are understandable.
-- Options include impact explanations when relevant.
-- Free-form answering is allowed.
-- The node does not rely on forbidden context.
-
-### Patch Reflection
-
-After interpreting a user answer, checks:
-
-- Confirmed claims are actually supported by the answer.
-- Assumptions are not mislabeled as confirmed.
-- Open questions are preserved.
-- Conflicts are not hidden.
-- Ambiguous interpretations request user confirmation.
-
-### Spec Grounding Gate
-
-Before persisting a spec snapshot, checks:
-
-- Each confirmed section has source references.
-- Unsupported claims are marked as assumption, suggestion, or unresolved.
-- The spec is tied to a route tip and context snapshot.
-- The spec does not import sibling branch conclusions.
-
-## 7. Requirement State
-
-The runtime should not maintain a mutable global requirement object as source of truth.
-
-Requirement state is derived:
+Normal context includes only:
 
 ```text
-current route tip
-→ root-to-tip node lineage
-→ ordered answer patches
-→ current requirement state
+Project.activeRouteId
+→ Route.tipNodeId
+→ parent lineage to root
+→ answers on that lineage
+→ patches derived from those answers
+→ current profile
+→ immediate user operation
 ```
 
-This derived state may be cached, but cache invalidation must not affect correctness.
-
-## 8. Requirement Profile
-
-The runtime must remain domain-neutral. A profile may define generic requirement aspects and spec sections.
-
-Default profile: `generic_requirement`.
-
-Example generic aspects:
-
-- goal
-- stakeholder
-- scenario
-- scope
-- constraint
-- success_criterion
-- output_expectation
-- risk
-- assumption
-- open_question
-- conflict
-
-A profile may influence prompting and prioritization, but runtime code must not branch on concrete domains.
-
-## 9. Model Contracts
-
-Model outputs must be structured and validated.
-
-Minimum contracts:
-
-- `GapAnalysisResult`
-- `AgentPlanResult`
-- `NodeDraft`
-- `AnswerInterpretationResult`
-- `AnswerPatchDraft`
-- `ReflectionResult`
-- `SpecDraft`
-
-Invalid model output should not partially mutate persistent state. The run should fail or request repair.
-
-## 10. Failure Handling
-
-Failures should be explicit:
-
-- `MODEL_INVALID_OUTPUT`
-- `CONTEXT_CONTRACT_VIOLATION`
-- `PATCH_UNSUPPORTED_CLAIM`
-- `SPEC_UNGROUNDED_SECTION`
-- `ROUTE_STATE_CONFLICT`
-- `PERSISTENCE_FAILURE`
-
-A failed AgentRun should not corrupt route or node state.
-
-## 11. Anti-Overfitting Contract
-
-Runtime code must not contain domain-specific requirement logic.
-
-Forbidden:
+Normal context excludes:
 
 ```text
-SoftwareProjectPlanner
-MarketingRequirementAnalyzer
-EcommerceSpecComposer
-StudentAssignmentClarifier
-if requirementType == "software"
-if outputFormat == "PRD" then software-specific sections
+Sibling route conclusions
+superseded route patches unless restored
+archived route patches unless restored
+all deleted routes
+spec text without source references
+model memory not backed by runtime records
 ```
+
+Regenerate context is stricter:
 
 Allowed:
 
 ```text
-RequirementAspect
-RequirementProfile
-QuestionPolicy
-SpecSectionDefinition
-ClaimKind
-AnswerPatch
-ContextSnapshot
+old node parent lineage
+old node question text
+old node purpose if present
+user regeneration instruction
 ```
 
-Profiles and prompts may mention concrete examples. Runtime packages may not encode them as branching behavior.
+Forbidden:
+
+```text
+old answer
+old answer patch
+old child nodes
+old route spec snapshot
+sibling route conclusions
+```
+
+## 7. Reflection Gates
+
+Reflection must not be vague self-talk. Each gate produces structured output.
+
+### Context Guard
+
+Verifies that the ContextSnapshot was built from allowed sources.
+
+### Gap Reflection
+
+Determines what is missing, conflicting, assumed, or ready to finalize.
+
+### Node Reflection
+
+Checks that a node asks one main question, explains why it matters, provides useful options, allows free-form answer, and does not import disallowed context.
+
+### Patch Reflection
+
+Checks that an AnswerPatch does not overclaim, does not mark unsupported assumptions as confirmed, and identifies whether user confirmation is required.
+
+### Spec Grounding Gate
+
+Checks that confirmed spec claims have source references and unresolved content is labeled correctly.
+
+## 8. Generic Claim Model
+
+The runtime should store claims in a domain-neutral shape.
+
+```text
+Claim
+- id
+- kind: goal | stakeholder | scope | constraint | success_criterion | output_expectation | risk | assumption | open_question | conflict | other
+- text
+- status: confirmed | assumed | unresolved | rejected
+- confidence
+- sourceNodeId
+- sourceAnswerId
+```
+
+Do not add runtime claim kinds that encode specific domains such as software features, marketing channels, ecommerce products, or course assignments.
+
+## 9. Anti-Overfitting Rule
+
+Runtime code may know about requirement mechanics:
+
+```text
+aspect
+claim
+patch
+route
+node
+answer
+context
+source
+spec section
+reflection gate
+```
+
+Runtime code must not know about concrete domains:
+
+```text
+software project
+marketing plan
+startup pitch
+ecommerce store
+student assignment
+sales script
+legal memo
+```
+
+If a domain needs specialized behavior later, it must enter through a configurable RequirementProfile and still pass through the same runtime contracts.
+
+## 10. Required Invariants
+
+1. Current context is built from `Project.activeRouteId` and its route lineage.
+2. A route may be open but not active.
+3. Superseded routes do not affect active context unless restored or forked.
+4. Deleted routes never affect active context.
+5. Node question content is immutable after creation.
+6. Answers are immutable records.
+7. Regeneration does not include old answer, old patch, old children, or old spec.
+8. SpecSnapshot is derived from one ContextSnapshot.
+9. Confirmed spec claims have source references.
+10. Runtime code has no concrete business-domain branches.
