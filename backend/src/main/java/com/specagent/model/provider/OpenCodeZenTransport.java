@@ -51,6 +51,10 @@ public interface OpenCodeZenTransport {
      * Issues the bounded credential probe (a minimal completion) so a stored
      * key can be validated before being persisted. Shares the exact transport
      * policy of real completion requests.
+     *
+     * @param apiKey the OpenCode bearer credential to validate; must not be blank
+     * @param model  the model the probe completion is issued against; chosen by
+     *               the caller from the current model list, never hardcoded here
      */
-    void validateCredential(String apiKey);
+    void validateCredential(String apiKey, String model);
 }

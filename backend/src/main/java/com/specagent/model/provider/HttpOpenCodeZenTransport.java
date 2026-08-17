@@ -36,11 +36,10 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
 
     /**
-     * Model used by the bounded credential probe. The probe is not model
-     * selection: it only proves the key authorizes a minimal completion through
-     * the same transport policy the runtime will use.
+     * Probe payload constants. The probe model is never hardcoded: the caller
+     * selects a currently free model from the live model list, so credential
+     * validation keeps working when OpenCode retires individual free models.
      */
-    private static final String PROBE_MODEL = "mimo-v2.5-free";
     private static final String PROBE_USER_CONTENT = "Return only {\"action\":\"finish\"}.";
     private static final int PROBE_MAX_TOKENS = 256;
 
@@ -71,9 +70,9 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
     }
 
     @Override
-    public void validateCredential(String apiKey) {
+    public void validateCredential(String apiKey, String model) {
         Map<String, Object> probe = new LinkedHashMap<>();
-        probe.put("model", PROBE_MODEL);
+        probe.put("model", model);
         probe.put("messages", List.of(
                 Map.of("role", "user", "content", PROBE_USER_CONTENT)));
         probe.put("max_tokens", PROBE_MAX_TOKENS);

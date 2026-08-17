@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import org.springframework.context.annotation.Primary;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 /**
@@ -27,12 +27,13 @@ import org.springframework.stereotype.Component;
  * outputs by task type so the agent loop can be tested before real models are
  * wired in. Unsupported task types are rejected with {@link ModelContractException}.
  *
- * <p>Implements {@link ModelGateway} and is the primary bean for that contract,
- * so automated tests keep running against the deterministic fake even though
- * {@code OpenCodeZenModelGateway} is also registered as a component.
+ * <p>Implements {@link ModelGateway} and is the default selection of
+ * {@code spec.agent.model.gateway} (the fake or unset value), so automated
+ * tests keep running against the deterministic fake. The OpenCode gateway is
+ * only registered when the property explicitly selects {@code opencode}.
  */
 @Component
-@Primary
+@ConditionalOnProperty(name = "spec.agent.model.gateway", havingValue = "fake", matchIfMissing = true)
 public class FakeModelAdapter implements ModelGateway {
 
     /**

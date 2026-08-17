@@ -142,7 +142,7 @@ class HttpOpenCodeZenTransportTest {
 
     @Test
     void credentialProbeUsesSameOpenCodeTransport() throws IOException {
-        transport().validateCredential(TEST_KEY);
+        transport().validateCredential(TEST_KEY, "current-free");
 
         CapturedRequest request = captured.get(0);
         assertThat(request.method()).isEqualTo("POST");
@@ -152,8 +152,10 @@ class HttpOpenCodeZenTransportTest {
         assertThat(request.headers().getFirst("Authorization")).isEqualTo("Bearer " + TEST_KEY);
         assertThat(request.headers().getFirst("Content-Type")).isEqualTo("application/json");
 
+        // The probe model comes from the caller (currently discovered free
+        // model); the transport never hardcodes one.
         JsonNode payload = mapper.readTree(request.body());
-        assertThat(payload.get("model").asText()).isNotBlank();
+        assertThat(payload.get("model").asText()).isEqualTo("current-free");
         assertThat(payload.get("messages").get(0).get("role").asText()).isEqualTo("user");
         assertThat(payload.get("response_format").get("type").asText()).isEqualTo("json_object");
         assertThat(payload.get("stream").asBoolean()).isFalse();

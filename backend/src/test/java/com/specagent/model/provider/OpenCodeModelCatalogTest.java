@@ -21,7 +21,7 @@ class OpenCodeModelCatalogTest {
             }
 
             @Override
-            public void validateCredential(String apiKey) {
+            public void validateCredential(String apiKey, String model) {
                 throw new UnsupportedOperationException("catalog test does not probe");
             }
         };

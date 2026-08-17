@@ -472,8 +472,7 @@ public class FakeAgentOrchestrator {
                 contextSnapshot.id(),
                 taskType,
                 inputJson,
-                Map.of("orchestrator", "runtime",
-                        ModelRequest.METADATA_EXPECTED_ACTION, expectedAction.code()));
+                Map.of());
 
         ModelResponse response = modelGateway.run(request);
         agentRunService.markModelCalled(run.id(), trace);
