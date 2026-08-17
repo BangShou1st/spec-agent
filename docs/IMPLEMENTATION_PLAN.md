@@ -39,6 +39,7 @@ Deliverables:
 - Architecture doc.
 - Agent runtime doc.
 - Context rules doc.
+- Model gateway doc.
 - Development environment doc.
 - AI development instructions.
 
@@ -48,6 +49,7 @@ Exit criteria:
 - Non-goals are explicit.
 - Anti-overfitting rules are explicit.
 - Context and route invariants are written down.
+- ModelGateway strategy is explicit: custom HTTP gateway first, Spring AI not default.
 - Docker development scope is minimal and PostgreSQL-only.
 
 ## Phase 1: Repository and Backend Test Foundation
@@ -74,6 +76,7 @@ Required tests:
 - PostgreSQL connection works in local/test profile.
 - Flyway migrations run.
 - Runtime packages do not depend on model packages.
+- No Spring AI package appears in production dependencies.
 
 Exit criteria:
 
@@ -81,7 +84,7 @@ Exit criteria:
 - A developer can run backend tests locally.
 - No model integration exists yet.
 - No frontend exists yet.
-- No Redis, MinIO, MySQL, RAG, browser automation, or external tools exist.
+- No Redis, MinIO, MySQL, RAG, browser automation, Spring AI, or external tools exist.
 
 ## Phase 2: Runtime Kernel and Persistence Model
 
@@ -129,6 +132,7 @@ Required tests:
 - Prevent answer overwrite after finalization.
 - Ensure RequirementState can be rebuilt from patches.
 - Ensure SpecSnapshot carries route tip and source references.
+- Ensure Runtime Kernel packages do not depend on model packages.
 
 Exit criteria:
 
@@ -205,21 +209,31 @@ Required tests:
 - Spec grounding rejects sections without sources.
 - AgentRun failure leaves no partial route mutation.
 - ContextSnapshot id is attached to every fake model run.
+- Fake model contracts do not require external provider SDKs.
 
 Exit criteria:
 
 - A fake agent can drive the full loop from initial requirement to spec snapshot.
 - Runtime still owns history, route state, and persistence.
 - The model boundary is stable before real provider integration.
+- No external HTTP model calls exist yet.
+- Spring AI is not introduced.
 
 ## Phase 5: Real Model Gateway
 
-Goal: add real model calls behind stable contracts.
+Goal: add real model calls behind stable custom HTTP contracts.
 
 Deliverables:
 
-- OpenAI-compatible model adapter.
-- Provider configuration.
+- Custom HTTP ModelGateway.
+- ProviderAdapter interface.
+- OpenAI-compatible provider adapter.
+- Opencode zen provider adapter or configuration profile.
+- Configurable provider base URL.
+- Configurable endpoint path.
+- Configurable model id.
+- Configurable API key.
+- Configurable `User-Agent`, defaulting locally to `opencode/1.18.16` when using opencode zen.
 - Prompt versioning.
 - Structured JSON parsing.
 - Retry or repair for invalid JSON.
@@ -234,11 +248,16 @@ Required tests:
 - ContextSnapshot ids are stored for every model call.
 - Prompt version is recorded.
 - Invalid JSON repair does not bypass validation.
+- Provider adapter sends configured `User-Agent`.
+- Provider adapter does not leak secrets into traces.
+- Runtime Kernel packages still do not depend on `com.specagent.model`.
+- Spring AI packages do not appear in production code unless a future design update explicitly approves them.
 
 Exit criteria:
 
 - Real model can generate nodes, interpret answers, and draft specs without owning state.
 - Runtime invariants still pass with real model integration.
+- Provider details are isolated behind ModelGateway and ProviderAdapter.
 
 ## Phase 6: Frontend First Version
 
@@ -298,6 +317,7 @@ Required tests:
 - Route and Node services do not depend on prompts.
 - Spec generation uses ContextSnapshot, not global project history.
 - Production code does not introduce domain-specific analyzers, generators, composers, or enums.
+- Provider adapters do not contain requirement-domain behavior.
 
 Exit criteria:
 
@@ -320,6 +340,7 @@ Exit criteria:
 - MinIO.
 - MySQL.
 - pgvector.
+- Spring AI as default first-version model integration.
 
 ## Development Order Summary
 
@@ -329,7 +350,7 @@ Docs
 → runtime kernel and persistence model
 → route control operations
 → fake model contracts
-→ real model gateway
+→ custom HTTP real model gateway
 → frontend workspace
 → hardening and scope guard
 ```
@@ -341,6 +362,7 @@ Pause implementation and update docs before coding if a change requires:
 - Reading global project history as model context.
 - Adding concrete business-domain runtime branches.
 - Adding file upload, RAG, code generation, browser automation, or collaboration features.
+- Adding Spring AI as the default model integration.
 - Changing route lifecycle semantics.
 - Allowing answer overwrite after finalization.
 - Generating confirmed spec claims without sources.
