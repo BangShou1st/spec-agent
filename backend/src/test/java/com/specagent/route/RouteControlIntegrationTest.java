@@ -360,4 +360,66 @@ class RouteControlIntegrationTest {
         // The first replacement route should now be superseded.
         assertThat(second.oldRoute().lifecycleStatus()).isEqualTo(RouteLifecycleStatus.SUPERSEDED);
     }
+
+    @Test
+    void forkFromNodeSupportsMiddleHistoricalNode() {
+        Project project = projectService.createProject("Middle node project");
+        UUID routeId = project.activeRouteId();
+        Node root = nodeService.createRootNode(project.id(), routeId, "What are you clarifying?",
+                null, List.of(), true);
+        Node child = nodeService.createChildNode(project.id(), routeId, root.id(),
+                "Who is the first user?", null, List.of(), true);
+        Node grandchild = nodeService.createChildNode(project.id(), routeId, child.id(),
+                "What is their budget?", null, List.of(), true);
+        assertThat(routeService.getRoute(routeId).orElseThrow().tipNodeId())
+                .isEqualTo(grandchild.id());
+
+        Route fork = routeService.forkFromNode(project.id(), child.id(), "Fork from middle");
+
+        assertThat(fork.lifecycleStatus()).isEqualTo(RouteLifecycleStatus.OPEN);
+        assertThat(fork.rootNodeId()).isEqualTo(root.id());
+        assertThat(fork.tipNodeId()).isEqualTo(child.id());
+        assertThat(fork.createdFromNodeId()).isEqualTo(child.id());
+        assertThat(projectService.getProject(project.id()).orElseThrow().activeRouteId())
+                .isEqualTo(fork.id());
+
+        ContextSnapshot ctx = contextBuilder.buildFromActiveRoute(
+                project.id(), null, ContextOperationType.FORK);
+        assertThat(ctx.includedNodeIds()).containsExactly(root.id(), child.id());
+        assertThat(ctx.includedNodeIds()).doesNotContain(grandchild.id());
+    }
+
+    @Test
+    void regenerateFromNodeSupportsMiddleHistoricalNode() {
+        Project project = projectService.createProject("Regenerate middle project");
+        UUID originalRouteId = project.activeRouteId();
+        Node root = nodeService.createRootNode(project.id(), originalRouteId,
+                "What are you clarifying?", null, List.of(), true);
+        Node child = nodeService.createChildNode(project.id(), originalRouteId, root.id(),
+                "Who is the first user?", null, List.of(), true);
+        Node grandchild = nodeService.createChildNode(project.id(), originalRouteId, child.id(),
+                "What is their budget?", null, List.of(), true);
+        assertThat(routeService.getRoute(originalRouteId).orElseThrow().tipNodeId())
+                .isEqualTo(grandchild.id());
+
+        RegenerateResult result = routeService.regenerateFromNode(
+                project.id(), child.id(), "Regenerate middle node",
+                "Replacement child question", "Replacement child purpose", List.of());
+
+        assertThat(result.oldRoute().lifecycleStatus()).isEqualTo(RouteLifecycleStatus.SUPERSEDED);
+        assertThat(result.replacementRoute().lifecycleStatus()).isEqualTo(RouteLifecycleStatus.OPEN);
+        assertThat(result.replacementRoute().replacementOfNodeId()).isEqualTo(child.id());
+        assertThat(result.replacementNode().supersedesNodeId()).isEqualTo(child.id());
+        assertThat(result.replacementNode().parentNodeId()).isEqualTo(root.id());
+        assertThat(projectService.getProject(project.id()).orElseThrow().activeRouteId())
+                .isEqualTo(result.replacementRoute().id());
+
+        assertThat(result.contextSnapshot().includedNodeIds()).containsExactly(root.id());
+        assertThat(result.contextSnapshot().includedNodeIds())
+                .doesNotContain(child.id(), grandchild.id(), result.replacementNode().id());
+
+        // The old route keeps its original tip; regeneration never repoints it.
+        Route oldRoute = routeService.getRoute(originalRouteId).orElseThrow();
+        assertThat(oldRoute.tipNodeId()).isEqualTo(grandchild.id());
+    }
 }

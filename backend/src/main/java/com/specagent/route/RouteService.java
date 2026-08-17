@@ -1,7 +1,6 @@
 package com.specagent.route;
 
 import com.specagent.common.Ids;
-import com.specagent.common.Json;
 import com.specagent.context.ContextBuilder;
 import com.specagent.context.ContextSnapshot;
 import com.specagent.node.Node;
@@ -37,20 +36,17 @@ public class RouteService {
     private final NodeRepository nodeRepository;
     private final NodeService nodeService;
     private final ContextBuilder contextBuilder;
-    private final Json json;
 
     public RouteService(RouteRepository routeRepository,
                         ProjectRepository projectRepository,
                         NodeRepository nodeRepository,
                         NodeService nodeService,
-                        ContextBuilder contextBuilder,
-                        Json json) {
+                        ContextBuilder contextBuilder) {
         this.routeRepository = routeRepository;
         this.projectRepository = projectRepository;
         this.nodeRepository = nodeRepository;
         this.nodeService = nodeService;
         this.contextBuilder = contextBuilder;
-        this.json = json;
     }
 
     public Route createRoute(UUID projectId, RouteLifecycleStatus status, String label) {
@@ -335,22 +331,32 @@ public class RouteService {
     }
 
     /**
-     * Checks if a route's lineage contains a given node. A route's lineage is
-     * defined by its rootNodeId and tipNodeId. This is a simplified check.
+     * Checks if a node lies on the route's lineage: the chain from
+     * {@code tipNodeId} up through {@code parentNodeId} pointers to the root.
+     * Replacement relationships are deliberately ignored here — a replacement
+     * node never enters the normal lineage of the route it supersedes.
      */
     private boolean lineageContains(Route route, UUID nodeId) {
-        // Simple check: if the node is the root or tip, it's in the lineage
-        if (route.rootNodeId() != null && route.rootNodeId().equals(nodeId)) {
-            return true;
-        }
-        if (route.tipNodeId() != null && route.tipNodeId().equals(nodeId)) {
-            return true;
+        if (nodeId == null || route.tipNodeId() == null) {
+            return false;
         }
 
-        // For more complex lineage checks, we would traverse the node graph
-        // For now, check if the node is in the route's createdFromNodeId chain
-        if (route.createdFromNodeId() != null && route.createdFromNodeId().equals(nodeId)) {
-            return true;
+        UUID current = route.tipNodeId();
+        Set<UUID> visited = new HashSet<>();
+        int guard = 0;
+
+        while (current != null && !visited.contains(current)) {
+            if (current.equals(nodeId)) {
+                return true;
+            }
+
+            visited.add(current);
+            Node currentNode = nodeRepository.findById(current).orElse(null);
+            current = currentNode != null ? currentNode.parentNodeId() : null;
+
+            if (++guard > 10_000) {
+                throw new IllegalStateException("Node lineage exceeds maximum depth");
+            }
         }
 
         return false;
@@ -371,14 +377,5 @@ public class RouteService {
         if (project.activeRouteId() != null && project.activeRouteId().equals(routeId)) {
             projectRepository.updateActiveRoute(projectId, null, Instant.now());
         }
-    }
-
-    /**
-     * @deprecated Use the specific lifecycle operations instead. This is only for
-     * testing and should not be used in production code.
-     */
-    @Deprecated
-    void changeLifecycleForTesting(UUID routeId, RouteLifecycleStatus status) {
-        routeRepository.updateLifecycle(routeId, status, Instant.now());
     }
 }
