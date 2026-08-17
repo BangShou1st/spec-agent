@@ -93,6 +93,20 @@ class ContextGuardTest {
     }
 
     @Test
+    void normalContextRejectsProjectWithNoActiveRoute() {
+        UUID projectId = UUID.randomUUID();
+        UUID routeId = UUID.randomUUID();
+        when(projectRepository.findById(projectId)).thenReturn(Optional.of(project(projectId, null)));
+        when(routeRepository.findById(routeId))
+                .thenReturn(Optional.of(route(routeId, projectId, RouteLifecycleStatus.OPEN)));
+
+        ReflectionResult result = contextGuard.validate(snapshot(projectId, routeId, ContextOperationType.NORMAL));
+
+        assertThat(result.accepted()).isFalse();
+        assertThat(result.errors()).contains("Normal context requires project active route");
+    }
+
+    @Test
     void contextGuardRejectsSnapshotWithoutHash() {
         UUID projectId = UUID.randomUUID();
         UUID routeId = UUID.randomUUID();

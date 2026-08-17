@@ -15,7 +15,6 @@ import com.specagent.project.ProjectRepository;
 import com.specagent.route.Route;
 import com.specagent.route.RouteRepository;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Map;
 import java.util.UUID;
@@ -30,11 +29,17 @@ import java.util.UUID;
  * persistence happens through runtime services. This is not a full answer
  * loop: it never interprets answers, creates answer patches, or generates spec
  * snapshots.
+ *
+ * <p>The cycle is not wrapped in a single transaction: each runtime step
+ * persists on its own, and unexpected failures are recorded through
+ * {@link AgentRunFailureService} in a separate transaction so the FAILED run
+ * stays queryable after the exception is rethrown.
  */
 @Service
 public class FakeAgentOrchestrator {
 
     private final AgentRunService agentRunService;
+    private final AgentRunFailureService agentRunFailureService;
     private final ProjectRepository projectRepository;
     private final RouteRepository routeRepository;
     private final ContextBuilder contextBuilder;
@@ -45,6 +50,7 @@ public class FakeAgentOrchestrator {
     private final Json json;
 
     public FakeAgentOrchestrator(AgentRunService agentRunService,
+                                 AgentRunFailureService agentRunFailureService,
                                  ProjectRepository projectRepository,
                                  RouteRepository routeRepository,
                                  ContextBuilder contextBuilder,
@@ -54,6 +60,7 @@ public class FakeAgentOrchestrator {
                                  NodeService nodeService,
                                  Json json) {
         this.agentRunService = agentRunService;
+        this.agentRunFailureService = agentRunFailureService;
         this.projectRepository = projectRepository;
         this.routeRepository = routeRepository;
         this.contextBuilder = contextBuilder;
@@ -64,7 +71,6 @@ public class FakeAgentOrchestrator {
         this.json = json;
     }
 
-    @Transactional
     public FakeAgentRunResult draftNextQuestion(UUID projectId) {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new IllegalArgumentException("Project not found: " + projectId));
@@ -150,7 +156,9 @@ public class FakeAgentOrchestrator {
             AgentRun latest = agentRunService.getRun(run.id()).orElse(null);
             if (latest != null && latest.status() != AgentRunStatus.FAILED
                     && latest.status() != AgentRunStatus.COMPLETED) {
-                agentRunService.fail(run.id(), "{\"error\":\"" + ex.getClass().getSimpleName() + "\"}");
+                // Record the failure in its own transaction so the FAILED run
+                // survives the rethrow instead of being rolled back.
+                agentRunFailureService.fail(run.id(), "{\"error\":\"" + ex.getClass().getSimpleName() + "\"}");
             }
             throw ex;
         }

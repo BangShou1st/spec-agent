@@ -57,9 +57,12 @@ public class ContextGuard {
         }
 
         if (snapshot.operationType() != ContextOperationType.REGENERATE) {
-            if (project != null && project.activeRouteId() != null
-                    && !project.activeRouteId().equals(snapshot.routeId())) {
-                errors.add("Normal context route must match project active route");
+            if (project != null) {
+                if (project.activeRouteId() == null) {
+                    errors.add("Normal context requires project active route");
+                } else if (!project.activeRouteId().equals(snapshot.routeId())) {
+                    errors.add("Normal context route must match project active route");
+                }
             }
         }
 
