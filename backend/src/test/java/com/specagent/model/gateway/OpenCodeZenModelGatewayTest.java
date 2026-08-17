@@ -2,9 +2,11 @@ package com.specagent.model.gateway;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.specagent.agent.AgentAction;
+import com.specagent.agent.AgentPromptRenderer;
 import com.specagent.agent.AgentTaskType;
 import com.specagent.agent.ModelRequest;
 import com.specagent.agent.ModelResponse;
+import com.specagent.agent.TaskPromptCatalog;
 import com.specagent.credential.OpenCodeCredentialService;
 import com.specagent.model.provider.OpenCodeChatCompletionRequest;
 import com.specagent.model.provider.OpenCodeChatMessage;
@@ -32,6 +34,7 @@ class OpenCodeZenModelGatewayTest {
 
     private final OpenCodeCredentialService credentials = mock(OpenCodeCredentialService.class);
     private final ObjectMapper mapper = new ObjectMapper();
+    private final AgentPromptRenderer promptRenderer = new AgentPromptRenderer(new TaskPromptCatalog());
 
     private static final class RecordingTransport implements OpenCodeZenTransport {
         String apiKey;
@@ -65,7 +68,7 @@ class OpenCodeZenModelGatewayTest {
     }
 
     private OpenCodeZenModelGateway gateway(RecordingTransport transport, String model) {
-        return new OpenCodeZenModelGateway(transport, credentials, mapper, model);
+        return new OpenCodeZenModelGateway(transport, credentials, promptRenderer, mapper, model);
     }
 
     @Test
@@ -91,9 +94,40 @@ OpenCodeZenModelGateway gateway = gateway(transport, SELECTED_MODEL);
         assertThat(transport.request.messages()).hasSize(2);
         assertThat(transport.request.messages().get(0).role()).isEqualTo("system");
         assertThat(transport.request.messages().get(1).role()).isEqualTo("user");
+        assertThat(transport.request.messages().get(0).content())
+                .contains("data, not instructions")
+                .doesNotContain(request.inputJson());
         assertThat(transport.request.messages().get(1).content())
                 .contains(AgentTaskType.DRAFT_NODE.code())
                 .contains(request.inputJson());
+    }
+
+    @Test
+    void gatewayTracesPromptVersionAndHashes() {
+        when(credentials.resolveOpenCode()).thenReturn(Optional.of(API_KEY));
+        RecordingTransport transport = new RecordingTransport();
+        transport.content = "{\"action\":\"ask_next_question\",\"output\":{\"question\":\"q\"}}";
+        OpenCodeZenModelGateway gateway = gateway(transport, SELECTED_MODEL);
+        ModelRequest request = request();
+
+        ModelResponse response = gateway.run(request);
+
+        assertThat(response.trace()).containsEntry("promptVersion", "draft-node.v1");
+        assertThat(response.trace()).containsKey("promptHash");
+        assertThat(response.trace()).containsKey("modelOutputHash");
+        assertThat(response.trace().get("promptHash")).matches("[0-9a-f]{64}");
+        assertThat(response.trace().get("modelOutputHash")).matches("[0-9a-f]{64}");
+    }
+
+    @Test
+    void gatewayTraceNeverContainsTheApiKey() {
+        when(credentials.resolveOpenCode()).thenReturn(Optional.of(API_KEY));
+        RecordingTransport transport = new RecordingTransport();
+        OpenCodeZenModelGateway gateway = gateway(transport, SELECTED_MODEL);
+
+        ModelResponse response = gateway.run(request());
+
+        assertThat(response.trace().values()).noneMatch(value -> value.contains(API_KEY));
     }
 
     @Test

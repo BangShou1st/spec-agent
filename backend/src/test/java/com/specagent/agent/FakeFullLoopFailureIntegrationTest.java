@@ -1,15 +1,11 @@
 package com.specagent.agent;
 
 import com.specagent.agent.contracts.AnswerInterpretationResult;
-import com.specagent.agent.contracts.AnswerPatchDraft;
 import com.specagent.agent.contracts.SpecDraft;
 import com.specagent.common.Json;
 import com.specagent.node.Node;
 import com.specagent.node.NodeService;
 import com.specagent.patch.AnswerPatchService;
-import com.specagent.patch.Claim;
-import com.specagent.patch.ClaimKind;
-import com.specagent.patch.ClaimStatus;
 import com.specagent.project.Project;
 import com.specagent.project.ProjectService;
 import com.specagent.route.Route;
@@ -84,8 +80,13 @@ class FakeFullLoopFailureIntegrationTest {
                 case DRAFT_ANSWER_PATCH -> new ModelResponse(
                         request.agentRunId(), request.contextSnapshotId(), request.taskType(),
                         AgentAction.INTERPRET_ANSWER,
-                        json.write(new AnswerPatchDraft(List.of(
-                                Claim.of(ClaimKind.GOAL, " ", ClaimStatus.CONFIRMED, null, null)))),
+                        // Model-facing patch shape without runtime-owned ids:
+                        // the blank claim text violates the strict output
+                        // contract, so the parser rejects the patch before it
+                        // may be reflected or persisted.
+                        json.write(Map.of("claims", List.of(
+                                Map.of("kind", "goal", "text", " ",
+                                        "status", "confirmed", "confidence", 0.9)))),
                         trace);
                 default -> throw new IllegalStateException("Unexpected task " + request.taskType());
             };
@@ -93,7 +94,7 @@ class FakeFullLoopFailureIntegrationTest {
 
         assertThatThrownBy(() -> fakeAgentOrchestrator.answerActiveNodeAndDraftNext(project.id(), "clarified"))
                 .isInstanceOf(ModelContractException.class)
-                .hasMessageContaining("Patch reflection rejected");
+                .hasMessageContaining("non-blank");
 
         // The failed run is queryable.
         assertThat(agentRunService.listByProject(project.id())).hasSize(1);

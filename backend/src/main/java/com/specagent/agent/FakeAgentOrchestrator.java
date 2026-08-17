@@ -12,10 +12,10 @@ import com.specagent.agent.gates.SpecGroundingGate;
 import com.specagent.agent.gates.SpecSourceReferenceGuard;
 import com.specagent.answer.Answer;
 import com.specagent.answer.AnswerService;
-import com.specagent.common.Json;
 import com.specagent.context.ContextBuilder;
 import com.specagent.context.ContextOperationType;
 import com.specagent.context.ContextSnapshot;
+import com.specagent.model.contract.StructuredModelOutputParser;
 import com.specagent.model.gateway.ModelGateway;
 import com.specagent.node.Node;
 import com.specagent.node.NodeService;
@@ -84,7 +84,9 @@ public class FakeAgentOrchestrator {
     private final AnswerService answerService;
     private final AnswerPatchService answerPatchService;
     private final SpecSnapshotService specSnapshotService;
-    private final Json json;
+    private final ModelContextProjectionBuilder projectionBuilder;
+    private final StructuredModelOutputParser structuredModelOutputParser;
+    private final StructuredOutputMapper structuredOutputMapper;
 
     public FakeAgentOrchestrator(AgentRunService agentRunService,
                                  AgentRunFailureService agentRunFailureService,
@@ -101,7 +103,9 @@ public class FakeAgentOrchestrator {
                                  AnswerService answerService,
                                  AnswerPatchService answerPatchService,
                                  SpecSnapshotService specSnapshotService,
-                                 Json json) {
+                                 ModelContextProjectionBuilder projectionBuilder,
+                                 StructuredModelOutputParser structuredModelOutputParser,
+                                 StructuredOutputMapper structuredOutputMapper) {
         this.agentRunService = agentRunService;
         this.agentRunFailureService = agentRunFailureService;
         this.projectRepository = projectRepository;
@@ -117,7 +121,9 @@ public class FakeAgentOrchestrator {
         this.answerService = answerService;
         this.answerPatchService = answerPatchService;
         this.specSnapshotService = specSnapshotService;
-        this.json = json;
+        this.projectionBuilder = projectionBuilder;
+        this.structuredModelOutputParser = structuredModelOutputParser;
+        this.structuredOutputMapper = structuredOutputMapper;
     }
 
     public FakeAgentRunResult draftNextQuestion(UUID projectId) {
@@ -138,10 +144,14 @@ public class FakeAgentOrchestrator {
 
             trace = appendTrace(trace, "model_called:" + AgentTaskType.DRAFT_NODE.name());
             ModelResponse response = callModel(run, contextSnapshot, trace,
-                    AgentTaskType.DRAFT_NODE, "{}", AgentAction.ASK_NEXT_QUESTION,
+                    AgentTaskType.DRAFT_NODE,
+                    projectionBuilder.buildInputJson(contextSnapshot,
+                            projectionBuilder.initialNodeTaskInput()),
+                    AgentAction.ASK_NEXT_QUESTION,
                     "Expected ASK_NEXT_QUESTION from fake DRAFT_NODE");
 
-            NodeDraft draft = json.read(response.outputJson(), NodeDraft.class);
+            NodeDraft draft = structuredOutputMapper.toNodeDraft(
+                    structuredModelOutputParser.parse(AgentTaskType.DRAFT_NODE, response.outputJson()));
             ReflectionResult nodeReflection = nodeReflectionGate.validate(draft);
             trace = appendTrace(trace, "reflected:NODE");
             agentRunService.markReflected(run.id(), trace);
@@ -301,9 +311,12 @@ public class FakeAgentOrchestrator {
 
             trace = appendTrace(trace, "model_called:" + AgentTaskType.DRAFT_SPEC.name());
             ModelResponse response = callModel(run, contextSnapshot, trace,
-                    AgentTaskType.DRAFT_SPEC, "{}", AgentAction.GENERATE_SPEC,
+                    AgentTaskType.DRAFT_SPEC,
+                    projectionBuilder.buildInputJson(contextSnapshot, Map.of()),
+                    AgentAction.GENERATE_SPEC,
                     "Expected GENERATE_SPEC from fake DRAFT_SPEC");
-            SpecDraft specDraft = json.read(response.outputJson(), SpecDraft.class);
+            SpecDraft specDraft = structuredOutputMapper.toSpecDraft(
+                    structuredModelOutputParser.parse(AgentTaskType.DRAFT_SPEC, response.outputJson()));
 
             ReflectionResult grounding = specGroundingGate.validate(specDraft);
             trace = appendTrace(trace, "reflected:SPEC_GROUNDING");
@@ -370,20 +383,24 @@ public class FakeAgentOrchestrator {
         trace = appendTrace(trace, "model_called:" + AgentTaskType.INTERPRET_ANSWER.name());
         ModelResponse interpretResponse = callModel(run, contextSnapshot, trace,
                 AgentTaskType.INTERPRET_ANSWER,
-                json.write(Map.of("freeText", freeText == null ? "" : freeText,
-                        "nodeId", answeredNodeId, "answerId", answer.id())),
+                projectionBuilder.buildInputJson(contextSnapshot,
+                        projectionBuilder.answerTaskInput(answer)),
                 AgentAction.INTERPRET_ANSWER,
                 "Expected INTERPRET_ANSWER from fake INTERPRET_ANSWER");
-        AnswerInterpretationResult interpretation =
-                json.read(interpretResponse.outputJson(), AnswerInterpretationResult.class);
+        AnswerInterpretationResult interpretation = structuredOutputMapper.toInterpretation(
+                structuredModelOutputParser.parse(AgentTaskType.INTERPRET_ANSWER,
+                        interpretResponse.outputJson()));
 
         trace = appendTrace(trace, "model_called:" + AgentTaskType.DRAFT_ANSWER_PATCH.name());
         ModelResponse patchResponse = callModel(run, contextSnapshot, trace,
                 AgentTaskType.DRAFT_ANSWER_PATCH,
-                json.write(interpretation),
+                projectionBuilder.buildInputJson(contextSnapshot,
+                        projectionBuilder.interpretationTaskInput(answer, interpretation)),
                 AgentAction.INTERPRET_ANSWER,
                 "Expected INTERPRET_ANSWER from fake DRAFT_ANSWER_PATCH");
-        AnswerPatchDraft patchDraft = json.read(patchResponse.outputJson(), AnswerPatchDraft.class);
+        AnswerPatchDraft patchDraft = structuredOutputMapper.toPatchDraft(
+                structuredModelOutputParser.parse(AgentTaskType.DRAFT_ANSWER_PATCH,
+                        patchResponse.outputJson()));
 
         // The fake model never fabricates real source ids. The runtime grounds
         // confirmed claims with the real answered node and answer before the
@@ -406,10 +423,12 @@ public class FakeAgentOrchestrator {
         trace = appendTrace(trace, "model_called:" + AgentTaskType.DRAFT_NODE.name());
         ModelResponse nodeResponse = callModel(run, contextSnapshot, trace,
                 AgentTaskType.DRAFT_NODE,
-                json.write(Map.of("answerId", answer.id(), "patchId", patch.id())),
+                projectionBuilder.buildInputJson(contextSnapshot,
+                        projectionBuilder.afterAnswerNodeTaskInput(answer, patch)),
                 AgentAction.ASK_NEXT_QUESTION,
                 "Expected ASK_NEXT_QUESTION from fake DRAFT_NODE");
-        NodeDraft draft = json.read(nodeResponse.outputJson(), NodeDraft.class);
+        NodeDraft draft = structuredOutputMapper.toNodeDraft(
+                structuredModelOutputParser.parse(AgentTaskType.DRAFT_NODE, nodeResponse.outputJson()));
 
         ReflectionResult nodeReflection = nodeReflectionGate.validate(draft);
         trace = appendTrace(trace, "reflected:NODE");
@@ -531,12 +550,20 @@ public class FakeAgentOrchestrator {
      * Marks the run FAILED in its own transaction unless it already reached a
      * terminal state. The cumulative trace always ends with the failure step so
      * failed runs remain diagnosable.
+     *
+     * <p>The trace parameter is the caller's local view, which is truncated when
+     * the exception is thrown from a helper (for example from the shared
+     * {@link #continueAfterAnswer} post-answer processing). The run itself
+     * carries the last persisted cumulative trace, so the failure step is
+     * appended to that instead of the truncated local view.
      */
     private void failIfNotTerminal(UUID runId, String trace, RuntimeException ex) {
         AgentRun latest = agentRunService.getRun(runId).orElse(null);
         if (latest != null && latest.status() != AgentRunStatus.FAILED
                 && latest.status() != AgentRunStatus.COMPLETED) {
-            agentRunFailureService.fail(runId, appendTrace(trace, "failed:" + ex.getClass().getSimpleName()));
+            String persisted = latest.trace();
+            String base = (persisted == null || persisted.isBlank()) ? trace : persisted;
+            agentRunFailureService.fail(runId, appendTrace(base, "failed:" + ex.getClass().getSimpleName()));
         }
     }
 }

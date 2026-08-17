@@ -3,9 +3,12 @@ package com.specagent.model.gateway;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.specagent.agent.AgentAction;
+import com.specagent.agent.AgentPromptRenderer;
 import com.specagent.agent.ModelRequest;
 import com.specagent.agent.ModelResponse;
+import com.specagent.common.Hashes;
 import com.specagent.credential.OpenCodeCredentialService;
+import com.specagent.model.contract.ModelPrompt;
 import com.specagent.model.provider.OpenCodeChatCompletionRequest;
 import com.specagent.model.provider.OpenCodeChatMessage;
 import com.specagent.model.provider.OpenCodeCompletionResponse;
@@ -17,6 +20,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -24,12 +28,13 @@ import java.util.Map;
  * Real-model {@link ModelGateway} backed by OpenCode Zen chat completions.
  *
  * <p>The gateway is provider-bound but domain-neutral: it resolves the stored
- * OpenCode credential, asks the model for a proposal, and parses the model's
- * own minimal envelope {@code {"action": "...", "output": {...}}} into a
- * {@link ModelResponse}. The action always comes from the model output — the
+ * OpenCode credential, renders the production prompt through
+ * {@link AgentPromptRenderer}, asks the model for a proposal, and parses the
+ * model's own minimal envelope {@code {"action": "...", "output": {...}}} into
+ * a {@link ModelResponse}. The action always comes from the model output — the
  * gateway never copies a runtime expectation into {@code ModelResponse.action}.
  * The runtime owns correlation validation, expected-action validation,
- * reflection gates and persistence.
+ * task-specific structured parsing, reflection gates and persistence.
  *
  * <p>Only OpenCode free models are allowed: a non-free selected model is
  * rejected before any HTTP completion call. The selected model is a runtime
@@ -46,23 +51,21 @@ public class OpenCodeZenModelGateway implements ModelGateway {
 
     private static final int MAX_TOKENS = 4096;
     private static final double TEMPERATURE = 0.0;
-    private static final String SYSTEM_PROMPT =
-            "You are a requirement specification agent. Respond with valid JSON only, in the form "
-                    + "{\"action\": \"...\", \"output\": {...}}. The action must be one of: "
-                    + "ask_next_question, interpret_answer, request_confirmation, explain_conflict, "
-                    + "suggest_branch, generate_spec, stop.";
 
     private final OpenCodeZenTransport transport;
     private final OpenCodeCredentialService credentialService;
+    private final AgentPromptRenderer promptRenderer;
     private final ObjectMapper mapper;
     private final String selectedModel;
 
     public OpenCodeZenModelGateway(OpenCodeZenTransport transport,
                                    OpenCodeCredentialService credentialService,
+                                   AgentPromptRenderer promptRenderer,
                                    ObjectMapper mapper,
                                    @Value("${spec.agent.model.opencode.model:}") String selectedModel) {
         this.transport = transport;
         this.credentialService = credentialService;
+        this.promptRenderer = promptRenderer;
         this.mapper = mapper;
         this.selectedModel = selectedModel == null ? "" : selectedModel.trim();
     }
@@ -81,28 +84,28 @@ public class OpenCodeZenModelGateway implements ModelGateway {
                     "OpenCode gateway requires a free model; configured model is not free: " + selectedModel);
         }
 
-        String userPrompt = "Task: " + request.taskType().code()
-                + "\nContext snapshot: " + request.contextSnapshotId()
-                + "\nRequest payload:\n" + request.inputJson();
+        ModelPrompt prompt = promptRenderer.render(request);
 
         OpenCodeCompletionResponse completion = transport.complete(apiKey,
                 new OpenCodeChatCompletionRequest(
                         selectedModel,
-                        List.of(new OpenCodeChatMessage("system", SYSTEM_PROMPT),
-                                new OpenCodeChatMessage("user", userPrompt)),
+                        List.of(new OpenCodeChatMessage("system", prompt.systemPrompt()),
+                                new OpenCodeChatMessage("user", prompt.userPrompt())),
                         TEMPERATURE,
                         MAX_TOKENS));
 
-        return toModelResponse(request, completion.content());
+        return toModelResponse(request, completion.content(), prompt);
     }
 
     /**
      * Parses the model's minimal envelope and maps it onto a {@link ModelResponse}.
      * The action is the model's own proposal, never a runtime-supplied value;
      * correlation fields wrap this synchronous request so the runtime can verify
-     * which request this response belongs to.
+     * which request this response belongs to. The trace carries the rendered
+     * prompt version and content hashes so output can be attributed; it never
+     * carries the API key.
      */
-    private ModelResponse toModelResponse(ModelRequest request, String content) {
+    private ModelResponse toModelResponse(ModelRequest request, String content, ModelPrompt prompt) {
         Envelope envelope = parseEnvelope(content);
         AgentAction action;
         try {
@@ -112,14 +115,20 @@ public class OpenCodeZenModelGateway implements ModelGateway {
                     "OpenCode model returned an unknown action: " + envelope.action(), ex);
         }
         String outputJson = writeOutput(envelope.output());
+        Map<String, String> trace = new LinkedHashMap<>();
+        trace.put("adapter", "opencode-zen");
+        trace.put("model", selectedModel);
+        trace.put("task", request.taskType().code());
+        trace.put("promptVersion", prompt.version());
+        trace.put("promptHash", Hashes.sha256Hex(prompt.systemPrompt() + "\n" + prompt.userPrompt()));
+        trace.put("modelOutputHash", Hashes.sha256Hex(content));
         return new ModelResponse(
                 request.agentRunId(),
                 request.contextSnapshotId(),
                 request.taskType(),
                 action,
                 outputJson,
-                Map.of("adapter", "opencode-zen", "model", selectedModel,
-                        "task", request.taskType().code()));
+                trace);
     }
 
     private Envelope parseEnvelope(String content) {

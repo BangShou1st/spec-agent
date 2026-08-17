@@ -1,10 +1,6 @@
 package com.specagent.agent;
 
-import com.specagent.agent.contracts.AnswerPatchDraft;
 import com.specagent.common.Json;
-import com.specagent.patch.Claim;
-import com.specagent.patch.ClaimKind;
-import com.specagent.patch.ClaimStatus;
 import com.specagent.project.Project;
 import com.specagent.project.ProjectService;
 import org.junit.jupiter.api.Test;
@@ -87,7 +83,9 @@ class AgentRunTraceIntegrationTest {
         fakeAgentOrchestrator.draftNextQuestion(project.id());
 
         // Only DRAFT_ANSWER_PATCH is made invalid; everything else runs the
-        // real deterministic fake adapter.
+        // real deterministic fake adapter. The invalid patch carries a blank
+        // claim text in the model-facing shape (no runtime-owned ids), which the
+        // strict output parser rejects before the patch can be reflected.
         doAnswer(invocation -> {
             ModelRequest request = invocation.getArgument(0);
             if (request.taskType() != AgentTaskType.DRAFT_ANSWER_PATCH) {
@@ -96,8 +94,9 @@ class AgentRunTraceIntegrationTest {
             return new ModelResponse(
                     request.agentRunId(), request.contextSnapshotId(), request.taskType(),
                     AgentAction.INTERPRET_ANSWER,
-                    json.write(new AnswerPatchDraft(List.of(
-                            Claim.of(ClaimKind.GOAL, " ", ClaimStatus.CONFIRMED, null, null)))),
+                    json.write(Map.of("claims", List.of(
+                            Map.of("kind", "goal", "text", " ",
+                                    "status", "confirmed", "confidence", 0.9)))),
                     Map.of("adapter", "spy"));
         }).when(fakeModelAdapter).run(any(ModelRequest.class));
 
@@ -110,7 +109,6 @@ class AgentRunTraceIntegrationTest {
         assertThat(run.trace())
                 .contains("context_built")
                 .contains("model_called")
-                .contains("reflected")
                 .contains("failed");
     }
 }

@@ -9,13 +9,10 @@ import com.specagent.agent.contracts.ReflectionResult;
 import com.specagent.agent.contracts.SpecDraft;
 import com.specagent.common.Json;
 import com.specagent.model.gateway.ModelGateway;
-import com.specagent.patch.Claim;
-import com.specagent.patch.ClaimKind;
-import com.specagent.patch.ClaimStatus;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -31,19 +28,14 @@ import org.springframework.stereotype.Component;
  * {@code spec.agent.model.gateway} (the fake or unset value), so automated
  * tests keep running against the deterministic fake. The OpenCode gateway is
  * only registered when the property explicitly selects {@code opencode}.
+ *
+ * <p>The fake speaks the same model-facing contract as a real model: its
+ * outputs carry no runtime-owned identity fields (claim ids, source ids) and
+ * must pass the {@code StructuredModelOutputParser}.
  */
 @Component
 @ConditionalOnProperty(name = "spec.agent.model.gateway", havingValue = "fake", matchIfMissing = true)
 public class FakeModelAdapter implements ModelGateway {
-
-    /**
-     * Stable ids for the fake answer patch claims so the draft is fully
-     * deterministic: the same request always serializes to the same output.
-     * The fake adapter never fabricates real source ids; the orchestrator
-     * supplies the real answered node and answer ids after the answer exists.
-     */
-    private static final UUID FAKE_CONFIRMED_CLAIM_ID = UUID.fromString("00000000-0000-0000-0000-0000000000a1");
-    private static final UUID FAKE_UNRESOLVED_CLAIM_ID = UUID.fromString("00000000-0000-0000-0000-0000000000a2");
 
     private final Json json;
 
@@ -94,16 +86,11 @@ public class FakeModelAdapter implements ModelGateway {
             case DRAFT_ANSWER_PATCH -> response(
                     request,
                     AgentAction.INTERPRET_ANSWER,
-                    json.write(new AnswerPatchDraft(
-                            List.of(
-                                    Claim.of(ClaimKind.GOAL,
-                                            "The user clarified the main outcome.",
-                                            ClaimStatus.CONFIRMED, null, null)
-                                            .withId(FAKE_CONFIRMED_CLAIM_ID),
-                                    Claim.of(ClaimKind.OPEN_QUESTION,
-                                            "The user must confirm scope boundaries.",
-                                            ClaimStatus.UNRESOLVED, null, null)
-                                            .withId(FAKE_UNRESOLVED_CLAIM_ID)))));
+                    json.write(new LinkedHashMap<>(Map.of("claims", List.of(
+                            claimView("goal", "The user clarified the main outcome.",
+                                    "confirmed", 0.9),
+                            claimView("open_question", "The user must confirm scope boundaries.",
+                                    "unresolved", 0.5))))));
 
             case DRAFT_SPEC -> response(
                     request,
@@ -136,5 +123,18 @@ public class FakeModelAdapter implements ModelGateway {
                 outputJson,
                 Map.of("adapter", "fake", "deterministic", "true",
                         "task", request.taskType().code()));
+    }
+
+    /**
+     * Model-facing claim map: content only, never runtime-owned identity
+     * fields (id, sourceNodeId, sourceAnswerId).
+     */
+    private static Map<String, Object> claimView(String kind, String text, String status, double confidence) {
+        Map<String, Object> view = new LinkedHashMap<>();
+        view.put("kind", kind);
+        view.put("text", text);
+        view.put("status", status);
+        view.put("confidence", confidence);
+        return view;
     }
 }

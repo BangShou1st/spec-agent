@@ -7,6 +7,7 @@ import com.specagent.agent.contracts.GapAnalysisResult;
 import com.specagent.agent.contracts.NodeDraft;
 import com.specagent.agent.contracts.SpecDraft;
 import com.specagent.common.Json;
+import com.specagent.model.contract.StructuredModelOutputParser;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
@@ -106,9 +107,15 @@ class FakeModelAdapterTest {
         assertThat(first.action()).isEqualTo(AgentAction.INTERPRET_ANSWER);
         assertThat(first.outputJson()).isEqualTo(second.outputJson());
 
-        AnswerPatchDraft draft = new Json(new ObjectMapper())
-                .read(first.outputJson(), AnswerPatchDraft.class);
+        // The fake output must pass the strict structured contract, exactly
+        // like a real model's output, and carries no runtime-owned ids.
+        com.fasterxml.jackson.databind.JsonNode parsed = new StructuredModelOutputParser(
+                new ObjectMapper()).parse(AgentTaskType.DRAFT_ANSWER_PATCH, first.outputJson());
+        AnswerPatchDraft draft = new StructuredOutputMapper().toPatchDraft(parsed);
         assertThat(draft.claims()).isNotEmpty();
+        assertThat(draft.claims()).allMatch(claim -> claim.id() != null);
+        assertThat(draft.claims()).allMatch(claim -> claim.sourceNodeId() == null);
+        assertThat(first.outputJson()).doesNotContain("\"id\"");
         assertThat(first.trace()).containsEntry("task", "draft_answer_patch");
     }
 

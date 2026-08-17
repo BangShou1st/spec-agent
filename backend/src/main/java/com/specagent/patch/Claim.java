@@ -45,6 +45,15 @@ public class Claim {
         return new Claim(Ids.random(), kind, text, status, null, sourceNodeId, sourceAnswerId);
     }
 
+    /**
+     * Runtime-owned claim derived from structured model output: the runtime
+     * assigns the id and leaves provenance for the runtime to ground later.
+     * Model output must never supply id, sourceNodeId, or sourceAnswerId.
+     */
+    public static Claim unsourced(ClaimKind kind, String text, ClaimStatus status, Double confidence) {
+        return new Claim(Ids.random(), kind, text, status, confidence, null, null);
+    }
+
     public Claim withId(UUID newId) {
         return new Claim(newId, kind, text, status, confidence, sourceNodeId, sourceAnswerId);
     }

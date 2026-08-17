@@ -1,7 +1,6 @@
 package com.specagent.agent;
 
 import com.specagent.agent.contracts.AnswerInterpretationResult;
-import com.specagent.agent.contracts.AnswerPatchDraft;
 import com.specagent.agent.contracts.NodeDraft;
 import com.specagent.answer.Answer;
 import com.specagent.answer.AnswerRepository;
@@ -12,8 +11,6 @@ import com.specagent.node.NodeService;
 import com.specagent.patch.AnswerPatch;
 import com.specagent.patch.AnswerPatchService;
 import com.specagent.patch.Claim;
-import com.specagent.patch.ClaimKind;
-import com.specagent.patch.ClaimStatus;
 import com.specagent.project.Project;
 import com.specagent.project.ProjectService;
 import com.specagent.route.Route;
@@ -47,9 +44,6 @@ import static org.mockito.Mockito.when;
 @SpringBootTest
 @ActiveProfiles("test")
 class FakeAnswerRepairIntegrationTest {
-
-    private static final UUID FAKE_CONFIRMED_CLAIM_ID = UUID.fromString("00000000-0000-0000-0000-0000000000b1");
-    private static final UUID FAKE_UNRESOLVED_CLAIM_ID = UUID.fromString("00000000-0000-0000-0000-0000000000b2");
 
     @Autowired
     private ProjectService projectService;
@@ -99,15 +93,18 @@ class FakeAnswerRepairIntegrationTest {
                         request.agentRunId(), request.contextSnapshotId(), request.taskType(),
                         AgentAction.INTERPRET_ANSWER,
                         json.write(invalidPatch.get()
-                                ? new AnswerPatchDraft(List.of(
-                                        Claim.of(ClaimKind.GOAL, " ", ClaimStatus.CONFIRMED, null, null)))
-                                : new AnswerPatchDraft(List.of(
-                                        Claim.of(ClaimKind.GOAL, "The user clarified the main outcome.",
-                                                ClaimStatus.CONFIRMED, null, null)
-                                                .withId(FAKE_CONFIRMED_CLAIM_ID),
-                                        Claim.of(ClaimKind.OPEN_QUESTION, "Scope must be confirmed.",
-                                                ClaimStatus.UNRESOLVED, null, null)
-                                                .withId(FAKE_UNRESOLVED_CLAIM_ID)))),
+                                // Model-facing patch shape: no runtime-owned ids.
+                                // A blank claim text violates the strict output
+                                // contract, so the parser rejects it before the
+                                // patch may be reflected or persisted.
+                                ? Map.of("claims", List.of(
+                                        Map.of("kind", "goal", "text", " ",
+                                                "status", "confirmed", "confidence", 0.9)))
+                                : Map.of("claims", List.of(
+                                        Map.of("kind", "goal", "text", "The user clarified the main outcome.",
+                                                "status", "confirmed", "confidence", 0.9),
+                                        Map.of("kind", "open_question", "text", "Scope must be confirmed.",
+                                                "status", "unresolved", "confidence", 0.6)))),
                         trace);
                 default -> throw new IllegalStateException("Unexpected task " + request.taskType());
             };
@@ -120,7 +117,7 @@ class FakeAnswerRepairIntegrationTest {
         // Phase 1: invalid patch draft -> run FAILED, answer persisted, no patch.
         assertThatThrownBy(() -> fakeAgentOrchestrator.answerActiveNodeAndDraftNext(project.id(), "clarified"))
                 .isInstanceOf(ModelContractException.class)
-                .hasMessageContaining("Patch reflection rejected");
+                .hasMessageContaining("non-blank");
 
         List<AgentRun> runsAfterFailure = agentRunService.listByProject(project.id());
         assertThat(runsAfterFailure).hasSize(2);
