@@ -7,13 +7,13 @@ Date: 2026-08-17
 
 Spec Agent is a branchable requirement clarification agent.
 
-It helps a user start from a vague requirement and progressively clarify it through structured questions, selectable options, free-form answers, branching routes, controlled regeneration, route restoration, and traceable spec snapshots.
+It helps a single user start from a vague requirement and progressively clarify it through structured questions, selectable options, free-form answers, branching routes, controlled regeneration, route restoration, and traceable spec snapshots.
 
-The product is not a generic chat assistant. It is also not a broad project collaboration platform. Its product value is the visible, controllable, and replayable process from unclear requirement to clear spec.
+The product is not a generic chat assistant. It is not a broad project collaboration platform. Its value is the visible, controllable, replayable process from unclear requirement to clear spec.
 
 ## 2. First-Version Goal
 
-The first version should prove that a single user can:
+The first version should prove that a user can:
 
 1. Enter a vague requirement.
 2. Receive one focused clarification node at a time.
@@ -29,7 +29,9 @@ The first version is successful if the process feels more reliable and inspectab
 
 ## 3. Target User
 
-The first version is for a single user who wants help clarifying a requirement before implementation or planning. The requirement domain is intentionally generic. A user may clarify a software idea, service idea, process idea, product idea, or other requirement, but the runtime must not hard-code any of those domains.
+The first version is for a single user who wants help clarifying a requirement before implementation, planning, or decision-making.
+
+The requirement domain is intentionally generic. A user may clarify a software idea, service idea, process idea, product idea, operational requirement, or other requirement. The runtime must not hard-code any of those domains.
 
 ## 4. Product Promise
 
@@ -45,7 +47,7 @@ Spec Agent should make four things explicit:
 The recommended first-version UI has three areas:
 
 ```text
-Left: route tree and route status
+Left: route tree and route lifecycle status
 Center: current clarification node and answer controls
 Right: current requirement state, agent rationale, and spec preview
 ```
@@ -54,22 +56,22 @@ The product should not default to a complex canvas. A route tree is enough. The 
 
 ## 6. Clarification Node
 
-A node is one clarification unit. In the first version, one node may contain:
+A node is an immutable clarification prompt in the exploration tree.
+
+A node contains:
 
 - Agent question.
 - Question purpose.
 - Options.
 - Option impact explanations.
-- Free-form answer field.
-- Raw user answer.
-- Agent interpretation.
-- Structured answer patch.
-- Node status.
-- Source run id.
+- Free-form answer support.
+- Parent node id.
+- Source AgentRun id.
+- Optional `supersedesNodeId` when created by regeneration.
 
 A good node asks one main question and explains why it matters.
 
-## 7. User Answer Modes
+## 7. Answer and Patch
 
 Every answerable node must support both:
 
@@ -78,21 +80,53 @@ Every answerable node must support both:
 
 Free-form answers are first-class. They must not be stored as plain text only. They must be interpreted into structured claims, constraints, assumptions, risks, conflicts, and open questions.
 
-## 8. Route Operations
+Answer semantics:
 
-### 8.1 Continue Current Route
+- An Answer is immutable.
+- A node can receive an answer once in a route flow.
+- A historical answer must not be overwritten.
+- Re-answering a historical node creates a new route, replacement node, or answer revision.
 
-The user answers the current node. The system creates or updates the node's answer, stores an answer patch, and advances the active route to the next generated node.
+Patch semantics:
 
-### 8.2 Fork from Historical Node
+- An AnswerPatch is derived from one Answer.
+- The current requirement state is reconstructed by replaying patches along the active route lineage.
+- RequirementState may be cached, but cache is not source of truth.
+
+## 8. Route Model
+
+Routes are explicit objects pointing to a root and tip node. A route is a view over node lineage.
+
+`active` is not a route lifecycle status. The current working route is represented by `Project.activeRouteId`.
+
+Route lifecycle statuses:
+
+```text
+open | superseded | archived | deleted
+```
+
+Meanings:
+
+- `open`: a normal route that may be selected as active.
+- `superseded`: a gray historical route replaced by regeneration. It remains visible, inspectable, restorable, and forkable.
+- `archived`: a user-hidden route that remains recoverable.
+- `deleted`: a soft-deleted route excluded from normal workspace view and active context.
+
+## 9. Route Operations
+
+### 9.1 Continue Current Route
+
+The user answers the current node. The system creates an immutable Answer, stores an AnswerPatch, generates the next node when needed, and advances `Project.activeRouteId`'s route tip.
+
+### 9.2 Fork from Historical Node
 
 The user can return to a historical node and start a new route from that node. The old route remains unchanged. The new route inherits only the selected node's lineage.
 
-### 8.3 Regenerate Historical Node
+### 9.3 Regenerate Historical Node
 
 Regeneration means the user is dissatisfied with a node itself. It does not edit the old node in place.
 
-The system marks the old node's route segment as `superseded`, creates a new node from the old node's parent lineage, and makes the new route active.
+The system marks the selected route as `superseded`, creates a replacement node from the old node's parent lineage, and makes the replacement route active.
 
 Allowed regeneration context:
 
@@ -109,34 +143,39 @@ Forbidden regeneration context:
 - The old route's spec snapshot.
 - Sibling route conclusions.
 
-### 8.4 Restore Superseded Route
+### 9.4 Restore Superseded Route
 
 A superseded route is not invalid. It is only non-current. The user may inspect it, restore it as the active route, or fork from it.
 
-Restoration changes the current route pointer. It must not merge route contexts.
+Restoration changes `Project.activeRouteId`. It must not merge route contexts.
 
-### 8.5 Delete Route
+### 9.5 Delete Route
 
-Deleting a route means deleting the whole route from the user's active workspace view. The first version should implement this as soft deletion.
+Deleting a route means deleting the whole route from the user's active workspace view. The first version implements this as soft deletion.
 
 Shared ancestor nodes must not be physically deleted. Deleted routes must not contribute to active context or spec generation.
 
-## 9. Spec Snapshot
+## 10. Spec Snapshot
 
-A spec snapshot is generated from a route tip. It is not the source of truth.
+A spec snapshot is generated from a route tip. It is not source of truth.
 
 The source of truth is:
 
 - Node lineage.
-- Raw answers.
-- Interpretations.
+- Answers.
 - Answer patches.
 - Route state.
 - Context snapshots.
 
-A spec section must carry source references. Unsupported content must be marked as assumption, suggestion, or unresolved, not confirmed fact.
+A spec section must carry source references. Unsupported content must be marked as assumption, suggestion, risk, or unresolved, not confirmed fact.
 
-## 10. Non-Goals
+SpecPreview and SpecSnapshot are different:
+
+- SpecPreview is transient UI output.
+- SpecSnapshot is a persisted derived artifact.
+- Neither is source of truth.
+
+## 11. Non-Goals
 
 The first version must not include:
 
@@ -152,9 +191,9 @@ The first version must not include:
 - Complex visual workflow canvas.
 - Domain-specific requirement engines.
 
-## 11. Anti-Overfitting Requirement
+## 12. Anti-Overfitting Requirement
 
-The product may be used for many requirement domains, but the runtime code must remain domain-neutral.
+The product may be used for many requirement domains, but runtime code must remain domain-neutral.
 
 Forbidden examples:
 
@@ -174,6 +213,7 @@ Allowed concepts:
 
 - `RequirementAspect`
 - `Claim`
+- `Answer`
 - `AnswerPatch`
 - `Route`
 - `Node`
@@ -181,16 +221,16 @@ Allowed concepts:
 - `RequirementProfile`
 - `QuestionPolicy`
 
-Specific domain behavior may be expressed through configurable profiles and prompts, not runtime branches.
+Specific domain behavior may be expressed through configurable profiles, prompts, examples, and user content, not runtime branches.
 
-## 12. Acceptance Criteria
+## 13. Acceptance Criteria
 
 The first version is acceptable when:
 
 1. A user can create a project from an initial vague requirement.
 2. The system creates a first clarification node.
 3. Every node supports option answers and free-form answers.
-4. A user answer produces a structured answer patch.
+4. A user answer produces an immutable Answer and a structured AnswerPatch.
 5. Requirement state is reconstructed from the active route lineage.
 6. A user can fork from a historical node.
 7. A user can regenerate a historical node.
@@ -199,6 +239,6 @@ The first version is acceptable when:
 10. A user can soft-delete an entire route.
 11. A generated spec is tied to the current route tip.
 12. Spec conclusions carry source references.
-13. Unsupported or inferred content is marked as assumption, suggestion, or unresolved.
+13. Unsupported or inferred content is marked as assumption, suggestion, risk, or unresolved.
 14. Runtime code contains no concrete business-domain branches.
 15. Tests prove sibling routes, superseded routes, and deleted routes do not pollute active context.
