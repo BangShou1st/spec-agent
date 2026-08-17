@@ -40,6 +40,41 @@ public class AgentRunService {
         agentRunRepository.updateStatus(runId, status, Instant.now(), trace);
     }
 
+    /**
+     * Records that the run's context snapshot was built and frozen.
+     */
+    public void attachContext(UUID runId, UUID contextSnapshotId, String trace) {
+        agentRunRepository.attachContext(runId, contextSnapshotId, trace);
+    }
+
+    /**
+     * Records that the model adapter was called for this run.
+     */
+    public void markModelCalled(UUID runId, String trace) {
+        agentRunRepository.markModelCalled(runId, trace);
+    }
+
+    /**
+     * Records that reflection gates ran over the model's proposal.
+     */
+    public void markReflected(UUID runId, String trace) {
+        agentRunRepository.markReflected(runId, trace);
+    }
+
+    /**
+     * Records the node persisted by this run.
+     */
+    public void markPersistedNode(UUID runId, UUID producedNodeId, String trace) {
+        agentRunRepository.markPersistedNode(runId, producedNodeId, trace);
+    }
+
+    /**
+     * Marks a run failed. Failure is terminal.
+     */
+    public void fail(UUID runId, String trace) {
+        agentRunRepository.fail(runId, trace);
+    }
+
     public Optional<AgentRun> getRun(UUID runId) {
         return agentRunRepository.findById(runId);
     }

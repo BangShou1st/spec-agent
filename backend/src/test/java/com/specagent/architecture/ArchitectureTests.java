@@ -87,6 +87,17 @@ class ArchitectureTests {
     }
 
     @Test
+    void agentLayerShouldNotDependOnProviderSdks() {
+        ArchRule rule = noClasses()
+            .that().resideInAPackage("com.specagent.agent..")
+            .should().dependOnClassesThat()
+            .haveNameMatching("(org\\.springframework\\.ai|com\\.openai|dev\\.langchain4j)\\..*")
+            .because("The agent reasoning layer must stay provider-agnostic until a provider adapter exists");
+
+        rule.check(CLASSES);
+    }
+
+    @Test
     void runtimePackagesContainNoBusinessDomainClasses() {
         ArchRule rule = noClasses()
             .that().resideInAnyPackage("com.specagent.project..", "com.specagent.route..",

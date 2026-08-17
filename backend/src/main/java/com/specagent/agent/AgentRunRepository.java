@@ -79,6 +79,87 @@ public class AgentRunRepository {
                 "trace", json.write(trace)));
     }
 
+    /**
+     * Records that the run's context snapshot was built and frozen.
+     */
+    public void attachContext(UUID runId, UUID contextSnapshotId, String trace) {
+        String sql = """
+                UPDATE agent_runs
+                SET context_snapshot_id = :contextSnapshotId,
+                    status = :status,
+                    trace = CAST(:trace AS jsonb)
+                WHERE id = :runId
+                """;
+        jdbcTemplate.update(sql, Maps.of(
+                "runId", runId,
+                "contextSnapshotId", contextSnapshotId,
+                "status", AgentRunStatus.CONTEXT_BUILT.code(),
+                "trace", json.write(trace)));
+    }
+
+    /**
+     * Records that the model adapter was called for this run.
+     */
+    public void markModelCalled(UUID runId, String trace) {
+        updateStatusWithTrace(runId, AgentRunStatus.MODEL_CALLED, trace);
+    }
+
+    /**
+     * Records that reflection gates ran over the model's proposal.
+     */
+    public void markReflected(UUID runId, String trace) {
+        updateStatusWithTrace(runId, AgentRunStatus.REFLECTED, trace);
+    }
+
+    /**
+     * Records the node persisted by this run.
+     */
+    public void markPersistedNode(UUID runId, UUID producedNodeId, String trace) {
+        String sql = """
+                UPDATE agent_runs
+                SET produced_node_id = :producedNodeId,
+                    status = :status,
+                    trace = CAST(:trace AS jsonb)
+                WHERE id = :runId
+                """;
+        jdbcTemplate.update(sql, Maps.of(
+                "runId", runId,
+                "producedNodeId", producedNodeId,
+                "status", AgentRunStatus.PERSISTED.code(),
+                "trace", json.write(trace)));
+    }
+
+    /**
+     * Marks a run failed. Failure is terminal, so the run is closed.
+     */
+    public void fail(UUID runId, String trace) {
+        String sql = """
+                UPDATE agent_runs
+                SET status = :status,
+                    completed_at = :completedAt,
+                    trace = CAST(:trace AS jsonb)
+                WHERE id = :runId
+                """;
+        jdbcTemplate.update(sql, Maps.of(
+                "runId", runId,
+                "status", AgentRunStatus.FAILED.code(),
+                "completedAt", Timestamp.from(Instant.now()),
+                "trace", json.write(trace)));
+    }
+
+    private void updateStatusWithTrace(UUID runId, AgentRunStatus status, String trace) {
+        String sql = """
+                UPDATE agent_runs
+                SET status = :status,
+                    trace = CAST(:trace AS jsonb)
+                WHERE id = :runId
+                """;
+        jdbcTemplate.update(sql, Maps.of(
+                "runId", runId,
+                "status", status.code(),
+                "trace", json.write(trace)));
+    }
+
     public Optional<AgentRun> findById(UUID id) {
         String sql = "SELECT * FROM agent_runs WHERE id = :id";
         return jdbcTemplate.query(sql, Maps.of("id", id), rowMapper).stream().findFirst();
