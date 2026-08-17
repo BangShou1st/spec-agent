@@ -65,6 +65,28 @@ class ArchitectureTests {
     }
 
     @Test
+    void noOpenAiSdkInProductionCode() {
+        ArchRule rule = noClasses()
+            .that().resideInAPackage("com.specagent..")
+            .should().dependOnClassesThat()
+            .haveNameMatching("com\\.openai..")
+            .because("Provider SDKs must not leak into production code before a provider adapter exists");
+
+        rule.check(CLASSES);
+    }
+
+    @Test
+    void noLangChain4jInProductionCode() {
+        ArchRule rule = noClasses()
+            .that().resideInAPackage("com.specagent..")
+            .should().dependOnClassesThat()
+            .haveNameMatching("dev\\.langchain4j..")
+            .because("LangChain4j must not be introduced as an external provider SDK");
+
+        rule.check(CLASSES);
+    }
+
+    @Test
     void runtimePackagesContainNoBusinessDomainClasses() {
         ArchRule rule = noClasses()
             .that().resideInAnyPackage("com.specagent.project..", "com.specagent.route..",
