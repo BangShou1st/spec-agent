@@ -27,12 +27,14 @@ import com.specagent.spec.SpecSection;
 import com.specagent.spec.SpecSnapshot;
 import com.specagent.spec.SpecSnapshotService;
 import com.specagent.spec.UnresolvedItem;
+import com.specagent.common.Ids;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -141,6 +143,33 @@ class RuntimeKernelIntegrationTest {
         assertThat(state.claims()).hasSize(2);
         assertThat(state.confirmed()).hasSize(1);
         assertThat(state.unresolved()).hasSize(1);
+    }
+
+    @Test
+    void buildForContextReplaysPatchesInDeclaredOrder() {
+        ProjectSetup s = setupBasicProject();
+        // p1 carries c1 ("Build an app"), p2 carries c2 ("Single developer").
+        // A context snapshot whose patch list is reversed must replay p2 before p1.
+        ContextSnapshot reversedPatchOrder = new ContextSnapshot(
+                Ids.random(),
+                s.project().id(),
+                s.routeId(),
+                s.child().id(),
+                ContextOperationType.NORMAL,
+                List.of(s.root().id(), s.child().id()),
+                List.of(s.a1().id(), s.a2().id()),
+                List.of(s.p2().id(), s.p1().id()),
+                List.of(),
+                null,
+                null,
+                Instant.now());
+
+        RequirementState state = requirementStateBuilder.buildForContext(reversedPatchOrder);
+
+        assertThat(state.claims()).hasSize(2);
+        // Order is driven by includedPatchIds, not by includedAnswerIds (which is [a1, a2]).
+        assertThat(state.claims().get(0).text()).isEqualTo("Single developer");
+        assertThat(state.claims().get(1).text()).isEqualTo("Build an app");
     }
 
     @Test

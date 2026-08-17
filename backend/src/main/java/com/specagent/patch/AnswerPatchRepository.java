@@ -71,6 +71,33 @@ public class AnswerPatchRepository {
         return jdbcTemplate.query(sql, Maps.of("answerIds", answerIds), rowMapper);
     }
 
+    /**
+     * Returns patches for the given ids, preserving the caller's order.
+     *
+     * <p>Order matters for replay: the same patches replayed in different order
+     * can yield different requirement state. This method never reorders by
+     * database column; it reorders by the input list. Missing ids are skipped.
+     */
+    public List<AnswerPatch> findByIdsPreservingOrder(List<UUID> patchIds) {
+        if (patchIds == null || patchIds.isEmpty()) {
+            return List.of();
+        }
+        String sql = "SELECT * FROM answer_patches WHERE id IN (:patchIds)";
+        List<AnswerPatch> found = jdbcTemplate.query(sql, Maps.of("patchIds", patchIds), rowMapper);
+        java.util.Map<UUID, AnswerPatch> byId = new java.util.LinkedHashMap<>();
+        for (AnswerPatch p : found) {
+            byId.put(p.id(), p);
+        }
+        List<AnswerPatch> ordered = new java.util.ArrayList<>(patchIds.size());
+        for (UUID id : patchIds) {
+            AnswerPatch p = byId.get(id);
+            if (p != null) {
+                ordered.add(p);
+            }
+        }
+        return java.util.List.copyOf(ordered);
+    }
+
     public Optional<AnswerPatch> findById(UUID id) {
         String sql = "SELECT * FROM answer_patches WHERE id = :id";
         return jdbcTemplate.query(sql, Maps.of("id", id), rowMapper).stream().findFirst();

@@ -53,9 +53,15 @@ public class RequirementStateBuilder {
 
     /**
      * Builds requirement state from the patches referenced by a context snapshot.
+     *
+     * <p>Patches are replayed in the explicit order recorded by
+     * {@code snapshot.includedPatchIds()}. Order is authoritative: the same
+     * patches in different order can yield different requirement state, so the
+     * snapshot's patch list is replayed verbatim rather than derived from the
+     * answer list.
      */
     public RequirementState buildForContext(ContextSnapshot snapshot) {
-        List<AnswerPatch> patches = answerPatchRepository.findBySourceAnswerIds(snapshot.includedAnswerIds());
+        List<AnswerPatch> patches = answerPatchRepository.findByIdsPreservingOrder(snapshot.includedPatchIds());
         return rebuild(patches);
     }
 }
