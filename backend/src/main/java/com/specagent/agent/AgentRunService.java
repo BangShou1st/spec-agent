@@ -69,6 +69,27 @@ public class AgentRunService {
     }
 
     /**
+     * Records the answer persisted by this run.
+     */
+    public void markPersistedAnswer(UUID runId, UUID producedAnswerId, String trace) {
+        agentRunRepository.markPersistedAnswer(runId, producedAnswerId, trace);
+    }
+
+    /**
+     * Records the answer patch persisted by this run.
+     */
+    public void markPersistedAnswerPatch(UUID runId, UUID producedPatchId, String trace) {
+        agentRunRepository.markPersistedAnswerPatch(runId, producedPatchId, trace);
+    }
+
+    /**
+     * Records the spec snapshot persisted by this run.
+     */
+    public void markPersistedSpecSnapshot(UUID runId, UUID producedSpecSnapshotId, String trace) {
+        agentRunRepository.markPersistedSpecSnapshot(runId, producedSpecSnapshotId, trace);
+    }
+
+    /**
      * Marks a run failed. Failure is terminal.
      */
     public void fail(UUID runId, String trace) {

@@ -1,8 +1,11 @@
 package com.specagent.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.specagent.agent.contracts.AnswerInterpretationResult;
+import com.specagent.agent.contracts.AnswerPatchDraft;
 import com.specagent.agent.contracts.GapAnalysisResult;
 import com.specagent.agent.contracts.NodeDraft;
+import com.specagent.agent.contracts.SpecDraft;
 import com.specagent.common.Json;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
@@ -76,13 +79,54 @@ class FakeModelAdapterTest {
     }
 
     @Test
-    void fakeUnsupportedTaskIsRejected() {
-        assertThatThrownBy(() -> adapter.run(request(AgentTaskType.INTERPRET_ANSWER)))
-                .isInstanceOf(ModelContractException.class)
-                .hasMessageContaining("INTERPRET_ANSWER");
-        assertThatThrownBy(() -> adapter.run(request(AgentTaskType.DRAFT_ANSWER_PATCH)))
-                .isInstanceOf(ModelContractException.class)
-                .hasMessageContaining("DRAFT_ANSWER_PATCH");
+    void fakeInterpretAnswerIsDeterministic() {
+        ModelRequest request = request(AgentTaskType.INTERPRET_ANSWER);
+
+        ModelResponse first = adapter.run(request);
+        ModelResponse second = adapter.run(request);
+
+        assertThat(first.action()).isEqualTo(AgentAction.INTERPRET_ANSWER);
+        assertThat(first.outputJson()).isEqualTo(second.outputJson());
+
+        AnswerInterpretationResult result = new Json(new ObjectMapper())
+                .read(first.outputJson(), AnswerInterpretationResult.class);
+        assertThat(result.confirmedTexts()).isNotEmpty();
+        assertThat(first.trace()).containsEntry("adapter", "fake");
+        assertThat(first.trace()).containsEntry("deterministic", "true");
+        assertThat(first.trace()).containsEntry("task", "interpret_answer");
+    }
+
+    @Test
+    void fakeDraftAnswerPatchIsDeterministic() {
+        ModelRequest request = request(AgentTaskType.DRAFT_ANSWER_PATCH);
+
+        ModelResponse first = adapter.run(request);
+        ModelResponse second = adapter.run(request);
+
+        assertThat(first.action()).isEqualTo(AgentAction.INTERPRET_ANSWER);
+        assertThat(first.outputJson()).isEqualTo(second.outputJson());
+
+        AnswerPatchDraft draft = new Json(new ObjectMapper())
+                .read(first.outputJson(), AnswerPatchDraft.class);
+        assertThat(draft.claims()).isNotEmpty();
+        assertThat(first.trace()).containsEntry("task", "draft_answer_patch");
+    }
+
+    @Test
+    void fakeDraftSpecIsDeterministic() {
+        ModelRequest request = request(AgentTaskType.DRAFT_SPEC);
+
+        ModelResponse first = adapter.run(request);
+        ModelResponse second = adapter.run(request);
+
+        assertThat(first.action()).isEqualTo(AgentAction.GENERATE_SPEC);
+        assertThat(first.outputJson()).isEqualTo(second.outputJson());
+
+        SpecDraft draft = new Json(new ObjectMapper())
+                .read(first.outputJson(), SpecDraft.class);
+        assertThat(draft.sections()).isNotEmpty();
+        assertThat(draft.sourceRefsBySection()).isNotEmpty();
+        assertThat(first.trace()).containsEntry("task", "draft_spec");
     }
 
     @Test

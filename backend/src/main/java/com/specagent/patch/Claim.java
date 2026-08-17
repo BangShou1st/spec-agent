@@ -1,6 +1,7 @@
 package com.specagent.patch;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.specagent.common.Ids;
 
@@ -83,6 +84,10 @@ public class Claim {
         return sourceAnswerId;
     }
 
+    /**
+     * Convenience helper for callers; never part of the persisted claim JSON.
+     */
+    @JsonIgnore
     public boolean isConfirmed() {
         return status == ClaimStatus.CONFIRMED;
     }

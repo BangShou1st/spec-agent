@@ -130,6 +130,60 @@ public class AgentRunRepository {
     }
 
     /**
+     * Records the answer persisted by this run.
+     */
+    public void markPersistedAnswer(UUID runId, UUID producedAnswerId, String trace) {
+        String sql = """
+                UPDATE agent_runs
+                SET produced_answer_id = :producedAnswerId,
+                    status = :status,
+                    trace = CAST(:trace AS jsonb)
+                WHERE id = :runId
+                """;
+        jdbcTemplate.update(sql, Maps.of(
+                "runId", runId,
+                "producedAnswerId", producedAnswerId,
+                "status", AgentRunStatus.PERSISTED.code(),
+                "trace", json.write(trace)));
+    }
+
+    /**
+     * Records the answer patch persisted by this run.
+     */
+    public void markPersistedAnswerPatch(UUID runId, UUID producedPatchId, String trace) {
+        String sql = """
+                UPDATE agent_runs
+                SET produced_patch_id = :producedPatchId,
+                    status = :status,
+                    trace = CAST(:trace AS jsonb)
+                WHERE id = :runId
+                """;
+        jdbcTemplate.update(sql, Maps.of(
+                "runId", runId,
+                "producedPatchId", producedPatchId,
+                "status", AgentRunStatus.PERSISTED.code(),
+                "trace", json.write(trace)));
+    }
+
+    /**
+     * Records the spec snapshot persisted by this run.
+     */
+    public void markPersistedSpecSnapshot(UUID runId, UUID producedSpecSnapshotId, String trace) {
+        String sql = """
+                UPDATE agent_runs
+                SET produced_spec_snapshot_id = :producedSpecSnapshotId,
+                    status = :status,
+                    trace = CAST(:trace AS jsonb)
+                WHERE id = :runId
+                """;
+        jdbcTemplate.update(sql, Maps.of(
+                "runId", runId,
+                "producedSpecSnapshotId", producedSpecSnapshotId,
+                "status", AgentRunStatus.PERSISTED.code(),
+                "trace", json.write(trace)));
+    }
+
+    /**
      * Marks a run failed. Failure is terminal, so the run is closed.
      */
     public void fail(UUID runId, String trace) {
