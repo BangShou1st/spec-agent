@@ -12,12 +12,12 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Creates and retrieves requirement exploration projects and manages the active
- * route pointer.
+ * Creates and retrieves requirement exploration projects.
  *
  * <p>Project creation also opens an initial {@code open} route and sets it as the
- * active route. The active route is identified only by {@code activeRouteId};
- * there is no {@code active} route lifecycle status.
+ * active route. Active-route control and route lifecycle transitions are owned by
+ * {@link com.specagent.route.RouteService}; this service intentionally does not
+ * expose an active-route setter that could bypass lifecycle validation.
  */
 @Service
 public class ProjectService {
@@ -56,9 +56,5 @@ public class ProjectService {
 
     public Optional<Project> getProject(UUID projectId) {
         return projectRepository.findById(projectId);
-    }
-
-    public void setActiveRoute(UUID projectId, UUID routeId) {
-        projectRepository.updateActiveRoute(projectId, routeId, Instant.now());
     }
 }

@@ -1,6 +1,7 @@
 package com.specagent.node;
 
 import com.specagent.common.Ids;
+import com.specagent.route.Route;
 import com.specagent.route.RouteRepository;
 import org.springframework.stereotype.Service;
 
@@ -14,7 +15,8 @@ import java.util.UUID;
  *
  * <p>Node question, purpose, and options are fixed at creation and never edited.
  * Regeneration creates a replacement node rather than mutating an existing one.
- * Creating a node advances the owning route's tip to the new node.
+ * Creating a node advances the owning route's tip to the new node, while
+ * preserving the route's existing root node.
  */
 @Service
 public class NodeService {
@@ -49,6 +51,27 @@ public class NodeService {
         return createNode(projectId, routeId, parentNodeId, null, question, purpose, options, allowFreeAnswer);
     }
 
+    /**
+     * Creates an immutable replacement node that supersedes a historical node
+     * during a regenerate operation. The replacement node shares the target
+     * node's parent and carries {@code supersedesNodeId} pointing at the old
+     * node. The owning route tip is advanced to the replacement node.
+     */
+    public Node createReplacementNode(UUID projectId,
+                                      UUID routeId,
+                                      UUID parentNodeId,
+                                      UUID supersedesNodeId,
+                                      String question,
+                                      String purpose,
+                                      List<NodeOption> options,
+                                      boolean allowFreeAnswer) {
+        if (supersedesNodeId == null) {
+            throw new IllegalArgumentException("Replacement node requires a superseded node id");
+        }
+        return createNode(projectId, routeId, parentNodeId, supersedesNodeId,
+                question, purpose, options, allowFreeAnswer);
+    }
+
     public Optional<Node> getNode(UUID nodeId) {
         return nodeRepository.findById(nodeId);
     }
@@ -69,7 +92,13 @@ public class NodeService {
         Node node = new Node(nodeId, projectId, parentNodeId, null, supersedesNodeId,
                 question, purpose, options, allowFreeAnswer, now);
         nodeRepository.save(node);
-        routeRepository.updateTipAndRoot(routeId, nodeId, nodeId, Instant.now());
+
+        // Preserve the route's existing root node when updating tip.
+        // If the route has no root yet, set root to the new node.
+        Route route = routeRepository.findById(routeId)
+                .orElseThrow(() -> new IllegalArgumentException("Route not found: " + routeId));
+        UUID rootNodeId = route.rootNodeId() != null ? route.rootNodeId() : nodeId;
+        routeRepository.updateTipAndRoot(routeId, nodeId, rootNodeId, Instant.now());
         return node;
     }
 }
