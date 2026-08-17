@@ -23,6 +23,7 @@ import org.springframework.test.context.ActiveProfiles;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -140,6 +141,39 @@ class FakeFullLoopFailureIntegrationTest {
         assertThat(run.producedSpecSnapshotId()).isNull();
 
         // No spec snapshot was persisted.
+        assertThat(specSnapshotService.listByRoute(project.activeRouteId())).isEmpty();
+    }
+
+    @Test
+    void fakeSpecRunRejectsNonexistentSourceReference() {
+        Project project = projectService.createProject("Source ref rejection project");
+        nodeService.createRootNode(project.id(), project.activeRouteId(),
+                "What matters most?", null, List.of(), true);
+        UUID nonexistentAnswerId = UUID.randomUUID();
+
+        when(fakeModelAdapter.run(any(ModelRequest.class))).thenAnswer(invocation -> {
+            ModelRequest request = invocation.getArgument(0);
+            return new ModelResponse(
+                    request.agentRunId(), request.contextSnapshotId(), request.taskType(),
+                    AgentAction.GENERATE_SPEC,
+                    json.write(new SpecDraft(
+                            Map.of("Overview", "grounded looking content"),
+                            List.of(),
+                            Map.of("Overview", List.of("answer:" + nonexistentAnswerId)))),
+                    Map.of("adapter", "mock"));
+        });
+
+        assertThatThrownBy(() -> fakeAgentOrchestrator.generateSpec(project.id()))
+                .isInstanceOf(ModelContractException.class)
+                .hasMessageContaining("Spec source reference guard");
+
+        assertThat(agentRunService.listByProject(project.id())).hasSize(1);
+        AgentRun run = agentRunService.listByProject(project.id()).get(0);
+        assertThat(run.status()).isEqualTo(AgentRunStatus.FAILED);
+        assertThat(run.completedAt()).isNotNull();
+        assertThat(run.producedSpecSnapshotId()).isNull();
+
+        // No spec snapshot entered the route.
         assertThat(specSnapshotService.listByRoute(project.activeRouteId())).isEmpty();
     }
 }
