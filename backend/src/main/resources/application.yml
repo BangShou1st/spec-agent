@@ -31,3 +31,17 @@ logging:
     com.specagent: INFO
     org.springframework.jdbc: WARN
     org.flywaydb: INFO
+
+spec:
+  agent:
+    credential:
+      # External master key for AES-GCM credential encryption. Must come from
+      # environment configuration (SPEC_AGENT_CREDENTIAL_MASTER_KEY); never
+      # commit a real master key.
+      master-key: ${SPEC_AGENT_CREDENTIAL_MASTER_KEY:}
+    model:
+      opencode:
+        # Explicit selected OpenCode model id; blank means the real gateway is
+        # not configured. Free models are discovered dynamically at runtime.
+        model: ${SPEC_AGENT_OPENCODE_MODEL:}
+        timeout-seconds: ${SPEC_AGENT_OPENCODE_TIMEOUT_SECONDS:45}

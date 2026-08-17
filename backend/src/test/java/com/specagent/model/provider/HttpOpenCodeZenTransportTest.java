@@ -1,0 +1,304 @@
+package com.specagent.model.provider;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sun.net.httpserver.Headers;
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpServer;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import java.io.IOException;
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.net.ServerSocket;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+/**
+ * HTTP-level tests against a local stub server. No public network is ever
+ * touched: the stub records the exact request the JDK HttpClient would send
+ * and answers with controlled payloads.
+ */
+class HttpOpenCodeZenTransportTest {
+
+    private static final String TEST_KEY = "sk-test-only-key";
+
+    private final ObjectMapper mapper = new ObjectMapper();
+    private HttpServer server;
+    private final List<CapturedRequest> captured = new ArrayList<>();
+    private int stubStatus = 200;
+    private String stubBody;
+
+    @BeforeEach
+    void startStub() throws IOException {
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", this::handle);
+        stubBody = completionJson("{\"action\":\"finish\"}");
+        server.start();
+    }
+
+    @AfterEach
+    void stopStub() {
+        server.stop(0);
+    }
+
+    private void handle(HttpExchange exchange) throws IOException {
+        byte[] requestBody = exchange.getRequestBody().readAllBytes();
+        captured.add(new CapturedRequest(exchange.getRequestMethod(),
+                exchange.getRequestURI().getPath(),
+                exchange.getRequestHeaders(), requestBody));
+        byte[] responseBody = stubBody.getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().set("Content-Type", "application/json");
+        exchange.sendResponseHeaders(stubStatus, responseBody.length);
+        try (OutputStream out = exchange.getResponseBody()) {
+            out.write(responseBody);
+        }
+    }
+
+    private OpenCodeZenTransport transport() {
+        return new HttpOpenCodeZenTransport(mapper,
+                "http://127.0.0.1:" + server.getAddress().getPort(), 5);
+    }
+
+    private OpenCodeChatCompletionRequest completionRequest() {
+        return new OpenCodeChatCompletionRequest("mimo-v2.5-free",
+                List.of(new OpenCodeChatMessage("system", "system contract"),
+                        new OpenCodeChatMessage("user", "user context")),
+                0.0, 4096);
+    }
+
+    private String completionJson(String content) {
+        try {
+            return mapper.writeValueAsString(Map.of(
+                    "choices", List.of(Map.of("finish_reason", "stop",
+                            "message", Map.of("role", "assistant", "content", content))),
+                    "usage", Map.of("prompt_tokens", 4, "completion_tokens", 3, "total_tokens", 7)));
+        } catch (IOException ex) {
+            throw new IllegalStateException(ex);
+        }
+    }
+
+    @Test
+    void completionRequestSendsOpenCodeUserAgentAndHeaders() throws IOException {
+        OpenCodeCompletionResponse result = transport().complete(TEST_KEY, completionRequest());
+
+        assertThat(result.content()).isEqualTo("{\"action\":\"finish\"}");
+        assertThat(captured).hasSize(1);
+        CapturedRequest request = captured.get(0);
+        assertThat(request.method()).isEqualTo("POST");
+        assertThat(request.path()).isEqualTo("/chat/completions");
+        assertThat(request.headers().getFirst("User-Agent")).isEqualTo(OpenCodeZenTransport.USER_AGENT);
+        assertThat(request.headers().getFirst("Authorization")).isEqualTo("Bearer " + TEST_KEY);
+        assertThat(request.headers().getFirst("Content-Type")).isEqualTo("application/json");
+
+        JsonNode payload = mapper.readTree(request.body());
+        assertThat(payload.get("model").asText()).isEqualTo("mimo-v2.5-free");
+        assertThat(payload.get("messages")).hasSize(2);
+        assertThat(payload.get("messages").get(0).get("role").asText()).isEqualTo("system");
+        assertThat(payload.get("messages").get(1).get("content").asText()).isEqualTo("user context");
+        assertThat(payload.get("temperature").asDouble()).isZero();
+        assertThat(payload.get("max_tokens").asInt()).isEqualTo(4096);
+        assertThat(payload.get("response_format").get("type").asText()).isEqualTo("json_object");
+        assertThat(payload.get("stream").asBoolean()).isFalse();
+    }
+
+    @Test
+    void modelListRequestSendsOpenCodeUserAgentAndAuth() throws IOException {
+        stubBody = mapper.writeValueAsString(Map.of("object", "list", "data", List.of(
+                Map.of("id", "paid-model", "object", "model"),
+                Map.of("id", "one-free", "object", "model"))));
+
+        OpenCodeModelList models = transport().listModels(TEST_KEY);
+
+        assertThat(models.data()).extracting(OpenCodeModel::id)
+                .containsExactly("paid-model", "one-free");
+        CapturedRequest request = captured.get(0);
+        assertThat(request.method()).isEqualTo("GET");
+        assertThat(request.path()).isEqualTo("/models");
+        assertThat(request.headers().getFirst("User-Agent")).isEqualTo(OpenCodeZenTransport.USER_AGENT);
+        assertThat(request.headers().getFirst("Authorization")).isEqualTo("Bearer " + TEST_KEY);
+        assertThat(request.headers().getFirst("Content-Type")).isNull();
+    }
+
+    @Test
+    void modelListRequestWorksWithoutAuthorization() throws IOException {
+        stubBody = mapper.writeValueAsString(Map.of("data", List.of(
+                Map.of("id", "one-free", "object", "model"))));
+
+        OpenCodeModelList models = transport().listModels(null);
+
+        assertThat(models.data()).extracting(OpenCodeModel::id).containsExactly("one-free");
+        assertThat(captured.get(0).headers().getFirst("Authorization")).isNull();
+        assertThat(captured.get(0).headers().getFirst("User-Agent"))
+                .isEqualTo(OpenCodeZenTransport.USER_AGENT);
+    }
+
+    @Test
+    void credentialProbeUsesSameOpenCodeTransport() throws IOException {
+        transport().validateCredential(TEST_KEY);
+
+        CapturedRequest request = captured.get(0);
+        assertThat(request.method()).isEqualTo("POST");
+        assertThat(request.path()).isEqualTo("/chat/completions");
+        // Probe requests must carry exactly the same transport policy.
+        assertThat(request.headers().getFirst("User-Agent")).isEqualTo(OpenCodeZenTransport.USER_AGENT);
+        assertThat(request.headers().getFirst("Authorization")).isEqualTo("Bearer " + TEST_KEY);
+        assertThat(request.headers().getFirst("Content-Type")).isEqualTo("application/json");
+
+        JsonNode payload = mapper.readTree(request.body());
+        assertThat(payload.get("model").asText()).isNotBlank();
+        assertThat(payload.get("messages").get(0).get("role").asText()).isEqualTo("user");
+        assertThat(payload.get("response_format").get("type").asText()).isEqualTo("json_object");
+        assertThat(payload.get("stream").asBoolean()).isFalse();
+    }
+
+    @Test
+    void authenticationFailureIsMapped() {
+        stubStatus = 401;
+        assertThatThrownBy(() -> transport().complete(TEST_KEY, completionRequest()))
+                .isInstanceOf(OpenCodeModelException.class)
+                .satisfies(ex -> {
+                    OpenCodeModelException modelException = (OpenCodeModelException) ex;
+                    assertThat(modelException.category()).isEqualTo(OpenCodeModelErrorCategory.AUTHENTICATION);
+                    assertThat(modelException.httpStatus()).isEqualTo(401);
+                });
+
+        stubStatus = 403;
+        assertThatThrownBy(() -> transport().complete(TEST_KEY, completionRequest()))
+                .isInstanceOf(OpenCodeModelException.class)
+                .satisfies(ex -> assertThat(((OpenCodeModelException) ex).category())
+                        .isEqualTo(OpenCodeModelErrorCategory.AUTHENTICATION));
+    }
+
+    @Test
+    void rateLimitIsMapped() {
+        stubStatus = 429;
+        assertThatThrownBy(() -> transport().complete(TEST_KEY, completionRequest()))
+                .isInstanceOf(OpenCodeModelException.class)
+                .satisfies(ex -> {
+                    OpenCodeModelException modelException = (OpenCodeModelException) ex;
+                    assertThat(modelException.category()).isEqualTo(OpenCodeModelErrorCategory.RATE_LIMITED);
+                    assertThat(modelException.httpStatus()).isEqualTo(429);
+                });
+    }
+
+    @Test
+    void serverErrorIsMapped() {
+        stubStatus = 500;
+        assertThatThrownBy(() -> transport().complete(TEST_KEY, completionRequest()))
+                .isInstanceOf(OpenCodeModelException.class)
+                .satisfies(ex -> {
+                    OpenCodeModelException modelException = (OpenCodeModelException) ex;
+                    assertThat(modelException.category()).isEqualTo(OpenCodeModelErrorCategory.SERVER_ERROR);
+                    assertThat(modelException.httpStatus()).isEqualTo(500);
+                });
+    }
+
+    @Test
+    void otherClientErrorIsMapped() {
+        stubStatus = 400;
+        assertThatThrownBy(() -> transport().complete(TEST_KEY, completionRequest()))
+                .isInstanceOf(OpenCodeModelException.class)
+                .satisfies(ex -> {
+                    OpenCodeModelException modelException = (OpenCodeModelException) ex;
+                    assertThat(modelException.category()).isEqualTo(OpenCodeModelErrorCategory.PROVIDER_REQUEST_ERROR);
+                    assertThat(modelException.httpStatus()).isEqualTo(400);
+                });
+    }
+
+    @Test
+    void malformedJsonIsMappedToInvalidResponse() {
+        stubBody = "not-json-at-all";
+        assertThatThrownBy(() -> transport().complete(TEST_KEY, completionRequest()))
+                .isInstanceOf(OpenCodeModelException.class)
+                .satisfies(ex -> assertThat(((OpenCodeModelException) ex).category())
+                        .isEqualTo(OpenCodeModelErrorCategory.INVALID_RESPONSE));
+    }
+
+    @Test
+    void unexpectedCompletionPayloadIsMappedToInvalidResponse() throws IOException {
+        stubBody = mapper.writeValueAsString(Map.of("object", "list", "data", List.of()));
+        assertThatThrownBy(() -> transport().complete(TEST_KEY, completionRequest()))
+                .isInstanceOf(OpenCodeModelException.class)
+                .satisfies(ex -> assertThat(((OpenCodeModelException) ex).category())
+                        .isEqualTo(OpenCodeModelErrorCategory.INVALID_RESPONSE));
+    }
+
+    @Test
+    void emptyModelContentIsMappedToEmptyContent() {
+        stubBody = completionJson("   ");
+        assertThatThrownBy(() -> transport().complete(TEST_KEY, completionRequest()))
+                .isInstanceOf(OpenCodeModelException.class)
+                .satisfies(ex -> assertThat(((OpenCodeModelException) ex).category())
+                        .isEqualTo(OpenCodeModelErrorCategory.EMPTY_CONTENT));
+    }
+
+    @Test
+    void unexpectedModelListPayloadIsMappedToInvalidResponse() throws IOException {
+        stubBody = mapper.writeValueAsString(Map.of("data", "not-an-array"));
+        assertThatThrownBy(() -> transport().listModels(TEST_KEY))
+                .isInstanceOf(OpenCodeModelException.class)
+                .satisfies(ex -> assertThat(((OpenCodeModelException) ex).category())
+                        .isEqualTo(OpenCodeModelErrorCategory.INVALID_RESPONSE));
+    }
+
+    @Test
+    void timeoutIsMappedToTimeoutCategory() throws Exception {
+        try (ServerSocket blackhole = new ServerSocket(0)) {
+            Thread acceptor = new Thread(() -> {
+                while (true) {
+                    try {
+                        blackhole.accept();
+                    } catch (IOException ex) {
+                        break;
+                    }
+                }
+            });
+            acceptor.setDaemon(true);
+            acceptor.start();
+
+            OpenCodeZenTransport transport = new HttpOpenCodeZenTransport(mapper,
+                    "http://127.0.0.1:" + blackhole.getLocalPort(), 1);
+            assertThatThrownBy(() -> transport.complete(TEST_KEY, completionRequest()))
+                    .isInstanceOf(OpenCodeModelException.class)
+                    .satisfies(ex -> {
+                        OpenCodeModelException modelException = (OpenCodeModelException) ex;
+                        assertThat(modelException.category()).isEqualTo(OpenCodeModelErrorCategory.TIMEOUT);
+                        assertThat(modelException.getMessage()).contains("timed out");
+                    });
+        }
+    }
+
+    @Test
+    void connectionFailureIsMappedToConnectionCategory() throws IOException {
+        int freePort;
+        try (ServerSocket socket = new ServerSocket(0)) {
+            freePort = socket.getLocalPort();
+        }
+        OpenCodeZenTransport transport = new HttpOpenCodeZenTransport(mapper,
+                "http://127.0.0.1:" + freePort, 5);
+
+        assertThatThrownBy(() -> transport.complete(TEST_KEY, completionRequest()))
+                .isInstanceOf(OpenCodeModelException.class)
+                .satisfies(ex -> assertThat(((OpenCodeModelException) ex).category())
+                        .isEqualTo(OpenCodeModelErrorCategory.CONNECTION));
+    }
+
+    @Test
+    void errorsNeverContainApiKey() {
+        stubStatus = 401;
+        assertThatThrownBy(() -> transport().complete("sk-super-secret-value", completionRequest()))
+                .isInstanceOf(OpenCodeModelException.class)
+                .satisfies(ex -> assertThat(ex.getMessage()).doesNotContain("sk-super-secret-value"));
+    }
+
+    private record CapturedRequest(String method, String path, Headers headers, byte[] body) {
+    }
+}

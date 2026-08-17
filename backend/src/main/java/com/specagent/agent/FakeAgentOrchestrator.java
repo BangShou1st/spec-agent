@@ -16,6 +16,7 @@ import com.specagent.common.Json;
 import com.specagent.context.ContextBuilder;
 import com.specagent.context.ContextOperationType;
 import com.specagent.context.ContextSnapshot;
+import com.specagent.model.gateway.ModelGateway;
 import com.specagent.node.Node;
 import com.specagent.node.NodeService;
 import com.specagent.patch.AnswerPatch;
@@ -42,11 +43,12 @@ import java.util.UUID;
 /**
  * Runtime-controlled fake agent orchestrator.
  *
- * <p>Runs fake agent cycles against the fake model adapter: create an agent
- * run, freeze a context snapshot, ask the fake model for a proposal, validate
+ * <p>Runs fake agent cycles against the model gateway: create an agent
+ * run, freeze a context snapshot, ask the model for a proposal, validate
  * the proposal through the reflection gates, persist the accepted outcome
  * through runtime services, and close the run. The orchestrator only proposes
- * through the model adapter; all persistence happens through runtime services.
+ * through the {@link ModelGateway} abstraction; all persistence happens
+ * through runtime services.
  *
  * <p>{@link #draftNextQuestion} runs one DRAFT_NODE cycle.
  * {@link #answerActiveNodeAndDraftNext} runs the answer loop: persist the
@@ -73,7 +75,7 @@ public class FakeAgentOrchestrator {
     private final RouteRepository routeRepository;
     private final ContextBuilder contextBuilder;
     private final ContextGuard contextGuard;
-    private final FakeModelAdapter fakeModelAdapter;
+    private final ModelGateway modelGateway;
     private final NodeReflectionGate nodeReflectionGate;
     private final PatchReflectionGate patchReflectionGate;
     private final SpecGroundingGate specGroundingGate;
@@ -90,7 +92,7 @@ public class FakeAgentOrchestrator {
                                  RouteRepository routeRepository,
                                  ContextBuilder contextBuilder,
                                  ContextGuard contextGuard,
-                                 FakeModelAdapter fakeModelAdapter,
+                                 ModelGateway modelGateway,
                                  NodeReflectionGate nodeReflectionGate,
                                  PatchReflectionGate patchReflectionGate,
                                  SpecGroundingGate specGroundingGate,
@@ -106,7 +108,7 @@ public class FakeAgentOrchestrator {
         this.routeRepository = routeRepository;
         this.contextBuilder = contextBuilder;
         this.contextGuard = contextGuard;
-        this.fakeModelAdapter = fakeModelAdapter;
+        this.modelGateway = modelGateway;
         this.nodeReflectionGate = nodeReflectionGate;
         this.patchReflectionGate = patchReflectionGate;
         this.specGroundingGate = specGroundingGate;
@@ -135,7 +137,7 @@ public class FakeAgentOrchestrator {
             ContextSnapshot contextSnapshot = buildAndValidateContext(run, projectId, trace);
 
             trace = appendTrace(trace, "model_called:" + AgentTaskType.DRAFT_NODE.name());
-            ModelResponse response = callFakeModel(run, contextSnapshot, trace,
+            ModelResponse response = callModel(run, contextSnapshot, trace,
                     AgentTaskType.DRAFT_NODE, "{}", AgentAction.ASK_NEXT_QUESTION,
                     "Expected ASK_NEXT_QUESTION from fake DRAFT_NODE");
 
@@ -298,7 +300,7 @@ public class FakeAgentOrchestrator {
             ContextSnapshot contextSnapshot = buildAndValidateContext(run, projectId, trace);
 
             trace = appendTrace(trace, "model_called:" + AgentTaskType.DRAFT_SPEC.name());
-            ModelResponse response = callFakeModel(run, contextSnapshot, trace,
+            ModelResponse response = callModel(run, contextSnapshot, trace,
                     AgentTaskType.DRAFT_SPEC, "{}", AgentAction.GENERATE_SPEC,
                     "Expected GENERATE_SPEC from fake DRAFT_SPEC");
             SpecDraft specDraft = json.read(response.outputJson(), SpecDraft.class);
@@ -366,7 +368,7 @@ public class FakeAgentOrchestrator {
         agentRunService.markPersistedAnswer(run.id(), answer.id(), trace);
 
         trace = appendTrace(trace, "model_called:" + AgentTaskType.INTERPRET_ANSWER.name());
-        ModelResponse interpretResponse = callFakeModel(run, contextSnapshot, trace,
+        ModelResponse interpretResponse = callModel(run, contextSnapshot, trace,
                 AgentTaskType.INTERPRET_ANSWER,
                 json.write(Map.of("freeText", freeText == null ? "" : freeText,
                         "nodeId", answeredNodeId, "answerId", answer.id())),
@@ -376,7 +378,7 @@ public class FakeAgentOrchestrator {
                 json.read(interpretResponse.outputJson(), AnswerInterpretationResult.class);
 
         trace = appendTrace(trace, "model_called:" + AgentTaskType.DRAFT_ANSWER_PATCH.name());
-        ModelResponse patchResponse = callFakeModel(run, contextSnapshot, trace,
+        ModelResponse patchResponse = callModel(run, contextSnapshot, trace,
                 AgentTaskType.DRAFT_ANSWER_PATCH,
                 json.write(interpretation),
                 AgentAction.INTERPRET_ANSWER,
@@ -402,7 +404,7 @@ public class FakeAgentOrchestrator {
         agentRunService.markPersistedAnswerPatch(run.id(), patch.id(), trace);
 
         trace = appendTrace(trace, "model_called:" + AgentTaskType.DRAFT_NODE.name());
-        ModelResponse nodeResponse = callFakeModel(run, contextSnapshot, trace,
+        ModelResponse nodeResponse = callModel(run, contextSnapshot, trace,
                 AgentTaskType.DRAFT_NODE,
                 json.write(Map.of("answerId", answer.id(), "patchId", patch.id())),
                 AgentAction.ASK_NEXT_QUESTION,
@@ -456,13 +458,13 @@ public class FakeAgentOrchestrator {
         return contextSnapshot;
     }
 
-    private ModelResponse callFakeModel(AgentRun run,
-                                        ContextSnapshot contextSnapshot,
-                                        String trace,
-                                        AgentTaskType taskType,
-                                        String inputJson,
-                                        AgentAction expectedAction,
-                                        String actionErrorMessage) {
+    private ModelResponse callModel(AgentRun run,
+                                    ContextSnapshot contextSnapshot,
+                                    String trace,
+                                    AgentTaskType taskType,
+                                    String inputJson,
+                                    AgentAction expectedAction,
+                                    String actionErrorMessage) {
         ModelRequest request = new ModelRequest(
                 run.projectId(),
                 run.routeId(),
@@ -470,10 +472,17 @@ public class FakeAgentOrchestrator {
                 contextSnapshot.id(),
                 taskType,
                 inputJson,
-                Map.of("orchestrator", "fake"));
+                Map.of("orchestrator", "runtime",
+                        ModelRequest.METADATA_EXPECTED_ACTION, expectedAction.code()));
 
-        ModelResponse response = fakeModelAdapter.run(request);
+        ModelResponse response = modelGateway.run(request);
         agentRunService.markModelCalled(run.id(), trace);
+
+        // Gateway output is untrusted input. The runtime owns correlation
+        // validation: a response that does not echo back the exact requested
+        // agentRunId / contextSnapshotId / taskType is rejected before any
+        // typed parsing or reflection may happen.
+        ModelResponseCorrelation.validate(request, response);
 
         if (response.action() != expectedAction) {
             agentRunService.fail(run.id(), appendTrace(trace, "failed:unexpected_action"));

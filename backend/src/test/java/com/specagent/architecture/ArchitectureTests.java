@@ -110,4 +110,18 @@ class ArchitectureTests {
 
         rule.check(CLASSES);
     }
+
+    @Test
+    void modelPackagesShouldNotDependOnRuntimeKernel() {
+        ArchRule rule = noClasses()
+            .that().resideInAnyPackage("com.specagent.model..")
+            .should().dependOnClassesThat()
+            .resideInAnyPackage("com.specagent.project..", "com.specagent.route..",
+                "com.specagent.node..", "com.specagent.answer..", "com.specagent.context..",
+                "com.specagent.patch..", "com.specagent.spec..", "com.specagent.profile..")
+            .because("Model gateway and OpenCode transport must not depend on runtime "
+                    + "repositories or services; they only speak HTTP and resolve credentials");
+
+        rule.check(CLASSES);
+    }
 }

@@ -8,6 +8,7 @@ import com.specagent.agent.contracts.NodeDraft;
 import com.specagent.agent.contracts.ReflectionResult;
 import com.specagent.agent.contracts.SpecDraft;
 import com.specagent.common.Json;
+import com.specagent.model.gateway.ModelGateway;
 import com.specagent.patch.Claim;
 import com.specagent.patch.ClaimKind;
 import com.specagent.patch.ClaimStatus;
@@ -16,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 
 /**
@@ -24,9 +26,14 @@ import org.springframework.stereotype.Component;
  * <p>It makes no HTTP calls, depends on no provider SDK, and produces fixed
  * outputs by task type so the agent loop can be tested before real models are
  * wired in. Unsupported task types are rejected with {@link ModelContractException}.
+ *
+ * <p>Implements {@link ModelGateway} and is the primary bean for that contract,
+ * so automated tests keep running against the deterministic fake even though
+ * {@code OpenCodeZenModelGateway} is also registered as a component.
  */
 @Component
-public class FakeModelAdapter {
+@Primary
+public class FakeModelAdapter implements ModelGateway {
 
     /**
      * Stable ids for the fake answer patch claims so the draft is fully
