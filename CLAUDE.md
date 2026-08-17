@@ -11,9 +11,11 @@ Before implementing or modifying behavior, read:
 3. `docs/ARCHITECTURE.md`
 4. `docs/AGENT_RUNTIME.md`
 5. `docs/CONTEXT_RULES.md`
-6. `docs/ANTI_OVERFITTING.md`
-7. `docs/IMPLEMENTATION_PLAN.md`
-8. `docs/DEVELOPMENT_WORKFLOW.md`
+6. `docs/MODEL_GATEWAY.md`
+7. `docs/ANTI_OVERFITTING.md`
+8. `docs/IMPLEMENTATION_PLAN.md`
+9. `docs/DEVELOPMENT_ENVIRONMENT.md`
+10. `docs/DEVELOPMENT_WORKFLOW.md`
 
 Do not infer product scope from a single user example. The system is generic requirement clarification, not a domain-specific requirement generator.
 
@@ -68,6 +70,11 @@ These invariants must not be broken:
 15. Confirmed spec claims must have source references.
 16. Unsupported model output must be labeled assumption, suggestion, risk, or unresolved, not confirmed.
 17. Runtime code must not contain concrete business-domain branching.
+18. Runtime Kernel packages must not depend on ModelGateway or provider adapters.
+19. Phase 1-3 must not contain model provider integration.
+20. Phase 4 may use fake model only.
+21. Phase 5 may add custom HTTP ModelGateway.
+22. Spring AI must not be added as the default first-version model integration.
 
 ## 5. Anti-Overfitting Rules
 
@@ -142,7 +149,45 @@ The model must not directly:
 - Read global project history.
 - Write database state without validation.
 
-## 7. Runtime Boundary
+## 7. Model Gateway Rules
+
+Read `docs/MODEL_GATEWAY.md` before adding any model-related dependency or code.
+
+First-version rules:
+
+1. Use a custom HTTP ModelGateway when real model calls are introduced.
+2. Do not use Spring AI as the default first-version integration.
+3. Do not add real model calls before Phase 5.
+4. Phase 4 may use only a fake model adapter.
+5. Provider-specific HTTP details must stay behind ProviderAdapter.
+6. Provider configuration must include base URL, endpoint path, model id, API key, timeout, and headers.
+7. The opencode zen provider path must support configurable `User-Agent` with `opencode/1.18.16` as the expected local value.
+8. Do not hard-code provider headers inside Runtime Kernel, Route, Node, Answer, Context, Patch, or Spec services.
+9. Do not store secrets in traces.
+10. Validate model output before persistence.
+11. Invalid model output must fail closed.
+
+Forbidden examples:
+
+```text
+RuntimeService calls WebClient directly
+ContextBuilder calls ModelGateway
+RouteService calls OpencodeZenProviderAdapter
+NodeService imports Spring AI client
+SpecSnapshotService parses provider-native response JSON
+```
+
+Allowed examples:
+
+```text
+AgentReasoningService calls ModelGateway
+ModelGateway calls ProviderAdapter
+OpencodeZenProviderAdapter adds configured User-Agent
+StructuredModelOutputParser validates response contracts
+ModelCallTraceRecorder stores sanitized metadata
+```
+
+## 8. Runtime Boundary
 
 Runtime Kernel code must be deterministic where possible.
 
@@ -159,7 +204,7 @@ Runtime Kernel owns:
 
 Runtime Kernel must not call the model gateway.
 
-## 8. Context Rules
+## 9. Context Rules
 
 Never pass whole project history to the model by default.
 
@@ -188,7 +233,7 @@ Never include:
 - Old spec snapshot.
 - Sibling route conclusions.
 
-## 9. Reflection Gates
+## 10. Reflection Gates
 
 Do not implement reflection as vague self-talk. Reflection must be structured.
 
@@ -202,7 +247,7 @@ Required gate types:
 
 A gate must produce a machine-checkable result where possible.
 
-## 10. Testing Requirements
+## 11. Testing Requirements
 
 When implementing a feature, add tests for the relevant invariants.
 
@@ -220,10 +265,13 @@ Minimum test categories:
 - Unsupported claim handling.
 - Architecture dependency rules.
 - Domain-specific runtime keyword prevention.
+- Runtime package isolation from model packages.
+- Provider adapter configurable `User-Agent` support.
+- Spring AI absence unless explicitly approved later.
 
-Do not claim a feature is complete without tests covering its context and route behavior.
+Do not claim a feature is complete without tests covering its context, route, model-boundary, and persistence behavior.
 
-## 11. Documentation Requirements
+## 12. Documentation Requirements
 
 If implementation changes one of these, update docs in the same change:
 
@@ -234,12 +282,14 @@ If implementation changes one of these, update docs in the same change:
 - Node or Answer immutability.
 - Context rules.
 - AgentRun lifecycle.
+- ModelGateway strategy.
+- Provider adapter behavior.
 - Reflection gates.
 - Anti-overfitting rules.
 
 Do not let code silently diverge from docs.
 
-## 12. Implementation Style
+## 13. Implementation Style
 
 Prefer small, explicit services:
 
@@ -252,10 +302,12 @@ Prefer small, explicit services:
 - `AgentRunService`
 - `AnswerPatchService`
 - `SpecSnapshotService`
+- `ModelGateway`
+- `ProviderAdapter`
 
 Avoid god services that parse user language, mutate route state, call the model, generate specs, and persist results in one place.
 
-## 13. Before Finishing Any Change
+## 14. Before Finishing Any Change
 
 Check:
 
@@ -266,5 +318,8 @@ Check:
 5. Did I preserve route lineage rules?
 6. Did regenerate exclude old answer, patch, children, and spec?
 7. Did spec content include source references?
-8. Did tests cover the invariant touched by this change?
-9. Did docs stay consistent with the code?
+8. Did I add a model dependency before the correct phase?
+9. Did I accidentally add Spring AI as a default integration?
+10. Did provider-specific code leak into Runtime Kernel?
+11. Did tests cover the invariant touched by this change?
+12. Did docs stay consistent with the code?
