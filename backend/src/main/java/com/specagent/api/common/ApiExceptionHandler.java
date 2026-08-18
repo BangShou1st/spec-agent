@@ -1,6 +1,7 @@
 package com.specagent.api.common;
 
 import com.specagent.agent.ModelContractException;
+import com.specagent.readmodel.requirement.RequirementStateQueryException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -43,6 +44,17 @@ public class ApiExceptionHandler {
     public ResponseEntity<ApiErrorResponse> handleApiException(ApiException ex) {
         return ResponseEntity.status(ex.status())
                 .body(ApiErrorResponse.of(ex.code(), ex.getMessage()));
+    }
+
+    @ExceptionHandler(RequirementStateQueryException.class)
+    public ResponseEntity<ApiErrorResponse> handleRequirementStateQuery(RequirementStateQueryException ex) {
+        return switch (ex.reason()) {
+            case PROJECT_NOT_FOUND -> ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(ApiErrorResponse.of("PROJECT_NOT_FOUND", "Project not found"));
+            case INVARIANT_VIOLATION -> ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiErrorResponse.of("INTERNAL_INVARIANT_VIOLATION",
+                            "The project state failed an internal invariant check"));
+        };
     }
 
     @ExceptionHandler(ModelContractException.class)

@@ -197,6 +197,19 @@ class ArchitectureTests {
     }
 
     @Test
+    void readModelMustNotDependOnApi() {
+        ArchRule rule = noClasses()
+            .that().resideInAPackage("com.specagent.readmodel..")
+            .should().dependOnClassesThat()
+            .resideInAPackage("com.specagent.api..")
+            .because("The read-model/application layer must not depend on the "
+                    + "outermost HTTP API boundary; query failures stay "
+                    + "read-model-neutral and are mapped at the API edge");
+
+        rule.check(CLASSES);
+    }
+
+    @Test
     void controllersMustNotDependOnModelGateway() {
         ArchRule rule = noClasses()
             .that().resideInAPackage("com.specagent.api..")

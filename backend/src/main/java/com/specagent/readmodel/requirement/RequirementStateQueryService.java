@@ -1,6 +1,5 @@
 package com.specagent.readmodel.requirement;
 
-import com.specagent.api.common.ApiException;
 import com.specagent.context.RequirementState;
 import com.specagent.context.RequirementStateBuilder;
 import com.specagent.project.Project;
@@ -43,21 +42,24 @@ public class RequirementStateQueryService {
 
     public RequirementStateView getForProject(UUID projectId) {
         Project project = projectService.getProject(projectId)
-                .orElseThrow(() -> ApiException.notFound("PROJECT_NOT_FOUND", "Project not found"));
+                .orElseThrow(() -> RequirementStateQueryException.of(
+                        RequirementStateQueryException.Reason.PROJECT_NOT_FOUND, "Project not found"));
 
         if (project.activeRouteId() == null) {
             return RequirementStateView.empty(project.id());
         }
 
         Route activeRoute = routeService.getRoute(project.activeRouteId())
-                .orElseThrow(() -> ApiException.internal("INTERNAL_INVARIANT_VIOLATION",
+                .orElseThrow(() -> RequirementStateQueryException.of(
+                        RequirementStateQueryException.Reason.INVARIANT_VIOLATION,
                         "The active route pointer does not resolve"));
         // Defensive fail-closed guard: under correct runtime invariants the
         // active pointer always resolves to a route owned by this project. If
         // it ever does not, neither the foreign route nor its claims may be
         // exposed; the read fails as an internal invariant violation.
         if (!activeRoute.projectId().equals(project.id())) {
-            throw ApiException.internal("INTERNAL_INVARIANT_VIOLATION",
+            throw RequirementStateQueryException.of(
+                    RequirementStateQueryException.Reason.INVARIANT_VIOLATION,
                     "The active route does not belong to the project");
         }
 
