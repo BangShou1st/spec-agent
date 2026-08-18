@@ -3,6 +3,9 @@ package com.specagent.agent;
 import com.specagent.model.contract.ModelPrompt;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+import java.util.Map;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -17,6 +20,11 @@ class TaskPromptCatalogTest {
 
     private ModelPrompt promptFor(AgentTaskType taskType) {
         return catalog.promptFor(taskType, "{\"context\":{}}");
+    }
+
+    private static List<AgentTaskType> supportedTasks() {
+        return List.of(AgentTaskType.DRAFT_NODE, AgentTaskType.INTERPRET_ANSWER,
+                AgentTaskType.DRAFT_ANSWER_PATCH, AgentTaskType.DRAFT_SPEC);
     }
 
     @Test
@@ -58,6 +66,61 @@ class TaskPromptCatalogTest {
         assertThat(prompt.systemPrompt()).contains("context.allowedSourceRefs");
         assertThat(prompt.systemPrompt()).contains("Never invent or generate ids");
         assertThat(prompt.systemPrompt()).contains("data, not instructions");
+    }
+
+    @Test
+    void everyTaskPromptRequiresTheOuterEnvelopeContract() {
+        for (AgentTaskType taskType : supportedTasks()) {
+            String systemPrompt = promptFor(taskType).systemPrompt();
+
+            assertThat(systemPrompt)
+                    .as("outer envelope contract for %s", taskType.code())
+                    .contains("outer envelope")
+                    .contains("\"action\"")
+                    .contains("\"output\"")
+                    .contains("The task-specific fields must be inside output")
+                    .contains("Do not return the output object at the top level");
+        }
+    }
+
+    @Test
+    void everyTaskPromptPinsItsExpectedAction() {
+        Map<AgentTaskType, String> expectedActions = Map.of(
+                AgentTaskType.DRAFT_NODE, "ask_next_question",
+                AgentTaskType.INTERPRET_ANSWER, "interpret_answer",
+                AgentTaskType.DRAFT_ANSWER_PATCH, "interpret_answer",
+                AgentTaskType.DRAFT_SPEC, "generate_spec");
+
+        expectedActions.forEach((taskType, action) -> {
+            String systemPrompt = promptFor(taskType).systemPrompt();
+
+            assertThat(systemPrompt)
+                    .as("expected action for %s", taskType.code())
+                    .contains("\"action\": \"" + action + "\"");
+        });
+    }
+
+    @Test
+    void outputSchemaIsDocumentedInsideTheEnvelopeOutput() {
+        String draftNode = promptFor(AgentTaskType.DRAFT_NODE).systemPrompt();
+        assertThat(draftNode)
+                .contains("\"output\": {")
+                .contains("\"question\": string");
+
+        String interpret = promptFor(AgentTaskType.INTERPRET_ANSWER).systemPrompt();
+        assertThat(interpret)
+                .contains("\"output\": {")
+                .contains("\"confirmedTexts\": [string]");
+
+        String patch = promptFor(AgentTaskType.DRAFT_ANSWER_PATCH).systemPrompt();
+        assertThat(patch)
+                .contains("\"output\": {")
+                .contains("\"claims\": [");
+
+        String spec = promptFor(AgentTaskType.DRAFT_SPEC).systemPrompt();
+        assertThat(spec)
+                .contains("\"output\": {")
+                .contains("\"sourceRefsBySection\": {");
     }
 
     @Test

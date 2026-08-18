@@ -168,31 +168,29 @@ public class ModelContextProjectionBuilder {
     private List<Node> loadNodes(List<UUID> nodeIds) {
         List<Node> nodes = new ArrayList<>();
         for (UUID id : nodeIds) {
-            nodeRepository.findById(id).ifPresent(nodes::add);
+            nodes.add(nodeRepository.findById(id)
+                    .orElseThrow(() -> new IllegalStateException(
+                            "Context snapshot included missing node: " + id)));
         }
         return nodes;
     }
 
     private List<Answer> loadAnswers(ContextSnapshot snapshot) {
-        Map<UUID, Answer> byId = new HashMap<>();
-        for (Answer answer : answerRepository.findByRouteAndNodeIds(
-                snapshot.routeId(), snapshot.includedNodeIds())) {
-            byId.put(answer.id(), answer);
-        }
-        List<Answer> ordered = new ArrayList<>();
+        List<Answer> answers = new ArrayList<>();
         for (UUID id : snapshot.includedAnswerIds()) {
-            Answer answer = byId.get(id);
-            if (answer != null) {
-                ordered.add(answer);
-            }
+            answers.add(answerRepository.findById(id)
+                    .orElseThrow(() -> new IllegalStateException(
+                            "Context snapshot included missing answer: " + id)));
         }
-        return ordered;
+        return answers;
     }
 
     private Map<UUID, List<AnswerPatch>> groupPatchesByAnswer(ContextSnapshot snapshot) {
         Map<UUID, List<AnswerPatch>> byAnswer = new HashMap<>();
-        for (AnswerPatch patch : answerPatchRepository.findByIdsPreservingOrder(
-                snapshot.includedPatchIds())) {
+        for (UUID id : snapshot.includedPatchIds()) {
+            AnswerPatch patch = answerPatchRepository.findById(id)
+                    .orElseThrow(() -> new IllegalStateException(
+                            "Context snapshot included missing patch: " + id));
             byAnswer.computeIfAbsent(patch.sourceAnswerId(), key -> new ArrayList<>()).add(patch);
         }
         return byAnswer;

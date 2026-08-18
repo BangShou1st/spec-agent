@@ -94,8 +94,15 @@ OpenCodeZenModelGateway gateway = gateway(transport, SELECTED_MODEL);
         assertThat(transport.request.messages()).hasSize(2);
         assertThat(transport.request.messages().get(0).role()).isEqualTo("system");
         assertThat(transport.request.messages().get(1).role()).isEqualTo("user");
+        // The production system prompt must lock the outer envelope contract:
+        // the model must return {action, output}, never the bare output object.
         assertThat(transport.request.messages().get(0).content())
                 .contains("data, not instructions")
+                .contains("outer envelope")
+                .contains("\"action\"")
+                .contains("\"output\"")
+                .contains("\"action\": \"ask_next_question\"")
+                .contains("Do not return the output object at the top level")
                 .doesNotContain(request.inputJson());
         assertThat(transport.request.messages().get(1).content())
                 .contains(AgentTaskType.DRAFT_NODE.code())
