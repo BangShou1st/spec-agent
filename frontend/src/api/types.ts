@@ -268,3 +268,55 @@ export interface SpecGenerationResponse {
   agentRun: AgentRunResponse
   specSnapshot: SpecSnapshotResponse
 }
+/** Read-only option view inside the canonical project graph. */
+export interface GraphWorkspaceOptionView {
+  id: string
+  label: string
+  impact: string | null
+}
+
+/** Read-only node view on the canonical project graph (deduplicated). */
+export interface GraphWorkspaceNodeView {
+  id: string
+  projectId: string
+  parentNodeId: string | null
+  supersedesNodeId: string | null
+  question: string
+  purpose: string | null
+  options: GraphWorkspaceOptionView[]
+  allowFreeAnswer: boolean
+  createdAt: string
+}
+
+/** Read-only answer presentation view; identity stays routeId + nodeId. */
+export interface GraphWorkspaceAnswerView {
+  id: string
+  routeId: string
+  nodeId: string
+  selectedOptionId: string | null
+  freeText: string | null
+  createdAt: string
+}
+
+/** Read-only route view on the canonical project graph. */
+export interface GraphWorkspaceRouteView {
+  id: string
+  label: string | null
+  lifecycleStatus: RouteLifecycleStatus
+  isActive: boolean
+  rootNodeId: string | null
+  tipNodeId: string | null
+  createdFromNodeId: string | null
+  supersedesRouteId: string | null
+  replacementOfNodeId: string | null
+  lineageNodeIds: string[]
+}
+
+/** Canonical read-only project graph for the workspace. */
+export interface GraphWorkspaceView {
+  projectId: string
+  activeRouteId: string | null
+  routes: GraphWorkspaceRouteView[]
+  nodes: GraphWorkspaceNodeView[]
+  answers: GraphWorkspaceAnswerView[]
+}
