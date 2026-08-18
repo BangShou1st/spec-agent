@@ -22,3 +22,4 @@ application-local.yml
 
 # Docker
 docker-compose.override.yml
+backend/.local-secrets.env
