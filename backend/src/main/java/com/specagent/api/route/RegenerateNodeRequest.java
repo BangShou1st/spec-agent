@@ -1,5 +1,6 @@
 package com.specagent.api.route;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
@@ -22,5 +23,6 @@ public record RegenerateNodeRequest(
         String replacementQuestion,
         @Size(max = 4000, message = "must be at most 4000 characters")
         String replacementPurpose,
+        @Valid
         List<ReplacementOptionRequest> replacementOptions) {
 }

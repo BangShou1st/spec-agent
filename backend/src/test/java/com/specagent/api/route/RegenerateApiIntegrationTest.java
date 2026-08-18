@@ -265,6 +265,8 @@ class RegenerateApiIntegrationTest {
                 .orElseThrow().tipNodeId()).orElseThrow();
         assertThat(target.isRoot()).isFalse();
 
+        // Bean Validation cascades into replacement options, so the blank label
+        // violates ReplacementOptionRequest.@NotBlank at the controller.
         mockMvc.perform(post("/api/v1/projects/{projectId}/nodes/{nodeId}/regenerate",
                         project.id(), target.id())
                         .contentType(APPLICATION_JSON)
@@ -275,6 +277,72 @@ class RegenerateApiIntegrationTest {
                                 }
                                 """))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("INVALID_REPLACEMENT_OPTION"));
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    void regenerateOversizedReplacementOptionLabelRejected() throws Exception {
+        Project project = projectService.createProject("Regenerate oversized label");
+        orchestrator.draftNextQuestion(project.id());
+        orchestrator.answerActiveNodeAndDraftNext(project.id(), "content");
+        Node target = nodeService.getNode(routeService.getRoute(project.activeRouteId())
+                .orElseThrow().tipNodeId()).orElseThrow();
+        assertThat(target.isRoot()).isFalse();
+        int routesBefore = routeService.listRoutes(project.id()).size();
+        UUID sourceRouteId = project.activeRouteId();
+
+        mockMvc.perform(post("/api/v1/projects/{projectId}/nodes/{nodeId}/regenerate",
+                        project.id(), target.id())
+                        .contentType(APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "replacementQuestion": "Replacement question",
+                                  "replacementOptions": [{"label": "%s", "impact": "x"}]
+                                }
+                                """.formatted("x".repeat(501))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+
+        // The rejected request must not create a replacement route/node or
+        // supersede the original route.
+        assertNoReplacementSideEffects(project.id(), sourceRouteId, target.id(), routesBefore);
+    }
+
+    @Test
+    void regenerateOversizedReplacementOptionImpactRejected() throws Exception {
+        Project project = projectService.createProject("Regenerate oversized impact");
+        orchestrator.draftNextQuestion(project.id());
+        orchestrator.answerActiveNodeAndDraftNext(project.id(), "content");
+        Node target = nodeService.getNode(routeService.getRoute(project.activeRouteId())
+                .orElseThrow().tipNodeId()).orElseThrow();
+        assertThat(target.isRoot()).isFalse();
+        int routesBefore = routeService.listRoutes(project.id()).size();
+        UUID sourceRouteId = project.activeRouteId();
+
+        mockMvc.perform(post("/api/v1/projects/{projectId}/nodes/{nodeId}/regenerate",
+                        project.id(), target.id())
+                        .contentType(APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "replacementQuestion": "Replacement question",
+                                  "replacementOptions": [{"label": "x", "impact": "%s"}]
+                                }
+                                """.formatted("x".repeat(2001))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+
+        // The rejected request must not create a replacement route/node or
+        // supersede the original route.
+        assertNoReplacementSideEffects(project.id(), sourceRouteId, target.id(), routesBefore);
+    }
+
+    private void assertNoReplacementSideEffects(UUID projectId, UUID sourceRouteId,
+                                                UUID targetNodeId, int routesBefore) {
+        List<Route> routes = routeService.listRoutes(projectId);
+        assertThat(routes).hasSize(routesBefore);
+        Route sourceRoute = routeService.getRoute(sourceRouteId).orElseThrow();
+        assertThat(sourceRoute.lifecycleStatus()).isEqualTo(RouteLifecycleStatus.OPEN);
+        assertThat(sourceRoute.tipNodeId()).isEqualTo(targetNodeId);
+        assertThat(nodeService.getNode(targetNodeId).orElseThrow().supersedesNodeId()).isNull();
     }
 }
