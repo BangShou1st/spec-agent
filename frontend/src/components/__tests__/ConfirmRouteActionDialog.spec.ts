@@ -11,8 +11,8 @@ function mountDialog(kind: 'archive' | 'delete', pending = false) {
 describe('ConfirmRouteActionDialog', () => {
   it('archive requires an explicit confirmation', async () => {
     const wrapper = mountDialog('archive')
-    expect(wrapper.text()).toContain('Archive route?')
-    expect(wrapper.find('[data-test="confirm-route-action"]').text()).toContain('Archive route')
+    expect(wrapper.text()).toContain('归档该路线？')
+    expect(wrapper.find('[data-test="confirm-route-action"]').text()).toContain('归档路线')
     await wrapper.find('[data-test="confirm-route-action"]').trigger('click')
     expect(wrapper.emitted('confirm')).toHaveLength(1)
   })
@@ -20,12 +20,11 @@ describe('ConfirmRouteActionDialog', () => {
   it('delete copy states this is a soft-delete preserving historical records', () => {
     const wrapper = mountDialog('delete')
     const description = wrapper.find('[data-test="confirm-description"]').text()
-    expect(wrapper.text()).toContain('Delete route?')
-    expect(description.toLowerCase()).toContain('soft-delete')
-    expect(description.toLowerCase()).toContain('preserved')
-    // The copy explicitly states shared nodes/answers are NOT physically deleted.
-    expect(description.toLowerCase()).toContain('not physically deleted')
-    expect(wrapper.find('[data-test="confirm-route-action"]').text()).toContain('Delete route')
+    expect(wrapper.text()).toContain('删除该路线？')
+    expect(description).toContain('软删除')
+    expect(description).toContain('历史运行记录会被保留')
+    expect(description).toContain('不会被物理删除')
+    expect(wrapper.find('[data-test="confirm-route-action"]').text()).toContain('删除路线')
   })
 
   it('cancel does not confirm', async () => {

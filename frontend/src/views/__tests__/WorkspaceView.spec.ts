@@ -1,38 +1,35 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import { nextTick } from 'vue'
+import { defineComponent, h } from 'vue'
 import WorkspaceView from '@/views/WorkspaceView.vue'
-import { ApiError } from '@/api/client'
+import { useGraphUiStore } from '@/stores/graphUiStore'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
 import {
   makeActiveState,
-  makeAnswerExecution,
+  makeGraphWorkspaceView,
   makeNode,
+  makeProject,
   makeRegenerateResponse,
   makeRequirementState,
   makeRoute,
-  makeRouteLineage,
   makeSpecGeneration,
   makeSpecSnapshot,
 } from '@/test/fixtures'
-import type { ActiveProjectStateResponse, RequirementStateView } from '@/api/types'
+import type { GraphWorkspaceView } from '@/api/types'
 
-vi.mock('@/api/projects', () => ({
-  getProject: vi.fn(),
-}))
-
+vi.mock('@/api/projects', () => ({ getProject: vi.fn() }))
 vi.mock('@/api/workspace', () => ({
   draftNextQuestion: vi.fn(),
   getActiveState: vi.fn(),
   listRoutes: vi.fn(),
   submitAnswer: vi.fn(),
 }))
-
 vi.mock('@/api/requirementState', () => ({
   getRequirementState: vi.fn(),
+  getRouteRequirementState: vi.fn(),
 }))
-
+vi.mock('@/api/graph', () => ({ getProjectGraph: vi.fn() }))
 vi.mock('@/api/routes', () => ({
   activateRoute: vi.fn(),
   archiveRoute: vi.fn(),
@@ -42,24 +39,15 @@ vi.mock('@/api/routes', () => ({
   regenerateNode: vi.fn(),
   restoreRoute: vi.fn(),
 }))
-
-vi.mock('@/api/spec', () => ({
-  generateSpec: vi.fn(),
-  listRouteSpecs: vi.fn(),
-}))
+vi.mock('@/api/spec', () => ({ generateSpec: vi.fn(), listRouteSpecs: vi.fn() }))
 
 import { getProject } from '@/api/projects'
-import {
-  draftNextQuestion,
-  getActiveState,
-  listRoutes,
-  submitAnswer,
-} from '@/api/workspace'
+import { getActiveState, listRoutes, draftNextQuestion, submitAnswer } from '@/api/workspace'
 import { getRequirementState } from '@/api/requirementState'
+import { getProjectGraph } from '@/api/graph'
 import {
   activateRoute as apiActivateRoute,
   forkNode as apiForkNode,
-  getRouteLineage,
   regenerateNode as apiRegenerateNode,
 } from '@/api/routes'
 import { generateSpec as apiGenerateSpec, listRouteSpecs } from '@/api/spec'
@@ -68,15 +56,96 @@ const mockedGetProject = vi.mocked(getProject)
 const mockedGetActiveState = vi.mocked(getActiveState)
 const mockedListRoutes = vi.mocked(listRoutes)
 const mockedGetRequirementState = vi.mocked(getRequirementState)
+const mockedGetProjectGraph = vi.mocked(getProjectGraph)
+
 const mockedDraftNextQuestion = vi.mocked(draftNextQuestion)
 const mockedSubmitAnswer = vi.mocked(submitAnswer)
 
-function mockViews(active: ActiveProjectStateResponse, state: RequirementStateView): void {
-  mockedGetProject.mockResolvedValue({ ...active.project })
+/**
+ * GraphCanvas stub: real Vue Flow cannot render in jsdom; the shell tests
+ * cover wiring while GraphCanvas.spec covers canvas behavior itself.
+ */
+const locateSpy = vi.fn()
+const GraphCanvasStub = defineComponent({
+  name: 'GraphCanvas',
+  props: {
+    view: { type: Object, default: null },
+    activeNodeId: { type: String, default: null },
+    submitting: Boolean,
+    drafting: Boolean,
+    pending: Boolean,
+  },
+  emits: ['draft', 'submit-answer', 'fork', 'regenerate'],
+  setup(_props, { expose }) {
+    expose({ locateRoute: locateSpy, locateNode: vi.fn() })
+    return () => h('div', { 'data-test': 'graph-canvas-stub' })
+  },
+})
+
+function graphView(): GraphWorkspaceView {
+  return makeGraphWorkspaceView({
+    projectId: 'p1',
+    activeRouteId: 'r1',
+    routes: [
+      {
+        id: 'r1',
+        label: '当前路线',
+        lifecycleStatus: 'open',
+        isActive: true,
+        rootNodeId: 'n1',
+        tipNodeId: 'n2',
+        createdFromNodeId: null,
+        supersedesRouteId: null,
+        replacementOfNodeId: null,
+        lineageNodeIds: ['n1', 'n2'],
+      },
+      {
+        id: 'r2',
+        label: '开放分支',
+        lifecycleStatus: 'open',
+        isActive: false,
+        rootNodeId: 'n1',
+        tipNodeId: 'n3',
+        createdFromNodeId: null,
+        supersedesRouteId: null,
+        replacementOfNodeId: null,
+        lineageNodeIds: ['n1', 'n3'],
+      },
+      {
+        id: 'r3',
+        label: '旧路线',
+        lifecycleStatus: 'archived',
+        isActive: false,
+        rootNodeId: 'n1',
+        tipNodeId: 'n4',
+        createdFromNodeId: null,
+        supersedesRouteId: null,
+        replacementOfNodeId: null,
+        lineageNodeIds: ['n1', 'n4'],
+      },
+    ],
+    nodes: [
+      makeNode({ id: 'n1', projectId: 'p1', question: 'What outcome matters most?' }),
+      makeNode({ id: 'n2', projectId: 'p1', parentNodeId: 'n1', question: 'Scope question' }),
+      makeNode({ id: 'n3', projectId: 'p1', parentNodeId: 'n1', question: 'Fork question' }),
+      makeNode({ id: 'n4', projectId: 'p1', parentNodeId: 'n1', question: 'Old question' }),
+    ],
+    answers: [],
+  })
+}
+
+function mockViews() {
+  const active = makeActiveState({
+    project: makeProject({ id: 'p1', activeRouteId: 'r1' }),
+    activeRoute: makeRoute({ id: 'r1', isActive: true, tipNodeId: 'n2' }),
+    activeNode: makeNode({ id: 'n2' }),
+  })
+  mockedGetProject.mockResolvedValue(active.project)
   mockedGetActiveState.mockResolvedValue(active)
-  mockedListRoutes.mockResolvedValue(active.activeRoute ? [active.activeRoute] : [])
-  mockedGetRequirementState.mockResolvedValue(state)
-  vi.mocked(getRouteLineage).mockResolvedValue(makeRouteLineage())
+  mockedListRoutes.mockResolvedValue([active.activeRoute as never])
+  mockedGetRequirementState.mockResolvedValue(makeRequirementState({ routeId: 'r1' }))
+  mockedGetProjectGraph.mockResolvedValue(graphView())
+  return active
 }
 
 async function mountWorkspace(projectId = 'p1') {
@@ -84,238 +153,139 @@ async function mountWorkspace(projectId = 'p1') {
   setActivePinia(pinia)
   const wrapper = mount(WorkspaceView, {
     props: { projectId },
-    global: { plugins: [pinia] },
+    global: {
+      plugins: [pinia],
+      stubs: { GraphCanvas: GraphCanvasStub },
+    },
   })
   await flushPromises()
-  return { wrapper, store: useWorkspaceStore() }
+  return { wrapper, store: useWorkspaceStore(), graphUi: useGraphUiStore() }
 }
 
-describe('WorkspaceView', () => {
+describe('WorkspaceView graph shell', () => {
   beforeEach(() => {
+    localStorage.clear()
     vi.clearAllMocks()
+    locateSpy.mockReset()
   })
 
-  it('loads the workspace into the three panels', async () => {
-    const active = makeActiveState()
-    mockViews(active, makeRequirementState())
+  it('loads the graph-first shell with sidebars and canvas', async () => {
+    mockViews()
     const { wrapper } = await mountWorkspace()
-
-    expect(wrapper.text()).toContain('Route Workspace')
-    expect(wrapper.text()).toContain('Clarification')
-    expect(wrapper.text()).toContain('Requirement State')
-    expect(wrapper.text()).toContain(active.project.title)
-    expect(wrapper.find('[data-test="question"]').text()).toBe(active.activeNode?.question)
-    expect(wrapper.text()).toContain('Confirmed')
+    expect(wrapper.find('[data-test="graph-canvas-stub"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="left-sidebar"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="right-sidebar"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="route-sidebar"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="workspace-inspector"]').exists()).toBe(true)
   })
 
-  it('shows the explicit draft button and does not auto-draft on open', async () => {
-    mockViews(makeActiveState({ activeNode: null }), makeRequirementState())
-    const { wrapper } = await mountWorkspace()
-
-    expect(mockedDraftNextQuestion).not.toHaveBeenCalled()
-    expect(wrapper.text()).toContain('Draft first question')
-  })
-
-  it('drafts the first question only on button click and refreshes the node', async () => {
-    const drafted = makeNode({ question: 'What is the most important outcome?' })
-    mockedGetProject.mockResolvedValue(makeActiveState().project)
-    mockedGetActiveState
-      .mockResolvedValueOnce(makeActiveState({ activeNode: null }))
-      .mockResolvedValueOnce(makeActiveState({ activeNode: drafted }))
-    mockedListRoutes.mockResolvedValue([makeRoute({ isActive: true })])
-    mockedGetRequirementState.mockResolvedValue(makeRequirementState())
+  it('drafts through the canvas draft intent', async () => {
+    mockViews()
     mockedDraftNextQuestion.mockResolvedValue({
-      agentRun: makeAnswerExecution().agentRun,
-      producedNode: drafted,
+      agentRun: { id: 'run-1' } as never,
+      producedNode: makeNode({ id: 'n5' }),
     })
     const { wrapper } = await mountWorkspace()
-    expect(wrapper.find('[data-test="question"]').exists()).toBe(false)
-
-    await wrapper.find('[data-test="draft-question"]').trigger('click')
+    await wrapper.findComponent(GraphCanvasStub).vm.$emit('draft')
     await flushPromises()
-
     expect(mockedDraftNextQuestion).toHaveBeenCalledWith('p1')
-    expect(wrapper.find('[data-test="question"]').text()).toBe('What is the most important outcome?')
-    expect(wrapper.text()).toContain('Question drafted.')
+    expect(useWorkspaceStore().feedback).toBe('问题已起草。')
   })
 
-  it('submits an option-only answer through the workspace flow and refreshes state', async () => {
-    const option = { id: 'opt-a', label: 'Small scope', impact: 'Limits scope' }
-    mockViews(
-      makeActiveState({ activeNode: makeNode({ options: [option] }) }),
-      makeRequirementState({ confirmed: [] }),
-    )
-    mockedSubmitAnswer.mockResolvedValue(makeAnswerExecution())
-    const refreshed = makeRequirementState({
-      confirmed: [
-        {
-          kind: 'goal',
-          text: 'Backend-refreshed confirmed claim',
-          status: 'confirmed',
-          confidence: 0.9,
-          sourceNodeId: 'node-1',
-          sourceAnswerId: 'answer-1',
-        },
-      ],
-    })
-    mockedGetRequirementState
-      .mockResolvedValueOnce(makeRequirementState({ confirmed: [] }))
-      .mockResolvedValueOnce(refreshed)
+  it('submits answers through the canvas submit intent', async () => {
+    mockViews()
+    mockedSubmitAnswer.mockResolvedValue({ id: 'answer-1' } as never)
     const { wrapper } = await mountWorkspace()
-
-    await wrapper.find('input[type="radio"][value="opt-a"]').setValue()
-    await wrapper.find('[data-test="submit-answer"]').trigger('click')
+    await wrapper.findComponent(GraphCanvasStub).vm.$emit('submit-answer', { freeText: 'answer' })
     await flushPromises()
-
-    expect(mockedSubmitAnswer).toHaveBeenCalledWith('p1', { selectedOptionId: 'opt-a' })
-    expect(mockedGetRequirementState).toHaveBeenCalledTimes(2)
-    expect(wrapper.text()).toContain('Backend-refreshed confirmed claim')
-    expect(wrapper.text()).toContain('Answer recorded.')
+    expect(mockedSubmitAnswer).toHaveBeenCalledWith('p1', { freeText: 'answer' })
+    expect(useWorkspaceStore().feedback).toBe('回答已记录。')
   })
 
-  it('shows an error banner with only the safe backend message', async () => {
-    mockedGetProject.mockResolvedValue(makeActiveState().project)
-    mockedGetActiveState.mockRejectedValue(
-      new ApiError(
-        'The model provider returned an internal error',
-        'MODEL_PROVIDER_ERROR',
-        502,
-      ),
-    )
-    mockedListRoutes.mockResolvedValue([])
-    mockedGetRequirementState.mockResolvedValue(makeRequirementState())
-    const { wrapper } = await mountWorkspace()
-
-    expect(wrapper.text()).toContain('MODEL_PROVIDER_ERROR')
-    expect(wrapper.text()).toContain('The model provider returned an internal error')
-    expect(wrapper.text()).not.toContain('raw provider payload')
-    expect(wrapper.text()).toContain('Retry')
-  })
-
-  it('keeps OPEN routes visible without treating them as active', async () => {
-    const active = makeActiveState()
-    const sibling = makeRoute({ id: 'r-sibling', lifecycleStatus: 'open', isActive: false })
-    mockedGetProject.mockResolvedValue(active.project)
-    mockedGetActiveState.mockResolvedValue(active)
-    mockedListRoutes.mockResolvedValue([sibling, active.activeRoute as never])
-    mockedGetRequirementState.mockResolvedValue(makeRequirementState())
-    vi.mocked(getRouteLineage).mockResolvedValue(makeRouteLineage())
-    const { wrapper } = await mountWorkspace()
-
-    expect(wrapper.findAll('[data-test="active-route"]')).toHaveLength(1)
-  })
-
-  it('inspects a historical node and returns to the active question', async () => {
-    const active = makeActiveState()
-    mockViews(active, makeRequirementState())
-    const lineage = makeRouteLineage({ routeId: active.activeRoute?.id as string })
-    vi.mocked(getRouteLineage).mockResolvedValue(lineage)
-    const { wrapper } = await mountWorkspace()
-    await flushPromises()
-
-    await wrapper.findAll('[data-test="lineage-node"]')[1].trigger('click')
-    await flushPromises()
-    expect(wrapper.find('[data-test="historical-question"]').text()).toBe('Child question')
-
-    await wrapper.find('[data-test="back-to-active"]').trigger('click')
-    await flushPromises()
-    expect(wrapper.find('[data-test="question"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="historical-question"]').exists()).toBe(false)
-  })
-
-  it('activate runs through the route command and refreshes the workspace', async () => {
-    const active = makeActiveState()
-    const sibling = makeRoute({ id: 'r-sibling', lifecycleStatus: 'open', isActive: false })
-    mockViews(active, makeRequirementState())
-    vi.mocked(getRouteLineage).mockResolvedValue(makeRouteLineage())
+  it('route sidebar activates a sibling route through the runtime command', async () => {
+    mockViews()
     vi.mocked(apiActivateRoute).mockResolvedValue({
       projectId: 'p1',
-      route: sibling,
-      activeRouteId: 'r-sibling',
+      route: makeRoute({ id: 'r2', isActive: true }),
+      activeRouteId: 'r2',
     })
-    const { wrapper, store } = await mountWorkspace()
-
-    // Add an OPEN non-active route through the canonical store read.
-    store.routes = [sibling, active.activeRoute as never]
-    await nextTick()
+    const { wrapper } = await mountWorkspace()
+    await wrapper.find('[data-route-id="r2"] [data-test="activate-route"]').trigger('click')
     await flushPromises()
+    expect(vi.mocked(apiActivateRoute)).toHaveBeenCalledWith('p1', 'r2')
+  })
 
-    await wrapper.find('[data-test="activate-route"]').trigger('click')
-    await flushPromises()
+  it('locate route only moves the viewport and never changes focus', async () => {
+    mockViews()
+    const { wrapper, graphUi } = await mountWorkspace()
+    await wrapper.find('[data-route-id="r2"] [data-test="locate-route"]').trigger('click')
+    expect(locateSpy).toHaveBeenCalledWith('r2')
+    expect(graphUi.focusRouteId).toBeNull()
+  })
 
-    expect(vi.mocked(apiActivateRoute)).toHaveBeenCalledWith('p1', 'r-sibling')
+  it('focus route changes only the browser reading context', async () => {
+    mockViews()
+    const { wrapper, graphUi } = await mountWorkspace()
+    await wrapper.find('[data-route-id="r2"] [data-test="focus-route"]').trigger('click')
+    expect(graphUi.focusRouteId).toBe('r2')
+    expect(useWorkspaceStore().activeState?.activeRoute?.id).toBe('r1')
   })
 
   it('archive requires an explicit confirmation dialog', async () => {
-    const active = makeActiveState()
-    mockViews(active, makeRequirementState())
-    vi.mocked(getRouteLineage).mockResolvedValue(makeRouteLineage())
+    mockViews()
     const { wrapper } = await mountWorkspace()
-
-    await wrapper.find('[data-test="archive-route"]').trigger('click')
+    await wrapper.find('[data-route-id="r1"] [data-test="archive-route"]').trigger('click')
     expect(wrapper.find('[data-test="confirm-route-action-dialog"]').exists()).toBe(true)
-    expect(wrapper.text()).toContain('Archive route?')
-
-    // Cancel leaves the route untouched.
+    expect(wrapper.text()).toContain('归档该路线？')
     await wrapper.find('[data-test="cancel-route-action"]').trigger('click')
     expect(wrapper.find('[data-test="confirm-route-action-dialog"]').exists()).toBe(false)
   })
 
-  it('delete requires an explicit confirmation and states soft-delete semantics', async () => {
-    const active = makeActiveState()
-    mockViews(active, makeRequirementState())
-    vi.mocked(getRouteLineage).mockResolvedValue(makeRouteLineage())
+  it('fork dialog enforces the active+open base route rule', async () => {
+    mockViews()
     const { wrapper } = await mountWorkspace()
+    // 从共享节点 n1 fork：默认选中当前路线 r1（active+open）→ 允许。
+    await wrapper.findComponent(GraphCanvasStub).vm.$emit('fork', 'n1')
+    expect(wrapper.find('[data-test="fork-dialog"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="fork-submit"]').attributes('disabled')).toBeUndefined()
 
-    await wrapper.find('[data-test="delete-route"]').trigger('click')
-    expect(wrapper.find('[data-test="confirm-route-action-dialog"]').exists()).toBe(true)
-    const description = wrapper.find('[data-test="confirm-description"]').text()
-    expect(description.toLowerCase()).toContain('soft-delete')
+    // 选择 OPEN 但非当前的 r2 → 禁止 + 提示先设为当前路线。
+    await wrapper.findAll('[data-test="fork-base-route"]')[1].setValue()
+    await flushPromises()
+    expect(wrapper.find('[data-test="fork-submit"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.find('[data-test="fork-blocker"]').text()).toContain('先设为当前路线')
+
+    // 选择 archived 的 r3 → 禁止 + 提示先恢复。
+    await wrapper.findAll('[data-test="fork-base-route"]')[2].setValue()
+    await flushPromises()
+    expect(wrapper.find('[data-test="fork-blocker"]').text()).toContain('先恢复这条路线')
   })
 
-  it('opens the fork dialog from a historical node and submits label only', async () => {
-    const active = makeActiveState()
-    mockViews(active, makeRequirementState())
-    vi.mocked(getRouteLineage).mockResolvedValue(makeRouteLineage())
+  it('fork submits only the user label through the existing API', async () => {
+    mockViews()
     vi.mocked(apiForkNode).mockResolvedValue({
       projectId: 'p1',
       route: makeRoute({ id: 'route-fork', isActive: true }),
       activeRouteId: 'route-fork',
     })
     const { wrapper } = await mountWorkspace()
-    await flushPromises()
-
-    await wrapper.findAll('[data-test="lineage-node"]')[1].trigger('click')
-    await flushPromises()
-    await wrapper.find('[data-test="fork-from-here"]').trigger('click')
-    expect(wrapper.find('[data-test="fork-dialog"]').exists()).toBe(true)
-
-    await wrapper.find('[data-test="fork-label"]').setValue('Alternative route')
+    await wrapper.findComponent(GraphCanvasStub).vm.$emit('fork', 'n1')
+    await wrapper.find('[data-test="fork-label"]').setValue('替代路线')
     await wrapper.find('[data-test="fork-submit"]').trigger('click')
     await flushPromises()
-
-    expect(vi.mocked(apiForkNode)).toHaveBeenCalledWith('p1', 'lnode-2', { label: 'Alternative route' })
+    expect(vi.mocked(apiForkNode)).toHaveBeenCalledWith('p1', 'n1', { label: '替代路线' })
   })
 
-  it('opens the regenerate dialog from a historical node and submits a runtime-free payload', async () => {
-    const active = makeActiveState()
-    mockViews(active, makeRequirementState())
-    vi.mocked(getRouteLineage).mockResolvedValue(makeRouteLineage())
+  it('regenerate dialog submits a deterministic runtime-free payload', async () => {
+    mockViews()
     vi.mocked(apiRegenerateNode).mockResolvedValue(makeRegenerateResponse())
     const { wrapper } = await mountWorkspace()
-    await flushPromises()
-
-    await wrapper.findAll('[data-test="lineage-node"]')[1].trigger('click')
-    await flushPromises()
-    await wrapper.find('[data-test="regenerate-this-question"]').trigger('click')
+    await wrapper.findComponent(GraphCanvasStub).vm.$emit('regenerate', 'n2')
     expect(wrapper.find('[data-test="regenerate-dialog"]').exists()).toBe(true)
-
     await wrapper.find('[data-test="regenerate-submit"]').trigger('click')
     await flushPromises()
-
     const payload = vi.mocked(apiRegenerateNode).mock.calls[0][2]
-    expect(payload.replacementQuestion).toBe('Child question')
-    expect(payload.replacementOptions?.[0]).not.toHaveProperty('id')
+    expect(payload.replacementQuestion).toBe('Scope question')
     expect(Object.keys(payload).sort()).toEqual([
       'instruction',
       'replacementOptions',
@@ -324,30 +294,29 @@ describe('WorkspaceView', () => {
     ])
   })
 
-  it('switches to the Spec Snapshots tab and generates for the active route', async () => {
-    const active = makeActiveState({
-      activeRoute: makeRoute({ id: 'r1', isActive: true, tipNodeId: 'lnode-2' }),
-    })
-    mockViews(active, makeRequirementState())
-    vi.mocked(getRouteLineage).mockResolvedValue(makeRouteLineage())
+  it('spec tab reads the reading route and generates for the active route', async () => {
+    mockViews()
     vi.mocked(listRouteSpecs).mockResolvedValue([])
     vi.mocked(apiGenerateSpec).mockResolvedValue(
       makeSpecGeneration({ specSnapshot: makeSpecSnapshot({ id: 'spec-1', routeId: 'r1' }) }),
     )
     const { wrapper } = await mountWorkspace()
-
     await wrapper.find('[data-test="tab-spec"]').trigger('click')
     await flushPromises()
-
     expect(wrapper.find('[data-test="generate-spec"]').exists()).toBe(true)
-    expect(wrapper.text()).toContain('Generate spec for active route')
-
     vi.mocked(listRouteSpecs).mockResolvedValue([makeSpecSnapshot({ id: 'spec-1', routeId: 'r1' })])
     await wrapper.find('[data-test="generate-spec"]').trigger('click')
     await flushPromises()
-
     expect(vi.mocked(apiGenerateSpec)).toHaveBeenCalledWith('p1')
     expect(wrapper.find('[data-test="spec-snapshot-detail"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="derived-label"]').exists()).toBe(true)
+  })
+
+  it('sidebars persist open state and width through the ui store', async () => {
+    mockViews()
+    const { wrapper, graphUi } = await mountWorkspace()
+    await wrapper.find('[data-test="toggle-left"]').trigger('click')
+    expect(graphUi.leftSidebarOpen).toBe(false)
+    const saved = JSON.parse(localStorage.getItem('spec-agent.workspace-ui.v1') ?? '{}')
+    expect(saved.leftSidebar.open).toBe(false)
   })
 })

@@ -1,49 +1,88 @@
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import ForkRouteDialog from '@/components/ForkRouteDialog.vue'
-import { makeRouteLineageNode } from '@/test/fixtures'
+import { makeNode } from '@/test/fixtures'
+import type { GraphWorkspaceRouteView } from '@/api/types'
 
-function mountDialog(open = true, pending = false) {
+function routeView(id: string, lifecycleStatus: GraphWorkspaceRouteView['lifecycleStatus'], lineage: string[]): GraphWorkspaceRouteView {
+  return {
+    id,
+    label: 'Route ' + id,
+    lifecycleStatus,
+    isActive: id === 'r1',
+    rootNodeId: lineage[0] ?? null,
+    tipNodeId: lineage[lineage.length - 1] ?? null,
+    createdFromNodeId: null,
+    supersedesRouteId: null,
+    replacementOfNodeId: null,
+    lineageNodeIds: lineage,
+  }
+}
+
+function mountDialog(overrides: Partial<{
+  open: boolean
+  node: ReturnType<typeof makeNode> | null
+  routes: GraphWorkspaceRouteView[]
+  activeRouteId: string | null
+  pending: boolean
+}> = {}) {
   return mount(ForkRouteDialog, {
-    props: { open, node: makeRouteLineageNode({ id: 'lnode-2' }), pending },
+    props: {
+      open: true,
+      node: makeNode({ id: 'n1' }),
+      routes: [
+        routeView('r1', 'open', ['n1', 'n2']),
+        routeView('r2', 'open', ['n1', 'n3']),
+        routeView('r3', 'archived', ['n1', 'n4']),
+      ],
+      activeRouteId: 'r1',
+      pending: false,
+      ...overrides,
+    },
   })
 }
 
 describe('ForkRouteDialog', () => {
-  it('submits only the user label when provided', async () => {
+  it('lists only the routes that contain the node', () => {
     const wrapper = mountDialog()
-    await wrapper.find('[data-test="fork-label"]').setValue('Alternative route')
-    await wrapper.find('[data-test="fork-submit"]').trigger('click')
-
-    expect(wrapper.emitted('submit')).toEqual([['Alternative route']])
+    const bases = wrapper.findAll('[data-test="fork-base-route"]')
+    expect(bases).toHaveLength(3)
   })
 
-  it('submits null label when left empty', async () => {
+  it('allows fork when the selected base route is active and open', async () => {
     const wrapper = mountDialog()
+    // 默认选中 active+open 的 r1
+    expect(wrapper.find('[data-test="fork-submit"]').attributes('disabled')).toBeUndefined()
+    await wrapper.find('[data-test="fork-label"]').setValue('新分支')
     await wrapper.find('[data-test="fork-submit"]').trigger('click')
-
-    expect(wrapper.emitted('submit')).toEqual([[null]])
+    expect(wrapper.emitted('submit')?.[0]).toEqual(['新分支'])
   })
 
-  it('never sends runtime-owned ids with the fork request', async () => {
+  it('blocks open-but-not-active base routes with an explicit prerequisite', async () => {
     const wrapper = mountDialog()
-    await wrapper.find('[data-test="fork-label"]').setValue('Branch A')
+    await wrapper.findAll('[data-test="fork-base-route"]')[1].setValue()
+    expect(wrapper.find('[data-test="fork-submit"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.find('[data-test="fork-blocker"]').text()).toContain('先设为当前路线')
     await wrapper.find('[data-test="fork-submit"]').trigger('click')
-
-    const label = wrapper.emitted('submit')?.[0]?.[0]
-    expect(label).toBe('Branch A')
+    expect(wrapper.emitted('submit')).toBeUndefined()
   })
 
-  it('closes without submitting on cancel', async () => {
+  it('blocks non-open base routes with a restore prerequisite', async () => {
+    const wrapper = mountDialog()
+    await wrapper.findAll('[data-test="fork-base-route"]')[2].setValue()
+    expect(wrapper.find('[data-test="fork-blocker"]').text()).toContain('先恢复这条路线')
+  })
+
+  it('never sends a base route id in the payload', async () => {
+    const wrapper = mountDialog()
+    await wrapper.find('[data-test="fork-submit"]').trigger('click')
+    expect(wrapper.emitted('submit')?.[0]).toEqual([null])
+  })
+
+  it('close emits without submitting', async () => {
     const wrapper = mountDialog()
     await wrapper.find('[data-test="fork-cancel"]').trigger('click')
-    expect(wrapper.emitted('submit')).toBeUndefined()
     expect(wrapper.emitted('close')).toHaveLength(1)
-  })
-
-  it('disables buttons while the fork command is pending', () => {
-    const wrapper = mountDialog(true, true)
-    expect(wrapper.find('[data-test="fork-submit"]').attributes('disabled')).toBeDefined()
-    expect(wrapper.find('[data-test="fork-cancel"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.emitted('submit')).toBeUndefined()
   })
 })

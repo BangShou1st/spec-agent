@@ -2,10 +2,8 @@
 import type { SpecSnapshotResponse } from '@/api/types'
 
 /**
- * Snapshot history list for one route. Snapshots are historical derived
- * artifacts: older snapshots are never removed from the browser when a new one
- * is generated, and the newest is never treated as canonical project state.
- * Presentation order is newest-first (sorted client-side by createdAt).
+ * 单个路线的规格快照历史列表。快照是派生的历史产物：新生成不会移除旧
+ * 快照，最新快照也不会被当作项目权威状态。按创建时间倒序展示。
  */
 defineProps<{
   snapshots: SpecSnapshotResponse[]
@@ -28,7 +26,7 @@ function formatTime(iso: string): string {
 <template>
   <div>
     <p v-if="snapshots.length === 0" class="muted" data-test="specs-empty">
-      No spec snapshots for this route yet.
+      该路线还没有规格快照。
     </p>
     <ul v-else class="snapshot-list" data-test="spec-snapshot-list">
       <li
@@ -40,11 +38,11 @@ function formatTime(iso: string): string {
         @click="emit('select', snapshot.id)"
       >
         <div class="snapshot-row">
-          <span class="badge badge-open">Derived Spec Snapshot</span>
+          <span class="badge badge-open">派生规格快照</span>
           <span class="meta-text">{{ formatTime(snapshot.createdAt) }}</span>
         </div>
         <div class="meta-text">
-          {{ snapshot.sections.length }} section(s) · {{ snapshot.sourceRefs.length }} source ref(s)
+          {{ snapshot.sections.length }} 个章节 · {{ snapshot.sourceRefs.length }} 个来源引用
         </div>
       </li>
     </ul>

@@ -1,35 +1,82 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import ApiErrorBanner from '@/components/ApiErrorBanner.vue'
-import ClarificationPanel from '@/components/ClarificationPanel.vue'
 import ConfirmRouteActionDialog from '@/components/ConfirmRouteActionDialog.vue'
 import ForkRouteDialog from '@/components/ForkRouteDialog.vue'
-import HistoricalNodePanel from '@/components/HistoricalNodePanel.vue'
 import RegenerateNodeDialog from '@/components/RegenerateNodeDialog.vue'
-import RouteWorkspacePanel from '@/components/RouteWorkspacePanel.vue'
-import WorkspaceRightPanel from '@/components/WorkspaceRightPanel.vue'
+import GraphCanvas from '@/components/graph/GraphCanvas.vue'
+import ResizableSidebar from '@/components/workspace/ResizableSidebar.vue'
+import RouteSidebar from '@/components/workspace/RouteSidebar.vue'
+import WorkspaceInspector from '@/components/workspace/WorkspaceInspector.vue'
+import { projectGraph, type SpecAgentGraphNodeData } from '@/graph/graphProjection'
+import { LEFT_SIDEBAR_RANGE, RIGHT_SIDEBAR_RANGE } from '@/graph/graphLayoutStorage'
+import { useGraphUiStore } from '@/stores/graphUiStore'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
 import type { RegenerateNodeRequest, SubmitAnswerRequest } from '@/api/types'
 
 /**
- * Workspace page. Left: route workspace (routes + historical node lineages +
- * lifecycle actions). Center: the active clarification workflow, or the
- * historical node inspector when a historical node is selected. Right:
- * requirement state / spec snapshots tabs. Route mutations go through the
- * store, which always refreshes canonical backend reads afterwards.
+ * Graph-first workspace shell (Phase 7.3).
+ *
+ * Layout: resizable route sidebar | GraphCanvas | resizable inspector.
+ * Runtime commands go through workspaceStore (Active-route only); Focus/
+ * Dim/Hide/positions/sidebars live in graphUiStore (browser-only).
+ * `readingRouteId = focus ?? active` drives the inspector reads.
  */
 const props = defineProps<{ projectId: string }>()
 
 const store = useWorkspaceStore()
+const graphUi = useGraphUiStore()
+const canvasRef = ref<InstanceType<typeof GraphCanvas> | null>(null)
 
 const forkDialogOpen = ref(false)
 const regenerateDialogOpen = ref(false)
 const confirmAction = ref<'archive' | 'delete' | null>(null)
 const confirmRouteId = ref<string | null>(null)
+const forkNodeId = ref<string | null>(null)
+const regenerateNodeId = ref<string | null>(null)
 
 onMounted(() => {
+  graphUi.initProject(props.projectId)
   void store.loadWorkspace(props.projectId)
 })
+
+// 每次 canonical 刷新后，浏览器视图状态与后端 graph 对齐。
+watch(
+  () => store.graphView,
+  (view) => {
+    graphUi.reconcile(view)
+  },
+)
+
+const selectedNodeData = computed<SpecAgentGraphNodeData | null>(() => {
+  if (!store.graphView || !graphUi.primarySelectedNodeId) {
+    return null
+  }
+  const projection = projectGraph({
+    view: store.graphView,
+    activeNodeId: store.activeState?.activeNode?.id ?? null,
+    uiState: {
+      focusRouteId: graphUi.focusRouteId,
+      lifecycleFilters: graphUi.lifecycleFilters,
+      routeDisplayStates: graphUi.routeDisplayStates,
+      expandedNodeIds: graphUi.expandedNodeIds,
+    },
+    savedPositions: graphUi.nodePositions,
+  })
+  return projection.nodes.find((node) => node.id === graphUi.primarySelectedNodeId)?.data ?? null
+})
+
+const forkNodeData = computed(() =>
+  forkNodeId.value
+    ? store.graphView?.nodes.find((node) => node.id === forkNodeId.value) ?? null
+    : null,
+)
+
+const regenerateNodeData = computed(() =>
+  regenerateNodeId.value
+    ? store.graphView?.nodes.find((node) => node.id === regenerateNodeId.value) ?? null
+    : null,
+)
 
 async function retry(): Promise<void> {
   await store.loadWorkspace(props.projectId)
@@ -43,20 +90,40 @@ async function handleAnswer(payload: SubmitAnswerRequest): Promise<void> {
   await store.submitAnswer(payload)
 }
 
-function handleSelectRoute(routeId: string | null): void {
-  store.selectRoute(routeId)
+function handleFork(nodeId: string): void {
+  forkNodeId.value = nodeId
+  forkDialogOpen.value = true
 }
 
-function handleSelectNode(nodeId: string): void {
-  store.selectHistoricalNode(nodeId)
+function handleRegenerate(nodeId: string): void {
+  regenerateNodeId.value = nodeId
+  regenerateDialogOpen.value = true
 }
 
-async function handleActivate(routeId: string): Promise<void> {
-  await store.activateRoute(routeId)
+async function handleForkSubmit(label: string | null): Promise<void> {
+  if (!forkNodeId.value) {
+    return
+  }
+  const ok = await store.forkNode(forkNodeId.value, label)
+  forkDialogOpen.value = false
+  if (ok) {
+    forkNodeId.value = null
+  }
 }
 
-async function handleRestore(routeId: string): Promise<void> {
-  await store.restoreRoute(routeId)
+async function handleRegenerateSubmit(payload: RegenerateNodeRequest): Promise<void> {
+  if (!regenerateNodeId.value) {
+    return
+  }
+  const ok = await store.regenerateNode(regenerateNodeId.value, payload)
+  regenerateDialogOpen.value = false
+  if (ok) {
+    regenerateNodeId.value = null
+  }
+}
+
+function handleLocateRoute(routeId: string): void {
+  void canvasRef.value?.locateRoute(routeId)
 }
 
 function openConfirm(kind: 'archive' | 'delete', routeId: string): void {
@@ -74,101 +141,91 @@ async function confirmDestructive(): Promise<void> {
   if (ok) {
     confirmAction.value = null
     confirmRouteId.value = null
-  } else {
-    // Keep the dialog open so the user sees the safe backend error banner.
-    confirmAction.value = null
-    confirmRouteId.value = null
-  }
-}
-
-async function handleForkSubmit(label: string | null): Promise<void> {
-  const nodeId = store.selectedNodeId
-  if (!nodeId) {
-    return
-  }
-  const ok = await store.forkNode(nodeId, label)
-  forkDialogOpen.value = false
-  if (!ok) {
-    return
-  }
-}
-
-async function handleRegenerateSubmit(payload: RegenerateNodeRequest): Promise<void> {
-  const nodeId = store.selectedNodeId
-  if (!nodeId) {
-    return
-  }
-  const ok = await store.regenerateNode(nodeId, payload)
-  regenerateDialogOpen.value = false
-  if (!ok) {
-    return
   }
 }
 </script>
 
 <template>
-  <div>
-    <h1 style="margin-top: 0">{{ store.project?.title ?? 'Workspace' }}</h1>
+  <div class="workspace-shell" data-test="workspace-shell">
+    <header class="workspace-shell__header">
+      <h1 class="workspace-shell__title">{{ store.project?.title ?? '工作区' }}</h1>
+    </header>
 
     <ApiErrorBanner
       v-if="store.error"
       :message="store.error.message"
       :code="store.error.code"
-      retry-label="Retry"
+      retry-label="重试"
       :retrying="store.loading"
       @retry="retry"
     />
 
-    <p v-if="store.loading" class="muted">Loading workspace…</p>
+    <p v-if="store.loading" class="muted workspace-shell__loading">正在加载工作区…</p>
 
-    <div v-else class="workspace-layout">
-      <RouteWorkspacePanel
-        :project-title="store.project?.title ?? null"
-        :routes="store.routes"
-        :selected-route-id="store.selectedRouteId"
-        :selected-node-id="store.selectedNodeId"
-        :command-pending="store.routeCommandPending"
-        :pending-route-command="store.pendingRouteCommand"
-        @select-route="handleSelectRoute"
-        @select-node="handleSelectNode"
-        @activate="handleActivate"
-        @restore="handleRestore"
-        @archive="openConfirm('archive', $event)"
-        @delete="openConfirm('delete', $event)"
-      />
+    <div v-else class="workspace-shell__body">
+      <ResizableSidebar
+        side="left"
+        :open="graphUi.leftSidebarOpen"
+        :width="graphUi.leftSidebarWidth"
+        :min-width="LEFT_SIDEBAR_RANGE.min"
+        :max-width="LEFT_SIDEBAR_RANGE.max"
+        @update:open="graphUi.setLeftSidebar({ open: $event, width: graphUi.leftSidebarWidth })"
+        @update:width="graphUi.setLeftSidebar({ open: graphUi.leftSidebarOpen, width: $event })"
+      >
+        <RouteSidebar
+          :routes="store.graphView?.routes ?? []"
+          :active-route-id="store.activeRoute?.id ?? null"
+          :command-pending="store.routeCommandPending"
+          :pending-route-command="store.pendingRouteCommand"
+          @locate-route="handleLocateRoute"
+          @activate="store.activateRoute($event)"
+          @restore="store.restoreRoute($event)"
+          @archive="openConfirm('archive', $event)"
+          @delete="openConfirm('delete', $event)"
+        />
+      </ResizableSidebar>
 
-      <HistoricalNodePanel
-        v-if="store.selectedHistoricalNode && store.selectedRoute"
-        :node="store.selectedHistoricalNode"
-        :route="store.selectedRoute"
-        :is-tip="store.selectedHistoricalNode.id === store.selectedLineage?.tipNodeId"
-        :command-pending="store.routeCommandPending"
-        :pending-route-command="store.pendingRouteCommand"
-        :is-active-route="(store.selectedRoute?.id ?? null) === (store.activeRoute?.id ?? null)"
-        @back-to-active="store.clearHistoricalSelection()"
-        @fork="forkDialogOpen = true"
-        @regenerate="regenerateDialogOpen = true"
-      />
-
-      <ClarificationPanel
-        v-else
-        :active-route="store.activeState?.activeRoute ?? null"
-        :active-node="store.activeState?.activeNode ?? null"
-        :drafting="store.drafting"
+      <GraphCanvas
+        ref="canvasRef"
+        class="workspace-shell__canvas"
+        :view="store.graphView"
+        :active-node-id="store.activeState?.activeNode?.id ?? null"
         :submitting="store.submitting"
-        :feedback="store.feedback"
+        :drafting="store.drafting"
+        :pending="store.routeCommandPending"
         @draft="handleDraft"
-        @answer="handleAnswer"
+        @submit-answer="handleAnswer"
+        @fork="handleFork"
+        @regenerate="handleRegenerate"
       />
 
-      <WorkspaceRightPanel :requirement-state="store.requirementState" />
+      <ResizableSidebar
+        side="right"
+        :open="graphUi.rightSidebarOpen"
+        :width="graphUi.rightSidebarWidth"
+        :min-width="RIGHT_SIDEBAR_RANGE.min"
+        :max-width="RIGHT_SIDEBAR_RANGE.max"
+        @update:open="graphUi.setRightSidebar({ open: $event, width: graphUi.rightSidebarWidth })"
+        @update:width="graphUi.setRightSidebar({ open: graphUi.rightSidebarOpen, width: $event })"
+      >
+        <WorkspaceInspector
+          :node-data="selectedNodeData"
+          @fork="handleFork"
+          @regenerate="handleRegenerate"
+        />
+      </ResizableSidebar>
     </div>
 
-    <p v-if="store.refreshing" class="muted" data-test="refreshing">Refreshing workspace…</p>
+    <p v-if="store.refreshing" class="muted workspace-shell__refreshing" data-test="refreshing">
+      正在刷新工作区…
+    </p>
+    <p v-if="store.feedback" class="feedback-line" data-test="feedback">{{ store.feedback }}</p>
 
     <ForkRouteDialog
       :open="forkDialogOpen"
-      :node="store.selectedHistoricalNode"
+      :node="forkNodeData"
+      :routes="store.graphView?.routes ?? []"
+      :active-route-id="store.activeRoute?.id ?? null"
       :pending="store.pendingRouteCommand === 'fork'"
       @close="forkDialogOpen = false"
       @submit="handleForkSubmit"
@@ -176,7 +233,7 @@ async function handleRegenerateSubmit(payload: RegenerateNodeRequest): Promise<v
 
     <RegenerateNodeDialog
       :open="regenerateDialogOpen"
-      :node="store.selectedHistoricalNode"
+      :node="regenerateNodeData"
       :pending="store.pendingRouteCommand === 'regenerate'"
       @close="regenerateDialogOpen = false"
       @submit="handleRegenerateSubmit"
@@ -185,7 +242,7 @@ async function handleRegenerateSubmit(payload: RegenerateNodeRequest): Promise<v
     <ConfirmRouteActionDialog
       :open="confirmAction !== null && confirmRouteId !== null"
       :kind="confirmAction ?? 'archive'"
-      :route-label="store.selectedRoute?.label ?? (confirmRouteId ? store.routes.find(r => r.id === confirmRouteId)?.label ?? null : null)"
+      :route-label="confirmRouteId ? store.graphView?.routes.find((r) => r.id === confirmRouteId)?.label ?? null : null"
       :pending="store.routeCommandPending"
       @cancel="confirmAction = null; confirmRouteId = null"
       @confirm="confirmDestructive"

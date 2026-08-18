@@ -3,6 +3,12 @@ import { mount } from '@vue/test-utils'
 import RequirementStatePanel from '@/components/RequirementStatePanel.vue'
 import { makeRequirementState } from '@/test/fixtures'
 
+function mountPanel(state: ReturnType<typeof makeRequirementState> | null) {
+  return mount(RequirementStatePanel, {
+    props: { requirementState: state, routeId: state?.routeId ?? null, loading: false },
+  })
+}
+
 describe('RequirementStatePanel', () => {
   it('groups claims into backend-status sections', () => {
     const state = makeRequirementState({
@@ -48,12 +54,12 @@ describe('RequirementStatePanel', () => {
         },
       ],
     })
-    const wrapper = mount(RequirementStatePanel, { props: { requirementState: state } })
+    const wrapper = mountPanel(state)
 
-    expect(wrapper.text()).toContain('Confirmed')
-    expect(wrapper.text()).toContain('Assumptions')
-    expect(wrapper.text()).toContain('Unresolved')
-    expect(wrapper.text()).toContain('Rejected')
+    expect(wrapper.text()).toContain('已确认')
+    expect(wrapper.text()).toContain('假定')
+    expect(wrapper.text()).toContain('未解决')
+    expect(wrapper.text()).toContain('已拒绝')
 
     const confirmedGroup = wrapper.find('[data-test="claim-group-confirmed"]')
     expect(confirmedGroup.text()).toContain('Confirmed goal claim')
@@ -72,23 +78,21 @@ describe('RequirementStatePanel', () => {
   })
 
   it('shows route id and claim source ids as metadata', () => {
-    const wrapper = mount(RequirementStatePanel, {
-      props: { requirementState: makeRequirementState({ routeId: 'route-42' }) },
-    })
+    const wrapper = mountPanel(makeRequirementState({ routeId: 'route-42' }))
     expect(wrapper.text()).toContain('route-42')
     expect(wrapper.text()).toContain('node-1')
     expect(wrapper.text()).toContain('answer-1')
   })
 
   it('renders a friendly placeholder for empty groups', () => {
-    const wrapper = mount(RequirementStatePanel, {
-      props: { requirementState: makeRequirementState({ confirmed: [], assumed: [], unresolved: [], rejected: [] }) },
-    })
-    expect(wrapper.findAll('.muted').some((el) => el.text() === 'None.')).toBe(true)
+    const wrapper = mountPanel(
+      makeRequirementState({ confirmed: [], assumed: [], unresolved: [], rejected: [] }),
+    )
+    expect(wrapper.findAll('.muted').some((el) => el.text() === '无。')).toBe(true)
   })
 
   it('shows a not-loaded placeholder before the endpoint returns', () => {
-    const wrapper = mount(RequirementStatePanel, { props: { requirementState: null } })
-    expect(wrapper.text()).toContain('Requirement state is not loaded yet.')
+    const wrapper = mountPanel(null)
+    expect(wrapper.text()).toContain('暂无需求状态。')
   })
 })

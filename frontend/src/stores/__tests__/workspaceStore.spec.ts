@@ -152,7 +152,7 @@ describe('workspaceStore', () => {
     expect(mockedDraftNextQuestion).toHaveBeenCalledWith('p1')
     expect(mockedGetActiveState.mock.calls.length).toBe(readCallsBefore + 1)
     expect(store.activeState?.activeNode?.question).toBe('First drafted question')
-    expect(store.feedback).toBe('Question drafted.')
+    expect(store.feedback).toBe('问题已起草。')
   })
 
   it('submits an option-only answer payload exactly as selected', async () => {
@@ -265,7 +265,7 @@ describe('workspaceStore', () => {
     expect(mockedGetRequirementState).toHaveBeenCalledTimes(2)
     expect(store.requirementState?.confirmed[0].text).toBe('Backend-derived confirmed claim')
     expect(store.activeState?.activeNode?.question).toBe('Drafted next question')
-    expect(store.feedback).toBe('Answer recorded.')
+    expect(store.feedback).toBe('回答已记录。')
   })
 
   it('surfaces a provider-neutral rate-limit error safely', async () => {

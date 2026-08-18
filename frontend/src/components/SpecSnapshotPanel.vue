@@ -1,45 +1,43 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed } from 'vue'
 import type { SpecSnapshotResponse } from '@/api/types'
-import { useWorkspaceStore } from '@/stores/workspaceStore'
 import SpecSnapshotList from './SpecSnapshotList.vue'
 
 /**
- * "Spec Snapshots" tab. Snapshots always belong to a SELECTED route (which may
- * differ from the active route). Generation targets the project's ACTIVE route
- * only and is disabled without a valid active route/tip. A snapshot is always
- * labeled as a derived artifact — never source of truth — and its content is
- * rendered faithfully (sections, unresolved items, source references) with
- * subdued provenance metadata.
+ * 规格快照标签页。快照始终属于读取路线（readingRouteId，可能与当前路线
+ * 不同）。生成始终针对后端当前路线（Active）并明确提示。快照永远标注为
+ * 派生产物——不是权威来源。
  */
-const store = useWorkspaceStore()
+const props = defineProps<{
+  routeId: string | null
+  activeRouteId: string | null
+  snapshots: SpecSnapshotResponse[]
+  selectedSpecId: string | null
+  generating: boolean
+  commandPending: boolean
+}>()
+
+const emit = defineEmits<{
+  'generate-spec': []
+  select: [snapshotId: string]
+}>()
 
 const canGenerate = computed<boolean>(() => {
-  const activeRoute = store.activeRoute
-  return !store.generatingSpec && !store.routeCommandPending
-    && activeRoute !== null
-    && activeRoute.tipNodeId !== null
+  return !props.generating && !props.commandPending && props.activeRouteId !== null
 })
+
+const readingIsActive = computed<boolean>(() => props.routeId === props.activeRouteId)
 
 const selectedSpec = computed<SpecSnapshotResponse | null>(() => {
-  if (store.selectedSpec) {
-    return store.selectedSpec
+  if (props.selectedSpecId) {
+    return props.snapshots.find((snapshot) => snapshot.id === props.selectedSpecId) ?? null
   }
-  // Presentation default: newest-first, without promoting it to canonical
-  // project state.
-  return [...store.selectedSpecs].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] ?? null
+  return [...props.snapshots].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] ?? null
 })
 
-// Reload the selected route's snapshot list whenever the selection changes.
-watch(
-  () => store.selectedRouteId,
-  (routeId) => {
-    if (routeId) {
-      void store.loadRouteSpecs(routeId)
-    }
-  },
-  { immediate: true },
-)
+function shortId(id: string): string {
+  return id.slice(0, 8)
+}
 
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleString()
@@ -51,57 +49,56 @@ function truncated(value: string | null): string {
 </script>
 
 <template>
-  <div>
+  <div class="spec-snapshot-panel" data-test="spec-panel">
     <div class="spec-generate-row">
       <button
         class="btn btn-primary"
         type="button"
         data-test="generate-spec"
         :disabled="!canGenerate"
-        @click="store.generateSpec()"
+        @click="emit('generate-spec')"
       >
-        {{ store.generatingSpec ? 'Generating spec…' : 'Generate spec for active route' }}
+        {{ generating ? '正在生成…' : '为当前路线生成规格' }}
       </button>
-      <span v-if="store.generatingSpec" class="muted" style="font-size: 12px">
-        Generating spec…
-      </span>
+      <p v-if="generating" class="muted" style="font-size: 12px; margin: 0">正在生成…</p>
     </div>
-    <p v-if="!store.activeRoute" class="muted info-line" data-test="generate-spec-hint">
-      No active route — generate is disabled.
+    <p v-if="!activeRouteId" class="muted info-line" data-test="generate-spec-hint">
+      没有当前路线——无法生成规格。
+    </p>
+    <p v-else class="muted info-line" data-test="active-route-target">
+      当前路线：{{ shortId(activeRouteId) }}
     </p>
     <p
-      v-else-if="store.activeRoute.tipNodeId === null && !store.generatingSpec"
-      class="muted info-line"
-      data-test="generate-spec-hint"
+      v-if="!readingIsActive && routeId"
+      class="info-line generate-warning"
+      data-test="generate-focus-warning"
     >
-      The active route has no tip node yet — draft a question before generating.
+      你目前正在查看 {{ shortId(routeId) }}，生成操作将针对当前路线 {{ shortId(activeRouteId ?? '') }}。
     </p>
 
     <div class="meta-text" style="margin-top: 8px">
-      Snapshots for route:
-      {{ store.selectedRouteId ? store.selectedRouteId.slice(0, 8) : '—' }}
+      读取路线：{{ routeId ? shortId(routeId) : '—' }} 的规格快照
     </div>
 
     <SpecSnapshotList
-      :snapshots="store.selectedSpecs"
-      :selected-id="store.selectedSpecId"
-      @select="store.selectSpec($event)"
+      :snapshots="snapshots"
+      :selected-id="selectedSpecId"
+      @select="emit('select', $event)"
     />
 
     <div v-if="selectedSpec" class="snapshot-detail" data-test="spec-snapshot-detail">
       <div class="detail-head">
-        <h3 style="margin: 0 0 4px">Derived Spec Snapshot</h3>
-        <span class="badge badge-open" data-test="derived-label">derived — not source of truth</span>
-        <span class="meta-text">created {{ formatTime(selectedSpec.createdAt) }}</span>
+        <h3 style="margin: 0 0 4px">派生规格快照</h3>
+        <span class="badge badge-open" data-test="derived-label">派生产物——不是权威来源</span>
+        <span class="meta-text">创建于 {{ formatTime(selectedSpec.createdAt) }}</span>
       </div>
 
       <div class="provenance" data-test="spec-provenance">
-        <div class="meta-text">snapshot: {{ selectedSpec.id }}</div>
-        <div class="meta-text">route: {{ selectedSpec.routeId }}</div>
-        <div class="meta-text">tip node: {{ truncated(selectedSpec.tipNodeId) }}</div>
-        <div class="meta-text">format: {{ selectedSpec.format }}</div>
-        <div class="meta-text">createdByRunId: {{ truncated(selectedSpec.createdByRunId) }}</div>
-        <div class="meta-text">contextSnapshotId: {{ truncated(selectedSpec.contextSnapshotId) }}</div>
+        <div class="meta-text">快照：{{ selectedSpec.id }}</div>
+        <div class="meta-text">路线：{{ selectedSpec.routeId }}</div>
+        <div class="meta-text">tip node：{{ truncated(selectedSpec.tipNodeId) }}</div>
+        <div class="meta-text">格式：{{ selectedSpec.format }}</div>
+        <div class="meta-text">createdByRunId：{{ truncated(selectedSpec.createdByRunId) }}</div>
       </div>
 
       <section v-for="section in selectedSpec.sections" :key="section.id" class="spec-section" data-test="spec-section">
@@ -110,7 +107,7 @@ function truncated(value: string | null): string {
       </section>
 
       <section v-if="selectedSpec.unresolvedItems.length > 0" class="spec-section">
-        <h4 style="margin: 0 0 4px">Unresolved items</h4>
+        <h4 style="margin: 0 0 4px">未解决项</h4>
         <ul style="margin: 0; padding-left: 18px">
           <li v-for="(item, index) in selectedSpec.unresolvedItems" :key="index" data-test="unresolved-item">
             {{ item.text }}
@@ -119,7 +116,7 @@ function truncated(value: string | null): string {
       </section>
 
       <section v-if="selectedSpec.sourceRefs.length > 0" class="spec-section">
-        <h4 style="margin: 0 0 4px">Source references</h4>
+        <h4 style="margin: 0 0 4px">来源引用</h4>
         <ul style="margin: 0; padding-left: 18px">
           <li v-for="(ref, index) in selectedSpec.sourceRefs" :key="index" data-test="source-reference">
             {{ ref.kind }}:{{ ref.refId }}
@@ -128,8 +125,8 @@ function truncated(value: string | null): string {
       </section>
     </div>
 
-    <p v-else-if="store.selectedSpecs.length > 0" class="muted info-line">
-      Select a snapshot to inspect it.
+    <p v-else-if="snapshots.length > 0" class="muted info-line">
+      选择一条快照进行查看。
     </p>
   </div>
 </template>
@@ -145,6 +142,10 @@ function truncated(value: string | null): string {
 .info-line {
   margin: 6px 0 0;
   font-size: 12px;
+}
+
+.generate-warning {
+  color: var(--color-warn);
 }
 
 .snapshot-detail {

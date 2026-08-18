@@ -1,9 +1,7 @@
 <script setup lang="ts">
 /**
- * Confirmation dialog for destructive route actions (archive, soft-delete).
- * The delete copy states clearly that this is a SOFT delete: historical
- * runtime records are preserved and shared nodes/answers are never physically
- * deleted.
+ * 破坏性路线操作（归档、软删除）确认对话框。删除文案明确说明这是软删除：
+ * 历史运行记录被保留，共享节点/回答永远不会被物理删除。
  */
 const props = defineProps<{
   open: boolean
@@ -17,12 +15,12 @@ const emit = defineEmits<{
   confirm: []
 }>()
 
-const title = (): string => (props.kind === 'archive' ? 'Archive route?' : 'Delete route?')
+const title = (): string => (props.kind === 'archive' ? '归档该路线？' : '删除该路线？')
 
 const description = (): string =>
   props.kind === 'archive'
-    ? 'This archives the route. If it is the active route, the project will have no active route afterwards. Archived routes stay inspectable and can be restored later.'
-    : 'This is a soft-delete of this route. Historical runtime records are preserved: nodes, answers, patches, and spec snapshots are not physically deleted, and the route remains inspectable and recoverable.'
+    ? '归档该路线。如果它是当前路线，之后项目将没有当前路线。归档路线仍可查看，之后可以恢复。'
+    : '这是对该路线的软删除。历史运行记录会被保留：节点、回答、补丁和规格快照不会被物理删除，路线仍可查看并可恢复。'
 </script>
 
 <template>
@@ -30,7 +28,7 @@ const description = (): string =>
     <div class="dialog" role="dialog" aria-modal="true" :aria-label="title()">
       <h3 style="margin-top: 0">{{ title() }}</h3>
       <p style="margin-top: 0">
-        <strong>{{ routeLabel ?? 'Route' }}</strong>
+        <strong>{{ routeLabel ?? '路线' }}</strong>
       </p>
       <p class="secondary" data-test="confirm-description">{{ description() }}</p>
       <div style="display: flex; gap: 8px">
@@ -41,10 +39,10 @@ const description = (): string =>
           :disabled="pending"
           @click="emit('confirm')"
         >
-          {{ pending ? 'Working…' : kind === 'archive' ? 'Archive route' : 'Delete route' }}
+          {{ pending ? '正在处理…' : kind === 'archive' ? '归档路线' : '删除路线' }}
         </button>
         <button class="btn" type="button" data-test="cancel-route-action" :disabled="pending" @click="emit('cancel')">
-          Cancel
+          取消
         </button>
       </div>
     </div>

@@ -2,11 +2,9 @@
 import type { RouteResponse } from '@/api/types'
 
 /**
- * Lifecycle-appropriate route actions. The UI hides clearly invalid actions
- * for UX but the backend remains authoritative — a 400/409 response is
- * displayed through the typed API error boundary, never reconstructed
- * locally. `active` is never a lifecycle status; the Active indicator stays
- * separate from lifecycle badges.
+ * 按生命周期显示路线操作。UI 仅为 UX 隐藏明显无效的操作，后端仍是权威
+ * ——400/409 响应通过类型化 API 错误边界展示，前端从不本地重建。
+ * `active` 不是生命周期状态；当前路线指示与生命周期徽章分离。
  */
 const props = defineProps<{
   route: RouteResponse
@@ -36,7 +34,7 @@ const isDeleted = (): boolean => props.route.lifecycleStatus === 'deleted'
       :disabled="disabled"
       @click="emit('activate', route.id)"
     >
-      Activate
+      设为当前路线
     </button>
 
     <button
@@ -47,7 +45,7 @@ const isDeleted = (): boolean => props.route.lifecycleStatus === 'deleted'
       :disabled="disabled"
       @click="emit('restore', route.id)"
     >
-      Restore
+      恢复
     </button>
 
     <button
@@ -58,7 +56,7 @@ const isDeleted = (): boolean => props.route.lifecycleStatus === 'deleted'
       :disabled="disabled"
       @click="emit('archive', route.id)"
     >
-      Archive
+      归档
     </button>
 
     <button
@@ -69,7 +67,7 @@ const isDeleted = (): boolean => props.route.lifecycleStatus === 'deleted'
       :disabled="disabled"
       @click="emit('delete', route.id)"
     >
-      Delete
+      删除路线
     </button>
   </div>
 </template>

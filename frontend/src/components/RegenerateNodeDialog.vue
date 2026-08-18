@@ -1,19 +1,15 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import type { RegenerateNodeRequest, RouteLineageNodeView } from '@/api/types'
+import type { GraphWorkspaceNodeView, RegenerateNodeRequest } from '@/api/types'
 
 /**
- * Deterministic regenerate dialog. On open it prefills replacementQuestion,
- * replacementPurpose, and replacement option labels/impacts from the selected
- * historical node — only user-controlled CONTENT is copied. Existing option
- * ids are never copied into the request; the runtime generates new ones.
- * Runtime-owned fields (replacementNodeId, replacementRouteId,
- * contextSnapshotId, supersedes ids, source refs, provenance) are never
- * exposed or sent.
+ * 重新生成这个问题（确定性）对话框。打开时用所选历史节点的内容预填替代
+ * 问题、目的与替代选项 label/impact——只复制用户可控内容。旧选项 id 永远
+ * 不会被复制进请求；运行时生成新 id。不调用任何模型。
  */
 const props = defineProps<{
   open: boolean
-  node: RouteLineageNodeView | null
+  node: GraphWorkspaceNodeView | null
   pending: boolean
 }>()
 
@@ -48,8 +44,10 @@ watch(
   { immediate: true },
 )
 
+const isRootNode = computed<boolean>(() => props.node?.parentNodeId === null)
+
 const questionError = computed<string | null>(() =>
-  question.value.trim().length === 0 ? 'Replacement question must not be blank.' : null,
+  question.value.trim().length === 0 ? '替代问题不能为空。' : null,
 )
 
 const optionErrors = computed<boolean[]>(
@@ -57,7 +55,7 @@ const optionErrors = computed<boolean[]>(
 )
 
 const canSubmit = computed<boolean>(() => {
-  if (props.pending || questionError.value !== null) {
+  if (props.pending || isRootNode.value || questionError.value !== null) {
     return false
   }
   return !optionErrors.value.some(Boolean)
@@ -90,26 +88,29 @@ function submit(): void {
 
 <template>
   <div v-if="open" class="dialog-backdrop" data-test="regenerate-dialog">
-    <div class="dialog" role="dialog" aria-modal="true" aria-label="Regenerate question">
-      <h3 style="margin-top: 0">Regenerate this question</h3>
+    <div class="dialog" role="dialog" aria-modal="true" aria-label="重新生成这个问题">
+      <h3 style="margin-top: 0">重新生成这个问题</h3>
       <p class="muted" style="margin-top: 0">
-        Creates a replacement node and a new active route. The old route becomes
-        superseded. No model is called — content below is deterministic.
+        创建替代节点和新的当前路线。旧路线变为已替代。不调用任何模型——以下内容全部是确定性的。
+      </p>
+
+      <p v-if="isRootNode" class="info-line regenerate-blocker" data-test="regenerate-root-blocker">
+        根问题暂不支持重新生成。
       </p>
 
       <label class="field-label secondary">
-        <span>Instruction (optional, what to change)</span>
+        <span>说明（可选，要改什么）</span>
         <textarea
           v-model="instruction"
           class="answer-input"
           data-test="regenerate-instruction"
           maxlength="2000"
-          placeholder="e.g. Make the scope question narrower"
+          placeholder="例如：把范围问题改得更窄"
         ></textarea>
       </label>
 
       <label class="field-label secondary">
-        <span>Replacement question</span>
+        <span>替代问题</span>
         <textarea
           v-model="question"
           class="answer-input"
@@ -122,7 +123,7 @@ function submit(): void {
       </label>
 
       <label class="field-label secondary">
-        <span>Replacement purpose (optional)</span>
+        <span>替代目的（可选）</span>
         <textarea
           v-model="purpose"
           class="answer-input"
@@ -132,7 +133,7 @@ function submit(): void {
       </label>
 
       <fieldset style="border: 0; padding: 0; margin: 12px 0 0">
-        <legend class="secondary" style="font-size: 13px">Replacement options (optional)</legend>
+        <legend class="secondary" style="font-size: 13px">替代选项（可选）</legend>
         <div
           v-for="(option, index) in options"
           :key="index"
@@ -144,24 +145,24 @@ function submit(): void {
             class="option-input"
             data-test="replacement-option-label"
             maxlength="500"
-            placeholder="Option label"
+            placeholder="选项内容"
           />
           <input
             v-model="option.impact"
             class="option-input"
             data-test="replacement-option-impact"
             maxlength="2000"
-            placeholder="Impact (optional)"
+            placeholder="影响（可选）"
           />
           <button class="btn btn-small" type="button" data-test="replacement-option-remove" @click="removeOption(index)">
-            Remove
+            移除
           </button>
           <span v-if="optionErrors[index]" class="field-error" data-test="replacement-option-error">
-            Label must not be blank.
+            选项内容不能为空。
           </span>
         </div>
         <button class="btn btn-small" type="button" data-test="replacement-option-add" @click="addOption">
-          + Add option
+          + 添加选项
         </button>
       </fieldset>
 
@@ -173,10 +174,10 @@ function submit(): void {
           :disabled="!canSubmit"
           @click="submit"
         >
-          {{ pending ? 'Regenerating…' : 'Regenerate' }}
+          {{ pending ? '正在重新生成…' : '重新生成' }}
         </button>
         <button class="btn" type="button" data-test="regenerate-cancel" :disabled="pending" @click="emit('close')">
-          Cancel
+          取消
         </button>
       </div>
     </div>
@@ -222,6 +223,15 @@ function submit(): void {
   color: var(--color-danger);
   font-size: 12px;
   margin-top: 2px;
+}
+
+.info-line {
+  font-size: 12px;
+}
+
+.regenerate-blocker {
+  color: var(--color-warn);
+  margin: 0 0 6px;
 }
 
 .replacement-option {
