@@ -9,6 +9,7 @@ import {
   makeProject,
   makeRequirementState,
   makeRoute,
+  makeRouteLineage,
 } from '@/test/fixtures'
 import type {
   ActiveProjectStateResponse,
@@ -31,6 +32,21 @@ vi.mock('@/api/requirementState', () => ({
   getRequirementState: vi.fn(),
 }))
 
+vi.mock('@/api/routes', () => ({
+  activateRoute: vi.fn(),
+  archiveRoute: vi.fn(),
+  deleteRoute: vi.fn(),
+  forkNode: vi.fn(),
+  getRouteLineage: vi.fn(),
+  regenerateNode: vi.fn(),
+  restoreRoute: vi.fn(),
+}))
+
+vi.mock('@/api/spec', () => ({
+  generateSpec: vi.fn(),
+  listRouteSpecs: vi.fn(),
+}))
+
 import { getProject } from '@/api/projects'
 import {
   draftNextQuestion,
@@ -39,6 +55,7 @@ import {
   submitAnswer,
 } from '@/api/workspace'
 import { getRequirementState } from '@/api/requirementState'
+import { getRouteLineage } from '@/api/routes'
 
 const mockedGetProject = vi.mocked(getProject)
 const mockedGetActiveState = vi.mocked(getActiveState)
@@ -46,6 +63,7 @@ const mockedListRoutes = vi.mocked(listRoutes)
 const mockedGetRequirementState = vi.mocked(getRequirementState)
 const mockedDraftNextQuestion = vi.mocked(draftNextQuestion)
 const mockedSubmitAnswer = vi.mocked(submitAnswer)
+const mockedGetRouteLineage = vi.mocked(getRouteLineage)
 
 describe('workspaceStore', () => {
   beforeEach(() => {
@@ -58,6 +76,7 @@ describe('workspaceStore', () => {
     mockedGetActiveState.mockResolvedValue(active)
     mockedListRoutes.mockResolvedValue(active.activeRoute ? [active.activeRoute] : [])
     mockedGetRequirementState.mockResolvedValue(state)
+    mockedGetRouteLineage.mockResolvedValue(makeRouteLineage())
   }
 
   it('loads workspace from the four backend reads', async () => {

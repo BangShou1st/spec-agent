@@ -69,6 +69,7 @@ function submit(): void {
         <button
           class="btn btn-primary"
           type="button"
+          data-test="draft-question"
           :disabled="drafting"
           @click="emit('draft')"
         >

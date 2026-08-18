@@ -7,9 +7,18 @@ import type {
   NodeResponse,
   ProjectResponse,
   ProjectSummaryResponse,
+  RegenerateResponse,
   RequirementClaimView,
   RequirementStateView,
+  RouteLineageNodeView,
+  RouteLineageView,
+  RouteMutationResponse,
   RouteResponse,
+  SourceReferenceResponse,
+  SpecGenerationResponse,
+  SpecSectionResponse,
+  SpecSnapshotResponse,
+  UnresolvedItemResponse,
 } from '@/api/types'
 
 /** Test fixtures mirroring the backend API contracts. Ids are opaque strings. */
@@ -114,7 +123,7 @@ export function makeRequirementState(
   }
 }
 
-export function makeAgentRun(): AgentRunResponse {
+export function makeAgentRun(overrides: Partial<AgentRunResponse> = {}): AgentRunResponse {
   return {
     id: nextId('run'),
     projectId: 'project-1',
@@ -130,6 +139,7 @@ export function makeAgentRun(): AgentRunResponse {
     traceSteps: ['created', 'context_built', 'completed'],
     createdAt: '2026-01-01T00:00:00Z',
     completedAt: '2026-01-01T00:00:00Z',
+    ...overrides,
   }
 }
 
@@ -165,6 +175,138 @@ export function makeAnswerExecution(
     answer: makeAnswer(),
     answerPatch: makeAnswerPatch(),
     nextNode: makeNode({ question: 'Next question' }),
+    ...overrides,
+  }
+}
+
+export function makeRouteMutation(
+  overrides: Partial<RouteMutationResponse> = {},
+): RouteMutationResponse {
+  return {
+    projectId: 'project-1',
+    route: makeRoute({ isActive: true }),
+    activeRouteId: 'route-1',
+    ...overrides,
+  }
+}
+
+export function makeRouteLineageNode(
+  overrides: Partial<RouteLineageNodeView> = {},
+): RouteLineageNodeView {
+  return {
+    id: nextId('lnode'),
+    projectId: 'project-1',
+    parentNodeId: null,
+    supersedesNodeId: null,
+    question: 'Historical question',
+    purpose: null,
+    options: [],
+    allowFreeAnswer: true,
+    createdAt: '2026-01-01T00:00:00Z',
+    ...overrides,
+  }
+}
+
+export function makeRouteLineage(
+  overrides: Partial<RouteLineageView> = {},
+): RouteLineageView {
+  return {
+    projectId: 'project-1',
+    routeId: 'route-1',
+    rootNodeId: 'lnode-1',
+    tipNodeId: 'lnode-2',
+    lifecycleStatus: 'open',
+    isActive: true,
+    nodes: [
+      makeRouteLineageNode({ id: 'lnode-1', question: 'Root question' }),
+      makeRouteLineageNode({
+        id: 'lnode-2',
+        parentNodeId: 'lnode-1',
+        question: 'Child question',
+        purpose: 'Child purpose',
+        options: [
+          { id: 'opt-l1', label: 'Small scope', impact: 'Reduces scope' },
+          { id: 'opt-l2', label: 'Large scope', impact: null },
+        ],
+      }),
+    ],
+    ...overrides,
+  }
+}
+
+export function makeRegenerateResponse(
+  overrides: Partial<RegenerateResponse> = {},
+): RegenerateResponse {
+  return {
+    projectId: 'project-1',
+    oldRoute: makeRoute({ id: 'route-old', lifecycleStatus: 'superseded', isActive: false }),
+    replacementRoute: makeRoute({
+      id: 'route-replacement',
+      lifecycleStatus: 'open',
+      isActive: true,
+      label: 'Regenerated route',
+    }),
+    replacementNode: makeNode({ id: 'node-replacement', question: 'Replacement question' }),
+    ...overrides,
+  }
+}
+
+export function makeSpecSection(
+  overrides: Partial<SpecSectionResponse> = {},
+): SpecSectionResponse {
+  return {
+    id: 's1',
+    title: 'Overview',
+    content: 'A section of the derived spec.',
+    ...overrides,
+  }
+}
+
+export function makeUnresolvedItem(
+  overrides: Partial<UnresolvedItemResponse> = {},
+): UnresolvedItemResponse {
+  return {
+    text: 'An unresolved aspect.',
+    category: 'unresolved',
+    ...overrides,
+  }
+}
+
+export function makeSourceReference(
+  overrides: Partial<SourceReferenceResponse> = {},
+): SourceReferenceResponse {
+  return {
+    kind: 'node',
+    refId: 'lnode-1',
+    ...overrides,
+  }
+}
+
+export function makeSpecSnapshot(
+  overrides: Partial<SpecSnapshotResponse> = {},
+): SpecSnapshotResponse {
+  return {
+    id: nextId('spec'),
+    projectId: 'project-1',
+    routeId: 'route-1',
+    tipNodeId: 'lnode-2',
+    contextSnapshotId: 'context-1',
+    format: 'markdown',
+    sections: [makeSpecSection()],
+    unresolvedItems: [makeUnresolvedItem()],
+    sourceRefs: [makeSourceReference()],
+    createdByRunId: 'run-1',
+    createdAt: '2026-01-01T00:00:00Z',
+    ...overrides,
+  }
+}
+
+export function makeSpecGeneration(
+  overrides: Partial<SpecGenerationResponse> = {},
+): SpecGenerationResponse {
+  return {
+    agentRun: makeAgentRun({ triggerType: 'generate_spec' }),
+    specSnapshot: makeSpecSnapshot({ id: 'spec-new' }),
     ...overrides,
   }
 }

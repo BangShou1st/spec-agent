@@ -2,6 +2,7 @@ package com.specagent.api.common;
 
 import com.specagent.agent.ModelContractException;
 import com.specagent.readmodel.requirement.RequirementStateQueryException;
+import com.specagent.readmodel.route.RouteLineageQueryException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -54,6 +55,19 @@ public class ApiExceptionHandler {
             case INVARIANT_VIOLATION -> ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(ApiErrorResponse.of("INTERNAL_INVARIANT_VIOLATION",
                             "The project state failed an internal invariant check"));
+        };
+    }
+
+    @ExceptionHandler(RouteLineageQueryException.class)
+    public ResponseEntity<ApiErrorResponse> handleRouteLineageQuery(RouteLineageQueryException ex) {
+        return switch (ex.reason()) {
+            case PROJECT_NOT_FOUND -> ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(ApiErrorResponse.of("PROJECT_NOT_FOUND", "Project not found"));
+            case ROUTE_NOT_FOUND -> ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(ApiErrorResponse.of("ROUTE_NOT_FOUND", "Route not found"));
+            case INVARIANT_VIOLATION -> ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiErrorResponse.of("INTERNAL_INVARIANT_VIOLATION",
+                            "The route lineage failed an internal invariant check"));
         };
     }
 

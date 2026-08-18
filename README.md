@@ -124,4 +124,12 @@ Read these before implementation:
 
 ## Current Status
 
-Design freeze for the first version. Do not scaffold broad platform features before the runtime, context, route, node, answer, patch, and spec invariants are implemented and tested.
+The first frontend workspace is implemented: a route-oriented requirement
+clarification workspace with the core clarification loop, route history and
+historical node inspection, activate / fork / deterministic regenerate /
+restore / archive / soft-delete controls, backend-derived requirement state,
+and derived spec snapshot generation with history and source references. The
+frontend is a client of the Runtime — history, route lifecycle, active-route
+selection, provenance, and persistence stay owned and authoritative on the
+backend. See `docs/PHASE_7_EXIT_CRITERIA.md` for the Phase 7 closure
+documentation. CI/hardening (Phase 8) has not begun.

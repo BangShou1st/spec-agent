@@ -5,6 +5,8 @@ Status: implemented, tested, committed, pushed (phase open for external review)
 - Accepted baseline: `8e0e66ba9b5c39510a94cae2f2833c6a2ddc8317`
   `fix: enforce regenerate option validation`
 - Phase 7.1 commit: see `git log` (`feat: add frontend clarification workspace`)
+- Phase 7.2 (route workspace + spec closure, the FINAL Phase 7 phase):
+  [`PHASE_7_EXIT_CRITERIA.md`](PHASE_7_EXIT_CRITERIA.md)
 
 ## 1. Scope
 

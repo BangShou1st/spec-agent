@@ -165,3 +165,106 @@ export interface RequirementStateView {
   rejected: RequirementClaimView[]
   builtAt: string
 }
+
+/** Fresh state after a route mutation command. */
+export interface RouteMutationResponse {
+  projectId: string
+  route: RouteResponse
+  activeRouteId: string | null
+}
+
+/** Fork request: only user-controlled label; runtime owns every route id. */
+export interface ForkRouteRequest {
+  label?: string | null
+}
+
+/** A replacement option: only client-owned content, never an option id. */
+export interface ReplacementOptionRequest {
+  label: string
+  impact?: string | null
+}
+
+/** Deterministic regenerate request; runtime-owned ids are never accepted. */
+export interface RegenerateNodeRequest {
+  instruction?: string | null
+  replacementQuestion: string
+  replacementPurpose?: string | null
+  replacementOptions?: ReplacementOptionRequest[] | null
+}
+
+/** Deterministic regenerate result from the runtime. */
+export interface RegenerateResponse {
+  projectId: string
+  oldRoute: RouteResponse
+  replacementRoute: RouteResponse
+  replacementNode: NodeResponse
+}
+
+export interface RouteLineageOptionView {
+  id: string
+  label: string
+  impact: string | null
+}
+
+export interface RouteLineageNodeView {
+  id: string
+  projectId: string
+  parentNodeId: string | null
+  supersedesNodeId: string | null
+  question: string
+  purpose: string | null
+  options: RouteLineageOptionView[]
+  allowFreeAnswer: boolean
+  createdAt: string
+}
+
+/** Backend-derived route lineage read view (root→tip order). */
+export interface RouteLineageView {
+  projectId: string
+  routeId: string
+  rootNodeId: string | null
+  tipNodeId: string | null
+  lifecycleStatus: RouteLifecycleStatus
+  isActive: boolean
+  nodes: RouteLineageNodeView[]
+}
+
+/** Read-only section of a derived spec snapshot. */
+export interface SpecSectionResponse {
+  id: string
+  title: string
+  content: string
+}
+
+/** Read-only unresolved item of a derived spec snapshot. */
+export interface UnresolvedItemResponse {
+  text: string
+  category: string
+}
+
+/** Read-only provenance pointer from a spec claim to a runtime record. */
+export interface SourceReferenceResponse {
+  kind: string
+  refId: string
+}
+
+/** Derived spec snapshot; never source of truth. */
+export interface SpecSnapshotResponse {
+  id: string
+  projectId: string
+  routeId: string
+  tipNodeId: string | null
+  contextSnapshotId: string | null
+  format: string
+  sections: SpecSectionResponse[]
+  unresolvedItems: UnresolvedItemResponse[]
+  sourceRefs: SourceReferenceResponse[]
+  createdByRunId: string | null
+  createdAt: string
+}
+
+/** Result of a spec generation command. */
+export interface SpecGenerationResponse {
+  agentRun: AgentRunResponse
+  specSnapshot: SpecSnapshotResponse
+}
