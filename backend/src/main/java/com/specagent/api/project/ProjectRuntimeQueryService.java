@@ -46,15 +46,23 @@ public class ProjectRuntimeQueryService {
         }
 
         Route activeRoute = routeService.getRoute(project.activeRouteId())
-                .orElseThrow(() -> new IllegalStateException(
-                        "Active route pointer does not resolve: " + project.activeRouteId()));
+                .orElseThrow(() -> ApiException.internal("INTERNAL_INVARIANT_VIOLATION",
+                        "The active route pointer does not resolve"));
+        // Defensive fail-closed guard: under correct runtime invariants the
+        // active pointer always resolves to a route owned by this project. If
+        // it ever does not, neither the foreign route nor its node may be
+        // exposed; the read fails as an internal invariant violation.
+        if (!activeRoute.projectId().equals(project.id())) {
+            throw ApiException.internal("INTERNAL_INVARIANT_VIOLATION",
+                    "The active route does not belong to the project");
+        }
         RouteResponse routeResponse = RouteResponse.from(activeRoute, true);
 
         NodeResponse nodeResponse = null;
         if (activeRoute.tipNodeId() != null) {
             Node tip = nodeService.getNode(activeRoute.tipNodeId())
-                    .orElseThrow(() -> new IllegalStateException(
-                            "Route tip node does not resolve: " + activeRoute.tipNodeId()));
+                    .orElseThrow(() -> ApiException.internal("INTERNAL_INVARIANT_VIOLATION",
+                            "The route tip node does not resolve"));
             nodeResponse = NodeResponse.from(tip);
         }
 

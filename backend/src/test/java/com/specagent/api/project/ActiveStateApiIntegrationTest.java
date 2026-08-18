@@ -3,6 +3,7 @@ package com.specagent.api.project;
 import com.specagent.node.Node;
 import com.specagent.node.NodeService;
 import com.specagent.project.Project;
+import com.specagent.project.ProjectRepository;
 import com.specagent.project.ProjectService;
 import com.specagent.route.Route;
 import com.specagent.route.RouteLifecycleStatus;
@@ -13,6 +14,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
@@ -41,6 +43,8 @@ class ActiveStateApiIntegrationTest {
     private NodeService nodeService;
     @Autowired
     private RouteService routeService;
+    @Autowired
+    private ProjectRepository projectRepository;
 
     @Test
     void newProjectHasActiveInitialRouteAndNullActiveNode() throws Exception {
@@ -99,5 +103,38 @@ class ActiveStateApiIntegrationTest {
         mockMvc.perform(get("/api/v1/projects/{id}/active", java.util.UUID.randomUUID()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("PROJECT_NOT_FOUND"));
+    }
+
+    /**
+     * Defensive fail-closed guard: if {@code Project.activeRouteId} ever
+     * resolves to a route owned by another project (an invariant violation),
+     * the active state read must fail safely and expose neither the foreign
+     * route nor its node.
+     */
+    @Test
+    void crossProjectActivePointerFailsClosedWithoutExposure() throws Exception {
+        Project owner = projectService.createProject("Pointer owner");
+        Project other = projectService.createProject("Pointer other");
+        Node otherNode = nodeService.createRootNode(
+                other.id(), other.activeRouteId(), "Foreign node content", null, List.of(), true);
+
+        // Corrupt the invariant: owner's active pointer -> other's route.
+        projectRepository.updateActiveRoute(owner.id(), other.activeRouteId(), java.time.Instant.now());
+
+        mockMvc.perform(get("/api/v1/projects/{id}/active", owner.id()))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value("INTERNAL_INVARIANT_VIOLATION"))
+                .andExpect(jsonPath("$.message").value("The active route does not belong to the project"))
+                .andExpect(jsonPath("$.project").doesNotExist())
+                .andExpect(jsonPath("$.activeRoute").doesNotExist())
+                .andExpect(jsonPath("$.activeNode").doesNotExist());
+
+        // No foreign record is exposed anywhere in the response.
+        MvcResult result = mockMvc.perform(get("/api/v1/projects/{id}/active", owner.id()))
+                .andExpect(status().isInternalServerError())
+                .andReturn();
+        assertThat(result.getResponse().getContentAsString())
+                .doesNotContain(otherNode.id().toString())
+                .doesNotContain(other.activeRouteId().toString());
     }
 }

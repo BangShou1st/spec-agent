@@ -44,4 +44,12 @@ public class AnswerService {
     public Optional<Answer> getAnswer(UUID answerId) {
         return answerRepository.findById(answerId);
     }
+
+    /**
+     * Read-only existence check for the single-finalization invariant:
+     * whether the given route flow already has a finalized answer for the node.
+     */
+    public boolean existsAnswerFor(UUID routeId, UUID nodeId) {
+        return answerRepository.existsByRouteAndNode(routeId, nodeId);
+    }
 }

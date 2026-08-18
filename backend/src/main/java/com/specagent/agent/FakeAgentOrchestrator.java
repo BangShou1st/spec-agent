@@ -196,29 +196,54 @@ public class FakeAgentOrchestrator {
     }
 
     /**
-     * Runs the fake answer loop against the active route's tip node: persist the
-     * immutable answer, interpret it through the fake model, ground the answer
-     * patch with the real answered node and answer ids, validate it through
-     * {@link PatchReflectionGate}, persist the patch, then draft and persist the
-     * next child node.
+     * Runs the fake answer loop against the active route's tip node with free
+     * text only (no selected option).
      *
      * <p>If any reflection gate rejects the proposal, the rejected artifact is
      * never persisted and the run is marked FAILED. The immutable answer stays
      * persisted; use {@link #repairAnswerProcessingAndDraftNext} to resume.
      */
     public FakeAnswerRunResult answerActiveNodeAndDraftNext(UUID projectId, String freeText) {
+        return answerActiveNodeAndDraftNext(projectId, null, freeText);
+    }
+
+    /**
+     * Runs the fake answer loop against the active route's tip node with an
+     * optional selected option and/or free text.
+     *
+     * <p>The selected option is runtime-validated: it must belong to the exact
+     * active tip node. A selected option from another node, from a sibling
+     * route, or a random id is rejected before any answer is persisted. A
+     * request needs at least one meaningful input (a valid selected option or
+     * non-blank free text), and free text is rejected when the node does not
+     * allow free-form answers. Both inputs are preserved in the immutable
+     * answer when the node permits them.
+     *
+     * <p>The full path stays identical: validate the selected option, persist
+     * the immutable answer, interpret it, draft and ground the answer patch,
+     * reflect it, persist the patch, draft and persist the next node.
+     */
+    public FakeAnswerRunResult answerActiveNodeAndDraftNext(UUID projectId,
+                                                            UUID selectedOptionId,
+                                                            String freeText) {
         Project project = loadProject(projectId);
         Route route = loadActiveRoute(project);
         if (route.tipNodeId() == null) {
             throw new IllegalStateException("Active route has no tip node: " + route.id());
         }
-        UUID answeredNodeId = route.tipNodeId();
+        Node tipNode = nodeService.getNode(route.tipNodeId())
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Active tip node not found: " + route.tipNodeId()));
+
+        String selectedOption = validateSelectedOption(tipNode, selectedOptionId);
+        String normalizedFreeText = normalizeFreeText(freeText);
+        validateAnswerInput(tipNode, selectedOption, normalizedFreeText);
 
         AgentRun run = agentRunService.create(
                 projectId,
                 route.id(),
                 AgentRunTriggerType.ANSWER_NODE,
-                answeredNodeId,
+                tipNode.id(),
                 null);
         String trace = "created";
 
@@ -227,8 +252,9 @@ public class FakeAgentOrchestrator {
             ContextSnapshot contextSnapshot = buildAndValidateContext(run, projectId, trace);
 
             Answer answer = answerService.finalizeAnswer(
-                    projectId, route.id(), answeredNodeId, null, freeText, "fake_user");
-            return continueAfterAnswer(run, contextSnapshot, answer, freeText, trace);
+                    projectId, route.id(), tipNode.id(), selectedOption,
+                    normalizedFreeText, "user");
+            return continueAfterAnswer(run, contextSnapshot, answer, trace);
         } catch (RuntimeException ex) {
             failIfNotTerminal(run.id(), trace, ex);
             throw ex;
@@ -273,7 +299,7 @@ public class FakeAgentOrchestrator {
         try {
             trace = appendTrace(trace, "context_built");
             ContextSnapshot contextSnapshot = buildAndValidateContext(run, projectId, trace);
-            return continueAfterAnswer(run, contextSnapshot, answer, null, trace);
+            return continueAfterAnswer(run, contextSnapshot, answer, trace);
         } catch (RuntimeException ex) {
             failIfNotTerminal(run.id(), trace, ex);
             throw ex;
@@ -374,7 +400,6 @@ public class FakeAgentOrchestrator {
     private FakeAnswerRunResult continueAfterAnswer(AgentRun run,
                                                     ContextSnapshot contextSnapshot,
                                                     Answer answer,
-                                                    String freeText,
                                                     String trace) {
         UUID answeredNodeId = answer.nodeId();
 
@@ -455,6 +480,43 @@ public class FakeAgentOrchestrator {
     private Project loadProject(UUID projectId) {
         return projectRepository.findById(projectId)
                 .orElseThrow(() -> new IllegalArgumentException("Project not found: " + projectId));
+    }
+
+    /**
+     * Validates a client-selected option id against the exact active node. The
+     * client may only reference an existing runtime-owned option id previously
+     * returned by the active node; ids from other nodes, sibling routes, or
+     * random fabrication are rejected. Returns the runtime-owned option id
+     * string, or {@code null} when no option was selected.
+     */
+    private String validateSelectedOption(Node tipNode, UUID selectedOptionId) {
+        if (selectedOptionId == null) {
+            return null;
+        }
+        return tipNode.options().stream()
+                .filter(option -> option.id().equals(selectedOptionId))
+                .findFirst()
+                .map(option -> option.id().toString())
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Selected option id does not belong to the active node"));
+    }
+
+    private String normalizeFreeText(String freeText) {
+        return (freeText == null || freeText.isBlank()) ? null : freeText;
+    }
+
+    /**
+     * Enforces the answer input policy: at least one meaningful input (a valid
+     * selected option or non-blank free text) is required, and non-blank free
+     * text is rejected when the node does not allow free-form answers.
+     */
+    private void validateAnswerInput(Node tipNode, String selectedOption, String freeText) {
+        if (selectedOption == null && freeText == null) {
+            throw new IllegalArgumentException("Answer requires a selected option or free text");
+        }
+        if (freeText != null && !tipNode.allowFreeAnswer()) {
+            throw new IllegalArgumentException("This node does not allow free-form answers");
+        }
     }
 
     private Route loadActiveRoute(Project project) {

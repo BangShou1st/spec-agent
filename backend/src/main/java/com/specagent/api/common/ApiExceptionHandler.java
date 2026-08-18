@@ -1,5 +1,6 @@
 package com.specagent.api.common;
 
+import com.specagent.agent.ModelContractException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -20,14 +21,18 @@ import java.util.UUID;
  *
  * <pre>
  * 400 BAD_REQUEST   malformed request / validation error / invalid UUID
- * 404 NOT_FOUND     project/route/spec/run does not exist
+ * 404 NOT_FOUND     project/route/node/answer/spec/run does not exist
  * 409 CONFLICT      request conflicts with runtime lifecycle/state
+ * 422               model contract / reflection rejection
  * 500               unexpected internal failure (generic safe message)
  * </pre>
  *
- * <p>Unexpected exceptions are logged server-side using only the exception
- * class name so no secret-like content (credentials, provider error payloads)
- * can reach the log, and the client always receives a generic safe message.
+ * <p>Provider/gateway failures are mapped by
+ * {@code com.specagent.web.GatewayErrorAdvice} (the API boundary itself never
+ * depends on model packages). Unexpected exceptions are logged server-side
+ * using only the exception class name so no secret-like content (credentials,
+ * provider error payloads) can reach the log, and the client always receives a
+ * generic safe message.
  */
 @RestControllerAdvice
 public class ApiExceptionHandler {
@@ -38,6 +43,13 @@ public class ApiExceptionHandler {
     public ResponseEntity<ApiErrorResponse> handleApiException(ApiException ex) {
         return ResponseEntity.status(ex.status())
                 .body(ApiErrorResponse.of(ex.code(), ex.getMessage()));
+    }
+
+    @ExceptionHandler(ModelContractException.class)
+    public ResponseEntity<ApiErrorResponse> handleModelContract(ModelContractException ex) {
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                .body(ApiErrorResponse.of("MODEL_CONTRACT_REJECTED",
+                        "The model output did not satisfy the runtime contract"));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

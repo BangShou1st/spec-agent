@@ -195,4 +195,28 @@ class ArchitectureTests {
 
         rule.check(CLASSES);
     }
+
+    @Test
+    void controllersMustNotDependOnModelGateway() {
+        ArchRule rule = noClasses()
+            .that().resideInAPackage("com.specagent.api..")
+            .and().haveSimpleNameEndingWith("Controller")
+            .should().dependOnClassesThat()
+            .resideInAnyPackage("com.specagent.model.gateway..", "com.specagent.model.provider..")
+            .because("Controllers must go through the orchestrator, never call the model gateway directly");
+
+        rule.check(CLASSES);
+    }
+
+    @Test
+    void controllersMustNotDependOnContextBuilder() {
+        ArchRule rule = noClasses()
+            .that().resideInAPackage("com.specagent.api..")
+            .and().haveSimpleNameEndingWith("Controller")
+            .should().dependOnClassesThat()
+            .resideInAnyPackage("com.specagent.context..")
+            .because("Controllers must not build ContextSnapshots manually");
+
+        rule.check(CLASSES);
+    }
 }

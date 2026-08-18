@@ -4,6 +4,12 @@ Status: implemented (phase open for review)
 Commit: see git log (`feat: add backend API foundation and read model`)  
 Date: 2026
 
+> Phase 6.1 is the read/API foundation half of Phase 6. Phase 6.2 adds the
+> route command APIs and agent execution APIs on top of this boundary and
+> closes Phase 6; the complete endpoint list and final exit criteria live in
+> `docs/PHASE_6_EXIT_CRITERIA.md`. Nothing in this document's read contracts
+> changes in Phase 6.2.
+
 ## 1. Phase 6.1 Goal
 
 Build the first formal backend HTTP application boundary over the already
