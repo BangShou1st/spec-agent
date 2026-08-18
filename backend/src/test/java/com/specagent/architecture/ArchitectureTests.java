@@ -232,4 +232,16 @@ class ArchitectureTests {
 
         rule.check(CLASSES);
     }
+
+    @Test
+    void graphReadModelMustNotDependOnModelProviderCredentialOrContext() {
+        ArchRule rule = noClasses()
+            .that().resideInAPackage("com.specagent.readmodel.graph..")
+            .should().dependOnClassesThat()
+            .resideInAnyPackage("com.specagent.model..", "com.specagent.credential..",
+                "com.specagent.context..")
+            .because("GraphWorkspace is a read projection, not a model/provider/context boundary");
+
+        rule.check(CLASSES);
+    }
 }
