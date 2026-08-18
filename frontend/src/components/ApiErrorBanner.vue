@@ -1,9 +1,8 @@
 <script setup lang="ts">
 /**
- * Compact error presentation for API failures. Only safe backend messages
- * (or the generic frontend fallback) are rendered; raw bodies, stack traces,
- * HTML pages, and provider payloads are never shown. An optional retry
- * re-invokes the user's explicit request (UI retry only).
+ * API 失败的错误横幅。只渲染安全的后端消息（或前端通用兜底）；原始响应体、
+ * 堆栈、HTML 页面和 provider 载荷永不展示。可选的“重试”只重新触发用户的
+ * 显式请求（仅 UI 重试）。
  */
 defineProps<{
   message: string
@@ -31,7 +30,7 @@ const emit = defineEmits<{
       :disabled="retrying"
       @click="emit('retry')"
     >
-      {{ retrying ? 'Retrying…' : retryLabel }}
+      {{ retrying ? '正在重试…' : retryLabel }}
     </button>
   </div>
 </template>

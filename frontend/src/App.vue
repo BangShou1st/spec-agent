@@ -5,7 +5,7 @@ import { RouterLink, RouterView } from 'vue-router'
 <template>
   <header class="app-header">
     <span class="app-name">Spec Agent</span>
-    <RouterLink to="/projects">Projects</RouterLink>
+    <RouterLink to="/projects">项目</RouterLink>
   </header>
   <main class="page">
     <RouterView />

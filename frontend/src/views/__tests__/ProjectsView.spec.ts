@@ -55,7 +55,7 @@ describe('ProjectsView', () => {
     mockedList.mockResolvedValue([])
     const { wrapper } = await mountProjects()
 
-    expect(wrapper.text()).toContain('No projects yet.')
+    expect(wrapper.text()).toContain('还没有项目。')
   })
 
   it('navigates to the workspace after creating a project', async () => {

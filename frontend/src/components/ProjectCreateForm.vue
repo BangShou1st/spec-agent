@@ -2,8 +2,7 @@
 import { ref } from 'vue'
 
 /**
- * Project creation form. Blank input is validated client-side for UX only;
- * the backend remains authoritative for title validation.
+ * 项目创建表单。客户端只做 UX 层面的空值校验；标题校验以后端为准。
  */
 const props = defineProps<{
   creating: boolean
@@ -35,12 +34,12 @@ function submit(): void {
       v-model="title"
       type="text"
       maxlength="255"
-      placeholder="Project title"
+      placeholder="项目标题"
       aria-label="Project title"
     />
     <button class="btn btn-primary" type="submit" :disabled="creating || blank()">
-      {{ creating ? 'Creating…' : 'Create project' }}
+      {{ creating ? '正在创建…' : '创建项目' }}
     </button>
   </form>
-  <p v-if="touched && blank()" class="muted">Enter a project title to create a project.</p>
+  <p v-if="touched && blank()" class="muted">请输入项目标题以创建项目。</p>
 </template>

@@ -43,7 +43,7 @@ vi.mock('@/api/spec', () => ({ generateSpec: vi.fn(), listRouteSpecs: vi.fn() })
 
 import { getProject } from '@/api/projects'
 import { getActiveState, listRoutes, draftNextQuestion, submitAnswer } from '@/api/workspace'
-import { getRequirementState } from '@/api/requirementState'
+import { getRequirementState, getRouteRequirementState } from '@/api/requirementState'
 import { getProjectGraph } from '@/api/graph'
 import {
   activateRoute as apiActivateRoute,
@@ -56,6 +56,7 @@ const mockedGetProject = vi.mocked(getProject)
 const mockedGetActiveState = vi.mocked(getActiveState)
 const mockedListRoutes = vi.mocked(listRoutes)
 const mockedGetRequirementState = vi.mocked(getRequirementState)
+const mockedGetRouteRequirementState = vi.mocked(getRouteRequirementState)
 const mockedGetProjectGraph = vi.mocked(getProjectGraph)
 
 const mockedDraftNextQuestion = vi.mocked(draftNextQuestion)
@@ -144,6 +145,7 @@ function mockViews() {
   mockedGetActiveState.mockResolvedValue(active)
   mockedListRoutes.mockResolvedValue([active.activeRoute as never])
   mockedGetRequirementState.mockResolvedValue(makeRequirementState({ routeId: 'r1' }))
+  mockedGetRouteRequirementState.mockResolvedValue(makeRequirementState({ routeId: 'r1' }))
   mockedGetProjectGraph.mockResolvedValue(graphView())
   return active
 }
@@ -309,6 +311,32 @@ describe('WorkspaceView graph shell', () => {
     await flushPromises()
     expect(vi.mocked(apiGenerateSpec)).toHaveBeenCalledWith('p1')
     expect(wrapper.find('[data-test="spec-snapshot-detail"]').exists()).toBe(true)
+  })
+
+
+  it('shell copy is chinese while backend content stays verbatim', async () => {
+    mockViews()
+    const { wrapper } = await mountWorkspace()
+    const text = wrapper.text()
+    // 标题是项目名；壳层文案是中文。
+    expect(text).toContain('Test project')
+    expect(text).toContain('当前路线')
+    expect(text).toContain('开放')
+    expect(text).toContain('已替代')
+    expect(text).toContain('已归档')
+    expect(text).toContain('已删除')
+    expect(text).toContain('需求状态')
+    expect(text).toContain('规格')
+    expect(text).toContain('归档')
+    expect(text).toContain('删除路线')
+    expect(text).toContain('定位路线')
+    expect(text).toContain('聚焦此路线')
+    expect(text).toContain('弱化路线')
+    expect(text).toContain('隐藏路线')
+    // 后端/用户内容保持原样（verbatim）：路线名与派生 claim 文本不翻译。
+    expect(text).toContain('开放分支')
+    expect(text).toContain('旧路线')
+    expect(text).toContain('A confirmed requirement detail.')
   })
 
   it('sidebars persist open state and width through the ui store', async () => {

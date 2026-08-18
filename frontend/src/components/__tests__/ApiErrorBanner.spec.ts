@@ -28,6 +28,6 @@ describe('ApiErrorBanner', () => {
     const wrapper = mount(ApiErrorBanner, {
       props: { message: 'Safe message', retryLabel: 'Retry', retrying: true },
     })
-    expect(wrapper.find('button').text()).toBe('Retrying…')
+    expect(wrapper.find('button').text()).toBe('正在重试…')
   })
 })
