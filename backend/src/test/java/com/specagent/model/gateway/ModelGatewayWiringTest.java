@@ -14,11 +14,14 @@ import com.specagent.project.Project;
 import com.specagent.project.ProjectService;
 import com.specagent.route.Route;
 import com.specagent.route.RouteService;
+import com.specagent.support.OpenCodeCredentialCleanup;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.context.ApplicationContext;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 
@@ -95,9 +98,22 @@ class ExplicitOpenCodeModelGatewayWiringTest {
     private AgentRunService agentRunService;
     @Autowired
     private RouteService routeService;
+    @Autowired
+    private NamedParameterJdbcTemplate jdbcTemplate;
 
     @SpyBean
     private OpenCodeZenModelGateway openCodeGateway;
+
+    /**
+     * The no-credential tests must own their credential state: if a live smoke
+     * or manual seed left an OpenCode credential in the local dev/test
+     * database, the real gateway would resolve it and hit the public API
+     * instead of failing fast with NOT_CONFIGURED.
+     */
+    @BeforeEach
+    void clearOpenCodeCredential() {
+        OpenCodeCredentialCleanup.clear(jdbcTemplate);
+    }
 
     @Test
     void explicitOpenCodeGatewaySelectsOpenCode() {

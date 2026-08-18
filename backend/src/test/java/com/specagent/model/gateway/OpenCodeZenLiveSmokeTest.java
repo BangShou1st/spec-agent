@@ -16,6 +16,9 @@ import com.specagent.credential.CredentialStatus;
 import com.specagent.credential.OpenCodeCredentialService;
 import com.specagent.model.contract.StructuredModelOutputParser;
 import com.specagent.model.provider.OpenCodeModelCatalog;
+import com.specagent.support.LiveSmokeEnvironment;
+import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -71,6 +74,19 @@ class OpenCodeZenLiveSmokeTest {
     private StructuredOutputMapper mapper;
 
     private final ObjectMapper jsonMapper = new ObjectMapper();
+
+    /**
+     * The env gate already skipped the test when the key is missing; this
+     * second gate diagnoses the other preconditions an operator must satisfy
+     * (explicit {@code opencode} gateway selector, free selected model) so a
+     * half-configured run can never be mistaken for a PASS.
+     */
+    @BeforeEach
+    void checkLiveSmokeEnvironment() {
+        LiveSmokeEnvironment.Readiness readiness = LiveSmokeEnvironment.check();
+        readiness.print();
+        Assumptions.assumeTrue(readiness.ready(), String.join("; ", readiness.blockers()));
+    }
 
     @Test
     void liveSmokeSeedsCredentialDiscoversFreeModelsAndCompletes() throws Exception {

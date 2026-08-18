@@ -17,6 +17,7 @@ import com.specagent.context.ContextOperationType;
 import com.specagent.context.ContextSnapshot;
 import com.specagent.model.contract.StructuredModelOutputParser;
 import com.specagent.model.gateway.ModelGateway;
+import com.specagent.model.provider.OpenCodeModelException;
 import com.specagent.node.Node;
 import com.specagent.node.NodeService;
 import com.specagent.patch.AnswerPatch;
@@ -493,7 +494,17 @@ public class FakeAgentOrchestrator {
                 inputJson,
                 Map.of());
 
-        ModelResponse response = modelGateway.run(request);
+        ModelResponse response;
+        try {
+            response = modelGateway.run(request);
+        } catch (OpenCodeModelException ex) {
+            // The provider rejected the call before any response came back.
+            // Persist the trace (which already carries model_called:<task>) so
+            // the FAILED run stays attributable to its task; the safe provider
+            // failure category is appended by failIfNotTerminal.
+            agentRunService.markModelCalled(run.id(), trace);
+            throw ex;
+        }
         agentRunService.markModelCalled(run.id(), trace);
 
         // Gateway output is untrusted input. The runtime owns correlation
@@ -563,7 +574,19 @@ public class FakeAgentOrchestrator {
                 && latest.status() != AgentRunStatus.COMPLETED) {
             String persisted = latest.trace();
             String base = (persisted == null || persisted.isBlank()) ? trace : persisted;
-            agentRunFailureService.fail(runId, appendTrace(base, "failed:" + ex.getClass().getSimpleName()));
+            agentRunFailureService.fail(runId, appendTrace(base, failureStepFor(ex)));
         }
+    }
+
+    /**
+     * Maps an unexpected exception to a safe trace step. OpenCode provider
+     * failures record their category (never the message, which could echo
+     * provider payloads); everything else records the exception class name.
+     */
+    private String failureStepFor(RuntimeException ex) {
+        if (ex instanceof OpenCodeModelException modelException) {
+            return "failed:provider:" + modelException.category();
+        }
+        return "failed:" + ex.getClass().getSimpleName();
     }
 }
