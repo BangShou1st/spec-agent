@@ -356,3 +356,278 @@ textarea {
   background: var(--color-surface);
   text-align: center;
 }
+/* ---------- Phase 7.3 graph workspace ---------- */
+
+.graph-canvas {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.graph-canvas__flow {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.graph-canvas__flow .vue-flow {
+  height: 100%;
+}
+
+.graph-canvas__loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.graph-toolbar {
+  display: flex;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-subdued);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.graph-toolbar__btn {
+  padding: 4px 10px;
+  font-size: 13px;
+}
+
+/* ---- start placeholder ---- */
+
+.graph-start-placeholder {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 260px;
+  text-align: center;
+}
+
+.graph-start-placeholder__title {
+  margin: 0;
+  font-size: 20px;
+}
+
+.graph-start-placeholder__hint {
+  margin: 0 0 8px;
+  color: var(--color-text-secondary);
+}
+
+/* ---- question node ---- */
+
+.graph-question-node {
+  width: 320px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 8%);
+  font-size: 13px;
+}
+
+.graph-question-node--current {
+  width: 420px;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px var(--color-accent-soft), 0 4px 12px rgb(0 0 0 / 10%);
+}
+
+.graph-question-node--historical {
+  opacity: 0.96;
+}
+
+.graph-question-node--shared .graph-question-node__header {
+  background: var(--color-accent-soft);
+}
+
+.graph-question-node__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--color-subdued);
+  border-bottom: 1px solid var(--color-border);
+  border-radius: var(--radius) var(--radius) 0 0;
+  cursor: grab;
+  user-select: none;
+}
+
+.graph-question-node__header:active {
+  cursor: grabbing;
+}
+
+.graph-question-node__kind {
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.graph-question-node__meta {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.graph-question-node__body {
+  padding: 10px;
+  overflow-y: auto;
+  max-height: 420px;
+}
+
+.graph-node-question {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.graph-node-question--compact {
+  font-size: 13px;
+}
+
+.graph-node-purpose {
+  margin: 0 0 10px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.graph-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  margin-bottom: 6px;
+  cursor: pointer;
+}
+
+.graph-option--selected {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.graph-option input[type='radio'] {
+  margin-top: 2px;
+}
+
+.graph-option-label {
+  font-weight: 500;
+}
+
+.graph-option-impact {
+  display: block;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.graph-answer-input {
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 8px;
+  margin: 4px 0 10px;
+}
+
+.graph-submit {
+  width: 100%;
+}
+
+/* ---- historical answer summary ---- */
+
+.graph-answer-summary {
+  font-size: 13px;
+}
+
+.graph-answer-summary--clamped {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.graph-answer-text {
+  margin: 4px 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.graph-answer-route {
+  display: block;
+}
+
+.graph-toggle-expand {
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.graph-node-details {
+  margin-top: 8px;
+  border-top: 1px solid var(--color-border);
+  padding-top: 8px;
+}
+
+.graph-option-list {
+  margin: 6px 0;
+  padding-left: 18px;
+}
+
+.graph-option-row {
+  font-size: 12px;
+}
+
+.graph-route-answers {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.graph-route-answer {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 6px 8px;
+}
+
+.graph-route-answer--primary {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.graph-node-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.graph-action {
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
+/* ---- edges ---- */
+
+.graph-edge--replacement {
+  stroke-dasharray: 6 4;
+}
+
+.graph-edge--replacement .vue-flow__edge-path {
+  stroke: var(--color-warn) !important;
+}
+
+.vue-flow__edge-path {
+  transition: d 0.12s ease;
+}
