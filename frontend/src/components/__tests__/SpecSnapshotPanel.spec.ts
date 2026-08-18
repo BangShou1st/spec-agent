@@ -214,4 +214,54 @@ describe('SpecSnapshotPanel', () => {
     expect(store.selectedSpecs.map((s) => s.id)).toEqual(['spec-old', 'spec-new'])
     expect(wrapper.findAll('[data-test="spec-snapshot-item"]')).toHaveLength(2)
   })
+
+  it('cross-route generation displays the active route new snapshot, not the stale one', async () => {
+    // active route = route-B, selected route = route-A (browsing old history).
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const store = useWorkspaceStore()
+    store.projectId = 'p1'
+    const routeA = makeRoute({ id: 'route-A', isActive: false })
+    const routeB = { ...makeRoute({ id: 'route-B', isActive: true }), tipNodeId: 'lnode-2' }
+    store.activeState = makeActiveState({ activeRoute: routeB })
+    store.routes = [routeA, routeB]
+    store.selectedRouteId = 'route-A'
+
+    const staleSnapshotA = makeSpecSnapshot({
+      id: 'spec-old-A',
+      routeId: 'route-A',
+      sections: [{ id: 'sa1', title: 'Overview', content: 'Stale route-A overview content.' }],
+    })
+    const newSnapshotB = makeSpecSnapshot({
+      id: 'spec-new-B',
+      routeId: 'route-B',
+      sections: [{ id: 'sb1', title: 'Overview', content: 'Fresh route-B overview content.' }],
+    })
+    vi.mocked(listRouteSpecs).mockImplementation((_projectId, routeId) =>
+      Promise.resolve(routeId === 'route-A' ? [staleSnapshotA] : [newSnapshotB]),
+    )
+    const wrapper = mountPanel(pinia)
+    await flushPromises()
+
+    // The selected route A renders its old snapshot.
+    expect(wrapper.text()).toContain('Stale route-A overview content.')
+    expect(store.selectedRouteId).toBe('route-A')
+
+    vi.mocked(apiGenerateSpec).mockResolvedValue(makeSpecGeneration({ specSnapshot: newSnapshotB }))
+
+    await wrapper.find('[data-test="generate-spec"]').trigger('click')
+    await flushPromises()
+
+    // Selection follows the backend-owned snapshot on the active route.
+    expect(store.selectedRouteId).toBe('route-B')
+    expect(store.selectedSpecId).toBe('spec-new-B')
+    expect(store.selectedSpec?.routeId).toBe('route-B')
+
+    // The panel now shows the B snapshot with B provenance, never A's stale one.
+    expect(wrapper.text()).toContain('Fresh route-B overview content.')
+    expect(wrapper.text()).not.toContain('Stale route-A overview content.')
+    const provenance = wrapper.find('[data-test="spec-provenance"]').text()
+    expect(provenance).toContain('spec-new-B')
+    expect(provenance).toContain('route-B')
+  })
 })

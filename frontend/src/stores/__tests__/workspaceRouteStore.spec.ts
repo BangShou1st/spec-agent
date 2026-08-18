@@ -4,6 +4,7 @@ import { ApiError } from '@/api/client'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
 import {
   makeActiveState,
+  makeProject,
   makeRegenerateResponse,
   makeRequirementState,
   makeRoute,
@@ -445,6 +446,49 @@ describe('workspaceStore route workspace', () => {
     expect(mockedListRouteSpecs).toHaveBeenCalledWith('p1', 'route-1')
     expect(store.selectedSpecId).toBe('spec-new')
     expect(store.specsByRoute['route-1'].map((s) => s.id)).toEqual(['spec-old', 'spec-new'])
+    expect(store.feedback).toBe('Spec snapshot generated.')
+  })
+
+  it('cross-route generation selects the route that owns the new snapshot', async () => {
+    // active route = route-B, while the user is browsing route-A history.
+    const routeA = makeRoute({ id: 'route-A', isActive: false })
+    const routeB = { ...makeRoute({ id: 'route-B', isActive: true }), tipNodeId: 'lnode-2' }
+    const active = makeActiveState({
+      project: makeProject({ id: 'p1' }),
+      activeRoute: routeB,
+    })
+    mockBackendViews(active, makeRequirementState({ routeId: 'route-B' }))
+    mockedListRoutes.mockResolvedValue([routeA, routeB])
+    const store = useWorkspaceStore()
+    await load(store)
+
+    // The user inspects route-A's old snapshot history.
+    const staleSnapshotA = makeSpecSnapshot({ id: 'spec-old-A', routeId: 'route-A' })
+    mockedListRouteSpecs.mockResolvedValue([staleSnapshotA])
+    await store.loadRouteSpecs('route-A')
+    store.selectRoute('route-A')
+    store.selectSpec('spec-old-A')
+    expect(store.selectedRouteId).toBe('route-A')
+    expect(store.selectedSpec?.id).toBe('spec-old-A')
+
+    // Generation succeeds on the ACTIVE route B; the canonical route-B list
+    // contains only the new snapshot.
+    const newSnapshotB = makeSpecSnapshot({ id: 'spec-new-B', routeId: 'route-B' })
+    mockedApiGenerateSpec.mockResolvedValue(makeSpecGeneration({ specSnapshot: newSnapshotB }))
+    mockedListRouteSpecs.mockResolvedValue([newSnapshotB])
+
+    const ok = await store.generateSpec()
+
+    expect(ok).toBe(true)
+    expect(mockedListRouteSpecs).toHaveBeenCalledWith('p1', 'route-B')
+    expect(store.selectedRouteId).toBe('route-B')
+    expect(store.selectedNodeId).toBeNull()
+    expect(store.selectedSpecId).toBe('spec-new-B')
+    expect(store.selectedSpec?.id).toBe('spec-new-B')
+    expect(store.selectedSpec?.routeId).toBe('route-B')
+    expect(store.specsByRoute['route-B'].map((s) => s.id)).toContain('spec-new-B')
+    // The stale route-A snapshot must not be what selection resolves to.
+    expect(store.selectedSpec?.id).not.toBe('spec-old-A')
     expect(store.feedback).toBe('Spec snapshot generated.')
   })
 })

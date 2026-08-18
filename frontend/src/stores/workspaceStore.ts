@@ -457,6 +457,12 @@ export const useWorkspaceStore = defineStore('workspace', {
      * Generates a spec snapshot for the ACTIVE route through the backend.
      * After success the canonical snapshot list is reloaded and the new
      * snapshot is selected; the frontend never synthesizes a spec locally.
+     *
+     * The user may be browsing a DIFFERENT route than the active one; the new
+     * snapshot always belongs to the backend-returned route, so selection
+     * follows that artifact. This keeps the success state consistent: the
+     * displayed snapshot is the one that was just generated, even when the
+     * previously selected route had its own older snapshots.
      */
     async generateSpec(): Promise<boolean> {
       if (!this.projectId || this.generatingSpec || this.routeCommandPending) {
@@ -474,6 +480,10 @@ export const useWorkspaceStore = defineStore('workspace', {
       this.error = null
       try {
         const result = await generateSpec(this.projectId)
+        // The backend owns the artifact and its route: select the route that
+        // actually owns the new snapshot before resolving selection against it.
+        this.selectedRouteId = result.specSnapshot.routeId
+        this.selectedNodeId = null
         await this.loadRouteSpecs(result.specSnapshot.routeId)
         this.selectedSpecId = result.specSnapshot.id
         this.feedback = 'Spec snapshot generated.'
