@@ -98,8 +98,8 @@ class LiveSmokeEnvironmentTest {
         assertThat(masked).hasSizeLessThan(key.length());
         assertThat(LiveSmokeEnvironment.maskSuffix(null)).isEqualTo("?");
         assertThat(LiveSmokeEnvironment.maskSuffix("   ")).isEqualTo("?");
-        // A short key still only exposes the key itself, never more than the
-        // suffix that the credential status already exposes.
-        assertThat(LiveSmokeEnvironment.maskSuffix("abcd")).isEqualTo("abcd");
+        // A short secret must not leak its full value.
+        assertThat(LiveSmokeEnvironment.maskSuffix("abcd")).isEqualTo("?");
+        assertThat(LiveSmokeEnvironment.maskSuffix("ab")).isEqualTo("?");
     }
 }

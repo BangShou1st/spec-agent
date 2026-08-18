@@ -98,6 +98,18 @@ class ArchitectureTests {
     }
 
     @Test
+    void agentLayerShouldNotDependOnProviderImplementationPackages() {
+        ArchRule rule = noClasses()
+            .that().resideInAPackage("com.specagent.agent..")
+            .should().dependOnClassesThat()
+            .resideInAnyPackage("com.specagent.model.provider..")
+            .because("Agent reasoning layer may depend on model gateway contracts, "
+                    + "not provider implementation details");
+
+        rule.check(CLASSES);
+    }
+
+    @Test
     void runtimePackagesContainNoBusinessDomainClasses() {
         ArchRule rule = noClasses()
             .that().resideInAnyPackage("com.specagent.project..", "com.specagent.route..",

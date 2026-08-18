@@ -55,13 +55,14 @@ public final class LiveSmokeEnvironment {
 
     /**
      * Last four characters of the secret, or {@code "?"} when the secret is
-     * missing. Never returns the full secret or more than the suffix.
+     * missing or too short to leave a meaningful suffix. Never returns the full
+     * secret or more than the suffix.
      */
     public static String maskSuffix(String secret) {
-        if (secret == null || secret.isBlank()) {
+        if (secret == null || secret.isBlank() || secret.length() <= 4) {
             return "?";
         }
-        return secret.length() <= 4 ? secret : secret.substring(secret.length() - 4);
+        return secret.substring(secret.length() - 4);
     }
 
     public record Readiness(boolean ready,
