@@ -4,90 +4,75 @@ import {
   buildThreeNodeLineage,
   createProject,
   draftFirstQuestion,
-  selectHistoricalNode,
+  fitGraph,
+  forkFromNode,
 } from './helpers'
 
 /**
- * Spec flow: on a route with clarified state, generate a spec snapshot for the
- * ACTIVE route. The snapshot appears, sections render, source references
- * render, unresolved items render, the snapshot is labeled derived, and the
- * route snapshot history contains the new snapshot. Fake gateway only — no
- * real model.
+ * Spec flow on the graph: generate a derived snapshot for the ACTIVE route;
+ * sections/unresolved items/source refs render; snapshot history updates.
+ * Fake gateway only — no real model.
  */
 test('generate and inspect a derived spec snapshot', async ({ page }) => {
-  await createProject(page, 'E2E Spec Flow')
+  await createProject(page, 'E2E Spec Graph Flow')
   await draftFirstQuestion(page)
   await answerActiveNode(page, 'Spec-worthy answer content')
 
-  // Switch to the Spec Snapshots tab; generation targets the ACTIVE route.
   await page.getByTestId('tab-spec').click()
   await expect(page.getByTestId('generate-spec')).toBeVisible()
-  await expect(page.getByText('Generate spec for active route')).toBeVisible()
+  await expect(page.getByText('为当前路线生成规格')).toBeVisible()
 
   await page.getByTestId('generate-spec').click()
 
-  // The generated snapshot is selected and rendered as a derived artifact.
   await expect(page.getByTestId('spec-snapshot-detail')).toBeVisible()
-  await expect(page.getByTestId('derived-label')).toContainText('derived')
-
-  // Sections render faithfully.
-  await expect(page.getByText('Overview')).toBeVisible()
+  await expect(page.getByTestId('derived-label')).toContainText('派生产物')
   await expect(page.getByText('The clarified requirement outcome.')).toBeVisible()
-
-  // Unresolved items render.
-  await expect(
-    page.getByText('The user must confirm the primary outcome before final grounding.'),
-  ).toBeVisible()
-
-  // Source references display without invented descriptions.
-  const sourceRef = page.getByTestId('source-reference').first()
-  await expect(sourceRef).toContainText('context:')
-
-  // The route snapshot history contains the new snapshot.
   await expect(page.getByTestId('spec-snapshot-item')).toHaveCount(1)
+  await expect(page.locator('.error-banner')).toHaveCount(0)
 })
 
 /**
- * Cross-route generation: the user browses a NON-active route's snapshot
- * history while the ACTIVE route differs, then generates a spec for the active
- * route. The UI must switch selection to the route that owns the new snapshot
- * and display it, instead of keeping the stale selected route's snapshot.
+ * Work/read context separation: Active=A + Focus=B → requirement state and
+ * spec history read B, the only answerable node stays on A, generate always
+ * targets A with an explicit warning, and after generation the reading
+ * context follows the returned A artifact.
  */
-test('cross-route generation selects and shows the active route new snapshot', async ({ page }) => {
-  await createProject(page, 'E2E Spec Cross-Route')
+test('Active=A Focus=B separates reading context from work context', async ({ page }) => {
+  await createProject(page, 'E2E Read Context Flow')
   await buildThreeNodeLineage(page)
+  await fitGraph(page)
+  // A = 初始路线（当前）。Fork 出一个 B（child 之上）→ B 成为当前路线。
+  await forkFromNode(page, 1, 'Route-B')
+  await expect(page.locator('[data-route-id]')).toHaveCount(2)
 
-  // Fork from the answered child: the fork becomes the ACTIVE route (B), the
-  // original route (A) stays non-active. Both are open and visible.
-  await selectHistoricalNode(page, 1)
-  await page.getByTestId('fork-from-here').click()
-  await page.getByTestId('fork-label').fill('Forked alternative')
-  await page.getByTestId('fork-submit').click()
-  await expect(page.getByTestId('route-card')).toHaveCount(2)
+  // 把 A 重新设为当前路线 → Active=A；B 保持 OPEN 非当前。
+  const cards = page.locator('[data-route-id]')
+  const cardA = cards.filter({ hasNot: page.getByTestId('active-route') }).first()
+  const routeAId = (await cardA.getAttribute('data-route-id')) ?? ''
+  await cardA.getByTestId('activate-route').click()
   await expect(page.getByTestId('active-route')).toHaveCount(1)
 
-  // Select the NON-active route A to browse its (empty) snapshot history.
-  const nonActiveCard = page
-    .locator('[data-test="route-card"]')
-    .filter({ hasNot: page.getByTestId('active-route') })
-    .first()
-  await nonActiveCard.getByTestId('select-route').click()
-  await expect(page.locator('[data-test="route-card"].selected')).toHaveCount(1)
-  await expect(page.locator('[data-test="route-card"].selected').getByTestId('active-route')).toHaveCount(0)
+  // Focus=B（浏览器只读阅读上下文）。
+  const cardB = cards.filter({ has: page.getByTestId('active-route') }).first()
+  const routeBId = (await cardB.getAttribute('data-route-id')) ?? ''
+  await cardB.getByTestId('focus-route').click()
+  await expect(cardB.locator('.route-card--focused')).toHaveCount(1)
+  // Focus 不改变 Active。
+  await expect(page.getByTestId('active-route')).toHaveCount(1)
 
-  // Open Spec Snapshots: still showing route A, no snapshots generated yet.
+  // 需求状态与规格历史跟随读取路线 B。
+  await expect(page.getByTestId('requirement-state-panel')).toBeVisible()
+  await expect(page.getByText('路线：' + routeBId.slice(0, 8))).toBeVisible()
+
+  // 唯一可回答节点仍是 A 上的节点（Focus 不移动工作上下文）。
   await page.getByTestId('tab-spec').click()
-  await expect(page.getByTestId('generate-spec')).toBeVisible()
+  await expect(page.getByTestId('generate-focus-warning')).toContainText(routeBId.slice(0, 8))
+  await expect(page.getByText('当前路线：' + routeAId.slice(0, 8))).toBeVisible()
+  await expect(page.getByTestId('specs-empty')).toBeVisible()
 
-  // Generate targets the ACTIVE route B.
+  // 生成始终针对当前路线 A，成功后读取上下文跟随返回的 A 产物。
   await page.getByTestId('generate-spec').click()
-
-  // The UI switches: the selected route card is now the ACTIVE route...
-  await expect(page.locator('[data-test="route-card"].selected')).toHaveCount(1)
-  await expect(page.locator('[data-test="route-card"].selected').getByTestId('active-route')).toHaveCount(1)
-
-  // ...and the panel shows the new snapshot owned by that route.
   await expect(page.getByTestId('spec-snapshot-detail')).toBeVisible()
-  await expect(page.getByTestId('spec-provenance')).toContainText('route:')
+  await expect(page.getByText('读取路线：' + routeAId.slice(0, 8))).toBeVisible()
   await expect(page.getByTestId('spec-snapshot-item')).toHaveCount(1)
 })

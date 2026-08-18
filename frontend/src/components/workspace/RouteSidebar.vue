@@ -99,7 +99,7 @@ function isArchivedOrDeleted(route: GraphWorkspaceRouteView): boolean {
           <span class="badge" :class="`badge-${route.lifecycleStatus}`">
             {{ lifecycleLabels[route.lifecycleStatus] }}
           </span>
-          <span v-if="route.id === activeRouteId" class="badge badge-active" data-test="active-indicator">
+          <span v-if="route.id === activeRouteId" class="badge badge-active" data-test="active-route">
             当前路线
           </span>
         </div>

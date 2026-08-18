@@ -55,6 +55,18 @@ watch(
   { immediate: true },
 )
 
+// 每次 canonical 刷新完成后，重新从后端加载读取路线的需求状态与规格历史
+// （缓存只对单次读取生命周期有效）。
+watch(
+  () => workspace.refreshing,
+  (refreshing, wasRefreshing) => {
+    if (!refreshing && wasRefreshing && readingRouteId.value) {
+      void workspace.ensureRequirementState(readingRouteId.value)
+      void workspace.loadRouteSpecs(readingRouteId.value)
+    }
+  },
+)
+
 watch(
   () => props.nodeData,
   (data) => {

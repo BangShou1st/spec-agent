@@ -162,6 +162,10 @@ export const useWorkspaceStore = defineStore('workspace', {
         this.routes = routes
         this.requirementState = requirementState
         this.graphView = graphView
+        // RequirementState is derived and answers/patches change it: drop the
+        // route-scoped cache on every canonical refresh so the reading UI
+        // reloads it from the backend.
+        this.requirementStatesByRoute = {}
       } catch (err) {
         this.error = toDisplayError(err)
       } finally {

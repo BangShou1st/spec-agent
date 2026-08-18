@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { VueFlow, useVueFlow, type Node, type Edge, type NodeChange, type NodeDragEvent, type NodeProps } from '@vue-flow/core'
+import { computed, nextTick, ref, watch } from 'vue'
+import { VueFlow, useVueFlow, type Dimensions, type Node, type Edge, type NodeChange, type NodeDragEvent, type NodeProps } from '@vue-flow/core'
 import GraphQuestionNode from '@/components/graph/GraphQuestionNode.vue'
 import GraphStartPlaceholder from '@/components/graph/GraphStartPlaceholder.vue'
 import GraphToolbar from '@/components/graph/GraphToolbar.vue'
@@ -76,6 +76,103 @@ watch(
   },
   { immediate: true },
 )
+
+// 新出现的当前节点（回答/起草后）如果不在视口内，平滑带进视口；已有节点
+// 坐标绝不被移动（只改 viewport 变换）。
+let activeNodeFitTimer: number | null = null
+watch(
+  () => props.activeNodeId,
+  (nodeId, wasNodeId) => {
+    if (!nodeId || nodeId === wasNodeId || !props.view) {
+      return
+    }
+    // 新节点刚加入时尺寸尚未测量：延迟到 Vue Flow 完成测量后再带进视口。
+    if (activeNodeFitTimer !== null) {
+      window.clearTimeout(activeNodeFitTimer)
+    }
+    activeNodeFitTimer = window.setTimeout(() => {
+      activeNodeFitTimer = null
+      manualFitNode(nodeId)
+    }, 250)
+  },
+)
+
+
+/** 初始套用一次适应视图（只改 viewport 变换，不动节点坐标）。 */
+function onInit(): void {
+  void nextTick(() => {
+    manualFitView()
+  })
+}
+
+/**
+ * 自研适应视图：直接基于投影坐标计算 viewport 变换（setViewport），只改
+ * 视口、绝不移动节点坐标。
+ */
+function manualFitView(): void {
+  const canvasWidth = vf.dimensions.value.width
+  const canvasHeight = vf.dimensions.value.height
+  if (!canvasWidth || !canvasHeight) {
+    return
+  }
+  let minX = Number.POSITIVE_INFINITY
+  let minY = Number.POSITIVE_INFINITY
+  let maxX = Number.NEGATIVE_INFINITY
+  let maxY = Number.NEGATIVE_INFINITY
+  for (const node of flowNodes.value) {
+    const measured = (node as FlowCanvasNode & { dimensions?: Dimensions }).dimensions
+    const width = measured?.width ?? 320
+    const height = measured?.height ?? 220
+    minX = Math.min(minX, node.position.x)
+    minY = Math.min(minY, node.position.y)
+    maxX = Math.max(maxX, node.position.x + width)
+    maxY = Math.max(maxY, node.position.y + height)
+  }
+  if (!Number.isFinite(minX)) {
+    return
+  }
+  const padding = 48
+  const boundsWidth = Math.max(maxX - minX, 1)
+  const boundsHeight = Math.max(maxY - minY, 1)
+  const zoom = Math.min(
+    (canvasWidth - padding) / boundsWidth,
+    (canvasHeight - padding) / boundsHeight,
+    1,
+  )
+  const centerX = (minX + maxX) / 2
+  const centerY = (minY + maxY) / 2
+  void vf.setViewport(
+    { x: canvasWidth / 2 - centerX * zoom, y: canvasHeight / 2 - centerY * zoom, zoom },
+    { duration: 300 },
+  )
+}
+
+/** 把单个节点平滑带进视口（只改 viewport，不动节点坐标）。 */
+function manualFitNode(nodeId: string): void {
+  let target: FlowCanvasNode | undefined
+  const all = flowNodes.value as unknown as { id: string }[]
+  for (const node of all) {
+    if (node.id === nodeId) {
+      target = node as FlowCanvasNode
+      break
+    }
+  }
+  const canvasWidth = vf.dimensions.value.width
+  const canvasHeight = vf.dimensions.value.height
+  if (!target || !canvasWidth || !canvasHeight) {
+    return
+  }
+  const measured = (target as FlowCanvasNode & { dimensions?: Dimensions }).dimensions
+  const width = measured?.width ?? 320
+  const height = measured?.height ?? 220
+  const centerX = target.position.x + width / 2
+  const centerY = target.position.y + height / 2
+  const zoom = Math.min(canvasWidth / (width + 96), canvasHeight / (height + 96), 1)
+  void vf.setViewport(
+    { x: canvasWidth / 2 - centerX * zoom, y: canvasHeight / 2 - centerY * zoom, zoom },
+    { duration: 400 },
+  )
+}
 
 function onNodesChange(changes: NodeChange[]): void {
   // Vue Flow emits one select change per affected node per batch; mirror the
@@ -208,8 +305,8 @@ const isEmptyProject = computed(() =>
         :pan-on-drag="true"
         :min-zoom="0.15"
         :max-zoom="2.5"
-        :only-render-visible-elements="true"
         data-test="graph-flow"
+        @init="onInit"
         @nodes-change="onNodesChange"
         @node-drag-stop="onNodeDragStop"
         @pane-click="onPaneClick"

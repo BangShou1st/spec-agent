@@ -3,47 +3,40 @@ import {
   FAKE_ROOT_QUESTION,
   buildThreeNodeLineage,
   createProject,
-  selectHistoricalNode,
+  fitGraph,
 } from './helpers'
 
 /**
- * Deterministic regenerate flow: an answered NON-ROOT historical node on the
- * active OPEN route is regenerated. The old route becomes SUPERSEDED, the
- * replacement route becomes OPEN + ACTIVE, the replacement question is shown,
- * the old route stays visible, and the replacement lineage shows parent
- * lineage + replacement node only (no old child subtree).
+ * Deterministic regenerate on the graph: an answered NON-ROOT historical
+ * node is regenerated with explicit replacement content (no model). The old
+ * route becomes 已替代, the replacement route becomes 当前路线, old history
+ * stays visible, and the replacement relation is a distinct dashed edge.
  */
-test('regenerate a historical node creates a replacement route without the old subtree', async ({ page }) => {
-  await createProject(page, 'E2E Regenerate Flow')
+test('regenerate creates a replacement route and keeps old history', async ({ page }) => {
+  await createProject(page, 'E2E Regenerate Graph Flow')
   await buildThreeNodeLineage(page)
+  await fitGraph(page)
 
-  // Select the answered NON-ROOT child (index 1).
-  await selectHistoricalNode(page, 1)
-
-  // Open the regenerate dialog: content is prefilled from the node (labels and
-  // impacts only), then edited.
-  await page.getByTestId('regenerate-this-question').click()
+  // 非根的历史节点（child，index 1）重新生成。
+  await page.locator('[data-test="graph-question-node"]').nth(1).getByTestId('regenerate-node').click()
   await expect(page.getByTestId('regenerate-dialog')).toBeVisible()
   await expect(page.getByTestId('regenerate-question')).toHaveValue(FAKE_ROOT_QUESTION)
-
   await page.getByTestId('regenerate-question').fill('E2E Replacement Question')
   await page.getByTestId('regenerate-submit').click()
 
-  // Replacement route becomes OPEN + ACTIVE and shows the replacement node.
+  // 旧路线 → 已替代；替代路线 → 当前路线；替代节点为当前可回答节点。
   await expect(page.getByTestId('question')).toHaveText('E2E Replacement Question')
   await expect(page.getByTestId('active-route')).toHaveCount(1)
+  const cards = page.locator('[data-route-id]')
+  await expect(cards).toHaveCount(2)
+  await expect(cards.nth(0).locator('.badge-superseded')).toBeVisible()
+  await expect(cards.nth(1).locator('.badge-open')).toBeVisible()
 
-  // Both routes remain: the SUPERSEDED old route (created first) and the
-  // replacement OPEN route.
-  await expect(page.getByTestId('route-card')).toHaveCount(2)
-  await expect(page.getByTestId('lifecycle-badge').nth(0)).toHaveText('Superseded')
-  await expect(page.getByTestId('lifecycle-badge').nth(1)).toHaveText('Open')
+  // 旧历史完整保留（root + child + grandchild），加上替代节点 = 4 个节点。
+  await expect(page.locator('.graph-question-node')).toHaveCount(4)
+  await expect(page.locator('.graph-question-node--historical')).toHaveCount(3)
 
-  // The replacement lineage = parent (root) + replacement node only; the old
-  // child subtree (the grandchild node) is absent, so 2 nodes and the tip is
-  // the replacement node.
-  await expect(page.getByTestId('lineage-node')).toHaveCount(2)
-  await expect(page.getByTestId('lineage-node').nth(1)).toContainText('E2E Replacement Question')
-  await expect(page.getByTestId('lineage-node').nth(1).getByTestId('tip-node')).toBeVisible()
-  await expect(page.getByTestId('lineage-node').nth(1).getByTestId('supersedes-node')).toBeVisible()
+  // 替代关系是独立于 lineage 的虚线边（source = 被替代节点）。
+  const replacementEdges = page.locator('.graph-edge--replacement')
+  await expect(replacementEdges).toHaveCount(1)
 })

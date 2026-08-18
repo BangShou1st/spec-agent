@@ -1,20 +1,27 @@
 import { expect, type Page } from '@playwright/test'
 
 /**
- * Shared E2E helpers. Every flow proves browser-visible behavior against the
- * real local backend with the fake model gateway; nothing here inspects the
- * database directly.
+ * Shared E2E helpers for the graph-first workspace. Every flow proves
+ * browser-visible behavior against the real local backend with the fake
+ * model gateway; nothing here inspects the database directly.
  */
 
 export const FAKE_ROOT_QUESTION = 'What is the most important outcome?'
 
-/** Creates a project through the UI and lands in its workspace. */
+/** Creates a project through the UI and lands in its graph workspace. */
 export async function createProject(page: Page, title: string): Promise<void> {
   await page.goto('/projects')
   await page.getByLabel('Project title').fill(title)
-  await page.getByRole('button', { name: 'Create project' }).click()
+  await page.getByRole('button', { name: '创建项目' }).click()
   await page.waitForURL(/\/projects\/[0-9a-f-]+/)
-  await expect(page.getByText('Route Workspace')).toBeVisible()
+  await expect(page.getByTestId('graph-canvas')).toBeVisible()
+  await expect(page.getByTestId('route-sidebar')).toBeVisible()
+}
+
+/** Fits the whole graph into the viewport (viewport-only; never moves nodes). */
+export async function fitGraph(page: Page): Promise<void> {
+  await page.getByTestId('fit-view').click()
+  await page.waitForTimeout(500)
 }
 
 /** Drafts the first question (explicit user action). */
@@ -27,22 +34,28 @@ export async function draftFirstQuestion(page: Page): Promise<void> {
 export async function answerActiveNode(page: Page, text: string): Promise<void> {
   await page.getByTestId('free-text').fill(text)
   await page.getByTestId('submit-answer').click()
-  // The backend recorded the answer and drafted the next node; the store
-  // refreshed and the active question input was reset for the next answer.
-  await expect(page.getByText('Answer recorded.')).toBeVisible()
+  await expect(page.getByText('回答已记录。')).toBeVisible()
   await expect(page.getByTestId('free-text')).toHaveValue('')
 }
 
-/** Builds a 3-node lineage: root, answered child, grandchild. */
+/** Builds a 3-node lineage: root, answered child, grandchild (1 route). */
 export async function buildThreeNodeLineage(page: Page): Promise<void> {
   await draftFirstQuestion(page)
   await answerActiveNode(page, 'First answer content')
   await answerActiveNode(page, 'Second answer content')
-  await expect(page.getByTestId('lineage-node')).toHaveCount(3)
+  await expect(page.locator('.graph-question-node')).toHaveCount(3)
 }
 
-/** Selects a historical lineage node by index (0 = root). */
-export async function selectHistoricalNode(page: Page, index: number): Promise<void> {
-  await page.getByTestId('lineage-node').nth(index).click()
-  await expect(page.getByTestId('historical-question')).toBeVisible()
+/**
+ * Forks from the given graph node index through the base-route dialog
+ * (the default base = active+open route).
+ */
+export async function forkFromNode(page: Page, index: number, label: string): Promise<void> {
+  await page.locator('[data-test="graph-question-node"]').nth(index).getByTestId('fork-node').click()
+  await expect(page.getByTestId('fork-dialog')).toBeVisible()
+  if (label) {
+    await page.getByTestId('fork-label').fill(label)
+  }
+  await page.getByTestId('fork-submit').click()
+  await expect(page.getByTestId('fork-dialog')).toHaveCount(0)
 }

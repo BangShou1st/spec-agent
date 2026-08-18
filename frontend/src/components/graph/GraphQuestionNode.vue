@@ -85,6 +85,7 @@ const isRootNode = computed(() => props.data.node.parentNodeId === null)
       },
     ]"
     data-test="graph-question-node"
+    :data-node-id="data.node.id"
   >
     <header class="graph-question-node__header" data-test="node-drag-handle" title="拖动标题栏移动节点">
       <span class="graph-question-node__kind">
@@ -96,7 +97,7 @@ const isRootNode = computed(() => props.data.node.parentNodeId === null)
       </span>
     </header>
 
-    <div class="graph-question-node__body nodrag" data-test="node-body">
+    <div class="graph-question-node__body nodrag" data-test="node-body" @click.stop>
       <!-- Current answerable node: direct answer interaction -->
       <template v-if="data.canAnswer">
         <h3 class="graph-node-question" data-test="question">{{ node.question }}</h3>
