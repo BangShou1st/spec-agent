@@ -5,6 +5,7 @@ import { useWorkspaceStore } from '@/stores/workspaceStore'
 import {
   makeActiveState,
   makeProject,
+  makeGraphWorkspaceView,
   makeRegenerateResponse,
   makeRequirementState,
   makeRoute,
@@ -28,6 +29,7 @@ vi.mock('@/api/workspace', () => ({
 
 vi.mock('@/api/requirementState', () => ({
   getRequirementState: vi.fn(),
+  getRouteRequirementState: vi.fn(),
 }))
 
 vi.mock('@/api/routes', () => ({
@@ -40,6 +42,10 @@ vi.mock('@/api/routes', () => ({
   restoreRoute: vi.fn(),
 }))
 
+vi.mock('@/api/graph', () => ({
+  getProjectGraph: vi.fn(),
+}))
+
 vi.mock('@/api/spec', () => ({
   generateSpec: vi.fn(),
   listRouteSpecs: vi.fn(),
@@ -48,6 +54,7 @@ vi.mock('@/api/spec', () => ({
 import { getProject } from '@/api/projects'
 import { getActiveState, listRoutes } from '@/api/workspace'
 import { getRequirementState } from '@/api/requirementState'
+import { getProjectGraph } from '@/api/graph'
 import {
   activateRoute as apiActivateRoute,
   archiveRoute as apiArchiveRoute,
@@ -63,6 +70,7 @@ const mockedGetProject = vi.mocked(getProject)
 const mockedGetActiveState = vi.mocked(getActiveState)
 const mockedListRoutes = vi.mocked(listRoutes)
 const mockedGetRequirementState = vi.mocked(getRequirementState)
+const mockedGetProjectGraph = vi.mocked(getProjectGraph)
 const mockedGetRouteLineage = vi.mocked(getRouteLineage)
 const mockedApiActivateRoute = vi.mocked(apiActivateRoute)
 const mockedApiRestoreRoute = vi.mocked(apiRestoreRoute)
@@ -85,6 +93,7 @@ describe('workspaceStore route workspace', () => {
     mockedListRoutes.mockResolvedValue(active.activeRoute ? [active.activeRoute] : [])
     mockedGetRequirementState.mockResolvedValue(state)
     mockedGetRouteLineage.mockResolvedValue(makeRouteLineage())
+    mockedGetProjectGraph.mockResolvedValue(makeGraphWorkspaceView())
   }
 
   /** Active state whose route has a tip node (required for spec generation). */
@@ -401,7 +410,7 @@ describe('workspaceStore route workspace', () => {
 
     const ok = await store.generateSpec()
 
-    expect(ok).toBe(false)
+    expect(ok).toBeNull()
     expect(mockedApiGenerateSpec).not.toHaveBeenCalled()
     expect(store.error?.code).toBe('NO_ACTIVE_TIP_NODE')
   })
@@ -442,9 +451,11 @@ describe('workspaceStore route workspace', () => {
 
     const ok = await store.generateSpec()
 
-    expect(ok).toBe(true)
+    expect(ok).not.toBeNull()
+    expect(ok?.specSnapshot.id).toBe('spec-new')
     expect(mockedListRouteSpecs).toHaveBeenCalledWith('p1', 'route-1')
     expect(store.selectedSpecId).toBe('spec-new')
+    expect(store.selectedSpecIdByRoute['route-1']).toBe('spec-new')
     expect(store.specsByRoute['route-1'].map((s) => s.id)).toEqual(['spec-old', 'spec-new'])
     expect(store.feedback).toBe('Spec snapshot generated.')
   })
@@ -479,7 +490,8 @@ describe('workspaceStore route workspace', () => {
 
     const ok = await store.generateSpec()
 
-    expect(ok).toBe(true)
+    expect(ok).not.toBeNull()
+    expect(ok?.specSnapshot.routeId).toBe('route-B')
     expect(mockedListRouteSpecs).toHaveBeenCalledWith('p1', 'route-B')
     expect(store.selectedRouteId).toBe('route-B')
     expect(store.selectedNodeId).toBeNull()

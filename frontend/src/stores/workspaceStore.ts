@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia'
 import { ApiError, GENERIC_ERROR_MESSAGE } from '@/api/client'
+import { getProjectGraph } from '@/api/graph'
 import { getProject } from '@/api/projects'
-import { getRequirementState } from '@/api/requirementState'
+import { getRequirementState, getRouteRequirementState } from '@/api/requirementState'
 import {
   activateRoute,
   archiveRoute,
@@ -14,11 +15,13 @@ import {
 import { generateSpec, listRouteSpecs } from '@/api/spec'
 import type {
   ActiveProjectStateResponse,
+  GraphWorkspaceView,
   ProjectResponse,
   RegenerateNodeRequest,
   RequirementStateView,
   RouteLineageView,
   RouteResponse,
+  SpecGenerationResponse,
   SpecSnapshotResponse,
   SubmitAnswerRequest,
 } from '@/api/types'
@@ -67,6 +70,14 @@ export const useWorkspaceStore = defineStore('workspace', {
     routes: [] as RouteResponse[],
     activeState: null as ActiveProjectStateResponse | null,
     requirementState: null as RequirementStateView | null,
+    // Canonical graph read (Phase 7.3A): replaced from the backend on every
+    // refresh; the frontend never patches it locally.
+    graphView: null as GraphWorkspaceView | null,
+    // Route-scoped requirement-state cache, indexed by explicit route id.
+    requirementStatesByRoute: {} as Record<string, RequirementStateView>,
+    loadingRequirementRouteId: null as string | null,
+    // Route-scoped spec selection, indexed by explicit route id.
+    selectedSpecIdByRoute: {} as Record<string, string | null>,
     loading: false,
     refreshing: false,
     drafting: false,
@@ -121,6 +132,16 @@ export const useWorkspaceStore = defineStore('workspace', {
     activeRoute(state): RouteResponse | null {
       return state.activeState?.activeRoute ?? null
     },
+    /** Resolves the selected snapshot for one explicit route. */
+    selectedSpecForRoute(): (routeId: string) => SpecSnapshotResponse | null {
+      return (routeId: string) => {
+        const id = this.selectedSpecIdByRoute[routeId]
+        if (!id) {
+          return null
+        }
+        return (this.specsByRoute[routeId] ?? []).find((snapshot) => snapshot.id === id) ?? null
+      }
+    },
   },
   actions: {
     async loadWorkspace(projectId: string): Promise<void> {
@@ -129,16 +150,19 @@ export const useWorkspaceStore = defineStore('workspace', {
       this.error = null
       this.feedback = null
       try {
-        const [project, activeState, routes, requirementState] = await Promise.all([
+        const [project, activeState, routes, requirementState, graphView] = await Promise.all([
           getProject(projectId),
           getActiveState(projectId),
           listRoutes(projectId),
           getRequirementState(projectId),
+          getProjectGraph(projectId),
         ])
         this.project = project
         this.activeState = activeState
         this.routes = routes
         this.requirementState = requirementState
+        this.graphView = graphView
+        this.requirementStatesByRoute = {}
         // The workspace opens on the backend-active route. Lineages and spec
         // snapshot lists stay lazy: they load on selection, never here.
         this.selectedRouteId = activeState.activeRoute?.id ?? null
@@ -161,16 +185,18 @@ export const useWorkspaceStore = defineStore('workspace', {
       this.refreshing = true
       this.error = null
       try {
-        const [project, activeState, routes, requirementState] = await Promise.all([
+        const [project, activeState, routes, requirementState, graphView] = await Promise.all([
           getProject(this.projectId),
           getActiveState(this.projectId),
           listRoutes(this.projectId),
           getRequirementState(this.projectId),
+          getProjectGraph(this.projectId),
         ])
         this.project = project
         this.activeState = activeState
         this.routes = routes
         this.requirementState = requirementState
+        this.graphView = graphView
         // Lineages are display caches and the backend is authoritative: any
         // command may have added nodes or changed route state, so the cache
         // is dropped and the selected route's lineage is reloaded from the
@@ -431,6 +457,44 @@ export const useWorkspaceStore = defineStore('workspace', {
       }
     },
 
+    // ---------------- Route-scoped reads ----------------
+
+    /**
+     * Loads (and caches) the requirement state for an explicit route. The
+     * cache is indexed by route id; no global selection decides ownership.
+     */
+    async ensureRequirementState(routeId: string): Promise<RequirementStateView | null> {
+      if (!this.projectId) {
+        return null
+      }
+      const cached = this.requirementStatesByRoute[routeId]
+      if (cached) {
+        return cached
+      }
+      this.loadingRequirementRouteId = routeId
+      try {
+        const state = await getRouteRequirementState(this.projectId, routeId)
+        this.requirementStatesByRoute = {
+          ...this.requirementStatesByRoute,
+          [routeId]: state,
+        }
+        return state
+      } catch (err) {
+        this.error = toDisplayError(err)
+        return null
+      } finally {
+        this.loadingRequirementRouteId = null
+      }
+    },
+
+    /** Selects the displayed spec snapshot for one explicit route. */
+    selectSpecForRoute(routeId: string, snapshotId: string | null): void {
+      this.selectedSpecIdByRoute = {
+        ...this.selectedSpecIdByRoute,
+        [routeId]: snapshotId,
+      }
+    },
+
     // ---------------- Spec snapshots ----------------
 
     /** Loads the snapshot list for a route from the backend. */
@@ -464,9 +528,9 @@ export const useWorkspaceStore = defineStore('workspace', {
      * displayed snapshot is the one that was just generated, even when the
      * previously selected route had its own older snapshots.
      */
-    async generateSpec(): Promise<boolean> {
+    async generateSpec(): Promise<SpecGenerationResponse | null> {
       if (!this.projectId || this.generatingSpec || this.routeCommandPending) {
-        return false
+        return null
       }
       const activeRoute = this.activeState?.activeRoute
       if (!activeRoute || !activeRoute.tipNodeId) {
@@ -474,7 +538,7 @@ export const useWorkspaceStore = defineStore('workspace', {
           code: 'NO_ACTIVE_TIP_NODE',
           message: 'The active route has no tip node to generate a spec from.',
         }
-        return false
+        return null
       }
       this.generatingSpec = true
       this.error = null
@@ -486,11 +550,16 @@ export const useWorkspaceStore = defineStore('workspace', {
         this.selectedNodeId = null
         await this.loadRouteSpecs(result.specSnapshot.routeId)
         this.selectedSpecId = result.specSnapshot.id
+        // Route-scoped selection: the returned artifact owns its route.
+        this.selectedSpecIdByRoute = {
+          ...this.selectedSpecIdByRoute,
+          [result.specSnapshot.routeId]: result.specSnapshot.id,
+        }
         this.feedback = 'Spec snapshot generated.'
-        return true
+        return result
       } catch (err) {
         this.error = toDisplayError(err)
-        return false
+        return null
       } finally {
         this.generatingSpec = false
       }

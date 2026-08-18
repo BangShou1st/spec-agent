@@ -7,6 +7,7 @@ import type {
   NodeResponse,
   ProjectResponse,
   ProjectSummaryResponse,
+  GraphWorkspaceView,
   RegenerateResponse,
   RequirementClaimView,
   RequirementStateView,
@@ -297,6 +298,19 @@ export function makeSpecSnapshot(
     sourceRefs: [makeSourceReference()],
     createdByRunId: 'run-1',
     createdAt: '2026-01-01T00:00:00Z',
+    ...overrides,
+  }
+}
+
+export function makeGraphWorkspaceView(
+  overrides: Partial<GraphWorkspaceView> = {},
+): GraphWorkspaceView {
+  return {
+    projectId: 'project-1',
+    activeRouteId: 'route-1',
+    routes: [],
+    nodes: [],
+    answers: [],
     ...overrides,
   }
 }

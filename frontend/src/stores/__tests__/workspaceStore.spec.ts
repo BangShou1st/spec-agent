@@ -5,6 +5,7 @@ import { useWorkspaceStore } from '@/stores/workspaceStore'
 import {
   makeActiveState,
   makeAnswerExecution,
+  makeGraphWorkspaceView,
   makeNode,
   makeProject,
   makeRequirementState,
@@ -30,6 +31,11 @@ vi.mock('@/api/workspace', () => ({
 
 vi.mock('@/api/requirementState', () => ({
   getRequirementState: vi.fn(),
+  getRouteRequirementState: vi.fn(),
+}))
+
+vi.mock('@/api/graph', () => ({
+  getProjectGraph: vi.fn(),
 }))
 
 vi.mock('@/api/routes', () => ({
@@ -54,13 +60,16 @@ import {
   listRoutes,
   submitAnswer,
 } from '@/api/workspace'
-import { getRequirementState } from '@/api/requirementState'
+import { getRequirementState, getRouteRequirementState } from '@/api/requirementState'
+import { getProjectGraph } from '@/api/graph'
 import { getRouteLineage } from '@/api/routes'
 
 const mockedGetProject = vi.mocked(getProject)
 const mockedGetActiveState = vi.mocked(getActiveState)
 const mockedListRoutes = vi.mocked(listRoutes)
 const mockedGetRequirementState = vi.mocked(getRequirementState)
+const mockedGetRouteRequirementState = vi.mocked(getRouteRequirementState)
+const mockedGetProjectGraph = vi.mocked(getProjectGraph)
 const mockedDraftNextQuestion = vi.mocked(draftNextQuestion)
 const mockedSubmitAnswer = vi.mocked(submitAnswer)
 const mockedGetRouteLineage = vi.mocked(getRouteLineage)
@@ -77,6 +86,7 @@ describe('workspaceStore', () => {
     mockedListRoutes.mockResolvedValue(active.activeRoute ? [active.activeRoute] : [])
     mockedGetRequirementState.mockResolvedValue(state)
     mockedGetRouteLineage.mockResolvedValue(makeRouteLineage())
+    mockedGetProjectGraph.mockResolvedValue(makeGraphWorkspaceView())
   }
 
   it('loads workspace from the four backend reads', async () => {
@@ -96,6 +106,7 @@ describe('workspaceStore', () => {
     expect(mockedGetActiveState).toHaveBeenCalledWith('p1')
     expect(mockedListRoutes).toHaveBeenCalledWith('p1')
     expect(mockedGetRequirementState).toHaveBeenCalledWith('p1')
+    expect(mockedGetProjectGraph).toHaveBeenCalledWith('p1')
   })
 
   it('never manufactures an active node when the backend returns none', async () => {
@@ -299,5 +310,91 @@ describe('workspaceStore', () => {
 
     expect(store.routes.map((r) => r.id)).toEqual(['r-sibling', 'r1'])
     expect(store.routes.find((r) => r.isActive)?.id).toBe('r1')
+  })
+
+  it('loads the canonical graph view alongside the other backend reads', async () => {
+    const active = makeActiveState()
+    const graph = makeGraphWorkspaceView({
+      projectId: active.project.id,
+      activeRouteId: active.activeRoute?.id ?? 'route-1',
+      routes: [
+        {
+          id: 'route-1',
+          label: 'Initial route',
+          lifecycleStatus: 'open',
+          isActive: true,
+          rootNodeId: 'node-1',
+          tipNodeId: 'node-1',
+          createdFromNodeId: null,
+          supersedesRouteId: null,
+          replacementOfNodeId: null,
+          lineageNodeIds: ['node-1'],
+        },
+      ],
+      nodes: [makeNode({ id: 'node-1', projectId: active.project.id })],
+      answers: [],
+    })
+    mockBackendViews(active, makeRequirementState())
+    mockedGetProjectGraph.mockResolvedValue(graph)
+    const store = useWorkspaceStore()
+
+    await store.loadWorkspace('p1')
+
+    expect(mockedGetProjectGraph).toHaveBeenCalledWith('p1')
+    expect(store.graphView?.projectId).toBe(active.project.id)
+    expect(store.graphView?.routes[0].lineageNodeIds).toEqual(['node-1'])
+  })
+
+  it('refreshWorkspace replaces graphView from the backend and never patches locally', async () => {
+    const active = makeActiveState()
+    mockBackendViews(active, makeRequirementState())
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+
+    // A runtime mutation added a second node; the backend response is the
+    // only authority and the store must replace the whole view.
+    const refreshedGraph = makeGraphWorkspaceView({
+      projectId: active.project.id,
+      activeRouteId: active.activeRoute?.id ?? 'route-1',
+      nodes: [
+        makeNode({ id: 'node-1', projectId: active.project.id }),
+        makeNode({ id: 'node-2', projectId: active.project.id, parentNodeId: 'node-1' }),
+      ],
+    })
+    mockedGetProjectGraph.mockResolvedValue(refreshedGraph)
+
+    await store.refreshWorkspace()
+
+    expect(store.graphView?.nodes.map((n) => n.id)).toEqual(['node-1', 'node-2'])
+  })
+
+  it('ensureRequirementState reads and caches route-scoped state per route', async () => {
+    mockBackendViews(makeActiveState(), makeRequirementState())
+    mockedGetRouteRequirementState.mockResolvedValue(makeRequirementState({ routeId: 'r-other' }))
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+
+    const first = await store.ensureRequirementState('r-other')
+    const second = await store.ensureRequirementState('r-other')
+
+    expect(mockedGetRouteRequirementState).toHaveBeenCalledTimes(1)
+    expect(mockedGetRouteRequirementState).toHaveBeenCalledWith('p1', 'r-other')
+    expect(first?.routeId).toBe('r-other')
+    expect(second?.routeId).toBe('r-other')
+    expect(store.requirementStatesByRoute['r-other']?.routeId).toBe('r-other')
+  })
+
+  it('ensureRequirementState surfaces failures without throwing', async () => {
+    mockBackendViews(makeActiveState(), makeRequirementState())
+    mockedGetRouteRequirementState.mockRejectedValue(
+      new ApiError('Route not found', 'ROUTE_NOT_FOUND', 404),
+    )
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+
+    const state = await store.ensureRequirementState('r-missing')
+
+    expect(state).toBeNull()
+    expect(store.error?.code).toBe('ROUTE_NOT_FOUND')
   })
 })
