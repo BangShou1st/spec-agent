@@ -6,96 +6,104 @@
 
 **Architecture:** Add a `readmodel.graph` projection that composes existing `ProjectService`, `RouteService`, `NodeService`, and `AnswerService` reads and exposes one canonical project graph endpoint. Extend requirement-state reads with an explicit route-scoped query while preserving the existing active-route endpoint. Controllers stay thin; read models never call ModelGateway, credentials, repositories directly, or `ContextBuilder`.
 
-**Tech Stack:** Java 21, Spring Boot, Spring MVC, JDBC-backed existing Runtime services, JUnit 5, MockMvc, ArchUnit, Gradle Wrapper.
+**Tech Stack:** Java 21, Spring Boot, Spring MVC, existing JDBC-backed Runtime services, JUnit 5, Mockito, MockMvc, ArchUnit, Gradle Wrapper.
 
 **Spec:** `docs/superpowers/specs/2026-08-18-phase-7-3-graph-workspace-design.md`
 
 ## Global Constraints
 
-- Implementation baseline is the approved design commit `ca30d1d6fc2e576a1cbf140f3e0b9025acc2d99f` or a later `origin/main` containing it.
+- Implementation baseline is an `origin/main` containing approved design commit `ca30d1d6fc2e576a1cbf140f3e0b9025acc2d99f`.
 - Runtime owns history. Do not change Route/Node/Answer/Context persistence semantics.
 - Active route remains `Project.activeRouteId`; active is not a lifecycle status.
-- Regenerate remains deterministic; do not call a model from any new read path.
-- Graph and requirement-state additions are read-only UI support.
+- Regenerate remains deterministic; no new read path may call a model.
+- Graph and route-scoped requirement-state additions are read-only UI support.
 - API classes must not depend on repositories, model/provider packages, credentials, or `ContextBuilder`.
 - `com.specagent.readmodel..` must not depend on `com.specagent.api..`.
-- Graph responses may expose safe Question/Option/Answer presentation fields only; never expose patches, context snapshots, prompts, provider payloads, credentials, AgentRun traces, or raw DB metadata.
-- A graph read that encounters a missing/foreign/cyclic/root-mismatched lineage fails closed; do not return a partial misleading graph.
-- All lifecycle states remain inspectable by read endpoints: OPEN, SUPERSEDED, ARCHIVED, DELETED.
-- Existing Phase 6/7 APIs remain backward-compatible.
-- Use TDD. Each task must leave tests green before its commit.
-- Work on `main` only if the local checkout is clean and synchronized. At completion push to `origin main` and verify `origin/main == HEAD`.
+- Graph responses expose safe Question/Option/Answer presentation fields only; never patches, context snapshots, prompts, provider payloads, credentials, AgentRun traces, or raw DB metadata.
+- Missing/foreign/cyclic/root-mismatched lineage data must fail closed; never return a partial misleading graph.
+- OPEN, SUPERSEDED, ARCHIVED, and DELETED routes are all inspectable by read endpoints.
+- Existing Phase 6/7 APIs stay backward-compatible.
+- Use TDD. Every task must have an independently passing test cycle before its commit.
+- At completion push to `origin main`, leave the working tree clean, and verify `origin/main == HEAD`.
 
 ## File Structure
 
-### New backend graph read model
+### Answer read boundary
 
-- Create `backend/src/main/java/com/specagent/readmodel/graph/GraphWorkspaceQueryException.java` — closed read-model-neutral graph query failures.
-- Create `backend/src/main/java/com/specagent/readmodel/graph/GraphWorkspaceOptionView.java` — safe option view.
-- Create `backend/src/main/java/com/specagent/readmodel/graph/GraphWorkspaceNodeView.java` — deduplicated safe node view.
-- Create `backend/src/main/java/com/specagent/readmodel/graph/GraphWorkspaceAnswerView.java` — route-specific safe answer view.
-- Create `backend/src/main/java/com/specagent/readmodel/graph/GraphWorkspaceRouteView.java` — route metadata plus authoritative `lineageNodeIds`.
-- Create `backend/src/main/java/com/specagent/readmodel/graph/GraphWorkspaceView.java` — aggregate project graph response.
-- Create `backend/src/main/java/com/specagent/readmodel/graph/GraphWorkspaceQueryService.java` — validates and projects all project routes into one graph.
-- Create `backend/src/main/java/com/specagent/readmodel/graph/package-info.java` — package boundary description.
+- Modify `backend/src/main/java/com/specagent/answer/AnswerService.java` — expose the existing route+node batch answer read through the service layer.
+- Create `backend/src/test/java/com/specagent/answer/AnswerServiceTest.java`.
 
-### New API graph endpoint
+### Graph read model
 
-- Create `backend/src/main/java/com/specagent/api/graph/GraphWorkspaceController.java` — `GET /api/v1/projects/{projectId}/graph`.
+- Create `backend/src/main/java/com/specagent/readmodel/graph/GraphWorkspaceQueryException.java`.
+- Create `backend/src/main/java/com/specagent/readmodel/graph/GraphWorkspaceOptionView.java`.
+- Create `backend/src/main/java/com/specagent/readmodel/graph/GraphWorkspaceNodeView.java`.
+- Create `backend/src/main/java/com/specagent/readmodel/graph/GraphWorkspaceAnswerView.java`.
+- Create `backend/src/main/java/com/specagent/readmodel/graph/GraphWorkspaceRouteView.java`.
+- Create `backend/src/main/java/com/specagent/readmodel/graph/GraphWorkspaceView.java`.
+- Create `backend/src/main/java/com/specagent/readmodel/graph/GraphWorkspaceQueryService.java`.
+- Create `backend/src/main/java/com/specagent/readmodel/graph/package-info.java`.
+- Create `backend/src/test/java/com/specagent/readmodel/graph/GraphWorkspaceQueryServiceTest.java`.
+
+### Graph HTTP API
+
+- Create `backend/src/main/java/com/specagent/api/graph/GraphWorkspaceController.java`.
 - Create `backend/src/main/java/com/specagent/api/graph/package-info.java`.
-- Modify `backend/src/main/java/com/specagent/api/common/ApiExceptionHandler.java` — map graph read failures safely.
-
-### Existing answer service read boundary
-
-- Modify `backend/src/main/java/com/specagent/answer/AnswerService.java` — add one read-only batch method delegating to the existing repository query.
-
-### Route-scoped requirement-state read
-
-- Modify `backend/src/main/java/com/specagent/readmodel/requirement/RequirementStateQueryException.java` — add `ROUTE_NOT_FOUND`.
-- Modify `backend/src/main/java/com/specagent/readmodel/requirement/RequirementStateQueryService.java` — add `getForRoute(UUID projectId, UUID routeId)`.
-- Modify `backend/src/main/java/com/specagent/api/requirement/RequirementStateController.java` — preserve active endpoint and add route-scoped endpoint.
-- Modify `backend/src/main/java/com/specagent/api/common/ApiExceptionHandler.java` — map `ROUTE_NOT_FOUND`.
-
-### Tests
-
+- Modify `backend/src/main/java/com/specagent/api/common/ApiExceptionHandler.java`.
 - Create `backend/src/test/java/com/specagent/api/graph/GraphWorkspaceApiIntegrationTest.java`.
+
+### Route-scoped Requirement State
+
+- Modify `backend/src/main/java/com/specagent/readmodel/requirement/RequirementStateQueryException.java`.
+- Modify `backend/src/main/java/com/specagent/readmodel/requirement/RequirementStateQueryService.java`.
+- Create `backend/src/main/java/com/specagent/api/requirement/RouteRequirementStateController.java`.
+- Modify `backend/src/main/java/com/specagent/api/common/ApiExceptionHandler.java`.
 - Modify `backend/src/test/java/com/specagent/api/requirement/RequirementStateApiIntegrationTest.java`.
-- Modify `backend/src/test/java/com/specagent/architecture/ArchitectureTests.java` only if an explicit graph-specific rule adds protection beyond existing generic rules.
+
+### Architecture verification
+
+- Modify `backend/src/test/java/com/specagent/architecture/ArchitectureTests.java` only if a graph-specific rule adds protection beyond the existing generic API/read-model rules.
 
 ---
 
-### Task 1: Expose route-scoped answers through `AnswerService`
+### Task 1: Expose route-scoped answer reads through `AnswerService`
 
 **Files:**
 - Modify: `backend/src/main/java/com/specagent/answer/AnswerService.java`
-- Test: `backend/src/test/java/com/specagent/answer/AnswerServiceTest.java` if present; otherwise create it.
+- Create: `backend/src/test/java/com/specagent/answer/AnswerServiceTest.java`
 
 **Interfaces:**
-- Consumes: existing `AnswerRepository.findByRouteAndNodeIds(UUID routeId, List<UUID> nodeIds)`.
+- Consumes: `AnswerRepository.findByRouteAndNodeIds(UUID routeId, List<UUID> nodeIds)`.
 - Produces: `public List<Answer> findAnswersForRouteAndNodeIds(UUID routeId, List<UUID> nodeIds)`.
 
 - [ ] **Step 1: Write the failing service test**
 
-Add a test that mocks `AnswerRepository`, calls the new service method, and verifies exact delegation without mutation:
-
 ```java
-@Test
-void findAnswersForRouteAndNodeIdsDelegatesReadOnlyQuery() {
-    UUID routeId = UUID.randomUUID();
-    List<UUID> nodeIds = List.of(UUID.randomUUID(), UUID.randomUUID());
-    Answer answer = new Answer(
-            UUID.randomUUID(), UUID.randomUUID(), routeId, nodeIds.get(0),
-            "option-a", "free text", "user", Instant.parse("2026-08-18T00:00:00Z"));
-    when(answerRepository.findByRouteAndNodeIds(routeId, nodeIds)).thenReturn(List.of(answer));
+@ExtendWith(MockitoExtension.class)
+class AnswerServiceTest {
+    @Mock AnswerRepository answerRepository;
+    @InjectMocks AnswerService service;
 
-    assertThat(service.findAnswersForRouteAndNodeIds(routeId, nodeIds)).containsExactly(answer);
-    verify(answerRepository).findByRouteAndNodeIds(routeId, nodeIds);
+    @Test
+    void findAnswersForRouteAndNodeIdsDelegatesReadOnlyQuery() {
+        UUID projectId = UUID.randomUUID();
+        UUID routeId = UUID.randomUUID();
+        UUID nodeId = UUID.randomUUID();
+        List<UUID> nodeIds = List.of(nodeId);
+        Answer answer = new Answer(
+                UUID.randomUUID(), projectId, routeId, nodeId,
+                UUID.randomUUID().toString(), "free text", "user",
+                Instant.parse("2026-08-18T00:00:00Z"));
+        when(answerRepository.findByRouteAndNodeIds(routeId, nodeIds)).thenReturn(List.of(answer));
+
+        assertThat(service.findAnswersForRouteAndNodeIds(routeId, nodeIds)).containsExactly(answer);
+        verify(answerRepository).findByRouteAndNodeIds(routeId, nodeIds);
+        verifyNoMoreInteractions(answerRepository);
+    }
 }
 ```
 
-- [ ] **Step 2: Run the focused test and verify it fails**
-
-Run:
+- [ ] **Step 2: Run the focused test and verify failure**
 
 ```bash
 cd backend
@@ -104,9 +112,7 @@ cd backend
 
 Expected: compilation failure because `findAnswersForRouteAndNodeIds` does not exist.
 
-- [ ] **Step 3: Add the minimal read-only service method**
-
-Implement exactly:
+- [ ] **Step 3: Implement the minimal service method**
 
 ```java
 public List<Answer> findAnswersForRouteAndNodeIds(UUID routeId, List<UUID> nodeIds) {
@@ -114,9 +120,9 @@ public List<Answer> findAnswersForRouteAndNodeIds(UUID routeId, List<UUID> nodeI
 }
 ```
 
-Do not add new persistence logic or lifecycle checks here.
+No lifecycle logic, copying, mutation, or fallback belongs here.
 
-- [ ] **Step 4: Run the focused test**
+- [ ] **Step 4: Re-run the focused test**
 
 ```bash
 ./gradlew test --tests com.specagent.answer.AnswerServiceTest
@@ -133,7 +139,7 @@ git commit -m "feat: expose route answer read boundary"
 
 ---
 
-### Task 2: Build the canonical graph read model
+### Task 2: Build the canonical graph read model with pure service tests
 
 **Files:**
 - Create: `backend/src/main/java/com/specagent/readmodel/graph/GraphWorkspaceQueryException.java`
@@ -144,16 +150,20 @@ git commit -m "feat: expose route answer read boundary"
 - Create: `backend/src/main/java/com/specagent/readmodel/graph/GraphWorkspaceView.java`
 - Create: `backend/src/main/java/com/specagent/readmodel/graph/GraphWorkspaceQueryService.java`
 - Create: `backend/src/main/java/com/specagent/readmodel/graph/package-info.java`
-- Test initially through: `backend/src/test/java/com/specagent/api/graph/GraphWorkspaceApiIntegrationTest.java`
+- Create: `backend/src/test/java/com/specagent/readmodel/graph/GraphWorkspaceQueryServiceTest.java`
 
 **Interfaces:**
 - Consumes: `ProjectService.getProject`, `RouteService.listRoutes`, `NodeService.getNode`, `AnswerService.findAnswersForRouteAndNodeIds`.
 - Produces: `GraphWorkspaceView getForProject(UUID projectId)`.
 
-Use these record shapes so the frontend contract remains deterministic:
+Use these backend record shapes and factory signatures exactly. `NodeOption.id()` is a UUID in Java; Jackson will serialize it as the string expected by TypeScript.
 
 ```java
-public record GraphWorkspaceOptionView(String id, String label, String impact) {}
+public record GraphWorkspaceOptionView(UUID id, String label, String impact) {
+    public static GraphWorkspaceOptionView from(NodeOption option) {
+        return new GraphWorkspaceOptionView(option.id(), option.label(), option.impact());
+    }
+}
 
 public record GraphWorkspaceNodeView(
         UUID id,
@@ -164,7 +174,15 @@ public record GraphWorkspaceNodeView(
         String purpose,
         List<GraphWorkspaceOptionView> options,
         boolean allowFreeAnswer,
-        Instant createdAt) {}
+        Instant createdAt) {
+    public static GraphWorkspaceNodeView from(Node node) {
+        return new GraphWorkspaceNodeView(
+                node.id(), node.projectId(), node.parentNodeId(), node.supersedesNodeId(),
+                node.question(), node.purpose(),
+                node.options().stream().map(GraphWorkspaceOptionView::from).toList(),
+                node.allowFreeAnswer(), node.createdAt());
+    }
+}
 
 public record GraphWorkspaceAnswerView(
         UUID id,
@@ -172,7 +190,13 @@ public record GraphWorkspaceAnswerView(
         UUID nodeId,
         String selectedOptionId,
         String freeText,
-        Instant createdAt) {}
+        Instant createdAt) {
+    public static GraphWorkspaceAnswerView from(Answer answer) {
+        return new GraphWorkspaceAnswerView(
+                answer.id(), answer.routeId(), answer.nodeId(),
+                answer.selectedOptionId(), answer.freeText(), answer.createdAt());
+    }
+}
 
 public record GraphWorkspaceRouteView(
         UUID id,
@@ -184,7 +208,16 @@ public record GraphWorkspaceRouteView(
         UUID createdFromNodeId,
         UUID supersedesRouteId,
         UUID replacementOfNodeId,
-        List<UUID> lineageNodeIds) {}
+        List<UUID> lineageNodeIds) {
+    public static GraphWorkspaceRouteView from(
+            Route route, UUID activeRouteId, List<UUID> lineageNodeIds) {
+        return new GraphWorkspaceRouteView(
+                route.id(), route.label(), route.lifecycleStatus().code(),
+                route.isActive(activeRouteId), route.rootNodeId(), route.tipNodeId(),
+                route.createdFromNodeId(), route.supersedesRouteId(),
+                route.replacementOfNodeId(), List.copyOf(lineageNodeIds));
+    }
+}
 
 public record GraphWorkspaceView(
         UUID projectId,
@@ -194,7 +227,7 @@ public record GraphWorkspaceView(
         List<GraphWorkspaceAnswerView> answers) {}
 ```
 
-`GraphWorkspaceQueryException.Reason` must be exactly:
+`GraphWorkspaceQueryException.Reason` is closed:
 
 ```java
 public enum Reason {
@@ -203,45 +236,68 @@ public enum Reason {
 }
 ```
 
-- [ ] **Step 1: Add an integration test for one route and one answer**
+- [ ] **Step 1: Write the failing happy-path read-model test**
 
-Create `GraphWorkspaceApiIntegrationTest` with a first test that constructs a project/route/node/answer using existing test support and expects:
+Use actual domain objects and mocked services. A minimal fixture shape:
 
 ```java
-mockMvc.perform(get("/api/v1/projects/{projectId}/graph", projectId))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$.projectId").value(projectId.toString()))
-        .andExpect(jsonPath("$.activeRouteId").value(routeId.toString()))
-        .andExpect(jsonPath("$.routes[0].lineageNodeIds[0]").value(nodeId.toString()))
-        .andExpect(jsonPath("$.nodes[0].id").value(nodeId.toString()))
-        .andExpect(jsonPath("$.answers[0].routeId").value(routeId.toString()))
-        .andExpect(jsonPath("$.answers[0].nodeId").value(nodeId.toString()))
-        .andExpect(jsonPath("$.answers[0].selectedOptionId").value("option-a"))
-        .andExpect(jsonPath("$.answers[0].freeText").value("answer text"));
+UUID projectId = UUID.randomUUID();
+UUID routeId = UUID.randomUUID();
+UUID rootId = UUID.randomUUID();
+UUID childId = UUID.randomUUID();
+Instant now = Instant.parse("2026-08-18T00:00:00Z");
+
+Project project = new Project(projectId, "p", routeId, null, now, now);
+Node root = new Node(rootId, projectId, null, null, null,
+        "Q1", "P1", List.of(NodeOption.of("A", "impact")), true, now);
+Node child = new Node(childId, projectId, rootId, null, null,
+        "Q2", "P2", List.of(), true, now);
+Route route = new Route(routeId, projectId, rootId, childId,
+        RouteLifecycleStatus.OPEN, "Initial", null, null, null, null, now, now);
+Answer answer = new Answer(UUID.randomUUID(), projectId, routeId, rootId,
+        root.options().get(0).id().toString(), "answer", "user", now);
 ```
 
-- [ ] **Step 2: Run the focused test and verify it fails**
+Stub services and assert:
+
+```java
+GraphWorkspaceView view = service.getForProject(projectId);
+assertThat(view.projectId()).isEqualTo(projectId);
+assertThat(view.activeRouteId()).isEqualTo(routeId);
+assertThat(view.routes()).singleElement()
+        .satisfies(r -> assertThat(r.lineageNodeIds()).containsExactly(rootId, childId));
+assertThat(view.nodes()).extracting(GraphWorkspaceNodeView::id)
+        .containsExactly(rootId, childId);
+assertThat(view.answers()).singleElement()
+        .satisfies(a -> {
+            assertThat(a.routeId()).isEqualTo(routeId);
+            assertThat(a.nodeId()).isEqualTo(rootId);
+        });
+```
+
+- [ ] **Step 2: Run the read-model test and verify failure**
 
 ```bash
-./gradlew test --tests com.specagent.api.graph.GraphWorkspaceApiIntegrationTest
+./gradlew test --tests com.specagent.readmodel.graph.GraphWorkspaceQueryServiceTest
 ```
 
-Expected: 404 or compilation failure because graph read classes/controller do not exist.
+Expected: compilation failure because graph read-model classes do not exist.
 
-- [ ] **Step 3: Implement fail-closed lineage resolution in `GraphWorkspaceQueryService`**
+- [ ] **Step 3: Implement fail-closed lineage resolution**
 
-For each route returned by `routeService.listRoutes(projectId)`:
+For each `routeService.listRoutes(projectId)` route:
 
-1. If `tipNodeId == null`, use `List.of()` as lineage and require `rootNodeId == null`.
-2. Otherwise walk `tipNodeId -> parentNodeId` with a `Set<UUID> visited` and max depth `10_000`.
-3. Every node must resolve and have `node.projectId().equals(projectId)`.
-4. Reverse to root→tip.
-5. Require `rootNodeId != null` and `rootNodeId.equals(rootToTip.get(0).id())`.
-6. Deduplicate nodes globally by UUID using insertion-preserving `LinkedHashMap<UUID, Node>`.
-7. For each route call `answerService.findAnswersForRouteAndNodeIds(route.id(), lineageNodeIds)` and append answers without merging by node ID.
-8. Preserve deterministic route ordering from `RouteService.listRoutes`; preserve lineage order root→tip.
+1. If `tipNodeId == null`, require `rootNodeId == null` and return an empty lineage.
+2. Otherwise walk tip -> `parentNodeId` using a `Set<UUID>` and max depth `10_000`.
+3. Every node must resolve and belong to `projectId`.
+4. Reverse the chain to root->tip.
+5. Require `rootNodeId != null` and equality with the first resolved node.
+6. Deduplicate global nodes with `LinkedHashMap<UUID, Node>`.
+7. Read answers with `answerService.findAnswersForRouteAndNodeIds(route.id(), lineageNodeIds)`.
+8. Keep each answer separate; never merge answers by node ID.
+9. Never use `supersedesNodeId` to compute lineage.
 
-The key algorithm shape must be equivalent to:
+Core production shape:
 
 ```java
 Map<UUID, Node> nodesById = new LinkedHashMap<>();
@@ -249,109 +305,126 @@ List<GraphWorkspaceRouteView> routeViews = new ArrayList<>();
 List<GraphWorkspaceAnswerView> answerViews = new ArrayList<>();
 
 for (Route route : routeService.listRoutes(projectId)) {
-    List<Node> lineage = resolveLineage(projectId, route);
+    List<Node> lineage = resolveLineage(project.id(), route);
     List<UUID> lineageNodeIds = lineage.stream().map(Node::id).toList();
     lineage.forEach(node -> nodesById.putIfAbsent(node.id(), node));
     answerService.findAnswersForRouteAndNodeIds(route.id(), lineageNodeIds)
             .stream().map(GraphWorkspaceAnswerView::from).forEach(answerViews::add);
     routeViews.add(GraphWorkspaceRouteView.from(route, project.activeRouteId(), lineageNodeIds));
 }
+
+return new GraphWorkspaceView(
+        project.id(), project.activeRouteId(), List.copyOf(routeViews),
+        nodesById.values().stream().map(GraphWorkspaceNodeView::from).toList(),
+        List.copyOf(answerViews));
 ```
 
-Do not inspect `supersedesNodeId` while computing lineage; replacement is extra metadata, not parentage.
+- [ ] **Step 4: Add shared-node and route-specific-answer tests**
 
-- [ ] **Step 4: Add graph projection tests for shared nodes and route-specific answers**
-
-Add tests covering:
+Build:
 
 ```text
-Route A: A -> B -> C, answer(A,B) on Route A
-Route B: A -> B -> D, answer(A,B) on Route B
+Route A: A -> B -> C
+Route B: A -> B -> D
 ```
 
-Assert:
-
-```java
-.andExpect(jsonPath("$.nodes.length()").value(4))
-.andExpect(jsonPath("$.routes[0].lineageNodeIds.length()").value(3))
-.andExpect(jsonPath("$.routes[1].lineageNodeIds.length()").value(3))
-.andExpect(jsonPath("$.answers.length()").value(2));
-```
-
-Then assert the two answers keep different `routeId` values even though `nodeId` is the same.
-
-- [ ] **Step 5: Add lifecycle and fork/regenerate semantics tests**
-
-Cover all of these in integration setup:
-
-- OPEN, SUPERSEDED, ARCHIVED, DELETED routes all appear.
-- `isActive` derives only from `project.activeRouteId`.
-- A fork route reuses node IDs and has no copied answer for its own `routeId`.
-- A replacement route lineage contains parent lineage + replacement node and not the superseded target subtree.
-- `replacementOfNodeId` and node `supersedesNodeId` are exposed as metadata only.
-
-- [ ] **Step 6: Add fail-closed corruption tests**
-
-Following the patterns already used by `RouteLineageApiIntegrationTest`, add separate tests for:
+with a distinct answer for node B on each route. Assert:
 
 ```text
-missing lineage node       -> 500 INTERNAL_INVARIANT_VIOLATION
-foreign-project node       -> 500 INTERNAL_INVARIANT_VIOLATION
-cycle                      -> 500 INTERNAL_INVARIANT_VIOLATION
-root mismatch              -> 500 INTERNAL_INVARIANT_VIOLATION
+nodes = A,B,C,D exactly once each
+Route A lineageNodeIds = A,B,C
+Route B lineageNodeIds = A,B,D
+answers contains two B answers with different routeId values
 ```
 
-No test should accept partial `nodes` or `routes` in these cases.
+- [ ] **Step 5: Add lifecycle and replacement tests**
 
-- [ ] **Step 7: Run graph tests**
+Use routes in OPEN/SUPERSEDED/ARCHIVED/DELETED and assert all are returned. Assert `isActive` only follows `Project.activeRouteId`.
+
+For replacement data, assert the replacement route lineage is parent lineage + replacement node, while `replacementOfNodeId`/`supersedesNodeId` are metadata only and do not inject the old target into the replacement lineage.
+
+- [ ] **Step 6: Add fail-closed service tests**
+
+Separate tests must assert `GraphWorkspaceQueryException.Reason.INVARIANT_VIOLATION` for:
+
+```text
+route tip references a missing node
+resolved node belongs to another project
+parent chain contains a cycle
+route root does not match resolved root
+route has null tip but non-null root
+lineage exceeds defensive max depth where practical to exercise without huge fixture; otherwise keep the max-depth guard in code and cover cycle/root/missing/foreign exhaustively
+```
+
+- [ ] **Step 7: Run the full read-model test class**
 
 ```bash
-./gradlew test --tests com.specagent.api.graph.GraphWorkspaceApiIntegrationTest
+./gradlew test --tests com.specagent.readmodel.graph.GraphWorkspaceQueryServiceTest
 ```
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit the read model before adding the HTTP mapper**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add backend/src/main/java/com/specagent/readmodel/graph backend/src/test/java/com/specagent/api/graph/GraphWorkspaceApiIntegrationTest.java
+git add backend/src/main/java/com/specagent/readmodel/graph backend/src/test/java/com/specagent/readmodel/graph/GraphWorkspaceQueryServiceTest.java
 git commit -m "feat: add canonical graph workspace read model"
 ```
 
-If the integration test cannot compile without the controller, keep controller work in Task 3 and commit Tasks 2+3 together; do not add a temporary production endpoint.
-
 ---
 
-### Task 3: Expose `GET /projects/{projectId}/graph` and safe errors
+### Task 3: Expose the graph endpoint and map failures at the HTTP edge
 
 **Files:**
 - Create: `backend/src/main/java/com/specagent/api/graph/GraphWorkspaceController.java`
 - Create: `backend/src/main/java/com/specagent/api/graph/package-info.java`
 - Modify: `backend/src/main/java/com/specagent/api/common/ApiExceptionHandler.java`
-- Test: `backend/src/test/java/com/specagent/api/graph/GraphWorkspaceApiIntegrationTest.java`
+- Create: `backend/src/test/java/com/specagent/api/graph/GraphWorkspaceApiIntegrationTest.java`
 
 **Interfaces:**
 - Consumes: `GraphWorkspaceQueryService.getForProject(UUID)`.
 - Produces: `GET /api/v1/projects/{projectId}/graph -> GraphWorkspaceView`.
 
-- [ ] **Step 1: Add endpoint/error assertions**
+- [ ] **Step 1: Write the failing HTTP integration tests**
 
-Add:
+At minimum cover:
 
 ```java
-mockMvc.perform(get("/api/v1/projects/{projectId}/graph", missingProjectId))
+mockMvc.perform(get("/api/v1/projects/{projectId}/graph", projectId))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.projectId").value(projectId.toString()))
+        .andExpect(jsonPath("$.routes[0].lineageNodeIds[0]").value(rootNodeId.toString()))
+        .andExpect(jsonPath("$.nodes[0].id").value(rootNodeId.toString()));
+```
+
+Also cover one route-specific answer payload:
+
+```java
+.andExpect(jsonPath("$.answers[0].routeId").value(routeId.toString()))
+.andExpect(jsonPath("$.answers[0].nodeId").value(rootNodeId.toString()))
+.andExpect(jsonPath("$.answers[0].selectedOptionId").value(optionId.toString()))
+.andExpect(jsonPath("$.answers[0].freeText").value("answer text"));
+```
+
+And missing project:
+
+```java
+mockMvc.perform(get("/api/v1/projects/{projectId}/graph", UUID.randomUUID()))
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.code").value("PROJECT_NOT_FOUND"));
 ```
 
-Corruption assertions use:
+Reuse the corruption setup patterns from `RouteLineageApiIntegrationTest` to verify graph corruption returns 500 `INTERNAL_INVARIANT_VIOLATION` rather than a partial graph.
 
-```java
-.andExpect(status().isInternalServerError())
-.andExpect(jsonPath("$.code").value("INTERNAL_INVARIANT_VIOLATION"));
+- [ ] **Step 2: Run and verify endpoint failure**
+
+```bash
+./gradlew test --tests com.specagent.api.graph.GraphWorkspaceApiIntegrationTest
 ```
 
-- [ ] **Step 2: Implement the thin controller**
+Expected: 404/compilation failure because the endpoint does not exist.
+
+- [ ] **Step 3: Implement the thin controller**
 
 ```java
 @RestController
@@ -370,9 +443,7 @@ public class GraphWorkspaceController {
 }
 ```
 
-- [ ] **Step 3: Map graph exceptions only at the API boundary**
-
-Add to `ApiExceptionHandler`:
+- [ ] **Step 4: Map graph exceptions in `ApiExceptionHandler`**
 
 ```java
 @ExceptionHandler(GraphWorkspaceQueryException.class)
@@ -387,7 +458,7 @@ public ResponseEntity<ApiErrorResponse> handleGraphWorkspaceQuery(GraphWorkspace
 }
 ```
 
-- [ ] **Step 4: Run graph tests**
+- [ ] **Step 5: Run graph API integration tests**
 
 ```bash
 ./gradlew test --tests com.specagent.api.graph.GraphWorkspaceApiIntegrationTest
@@ -395,7 +466,7 @@ public ResponseEntity<ApiErrorResponse> handleGraphWorkspaceQuery(GraphWorkspace
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add backend/src/main/java/com/specagent/api/graph backend/src/main/java/com/specagent/api/common/ApiExceptionHandler.java backend/src/test/java/com/specagent/api/graph/GraphWorkspaceApiIntegrationTest.java
@@ -404,12 +475,12 @@ git commit -m "feat: expose graph workspace API"
 
 ---
 
-### Task 4: Add route-scoped Requirement State without changing active-route behavior
+### Task 4: Add route-scoped Requirement State while preserving the active endpoint
 
 **Files:**
 - Modify: `backend/src/main/java/com/specagent/readmodel/requirement/RequirementStateQueryException.java`
 - Modify: `backend/src/main/java/com/specagent/readmodel/requirement/RequirementStateQueryService.java`
-- Modify: `backend/src/main/java/com/specagent/api/requirement/RequirementStateController.java`
+- Create: `backend/src/main/java/com/specagent/api/requirement/RouteRequirementStateController.java`
 - Modify: `backend/src/main/java/com/specagent/api/common/ApiExceptionHandler.java`
 - Modify: `backend/src/test/java/com/specagent/api/requirement/RequirementStateApiIntegrationTest.java`
 
@@ -419,34 +490,38 @@ git commit -m "feat: expose graph workspace API"
 
 - [ ] **Step 1: Add failing route-scoped integration tests**
 
-Cover:
+Cover exactly:
 
-1. Active=A, read B explicitly -> response `routeId=B` and claims from B.
-2. B is ARCHIVED -> still readable.
-3. B is SUPERSEDED -> still readable.
-4. B is DELETED -> still readable.
-5. foreign route -> 404 `ROUTE_NOT_FOUND`.
-6. missing route -> 404 `ROUTE_NOT_FOUND`.
-7. existing active endpoint still returns A.
+```text
+Active=A, explicitly read B -> response routeId=B and B claims
+B archived -> readable
+B superseded -> readable
+B deleted -> readable
+missing route -> 404 ROUTE_NOT_FOUND
+foreign route -> 404 ROUTE_NOT_FOUND
+legacy active endpoint still returns A
+```
 
-Example assertion:
+Example:
 
 ```java
-mockMvc.perform(get("/api/v1/projects/{projectId}/routes/{routeId}/requirement-state", projectId, routeBId))
+mockMvc.perform(get(
+        "/api/v1/projects/{projectId}/routes/{routeId}/requirement-state",
+        projectId, routeBId))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.projectId").value(projectId.toString()))
         .andExpect(jsonPath("$.routeId").value(routeBId.toString()));
 ```
 
-- [ ] **Step 2: Verify tests fail**
+- [ ] **Step 2: Run and verify failure**
 
 ```bash
 ./gradlew test --tests com.specagent.api.requirement.RequirementStateApiIntegrationTest
 ```
 
-Expected: route-scoped endpoint 404 and/or missing enum reason.
+Expected: route-scoped requests are not yet served.
 
-- [ ] **Step 3: Add `ROUTE_NOT_FOUND` to the read-model-neutral exception**
+- [ ] **Step 3: Add `ROUTE_NOT_FOUND` to the neutral read-model exception**
 
 ```java
 public enum Reason {
@@ -457,8 +532,6 @@ public enum Reason {
 ```
 
 - [ ] **Step 4: Implement `getForRoute`**
-
-The implementation must validate ownership before deriving:
 
 ```java
 public RequirementStateView getForRoute(UUID projectId, UUID routeId) {
@@ -480,35 +553,47 @@ public RequirementStateView getForRoute(UUID projectId, UUID routeId) {
 }
 ```
 
-Do not gate by route lifecycle.
+Do not reject non-OPEN lifecycle states for this read.
 
-- [ ] **Step 5: Add a second controller method without replacing the old mapping**
+- [ ] **Step 5: Add a dedicated route-scoped controller**
 
-Keep the existing class mapping if convenient and add a separate controller class, or refactor mappings cleanly. The final public routes must be exactly:
+```java
+@RestController
+@RequestMapping("/api/v1/projects/{projectId}/routes/{routeId}/requirement-state")
+public class RouteRequirementStateController {
+    private final RequirementStateQueryService queryService;
 
-```text
-GET /api/v1/projects/{projectId}/requirement-state
-GET /api/v1/projects/{projectId}/routes/{routeId}/requirement-state
+    public RouteRequirementStateController(RequirementStateQueryService queryService) {
+        this.queryService = queryService;
+    }
+
+    @GetMapping
+    public RequirementStateView getRequirementState(
+            @PathVariable UUID projectId,
+            @PathVariable UUID routeId) {
+        return queryService.getForRoute(projectId, routeId);
+    }
+}
 ```
 
-A valid implementation is to keep `RequirementStateController` with method-level absolute project paths only if Spring mapping remains unambiguous; prefer a second `RouteRequirementStateController` if that keeps responsibilities clearer.
+Leave the existing `RequirementStateController` active-route mapping unchanged.
 
 - [ ] **Step 6: Map `ROUTE_NOT_FOUND`**
 
-Extend the existing `handleRequirementStateQuery` switch:
+Extend `handleRequirementStateQuery`:
 
 ```java
 case ROUTE_NOT_FOUND -> ResponseEntity.status(HttpStatus.NOT_FOUND)
         .body(ApiErrorResponse.of("ROUTE_NOT_FOUND", "Route not found"));
 ```
 
-- [ ] **Step 7: Run requirement-state tests**
+- [ ] **Step 7: Re-run requirement-state integration tests**
 
 ```bash
 ./gradlew test --tests com.specagent.api.requirement.RequirementStateApiIntegrationTest
 ```
 
-Expected: PASS, including legacy active endpoint tests.
+Expected: PASS, including old endpoint cases.
 
 - [ ] **Step 8: Commit**
 
@@ -519,48 +604,53 @@ git commit -m "feat: add route scoped requirement state read"
 
 ---
 
-### Task 5: Lock architecture boundaries and run full backend verification
+### Task 5: Lock architecture boundaries and verify the full backend
 
 **Files:**
-- Inspect/modify if needed: `backend/src/test/java/com/specagent/architecture/ArchitectureTests.java`
-- No production changes unless a failing test identifies a real issue.
+- Inspect: `backend/src/test/java/com/specagent/architecture/ArchitectureTests.java`
+- Modify that file only if the graph package needs an explicit extra rule.
 
 **Interfaces:**
-- Confirms the 7.3A backend can be safely consumed by 7.3B.
+- Produces a verified backend contract ready for Phase 7.3B.
 
-- [ ] **Step 1: Check whether existing ArchUnit rules already cover the new packages**
-
-Existing generic rules must continue to pass for `com.specagent.api..` and `com.specagent.readmodel..`. If additional coverage is needed, add this explicit rule:
-
-```java
-@Test
-void graphReadModelMustNotDependOnModelProviderCredentialOrApi() {
-    ArchRule rule = noClasses()
-            .that().resideInAPackage("com.specagent.readmodel.graph..")
-            .should().dependOnClassesThat()
-            .resideInAnyPackage(
-                    "com.specagent.model..",
-                    "com.specagent.credential..",
-                    "com.specagent.api..")
-            .because("GraphWorkspace is a read projection, not a second runtime or provider boundary");
-    rule.check(CLASSES);
-}
-```
-
-Do not add duplicate rules if existing generic rules already prove the same boundary and the new graph query has no extra risky dependency.
-
-- [ ] **Step 2: Run architecture tests**
+- [ ] **Step 1: Run existing ArchUnit rules before adding anything**
 
 ```bash
 ./gradlew test --tests com.specagent.architecture.ArchitectureTests
 ```
 
-Expected: PASS.
+Expected: PASS. Existing rules already forbid API->Repository, API->model/context/credential, Runtime->API, and readmodel->API dependencies.
 
-- [ ] **Step 3: Run focused API suites together**
+- [ ] **Step 2: Add one graph-specific rule only if it proves an additional boundary**
+
+If the implementation accidentally introduces graph read-model dependency on provider/credential packages not already covered, add:
+
+```java
+@Test
+void graphReadModelMustNotDependOnModelProviderOrCredential() {
+    ArchRule rule = noClasses()
+            .that().resideInAPackage("com.specagent.readmodel.graph..")
+            .should().dependOnClassesThat()
+            .resideInAnyPackage("com.specagent.model..", "com.specagent.credential..")
+            .because("GraphWorkspace is a read projection, not a model/provider boundary");
+    rule.check(CLASSES);
+}
+```
+
+Do not duplicate an existing rule without added protection.
+
+- [ ] **Step 3: Run all 7.3A focused tests together**
 
 ```bash
-./gradlew test --tests com.specagent.api.graph.GraphWorkspaceApiIntegrationTest --tests com.specagent.api.requirement.RequirementStateApiIntegrationTest --tests com.specagent.api.route.RouteLineageApiIntegrationTest --tests com.specagent.api.route.RouteForkApiIntegrationTest --tests com.specagent.api.route.RegenerateApiIntegrationTest
+./gradlew test \
+  --tests com.specagent.answer.AnswerServiceTest \
+  --tests com.specagent.readmodel.graph.GraphWorkspaceQueryServiceTest \
+  --tests com.specagent.api.graph.GraphWorkspaceApiIntegrationTest \
+  --tests com.specagent.api.requirement.RequirementStateApiIntegrationTest \
+  --tests com.specagent.api.route.RouteLineageApiIntegrationTest \
+  --tests com.specagent.api.route.RouteForkApiIntegrationTest \
+  --tests com.specagent.api.route.RegenerateApiIntegrationTest \
+  --tests com.specagent.architecture.ArchitectureTests
 ```
 
 Expected: PASS.
@@ -571,38 +661,35 @@ Expected: PASS.
 ./gradlew test
 ```
 
-Expected: exit code 0. Existing live-provider tests may remain skipped under the established fake-gateway test policy; there must be zero failures.
+Expected: exit 0 with zero failures. Established live-provider skips remain acceptable under fake-gateway verification.
 
-- [ ] **Step 5: Inspect the diff for forbidden scope**
-
-Run:
+- [ ] **Step 5: Inspect scope against the approved design baseline**
 
 ```bash
+cd ..
 git diff --stat ca30d1d6fc2e576a1cbf140f3e0b9025acc2d99f..HEAD
 git diff ca30d1d6fc2e576a1cbf140f3e0b9025acc2d99f..HEAD -- backend/src/main/java
 ```
 
-Confirm no changes to:
+Confirm there are no changes to:
 
 ```text
-model/provider/credential behavior
-ContextBuilder semantics
 RouteService fork/regenerate semantics
+ContextBuilder/context snapshot semantics
 Node persistence semantics
 Answer finalization semantics
+model/provider/credential behavior
 SpecSnapshot source-of-truth rules
 ```
 
-- [ ] **Step 6: Commit any architecture-test-only adjustment**
-
-If Task 5 added a rule:
+- [ ] **Step 6: Commit an architecture-test-only change if one exists**
 
 ```bash
 git add backend/src/test/java/com/specagent/architecture/ArchitectureTests.java
 git commit -m "test: lock graph read model boundaries"
 ```
 
-If no file changed, do not create an empty commit.
+Skip this commit when `ArchitectureTests.java` is unchanged; never create an empty commit.
 
 - [ ] **Step 7: Push and verify remote equality**
 
@@ -610,32 +697,23 @@ If no file changed, do not create an empty commit.
 git status --short
 git push origin main
 git fetch origin
-test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+git rev-parse HEAD
+git rev-parse origin/main
 ```
 
-On PowerShell, use:
-
-```powershell
-if ((git rev-parse HEAD) -ne (git rev-parse origin/main)) { throw "origin/main != HEAD" }
-```
-
-Expected:
-
-```text
-working tree clean
-origin/main == HEAD
-```
+`git status --short` must be empty, and the two printed SHAs must be identical.
 
 ## Phase 7.3A Completion Report
 
-The implementing agent must report all of the following, with actual command output summaries rather than unsupported claims:
+Report actual command results in this exact semantic form; do not invent counts:
 
 ```text
 PHASE 7.3A
 
-HEAD: <sha>
-origin/main: <sha>
-remote_equal: true
+HEAD: output of git rev-parse HEAD
+origin/main: output of git rev-parse origin/main
+remote_equal: true only when the two outputs are identical
+working_tree_clean: true only when git status --short is empty
 
 Graph API:
 GET /api/v1/projects/{projectId}/graph
@@ -645,17 +723,19 @@ GET /api/v1/projects/{projectId}/requirement-state
 GET /api/v1/projects/{projectId}/routes/{routeId}/requirement-state
 
 Tests:
+- AnswerServiceTest: PASS
+- GraphWorkspaceQueryServiceTest: PASS
 - GraphWorkspaceApiIntegrationTest: PASS
 - RequirementStateApiIntegrationTest: PASS
 - ArchitectureTests: PASS
-- full backend ./gradlew test: PASS
+- full ./gradlew test: PASS with actual test/skip counts
 
-Invariants confirmed:
-- shared nodes deduplicated
-- route-specific answers remain separate
-- fork does not copy answers
-- regenerate history semantics unchanged
-- all lifecycle states inspectable
-- no ContextSnapshot/model/provider/credential exposure
-- no Runtime semantic changes
+Invariants:
+- shared nodes deduplicated: PASS
+- route-specific answers remain separate: PASS
+- fork answer-copy behavior unchanged: PASS
+- regenerate lineage/replacement semantics unchanged: PASS
+- all lifecycle states inspectable: PASS
+- no ContextSnapshot/model/provider/credential exposure: PASS
+- no Runtime semantic changes: PASS
 ```
