@@ -2,86 +2,94 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace the Phase 7.2 administration-style workspace with a Chinese graph-first requirements exploration workspace where all routes share one interactive Vue Flow canvas and the current question is answered directly inside its node.
+**Goal:** Replace the Phase 7.2 administration-style workspace with a Chinese graph-first requirements exploration workspace where all routes share one Vue Flow canvas and the current unanswered question is answered directly inside its graph node.
 
-**Architecture:** Consume the Phase 7.3A canonical graph/read APIs into `workspaceStore`, keep browser-only selection/focus/layout/sidebar state in a separate `graphUiStore`, and project canonical Runtime data through pure graph projection/layout functions into Vue Flow. Vue Flow owns rendering, pan/zoom, selection and dragging; it never owns Runtime history or lifecycle semantics.
+**Architecture:** Consume the Phase 7.3A canonical graph/read APIs into `workspaceStore`, keep browser-only selection/focus/filter/layout/sidebar state in a separate `graphUiStore`, and project canonical Runtime data through pure graph projection/layout functions into Vue Flow. Vue Flow owns viewport, rendering, selection and dragging; Runtime history, answers, route lifecycle, Active pointer, RequirementState and Spec remain backend-owned.
 
 **Tech Stack:** Vue 3.5, TypeScript, Vite, Pinia, Vue Router, `@vue-flow/core@1.48.2`, Vitest, Vue Test Utils, Playwright.
 
 **Spec:** `docs/superpowers/specs/2026-08-18-phase-7-3-graph-workspace-design.md`
 
-**Backend prerequisite:** Phase 7.3A must already be on `origin/main`, providing `GET /api/v1/projects/{projectId}/graph` and `GET /api/v1/projects/{projectId}/routes/{routeId}/requirement-state`.
+**Backend prerequisite:** `origin/main` contains the completed Phase 7.3A APIs:
+
+```text
+GET /api/v1/projects/{projectId}/graph
+GET /api/v1/projects/{projectId}/routes/{routeId}/requirement-state
+```
 
 ## Global Constraints
 
 - Graph is an interactive Runtime History Viewer, not an arbitrary DAG editor.
-- Do not add create-node, delete-node, reconnect-edge, edit-parent, or edit-historical-answer UI.
-- `parentNodeId`, `supersedesNodeId`, route membership, lifecycle, active pointer, answers, patches and specs remain backend-owned.
-- `Active Route` is work context; `Focus Route` is browser-only reading context.
+- Never add arbitrary node creation/deletion, edge reconnect, parent edits, historical-answer edits, or backend graph-layout persistence.
+- `parentNodeId`, `supersedesNodeId`, route membership, lifecycle, Active pointer and persisted answers remain backend-owned.
+- Active Route = work context. Focus Route = browser-only reading context.
 - `readingRouteId = focusRouteId ?? activeRouteId`.
-- Draft question, submit answer and generate spec always target the backend Active Route, never Focus Route.
-- Shared Node renders once. Route-specific answers remain separate by `routeId + nodeId`.
-- Current active unanswered Node contains options/free-text/submit directly inside the graph node.
-- Historical Node shows selected option and 3–4 lines of free-text answer by default, with expand for full details.
-- Current node is visually larger than historical nodes.
-- Existing nodes never move merely because a new node appears.
-- Only explicit `重新自动布局` may overwrite saved manual node positions.
-- Node positions and route display preferences are local browser state per project.
-- Left/right sidebar open state and widths are browser-local workspace preferences.
-- Do not persist viewport pan/zoom in Phase 7.3.
-- Product shell is Chinese. Backend/user content (question, purpose, option label/impact, user answer, spec content) must remain verbatim.
-- Do not add `vue-i18n` or a language switcher.
-- Do not modify Agent prompts or model language behavior.
-- Do not add model/provider/fallback/retry functionality.
-- Use stable `data-test` attributes for unit/E2E selection.
-- Use TDD and commit after each independently testable task.
-- Final implementation must run under the existing fake-gateway E2E environment.
-- Push implementation commits to `origin main`; finish with clean working tree and `origin/main == HEAD`.
+- Draft question, submit answer and generate Spec always target the backend Active Route, never Focus Route.
+- Shared Node renders once; route-specific answers remain distinct by `routeId + nodeId`.
+- Only a backend Active node with no finalized answer for the Active Route is answerable.
+- Current answerable Node is visually larger; historical/answered Nodes stay compact.
+- Historical answer text shows 3–4 lines by default and expands on demand.
+- Only the Node title/header is a drag handle. Body controls must never initiate node drag.
+- Existing node coordinates never change merely because canonical graph data gains a new node.
+- Only explicit `重新自动布局` may overwrite manual positions.
+- Node positions and per-route visual state persist locally per project.
+- Left/right sidebar open state and widths persist locally as workspace preferences.
+- Do not persist pan/zoom viewport in Phase 7.3.
+- Product-shell copy is Chinese. Question, purpose, option label/impact, user answer and Spec content remain verbatim backend/user content.
+- Do not add `vue-i18n`, a language switcher, Agent prompt language changes, provider changes, model fallback, parser repair, or AI-random regenerate.
+- Use stable `data-test` hooks for tests.
+- Use TDD. Every task must end with the relevant unit/type/build checks green before commit.
+- Keep intermediate commits buildable. Do not remove legacy store fields/components until the new Graph Workspace no longer depends on them.
+- Final E2E uses the existing real local backend with fake gateway.
+- Push final implementation to `origin main`; finish with a clean working tree and `origin/main == HEAD`.
 
-## Important Fork Compatibility Rule
+## Fork Compatibility Rule
 
-The existing Runtime fork command accepts `projectId + nodeId + label`; it does not accept `sourceRouteId`. Do not change that command contract in Phase 7.3B.
+The existing Runtime Fork command accepts `projectId + nodeId + label`; it does **not** accept `sourceRouteId`. Phase 7.3B must not change this command contract.
 
-For a historical shared node that belongs to multiple routes:
+For a shared historical node that belongs to several routes:
 
-1. UI must show all route memberships.
-2. User must explicitly choose which OPEN route is the intended base.
-3. If that route is not currently Active, do **not** guess and do **not** silently run two commands. Show `先设为当前路线` and require the user to activate it first.
-4. Once that route is Active, `从此分支` may call the existing fork API; Runtime then deterministically prefers the Active OPEN route containing the node.
-5. Archived/deleted/superseded routes must be restored before they can become a fork base, using the existing lifecycle command.
+1. Show all route memberships and require the user to select the intended base route.
+2. If the selected route is not OPEN, disable Fork and show `先恢复这条路线`.
+3. If it is OPEN but not Active, disable Fork and show `先设为当前路线`.
+4. The user performs Restore/Activate explicitly through existing Runtime commands.
+5. Only when the selected base route is Active + OPEN may `从此分支` call the existing Fork API.
+6. Never guess a base route and never silently chain Activate+Fork.
 
-This preserves the approved no-Runtime-semantic-change boundary.
+This preserves current Runtime source-route selection semantics.
 
 ## File Structure
 
-### Dependencies/API contracts
+### Contracts and API
 
-- Modify `frontend/package.json` and lockfile — add `@vue-flow/core@1.48.2` only; do not add another graph engine.
-- Modify `frontend/src/main.ts` — import Vue Flow core/theme CSS.
-- Modify `frontend/src/api/types.ts` — add `GraphWorkspaceView` contracts.
-- Create `frontend/src/api/graph.ts` — graph endpoint client.
-- Modify `frontend/src/api/requirementState.ts` — route-scoped requirement-state client.
+- Modify `frontend/package.json`, `frontend/package-lock.json` — add only `@vue-flow/core@1.48.2` as graph engine.
+- Modify `frontend/src/main.ts` — import Vue Flow CSS before app overrides.
+- Modify `frontend/src/api/types.ts` — add graph read DTOs.
+- Create `frontend/src/api/graph.ts`.
+- Modify `frontend/src/api/requirementState.ts`.
 
-### Pure graph/domain-view utilities
+### Pure graph layer
 
-- Create `frontend/src/graph/graphTypes.ts` — browser graph types and node/edge data contracts.
-- Create `frontend/src/graph/graphProjection.ts` — canonical graph + UI state -> deduped Vue Flow node/edge projection.
-- Create `frontend/src/graph/graphLayout.ts` — initial left-to-right layout and local placement of new nodes.
-- Create `frontend/src/graph/graphLayoutStorage.ts` — versioned defensive localStorage.
-- Create corresponding tests under `frontend/src/graph/__tests__/`.
+- Create `frontend/src/graph/graphTypes.ts`.
+- Create `frontend/src/graph/graphLayoutStorage.ts`.
+- Create `frontend/src/graph/graphLayout.ts`.
+- Create `frontend/src/graph/graphProjection.ts`.
+- Create `frontend/src/graph/__tests__/graphLayoutStorage.spec.ts`.
+- Create `frontend/src/graph/__tests__/graphLayout.spec.ts`.
+- Create `frontend/src/graph/__tests__/graphProjection.spec.ts`.
 
 ### Stores
 
-- Modify `frontend/src/stores/workspaceStore.ts` — load canonical graph, route-scoped requirement state and spec caches; remove historical lineage reconstruction/selection as UI responsibility.
-- Create `frontend/src/stores/graphUiStore.ts` — selection, focus, filters, display state, expanded nodes, positions and sidebar preferences.
-- Modify/create tests under `frontend/src/stores/__tests__/`.
+- Create `frontend/src/stores/graphUiStore.ts` and tests.
+- Modify `frontend/src/stores/workspaceStore.ts` and tests to load/cache canonical graph, route-scoped RequirementState and route-scoped Specs.
+- Keep old Phase 7.2 selection/lineage fields temporarily until Task 7 cuts the view over; remove them in that same cutover task.
 
-### Graph UI
+### Graph components
 
-- Create `frontend/src/components/graph/GraphCanvas.vue`.
 - Create `frontend/src/components/graph/GraphQuestionNode.vue`.
 - Create `frontend/src/components/graph/GraphStartPlaceholder.vue`.
 - Create `frontend/src/components/graph/GraphToolbar.vue`.
+- Create `frontend/src/components/graph/GraphCanvas.vue`.
 - Create tests under `frontend/src/components/graph/__tests__/`.
 
 ### Workspace shell
@@ -89,26 +97,21 @@ This preserves the approved no-Runtime-semantic-change boundary.
 - Create `frontend/src/components/workspace/ResizableSidebar.vue`.
 - Create `frontend/src/components/workspace/RouteSidebar.vue`.
 - Create `frontend/src/components/workspace/WorkspaceInspector.vue`.
-- Create `frontend/src/components/workspace/NodeInspector.vue` if splitting keeps `WorkspaceInspector.vue` focused.
-- Modify `frontend/src/views/WorkspaceView.vue`.
+- Create `frontend/src/components/workspace/NodeInspector.vue` when it keeps Inspector responsibilities focused.
+- Modify `frontend/src/views/WorkspaceView.vue` and its tests.
+- Adapt reusable RequirementState/Spec/dialog/route-action components.
 - Modify `frontend/src/style.css`.
-- Adapt existing `RequirementStatePanel.vue`, `SpecSnapshotList.vue`, `SpecSnapshotPanel.vue`, route lifecycle dialogs and regenerate/fork dialogs rather than duplicating their Runtime behavior.
 
-### Chinese shell
+### Localization/cleanup/E2E
 
-- Modify `frontend/src/App.vue`, `frontend/src/views/ProjectsView.vue`, `frontend/src/components/ProjectCreateForm.vue`, `ApiErrorBanner.vue`, lifecycle dialogs/menus, Requirement State/Spec components and all remaining user-visible workspace copy.
-- Delete Phase 7.2-only display components after the new workspace no longer imports them: `ClarificationPanel.vue`, `HistoricalNodePanel.vue`, `RouteLineage.vue`, `RouteWorkspacePanel.vue`, `WorkspaceRightPanel.vue`. Keep reusable dialogs/components.
-
-### E2E/docs
-
-- Modify `frontend/e2e/core-clarification.spec.ts`, `fork.spec.ts`, `lifecycle.spec.ts`, `regenerate.spec.ts`, `spec.spec.ts`, `helpers.ts` to use graph UI.
-- Create `frontend/e2e/graph-layout.spec.ts`.
-- Create `frontend/e2e/graph-routes.spec.ts` if route display/focus coverage is clearer as a separate file.
-- Create `docs/PHASE_7_3_EXIT_CRITERIA.md` at closure.
+- Localize all product-shell copy in existing project/workspace components.
+- Delete Phase 7.2-only workspace display components only after Task 7 has zero imports to them.
+- Adapt all existing Playwright flows to Graph UI and add graph-layout/route-display scenarios.
+- Create `docs/PHASE_7_3_EXIT_CRITERIA.md` only after verification.
 
 ---
 
-### Task 1: Add Vue Flow and canonical Graph API contracts
+### Task 1: Add Vue Flow and the canonical Graph API client contracts
 
 **Files:**
 - Modify: `frontend/package.json`
@@ -116,15 +119,11 @@ This preserves the approved no-Runtime-semantic-change boundary.
 - Modify: `frontend/src/main.ts`
 - Modify: `frontend/src/api/types.ts`
 - Create: `frontend/src/api/graph.ts`
+- Create/modify: `frontend/src/api/__tests__/graph.spec.ts`
 - Modify: `frontend/src/api/requirementState.ts`
-- Test: `frontend/src/api/__tests__/graph.spec.ts`
-- Modify test: `frontend/src/api/__tests__/requirementState.spec.ts` if it exists; otherwise create it.
+- Create/modify: `frontend/src/api/__tests__/requirementState.spec.ts`
 
 **Interfaces:**
-- Produces `getProjectGraph(projectId: string): Promise<GraphWorkspaceView>`.
-- Produces `getRouteRequirementState(projectId: string, routeId: string): Promise<RequirementStateView>`.
-
-Use these TypeScript contracts exactly:
 
 ```ts
 export interface GraphWorkspaceOptionView {
@@ -183,18 +182,16 @@ cd frontend
 npm install @vue-flow/core@1.48.2
 ```
 
-Do not install React Flow, Cytoscape, D3 graph layout, ELK, Dagre, or a second graph engine in this phase.
+Do not add React Flow, Cytoscape, Dagre, ELK, D3 graph layout, or a second graph engine.
 
-- [ ] **Step 2: Import Vue Flow styles once**
+- [ ] **Step 2: Import Vue Flow CSS once**
 
-In `frontend/src/main.ts` add:
+In `src/main.ts`, before `./style.css`:
 
 ```ts
 import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
 ```
-
-Keep the existing app stylesheet import after library styles so Spec Agent CSS can override presentation.
 
 - [ ] **Step 3: Write failing API client tests**
 
@@ -205,20 +202,16 @@ expect(apiClient.get).toHaveBeenCalledWith('/projects/p1/graph')
 expect(apiClient.get).toHaveBeenCalledWith('/projects/p1/routes/r2/requirement-state')
 ```
 
-- [ ] **Step 4: Implement the API clients**
-
-`frontend/src/api/graph.ts`:
+- [ ] **Step 4: Implement the API functions**
 
 ```ts
-import { apiClient } from './client'
-import type { GraphWorkspaceView } from './types'
-
+// api/graph.ts
 export function getProjectGraph(projectId: string): Promise<GraphWorkspaceView> {
   return apiClient.get<GraphWorkspaceView>(`/projects/${projectId}/graph`)
 }
 ```
 
-`requirementState.ts` keeps the old active-route read and adds:
+Keep existing `getRequirementState(projectId)` and add:
 
 ```ts
 export function getRouteRequirementState(
@@ -231,14 +224,15 @@ export function getRouteRequirementState(
 }
 ```
 
-- [ ] **Step 5: Run API tests and typecheck**
+- [ ] **Step 5: Verify contracts**
 
 ```bash
-npm run test:unit -- src/api/__tests__/graph.spec.ts src/api/__tests__/requirementState.spec.ts
+npm run test:unit -- src/api/__tests__/graph.spec.ts src/api/__tests__/requirementState.spec.ts --run
 npm run typecheck
+npm run build
 ```
 
-Expected: PASS.
+Expected: PASS / exit 0.
 
 - [ ] **Step 6: Commit**
 
@@ -249,7 +243,7 @@ git commit -m "feat: add graph workspace frontend contracts"
 
 ---
 
-### Task 2: Add defensive browser persistence and `graphUiStore`
+### Task 2: Add defensive local persistence and `graphUiStore`
 
 **Files:**
 - Create: `frontend/src/graph/graphTypes.ts`
@@ -259,14 +253,11 @@ git commit -m "feat: add graph workspace frontend contracts"
 - Create: `frontend/src/stores/__tests__/graphUiStore.spec.ts`
 
 **Interfaces:**
-- Produces `GraphRouteDisplayState = 'normal' | 'dimmed' | 'hidden'`.
-- Produces `GraphPosition = { x: number; y: number }`.
-- Produces localStorage keys `spec-agent.graph-layout.v1.<projectId>` and `spec-agent.workspace-ui.v1`.
-- Produces `useGraphUiStore()` with selection/focus/filter/layout/sidebar actions.
-
-Use these storage shapes:
 
 ```ts
+export type GraphRouteDisplayState = 'normal' | 'dimmed' | 'hidden'
+export interface GraphPosition { x: number; y: number }
+
 export interface ProjectGraphPreferencesV1 {
   version: 1
   nodePositions: Record<string, GraphPosition>
@@ -280,10 +271,17 @@ export interface WorkspaceUiPreferencesV1 {
 }
 ```
 
-Default lifecycle filters:
+Keys:
+
+```text
+spec-agent.graph-layout.v1.<projectId>
+spec-agent.workspace-ui.v1
+```
+
+Defaults:
 
 ```ts
-{
+const DEFAULT_FILTERS = {
   open: true,
   superseded: true,
   archived: true,
@@ -291,33 +289,26 @@ Default lifecycle filters:
 }
 ```
 
-Default sidebars:
+Sidebar ranges:
 
-```ts
-left:  { open: true, width: 280 }
-right: { open: true, width: 380 }
+```text
+left: 220..420, default 280
+right: 300..600, default 380
 ```
 
 - [ ] **Step 1: Write storage failure tests first**
 
-Cover all exact cases:
+Prove:
 
 ```text
 invalid JSON -> defaults
-NaN/Infinity x/y -> ignored
-stale ids -> allowed in storage but ignored during reconcile
-left width < 220 -> clamp 220
-left width > 420 -> clamp 420
-right width < 300 -> clamp 300
-right width > 600 -> clamp 600
-localStorage.setItem throws -> no exception escapes
+non-finite x/y -> ignored
+sidebar width below/above range -> clamped
+stale IDs do not throw
+localStorage.getItem/setItem throws -> no exception escapes
 ```
 
-Use a throwing mock storage to prove Runtime UI actions are not blocked.
-
-- [ ] **Step 2: Implement defensive storage helpers**
-
-Public functions:
+- [ ] **Step 2: Implement storage helpers**
 
 ```ts
 loadProjectGraphPreferences(projectId: string): ProjectGraphPreferencesV1
@@ -326,27 +317,27 @@ loadWorkspaceUiPreferences(): WorkspaceUiPreferencesV1
 saveWorkspaceUiPreferences(value: WorkspaceUiPreferencesV1): void
 ```
 
-Every function catches browser storage exceptions.
+Every helper catches browser storage exceptions.
 
 - [ ] **Step 3: Write `graphUiStore` tests**
 
-Test:
+Cover:
 
 ```text
-single select clears old selection
-Ctrl/Cmd toggle preserves/removes membership
-focus is independent from active route
-hide active route is rejected
-showAll clears focus + dim/hide but keeps lifecycle filters
-reset view restores default lifecycle filters too
-expanded node ids toggle
-sidebar width/open state persist
-reconcile removes missing node selections
-reconcile clears focus if focused route is not visible
-reconcile forces active route display state away from hidden
+normal selection replaces old selection
+Ctrl/Cmd toggle adds/removes selection
+Focus is independent of Active
+Hide Active is rejected
+Show All clears Focus + manual dim/hide but preserves lifecycle filters
+Reset View restores lifecycle-filter defaults too
+expandedNodeIds toggles
+sidebar open/width state persists
+reconcile drops missing selected nodes
+reconcile clears Focus when that route is no longer visible
+reconcile repairs a persisted hidden state on Active Route
 ```
 
-- [ ] **Step 4: Implement `graphUiStore`**
+- [ ] **Step 4: Implement store state/actions**
 
 Core state:
 
@@ -365,7 +356,7 @@ rightSidebarOpen: boolean
 rightSidebarWidth: number
 ```
 
-Required getter:
+Expose a function rather than a Pinia getter requiring arguments:
 
 ```ts
 readingRouteId(activeRouteId: string | null): string | null {
@@ -373,21 +364,14 @@ readingRouteId(activeRouteId: string | null): string | null {
 }
 ```
 
-Required active-route protection:
+Persist route-display/positions per project, sidebars globally. Do **not** persist selection, expanded nodes, Focus, or viewport pan/zoom.
 
-```ts
-hideRoute(routeId: string, activeRouteId: string | null): boolean {
-  if (routeId === activeRouteId) return false
-  this.routeDisplayStates[routeId] = 'hidden'
-  this.persistProject()
-  return true
-}
-```
-
-- [ ] **Step 5: Run focused tests**
+- [ ] **Step 5: Verify**
 
 ```bash
-npm run test:unit -- src/graph/__tests__/graphLayoutStorage.spec.ts src/stores/__tests__/graphUiStore.spec.ts
+npm run test:unit -- src/graph/__tests__/graphLayoutStorage.spec.ts src/stores/__tests__/graphUiStore.spec.ts --run
+npm run typecheck
+npm run build
 ```
 
 Expected: PASS.
@@ -410,10 +394,6 @@ git commit -m "feat: add graph workspace UI state"
 - Create: `frontend/src/graph/__tests__/graphLayout.spec.ts`
 
 **Interfaces:**
-- Consumes `GraphWorkspaceView`, active node ID, `graphUiStore`-shaped UI state and saved positions.
-- Produces projected nodes/edges with route memberships and answer presentation.
-
-Define node data independent of Vue components:
 
 ```ts
 export interface GraphAnswerPresentation {
@@ -430,6 +410,7 @@ export interface SpecAgentGraphNodeData {
   answers: GraphAnswerPresentation[]
   primaryAnswer: GraphAnswerPresentation | null
   isCurrent: boolean
+  canAnswer: boolean
   isExpanded: boolean
   isShared: boolean
   visualWeight: 'active' | 'focus' | 'normal' | 'dimmed'
@@ -442,75 +423,83 @@ export interface SpecAgentGraphEdgeData {
 }
 ```
 
-- [ ] **Step 1: Write projection tests for the approved semantics**
-
-Use one fixture containing:
+`canAnswer` is true only when all are true:
 
 ```text
-Route A: A -> B -> C, active
-Route B: A -> B -> D, open
-Route C: A -> B -> E, archived
+node.id == activeState.activeNode.id
+activeRouteId is non-null
+no graph answer exists with that activeRouteId + node.id
+```
+
+- [ ] **Step 1: Write projection semantics tests**
+
+Fixture:
+
+```text
+Route A: A -> B -> C (Active)
+Route B: A -> B -> D (OPEN)
+Route C: A -> B -> E (ARCHIVED)
 ```
 
 Assert:
 
-- exactly five projected nodes, not nine;
-- A->B edge exists once with routeIds A/B/C;
-- Focus B answer is primary even when Active is A;
-- without Focus, Active A answer is primary;
-- hidden B removes B-exclusive D but preserves shared A/B;
-- lifecycle-hidden archived C removes E;
-- Active A cannot disappear even if its display state was corrupted to hidden;
-- replacement edge is separate and dashed metadata; it never changes lineage parent.
+```text
+A/B render once
+A->B lineage edge renders once with route memberships A/B/C
+Focus B answer outranks Active A answer
+without Focus, Active A answer is primary
+hidden B removes only D; shared A/B remain
+archived filter off removes E
+manual hidden state can never hide Active A elements
+Active membership has highest visual weight even if a persisted dim state exists
+only unanswered Active node has canAnswer=true
+replacement edge is separate from lineage and never changes parent relation
+```
 
-- [ ] **Step 2: Implement route visibility and membership helpers**
-
-Required pure helpers:
+- [ ] **Step 2: Implement pure membership/visibility helpers**
 
 ```ts
 getVisibleRouteIds(view, uiState): Set<string>
 getNodeRouteMembership(view): Map<string, string[]>
 getLineageEdgeMembership(view): Map<string, { source: string; target: string; routeIds: string[] }>
-selectPrimaryAnswer(nodeId, answers, focusRouteId, activeRouteId): GraphAnswerPresentation | null
+selectPrimaryAnswer(nodeId, answers, focusRouteId, activeRouteId, options): GraphAnswerPresentation | null
 ```
 
-Lineage edge key must be deterministic:
+Lineage edge key:
 
 ```ts
-const edgeKey = `${source}->${target}`
+`${source}->${target}`
 ```
 
-Replacement edge ID must be distinct:
+Replacement edge key:
 
 ```ts
-const replacementId = `replacement:${node.supersedesNodeId}->${node.id}`
+`replacement:${node.supersedesNodeId}->${node.id}`
+```
+
+Visual priority:
+
+```text
+membership includes Active -> active
+else membership includes Focus -> focus
+else manual/lifecycle dim -> dimmed
+else normal
 ```
 
 - [ ] **Step 3: Write layout tests**
 
-Assert:
+Assert root-to-child x increases, siblings occupy distinct y slots, saved coordinates win, and placing a new node leaves every existing input coordinate byte-for-byte unchanged.
 
-```text
-root has smallest x
-child x > parent x
-siblings get distinct y slots
-saved positions win over computed positions
-placeNewNode never changes input positions
-occupied preferred slot causes vertical offset search
-```
-
-- [ ] **Step 4: Implement layout**
-
-Use simple deterministic constants rather than another layout dependency:
+- [ ] **Step 4: Implement deterministic layout without another dependency**
 
 ```ts
 export const HORIZONTAL_GAP = 360
 export const VERTICAL_GAP = 220
 ```
 
-For initial layout, compute depth from `parentNodeId` and assign stable vertical slots by deterministic node order from `GraphWorkspaceView.nodes`.
+Initial layout computes depth by `parentNodeId` and stable vertical slots from canonical node order.
 
-For a new node:
+New-node placement:
 
 ```ts
 export function placeNewNode(
@@ -519,26 +508,28 @@ export function placeNewNode(
 ): GraphPosition
 ```
 
-Try offsets in this order:
+Try vertical offsets in order:
 
 ```ts
 [0, 1, -1, 2, -2, 3, -3]
 ```
 
-using `VERTICAL_GAP`; use `{x: 0, y: 0}` as root fallback only when no parent exists.
+Only nodes missing saved coordinates get a computed position.
 
-- [ ] **Step 5: Build the final pure `projectGraph` function**
+- [ ] **Step 5: Implement final projection function**
 
 ```ts
 export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
 ```
 
-It must preserve saved coordinates for every known node ID and calculate coordinates only for missing IDs.
+The output node uses Vue Flow custom type `question` and sets its drag handle selector to `.graph-question-node__header`; output edges are not connectable/updatable.
 
-- [ ] **Step 6: Run projection/layout tests**
+- [ ] **Step 6: Verify**
 
 ```bash
-npm run test:unit -- src/graph/__tests__/graphProjection.spec.ts src/graph/__tests__/graphLayout.spec.ts
+npm run test:unit -- src/graph/__tests__/graphProjection.spec.ts src/graph/__tests__/graphLayout.spec.ts --run
+npm run typecheck
+npm run build
 ```
 
 Expected: PASS.
@@ -552,190 +543,132 @@ git commit -m "feat: project runtime history into graph view"
 
 ---
 
-### Task 4: Refactor `workspaceStore` into canonical server state/cache
+### Task 4: Add canonical Graph/reading caches to `workspaceStore` without breaking Phase 7.2 consumers
 
 **Files:**
 - Modify: `frontend/src/stores/workspaceStore.ts`
-- Modify: `frontend/src/stores/__tests__/workspaceStore.spec.ts` and `workspaceRouteStore.spec.ts` as applicable.
+- Modify: relevant `frontend/src/stores/__tests__/*.spec.ts`
 
 **Interfaces:**
-- Consumes `getProjectGraph` and `getRouteRequirementState`.
-- Produces canonical `graphView`, route requirement-state cache, specs cache and Runtime commands.
-- Stops owning graph selection/focus/positions.
+- Adds canonical `graphView` and route-scoped read caches.
+- Keeps existing `selectedRouteId`, `selectedNodeId`, `routeLineages`, `ensureRouteLineage`, etc. **temporarily** so current components compile until Task 7.
 
-- [ ] **Step 1: Write failing store tests for canonical graph refresh**
+- [ ] **Step 1: Write failing load/refresh tests**
 
-Assert `loadWorkspace` and `refreshWorkspace` fetch:
+`loadWorkspace` and `refreshWorkspace` must fetch/reload canonical `GraphWorkspaceView`. After Runtime mutation, `graphView` must be replaced from backend response, never patched locally.
 
-```text
-project
-active state
-route list
-graph workspace view
-```
-
-and never reconstruct graph membership from cached lineages.
-
-- [ ] **Step 2: Add graph and route-read cache state**
-
-Use:
+- [ ] **Step 2: Add canonical server state**
 
 ```ts
 graphView: null as GraphWorkspaceView | null,
 requirementStatesByRoute: {} as Record<string, RequirementStateView>,
 loadingRequirementRouteId: null as string | null,
+selectedSpecIdByRoute: {} as Record<string, string | null>,
 ```
 
-Retain `specsByRoute`.
+Keep existing active-route `requirementState` during migration so old components still work.
 
-- [ ] **Step 3: Add explicit route-read actions**
+- [ ] **Step 3: Add explicit route-reading actions**
 
 ```ts
 async ensureRequirementState(routeId: string): Promise<RequirementStateView | null>
 async loadRouteSpecs(routeId: string): Promise<void>
+selectSpecForRoute(routeId: string, snapshotId: string | null): void
+selectedSpecForRoute(routeId: string): SpecSnapshotResponse | null
 ```
 
-`ensureRequirementState` must call the new route-scoped endpoint and cache by returned `routeId`.
+RequirementState and Spec caches are indexed by explicit route ID; no selected-route global decides their ownership.
 
-- [ ] **Step 4: Remove UI ownership of historical selection/lineage**
+- [ ] **Step 4: Make canonical Graph part of every Runtime refresh**
 
-After the new Graph API is used, remove store state/actions that exist only to reconstruct Phase 7.2 navigation:
+Fetch graph alongside project/active/routes/active requirement-state:
 
-```text
-selectedNodeId
-routeLineages
-loadingLineage
-ensureRouteLineage
-reloadLineage
-selectedHistoricalNode
-selectedLineage
+```ts
+const [project, activeState, routes, requirementState, graphView] = await Promise.all([
+  getProject(this.projectId),
+  getActiveState(this.projectId),
+  listRoutes(this.projectId),
+  getRequirementState(this.projectId),
+  getProjectGraph(this.projectId),
+])
 ```
 
-Keep `selectedSpecId` if useful for spec detail selection, but it must not determine reading route.
+Do not derive route membership from `routeLineages` for Graph UI.
 
-Remove `selectedRouteId` once no component uses it for reading context. Specs/requirements must receive an explicit `routeId` from `graphUiStore.readingRouteId(...)` instead.
+- [ ] **Step 5: Preserve Active-only command targeting**
 
-- [ ] **Step 5: Preserve command targeting semantics**
+Tests must prove browser Focus cannot alter `draftQuestion`, `submitAnswer`, `activate/restore/archive/delete/fork/regenerate`, or `generateSpec`. `workspaceStore` must not import `graphUiStore`.
 
-Tests must prove:
-
-```text
-focus state cannot alter draftQuestion target
-focus state cannot alter submitAnswer target
-focus state cannot alter generateSpec target
-activate/restore/fork/regenerate refresh canonical graph
-```
-
-`workspaceStore` should not import `graphUiStore`; command success returns enough information for `WorkspaceView` to reconcile browser state.
-
-Change `generateSpec` to return the backend result or `null`:
+Change generate result handling to expose the real artifact:
 
 ```ts
 async generateSpec(): Promise<SpecGenerationResponse | null>
 ```
 
-On success it loads the returned route's snapshots and returns `result`; it does not set Focus itself.
+On success load `result.specSnapshot.routeId` history, select the returned snapshot in `selectedSpecIdByRoute`, and return `result`. Do not set Focus inside the server store.
 
-- [ ] **Step 6: Preserve the previous cross-route spec regression**
-
-Test Active=B, Focus/reading=A at the view/UI layer later; at store level assert generated snapshot always belongs to backend result B and B's spec cache is refreshed.
-
-- [ ] **Step 7: Run store tests**
+- [ ] **Step 6: Verify old UI still compiles after migration additions**
 
 ```bash
-npm run test:unit -- src/stores/__tests__
+npm run test:unit -- src/stores/__tests__ --run
+npm run typecheck
+npm run build
 ```
 
-Expected: PASS.
+Expected: PASS. If a legacy test asserts boolean `true` from `generateSpec`, update it to assert non-null returned result and correct route-scoped cache; do not delete the legacy UI state yet.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add frontend/src/stores/workspaceStore.ts frontend/src/stores/__tests__
-git commit -m "refactor: make workspace store graph canonical"
+git commit -m "refactor: add canonical graph workspace state"
 ```
 
 ---
 
-### Task 5: Build the custom Question Node and direct answer interaction
+### Task 5: Build the custom Question Node with direct answer interaction
 
 **Files:**
 - Create: `frontend/src/components/graph/GraphQuestionNode.vue`
 - Create: `frontend/src/components/graph/__tests__/GraphQuestionNode.spec.ts`
-- Adapt: `frontend/src/components/ForkRouteDialog.vue`
-- Adapt: `frontend/src/components/RegenerateNodeDialog.vue`
 
 **Interfaces:**
-- Consumes `SpecAgentGraphNodeData` and current Runtime pending states.
-- Emits `submit-answer`, `select`, `fork`, `regenerate`, `toggle-expanded`.
+- Consumes `SpecAgentGraphNodeData`, `submitting`, `pending`.
+- Emits `submit-answer`, `select-node`, `toggle-expanded`, `fork`, `regenerate`.
 
-- [ ] **Step 1: Write current-node component tests**
+- [ ] **Step 1: Write current-answerable-node tests**
 
-Render an active node with three options and `allowFreeAnswer=true` and assert:
+Assert exact backend option IDs are used, option-only/free-text-only/combined payloads work, submit disables with no input or while pending, and purpose/option impact render verbatim.
 
-```text
-question and purpose visible
-option label and impact visible
-radio uses exact backend option id
-free-text field visible
-submit disabled with no input
-option-only submit emits selectedOptionId
-free-text-only submit emits freeText
-option+free-text submit emits both
-```
+- [ ] **Step 2: Write historical/shared-node tests**
 
-- [ ] **Step 2: Write historical-node tests**
+Assert historical node has no inputs, shows selected option label, answer summary uses a 3–4-line clamp class, expanded view shows full question/purpose/all options/full per-route answers, and shared-node primary answer follows projection data.
 
-Assert:
+- [ ] **Step 3: Write sizing and drag-safety tests**
 
-```text
-historical node has no radio/textarea/submit
-selected option label displayed
-free text clamped by compact CSS class
-expanded state displays full answer/options
-shared node displays primary answer and compact other-route count/list
-```
+Assert `canAnswer=true` adds current-large class, historical/answered node uses compact class, the header has `data-test="node-drag-handle"`, and body controls carry Vue Flow `nodrag`/`nowheel` classes as appropriate.
 
-- [ ] **Step 3: Implement drag-safety markup**
-
-Use the custom-node root with a draggable header and a Vue Flow `nodrag` body:
+- [ ] **Step 4: Implement component structure**
 
 ```vue
-<article class="graph-question-node">
-  <header class="graph-question-node__header" data-test="node-drag-handle">
-    <span class="graph-question-node__grip">⠿</span>
-    <span>{{ data.isCurrent ? '当前问题' : '需求问题' }}</span>
-  </header>
-  <div class="graph-question-node__body nodrag" data-test="node-body">
-    <!-- options, textarea, buttons, historical answer -->
-  </div>
+<article :class="['graph-question-node', { 'graph-question-node--current': data.canAnswer }]">
+  <header class="graph-question-node__header" data-test="node-drag-handle">...</header>
+  <div class="graph-question-node__body nodrag">...</div>
 </article>
 ```
 
-Add `nowheel` to scrollable textarea/detail regions if needed so typing/scrolling does not zoom the canvas.
+Local answer refs reset when node ID or Active-route answer identity changes.
 
-- [ ] **Step 4: Implement direct answer payload construction**
+- [ ] **Step 5: Implement historical action emits only**
 
-Use local refs reset whenever `data.node.id` or active route answer identity changes. Submit exactly:
+`从此分支` / `重新生成这个问题` emit intent upward. Never edit historical answer in place and never mutate graph data locally.
 
-```ts
-const payload: SubmitAnswerRequest = {}
-if (selectedOptionId.value) payload.selectedOptionId = selectedOptionId.value
-const text = freeText.value.trim()
-if (text) payload.freeText = text
-emit('submit-answer', payload)
-```
-
-- [ ] **Step 5: Implement historical actions without editing history**
-
-`从此分支` and `重新生成这个问题` only emit commands upward. No historical answer input is ever rendered.
-
-If the node belongs to multiple routes, show route membership in the node/inspector; Fork execution rules are enforced in Task 7.
-
-- [ ] **Step 6: Run component tests**
+- [ ] **Step 6: Verify**
 
 ```bash
-npm run test:unit -- src/components/graph/__tests__/GraphQuestionNode.spec.ts
+npm run test:unit -- src/components/graph/__tests__/GraphQuestionNode.spec.ts --run
+npm run typecheck
+npm run build
 ```
 
 Expected: PASS.
@@ -743,28 +676,28 @@ Expected: PASS.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add frontend/src/components/graph frontend/src/components/ForkRouteDialog.vue frontend/src/components/RegenerateNodeDialog.vue
+git add frontend/src/components/graph
 git commit -m "feat: answer questions directly in graph nodes"
 ```
 
 ---
 
-### Task 6: Build Graph Canvas, selection, group drag and position persistence
+### Task 6: Build Graph Canvas, selection/group drag, route/node location, and position persistence
 
 **Files:**
-- Create: `frontend/src/components/graph/GraphCanvas.vue`
 - Create: `frontend/src/components/graph/GraphStartPlaceholder.vue`
 - Create: `frontend/src/components/graph/GraphToolbar.vue`
+- Create: `frontend/src/components/graph/GraphCanvas.vue`
 - Create: `frontend/src/components/graph/__tests__/GraphCanvas.spec.ts`
 - Modify: `frontend/src/style.css`
 
 **Interfaces:**
-- Consumes `workspaceStore.graphView`, `activeState.activeNode`, `graphUiStore`, `projectGraph`.
-- Emits Runtime command intents upward where dialogs/confirmation are required.
+- Consumes canonical projection and `graphUiStore`.
+- Exposes `locateNode(nodeId: string)` and `locateRoute(routeId: string)` to Workspace shell.
 
-- [ ] **Step 1: Write canvas empty-state test**
+- [ ] **Step 1: Write empty-project placeholder test**
 
-With Active Route and zero nodes, assert centered UI-only placeholder:
+With an Active route and zero nodes, assert centered UI-only copy:
 
 ```text
 开始需求澄清
@@ -772,70 +705,56 @@ With Active Route and zero nodes, assert centered UI-only placeholder:
 起草第一个问题
 ```
 
-and assert it has no Runtime node ID/data-test node identity.
+It must not create a fake node ID or persist a placeholder coordinate.
 
-- [ ] **Step 2: Render Vue Flow with custom node slot**
+- [ ] **Step 2: Render Vue Flow with connection editing disabled**
 
-Use separate node/edge bindings and disable connection editing. Required behavior:
+Use `v-model:nodes`, `v-model:edges`, custom `node-question` slot, `nodesConnectable=false`, and edge updates disabled. Use projection-provided `dragHandle` rather than making the whole node draggable.
 
-```vue
-<VueFlow
-  v-model:nodes="flowNodes"
-  v-model:edges="flowEdges"
-  :nodes-connectable="false"
-  :edges-updatable="false"
-  :selection-key-code="'Shift'"
-  :fit-view-on-init="true"
->
-  <template #node-question="nodeProps">
-    <GraphQuestionNode v-bind="nodeProps" />
-  </template>
-</VueFlow>
-```
+- [ ] **Step 3: Configure selection behavior**
 
-If the pinned library's TypeScript names differ slightly, use the 1.48.2 exported types and keep the behavior identical; do not upgrade to another major package during this task.
-
-- [ ] **Step 3: Synchronize selection with `graphUiStore`**
-
-Required user behavior:
+Maintain a `shiftSelecting` flag from keydown/keyup. Configure Vue Flow so:
 
 ```text
-normal node click -> one selected node
-Ctrl/Cmd + node click -> toggle membership
-Shift + drag on pane -> marquee selection
+normal click -> one node
+Ctrl/Cmd -> multi-selection
+Shift + pane drag -> marquee selection
+normal pane drag -> pan
 pane click -> clear selection
 ```
 
-Use Vue Flow selection as the rendered source and mirror its selected node IDs into `graphUiStore` after selection changes. Do not store selection in localStorage.
+Mirror Vue Flow selected node IDs into `graphUiStore`; do not persist selection.
 
-- [ ] **Step 4: Make selected-node group drag work**
+Use the exact 1.48.2 exported prop/event types during implementation; if TypeScript exposes key-code unions rather than plain strings, use those exported types without changing package version.
 
-When Vue Flow reports a drag stop, persist positions for **all selected/moved nodes**, not only the pointer target. During drag, Vue Flow's own reactivity must update connected edges continuously; do not manually compute DOM line coordinates.
+- [ ] **Step 4: Persist group movement only on drag stop**
 
-Persist only at drag stop:
+At drag stop, read all currently selected/moved Vue Flow nodes and merge their positions into `graphUiStore.nodePositions`. Do not write localStorage on pointer-move.
 
-```ts
-function persistCurrentPositions(nodes: Node[]): void {
-  const positions = Object.fromEntries(nodes.map(node => [node.id, node.position]))
-  graphUi.mergeNodePositions(positions)
-}
-```
+Rely on Vue Flow reactive edges for live endpoint movement; E2E will verify SVG path changes during drag.
 
-- [ ] **Step 5: Preserve existing node positions on canonical refresh**
+- [ ] **Step 5: Reconcile canonical graph refresh without moving existing nodes**
 
-When `graphView` changes:
+For each canonical node:
 
 ```text
-known nodeId with saved position -> keep exactly
-new nodeId -> placeNewNode(parent saved/current position, occupied positions)
-removed/invisible node -> do not force cleanup or move others
+saved position exists -> use exactly
+new ID -> place locally near parent via placeNewNode
 ```
 
-Do not call `fitView()` on every answer/fork/regenerate refresh. If a newly created current node is outside the viewport, use a targeted smooth center/fit for that node only.
+Never run full auto-layout after answer/Fork/Regenerate/Activate refresh. A new current node outside viewport may be smoothly located by ID only.
 
-- [ ] **Step 6: Implement explicit auto-layout toolbar action**
+- [ ] **Step 6: Implement explicit route/node location methods**
 
-Toolbar actions:
+`locateNode(id)` smoothly brings that node into view without changing Focus/Active.
+
+`locateRoute(routeId)` reads `graphView.routes[].lineageNodeIds` and fits/centers only that route's visible nodes. It must not set `focusRouteId` and must not change Active.
+
+Expose both with `defineExpose` for `WorkspaceView`.
+
+- [ ] **Step 7: Implement toolbar**
+
+Actions:
 
 ```text
 放大
@@ -845,28 +764,29 @@ Toolbar actions:
 显示全部路线
 ```
 
-`重新自动布局` opens/uses a confirmation message:
+Before full auto-layout show:
 
 ```text
 重新自动布局将覆盖当前项目手工调整过的节点位置。Runtime 历史不会改变。
 ```
 
-On confirm, compute full initial layout, update all node positions, persist them.
+On confirm calculate all visible positions, update flow nodes, persist positions. Do not change Focus/Active/lifecycle.
 
-- [ ] **Step 7: Add component tests around persistence callbacks and placeholder/toolbar**
+- [ ] **Step 8: Unit-test our handlers; leave geometry to Playwright**
 
-Mock Vue Flow where jsdom cannot model geometry; unit-test our handlers and leave real drag/edge behavior for Playwright.
+Mock Vue Flow composables in jsdom where needed. Test placeholder, selection-state mirroring, persistence-on-stop, `locateRoute` route-membership selection, and auto-layout confirmation path.
 
-- [ ] **Step 8: Run tests and typecheck**
+- [ ] **Step 9: Verify**
 
 ```bash
-npm run test:unit -- src/components/graph/__tests__
+npm run test:unit -- src/components/graph/__tests__/GraphCanvas.spec.ts --run
 npm run typecheck
+npm run build
 ```
 
 Expected: PASS.
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
 git add frontend/src/components/graph frontend/src/style.css
@@ -875,128 +795,82 @@ git commit -m "feat: add interactive graph canvas"
 
 ---
 
-### Task 7: Build Route Sidebar, resizable shell and Inspector reading context
+### Task 7: Cut Workspace over to Graph-first shell and remove legacy selection/lineage ownership atomically
 
 **Files:**
 - Create: `frontend/src/components/workspace/ResizableSidebar.vue`
 - Create: `frontend/src/components/workspace/RouteSidebar.vue`
 - Create: `frontend/src/components/workspace/WorkspaceInspector.vue`
-- Create: `frontend/src/components/workspace/NodeInspector.vue` if needed
+- Create: `frontend/src/components/workspace/NodeInspector.vue` when useful
 - Create tests under `frontend/src/components/workspace/__tests__/`
 - Modify: `frontend/src/views/WorkspaceView.vue`
 - Modify: `frontend/src/views/__tests__/WorkspaceView.spec.ts`
-- Modify: `frontend/src/style.css`
+- Modify: `frontend/src/stores/workspaceStore.ts`
+- Modify: `frontend/src/stores/__tests__/*.spec.ts`
 - Adapt: `frontend/src/components/RequirementStatePanel.vue`
 - Adapt: `frontend/src/components/SpecSnapshotList.vue`
 - Adapt: `frontend/src/components/SpecSnapshotPanel.vue`
 - Adapt: `frontend/src/components/RouteActionMenu.vue`
+- Adapt existing Fork/Regenerate/lifecycle dialogs
+- Modify: `frontend/src/style.css`
 
 **Interfaces:**
-- Reading context uses `graphUi.readingRouteId(workspace.activeRoute?.id ?? null)`.
-- Runtime commands use `workspaceStore` only.
+- Graph Canvas becomes the only primary node-history UI.
+- `readingRouteId = graphUi.readingRouteId(workspace.activeRoute?.id ?? null)`.
 
-- [ ] **Step 1: Write `ResizableSidebar` tests**
+- [ ] **Step 1: Write resizable sidebar tests**
 
-Assert:
+Assert both default open, independent collapse, width clamps, resize persistence, and Graph Canvas remains mounted/expands when a sidebar collapses.
 
-```text
-default open
-collapse/expand independently
-left width clamps 220..420
-right width clamps 300..600
-resize emits/persists width
-canvas shell remains mounted when either sidebar collapses
-```
+- [ ] **Step 2: Write Route Sidebar tests**
 
-- [ ] **Step 2: Write Route Sidebar behavior tests**
-
-For each route show:
-
-```text
-label
-lifecycle status in Chinese
-independent 当前路线 indicator when active
-node count from lineageNodeIds.length
-```
-
-Route menu must visually separate:
+Each route shows Chinese lifecycle label + independent `当前路线` indicator + `lineageNodeIds.length`. Separate menu groups:
 
 ```text
 查看: 定位路线 / 聚焦此路线 / 弱化路线 / 隐藏路线
 路线状态: 设为当前路线 / 归档 / 恢复 / 删除路线
 ```
 
-Assert Active Route cannot call `隐藏路线`.
+`定位路线` emits only a viewport request. `聚焦此路线` only changes Focus. `隐藏路线` cannot hide Active.
 
-- [ ] **Step 3: Implement Focus/Dim/Hide and filters**
+- [ ] **Step 3: Wire left route display controls**
 
-Left sidebar filter labels:
+Filters: 开放 / 已替代 / 已归档 / 已删除. Manual Dim/Hide and lifecycle filters remain distinct. Focus temporarily dims other visible routes but exiting Focus restores prior manual display state.
 
-```text
-开放
-已替代
-已归档
-已删除
-```
+- [ ] **Step 4: Write Inspector reading-context tests**
 
-`聚焦此路线` updates only `graphUiStore.focusRouteId`.
-
-`设为当前路线` calls backend `workspace.activateRoute(routeId)` and does not silently overwrite an unrelated Focus Route.
-
-- [ ] **Step 4: Write Inspector route-context tests**
-
-Set Active=A, Focus=B and assert:
+Active=A, Focus=B must produce:
 
 ```text
-需求状态 header says B
-workspace calls ensureRequirementState(B)
-规格历史 loads B
-current answer controls still belong to Active A graph node
+需求状态 · B
+规格快照 · B
+ensureRequirementState(B)
+loadRouteSpecs(B)
 ```
 
-Without Focus, Requirement State/Spec history use Active A.
+while the only answerable graph node remains Active A.
+
+No Focus -> RequirementState/Spec use A.
 
 - [ ] **Step 5: Implement Inspector tabs**
 
-Tabs:
+Tabs: `详情 / 需求状态 / 规格`.
 
-```text
-详情
-需求状态
-规格
-```
+No selected node -> default 需求状态. Selected node -> default 详情 with full question/purpose/options/all route-specific answers/route memberships/provenance. Never duplicate current answer submit in Inspector.
 
-No selected node -> default `需求状态`.
+- [ ] **Step 6: Implement explicit Fork-base rule**
 
-Selected node -> default `详情`, showing full question/purpose/options and all route-specific answers.
+For a shared historical node let user choose a base route. Enforce the compatibility rule at top of this plan. Fork button becomes enabled only for chosen Active+OPEN route; otherwise show explicit Restore/Activate prerequisite.
 
-Do not render a duplicate answer-submit UI in Inspector.
+Do not change Fork API payload.
 
-- [ ] **Step 6: Enforce explicit Fork base-route compatibility**
+- [ ] **Step 7: Keep deterministic Regenerate semantics**
 
-For a selected shared historical node:
+Reuse/adapt current dialog. Chinese shell labels; replacement options submit label/impact only; root and non-eligible lifecycle guards remain. No model call.
 
-```text
-基于路线
-○ Route A
-○ Route B
-```
+- [ ] **Step 8: Keep Spec generation Active-only while reading Focus**
 
-If chosen route lifecycle != OPEN, show `先恢复这条路线` and disable Fork.
-
-If chosen OPEN route != Active, show `先设为当前路线` and disable Fork; provide the existing Activate action.
-
-Only when chosen route is Active + OPEN may `[从此分支]` call `workspace.forkNode(nodeId, label)`.
-
-This is an acceptance requirement, not optional polish.
-
-- [ ] **Step 7: Preserve deterministic Regenerate gating**
-
-Regenerate stays allowed only under the existing Runtime/UI guards. Keep replacement question/purpose/options editor, but translate shell labels to Chinese. Never call model generation for regenerate.
-
-- [ ] **Step 8: Wire Spec generation to Active while viewing Focus**
-
-When Active=A, Focus=B, Inspector spec tab displays B history but generate control must say:
+With Active=A and Focus=B, Spec tab shows B history but button copy is:
 
 ```text
 为当前路线生成规格
@@ -1004,95 +878,98 @@ When Active=A, Focus=B, Inspector spec tab displays B history but generate contr
 你目前正在查看 B，生成操作将针对当前路线 A。
 ```
 
-Call `workspace.generateSpec()`. On success, because returned snapshot belongs to the Active route, clear Focus so reading context follows the generated artifact's route, load/select that snapshot, and keep the old cross-route regression fixed.
+Call `workspace.generateSpec()`. On non-null result, clear Focus so `readingRouteId` follows returned snapshot route and select `result.specSnapshot.id` in that route's cache. This preserves the previous cross-route spec fix.
 
 - [ ] **Step 9: Implement Source Ref -> Graph navigation**
 
-For `kind=node`, locate/select the matching graph node.
+For node ref: `locateNode(refId)` + select node.
 
-For `kind=answer`, find the answer in `graphView.answers`, select its `nodeId`, and make its `routeId` the preferred detail context without changing Active. If an answer ref cannot be resolved, leave the source ref visible but do not guess.
+For answer ref: find exact `graphView.answers` item by answer ID; select its `nodeId`, locate node, and show that route's answer as Inspector detail context without changing Active. If unresolved, keep the ref visible and do not guess.
 
-- [ ] **Step 10: Run workspace tests**
+- [ ] **Step 10: Replace WorkspaceView with Graph-first layout**
+
+Conceptually:
+
+```text
+Resizable Route Sidebar | GraphCanvas (flex:1) | Resizable Inspector
+```
+
+Both sidebars default open. Canvas fills all remaining height/width.
+
+- [ ] **Step 11: Now remove legacy Phase 7.2 graph-navigation state from `workspaceStore`**
+
+Only after the new `WorkspaceView` has zero references, remove:
+
+```text
+selectedRouteId
+selectedNodeId
+routeLineages
+loadingLineage
+ensureRouteLineage
+reloadLineage
+selectedHistoricalNode
+selectedLineage
+```
+
+Keep Runtime commands and canonical caches. Update store/view tests in the same commit so typecheck never sees a broken intermediate tree.
+
+- [ ] **Step 12: Verify the cutover as one buildable deliverable**
 
 ```bash
-npm run test:unit -- src/components/workspace/__tests__ src/views/__tests__/WorkspaceView.spec.ts
+npm run test:unit -- src/components/workspace/__tests__ src/views/__tests__/WorkspaceView.spec.ts src/stores/__tests__ --run
+npm run typecheck
+npm run build
 ```
 
 Expected: PASS.
 
-- [ ] **Step 11: Commit**
+- [ ] **Step 13: Commit**
 
 ```bash
-git add frontend/src/components/workspace frontend/src/views/WorkspaceView.vue frontend/src/views/__tests__ frontend/src/components/RequirementStatePanel.vue frontend/src/components/SpecSnapshotList.vue frontend/src/components/SpecSnapshotPanel.vue frontend/src/components/RouteActionMenu.vue frontend/src/style.css
+git add frontend/src/components/workspace frontend/src/views frontend/src/stores frontend/src/components/RequirementStatePanel.vue frontend/src/components/SpecSnapshotList.vue frontend/src/components/SpecSnapshotPanel.vue frontend/src/components/RouteActionMenu.vue frontend/src/components/ForkRouteDialog.vue frontend/src/components/RegenerateNodeDialog.vue frontend/src/components/ConfirmRouteActionDialog.vue frontend/src/style.css
 git commit -m "feat: make graph the primary workspace"
 ```
 
 ---
 
-### Task 8: Complete Chinese product-shell localization and remove obsolete Phase 7.2 workspace panels
+### Task 8: Complete Chinese product-shell localization and delete obsolete Phase 7.2 panels
 
 **Files:**
 - Modify: `frontend/src/App.vue`
 - Modify: `frontend/src/views/ProjectsView.vue`
 - Modify: `frontend/src/components/ProjectCreateForm.vue`
 - Modify: `frontend/src/components/ApiErrorBanner.vue`
-- Modify: `frontend/src/components/ConfirmRouteActionDialog.vue`
-- Modify: `frontend/src/components/ForkRouteDialog.vue`
-- Modify: `frontend/src/components/RegenerateNodeDialog.vue`
-- Modify all remaining product-shell components with visible English copy.
-- Delete when unused: `frontend/src/components/ClarificationPanel.vue`
-- Delete when unused: `frontend/src/components/HistoricalNodePanel.vue`
-- Delete when unused: `frontend/src/components/RouteLineage.vue`
-- Delete when unused: `frontend/src/components/RouteWorkspacePanel.vue`
-- Delete when unused: `frontend/src/components/WorkspaceRightPanel.vue`
-- Update/delete their tests accordingly.
+- Modify remaining user-visible reusable components/dialogs.
+- Delete when no imports remain: `ClarificationPanel.vue`, `HistoricalNodePanel.vue`, `RouteLineage.vue`, `RouteWorkspacePanel.vue`, `WorkspaceRightPanel.vue` plus obsolete tests.
 
-**Interfaces:**
-- No API or Runtime contract changes.
+- [ ] **Step 1: Add Chinese-shell regression tests**
 
-- [ ] **Step 1: Add localization regression tests for key screens**
-
-Assert visible shell copy includes:
+Key visible copy includes:
 
 ```text
-项目
-创建项目
-工作区
-路线
-当前路线
-开放
-已替代
-已归档
-已删除
-需求状态
-规格快照
-从此分支
-重新生成这个问题
-恢复
-归档
-删除路线
-重试
+项目 / 创建项目 / 工作区 / 路线 / 当前路线
+开放 / 已替代 / 已归档 / 已删除
+需求状态 / 规格快照
+从此分支 / 重新生成这个问题 / 恢复 / 归档 / 删除路线 / 重试
 ```
 
 - [ ] **Step 2: Add verbatim-content regression test**
 
-Feed backend content:
+Supply backend/user content:
 
 ```text
-Question: What outcome matters most?
-Purpose: Clarify the primary goal.
-Option: Product team
-Answer: Keep this exact user answer.
-Spec content: Original English spec body.
+What outcome matters most?
+Clarify the primary goal.
+Product team
+Keep this exact user answer.
+Original English spec body.
 ```
 
-Assert these exact strings remain unchanged while surrounding labels are Chinese.
+Assert exact strings remain unchanged while shell labels are Chinese.
 
-- [ ] **Step 3: Translate shell copy directly**
+- [ ] **Step 3: Translate all shell feedback/errors without changing API codes**
 
-Do not add `vue-i18n`. Keep machine error codes unchanged; only map/display Chinese explanatory copy.
-
-Translate pending feedback as well, for example:
+Examples:
 
 ```text
 Question drafted. -> 问题已起草。
@@ -1103,21 +980,22 @@ Question regenerated. -> 已创建替代问题路线。
 Spec snapshot generated. -> 已生成规格快照。
 ```
 
-- [ ] **Step 4: Remove old workspace-only components once zero imports remain**
+No `vue-i18n`.
 
-Verify first:
+- [ ] **Step 4: Prove legacy panels are unused, then delete them**
 
 ```bash
 grep -R "ClarificationPanel\|HistoricalNodePanel\|RouteLineage\|RouteWorkspacePanel\|WorkspaceRightPanel" frontend/src --exclude-dir=node_modules
 ```
 
-Expected before deletion: only the files themselves/tests. Delete them and obsolete tests only after the new graph workspace covers their behavior.
+Before deletion, only the files themselves/tests may remain. Delete those files/tests; do not delete reusable command dialogs.
 
-- [ ] **Step 5: Run all frontend unit tests and typecheck**
+- [ ] **Step 5: Verify full frontend**
 
 ```bash
 npm run test:unit -- --run
 npm run typecheck
+npm run build
 ```
 
 Expected: PASS.
@@ -1131,7 +1009,7 @@ git commit -m "feat: localize graph workspace in Chinese"
 
 ---
 
-### Task 9: Rework Playwright coverage around real Graph Workspace behavior
+### Task 9: Rework Playwright around Graph Workspace behavior
 
 **Files:**
 - Modify: `frontend/e2e/helpers.ts`
@@ -1143,125 +1021,57 @@ git commit -m "feat: localize graph workspace in Chinese"
 - Create: `frontend/e2e/graph-layout.spec.ts`
 - Create: `frontend/e2e/graph-routes.spec.ts`
 
-**Interfaces:**
-- Uses real local backend with established fake gateway, not mocked browser API responses.
+**Environment:** real local backend, fake gateway, existing Playwright server config.
 
-- [ ] **Step 1: Add stable Graph E2E selectors**
+- [ ] **Step 1: Add stable graph selectors**
 
-Use stable attributes such as:
+Use IDs/data attributes for graph canvas, start placeholder, node ID, drag handle, route ID, Focus/Dim/Hide, sidebars and toolbar. Avoid generated question text when a stable selector exists.
 
-```text
-data-test="graph-canvas"
-data-test="graph-start-placeholder"
-data-test="graph-node-<nodeId>"
-data-test="node-drag-handle"
-data-test="route-<routeId>"
-data-test="route-focus"
-data-test="route-dim"
-data-test="route-hide"
-data-test="left-sidebar"
-data-test="right-sidebar"
-```
+- [ ] **Step 2: E2E — empty start -> first real node**
 
-Do not select by generated question text when a deterministic data selector exists.
+Create project, verify centered placeholder, click `起草第一个问题`, verify placeholder disappears and one real root current node appears.
 
-- [ ] **Step 2: E2E 1 — new project start and first real node**
+- [ ] **Step 3: E2E — direct node answer and local placement**
 
-Flow:
+Answer inside current graph node. Assert answered node becomes compact historical node, next current node appears to the right, and the old node bounding box position does not shift beyond a small rendering tolerance.
 
-```text
-create project
-central 开始需求澄清 placeholder visible
-click 起草第一个问题
-placeholder disappears
-one real root current node appears
-```
+- [ ] **Step 4: E2E — drag, live edge and reload persistence**
 
-- [ ] **Step 3: E2E 2 — direct Node answer and next-node placement**
+Drag by title handle only. Assert edge SVG path changes while/after movement, reload, and assert node returns near saved graph coordinate.
 
-Use free text under fake gateway:
+- [ ] **Step 5: E2E — multi-select group move**
 
-```text
-fill answer inside current graph node
-submit
-same node becomes historical/已作答
-new current node appears to its right
-old node bounding box stays unchanged within a small pixel tolerance
-```
+Select two nodes with Ctrl/Cmd, drag one selected header, and assert both nodes move by approximately the same delta.
 
-- [ ] **Step 4: E2E 3 — drag persistence and live edge**
+- [ ] **Step 6: E2E — route location is not Focus or Activate**
 
-Drag a node by `node-drag-handle`, record final bounding box, reload page, assert node returns near same graph position. During drag, assert the connected SVG edge remains present and its path `d` attribute changes from the pre-drag value.
+Click `定位路线`; viewport changes/route becomes visible, but Focus marker and Active route remain unchanged.
 
-- [ ] **Step 5: E2E 4 — multi-select group movement**
+- [ ] **Step 7: E2E — Fork shared node semantics**
 
-Create at least two historical nodes. Ctrl/Cmd-select both (choose modifier based on browser platform), drag one selected title bar, assert both bounding boxes move by approximately the same delta.
+Fork from answered history. Assert shared node is not duplicated, old route answer stays, new active route has no copied answer and displays waiting/answerable state as appropriate. For a non-Active selected base route, verify Fork is disabled until explicit Activate.
 
-- [ ] **Step 6: E2E 5 — Fork from historical shared node**
+- [ ] **Step 8: E2E — deterministic Regenerate**
 
-Create a lineage with an answered historical node, Fork from it, then assert:
+Submit explicit replacement question/options; assert old route/history remains, old route becomes 已替代, replacement route becomes 当前路线, replacement node appears, and replacement relation differs visually from lineage.
 
-```text
-new route becomes 当前路线
-shared node count does not duplicate
-old route answer remains visible on shared node
-new active route shows 等待回答 for its own route answer
-```
+- [ ] **Step 9: E2E — Focus/Dim/Hide/Show All/lifecycle**
 
-If selecting a base route different from Active, assert Fork is blocked with `先设为当前路线` until explicitly activated.
+Verify Focus never changes Active, Dim leaves route clickable, Hide removes only route-exclusive elements, shared nodes remain, Active cannot be hidden, Show All restores manual display states, and archive/restore/delete still change canonical lifecycle.
 
-- [ ] **Step 7: E2E 6 — deterministic Regenerate**
+- [ ] **Step 10: E2E — sidebars and work/read context**
 
-Regenerate a non-root historical/current-eligible node using explicit replacement question/options. Assert:
+Set Active=A, Focus=B. Assert RequirementState/Spec history show B, current answerable node remains A, generate warning targets A, generation succeeds on A, reading context follows returned A artifact, and sidebar width/open state survives reload.
 
-```text
-old route remains visible and becomes 已替代
-replacement route becomes 当前路线
-old node/history remains
-replacement node appears
-replacement relation is visually distinguishable from normal lineage
-```
-
-- [ ] **Step 8: E2E 7 — Focus/Dim/Hide/Show All + lifecycle**
-
-Create at least two routes and verify:
-
-```text
-Focus leaves Active indicator unchanged
-Dim lowers CSS/data visual state but leaves route clickable
-Hide removes route-exclusive node(s) only
-shared nodes remain
-Active route hide action is unavailable/rejected
-显示全部路线 restores manually hidden/dimmed routes
-archive/restore/delete still call Runtime lifecycle and change canonical status
-```
-
-- [ ] **Step 9: E2E 8 — sidebars + reading/work context + spec**
-
-Set Active=A and Focus=B. Assert:
-
-```text
-Requirement State says B
-Spec history says B
-current graph node remains on A
-Generate Spec warning says it targets A
-generate succeeds on A
-reading context follows returned A snapshot after success
-```
-
-Also resize/collapse both sidebars, reload, and assert widths/open states persist.
-
-- [ ] **Step 10: Run Playwright**
-
-With backend running in fake-gateway mode:
+- [ ] **Step 11: Run complete Playwright suite**
 
 ```bash
 npm run test:e2e
 ```
 
-Expected: all graph E2Es PASS.
+Expected: PASS.
 
-- [ ] **Step 11: Commit**
+- [ ] **Step 12: Commit**
 
 ```bash
 git add frontend/e2e
@@ -1274,45 +1084,9 @@ git commit -m "test: cover graph workspace end to end"
 
 **Files:**
 - Create: `docs/PHASE_7_3_EXIT_CRITERIA.md`
-- Modify: `README.md` only if it currently describes the old three-panel workspace as the current V1 UI.
+- Modify `README.md` only if it still describes the old three-panel workspace as current UI.
 
-**Interfaces:**
-- Produces the evidence needed to declare Phase 7.3 closed.
-
-- [ ] **Step 1: Write exit criteria from the approved design, with evidence slots filled by actual results**
-
-The document must list and mark PASS only after verification for:
-
-```text
-Graph-first workspace
-all routes on one graph
-shared nodes deduplicated
-route-specific answers
-current node direct answer
-historical answer summary/expand
-multi-select/group move
-header-only dragging
-edge follows movement
-local position persistence
-new node does not move existing nodes
-explicit auto-layout
-focus/dim/hide/show all
-active route protection
-Fork/Regenerate old history retention
-resizable/collapsible sidebars
-reading route requirement state/spec
-Active-only Runtime commands
-Chinese product shell
-verbatim AI/user/spec content
-backend architecture/full tests
-frontend unit/typecheck/build
-Playwright
-origin/main == HEAD
-```
-
-Do not write PASS before commands actually pass.
-
-- [ ] **Step 2: Run full frontend verification**
+- [ ] **Step 1: Run final frontend verification**
 
 ```bash
 cd frontend
@@ -1322,35 +1096,63 @@ npm run build
 npm run test:e2e
 ```
 
-Expected: every command exit 0.
+Every command must exit 0.
 
-- [ ] **Step 3: Run full backend verification from the same final tree**
+- [ ] **Step 2: Run final backend verification from the same tree**
 
 ```bash
 cd ../backend
 ./gradlew test
 ```
 
-Expected: exit 0, zero failures. Established live-provider skips are acceptable under fake-gateway verification.
+Expected: exit 0, zero failures; established live-provider skips remain acceptable under fake-gateway verification.
 
-- [ ] **Step 4: Inspect dependencies and forbidden changes**
+- [ ] **Step 3: Inspect forbidden scope**
 
 ```bash
 cd ..
 git diff --stat ca30d1d6fc2e576a1cbf140f3e0b9025acc2d99f..HEAD
 ```
 
-Confirm frontend graph dependencies contain only the approved Vue Flow addition and no new provider/AI/runtime frameworks.
-
-Confirm no code implements:
+Confirm no implementation of:
 
 ```text
-manual graph rewiring
-node deletion
+manual graph rewiring or node deletion
 backend layout persistence
 AI translation/language switching
-AI random regenerate
+AI-random regenerate
+provider/model routing or fallback
 Runtime route/context semantic rewrite
+```
+
+- [ ] **Step 4: Write `docs/PHASE_7_3_EXIT_CRITERIA.md` using actual evidence**
+
+Mark PASS only for verified items:
+
+```text
+Graph-first workspace
+all routes one graph
+shared node/edge dedupe
+route-specific answers
+current node direct answer
+historical answer summary/expand
+header-only dragging
+multi-select/group movement
+live edges
+position persistence
+new node does not move existing nodes
+explicit auto-layout
+locate/focus/dim/hide/show all
+Active protection
+Fork/Regenerate preserve old history
+resizable/collapsible sidebars
+readingRouteId RequirementState/Spec
+Active-only Runtime commands
+Chinese shell + verbatim content
+backend/full tests
+frontend unit/type/build
+Playwright
+origin/main == HEAD
 ```
 
 - [ ] **Step 5: Commit closure docs**
@@ -1360,7 +1162,7 @@ git add docs/PHASE_7_3_EXIT_CRITERIA.md README.md
 git commit -m "docs: close phase 7.3 graph workspace"
 ```
 
-If README did not need changes, omit it from `git add`.
+If README is unchanged, omit it from `git add`.
 
 - [ ] **Step 6: Push and verify remote equality**
 
@@ -1368,28 +1170,23 @@ If README did not need changes, omit it from `git add`.
 git status --short
 git push origin main
 git fetch origin
-```
-
-Then verify:
-
-```bash
 git rev-parse HEAD
 git rev-parse origin/main
 ```
 
-The two printed SHAs must be identical and `git status --short` must be empty.
+`git status --short` must be empty and the two SHAs identical.
 
 ## Phase 7.3B Completion Report
 
-The implementing agent must report actual evidence in this shape:
+Report actual outputs; do not invent test counts:
 
 ```text
 PHASE 7.3B
 
 HEAD: output of git rev-parse HEAD
 origin/main: output of git rev-parse origin/main
-remote_equal: true only if the two outputs are identical
-working_tree_clean: true only if git status --short is empty
+remote_equal: true only when equal
+working_tree_clean: true only when git status --short is empty
 
 Frontend:
 - unit tests: PASS with actual file/test counts
@@ -1398,24 +1195,24 @@ Frontend:
 - Playwright: PASS with actual test count
 
 Backend:
-- ./gradlew test: PASS with actual test count / skipped count
+- ./gradlew test: PASS with actual test/skip counts
 
 UX invariants:
 - Graph-first workspace: PASS
-- Shared nodes deduplicated: PASS
-- Route-specific answers: PASS
-- Direct current-node answer: PASS
-- Multi-select/group drag: PASS
-- Edge follows nodes: PASS
-- Position persistence: PASS
-- Focus/Dim/Hide: PASS
-- Active route protection: PASS
+- shared nodes/edges deduplicated: PASS
+- route-specific answers: PASS
+- direct current-node answer: PASS
+- multi-select/group drag + live edges: PASS
+- local layout persistence: PASS
+- new node preserves old coordinates: PASS
+- locate/focus/dim/hide: PASS
+- Active route protected: PASS
 - Fork/Regenerate history preserved: PASS
-- Resizable sidebars: PASS
-- readingRouteId semantics: PASS
+- sidebars resize/collapse/persist: PASS
+- reading/work context separation: PASS
 - Chinese shell/verbatim content: PASS
 
-Forbidden scope check:
+Forbidden scope:
 - Runtime route/context semantics changed: NO
 - model/provider behavior changed: NO
 - graph layout persisted to backend: NO
