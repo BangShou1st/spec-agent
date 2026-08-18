@@ -1,16 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
-import { defineComponent, h } from 'vue'
+import { defineComponent, h, nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import GraphCanvas from '@/components/graph/GraphCanvas.vue'
 import { useGraphUiStore } from '@/stores/graphUiStore'
-import { useVueFlow } from '@vue-flow/core'
+import { useVueFlow, type VueFlowStore } from '@vue-flow/core'
 import { makeGraphWorkspaceView, makeNode } from '@/test/fixtures'
 import type { GraphWorkspaceView } from '@/api/types'
 
 /**
  * Vue Flow stub: jsdom cannot render the real viewport; the canvas only
- * needs the props/events contract to be testable.
+ * needs the props/events contract to be testable. All fit-style operations
+ * are asserted through the deterministic `setViewport` path — the Vue Flow
+ * measurement-dependent `fitView` must never be called by the canvas.
  */
 const VueFlowStub = defineComponent({
   name: 'VueFlow',
@@ -18,7 +20,7 @@ const VueFlowStub = defineComponent({
     nodes: { type: Array, default: () => [] },
     edges: { type: Array, default: () => [] },
   },
-  emits: ['node-drag-stop', 'nodes-change', 'pane-click'],
+  emits: ['init', 'node-drag-stop', 'nodes-change', 'pane-click'],
   setup() {
     return () => h('div', { class: 'vf-stub' })
   },
@@ -83,6 +85,18 @@ function mountCanvas(view: GraphWorkspaceView | null, extra = {}) {
   return wrapper
 }
 
+/** Gives the canvas a concrete size for deterministic viewport math. */
+function setCanvasSize(
+  vf: VueFlowStore,
+  width = 1200,
+  height = 800,
+): void {
+  ;(vf.dimensions as unknown as { value: { width: number; height: number } }).value = {
+    width,
+    height,
+  }
+}
+
 describe('graph canvas', () => {
   beforeEach(() => {
     localStorage.clear()
@@ -116,6 +130,13 @@ describe('graph canvas', () => {
     expect(flow.props('edges')).toHaveLength(1)
   })
 
+  it('persists first-projected positions browser-locally so refreshes recognize existing nodes', () => {
+    mountCanvas(viewWithNodes())
+    const ui = useGraphUiStore()
+    expect(ui.nodePositions.n1).toEqual({ x: 0, y: 0 })
+    expect(ui.nodePositions.n2).toEqual({ x: 360, y: 0 })
+  })
+
   it('mirrors selection changes into graphUiStore', () => {
     const wrapper = mountCanvas(viewWithNodes())
     const flow = wrapper.findComponent(VueFlowStub)
@@ -144,27 +165,163 @@ describe('graph canvas', () => {
     expect(saved.nodePositions.n1).toEqual({ x: 123, y: 45 })
   })
 
-  it('locateRoute fits only that route visible nodes and never sets focus', async () => {
+  it('initial fit uses the deterministic setViewport path once nodes are mounted', async () => {
     const wrapper = mountCanvas(viewWithNodes())
     const vf = useVueFlow('spec-agent-graph-canvas')
-    const fitSpy = vi.spyOn(vf, 'fitView').mockResolvedValue(true)
+    setCanvasSize(vf)
+    const setViewport = vi.spyOn(vf, 'setViewport').mockResolvedValue(true)
+    const fitViewSpy = vi.spyOn(vf, 'fitView')
+    const flow = wrapper.findComponent(VueFlowStub)
+    flow.vm.$emit('init')
+    await nextTick()
+    await nextTick()
+    expect(fitViewSpy).not.toHaveBeenCalled()
+    expect(setViewport).toHaveBeenCalledTimes(1)
+    // bounds n1(0,0,320,220)+n2(360,0,680,220) -> center (340,110), zoom 1
+    expect(setViewport).toHaveBeenCalledWith(
+      expect.objectContaining({ x: 260, y: 290, zoom: 1 }),
+      expect.objectContaining({ duration: 0 }),
+    )
+  })
+
+  it('locateRoute fits only that route visible nodes via setViewport, never focus', async () => {
+    const wrapper = mountCanvas(viewWithNodes())
+    const vf = useVueFlow('spec-agent-graph-canvas')
+    setCanvasSize(vf)
+    const setViewport = vi.spyOn(vf, 'setViewport').mockResolvedValue(true)
+    const fitViewSpy = vi.spyOn(vf, 'fitView')
     const exposed = wrapper.vm as unknown as { locateRoute: (routeId: string) => Promise<void> }
     await exposed.locateRoute('r2')
-    expect(fitSpy).toHaveBeenCalledWith(expect.objectContaining({ nodes: ['n1', 'n2'] }))
+    expect(fitViewSpy).not.toHaveBeenCalled()
+    expect(setViewport).toHaveBeenCalledTimes(1)
+    expect(setViewport).toHaveBeenCalledWith(
+      expect.objectContaining({ x: 260, y: 290, zoom: 1 }),
+      expect.objectContaining({ duration: 400 }),
+    )
     expect(useGraphUiStore().focusRouteId).toBeNull()
   })
 
-  it('auto-layout after confirm replaces all positions and persists them', async () => {
+  it('locateNode centers exactly the requested node via setViewport', async () => {
+    const wrapper = mountCanvas(viewWithNodes())
+    const vf = useVueFlow('spec-agent-graph-canvas')
+    setCanvasSize(vf)
+    const setViewport = vi.spyOn(vf, 'setViewport').mockResolvedValue(true)
+    const exposed = wrapper.vm as unknown as { locateNode: (nodeId: string) => Promise<void> }
+    await exposed.locateNode('n2')
+    // n2 at (360, 0) 320x220 -> center (520, 110)
+    expect(setViewport).toHaveBeenCalledWith(
+      expect.objectContaining({ x: 80, y: 290, zoom: 1 }),
+      expect.objectContaining({ duration: 400 }),
+    )
+  })
+
+  it('new active node reveal skips nodes already inside the viewport', async () => {
+    vi.useFakeTimers()
+    try {
+      const wrapper = mountCanvas(viewWithNodes(), { activeNodeId: 'n1' })
+      const vf = useVueFlow('spec-agent-graph-canvas')
+      setCanvasSize(vf)
+      // 视口默认 zoom=1、x=0：n2 在 360..680 与 1200 宽画布相交 → 不 reveal。
+      const setViewport = vi.spyOn(vf, 'setViewport').mockResolvedValue(true)
+      await wrapper.setProps({ activeNodeId: 'n2' })
+      await wrapper.vm.$nextTick()
+      vi.advanceTimersByTime(550)
+      expect(setViewport).not.toHaveBeenCalled()
+      const ui = useGraphUiStore()
+      expect(ui.nodePositions.n1).toEqual({ x: 0, y: 0 })
+      expect(ui.nodePositions.n2).toEqual({ x: 360, y: 0 })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('new active node reveal centers a genuinely offscreen node via setViewport', async () => {
+    vi.useFakeTimers()
+    try {
+      const wrapper = mountCanvas(viewWithNodes(), { activeNodeId: 'n1' })
+      const vf = useVueFlow('spec-agent-graph-canvas')
+      setCanvasSize(vf)
+      // 把视口平移到远处，让 n2 完全离开画布（jsdom 中 setViewport 是空操作，
+      // 直接写 store ref）。
+      ;(vf.viewport as unknown as { value: { x: number; y: number; zoom: number } }).value = {
+        x: 5000,
+        y: 0,
+        zoom: 1,
+      }
+      const setViewport = vi.spyOn(vf, 'setViewport').mockResolvedValue(true)
+      await wrapper.setProps({ activeNodeId: 'n2' })
+      await wrapper.vm.$nextTick()
+      vi.advanceTimersByTime(550)
+      expect(setViewport).toHaveBeenCalledTimes(1)
+      // n2 at (360, 0) 320x220 -> center (520, 110)
+      expect(setViewport).toHaveBeenCalledWith(
+        expect.objectContaining({ x: 80, y: 290, zoom: 1 }),
+        expect.objectContaining({ duration: 400 }),
+      )
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('an explicit fit-view cancels the pending reveal so the user action wins', async () => {
+    vi.useFakeTimers()
+    try {
+      const wrapper = mountCanvas(viewWithNodes(), { activeNodeId: 'n1' })
+      const vf = useVueFlow('spec-agent-graph-canvas')
+      setCanvasSize(vf)
+      ;(vf.viewport as unknown as { value: { x: number; y: number; zoom: number } }).value = {
+        x: 5000,
+        y: 0,
+        zoom: 1,
+      }
+      const setViewport = vi.spyOn(vf, 'setViewport').mockResolvedValue(true)
+      await wrapper.setProps({ activeNodeId: 'n2' })
+      await wrapper.vm.$nextTick()
+      // 用户立刻点了适应视图：待执行的 reveal 被取消。
+      await wrapper.find('[data-test="fit-view"]').trigger('click')
+      vi.advanceTimersByTime(550)
+      expect(setViewport).toHaveBeenCalledTimes(1)
+      expect(setViewport).toHaveBeenCalledWith(
+        expect.objectContaining({ zoom: 1 }),
+        expect.objectContaining({ duration: 300 }),
+      )
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('toolbar fit-view uses the deterministic setViewport path, never fitView', async () => {
+    const wrapper = mountCanvas(viewWithNodes())
+    const vf = useVueFlow('spec-agent-graph-canvas')
+    setCanvasSize(vf)
+    const setViewport = vi.spyOn(vf, 'setViewport').mockResolvedValue(true)
+    const fitViewSpy = vi.spyOn(vf, 'fitView')
+    await wrapper.find('[data-test="fit-view"]').trigger('click')
+    expect(fitViewSpy).not.toHaveBeenCalled()
+    expect(setViewport).toHaveBeenCalledWith(
+      expect.objectContaining({ x: 260, y: 290, zoom: 1 }),
+      expect.objectContaining({ duration: 300 }),
+    )
+  })
+
+  it('auto-layout after confirm replaces all positions, persists them and fits via setViewport', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     const wrapper = mountCanvas(viewWithNodes())
     const vf = useVueFlow('spec-agent-graph-canvas')
-    vi.spyOn(vf, 'fitView').mockResolvedValue(true)
+    setCanvasSize(vf)
+    const setViewport = vi.spyOn(vf, 'setViewport').mockResolvedValue(true)
+    const fitViewSpy = vi.spyOn(vf, 'fitView')
     await wrapper.find('[data-test="auto-layout"]').trigger('click')
     const ui = useGraphUiStore()
     expect(ui.nodePositions.n1).toBeDefined()
     expect(ui.nodePositions.n2).toBeDefined()
     expect(window.confirm).toHaveBeenCalledWith(
       '重新自动布局将覆盖当前项目手工调整过的节点位置。Runtime 历史不会改变。',
+    )
+    expect(fitViewSpy).not.toHaveBeenCalled()
+    expect(setViewport).toHaveBeenCalledWith(
+      expect.objectContaining({ x: 260, y: 290, zoom: 1 }),
+      expect.objectContaining({ duration: 300 }),
     )
   })
 
@@ -187,18 +344,15 @@ describe('graph canvas', () => {
     expect(ui.primarySelectedNodeId).toBeNull()
   })
 
-  it('toolbar buttons emit zoom/fit/show-all intents', async () => {
+  it('toolbar buttons emit zoom/show-all intents', async () => {
     const wrapper = mountCanvas(viewWithNodes())
     const vf = useVueFlow('spec-agent-graph-canvas')
     const zoomIn = vi.spyOn(vf, 'zoomIn').mockResolvedValue(true)
     const zoomOut = vi.spyOn(vf, 'zoomOut').mockResolvedValue(true)
-    const fit = vi.spyOn(vf, 'fitView').mockResolvedValue(true)
     await wrapper.find('[data-test="zoom-in"]').trigger('click')
     await wrapper.find('[data-test="zoom-out"]').trigger('click')
-    await wrapper.find('[data-test="fit-view"]').trigger('click')
     expect(zoomIn).toHaveBeenCalled()
     expect(zoomOut).toHaveBeenCalled()
-    expect(fit).toHaveBeenCalled()
     await wrapper.find('[data-test="show-all"]').trigger('click')
     const ui = useGraphUiStore()
     expect(ui.focusRouteId).toBeNull()

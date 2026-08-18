@@ -42,7 +42,9 @@ function currentData(overrides: Partial<SpecAgentGraphNodeData> = {}): SpecAgent
     node: nodeData(),
     routeIds: ['r1'],
     answers: [],
+    routeStates: [],
     primaryAnswer: null,
+    readingRouteId: 'r1',
     isCurrent: true,
     canAnswer: true,
     isExpanded: false,
@@ -60,6 +62,28 @@ function historicalData(overrides: Partial<SpecAgentGraphNodeData> = {}): SpecAg
       answer('r1', { selectedOptionId: 'opt-a', selectedOptionLabel: 'Product team', freeText: 'Keep this exact user answer.', isPrimary: true }),
       answer('r2', { freeText: 'Second route answer.' }),
     ],
+    routeStates: [
+      {
+        routeId: 'r1',
+        answer: {
+          routeId: 'r1',
+          selectedOptionId: 'opt-a',
+          selectedOptionLabel: 'Product team',
+          freeText: 'Keep this exact user answer.',
+          isPrimary: true,
+        },
+      },
+      {
+        routeId: 'r2',
+        answer: {
+          routeId: 'r2',
+          selectedOptionId: null,
+          selectedOptionLabel: null,
+          freeText: 'Second route answer.',
+          isPrimary: false,
+        },
+      },
+    ],
     primaryAnswer: {
       routeId: 'r1',
       selectedOptionId: 'opt-a',
@@ -67,6 +91,7 @@ function historicalData(overrides: Partial<SpecAgentGraphNodeData> = {}): SpecAg
       freeText: 'Keep this exact user answer.',
       isPrimary: true,
     },
+    readingRouteId: 'r1',
     isCurrent: false,
     canAnswer: false,
     isExpanded: false,
@@ -178,5 +203,111 @@ describe('graph question node', () => {
     await wrapper.find('[data-test="regenerate-node"]').trigger('click')
     expect(wrapper.emitted('fork')?.[0]).toEqual(['n1'])
     expect(wrapper.emitted('regenerate')?.[0]).toEqual(['n1'])
+  })
+})
+describe('shared node route-specific waiting state', () => {
+  function waitingData(overrides: Partial<SpecAgentGraphNodeData> = {}): SpecAgentGraphNodeData {
+    return {
+      node: nodeData({ parentNodeId: 'n0' }),
+      routeIds: ['r1', 'r2'],
+      answers: [
+        answer('r1', { freeText: 'A answer on shared node.', isPrimary: false }),
+      ],
+      routeStates: [
+        {
+          routeId: 'r1',
+          answer: {
+            routeId: 'r1',
+            selectedOptionId: null,
+            selectedOptionLabel: null,
+            freeText: 'A answer on shared node.',
+            isPrimary: false,
+          },
+        },
+        { routeId: 'r2', answer: null },
+      ],
+      primaryAnswer: null,
+      readingRouteId: 'r2',
+      isCurrent: false,
+      canAnswer: false,
+      isExpanded: false,
+      isShared: true,
+      visualWeight: 'focus',
+      ...overrides,
+    }
+  }
+
+  it('Focus=B without an answer shows B waiting and never A answer as the summary', () => {
+    const wrapper = mount(GraphQuestionNode, { props: { data: waitingData(), submitting: false, pending: false } })
+    // 摘要显式「路线 r2 · 等待回答」；A 的回答不作为 primary 展示。
+    expect(wrapper.find('[data-test="waiting-summary"]').text()).toContain('路线 r2 · 等待回答')
+    expect(wrapper.find('[data-test="answer-summary"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('A answer on shared node.')
+  })
+
+  it('expanded shared node lists every route as answered or waiting, A answer stays inspectable', async () => {
+    const expanded = waitingData({ isExpanded: true })
+    const wrapper = mount(GraphQuestionNode, { props: { data: expanded, submitting: false, pending: false } })
+    expect(wrapper.find('[data-test="route-state-r1"]').text()).toContain('A answer on shared node.')
+    expect(wrapper.find('[data-test="route-state-r2"]').text()).toContain('等待回答')
+    expect(wrapper.find('[data-test="route-waiting-r2"]').exists()).toBe(true)
+  })
+
+  it('a shared current node keeps answer controls and exposes the old route answer via expand', async () => {
+    const data = waitingData({
+      isCurrent: true,
+      canAnswer: true,
+      routeIds: ['r1', 'r2'],
+    })
+    const wrapper = mount(GraphQuestionNode, { props: { data, submitting: false, pending: false } })
+    // 当前节点继续直接显示回答 controls。
+    expect(wrapper.find('[data-test="question"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="free-text"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="submit-answer"]').exists()).toBe(true)
+    // 旧路线回答可在展开中查看。
+    await wrapper.find('[data-test="toggle-expanded"]').trigger('click')
+    expect(wrapper.emitted('toggle-expanded')?.[0]).toEqual(['n1'])
+    await wrapper.setProps({ data: { ...data, isExpanded: true } })
+    expect(wrapper.find('[data-test="route-state-r1"]').text()).toContain('A answer on shared node.')
+    expect(wrapper.find('[data-test="route-state-r2"]').text()).toContain('等待回答')
+  })
+})
+
+describe('node body click handling', () => {
+  it('non-interactive body surface does not stop click propagation (node stays selectable)', async () => {
+    const wrapper = mount(GraphQuestionNode, { props: { data: historicalData(), submitting: false, pending: false } })
+    const article = wrapper.element
+    let bubbled = 0
+    article.addEventListener('click', () => { bubbled += 1 })
+    // 点击 body 的非交互区域（历史节点摘要文本所在区域）。
+    const body = wrapper.find('[data-test="node-body"]').element as HTMLElement
+    body.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    expect(bubbled).toBeGreaterThanOrEqual(1)
+  })
+
+  it('interactive controls stop propagation so they never break selection', async () => {
+    const wrapper = mount(GraphQuestionNode, { props: { data: currentData(), submitting: false, pending: false } })
+    const article = wrapper.element
+    let bubbled = 0
+    article.addEventListener('click', () => { bubbled += 1 })
+    const textarea = wrapper.find('[data-test="free-text"]').element as HTMLElement
+    textarea.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    const submit = wrapper.find('[data-test="submit-answer"]').element as HTMLElement
+    submit.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    const toggle = wrapper.find('[data-test="toggle-expanded"]')
+    expect(bubbled).toBe(0)
+    void toggle
+  })
+
+  it('historical action buttons stop propagation too', async () => {
+    const wrapper = mount(GraphQuestionNode, { props: { data: historicalData(), submitting: false, pending: false } })
+    const article = wrapper.element
+    let bubbled = 0
+    article.addEventListener('click', () => { bubbled += 1 })
+    const forkBtn = wrapper.find('[data-test="fork-node"]').element as HTMLElement
+    forkBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    const expandBtn = wrapper.find('[data-test="toggle-expanded"]').element as HTMLElement
+    expandBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    expect(bubbled).toBe(0)
   })
 })

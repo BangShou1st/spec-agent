@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { projectGraph, getNodeRouteMembership, getLineageEdgeMembership, selectPrimaryAnswer, getVisibleRouteIds } from '@/graph/graphProjection'
 import type { RouteLifecycleStatus } from '@/api/types'
+import { HORIZONTAL_GAP, VERTICAL_GAP } from '@/graph/graphLayout'
 import type { GraphPosition } from '@/graph/graphTypes'
 import type { SpecAgentGraphNodeData } from '@/graph/graphProjection'
 
@@ -269,5 +270,214 @@ describe('graph projection', () => {
     expect(visible.has(ACTIVE_ROUTE_ID)).toBe(true)
     expect(visible.has(ROUTE_B_ID)).toBe(false)
     expect(visible.has(ROUTE_C_ID)).toBe(false)
+  })
+})
+
+describe('incremental placement on canonical refresh', () => {
+  it('keeps manually moved parents and siblings untouched and places a new child to the parent right', () => {
+    // 已有 graph：a -> b -> c；parent b 已手工移动到 {900, 600}，sibling c 已有位置。
+    // 已有 graph：a -> b -> c（route A，当前）；a/b 被第二条路线共享。
+    // parent b 已手工移动到 {900, 600}，sibling c 已有位置。
+    const view = {
+      projectId: PROJECT_ID,
+      activeRouteId: ACTIVE_ROUTE_ID,
+      routes: [route(ACTIVE_ROUTE_ID, 'open', ['a', 'b', 'c'])],
+      nodes: [node('a', null), node('b', 'a'), node('c', 'b')],
+      answers: [],
+    }
+    const saved: Record<string, GraphPosition> = {
+      a: { x: 0, y: 0 },
+      b: { x: 900, y: 600 },
+      c: { x: 1260, y: 600 },
+    }
+    // canonical refresh：新分支路线 B 新增 child d（挂在 b 下）。
+    const refreshed = {
+      ...view,
+      routes: [route(ACTIVE_ROUTE_ID, 'open', ['a', 'b', 'c']), route(ROUTE_B_ID, 'open', ['a', 'b', 'd'])],
+      nodes: [...view.nodes, node('d', 'b')],
+    }
+    const result = projectGraph({
+      view: refreshed,
+      activeNodeId: null,
+      uiState: uiState(),
+      savedPositions: saved,
+    })
+    const pos = (id: string) => result.nodes.find((n) => n.id === id)?.position
+    // 所有已有节点坐标完全不变。
+    expect(pos('a')).toEqual({ x: 0, y: 0 })
+    expect(pos('b')).toEqual({ x: 900, y: 600 })
+    expect(pos('c')).toEqual({ x: 1260, y: 600 })
+    // 新 child 位于 parent 右侧（parent.x + HORIZONTAL_GAP）。
+    expect(pos('d')?.x).toBe(900 + HORIZONTAL_GAP)
+    // 直接槽位（y=600）被 sibling c 占用：d 落在最近可用垂直槽位。
+    expect(pos('d')?.y).toBe(600 + VERTICAL_GAP)
+  })
+
+  it('first-ever projection without saved positions still lays out deterministically left-to-right', () => {
+    const view = {
+      projectId: PROJECT_ID,
+      activeRouteId: ACTIVE_ROUTE_ID,
+      routes: [route(ACTIVE_ROUTE_ID, 'open', ['a', 'b', 'c'])],
+      nodes: [node('a', null), node('b', 'a'), node('c', 'b')],
+      answers: [],
+    }
+    const result = projectGraph({
+      view,
+      activeNodeId: null,
+      uiState: uiState(),
+      savedPositions: {},
+    })
+    const pos = (id: string) => result.nodes.find((n) => n.id === id)?.position
+    expect(pos('a')).toEqual({ x: 0, y: 0 })
+    expect(pos('b')).toEqual({ x: HORIZONTAL_GAP, y: 0 })
+    expect(pos('c')).toEqual({ x: HORIZONTAL_GAP * 2, y: 0 })
+  })
+})
+
+describe('focus reading-context visual semantics (Active=A, Focus=B)', () => {
+  it('B exclusive elements get focus weight, A exclusive history is dimmed, shared nodes take focused presentation', () => {
+    const result = project({ uiState: uiState({ focusRouteId: ROUTE_B_ID }) })
+    const weight = (id: string) =>
+      (result.nodes.find((n) => n.id === id)?.data as SpecAgentGraphNodeData).visualWeight
+    // B 专属节点/边 → focus（阅读上下文突出）。
+    expect(weight('d')).toBe('focus')
+    // A 专属历史节点/边 → dimmed；Focus 不会让 Active 路线保持最高视觉权重。
+    expect(weight('c')).toBe('dimmed')
+    expect(weight('e')).toBe('dimmed')
+    // 共享 A+B 节点 → focused/read context 呈现优先。
+    expect(weight('a')).toBe('focus')
+    expect(weight('b')).toBe('focus')
+    const edge = (id: string) => result.edges.find((e) => e.id === id)
+    expect(edge('a->b')?.data?.visualWeight).toBe('focus')
+    expect(edge('b->c')?.data?.visualWeight).toBe('dimmed')
+  })
+
+  it('Active current node stays clearly current while Focus dims its route visuals', () => {
+    const result = project({ activeNodeId: 'c', uiState: uiState({ focusRouteId: ROUTE_B_ID }) })
+    const c = result.nodes.find((n) => n.id === 'c')!
+    const data = c.data as SpecAgentGraphNodeData
+    // 路线视觉不抢过 Focus，但 current 标记与可回答性保留。
+    expect(data.visualWeight).toBe('dimmed')
+    expect(data.isCurrent).toBe(true)
+    expect(data.canAnswer).toBe(true)
+  })
+
+  it('exiting Focus restores the previous manual dim state and active weight', () => {
+    const manual: Record<string, 'normal' | 'dimmed' | 'hidden'> = { [ROUTE_B_ID]: 'dimmed' }
+    const focused = project({
+      uiState: uiState({ focusRouteId: ROUTE_C_ID, routeDisplayStates: manual }),
+    })
+    const weightF = (id: string) =>
+      (focused.nodes.find((n) => n.id === id)?.data as SpecAgentGraphNodeData).visualWeight
+    expect(weightF('e')).toBe('focus')
+    expect(weightF('d')).toBe('dimmed')
+    // 取消聚焦：B 回到手工 dim 状态（不是 normal），A 恢复 active。
+    const restored = project({ uiState: uiState({ routeDisplayStates: manual }) })
+    const weightR = (id: string) =>
+      (restored.nodes.find((n) => n.id === id)?.data as SpecAgentGraphNodeData).visualWeight
+    expect(weightR('d')).toBe('dimmed')
+    expect(weightR('c')).toBe('active')
+    expect(weightR('e')).toBe('normal')
+  })
+})
+
+describe('shared node route-specific waiting state', () => {
+  function sharedView() {
+    return {
+      projectId: PROJECT_ID,
+      activeRouteId: ACTIVE_ROUTE_ID,
+      routes: [route(ACTIVE_ROUTE_ID, 'open', ['a', 'b']), route(ROUTE_B_ID, 'open', ['a', 'b'])],
+      nodes: [node('a', null), node('b', 'a')],
+      answers: [answer(ACTIVE_ROUTE_ID, 'b', 'A answer on shared b')],
+    }
+  }
+
+  it('Focus=B with B having no answer never borrows A answer as B primary and shows B waiting', () => {
+    const result = projectGraph({
+      view: sharedView(),
+      activeNodeId: null,
+      uiState: uiState({ focusRouteId: ROUTE_B_ID }),
+      savedPositions: {},
+    })
+    const b = result.nodes.find((n) => n.id === 'b')!
+    const data = b.data as SpecAgentGraphNodeData
+    expect(data.readingRouteId).toBe(ROUTE_B_ID)
+    // B 没有回答：不能用 A 的 answer 充当 B 的 primary。
+    expect(data.primaryAnswer).toBeNull()
+    // routeStates 按 routeIds 覆盖每个成员路线：B 显式 waiting。
+    expect(data.routeStates.map((s) => s.routeId)).toEqual([ACTIVE_ROUTE_ID, ROUTE_B_ID])
+    expect(data.routeStates.find((s) => s.routeId === ROUTE_B_ID)?.answer).toBeNull()
+    // A 的 answer 仍可检查（answers 列表 + routeStates）。
+    expect(data.routeStates.find((s) => s.routeId === ACTIVE_ROUTE_ID)?.answer?.freeText).toBe('A answer on shared b')
+    expect(data.answers.map((a) => a.routeId)).toEqual([ACTIVE_ROUTE_ID])
+  })
+
+  it('forked active route without an answer on a shared node shows waiting, old answer stays inspectable', () => {
+    const view = {
+      projectId: PROJECT_ID,
+      activeRouteId: ROUTE_B_ID,
+      routes: [route(ACTIVE_ROUTE_ID, 'open', ['a', 'b']), route(ROUTE_B_ID, 'open', ['a', 'b'])],
+      nodes: [node('a', null), node('b', 'a')],
+      answers: [answer(ACTIVE_ROUTE_ID, 'b', 'old route answer')],
+    }
+    const result = projectGraph({
+      view,
+      activeNodeId: 'b',
+      uiState: uiState(),
+      savedPositions: {},
+    })
+    const b = result.nodes.find((n) => n.id === 'b')!
+    const data = b.data as SpecAgentGraphNodeData
+    expect(data.primaryAnswer).toBeNull()
+    expect(data.routeStates.find((s) => s.routeId === ROUTE_B_ID)?.answer).toBeNull()
+    expect(data.routeStates.find((s) => s.routeId === ACTIVE_ROUTE_ID)?.answer?.freeText).toBe('old route answer')
+  })
+
+  it('readingRouteId follows focus ?? active for the node presentation', () => {
+    const view = sharedView()
+    const focused = projectGraph({
+      view,
+      activeNodeId: null,
+      uiState: uiState({ focusRouteId: ROUTE_B_ID }),
+      savedPositions: {},
+    })
+    const bFocused = focused.nodes.find((n) => n.id === 'b')!
+    expect((bFocused.data as SpecAgentGraphNodeData).readingRouteId).toBe(ROUTE_B_ID)
+    const unfocused = projectGraph({
+      view,
+      activeNodeId: null,
+      uiState: uiState(),
+      savedPositions: {},
+    })
+    const bActive = unfocused.nodes.find((n) => n.id === 'b')!
+    expect((bActive.data as SpecAgentGraphNodeData).readingRouteId).toBe(ACTIVE_ROUTE_ID)
+  })
+})
+
+describe('replacement edge visibility', () => {
+  it('renders the replacement edge only when both endpoints are currently visible', () => {
+    // Active route D: a -> bprime（bprime 替代 b）；路线 A: a -> b。隐藏 A。
+    const view = {
+      projectId: PROJECT_ID,
+      activeRouteId: ROUTE_D_ID,
+      routes: [route(ACTIVE_ROUTE_ID, 'open', ['a', 'b']), route(ROUTE_D_ID, 'open', ['a', 'bprime'])],
+      nodes: [node('a', null), node('b', 'a'), node('bprime', 'a', 'b')],
+      answers: [],
+    }
+    const hidden = projectGraph({
+      view,
+      activeNodeId: null,
+      uiState: uiState({ routeDisplayStates: { [ACTIVE_ROUTE_ID]: 'hidden' } }),
+      savedPositions: {},
+    })
+    const ids = hidden.nodes.map((n) => n.id)
+    expect(ids).toContain('a')
+    expect(ids).toContain('bprime')
+    expect(ids).not.toContain('b')
+    // source b 不可见 → 不渲染 dangling replacement edge。
+    expect(hidden.edges.find((e) => e.id === 'replacement:b->bprime')).toBeUndefined()
+    // 显示全部路线后 edge 恢复。
+    const all = projectGraph({ view, activeNodeId: null, uiState: uiState(), savedPositions: {} })
+    expect(all.edges.find((e) => e.id === 'replacement:b->bprime')).toBeDefined()
   })
 })

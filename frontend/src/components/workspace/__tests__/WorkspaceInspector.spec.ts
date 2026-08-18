@@ -112,7 +112,9 @@ describe('workspace inspector', () => {
       node: makeNode({ id: 'n1', question: 'Selection question' }),
       routeIds: ['rA'],
       answers: [],
+      routeStates: [{ routeId: 'rA', answer: null }],
       primaryAnswer: null,
+      readingRouteId: 'rA',
       isCurrent: false,
       canAnswer: false,
       isExpanded: false,
@@ -121,6 +123,61 @@ describe('workspace inspector', () => {
     }
     const wrapper = mount(WorkspaceInspector, { props: { nodeData } })
     expect(wrapper.find('[data-test="node-inspector"]').exists()).toBe(true)
+  })
+
+  it('clearing the selection returns to the requirement tab, never the spec tab', async () => {
+    await loadStore()
+    const nodeData = {
+      node: makeNode({ id: 'n1', question: 'Selection question' }),
+      routeIds: ['rA'],
+      answers: [],
+      routeStates: [{ routeId: 'rA', answer: null }],
+      primaryAnswer: null,
+      readingRouteId: 'rA',
+      isCurrent: false,
+      canAnswer: false,
+      isExpanded: false,
+      isShared: false,
+      visualWeight: 'normal' as const,
+    }
+    const wrapper = mount(WorkspaceInspector, { props: { nodeData } })
+    // 选中节点 → 详情。
+    expect(wrapper.find('[data-test="node-inspector"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="tab-details"]').classes()).toContain('active')
+    // 清除选择 → 默认需求状态（不是规格）。
+    await wrapper.setProps({ nodeData: null })
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('[data-test="node-inspector"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="tab-requirement"]').classes()).toContain('active')
+    expect(wrapper.find('[data-test="requirement-state-panel"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="spec-snapshot-panel"]').exists()).toBe(false)
+  })
+
+  it('inspector shows route-specific answered and waiting states for a shared node', async () => {
+    await loadStore()
+    const nodeData = {
+      node: makeNode({ id: 'n1', question: 'Shared node question' }),
+      routeIds: ['rA', 'rB'],
+      answers: [
+        { routeId: 'rA', selectedOptionId: null, selectedOptionLabel: null, freeText: 'A answer', isPrimary: false },
+      ],
+      routeStates: [
+        { routeId: 'rA', answer: { routeId: 'rA', selectedOptionId: null, selectedOptionLabel: null, freeText: 'A answer', isPrimary: false } },
+        { routeId: 'rB', answer: null },
+      ],
+      primaryAnswer: null,
+      readingRouteId: 'rB',
+      isCurrent: false,
+      canAnswer: false,
+      isExpanded: false,
+      isShared: true,
+      visualWeight: 'focus' as const,
+    }
+    const wrapper = mount(WorkspaceInspector, { props: { nodeData } })
+    expect(wrapper.find('[data-test="route-answer-rA"]').text()).toContain('A answer')
+    // rB 没有回答 → 显式等待，绝不使用 A 的 answer。
+    expect(wrapper.find('[data-test="route-answer-rB"]').text()).toContain('等待回答')
+    expect(wrapper.find('[data-test="route-answer-rB"]').text()).not.toContain('A answer')
   })
 
   it('spec generation warning targets the active route while reading another', async () => {

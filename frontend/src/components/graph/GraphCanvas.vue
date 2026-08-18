@@ -6,6 +6,13 @@ import GraphStartPlaceholder from '@/components/graph/GraphStartPlaceholder.vue'
 import GraphToolbar from '@/components/graph/GraphToolbar.vue'
 import { projectGraph, type SpecAgentGraphNodeData } from '@/graph/graphProjection'
 import { computeInitialLayout } from '@/graph/graphLayout'
+import {
+  computeFitNodeViewport,
+  computeFitViewport,
+  getNodeSize,
+  type ViewportNode,
+  type ViewportTransform,
+} from '@/graph/graphViewport'
 import type { GraphPosition } from '@/graph/graphTypes'
 import { useGraphUiStore } from '@/stores/graphUiStore'
 import type { GraphWorkspaceView, SubmitAnswerRequest } from '@/api/types'
@@ -18,6 +25,12 @@ import type { GraphWorkspaceView, SubmitAnswerRequest } from '@/api/types'
  * mirroring, group-move persistence on drag stop, route/node location,
  * the empty-project placeholder and the explicit auto-layout command.
  * It never mutates Runtime state.
+ *
+ * All fit-style operations are deterministic: they compute the viewport
+ * transform from the current projected node coordinates plus known/safe
+ * fallback dimensions and apply it with setViewport. Vue Flow's
+ * measurement-dependent `fitView` is deliberately not used so a refresh
+ * can never fit against stale/absent node measurements.
  */
 const props = defineProps<{
   view: GraphWorkspaceView | null
@@ -73,41 +86,138 @@ watch(
     const ids = new Set(next.nodes.map((n) => n.id))
     flowNodes.value = flowNodes.value.filter((n) => ids.has(n.id))
     flowEdges.value = next.edges.map((edge) => ({ ...edge }))
+    adoptProjectedPositions()
   },
   { immediate: true },
 )
 
-// 新出现的当前节点（回答/起草后）如果不在视口内，平滑带进视口；已有节点
-// 坐标绝不被移动（只改 viewport 变换）。
+/**
+ * Stores browser-locally any position the projection just assigned for the
+ * first time (first-ever layout or incremental new-node placement), so a
+ * later canonical refresh recognizes those nodes as "existing" and never
+ * re-lays them out. Positions are never sent to the backend.
+ */
+function adoptProjectedPositions(): void {
+  const toSave: Record<string, GraphPosition> = {}
+  for (const node of flowNodes.value) {
+    if (!graphUi.nodePositions[node.id]) {
+      toSave[node.id] = { x: node.position.x, y: node.position.y }
+    }
+  }
+  const entries = Object.entries(toSave)
+  if (entries.length > 0) {
+    graphUi.setNodePositions(toSave)
+  }
+}
+
+// 新出现的当前节点（回答/起草后）如果完全不在视口内，平滑带进视口；已有
+// 节点坐标绝不被移动（只改 viewport 变换）。已经（部分）可见的节点绝不
+// 触发 reveal，避免刷新后视口跳变。
 let activeNodeFitTimer: number | null = null
+
+function clearActiveNodeFitTimer(): void {
+  if (activeNodeFitTimer !== null) {
+    window.clearTimeout(activeNodeFitTimer)
+    activeNodeFitTimer = null
+  }
+}
+
+/**
+ * 该节点当前在画布视口内的可见面积比例（0..1）。几何未知时保守返回 1，
+ * 避免在加载中途自作主张移动视口。
+ */
+function nodeVisibilityFraction(nodeId: string): number {
+  const vp = vf.viewport.value
+  const canvasWidth = vf.dimensions.value.width
+  const canvasHeight = vf.dimensions.value.height
+  if (!canvasWidth || !canvasHeight) {
+    return 1
+  }
+  const target = collectViewportNodes(new Set([nodeId]))[0]
+  if (!target) {
+    return 1
+  }
+  const { width, height } = getNodeSize(target)
+  const left = target.position.x * vp.zoom + vp.x
+  const top = target.position.y * vp.zoom + vp.y
+  const right = left + width * vp.zoom
+  const bottom = top + height * vp.zoom
+  const visibleWidth = Math.max(0, Math.min(right, canvasWidth) - Math.max(left, 0))
+  const visibleHeight = Math.max(0, Math.min(bottom, canvasHeight) - Math.max(top, 0))
+  const total = width * height * vp.zoom * vp.zoom
+  return total > 0 ? (visibleWidth * visibleHeight) / total : 1
+}
+
+/** 新当前节点明显被裁剪（可见比例低于阈值）时，平滑带进视口。 */
+const REVEAL_VISIBILITY_THRESHOLD = 0.6
+const REVEAL_DELAY_MS = 500
+
 watch(
   () => props.activeNodeId,
   (nodeId, wasNodeId) => {
     if (!nodeId || nodeId === wasNodeId || !props.view) {
       return
     }
-    // 新节点刚加入时尺寸尚未测量：延迟到 Vue Flow 完成测量后再带进视口。
+    // 新节点刚加入时尺寸尚未测量：延迟到 Vue Flow 完成测量后再判断。
     if (activeNodeFitTimer !== null) {
       window.clearTimeout(activeNodeFitTimer)
     }
     activeNodeFitTimer = window.setTimeout(() => {
       activeNodeFitTimer = null
-      manualFitNode(nodeId)
-    }, 250)
+      if (nodeVisibilityFraction(nodeId) < REVEAL_VISIBILITY_THRESHOLD) {
+        manualFitNode(nodeId)
+      }
+    }, REVEAL_DELAY_MS)
   },
 )
 
+/** Converts current flow nodes into viewport inputs (measured size when known). */
+function collectViewportNodes(ids?: Set<string> | null): ViewportNode[] {
+  const result: ViewportNode[] = []
+  for (const node of flowNodes.value) {
+    if (ids && !ids.has(node.id)) {
+      continue
+    }
+    const measured = (node as FlowCanvasNode & { dimensions?: Dimensions }).dimensions
+    result.push({
+      id: node.id,
+      position: { x: node.position.x, y: node.position.y },
+      width: measured?.width,
+      height: measured?.height,
+    })
+  }
+  return result
+}
+
+/** Applies a deterministic transform through setViewport only. */
+function applyViewport(transform: ViewportTransform | null, duration: number): void {
+  if (!transform) {
+    return
+  }
+  void vf.setViewport(transform, { duration })
+}
 
 /** 初始套用一次适应视图（只改 viewport 变换，不动节点坐标）。 */
 function onInit(): void {
   void nextTick(() => {
-    manualFitView()
+    // 初始 fit 必须是瞬时的：任何动画残留都会在后续交互测量期间悄悄改变
+    // viewport，造成已有节点“看似移动”。
+    clearActiveNodeFitTimer()
+    const canvasWidth = vf.dimensions.value.width
+    const canvasHeight = vf.dimensions.value.height
+    if (!canvasWidth || !canvasHeight) {
+      return
+    }
+    applyViewport(
+      computeFitViewport(collectViewportNodes(), canvasWidth, canvasHeight, { padding: 48 }),
+      0,
+    )
   })
 }
 
 /**
  * 自研适应视图：直接基于投影坐标计算 viewport 变换（setViewport），只改
- * 视口、绝不移动节点坐标。
+ * 视口、绝不移动节点坐标。绝不依赖 Vue Flow 的节点测量。
  */
 function manualFitView(): void {
   const canvasWidth = vf.dimensions.value.width
@@ -115,62 +225,23 @@ function manualFitView(): void {
   if (!canvasWidth || !canvasHeight) {
     return
   }
-  let minX = Number.POSITIVE_INFINITY
-  let minY = Number.POSITIVE_INFINITY
-  let maxX = Number.NEGATIVE_INFINITY
-  let maxY = Number.NEGATIVE_INFINITY
-  for (const node of flowNodes.value) {
-    const measured = (node as FlowCanvasNode & { dimensions?: Dimensions }).dimensions
-    const width = measured?.width ?? 320
-    const height = measured?.height ?? 220
-    minX = Math.min(minX, node.position.x)
-    minY = Math.min(minY, node.position.y)
-    maxX = Math.max(maxX, node.position.x + width)
-    maxY = Math.max(maxY, node.position.y + height)
-  }
-  if (!Number.isFinite(minX)) {
-    return
-  }
-  const padding = 48
-  const boundsWidth = Math.max(maxX - minX, 1)
-  const boundsHeight = Math.max(maxY - minY, 1)
-  const zoom = Math.min(
-    (canvasWidth - padding) / boundsWidth,
-    (canvasHeight - padding) / boundsHeight,
-    1,
-  )
-  const centerX = (minX + maxX) / 2
-  const centerY = (minY + maxY) / 2
-  void vf.setViewport(
-    { x: canvasWidth / 2 - centerX * zoom, y: canvasHeight / 2 - centerY * zoom, zoom },
-    { duration: 300 },
+  applyViewport(
+    computeFitViewport(collectViewportNodes(), canvasWidth, canvasHeight, { padding: 48 }),
+    300,
   )
 }
 
 /** 把单个节点平滑带进视口（只改 viewport，不动节点坐标）。 */
 function manualFitNode(nodeId: string): void {
-  let target: FlowCanvasNode | undefined
-  const all = flowNodes.value as unknown as { id: string }[]
-  for (const node of all) {
-    if (node.id === nodeId) {
-      target = node as FlowCanvasNode
-      break
-    }
-  }
   const canvasWidth = vf.dimensions.value.width
   const canvasHeight = vf.dimensions.value.height
-  if (!target || !canvasWidth || !canvasHeight) {
+  if (!canvasWidth || !canvasHeight) {
     return
   }
-  const measured = (target as FlowCanvasNode & { dimensions?: Dimensions }).dimensions
-  const width = measured?.width ?? 320
-  const height = measured?.height ?? 220
-  const centerX = target.position.x + width / 2
-  const centerY = target.position.y + height / 2
-  const zoom = Math.min(canvasWidth / (width + 96), canvasHeight / (height + 96), 1)
-  void vf.setViewport(
-    { x: canvasWidth / 2 - centerX * zoom, y: canvasHeight / 2 - centerY * zoom, zoom },
-    { duration: 400 },
+  const target = collectViewportNodes(new Set([nodeId]))[0] ?? null
+  applyViewport(
+    computeFitNodeViewport(target, canvasWidth, canvasHeight, { padding: 48 }),
+    400,
   )
 }
 
@@ -213,7 +284,8 @@ function onPaneClick(): void {
 
 /** Brings one node into view without changing Focus or Active. */
 async function locateNode(nodeId: string): Promise<void> {
-  await vf.fitView({ nodes: [nodeId], padding: 0.35, duration: 400 })
+  clearActiveNodeFitTimer()
+  manualFitNode(nodeId)
 }
 
 /**
@@ -221,6 +293,7 @@ async function locateNode(nodeId: string): Promise<void> {
  * never changes Active.
  */
 async function locateRoute(routeId: string): Promise<void> {
+  clearActiveNodeFitTimer()
   const route = props.view?.routes.find((r) => r.id === routeId)
   if (!route) {
     return
@@ -230,32 +303,48 @@ async function locateRoute(routeId: string): Promise<void> {
     visibleIds.add(node.id)
   }
   const ids = route.lineageNodeIds.filter((id) => visibleIds.has(id))
-  if (ids.length === 0) {
+  const canvasWidth = vf.dimensions.value.width
+  const canvasHeight = vf.dimensions.value.height
+  if (ids.length === 0 || !canvasWidth || !canvasHeight) {
     return
   }
-  await vf.fitView({ nodes: ids, padding: 0.35, duration: 400 })
+  applyViewport(
+    computeFitViewport(
+      collectViewportNodes(new Set(ids)),
+      canvasWidth,
+      canvasHeight,
+      { padding: 48 },
+    ),
+    400,
+  )
 }
 
 defineExpose({ locateNode, locateRoute })
 
 async function zoomIn(): Promise<void> {
+  clearActiveNodeFitTimer()
   await vf.zoomIn()
 }
 
 async function zoomOut(): Promise<void> {
+  clearActiveNodeFitTimer()
   await vf.zoomOut()
 }
 
+/** 适应视图：与初始 fit 相同的确定性实现。 */
 async function fitView(): Promise<void> {
-  await vf.fitView({ padding: 0.2, duration: 300 })
+  clearActiveNodeFitTimer()
+  manualFitView()
 }
 
 /**
  * Explicit user command: recompute every visible node position from scratch
  * and persist the result. Requires confirmation because it overwrites the
- * user's manual layout. Runtime history never changes.
+ * user's manual layout. Runtime history never changes. The follow-up fit is
+ * computed from the fresh positions, never from Vue Flow measurements.
  */
 async function autoLayout(): Promise<void> {
+  clearActiveNodeFitTimer()
   if (!props.view) {
     return
   }
@@ -272,7 +361,20 @@ async function autoLayout(): Promise<void> {
   const nodes = props.view.nodes.filter((n) => visibleIds.has(n.id))
   const positions = computeInitialLayout(nodes, {})
   graphUi.setNodePositions(positions)
-  await vf.fitView({ padding: 0.2, duration: 300 })
+
+  const canvasWidth = vf.dimensions.value.width
+  const canvasHeight = vf.dimensions.value.height
+  if (!canvasWidth || !canvasHeight) {
+    return
+  }
+  const viewportNodes: ViewportNode[] = collectViewportNodes().map((node) => ({
+    ...node,
+    position: positions[node.id] ?? node.position,
+  }))
+  applyViewport(
+    computeFitViewport(viewportNodes, canvasWidth, canvasHeight, { padding: 48 }),
+    300,
+  )
 }
 
 function showAll(): void {

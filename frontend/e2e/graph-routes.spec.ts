@@ -36,18 +36,18 @@ test('focus, dim, hide, show-all and active protection on a two-route graph', as
   // 聚焦非当前路线 A：只改变浏览器阅读上下文。
   const nonActive = cards.filter({ hasNot: page.getByTestId('active-route') }).first()
   await nonActive.getByTestId('focus-route').click()
-  await expect(nonActive.locator('.route-card--focused')).toHaveCount(1)
+  await expect(nonActive).toHaveClass(/route-card--focused/)
   await expect(page.getByTestId('active-route')).toHaveCount(1)
   await expect(nonActive.getByTestId('focus-route')).toHaveText('取消聚焦')
 
   // 弱化：路线保留可见但视觉降权。
   await nonActive.getByTestId('dim-route').click()
-  await expect(nonActive.locator('.route-card--dimmed')).toHaveCount(1)
+  await expect(nonActive).toHaveClass(/route-card--dimmed/)
   await expect(page.locator('.graph-question-node')).toHaveCount(3)
 
   // 隐藏非当前路线：只移除该路线专属元素，共享节点保留。
   await nonActive.getByTestId('hide-route').click()
-  await expect(nonActive.locator('.route-card--hidden')).toHaveCount(1)
+  await expect(nonActive).toHaveClass(/route-card--hidden/)
   await expect(page.locator('.graph-question-node--historical')).toHaveCount(1)
 
   // 当前路线不可隐藏：按钮禁用。
@@ -56,17 +56,19 @@ test('focus, dim, hide, show-all and active protection on a two-route graph', as
 
   // 显示全部路线：清空 focus 与手工 dim/hide，节点全部回归。
   await page.getByTestId('show-all').click()
-  await expect(nonActive.locator('.route-card--focused')).toHaveCount(0)
-  await expect(nonActive.locator('.route-card--dimmed')).toHaveCount(0)
-  await expect(nonActive.locator('.route-card--hidden')).toHaveCount(0)
+  await expect(nonActive).not.toHaveClass(/route-card--focused/)
+  await expect(nonActive).not.toHaveClass(/route-card--dimmed/)
+  await expect(nonActive).not.toHaveClass(/route-card--hidden/)
   await expect(page.locator('.graph-question-node--historical')).toHaveCount(2)
 
-  // 生命周期筛选：关闭“已删除”后的路线不可见（默认已关），其他状态可用。
-  // 归档当前路线后再筛选“已归档”：归档路线从图上消失。
-  await active.getByTestId('archive-route').click()
+  // 生命周期筛选：归档有专属节点的非当前路线 A（其专属节点 c）后再筛选
+  // “已归档” → A 从图上消失，共享节点保留；B 的当前节点 b 不受影响。
+  // （当前路线 B 与 A 共享 a/b，本身没有专属节点，归档它无法演示筛选。）
+  await nonActive.getByTestId('archive-route').click()
   await page.getByTestId('confirm-route-action').click()
+  await expect(page.getByText('已归档路线。')).toBeVisible()
   await page.getByTestId('filter-archived').uncheck()
-  await expect(page.locator('.graph-question-node')).toHaveCount(1)
+  await expect(page.locator('.graph-question-node--historical')).toHaveCount(1)
   await page.getByTestId('filter-archived').check()
   await expect(page.locator('.graph-question-node--historical')).toHaveCount(2)
 })

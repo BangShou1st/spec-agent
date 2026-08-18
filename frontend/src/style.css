@@ -193,6 +193,12 @@ textarea {
   text-decoration: line-through;
 }
 
+.badge-warn {
+  background: var(--color-warn-soft);
+  color: var(--color-warn);
+  border-color: var(--color-warn);
+}
+
 .badge-active {
   background: var(--color-accent-soft);
   color: var(--color-accent);
@@ -616,6 +622,30 @@ textarea {
 .graph-action {
   font-size: 12px;
   padding: 4px 8px;
+}
+
+/* ---- visual weight (Focus/Dim semantics) ---- */
+
+.graph-node--focus .graph-question-node {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px var(--color-accent-soft), 0 4px 12px rgb(0 0 0 / 12%);
+}
+
+.graph-node--dimmed {
+  opacity: 0.45;
+}
+
+.graph-node--active .graph-question-node {
+  border-color: var(--color-accent);
+}
+
+.graph-edge--dimmed {
+  opacity: 0.3;
+}
+
+.graph-edge--focus .vue-flow__edge-path {
+  stroke: var(--color-accent) !important;
+  stroke-width: 2;
 }
 
 /* ---- edges ---- */

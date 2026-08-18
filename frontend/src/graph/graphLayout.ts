@@ -87,3 +87,64 @@ export function placeNewNode(
   }
   return base
 }
+
+/**
+ * Resolves positions for a canonical refresh.
+ *
+ * Two distinct phases:
+ *
+ * 1. First-ever layout: when no node in the set has a saved position yet,
+ *    the whole graph gets the deterministic left-to-right layout
+ *    (`computeInitialLayout`). The caller persists those computed positions
+ *    browser-locally so later refreshes recognize the nodes as existing.
+ *
+ * 2. Incremental refresh: every existing saved coordinate is preserved
+ *    byte-for-byte and only genuinely new node ids are placed next to their
+ *    parents via `placeNewNode` (parent-right, nearest free vertical slot).
+ *    A manual move of a parent therefore never drags its children along,
+ *    and a new child always lands to the right of the moved parent.
+ */
+export function resolvePositions(
+  nodes: LayoutNode[],
+  savedPositions: Record<string, GraphPosition>,
+): Record<string, GraphPosition> {
+  const anySaved = nodes.some((n) => savedPositions[n.id])
+  if (!anySaved) {
+    return computeInitialLayout(nodes, savedPositions)
+  }
+  const result: Record<string, GraphPosition> = {}
+  const missing: LayoutNode[] = []
+  for (const node of nodes) {
+    const saved = savedPositions[node.id]
+    if (saved) {
+      result[node.id] = { x: saved.x, y: saved.y }
+    } else {
+      missing.push(node)
+    }
+  }
+  // Parents may themselves be missing (canonical order is not necessarily
+  // topological): repeat passes until every node is placed. If a pass makes
+  // no progress (broken parent chain), fall back to root placement.
+  let pending = missing
+  while (pending.length > 0) {
+    const deferred: LayoutNode[] = []
+    let progress = false
+    for (const node of pending) {
+      const parentPos = node.parentNodeId ? result[node.parentNodeId] : undefined
+      if (node.parentNodeId && parentPos === undefined) {
+        deferred.push(node)
+        continue
+      }
+      result[node.id] = placeNewNode(parentPos ?? null, Object.values(result))
+      progress = true
+    }
+    if (!progress) {
+      for (const node of pending) {
+        result[node.id] = placeNewNode(null, Object.values(result))
+      }
+      break
+    }
+    pending = deferred
+  }
+  return result
+}

@@ -67,11 +67,15 @@ watch(
   },
 )
 
+// 批准语义：选中节点 → 默认详情；清除选择 → 回到默认需求状态（绝不允许
+// 空详情状态落到规格页）。
 watch(
   () => props.nodeData,
   (data) => {
     if (data) {
       activeTab.value = 'details'
+    } else if (activeTab.value === 'details') {
+      activeTab.value = 'requirement'
     }
   },
   { immediate: true },

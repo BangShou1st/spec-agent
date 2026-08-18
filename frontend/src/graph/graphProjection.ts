@@ -7,7 +7,7 @@ import type {
   RouteLifecycleStatus,
 } from '@/api/types'
 import type { GraphPosition, GraphRouteDisplayState } from './graphTypes'
-import { computeInitialLayout, placeNewNode, VERTICAL_GAP } from './graphLayout'
+import { resolvePositions, VERTICAL_GAP } from './graphLayout'
 
 export type GraphVisualWeight = 'active' | 'focus' | 'normal' | 'dimmed'
 
@@ -19,11 +19,25 @@ export interface GraphAnswerPresentation {
   isPrimary: boolean
 }
 
+/** Per-route state of one node: answered (with its answer) or waiting. */
+export interface GraphRouteAnswerState {
+  routeId: string
+  answer: GraphAnswerPresentation | null
+}
+
 export interface SpecAgentGraphNodeData {
   node: GraphWorkspaceNodeView
   routeIds: string[]
   answers: GraphAnswerPresentation[]
+  /**
+   * Route-specific state for EVERY member route (in membership order):
+   * a route without an answer gets `answer: null` and must be presented as
+   * waiting — the node can never show another route's answer as its own.
+   */
+  routeStates: GraphRouteAnswerState[]
   primaryAnswer: GraphAnswerPresentation | null
+  /** Browser reading context = focusRouteId ?? activeRouteId (browser-only). */
+  readingRouteId: string | null
   isCurrent: boolean
   canAnswer: boolean
   isExpanded: boolean
@@ -144,8 +158,14 @@ function routeVisualWeight(
   focusRouteId: string | null,
   routeDisplayStates: Record<string, GraphRouteDisplayState>,
 ): GraphVisualWeight {
+  if (focusRouteId) {
+    // Focus is a browser-only reading context: while reading route F, F's
+    // elements stay prominent and every other visible route — including the
+    // Active route — is temporarily dimmed. Exiting Focus restores the
+    // previous manual dim/hide state because Focus never touches it.
+    return routeIds.includes(focusRouteId) ? 'focus' : 'dimmed'
+  }
   if (activeRouteId && routeIds.includes(activeRouteId)) return 'active'
-  if (focusRouteId && routeIds.includes(focusRouteId)) return 'focus'
   if (routeIds.some((id) => routeDisplayStates[id] === 'dimmed')) return 'dimmed'
   return 'normal'
 }
@@ -170,6 +190,10 @@ export function selectPrimaryAnswer(
   if (focusRouteId) {
     const focus = nodeAnswers.find((a) => a.routeId === focusRouteId)
     if (focus) return focus
+    // The focused route has no answer on this node: never present another
+    // route's answer as the focused route's primary (B must be shown as
+    // waiting instead).
+    return null
   }
   if (activeRouteId) {
     const active = nodeAnswers.find((a) => a.routeId === activeRouteId)
@@ -203,26 +227,36 @@ function buildAnswerPresentations(
   return byNode
 }
 
+function buildRouteStates(
+  view: GraphWorkspaceView,
+  answersByNode: Map<string, GraphAnswerPresentation[]>,
+  membership: Map<string, string[]>,
+): Map<string, GraphRouteAnswerState[]> {
+  const byNode = new Map<string, GraphRouteAnswerState[]>()
+  for (const node of view.nodes) {
+    const routeIds = membership.get(node.id) ?? []
+    const answers = answersByNode.get(node.id) ?? []
+    byNode.set(
+      node.id,
+      routeIds.map((routeId) => ({
+        routeId,
+        answer: answers.find((a) => a.routeId === routeId) ?? null,
+      })),
+    )
+  }
+  return byNode
+}
+
 function computePositions(
   view: GraphWorkspaceView,
   savedPositions: Record<string, GraphPosition>,
   visibleNodeIds: Set<string>,
 ): Record<string, GraphPosition> {
   const nodes = view.nodes.filter((n) => visibleNodeIds.has(n.id))
-  const positions = computeInitialLayout(nodes, savedPositions)
-  // Fill gaps for newly discovered nodes near their parent.
-  const occupied = nodes
-    .filter((n) => positions[n.id])
-    .map((n) => positions[n.id])
-  const result: Record<string, GraphPosition> = { ...positions }
-  for (const node of nodes) {
-    if (result[node.id]) continue
-    const parent = node.parentNodeId ? result[node.parentNodeId] : null
-    const pos = placeNewNode(parent, occupied)
-    result[node.id] = pos
-    occupied.push(pos)
-  }
-  return result
+  // First-ever layout fills every missing position deterministically; any
+  // later refresh only places genuinely new ids next to their parents and
+  // preserves all existing coordinates byte-for-byte.
+  return resolvePositions(nodes, savedPositions)
 }
 
 /**
@@ -253,6 +287,8 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
   const positions = computePositions(view, savedPositions, visibleNodeIds)
   const answersByNode = buildAnswerPresentations(view)
   const optionsByNode = new Map(view.nodes.map((n) => [n.id, n.options]))
+  const statesByNode = buildRouteStates(view, answersByNode, membership)
+  const readingRouteId = uiState.focusRouteId ?? activeRouteId
 
   const nodes: Node<SpecAgentGraphNodeData>[] = view.nodes
     .filter((node) => visibleNodeIds.has(node.id))
@@ -273,21 +309,24 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
         !view.answers.some(
           (answer) => answer.routeId === activeRouteId && answer.nodeId === node.id,
         )
+      const visualWeight = routeVisualWeight(
+        routeIds,
+        activeRouteId,
+        uiState.focusRouteId,
+        uiState.routeDisplayStates,
+      )
       const data: SpecAgentGraphNodeData = {
         node,
         routeIds,
         answers: answers.map((a) => ({ ...a, isPrimary: a === primary })),
+        routeStates: statesByNode.get(node.id) ?? [],
         primaryAnswer: primary,
+        readingRouteId,
         isCurrent: node.id === activeNodeId,
         canAnswer,
         isExpanded: uiState.expandedNodeIds.includes(node.id),
         isShared: routeIds.length > 1,
-        visualWeight: routeVisualWeight(
-          routeIds,
-          activeRouteId,
-          uiState.focusRouteId,
-          uiState.routeDisplayStates,
-        ),
+        visualWeight,
       }
       return {
         id: node.id,
@@ -295,7 +334,7 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
         position: positions[node.id] ?? { x: 0, y: 0 },
         data,
         dragHandle: '.graph-question-node__header',
-        class: 'graph-node',
+        class: ['graph-node', `graph-node--${visualWeight}`],
       }
     })
 
@@ -316,13 +355,22 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
             uiState.routeDisplayStates,
           ),
         },
-        class: 'graph-edge--lineage',
+        class: ['graph-edge--lineage', `graph-edge--${routeVisualWeight(
+          edge.routeIds,
+          activeRouteId,
+          uiState.focusRouteId,
+          uiState.routeDisplayStates,
+        )}`],
       })
     }
   }
 
   for (const node of view.nodes) {
-    if (node.supersedesNodeId && visibleNodeIds.has(node.id)) {
+    if (
+      node.supersedesNodeId &&
+      visibleNodeIds.has(node.id) &&
+      visibleNodeIds.has(node.supersedesNodeId)
+    ) {
       const routeIds = membership.get(node.id) ?? []
       edges.push({
         id: 'replacement:' + node.supersedesNodeId + '->' + node.id,
@@ -338,7 +386,12 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
             uiState.routeDisplayStates,
           ),
         },
-        class: 'graph-edge--replacement',
+        class: ['graph-edge--replacement', `graph-edge--${routeVisualWeight(
+          routeIds,
+          activeRouteId,
+          uiState.focusRouteId,
+          uiState.routeDisplayStates,
+        )}`],
       })
     }
   }

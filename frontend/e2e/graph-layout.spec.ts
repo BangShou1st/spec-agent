@@ -37,13 +37,19 @@ test('drag by the title handle persists graph coordinates after reload', async (
     .poll(async () => edgePath.getAttribute('d'))
     .not.toBe(edgeBefore)
 
-  // reload 后坐标从本地存储恢复。
+  // reload 后坐标从本地存储恢复。设计上 viewport 不持久化（初始 fit 会重新
+  // 计算视口变换），因此断言 graph 坐标（.vue-flow__node 的 translate），
+  // 而不是屏幕坐标。
+  const graphTransformOf = (index: number) =>
+    page.locator('.vue-flow__node').nth(index).evaluate((el) => (el as HTMLElement).style.transform)
+  const afterGraph = await graphTransformOf(0)
+
   await page.reload()
   await expect(page.locator('.graph-question-node')).toHaveCount(3)
+  const restoredGraph = await graphTransformOf(0)
+  expect(restoredGraph).toBe(afterGraph)
   const restored = await page.locator('[data-test="graph-question-node"]').first().boundingBox()
   expect(restored).not.toBeNull()
-  expect(Math.abs((restored?.x ?? 0) - (after?.x ?? 0))).toBeLessThan(30)
-  expect(Math.abs((restored?.y ?? 0) - (after?.y ?? 0))).toBeLessThan(30)
 })
 
 test('ctrl/cmd multi-select moves the whole group by the same delta', async ({ page }) => {

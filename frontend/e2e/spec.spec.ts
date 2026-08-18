@@ -50,13 +50,16 @@ test('Active=A Focus=B separates reading context from work context', async ({ pa
   const cardA = cards.filter({ hasNot: page.getByTestId('active-route') }).first()
   const routeAId = (await cardA.getAttribute('data-route-id')) ?? ''
   await cardA.getByTestId('activate-route').click()
+  // activate 是后端命令：等确认反馈（canonical 刷新完成）后再定位卡片，
+  // 避免徽标切换竞态导致后续 locator 指向错误的路线。
+  await expect(page.getByText('已设为当前路线。')).toBeVisible()
   await expect(page.getByTestId('active-route')).toHaveCount(1)
 
-  // Focus=B（浏览器只读阅读上下文）。
-  const cardB = cards.filter({ has: page.getByTestId('active-route') }).first()
+  // Focus=B（浏览器只读阅读上下文；B = 激活后没有当前徽标的 fork 路线）。
+  const cardB = cards.filter({ hasNot: page.getByTestId('active-route') }).first()
   const routeBId = (await cardB.getAttribute('data-route-id')) ?? ''
   await cardB.getByTestId('focus-route').click()
-  await expect(cardB.locator('.route-card--focused')).toHaveCount(1)
+  await expect(cardB).toHaveClass(/route-card--focused/)
   // Focus 不改变 Active。
   await expect(page.getByTestId('active-route')).toHaveCount(1)
 

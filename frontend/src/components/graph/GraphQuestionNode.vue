@@ -22,8 +22,16 @@ const emit = defineEmits<{
  * Only the backend Active node without a finalized answer is answerable;
  * answer inputs live directly inside the node. Historical nodes are
  * read-only: they show the primary answer summary (3-4 line clamp by
- * default) and can expand to the full per-route answers. Every body
- * control carries the Vue Flow `nodrag` class so only the header drags.
+ * default) and can expand to the full per-route answers.
+ *
+ * Shared nodes keep route identity: every member route appears in
+ * `routeStates` as either answered or explicitly `等待回答`. A route
+ * without an answer never displays another route's answer as its own.
+ *
+ * Drag safety: only the header drags. Interactive body controls (options,
+ * textarea, buttons, expand) stop click propagation so they neither drag
+ * nor break multi-selection, while the non-interactive body surface still
+ * reaches Vue Flow so clicking it selects the node normally.
  */
 
 const selectedOptionId = ref<string | null>(null)
@@ -41,6 +49,17 @@ watch(
 
 const node = computed(() => props.data.node)
 const primary = computed(() => props.data.primaryAnswer)
+
+/** 阅读路线（focus ?? active）在该节点上没有回答时，摘要区域显式显示等待。 */
+const readingWaiting = computed(() => {
+  if (props.data.primaryAnswer || !props.data.readingRouteId) {
+    return null
+  }
+  const state = props.data.routeStates.find(
+    (s) => s.routeId === props.data.readingRouteId,
+  )
+  return state && !state.answer ? state : null
+})
 
 const canSubmit = computed(() => {
   if (!props.data.canAnswer || props.submitting) return false
@@ -97,7 +116,7 @@ const isRootNode = computed(() => props.data.node.parentNodeId === null)
       </span>
     </header>
 
-    <div class="graph-question-node__body nodrag" data-test="node-body" @click.stop>
+    <div class="graph-question-node__body nodrag" data-test="node-body">
       <!-- Current answerable node: direct answer interaction -->
       <template v-if="data.canAnswer">
         <h3 class="graph-node-question" data-test="question">{{ node.question }}</h3>
@@ -106,8 +125,9 @@ const isRootNode = computed(() => props.data.node.parentNodeId === null)
         <label
           v-for="option in node.options"
           :key="option.id"
-          class="graph-option"
+          class="graph-option nodrag"
           :class="{ 'graph-option--selected': selectedOptionId === option.id }"
+          @click.stop
         >
           <input
             type="radio"
@@ -127,16 +147,45 @@ const isRootNode = computed(() => props.data.node.parentNodeId === null)
           class="graph-answer-input nodrag"
           data-test="free-text"
           placeholder="补充说明（可选）"
+          @click.stop
         ></textarea>
 
         <button
           class="btn btn-primary graph-submit nodrag"
           data-test="submit-answer"
           :disabled="!canSubmit"
-          @click="submit"
+          @click.stop="submit"
         >
           {{ submitting ? '正在提交…' : '提交回答' }}
         </button>
+
+        <!-- 共享的当前节点：其他路线的旧回答只在此展开查看，身份保持 route+node。 -->
+        <button
+          v-if="data.answers.length > 0"
+          class="btn graph-toggle-expand nodrag"
+          data-test="toggle-expanded"
+          @click.stop="toggleExpanded"
+        >
+          {{ data.isExpanded ? '收起' : '查看旧路线回答' }}
+        </button>
+        <div v-if="data.isExpanded" class="graph-node-details" data-test="node-details">
+          <div class="graph-route-answers">
+            <div
+              v-for="state in data.routeStates"
+              :key="state.routeId"
+              class="graph-route-answer"
+              :class="{ 'graph-route-answer--primary': state.answer?.isPrimary }"
+              :data-test="`route-state-${state.routeId}`"
+            >
+              <span class="meta-text">路线 {{ state.routeId }}</span>
+              <template v-if="state.answer">
+                <span v-if="state.answer.selectedOptionLabel" class="badge badge-open">{{ state.answer.selectedOptionLabel }}</span>
+                <p v-if="state.answer.freeText" class="graph-answer-text">{{ state.answer.freeText }}</p>
+              </template>
+              <span v-else class="badge badge-warn" :data-test="`route-waiting-${state.routeId}`">等待回答</span>
+            </div>
+          </div>
+        </div>
       </template>
 
       <!-- Historical answered node: read-only summary + expand -->
@@ -158,11 +207,20 @@ const isRootNode = computed(() => props.data.node.parentNodeId === null)
           <span class="graph-answer-route meta-text">路线：{{ primary.routeId }}</span>
         </div>
 
+        <!-- 阅读路线没有回答时：明确显示等待，绝不拿其他路线的 answer 冒充。 -->
+        <div
+          v-else-if="readingWaiting"
+          class="graph-answer-summary"
+          data-test="waiting-summary"
+        >
+          <span class="badge badge-warn">路线 {{ readingWaiting.routeId }} · 等待回答</span>
+        </div>
+
         <button
           v-if="primary || data.answers.length > 0"
           class="btn graph-toggle-expand nodrag"
           data-test="toggle-expanded"
-          @click="toggleExpanded"
+          @click.stop="toggleExpanded"
         >
           {{ data.isExpanded ? '收起' : '展开' }}
         </button>
@@ -176,14 +234,18 @@ const isRootNode = computed(() => props.data.node.parentNodeId === null)
           </ul>
           <div class="graph-route-answers">
             <div
-              v-for="item in data.answers"
-              :key="item.routeId + item.selectedOptionId + item.freeText"
+              v-for="state in data.routeStates"
+              :key="state.routeId"
               class="graph-route-answer"
-              :class="{ 'graph-route-answer--primary': item.isPrimary }"
+              :class="{ 'graph-route-answer--primary': state.answer?.isPrimary }"
+              :data-test="`route-state-${state.routeId}`"
             >
-              <span class="meta-text">路线 {{ item.routeId }}</span>
-              <span v-if="item.selectedOptionLabel" class="badge badge-open">{{ item.selectedOptionLabel }}</span>
-              <p v-if="item.freeText" class="graph-answer-text">{{ item.freeText }}</p>
+              <span class="meta-text">路线 {{ state.routeId }}</span>
+              <template v-if="state.answer">
+                <span v-if="state.answer.selectedOptionLabel" class="badge badge-open">{{ state.answer.selectedOptionLabel }}</span>
+                <p v-if="state.answer.freeText" class="graph-answer-text">{{ state.answer.freeText }}</p>
+              </template>
+              <span v-else class="badge badge-warn" :data-test="`route-waiting-${state.routeId}`">等待回答</span>
             </div>
           </div>
         </div>
@@ -193,7 +255,7 @@ const isRootNode = computed(() => props.data.node.parentNodeId === null)
             class="btn graph-action nodrag"
             data-test="fork-node"
             title="从该问题创建新分支路线"
-            @click="forkNode"
+            @click.stop="forkNode"
           >
             从此分支
           </button>
@@ -202,7 +264,7 @@ const isRootNode = computed(() => props.data.node.parentNodeId === null)
             data-test="regenerate-node"
             :disabled="isRootNode || pending"
             title="重新生成这个问题"
-            @click="regenerateNode"
+            @click.stop="regenerateNode"
           >
             重新生成这个问题
           </button>
