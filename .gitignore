@@ -23,3 +23,9 @@ application-local.yml
 # Docker
 docker-compose.override.yml
 backend/.local-secrets.env
+
+# Frontend
+frontend/node_modules
+frontend/dist
+frontend/coverage
+*.tsbuildinfo
