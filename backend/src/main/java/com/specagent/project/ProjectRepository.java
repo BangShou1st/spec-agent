@@ -7,6 +7,7 @@ import org.springframework.stereotype.Repository;
 
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -56,5 +57,14 @@ public class ProjectRepository {
     public Optional<Project> findById(UUID id) {
         String sql = "SELECT * FROM projects WHERE id = :id";
         return jdbcTemplate.query(sql, Maps.of("id", id), rowMapper).stream().findFirst();
+    }
+
+    /**
+     * Lists all projects in deterministic order ({@code created_at} ascending,
+     * then {@code id} ascending as a stable tiebreak).
+     */
+    public List<Project> findAll() {
+        String sql = "SELECT * FROM projects ORDER BY created_at, id";
+        return jdbcTemplate.query(sql, rowMapper);
     }
 }

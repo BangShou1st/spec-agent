@@ -8,6 +8,7 @@ import com.specagent.route.RouteRepository;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -56,5 +57,13 @@ public class ProjectService {
 
     public Optional<Project> getProject(UUID projectId) {
         return projectRepository.findById(projectId);
+    }
+
+    /**
+     * Lists all projects in deterministic order ({@code created_at} ascending).
+     * Read-only; never mutates project or route state.
+     */
+    public List<Project> listProjects() {
+        return projectRepository.findAll();
     }
 }

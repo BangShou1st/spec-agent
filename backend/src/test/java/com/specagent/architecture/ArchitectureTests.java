@@ -136,4 +136,63 @@ class ArchitectureTests {
 
         rule.check(CLASSES);
     }
+
+    @Test
+    void apiMustNotDependOnRepositoryClasses() {
+        ArchRule rule = noClasses()
+            .that().resideInAPackage("com.specagent.api..")
+            .should().dependOnClassesThat()
+            .haveSimpleNameEndingWith("Repository")
+            .because("API controllers and DTOs must go through the service boundary; "
+                    + "repositories are runtime-internal");
+
+        rule.check(CLASSES);
+    }
+
+    @Test
+    void apiMustNotDependOnModelOrProviderPackages() {
+        ArchRule rule = noClasses()
+            .that().resideInAPackage("com.specagent.api..")
+            .should().dependOnClassesThat()
+            .resideInAnyPackage("com.specagent.model..")
+            .because("API DTOs must never expose ModelRequest, ModelResponse, or provider payloads");
+
+        rule.check(CLASSES);
+    }
+
+    @Test
+    void apiMustNotDependOnContextOrCredentialPackages() {
+        ArchRule rule = noClasses()
+            .that().resideInAPackage("com.specagent.api..")
+            .should().dependOnClassesThat()
+            .resideInAnyPackage("com.specagent.context..", "com.specagent.credential..")
+            .because("API must never expose a raw ContextSnapshot or credential material");
+
+        rule.check(CLASSES);
+    }
+
+    @Test
+    void apiMustNotIntroduceExternalModelSdks() {
+        ArchRule rule = noClasses()
+            .that().resideInAPackage("com.specagent.api..")
+            .should().dependOnClassesThat()
+            .haveNameMatching("(org\\.springframework\\.ai|com\\.openai|dev\\.langchain4j)\\..*")
+            .because("The API foundation must stay free of external model SDKs");
+
+        rule.check(CLASSES);
+    }
+
+    @Test
+    void runtimeKernelMustNotDependOnApi() {
+        ArchRule rule = noClasses()
+            .that().resideInAnyPackage("com.specagent.project..", "com.specagent.route..",
+                "com.specagent.node..", "com.specagent.answer..", "com.specagent.context..",
+                "com.specagent.patch..", "com.specagent.spec..", "com.specagent.profile..",
+                "com.specagent.common..", "com.specagent.agent..")
+            .should().dependOnClassesThat()
+            .resideInAPackage("com.specagent.api..")
+            .because("Runtime Kernel must not depend on the outermost API boundary");
+
+        rule.check(CLASSES);
+    }
 }
