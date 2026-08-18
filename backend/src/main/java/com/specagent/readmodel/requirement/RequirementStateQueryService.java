@@ -40,6 +40,31 @@ public class RequirementStateQueryService {
         this.requirementStateBuilder = requirementStateBuilder;
     }
 
+    /**
+     * Derives the requirement state for an explicitly named route owned by the
+     * project. Every lifecycle status (open, superseded, archived, deleted) is
+     * readable; a foreign or missing route is indistinguishable at the API
+     * edge and surfaces as 404 {@code ROUTE_NOT_FOUND}. Never writes state and
+     * never builds or persists a {@code ContextSnapshot}.
+     */
+    public RequirementStateView getForRoute(UUID projectId, UUID routeId) {
+        Project project = projectService.getProject(projectId)
+                .orElseThrow(() -> RequirementStateQueryException.of(
+                        RequirementStateQueryException.Reason.PROJECT_NOT_FOUND, "Project not found"));
+
+        Route route = routeService.getRoute(routeId)
+                .orElseThrow(() -> RequirementStateQueryException.of(
+                        RequirementStateQueryException.Reason.ROUTE_NOT_FOUND, "Route not found"));
+
+        if (!route.projectId().equals(project.id())) {
+            throw RequirementStateQueryException.of(
+                    RequirementStateQueryException.Reason.ROUTE_NOT_FOUND, "Route not found");
+        }
+
+        RequirementState state = requirementStateBuilder.buildForRoute(project.id(), route.id());
+        return RequirementStateView.from(project.id(), route.id(), state);
+    }
+
     public RequirementStateView getForProject(UUID projectId) {
         Project project = projectService.getProject(projectId)
                 .orElseThrow(() -> RequirementStateQueryException.of(

@@ -6,8 +6,8 @@ package com.specagent.readmodel.requirement;
  * <p>The read-model/application layer must not depend on the outer HTTP API
  * layer, so expected query failures are expressed with this closed reason
  * instead of an API exception. The API boundary translates the reason into the
- * stable HTTP contract (404 {@code PROJECT_NOT_FOUND}, 500
- * {@code INTERNAL_INVARIANT_VIOLATION}).
+ * stable HTTP contract (404 {@code PROJECT_NOT_FOUND}, 404
+ * {@code ROUTE_NOT_FOUND}, 500 {@code INTERNAL_INVARIANT_VIOLATION}).
  *
  * <p>Messages are static and safe: they never carry secrets, raw persistence
  * data, or provider payloads, and the API boundary never echoes them to the
@@ -19,6 +19,8 @@ public class RequirementStateQueryException extends RuntimeException {
     public enum Reason {
         /** The requested project does not exist. */
         PROJECT_NOT_FOUND,
+        /** The requested route does not exist or does not belong to the project. */
+        ROUTE_NOT_FOUND,
         /** The active route pointer failed to resolve to a route owned by the project. */
         INVARIANT_VIOLATION
     }

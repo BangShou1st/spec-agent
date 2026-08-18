@@ -216,4 +216,156 @@ class RequirementStateApiIntegrationTest {
         assertThat(body).doesNotContain("FOREIGN_ROUTE_SENTINEL_77EE");
         assertThat(body).doesNotContain("B question");
     }
+
+    // ------------------------------------------------------------------
+    // Phase 7.3A: route-scoped requirement-state reads.
+    // ------------------------------------------------------------------
+
+    private Route createRouteWithSentinelClaim(Project project, String sentinelText) {
+        Route route = routeService.createRoute(project.id(), RouteLifecycleStatus.OPEN,
+                "sentinel route");
+        Node node = nodeService.createRootNode(project.id(), route.id(),
+                "Sentinel question", null, List.of(), true);
+        Answer answer = answerService.finalizeAnswer(project.id(), route.id(),
+                node.id(), null, "sentinel answer " + sentinelText, "test");
+        answerPatchService.save(project.id(), route.id(), node.id(), answer.id(),
+                List.of(Claim.of(ClaimKind.GOAL, sentinelText,
+                        ClaimStatus.CONFIRMED, node.id(), answer.id())),
+                null);
+        return route;
+    }
+
+    @Test
+    void routeScopedReadReturnsExplicitRouteBWhileActiveRouteIsA() throws Exception {
+        Project project = projectService.createProject("Route scoped project");
+        // Active route A gets real derived claims through the orchestrator.
+        orchestrator.draftNextQuestion(project.id());
+        orchestrator.answerActiveNodeAndDraftNext(project.id(), "Active route answer");
+        UUID activeRouteId = projectService.getProject(project.id()).orElseThrow().activeRouteId();
+        Route routeB = createRouteWithSentinelClaim(project, "ROUTE_B_ONLY_CLAIM_5D1F");
+        assertThat(activeRouteId).isNotEqualTo(routeB.id());
+
+        MvcResult result = mockMvc.perform(get(
+                "/api/v1/projects/{projectId}/routes/{routeId}/requirement-state",
+                project.id(), routeB.id()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.projectId").value(project.id().toString()))
+                .andExpect(jsonPath("$.routeId").value(routeB.id().toString()))
+                .andReturn();
+
+        String body = result.getResponse().getContentAsString();
+        assertThat(body).contains("ROUTE_B_ONLY_CLAIM_5D1F");
+        // A's active-route claims never leak into the explicit B read.
+        assertThat(body).doesNotContain("The user clarified the main outcome.");
+    }
+
+    @Test
+    void legacyActiveEndpointStillReturnsActiveRouteA() throws Exception {
+        Project project = projectService.createProject("Legacy endpoint project");
+        orchestrator.draftNextQuestion(project.id());
+        orchestrator.answerActiveNodeAndDraftNext(project.id(), "Active route answer");
+        UUID activeRouteId = projectService.getProject(project.id()).orElseThrow().activeRouteId();
+        createRouteWithSentinelClaim(project, "ROUTE_B_ONLY_CLAIM_9B17");
+
+        MvcResult result = mockMvc.perform(get(
+                "/api/v1/projects/{projectId}/requirement-state", project.id()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.routeId").value(activeRouteId.toString()))
+                .andReturn();
+
+        String body = result.getResponse().getContentAsString();
+        assertThat(body).contains("The user clarified the main outcome.");
+        assertThat(body).doesNotContain("ROUTE_B_ONLY_CLAIM_9B17");
+    }
+
+    @Test
+    void archivedRouteScopedReadRemainsAvailable() throws Exception {
+        Project project = projectService.createProject("Archived scoped project");
+        Route route = createRouteWithSentinelClaim(project, "ARCHIVED_ROUTE_CLAIM_3C21");
+        routeService.archiveRoute(project.id(), route.id());
+
+        mockMvc.perform(get(
+                "/api/v1/projects/{projectId}/routes/{routeId}/requirement-state",
+                project.id(), route.id()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.projectId").value(project.id().toString()))
+                .andExpect(jsonPath("$.routeId").value(route.id().toString()))
+                .andExpect(jsonPath("$.confirmed[0].text").value("ARCHIVED_ROUTE_CLAIM_3C21"));
+    }
+
+    @Test
+    void supersededRouteScopedReadRemainsAvailable() throws Exception {
+        Project project = projectService.createProject("Superseded scoped project");
+        UUID activeRouteId = project.activeRouteId();
+        Node root = nodeService.createRootNode(project.id(), activeRouteId, "Root question",
+                null, List.of(), true);
+        Node child = nodeService.createChildNode(project.id(), activeRouteId, root.id(),
+                "Child question", null, List.of(), true);
+        Answer answer = answerService.finalizeAnswer(project.id(), activeRouteId, root.id(),
+                null, "old route answer", "test");
+        answerPatchService.save(project.id(), activeRouteId, root.id(), answer.id(),
+                List.of(Claim.of(ClaimKind.GOAL, "OLD_ROUTE_CLAIM_6E41",
+                        ClaimStatus.CONFIRMED, root.id(), answer.id())),
+                null);
+
+        routeService.regenerateFromNode(project.id(), child.id(), "Regenerate",
+                "Replacement question", null, List.of());
+        assertThat(routeService.getRoute(activeRouteId).orElseThrow().lifecycleStatus())
+                .isEqualTo(RouteLifecycleStatus.SUPERSEDED);
+
+        mockMvc.perform(get(
+                "/api/v1/projects/{projectId}/routes/{routeId}/requirement-state",
+                project.id(), activeRouteId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.projectId").value(project.id().toString()))
+                .andExpect(jsonPath("$.routeId").value(activeRouteId.toString()))
+                .andExpect(jsonPath("$.confirmed[0].text").value("OLD_ROUTE_CLAIM_6E41"));
+    }
+
+    @Test
+    void deletedRouteScopedReadRemainsAvailable() throws Exception {
+        Project project = projectService.createProject("Deleted scoped project");
+        Route route = createRouteWithSentinelClaim(project, "DELETED_ROUTE_CLAIM_8F22");
+        routeService.softDeleteRoute(project.id(), route.id());
+
+        mockMvc.perform(get(
+                "/api/v1/projects/{projectId}/routes/{routeId}/requirement-state",
+                project.id(), route.id()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.projectId").value(project.id().toString()))
+                .andExpect(jsonPath("$.routeId").value(route.id().toString()))
+                .andExpect(jsonPath("$.confirmed[0].text").value("DELETED_ROUTE_CLAIM_8F22"));
+    }
+
+    @Test
+    void routeScopedMissingRouteReturnsNotFound() throws Exception {
+        Project project = projectService.createProject("Missing route scoped project");
+
+        mockMvc.perform(get(
+                "/api/v1/projects/{projectId}/routes/{routeId}/requirement-state",
+                project.id(), Ids.random()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("ROUTE_NOT_FOUND"));
+    }
+
+    @Test
+    void routeScopedForeignRouteReturnsNotFound() throws Exception {
+        Project projectA = projectService.createProject("Owner A");
+        Project projectB = projectService.createProject("Owner B");
+
+        mockMvc.perform(get(
+                "/api/v1/projects/{projectId}/routes/{routeId}/requirement-state",
+                projectA.id(), projectB.activeRouteId()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("ROUTE_NOT_FOUND"));
+    }
+
+    @Test
+    void routeScopedUnknownProjectReturnsNotFound() throws Exception {
+        mockMvc.perform(get(
+                "/api/v1/projects/{projectId}/routes/{routeId}/requirement-state",
+                Ids.random(), Ids.random()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PROJECT_NOT_FOUND"));
+    }
 }

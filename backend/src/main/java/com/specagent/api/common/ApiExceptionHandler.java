@@ -53,6 +53,8 @@ public class ApiExceptionHandler {
         return switch (ex.reason()) {
             case PROJECT_NOT_FOUND -> ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(ApiErrorResponse.of("PROJECT_NOT_FOUND", "Project not found"));
+            case ROUTE_NOT_FOUND -> ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(ApiErrorResponse.of("ROUTE_NOT_FOUND", "Route not found"));
             case INVARIANT_VIOLATION -> ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(ApiErrorResponse.of("INTERNAL_INVARIANT_VIOLATION",
                             "The project state failed an internal invariant check"));
