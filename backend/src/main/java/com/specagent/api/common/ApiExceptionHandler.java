@@ -1,6 +1,7 @@
 package com.specagent.api.common;
 
 import com.specagent.agent.ModelContractException;
+import com.specagent.readmodel.graph.GraphWorkspaceQueryException;
 import com.specagent.readmodel.requirement.RequirementStateQueryException;
 import com.specagent.readmodel.route.RouteLineageQueryException;
 import org.slf4j.Logger;
@@ -55,6 +56,17 @@ public class ApiExceptionHandler {
             case INVARIANT_VIOLATION -> ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(ApiErrorResponse.of("INTERNAL_INVARIANT_VIOLATION",
                             "The project state failed an internal invariant check"));
+        };
+    }
+
+    @ExceptionHandler(GraphWorkspaceQueryException.class)
+    public ResponseEntity<ApiErrorResponse> handleGraphWorkspaceQuery(GraphWorkspaceQueryException ex) {
+        return switch (ex.reason()) {
+            case PROJECT_NOT_FOUND -> ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(ApiErrorResponse.of("PROJECT_NOT_FOUND", "Project not found"));
+            case INVARIANT_VIOLATION -> ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiErrorResponse.of("INTERNAL_INVARIANT_VIOLATION",
+                            "The project graph failed an internal invariant check"));
         };
     }
 
