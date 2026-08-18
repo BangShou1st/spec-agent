@@ -4,6 +4,7 @@ import com.specagent.common.Ids;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -39,6 +40,15 @@ public class AnswerService {
                 selectedOptionId, freeText, createdByUser, now);
         answerRepository.save(answer);
         return answer;
+    }
+
+    /**
+     * Read-only batch read of the answers finalized for one route on the given
+     * node ids. Pure delegation to the repository query; no lifecycle logic,
+     * copying, mutation, or fallback belongs here.
+     */
+    public List<Answer> findAnswersForRouteAndNodeIds(UUID routeId, List<UUID> nodeIds) {
+        return answerRepository.findByRouteAndNodeIds(routeId, nodeIds);
     }
 
     public Optional<Answer> getAnswer(UUID answerId) {
