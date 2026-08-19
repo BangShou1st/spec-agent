@@ -4,9 +4,9 @@
 
 **Goal:** Productize the existing real OpenCode gateway, replace deterministic question replacement with a generic real-model drafting flow, close the Phase 7 Graph Workspace acceptance gaps, and finish Phase 8 CI/architecture hardening without weakening runtime invariants or introducing domain/test overfitting.
 
-**Architecture:** Keep the existing modular-monolith boundaries. Runtime Kernel remains deterministic and model-free; AgentOrchestrator freezes lineage context, asks ModelGateway for structured proposals, validates them, and only then calls runtime services to persist accepted canonical state. OpenCode settings are one global local-product aggregate in PostgreSQL, while Fake/scripted gateways remain test infrastructure only.
+**Architecture:** Keep the existing modular-monolith boundaries. Runtime Kernel remains deterministic and model-free; `AgentOrchestrator` freezes lineage context, asks `ModelGateway` for structured proposals, validates them, and only then calls runtime services to persist accepted canonical state. OpenCode settings are one global local-product aggregate in PostgreSQL, while Fake/scripted gateways remain explicit test infrastructure only.
 
-**Tech Stack:** Java 21, Spring Boot, PostgreSQL, Flyway, Jackson, Vue 3, TypeScript, Pinia, Vue Flow, Vitest, Playwright, Gradle, GitHub Actions.
+**Tech Stack:** Java 21, Spring Boot, PostgreSQL 17, Flyway, Jackson, Vue 3, TypeScript, Pinia, Vue Flow, Vitest, Playwright, Gradle, GitHub Actions.
 
 **Spec:** `docs/superpowers/specs/2026-08-19-product-convergence-opencode-phase-8-hardening-design.md`
 
@@ -24,8 +24,8 @@
 - A real OpenCode `429 / RATE_LIMITED` during Luna acceptance is a hard stop: report the step/model/state and wait for the user to change network segment.
 - Do not add domain-specific runtime branches, provider adapters, generators, or prompts.
 - Do not add test-text-specific behavior or prompt wording to make a particular fixture pass.
-- `换一个问题` reuses the generic DRAFT_NODE/NodeDraft capability; its difference is frozen replacement context + explicit run-local drafting intent.
-- Replacement proposal must be validated before canonical replacement Route/Node creation or source-route lifecycle mutation.
+- `换一个问题` reuses the generic `DRAFT_NODE` / `NodeDraft` capability; its difference is frozen replacement context plus explicit run-local drafting intent.
+- Replacement proposal must be parsed/reflected/validated before canonical replacement Route/Node creation or source-route lifecycle mutation.
 - Active, Focus, and Visibility remain independent concepts.
 - Focus never implicitly Activates a route.
 - Shared-node ambiguous reading never silently falls back to Active, first, or latest route.
@@ -40,97 +40,121 @@
 
 ## File / Boundary Map Before Implementation
 
-The implementation should keep responsibilities separated as follows.
-
 ### Backend model settings
 
-Create a focused package such as `com.specagent.settings.opencode`:
+Create `com.specagent.settings.opencode` as one focused product-settings boundary:
 
-- `OpenCodeSettings` — immutable global settings aggregate (`apiKey`, masked suffix, selected model, timestamps).
-- `OpenCodeSettingsRepository` — persistence boundary for the singleton aggregate.
-- `JdbcOpenCodeSettingsRepository` — PostgreSQL implementation following existing repository/JDBC patterns.
-- `OpenCodeSettingsService` — probe, save, status, and runtime resolve; owns the "two-step validation, one atomic save" behavior.
-- `OpenCodeSettingsController` + API DTOs — safe user-facing settings surface.
+- `OpenCodeSettings` — persisted global aggregate with full key only inside backend memory/persistence.
+- `OpenCodeSettingsStatus` — safe UI/status projection; no full key field.
+- `RuntimeOpenCodeSettings` — backend-only key+model projection consumed by the gateway.
+- `OpenCodeSettingsRepository` — singleton persistence boundary.
+- `JdbcOpenCodeSettingsRepository` — PostgreSQL implementation following current JDBC repository patterns.
+- `OpenCodeSettingsService` — probe, save, status, runtime resolve.
 
-Provider protocol stays in existing `com.specagent.model.provider` classes. Runtime route/node/context packages must not depend on settings or model packages.
+The old `com.specagent.credential` encryption/master-key stack is removed after callers migrate. Provider protocol stays in `com.specagent.model.provider`. Runtime route/node/context packages must not depend on settings/model/provider code.
 
 ### Backend agent/runtime
 
-- Rename `backend/src/main/java/com/specagent/agent/FakeAgentOrchestrator.java` to production-neutral `AgentOrchestrator.java` and neutralize result type names used by production services.
+- Rename `backend/src/main/java/com/specagent/agent/FakeAgentOrchestrator.java` to `AgentOrchestrator.java` and neutralize production result type names.
+- Move deterministic `FakeModelAdapter` out of normal agent semantics into a clearly test-only profile/package such as `com.specagent.testing`, retaining it only so backend/E2E deterministic tests can start a local app without public network.
 - `AgentOrchestrator` owns model-driven replacement orchestration.
-- `ContextBuilder` owns replacement ContextSnapshot construction from explicit source lineage only.
-- `ModelContextProjectionBuilder` owns run-local DRAFT_NODE drafting-intent projection.
+- `ContextBuilder` owns source-anchored replacement `ContextSnapshot` construction.
+- `ModelContextProjectionBuilder` owns run-local redirected drafting intent.
 - `RouteService` owns deterministic canonical replacement commit and lifecycle/source eligibility.
-- `RouteCommandService` remains API command composition and must not duplicate runtime semantics.
+- `ContextGuard` validates replacement contexts against explicit source-route lifecycle rules.
+- `RouteCommandService` remains API command composition; it must not reimplement runtime state rules.
 
 ### Frontend
 
 - `frontend/src/api/modelSettings.ts` — all OpenCode settings HTTP calls.
 - `frontend/src/stores/modelSettingsStore.ts` — global settings UI state.
-- `frontend/src/views/SettingsView.vue` or a focused app-level settings surface routed globally.
-- Existing graph/workspace files keep graph semantics: `graphUiStore.ts`, `WorkspaceView.vue`, `RouteNavigator.vue`, `WorkspaceInspector.vue`, `GraphCanvas.vue`, `GraphQuestionNode.vue`, graph projection/viewport helpers.
-- Replace `RegenerateNodeDialog.vue` with a narrow `ReplaceQuestionDialog.vue` (or equivalently refactor the existing component so it only accepts the natural-language direction). Do not leave the deterministic replacement-authoring form reachable in normal product UI.
+- `frontend/src/views/SettingsView.vue` — global user settings page.
+- Existing `graphUiStore.ts`, `WorkspaceView.vue`, `RouteNavigator.vue`, `WorkspaceInspector.vue`, `GraphCanvas.vue`, `GraphQuestionNode.vue`, graph projection/viewport helpers keep Graph semantics.
+- Replace/refactor `RegenerateNodeDialog.vue` into a narrow natural-language `换一个问题` dialog; deterministic replacement-authoring controls are removed from normal product UI.
 
 ### CI / hardening
 
 - Create `.github/workflows/ci.yml`.
-- Extend existing architecture tests rather than creating a second architecture-test framework.
-- CI never needs a real OpenCode secret; real-provider acceptance remains an explicit local/release gate.
+- Extend the existing architecture-test suite rather than creating a second architecture framework.
+- CI uses PostgreSQL 17 and deterministic test-only model wiring; CI never requires a real OpenCode secret.
+- Real-provider acceptance is a separate local/release gate through the product UI.
 
 ---
 
-### Task 1: Replace operator-only encrypted credential persistence with the product OpenCode settings aggregate
+### Task 1: Replace encrypted operator credential persistence with the global product OpenCode settings aggregate
 
 **Files:**
 - Create: `backend/src/main/resources/db/migration/V5__opencode_settings.sql`
 - Create: `backend/src/main/java/com/specagent/settings/opencode/OpenCodeSettings.java`
+- Create: `backend/src/main/java/com/specagent/settings/opencode/OpenCodeSettingsStatus.java`
+- Create: `backend/src/main/java/com/specagent/settings/opencode/RuntimeOpenCodeSettings.java`
 - Create: `backend/src/main/java/com/specagent/settings/opencode/OpenCodeSettingsRepository.java`
 - Create: `backend/src/main/java/com/specagent/settings/opencode/JdbcOpenCodeSettingsRepository.java`
 - Create: `backend/src/main/java/com/specagent/settings/opencode/OpenCodeSettingsService.java`
-- Create tests: `backend/src/test/java/com/specagent/settings/opencode/OpenCodeSettingsIntegrationTest.java`
-- Remove production use of: `backend/src/main/java/com/specagent/credential/CredentialCrypto.java`, `OpenCodeCredentialService.java`, and old encrypted-credential persistence classes once no caller remains.
-- Update/remove their obsolete tests.
+- Create: `backend/src/test/java/com/specagent/settings/opencode/OpenCodeSettingsIntegrationTest.java`
+- Delete after migration: production files under `backend/src/main/java/com/specagent/credential/` (`CredentialCrypto`, `CredentialCryptoError`, `CredentialStatus`, `CredentialValidator`, `InvalidProviderCredentialError`, `OpenCodeCredentialService`, `OpenCodeCredentialValidator`, `ProviderCredential`, `ProviderCredentialRepository`, `ProviderValidationUnavailableError`) once `git grep` proves zero remaining production callers.
+- Delete/update their old credential tests accordingly.
+- Modify: `backend/src/main/resources/application.yml` to remove the credential master-key property.
 
 **Interfaces:**
-- Produces: `OpenCodeSettingsService.status(): OpenCodeSettingsStatus`
-- Produces: `OpenCodeSettingsService.probe(String apiKey): List<String>`
-- Produces: `OpenCodeSettingsService.save(String apiKey, String selectedModel): OpenCodeSettingsStatus`
-- Produces: `OpenCodeSettingsService.requireRuntimeSettings(): RuntimeOpenCodeSettings`
-- `RuntimeOpenCodeSettings` exposes full key only inside backend code: `apiKey()` and `selectedModel()`.
 
-- [ ] **Step 1: Write the migration/integration tests before the migration**
+```java
+public record OpenCodeSettingsStatus(
+    boolean configured,
+    String maskedKey,
+    String selectedModel
+) {}
 
-Add tests proving a clean database has no settings; saving stores one global row; a later save replaces key+model together; status exposes only mask/model; no encrypted/master-key column remains part of the active product aggregate.
+public record RuntimeOpenCodeSettings(
+    String apiKey,
+    String selectedModel
+) {}
+```
+
+```java
+OpenCodeSettingsStatus status();
+List<String> probe(String apiKey);
+OpenCodeSettingsStatus save(String apiKey, String selectedModel);
+RuntimeOpenCodeSettings requireRuntimeSettings();
+```
+
+- [ ] **Step 1: Write RED integration tests for the singleton aggregate**
+
+Use `@MockBean`/the repository's existing Spring test mechanism to stub `OpenCodeModelCatalog` and `OpenCodeZenTransport`; the test must not call the public provider.
 
 Representative assertions:
 
 ```java
 assertThat(service.status().configured()).isFalse();
 
-service.save(validKey, "alpha-free");
-OpenCodeSettingsStatus status = service.status();
-assertThat(status.configured()).isTrue();
-assertThat(status.maskedKey()).isEqualTo("••••" + validKey.substring(validKey.length() - 4));
-assertThat(status.selectedModel()).isEqualTo("alpha-free");
-assertThat(status.toString()).doesNotContain(validKey);
+when(catalog.listFreeModels("candidate-key"))
+    .thenReturn(List.of("alpha-free", "beta-free"));
+
+doNothing().when(transport).validateCredential("candidate-key", "alpha-free");
+
+assertThat(service.probe("candidate-key"))
+    .containsExactly("alpha-free", "beta-free");
+assertThat(service.status().configured()).isFalse(); // probe never persists
+
+OpenCodeSettingsStatus saved = service.save("candidate-key", "alpha-free");
+assertThat(saved.configured()).isTrue();
+assertThat(saved.maskedKey()).isEqualTo("••••-key");
+assertThat(saved.selectedModel()).isEqualTo("alpha-free");
+assertThat(saved.toString()).doesNotContain("candidate-key");
 ```
 
-Use a stubbed `OpenCodeModelCatalog` / transport at this service-test layer so the test controls free-model discovery without public network.
+Also test: failed validation leaves an existing row untouched; selected model not returned by the current catalog is rejected; model not ending `-free` is rejected.
 
 - [ ] **Step 2: Run the focused test and confirm RED**
-
-Run:
 
 ```bash
 cd backend
 ./gradlew test --tests '*OpenCodeSettingsIntegrationTest'
 ```
 
-Expected: FAIL because V5/settings types do not exist yet.
+Expected: FAIL because V5/settings classes do not exist.
 
 - [ ] **Step 3: Add forward-only V5 migration**
-
-Use a new product table and intentionally discard the operator-only encrypted credential table rather than trying to decrypt/migrate it:
 
 ```sql
 DROP TABLE IF EXISTS provider_credentials;
@@ -145,55 +169,53 @@ CREATE TABLE opencode_settings (
 );
 ```
 
-Do not alter V3.
+Do not edit V3. The old operator-only encrypted row is intentionally not migrated.
 
-- [ ] **Step 4: Implement the aggregate/repository and safe status/runtime DTO separation**
+- [ ] **Step 4: Implement aggregate/repository/status separation**
 
-`OpenCodeSettings` may hold the full key internally. `OpenCodeSettingsStatus` must not.
+Repository upsert always writes `singleton_id = 1`. `status()` returns only mask+model. `requireRuntimeSettings()` is the only normal service method that exposes the full key to a backend caller.
 
-```java
-public record RuntimeOpenCodeSettings(String apiKey, String selectedModel) {}
-public record OpenCodeSettingsStatus(boolean configured, String maskedKey, String selectedModel) {}
-```
-
-Repository upsert always targets `singleton_id = 1`.
-
-- [ ] **Step 5: Implement probe/save semantics using the existing provider catalog/transport**
-
-Probe algorithm:
+- [ ] **Step 5: Implement probe using existing provider catalog/transport directly**
 
 ```text
-listFreeModels(candidateKey)
-→ if empty: validation unavailable
-→ validateCredential(candidateKey, one discovered free model)
-→ return the entire discovered free-model list
+catalog.listFreeModels(candidateKey)
+→ require non-empty list
+→ transport.validateCredential(candidateKey, freeModels[0])
+→ return immutable freeModels
 → no repository write
 ```
 
-Save algorithm:
+Do not preserve the old `CredentialValidator` abstraction; it would duplicate model discovery and belongs to the superseded credential stack.
+
+- [ ] **Step 6: Implement save with revalidation before the single-row upsert**
 
 ```text
-listFreeModels(candidateKey)
-→ require selectedModel is in that returned list and endsWith("-free")
-→ validateCredential(candidateKey, selectedModel)
-→ repository.upsert(apiKey + suffix + selectedModel)
+catalog.listFreeModels(candidateKey)
+→ require selectedModel appears in returned list
+→ require selectedModel endsWith("-free")
+→ transport.validateCredential(candidateKey, selectedModel)
+→ repository.upsert(key + suffix + model)
 ```
 
-Do not catch and convert RATE_LIMITED into authentication failure.
+Provider exceptions, including RATE_LIMITED, propagate as the existing provider-neutral `ModelGatewayException` hierarchy; no old settings row is mutated before validation succeeds.
 
-- [ ] **Step 6: Remove master-key runtime dependency only after new settings tests pass**
+- [ ] **Step 7: Remove the old credential/master-key production stack**
 
-Delete the obsolete production crypto/credential path or reduce it to zero production callers. Remove `spec.agent.credential.master-key` from `application.yml` and related tests/docs that describe it as a current product requirement.
-
-- [ ] **Step 7: Run focused and credential/provider regressions**
+Run:
 
 ```bash
-./gradlew test --tests '*OpenCodeSettings*' --tests '*OpenCodeModelCatalogTest' --tests '*OpenCodeCredentialValidatorTest'
+git grep -n "com.specagent.credential\|SPEC_AGENT_CREDENTIAL_MASTER_KEY\|spec.agent.credential.master-key" -- backend/src/main backend/src/test docs || true
 ```
 
-If the old validator is intentionally removed, replace the last selector with the new probe-service tests rather than preserving a dead abstraction.
+Update/remove every current-behavior caller/test/doc; historical phase documents may retain historical text only if clearly historical and not used as current instructions.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 8: Run focused regression**
+
+```bash
+./gradlew test --tests '*OpenCodeSettingsIntegrationTest' --tests '*OpenCodeModelCatalogTest'
+```
+
+- [ ] **Step 9: Commit**
 
 ```bash
 git add backend/src/main/resources/db/migration backend/src/main/java backend/src/test/java backend/src/main/resources/application.yml
@@ -202,15 +224,17 @@ git commit -m "feat: add global opencode product settings"
 
 ---
 
-### Task 2: Add the safe OpenCode settings API and make runtime model selection dynamic
+### Task 2: Add the safe settings API and make OpenCode the normal dynamically configured product gateway
 
 **Files:**
 - Create: `backend/src/main/java/com/specagent/api/settings/OpenCodeSettingsController.java`
-- Create focused DTOs under `backend/src/main/java/com/specagent/api/settings/`
+- Create DTOs: `OpenCodeSettingsResponse.java`, `OpenCodeProbeRequest.java`, `OpenCodeProbeResponse.java`, `OpenCodeSaveRequest.java`
+- Create: `backend/src/test/java/com/specagent/api/settings/OpenCodeSettingsApiIntegrationTest.java`
 - Modify: `backend/src/main/java/com/specagent/model/gateway/OpenCodeZenModelGateway.java`
+- Move/refactor: `backend/src/main/java/com/specagent/agent/FakeModelAdapter.java` → `backend/src/main/java/com/specagent/testing/FakeModelAdapter.java`
 - Modify: `backend/src/main/resources/application.yml`
-- Add tests: `backend/src/test/java/com/specagent/api/settings/OpenCodeSettingsApiIntegrationTest.java`
-- Modify tests: `OpenCodeZenModelGatewayTest`, explicit wiring tests, provider diagnostics tests.
+- Create/modify: `backend/src/test/resources/application-test.yml`
+- Modify gateway/wiring/provider diagnostic tests.
 
 **Interfaces:**
 
@@ -221,37 +245,35 @@ PUT  /api/v1/settings/opencode
 ```
 
 ```json
-GET response:
+GET:
 {"configured":true,"maskedKey":"••••abcd","selectedModel":"alpha-free"}
 
-POST probe request:
+POST /probe request:
 {"apiKey":"..."}
-POST probe response:
+POST /probe response:
 {"freeModels":["alpha-free","beta-free"]}
 
-PUT save request:
+PUT request:
 {"apiKey":"...","selectedModel":"alpha-free"}
-PUT response:
-{"configured":true,"maskedKey":"••••abcd","selectedModel":"alpha-free"}
 ```
 
 - [ ] **Step 1: Write API tests first**
 
-Assert that status never serializes `apiKey`, probe does not persist, save persists only after selected model validation, and a provider RATE_LIMITED maps through the existing safe API error contract as 429 without changing old settings.
+Assert: status JSON has no `apiKey`; probe does not persist; save persists only after selected-model validation; RATE_LIMITED returns HTTP 429 through existing `GatewayErrorAdvice`; existing settings remain unchanged on failed probe/save.
 
-- [ ] **Step 2: Run the API test and confirm RED**
+- [ ] **Step 2: Run API test and confirm RED**
 
 ```bash
 ./gradlew test --tests '*OpenCodeSettingsApiIntegrationTest'
 ```
 
-- [ ] **Step 3: Implement controller/DTOs with no full-key read endpoint**
+- [ ] **Step 3: Implement controller/DTOs**
 
-The controller may accept a key only in request bodies. Do not add `GET /secret`, raw debug endpoints, or a response field containing the full key.
+The full key is accepted only in request bodies. Do not add any GET endpoint that returns/reconstructs the key.
 
-- [ ] **Step 4: Refactor `OpenCodeZenModelGateway` to resolve settings per request**
+- [ ] **Step 4: Refactor `OpenCodeZenModelGateway` to resolve settings on every request**
 
-Replace constructor-captured `selectedModel` and `OpenCodeCredentialService` with `OpenCodeSettingsService`:
+Replace constructor-captured `selectedModel` and the old credential service with:
 
 ```java
 RuntimeOpenCodeSettings settings = settingsService.requireRuntimeSettings();
@@ -259,57 +281,69 @@ String apiKey = settings.apiKey();
 String selectedModel = settings.selectedModel();
 ```
 
-Trace must record `selectedModel`, never `apiKey`.
+Use `selectedModel` for the request and trace. Never add `apiKey` to trace.
 
-- [ ] **Step 5: Make OpenCode the normal product default and constrain Fake to test mode**
+- [ ] **Step 5: Make production default OpenCode and Fake explicitly test-only**
 
-Normal `application.yml` must no longer default `spec.agent.model.gateway` to `fake`. Keep any deterministic Fake wiring behind an explicit test profile/property used only by tests and CI. The normal user-facing runtime must return NOT_CONFIGURED until the settings aggregate exists.
+Use exact wiring rules:
 
-- [ ] **Step 6: Run gateway/API tests**
+```java
+// OpenCode gateway
+@ConditionalOnProperty(
+    name = "spec.agent.model.gateway",
+    havingValue = "opencode",
+    matchIfMissing = true)
+
+// Fake adapter
+@Profile("test")
+@ConditionalOnProperty(
+    name = "spec.agent.model.gateway",
+    havingValue = "fake")
+```
+
+Normal `application.yml` default is `opencode` (or property absent with matchIfMissing). `application-test.yml` explicitly selects `fake`. Real live smoke tests that need OpenCode explicitly override `spec.agent.model.gateway=opencode` while keeping the test profile.
+
+- [ ] **Step 6: Update Fake adapter documentation/package**
+
+It must say deterministic test adapter, not "used until a real gateway exists" and not product default.
+
+- [ ] **Step 7: Run gateway/API/wiring tests**
 
 ```bash
 ./gradlew test --tests '*OpenCodeSettingsApiIntegrationTest' --tests '*OpenCodeZenModelGatewayTest' --tests '*ProviderFailureDiagnosticsTest' --tests '*WiringTest'
 ```
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add backend/src/main/java/com/specagent/api/settings backend/src/main/java/com/specagent/model/gateway backend/src/main/resources backend/src/test/java
+git add backend/src/main/java backend/src/main/resources backend/src/test
 git commit -m "feat: productize dynamic opencode runtime settings"
 ```
 
 ---
 
-### Task 3: Rename production orchestration away from Fake and lock the boundary with architecture tests
+### Task 3: Rename production orchestration away from Fake and lock that semantic boundary
 
 **Files:**
 - Rename: `backend/src/main/java/com/specagent/agent/FakeAgentOrchestrator.java` → `AgentOrchestrator.java`
-- Rename production result records/classes named `Fake*RunResult` to neutral equivalents where they are part of production APIs.
+- Rename production result records/classes such as `FakeAgentRunResult` / `FakeAnswerRunResult` to neutral equivalents (`AgentRunResult`, `AnswerRunResult`, etc.) where they are consumed by production services.
 - Modify: `backend/src/main/java/com/specagent/api/agent/AgentCommandService.java`
-- Update all production/test references.
-- Extend existing ArchUnit/architecture tests under `backend/src/test/java`.
+- Update test references.
+- Extend existing ArchUnit/architecture tests.
 
-**Interfaces:**
-- Production service type: `AgentOrchestrator`
-- Existing methods keep behavior/signatures except neutral return type names: draft, answer-and-draft-next, repair, generate spec.
+**Interfaces:** existing draft/answer/repair/spec orchestration behavior remains unchanged; only production naming and injection types change.
 
-- [ ] **Step 1: Add an architecture test that fails while production orchestration still exposes Fake naming**
+- [ ] **Step 1: Add RED architecture/naming coverage**
 
-Example rule:
+The architecture check must reject `Fake*` names in the normal `com.specagent.agent` production orchestration/production-result surface while allowing the explicit `com.specagent.testing` adapter package.
 
-```java
-classes().that().resideInAPackage("..agent..")
-    .and().areNotInterfaces()
-    .should().haveSimpleNameNotContaining("Fake");
-```
+Use a rule shaped around package/name predicates already supported by the repository's ArchUnit version; do not introduce a new architecture library.
 
-Scope the rule to production orchestration/contracts only so test doubles under test source are not prohibited.
+- [ ] **Step 2: Run the focused architecture test and confirm RED**
 
-- [ ] **Step 2: Run the architecture test and confirm RED**
+- [ ] **Step 3: Rename orchestrator/result types without rewriting sequencing**
 
-- [ ] **Step 3: Rename the orchestrator/result types without changing sequencing**
-
-Do not rewrite the answer/spec lifecycle in this task. This is naming/wiring cleanup only.
+Do not change the answer/spec persistence lifecycle in this task.
 
 - [ ] **Step 4: Run all agent tests**
 
@@ -326,16 +360,15 @@ git commit -m "refactor: make agent orchestration production neutral"
 
 ---
 
-### Task 4: Build pre-proposal replacement context without canonical replacement identity
+### Task 4: Build a source-anchored pre-proposal replacement context with no canonical replacement identity
 
 **Files:**
 - Modify: `backend/src/main/java/com/specagent/context/ContextBuilder.java`
 - Modify: `backend/src/main/java/com/specagent/agent/ModelContextProjectionBuilder.java`
-- Modify tests: `ModelContextProjectionBuilderTest`, `ScriptedRouteIsolationIntegrationTest`, route/context isolation tests.
+- Modify: `backend/src/main/java/com/specagent/agent/gates/ContextGuard.java`
+- Modify tests: `ModelContextProjectionBuilderTest`, `ScriptedRouteIsolationIntegrationTest`, relevant ContextGuard/isolation tests.
 
 **Interfaces:**
-
-Create/replace the old context method with a source-anchored form such as:
 
 ```java
 ContextSnapshot buildForReplacement(
@@ -345,60 +378,59 @@ ContextSnapshot buildForReplacement(
 )
 ```
 
-The resulting snapshot uses `sourceRouteId` as route identity and target parent as tip/lineage anchor. It does not require `replacementRouteId` or `replacementNodeId`.
+Snapshot semantics:
 
-Add a generic DRAFT_NODE run-local input builder:
+```text
+routeId = sourceRouteId
+tipNodeId = target.parentNodeId
+operationType = REGENERATE (reuse current generic replacement operation type; no new model task)
+included lineage = root..target.parent
+specialInputs = { oldQuestion, oldPurpose }
+no replacementRouteId
+no replacementNodeId
+```
+
+Run-local projection:
 
 ```java
-Map<String,Object> redirectedNodeTaskInput(
-    String oldQuestion,
-    String oldPurpose,
-    String userDirection
-)
+Map<String,Object> redirectedNodeTaskInput(String userDirection)
 ```
 
-Use a generic mode such as `redirected` / `redirect`, not a domain term such as `mvp`.
+producing generic data such as:
 
-- [ ] **Step 1: Write isolation tests first**
-
-Create sentinel old-answer/patch/child/sibling data and assert the replacement `inputJson` contains:
-
-```text
-parent lineage content
-oldQuestion
-oldPurpose
-userDirection
+```json
+{"mode":"redirected","userDirection":"..."}
 ```
 
-and does not contain:
+- [ ] **Step 1: Write RED isolation tests**
 
-```text
-old target answer sentinel
-old target patch sentinel
-old child sentinel/id
-sibling sentinel/id
-old spec content
-replacement route id
-replacement node id
-```
+Create sentinel old-answer/old-patch/old-child/sibling content and assert final `inputJson` contains parent lineage, `oldQuestion`, `oldPurpose`, and `userDirection`, but excludes target answer/patch, descendants, sibling ids/text, spec-derived content, replacement route id, and replacement node id.
 
-- [ ] **Step 2: Run the isolation tests and confirm RED against the old regenerate snapshot shape**
+- [ ] **Step 2: Write RED ContextGuard tests for replacement source lifecycle**
 
-- [ ] **Step 3: Implement source-anchored replacement snapshot**
+For `operationType=REGENERATE`, explicit source route OPEN or SUPERSEDED is valid; ARCHIVED and DELETED are rejected. Regenerate/replacement context is exempt from active-route equality; normal contexts still require active OPEN route.
 
-Do not create routes/nodes in `ContextBuilder`. Keep it deterministic and model-free.
+- [ ] **Step 3: Run focused tests and confirm RED**
 
-- [ ] **Step 4: Add redirected DRAFT_NODE taskInput while preserving the same DRAFT_NODE structured contract**
+- [ ] **Step 4: Implement `buildForReplacement`**
 
-Do not add a `REPLACE_MVP_NODE` task type or a second question schema.
+`ContextBuilder` only reads deterministic source history and persists the snapshot. It must not create Route/Node objects and must not call a model.
 
-- [ ] **Step 5: Run focused context/projection tests**
+- [ ] **Step 5: Implement redirected DRAFT_NODE task input**
+
+Reuse `AgentTaskType.DRAFT_NODE` and the existing `ask_next_question` output contract. Do not add `REPLACE_NODE`, `MVP_NODE`, or another feature/domain-specific model task.
+
+- [ ] **Step 6: Update ContextGuard only for the explicit REGENERATE source rule**
+
+Do not weaken normal active-route guarding.
+
+- [ ] **Step 7: Run focused context/projection tests**
 
 ```bash
-./gradlew test --tests '*ModelContextProjectionBuilderTest' --tests '*ScriptedRouteIsolationIntegrationTest' --tests '*Context*Isolation*'
+./gradlew test --tests '*ModelContextProjectionBuilderTest' --tests '*ScriptedRouteIsolationIntegrationTest' --tests '*ContextGuard*' --tests '*Context*Isolation*'
 ```
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add backend/src/main/java/com/specagent/context backend/src/main/java/com/specagent/agent backend/src/test/java
@@ -407,30 +439,29 @@ git commit -m "refactor: freeze replacement context before canonical mutation"
 
 ---
 
-### Task 5: Implement real-model `换一个问题` orchestration and deterministic canonical replacement commit
+### Task 5: Implement model-powered `换一个问题` and deterministic canonical replacement commit
 
 **Files:**
 - Modify: `backend/src/main/java/com/specagent/agent/AgentOrchestrator.java`
 - Modify: `backend/src/main/java/com/specagent/route/RouteService.java`
 - Modify: `backend/src/main/java/com/specagent/api/route/RouteCommandService.java`
 - Modify: `backend/src/main/java/com/specagent/api/route/RouteCommandController.java`
-- Replace/refactor: `RegenerateNodeRequest.java`, `RegenerateResponse.java` as necessary while preserving safe API naming compatibility where useful.
-- Add tests: a scripted model replacement integration test and API integration tests.
+- Refactor DTO: `RegenerateNodeRequest.java`; retain endpoint path for API continuity unless a narrow alias is required, but normal request no longer contains authored replacement content.
+- Modify: `RegenerateResponse.java` if needed for AgentRun/result metadata.
+- Create tests: `ModelPoweredReplacementIntegrationTest.java` (scripted gateway), API integration coverage.
 
-**Interfaces:**
-
-Normal product request becomes minimal:
+**Normal request:**
 
 ```json
 {
   "sourceRouteId":"...",
-  "instruction":"我现在更关心第一版 MVP 的范围"
+  "instruction":"我现在更关心第一版的功能范围"
 }
 ```
 
-No `replacementQuestion`, `replacementPurpose`, or replacement options from the client.
+No client `replacementQuestion`, `replacementPurpose`, or `replacementOptions`.
 
-Agent method shape:
+**Agent interface:**
 
 ```java
 ReplacementRunResult replaceQuestion(
@@ -441,7 +472,7 @@ ReplacementRunResult replaceQuestion(
 )
 ```
 
-Runtime commit remains model-free, for example:
+**Runtime-only commit:**
 
 ```java
 RegenerateResult commitReplacementFromNode(
@@ -456,59 +487,57 @@ RegenerateResult commitReplacementFromNode(
 )
 ```
 
-- [ ] **Step 1: Write a scripted success test before implementation**
+`RouteService` receives already accepted content; it never imports `NodeDraft` or model/prompt packages.
 
-The scripted gateway returns one valid generic `ask_next_question` envelope. Assert:
+- [ ] **Step 1: Write scripted success test first**
+
+Assert:
 
 ```text
-old route unchanged while model call is in flight
-replacement is sibling of target (same parent)
-old OPEN route becomes SUPERSEDED only after accepted proposal
-new route is OPEN + Project.activeRouteId
-new node supersedes target node
-no old target answer/patch/child is inherited
+source route/node unchanged before accepted model proposal
+new node parent == old target parent
+new node supersedesNodeId == old target id
+OPEN source becomes SUPERSEDED only at canonical commit
+SUPERSEDED source stays SUPERSEDED
+new route OPEN + active
+parent prefix inherited; target old answer/patch/descendants excluded
 ```
 
-- [ ] **Step 2: Write failure tests before implementation**
+- [ ] **Step 2: Write failure tests first**
 
-For provider failure, invalid JSON, wrong action, and node-reflection rejection, assert:
+For provider failure, invalid JSON, wrong action, structured-contract failure, and node-reflection rejection assert route count/node count/lifecycle/active pointer are unchanged and AgentRun is FAILED with safe trace category.
 
-```text
-old lifecycle unchanged
-Project.activeRouteId unchanged
-route count unchanged
-node count unchanged
-no accepted replacement artifact persisted
-AgentRun FAILED with safe failure category
-```
+- [ ] **Step 3: Run tests and confirm RED**
 
-- [ ] **Step 3: Run focused tests and confirm RED**
-
-- [ ] **Step 4: Implement orchestrator order exactly as the spec requires**
+- [ ] **Step 4: Implement orchestration in this exact order**
 
 ```text
-validate source/target
+validate explicit source + target membership/eligibility
 → buildForReplacement
-→ create AgentRun
-→ DRAFT_NODE through ModelGateway
-→ strict parser
+→ ContextGuard
+→ create AgentRun linked to source route/snapshot
+→ ModelGateway DRAFT_NODE using redirected taskInput
+→ expected action validation
+→ strict StructuredModelOutputParser
+→ map NodeDraft
 → NodeReflectionGate
-→ reject textual identity with old question after conservative normalization
-→ RouteService.commitReplacementFromNode(...validated content...)
-→ mark produced ids / complete AgentRun
+→ conservative normalized-text check: new question != rejected old question
+→ RouteService.commitReplacementFromNode(validated fields)
+→ record produced node/route ids
+→ complete AgentRun
 ```
 
-Do not persist a canonical replacement before reflection passes.
+Do not add semantic NLP similarity checks in Runtime.
 
-- [ ] **Step 5: Refactor `RouteService.regenerateFromNode` into the deterministic commit path**
+- [ ] **Step 5: Refactor old deterministic regenerate method into the pure commit path**
 
-Remove model/context responsibilities from `RouteService`. It must not depend on ModelGateway or prompt code. It receives accepted content only.
+Remove old behavior that supersedes source route, creates replacement route/node, and only then builds regenerate context.
 
-- [ ] **Step 6: Update API command composition to call AgentOrchestrator, not to author replacement NodeOptions**
+- [ ] **Step 6: Update API command composition**
 
-Controller/service must no longer map user-authored replacement options into runtime objects.
+`RouteCommandService.regenerate/replace` calls `AgentOrchestrator.replaceQuestion`; it no longer constructs `NodeOption` from browser-authored replacement options.
 
-- [ ] **Step 7: Run replacement + route + agent regression**
+- [ ] **Step 7: Run replacement/route/agent regression**
 
 ```bash
 ./gradlew test --tests '*Replacement*' --tests '*Regenerate*' --tests '*RouteControlIntegrationTest' --tests 'com.specagent.agent.*'
@@ -518,19 +547,20 @@ Controller/service must no longer map user-authored replacement options into run
 
 ```bash
 git add backend/src/main/java/com/specagent/agent backend/src/main/java/com/specagent/route backend/src/main/java/com/specagent/api/route backend/src/test/java
-git commit -m "feat: generate replacement questions through real model path"
+git commit -m "feat: generate replacement questions through model path"
 ```
 
 ---
 
-### Task 6: Harden route source eligibility and lifecycle transition matrix
+### Task 6: Harden lifecycle/source rules and canonical friendly route labels
 
 **Files:**
 - Modify: `backend/src/main/java/com/specagent/route/RouteService.java`
-- Modify: `backend/src/main/java/com/specagent/api/route/RouteCommandService.java` only for safe error translation, not duplicate state rules.
-- Modify tests: `RouteLifecycleIntegrationTest`, `RouteControlIntegrationTest`, API route command integration tests.
+- Modify: `backend/src/main/java/com/specagent/project/ProjectService.java`
+- Modify: `backend/src/main/java/com/specagent/api/route/RouteCommandService.java` only for safe conflict translation.
+- Modify tests: `RouteLifecycleIntegrationTest`, `RouteControlIntegrationTest`, project creation/API route tests.
 
-**Interfaces / allowed transitions:**
+**Allowed transitions:**
 
 ```text
 OPEN
@@ -550,42 +580,57 @@ DELETED
   restore -> OPEN (+active)
 
 activate: OPEN only
-exploration source (Fork/Re-answer/换题): OPEN or SUPERSEDED
+exploration source: OPEN or SUPERSEDED
 ARCHIVED: restore first
-DELETED: never a mutation source
+DELETED: never mutation source
 ```
 
-- [ ] **Step 1: Add parameterized lifecycle tests for every allowed and rejected edge**
+**Default labels:**
 
-Illegal/repeated operations must throw a stable runtime conflict condition that the API maps to 409; do not silently make repeated lifecycle commands idempotent in this phase.
-
-- [ ] **Step 2: Add source-eligibility tests**
-
-Prove SUPERSEDED works as an explicit source for Fork/Re-answer/replacement, while ARCHIVED and DELETED fail without implicit restore.
-
-- [ ] **Step 3: Run tests and confirm RED**
-
-- [ ] **Step 4: Replace unrestricted lifecycle updates with one guarded transition helper**
-
-Example internal shape:
-
-```java
-private Route requireStatus(UUID projectId, UUID routeId, Set<RouteLifecycleStatus> allowed) { ... }
+```text
+initial: 主路线
+fork: 分支路线 N
+re-answer: 重新回答路线 N
+replacement: 换题路线 N
 ```
 
-Use the helper for lifecycle operations and a separate `requireExplorableSourceRoute` for OPEN/SUPERSEDED.
+User-supplied nonblank route labels take precedence.
 
-- [ ] **Step 5: Run all route tests**
+- [ ] **Step 1: Add parameterized RED lifecycle tests for every allowed/rejected transition**
+
+Illegal/repeated commands return a runtime failure translated to API 409; do not silently make them idempotent.
+
+- [ ] **Step 2: Add RED source-eligibility tests**
+
+SUPERSEDED is valid for Fork/Re-answer/replacement. ARCHIVED/DELETED fail with no implicit restore.
+
+- [ ] **Step 3: Add RED route-label tests**
+
+New project route is `主路线`; blank Fork/Re-answer/replacement labels get localized sequential defaults; explicit user labels are preserved.
+
+- [ ] **Step 4: Run tests and confirm RED**
+
+- [ ] **Step 5: Implement one guarded lifecycle/source helper in RouteService**
+
+Do not duplicate the transition matrix in controller/UI code.
+
+- [ ] **Step 6: Implement default-label generation centrally in backend route creation**
+
+Use `routeRepository.findByProject(projectId)` to count routes of the relevant `RouteBranchType` and produce the next display number. This is acceptable for the single-user local first version; do not add a separate sequence/locking platform.
+
+Change `ProjectService` initial label from `Initial route` to `主路线`.
+
+- [ ] **Step 7: Run all route/project tests**
 
 ```bash
-./gradlew test --tests 'com.specagent.route.*' --tests 'com.specagent.api.route.*'
+./gradlew test --tests 'com.specagent.route.*' --tests 'com.specagent.api.route.*' --tests 'com.specagent.project.*' --tests 'com.specagent.api.project.*'
 ```
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add backend/src/main/java/com/specagent/route backend/src/main/java/com/specagent/api/route backend/src/test/java
-git commit -m "fix: enforce route lifecycle and exploration source rules"
+git add backend/src/main/java/com/specagent/route backend/src/main/java/com/specagent/project backend/src/main/java/com/specagent/api/route backend/src/test/java
+git commit -m "fix: enforce route lifecycle and friendly labels"
 ```
 
 ---
@@ -597,11 +642,11 @@ git commit -m "fix: enforce route lifecycle and exploration source rules"
 - Modify: `frontend/src/api/types.ts`
 - Create: `frontend/src/stores/modelSettingsStore.ts`
 - Create: `frontend/src/views/SettingsView.vue`
-- Modify: `frontend/src/router/*`
-- Modify: `frontend/src/App.vue` and/or existing app header for a global `设置` entry.
+- Modify: `frontend/src/router/index.ts` (or the current router entry file)
+- Modify: `frontend/src/App.vue` and current app header/navigation for global `设置` entry.
 - Add tests under `frontend/src/api/__tests__`, `stores/__tests__`, `views/__tests__`.
 
-**Interfaces:**
+**Types:**
 
 ```ts
 export interface OpenCodeSettingsStatus {
@@ -610,10 +655,12 @@ export interface OpenCodeSettingsStatus {
   selectedModel: string | null
 }
 
-export interface OpenCodeProbeResponse { freeModels: string[] }
+export interface OpenCodeProbeResponse {
+  freeModels: string[]
+}
 ```
 
-Store actions:
+**Store API:**
 
 ```ts
 loadStatus(): Promise<void>
@@ -621,21 +668,11 @@ probe(apiKey: string): Promise<string[]>
 save(apiKey: string, selectedModel: string): Promise<void>
 ```
 
-- [ ] **Step 1: Write UI/store/API tests first**
+- [ ] **Step 1: Write API/store/view tests first**
 
-Assert:
+Assert: settings URL has no project id; model select disabled until successful probe; only returned free models are selectable; save requires explicit model choice; masked status shown after save; full key never appears after reload; 429 leaves previous saved status intact.
 
-```text
-settings is global (route has no projectId)
-model select disabled before successful probe
-probe result renders only returned -free models
-save requires explicit model choice
-masked status shown after save
-full saved key is never rendered after reload
-429 renders the existing safe API error and leaves prior visible status unchanged
-```
-
-- [ ] **Step 2: Run frontend focused tests and confirm RED**
+- [ ] **Step 2: Run focused tests and confirm RED**
 
 ```bash
 cd frontend
@@ -644,11 +681,11 @@ npm run test:unit -- --run src/api/__tests__ src/stores/__tests__ src/views/__te
 
 - [ ] **Step 3: Implement typed API/store**
 
-All `fetch()` stays in `src/api/*`; components/views do not call fetch directly.
+All `fetch()` remains in `src/api/*`.
 
-- [ ] **Step 4: Implement SettingsView with two-step interaction**
+- [ ] **Step 4: Implement SettingsView two-step flow**
 
-Chinese copy:
+Chinese UI:
 
 ```text
 模型设置
@@ -658,11 +695,11 @@ OpenCode API Key
 保存
 ```
 
-Do not expose master-key controls or per-project settings.
+No master-key control and no per-project provider control.
 
-- [ ] **Step 5: Add global settings navigation and NOT_CONFIGURED shortcut**
+- [ ] **Step 5: Add global navigation and NOT_CONFIGURED shortcut**
 
-Model-required action errors should offer a clear `前往模型设置` UI action while history/graph reading remains available.
+When a model-required workspace command returns `MODEL_PROVIDER_NOT_CONFIGURED`, show a clear `前往模型设置` action; keep graph/history reading available.
 
 - [ ] **Step 6: Run typecheck/unit/build**
 
@@ -675,80 +712,82 @@ npm run build
 - [ ] **Step 7: Commit**
 
 ```bash
-git add frontend/src/api frontend/src/stores frontend/src/views frontend/src/router frontend/src/App.vue frontend/src/components
+git add frontend/src
 git commit -m "feat: add global opencode settings UI"
 ```
 
 ---
 
-### Task 8: Remove branch-operation source pickers and make Focus the explicit shared-node reading context
+### Task 8: Remove branch source pickers and make Focus the only explicit shared-node reading context
 
 **Files:**
 - Modify: `frontend/src/stores/graphUiStore.ts`
 - Modify: `frontend/src/views/WorkspaceView.vue`
 - Modify: `frontend/src/components/ForkRouteDialog.vue`
 - Modify: `frontend/src/components/ReanswerRouteDialog.vue`
-- Replace/refactor: `frontend/src/components/RegenerateNodeDialog.vue` → natural-language replacement dialog.
+- Refactor/rename: `frontend/src/components/RegenerateNodeDialog.vue` → `ReplaceQuestionDialog.vue` (or same file name with only the new one-field contract; tests/copy must call it `换一个问题`).
 - Modify: `frontend/src/components/workspace/WorkspaceInspector.vue`
-- Modify: `frontend/src/components/workspace/NodeInspector.vue` if it still owns node-level branch actions.
-- Modify: graph projection/type helpers as required.
-- Update component/store tests.
+- Modify: `frontend/src/components/workspace/NodeInspector.vue` if it owns node branch actions.
+- Modify graph types/projection only where needed for explicit route membership.
+- Update unit tests.
 
-**Interfaces / semantics:**
+**Semantics:**
 
-- `focusRouteId: string | null` remains the only browser reading-route state.
-- Remove any `readingRouteId = focusRouteId ?? activeRouteId` fallback for ambiguous shared nodes.
-- A shared node with no Focus renders neutral and branch controls require `当前查看` selection.
-- Dialog submit payload contains explicit `sourceRouteId` derived before opening/submitting, but no source-route picker field.
+- `focusRouteId` remains the one browser reading-route state.
+- Remove current `focusRouteId ?? activeRouteId` reading fallback for ambiguous shared nodes.
+- Shared node + no Focus = neutral.
+- Selecting `当前查看` sets global Focus only; it never calls Activate.
+- Branch dialog payload retains explicit `sourceRouteId` resolved before submit; dialogs contain no source selector.
 
-- [ ] **Step 1: Write graph UI store tests first**
+- [ ] **Step 1: Write RED graph store tests**
 
-Assert:
+Representative semantic assertion:
 
 ```ts
-expect(store.readingRouteIdFor(sharedNode)).toBeNull()
+expect(readingRouteFor(sharedNode, null, 'active-a')).toBeNull()
 store.setFocusRoute('route-b')
-expect(store.readingRouteIdFor(sharedNode)).toBe('route-b')
-expect(store.activeRouteId).toBe('route-a') // Focus did not Activate
+expect(readingRouteFor(sharedNode, store.focusRouteId, 'active-a')).toBe('route-b')
+expect(workspace.activeRouteId).toBe('active-a')
 ```
 
-Use the current store API names where possible; introduce `readingRouteIdFor(node)` only if a node-aware selector is needed.
+Use existing selector/function names where they already exist; do not create duplicate state APIs.
 
-- [ ] **Step 2: Write dialog/inspector tests first**
+- [ ] **Step 2: Write RED dialog/Inspector tests**
 
-Assert Fork/Re-answer/换题 forms no longer render source `<select>` controls. Shared ambiguous node shows `当前查看：未选择` and blocks branch action until Focus is selected.
+Fork/Re-answer/换题 no longer render source route `<select>` fields. Ambiguous shared node renders `当前查看：未选择` and branch controls direct the user to choose a reading route.
 
-- [ ] **Step 3: Run focused frontend tests and confirm RED**
+- [ ] **Step 3: Run focused tests and confirm RED**
 
-- [ ] **Step 4: Implement node-aware reading selection from Focus only**
+- [ ] **Step 4: Implement Focus-only reading semantics**
 
-Do not introduce a second persisted `nodeRouteContextId`.
+Do not add `nodeRouteContextId`, hidden local selection, Active fallback, first-route fallback, or latest-route fallback.
 
-- [ ] **Step 5: Simplify branch dialogs**
+- [ ] **Step 5: Simplify dialogs**
 
-Fork: optional friendly label only.
+Fork: optional friendly label.
 
-Re-answer: optional friendly label only.
+Re-answer: optional friendly label.
 
-换题: one natural-language direction field only:
+换题: only:
 
 ```text
 你接下来更想澄清哪个方面？也可以直接说说你目前最关心的需求。
+[自由输入]
 [取消] [生成新问题]
 ```
 
-- [ ] **Step 6: Run store/component/view unit tests**
+- [ ] **Step 6: Run store/component/view tests**
 
 - [ ] **Step 7: Commit**
 
 ```bash
 git add frontend/src/stores frontend/src/views frontend/src/components frontend/src/graph
-git commit -m "fix: derive branch source from explicit graph reading context"
+git commit -m "fix: derive branch source from explicit graph focus context"
 ```
 
 ---
 
-### Task 9: Correct Graph visibility, reveal, node sizing, provenance, Inspector, labels, and Spec presentation
+### Task 9: Correct Graph visibility, reveal, node sizing, provenance, Inspector, and Spec presentation
 
 **Files:**
 - Modify: `frontend/src/stores/graphUiStore.ts`
@@ -757,85 +796,67 @@ git commit -m "fix: derive branch source from explicit graph reading context"
 - Modify: `frontend/src/components/graph/GraphCanvas.vue`
 - Modify: `frontend/src/components/graph/GraphQuestionNode.vue`
 - Modify: `frontend/src/components/graph/AdaptiveGraphEdge.vue`
-- Modify: `frontend/src/graph/graphProjection.ts`, `graphViewport.ts`, `graphEdgeRouting.ts` where necessary.
-- Modify: `frontend/src/components/SpecSnapshotPanel.vue`, `SpecSnapshotList.vue`.
-- Modify: `frontend/src/style.css`.
-- Modify backend route-label creation in `ProjectService` / `RouteService` if friendly labels are persisted canonically rather than presentation-only.
-- Add/update unit and Playwright tests.
+- Modify: `frontend/src/graph/graphProjection.ts`
+- Modify: `frontend/src/graph/graphViewport.ts`
+- Modify: `frontend/src/graph/graphEdgeRouting.ts` only if replacement-edge classification lives there.
+- Modify: `frontend/src/components/SpecSnapshotPanel.vue`, `SpecSnapshotList.vue`
+- Modify: `frontend/src/style.css`
+- Update unit tests and later Playwright coverage.
 
 **Required behavior:**
 
 ```text
-default visibility: OPEN + SUPERSEDED + ARCHIVED, DELETED off
-Focus: highlight/read only
+default visible: OPEN + SUPERSEDED + ARCHIVED; DELETED off
+Focus: highlight/read only; does not hide
 独览此路线: separate visibility control
 显示全部: clears isolate/manual dim/hide without relayout
-branch success: Active + Focus + reveal new visual node
-reveal: camera only, never coordinate mutation
-pending node: enough height; no whole-node scrollbar clipping submit
-historical answer: compact 3–4 lines
+Fork/Re-answer/换题 success: Active + Focus + reveal new visual node
+reveal: camera pan/zoom only; no position mutation
+pending answerable node: enough height; submit always reachable; no whole-node internal scrollbar
+historical answers: compact ~3–4 lines
 replacement provenance: no permanent prominent yellow dashed cross-canvas edge
-route names: 主路线 / 分支路线 N / 重新回答路线 N / 换题路线 N
-Inspector: 当前查看路线 prominent; focused answer first
-Spec: friendly route name primary; identical source refs presentation-deduped
+Inspector: 当前查看路线 prominent; focused route answer first
+Spec: friendly route label primary; technical ids subdued; identical source refs presentation-deduped
 ```
 
-- [ ] **Step 1: Extend unit tests for each acceptance finding before CSS/logic changes**
+- [ ] **Step 1: Add RED unit tests for every manual-acceptance finding**
 
-Tests must explicitly cover:
+Explicitly cover default archived visibility, Focus not hiding, isolate separate from Focus, show-all preserving saved positions, viewport reveal without storage mutation, current node submit reachability class/structure, no normal replacement edge, Inspector Focus route label, and source-ref presentation dedupe.
 
-- default archived visibility
-- Focus does not hide routes
-- isolate is a separate control
-- show-all does not rewrite saved positions
-- branch reveal requests viewport pan/zoom but leaves position storage untouched
-- current answerable node renders submit controls without node-body overflow class
-- replacement edge not present in normal graph projection
-- `Initial route` / UUID prefix are not normal route labels
-- Inspector visibly names Focus route
-- duplicate source ref count is deduped
+- [ ] **Step 2: Run focused unit tests and confirm RED**
 
-- [ ] **Step 2: Add/adjust Playwright scenarios for browser-visible semantics**
+- [ ] **Step 3: Implement visibility/Focus/isolate semantics in store+navigator**
 
-Use selectors tied to product labels/data-test ids, not CSS geometry snapshots. Verify position preservation by recording node transform/position before branch and comparing after canonical refresh.
+Keep lifecycle filter state separate from manual dim/hide/isolate state. `显示全部` does not enable DELETED by default.
 
-- [ ] **Step 3: Run focused tests and confirm failures**
+- [ ] **Step 4: Implement branch-success reveal through `graphViewport.ts` / GraphCanvas API**
 
-- [ ] **Step 4: Implement visibility/Focus/isolate semantics in store + navigator**
+Call viewport pan/zoom/reveal only. Never call `graphLayout` or rewrite position storage from branch-success/canonical-refresh handlers.
 
-Keep lifecycle filters independent from browser manual hide/dim/isolate state.
+- [ ] **Step 5: Fix question-node sizing**
 
-- [ ] **Step 5: Implement branch-success reveal through `graphViewport.ts` / GraphCanvas exposed API**
+Historical text clamps to roughly 3–4 lines. Current answerable node grows within a bounded layout; free-text textarea may scroll, but node shell keeps submit reachable. Only titlebar remains drag handle.
 
-Never call auto-layout from canonical refresh or branch-success handlers.
+- [ ] **Step 6: Remove normal permanent replacement edge**
 
-- [ ] **Step 6: Fix node sizing/content overflow**
+Keep `supersedesNodeId` in graph data/Inspector. Optional weak provenance relation may render only during explicit selected-node inspection; default topology remains lineage-only.
 
-Historical text clamps to 3–4 lines. Current answerable node grows within a bounded max height; textarea may scroll, node shell must keep submit reachable.
+- [ ] **Step 7: Improve Inspector and Spec presentation**
 
-- [ ] **Step 7: Remove permanent replacement provenance edge from the default projection**
+Inspector visibly shows `当前查看路线：<friendly label>` and places that route's answer first. Spec source display dedupes identical `(kind, refId)` items for display/count while preserving section-level source associations internally.
 
-Keep `supersedesNodeId` available to Inspector. If selected-node inspection needs an optional weak edge, gate it by selection only.
-
-- [ ] **Step 8: Implement friendly route labels and Spec/Inspector presentation**
-
-If label is persisted by backend, centralize default naming in runtime route creation rather than duplicating counters in several Vue components.
-
-- [ ] **Step 9: Run frontend full verification**
+- [ ] **Step 8: Run frontend typecheck/unit/build**
 
 ```bash
 npm run typecheck
 npm run test:unit -- --run
 npm run build
-npm run test:e2e
 ```
 
-For deterministic E2E, use only the explicit test-only Fake gateway profile; this run is not the real-product acceptance gate.
-
-- [ ] **Step 10: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
-git add frontend backend/src/main/java backend/src/test/java
+git add frontend/src
 git commit -m "fix: close graph workspace manual acceptance gaps"
 ```
 
@@ -846,69 +867,52 @@ git commit -m "fix: close graph workspace manual acceptance gaps"
 **Files:**
 - Create: `.github/workflows/ci.yml`
 - Extend existing architecture tests under `backend/src/test/java`.
-- Add a lightweight production-source anti-overfitting scan test if no existing equivalent can express the checks.
-- Update documentation: `docs/PHASE_8_EXIT_CRITERIA.md`, operator/development docs as current behavior requires.
+- Add production-source scan test only where ArchUnit cannot express the required check.
+- Create: `docs/PHASE_8_EXIT_CRITERIA.md`
+- Update current operator/development docs where configuration instructions changed.
 
-**CI responsibilities:**
-
-Backend job:
+**CI versions / services:**
 
 ```text
-checkout
-Java 21
-PostgreSQL service
-Gradle cache
-./gradlew cleanTest test
+Java: 21
+Node: 24
+PostgreSQL service: postgres:17-alpine
 ```
 
-Frontend job:
+**Backend CI:** checkout → setup Java 21 → PostgreSQL 17 → Gradle cache → `./gradlew cleanTest test`.
+
+**Frontend CI:** checkout → setup Node 24 → `npm ci` → typecheck → unit → build.
+
+E2E may run in CI only with the explicit Spring `test` profile + Fake adapter; it must not require an OpenCode key.
+
+- [ ] **Step 1: Add/extend RED architecture hardening tests**
+
+Lock:
 
 ```text
-checkout
-Node version from existing package/tooling constraints
-npm ci
-npm run typecheck
-npm run test:unit -- --run
-npm run build
-```
-
-E2E job may be included if current runner setup is stable with PostgreSQL + explicit test-only gateway profile. It must never require a real OpenCode API key.
-
-- [ ] **Step 1: Write/extend architecture tests before CI**
-
-Lock at least these rules:
-
-```text
-runtime route/node/answer/context packages do not depend on model/settings API
+route/node/answer/context runtime packages do not depend on model/settings/api provider code
 ContextBuilder does not depend on ModelGateway
-provider adapter classes do not depend on route/node/requirement-domain UI concepts
-production orchestrator does not contain Fake naming
-normal product configuration does not default to Fake
-no production source contains concrete domain branches/classes introduced for software/marketing/ecommerce/MVP fixtures
-no test sentinel/string is referenced from production source
+provider adapters do not depend on route/node/product-workspace concepts
+production agent orchestration has no Fake naming
+default product config is not Fake
+Fake adapter requires test profile
+no production code references known test sentinel strings
+no new concrete requirement-domain generator/analyzer classes or runtime branches
 ```
 
-The anti-overfitting scan must target behavior/code identifiers, not ban ordinary Chinese/English words in comments blindly. Prefer package/dependency/class-name rules plus a small explicit forbidden production identifier set.
+For anti-overfitting, prefer package dependency/class-name rules and an explicit small forbidden identifier/sentinel set. Do not ban ordinary words globally because legitimate user content/docs may contain them.
 
-- [ ] **Step 2: Run architecture tests and fix any real violations before writing CI**
+- [ ] **Step 2: Run architecture tests and fix real violations**
 
-- [ ] **Step 3: Create CI workflow with deterministic tests only**
+- [ ] **Step 3: Create `.github/workflows/ci.yml`**
 
-Do not inject a real API key into GitHub Actions for this phase.
+Use PostgreSQL connection settings matching the project's test configuration. Do not add repository secrets for OpenCode.
 
-- [ ] **Step 4: Add Phase 8 exit criteria document**
+- [ ] **Step 4: Create Phase 8 exit criteria**
 
-The document must distinguish:
+Clearly distinguish deterministic CI proof from real OpenCode product acceptance and state the 429 hard-stop policy.
 
-```text
-CI deterministic proof
-vs
-real OpenCode product acceptance proof
-```
-
-and list the 429 stop rule.
-
-- [ ] **Step 5: Run the same commands locally that CI will run**
+- [ ] **Step 5: Run local equivalents of CI**
 
 ```bash
 cd backend && ./gradlew cleanTest test
@@ -924,39 +928,39 @@ git commit -m "ci: add phase 8 hardening gates"
 
 ---
 
-### Task 11: Update Playwright coverage for the corrected product flows
+### Task 11: Update deterministic Playwright coverage for corrected product flows
 
 **Files:**
 - Modify/add specs under `frontend/e2e/`.
-- Modify shared E2E helpers only to express reusable product operations, never to bypass UI state.
+- Modify shared E2E helpers only to express reusable product interactions; helpers must not bypass Focus/route-selection UI semantics.
 
-**Required deterministic browser flows:**
+**Required browser flows:**
 
-1. Create project → draft → answer → next question.
-2. Fork from a focused visual-node route without source picker; old coordinates preserved; new route Active+Focus; all routes remain visible.
-3. Re-answer from focused source without picker; same canonical question appears unanswered on new route; viewport reveals it.
-4. `换一个问题` dialog contains only user direction; scripted gateway proposal creates sibling replacement; old route remains visible SUPERSEDED.
-5. Shared node with no Focus is neutral and requires `当前查看`; selecting it changes Focus but not Active.
-6. Focus vs 独览 vs 显示全部 semantics.
-7. Lifecycle archive/restore/delete guards.
-8. Spec friendly route/source presentation and duplicate ref display dedupe.
-9. Settings page probe/select/save using backend configured in deterministic test mode with provider calls stubbed at the provider boundary if necessary.
+1. create project → draft → answer → next question;
+2. Fork from a focused visual-node source without route picker; old coordinates preserved; new route Active+Focus; all non-deleted routes remain visible;
+3. Re-answer without route picker; same canonical question appears unanswered on new route; new visual instance revealed;
+4. `换一个问题` dialog has only direction; scripted proposal creates sibling replacement; old route visible SUPERSEDED;
+5. shared node with no Focus neutral; `当前查看` selection changes Focus but not Active;
+6. Focus vs 独览 vs 显示全部;
+7. archive/restore/delete lifecycle behavior;
+8. Spec friendly route/source display + duplicate source display dedupe;
+9. Settings probe/select/save using deterministic test profile/provider boundary.
 
-- [ ] **Step 1: Convert old regenerate/source-picker E2E expectations to the new product contract**
+- [ ] **Step 1: Replace old regenerate/source-picker expectations**
 
-Delete tests that require users to author replacement question/purpose/options.
+Delete E2E expectations that require users to author replacement question/purpose/options or reselect a source route in the operation dialog.
 
-- [ ] **Step 2: Add explicit no-relayout assertions**
+- [ ] **Step 2: Add no-relayout assertion**
 
-Record the position of a pre-existing visual node, run Fork/Re-answer/换题, refresh graph, and assert the position is unchanged.
+Record a pre-existing visual node's persisted/DOM-projected position, perform Fork/Re-answer/换题, refresh canonical graph, assert position is unchanged.
 
-- [ ] **Step 3: Run Playwright and fix product/test selectors, not runtime semantics**
+- [ ] **Step 3: Run Playwright**
 
 ```bash
 npm run test:e2e
 ```
 
-Never add production behavior solely to satisfy an E2E fixture.
+The backend for this deterministic run must be started with `SPRING_PROFILES_ACTIVE=test` and explicit Fake gateway setting. Never change production behavior merely to satisfy an E2E fixture.
 
 - [ ] **Step 4: Commit**
 
@@ -967,22 +971,20 @@ git commit -m "test: cover corrected graph product flows"
 
 ---
 
-### Task 12: Full deterministic verification and code-quality review
+### Task 12: Full deterministic verification and explicit anti-overfitting review
 
-**Files:**
-- No new feature files unless verification exposes a real spec violation.
-- Update docs only for verified command/results.
+**Files:** no new feature files unless verification exposes an actual spec violation.
 
-- [ ] **Step 1: Run backend full regression**
+- [ ] **Step 1: Backend full regression**
 
 ```bash
 cd backend
 ./gradlew cleanTest test
 ```
 
-Expected: BUILD SUCCESSFUL; real-provider tests may remain opt-in, but no unexpected skipped deterministic tests.
+Expected: BUILD SUCCESSFUL; real-provider smoke tests may remain opt-in but no deterministic test is unexpectedly skipped.
 
-- [ ] **Step 2: Run frontend full regression**
+- [ ] **Step 2: Frontend full regression**
 
 ```bash
 cd frontend
@@ -992,108 +994,95 @@ npm run build
 npm run test:e2e
 ```
 
-- [ ] **Step 3: Run repository hygiene checks**
+- [ ] **Step 3: Repository hygiene checks**
 
 ```bash
 git diff --check
 git status --short
-```
-
-Search production source for stale product-Fake/master-key concepts and old UI wording:
-
-```bash
 git grep -n "SPEC_AGENT_CREDENTIAL_MASTER_KEY\|Initial route\|Regenerated from" -- backend/src/main frontend/src || true
 git grep -n "replacementQuestion\|replacementPurpose\|replacementOptions" -- frontend/src || true
 ```
 
-Any remaining occurrence must be justified as migration/history/test compatibility, not a reachable normal product path.
+Any remaining old term must be unreachable compatibility/history/test text, not normal product behavior.
 
-- [ ] **Step 4: Review anti-overfitting explicitly**
+- [ ] **Step 4: Review every new production condition and prompt change for overfitting**
 
-Inspect every new condition and prompt change. Reject changes whose condition depends on a concrete test phrase/domain rather than lifecycle, context, structured contract, or generic requirement semantics.
+Accept conditions only when keyed to generic facts such as lifecycle, lineage membership, structured contract fields, route provenance, Focus/visibility state, or generic drafting intent. Reject conditions keyed to example phrases (`MVP`, software, marketing, fixture names, sentinels) or hard-coded expected model wording.
 
-- [ ] **Step 5: Commit only verification/doc fixes if needed**
+For prompts, do not add examples/instructions solely because one real test case produced an inconvenient answer. A prompt change must solve a demonstrated generic contract/behavior problem across requirement domains.
 
-Do not make opportunistic unrelated refactors during closure.
+- [ ] **Step 5: Verification-only fix commit if required**
+
+Do not add unrelated refactors during closure.
 
 ---
 
-### Task 13: Real OpenCode product acceptance through the UI
+### Task 13: Real OpenCode product acceptance through the user UI
 
-**Files:**
-- No seeded secret file.
-- Update `docs/PHASE_8_EXIT_CRITERIA.md` / acceptance record with safe observations only after the run.
+**Files:** no seeded secret file; update `docs/PHASE_8_EXIT_CRITERIA.md` with safe observations only after completion.
 
 **This is the product proof. Passing Fake/scripted tests is not sufficient.**
 
-- [ ] **Step 1: Start the normal product runtime, not the Fake/test profile**
+- [ ] **Step 1: Start normal product runtime, not the test/Fake profile**
 
-Use local PostgreSQL and the normal backend/frontend configuration. Confirm there is no OpenCode setting row if testing first-run configuration.
+Use local PostgreSQL and normal backend/frontend configuration. Confirm the product opens even if OpenCode is not yet configured and model-required actions point to Settings.
 
-- [ ] **Step 2: Configure OpenCode through the product UI itself**
+- [ ] **Step 2: Configure the user's real OpenCode key through the UI**
 
-User/Luna enters the real API key in `设置 → 模型设置`, clicks `验证并获取模型`, observes the current dynamically discovered `-free` list, explicitly selects one model, and saves.
+`设置 → 模型设置` → enter key → `验证并获取模型` → observe dynamically returned current `-free` list → explicitly select one model → save.
 
-Record only:
-
-```text
-selected model id
-masked key suffix
-free model count
-```
-
-Never record the full key.
+Record only selected model id, free-model count, and masked suffix. Never record the full key.
 
 - [ ] **Step 3: Run a real clarification loop**
 
-Through UI:
-
 ```text
 create/open project
-→ draft first question
+→ real first question draft
 → answer option and/or free text
-→ observe requirement state
-→ continue at least two answer cycles
+→ real interpretation/patch
+→ real next question
+→ at least two answer cycles
 ```
 
-Judge semantic reasonableness manually, but do not change automated assertions to require exact model wording.
+Judge semantic reasonableness manually; automated tests must not assert exact model wording.
 
-- [ ] **Step 4: Run real Fork and Re-answer flows**
+- [ ] **Step 4: Run real Fork and Re-answer**
 
-Verify source context follows explicit Focus/read route, sibling conclusions do not leak, old routes stay visible, and new nodes are revealed without coordinate changes.
+Verify explicit Focus/read source, sibling isolation, all routes visible, Active/Focus separation, and coordinate preservation/reveal behavior.
 
-- [ ] **Step 5: Run real `换一个问题`**
+- [ ] **Step 5: Run real `换一个问题` with fresh wording**
 
-Give a natural-language direction different from prior test wording. Verify the generated question follows the direction reasonably, is structurally valid, is a sibling replacement, and old answer/child information does not leak into the replacement context/output.
+Use a natural-language direction not copied from deterministic fixtures. Verify the new question reasonably follows the direction, passes the generic node contract, is a sibling replacement, and old target answer/patch/children/sibling conclusions are absent from the replacement model context.
 
 - [ ] **Step 6: Generate a real SpecSnapshot**
 
-Verify route-scoped source refs, unresolved items, friendly route presentation, and derived/non-authoritative labeling.
+Verify route-scoped sources, unresolved items, friendly route presentation, source display dedupe, and derived/non-authoritative labeling.
 
-- [ ] **Step 7: Apply the mandatory 429 stop rule**
+- [ ] **Step 7: Mandatory RATE_LIMITED stop rule**
 
-If any real provider call returns RATE_LIMITED:
+If any real call returns RATE_LIMITED:
 
 ```text
 STOP immediately.
 Do not retry.
 Do not switch model.
 Do not switch to Fake.
-Do not modify prompt/parser/runtime to bypass the failure.
-Report: operation, selected model, completed acceptance steps, RATE_LIMITED.
-Wait for the user to change network segment, then resume from the explicitly identified step.
+Do not modify prompt/parser/runtime to bypass it.
+Report: exact product operation, selected model, completed acceptance steps, RATE_LIMITED.
+Wait for the user to change network segment.
+Resume only from the explicitly identified step after the user says to continue.
 ```
 
 - [ ] **Step 8: Record safe acceptance result and final SHA**
 
-Document which real flows passed and the selected model, without model-secret material or raw full prompts/outputs.
+Document passed real flows/model id/masked diagnostics only; never raw key/full prompt/full output.
 
 - [ ] **Step 9: Final repository verification**
 
 ```bash
 git status --short
 git log -1 --oneline
-git diff --check HEAD~1..HEAD
+git diff --check
 ```
 
-The closeout is complete only when deterministic regression, Phase 8 hardening gates, and real OpenCode UI acceptance have all passed (or when the only blocker is a reported 429 awaiting the user's network change).
+Closure requires: deterministic regression green + Phase 8 architecture/CI gates green + real OpenCode product acceptance green. A reported 429 is an explicit external blocker, not permission to substitute Fake acceptance.
