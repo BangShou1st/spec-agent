@@ -24,3 +24,7 @@ Acceptance must be performed through the normal product UI, not a Fake/scripted 
 ## 429 hard stop
 
 If any real OpenCode request returns HTTP 429 or the stable `MODEL_PROVIDER_RATE_LIMITED` category, stop the acceptance run immediately. Do not retry, rotate keys, switch models, or fall back to Fake. Record the safe error category only and leave the product in its current state.
+
+## Latest local acceptance result
+
+- 2026-08-19: the normal UI probe stopped at the settings step after the provider returned the safe `RATE_LIMITED` / `MODEL_PROVIDER_RATE_LIMITED` category. No retry, model switch, Fake fallback, or key persistence followed.
