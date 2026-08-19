@@ -94,7 +94,7 @@ jobs:
         run: npm ci
       - name: Install the deterministic Chromium runtime
         working-directory: frontend
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
       - name: Start backend with the explicit test profile and Fake gateway
         working-directory: backend
         env:
