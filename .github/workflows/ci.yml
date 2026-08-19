@@ -37,7 +37,7 @@ jobs:
         env:
           SPRING_PROFILES_ACTIVE: test
           SPEC_AGENT_MODEL_GATEWAY: fake
-        run: ./gradlew cleanTest test
+        run: bash gradlew cleanTest test
 
   frontend:
     runs-on: ubuntu-latest
@@ -103,7 +103,7 @@ jobs:
           SERVER_PORT: 8080
           SPEC_AGENT_DB_PORT: 5434
         run: |
-          nohup ./gradlew bootRun > ../backend-e2e.log 2>&1 &
+          nohup bash gradlew bootRun > ../backend-e2e.log 2>&1 &
           backend_pid=$!
           for attempt in $(seq 1 60); do
             if curl --fail --silent http://localhost:8080/actuator/health > /dev/null; then
