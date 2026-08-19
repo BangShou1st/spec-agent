@@ -6,6 +6,11 @@ import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.lang.ArchRule;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
 class ArchitectureTests {
@@ -38,6 +43,61 @@ class ArchitectureTests {
             .allowEmptyShould(true);
 
         rule.check(CLASSES);
+    }
+
+    @Test
+    void productionAgentOrchestrationHasNoFakeTypes() {
+        ArchRule rule = noClasses()
+                .that().resideInAPackage("com.specagent.agent..")
+                .and().haveSimpleName("AgentOrchestrator")
+                .should().haveSimpleNameContaining("Fake")
+                .because("Production orchestration must stay neutral; test doubles are selected by profile");
+
+        rule.check(CLASSES);
+    }
+
+    @Test
+    void productConfigDefaultsToOpenCode() throws IOException {
+        Path config = Path.of("src/main/resources/application.yml");
+        String text = Files.readString(config);
+        org.assertj.core.api.Assertions.assertThat(text)
+                .contains("gateway: ${SPEC_AGENT_MODEL_GATEWAY:opencode}")
+                .doesNotContain("matchIfMissing: true")
+                .doesNotContain("gateway: fake");
+    }
+
+    @Test
+    void fakeAdapterRequiresTheTestProfile() throws IOException {
+        String source = Files.readString(Path.of("src/main/java/com/specagent/agent/FakeModelAdapter.java"));
+        org.assertj.core.api.Assertions.assertThat(source)
+                .contains("@Profile(\"test\")")
+                .contains("havingValue = \"fake\"")
+                .doesNotContain("matchIfMissing = true");
+    }
+
+    @Test
+    void productionSourceContainsNoKnownTestOnlyIdentifiers() throws IOException {
+        Path sourceRoot = Path.of("src/main/java");
+        List<String> forbidden = List.of(
+                "FakeAgentOrchestrator",
+                "SPEC_AGENT_CREDENTIAL_MASTER_KEY",
+                "SIBLING_SENTINEL",
+                "OLD_ANSWER_SENTINEL",
+                "FAKE_QUESTION");
+        try (var paths = Files.walk(sourceRoot)) {
+            paths.filter(Files::isRegularFile).forEach(path -> {
+                try {
+                    String source = Files.readString(path);
+                    for (String identifier : forbidden) {
+                        org.assertj.core.api.Assertions.assertThat(source)
+                                .as("%s must not appear in production source %s", identifier, path)
+                                .doesNotContain(identifier);
+                    }
+                } catch (IOException ex) {
+                    throw new IllegalStateException(ex);
+                }
+            });
+        }
     }
 
     @Test

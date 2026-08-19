@@ -15,26 +15,26 @@ import java.util.List;
 import java.util.Map;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 /**
- * Deterministic fake model adapter used until a real model gateway exists.
+ * Deterministic test model adapter selected only by the explicit test profile.
  *
  * <p>It makes no HTTP calls, depends on no provider SDK, and produces fixed
  * outputs by task type so the agent loop can be tested before real models are
  * wired in. Unsupported task types are rejected with {@link ModelContractException}.
  *
- * <p>Implements {@link ModelGateway} and is the default selection of
- * {@code spec.agent.model.gateway} (the fake or unset value), so automated
- * tests keep running against the deterministic fake. The OpenCode gateway is
- * only registered when the property explicitly selects {@code opencode}.
+ * <p>Implements {@link ModelGateway}; normal product configuration never
+ * selects this adapter.
  *
  * <p>The fake speaks the same model-facing contract as a real model: its
  * outputs carry no runtime-owned identity fields (claim ids, source ids) and
  * must pass the {@code StructuredModelOutputParser}.
  */
 @Component
-@ConditionalOnProperty(name = "spec.agent.model.gateway", havingValue = "fake", matchIfMissing = true)
+@Profile("test")
+@ConditionalOnProperty(name = "spec.agent.model.gateway", havingValue = "fake")
 public class FakeModelAdapter implements ModelGateway {
 
     private final Json json;
@@ -68,11 +68,7 @@ public class FakeModelAdapter implements ModelGateway {
             case DRAFT_NODE -> response(
                     request,
                     AgentAction.ASK_NEXT_QUESTION,
-                    json.write(new NodeDraft(
-                            "What is the most important outcome?",
-                            "This clarifies the primary requirement goal.",
-                            List.of(),
-                            true)));
+                    json.write(draftNodeFor(request)));
 
             case INTERPRET_ANSWER -> response(
                     request,
@@ -123,6 +119,21 @@ public class FakeModelAdapter implements ModelGateway {
                 outputJson,
                 Map.of("adapter", "fake", "deterministic", "true",
                         "task", request.taskType().code()));
+    }
+
+    private NodeDraft draftNodeFor(ModelRequest request) {
+        if (request.inputJson().contains("\"mode\":\"redirected\"")) {
+            return new NodeDraft(
+                    "What evidence would confirm this requirement?",
+                    "This reframes the clarification around a verifiable outcome.",
+                    List.of(),
+                    true);
+        }
+        return new NodeDraft(
+                "What is the most important outcome?",
+                "This clarifies the primary requirement goal.",
+                List.of(),
+                true);
     }
 
     /**

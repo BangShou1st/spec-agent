@@ -313,7 +313,7 @@ public class RouteService {
                 sourceRoute.rootNodeId(),
                 null,
                 RouteLifecycleStatus.OPEN,
-                "Regenerated from " + targetNodeId,
+                "换题路线",
                 null,
                 oldRouteId,
                 targetNodeId,

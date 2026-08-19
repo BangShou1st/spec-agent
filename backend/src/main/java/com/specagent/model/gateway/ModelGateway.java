@@ -14,7 +14,8 @@ import com.specagent.agent.ModelResponse;
  *
  * <p>A gateway is provider-neutral. Provider-specific HTTP details live behind
  * {@code OpenCodeZenTransport}; concrete providers implement this interface
- * (for example {@link FakeModelAdapter} or {@code OpenCodeZenModelGateway}).
+ * (for example the deterministic test adapter or
+ * {@code OpenCodeZenModelGateway}).
  */
 public interface ModelGateway {
 

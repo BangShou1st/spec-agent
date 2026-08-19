@@ -46,7 +46,7 @@ import java.util.UUID;
 /**
  * Runtime-controlled production agent orchestrator.
  *
- * <p>Runs fake agent cycles against the model gateway: create an agent
+ * <p>Runs agent cycles against the model gateway: create an agent
  * run, freeze a context snapshot, ask the model for a proposal, validate
  * the proposal through the reflection gates, persist the accepted outcome
  * through runtime services, and close the run. The orchestrator only proposes
@@ -154,7 +154,7 @@ public class AgentOrchestrator {
                     projectionBuilder.buildInputJson(contextSnapshot,
                             projectionBuilder.initialNodeTaskInput()),
                     AgentAction.ASK_NEXT_QUESTION,
-                    "Expected ASK_NEXT_QUESTION from fake DRAFT_NODE");
+                    "Expected ASK_NEXT_QUESTION from DRAFT_NODE");
 
             NodeDraft draft = structuredOutputMapper.toNodeDraft(
                     structuredModelOutputParser.parse(AgentTaskType.DRAFT_NODE, response.outputJson()));
@@ -164,7 +164,7 @@ public class AgentOrchestrator {
 
             if (!nodeReflection.accepted()) {
                 agentRunService.fail(run.id(), appendTrace(trace, "failed:node_reflection_rejected"));
-                throw new ModelContractException("Node reflection rejected fake node draft");
+                throw new ModelContractException("Node reflection rejected node draft");
             }
 
             Node producedNode;
@@ -201,7 +201,7 @@ public class AgentOrchestrator {
     }
 
     /**
-     * Runs the fake answer loop against the active route's tip node with free
+     * Runs the answer loop against the active route's tip node with free
      * text only (no selected option).
      *
      * <p>If any reflection gate rejects the proposal, the rejected artifact is
@@ -213,7 +213,7 @@ public class AgentOrchestrator {
     }
 
     /**
-     * Runs the fake answer loop against the active route's tip node with an
+     * Runs the answer loop against the active route's tip node with an
      * optional selected option and/or free text.
      *
      * <p>The selected option is runtime-validated: it must belong to the exact
@@ -312,8 +312,8 @@ public class AgentOrchestrator {
     }
 
     /**
-     * Runs the fake spec loop against the active route's tip: draft a spec
-     * through the fake model, validate grounding through
+     * Runs the spec loop against the active route's tip: draft a spec
+     * through the model gateway, validate grounding through
      * {@link SpecGroundingGate}, verify every source reference through
      * {@link SpecSourceReferenceGuard}, convert the draft to the existing
      * {@link SpecSection} / {@link SourceReference} / {@link UnresolvedItem}
@@ -346,7 +346,7 @@ public class AgentOrchestrator {
                     AgentTaskType.DRAFT_SPEC,
                     projectionBuilder.buildInputJson(contextSnapshot, Map.of()),
                     AgentAction.GENERATE_SPEC,
-                    "Expected GENERATE_SPEC from fake DRAFT_SPEC");
+                    "Expected GENERATE_SPEC from DRAFT_SPEC");
             SpecDraft specDraft = structuredOutputMapper.toSpecDraft(
                     structuredModelOutputParser.parse(AgentTaskType.DRAFT_SPEC, response.outputJson()));
 
@@ -355,7 +355,7 @@ public class AgentOrchestrator {
             agentRunService.markReflected(run.id(), trace);
             if (!grounding.accepted()) {
                 agentRunService.fail(run.id(), appendTrace(trace, "failed:spec_grounding_rejected"));
-                throw new ModelContractException("Spec grounding rejected fake spec draft");
+                throw new ModelContractException("Spec grounding rejected spec draft");
             }
 
             List<SpecSection> sections = specDraft.sections().entrySet().stream()
@@ -376,7 +376,7 @@ public class AgentOrchestrator {
             agentRunService.markReflected(run.id(), trace);
             if (!sourceRefsReflection.accepted()) {
                 agentRunService.fail(run.id(), appendTrace(trace, "failed:source_references_rejected"));
-                throw new ModelContractException("Spec source reference guard rejected fake spec draft");
+                throw new ModelContractException("Spec source reference guard rejected spec draft");
             }
 
             SpecSnapshot snapshot = specSnapshotService.createSnapshot(
@@ -488,7 +488,7 @@ public class AgentOrchestrator {
                 projectionBuilder.buildInputJson(contextSnapshot,
                         projectionBuilder.answerTaskInput(answer)),
                 AgentAction.INTERPRET_ANSWER,
-                "Expected INTERPRET_ANSWER from fake INTERPRET_ANSWER");
+                "Expected INTERPRET_ANSWER from INTERPRET_ANSWER");
         AnswerInterpretationResult interpretation = structuredOutputMapper.toInterpretation(
                 structuredModelOutputParser.parse(AgentTaskType.INTERPRET_ANSWER,
                         interpretResponse.outputJson()));
@@ -499,12 +499,12 @@ public class AgentOrchestrator {
                 projectionBuilder.buildInputJson(contextSnapshot,
                         projectionBuilder.interpretationTaskInput(answer, interpretation)),
                 AgentAction.INTERPRET_ANSWER,
-                "Expected INTERPRET_ANSWER from fake DRAFT_ANSWER_PATCH");
+                "Expected INTERPRET_ANSWER from DRAFT_ANSWER_PATCH");
         AnswerPatchDraft patchDraft = structuredOutputMapper.toPatchDraft(
                 structuredModelOutputParser.parse(AgentTaskType.DRAFT_ANSWER_PATCH,
                         patchResponse.outputJson()));
 
-        // The fake model never fabricates real source ids. The runtime grounds
+        // The model never fabricates real source ids. The runtime grounds
         // confirmed claims with the real answered node and answer before the
         // patch may enter requirement state.
         AnswerPatchDraft groundedDraft = withRealSources(patchDraft, answeredNodeId, answer.id());
@@ -513,7 +513,7 @@ public class AgentOrchestrator {
         agentRunService.markReflected(run.id(), trace);
         if (!patchReflection.accepted()) {
             agentRunService.fail(run.id(), appendTrace(trace, "failed:patch_reflection_rejected"));
-            throw new ModelContractException("Patch reflection rejected fake answer patch draft");
+            throw new ModelContractException("Patch reflection rejected answer patch draft");
         }
 
         AnswerPatch patch = answerPatchService.save(
@@ -528,7 +528,7 @@ public class AgentOrchestrator {
                 projectionBuilder.buildInputJson(contextSnapshot,
                         projectionBuilder.afterAnswerNodeTaskInput(answer, patch)),
                 AgentAction.ASK_NEXT_QUESTION,
-                "Expected ASK_NEXT_QUESTION from fake DRAFT_NODE");
+                "Expected ASK_NEXT_QUESTION from DRAFT_NODE");
         NodeDraft draft = structuredOutputMapper.toNodeDraft(
                 structuredModelOutputParser.parse(AgentTaskType.DRAFT_NODE, nodeResponse.outputJson()));
 
@@ -537,7 +537,7 @@ public class AgentOrchestrator {
         agentRunService.markReflected(run.id(), trace);
         if (!nodeReflection.accepted()) {
             agentRunService.fail(run.id(), appendTrace(trace, "failed:node_reflection_rejected"));
-            throw new ModelContractException("Node reflection rejected fake node draft");
+            throw new ModelContractException("Node reflection rejected node draft");
         }
 
         Node producedNode = nodeService.createChildNode(
@@ -611,7 +611,7 @@ public class AgentOrchestrator {
         ReflectionResult contextReflection = contextGuard.validate(contextSnapshot);
         if (!contextReflection.accepted()) {
             agentRunService.fail(run.id(), appendTrace(trace, "failed:context_guard_rejected"));
-            throw new ModelContractException("Context guard rejected fake agent run");
+            throw new ModelContractException("Context guard rejected agent run");
         }
         return contextSnapshot;
     }
@@ -679,7 +679,7 @@ public class AgentOrchestrator {
 
     /**
      * Parses a spec source reference of the form {@code kind:uuid} as produced
-     * by the fake model. The model may only reference runtime records it knows
+     * by the model gateway. The model may only reference runtime records it knows
      * from the request (context snapshot, route), never fabricated ids.
      */
     private SourceReference toSourceReference(String ref) {

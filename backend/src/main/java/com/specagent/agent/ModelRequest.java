@@ -6,7 +6,7 @@ import java.util.UUID;
 /**
  * Immutable request handed to a model adapter for one agent reasoning step.
  *
- * <p>Every fake model run must carry a contextSnapshotId: the agent always
+ * <p>Every model run must carry a contextSnapshotId: the agent always
  * reasons against a frozen context snapshot, never against live state.
  *
  * <p>Metadata is runtime-owned context for the gateway. It carries no action

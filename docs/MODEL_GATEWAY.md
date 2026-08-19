@@ -57,7 +57,14 @@ User-Agent: opencode/1.18.16
 
 This value must be configurable and must not be hard-coded inside business logic.
 
-Recommended configuration shape:
+The product gateway is selected by `spec.agent.model.gateway` and defaults to
+`opencode`. OpenCode API keys and the selected free model are configured in the
+product UI under `设置 → 模型设置`; the key is persisted in the
+`opencode_settings` aggregate and is never returned to the browser or traces.
+For deterministic CI/E2E only, use the explicit `test` profile with
+`spec.agent.model.gateway=fake`.
+
+Provider transport configuration shape:
 
 ```yaml
 spec-agent:
@@ -65,8 +72,8 @@ spec-agent:
     provider: opencode-zen
     base-url: https://opencode.ai/zen/v1
     chat-completions-path: /chat/completions
-    model: ${SPEC_AGENT_MODEL:}
-    api-key: ${OPENCODE_ZEN_API_KEY:}
+    model: resolved-from-opencode-settings
+    api-key: resolved-from-opencode-settings
     user-agent: ${SPEC_AGENT_MODEL_USER_AGENT:opencode/1.18.16}
     timeout-ms: 60000
 ```
