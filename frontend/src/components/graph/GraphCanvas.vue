@@ -1,11 +1,15 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref, shallowRef, watch } from 'vue'
 import { VueFlow, useVueFlow, type Dimensions, type Node, type Edge, type NodeChange, type NodeDragEvent, type NodeProps } from '@vue-flow/core'
 import GraphQuestionNode from '@/components/graph/GraphQuestionNode.vue'
 import GraphStartPlaceholder from '@/components/graph/GraphStartPlaceholder.vue'
 import GraphToolbar from '@/components/graph/GraphToolbar.vue'
 import { projectGraph, type SpecAgentGraphNodeData } from '@/graph/graphProjection'
 import { computeInitialLayout } from '@/graph/graphLayout'
+import {
+  selectEdgeHandles,
+  type NodeGeometry,
+} from '@/graph/graphEdgeRouting'
 import {
   computeFitNodeViewport,
   computeFitViewport,
@@ -51,8 +55,13 @@ const graphUi = useGraphUiStore()
 const vf = useVueFlow('spec-agent-graph-canvas')
 
 type FlowCanvasNode = Node<SpecAgentGraphNodeData, Record<string, never>, string>
-const flowNodes = ref<FlowCanvasNode[]>([])
-const flowEdges = ref<Edge[]>([])
+// shallowRef: Vue Flow already stores nodes/edges internally (and swaps the
+// array on every change batch), and the recursive Edge/GraphEdge types make
+// Vue's deep UnwrapRef instantiation explode (TS2589) when a .value is
+// passed to a helper. shallowRef keeps the exact types and matches Vue
+// Flow's own guidance for node/edge collections.
+const flowNodes = shallowRef<FlowCanvasNode[]>([])
+const flowEdges = shallowRef<Edge[]>([])
 const shiftSelecting = ref(false)
 
 const projection = computed(() => {
@@ -267,6 +276,67 @@ function onNodesChange(changes: NodeChange[]): void {
 }
 
 /**
+ * Browser-only drag-time rerouting: while a node is being dragged, every
+ * edge endpoint re-selects its source/target handle from the CURRENT flow
+ * positions, so the edge follows the natural quadrant immediately (A right
+ * of B switches to A left, horizontal switches to vertical, ...).
+ *
+ * Contract: this never writes localStorage (positions persist only on drag
+ * stop), never triggers a canonical graph refresh and never mutates Runtime
+ * state — it only re-derives the handle ids of the existing flow edges.
+ */
+function onNodeDrag(event: NodeDragEvent): void {
+  // Vue Flow already moved the flow nodes (v-model); the event snapshot is
+  // applied for robustness in tests and multi-node drags.
+  const moved = new Map<string, GraphPosition>()
+  for (const dragged of event.nodes) {
+    moved.set(dragged.id, { x: dragged.position.x, y: dragged.position.y })
+  }
+  for (const node of flowNodes.value) {
+    const position = moved.get(node.id)
+    if (position) {
+      node.position = { x: position.x, y: position.y }
+    }
+  }
+  flowEdges.value = rerouteEdgeHandles(flowNodes.value, flowEdges.value)
+}
+
+/**
+ * Re-derives every edge's source/target handles from the current flow-node
+ * positions (measured size when known). Standalone so the edge loop never
+ * needs the deeply generic NodeDragEvent type in scope.
+ */
+function rerouteEdgeHandles(nodes: FlowCanvasNode[], edges: Edge[]): Edge[] {
+  const byId = new Map(nodes.map((n): [string, FlowCanvasNode] => [n.id, n]))
+  const nextEdges: Edge[] = []
+  for (const edge of edges) {
+    const source = byId.get(edge.source)
+    const target = byId.get(edge.target)
+    if (!source || !target) {
+      nextEdges.push(edge)
+      continue
+    }
+    const handles = selectEdgeHandles(toNodeGeometry(source), toNodeGeometry(target))
+    if (edge.sourceHandle === handles.sourceHandle && edge.targetHandle === handles.targetHandle) {
+      nextEdges.push(edge)
+      continue
+    }
+    nextEdges.push({ ...edge, sourceHandle: handles.sourceHandle, targetHandle: handles.targetHandle })
+  }
+  return nextEdges
+}
+
+/** Flow node -> routing geometry: measured size when known, safe fallback otherwise. */
+function toNodeGeometry(node: FlowCanvasNode): NodeGeometry {
+  const measured = (node as FlowCanvasNode & { dimensions?: Dimensions }).dimensions
+  return {
+    position: { x: node.position.x, y: node.position.y },
+    width: measured?.width,
+    height: measured?.height,
+  }
+}
+
+/**
  * Persists positions only when a drag actually stops. Mid-drag moves stay
  * inside Vue Flow; localStorage is never written per pointer-move.
  */
@@ -410,6 +480,7 @@ const isEmptyProject = computed(() =>
         data-test="graph-flow"
         @init="onInit"
         @nodes-change="onNodesChange"
+        @node-drag="onNodeDrag"
         @node-drag-stop="onNodeDragStop"
         @pane-click="onPaneClick"
         @selection-start="shiftSelecting = true"

@@ -481,3 +481,58 @@ describe('replacement edge visibility', () => {
     expect(all.edges.find((e) => e.id === 'replacement:b->bprime')).toBeDefined()
   })
 })
+
+describe('adaptive edge routing in the canonical projection', () => {
+  // Projected positions (first layout): a(0,0) b(360,0) c(720,0) d(720,220)
+  // bprime(360,220) e(720,440). Current node c uses the wider 420px fallback.
+  it('lineage edges render as smoothstep with adaptive source/target handles', () => {
+    const result = project()
+    const aToB = result.edges.find((e) => e.id === 'a->b')!
+    expect(aToB.type).toBe('smoothstep')
+    // a center (160,110), b center (520,110): horizontal right.
+    expect(aToB.sourceHandle).toBe('source-right')
+    expect(aToB.targetHandle).toBe('target-left')
+    // b->c uses the wider current-node center: b (520,110), c (930,110).
+    const bToC = result.edges.find((e) => e.id === 'b->c')!
+    expect(bToC.type).toBe('smoothstep')
+    expect(bToC.sourceHandle).toBe('source-right')
+    expect(bToC.targetHandle).toBe('target-left')
+  })
+
+  it('replacement edges stay dashed and distinct but also render smoothstep', () => {
+    const result = project()
+    const repl = result.edges.find((e) => e.id === 'replacement:b->bprime')!
+    expect(repl?.data?.kind).toBe('replacement')
+    expect(repl?.type).toBe('smoothstep')
+    // b (520,110) -> bprime (520,330): vertical below.
+    expect(repl?.sourceHandle).toBe('source-bottom')
+    expect(repl?.targetHandle).toBe('target-top')
+    // The dashed rendering contract must survive the smoothstep switch.
+    expect(repl?.class).toContain('graph-edge--replacement')
+    // supersedesNodeId is still not treated as parentNodeId.
+    const bprime = result.nodes.find((n) => n.id === 'bprime')!
+    expect((bprime.data as SpecAgentGraphNodeData).node.parentNodeId).toBe('a')
+  })
+
+  it('re-computes handles from saved positions, so a canonical refresh matches manual layout', () => {
+    const saved: Record<string, GraphPosition> = {
+      a: { x: 0, y: 0 },
+      b: { x: 0, y: 300 },
+      d: { x: 0, y: -300 },
+    }
+    const result = projectGraph({
+      view: fixture(),
+      activeNodeId: 'c',
+      uiState: uiState(),
+      savedPositions: saved,
+    })
+    // b placed directly below a -> vertical adaption on refresh.
+    const aToB = result.edges.find((e) => e.id === 'a->b')!
+    expect(aToB.sourceHandle).toBe('source-bottom')
+    expect(aToB.targetHandle).toBe('target-top')
+    // d dragged far above b -> top/bottom adaption.
+    const bToD = result.edges.find((e) => e.id === 'b->d')!
+    expect(bToD.sourceHandle).toBe('source-top')
+    expect(bToD.targetHandle).toBe('target-bottom')
+  })
+})

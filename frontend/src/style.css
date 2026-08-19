@@ -490,6 +490,15 @@ textarea {
   max-height: 420px;
 }
 
+/* Adaptive edge anchors: invisible, click-transparent handle dots. The
+   handles exist only so lineage/replacement edges can attach to the four
+   side midpoints; they are never visible and never intercept pointer
+   events (connection creation is disabled by design). */
+.graph-question-node__handle {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .graph-node-question {
   margin: 0 0 8px;
   font-size: 15px;

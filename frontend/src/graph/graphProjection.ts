@@ -8,6 +8,13 @@ import type {
 } from '@/api/types'
 import type { GraphPosition, GraphRouteDisplayState } from './graphTypes'
 import { resolvePositions, VERTICAL_GAP } from './graphLayout'
+import {
+  selectEdgeHandles,
+  CURRENT_NODE_WIDTH,
+  FALLBACK_NODE_WIDTH,
+  type EdgeHandles,
+  type NodeGeometry,
+} from './graphEdgeRouting'
 
 export type GraphVisualWeight = 'active' | 'focus' | 'normal' | 'dimmed'
 
@@ -334,17 +341,53 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
         position: positions[node.id] ?? { x: 0, y: 0 },
         data,
         dragHandle: '.graph-question-node__header',
-        class: ['graph-node', `graph-node--${visualWeight}`],
+        class: ['graph-node', 'graph-node--' + visualWeight],
       }
     })
+
+  // Adaptive edge anchors: current nodes are 420px wide in CSS, historical
+  // nodes 320px. Without live measurements the projection uses these safe
+  // fallback widths so centers (and therefore handle choice) match the
+  // rendered layout; the browser-side drag rerouting then refines with the
+  // measured dimensions (see GraphCanvas @node-drag).
+  const nodeFallbackWidth = new Map<string, number>()
+  for (const projected of nodes) {
+    nodeFallbackWidth.set(
+      projected.id,
+      projected.data?.canAnswer === true ? CURRENT_NODE_WIDTH : FALLBACK_NODE_WIDTH,
+    )
+  }
+  const selectHandles = (sourceId: string, targetId: string): EdgeHandles => {
+    const geometry = (nodeId: string): NodeGeometry => {
+      const position = positions[nodeId]
+      if (!position) {
+        // Edge endpoints are always visible nodes, but stay defensive: a
+        // missing coordinate resolves deterministically like the fallback.
+        return { position: { x: 0, y: 0 } }
+      }
+      return {
+        position,
+        width: nodeFallbackWidth.get(nodeId) ?? FALLBACK_NODE_WIDTH,
+      }
+    }
+    return selectEdgeHandles(geometry(sourceId), geometry(targetId))
+  }
 
   const edges: Edge<SpecAgentGraphEdgeData>[] = []
   for (const [key, edge] of lineageEdges) {
     if (visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target)) {
+      const handles = selectHandles(edge.source, edge.target)
       edges.push({
         id: key,
         source: edge.source,
         target: edge.target,
+        // SmoothStep keeps lineage readable while dragging: straight L/R
+        // segments with a single rounded corner, anchored to the natural
+        // side chosen by the adaptive selector — never a free-climbing
+        // bezier around unrelated nodes.
+        type: 'smoothstep',
+        sourceHandle: handles.sourceHandle,
+        targetHandle: handles.targetHandle,
         data: {
           kind: 'lineage',
           routeIds: [...edge.routeIds],
@@ -355,12 +398,12 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
             uiState.routeDisplayStates,
           ),
         },
-        class: ['graph-edge--lineage', `graph-edge--${routeVisualWeight(
+        class: ['graph-edge--lineage', 'graph-edge--' + routeVisualWeight(
           edge.routeIds,
           activeRouteId,
           uiState.focusRouteId,
           uiState.routeDisplayStates,
-        )}`],
+        )],
       })
     }
   }
@@ -372,10 +415,16 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
       visibleNodeIds.has(node.supersedesNodeId)
     ) {
       const routeIds = membership.get(node.id) ?? []
+      const handles = selectHandles(node.supersedesNodeId, node.id)
       edges.push({
         id: 'replacement:' + node.supersedesNodeId + '->' + node.id,
         source: node.supersedesNodeId,
         target: node.id,
+        // Replacement stays a fully distinct relation (dashed class kept):
+        // only the rendering is upgraded to adaptive SmoothStep.
+        type: 'smoothstep',
+        sourceHandle: handles.sourceHandle,
+        targetHandle: handles.targetHandle,
         data: {
           kind: 'replacement',
           routeIds: [...routeIds],
@@ -386,12 +435,12 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
             uiState.routeDisplayStates,
           ),
         },
-        class: ['graph-edge--replacement', `graph-edge--${routeVisualWeight(
+        class: ['graph-edge--replacement', 'graph-edge--' + routeVisualWeight(
           routeIds,
           activeRouteId,
           uiState.focusRouteId,
           uiState.routeDisplayStates,
-        )}`],
+        )],
       })
     }
   }

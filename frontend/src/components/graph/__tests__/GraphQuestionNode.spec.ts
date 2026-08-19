@@ -1,8 +1,34 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { defineComponent, h } from 'vue'
 import { mount } from '@vue/test-utils'
 import GraphQuestionNode from '@/components/graph/GraphQuestionNode.vue'
 import type { SpecAgentGraphNodeData, GraphAnswerPresentation } from '@/graph/graphProjection'
 import type { GraphWorkspaceNodeView, GraphWorkspaceOptionView } from '@/api/types'
+
+/**
+ * Vue Flow Handle stub: jsdom cannot run the real useVueFlow/useNode
+ * context outside a VueFlow instance, so the node spec renders the anchor
+ * handles as plain divs that expose every prop as an attribute. The real
+ * component contract (8 invisible handles, source/target type, side
+ * position, non-connectable flags) is asserted through these attributes.
+ */
+const HandleStub = defineComponent({
+  name: 'Handle',
+  inheritAttrs: true,
+  render() {
+    return h('div', { class: ['vue-flow__handle', 'graph-question-node__handle'] })
+  },
+})
+
+/** Mounts the node with the Handle stub so jsdom-safe assertions can run. */
+function mountNode(data: SpecAgentGraphNodeData, extra: Record<string, unknown> = {}) {
+  return mount(GraphQuestionNode, {
+    props: { data, submitting: false, pending: false, ...extra },
+    global: { stubs: { Handle: HandleStub } },
+  })
+}
 
 function option(id: string, label: string, impact: string | null): GraphWorkspaceOptionView {
   return { id, label, impact }
@@ -103,7 +129,7 @@ function historicalData(overrides: Partial<SpecAgentGraphNodeData> = {}): SpecAg
 
 describe('graph question node', () => {
   it('renders current question, purpose, option labels and impacts verbatim', () => {
-    const wrapper = mount(GraphQuestionNode, { props: { data: currentData(), submitting: false, pending: false } })
+    const wrapper = mountNode(currentData())
     expect(wrapper.text()).toContain('What outcome matters most?')
     expect(wrapper.text()).toContain('Clarify the primary goal.')
     expect(wrapper.text()).toContain('Product team')
@@ -112,21 +138,21 @@ describe('graph question node', () => {
   })
 
   it('submits the exact backend option id with an option-only payload', async () => {
-    const wrapper = mount(GraphQuestionNode, { props: { data: currentData(), submitting: false, pending: false } })
+    const wrapper = mountNode(currentData())
     await wrapper.find('input[type=radio][value="opt-b"]').setValue()
     await wrapper.find('[data-test="submit-answer"]').trigger('click')
     expect(wrapper.emitted('submit-answer')?.[0]).toEqual([{ selectedOptionId: 'opt-b', freeText: null }])
   })
 
   it('submits a free-text-only payload', async () => {
-    const wrapper = mount(GraphQuestionNode, { props: { data: currentData(), submitting: false, pending: false } })
+    const wrapper = mountNode(currentData())
     await wrapper.find('[data-test="free-text"]').setValue('free text answer')
     await wrapper.find('[data-test="submit-answer"]').trigger('click')
     expect(wrapper.emitted('submit-answer')?.[0]).toEqual([{ selectedOptionId: null, freeText: 'free text answer' }])
   })
 
   it('submits combined option + free text payload', async () => {
-    const wrapper = mount(GraphQuestionNode, { props: { data: currentData(), submitting: false, pending: false } })
+    const wrapper = mountNode(currentData())
     await wrapper.find('input[type=radio][value="opt-a"]').setValue()
     await wrapper.find('[data-test="free-text"]').setValue('with explanation')
     await wrapper.find('[data-test="submit-answer"]').trigger('click')
@@ -136,7 +162,7 @@ describe('graph question node', () => {
   })
 
   it('disables submit with no input and while submitting', async () => {
-    const wrapper = mount(GraphQuestionNode, { props: { data: currentData(), submitting: false, pending: false } })
+    const wrapper = mountNode(currentData())
     expect((wrapper.find('[data-test="submit-answer"]').attributes('disabled')) !== undefined).toBe(true)
     await wrapper.find('input[type=radio][value="opt-a"]').setValue()
     expect(wrapper.find('[data-test="submit-answer"]').attributes('disabled')).toBeUndefined()
@@ -145,21 +171,19 @@ describe('graph question node', () => {
   })
 
   it('free text is hidden when the node does not allow it', () => {
-    const wrapper = mount(GraphQuestionNode, {
-      props: { data: currentData({ node: nodeData({ allowFreeAnswer: false }) }), submitting: false, pending: false },
-    })
+    const wrapper = mountNode(currentData({ node: nodeData({ allowFreeAnswer: false }) }))
     expect(wrapper.find('[data-test="free-text"]').exists()).toBe(false)
   })
 
   it('local answer input resets when the node changes', async () => {
-    const wrapper = mount(GraphQuestionNode, { props: { data: currentData(), submitting: false, pending: false } })
+    const wrapper = mountNode(currentData())
     await wrapper.find('[data-test="free-text"]').setValue('stale draft')
     await wrapper.setProps({ data: currentData({ node: nodeData({ id: 'n2' }) }) })
     expect((wrapper.find('[data-test="free-text"]').element as HTMLTextAreaElement).value).toBe('')
   })
 
   it('historical node has no answer inputs and shows option label + clamped summary', () => {
-    const wrapper = mount(GraphQuestionNode, { props: { data: historicalData(), submitting: false, pending: false } })
+    const wrapper = mountNode(historicalData())
     expect(wrapper.find('[data-test="free-text"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="submit-answer"]').exists()).toBe(false)
     expect(wrapper.text()).toContain('Product team')
@@ -169,27 +193,27 @@ describe('graph question node', () => {
 
   it('expanded historical node shows full question, purpose, all options and per-route answers', async () => {
     const expanded = historicalData({ isExpanded: true })
-    const wrapper = mount(GraphQuestionNode, { props: { data: expanded, submitting: false, pending: false } })
+    const wrapper = mountNode(expanded)
     expect(wrapper.find('.graph-answer-summary--clamped').exists()).toBe(false)
     expect(wrapper.find('.graph-node-details').exists()).toBe(true)
     expect(wrapper.text()).toContain('Second route answer.')
   })
 
   it('toggle-expanded emits on demand', async () => {
-    const wrapper = mount(GraphQuestionNode, { props: { data: historicalData(), submitting: false, pending: false } })
+    const wrapper = mountNode(historicalData())
     await wrapper.find('[data-test="toggle-expanded"]').trigger('click')
     expect(wrapper.emitted('toggle-expanded')?.[0]).toEqual(['n1'])
   })
 
   it('current node gets the large class and historical node the compact class', () => {
-    const current = mount(GraphQuestionNode, { props: { data: currentData(), submitting: false, pending: false } })
+    const current = mountNode(currentData())
     expect(current.find('.graph-question-node--current').exists()).toBe(true)
-    const historical = mount(GraphQuestionNode, { props: { data: historicalData(), submitting: false, pending: false } })
+    const historical = mountNode(historicalData())
     expect(historical.find('.graph-question-node--historical').exists()).toBe(true)
   })
 
   it('header is exposed as the drag handle and body controls are not draggable', () => {
-    const wrapper = mount(GraphQuestionNode, { props: { data: currentData(), submitting: false, pending: false } })
+    const wrapper = mountNode(currentData())
     expect(wrapper.find('[data-test="node-drag-handle"]').classes()).toContain('graph-question-node__header')
     const body = wrapper.find('.graph-question-node__body')
     expect(body.classes()).toContain('nodrag')
@@ -198,7 +222,7 @@ describe('graph question node', () => {
   })
 
   it('historical fork/regenerate only emit intent upward', async () => {
-    const wrapper = mount(GraphQuestionNode, { props: { data: historicalData(), submitting: false, pending: false } })
+    const wrapper = mountNode(historicalData())
     await wrapper.find('[data-test="fork-node"]').trigger('click')
     await wrapper.find('[data-test="regenerate-node"]').trigger('click')
     expect(wrapper.emitted('fork')?.[0]).toEqual(['n1'])
@@ -238,7 +262,7 @@ describe('shared node route-specific waiting state', () => {
   }
 
   it('Focus=B without an answer shows B waiting and never A answer as the summary', () => {
-    const wrapper = mount(GraphQuestionNode, { props: { data: waitingData(), submitting: false, pending: false } })
+    const wrapper = mountNode(waitingData())
     // 摘要显式「路线 r2 · 等待回答」；A 的回答不作为 primary 展示。
     expect(wrapper.find('[data-test="waiting-summary"]').text()).toContain('路线 r2 · 等待回答')
     expect(wrapper.find('[data-test="answer-summary"]').exists()).toBe(false)
@@ -247,7 +271,7 @@ describe('shared node route-specific waiting state', () => {
 
   it('expanded shared node lists every route as answered or waiting, A answer stays inspectable', async () => {
     const expanded = waitingData({ isExpanded: true })
-    const wrapper = mount(GraphQuestionNode, { props: { data: expanded, submitting: false, pending: false } })
+    const wrapper = mountNode(expanded)
     expect(wrapper.find('[data-test="route-state-r1"]').text()).toContain('A answer on shared node.')
     expect(wrapper.find('[data-test="route-state-r2"]').text()).toContain('等待回答')
     expect(wrapper.find('[data-test="route-waiting-r2"]').exists()).toBe(true)
@@ -259,7 +283,7 @@ describe('shared node route-specific waiting state', () => {
       canAnswer: true,
       routeIds: ['r1', 'r2'],
     })
-    const wrapper = mount(GraphQuestionNode, { props: { data, submitting: false, pending: false } })
+    const wrapper = mountNode(data)
     // 当前节点继续直接显示回答 controls。
     expect(wrapper.find('[data-test="question"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="free-text"]').exists()).toBe(true)
@@ -275,7 +299,7 @@ describe('shared node route-specific waiting state', () => {
 
 describe('node body click handling', () => {
   it('non-interactive body surface does not stop click propagation (node stays selectable)', async () => {
-    const wrapper = mount(GraphQuestionNode, { props: { data: historicalData(), submitting: false, pending: false } })
+    const wrapper = mountNode(historicalData())
     const article = wrapper.element
     let bubbled = 0
     article.addEventListener('click', () => { bubbled += 1 })
@@ -286,7 +310,7 @@ describe('node body click handling', () => {
   })
 
   it('interactive controls stop propagation so they never break selection', async () => {
-    const wrapper = mount(GraphQuestionNode, { props: { data: currentData(), submitting: false, pending: false } })
+    const wrapper = mountNode(currentData())
     const article = wrapper.element
     let bubbled = 0
     article.addEventListener('click', () => { bubbled += 1 })
@@ -300,7 +324,7 @@ describe('node body click handling', () => {
   })
 
   it('historical action buttons stop propagation too', async () => {
-    const wrapper = mount(GraphQuestionNode, { props: { data: historicalData(), submitting: false, pending: false } })
+    const wrapper = mountNode(historicalData())
     const article = wrapper.element
     let bubbled = 0
     article.addEventListener('click', () => { bubbled += 1 })
@@ -309,5 +333,71 @@ describe('node body click handling', () => {
     const expandBtn = wrapper.find('[data-test="toggle-expanded"]').element as HTMLElement
     expandBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     expect(bubbled).toBe(0)
+  })
+})
+
+describe('graph node edge anchors (adaptive four-side handles)', () => {
+  const handleIds = [
+    'source-left',
+    'source-right',
+    'source-top',
+    'source-bottom',
+    'target-left',
+    'target-right',
+    'target-top',
+    'target-bottom',
+  ] as const
+
+  it('exposes all eight source/target anchor handles', () => {
+    const wrapper = mountNode(currentData())
+    for (const id of handleIds) {
+      const handle = wrapper.find(`[id="${id}"]`)
+      expect(handle.exists(), `missing handle ${id}`).toBe(true)
+      expect(handle.classes()).toContain('vue-flow__handle')
+      expect(handle.classes()).toContain('graph-question-node__handle')
+    }
+  })
+
+  it('gives each handle the right source/target type and side position', () => {
+    const wrapper = mountNode(historicalData())
+    const cases: [string, string, string][] = [
+      ['source-left', 'source', 'left'],
+      ['source-right', 'source', 'right'],
+      ['source-top', 'source', 'top'],
+      ['source-bottom', 'source', 'bottom'],
+      ['target-left', 'target', 'left'],
+      ['target-right', 'target', 'right'],
+      ['target-top', 'target', 'top'],
+      ['target-bottom', 'target', 'bottom'],
+    ]
+    for (const [id, type, position] of cases) {
+      const handle = wrapper.find(`[id="${id}"]`)
+      expect(handle.attributes('type'), id).toBe(type)
+      expect(handle.attributes('position'), id).toBe(position)
+    }
+  })
+
+  it('anchors are never connectable: users can not drag edges from/to them', () => {
+    const wrapper = mountNode(currentData())
+    for (const id of handleIds) {
+      const handle = wrapper.find(`[id="${id}"]`)
+      expect(handle.attributes('connectable'), id).toBe('false')
+      expect(handle.attributes('connectable-start'), id).toBe('false')
+      expect(handle.attributes('connectable-end'), id).toBe('false')
+    }
+  })
+
+  it('style.css keeps the anchors invisible and click-transparent (never visible dots)', () => {
+    // Vitest runs with the frontend directory as cwd.
+    const css = readFileSync(resolve(process.cwd(), 'src/style.css'), 'utf8')
+    expect(css).toMatch(/.graph-question-node__handle\s*{[^}]*pointer-events:\s*none/)
+    expect(css).toMatch(/.graph-question-node__handle\s*{[^}]*opacity:\s*0/)
+  })
+
+  it('handles stay present on the historical read-only node too', () => {
+    const wrapper = mountNode(historicalData())
+    for (const id of handleIds) {
+      expect(wrapper.find(`[id="${id}"]`).exists()).toBe(true)
+    }
   })
 })

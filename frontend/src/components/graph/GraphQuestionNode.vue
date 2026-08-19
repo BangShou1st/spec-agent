@@ -1,7 +1,40 @@
+<script lang="ts">
+// Registered through the options `components` block (not a script-setup
+// import) so the template resolves <Handle> by name; unit tests can then
+// stub it, while the real app renders Vue Flow's Handle as usual.
+import { Handle } from '@vue-flow/core'
+export default { components: { Handle } }
+</script>
+
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { Position } from '@vue-flow/core'
 import type { SubmitAnswerRequest } from '@/api/types'
 import type { SpecAgentGraphNodeData } from '@/graph/graphProjection'
+
+/**
+ * Four-side edge anchors for adaptive routing. Every side carries one
+ * invisible source handle and one invisible target handle at its midpoint;
+ * lineage/replacement edges pick one pair per connection through the pure
+ * selectEdgeHandles geometry rule (see graph/graphEdgeRouting.ts). The
+ * handles are never visible (style.css), never receive pointer events and
+ * can never start/end a connection: the flow is nodes-connectable=false
+ * and every handle is explicitly non-connectable on both ends.
+ */
+const ANCHOR_SIDES: Position[] = [
+  Position.Left,
+  Position.Right,
+  Position.Top,
+  Position.Bottom,
+]
+const SOURCE_ANCHORS = ANCHOR_SIDES.map((side) => ({
+  id: 'source-' + side,
+  position: side,
+}))
+const TARGET_ANCHORS = ANCHOR_SIDES.map((side) => ({
+  id: 'target-' + side,
+  position: side,
+}))
 
 const props = defineProps<{
   data: SpecAgentGraphNodeData
@@ -106,6 +139,33 @@ const isRootNode = computed(() => props.data.node.parentNodeId === null)
     data-test="graph-question-node"
     :data-node-id="data.node.id"
   >
+
+    <!-- Adaptive edge anchors: one source + one target handle per side,
+         all invisible and non-interactive (style.css + connectable flags). -->
+    <Handle
+      v-for="anchor in SOURCE_ANCHORS"
+      :key="anchor.id"
+      :id="anchor.id"
+      type="source"
+      :position="anchor.position"
+      class="graph-question-node__handle"
+      :connectable="false"
+      :connectable-start="false"
+      :connectable-end="false"
+      aria-hidden="true"
+    />
+    <Handle
+      v-for="anchor in TARGET_ANCHORS"
+      :key="anchor.id"
+      :id="anchor.id"
+      type="target"
+      :position="anchor.position"
+      class="graph-question-node__handle"
+      :connectable="false"
+      :connectable-start="false"
+      :connectable-end="false"
+      aria-hidden="true"
+    />
     <header class="graph-question-node__header" data-test="node-drag-handle" title="拖动标题栏移动节点">
       <span class="graph-question-node__kind">
         {{ data.canAnswer ? '当前问题' : '历史问题' }}

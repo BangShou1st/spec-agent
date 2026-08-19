@@ -109,3 +109,56 @@ test('toolbar zoom/fit and auto-layout stay browser-only', async ({ page }) => {
   await page.getByTestId('show-all').click()
   await expect(page.locator('.graph-question-node')).toHaveCount(3)
 })
+
+test('adaptive edge anchors: invisible four-side handles + smoothstep rerouting across a quadrant drag', async ({ page }) => {
+  await createProject(page, 'E2E Adaptive Edges')
+  await buildThreeNodeLineage(page)
+  await fitGraph(page)
+
+  // 每个节点渲染 8 个不可见锚点（source/target × 左/右/上/下）。
+  const nodes = page.locator('[data-test="graph-question-node"]')
+  await expect(nodes).toHaveCount(3)
+  for (const side of ['left', 'right', 'top', 'bottom']) {
+    await expect(page.locator(`.vue-flow__handle[data-handleid="source-${side}"]`)).toHaveCount(3)
+    await expect(page.locator(`.vue-flow__handle[data-handleid="target-${side}"]`)).toHaveCount(3)
+  }
+  // 锚点不可见、不拦截指针（不是可见的小圆点，不能拖出连线）。
+  const anchor = page.locator('.vue-flow__handle[data-handleid="source-left"]').first()
+  await expect(anchor).toHaveCSS('opacity', '0')
+  await expect(anchor).toHaveCSS('pointer-events', 'none')
+
+  // lineage edge 走 smoothstep：path 含直线段（不是自由 bezier 绕圈）。
+  const edge = page.locator('.vue-flow__edge').first()
+  await expect(edge).toHaveClass(/vue-flow__edge-smoothstep/)
+  const edgePath = edge.locator('path').first()
+  const dBefore = await edgePath.getAttribute('d')
+  expect(dBefore).not.toBeNull()
+  expect(dBefore ?? '').toContain('L')
+
+  // 把第二个节点拖到根节点左侧：跨象限后 edge 实时重路由。
+  const rootBox = await nodes.nth(0).boundingBox()
+  const secondBox = await nodes.nth(1).boundingBox()
+  expect(rootBox).not.toBeNull()
+  expect(secondBox).not.toBeNull()
+  const handle = nodes.nth(1).getByTestId('node-drag-handle')
+  const hb = (await handle.boundingBox()) ?? { x: 0, y: 0 }
+  const deltaX = (rootBox?.x ?? 0) - (secondBox?.x ?? 0) - 320
+  await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(hb.x + deltaX, hb.y + 160, { steps: 14 })
+  await page.mouse.up()
+
+  // 拖动中/跨越后 path 已跟随新锚点（live rerouting）。
+  await expect.poll(async () => edgePath.getAttribute('d')).not.toBe(dBefore)
+
+  // drag-stop 持久化：reload 后坐标恢复（viewport 不持久化，断言 graph 坐标）。
+  const transform = await page.locator('.vue-flow__node').nth(1).evaluate(
+    (el) => (el as HTMLElement).style.transform,
+  )
+  await page.reload()
+  await expect(page.locator('.graph-question-node')).toHaveCount(3)
+  const restored = await page.locator('.vue-flow__node').nth(1).evaluate(
+    (el) => (el as HTMLElement).style.transform,
+  )
+  expect(restored).toBe(transform)
+})

@@ -20,7 +20,7 @@ const VueFlowStub = defineComponent({
     nodes: { type: Array, default: () => [] },
     edges: { type: Array, default: () => [] },
   },
-  emits: ['init', 'node-drag-stop', 'nodes-change', 'pane-click'],
+  emits: ['init', 'node-drag', 'node-drag-stop', 'nodes-change', 'pane-click'],
   setup() {
     return () => h('div', { class: 'vf-stub' })
   },
@@ -356,5 +356,92 @@ describe('graph canvas', () => {
     await wrapper.find('[data-test="show-all"]').trigger('click')
     const ui = useGraphUiStore()
     expect(ui.focusRouteId).toBeNull()
+  })
+
+  it('projection edges come out as smoothstep with adaptive handles', () => {
+    const wrapper = mountCanvas(viewWithNodes())
+    const flow = wrapper.findComponent(VueFlowStub)
+    const edges = flow.props('edges') as unknown[]
+    // n1 (current, 420 wide) center (210,110); n2 (360,0) center (520,110).
+    expect(edges[0]).toMatchObject({
+      id: 'n1->n2',
+      type: 'smoothstep',
+      sourceHandle: 'source-right',
+      targetHandle: 'target-left',
+    })
+  })
+
+  it('drag-time rerouting flips handles when a node crosses to the other side', async () => {
+    const wrapper = mountCanvas(viewWithNodes())
+    const flow = wrapper.findComponent(VueFlowStub)
+    // 把 n2 拖到 n1 左侧：n2 center (-340, 110) -> horizontal left.
+    ;(flow.vm as unknown as { $emit: (e: string, ...a: unknown[]) => void }).$emit('node-drag', {
+      event: {},
+      nodes: [{ id: 'n2', position: { x: -500, y: 0 } }],
+      intersections: [],
+    })
+    await nextTick()
+    const edges = flow.props('edges') as unknown[]
+    expect(edges[0]).toMatchObject({
+      sourceHandle: 'source-left',
+      targetHandle: 'target-right',
+    })
+  })
+
+  it('drag-time rerouting switches to vertical handles when the node is dragged below', async () => {
+    const wrapper = mountCanvas(viewWithNodes())
+    const flow = wrapper.findComponent(VueFlowStub)
+    // n2 (200, 500) center (360, 610): dx=200 < |dy| * 0.8 -> vertical, below.
+    ;(flow.vm as unknown as { $emit: (e: string, ...a: unknown[]) => void }).$emit('node-drag', {
+      event: {},
+      nodes: [{ id: 'n2', position: { x: 200, y: 500 } }],
+      intersections: [],
+    })
+    await nextTick()
+    const edges = flow.props('edges') as unknown[]
+    expect(edges[0]).toMatchObject({
+      sourceHandle: 'source-bottom',
+      targetHandle: 'target-top',
+    })
+  })
+
+  it('a second crossing switches the same edge back: left -> right then right -> left', async () => {
+    const wrapper = mountCanvas(viewWithNodes())
+    const flow = wrapper.findComponent(VueFlowStub)
+    const emit = (flow.vm as unknown as { $emit: (e: string, ...a: unknown[]) => void }).$emit
+    emit('node-drag', { event: {}, nodes: [{ id: 'n2', position: { x: -500, y: 0 } }], intersections: [] })
+    await nextTick()
+    expect((flow.props('edges') as unknown[])[0]).toMatchObject({
+      sourceHandle: 'source-left',
+      targetHandle: 'target-right',
+    })
+    emit('node-drag', { event: {}, nodes: [{ id: 'n2', position: { x: 360, y: 0 } }], intersections: [] })
+    await nextTick()
+    expect((flow.props('edges') as unknown[])[0]).toMatchObject({
+      sourceHandle: 'source-right',
+      targetHandle: 'target-left',
+    })
+  })
+
+  it('drag-time rerouting never writes localStorage; only drag stop persists', () => {
+    const wrapper = mountCanvas(viewWithNodes())
+    const flow = wrapper.findComponent(VueFlowStub)
+    const ui = useGraphUiStore()
+    const before = localStorage.getItem('spec-agent.graph-layout.v1.p1')
+    // Mid-drag moves must stay browser-only.
+    ;(flow.vm as unknown as { $emit: (e: string, ...a: unknown[]) => void }).$emit('node-drag', {
+      event: {},
+      nodes: [{ id: 'n2', position: { x: -500, y: 0 } }],
+      intersections: [],
+    })
+    expect(localStorage.getItem('spec-agent.graph-layout.v1.p1')).toBe(before)
+    expect(ui.nodePositions.n2).toEqual({ x: 360, y: 0 })
+    // Only the drag stop persists the new position.
+    flow.vm.$emit('node-drag-stop', {
+      nodes: [{ id: 'n2', position: { x: -500, y: 0 } }],
+    })
+    expect(ui.nodePositions.n2).toEqual({ x: -500, y: 0 })
+    const saved = JSON.parse(localStorage.getItem('spec-agent.graph-layout.v1.p1') ?? '{}')
+    expect(saved.nodePositions.n2).toEqual({ x: -500, y: 0 })
   })
 })
