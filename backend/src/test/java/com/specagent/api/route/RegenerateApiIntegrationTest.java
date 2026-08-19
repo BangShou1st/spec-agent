@@ -223,7 +223,7 @@ class RegenerateApiIntegrationTest {
         UUID r1RouteId = targetRun.run().routeId();
 
         // Fork from root (R2 active); archive R1 so no OPEN route contains A.
-        Route fork = routeService.forkFromNode(project.id(), root.id(), "Fork");
+        Route fork = routeService.forkFromNode(project.id(), r1RouteId, root.id(), "Fork");
         assertThat(fork.id()).isNotEqualTo(r1RouteId);
         routeService.archiveRoute(project.id(), r1RouteId);
 

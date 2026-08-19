@@ -181,7 +181,7 @@ class RouteLifecycleIntegrationTest {
                 "Child question", null, List.of(), true);
         // Regenerate to make the original route SUPERSEDED.
         RegenerateResult result = routeService.regenerateFromNode(
-                f.project().id(), child.id(), "Regenerate",
+                f.project().id(), f.routeId(), child.id(), "Regenerate",
                 "New question", "New purpose", List.of());
 
         // The old route is now SUPERSEDED.

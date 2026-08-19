@@ -13,8 +13,9 @@ import type {
  *
  * Commands go through the existing backend route command endpoints; the
  * frontend never reproduces route transitions locally. Fork/regenerate send
- * only user-controlled content — runtime-owned ids (routeId, rootNodeId,
- * tipNodeId, option ids, lifecycle status) are never included in requests.
+ * explicit sourceRouteId plus user-controlled content; runtime-generated ids
+ * (routeId, rootNodeId, tipNodeId, option ids, lifecycle status) are never
+ * included in requests.
  */
 
 export function activateRoute(projectId: string, routeId: string): Promise<RouteMutationResponse> {

@@ -131,7 +131,16 @@ function graphView(): GraphWorkspaceView {
       makeNode({ id: 'n3', projectId: 'p1', parentNodeId: 'n1', question: 'Fork question' }),
       makeNode({ id: 'n4', projectId: 'p1', parentNodeId: 'n1', question: 'Old question' }),
     ],
-    answers: [],
+    answers: [
+      {
+        id: 'a1',
+        routeId: 'r1',
+        nodeId: 'n1',
+        selectedOptionId: null,
+        freeText: 'confirmed answer',
+        createdAt: '2026-01-01T00:00:00Z',
+      },
+    ],
   })
 }
 
@@ -171,13 +180,13 @@ describe('WorkspaceView graph shell', () => {
     locateSpy.mockReset()
   })
 
-  it('loads the graph-first shell with sidebars and canvas', async () => {
+  it('loads the graph-first shell with floating windows and canvas', async () => {
     mockViews()
     const { wrapper } = await mountWorkspace()
     expect(wrapper.find('[data-test="graph-canvas-stub"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="left-sidebar"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="right-sidebar"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="route-sidebar"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="floating-window-routes"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="floating-window-inspector"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="route-navigator"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="workspace-inspector"]').exists()).toBe(true)
   })
 
@@ -246,9 +255,10 @@ describe('WorkspaceView graph shell', () => {
   it('fork dialog enforces the active+open base route rule', async () => {
     mockViews()
     const { wrapper } = await mountWorkspace()
-    // 从共享节点 n1 fork：默认选中当前路线 r1（active+open）→ 允许。
+    // 从共享节点 n1 fork：必须明确选择当前路线 r1（active+open）→ 允许。
     await wrapper.findComponent(GraphCanvasStub).vm.$emit('fork', 'n1')
     expect(wrapper.find('[data-test="fork-dialog"]').exists()).toBe(true)
+    await wrapper.findAll('[data-test="fork-base-route"]')[0].setValue()
     expect(wrapper.find('[data-test="fork-submit"]').attributes('disabled')).toBeUndefined()
 
     // 选择 OPEN 但非当前的 r2 → 禁止 + 提示先设为当前路线。
@@ -263,7 +273,7 @@ describe('WorkspaceView graph shell', () => {
     expect(wrapper.find('[data-test="fork-blocker"]').text()).toContain('先恢复这条路线')
   })
 
-  it('fork submits only the user label through the existing API', async () => {
+  it('fork submits the explicit source route and user label through the existing API', async () => {
     mockViews()
     vi.mocked(apiForkNode).mockResolvedValue({
       projectId: 'p1',
@@ -272,10 +282,11 @@ describe('WorkspaceView graph shell', () => {
     })
     const { wrapper } = await mountWorkspace()
     await wrapper.findComponent(GraphCanvasStub).vm.$emit('fork', 'n1')
+    await wrapper.findAll('[data-test="fork-base-route"]')[0].setValue()
     await wrapper.find('[data-test="fork-label"]').setValue('替代路线')
     await wrapper.find('[data-test="fork-submit"]').trigger('click')
     await flushPromises()
-    expect(vi.mocked(apiForkNode)).toHaveBeenCalledWith('p1', 'n1', { label: '替代路线' })
+    expect(vi.mocked(apiForkNode)).toHaveBeenCalledWith('p1', 'n1', { sourceRouteId: 'r1', label: '替代路线' })
   })
 
   it('regenerate dialog submits a deterministic runtime-free payload', async () => {
@@ -293,6 +304,7 @@ describe('WorkspaceView graph shell', () => {
       'replacementOptions',
       'replacementPurpose',
       'replacementQuestion',
+      'sourceRouteId',
     ])
   })
 
@@ -339,12 +351,14 @@ describe('WorkspaceView graph shell', () => {
     expect(text).toContain('A confirmed requirement detail.')
   })
 
-  it('sidebars persist open state and width through the ui store', async () => {
+  it('floating window state persists independently of canvas layout', async () => {
     mockViews()
     const { wrapper, graphUi } = await mountWorkspace()
-    await wrapper.find('[data-test="toggle-left"]').trigger('click')
-    expect(graphUi.leftSidebarOpen).toBe(false)
-    const saved = JSON.parse(localStorage.getItem('spec-agent.workspace-ui.v1') ?? '{}')
-    expect(saved.leftSidebar.open).toBe(false)
+    await wrapper.find('[data-test="floating-window-routes"] [data-test="floating-window-close"]').trigger('click')
+    expect(graphUi.floatingWindows.routes.open).toBe(false)
+    await wrapper.find('[data-test="floating-window-inspector"] [data-test="floating-window-reset"]').trigger('click')
+    expect(graphUi.floatingWindows.routes.open).toBe(true)
+    expect(graphUi.floatingWindows.routes.width).toBe(320)
+    expect(graphUi.floatingWindows.inspector.width).toBe(420)
   })
 })

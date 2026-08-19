@@ -98,24 +98,6 @@ function setCanvasSize(
   }
 }
 
-function readableFitExpected(boundsWidth = 320 + HORIZONTAL_GAP, boundsHeight = 220): {
-  x: number
-  y: number
-  zoom: number
-} {
-  const ui = useGraphUiStore()
-  const left = ui.leftSidebarWidth + 24
-  const right = 1200 - ui.rightSidebarWidth - 24
-  const frameWidth = right - left
-  const frameHeight = 800 - 24
-  const zoom = Math.min((frameWidth - 96) / boundsWidth, (frameHeight - 96) / boundsHeight, 1)
-  return {
-    x: left + frameWidth / 2 - (boundsWidth / 2) * zoom,
-    y: 12 + frameHeight / 2 - (boundsHeight / 2) * zoom,
-    zoom,
-  }
-}
-
 describe('graph canvas', () => {
   beforeEach(() => {
     localStorage.clear()
@@ -272,14 +254,9 @@ describe('graph canvas', () => {
       await wrapper.vm.$nextTick()
       vi.advanceTimersByTime(550)
       expect(setViewport).toHaveBeenCalledTimes(1)
-      // Occluded reveal centers n2 in the readable corridor between the
-      // floating sidebars, without changing its graph coordinate.
-      const ui = useGraphUiStore()
-      const readableLeft = ui.leftSidebarWidth + 24
-      const readableRight = 1200 - ui.rightSidebarWidth - 24
       expect(setViewport).toHaveBeenCalledWith(
         expect.objectContaining({
-          x: readableLeft + (readableRight - readableLeft) / 2 - (HORIZONTAL_GAP + 160),
+          x: 600 - (HORIZONTAL_GAP + 160),
           y: 290,
           zoom: 1,
         }),
@@ -374,7 +351,7 @@ describe('graph canvas', () => {
       vi.advanceTimersByTime(550)
       expect(setViewport).toHaveBeenCalledTimes(1)
       expect(setViewport).toHaveBeenCalledWith(
-        expect.objectContaining(readableFitExpected()),
+        expect.objectContaining({ x: 220, y: 290, zoom: 1 }),
         expect.objectContaining({ duration: 300 }),
       )
     } finally {
@@ -382,7 +359,7 @@ describe('graph canvas', () => {
     }
   })
 
-  it('toolbar fit-view uses the explicit overlay-aware readable viewport', async () => {
+  it('toolbar fit-view uses the full canvas viewport', async () => {
     const wrapper = mountCanvas(viewWithNodes())
     const vf = useVueFlow('spec-agent-graph-canvas')
     setCanvasSize(vf)
@@ -391,7 +368,7 @@ describe('graph canvas', () => {
     await wrapper.find('[data-test="fit-view"]').trigger('click')
     expect(fitViewSpy).not.toHaveBeenCalled()
     expect(setViewport).toHaveBeenCalledWith(
-      expect.objectContaining(readableFitExpected()),
+      expect.objectContaining({ x: 220, y: 290, zoom: 1 }),
       expect.objectContaining({ duration: 300 }),
     )
   })

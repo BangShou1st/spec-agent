@@ -18,8 +18,8 @@ defineEmits<{
     <button class="btn graph-toolbar__btn" data-test="fit-view" title="适应视图" @click="$emit('fit-view')">适应视图</button>
     <button class="btn graph-toolbar__btn" data-test="auto-layout" title="重新自动布局" @click="$emit('auto-layout')">重新自动布局</button>
     <button class="btn graph-toolbar__btn" data-test="show-all" title="显示全部路线" @click="$emit('show-all')">显示全部路线</button>
-    <button class="btn graph-toolbar__btn" data-test="open-routes" title="打开路线导航" @click="$emit('routes')">Routes</button>
-    <button class="btn graph-toolbar__btn" data-test="open-inspector" title="打开检查器" @click="$emit('inspector')">Inspector</button>
+    <button class="btn graph-toolbar__btn" data-test="open-routes" title="打开路线导航" @click="$emit('routes')">路线导航</button>
+    <button class="btn graph-toolbar__btn" data-test="open-inspector" title="打开检查器" @click="$emit('inspector')">检查器</button>
     <button class="btn graph-toolbar__btn" data-test="reset-windows" title="重置窗口" @click="$emit('reset-windows')">重置窗口</button>
   </div>
 </template>

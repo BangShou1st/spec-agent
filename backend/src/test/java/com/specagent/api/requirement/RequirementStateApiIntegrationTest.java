@@ -308,7 +308,7 @@ class RequirementStateApiIntegrationTest {
                         ClaimStatus.CONFIRMED, root.id(), answer.id())),
                 null);
 
-        routeService.regenerateFromNode(project.id(), child.id(), "Regenerate",
+        routeService.regenerateFromNode(project.id(), activeRouteId, child.id(), "Regenerate",
                 "Replacement question", null, List.of());
         assertThat(routeService.getRoute(activeRouteId).orElseThrow().lifecycleStatus())
                 .isEqualTo(RouteLifecycleStatus.SUPERSEDED);

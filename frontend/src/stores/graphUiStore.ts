@@ -3,6 +3,7 @@ import type { RouteLifecycleStatus } from '@/api/types'
 import {
   LEFT_SIDEBAR_RANGE,
   RIGHT_SIDEBAR_RANGE,
+  DEFAULT_WORKSPACE_UI_V2,
   loadProjectGraphPreferencesV2,
   loadWorkspaceUiPreferences,
   loadWorkspaceUiPreferencesV2,
@@ -228,8 +229,10 @@ export const useGraphUiStore = defineStore('graphUi', {
     },
 
     resetWindows(): void {
-      const prefs = loadWorkspaceUiPreferencesV2()
-      this.floatingWindows = { ...prefs.windows }
+      this.floatingWindows = {
+        routes: { ...DEFAULT_WORKSPACE_UI_V2.windows.routes },
+        inspector: { ...DEFAULT_WORKSPACE_UI_V2.windows.inspector },
+      }
       this.windowZOrder = ['routes', 'inspector']
       this.persistWorkspaceV2()
     },

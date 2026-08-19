@@ -182,16 +182,11 @@ function nodeVisibilityFraction(nodeId: string): number {
   const top = target.position.y * vp.zoom + vp.y
   const right = left + width * vp.zoom
   const bottom = top + height * vp.zoom
-  // Sidebars are floating overlays: they do not change the canvas bounding
-  // box, but they do occlude part of its reading surface. Treat that
-  // corridor as the actionable viewport so a newly active node never lands
-  // completely underneath the Inspector or Route Navigator.
-  const leftInset = graphUi.leftSidebarOpen ? graphUi.leftSidebarWidth + 24 : 40
-  const rightInset = graphUi.rightSidebarOpen ? graphUi.rightSidebarWidth + 24 : 40
-  const readableLeft = Math.min(leftInset, canvasWidth / 2)
-  const readableRight = Math.max(canvasWidth - rightInset, canvasWidth / 2)
-  const visibleWidth = Math.max(0, Math.min(right, readableRight) - Math.max(left, readableLeft))
-  const visibleHeight = Math.max(0, Math.min(bottom, canvasHeight - 12) - Math.max(top, 12))
+  // Floating windows overlay the canvas and never reserve layout space. Reveal
+  // therefore uses the actual canvas viewport rather than legacy sidebar
+  // geometry.
+  const visibleWidth = Math.max(0, Math.min(right, canvasWidth) - Math.max(left, 0))
+  const visibleHeight = Math.max(0, Math.min(bottom, canvasHeight) - Math.max(top, 0))
   const total = width * height * vp.zoom * vp.zoom
   return total > 0 ? (visibleWidth * visibleHeight) / total : 1
 }
@@ -213,7 +208,7 @@ watch(
     activeNodeFitTimer = window.setTimeout(() => {
       activeNodeFitTimer = null
       if (nodeVisibilityFraction(nodeId) < REVEAL_VISIBILITY_THRESHOLD) {
-        manualFitNode(nodeId, true)
+        manualFitNode(nodeId)
       }
     }, REVEAL_DELAY_MS)
   },
@@ -267,49 +262,20 @@ function onInit(): void {
  * 自研适应视图：直接基于投影坐标计算 viewport 变换（setViewport），只改
  * 视口、绝不移动节点坐标。绝不依赖 Vue Flow 的节点测量。
  */
-function readableViewportFrame(): { left: number; top: number; width: number; height: number } | null {
-  const canvasWidth = vf.dimensions.value.width
-  const canvasHeight = vf.dimensions.value.height
-  if (!canvasWidth || !canvasHeight) {
-    return null
-  }
-  const leftInset = graphUi.leftSidebarOpen ? graphUi.leftSidebarWidth + 24 : 40
-  const rightInset = graphUi.rightSidebarOpen ? graphUi.rightSidebarWidth + 24 : 40
-  const left = Math.min(leftInset, canvasWidth / 2)
-  const right = Math.max(canvasWidth - rightInset, canvasWidth / 2)
-  return { left, top: 12, width: Math.max(right - left, 1), height: Math.max(canvasHeight - 24, 1) }
-}
-
-function fitInReadableViewport(
-  nodes: ViewportNode[],
-  options: { padding?: number; maxZoom?: number },
-): ViewportTransform | null {
-  const frame = readableViewportFrame()
-  if (!frame) {
-    return null
-  }
-  const transform = computeFitViewport(nodes, frame.width, frame.height, options)
-  return transform
-    ? { x: transform.x + frame.left, y: transform.y + frame.top, zoom: transform.zoom }
-    : null
-}
-
-function manualFitView(avoidOverlays = false): void {
+function manualFitView(): void {
   const canvasWidth = vf.dimensions.value.width
   const canvasHeight = vf.dimensions.value.height
   if (!canvasWidth || !canvasHeight) {
     return
   }
   applyViewport(
-    avoidOverlays
-      ? fitInReadableViewport(collectViewportNodes(), { padding: 48 })
-      : computeFitViewport(collectViewportNodes(), canvasWidth, canvasHeight, { padding: 48 }),
+    computeFitViewport(collectViewportNodes(), canvasWidth, canvasHeight, { padding: 48 }),
     300,
   )
 }
 
 /** 把单个节点平滑带进视口（只改 viewport，不动节点坐标）。 */
-function manualFitNode(nodeId: string, avoidOverlays = false): void {
+function manualFitNode(nodeId: string): void {
   const canvasWidth = vf.dimensions.value.width
   const canvasHeight = vf.dimensions.value.height
   if (!canvasWidth || !canvasHeight) {
@@ -317,9 +283,7 @@ function manualFitNode(nodeId: string, avoidOverlays = false): void {
   }
   const target = collectViewportNodes(new Set([resolveFlowNodeId(nodeId)]))[0] ?? null
   applyViewport(
-    avoidOverlays
-      ? fitInReadableViewport(target ? [target] : [], { padding: 48 })
-      : computeFitNodeViewport(target, canvasWidth, canvasHeight, { padding: 48 }),
+    computeFitNodeViewport(target, canvasWidth, canvasHeight, { padding: 48 }),
     400,
   )
 }
@@ -526,7 +490,7 @@ async function zoomOut(): Promise<void> {
 /** 适应视图：与初始 fit 相同的确定性实现。 */
 async function fitView(): Promise<void> {
   clearActiveNodeFitTimer()
-  manualFitView(true)
+  manualFitView()
 }
 
 /**
@@ -631,8 +595,6 @@ const isEmptyProject = computed(() =>
             :submitting="submitting"
             :pending="pending"
             @submit-answer="(payload) => emit('submit-answer', payload)"
-            @toggle-expanded="graphUi.toggleExpanded"
-            @focus-route="graphUi.setFocusRoute"
             @fork="(id) => emit('fork', id)"
             @reanswer="(id) => emit('reanswer', id)"
             @regenerate="(id) => emit('regenerate', id)"

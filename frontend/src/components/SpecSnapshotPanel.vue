@@ -96,7 +96,7 @@ function truncated(value: string | null): string {
       <div class="provenance" data-test="spec-provenance">
         <div class="meta-text">快照：{{ selectedSpec.id }}</div>
         <div class="meta-text">路线：{{ selectedSpec.routeId }}</div>
-        <div class="meta-text">tip node：{{ truncated(selectedSpec.tipNodeId) }}</div>
+        <div class="meta-text">末端节点：{{ truncated(selectedSpec.tipNodeId) }}</div>
         <div class="meta-text">格式：{{ selectedSpec.format }}</div>
         <div class="meta-text">createdByRunId：{{ truncated(selectedSpec.createdByRunId) }}</div>
       </div>

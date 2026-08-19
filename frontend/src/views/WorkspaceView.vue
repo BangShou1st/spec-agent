@@ -18,7 +18,7 @@ import type { RegenerateNodeRequest, SubmitAnswerRequest } from '@/api/types'
 /**
  * Graph-first workspace shell (Phase 7.3).
  *
- * Layout: resizable route sidebar | GraphCanvas | resizable inspector.
+ * Layout: GraphCanvas with floating route navigation and inspector windows.
  * Runtime commands go through workspaceStore (Active-route only); Focus/
  * Dim/Hide/positions/sidebars live in graphUiStore (browser-only).
  * `readingRouteId = focus ?? active` drives the inspector reads.
@@ -240,7 +240,7 @@ async function confirmDestructive(): Promise<void> {
 
       <FloatingWindow
         name="routes"
-        title="Route Navigator"
+        title="路线导航"
         :state="graphUi.floatingWindows.routes"
         :z-index="graphUi.windowZOrder.indexOf('routes') + 20"
         :min-width="FLOATING_WINDOW_RANGES.routes.minWidth"
@@ -252,7 +252,6 @@ async function confirmDestructive(): Promise<void> {
         @close="graphUi.setFloatingWindow('routes', { open: false })"
         @reset="graphUi.resetWindows"
       >
-        <span class="workspace-shell__compat-marker" data-test="left-sidebar" aria-hidden="true"></span>
         <RouteNavigator
           :routes="store.graphView?.routes ?? []"
           :active-route-id="store.activeRoute?.id ?? null"
@@ -268,7 +267,7 @@ async function confirmDestructive(): Promise<void> {
 
       <FloatingWindow
         name="inspector"
-        title="Inspector"
+        title="检查器"
         :state="graphUi.floatingWindows.inspector"
         :z-index="graphUi.windowZOrder.indexOf('inspector') + 20"
         :min-width="FLOATING_WINDOW_RANGES.inspector.minWidth"
@@ -280,7 +279,6 @@ async function confirmDestructive(): Promise<void> {
         @close="graphUi.setFloatingWindow('inspector', { open: false })"
         @reset="graphUi.resetWindows"
       >
-        <span class="workspace-shell__compat-marker" data-test="right-sidebar" aria-hidden="true"></span>
         <WorkspaceInspector
           :node-data="selectedNodeData"
           :selected-edge="selectedEdgeData"
@@ -296,7 +294,7 @@ async function confirmDestructive(): Promise<void> {
         正在刷新工作区…
       </p>
       <p v-if="store.feedback" class="feedback-line" data-test="feedback">{{ store.feedback }}</p>
-      <button v-if="store.forkDraftRetryRouteId" class="btn btn-primary workspace-shell__retry-draft" data-test="retry-fork-draft" @click="store.retryForkDraft()">重试生成</button>
+      <button v-if="store.forkDraftRetryRouteId" class="btn btn-primary workspace-shell__retry-draft" data-test="retry-fork-draft" @click="store.retryForkDraft()">重试起草</button>
     </div>
 
     <ForkRouteDialog
@@ -305,7 +303,7 @@ async function confirmDestructive(): Promise<void> {
       :routes="store.graphView?.routes ?? []"
       :active-route-id="store.activeRoute?.id ?? null"
       :pending="store.routeCommandPending"
-        :finalized-route-ids="store.graphView?.answers?.length ? forkFinalizedRouteIds : undefined"
+      :finalized-route-ids="forkFinalizedRouteIds"
       @close="forkDialogOpen = false"
       @submit="handleForkSubmit"
       @restore-base-route="handleForkRestore"
@@ -315,7 +313,7 @@ async function confirmDestructive(): Promise<void> {
       <RegenerateNodeDialog
         :open="regenerateDialogOpen"
         :node="regenerateNodeData"
-        :routes="store.graphView?.answers?.length ? store.graphView?.routes ?? [] : undefined"
+        :routes="store.graphView?.routes ?? []"
       :pending="store.pendingRouteCommand === 'regenerate'"
       @close="regenerateDialogOpen = false"
       @submit="handleRegenerateSubmit"
@@ -342,9 +340,5 @@ async function confirmDestructive(): Promise<void> {
       @confirm="confirmDestructive"
     />
 
-    <!-- Compatibility hooks for older embedded shells; the product controls
-         are the floating windows and toolbar above. -->
-    <button class="workspace-shell__compat-control" data-test="toggle-left" aria-hidden="true" @click="graphUi.setLeftSidebar({ open: !graphUi.leftSidebarOpen, width: graphUi.leftSidebarWidth })"></button>
-    <button class="workspace-shell__compat-control" data-test="toggle-right" aria-hidden="true" @click="graphUi.setRightSidebar({ open: !graphUi.rightSidebarOpen, width: graphUi.rightSidebarWidth })"></button>
   </div>
 </template>

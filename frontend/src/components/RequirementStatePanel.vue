@@ -63,7 +63,7 @@ function formatConfidence(claim: RequirementClaimView): string {
               <template v-if="formatConfidence(claim)"> · {{ formatConfidence(claim) }}</template>
             </p>
             <p class="meta-text" style="margin: 0">
-              node {{ claim.sourceNodeId ?? '—' }} · answer {{ claim.sourceAnswerId ?? '—' }}
+              节点 {{ claim.sourceNodeId ?? '—' }} · 回答 {{ claim.sourceAnswerId ?? '—' }}
             </p>
           </div>
           <p v-if="group.claims.length === 0" class="muted" style="margin: 0">无。</p>

@@ -33,8 +33,8 @@ const sortedRoutes = computed(() => props.routes)
 const displayState = (id: string): GraphRouteDisplayState => graphUi.routeDisplayStates[id] ?? 'normal'
 const focused = (id: string): boolean => graphUi.focusRouteId === id
 const branchLabel = (route: GraphWorkspaceRouteView): string | null => {
-  if (route.branchType === 'fork') return 'Fork'
-  if (route.branchType === 'reanswer') return 'Re-answer'
+  if (route.branchType === 'fork') return '分支路线'
+  if (route.branchType === 'reanswer') return '重新选择答案'
   if (route.branchType === 'regenerate') return '替代问题'
   return null
 }
@@ -53,7 +53,6 @@ function openRoute(route: GraphWorkspaceRouteView): void {
 
 <template>
   <div class="route-navigator" data-test="route-navigator">
-    <span class="workspace-shell__compat-marker" data-test="route-sidebar" aria-hidden="true"></span>
     <section class="route-navigator__filters" data-test="lifecycle-filters">
       <h3 class="route-navigator__heading">生命周期</h3>
       <label v-for="filter in filters" :key="filter.status" class="route-navigator__filter">
@@ -67,8 +66,8 @@ function openRoute(route: GraphWorkspaceRouteView): void {
       <article v-for="route in sortedRoutes" :key="route.id" class="route-navigator__route" :class="[`route-card--${displayState(route.id)}`, { 'route-navigator__route--focused': focused(route.id), 'route-card--focused': focused(route.id) }]" :data-route-id="route.id" @click="openRoute(route)">
         <div class="route-navigator__route-head">
           <span class="badge" :class="`badge-${route.lifecycleStatus}`">{{ lifecycleLabels[route.lifecycleStatus] }}</span>
-          <span v-if="route.id === activeRouteId" class="badge badge-active" data-test="active-route">Active</span>
-          <span v-if="focused(route.id)" class="badge badge-focus">Focus</span>
+          <span v-if="route.id === activeRouteId" class="badge badge-active" data-test="active-route">当前路线</span>
+          <span v-if="focused(route.id)" class="badge badge-focus">聚焦</span>
         </div>
         <div class="route-navigator__label">{{ route.label ?? route.id.slice(0, 8) }}</div>
         <div class="meta-text">{{ route.lineageNodeIds.length }} 个节点</div>
@@ -80,10 +79,10 @@ function openRoute(route: GraphWorkspaceRouteView): void {
           <button class="btn btn-small" data-test="hide-route" :disabled="route.id === activeRouteId" @click="displayState(route.id) === 'hidden' ? graphUi.restoreRouteDisplay(route.id) : graphUi.hideRoute(route.id)">{{ displayState(route.id) === 'hidden' ? '恢复显示' : '隐藏路线' }}</button>
         </div>
         <div class="route-navigator__actions" @click.stop>
-          <button v-if="route.lifecycleStatus === 'open' && !route.isActive" class="btn btn-small" data-test="activate-route" :disabled="commandPending" @click="emit('activate', route.id)">Activate</button>
-          <button v-if="route.lifecycleStatus !== 'open'" class="btn btn-small" data-test="restore-route" :disabled="commandPending" @click="emit('restore', route.id)">Restore</button>
-          <button v-if="route.lifecycleStatus !== 'archived' && route.lifecycleStatus !== 'deleted'" class="btn btn-small" data-test="archive-route" :disabled="commandPending" @click="emit('archive', route.id)">Archive</button>
-          <button v-if="route.lifecycleStatus !== 'deleted'" class="btn btn-small btn-danger" data-test="delete-route" :disabled="commandPending" @click="emit('delete', route.id)">Delete</button>
+          <button v-if="route.lifecycleStatus === 'open' && !route.isActive" class="btn btn-small" data-test="activate-route" :disabled="commandPending" @click="emit('activate', route.id)">设为当前</button>
+          <button v-if="route.lifecycleStatus !== 'open'" class="btn btn-small" data-test="restore-route" :disabled="commandPending" @click="emit('restore', route.id)">恢复</button>
+          <button v-if="route.lifecycleStatus !== 'archived' && route.lifecycleStatus !== 'deleted'" class="btn btn-small" data-test="archive-route" :disabled="commandPending" @click="emit('archive', route.id)">归档</button>
+          <button v-if="route.lifecycleStatus !== 'deleted'" class="btn btn-small btn-danger" data-test="delete-route" :disabled="commandPending" @click="emit('delete', route.id)">删除</button>
         </div>
       </article>
       <p v-if="routes.length === 0" class="muted">暂无路线。</p>

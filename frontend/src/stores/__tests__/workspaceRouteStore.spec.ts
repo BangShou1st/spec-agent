@@ -187,28 +187,28 @@ describe('workspaceStore route workspace', () => {
     expect(store.feedback).toBe('已删除路线。')
   })
 
-  it('fork request contains only the user label', async () => {
+  it('fork request carries the explicit source route and user label', async () => {
     mockBackendViews(makeActiveState(), makeRequirementState())
     mockedApiForkNode.mockResolvedValue(makeRouteMutation())
     const store = useWorkspaceStore()
     await load(store)
 
-    await store.forkNode('lnode-1', '替代路线')
-    expect(mockedApiForkNode).toHaveBeenCalledWith('p1', 'lnode-1', { label: '替代路线' })
+    await store.forkNode('lnode-1', 'r1', '替代路线')
+    expect(mockedApiForkNode).toHaveBeenCalledWith('p1', 'lnode-1', { sourceRouteId: 'r1', label: '替代路线' })
 
-    await store.forkNode('lnode-2', null)
-    expect(mockedApiForkNode).toHaveBeenCalledWith('p1', 'lnode-2', { label: null })
+    await store.forkNode('lnode-2', 'r1', null)
+    expect(mockedApiForkNode).toHaveBeenCalledWith('p1', 'lnode-2', { sourceRouteId: 'r1', label: null })
   })
 
-  it('fork request never carries runtime-owned ids', async () => {
+  it('fork request never carries runtime-owned ids beyond explicit source selection', async () => {
     mockBackendViews(makeActiveState(), makeRequirementState())
     mockedApiForkNode.mockResolvedValue(makeRouteMutation())
     const store = useWorkspaceStore()
     await load(store)
 
-    await store.forkNode('lnode-1')
+    await store.forkNode('lnode-1', 'r1')
     const [, , payload] = mockedApiForkNode.mock.calls[0]
-    expect(Object.keys(payload)).toEqual(['label'])
+    expect(Object.keys(payload)).toEqual(['sourceRouteId', 'label'])
   })
 
   it('fork success refreshes canonical reads and never guesses the new route id', async () => {
@@ -229,10 +229,10 @@ describe('workspaceStore route workspace', () => {
     mockedGetActiveState.mockResolvedValue(forkActive)
     mockedListRoutes.mockResolvedValue([forkActive.activeRoute as never])
 
-    const ok = await store.forkNode('lnode-1', 'Fork route')
+    const ok = await store.forkNode('lnode-1', 'r1', 'Fork route')
 
     expect(ok).toBe(true)
-    expect(mockedGetProjectGraph).toHaveBeenCalledTimes(2)
+    expect(mockedGetProjectGraph).toHaveBeenCalledTimes(3)
     expect(store.activeState?.activeRoute?.id).toBe('route-fork')
     expect(store.feedback).toBe('已创建新分支路线。')
   })
@@ -244,6 +244,7 @@ describe('workspaceStore route workspace', () => {
     await load(store)
 
     const payload = {
+      sourceRouteId: 'r1',
       instruction: '改窄一些',
       replacementQuestion: '需要什么范围？',
       replacementPurpose: null,
@@ -255,7 +256,7 @@ describe('workspaceStore route workspace', () => {
     const sentPayload = mockedApiRegenerateNode.mock.calls[0][2]
     expect(sentPayload.replacementOptions?.[0]).not.toHaveProperty('id')
     expect(Object.keys(sentPayload).sort()).toEqual(
-      ['instruction', 'replacementOptions', 'replacementPurpose', 'replacementQuestion'],
+      ['instruction', 'replacementOptions', 'replacementPurpose', 'replacementQuestion', 'sourceRouteId'],
     )
   })
 
@@ -280,6 +281,7 @@ describe('workspaceStore route workspace', () => {
     mockedGetRequirementState.mockResolvedValue(makeRequirementState({ routeId: 'route-new' }))
 
     const ok = await store.regenerateNode('lnode-2', {
+      sourceRouteId: 'r1',
       replacementQuestion: '替代问题',
     })
 

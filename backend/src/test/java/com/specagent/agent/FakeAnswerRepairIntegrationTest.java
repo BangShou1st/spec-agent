@@ -177,7 +177,7 @@ class FakeAnswerRepairIntegrationTest {
                 .hasMessageContaining("does not belong to project");
 
         // Inactive route: forking makes a new route active, the answer's route is no longer active.
-        Route forkRoute = routeService.forkFromNode(projectA.id(), node.id(), "sibling route");
+        Route forkRoute = routeService.forkFromNode(projectA.id(), projectA.activeRouteId(), node.id(), "sibling route");
         assertThat(projectService.getProject(projectA.id()).orElseThrow().activeRouteId())
                 .isEqualTo(forkRoute.id());
         assertThatThrownBy(() -> fakeAgentOrchestrator.repairAnswerProcessingAndDraftNext(projectA.id(), answer.id()))

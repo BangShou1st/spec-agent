@@ -193,18 +193,12 @@ describe('graph question node', () => {
     expect(wrapper.find('.graph-answer-summary--clamped').exists()).toBe(true)
   })
 
-  it('expanded historical node shows full question, purpose, all options and per-route answers', async () => {
+  it('historical node never expands verbose route history inside the graph card', async () => {
     const expanded = historicalData({ isExpanded: true })
     const wrapper = mountNode(expanded)
-    expect(wrapper.find('.graph-answer-summary--clamped').exists()).toBe(false)
-    expect(wrapper.find('.graph-node-details').exists()).toBe(true)
-    expect(wrapper.text()).toContain('Second route answer.')
-  })
-
-  it('toggle-expanded emits on demand', async () => {
-    const wrapper = mountNode(historicalData())
-    await wrapper.find('[data-test="toggle-expanded"]').trigger('click')
-    expect(wrapper.emitted('toggle-expanded')?.[0]).toEqual(['n1'])
+    expect(wrapper.find('.graph-answer-summary--clamped').exists()).toBe(true)
+    expect(wrapper.find('.graph-node-details').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Second route answer.')
   })
 
   it('current node gets the large class and historical node the compact class', () => {
@@ -231,7 +225,7 @@ describe('graph question node', () => {
     expect(wrapper.emitted('regenerate')?.[0]).toEqual(['n1'])
   })
 
-  it('selected shared nodes expose canonical route chips that only emit Focus', async () => {
+  it('shared nodes keep route chooser and full route history in the Inspector', async () => {
     const wrapper = mountNode(
       historicalData({
         routeMembership: [
@@ -241,12 +235,10 @@ describe('graph question node', () => {
       }),
       { selected: true },
     )
-    expect(wrapper.find('[data-test="route-chooser"]').exists()).toBe(true)
-    await wrapper.find('[data-test="focus-route-chip-r2"]').trigger('click')
-    expect(wrapper.emitted('focus-route')?.[0]).toEqual(['r2'])
+    expect(wrapper.find('[data-test="route-chooser"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Second route answer.')
     expect(wrapper.emitted('fork')).toBeUndefined()
     expect(wrapper.emitted('submit-answer')).toBeUndefined()
-    expect(wrapper.emitted('toggle-expanded')).toBeUndefined()
   })
 })
 describe('shared node route-specific waiting state', () => {
@@ -290,12 +282,11 @@ describe('shared node route-specific waiting state', () => {
     expect(wrapper.text()).not.toContain('A answer on shared node.')
   })
 
-  it('expanded shared node lists every route as answered or waiting, A answer stays inspectable', async () => {
+  it('shared node does not expose per-route answer history in the graph card', async () => {
     const expanded = waitingData({ isExpanded: true })
     const wrapper = mountNode(expanded)
-    expect(wrapper.find('[data-test="route-state-r1"]').text()).toContain('A answer on shared node.')
-    expect(wrapper.find('[data-test="route-state-r2"]').text()).toContain('等待回答')
-    expect(wrapper.find('[data-test="route-waiting-r2"]').exists()).toBe(true)
+    expect(wrapper.find('.graph-node-details').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('A answer on shared node.')
   })
 
   it('a shared current node keeps answer controls and exposes the old route answer via expand', async () => {
@@ -309,12 +300,8 @@ describe('shared node route-specific waiting state', () => {
     expect(wrapper.find('[data-test="question"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="free-text"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="submit-answer"]').exists()).toBe(true)
-    // 旧路线回答可在展开中查看。
-    await wrapper.find('[data-test="toggle-expanded"]').trigger('click')
-    expect(wrapper.emitted('toggle-expanded')?.[0]).toEqual(['n1'])
-    await wrapper.setProps({ data: { ...data, isExpanded: true } })
-    expect(wrapper.find('[data-test="route-state-r1"]').text()).toContain('A answer on shared node.')
-    expect(wrapper.find('[data-test="route-state-r2"]').text()).toContain('等待回答')
+    // 旧路线回答只在 Inspector 中查看。
+    expect(wrapper.find('.graph-node-details').exists()).toBe(false)
   })
 })
 
@@ -351,8 +338,6 @@ describe('node body click handling', () => {
     article.addEventListener('click', () => { bubbled += 1 })
     const forkBtn = wrapper.find('[data-test="fork-node"]').element as HTMLElement
     forkBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-    const expandBtn = wrapper.find('[data-test="toggle-expanded"]').element as HTMLElement
-    expandBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     expect(bubbled).toBe(0)
   })
 })

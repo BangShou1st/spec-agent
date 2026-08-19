@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test'
 import {
   answerActiveNode,
   buildThreeNodeLineage,
+  closeFloatingWorkspaceWindows,
   createProject,
   fitGraph,
   forkFromNode,
@@ -122,8 +123,13 @@ test('immersive graph navigation keeps overlays off the canvas layout', async ({
   await buildThreeNodeLineage(page)
   await fitGraph(page)
   await forkFromNode(page, 1, 'Route-B')
+  await closeFloatingWorkspaceWindows(page)
   await answerActiveNode(page, 'Route B answer')
   await expect(page.locator('.graph-question-node')).toHaveCount(5)
+  await page.getByTestId('open-routes').click()
+  await expect(page.getByTestId('floating-window-routes')).toBeVisible()
+  await page.getByTestId('open-inspector').click()
+  await expect(page.getByTestId('floating-window-inspector')).toBeVisible()
 
   const workspace = page.getByTestId('workspace-shell')
   const canvas = page.getByTestId('graph-canvas')

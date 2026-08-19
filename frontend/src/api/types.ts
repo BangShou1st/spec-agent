@@ -178,7 +178,7 @@ export interface RouteMutationResponse {
 
 /** Explicit-source Fork request; runtime owns every generated route id. */
 export interface ForkRouteRequest {
-  sourceRouteId?: string
+  sourceRouteId: string
   label?: string | null
 }
 
@@ -195,7 +195,7 @@ export interface ReplacementOptionRequest {
 
 /** Deterministic regenerate request; runtime-owned ids are never accepted. */
 export interface RegenerateNodeRequest {
-  sourceRouteId?: string
+  sourceRouteId: string
   instruction?: string | null
   replacementQuestion: string
   replacementPurpose?: string | null

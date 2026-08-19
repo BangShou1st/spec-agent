@@ -71,7 +71,7 @@ class RouteControlIntegrationTest {
     @Test
     void forkFromNodeCreatesOpenRouteAtHistoricalNode() {
         Fixture f = createFixture();
-        Route fork = routeService.forkFromNode(f.project().id(), f.root().id(), "Fork at root");
+        Route fork = routeService.forkFromNode(f.project().id(), f.routeId(), f.root().id(), "Fork at root");
         assertThat(fork.lifecycleStatus()).isEqualTo(RouteLifecycleStatus.OPEN);
         assertThat(fork.rootNodeId()).isEqualTo(f.root().id());
         assertThat(fork.tipNodeId()).isEqualTo(f.root().id());
@@ -117,7 +117,7 @@ class RouteControlIntegrationTest {
     @Test
     void forkFromNodeSetsNewRouteActive() {
         Fixture f = createFixture();
-        Route fork = routeService.forkFromNode(f.project().id(), f.root().id(), "Fork at root");
+        Route fork = routeService.forkFromNode(f.project().id(), f.routeId(), f.root().id(), "Fork at root");
         Project project = projectService.getProject(f.project().id()).orElseThrow();
         assertThat(project.activeRouteId()).isEqualTo(fork.id());
     }
@@ -126,7 +126,7 @@ class RouteControlIntegrationTest {
     void forkFromNodeDoesNotModifyOldRoute() {
         Fixture f = createFixture();
         UUID oldRouteId = f.routeId();
-        routeService.forkFromNode(f.project().id(), f.root().id(), "Fork at root");
+        routeService.forkFromNode(f.project().id(), f.routeId(), f.root().id(), "Fork at root");
         Route oldRoute = routeService.getRoute(oldRouteId).orElseThrow();
         assertThat(oldRoute.lifecycleStatus()).isEqualTo(RouteLifecycleStatus.OPEN);
         assertThat(oldRoute.tipNodeId()).isEqualTo(f.child().id());
@@ -136,14 +136,14 @@ class RouteControlIntegrationTest {
     @Test
     void forkFromNodeInheritsOnlySelectedLineage() {
         Fixture f = createFixture();
-        Route fork = routeService.forkFromNode(f.project().id(), f.root().id(), "Fork at root");
+        Route fork = routeService.forkFromNode(f.project().id(), f.routeId(), f.root().id(), "Fork at root");
         ContextSnapshot ctx = contextBuilder.buildFromActiveRoute(
                 f.project().id(), null, ContextOperationType.FORK);
         assertThat(ctx.routeId()).isEqualTo(fork.id());
         assertThat(ctx.tipNodeId()).isEqualTo(f.root().id());
         assertThat(ctx.includedNodeIds()).containsExactly(f.root().id());
-        assertThat(ctx.includedAnswerIds()).isEmpty();
-        assertThat(ctx.includedPatchIds()).isEmpty();
+        assertThat(ctx.includedAnswerIds()).containsExactly(f.a1().id());
+        assertThat(ctx.includedPatchIds()).containsExactly(f.p1().id());
     }
 
     @Test
@@ -158,7 +158,7 @@ class RouteControlIntegrationTest {
                 List.of(Claim.of(ClaimKind.GOAL, "Sibling goal", ClaimStatus.CONFIRMED,
                         siblingRoot.id(), siblingAnswer.id())), null);
 
-        Route fork = routeService.forkFromNode(f.project().id(), f.root().id(), "Fork at root");
+        Route fork = routeService.forkFromNode(f.project().id(), f.routeId(), f.root().id(), "Fork at root");
         ContextSnapshot ctx = contextBuilder.buildFromActiveRoute(
                 f.project().id(), null, ContextOperationType.FORK);
         assertThat(ctx.routeId()).isEqualTo(fork.id());
@@ -169,14 +169,14 @@ class RouteControlIntegrationTest {
     void forkFromNodeRejectsNodeFromAnotherProject() {
         Fixture f1 = createFixture();
         Fixture f2 = createFixture();
-        assertThatThrownBy(() -> routeService.forkFromNode(f1.project().id(), f2.root().id(), "bad"))
+        assertThatThrownBy(() -> routeService.forkFromNode(f1.project().id(), f1.routeId(), f2.root().id(), "bad"))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void forkFromNodeRejectsUnknownNode() {
         Fixture f = createFixture();
-        assertThatThrownBy(() -> routeService.forkFromNode(f.project().id(), UUID.randomUUID(), "bad"))
+        assertThatThrownBy(() -> routeService.forkFromNode(f.project().id(), f.routeId(), UUID.randomUUID(), "bad"))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -184,7 +184,7 @@ class RouteControlIntegrationTest {
     void regenerateCreatesReplacementNodeThatSupersedesTargetNode() {
         Fixture f = createFixture();
         RegenerateResult result = routeService.regenerateFromNode(
-                f.project().id(), f.child().id(), "Make it clearer",
+                f.project().id(), f.routeId(), f.child().id(), "Make it clearer",
                 "Better child question", "Better purpose", List.of());
         Node replacement = result.replacementNode();
         assertThat(replacement.supersedesNodeId()).isEqualTo(f.child().id());
@@ -196,7 +196,7 @@ class RouteControlIntegrationTest {
     void regenerateMarksOldRouteSuperseded() {
         Fixture f = createFixture();
         RegenerateResult result = routeService.regenerateFromNode(
-                f.project().id(), f.child().id(), "Make it clearer",
+                f.project().id(), f.routeId(), f.child().id(), "Make it clearer",
                 "Better child question", "Better purpose", List.of());
         Route oldRoute = routeService.getRoute(f.routeId()).orElseThrow();
         assertThat(oldRoute.lifecycleStatus()).isEqualTo(RouteLifecycleStatus.SUPERSEDED);
@@ -207,7 +207,7 @@ class RouteControlIntegrationTest {
     void regenerateCreatesReplacementRouteAndActivatesIt() {
         Fixture f = createFixture();
         RegenerateResult result = routeService.regenerateFromNode(
-                f.project().id(), f.child().id(), "Make it clearer",
+                f.project().id(), f.routeId(), f.child().id(), "Make it clearer",
                 "Better child question", "Better purpose", List.of());
         Route replacementRoute = result.replacementRoute();
         assertThat(replacementRoute.lifecycleStatus()).isEqualTo(RouteLifecycleStatus.OPEN);
@@ -221,7 +221,7 @@ class RouteControlIntegrationTest {
     void regenerateContextIncludesOldQuestionText() {
         Fixture f = createFixture();
         RegenerateResult result = routeService.regenerateFromNode(
-                f.project().id(), f.child().id(), "Make it clearer",
+                f.project().id(), f.routeId(), f.child().id(), "Make it clearer",
                 "Better child question", "Better purpose", List.of());
         assertThat(result.contextSnapshot().specialInputs()).contains("Who is the first user?");
     }
@@ -230,7 +230,7 @@ class RouteControlIntegrationTest {
     void regenerateContextIncludesUserInstruction() {
         Fixture f = createFixture();
         RegenerateResult result = routeService.regenerateFromNode(
-                f.project().id(), f.child().id(), "Make it clearer",
+                f.project().id(), f.routeId(), f.child().id(), "Make it clearer",
                 "Better child question", "Better purpose", List.of());
         assertThat(result.contextSnapshot().specialInputs()).contains("Make it clearer");
     }
@@ -239,7 +239,7 @@ class RouteControlIntegrationTest {
     void regenerateContextExcludesOldAnswer() {
         Fixture f = createFixture();
         RegenerateResult result = routeService.regenerateFromNode(
-                f.project().id(), f.child().id(), "Make it clearer",
+                f.project().id(), f.routeId(), f.child().id(), "Make it clearer",
                 "Better child question", "Better purpose", List.of());
         assertThat(result.contextSnapshot().includedAnswerIds()).doesNotContain(f.a2().id());
     }
@@ -248,7 +248,7 @@ class RouteControlIntegrationTest {
     void regenerateContextExcludesOldPatch() {
         Fixture f = createFixture();
         RegenerateResult result = routeService.regenerateFromNode(
-                f.project().id(), f.child().id(), "Make it clearer",
+                f.project().id(), f.routeId(), f.child().id(), "Make it clearer",
                 "Better child question", "Better purpose", List.of());
         assertThat(result.contextSnapshot().includedPatchIds()).doesNotContain(f.p2().id());
     }
@@ -257,7 +257,7 @@ class RouteControlIntegrationTest {
     void regenerateContextExcludesOldChildSubtree() {
         Fixture f = createFixture();
         RegenerateResult result = routeService.regenerateFromNode(
-                f.project().id(), f.child().id(), "Make it clearer",
+                f.project().id(), f.routeId(), f.child().id(), "Make it clearer",
                 "Better child question", "Better purpose", List.of());
         assertThat(result.contextSnapshot().includedNodeIds()).doesNotContain(f.child().id());
     }
@@ -266,7 +266,7 @@ class RouteControlIntegrationTest {
     void regenerateDoesNotDeleteOldRouteNodesAnswersOrPatches() {
         Fixture f = createFixture();
         routeService.regenerateFromNode(
-                f.project().id(), f.child().id(), "Make it clearer",
+                f.project().id(), f.routeId(), f.child().id(), "Make it clearer",
                 "Better child question", "Better purpose", List.of());
         assertThat(nodeService.getNode(f.child().id())).isPresent();
         assertThat(answerService.getAnswer(f.a2().id())).isPresent();
@@ -278,7 +278,7 @@ class RouteControlIntegrationTest {
     void restoredOldRouteExcludesReplacementContext() {
         Fixture f = createFixture();
         RegenerateResult result = routeService.regenerateFromNode(
-                f.project().id(), f.child().id(), "Make it clearer",
+                f.project().id(), f.routeId(), f.child().id(), "Make it clearer",
                 "Better child question", "Better purpose", List.of());
         routeService.restoreRoute(f.project().id(), f.routeId());
         ContextSnapshot ctx = contextBuilder.buildFromActiveRoute(
@@ -292,7 +292,7 @@ class RouteControlIntegrationTest {
     void fullRouteControlFlow() {
         Fixture f = createFixture();
 
-        Route fork = routeService.forkFromNode(f.project().id(), f.root().id(), "Fork at root");
+        Route fork = routeService.forkFromNode(f.project().id(), f.routeId(), f.root().id(), "Fork at root");
         ContextSnapshot forkCtx = contextBuilder.buildFromActiveRoute(
                 f.project().id(), null, ContextOperationType.FORK);
         assertThat(forkCtx.routeId()).isEqualTo(fork.id());
@@ -301,7 +301,7 @@ class RouteControlIntegrationTest {
         routeService.restoreRoute(f.project().id(), f.routeId());
 
         RegenerateResult regen = routeService.regenerateFromNode(
-                f.project().id(), f.child().id(), "Make it clearer",
+                f.project().id(), f.routeId(), f.child().id(), "Make it clearer",
                 "Better child question", "Better purpose", List.of());
         assertThat(routeService.getRoute(f.routeId()).orElseThrow().lifecycleStatus())
                 .isEqualTo(RouteLifecycleStatus.SUPERSEDED);
@@ -325,7 +325,7 @@ class RouteControlIntegrationTest {
     void regenerateResultCarriesUpdatedOldRouteLifecycle() {
         Fixture f = createFixture();
         RegenerateResult result = routeService.regenerateFromNode(
-                f.project().id(), f.child().id(), "Make it clearer",
+                f.project().id(), f.routeId(), f.child().id(), "Make it clearer",
                 "Better child question", "Better purpose", List.of());
 
         assertThat(result.oldRoute().lifecycleStatus())
@@ -336,7 +336,7 @@ class RouteControlIntegrationTest {
     void regenerateResultCarriesReplacementRouteTip() {
         Fixture f = createFixture();
         RegenerateResult result = routeService.regenerateFromNode(
-                f.project().id(), f.child().id(), "Make it clearer",
+                f.project().id(), f.routeId(), f.child().id(), "Make it clearer",
                 "Better child question", "Better purpose", List.of());
 
         assertThat(result.replacementRoute().tipNodeId())
@@ -347,13 +347,13 @@ class RouteControlIntegrationTest {
     void regenerateContextHashChangesWhenUserInstructionChanges() {
         Fixture f1 = createFixture();
         RegenerateResult result1 = routeService.regenerateFromNode(
-                f1.project().id(), f1.child().id(), "First instruction",
+                f1.project().id(), f1.routeId(), f1.child().id(), "First instruction",
                 "Better child question", "Better purpose", List.of());
         String hash1 = result1.contextSnapshot().contextHash();
 
         Fixture f2 = createFixture();
         RegenerateResult result2 = routeService.regenerateFromNode(
-                f2.project().id(), f2.child().id(), "Different instruction",
+                f2.project().id(), f2.routeId(), f2.child().id(), "Different instruction",
                 "Better child question", "Better purpose", List.of());
         String hash2 = result2.contextSnapshot().contextHash();
 
@@ -365,14 +365,12 @@ class RouteControlIntegrationTest {
         Fixture f = createFixture();
         routeService.archiveRoute(f.project().id(), f.routeId());
 
-        // Create another open route that covers the root node.
-        Route otherRoute = routeService.createRoute(f.project().id(), RouteLifecycleStatus.OPEN, "Other");
-        nodeService.createReplacementNode(f.project().id(), otherRoute.id(), null,
-                f.root().id(), "What are you clarifying?", null, List.of(), true);
-
-        Route fork = routeService.forkFromNode(f.project().id(), f.root().id(), "Fork");
-        Project project = projectService.getProject(f.project().id()).orElseThrow();
-        assertThat(project.activeRouteId()).isEqualTo(fork.id());
+        // An archived explicit source must fail closed; Runtime must not scan
+        // another route that happens to contain a related node.
+        assertThatThrownBy(() -> routeService.forkFromNode(
+                f.project().id(), f.routeId(), f.root().id(), "Fork"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("OPEN");
     }
 
     @Test
@@ -381,7 +379,7 @@ class RouteControlIntegrationTest {
 
         // First regenerate to supersede the active route.
         RegenerateResult first = routeService.regenerateFromNode(
-                f.project().id(), f.child().id(), "First",
+                f.project().id(), f.routeId(), f.child().id(), "First",
                 "Better child question", "Better purpose", List.of());
         assertThat(first.oldRoute().lifecycleStatus()).isEqualTo(RouteLifecycleStatus.SUPERSEDED);
 
@@ -391,7 +389,7 @@ class RouteControlIntegrationTest {
 
         // Regenerate again from the replacement route's tip.
         RegenerateResult second = routeService.regenerateFromNode(
-                f.project().id(), replacementRoute.tipNodeId(), "Second",
+                f.project().id(), replacementRoute.id(), replacementRoute.tipNodeId(), "Second",
                 "Even better question", "Even better purpose", List.of());
 
         // The first replacement route should now be superseded.
@@ -411,7 +409,8 @@ class RouteControlIntegrationTest {
         assertThat(routeService.getRoute(routeId).orElseThrow().tipNodeId())
                 .isEqualTo(grandchild.id());
 
-        Route fork = routeService.forkFromNode(project.id(), child.id(), "Fork from middle");
+        answerService.finalizeAnswer(project.id(), routeId, child.id(), null, "Child answer", "user");
+        Route fork = routeService.forkFromNode(project.id(), routeId, child.id(), "Fork from middle");
 
         assertThat(fork.lifecycleStatus()).isEqualTo(RouteLifecycleStatus.OPEN);
         assertThat(fork.rootNodeId()).isEqualTo(root.id());
@@ -440,7 +439,7 @@ class RouteControlIntegrationTest {
                 .isEqualTo(grandchild.id());
 
         RegenerateResult result = routeService.regenerateFromNode(
-                project.id(), child.id(), "Regenerate middle node",
+                project.id(), originalRouteId, child.id(), "Regenerate middle node",
                 "Replacement child question", "Replacement child purpose", List.of());
 
         assertThat(result.oldRoute().lifecycleStatus()).isEqualTo(RouteLifecycleStatus.SUPERSEDED);

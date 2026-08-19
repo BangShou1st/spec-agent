@@ -146,7 +146,7 @@ function selectSpec(snapshotId: string): void {
 
       <div v-else-if="selectedEdge" class="edge-inspector" data-test="edge-inspector">
         <h3 class="node-inspector__title">{{ selectedEdge.kind === 'replacement' ? '替代关系' : '共享路线边' }}</h3>
-        <p class="meta-text">该物理边不会自动猜测或切换 Focus 路线。</p>
+        <p class="meta-text">该物理边不会自动猜测或切换聚焦路线。</p>
         <p class="meta-text">边：{{ selectedEdge.id }}</p>
         <h4 class="node-inspector__heading">路线成员</h4>
         <ul class="node-inspector__options">

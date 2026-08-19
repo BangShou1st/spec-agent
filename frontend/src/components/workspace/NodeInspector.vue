@@ -2,7 +2,7 @@
 import type { SpecAgentGraphNodeData } from '@/graph/graphProjection'
 
 /**
- * 节点详情检查器（右栏）。只读展示节点问题、目的、全部选项、每条路线的
+ * 节点详情检查器。只读展示节点问题、目的、全部选项、每条路线的
  * 回答/等待状态与路线归属。历史动作只向上发出意图；回答提交永远在 Graph
  * 节点内，这里不提供第二套提交界面。Fork / Regenerate 只在历史节点上提供：
  * 当前待回答节点（canAnswer）保持纯详情，历史动作不作用于等待回答的节点。
@@ -20,6 +20,14 @@ const emit = defineEmits<{
 
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleString()
+}
+
+function branchLabel(branchType: string | null | undefined): string {
+  return {
+    fork: '分支路线',
+    reanswer: '重新选择答案',
+    regenerate: '替代问题',
+  }[branchType ?? ''] ?? branchType ?? ''
 }
 </script>
 
@@ -51,7 +59,7 @@ function formatTime(iso: string): string {
           :key="membership.routeId"
           class="meta-text"
         >
-          {{ membership.routeId }} · {{ membership.branchType }}
+          {{ membership.routeId }} · {{ branchLabel(membership.branchType) }}
           <template v-if="membership.sourceRouteId"> · 来源 {{ membership.sourceRouteId }}</template>
           <template v-if="membership.branchAtNodeId"> · 节点 {{ membership.branchAtNodeId }}</template>
         </p>

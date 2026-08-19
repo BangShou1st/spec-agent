@@ -13,7 +13,6 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -163,23 +162,6 @@ public class RouteService {
         return forkRoute;
     }
 
-    /**
-     * Compatibility entry point retained for existing in-process callers from
-     * the pre-explicit-source API. New API commands must use the overload above
-     * and therefore cannot guess a route for a shared node.
-     */
-    @Deprecated
-    public Route forkFromNode(UUID projectId, UUID sourceNodeId, String label) {
-        Route sourceRoute = findSourceRouteForNode(projectId, sourceNodeId);
-        UUID routeId = Ids.random();
-        Instant now = Instant.now();
-        Route forkRoute = new Route(routeId, projectId, sourceRoute.rootNodeId(), sourceNodeId,
-                RouteLifecycleStatus.OPEN, label, sourceNodeId, null, null, null, now, now);
-        routeRepository.save(forkRoute);
-        projectRepository.updateActiveRoute(projectId, routeId, now);
-        return forkRoute;
-    }
-
     /** Creates a Re-answer route with the target Question waiting again. */
     public Route reanswerFromNode(UUID projectId,
                                   UUID sourceRouteId,
@@ -299,114 +281,6 @@ public class RouteService {
                 updatedReplacementRoute,
                 replacementNode,
                 contextSnapshot);
-    }
-
-    /** Compatibility entry point for pre-explicit-source in-process callers. */
-    @Deprecated
-    public RegenerateResult regenerateFromNode(UUID projectId,
-                                                UUID targetNodeId,
-                                                String userInstruction,
-                                                String replacementQuestion,
-                                                String replacementPurpose,
-                                                List<NodeOption> replacementOptions) {
-        Route sourceRoute = findSourceRouteForNode(projectId, targetNodeId);
-        return regenerateFromNode(projectId, sourceRoute.id(), targetNodeId, userInstruction,
-                replacementQuestion, replacementPurpose, replacementOptions);
-    }
-
-    /**
-     * Finds the source route for a node. Only OPEN routes can be source routes.
-     * First checks the project's active route; if it's OPEN and contains the node,
-     * returns it. Otherwise, scans all OPEN routes in the project and returns the
-     * one whose lineage contains the node. If multiple routes match, the one with
-     * the latest creation time is preferred.
-     *
-     * <p>When checking lineage, this method also considers replacement relationships:
-     * if a route's tip/root has been replaced by another node (via supersedesNodeId),
-     * the original node is still considered part of the lineage for the purpose of
-     * finding a source route.
-     */
-    private Route findSourceRouteForNode(UUID projectId, UUID nodeId) {
-        Project project = projectRepository.findById(projectId)
-                .orElseThrow(() -> new IllegalArgumentException("Project not found: " + projectId));
-
-        // First check if the active route is OPEN and contains the node
-        if (project.activeRouteId() != null) {
-            Route activeRoute = routeRepository.findById(project.activeRouteId())
-                    .orElse(null);
-            if (activeRoute != null
-                    && activeRoute.lifecycleStatus() == RouteLifecycleStatus.OPEN
-                    && lineageContainsWithReplacement(activeRoute, nodeId)) {
-                return activeRoute;
-            }
-        }
-
-        // Scan all OPEN routes in the project
-        List<Route> openRoutes = routeRepository.findByProject(projectId).stream()
-                .filter(r -> r.lifecycleStatus() == RouteLifecycleStatus.OPEN)
-                .sorted(Comparator.comparing(Route::createdAt).reversed())
-                .toList();
-
-        for (Route route : openRoutes) {
-            if (lineageContainsWithReplacement(route, nodeId)) {
-                return route;
-            }
-        }
-
-        throw new IllegalArgumentException(
-                "No OPEN route found that contains node " + nodeId + " in project " + projectId);
-    }
-
-    /**
-     * Checks if a route's lineage contains a given node, considering replacement
-     * relationships. A node is considered part of the lineage if:
-     * 1. It is the root or tip of the route
-     * 2. It is the createdFromNodeId
-     * 3. It is the supersedesNodeId of a node in the lineage (i.e., it has been
-     *    replaced by a node in the lineage)
-     */
-    private boolean lineageContainsWithReplacement(Route route, UUID nodeId) {
-        // First check simple lineage
-        if (lineageContains(route, nodeId)) {
-            return true;
-        }
-
-        // Check if this node has been replaced by a node in the lineage
-        // Walk up from tip to root, checking if any node's supersedesNodeId matches nodeId
-        UUID current = route.tipNodeId();
-        Set<UUID> visited = new HashSet<>();
-        int guard = 0;
-        while (current != null && !visited.contains(current)) {
-            visited.add(current);
-            Node currentNode = nodeRepository.findById(current).orElse(null);
-            if (currentNode != null && nodeId.equals(currentNode.supersedesNodeId())) {
-                return true;
-            }
-            current = currentNode != null ? currentNode.parentNodeId() : null;
-            if (++guard > 10_000) {
-                break;
-            }
-        }
-
-        // Also check root if it's different from the tip lineage
-        if (route.rootNodeId() != null && !route.rootNodeId().equals(route.tipNodeId())) {
-            current = route.rootNodeId();
-            visited.clear();
-            guard = 0;
-            while (current != null && !visited.contains(current)) {
-                visited.add(current);
-                Node currentNode = nodeRepository.findById(current).orElse(null);
-                if (currentNode != null && nodeId.equals(currentNode.supersedesNodeId())) {
-                    return true;
-                }
-                current = currentNode != null ? currentNode.parentNodeId() : null;
-                if (++guard > 10_000) {
-                    break;
-                }
-            }
-        }
-
-        return false;
     }
 
     /**

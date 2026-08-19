@@ -109,7 +109,7 @@ class GraphWorkspaceApiIntegrationTest {
 
         // Fork from the child: shared history nodes are not copied, the fork
         // route points at the same immutable nodes, and no answer is copied.
-        Route fork = routeService.forkFromNode(project.id(), child.id(), "Fork from child");
+        Route fork = routeService.forkFromNode(project.id(), originalRouteId, child.id(), "Fork from child");
         UUID forkRouteId = fork.id();
         assertThat(fork.tipNodeId()).isEqualTo(child.id());
         assertThat(nodeRepository.findByProject(project.id())).hasSize(3);
@@ -155,7 +155,7 @@ class GraphWorkspaceApiIntegrationTest {
         Node grandchild = nodeService.createChildNode(project.id(), oldRouteId, child.id(),
                 "Grandchild question", null, List.of(), true);
 
-        routeService.regenerateFromNode(project.id(), child.id(), "Regenerate instruction",
+        routeService.regenerateFromNode(project.id(), oldRouteId, child.id(), "Regenerate instruction",
                 "Replacement question", "Replacement purpose", List.of(NodeOption.of("R", "r")));
 
         UUID replacementRouteId = projectService.getProject(project.id())

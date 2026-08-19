@@ -187,7 +187,7 @@ class RepairApiIntegrationTest {
                 project.id(), project.activeRouteId(), root.id(), null, "old answer", "user");
 
         // Fork away: the answer's route is no longer the active flow.
-        Route fork = routeService.forkFromNode(project.id(), root.id(), "fork");
+        Route fork = routeService.forkFromNode(project.id(), project.activeRouteId(), root.id(), "fork");
         assertThat(projectService.getProject(project.id()).orElseThrow().activeRouteId())
                 .isEqualTo(fork.id());
 

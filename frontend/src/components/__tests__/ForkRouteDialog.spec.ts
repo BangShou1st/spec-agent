@@ -25,6 +25,7 @@ function mountDialog(overrides: Partial<{
   routes: GraphWorkspaceRouteView[]
   activeRouteId: string | null
   pending: boolean
+  finalizedRouteIds: string[]
 }> = {}) {
   return mount(ForkRouteDialog, {
     props: {
@@ -37,6 +38,7 @@ function mountDialog(overrides: Partial<{
       ],
       activeRouteId: 'r1',
       pending: false,
+      finalizedRouteIds: ['r1', 'r2'],
       ...overrides,
     },
   })
@@ -51,11 +53,11 @@ describe('ForkRouteDialog', () => {
 
   it('allows fork when the selected base route is active and open', async () => {
     const wrapper = mountDialog()
-    // 默认选中 active+open 的 r1
+    await wrapper.findAll('[data-test="fork-base-route"]')[0].setValue()
     expect(wrapper.find('[data-test="fork-submit"]').attributes('disabled')).toBeUndefined()
     await wrapper.find('[data-test="fork-label"]').setValue('新分支')
     await wrapper.find('[data-test="fork-submit"]').trigger('click')
-    expect(wrapper.emitted('submit')?.[0]).toEqual(['新分支'])
+    expect(wrapper.emitted('submit')?.[0]).toEqual(['r1', '新分支'])
   })
 
   it('blocks open-but-not-active base routes with an explicit prerequisite', async () => {
@@ -87,10 +89,11 @@ describe('ForkRouteDialog', () => {
     expect(wrapper.find('[data-test="fork-dialog"]').exists()).toBe(true)
   })
 
-  it('never sends a base route id in the payload', async () => {
+  it('always sends the explicitly selected base route id', async () => {
     const wrapper = mountDialog()
+    await wrapper.findAll('[data-test="fork-base-route"]')[0].setValue()
     await wrapper.find('[data-test="fork-submit"]').trigger('click')
-    expect(wrapper.emitted('submit')?.[0]).toEqual([null])
+    expect(wrapper.emitted('submit')?.[0]).toEqual(['r1', null])
   })
 
   it('close emits without submitting', async () => {

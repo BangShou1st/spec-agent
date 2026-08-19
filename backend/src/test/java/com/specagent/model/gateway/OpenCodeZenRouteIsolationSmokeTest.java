@@ -135,7 +135,7 @@ class OpenCodeZenRouteIsolationSmokeTest {
         UUID r1RouteId = rootRun.run().routeId();
 
         // Fork from the root; the fork route becomes active.
-        Route fork = routeService.forkFromNode(project.id(), root.id(), "Fork at root");
+        Route fork = routeService.forkFromNode(project.id(), r1RouteId, root.id(), "Fork at root");
         UUID r2RouteId = fork.id();
         System.out.println("fork: R1=" + r1RouteId + " -> R2=" + r2RouteId);
 

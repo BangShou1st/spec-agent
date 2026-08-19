@@ -59,9 +59,12 @@ class FakeFullLoopContextIsolationIntegrationTest {
         UUID originalRouteId = project.activeRouteId();
         FakeAgentRunResult first = fakeAgentOrchestrator.draftNextQuestion(project.id());
         UUID node1 = first.producedNode().id();
+        FakeAnswerRunResult firstAnswer = fakeAgentOrchestrator.answerActiveNodeAndDraftNext(
+                project.id(), "main route answer");
+        assertThat(firstAnswer.answer().nodeId()).isEqualTo(node1);
 
         // Fork a sibling route from node1; the fork becomes active.
-        Route forkRoute = routeService.forkFromNode(project.id(), node1, "sibling route");
+        Route forkRoute = routeService.forkFromNode(project.id(), originalRouteId, node1, "sibling route");
 
         // Create answer + patch on the sibling route only.
         Node siblingNode = nodeService.createChildNode(project.id(), forkRoute.id(), node1,
@@ -105,7 +108,7 @@ class FakeFullLoopContextIsolationIntegrationTest {
 
         // Regenerate node2: old route SUPERSEDED, replacement route active.
         RegenerateResult regenerated = routeService.regenerateFromNode(
-                project.id(), node2, "make it clearer",
+                project.id(), first.run().routeId(), node2, "make it clearer",
                 "What is the clarified outcome?", "clarifies", List.of());
         UUID replacementRouteId = regenerated.replacementRoute().id();
         UUID replacementNodeId = regenerated.replacementNode().id();

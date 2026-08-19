@@ -1,5 +1,10 @@
 import { test, expect } from '@playwright/test'
-import { buildThreeNodeLineage, createProject, fitGraph } from './helpers'
+import {
+  buildThreeNodeLineage,
+  closeFloatingWorkspaceWindows,
+  createProject,
+  fitGraph,
+} from './helpers'
 
 /**
  * Graph layout behavior: header-only drag with live edges, position
@@ -9,6 +14,7 @@ import { buildThreeNodeLineage, createProject, fitGraph } from './helpers'
 test('drag by the title handle persists graph coordinates after reload', async ({ page }) => {
   await createProject(page, 'E2E Layout Drag')
   await buildThreeNodeLineage(page)
+  await closeFloatingWorkspaceWindows(page)
   await fitGraph(page)
 
   const rootNode = page.locator('[data-test="graph-question-node"]').first()
@@ -25,7 +31,7 @@ test('drag by the title handle persists graph coordinates after reload', async (
   const hb = (await handle.boundingBox()) ?? { x: 0, y: 0 }
   await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2)
   await page.mouse.down()
-  await page.mouse.move(hb.x + 220, hb.y + 90, { steps: 12 })
+  await page.mouse.move(hb.x + hb.width / 2 + 220, hb.y + hb.height / 2, { steps: 12 })
   await page.mouse.up()
 
   const after = await rootNode.boundingBox()
@@ -55,6 +61,7 @@ test('drag by the title handle persists graph coordinates after reload', async (
 test('ctrl/cmd multi-select moves the whole group by the same delta', async ({ page }) => {
   await createProject(page, 'E2E Group Move')
   await buildThreeNodeLineage(page)
+  await closeFloatingWorkspaceWindows(page)
   await fitGraph(page)
   const nodes = page.locator('[data-test="graph-question-node"]')
 
@@ -74,7 +81,7 @@ test('ctrl/cmd multi-select moves the whole group by the same delta', async ({ p
   const hb = (await handle.boundingBox()) ?? { x: 0, y: 0 }
   await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2)
   await page.mouse.down()
-  await page.mouse.move(hb.x + 160, hb.y + 60, { steps: 10 })
+  await page.mouse.move(hb.x + hb.width / 2 + 160, hb.y + hb.height / 2, { steps: 10 })
   await page.mouse.up()
 
   const box0After = await nodes.nth(0).boundingBox()
@@ -92,6 +99,7 @@ test('ctrl/cmd multi-select moves the whole group by the same delta', async ({ p
 test('toolbar zoom/fit and auto-layout stay browser-only', async ({ page }) => {
   await createProject(page, 'E2E Toolbar')
   await buildThreeNodeLineage(page)
+  await closeFloatingWorkspaceWindows(page)
 
   await page.getByTestId('zoom-in').click()
   await page.getByTestId('zoom-out').click()
@@ -113,6 +121,7 @@ test('toolbar zoom/fit and auto-layout stay browser-only', async ({ page }) => {
 test('adaptive edge anchors: invisible four-side handles + curved rerouting across a quadrant drag', async ({ page }) => {
   await createProject(page, 'E2E Adaptive Edges')
   await buildThreeNodeLineage(page)
+  await closeFloatingWorkspaceWindows(page)
   await fitGraph(page)
 
   // 每个节点渲染 8 个不可见锚点（source/target × 左/右/上/下）。
@@ -168,6 +177,7 @@ test('adaptive edge anchors: invisible four-side handles + curved rerouting acro
 test('fork preserves existing visual positions while adding only a new visual child', async ({ page }) => {
   await createProject(page, 'E2E Stable Node Footprint')
   await buildThreeNodeLineage(page)
+  await closeFloatingWorkspaceWindows(page)
   await fitGraph(page)
   const root = page.locator('[data-test="graph-question-node"]').nth(0)
   const child = page.locator('[data-test="graph-question-node"]').nth(1)

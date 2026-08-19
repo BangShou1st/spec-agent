@@ -172,7 +172,10 @@ class ModelContextProjectionBuilderTest {
         FakeAgentRunResult first = fakeAgentOrchestrator.draftNextQuestion(project.id());
         UUID node1 = first.producedNode().id();
 
-        Route forkRoute = routeService.forkFromNode(project.id(), node1, "sibling route");
+        answerService.finalizeAnswer(
+                project.id(), originalRouteId, node1, null, "main route answer", "user");
+
+        Route forkRoute = routeService.forkFromNode(project.id(), originalRouteId, node1, "sibling route");
         Node siblingNode = nodeService.createChildNode(project.id(), forkRoute.id(), node1,
                 "Sibling question?", "sibling purpose", List.of(), true);
         Answer siblingAnswer = answerService.finalizeAnswer(
@@ -211,7 +214,7 @@ class ModelContextProjectionBuilderTest {
         // below it must vanish from the projection; only the parent lineage
         // (node1 and its answer) remains, plus the allowed special inputs.
         RegenerateResult regenerated = routeService.regenerateFromNode(
-                project.id(), node2, REGENERATE_SECRET_CLAIM,
+                project.id(), secondAnswer.run().routeId(), node2, REGENERATE_SECRET_CLAIM,
                 "What is the clarified outcome?", "clarifies", List.of());
         ContextSnapshot snapshot = regenerated.contextSnapshot();
 

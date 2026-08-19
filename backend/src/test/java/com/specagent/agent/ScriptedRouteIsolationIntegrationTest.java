@@ -97,7 +97,7 @@ class ScriptedRouteIsolationIntegrationTest {
 
         // Fork from the root: a new active route R2 whose context is only the
         // shared root lineage; R1 nodes, answers, and patches are excluded.
-        Route fork = routeService.forkFromNode(project.id(), root.id(), "Fork at root");
+        Route fork = routeService.forkFromNode(project.id(), r1RouteId, root.id(), "Fork at root");
         UUID r2RouteId = fork.id();
 
         int forkPoint = captured.size();
@@ -106,9 +106,8 @@ class ScriptedRouteIsolationIntegrationTest {
                 .producedNode();
         assertThat(b.parentNodeId()).isEqualTo(root.id());
 
-        // Envelope-level exclusion: none of the fork requests may see the
-        // sibling sentinel, the R1-only nodes, or the R1 root answer/patch
-        // (which belong to the superseded side of the fork).
+        // Envelope-level isolation: fork requests may see the frozen R1 root
+        // prefix, but never the sibling-only nodes or sentinel.
         List<ModelRequest> forkRequests = captured.subList(forkPoint, captured.size());
         assertThat(forkRequests).isNotEmpty();
         for (ModelRequest request : forkRequests) {
@@ -117,10 +116,11 @@ class ScriptedRouteIsolationIntegrationTest {
                     .doesNotContain(SIBLING_SENTINEL)
                     .doesNotContain("node:" + a.id())
                     .doesNotContain("node:" + a2.id())
-                    .doesNotContain("answer:" + rootRun.answer().id())
-                    .doesNotContain("patch:" + rootRun.patch().id())
                     .doesNotContain("route:" + r1RouteId);
         }
+        assertThat(forkRequests).allSatisfy(request -> assertThat(request.inputJson())
+                .contains("answer:" + rootRun.answer().id())
+                .contains("patch:" + rootRun.patch().id()));
 
         // Spec on the fork route: every source ref stays inside the frozen
         // context of R2 and never points at R1 records.
@@ -157,7 +157,7 @@ class ScriptedRouteIsolationIntegrationTest {
         Node child = targetRun.producedNode();
 
         RegenerateResult regen = routeService.regenerateFromNode(
-                project.id(), target.id(), REGEN_INSTRUCTION,
+                project.id(), targetRun.run().routeId(), target.id(), REGEN_INSTRUCTION,
                 "A sharper replacement question", "A sharper purpose",
                 List.of(NodeOption.of("Option label", "Option impact")));
 
@@ -194,7 +194,7 @@ class ScriptedRouteIsolationIntegrationTest {
         Node a = r1Run.producedNode();
         UUID r1RouteId = r1Run.run().routeId();
 
-        routeService.forkFromNode(project.id(), root.id(), "Fork at root");
+        routeService.forkFromNode(project.id(), r1RouteId, root.id(), "Fork at root");
         routeService.archiveRoute(project.id(), r1RouteId);
 
         int forkPoint = captured.size();

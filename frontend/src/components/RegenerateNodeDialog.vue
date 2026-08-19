@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import type { GraphWorkspaceNodeView, GraphWorkspaceRouteView, RegenerateNodeRequest } from '@/api/types'
+import type { GraphWorkspaceNodeView, GraphWorkspaceRouteView, RegenerateNodeRequest, RouteLifecycleStatus } from '@/api/types'
 
 /**
- * 重新生成这个问题（确定性）对话框。打开时用所选历史节点的内容预填替代
+ * 创建替代问题（确定性）对话框。打开时用所选历史节点的内容预填替代
  * 问题、目的与替代选项 label/impact——只复制用户可控内容。旧选项 id 永远
  * 不会被复制进请求；运行时生成新 id。不调用任何模型。
  */
@@ -11,7 +11,7 @@ const props = defineProps<{
   open: boolean
   node: GraphWorkspaceNodeView | null
   pending: boolean
-  routes?: GraphWorkspaceRouteView[]
+  routes: GraphWorkspaceRouteView[]
 }>()
 
 const emit = defineEmits<{
@@ -30,7 +30,11 @@ const purpose = ref('')
 const options = ref<EditableOption[]>([])
 const sourceRouteId = ref<string | null>(null)
 
-const sourceRoutes = computed(() => props.node && props.routes
+function lifecycleLabel(status: RouteLifecycleStatus): string {
+  return { open: '开放', superseded: '已替代', archived: '已归档', deleted: '已删除' }[status]
+}
+
+const sourceRoutes = computed(() => props.node
   ? props.routes.filter((route) => route.lineageNodeIds.includes(props.node!.id))
   : [])
 
@@ -67,9 +71,9 @@ const canSubmit = computed<boolean>(() => {
   if (props.pending || isRootNode.value || questionError.value !== null) {
     return false
   }
-  if (props.routes && (sourceRoutes.value.length === 0
+  if (sourceRoutes.value.length === 0
     || sourceRouteId.value === null
-    || sourceRoutes.value.find((route) => route.id === sourceRouteId.value)?.lifecycleStatus !== 'open')) return false
+    || sourceRoutes.value.find((route) => route.id === sourceRouteId.value)?.lifecycleStatus !== 'open') return false
   return !optionErrors.value.some(Boolean)
 })
 
@@ -82,10 +86,11 @@ function removeOption(index: number): void {
 }
 
 function submit(): void {
-  if (!canSubmit.value) {
+  if (!canSubmit.value || !sourceRouteId.value) {
     return
   }
-  const payload = {
+  const payload: RegenerateNodeRequest = {
+    sourceRouteId: sourceRouteId.value,
     instruction: instruction.value.trim().length > 0 ? instruction.value.trim() : null,
     replacementQuestion: question.value.trim(),
     replacementPurpose: purpose.value.trim().length > 0 ? purpose.value.trim() : null,
@@ -93,30 +98,29 @@ function submit(): void {
       label: option.label.trim(),
       impact: option.impact.trim().length > 0 ? option.impact.trim() : null,
     })),
-  } as RegenerateNodeRequest
-  if (sourceRouteId.value) payload.sourceRouteId = sourceRouteId.value
+  }
   emit('submit', payload)
 }
 </script>
 
 <template>
   <div v-if="open" class="dialog-backdrop" data-test="regenerate-dialog">
-    <div class="dialog" role="dialog" aria-modal="true" aria-label="重新生成这个问题">
-      <h3 style="margin-top: 0">重新生成这个问题</h3>
+    <div class="dialog" role="dialog" aria-modal="true" aria-label="替换这个问题">
+      <h3 style="margin-top: 0">替换这个问题</h3>
       <p class="muted" style="margin-top: 0">
         创建替代节点和新的当前路线。旧路线变为已替代。不调用任何模型——以下内容全部是确定性的。
       </p>
 
       <p v-if="isRootNode" class="info-line regenerate-blocker" data-test="regenerate-root-blocker">
-        根问题暂不支持重新生成。
+        根问题暂不支持替换。
       </p>
 
-      <fieldset v-if="routes" class="regenerate-source-routes">
+      <fieldset class="regenerate-source-routes">
         <legend class="secondary">明确选择来源路线</legend>
         <label v-for="route in sourceRoutes" :key="route.id" class="fork-base-route">
           <input v-model="sourceRouteId" type="radio" name="regenerate-source-route" :value="route.id" data-test="regenerate-source-route" />
           <span>{{ route.label ?? route.id.slice(0, 8) }}</span>
-          <span class="badge" :class="`badge-${route.lifecycleStatus}`">{{ route.lifecycleStatus }}</span>
+          <span class="badge" :class="`badge-${route.lifecycleStatus}`">{{ lifecycleLabel(route.lifecycleStatus) }}</span>
         </label>
       </fieldset>
 
@@ -196,7 +200,7 @@ function submit(): void {
           :disabled="!canSubmit"
           @click="submit"
         >
-          {{ pending ? '正在重新生成…' : '重新生成' }}
+          {{ pending ? '正在创建替代问题…' : '创建替代问题' }}
         </button>
         <button class="btn" type="button" data-test="regenerate-cancel" :disabled="pending" @click="emit('close')">
           取消

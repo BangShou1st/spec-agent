@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import RegenerateNodeDialog from '@/components/RegenerateNodeDialog.vue'
 import { makeRouteLineageNode } from '@/test/fixtures'
+import type { GraphWorkspaceRouteView } from '@/api/types'
 
 const nodeWithOptions = () =>
   makeRouteLineageNode({
@@ -16,7 +17,19 @@ const nodeWithOptions = () =>
   })
 
 function mountDialog(node: ReturnType<typeof makeRouteLineageNode> | null = nodeWithOptions(), pending = false) {
-  return mount(RegenerateNodeDialog, { props: { open: true, node, pending } })
+  const route: GraphWorkspaceRouteView = {
+    id: 'route-1',
+    label: 'Current route',
+    lifecycleStatus: 'open',
+    isActive: true,
+    rootNodeId: 'lnode-1',
+    tipNodeId: node?.id ?? 'lnode-2',
+    createdFromNodeId: null,
+    supersedesRouteId: null,
+    replacementOfNodeId: null,
+    lineageNodeIds: ['lnode-1', 'lnode-2'],
+  }
+  return mount(RegenerateNodeDialog, { props: { open: true, node, pending, routes: [route] } })
 }
 
 describe('RegenerateNodeDialog', () => {
@@ -52,7 +65,9 @@ describe('RegenerateNodeDialog', () => {
       'replacementOptions',
       'replacementPurpose',
       'replacementQuestion',
+      'sourceRouteId',
     ])
+    expect((payload as { sourceRouteId: string }).sourceRouteId).toBe('route-1')
   })
 
   it('allows editing instruction, question, purpose, labels, and impacts', async () => {
