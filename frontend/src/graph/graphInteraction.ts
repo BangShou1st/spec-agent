@@ -7,11 +7,11 @@
  * resolve it without guessing.
  */
 export function resolveRouteFocusIntent(
-  routeIds: readonly string[],
+  visibleRouteIds: readonly string[],
   currentFocusRouteId: string | null,
   activeRouteId: string | null,
 ): string | null {
-  const uniqueRouteIds = [...new Set(routeIds)]
+  const uniqueRouteIds = [...new Set(visibleRouteIds)]
   if (uniqueRouteIds.length === 1) {
     return uniqueRouteIds[0]
   }

@@ -67,6 +67,7 @@ function currentData(overrides: Partial<SpecAgentGraphNodeData> = {}): SpecAgent
   return {
     node: nodeData(),
     routeIds: ['r1'],
+    visibleRouteIds: ['r1'],
     answers: [],
     routeStates: [],
     primaryAnswer: null,
@@ -84,6 +85,7 @@ function historicalData(overrides: Partial<SpecAgentGraphNodeData> = {}): SpecAg
   return {
     node: nodeData({ parentNodeId: 'n0' }),
     routeIds: ['r1', 'r2'],
+    visibleRouteIds: ['r1', 'r2'],
     answers: [
       answer('r1', { selectedOptionId: 'opt-a', selectedOptionLabel: 'Product team', freeText: 'Keep this exact user answer.', isPrimary: true }),
       answer('r2', { freeText: 'Second route answer.' }),
@@ -252,6 +254,7 @@ describe('shared node route-specific waiting state', () => {
     return {
       node: nodeData({ parentNodeId: 'n0' }),
       routeIds: ['r1', 'r2'],
+      visibleRouteIds: ['r1', 'r2'],
       answers: [
         answer('r1', { freeText: 'A answer on shared node.', isPrimary: false }),
       ],

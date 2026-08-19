@@ -32,7 +32,12 @@ function mountEdge(data: SpecAgentGraphEdgeData) {
 
 describe('AdaptiveGraphEdge', () => {
   it('renders a restrained cubic curve and passes the marker through', () => {
-    const wrapper = mountEdge({ kind: 'lineage', routeIds: ['r1'], visualWeight: 'focus' })
+    const wrapper = mountEdge({
+      kind: 'lineage',
+      routeIds: ['r1'],
+      visibleRouteIds: ['r1'],
+      visualWeight: 'focus',
+    })
     const path = wrapper.find('[data-test="adaptive-graph-edge"]')
     expect(path.attributes('d')).toContain('C')
     expect(path.attributes('marker-end')).toBe('url(#arrow)')
@@ -40,7 +45,12 @@ describe('AdaptiveGraphEdge', () => {
   })
 
   it('keeps replacement warning and dashed presentation on the custom path', () => {
-    const wrapper = mountEdge({ kind: 'replacement', routeIds: ['r1'], visualWeight: 'dimmed' })
+    const wrapper = mountEdge({
+      kind: 'replacement',
+      routeIds: ['r1'],
+      visibleRouteIds: ['r1'],
+      visualWeight: 'dimmed',
+    })
     const path = wrapper.find('[data-test="adaptive-graph-edge"]')
     expect(path.classes()).toEqual(expect.arrayContaining([
       'graph-edge--replacement',

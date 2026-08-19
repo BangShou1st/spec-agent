@@ -201,41 +201,6 @@ watch(
   },
 )
 
-// A route fork/restore can change the visible graph without changing the
-// active node id. Refit the graph into the unobscured reading corridor so the
-// newly shared history is not left underneath either floating sidebar.
-watch(
-  () => props.view?.routes.length ?? 0,
-  (routeCount, previousRouteCount) => {
-    if (!props.view || previousRouteCount === undefined || previousRouteCount === 0) {
-      return
-    }
-    if (routeCount !== previousRouteCount) {
-      scheduleReadableFit()
-    }
-  },
-  { flush: 'post' },
-)
-
-watch(
-  () => props.view?.nodes.length ?? 0,
-  (nodeCount, previousNodeCount) => {
-    if (!props.view || previousNodeCount === undefined || previousNodeCount === 0) {
-      return
-    }
-    if (nodeCount > previousNodeCount) {
-      scheduleReadableFit()
-    }
-  },
-  { flush: 'post' },
-)
-
-function scheduleReadableFit(): void {
-  void nextTick(() => {
-    window.setTimeout(() => manualFitView(true), 0)
-  })
-}
-
 /** Converts current flow nodes into viewport inputs (measured size when known). */
 function collectViewportNodes(ids?: Set<string> | null): ViewportNode[] {
   const result: ViewportNode[] = []
@@ -449,9 +414,10 @@ function onNodeClick(event: NodeMouseEvent): void {
     return
   }
   graphUi.selectNode(event.node.id)
-  const routeIds = (event.node.data as { routeIds?: string[] } | undefined)?.routeIds ?? []
+  const visibleRouteIds =
+    (event.node.data as { visibleRouteIds?: string[] } | undefined)?.visibleRouteIds ?? []
   const intent = resolveRouteFocusIntent(
-    routeIds,
+    visibleRouteIds,
     graphUi.focusRouteId,
     props.view?.activeRouteId ?? null,
   )
@@ -462,9 +428,10 @@ function onNodeClick(event: NodeMouseEvent): void {
 
 /** Edge clicks use the same deterministic route resolution as nodes. */
 function onEdgeClick(event: EdgeMouseEvent): void {
-  const routeIds = (event.edge.data as { routeIds?: string[] } | undefined)?.routeIds ?? []
+  const visibleRouteIds =
+    (event.edge.data as { visibleRouteIds?: string[] } | undefined)?.visibleRouteIds ?? []
   const intent = resolveRouteFocusIntent(
-    routeIds,
+    visibleRouteIds,
     graphUi.focusRouteId,
     props.view?.activeRouteId ?? null,
   )

@@ -290,6 +290,71 @@ describe('graph canvas', () => {
     }
   })
 
+  it('adding a new node does not trigger an automatic whole-graph fit', async () => {
+    vi.useFakeTimers()
+    try {
+      const current = viewWithNodes()
+      const wrapper = mountCanvas(current)
+      const vf = useVueFlow('spec-agent-graph-canvas')
+      setCanvasSize(vf)
+      const setViewport = vi.spyOn(vf, 'setViewport').mockResolvedValue(true)
+      const nextView = {
+        ...current,
+        routes: current.routes.map((route) =>
+          route.id === 'r2'
+            ? {
+                ...route,
+                tipNodeId: 'n3',
+                lineageNodeIds: [...route.lineageNodeIds, 'n3'],
+              }
+            : route,
+        ),
+        nodes: [
+          ...current.nodes,
+          makeNode({ id: 'n3', projectId: PROJECT_ID, parentNodeId: 'n2' }),
+        ],
+      }
+      await wrapper.setProps({ view: nextView })
+      await nextTick()
+      vi.runAllTimers()
+      expect(setViewport).not.toHaveBeenCalled()
+      expect(useGraphUiStore().nodePositions.n1).toEqual({ x: 0, y: 0 })
+      expect(useGraphUiStore().nodePositions.n2).toEqual({ x: HORIZONTAL_GAP, y: 0 })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('changing route count does not trigger an automatic whole-graph fit', async () => {
+    vi.useFakeTimers()
+    try {
+      const current = viewWithNodes()
+      const wrapper = mountCanvas(current)
+      const vf = useVueFlow('spec-agent-graph-canvas')
+      setCanvasSize(vf)
+      const setViewport = vi.spyOn(vf, 'setViewport').mockResolvedValue(true)
+      await wrapper.setProps({
+        view: {
+          ...current,
+          routes: [
+            ...current.routes,
+            {
+              ...current.routes[1],
+              id: 'r3',
+              label: 'Third route',
+              isActive: false,
+            },
+          ],
+        },
+      })
+      await nextTick()
+      vi.runAllTimers()
+      expect(setViewport).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('an explicit fit-view cancels the pending reveal so the user action wins', async () => {
     vi.useFakeTimers()
     try {
@@ -317,7 +382,7 @@ describe('graph canvas', () => {
     }
   })
 
-  it('toolbar fit-view uses the deterministic setViewport path, never fitView', async () => {
+  it('toolbar fit-view uses the explicit overlay-aware readable viewport', async () => {
     const wrapper = mountCanvas(viewWithNodes())
     const vf = useVueFlow('spec-agent-graph-canvas')
     setCanvasSize(vf)
@@ -366,7 +431,7 @@ describe('graph canvas', () => {
     const flow = wrapper.findComponent(VueFlowStub)
     flow.vm.$emit('node-click', {
       event: new MouseEvent('click'),
-      node: { id: 'n2', data: { routeIds: ['r2'] } },
+      node: { id: 'n2', data: { routeIds: ['r2'], visibleRouteIds: ['r2'] } },
     })
     const ui = useGraphUiStore()
     expect(ui.primarySelectedNodeId).toBe('n2')
@@ -380,32 +445,32 @@ describe('graph canvas', () => {
     const flow = wrapper.findComponent(VueFlowStub)
     flow.vm.$emit('node-click', {
       event: new MouseEvent('click', { ctrlKey: true }),
-      node: { id: 'n2', data: { routeIds: ['r1'] } },
+      node: { id: 'n2', data: { routeIds: ['r1'], visibleRouteIds: ['r1'] } },
     })
     expect(ui.focusRouteId).toBe('r2')
     flow.vm.$emit('node-click', {
       event: new MouseEvent('click', { shiftKey: true }),
-      node: { id: 'n1', data: { routeIds: ['r1', 'r2'] } },
+      node: { id: 'n1', data: { routeIds: ['r1', 'r2'], visibleRouteIds: ['r1', 'r2'] } },
     })
     expect(ui.focusRouteId).toBe('r2')
   })
 
   it('shared node and edge clicks resolve Focus without activating Runtime', () => {
-    const wrapper = mountCanvas(viewWithNodes())
+    const wrapper = mountCanvas(viewWithNodes({ activeRouteId: 'r3' }))
     const ui = useGraphUiStore()
     const flow = wrapper.findComponent(VueFlowStub)
     flow.vm.$emit('node-click', {
       event: new MouseEvent('click'),
-      node: { id: 'n1', data: { routeIds: ['r1', 'r2'] } },
+      node: { id: 'n1', data: { routeIds: ['r1', 'r2'], visibleRouteIds: ['r1'] } },
     })
     expect(ui.focusRouteId).toBe('r1')
     ui.clearFocusRoute()
     flow.vm.$emit('edge-click', {
       event: new MouseEvent('click'),
-      edge: { data: { routeIds: ['r2'] } },
+      edge: { data: { routeIds: ['r1', 'r2'], visibleRouteIds: ['r2'] } },
     })
     expect(ui.focusRouteId).toBe('r2')
-    expect(wrapper.props('view')).toMatchObject({ activeRouteId: 'r1' })
+    expect(wrapper.props('view')).toMatchObject({ activeRouteId: 'r3' })
   })
 
   it('pane click clears both selection and browser Focus', () => {

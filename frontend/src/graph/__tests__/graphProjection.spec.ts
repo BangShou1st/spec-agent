@@ -134,6 +134,7 @@ describe('graph projection', () => {
     expect(edge).toBeDefined()
     expect(edge?.data?.kind).toBe('lineage')
     expect(edge?.data?.routeIds).toEqual([ACTIVE_ROUTE_ID, ROUTE_B_ID, ROUTE_C_ID])
+    expect(edge?.data?.visibleRouteIds).toEqual([ACTIVE_ROUTE_ID, ROUTE_B_ID, ROUTE_C_ID])
   })
 
   it('focus route answer outranks the active route answer', () => {
@@ -161,6 +162,23 @@ describe('graph projection', () => {
     expect(ids).not.toContain('d')
     expect(ids).toContain('a')
     expect(ids).toContain('b')
+    const aData = result.nodes.find((n) => n.id === 'a')?.data as SpecAgentGraphNodeData
+    expect(aData.routeIds).toEqual([ACTIVE_ROUTE_ID, ROUTE_B_ID, ROUTE_C_ID, ROUTE_D_ID])
+    expect(aData.visibleRouteIds).toEqual([ACTIVE_ROUTE_ID, ROUTE_C_ID, ROUTE_D_ID])
+    expect(aData.routeMembership?.map((membership) => membership.routeId)).toEqual([
+      ACTIVE_ROUTE_ID,
+      ROUTE_C_ID,
+      ROUTE_D_ID,
+    ])
+    expect(result.edges.find((e) => e.id === 'a->b')?.data?.routeIds).toEqual([
+      ACTIVE_ROUTE_ID,
+      ROUTE_B_ID,
+      ROUTE_C_ID,
+    ])
+    expect(result.edges.find((e) => e.id === 'a->b')?.data?.visibleRouteIds).toEqual([
+      ACTIVE_ROUTE_ID,
+      ROUTE_C_ID,
+    ])
   })
 
   it('archived filter off removes e while shared nodes remain', () => {
@@ -172,6 +190,18 @@ describe('graph projection', () => {
     expect(ids).toContain('b')
     // bprime belongs to the open replacement route and stays visible.
     expect(ids).toContain('bprime')
+    const aData = result.nodes.find((n) => n.id === 'a')?.data as SpecAgentGraphNodeData
+    expect(aData.routeIds).toEqual([ACTIVE_ROUTE_ID, ROUTE_B_ID, ROUTE_C_ID, ROUTE_D_ID])
+    expect(aData.visibleRouteIds).toEqual([ACTIVE_ROUTE_ID, ROUTE_B_ID, ROUTE_D_ID])
+    expect(aData.routeMembership?.map((membership) => membership.routeId)).toEqual([
+      ACTIVE_ROUTE_ID,
+      ROUTE_B_ID,
+      ROUTE_D_ID,
+    ])
+    expect(result.edges.find((e) => e.id === 'a->b')?.data?.visibleRouteIds).toEqual([
+      ACTIVE_ROUTE_ID,
+      ROUTE_B_ID,
+    ])
   })
 
   it('manual hidden state can never hide active-route elements', () => {
@@ -210,6 +240,7 @@ describe('graph projection', () => {
     expect(repl?.target).toBe('bprime')
     expect(repl?.data?.kind).toBe('replacement')
     expect(repl?.data?.routeIds).toEqual([ROUTE_D_ID])
+    expect(repl?.data?.visibleRouteIds).toEqual([ROUTE_D_ID])
     // lineage a->bprime exists for the replacement route D
     const lineage = result.edges.find((e) => e.id === 'a->bprime')
     expect(lineage?.data?.routeIds).toEqual([ROUTE_D_ID])

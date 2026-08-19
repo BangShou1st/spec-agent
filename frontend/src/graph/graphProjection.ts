@@ -40,7 +40,10 @@ export interface GraphRouteMembershipPresentation {
 
 export interface SpecAgentGraphNodeData {
   node: GraphWorkspaceNodeView
+  /** Canonical route membership, independent of current presentation filters. */
   routeIds: string[]
+  /** Route membership currently visible in the projected graph. */
+  visibleRouteIds: string[]
   answers: GraphAnswerPresentation[]
   /**
    * Route-specific state for EVERY member route (in membership order):
@@ -62,7 +65,10 @@ export interface SpecAgentGraphNodeData {
 
 export interface SpecAgentGraphEdgeData {
   kind: 'lineage' | 'replacement'
+  /** Canonical route membership, independent of current presentation filters. */
   routeIds: string[]
+  /** Route membership currently visible in the projected graph. */
+  visibleRouteIds: string[]
   visualWeight: GraphVisualWeight
 }
 
@@ -333,6 +339,7 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
       const data: SpecAgentGraphNodeData = {
         node,
         routeIds,
+        visibleRouteIds: routeIds.filter((routeId) => visibleRouteIds.has(routeId)),
         answers: answers.map((a) => ({ ...a, isPrimary: a === primary })),
         routeStates: statesByNode.get(node.id) ?? [],
         primaryAnswer: primary,
@@ -403,6 +410,7 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
         data: {
           kind: 'lineage',
           routeIds: [...edge.routeIds],
+          visibleRouteIds: edge.routeIds.filter((routeId) => visibleRouteIds.has(routeId)),
           visualWeight: routeVisualWeight(
             edge.routeIds,
             activeRouteId,
@@ -427,6 +435,7 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
       visibleNodeIds.has(node.supersedesNodeId)
     ) {
       const routeIds = membership.get(node.id) ?? []
+      const edgeVisibleRouteIds = routeIds.filter((routeId) => visibleRouteIds.has(routeId))
       const handles = selectHandles(node.supersedesNodeId, node.id)
       edges.push({
         id: 'replacement:' + node.supersedesNodeId + '->' + node.id,
@@ -440,6 +449,7 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
         data: {
           kind: 'replacement',
           routeIds: [...routeIds],
+          visibleRouteIds: edgeVisibleRouteIds,
           visualWeight: routeVisualWeight(
             routeIds,
             activeRouteId,

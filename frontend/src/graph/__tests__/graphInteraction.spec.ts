@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { resolveRouteFocusIntent } from '@/graph/graphInteraction'
 
 describe('resolveRouteFocusIntent', () => {
-  it('focuses the only route on an exclusive element', () => {
+  it('focuses the only visible route on an element whose canonical membership is shared', () => {
+    // The caller supplies presentation membership here; canonical routeIds
+    // remain available on the graph element but are not used for Focus.
     expect(resolveRouteFocusIntent(['A'], null, 'C')).toBe('A')
   })
 

@@ -111,6 +111,7 @@ describe('workspace inspector', () => {
     const nodeData = {
       node: makeNode({ id: 'n1', question: 'Selection question' }),
       routeIds: ['rA'],
+      visibleRouteIds: ['rA'],
       answers: [],
       routeStates: [{ routeId: 'rA', answer: null }],
       primaryAnswer: null,
@@ -130,6 +131,7 @@ describe('workspace inspector', () => {
     const nodeData = {
       node: makeNode({ id: 'n1', question: 'Selection question' }),
       routeIds: ['rA'],
+      visibleRouteIds: ['rA'],
       answers: [],
       routeStates: [{ routeId: 'rA', answer: null }],
       primaryAnswer: null,
@@ -158,6 +160,7 @@ describe('workspace inspector', () => {
     const nodeData = {
       node: makeNode({ id: 'n1', question: 'Shared node question' }),
       routeIds: ['rA', 'rB'],
+      visibleRouteIds: ['rA', 'rB'],
       answers: [
         { routeId: 'rA', selectedOptionId: null, selectedOptionLabel: null, freeText: 'A answer', isPrimary: false },
       ],
@@ -185,6 +188,7 @@ describe('workspace inspector', () => {
     const nodeData = {
       node: makeNode({ id: 'nC', question: 'Current pending question' }),
       routeIds: ['rA'],
+      visibleRouteIds: ['rA'],
       answers: [],
       routeStates: [{ routeId: 'rA', answer: null }],
       primaryAnswer: null,
@@ -212,6 +216,7 @@ describe('workspace inspector', () => {
     const nodeData = {
       node: makeNode({ id: 'nOld', question: 'Historical question' }),
       routeIds: ['rA'],
+      visibleRouteIds: ['rA'],
       answers: [],
       routeStates: [{ routeId: 'rA', answer: null }],
       primaryAnswer: null,
