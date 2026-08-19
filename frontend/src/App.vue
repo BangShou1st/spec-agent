@@ -11,6 +11,7 @@ const isWorkspaceRoute = computed(() => route.name === 'workspace')
   <header class="app-header" :class="{ 'app-header--workspace': isWorkspaceRoute }">
     <span class="app-name">Spec Agent</span>
     <RouterLink to="/projects">项目</RouterLink>
+    <RouterLink to="/settings">设置</RouterLink>
   </header>
   <main class="page" :class="{ 'page--workspace': isWorkspaceRoute }">
     <RouterView />

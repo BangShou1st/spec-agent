@@ -43,6 +43,16 @@ export interface CreateProjectRequest {
   title: string
 }
 
+export interface OpenCodeSettingsStatus {
+  configured: boolean
+  maskedKey: string | null
+  selectedModel: string | null
+}
+
+export interface OpenCodeProbeResponse {
+  freeModels: string[]
+}
+
 export interface RouteResponse {
   id: string
   projectId: string
@@ -187,19 +197,10 @@ export interface ReanswerRouteRequest {
   label?: string | null
 }
 
-/** A replacement option: only client-owned content, never an option id. */
-export interface ReplacementOptionRequest {
-  label: string
-  impact?: string | null
-}
-
-/** Deterministic regenerate request; runtime-owned ids are never accepted. */
+/** Model-powered replacement request; model content is never browser-authored. */
 export interface RegenerateNodeRequest {
   sourceRouteId: string
   instruction?: string | null
-  replacementQuestion: string
-  replacementPurpose?: string | null
-  replacementOptions?: ReplacementOptionRequest[] | null
 }
 
 /** Deterministic regenerate result from the runtime. */
