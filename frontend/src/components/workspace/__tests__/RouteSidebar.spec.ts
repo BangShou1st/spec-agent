@@ -69,6 +69,16 @@ describe('route sidebar', () => {
     expect(useGraphUiStore().focusRouteId).toBeNull()
   })
 
+  it('clicking a route card focuses it and requests viewport location', async () => {
+    const routes = [routeView('r1', 'open', ['n1']), routeView('r2', 'open', ['n1'])]
+    const wrapper = mount(RouteSidebar, {
+      props: { routes, activeRouteId: 'r1', commandPending: false, pendingRouteCommand: null },
+    })
+    await wrapper.find('[data-route-id="r2"] .route-card__label').trigger('click')
+    expect(useGraphUiStore().focusRouteId).toBe('r2')
+    expect(wrapper.emitted('locate-route')?.[0]).toEqual(['r2'])
+  })
+
   it('focus changes only the browser reading context', async () => {
     const routes = [routeView('r1', 'open', ['n1']), routeView('r2', 'open', ['n1'])]
     const wrapper = mount(RouteSidebar, {

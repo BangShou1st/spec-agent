@@ -7,6 +7,7 @@ import { useGraphUiStore } from '@/stores/graphUiStore'
 import { useVueFlow, type VueFlowStore } from '@vue-flow/core'
 import { makeGraphWorkspaceView, makeNode } from '@/test/fixtures'
 import type { GraphWorkspaceView } from '@/api/types'
+import { HORIZONTAL_GAP } from '@/graph/graphLayout'
 
 /**
  * Vue Flow stub: jsdom cannot render the real viewport; the canvas only
@@ -20,7 +21,7 @@ const VueFlowStub = defineComponent({
     nodes: { type: Array, default: () => [] },
     edges: { type: Array, default: () => [] },
   },
-  emits: ['init', 'node-drag', 'node-drag-stop', 'nodes-change', 'pane-click'],
+  emits: ['init', 'node-click', 'edge-click', 'node-drag', 'node-drag-stop', 'nodes-change', 'pane-click'],
   setup() {
     return () => h('div', { class: 'vf-stub' })
   },
@@ -97,6 +98,24 @@ function setCanvasSize(
   }
 }
 
+function readableFitExpected(boundsWidth = 320 + HORIZONTAL_GAP, boundsHeight = 220): {
+  x: number
+  y: number
+  zoom: number
+} {
+  const ui = useGraphUiStore()
+  const left = ui.leftSidebarWidth + 24
+  const right = 1200 - ui.rightSidebarWidth - 24
+  const frameWidth = right - left
+  const frameHeight = 800 - 24
+  const zoom = Math.min((frameWidth - 96) / boundsWidth, (frameHeight - 96) / boundsHeight, 1)
+  return {
+    x: left + frameWidth / 2 - (boundsWidth / 2) * zoom,
+    y: 12 + frameHeight / 2 - (boundsHeight / 2) * zoom,
+    zoom,
+  }
+}
+
 describe('graph canvas', () => {
   beforeEach(() => {
     localStorage.clear()
@@ -134,7 +153,7 @@ describe('graph canvas', () => {
     mountCanvas(viewWithNodes())
     const ui = useGraphUiStore()
     expect(ui.nodePositions.n1).toEqual({ x: 0, y: 0 })
-    expect(ui.nodePositions.n2).toEqual({ x: 360, y: 0 })
+    expect(ui.nodePositions.n2).toEqual({ x: HORIZONTAL_GAP, y: 0 })
   })
 
   it('mirrors selection changes into graphUiStore', () => {
@@ -177,9 +196,9 @@ describe('graph canvas', () => {
     await nextTick()
     expect(fitViewSpy).not.toHaveBeenCalled()
     expect(setViewport).toHaveBeenCalledTimes(1)
-    // bounds n1(0,0,320,220)+n2(360,0,680,220) -> center (340,110), zoom 1
+    // bounds n1(0,0,320,220)+n2(HORIZONTAL_GAP,0,...) -> center in viewport
     expect(setViewport).toHaveBeenCalledWith(
-      expect.objectContaining({ x: 260, y: 290, zoom: 1 }),
+      expect.objectContaining({ x: 600 - ((320 + HORIZONTAL_GAP) / 2), y: 290, zoom: 1 }),
       expect.objectContaining({ duration: 0 }),
     )
   })
@@ -195,7 +214,7 @@ describe('graph canvas', () => {
     expect(fitViewSpy).not.toHaveBeenCalled()
     expect(setViewport).toHaveBeenCalledTimes(1)
     expect(setViewport).toHaveBeenCalledWith(
-      expect.objectContaining({ x: 260, y: 290, zoom: 1 }),
+      expect.objectContaining({ x: 600 - ((320 + HORIZONTAL_GAP) / 2), y: 290, zoom: 1 }),
       expect.objectContaining({ duration: 400 }),
     )
     expect(useGraphUiStore().focusRouteId).toBeNull()
@@ -208,9 +227,9 @@ describe('graph canvas', () => {
     const setViewport = vi.spyOn(vf, 'setViewport').mockResolvedValue(true)
     const exposed = wrapper.vm as unknown as { locateNode: (nodeId: string) => Promise<void> }
     await exposed.locateNode('n2')
-    // n2 at (360, 0) 320x220 -> center (520, 110)
+    // n2 at (HORIZONTAL_GAP, 0) 320x220 -> centered in the viewport
     expect(setViewport).toHaveBeenCalledWith(
-      expect.objectContaining({ x: 80, y: 290, zoom: 1 }),
+      expect.objectContaining({ x: 600 - (HORIZONTAL_GAP + 160), y: 290, zoom: 1 }),
       expect.objectContaining({ duration: 400 }),
     )
   })
@@ -221,7 +240,7 @@ describe('graph canvas', () => {
       const wrapper = mountCanvas(viewWithNodes(), { activeNodeId: 'n1' })
       const vf = useVueFlow('spec-agent-graph-canvas')
       setCanvasSize(vf)
-      // 视口默认 zoom=1、x=0：n2 在 360..680 与 1200 宽画布相交 → 不 reveal。
+      // 视口默认 zoom=1、x=0：n2 在 HORIZONTAL_GAP.. 与画布相交 → 不 reveal。
       const setViewport = vi.spyOn(vf, 'setViewport').mockResolvedValue(true)
       await wrapper.setProps({ activeNodeId: 'n2' })
       await wrapper.vm.$nextTick()
@@ -229,7 +248,7 @@ describe('graph canvas', () => {
       expect(setViewport).not.toHaveBeenCalled()
       const ui = useGraphUiStore()
       expect(ui.nodePositions.n1).toEqual({ x: 0, y: 0 })
-      expect(ui.nodePositions.n2).toEqual({ x: 360, y: 0 })
+      expect(ui.nodePositions.n2).toEqual({ x: HORIZONTAL_GAP, y: 0 })
     } finally {
       vi.useRealTimers()
     }
@@ -253,9 +272,17 @@ describe('graph canvas', () => {
       await wrapper.vm.$nextTick()
       vi.advanceTimersByTime(550)
       expect(setViewport).toHaveBeenCalledTimes(1)
-      // n2 at (360, 0) 320x220 -> center (520, 110)
+      // Occluded reveal centers n2 in the readable corridor between the
+      // floating sidebars, without changing its graph coordinate.
+      const ui = useGraphUiStore()
+      const readableLeft = ui.leftSidebarWidth + 24
+      const readableRight = 1200 - ui.rightSidebarWidth - 24
       expect(setViewport).toHaveBeenCalledWith(
-        expect.objectContaining({ x: 80, y: 290, zoom: 1 }),
+        expect.objectContaining({
+          x: readableLeft + (readableRight - readableLeft) / 2 - (HORIZONTAL_GAP + 160),
+          y: 290,
+          zoom: 1,
+        }),
         expect.objectContaining({ duration: 400 }),
       )
     } finally {
@@ -282,7 +309,7 @@ describe('graph canvas', () => {
       vi.advanceTimersByTime(550)
       expect(setViewport).toHaveBeenCalledTimes(1)
       expect(setViewport).toHaveBeenCalledWith(
-        expect.objectContaining({ zoom: 1 }),
+        expect.objectContaining(readableFitExpected()),
         expect.objectContaining({ duration: 300 }),
       )
     } finally {
@@ -299,7 +326,7 @@ describe('graph canvas', () => {
     await wrapper.find('[data-test="fit-view"]').trigger('click')
     expect(fitViewSpy).not.toHaveBeenCalled()
     expect(setViewport).toHaveBeenCalledWith(
-      expect.objectContaining({ x: 260, y: 290, zoom: 1 }),
+      expect.objectContaining(readableFitExpected()),
       expect.objectContaining({ duration: 300 }),
     )
   })
@@ -320,7 +347,7 @@ describe('graph canvas', () => {
     )
     expect(fitViewSpy).not.toHaveBeenCalled()
     expect(setViewport).toHaveBeenCalledWith(
-      expect.objectContaining({ x: 260, y: 290, zoom: 1 }),
+      expect.objectContaining({ x: 600 - ((320 + HORIZONTAL_GAP) / 2), y: 290, zoom: 1 }),
       expect.objectContaining({ duration: 300 }),
     )
   })
@@ -334,14 +361,63 @@ describe('graph canvas', () => {
     expect(ui.nodePositions.n1).toEqual({ x: 1, y: 2 })
   })
 
-  it('pane click clears the selection', () => {
+  it('normal exclusive node click selects and focuses its route', () => {
+    const wrapper = mountCanvas(viewWithNodes())
+    const flow = wrapper.findComponent(VueFlowStub)
+    flow.vm.$emit('node-click', {
+      event: new MouseEvent('click'),
+      node: { id: 'n2', data: { routeIds: ['r2'] } },
+    })
+    const ui = useGraphUiStore()
+    expect(ui.primarySelectedNodeId).toBe('n2')
+    expect(ui.focusRouteId).toBe('r2')
+  })
+
+  it('modified node selection never changes Focus', () => {
+    const wrapper = mountCanvas(viewWithNodes())
+    const ui = useGraphUiStore()
+    ui.setFocusRoute('r2')
+    const flow = wrapper.findComponent(VueFlowStub)
+    flow.vm.$emit('node-click', {
+      event: new MouseEvent('click', { ctrlKey: true }),
+      node: { id: 'n2', data: { routeIds: ['r1'] } },
+    })
+    expect(ui.focusRouteId).toBe('r2')
+    flow.vm.$emit('node-click', {
+      event: new MouseEvent('click', { shiftKey: true }),
+      node: { id: 'n1', data: { routeIds: ['r1', 'r2'] } },
+    })
+    expect(ui.focusRouteId).toBe('r2')
+  })
+
+  it('shared node and edge clicks resolve Focus without activating Runtime', () => {
+    const wrapper = mountCanvas(viewWithNodes())
+    const ui = useGraphUiStore()
+    const flow = wrapper.findComponent(VueFlowStub)
+    flow.vm.$emit('node-click', {
+      event: new MouseEvent('click'),
+      node: { id: 'n1', data: { routeIds: ['r1', 'r2'] } },
+    })
+    expect(ui.focusRouteId).toBe('r1')
+    ui.clearFocusRoute()
+    flow.vm.$emit('edge-click', {
+      event: new MouseEvent('click'),
+      edge: { data: { routeIds: ['r2'] } },
+    })
+    expect(ui.focusRouteId).toBe('r2')
+    expect(wrapper.props('view')).toMatchObject({ activeRouteId: 'r1' })
+  })
+
+  it('pane click clears both selection and browser Focus', () => {
     const wrapper = mountCanvas(viewWithNodes())
     const ui = useGraphUiStore()
     ui.selectNode('n1')
+    ui.setFocusRoute('r2')
     const flow = wrapper.findComponent(VueFlowStub)
     flow.vm.$emit('pane-click', {})
     expect(ui.selectedNodeIds).toEqual([])
     expect(ui.primarySelectedNodeId).toBeNull()
+    expect(ui.focusRouteId).toBeNull()
   })
 
   it('toolbar buttons emit zoom/show-all intents', async () => {
@@ -358,14 +434,14 @@ describe('graph canvas', () => {
     expect(ui.focusRouteId).toBeNull()
   })
 
-  it('projection edges come out as smoothstep with adaptive handles', () => {
+  it('projection edges come out as adaptive curves with directed handles', () => {
     const wrapper = mountCanvas(viewWithNodes())
     const flow = wrapper.findComponent(VueFlowStub)
     const edges = flow.props('edges') as unknown[]
-    // n1 (current, 420 wide) center (210,110); n2 (360,0) center (520,110).
+    // Both node states use the stable 320px footprint; routing remains adaptive.
     expect(edges[0]).toMatchObject({
       id: 'n1->n2',
-      type: 'smoothstep',
+      type: 'adaptive',
       sourceHandle: 'source-right',
       targetHandle: 'target-left',
     })
@@ -435,7 +511,7 @@ describe('graph canvas', () => {
       intersections: [],
     })
     expect(localStorage.getItem('spec-agent.graph-layout.v1.p1')).toBe(before)
-    expect(ui.nodePositions.n2).toEqual({ x: 360, y: 0 })
+    expect(ui.nodePositions.n2).toEqual({ x: HORIZONTAL_GAP, y: 0 })
     // Only the drag stop persists the new position.
     flow.vm.$emit('node-drag-stop', {
       nodes: [{ id: 'n2', position: { x: -500, y: 0 } }],

@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import {
+  answerActiveNode,
   buildThreeNodeLineage,
   createProject,
   fitGraph,
@@ -107,4 +108,53 @@ test('sidebar collapse and resize persist across reload', async ({ page }) => {
   await page.reload()
   await expect(page.locator('[data-test="left-sidebar"] .resizable-sidebar__content')).toHaveCount(0)
   await expect(page.locator('.graph-question-node')).toHaveCount(3)
+})
+
+test('immersive graph navigation keeps overlays off the canvas layout', async ({ page }) => {
+  await createProject(page, 'E2E Immersive Graph')
+  await buildThreeNodeLineage(page)
+  await fitGraph(page)
+  await forkFromNode(page, 1, 'Route-B')
+  await answerActiveNode(page, 'Route B answer')
+  await expect(page.locator('.graph-question-node')).toHaveCount(4)
+
+  const workspace = page.getByTestId('workspace-shell')
+  const canvas = page.getByTestId('graph-canvas')
+  const workspaceBox = await workspace.boundingBox()
+  const canvasBox = await canvas.boundingBox()
+  expect(workspaceBox).not.toBeNull()
+  expect(canvasBox).not.toBeNull()
+  expect(Math.abs((canvasBox?.width ?? 0) - (workspaceBox?.width ?? 0))).toBeLessThan(2)
+
+  const leftBox = await page.getByTestId('left-sidebar').boundingBox()
+  const rightBox = await page.getByTestId('right-sidebar').boundingBox()
+  expect(leftBox).not.toBeNull()
+  expect(rightBox).not.toBeNull()
+  expect((leftBox?.x ?? 0) + (leftBox?.width ?? 0)).toBeGreaterThan(canvasBox?.x ?? 0)
+  expect(rightBox?.x ?? 0).toBeLessThan((canvasBox?.x ?? 0) + (canvasBox?.width ?? 0))
+
+  const widthBeforeResize = (await canvas.boundingBox())?.width ?? 0
+  const resizeHandle = page.getByTestId('resize-handle-left')
+  const handleBox = (await resizeHandle.boundingBox()) ?? { x: 0, y: 0, width: 0, height: 0 }
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(handleBox.x + 120, handleBox.y, { steps: 8 })
+  await page.mouse.up()
+  const widthAfterResize = (await canvas.boundingBox())?.width ?? 0
+  expect(Math.abs(widthAfterResize - widthBeforeResize)).toBeLessThan(2)
+
+  const activeCard = page.locator('[data-route-id]').filter({ has: page.getByTestId('active-route') }).first()
+  const routeBId = await activeCard.getAttribute('data-route-id')
+  expect(routeBId).not.toBeNull()
+  const routeBExclusiveNode = page.locator('[data-test="graph-question-node"]').last()
+  await routeBExclusiveNode.getByTestId('question').click()
+  await expect(activeCard).toHaveClass(/route-card--focused/)
+  await expect(page.locator('.graph-node--dimmed')).toHaveCount(1)
+
+  await page.getByTestId('tab-requirement').click()
+  await expect(page.getByTestId('requirement-state-panel')).toContainText(routeBId ?? '')
+
+  await page.getByTestId('graph-flow').click({ position: { x: 8, y: 8 } })
+  await expect(activeCard).not.toHaveClass(/route-card--focused/)
+  await expect(page.locator('.graph-node--dimmed')).toHaveCount(0)
 })

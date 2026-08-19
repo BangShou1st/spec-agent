@@ -111,6 +111,17 @@ async function handleForkSubmit(label: string | null): Promise<void> {
   }
 }
 
+/** Fork prerequisites are explicit, local dialog actions. Each command
+ * refreshes canonical state while the dialog remains open; no command is
+ * chained into an implicit Fork. */
+async function handleForkRestore(routeId: string): Promise<void> {
+  await store.restoreRoute(routeId)
+}
+
+async function handleForkActivate(routeId: string): Promise<void> {
+  await store.activateRoute(routeId)
+}
+
 async function handleRegenerateSubmit(payload: RegenerateNodeRequest): Promise<void> {
   if (!regenerateNodeId.value) {
     return
@@ -147,18 +158,20 @@ async function confirmDestructive(): Promise<void> {
 
 <template>
   <div class="workspace-shell" data-test="workspace-shell">
-    <header class="workspace-shell__header">
+    <header class="workspace-shell__header" data-test="workspace-project-badge">
       <h1 class="workspace-shell__title">{{ store.project?.title ?? '工作区' }}</h1>
     </header>
 
-    <ApiErrorBanner
-      v-if="store.error"
-      :message="store.error.message"
-      :code="store.error.code"
-      retry-label="重试"
-      :retrying="store.loading"
-      @retry="retry"
-    />
+    <div class="workspace-shell__status-layer">
+      <ApiErrorBanner
+        v-if="store.error"
+        :message="store.error.message"
+        :code="store.error.code"
+        retry-label="重试"
+        :retrying="store.loading"
+        @retry="retry"
+      />
+    </div>
 
     <p v-if="store.loading" class="muted workspace-shell__loading">正在加载工作区…</p>
 
@@ -216,19 +229,23 @@ async function confirmDestructive(): Promise<void> {
       </ResizableSidebar>
     </div>
 
-    <p v-if="store.refreshing" class="muted workspace-shell__refreshing" data-test="refreshing">
-      正在刷新工作区…
-    </p>
-    <p v-if="store.feedback" class="feedback-line" data-test="feedback">{{ store.feedback }}</p>
+    <div class="workspace-shell__toast-layer">
+      <p v-if="store.refreshing" class="muted workspace-shell__refreshing" data-test="refreshing">
+        正在刷新工作区…
+      </p>
+      <p v-if="store.feedback" class="feedback-line" data-test="feedback">{{ store.feedback }}</p>
+    </div>
 
     <ForkRouteDialog
       :open="forkDialogOpen"
       :node="forkNodeData"
       :routes="store.graphView?.routes ?? []"
       :active-route-id="store.activeRoute?.id ?? null"
-      :pending="store.pendingRouteCommand === 'fork'"
+      :pending="store.routeCommandPending"
       @close="forkDialogOpen = false"
       @submit="handleForkSubmit"
+      @restore-base-route="handleForkRestore"
+      @activate-base-route="handleForkActivate"
     />
 
     <RegenerateNodeDialog

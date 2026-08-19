@@ -94,6 +94,15 @@ function setHidden(routeId: string, hidden: boolean): void {
 function isArchivedOrDeleted(route: GraphWorkspaceRouteView): boolean {
   return route.lifecycleStatus === 'archived' || route.lifecycleStatus === 'deleted'
 }
+
+/** The card is secondary navigation: reading Focus plus viewport location. */
+function openRoute(route: GraphWorkspaceRouteView): void {
+  if (graphUi.isRouteHidden(route.id) || !graphUi.lifecycleFilters[route.lifecycleStatus]) {
+    return
+  }
+  graphUi.setFocusRoute(route.id)
+  emit('locate-route', route.id)
+}
 </script>
 
 <template>
@@ -121,7 +130,8 @@ function isArchivedOrDeleted(route: GraphWorkspaceRouteView): boolean {
           `route-card--${displayState(route.id)}`,
           { 'route-card--focused': isFocused(route.id) },
         ]"
-        :data-route-id="route.id"
+         :data-route-id="route.id"
+         @click="openRoute(route)"
       >
         <div class="route-card__head">
           <span class="badge" :class="`badge-${route.lifecycleStatus}`">
@@ -134,15 +144,17 @@ function isArchivedOrDeleted(route: GraphWorkspaceRouteView): boolean {
         <div class="route-card__label">{{ route.label ?? route.id.slice(0, 8) }}</div>
         <div class="meta-text">节点数：{{ route.lineageNodeIds.length }}</div>
 
+        <details class="route-card__more" open>
+          <summary>更多</summary>
         <div class="route-card__group" data-test="view-actions-group">
           <span class="route-card__group-title">查看</span>
           <div class="route-card__actions">
-            <button class="btn btn-small" data-test="locate-route" @click="emit('locate-route', route.id)">定位路线</button>
+             <button class="btn btn-small" data-test="locate-route" @click.stop="emit('locate-route', route.id)">定位路线</button>
             <button
               class="btn btn-small"
               data-test="focus-route"
               :class="{ 'route-card__focused-btn': isFocused(route.id) }"
-              @click="toggleFocus(route)"
+               @click.stop="toggleFocus(route)"
             >
               {{ isFocused(route.id) ? '取消聚焦' : '聚焦此路线' }}
             </button>
@@ -150,7 +162,7 @@ function isArchivedOrDeleted(route: GraphWorkspaceRouteView): boolean {
               class="btn btn-small"
               data-test="dim-route"
               :class="{ 'route-card__dimmed-btn': displayState(route.id) === 'dimmed' }"
-              @click="setDim(route.id, displayState(route.id) !== 'dimmed')"
+               @click.stop="setDim(route.id, displayState(route.id) !== 'dimmed')"
             >
               {{ displayState(route.id) === 'dimmed' ? '取消弱化' : '弱化路线' }}
             </button>
@@ -158,7 +170,7 @@ function isArchivedOrDeleted(route: GraphWorkspaceRouteView): boolean {
               class="btn btn-small"
               data-test="hide-route"
               :disabled="route.id === activeRouteId"
-              @click="setHidden(route.id, displayState(route.id) !== 'hidden')"
+               @click.stop="setHidden(route.id, displayState(route.id) !== 'hidden')"
             >
               {{ displayState(route.id) === 'hidden' ? '恢复显示' : '隐藏路线' }}
             </button>
@@ -173,7 +185,7 @@ function isArchivedOrDeleted(route: GraphWorkspaceRouteView): boolean {
               class="btn btn-small"
               data-test="activate-route"
               :disabled="commandPending"
-              @click="emit('activate', route.id)"
+               @click.stop="emit('activate', route.id)"
             >
               设为当前路线
             </button>
@@ -182,7 +194,7 @@ function isArchivedOrDeleted(route: GraphWorkspaceRouteView): boolean {
               class="btn btn-small"
               data-test="restore-route"
               :disabled="commandPending"
-              @click="emit('restore', route.id)"
+               @click.stop="emit('restore', route.id)"
             >
               恢复
             </button>
@@ -191,7 +203,7 @@ function isArchivedOrDeleted(route: GraphWorkspaceRouteView): boolean {
               class="btn btn-small"
               data-test="archive-route"
               :disabled="commandPending"
-              @click="emit('archive', route.id)"
+               @click.stop="emit('archive', route.id)"
             >
               归档
             </button>
@@ -200,12 +212,13 @@ function isArchivedOrDeleted(route: GraphWorkspaceRouteView): boolean {
               class="btn btn-small btn-danger"
               data-test="delete-route"
               :disabled="commandPending"
-              @click="emit('delete', route.id)"
+               @click.stop="emit('delete', route.id)"
             >
               删除路线
             </button>
           </div>
         </div>
+        </details>
       </article>
       <p v-if="routes.length === 0" class="muted">暂无路线。</p>
     </section>

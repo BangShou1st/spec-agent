@@ -14,6 +14,8 @@
   --color-warn: #8a5a00;
   --color-warn-soft: #fdf3e0;
   --color-subdued: #eef0f3;
+  --graph-node-width: 320px;
+  --graph-node-height: 220px;
   --radius: 6px;
   --space: 16px;
 }
@@ -39,6 +41,7 @@ body {
 }
 
 #app {
+  height: 100%;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
@@ -91,6 +94,24 @@ textarea {
   max-width: 1400px;
   width: 100%;
   margin: 0 auto;
+}
+
+.app-header--workspace {
+  height: 36px;
+  min-height: 36px;
+  padding: 6px 12px;
+  background: rgb(255 255 255 / 82%);
+  position: relative;
+  z-index: 20;
+}
+
+.page--workspace {
+  flex: 1 1 auto;
+  max-width: none;
+  height: calc(100vh - 36px);
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
 }
 
 /* ---------- Panels / workspace ---------- */
@@ -370,9 +391,9 @@ textarea {
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
+  background: var(--color-bg);
+  border: 0;
+  border-radius: 0;
   overflow: hidden;
 }
 
@@ -395,11 +416,19 @@ textarea {
 }
 
 .graph-toolbar {
+  position: absolute;
+  top: 52px;
+  left: 50%;
+  z-index: 10;
+  transform: translateX(-50%);
   display: flex;
   gap: 6px;
   padding: 8px 10px;
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-subdued);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 88%);
+  box-shadow: 0 6px 18px rgb(31 36 48 / 12%);
+  backdrop-filter: blur(8px);
   align-items: center;
   flex-wrap: wrap;
 }
@@ -435,7 +464,10 @@ textarea {
 /* ---- question node ---- */
 
 .graph-question-node {
-  width: 320px;
+  width: var(--graph-node-width);
+  height: var(--graph-node-height);
+  display: flex;
+  flex-direction: column;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
@@ -444,7 +476,6 @@ textarea {
 }
 
 .graph-question-node--current {
-  width: 420px;
   border-color: var(--color-accent);
   box-shadow: 0 0 0 2px var(--color-accent-soft), 0 4px 12px rgb(0 0 0 / 10%);
 }
@@ -485,9 +516,52 @@ textarea {
 }
 
 .graph-question-node__body {
+  flex: 1;
+  min-height: 0;
   padding: 10px;
   overflow-y: auto;
-  max-height: 420px;
+}
+
+.graph-route-chooser {
+  margin: -2px 0 8px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.graph-route-chooser__label {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.graph-route-chooser__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.graph-route-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font-size: 11px;
+}
+
+.graph-route-chip--active {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.graph-route-chip__status {
+  color: var(--color-text-muted);
+  font-size: 10px;
 }
 
 /* Adaptive edge anchors: invisible, click-transparent handle dots. The
@@ -652,7 +726,16 @@ textarea {
   opacity: 0.3;
 }
 
+.vue-flow__edge-path.graph-edge--dimmed {
+  opacity: 0.3;
+}
+
 .graph-edge--focus .vue-flow__edge-path {
+  stroke: var(--color-accent) !important;
+  stroke-width: 2;
+}
+
+.vue-flow__edge-path.graph-edge--focus {
   stroke: var(--color-accent) !important;
   stroke-width: 2;
 }
@@ -667,65 +750,163 @@ textarea {
   stroke: var(--color-warn) !important;
 }
 
+.vue-flow__edge-path.graph-edge--replacement {
+  stroke: var(--color-warn) !important;
+  stroke-dasharray: 6 4;
+}
+
 .vue-flow__edge-path {
   transition: d 0.12s ease;
 }
 /* ---------- Workspace shell (graph-first) ---------- */
 
 .workspace-shell {
-  display: flex;
-  flex-direction: column;
-  height: calc(100vh - 64px);
-  min-height: 480px;
+  position: relative;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--color-bg);
 }
 
 .workspace-shell__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8px;
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  z-index: 12;
+  transform: translateX(-50%);
+  padding: 5px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 84%);
+  box-shadow: 0 4px 14px rgb(31 36 48 / 10%);
+  backdrop-filter: blur(8px);
+  pointer-events: none;
+}
+
+.workspace-shell__header > * {
+  pointer-events: auto;
 }
 
 .workspace-shell__title {
   margin: 0;
-  font-size: 18px;
-}
-
-.workspace-shell__loading {
-  margin: 24px 0;
+  max-width: min(42vw, 360px);
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .workspace-shell__body {
-  flex: 1;
+  position: absolute;
+  inset: 0;
   min-height: 0;
-  display: flex;
-  gap: 8px;
 }
 
 .workspace-shell__canvas {
-  flex: 1;
-  min-width: 0;
+  width: 100%;
+  height: 100%;
 }
 
-.workspace-shell__refreshing {
-  margin-top: 6px;
+.workspace-shell__status-layer,
+.workspace-shell__toast-layer {
+  position: absolute;
+  left: 50%;
+  z-index: 18;
+  transform: translateX(-50%);
+  pointer-events: none;
 }
 
-/* ---------- Resizable sidebar ---------- */
+.workspace-shell__status-layer {
+  top: 96px;
+  width: min(720px, calc(100% - 32px));
+}
 
+.workspace-shell__status-layer > *,
+.workspace-shell__toast-layer > * {
+  pointer-events: auto;
+}
+
+.workspace-shell__toast-layer {
+  bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.workspace-shell__loading {
+  position: absolute;
+  inset: 0;
+  z-index: 16;
+  display: grid;
+  place-items: center;
+  margin: 0;
+}
+
+.workspace-shell__refreshing,
+.feedback-line {
+  margin: 0;
+  padding: 5px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 88%);
+  box-shadow: 0 4px 12px rgb(31 36 48 / 10%);
+}
+
+/* The graph remains the only layout surface; panels float above it. */
 .resizable-sidebar {
-  position: relative;
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  z-index: 11;
   display: flex;
   min-width: 0;
-  background: var(--color-surface);
+  background: rgb(255 255 255 / 88%);
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgb(31 36 48 / 14%);
+  backdrop-filter: blur(8px);
   overflow: hidden;
-  flex-shrink: 0;
+}
+
+.resizable-sidebar--left {
+  left: 12px;
+}
+
+.resizable-sidebar--right {
+  right: 12px;
 }
 
 .resizable-sidebar--collapsed {
   width: 28px !important;
+  background: rgb(255 255 255 / 76%);
+}
+
+.resizable-sidebar__content {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 8px 10px;
+  padding-top: 34px;
+}
+
+/* Legacy dashboard rules are intentionally overridden by the overlay shell. */
+.workspace-shell__body > .resizable-sidebar {
+  flex-shrink: 0;
+}
+
+/* ---------- end immersive workspace shell ---------- */
+
+/*
+  The following rules retain the component's existing class vocabulary for
+  non-workspace consumers and responsive snapshots.
+*/
+.workspace-shell__legacy-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
 }
 
 .resizable-sidebar__toggle {
@@ -853,6 +1034,13 @@ textarea {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
+}
+
+.route-card__more > summary {
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  margin: 6px 0;
 }
 
 .route-card__focused-btn {

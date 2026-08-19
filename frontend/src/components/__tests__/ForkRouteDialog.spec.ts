@@ -71,6 +71,20 @@ describe('ForkRouteDialog', () => {
     const wrapper = mountDialog()
     await wrapper.findAll('[data-test="fork-base-route"]')[2].setValue()
     expect(wrapper.find('[data-test="fork-blocker"]').text()).toContain('先恢复这条路线')
+    expect(wrapper.find('[data-test="restore-base-route"]').text()).toContain('恢复此路线')
+    await wrapper.find('[data-test="restore-base-route"]').trigger('click')
+    expect(wrapper.emitted('restore-base-route')?.[0]).toEqual(['r3'])
+    expect(wrapper.emitted('submit')).toBeUndefined()
+  })
+
+  it('keeps the dialog open and offers explicit Activate for an open non-active base', async () => {
+    const wrapper = mountDialog()
+    await wrapper.findAll('[data-test="fork-base-route"]')[1].setValue()
+    expect(wrapper.find('[data-test="activate-base-route"]').text()).toContain('设为当前路线')
+    await wrapper.find('[data-test="activate-base-route"]').trigger('click')
+    expect(wrapper.emitted('activate-base-route')?.[0]).toEqual(['r2'])
+    expect(wrapper.emitted('submit')).toBeUndefined()
+    expect(wrapper.find('[data-test="fork-dialog"]').exists()).toBe(true)
   })
 
   it('never sends a base route id in the payload', async () => {

@@ -22,6 +22,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: []
   submit: [label: string | null]
+  'restore-base-route': [routeId: string]
+  'activate-base-route': [routeId: string]
 }>()
 
 const label = ref('')
@@ -62,7 +64,7 @@ const blocker = computed<string | null>(() => {
     return null
   }
   if (route.lifecycleStatus !== 'open') {
-    return '先恢复这条路线（' + lifecycleLabel(route.lifecycleStatus) + '）。'
+    return '先恢复这条路线（' + lifecycleLabel(route.lifecycleStatus) + '），再继续创建分支。'
   }
   if (route.id !== props.activeRouteId) {
     return '先设为当前路线，再从此分支。'
@@ -114,6 +116,29 @@ function submit(): void {
       </fieldset>
 
       <p v-if="blocker" class="info-line fork-blocker" data-test="fork-blocker">{{ blocker }}</p>
+
+      <div v-if="selectedRoute && selectedRoute.lifecycleStatus !== 'open'" class="fork-remediation">
+        <button
+          class="btn"
+          type="button"
+          data-test="restore-base-route"
+          :disabled="pending"
+          @click="emit('restore-base-route', selectedRoute.id)"
+        >
+          {{ pending ? '正在恢复…' : '恢复此路线' }}
+        </button>
+      </div>
+      <div v-else-if="selectedRoute && selectedRoute.id !== activeRouteId" class="fork-remediation">
+        <button
+          class="btn"
+          type="button"
+          data-test="activate-base-route"
+          :disabled="pending"
+          @click="emit('activate-base-route', selectedRoute.id)"
+        >
+          {{ pending ? '正在设为当前…' : '设为当前路线' }}
+        </button>
+      </div>
 
       <label class="secondary" style="font-size: 13px">
         <span style="display: block; margin-bottom: 4px">路线名称（可选）</span>
@@ -188,5 +213,11 @@ function submit(): void {
 .fork-blocker {
   color: var(--color-warn);
   margin: 0 0 8px;
+}
+
+.fork-remediation {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 10px;
 }
 </style>

@@ -228,6 +228,24 @@ describe('graph question node', () => {
     expect(wrapper.emitted('fork')?.[0]).toEqual(['n1'])
     expect(wrapper.emitted('regenerate')?.[0]).toEqual(['n1'])
   })
+
+  it('selected shared nodes expose canonical route chips that only emit Focus', async () => {
+    const wrapper = mountNode(
+      historicalData({
+        routeMembership: [
+          { routeId: 'r1', label: 'Initial', lifecycleStatus: 'open', isActive: true },
+          { routeId: 'r2', label: 'Route-B', lifecycleStatus: 'archived', isActive: false },
+        ],
+      }),
+      { selected: true },
+    )
+    expect(wrapper.find('[data-test="route-chooser"]').exists()).toBe(true)
+    await wrapper.find('[data-test="focus-route-chip-r2"]').trigger('click')
+    expect(wrapper.emitted('focus-route')?.[0]).toEqual(['r2'])
+    expect(wrapper.emitted('fork')).toBeUndefined()
+    expect(wrapper.emitted('submit-answer')).toBeUndefined()
+    expect(wrapper.emitted('toggle-expanded')).toBeUndefined()
+  })
 })
 describe('shared node route-specific waiting state', () => {
   function waitingData(overrides: Partial<SpecAgentGraphNodeData> = {}): SpecAgentGraphNodeData {

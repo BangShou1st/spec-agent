@@ -139,3 +139,9 @@ The frontend remains a client of the Runtime — history, route lifecycle,
 active-route selection, provenance, and persistence stay owned and
 authoritative on the backend. Phase 8 (CI/hardening) has not begun. See
 `docs/PHASE_7_3_EXIT_CRITERIA.md` for the Phase 7.3 closure documentation.
+
+Post-acceptance frontend UX corrective patch: the Phase 7.3 graph workspace
+now treats the graph as the primary full-bleed workspace, with floating route
+and inspector overlays, graph-native reading Focus, explicit local Fork
+remediation, stable node geometry, and adaptive directed curves. Phase 7.3
+remains closed; Phase 8 is NOT STARTED.

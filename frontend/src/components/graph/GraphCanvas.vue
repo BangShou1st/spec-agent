@@ -1,6 +1,18 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, shallowRef, watch } from 'vue'
-import { VueFlow, useVueFlow, type Dimensions, type Node, type Edge, type NodeChange, type NodeDragEvent, type NodeProps } from '@vue-flow/core'
+import {
+  VueFlow,
+  useVueFlow,
+  type Dimensions,
+  type Node,
+  type Edge,
+  type NodeChange,
+  type NodeDragEvent,
+  type NodeProps,
+  type NodeMouseEvent,
+  type EdgeMouseEvent,
+} from '@vue-flow/core'
+import AdaptiveGraphEdge from '@/components/graph/AdaptiveGraphEdge.vue'
 import GraphQuestionNode from '@/components/graph/GraphQuestionNode.vue'
 import GraphStartPlaceholder from '@/components/graph/GraphStartPlaceholder.vue'
 import GraphToolbar from '@/components/graph/GraphToolbar.vue'
@@ -20,6 +32,7 @@ import {
 import type { GraphPosition } from '@/graph/graphTypes'
 import { useGraphUiStore } from '@/stores/graphUiStore'
 import type { GraphWorkspaceView, SubmitAnswerRequest } from '@/api/types'
+import { resolveRouteFocusIntent } from '@/graph/graphInteraction'
 
 /**
  * Graph-first workspace canvas (Phase 7.3).
@@ -151,8 +164,16 @@ function nodeVisibilityFraction(nodeId: string): number {
   const top = target.position.y * vp.zoom + vp.y
   const right = left + width * vp.zoom
   const bottom = top + height * vp.zoom
-  const visibleWidth = Math.max(0, Math.min(right, canvasWidth) - Math.max(left, 0))
-  const visibleHeight = Math.max(0, Math.min(bottom, canvasHeight) - Math.max(top, 0))
+  // Sidebars are floating overlays: they do not change the canvas bounding
+  // box, but they do occlude part of its reading surface. Treat that
+  // corridor as the actionable viewport so a newly active node never lands
+  // completely underneath the Inspector or Route Navigator.
+  const leftInset = graphUi.leftSidebarOpen ? graphUi.leftSidebarWidth + 24 : 40
+  const rightInset = graphUi.rightSidebarOpen ? graphUi.rightSidebarWidth + 24 : 40
+  const readableLeft = Math.min(leftInset, canvasWidth / 2)
+  const readableRight = Math.max(canvasWidth - rightInset, canvasWidth / 2)
+  const visibleWidth = Math.max(0, Math.min(right, readableRight) - Math.max(left, readableLeft))
+  const visibleHeight = Math.max(0, Math.min(bottom, canvasHeight - 12) - Math.max(top, 12))
   const total = width * height * vp.zoom * vp.zoom
   return total > 0 ? (visibleWidth * visibleHeight) / total : 1
 }
@@ -174,11 +195,46 @@ watch(
     activeNodeFitTimer = window.setTimeout(() => {
       activeNodeFitTimer = null
       if (nodeVisibilityFraction(nodeId) < REVEAL_VISIBILITY_THRESHOLD) {
-        manualFitNode(nodeId)
+        manualFitNode(nodeId, true)
       }
     }, REVEAL_DELAY_MS)
   },
 )
+
+// A route fork/restore can change the visible graph without changing the
+// active node id. Refit the graph into the unobscured reading corridor so the
+// newly shared history is not left underneath either floating sidebar.
+watch(
+  () => props.view?.routes.length ?? 0,
+  (routeCount, previousRouteCount) => {
+    if (!props.view || previousRouteCount === undefined || previousRouteCount === 0) {
+      return
+    }
+    if (routeCount !== previousRouteCount) {
+      scheduleReadableFit()
+    }
+  },
+  { flush: 'post' },
+)
+
+watch(
+  () => props.view?.nodes.length ?? 0,
+  (nodeCount, previousNodeCount) => {
+    if (!props.view || previousNodeCount === undefined || previousNodeCount === 0) {
+      return
+    }
+    if (nodeCount > previousNodeCount) {
+      scheduleReadableFit()
+    }
+  },
+  { flush: 'post' },
+)
+
+function scheduleReadableFit(): void {
+  void nextTick(() => {
+    window.setTimeout(() => manualFitView(true), 0)
+  })
+}
 
 /** Converts current flow nodes into viewport inputs (measured size when known). */
 function collectViewportNodes(ids?: Set<string> | null): ViewportNode[] {
@@ -228,20 +284,49 @@ function onInit(): void {
  * 自研适应视图：直接基于投影坐标计算 viewport 变换（setViewport），只改
  * 视口、绝不移动节点坐标。绝不依赖 Vue Flow 的节点测量。
  */
-function manualFitView(): void {
+function readableViewportFrame(): { left: number; top: number; width: number; height: number } | null {
+  const canvasWidth = vf.dimensions.value.width
+  const canvasHeight = vf.dimensions.value.height
+  if (!canvasWidth || !canvasHeight) {
+    return null
+  }
+  const leftInset = graphUi.leftSidebarOpen ? graphUi.leftSidebarWidth + 24 : 40
+  const rightInset = graphUi.rightSidebarOpen ? graphUi.rightSidebarWidth + 24 : 40
+  const left = Math.min(leftInset, canvasWidth / 2)
+  const right = Math.max(canvasWidth - rightInset, canvasWidth / 2)
+  return { left, top: 12, width: Math.max(right - left, 1), height: Math.max(canvasHeight - 24, 1) }
+}
+
+function fitInReadableViewport(
+  nodes: ViewportNode[],
+  options: { padding?: number; maxZoom?: number },
+): ViewportTransform | null {
+  const frame = readableViewportFrame()
+  if (!frame) {
+    return null
+  }
+  const transform = computeFitViewport(nodes, frame.width, frame.height, options)
+  return transform
+    ? { x: transform.x + frame.left, y: transform.y + frame.top, zoom: transform.zoom }
+    : null
+}
+
+function manualFitView(avoidOverlays = false): void {
   const canvasWidth = vf.dimensions.value.width
   const canvasHeight = vf.dimensions.value.height
   if (!canvasWidth || !canvasHeight) {
     return
   }
   applyViewport(
-    computeFitViewport(collectViewportNodes(), canvasWidth, canvasHeight, { padding: 48 }),
+    avoidOverlays
+      ? fitInReadableViewport(collectViewportNodes(), { padding: 48 })
+      : computeFitViewport(collectViewportNodes(), canvasWidth, canvasHeight, { padding: 48 }),
     300,
   )
 }
 
 /** 把单个节点平滑带进视口（只改 viewport，不动节点坐标）。 */
-function manualFitNode(nodeId: string): void {
+function manualFitNode(nodeId: string, avoidOverlays = false): void {
   const canvasWidth = vf.dimensions.value.width
   const canvasHeight = vf.dimensions.value.height
   if (!canvasWidth || !canvasHeight) {
@@ -249,7 +334,9 @@ function manualFitNode(nodeId: string): void {
   }
   const target = collectViewportNodes(new Set([nodeId]))[0] ?? null
   applyViewport(
-    computeFitNodeViewport(target, canvasWidth, canvasHeight, { padding: 48 }),
+    avoidOverlays
+      ? fitInReadableViewport(target ? [target] : [], { padding: 48 })
+      : computeFitNodeViewport(target, canvasWidth, canvasHeight, { padding: 48 }),
     400,
   )
 }
@@ -348,8 +435,50 @@ function onNodeDragStop(event: NodeDragEvent): void {
   graphUi.setNodePositions(positions)
 }
 
-function onPaneClick(): void {
+function hasSelectionModifier(event: MouseEvent | TouchEvent | undefined): boolean {
+  if (!event || !('ctrlKey' in event)) {
+    return false
+  }
+  return event.ctrlKey || event.metaKey || event.shiftKey
+}
+
+/** A normal node click selects and resolves browser Focus; modified clicks
+ * remain pure multi-selection and never move the reading context. */
+function onNodeClick(event: NodeMouseEvent): void {
+  if (hasSelectionModifier(event.event)) {
+    return
+  }
+  graphUi.selectNode(event.node.id)
+  const routeIds = (event.node.data as { routeIds?: string[] } | undefined)?.routeIds ?? []
+  const intent = resolveRouteFocusIntent(
+    routeIds,
+    graphUi.focusRouteId,
+    props.view?.activeRouteId ?? null,
+  )
+  if (intent !== null) {
+    graphUi.setFocusRoute(intent)
+  }
+}
+
+/** Edge clicks use the same deterministic route resolution as nodes. */
+function onEdgeClick(event: EdgeMouseEvent): void {
+  const routeIds = (event.edge.data as { routeIds?: string[] } | undefined)?.routeIds ?? []
+  const intent = resolveRouteFocusIntent(
+    routeIds,
+    graphUi.focusRouteId,
+    props.view?.activeRouteId ?? null,
+  )
+  if (intent !== null) {
+    graphUi.setFocusRoute(intent)
+  }
+}
+
+function onPaneClick(event?: MouseEvent): void {
+  if (hasSelectionModifier(event)) {
+    return
+  }
   graphUi.clearSelection()
+  graphUi.clearFocusRoute()
 }
 
 /** Brings one node into view without changing Focus or Active. */
@@ -404,7 +533,7 @@ async function zoomOut(): Promise<void> {
 /** 适应视图：与初始 fit 相同的确定性实现。 */
 async function fitView(): Promise<void> {
   clearActiveNodeFitTimer()
-  manualFitView()
+  manualFitView(true)
 }
 
 /**
@@ -479,20 +608,27 @@ const isEmptyProject = computed(() =>
         :max-zoom="2.5"
         data-test="graph-flow"
         @init="onInit"
-        @nodes-change="onNodesChange"
-        @node-drag="onNodeDrag"
+         @nodes-change="onNodesChange"
+         @node-click="onNodeClick"
+         @edge-click="onEdgeClick"
+         @node-drag="onNodeDrag"
         @node-drag-stop="onNodeDragStop"
         @pane-click="onPaneClick"
         @selection-start="shiftSelecting = true"
         @selection-end="shiftSelecting = false"
       >
+        <template #edge-adaptive="edgeProps">
+          <AdaptiveGraphEdge v-bind="edgeProps" />
+        </template>
         <template #node-question="nodeProps: NodeProps<SpecAgentGraphNodeData>">
           <GraphQuestionNode
             :data="nodeProps.data"
+            :selected="nodeProps.selected"
             :submitting="submitting"
             :pending="pending"
             @submit-answer="(payload) => emit('submit-answer', payload)"
             @toggle-expanded="graphUi.toggleExpanded"
+            @focus-route="graphUi.setFocusRoute"
             @fork="(id) => emit('fork', id)"
             @regenerate="(id) => emit('regenerate', id)"
           />

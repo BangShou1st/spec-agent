@@ -38,6 +38,7 @@ const TARGET_ANCHORS = ANCHOR_SIDES.map((side) => ({
 
 const props = defineProps<{
   data: SpecAgentGraphNodeData
+  selected?: boolean
   submitting: boolean
   pending: boolean
 }>()
@@ -45,6 +46,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   'submit-answer': [payload: SubmitAnswerRequest]
   'toggle-expanded': [nodeId: string]
+  'focus-route': [routeId: string]
   fork: [nodeId: string]
   regenerate: [nodeId: string]
 }>()
@@ -124,6 +126,15 @@ function regenerateNode(): void {
 }
 
 const isRootNode = computed(() => props.data.node.parentNodeId === null)
+
+const routeMembership = computed(() =>
+  props.data.routeMembership ?? props.data.routeIds.map((routeId) => ({
+    routeId,
+    label: routeId,
+    lifecycleStatus: 'open' as const,
+    isActive: false,
+  })),
+)
 </script>
 
 <template>
@@ -177,6 +188,33 @@ const isRootNode = computed(() => props.data.node.parentNodeId === null)
     </header>
 
     <div class="graph-question-node__body nodrag" data-test="node-body">
+      <div
+        v-if="data.isShared && selected && routeMembership.length > 0"
+        class="graph-route-chooser nodrag"
+        data-test="route-chooser"
+      >
+        <span class="graph-route-chooser__label">共享 · {{ routeMembership.length }} 条路线</span>
+        <div class="graph-route-chooser__chips">
+          <button
+            v-for="membership in routeMembership"
+            :key="membership.routeId"
+            type="button"
+            class="graph-route-chip nodrag"
+            :class="{ 'graph-route-chip--active': membership.isActive }"
+            :data-test="`focus-route-chip-${membership.routeId}`"
+            @click.stop="$emit('focus-route', membership.routeId)"
+          >
+            <span>{{ membership.label }}</span>
+            <span class="graph-route-chip__status">{{ {
+              open: '开放',
+              superseded: '已替代',
+              archived: '已归档',
+              deleted: '已删除',
+            }[membership.lifecycleStatus] }}</span>
+          </button>
+        </div>
+      </div>
+
       <!-- Current answerable node: direct answer interaction -->
       <template v-if="data.canAnswer">
         <h3 class="graph-node-question" data-test="question">{{ node.question }}</h3>

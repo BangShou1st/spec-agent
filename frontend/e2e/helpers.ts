@@ -44,6 +44,10 @@ export async function buildThreeNodeLineage(page: Page): Promise<void> {
   await answerActiveNode(page, 'First answer content')
   await answerActiveNode(page, 'Second answer content')
   await expect(page.locator('.graph-question-node')).toHaveCount(3)
+  // The graph owns the full canvas while sidebars float above it. Re-fit after
+  // building the fixture so every historical node is in the unobscured
+  // reading corridor before a test begins a graph-native interaction.
+  await fitGraph(page)
 }
 
 /**

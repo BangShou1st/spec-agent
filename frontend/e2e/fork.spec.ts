@@ -63,3 +63,48 @@ test('fork is blocked for an open-but-not-active base route until explicit activ
   await page.locator('[data-test="graph-question-node"]').nth(0).getByTestId('fork-node').click()
   await expect(page.getByTestId('fork-submit')).toBeEnabled()
 })
+
+test('fork dialog completes restore and activate locally without implicit fork', async ({ page }) => {
+  await createProject(page, 'E2E Fork Local Remediation')
+  await buildThreeNodeLineage(page)
+  await fitGraph(page)
+  await forkFromNode(page, 1, 'Fork-B')
+
+  const cards = page.locator('[data-route-id]')
+  await expect(cards).toHaveCount(2)
+  const archivedBase = cards.filter({ hasNot: page.getByTestId('active-route') }).first()
+  const archivedId = await archivedBase.getAttribute('data-route-id')
+  expect(archivedId).not.toBeNull()
+  await archivedBase.getByTestId('archive-route').click()
+  await page.getByTestId('confirm-route-action').click()
+  await expect(page.getByText('已归档路线。')).toBeVisible()
+
+  await page.locator('[data-test="graph-question-node"]').first().getByTestId('fork-node').click()
+  await expect(page.getByTestId('fork-dialog')).toBeVisible()
+  await page.locator(`input[name="fork-base-route"][value="${archivedId}"]`).check()
+  await expect(page.getByTestId('fork-submit')).toBeDisabled()
+  await expect(page.getByTestId('restore-base-route')).toBeVisible()
+  const routesBeforeRestore = await cards.count()
+  await page.getByTestId('restore-base-route').click()
+  await expect(page.getByTestId('fork-dialog')).toBeVisible()
+  await expect(page.getByText('已恢复路线。')).toBeVisible()
+  await expect(cards).toHaveCount(routesBeforeRestore)
+
+  // Restore makes the recovered route Active in the existing Runtime contract.
+  // Select the other OPEN route to exercise the separate explicit Activate step.
+  const nonActiveAfterRestore = cards.filter({ hasNot: page.getByTestId('active-route') }).first()
+  const nonActiveId = await nonActiveAfterRestore.getAttribute('data-route-id')
+  expect(nonActiveId).not.toBeNull()
+  await page.locator(`input[name="fork-base-route"][value="${nonActiveId}"]`).check()
+  await expect(page.getByTestId('activate-base-route')).toBeVisible()
+  await expect(page.getByTestId('fork-submit')).toBeDisabled()
+  await page.getByTestId('activate-base-route').click()
+  await expect(page.getByTestId('fork-dialog')).toBeVisible()
+  await expect(page.getByText('已设为当前路线。')).toBeVisible()
+  await expect(cards).toHaveCount(routesBeforeRestore)
+  await expect(page.getByTestId('fork-submit')).toBeEnabled()
+
+  await page.getByTestId('fork-submit').click()
+  await expect(page.getByTestId('fork-dialog')).toHaveCount(0)
+  await expect(cards).toHaveCount(3)
+})
