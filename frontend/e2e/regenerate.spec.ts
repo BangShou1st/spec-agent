@@ -37,6 +37,6 @@ test('regenerate creates a replacement route and keeps old history', async ({ pa
   await expect(page.locator('.graph-question-node--historical')).toHaveCount(3)
 
   // 替代关系是独立于 lineage 的虚线边（source = 被替代节点）。
-  const replacementEdges = page.locator('.graph-edge--replacement')
+  const replacementEdges = page.locator('.vue-flow__edge.graph-edge--replacement')
   await expect(replacementEdges).toHaveCount(1)
 })

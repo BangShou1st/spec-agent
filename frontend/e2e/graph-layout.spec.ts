@@ -110,7 +110,7 @@ test('toolbar zoom/fit and auto-layout stay browser-only', async ({ page }) => {
   await expect(page.locator('.graph-question-node')).toHaveCount(3)
 })
 
-test('adaptive edge anchors: invisible four-side handles + smoothstep rerouting across a quadrant drag', async ({ page }) => {
+test('adaptive edge anchors: invisible four-side handles + curved rerouting across a quadrant drag', async ({ page }) => {
   await createProject(page, 'E2E Adaptive Edges')
   await buildThreeNodeLineage(page)
   await fitGraph(page)
@@ -127,13 +127,15 @@ test('adaptive edge anchors: invisible four-side handles + smoothstep rerouting 
   await expect(anchor).toHaveCSS('opacity', '0')
   await expect(anchor).toHaveCSS('pointer-events', 'none')
 
-  // lineage edge 走 smoothstep：path 含直线段（不是自由 bezier 绕圈）。
+  // lineage edge uses the custom adaptive renderer: a restrained bezier curve
+  // keeps direction and marker semantics without the engineering-diagram look.
   const edge = page.locator('.vue-flow__edge').first()
-  await expect(edge).toHaveClass(/vue-flow__edge-smoothstep/)
+  await expect(edge).toHaveClass(/vue-flow__edge-adaptive/)
   const edgePath = edge.locator('path').first()
   const dBefore = await edgePath.getAttribute('d')
   expect(dBefore).not.toBeNull()
-  expect(dBefore ?? '').toContain('L')
+  expect(dBefore ?? '').toContain('C')
+  expect(await edgePath.getAttribute('marker-end')).toMatch(/url\(/)
 
   // 把第二个节点拖到根节点左侧：跨象限后 edge 实时重路由。
   const rootBox = await nodes.nth(0).boundingBox()
@@ -161,4 +163,21 @@ test('adaptive edge anchors: invisible four-side handles + smoothstep rerouting 
     (el) => (el as HTMLElement).style.transform,
   )
   expect(restored).toBe(transform)
+})
+
+test('fork keeps stable node footprints from overlapping the next node', async ({ page }) => {
+  await createProject(page, 'E2E Stable Node Footprint')
+  await buildThreeNodeLineage(page)
+  await fitGraph(page)
+  await page.locator('[data-test="graph-question-node"]').nth(1).getByTestId('fork-node').click()
+  await expect(page.getByTestId('fork-dialog')).toBeVisible()
+  await page.getByTestId('fork-submit').click()
+  await expect(page.getByTestId('fork-dialog')).toHaveCount(0)
+
+  const nodes = page.locator('[data-test="graph-question-node"]')
+  const middle = await nodes.nth(1).boundingBox()
+  const next = await nodes.nth(2).boundingBox()
+  expect(middle).not.toBeNull()
+  expect(next).not.toBeNull()
+  expect((middle?.x ?? 0) + (middle?.width ?? 0)).toBeLessThanOrEqual((next?.x ?? 0) + 1)
 })

@@ -483,31 +483,32 @@ describe('replacement edge visibility', () => {
 })
 
 describe('adaptive edge routing in the canonical projection', () => {
-  // Projected positions (first layout): a(0,0) b(360,0) c(720,0) d(720,220)
-  // bprime(360,220) e(720,440). Current node c uses the wider 420px fallback.
-  it('lineage edges render as smoothstep with adaptive source/target handles', () => {
+  // Projected positions use the stable 320px footprint and the new spacing.
+  it('lineage edges render as adaptive curves with directed handles', () => {
     const result = project()
     const aToB = result.edges.find((e) => e.id === 'a->b')!
-    expect(aToB.type).toBe('smoothstep')
+    expect(aToB.type).toBe('adaptive')
+    expect(aToB.markerEnd).toBeDefined()
     // a center (160,110), b center (520,110): horizontal right.
     expect(aToB.sourceHandle).toBe('source-right')
     expect(aToB.targetHandle).toBe('target-left')
     // b->c uses the wider current-node center: b (520,110), c (930,110).
     const bToC = result.edges.find((e) => e.id === 'b->c')!
-    expect(bToC.type).toBe('smoothstep')
+    expect(bToC.type).toBe('adaptive')
     expect(bToC.sourceHandle).toBe('source-right')
     expect(bToC.targetHandle).toBe('target-left')
   })
 
-  it('replacement edges stay dashed and distinct but also render smoothstep', () => {
+  it('replacement edges stay dashed and distinct while using adaptive curves', () => {
     const result = project()
     const repl = result.edges.find((e) => e.id === 'replacement:b->bprime')!
     expect(repl?.data?.kind).toBe('replacement')
-    expect(repl?.type).toBe('smoothstep')
+    expect(repl?.type).toBe('adaptive')
+    expect(repl?.markerEnd).toBeDefined()
     // b (520,110) -> bprime (520,330): vertical below.
     expect(repl?.sourceHandle).toBe('source-bottom')
     expect(repl?.targetHandle).toBe('target-top')
-    // The dashed rendering contract must survive the smoothstep switch.
+    // The dashed rendering contract must survive the custom renderer switch.
     expect(repl?.class).toContain('graph-edge--replacement')
     // supersedesNodeId is still not treated as parentNodeId.
     const bprime = result.nodes.find((n) => n.id === 'bprime')!

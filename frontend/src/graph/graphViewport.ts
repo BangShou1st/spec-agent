@@ -1,4 +1,5 @@
 import type { GraphPosition } from './graphTypes'
+import { GRAPH_NODE_HEIGHT, GRAPH_NODE_WIDTH } from './graphEdgeRouting'
 
 /**
  * Deterministic viewport helpers (Phase 7.3 wrap-up).
@@ -13,8 +14,8 @@ import type { GraphPosition } from './graphTypes'
  * they never move node coordinates and never mutate any state.
  */
 
-export const FALLBACK_NODE_WIDTH = 320
-export const FALLBACK_NODE_HEIGHT = 220
+export const FALLBACK_NODE_WIDTH = GRAPH_NODE_WIDTH
+export const FALLBACK_NODE_HEIGHT = GRAPH_NODE_HEIGHT
 
 /** A node as seen by the viewport helpers: projected position + known size. */
 export interface ViewportNode {

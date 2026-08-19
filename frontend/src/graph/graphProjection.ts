@@ -1,4 +1,4 @@
-import type { Edge, Node } from '@vue-flow/core'
+import { MarkerType, type Edge, type Node } from '@vue-flow/core'
 import type {
   GraphWorkspaceNodeView,
   GraphWorkspaceOptionView,
@@ -10,7 +10,6 @@ import type { GraphPosition, GraphRouteDisplayState } from './graphTypes'
 import { resolvePositions, VERTICAL_GAP } from './graphLayout'
 import {
   selectEdgeHandles,
-  CURRENT_NODE_WIDTH,
   FALLBACK_NODE_WIDTH,
   type EdgeHandles,
   type NodeGeometry,
@@ -32,6 +31,13 @@ export interface GraphRouteAnswerState {
   answer: GraphAnswerPresentation | null
 }
 
+export interface GraphRouteMembershipPresentation {
+  routeId: string
+  label: string
+  lifecycleStatus: RouteLifecycleStatus
+  isActive: boolean
+}
+
 export interface SpecAgentGraphNodeData {
   node: GraphWorkspaceNodeView
   routeIds: string[]
@@ -49,6 +55,8 @@ export interface SpecAgentGraphNodeData {
   canAnswer: boolean
   isExpanded: boolean
   isShared: boolean
+  /** Canonical route facts for the selected shared-node route chooser. */
+  routeMembership?: GraphRouteMembershipPresentation[]
   visualWeight: GraphVisualWeight
 }
 
@@ -333,6 +341,17 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
         canAnswer,
         isExpanded: uiState.expandedNodeIds.includes(node.id),
         isShared: routeIds.length > 1,
+        routeMembership: routeIds
+          .filter((routeId) => visibleRouteIds.has(routeId))
+          .map((routeId) => {
+            const route = view.routes.find((candidate) => candidate.id === routeId)
+            return {
+              routeId,
+              label: route?.label ?? routeId,
+              lifecycleStatus: route?.lifecycleStatus ?? 'open',
+              isActive: route?.isActive === true || routeId === activeRouteId,
+            }
+          }),
         visualWeight,
       }
       return {
@@ -345,17 +364,13 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
       }
     })
 
-  // Adaptive edge anchors: current nodes are 420px wide in CSS, historical
-  // nodes 320px. Without live measurements the projection uses these safe
-  // fallback widths so centers (and therefore handle choice) match the
-  // rendered layout; the browser-side drag rerouting then refines with the
+  // Adaptive edge anchors use one stable node footprint. Without live
+  // measurements the projection uses the same safe fallback dimensions as
+  // the rendered node; browser-side drag rerouting then refines with the
   // measured dimensions (see GraphCanvas @node-drag).
   const nodeFallbackWidth = new Map<string, number>()
   for (const projected of nodes) {
-    nodeFallbackWidth.set(
-      projected.id,
-      projected.data?.canAnswer === true ? CURRENT_NODE_WIDTH : FALLBACK_NODE_WIDTH,
-    )
+    nodeFallbackWidth.set(projected.id, FALLBACK_NODE_WIDTH)
   }
   const selectHandles = (sourceId: string, targetId: string): EdgeHandles => {
     const geometry = (nodeId: string): NodeGeometry => {
@@ -381,13 +396,10 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
         id: key,
         source: edge.source,
         target: edge.target,
-        // SmoothStep keeps lineage readable while dragging: straight L/R
-        // segments with a single rounded corner, anchored to the natural
-        // side chosen by the adaptive selector — never a free-climbing
-        // bezier around unrelated nodes.
-        type: 'smoothstep',
+        type: 'adaptive',
         sourceHandle: handles.sourceHandle,
         targetHandle: handles.targetHandle,
+        markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12 },
         data: {
           kind: 'lineage',
           routeIds: [...edge.routeIds],
@@ -420,11 +432,11 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
         id: 'replacement:' + node.supersedesNodeId + '->' + node.id,
         source: node.supersedesNodeId,
         target: node.id,
-        // Replacement stays a fully distinct relation (dashed class kept):
-        // only the rendering is upgraded to adaptive SmoothStep.
-        type: 'smoothstep',
+        // Replacement stays a fully distinct relation (dashed class kept).
+        type: 'adaptive',
         sourceHandle: handles.sourceHandle,
         targetHandle: handles.targetHandle,
+        markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12 },
         data: {
           kind: 'replacement',
           routeIds: [...routeIds],

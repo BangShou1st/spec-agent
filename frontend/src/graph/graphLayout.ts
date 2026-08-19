@@ -9,8 +9,8 @@ import type { GraphPosition } from './graphTypes'
  * is only run when the user explicitly requests 重新自动布局.
  */
 
-export const HORIZONTAL_GAP = 360
-export const VERTICAL_GAP = 220
+export const HORIZONTAL_GAP = 440
+export const VERTICAL_GAP = 280
 
 const VERTICAL_OFFSETS = [0, 1, -1, 2, -2, 3, -3] as const
 

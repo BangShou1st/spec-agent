@@ -17,12 +17,13 @@ import type { GraphPosition } from './graphTypes'
 /** Horizontal routing wins while |dx| >= |dy| * HORIZONTAL_DOMINANCE_FACTOR. */
 export const HORIZONTAL_DOMINANCE_FACTOR = 0.8
 
-/** Safe fallback dimensions used when a node has no measured size yet. */
-export const FALLBACK_NODE_WIDTH = 320
-export const FALLBACK_NODE_HEIGHT = 220
+/** Stable outer graph footprint used by every question node state. */
+export const GRAPH_NODE_WIDTH = 320
+export const GRAPH_NODE_HEIGHT = 220
 
-/** CSS width of the current (answerable) node, wider than historical nodes. */
-export const CURRENT_NODE_WIDTH = 420
+/** Safe fallback dimensions used when a node has no measured size yet. */
+export const FALLBACK_NODE_WIDTH = GRAPH_NODE_WIDTH
+export const FALLBACK_NODE_HEIGHT = GRAPH_NODE_HEIGHT
 
 export interface NodeGeometry {
   position: GraphPosition

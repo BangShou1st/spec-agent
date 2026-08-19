@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   selectEdgeHandles,
   HORIZONTAL_DOMINANCE_FACTOR,
+  GRAPH_NODE_WIDTH,
+  GRAPH_NODE_HEIGHT,
   FALLBACK_NODE_WIDTH,
   FALLBACK_NODE_HEIGHT,
   type NodeGeometry,
@@ -83,25 +85,23 @@ describe('graph edge routing: adaptive anchored handle selection', () => {
     expect(selectEdgeHandles(source, higherButRight)).toEqual(RIGHT)
   })
 
-  it('uses node centers, so a wider (current-style) target is classified from its center', () => {
-    // source 320 wide at (0,0); target 420 wide at (200, 300).
-    // center dx = (200 + 210) - 160 = 250 >= 300 * 0.8 = 240 -> horizontal.
-    // A corner-based implementation (dx = 200 < 240) would pick vertical,
-    // which is exactly the bug this pins down.
-    const source: NodeGeometry = { position: { x: 0, y: 0 }, width: 320, height: 220 }
-    const wideTarget: NodeGeometry = { position: { x: 200, y: 300 }, width: 420, height: 220 }
-    expect(selectEdgeHandles(source, wideTarget)).toEqual(RIGHT)
-  })
+  it('uses one stable outer footprint for historical and current nodes', () => {
+    expect(GRAPH_NODE_WIDTH).toBe(320)
+    expect(GRAPH_NODE_HEIGHT).toBe(220)
+    expect(FALLBACK_NODE_WIDTH).toBe(GRAPH_NODE_WIDTH)
+    expect(FALLBACK_NODE_HEIGHT).toBe(GRAPH_NODE_HEIGHT)
 
-  it('historical vs current widths keep consistent classification', () => {
-    // Historical (320) to current (420) to the right stays horizontal LTR.
-    const historical = geometry({ width: 320, height: 220 })
-    const current = geometry({ position: { x: 360, y: 0 }, width: 420, height: 220 })
+    const historical: NodeGeometry = {
+      position: { x: 0, y: 0 },
+      width: GRAPH_NODE_WIDTH,
+      height: GRAPH_NODE_HEIGHT,
+    }
+    const current: NodeGeometry = {
+      position: { x: 360, y: 0 },
+      width: GRAPH_NODE_WIDTH,
+      height: GRAPH_NODE_HEIGHT,
+    }
     expect(selectEdgeHandles(historical, current)).toEqual(RIGHT)
-    // Current (420) to historical (320) target at the left stays LTR-left.
-    const currentLeft = geometry({ width: 420, height: 220 })
-    const historicalTarget = geometry({ position: { x: -360, y: 0 }, width: 320, height: 220 })
-    expect(selectEdgeHandles(currentLeft, historicalTarget)).toEqual(LEFT)
   })
 
   it('falls back to safe dimensions when a node has no measured size', () => {
