@@ -11,7 +11,8 @@ import { useWorkspaceStore } from '@/stores/workspaceStore'
  * 右侧检查器：详情 / 需求状态 / 规格。
  *
  * 无节点选中时默认显示需求状态；选中节点后默认显示详情。需求状态与规格
- * 历史始终跟随显式 Focus；生成规格始终针对后端 Active 路线，不改变 Focus。
+ * 历史跟随显式 Focus；单路线项目可直接读取唯一路线。共享节点无 Focus 时
+ * 不猜测路线。生成规格始终针对后端 Active 路线，不改变 Focus。
  */
 interface SelectedEdge {
   id: string
@@ -36,7 +37,12 @@ const graphUi = useGraphUiStore()
 type InspectorTab = 'details' | 'requirement' | 'spec'
 const activeTab = ref<InspectorTab>('requirement')
 
-const readingRouteId = computed<string | null>(() => graphUi.readingRouteId())
+const readingRouteId = computed<string | null>(() => {
+  const focusedRouteId = graphUi.readingRouteId()
+  if (focusedRouteId) return focusedRouteId
+  const routes = workspace.graphView?.routes ?? []
+  return routes.length === 1 ? routes[0].id : null
+})
 const readingRouteLabel = computed(() => {
   if (!readingRouteId.value) return '未选择'
   return workspace.graphView?.routes.find((route) => route.id === readingRouteId.value)?.label?.trim() || '当前路线'
@@ -97,7 +103,11 @@ watch(
 
 async function handleGenerateSpec(): Promise<void> {
   const result = await workspace.generateSpec()
-  void result
+  if (result) {
+    // The user explicitly asked for the Active route's artifact; focus that
+    // returned route so the newly generated snapshot is immediately visible.
+    graphUi.setFocusRoute(workspace.activeRoute?.id ?? null)
+  }
 }
 
 function selectSpec(snapshotId: string): void {
@@ -166,6 +176,7 @@ function selectSpec(snapshotId: string): void {
         v-else-if="activeTab === 'requirement'"
         :requirement-state="requirementState"
         :route-id="readingRouteId"
+        :route-label="readingRouteId ? routeLabels[readingRouteId] : null"
         :loading="workspace.loadingRequirementRouteId === readingRouteId"
       />
 

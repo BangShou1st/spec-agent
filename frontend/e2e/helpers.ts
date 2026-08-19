@@ -70,13 +70,12 @@ export async function buildThreeNodeLineage(page: Page): Promise<void> {
 }
 
 /**
- * Forks from the given graph node index through the explicit source-route
- * dialog. The helper selects the only source route in this fixture.
+ * Forks from the given graph node index through the current visual reading
+ * context. The operation dialog never asks the user to pick a route.
  */
 export async function forkFromNode(page: Page, index: number, label: string): Promise<void> {
   await page.locator('[data-test="graph-question-node"]').nth(index).getByTestId('fork-node').click()
   await expect(page.getByTestId('fork-dialog')).toBeVisible()
-  await page.getByTestId('fork-base-route').first().check()
   if (label) {
     await page.getByTestId('fork-label').fill(label)
   }

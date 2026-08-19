@@ -60,9 +60,10 @@ test('focus, dim, hide, show-all and active protection on a two-route graph', as
   const active = cards.filter({ has: page.getByTestId('active-route') }).first()
   await expect(active.getByTestId('hide-route')).toBeDisabled()
 
-  // 显示全部路线：清空 focus 与手工 dim/hide，节点全部回归。
+  // 显示全部路线：清空手工 dim/hide；此前因隐藏 Focus A 已自动清除。
   await page.getByTestId('show-all').click()
   await expect(nonActive).not.toHaveClass(/route-card--focused/)
+  await expect(nonActive.getByTestId('focus-route')).toHaveText('聚焦此路线')
   await expect(nonActive).not.toHaveClass(/route-card--dimmed/)
   await expect(nonActive).not.toHaveClass(/route-card--hidden/)
   await expect(page.locator('.graph-question-node--historical')).toHaveCount(3)
@@ -157,16 +158,16 @@ test('immersive graph navigation keeps overlays off the canvas layout', async ({
   expect(Math.abs(widthAfterResize - widthBeforeResize)).toBeLessThan(2)
 
   const activeCard = page.locator('[data-route-id]').filter({ has: page.getByTestId('active-route') }).first()
-  const routeBId = await activeCard.getAttribute('data-route-id')
-  expect(routeBId).not.toBeNull()
+  await page.getByTestId('floating-window-inspector').getByTestId('floating-window-close').click()
   await page.getByTestId('question').click()
   await expect(activeCard).toHaveClass(/route-card--focused/)
   await expect(page.locator('.graph-node--dimmed')).toHaveCount(1)
 
+  await page.getByTestId('open-inspector').click()
   await page.getByTestId('tab-requirement').click()
-  await expect(page.getByTestId('requirement-state-panel')).toContainText(routeBId ?? '')
+  await expect(page.getByTestId('requirement-state-panel')).toContainText('Route-B')
 
   await page.getByTestId('show-all').click()
-  await expect(activeCard).not.toHaveClass(/route-card--focused/)
-  await expect(page.locator('.graph-node--dimmed')).toHaveCount(0)
+  await expect(activeCard).toHaveClass(/route-card--focused/)
+  await expect(page.locator('.graph-node--dimmed')).toHaveCount(1)
 })

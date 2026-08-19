@@ -11,7 +11,7 @@ test('re-answer keeps the canonical question and creates a distinct answer visua
   expect(canonicalId).not.toBeNull()
   await target.getByTestId('reanswer-node').click()
   await expect(page.getByTestId('reanswer-dialog')).toBeVisible()
-  await page.getByTestId('reanswer-source-route').first().check()
+  await expect(page.locator('[data-test="reanswer-source-route"]')).toHaveCount(0)
   await page.getByTestId('reanswer-submit').click()
   await expect(page.getByTestId('reanswer-dialog')).toHaveCount(0)
 

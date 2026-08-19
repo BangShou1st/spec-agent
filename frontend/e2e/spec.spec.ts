@@ -48,34 +48,31 @@ test('Active=A Focus=B separates reading context from work context', async ({ pa
   // 把 A 重新设为当前路线 → Active=A；B 保持 OPEN 非当前。
   const cards = page.locator('[data-route-id]')
   const cardA = cards.filter({ hasNot: page.getByTestId('active-route') }).first()
-  const routeAId = (await cardA.getAttribute('data-route-id')) ?? ''
   await cardA.getByTestId('activate-route').click()
   // activate 是后端命令：等确认反馈（canonical 刷新完成）后再定位卡片，
   // 避免徽标切换竞态导致后续 locator 指向错误的路线。
   await expect(page.getByText('已设为当前路线。')).toBeVisible()
   await expect(page.getByTestId('active-route')).toHaveCount(1)
 
-  // Focus=B（浏览器只读阅读上下文；B = 激活后没有当前徽标的 fork 路线）。
+  // Focus=B（分支成功后已进入浏览上下文；切换 Active 不应清除 Focus）。
   const cardB = cards.filter({ hasNot: page.getByTestId('active-route') }).first()
-  const routeBId = (await cardB.getAttribute('data-route-id')) ?? ''
-  await cardB.getByTestId('focus-route').click()
   await expect(cardB).toHaveClass(/route-card--focused/)
   // Focus 不改变 Active。
   await expect(page.getByTestId('active-route')).toHaveCount(1)
 
   // 需求状态与规格历史跟随读取路线 B。
   await expect(page.getByTestId('requirement-state-panel')).toBeVisible()
-  await expect(page.getByText('路线：' + routeBId.slice(0, 8)).first()).toBeVisible()
+  await expect(page.getByText('路线：Route-B').first()).toBeVisible()
 
   // 唯一可回答节点仍是 A 上的节点（Focus 不移动工作上下文）。
   await page.getByTestId('tab-spec').click()
-  await expect(page.getByTestId('generate-focus-warning')).toContainText(routeBId.slice(0, 8))
-  await expect(page.getByText('当前路线：' + routeAId.slice(0, 8))).toBeVisible()
+  await expect(page.getByTestId('generate-focus-warning')).toContainText('Route-B')
+  await expect(page.getByText('当前路线：主路线')).toBeVisible()
   await expect(page.getByTestId('specs-empty')).toBeVisible()
 
   // 生成始终针对当前路线 A，成功后读取上下文跟随返回的 A 产物。
   await page.getByTestId('generate-spec').click()
   await expect(page.getByTestId('spec-snapshot-detail')).toBeVisible()
-  await expect(page.getByText('读取路线：' + routeAId.slice(0, 8))).toBeVisible()
+  await expect(page.getByText('读取路线：主路线')).toBeVisible()
   await expect(page.getByTestId('spec-snapshot-item')).toHaveCount(1)
 })

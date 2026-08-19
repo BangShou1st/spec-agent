@@ -9,6 +9,7 @@ import type { RequirementClaimView, RequirementStateView } from '@/api/types'
 const props = defineProps<{
   requirementState: RequirementStateView | null
   routeId: string | null
+  routeLabel?: string | null
   loading: boolean
 }>()
 
@@ -42,7 +43,8 @@ function formatConfidence(claim: RequirementClaimView): string {
       </template>
 
       <template v-else>
-        <p class="meta-text" style="margin-top: 0">路线：{{ routeId ?? '—' }}</p>
+        <p class="meta-text" style="margin-top: 0">路线：{{ routeLabel || (routeId ? '路线' : '—') }}</p>
+        <p v-if="routeId" class="meta-text" style="margin: 0">路线标识：{{ routeId.slice(0, 8) }}</p>
 
         <section
           v-for="group in groups"

@@ -185,7 +185,6 @@ test('fork preserves existing visual positions while adding only a new visual ch
   const childBefore = await child.evaluate((el) => (el.parentElement as HTMLElement).style.transform)
   await page.locator('[data-test="graph-question-node"]').nth(1).getByTestId('fork-node').click()
   await expect(page.getByTestId('fork-dialog')).toBeVisible()
-  await page.getByTestId('fork-base-route').first().check()
   await page.getByTestId('fork-submit').click()
   await expect(page.getByTestId('fork-dialog')).toHaveCount(0)
 
