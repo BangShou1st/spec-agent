@@ -106,4 +106,37 @@ describe('route sidebar', () => {
     await wrapper.find('[data-test="filter-archived"]').setValue(false)
     expect(useGraphUiStore().lifecycleFilters.archived).toBe(false)
   })
+
+  it('turning off the lifecycle filter of the focused route clears focus first', async () => {
+    const routes = [
+      routeView('r1', 'open', ['n1']),
+      routeView('r2', 'archived', ['n1']),
+    ]
+    const wrapper = mount(RouteSidebar, {
+      props: { routes, activeRouteId: 'r1', commandPending: false, pendingRouteCommand: null },
+    })
+    await wrapper.find('[data-route-id="r2"] [data-test="focus-route"]').trigger('click')
+    expect(useGraphUiStore().focusRouteId).toBe('r2')
+    await wrapper.find('[data-test="filter-archived"]').setValue(false)
+    // Focus 被清除，筛选才生效：focusRouteId 绝不指向 filtered-out 路线。
+    expect(useGraphUiStore().focusRouteId).toBeNull()
+    expect(useGraphUiStore().lifecycleFilters.archived).toBe(false)
+  })
+
+  it('focus never selects a filtered-out or hidden route', async () => {
+    const routes = [
+      routeView('r1', 'open', ['n1']),
+      routeView('r2', 'archived', ['n1']),
+      routeView('r3', 'open', ['n1']),
+    ]
+    const wrapper = mount(RouteSidebar, {
+      props: { routes, activeRouteId: 'r1', commandPending: false, pendingRouteCommand: null },
+    })
+    await wrapper.find('[data-test="filter-archived"]').setValue(false)
+    await wrapper.find('[data-route-id="r2"] [data-test="focus-route"]').trigger('click')
+    expect(useGraphUiStore().focusRouteId).toBeNull()
+    await wrapper.find('[data-route-id="r3"] [data-test="hide-route"]').trigger('click')
+    await wrapper.find('[data-route-id="r3"] [data-test="focus-route"]').trigger('click')
+    expect(useGraphUiStore().focusRouteId).toBeNull()
+  })
 })

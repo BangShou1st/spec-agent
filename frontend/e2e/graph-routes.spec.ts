@@ -50,6 +50,10 @@ test('focus, dim, hide, show-all and active protection on a two-route graph', as
   await expect(nonActive).toHaveClass(/route-card--hidden/)
   await expect(page.locator('.graph-question-node--historical')).toHaveCount(1)
 
+  // Focus A → Hide A：Focus 自动清除，按钮回到“聚焦此路线”，焦点不再指向隐藏路线。
+  await expect(nonActive).not.toHaveClass(/route-card--focused/)
+  await expect(nonActive.getByTestId('focus-route')).toHaveText('聚焦此路线')
+
   // 当前路线不可隐藏：按钮禁用。
   const active = cards.filter({ has: page.getByTestId('active-route') }).first()
   await expect(active.getByTestId('hide-route')).toBeDisabled()

@@ -118,6 +118,11 @@ export const useGraphUiStore = defineStore('graphUi', {
     },
 
     setFocusRoute(routeId: string | null): void {
+      // Focus is a reading context for visible routes only: a manually
+      // hidden route can never become the Focus route.
+      if (routeId !== null && this.routeDisplayStates[routeId] === 'hidden') {
+        return
+      }
       this.focusRouteId = routeId
     },
 
@@ -131,11 +136,15 @@ export const useGraphUiStore = defineStore('graphUi', {
 
     /**
      * Hide keeps route-exclusive elements out of the current browser view.
-     * The Active route can never be hidden.
+     * The Active route can never be hidden. Hiding the focused route clears
+     * Focus first: Focus must never point at a hidden route.
      */
     hideRoute(routeId: string): void {
       if (routeId === this.activeRouteId) {
         return
+      }
+      if (routeId === this.focusRouteId) {
+        this.focusRouteId = null
       }
       this.setRouteDisplayState(routeId, 'hidden')
     },
@@ -230,7 +239,9 @@ export const useGraphUiStore = defineStore('graphUi', {
       if (this.focusRouteId) {
         const focusRoute = view.routes.find((route) => route.id === this.focusRouteId)
         const visible =
-          focusRoute !== undefined && this.lifecycleFilters[focusRoute.lifecycleStatus] === true
+          focusRoute !== undefined &&
+          this.lifecycleFilters[focusRoute.lifecycleStatus] === true &&
+          this.routeDisplayStates[focusRoute.id] !== 'hidden'
         if (!visible) {
           this.focusRouteId = null
         }

@@ -53,6 +53,34 @@ function isFocused(routeId: string): boolean {
   return graphUi.focusRouteId === routeId
 }
 
+/**
+ * Focus is only for visible routes: a manually hidden or lifecycle-filtered
+ * route can never become the Focus route (graphUiStore enforces the hidden
+ * half on its own; the filter half needs the route lifecycle, a Runtime fact
+ * that lives here, not in the browser-only UI store).
+ */
+function toggleFocus(route: GraphWorkspaceRouteView): void {
+  if (isFocused(route.id)) {
+    graphUi.clearFocusRoute()
+    return
+  }
+  if (graphUi.isRouteHidden(route.id) || !graphUi.lifecycleFilters[route.lifecycleStatus]) {
+    return
+  }
+  graphUi.setFocusRoute(route.id)
+}
+
+/** Focus must never point at a route that a lifecycle filter has hidden. */
+function setFilter(status: RouteLifecycleStatus, visible: boolean): void {
+  if (!visible) {
+    const focused = props.routes.find((route) => route.id === graphUi.focusRouteId)
+    if (focused?.lifecycleStatus === status) {
+      graphUi.clearFocusRoute()
+    }
+  }
+  graphUi.setLifecycleFilter(status, visible)
+}
+
 function setDim(routeId: string, dimmed: boolean): void {
   if (dimmed) graphUi.dimRoute(routeId)
   else graphUi.restoreRouteDisplay(routeId)
@@ -77,7 +105,7 @@ function isArchivedOrDeleted(route: GraphWorkspaceRouteView): boolean {
           type="checkbox"
           :checked="graphUi.lifecycleFilters[filter.status]"
           :data-test="`filter-${filter.status}`"
-          @change="graphUi.setLifecycleFilter(filter.status, ($event.target as HTMLInputElement).checked)"
+          @change="setFilter(filter.status, ($event.target as HTMLInputElement).checked)"
         />
         {{ filter.label }}
       </label>
@@ -114,7 +142,7 @@ function isArchivedOrDeleted(route: GraphWorkspaceRouteView): boolean {
               class="btn btn-small"
               data-test="focus-route"
               :class="{ 'route-card__focused-btn': isFocused(route.id) }"
-              @click="isFocused(route.id) ? graphUi.clearFocusRoute() : graphUi.setFocusRoute(route.id)"
+              @click="toggleFocus(route)"
             >
               {{ isFocused(route.id) ? '取消聚焦' : '聚焦此路线' }}
             </button>

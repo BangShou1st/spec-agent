@@ -4,7 +4,8 @@ import type { SpecAgentGraphNodeData } from '@/graph/graphProjection'
 /**
  * 节点详情检查器（右栏）。只读展示节点问题、目的、全部选项、每条路线的
  * 回答/等待状态与路线归属。历史动作只向上发出意图；回答提交永远在 Graph
- * 节点内，这里不提供第二套提交界面。
+ * 节点内，这里不提供第二套提交界面。Fork / Regenerate 只在历史节点上提供：
+ * 当前待回答节点（canAnswer）保持纯详情，历史动作不作用于等待回答的节点。
  *
  * 按 routeIds（routeStates）展示 route-specific state：同一共享节点上
  * 可以同时出现「路线 A · 已回答」与「路线 B · 等待回答」，身份不会混淆。
@@ -62,7 +63,9 @@ function formatTime(iso: string): string {
       </div>
       <p v-else class="muted" data-test="node-detail-no-answers">该节点所属路线都还没有回答。</p>
 
-      <div class="node-inspector__actions">
+      <!-- 历史节点才提供 Fork / Regenerate；当前待回答节点保持只读详情，
+           回答只发生在 Graph 节点内部。 -->
+      <div v-if="!data.canAnswer" class="node-inspector__actions">
         <button class="btn btn-small" data-test="inspector-fork" @click="emit('fork', data.node.id)">从此分支</button>
         <button
           class="btn btn-small"

@@ -140,6 +140,36 @@ describe('graph ui store', () => {
     expect(store.isRouteHidden(ACTIVE_ROUTE_ID)).toBe(false)
   })
 
+  it('hiding the focused route clears focus before hiding', () => {
+    const store = useGraphUiStore()
+    store.reconcile(graphView())
+    store.setFocusRoute('rFocus')
+    store.hideRoute('rFocus')
+    expect(store.focusRouteId).toBeNull()
+    expect(store.isRouteHidden('rFocus')).toBe(true)
+  })
+
+  it('focus never points at a manually hidden route', () => {
+    const store = useGraphUiStore()
+    store.reconcile(graphView())
+    store.hideRoute('rFocus')
+    store.setFocusRoute('rFocus')
+    expect(store.focusRouteId).toBeNull()
+    store.restoreRouteDisplay('rFocus')
+    store.setFocusRoute('rFocus')
+    expect(store.focusRouteId).toBe('rFocus')
+  })
+
+  it('reconcile clears focus when the focused route is manually hidden', () => {
+    const store = useGraphUiStore()
+    store.reconcile(graphView())
+    store.setFocusRoute('rFocus')
+    // Hidden state that bypassed hideRoute (e.g. persisted) still repairs Focus.
+    store.routeDisplayStates = { ...store.routeDisplayStates, rFocus: 'hidden' }
+    store.reconcile(graphView())
+    expect(store.focusRouteId).toBeNull()
+  })
+
   it('show all clears focus and manual dim/hide but preserves lifecycle filters', () => {
     const store = useGraphUiStore()
     store.setFocusRoute('rFocus')

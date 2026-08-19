@@ -180,6 +180,53 @@ describe('workspace inspector', () => {
     expect(wrapper.find('[data-test="route-answer-rB"]').text()).not.toContain('A answer')
   })
 
+  it('current pending node keeps details but offers no fork or regenerate', async () => {
+    await loadStore()
+    const nodeData = {
+      node: makeNode({ id: 'nC', question: 'Current pending question' }),
+      routeIds: ['rA'],
+      answers: [],
+      routeStates: [{ routeId: 'rA', answer: null }],
+      primaryAnswer: null,
+      readingRouteId: 'rA',
+      isCurrent: true,
+      canAnswer: true,
+      isExpanded: false,
+      isShared: false,
+      visualWeight: 'active' as const,
+    }
+    const wrapper = mount(WorkspaceInspector, { props: { nodeData } })
+    // 详情照常展示：问题、等待状态都在。
+    expect(wrapper.find('[data-test="node-inspector"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="node-detail-question"]').text()).toContain('Current pending question')
+    expect(wrapper.find('[data-test="route-waiting"]').text()).toContain('等待回答')
+    // 当前待回答节点不提供历史动作：无“从此分支”、无“重新生成这个问题”。
+    expect(wrapper.find('[data-test="inspector-fork"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="inspector-regenerate"]').exists()).toBe(false)
+    // 回答界面也只存在于 Graph 节点内，检查器没有第二套提交入口。
+    expect(wrapper.find('[data-test="submit-answer"]').exists()).toBe(false)
+  })
+
+  it('historical nodes offer fork and regenerate from the inspector', async () => {
+    await loadStore()
+    const nodeData = {
+      node: makeNode({ id: 'nOld', question: 'Historical question' }),
+      routeIds: ['rA'],
+      answers: [],
+      routeStates: [{ routeId: 'rA', answer: null }],
+      primaryAnswer: null,
+      readingRouteId: 'rA',
+      isCurrent: false,
+      canAnswer: false,
+      isExpanded: false,
+      isShared: false,
+      visualWeight: 'normal' as const,
+    }
+    const wrapper = mount(WorkspaceInspector, { props: { nodeData } })
+    expect(wrapper.find('[data-test="inspector-fork"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="inspector-regenerate"]').exists()).toBe(true)
+  })
+
   it('spec generation warning targets the active route while reading another', async () => {
     const activeA = makeActiveState({
       project: makeProject({ id: 'p1', activeRouteId: 'rA' }),

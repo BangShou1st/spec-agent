@@ -124,12 +124,18 @@ Read these before implementation:
 
 ## Current Status
 
-The first frontend workspace is implemented: a route-oriented requirement
-clarification workspace with the core clarification loop, route history and
-historical node inspection, activate / fork / deterministic regenerate /
-restore / archive / soft-delete controls, backend-derived requirement state,
-and derived spec snapshot generation with history and source references. The
-frontend is a client of the Runtime — history, route lifecycle, active-route
-selection, provenance, and persistence stay owned and authoritative on the
-backend. See `docs/PHASE_7_EXIT_CRITERIA.md` for the Phase 7 closure
-documentation. CI/hardening (Phase 8) has not begun.
+Phase 7.3 is closed. The graph-first workspace is now the frontend workspace:
+an interactive graph canvas (Vue Flow) renders the canonical route lineage
+graph with per-route answers, the active question is answered directly inside
+its graph node, and a resizable route sidebar + inspector provide route
+navigation (locate / focus / dim / hide / show-all, lifecycle filters),
+historical node inspection, backend-derived requirement state, and derived
+spec snapshot history. Closed invariants: the Focus route is always a visible
+route (Focus auto-clears when the focused route is hidden or filtered out),
+and Fork / Regenerate act only on historical nodes, never on the current
+pending question.
+
+The frontend remains a client of the Runtime — history, route lifecycle,
+active-route selection, provenance, and persistence stay owned and
+authoritative on the backend. Phase 8 (CI/hardening) has not begun. See
+`docs/PHASE_7_3_EXIT_CRITERIA.md` for the Phase 7.3 closure documentation.
