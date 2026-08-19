@@ -42,7 +42,7 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Runtime-controlled fake agent orchestrator.
+ * Runtime-controlled production agent orchestrator.
  *
  * <p>Runs fake agent cycles against the model gateway: create an agent
  * run, freeze a context snapshot, ask the model for a proposal, validate
@@ -68,7 +68,7 @@ import java.util.UUID;
  * is rethrown.
  */
 @Service
-public class FakeAgentOrchestrator {
+public class AgentOrchestrator {
 
     private final AgentRunService agentRunService;
     private final AgentRunFailureService agentRunFailureService;
@@ -89,7 +89,7 @@ public class FakeAgentOrchestrator {
     private final StructuredModelOutputParser structuredModelOutputParser;
     private final StructuredOutputMapper structuredOutputMapper;
 
-    public FakeAgentOrchestrator(AgentRunService agentRunService,
+    public AgentOrchestrator(AgentRunService agentRunService,
                                  AgentRunFailureService agentRunFailureService,
                                  ProjectRepository projectRepository,
                                  RouteRepository routeRepository,
@@ -127,7 +127,7 @@ public class FakeAgentOrchestrator {
         this.structuredOutputMapper = structuredOutputMapper;
     }
 
-    public FakeAgentRunResult draftNextQuestion(UUID projectId) {
+    public AgentRunResult draftNextQuestion(UUID projectId) {
         Project project = loadProject(projectId);
         Route route = loadActiveRoute(project);
 
@@ -188,7 +188,7 @@ public class FakeAgentOrchestrator {
             agentRunService.complete(run.id(), AgentRunStatus.COMPLETED, trace);
 
             AgentRun completedRun = agentRunService.getRun(run.id()).orElseThrow();
-            return new FakeAgentRunResult(completedRun, contextSnapshot, response, producedNode);
+            return new AgentRunResult(completedRun, contextSnapshot, response, producedNode);
         } catch (RuntimeException ex) {
             failIfNotTerminal(run.id(), trace, ex);
             throw ex;
@@ -203,7 +203,7 @@ public class FakeAgentOrchestrator {
      * never persisted and the run is marked FAILED. The immutable answer stays
      * persisted; use {@link #repairAnswerProcessingAndDraftNext} to resume.
      */
-    public FakeAnswerRunResult answerActiveNodeAndDraftNext(UUID projectId, String freeText) {
+    public AnswerRunResult answerActiveNodeAndDraftNext(UUID projectId, String freeText) {
         return answerActiveNodeAndDraftNext(projectId, null, freeText);
     }
 
@@ -223,7 +223,7 @@ public class FakeAgentOrchestrator {
      * the immutable answer, interpret it, draft and ground the answer patch,
      * reflect it, persist the patch, draft and persist the next node.
      */
-    public FakeAnswerRunResult answerActiveNodeAndDraftNext(UUID projectId,
+    public AnswerRunResult answerActiveNodeAndDraftNext(UUID projectId,
                                                             UUID selectedOptionId,
                                                             String freeText) {
         Project project = loadProject(projectId);
@@ -270,7 +270,7 @@ public class FakeAgentOrchestrator {
      * answer id. The answer must belong to this project, to the active route,
      * and to the active route's tip node.
      */
-    public FakeAnswerRunResult repairAnswerProcessingAndDraftNext(UUID projectId, UUID answerId) {
+    public AnswerRunResult repairAnswerProcessingAndDraftNext(UUID projectId, UUID answerId) {
         Project project = loadProject(projectId);
         Route route = loadActiveRoute(project);
 
@@ -317,7 +317,7 @@ public class FakeAgentOrchestrator {
      * <p>If either gate rejects the draft, no spec snapshot is persisted and the
      * run is marked FAILED.
      */
-    public FakeSpecRunResult generateSpec(UUID projectId) {
+    public SpecRunResult generateSpec(UUID projectId) {
         Project project = loadProject(projectId);
         Route route = loadActiveRoute(project);
         if (route.tipNodeId() == null) {
@@ -383,7 +383,7 @@ public class FakeAgentOrchestrator {
             agentRunService.complete(run.id(), AgentRunStatus.COMPLETED, trace);
 
             AgentRun completedRun = agentRunService.getRun(run.id()).orElseThrow();
-            return new FakeSpecRunResult(completedRun, contextSnapshot, response, snapshot);
+            return new SpecRunResult(completedRun, contextSnapshot, response, snapshot);
         } catch (RuntimeException ex) {
             failIfNotTerminal(run.id(), trace, ex);
             throw ex;
@@ -397,7 +397,7 @@ public class FakeAgentOrchestrator {
      * are grounded with the real answered node and answer ids before the
      * reflection gate sees them.
      */
-    private FakeAnswerRunResult continueAfterAnswer(AgentRun run,
+    private AnswerRunResult continueAfterAnswer(AgentRun run,
                                                     ContextSnapshot contextSnapshot,
                                                     Answer answer,
                                                     String trace) {
@@ -473,7 +473,7 @@ public class FakeAgentOrchestrator {
         agentRunService.complete(run.id(), AgentRunStatus.COMPLETED, trace);
 
         AgentRun completedRun = agentRunService.getRun(run.id()).orElseThrow();
-        return new FakeAnswerRunResult(completedRun, contextSnapshot,
+        return new AnswerRunResult(completedRun, contextSnapshot,
                 interpretResponse, patchResponse, nodeResponse, answer, patch, producedNode);
     }
 

@@ -1,9 +1,9 @@
 package com.specagent.api.agent;
 
-import com.specagent.agent.FakeAgentOrchestrator;
-import com.specagent.agent.FakeAnswerRunResult;
-import com.specagent.agent.FakeAgentRunResult;
-import com.specagent.agent.FakeSpecRunResult;
+import com.specagent.agent.AgentOrchestrator;
+import com.specagent.agent.AnswerRunResult;
+import com.specagent.agent.AgentRunResult;
+import com.specagent.agent.SpecRunResult;
 import com.specagent.api.common.ApiException;
 import com.specagent.api.common.CommandExecution;
 import com.specagent.api.spec.SpecSnapshotResponse;
@@ -30,14 +30,14 @@ import java.util.UUID;
 @Service
 public class AgentCommandService {
 
-    private final FakeAgentOrchestrator orchestrator;
+    private final AgentOrchestrator orchestrator;
     private final ProjectService projectService;
     private final RouteService routeService;
     private final NodeService nodeService;
     private final AnswerService answerService;
     private final AgentRunDtoMapper agentRunDtoMapper;
 
-    public AgentCommandService(FakeAgentOrchestrator orchestrator,
+    public AgentCommandService(AgentOrchestrator orchestrator,
                                ProjectService projectService,
                                RouteService routeService,
                                NodeService nodeService,
@@ -55,7 +55,7 @@ public class AgentCommandService {
         return CommandExecution.execute(() -> {
             Project project = CommandExecution.requireProject(projectService, projectId);
             CommandExecution.requireActiveRoute(project, routeService);
-            FakeAgentRunResult result = orchestrator.draftNextQuestion(projectId);
+            AgentRunResult result = orchestrator.draftNextQuestion(projectId);
             return new DraftQuestionResponse(
                     agentRunDtoMapper.from(result.run()),
                     com.specagent.api.node.NodeResponse.from(result.producedNode()));
@@ -74,7 +74,7 @@ public class AgentCommandService {
                 throw ApiException.conflict("ANSWER_ALREADY_FINALIZED",
                         "The active node has already been answered");
             }
-            FakeAnswerRunResult result = orchestrator.answerActiveNodeAndDraftNext(
+            AnswerRunResult result = orchestrator.answerActiveNodeAndDraftNext(
                     projectId, request.selectedOptionId(), request.freeText());
             return AnswerExecutionResponse.from(agentRunDtoMapper.from(result.run()), result);
         });
@@ -91,7 +91,7 @@ public class AgentCommandService {
                 throw ApiException.conflict("ANSWER_NOT_IN_ACTIVE_FLOW",
                         "The answer is not part of the active flow");
             }
-            FakeAnswerRunResult result = orchestrator.repairAnswerProcessingAndDraftNext(projectId, answerId);
+            AnswerRunResult result = orchestrator.repairAnswerProcessingAndDraftNext(projectId, answerId);
             return AnswerExecutionResponse.from(agentRunDtoMapper.from(result.run()), result);
         });
     }
@@ -104,7 +104,7 @@ public class AgentCommandService {
                 throw ApiException.conflict("NO_ACTIVE_TIP_NODE",
                         "The active route has no tip node to generate a spec from");
             }
-            FakeSpecRunResult result = orchestrator.generateSpec(projectId);
+            SpecRunResult result = orchestrator.generateSpec(projectId);
             return new SpecGenerationResponse(
                     agentRunDtoMapper.from(result.run()),
                     SpecSnapshotResponse.from(result.specSnapshot()));

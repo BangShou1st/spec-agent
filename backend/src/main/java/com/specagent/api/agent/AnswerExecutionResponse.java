@@ -1,6 +1,6 @@
 package com.specagent.api.agent;
 
-import com.specagent.agent.FakeAnswerRunResult;
+import com.specagent.agent.AnswerRunResult;
 import com.specagent.api.node.NodeResponse;
 
 /**
@@ -15,7 +15,7 @@ public record AnswerExecutionResponse(
         NodeResponse nextNode) {
 
     public static AnswerExecutionResponse from(AgentRunResponse run,
-                                               FakeAnswerRunResult result) {
+                                               AnswerRunResult result) {
         return new AnswerExecutionResponse(
                 run,
                 AnswerResponse.from(result.answer()),
