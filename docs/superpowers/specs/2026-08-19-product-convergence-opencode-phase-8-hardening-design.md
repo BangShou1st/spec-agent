@@ -1,30 +1,26 @@
 # Product Convergence, OpenCode Productization, and Phase 8 Hardening Design
 
-Status: approved in-chat, written for implementation planning  
+Status: approved in-chat, self-reviewed, ready for implementation planning  
 Date: 2026-08-19
 
-## 1. Purpose
+## 1. Purpose and phase framing
 
-This design closes the gap between the current graph-first product, the real OpenCode runtime that already exists behind operator/test configuration, and the product behavior observed during manual acceptance.
+This design closes three related gaps in one coordinated delivery:
 
-It intentionally combines three closely related work streams in one coordinated implementation plan:
+1. **Phase 7 corrective closure** — fix Graph Workspace behavior and presentation problems found during manual acceptance.
+2. **OpenCode productization** — turn the real OpenCode gateway delivered in Phase 5 into the normal user-facing product path.
+3. **Phase 8 CI / hardening** — add the CI and architecture/scope hardening explicitly deferred by the Phase 7 closeout.
 
-1. **Phase 7 corrective closure** — fix the Graph Workspace interaction and presentation problems found during manual acceptance without changing the established runtime ownership model.
-2. **OpenCode productization** — turn the already-integrated Phase 5 OpenCode gateway into the normal user-facing model path: users configure their own OpenCode API key and explicitly select a current free model from the product UI.
-3. **Phase 8 CI / hardening** — add the CI and scope/architecture hardening that the Phase 7 closeout documents explicitly deferred.
+Phase numbering remains accurate:
 
-Phase numbering must remain accurate:
-
-- Real OpenCode gateway integration was delivered in Phase 5.
+- Phase 5 delivered the real OpenCode gateway and live runtime smokes.
 - Phase 7 delivered the frontend and graph-first workspace.
-- Phase 8 is CI / hardening, not the original provider integration.
-- This design productizes the existing OpenCode capability while also carrying the work into Phase 8 hardening.
+- Phase 8 is CI / hardening, not the original OpenCode integration.
+- This work productizes the existing OpenCode capability while also beginning and closing the intended Phase 8 hardening scope.
 
-This design supersedes affected interaction/model-configuration portions of prior Phase 7 graph workspace designs. Runtime lineage, history ownership, answer immutability, ContextSnapshot semantics, and SpecSnapshot-derived status remain authoritative unless explicitly changed here.
+This document supersedes affected model-configuration and graph-interaction portions of prior Phase 7 designs. Existing lineage/history ownership, answer immutability, ContextSnapshot isolation, and derived-Spec rules remain authoritative unless explicitly revised here.
 
 ## 2. Non-negotiable runtime doctrine
-
-The product continues to follow:
 
 ```text
 Model proposes.
@@ -35,50 +31,52 @@ Runtime owns history.
 Context is lineage, not global chat history.
 ```
 
-Consequences:
+Therefore:
 
-- The model never owns route lifecycle, canonical identity, source-of-truth history, or persistence.
-- The frontend never guesses canonical history or silently chooses runtime identity.
-- `SpecSnapshot` remains derived output, never source of truth.
-- Model context is a frozen lineage-based `ContextSnapshot` plus explicit run-local `taskInput`.
-- Sibling routes, excluded answers/patches, superseded child subtrees, and unrelated spec output never enter a model call merely because they exist in the project.
+- Models never own route lifecycle, canonical identity, source-of-truth history, or persistence.
+- Frontend code never guesses canonical history or silently chooses a route when the user's reading context is ambiguous.
+- `SpecSnapshot` remains derived output, not source of truth.
+- Model input is a frozen lineage-based context plus explicit run-local `taskInput`.
+- Sibling routes, excluded answers/patches, old replacement subtrees, unrelated SpecSnapshots, and global chat history never leak into a run merely because they exist in the Project.
 
-## 3. Scope and explicit non-goals
+## 3. Scope and non-goals
 
 ### In scope
 
-- Global OpenCode settings in the product UI.
+- Global OpenCode settings in product UI.
 - User-supplied OpenCode API key stored in the local product database.
 - Dynamic discovery of currently available `-free` models.
-- Explicit selected free model, effective without application restart.
-- Real OpenCode as the only normal product model path.
+- Explicit global selected free model, effective without restart.
+- Real OpenCode as the only normal production model path.
 - Fake/scripted gateways retained only as deterministic test infrastructure.
-- Production-neutral `AgentOrchestrator` naming/wiring.
-- Model-powered `换一个问题` using the existing generic node-drafting capability.
-- Graph Workspace corrections discovered during manual acceptance.
-- Route lifecycle transition hardening.
-- Friendly route/spec presentation and reduced UUID-first UI.
-- CI, architecture checks, anti-overfitting guards, regression gates, and release-oriented real-provider acceptance.
+- Rename/refactor `FakeAgentOrchestrator` to production-neutral `AgentOrchestrator` (or equivalent) without redesigning orchestration semantics.
+- Model-powered `换一个问题` using the generic DRAFT_NODE capability.
+- Active / Focus / Visibility corrections and removal of repeated route pickers.
+- Shared-node reading-route selector bound to Focus.
+- Reveal-new-node behavior without relayout.
+- Pending-node sizing/scroll correction.
+- Friendly route names and reduced UUID-first UI.
+- Subtle replacement provenance; detailed provenance in Inspector.
+- Spec source-reference presentation dedupe.
+- Runtime lifecycle-transition guards.
+- CI, architecture checks, anti-overfitting guards, deterministic regression, and real-provider release acceptance.
 
 ### Not in scope
 
-- Multi-provider platform, registry, routing, ranking, or automatic model switching.
+- Multi-provider registry/router/ranking/fallback.
 - Paid-model selection or cost optimization.
-- Per-project provider settings.
-- Multi-user credential isolation or role-based permissions.
-- Cloud secret management or a separate master-key system.
-- Automatic retry, JSON repair, relaxed parsing, fallback model, or Fake fallback.
-- Semantic route merge.
-- Domain-specific requirement engines, prompts, or runtime branches.
-- Master-key rotation or compatibility migration of old operator-only encrypted credentials.
+- Per-Project provider settings.
+- Multi-user credential isolation / RBAC.
+- Cloud secret manager or a separate master-key subsystem.
+- Automatic retry, JSON repair, parser relaxation, automatic model switching, or Fake fallback.
+- Route merge.
+- Domain-specific runtime engines or domain-specific model adapters/prompts.
 
-## 4. Product model settings
+## 4. Global OpenCode product settings
 
-### 4.1 Scope
+### 4.1 Product model
 
-OpenCode settings are **global installation settings**, not Project settings.
-
-Conceptually:
+OpenCode configuration is installation-global:
 
 ```text
 OpenCodeSettings
@@ -88,19 +86,18 @@ OpenCodeSettings
 - updatedAt
 ```
 
-The product is a single-user/local first version. The local PostgreSQL database is part of the trusted local application boundary for this version. The user-provided OpenCode API key is stored as a retrievable database credential so the backend can use it for provider calls. No `SPEC_AGENT_CREDENTIAL_MASTER_KEY` or second application-level root-key system is required by this design.
+The first version is a single-user/local product. PostgreSQL is part of the trusted local application boundary. The user's OpenCode API key is stored as a retrievable database value so the backend can call OpenCode. This design deliberately does **not** require `SPEC_AGENT_CREDENTIAL_MASTER_KEY` or a second application-level root key.
 
-Security constraints remain:
+Security boundaries still hold:
 
-- The complete API key is never returned by normal read/status APIs.
-- The complete API key is never logged.
-- The complete API key never enters AgentRun trace, ContextSnapshot model input, prompt content, or exception payloads shown to the frontend.
-- UI status uses only a masked form such as `••••abcd`.
-- Real secrets are never committed to the repository.
+- full API key never returns from status/read APIs;
+- full API key never appears in logs, AgentRun traces, model context, prompts, or public error payloads;
+- UI only shows a masked suffix;
+- real credentials are never committed to Git.
 
-### 4.2 User experience
+### 4.2 UI
 
-An application-level Settings entry provides:
+Application-level entry:
 
 ```text
 设置
@@ -113,56 +110,53 @@ An application-level Settings entry provides:
       [保存]
 ```
 
-The settings UI is global and must not visually imply that the credential belongs to the currently open Project.
+The UI must not imply that the credential belongs to the currently open Project.
 
-### 4.3 Two-step validation, one atomic save
+### 4.3 Two-step validation, atomic activation
 
-Step 1: probe.
-
-```text
-user enters temporary API key
-→ backend validates credential availability
-→ backend dynamically discovers current models
-→ backend filters to supported `-free` models
-→ frontend receives the free-model list
-→ nothing is persisted
-```
-
-Step 2: save.
+**Probe**:
 
 ```text
-user explicitly selects one returned free model
-→ backend validates the candidate settings
-→ apiKey + maskedSuffix + selectedModel become active together
-→ one transaction persists the settings aggregate
+user enters temporary key
+→ backend uses that key only in memory for the request
+→ credential validation + dynamic GET /models
+→ filter supported `-free` models
+→ return free-model list
+→ no settings row is changed
 ```
 
-A failed probe or failed save never damages a previously working configuration.
+**Save**:
+
+```text
+user explicitly selects a free model
+→ backend re-validates the candidate key/configuration
+→ backend re-checks that selectedModel is still in the current allowed free-model set
+→ apiKey + maskedSuffix + selectedModel are persisted/activated together
+```
+
+The browser's earlier probe response is never treated as authoritative at save time. A failed probe/save leaves the previous working settings untouched.
 
 ### 4.4 Runtime resolution
 
-The selected model must no longer be constructor/startup-only configuration.
+The selected model must no longer be locked at bean construction/startup.
 
-For each production model request:
+Each production model request resolves the current settings:
 
 ```text
 AgentOrchestrator
 → ModelGateway
-→ OpenCode settings resolver
-→ current apiKey + selectedModel
-→ validate selectedModel remains a supported free model identifier
+→ current OpenCodeSettings
+→ apiKey + selectedModel
 → OpenCode transport
 ```
 
-A user can change the selected free model and the next model request uses the new value without backend restart.
+Changing the model in Settings affects the next request without backend restart.
 
-Normal product behavior must not depend on `SPEC_AGENT_MODEL_GATEWAY=fake` or `SPEC_AGENT_OPENCODE_MODEL`.
+Normal product behavior must not depend on `SPEC_AGENT_MODEL_GATEWAY=fake` or startup-only `SPEC_AGENT_OPENCODE_MODEL` selection.
 
-## 5. Production model path and test model path
+## 5. Production vs deterministic test model paths
 
-### 5.1 Product
-
-Normal product execution has one model path:
+### 5.1 Production
 
 ```text
 AgentOrchestrator
@@ -171,58 +165,31 @@ AgentOrchestrator
 → OpenCode
 ```
 
-If OpenCode is not configured, model-required commands fail with a stable product error and a UI action leading to model settings.
+If OpenCode is unconfigured, model-required commands fail with stable `NOT_CONFIGURED` behavior and a UI route to model settings.
 
-Read-only/product-history capabilities remain available while unconfigured:
+Read/history operations remain usable while unconfigured: open projects, inspect graph/history/spec snapshots, drag nodes, manage Focus/visibility, and perform model-free lifecycle reads/actions where valid.
 
-- open projects
-- inspect routes/nodes/history
-- drag nodes
-- focus/dim/hide/show routes
-- inspect existing requirement state/spec snapshots
-- lifecycle actions that do not require a model
-
-Commands that require a model are blocked when unconfigured, including drafting questions, answer-processing continuation, model-powered replacement, and spec generation.
-
-There is no silent Fake fallback.
+Model-required operations such as question drafting, answer-processing continuation, `换一个问题`, and spec generation are blocked. There is no silent Fake fallback.
 
 ### 5.2 Tests
 
-Fake/scripted model infrastructure remains because deterministic safety tests must be able to force invalid model behaviors, including:
+Scripted/Fake gateways remain because safety tests must deterministically force malformed JSON, wrong actions, fabricated ids, cross-route source leakage, invalid source refs, reflection rejection, and provider failure at exact steps.
 
-- malformed JSON
-- wrong action
-- missing fields
-- illegal enums
-- fabricated identifiers
-- sibling-route source leakage
-- invalid source references
-- reflection rejection
-- provider failure at specific steps
+These tests prove runtime invariants. They do **not** count as product model acceptance.
 
-These tests prove runtime invariants; they do not prove product usability.
+### 5.3 Orchestrator naming
 
-Product acceptance requires real OpenCode execution.
+`FakeAgentOrchestrator` is already used by real OpenCode flows, so production naming must become neutral (`AgentOrchestrator` or equivalent). Test doubles stay behind `ModelGateway`.
 
-### 5.3 Naming cleanup
+Do not use this rename as an excuse for a broad orchestration rewrite; preserve the existing runtime-controlled sequence and fail-closed behavior.
 
-`FakeAgentOrchestrator` is production-neutral orchestration in practice and must be renamed/refactored to `AgentOrchestrator` (or an equivalent production-neutral name). Fake/scripted behavior belongs at the `ModelGateway` test-double boundary, not in the orchestration type name.
+## 6. Generic model-powered `换一个问题`
 
-No broad orchestrator rewrite is intended: preserve the existing runtime-controlled sequence and failure semantics while removing the stale Fake concept from production naming/wiring.
+### 6.1 User interaction
 
-## 6. Model-powered `换一个问题`
+Normal product action becomes `换一个问题`.
 
-### 6.1 Product interaction
-
-The deterministic author-a-replacement form is removed from the normal product path.
-
-A historical eligible node offers:
-
-```text
-换一个问题
-```
-
-Dialog copy:
+The user sees only one natural-language direction field:
 
 ```text
 你接下来更想澄清哪个方面？
@@ -233,13 +200,11 @@ Dialog copy:
 [取消] [生成新问题]
 ```
 
-The user supplies only a natural-language direction. The user does not author `replacementQuestion`, `replacementPurpose`, replacement options, or runtime identity.
+The user does not author replacement question/purpose/options or runtime identity.
 
-### 6.2 Reuse the generic node-drafting capability
+### 6.2 Reuse DRAFT_NODE; no special-purpose model
 
-Do not create a domain-specific or replacement-specific model implementation.
-
-The existing generic DRAFT_NODE/NodeDraft contract remains the model capability:
+Use the existing generic NodeDraft/DRAFT_NODE output contract:
 
 ```text
 question
@@ -248,283 +213,222 @@ options[{label, impact}]
 allowFreeAnswer
 ```
 
-Variation is expressed as run-local drafting intent/task input, not requirement-domain code branches and not test-specific prompt text.
+Initial drafting, normal continuation, and redirected drafting share the same generic capability. Variation is expressed through generic `taskInput` / drafting intent and frozen context — not through domain-specific classes, feature-specific agents, or test-specific prompt wording.
 
-The model contract must stay generic enough to serve initial drafting, normal continuation, and redirected drafting from a rejected question.
+### 6.3 Replacement context
 
-### 6.3 Regenerate/replacement context
-
-For target node `Q2`, replacement context includes only:
+For old target `Q2`:
 
 ```text
-YES: Q2.parent root-to-parent lineage
-YES: effective answers/patches on that parent lineage
-YES: old Q2 question text
-YES: old Q2 purpose
-YES: user's run-local direction
+INCLUDE
+- Q2.parent root-to-parent lineage
+- effective answers/patches on that parent lineage
+- old Q2 question
+- old Q2 purpose
+- user's run-local direction
 
-NO: Q2 old answer
-NO: Q2 old answer patch
-NO: Q2 descendants / child subtree
-NO: sibling route conclusions
-NO: old route SpecSnapshot-derived content
-NO: global chat history
+EXCLUDE
+- Q2 old answer
+- Q2 old patch
+- Q2 descendants / child subtree
+- sibling-route conclusions
+- old-route SpecSnapshot-derived content
+- global chat history
 ```
 
-The old question/purpose and the user direction are rejection/drafting inputs; they do not make the old target node part of the replacement lineage.
+Old question/purpose and user direction are rejection/drafting inputs only; the old target is not part of the new route lineage.
 
-### 6.4 Atomicity and failure semantics
+### 6.4 Self-review correction: pre-proposal ContextSnapshot identity
 
-A provider/model failure must leave canonical route history unchanged.
+The current deterministic regenerate implementation accepts replacement route/node ids while building regenerate context. That shape must **not** force real-model replacement to create canonical replacement objects before the model succeeds.
 
-Order:
+For model-powered replacement, the pre-proposal frozen context is anchored to:
 
 ```text
-validate source route + target node
+sourceRouteId
++ targetNodeId metadata
++ target parent lineage/tip
++ operationType=REGENERATE/REPLACE
++ special/run-local inputs
+```
+
+It must not require an already-persisted accepted `replacementRouteId` or `replacementNodeId`.
+
+Replacement ids are generated/persisted only after the model proposal passes parsing/reflection/runtime validation. The completed AgentRun then records produced node/route ids. A failed model run therefore cannot leave a ContextSnapshot that pretends an accepted replacement route/node already exists.
+
+Implementation may preallocate opaque ids in memory if technically useful, but they must not become canonical persisted Node/Route identity before proposal acceptance.
+
+### 6.5 Atomicity
+
+Correct order:
+
+```text
+validate explicit source route + target
 → freeze replacement context
 → create/run AgentRun
-→ call real OpenCode DRAFT_NODE
+→ real OpenCode DRAFT_NODE
 → strict structured parse
-→ node reflection/validation
+→ node reflection/runtime validation
 → validate replacement proposal
-→ only then commit canonical replacement mutation
+→ canonical transaction:
+     create sibling replacement node
+     create replacement route
+     update source lifecycle where required
+     set Project.activeRouteId
+→ mark produced ids / run completion
 ```
 
-Canonical commit creates the sibling replacement and route state transition together.
+If provider/model/validation fails, canonical Node/Route history and Active remain unchanged.
 
-Before proposal acceptance, do **not** supersede the source route and do **not** create a canonical replacement node/route that users can observe.
+### 6.6 Structural semantics
 
-If OpenCode returns 429, invalid JSON, wrong action, invalid contract, or rejected node output:
-
-```text
-AgentRun fails
-old route unchanged
-old node unchanged
-active route unchanged
-no replacement route/node persisted as accepted canonical history
-```
-
-### 6.5 Structural semantics
-
-Replacement is a sibling at the same logical depth:
+Replacement is a sibling:
 
 ```text
        old Q2
       /
 Q1 ──
       \
-       new Q2'  ← active replacement
+       new Q2'  ← current
 ```
 
-It is never `Q1 → old Q2 → new Q2'`.
+Never `Q1 → old Q2 → new Q2'`.
 
-For an OPEN source route, successful replacement makes the old route SUPERSEDED and the new route OPEN + Active.
+Successful replacement from OPEN makes the source route SUPERSEDED and the new route OPEN + Active. If the explicit source is already SUPERSEDED, preserve its historical status and create the new OPEN route without a meaningless repeated transition.
 
-For a source route already SUPERSEDED, the existing historical lifecycle remains valid; replacement creates a new OPEN route without performing nonsensical duplicate lifecycle transitions.
+Runtime requires a non-blank new question and may reject a conservatively normalized exact textual duplicate of the rejected question. Runtime does not perform domain-specific semantic grading.
 
-The replacement question must at minimum be non-blank and not textually identical to the rejected question after conservative normalization. Runtime does not perform domain-specific semantic grading of whether two differently worded questions are "good enough" replacements.
+## 7. Active, Focus, Visibility, and shared-node reading
 
-## 7. Active, Focus, and Visibility
-
-These concepts are independent and must never be conflated:
+These are independent:
 
 ```text
 Active
-= runtime working route (`Project.activeRouteId`)
-= where the next answer/draft operation belongs
+= Runtime working route / Project.activeRouteId
 
 Focus
-= browser/UI reading and highlighting route
-= does not change Active
+= browser reading + highlight route
+= never Activates by itself
 
 Visibility
-= browser/UI show/dim/hide/filters
-= does not change Active
+= browser show/dim/hide/isolate/filter state
+= never Activates by itself
 ```
 
-### 7.1 Default visibility
+### 7.1 Default view
 
-By default, all non-deleted routes are visible:
+All non-deleted routes are visible by default:
 
 - OPEN visible
 - SUPERSEDED visible
 - ARCHIVED visible
-- DELETED filtered from the normal canvas by default
+- DELETED hidden by default filter
 
-Focus highlights one route and may visually de-emphasize others, but does not hide them.
+Focus highlights/read-contextualizes a route and may de-emphasize others but must not hide them.
 
-If single-route viewing remains useful, expose it as a separate `独览此路线` visibility control. Do not overload `聚焦` with "only show this route" semantics.
+If single-route viewing remains, it is a distinct `独览此路线` visibility feature. `显示全部` restores non-deleted routes without relayout.
 
-`显示全部` clears browser-only isolate/manual hide/manual dim state and restores all non-deleted routes without relayout.
+### 7.2 Shared nodes
 
-### 7.2 Shared nodes and reading context
-
-There must not be a second hidden node-local route context independent of Focus.
-
-For a shared node:
+A shared node exposes an explicit reading route:
 
 ```text
 当前查看：未选择 ▾
 ```
 
-or
+or a friendly route name.
 
-```text
-当前查看：分支路线 2 ▾
-```
+Selecting it sets global Focus and updates graph/Inspector projection. It does not set Active.
 
-Selecting a route sets global Focus and updates the node/Inspector projection. It never Activates the route.
+If multiple route interpretations exist and no Focus is selected, the shared node stays neutral. Do not silently fall back to Active, first route, or latest route.
 
-If a shared node has multiple route interpretations and Focus is unset, the node remains neutral. It must not silently fall back to Active, first route, latest route, or any other guessed source.
+### 7.3 No repeated source-route picker
 
-### 7.3 Source route for branch operations
+Fork, Re-answer, and `换一个问题` derive source from the operated visual node plus its explicit Focus/read context. The frontend still sends explicit `sourceRouteId`; Runtime still validates ownership/lifecycle/node membership.
 
-Fork, Re-answer, and `换一个问题` no longer display a repeated source-route picker.
+If a shared node is ambiguous because no reading route is selected, ask the user to select `当前查看` on the node. Do not open another branch-operation route picker.
 
-The frontend resolves source from the operated visual node plus its explicit reading/Focus context and still sends an explicit `sourceRouteId` to the backend/runtime command.
+## 8. Fork, Re-answer, and lifecycle eligibility
 
-The runtime continues validating project ownership, route lifecycle, and target-node membership. Frontend convenience never replaces runtime validation.
+### Fork
 
-If a shared node is ambiguous because no Focus/read route has been selected, the product asks the user to choose `当前查看` on the node rather than opening a second branch-operation picker.
+Fork inherits effective history through the selected node, inclusive of that node's effective answer when present. Old route is unchanged.
 
-## 8. Fork, Re-answer, and historical-route behavior
+Dialog contains only optional friendly route name.
 
-### 8.1 Fork
+Success: new OPEN + Active + Focus route; reveal new visual route/node; preserve all existing coordinates and other visible routes.
 
-Fork accepts the source route's effective history through the selected node, inclusive of that node's effective answer when present. The old route is unchanged.
+### Re-answer
 
-Fork dialog contains only an optional friendly route name; source selection is not repeated.
+Re-answer preserves the same canonical Question with a distinct visual route instance. It inherits the target parent prefix exclusive of the old target answer and leaves the new target unanswered.
 
-Successful Fork:
+Success: new OPEN + Active + Focus; reveal the new unanswered instance; preserve old route/answer and all existing positions.
 
-- new route OPEN
-- new route Active
-- new route Focus
-- new route/node revealed in the viewport
-- other routes remain visible
-- existing node coordinates remain unchanged
+### Lifecycle eligibility
 
-### 8.2 Re-answer
+- OPEN: normal valid branch operations.
+- SUPERSEDED: historical/read-only route may still be an explicit source for further exploration where semantics allow.
+- ARCHIVED: restore before new working mutation.
+- DELETED: never a mutation source.
 
-Re-answer preserves the same canonical Question but creates a distinct visual route instance whose target node is unanswered.
-
-It inherits the target parent prefix **exclusive of the target's old answer**.
-
-Successful Re-answer:
-
-- new route OPEN + Active
-- Focus moves to new route
-- new unanswered visual instance is revealed
-- old route and old answer remain visible/inspectable
-- no existing node relayout
-
-### 8.3 Lifecycle eligibility
-
-- OPEN routes: normal branch operations allowed where otherwise valid.
-- SUPERSEDED routes: read-only historical routes that may still be used as explicit sources for further exploration where the operation semantics permit.
-- ARCHIVED routes: require explicit restore before new working mutation.
-- DELETED routes: not valid mutation sources.
-
-Focus may point to SUPERSEDED routes for inspection without activating them.
+Focus may inspect SUPERSEDED without activating it.
 
 ## 9. Graph Workspace corrections
 
-### 9.1 Reveal without relayout
+### 9.1 Reveal, never implicit relayout
 
-After Fork, Re-answer, or replacement success:
-
-```text
-set canonical Active
-→ set browser Focus
-→ reveal/highlight new visual node
-```
-
-Reveal means camera pan/zoom only. It must not mutate persisted/browser node coordinates.
-
-Branch creation, activation, Focus, show-all, and route visibility changes must not rearrange existing nodes.
-
-Only an explicit user `自动布局` action may recalculate node positions.
-
-### 9.2 Question-node sizing
-
-Historical nodes remain compact.
-
-- answers default to approximately 3–4 visible lines and may be truncated for compact graph reading
-- full history belongs in Inspector
-
-The current pending/answerable node gets more space and must keep its answer controls reachable.
-
-Normal pending-node content must not produce an internal whole-node vertical scrollbar that clips the submit area. A free-text input can scroll internally; the graph node itself should grow to a reasonable bounded size and delegate unusually long content to Inspector rather than become a miniature webpage.
-
-Only the node title bar remains the drag handle.
-
-### 9.3 Replacement provenance presentation
-
-Do not show a permanent prominent yellow dashed cross-canvas "replacement" relation that can be confused with lineage.
-
-Primary graph topology renders lineage only:
+Fork/Re-answer/Replacement success performs:
 
 ```text
-       old Q2 [已替换]
-      /
-Q1 ──
-      \
-       new Q2' [当前]
+canonical Active refresh
+→ Focus new route
+→ camera reveal/highlight new visual node
 ```
 
-The new node may show a subtle `替代自：...` cue. Detailed supersedes/provenance information belongs in Inspector.
+Reveal is viewport pan/zoom only. Branch operations, activation, Focus, visibility changes, and Show All never mutate existing positions. Only explicit `自动布局` may recompute layout.
 
-If a replacement relation is ever drawn, it is weak and conditional (for example, selected-node inspection), never a permanent lineage-like edge.
+### 9.2 Current question sizing
 
-## 10. Friendly route and Spec presentation
+Historical nodes stay compact; answer summaries default to roughly 3–4 visible lines with full detail in Inspector.
 
-Normal product UI must not be UUID-first.
+Current answerable node grows enough to keep question/options/free-answer/submit controls reachable. Normal content must not create a whole-node vertical scrollbar that clips the submit area. The text input itself may scroll. Only the title bar is draggable.
 
-Default route labels are localized and readable, for example:
+### 9.3 Replacement provenance
+
+Remove the permanent prominent yellow dashed cross-canvas replacement relation.
+
+Primary graph edges represent lineage. Old node gets a subtle `已替换`; new node may show subtle `替代自：...`. Full supersedes/provenance belongs in Inspector. Any visual provenance edge is weak and selection-only, never lineage-like.
+
+### 9.4 Friendly route names / UUID cleanup
+
+Normal Chinese UI uses readable labels such as:
 
 ```text
 主路线
 分支路线 1
-分支路线 2
 重新回答路线 1
 换题路线 1
 ```
 
-User-supplied route labels take precedence.
+User labels override defaults. Remove `Initial route` and raw UUID-prefix fallback as normal display names.
 
-`Initial route` and raw UUID-prefix fallbacks are removed from normal Chinese UI.
+UUIDs remain available under technical detail for diagnostics, not as primary route/spec identity.
 
-Full technical IDs remain available in Inspector/technical detail for diagnostics.
+### 9.5 Inspector
 
-Spec UI displays friendly route names as the primary route identity. Technical route/node/run/context IDs are subdued technical details.
+Inspector prominently shows `当前查看路线` when Focus/read context exists and prioritizes that route's answer/history/patches. Other route histories may be secondary/collapsed.
 
-Identical duplicate source references are deduplicated for presentation/counting, while section-level provenance associations remain intact. Presentation dedupe must not erase legitimate source relationships.
+Inspector remains detailed/read-only for the current pending node and does not create a second answer surface.
 
-## 11. Inspector reading model
+### 9.6 Spec presentation
 
-Inspector becomes the explicit detailed reading surface rather than duplicating the graph's interactive answer controls.
+Spec remains derived and route-scoped. Friendly route names are primary.
 
-For a selected shared node, Inspector prominently states the current reading route when Focus exists.
+Identical source references are presentation-deduped for counts/display while section-level provenance relationships remain preserved. Dedupe is not deletion of provenance.
 
-Current/Focus route answer/history is visually prioritized. Other route-specific answers/history may be available in collapsed secondary sections.
+## 10. Runtime lifecycle hardening
 
-Inspector may expose:
-
-- question/purpose/options
-- current viewing route
-- effective answer for that route
-- accepted patches/claims
-- lifecycle/read provenance
-- supersedes/replaced-by metadata
-- AgentRun / ContextSnapshot / technical IDs in a technical section
-
-Inspector never introduces a second answer submission surface for the current pending node.
-
-## 12. Route lifecycle runtime hardening
-
-Frontend action visibility is not the authority. Runtime enforces the lifecycle matrix.
-
-Allowed transitions:
+Runtime, not frontend visibility, enforces the transition matrix:
 
 ```text
 OPEN
@@ -544,17 +448,15 @@ DELETED
 └─ restore → OPEN
 ```
 
-Activation is allowed only for OPEN.
+Activation only accepts OPEN.
 
-Illegal/repeated lifecycle commands fail explicitly (prefer stable conflict semantics) rather than succeeding accidentally because the frontend normally hides the button.
+Illegal/repeated transitions fail explicitly with stable conflict semantics rather than relying on hidden buttons.
 
-Archive/delete of the active route continues to respect the canonical active pointer rules; no implicit random route activation is introduced.
+No random/implicit activation is introduced when an active route is archived/deleted.
 
-## 13. Error handling
+## 11. Error handling and the 429 stop rule
 
-Provider/model errors map to stable public categories/copy. Product UI does not show stack traces or provider transport internals.
-
-Expected categories include:
+Stable public model/provider categories include:
 
 ```text
 NOT_CONFIGURED
@@ -568,228 +470,189 @@ INVALID_MODEL
 MODEL_CONTRACT_REJECTED
 ```
 
-### 13.1 429 stop rule
+UI shows sanitized product copy, not provider internals or stack traces.
 
-A 429 / RATE_LIMITED response has special acceptance behavior:
+For 429 / RATE_LIMITED:
 
-- no automatic retry
-- no model switch
-- no provider switch
-- no Fake fallback
-- no parser relaxation
-- no prompt mutation intended merely to bypass the rate limit
+- no retry loop;
+- no automatic model/provider switch;
+- no Fake fallback;
+- no parser relaxation;
+- no prompt change intended only to bypass rate limiting.
 
-During Luna's real-product acceptance, RATE_LIMITED is an explicit stop condition. Luna reports the operation, selected model, and completed verification point, then waits for the user to change network segment before continuing.
+During Luna's real acceptance, 429 is a hard stop. Luna reports the operation, selected model, and completed checkpoint, waits for the user to change network segment, then resumes explicitly.
 
-## 14. Anti-overfitting hard requirement
+## 12. Anti-overfitting hard requirement
 
-Anti-overfitting is a design constraint, not only a review preference.
-
-Production code must not branch on concrete requirement domains or acceptance-test phrases.
+Production code and prompts must remain generic.
 
 Forbidden examples:
 
 ```text
-if user text contains "MVP" → ask feature-scope question
-if software project → use software generator
+if instruction contains "MVP" → ask feature scope
+if software project → software generator
 MarketingQuestionModel
 ReplacementMvpPrompt
 EcommerceRequirementAnalyzer
 ```
 
-Prompt changes must also be general. Do not change production prompts solely to force a particular expected question from one smoke scenario.
+Do not change production prompts solely to force one acceptance scenario's expected wording.
 
-Allowed differences are expressed as generic data/contracts such as:
+Differences are represented as generic data/contracts (`ContextOperationType`, drafting intent/taskInput, RequirementAspect, NodeDraft, RequirementState, QuestionPolicy), not concrete requirement-domain branches.
 
-```text
-ContextOperationType
-DraftingIntent / taskInput
-RequirementAspect
-NodeDraft
-AnswerInterpretation
-RequirementState
-QuestionPolicy
-```
+When real-model behavior is poor, first diagnose provider instability, context construction, generic contract clarity, or validation. Do not immediately hard-code a sentence that makes one smoke test pass.
 
-The first diagnostic question for a real-model failure is whether the problem is provider instability, context construction, generic contract clarity, or validation — not "what hard-coded prompt sentence will make this test pass?"
+Architecture/static tests continue enforcing that Runtime packages do not depend on model packages, ContextBuilder never calls an LLM, provider adapters remain requirement-domain neutral, and production code does not introduce concrete domain generators/analyzers.
 
-Architecture tests/static scans should preserve existing rules that Runtime packages do not depend on model packages, ContextBuilder does not call an LLM, provider adapters remain requirement-domain neutral, and production code does not introduce concrete domain generators/analyzers.
+## 13. Testing strategy
 
-## 15. Testing strategy
+### 13.1 Deterministic safety/regression
 
-### 15.1 Deterministic runtime tests
+Keep scripted/Fake tests for:
 
-Keep unit/integration tests for deterministic invariants and adversarial model responses.
+- lineage inclusion/exclusion;
+- route/source ownership;
+- answer immutability;
+- replacement proposal atomicity;
+- invalid model output fail-closed behavior;
+- lifecycle transition matrix;
+- source-reference grounding;
+- no partial canonical mutation on rejection.
 
-These tests may use scripted/fake gateways but must not be used as evidence that the product's model UX works.
+### 13.2 Real OpenCode product acceptance
 
-They cover:
+A release candidate is not accepted solely because deterministic tests pass.
 
-- context lineage inclusion/exclusion
-- route/source ownership
-- answer immutability
-- replacement atomicity
-- invalid model output fail-closed behavior
-- route lifecycle transitions
-- source-reference validation
-- no partial canonical mutation on rejected proposals
-
-### 15.2 Real OpenCode product acceptance
-
-A release candidate is not accepted solely because Fake/scripted tests pass.
-
-Luna performs a real product flow starting from the frontend model settings UI:
+Luna runs from the real UI:
 
 ```text
-configure user's OpenCode API key
+enter user's OpenCode key
 → probe current free models
-→ explicitly choose a free model
-→ save global settings
+→ choose one explicitly
+→ save settings
 → create/open project
-→ draft real first question
-→ answer and process through real model
-→ generate real next question
+→ real first question
+→ answer + real interpretation/patch
+→ real next question
 → Fork
 → Re-answer
 → 换一个问题
 → verify route/context isolation
 → generate real SpecSnapshot
-→ inspect Focus/shared-node behavior and presentation
+→ verify shared-node Focus/read behavior and corrected presentation
 ```
 
-Real-model tests do not assert exact wording. They assert structural contracts and runtime invariants; human/product acceptance evaluates whether the generated questions/spec are contextually reasonable.
+Real-model automated assertions never require exact model wording. They verify structure and Runtime invariants; human acceptance judges contextual reasonableness.
 
-Use several semantically different generic requirements over time rather than one hard-coded "golden" domain scenario. Production code must not know test prompts.
+Over time use several semantically different generic requirements, not a single golden test phrase. Production code must not know the acceptance inputs.
 
-## 16. Phase 8 — CI / hardening
+## 14. Phase 8 — CI / hardening
 
-Phase 8 begins as part of this convergence effort after the architecture/product corrections are planned.
+### 14.1 Deterministic CI
 
-### 16.1 CI baseline
-
-Add repository CI for ordinary commits/PRs/main that runs without external model credentials:
+Add repository CI for ordinary commits/PRs/main with no external OpenCode credential requirement.
 
 Backend gates:
 
-- compile/test
-- database-backed integration tests as supported by CI environment
-- architecture tests
-- migration validation
+- compile/test;
+- database-backed integration/migration tests as supported by CI;
+- architecture tests.
 
 Frontend gates:
 
-- dependency install from lockfile
-- TypeScript/typecheck
-- unit tests
-- production build
-- Playwright E2E against the real local backend and test database using deterministic test gateway wiring only where external model access would make CI nondeterministic
+- lockfile install;
+- typecheck;
+- unit tests;
+- production build;
+- Playwright E2E against the real local backend/test database using deterministic test gateway wiring where external network would make CI nondeterministic.
 
-Repository gates:
+Repository gates include existing anti-overfitting/architecture rules, secret-safety checks supported by project scripts, and protection against production Fake default/wiring regressions.
 
-- formatting/diff cleanliness where project scripts support it
-- no committed secrets
-- anti-overfitting/domain-keyword architecture checks already defined by project policy
-- no production Fake gateway default or accidental production dependency on test doubles
+CI is a deterministic quality gate, not proof of real-provider usability.
 
-CI is a deterministic quality gate, not the real-provider acceptance proof.
+### 14.2 Real-provider release gate
 
-### 16.2 Real-provider release verification
+Real OpenCode verification is a separate explicit release/manual gate because it uses the user's credential and can be network/rate-limit sensitive.
 
-Real OpenCode verification remains a separate explicit release/manual gate because it requires the user's credential and is sensitive to provider/network rate limits.
+Do not put the user's personal API key into ordinary CI.
 
-Do not place the user's personal API key into ordinary CI.
+Existing env-gated live smokes may remain, but final product acceptance additionally exercises the UI-configured settings path. Safe diagnostics may include selected model and masked suffix only.
 
-The existing env-gated provider smoke coverage may remain useful, but product acceptance must additionally exercise the actual UI-configured settings path. A successful live test records only safe diagnostics such as selected model and masked suffix; no full key, raw prompt, or raw model output is persisted/logged unless a separately approved debugging design changes that rule.
+### 14.3 Phase 8 closure
 
-### 16.3 Hardening closure
+Phase 8 is complete when:
 
-Phase 8 acceptance includes:
+- deterministic CI gates are installed and green;
+- architecture/anti-overfitting rules remain enforced;
+- production has no silent Fake path;
+- route/context ownership and lifecycle guards remain correct;
+- corrected graph UX regressions are covered;
+- real OpenCode product acceptance passes, or is explicitly paused only at the agreed RATE_LIMITED stop condition and then resumed after the user changes network.
 
-- CI green on deterministic suites
-- real OpenCode product acceptance completed (or explicitly paused only by the agreed RATE_LIMITED stop rule)
-- architecture/anti-overfitting rules still enforced
-- no Fake fallback in production
-- no route/context ownership regression
-- no UUID-first normal product regressions
-- no unvalidated lifecycle transition path
-- docs updated to reflect product model settings and the final phase status
+## 15. Migration
 
-## 17. Migration and compatibility
+The prior operator-only encrypted credential row/schema was not a delivered user-facing settings workflow. Do not keep the first-version product tied to `SPEC_AGENT_CREDENTIAL_MASTER_KEY` merely for compatibility.
 
-The prior Phase 5 operator-only encrypted credential row/schema was never a user-facing settings workflow. This design does not require carrying the old `SPEC_AGENT_CREDENTIAL_MASTER_KEY` model forward.
+Prefer a clean product-settings migration. Existing development/operator credential residue can be cleared and the user re-enters the API key in the new Settings UI.
 
-Prefer a clean product settings migration rather than a compatibility layer that decrypts/re-encrypts old operator data.
+Do not keep two long-lived authoritative model configurations (environment-selected model vs database-selected product model) that can silently disagree.
 
-For development environments with old operator credentials, the supported path is to clear/recreate the product setting and have the user enter their API key through the new UI.
+## 16. Implementation order
 
-Do not create long-lived dual configuration where environment-selected model and database-selected product model can silently disagree.
+The implementation plan must follow dependency order:
 
-## 18. Implementation ordering constraints
-
-The implementation plan should preserve dependency order:
-
-1. Product OpenCode settings persistence/API/runtime resolution.
-2. Production-neutral AgentOrchestrator wiring; Fake/scripted test boundary cleanup.
-3. Model-powered `换一个问题` with context isolation and atomic commit.
-4. Active/Focus/Visibility/shared-node/source-route interaction corrections.
+1. OpenCode settings persistence/API/dynamic runtime resolution.
+2. Production-neutral AgentOrchestrator wiring and Fake/scripted test-boundary cleanup.
+3. Generic model-powered `换一个问题`, including pre-proposal ContextSnapshot identity correction, context isolation, and atomic canonical commit.
+4. Active/Focus/Visibility/shared-node/source-route corrections.
 5. Graph reveal/sizing/provenance/friendly-name/Inspector/Spec presentation fixes.
 6. Runtime lifecycle transition guards.
-7. Phase 8 CI and architecture hardening.
+7. Phase 8 CI/architecture hardening.
 8. Full deterministic regression.
-9. Real OpenCode product acceptance through the UI.
+9. Real OpenCode product acceptance through UI.
 
-Do not reorder this into a UI-first patch pile where model/runtime semantics remain ambiguous.
+Do not implement this as a UI-first patch pile while model/runtime semantics remain ambiguous.
 
-## 19. Acceptance criteria
+## 17. Acceptance criteria
 
-This convergence is complete when all of the following hold:
+Complete when all are true:
 
-1. A user can open global Settings, enter their own OpenCode API key, dynamically retrieve current free models, select one explicitly, and save the settings without restart.
-2. Normal product model operations use real OpenCode and never silently fall back to Fake.
-3. Unconfigured model-required actions guide the user to model settings while read-only history remains usable.
-4. `换一个问题` accepts only a natural-language direction from the user and uses the generic DRAFT_NODE capability.
-5. Replacement context contains parent lineage + old question/purpose + user direction and excludes old target answer/patch/children/sibling conclusions/spec output.
-6. Failed replacement model calls do not mutate canonical route/node history.
-7. Successful replacement creates a sibling question at the same logical depth, preserves the old route, and activates/focuses/reveals the new route without relayout.
-8. Fork/Re-answer/Replacement do not show a repeated source-route picker; they use the visual node's explicit Focus/read route and still send an explicit runtime sourceRouteId.
-9. Shared nodes are neutral when no Focus/read route is selected; they never silently fall back to Active.
-10. Active, Focus, and Visibility remain separate; Focus does not hide other routes and does not Activate.
-11. All non-deleted routes are visible by default; single-route viewing, dim, and hide are user-only visibility controls.
-12. Branch operations reveal new nodes without changing existing positions.
-13. Current answerable nodes no longer suffer normal-content whole-node scrolling that clips submission controls.
-14. Replacement provenance is subtle/Inspector-oriented rather than a permanent prominent cross-canvas edge.
-15. Normal UI uses readable localized route names; UUIDs move to technical detail.
-16. Inspector clearly emphasizes the current viewing route and its route-specific answer/history.
-17. Spec source presentation deduplicates identical references without losing section provenance.
-18. Runtime enforces the lifecycle transition matrix, not merely the frontend.
-19. Anti-overfitting architecture rules remain green and no feature/test-specific production branches/prompts are introduced.
-20. Deterministic unit/integration/E2E suites pass.
-21. Phase 8 CI gates are installed and green.
-22. Real OpenCode product acceptance passes through the UI; if OpenCode returns 429, testing stops and waits for the user's network change rather than retrying/falling back.
+1. User configures their own global OpenCode key from Settings, dynamically receives current free models, explicitly chooses one, saves it, and the next model call uses it without restart.
+2. Save revalidates the candidate/current free model server-side; a stale/tampered browser list is not authoritative.
+3. Normal product model operations use real OpenCode and never silently fall back to Fake.
+4. Unconfigured model-required actions guide to Settings while history remains inspectable.
+5. `换一个问题` accepts only a natural-language direction and reuses generic DRAFT_NODE.
+6. Replacement context includes parent lineage + old question/purpose + user direction and excludes old target answer/patch/children/siblings/spec/global history.
+7. Pre-proposal ContextSnapshot does not require an already-persisted accepted replacement route/node.
+8. Failed replacement calls do not mutate canonical Node/Route/Active state.
+9. Successful replacement creates a sibling node, preserves old history, activates/focuses/reveals the new route without relayout.
+10. Fork/Re-answer/Replacement have no repeated source-route modal; frontend still sends explicit sourceRouteId from explicit visual read context.
+11. Shared nodes are neutral without Focus and never silently use Active as reading context.
+12. Active, Focus, and Visibility remain independent; Focus neither Activates nor hides other routes.
+13. All non-deleted routes are visible by default; isolate/dim/hide are user visibility controls.
+14. Branch operations reveal new nodes without changing existing positions.
+15. Current answerable nodes keep submit controls reachable without normal-content whole-node scrolling.
+16. Replacement provenance is subtle/Inspector-oriented, not a permanent prominent cross-canvas edge.
+17. Normal product UI uses friendly localized route names; UUIDs are technical detail.
+18. Inspector clearly emphasizes current viewing route and route-specific answer/history.
+19. Spec source presentation dedupes identical refs without losing section provenance.
+20. Runtime enforces lifecycle transitions and activation constraints.
+21. No test/domain-specific production code or prompt overfitting is introduced.
+22. Deterministic backend/frontend/E2E regression passes.
+23. Phase 8 CI gates are installed and green.
+24. Real OpenCode UI acceptance passes; on 429, Luna stops and waits for the user's network change rather than retrying or falling back.
 
-## 20. Summary
+## 18. Summary
 
-The first-version product should feel simple even though the runtime remains strict:
-
-```text
-user configures OpenCode once
-→ creates/opens a requirement project
-→ answers one focused question at a time
-→ explores visible branch history without losing context
-→ can fork, re-answer, or ask for a different question
-→ every route stays isolated and inspectable
-→ generated Spec remains source-backed and derived
-```
-
-Internally, the design deliberately stays narrow:
+The first-version product remains intentionally narrow:
 
 ```text
 one product
 one normal provider path (OpenCode)
-one generic agent contract family
-one deterministic runtime owner
+one generic model contract family
+one deterministic Runtime owner
 one lineage-based context model
 one graph workspace with explicit Active / Focus / Visibility semantics
 ```
 
-No model/provider platform and no domain-specific shortcuts are introduced.
+The user experience is simple: configure OpenCode once, clarify a requirement one question at a time, branch/re-answer/replace without losing history, inspect every route explicitly, and generate a source-backed derived Spec. No provider platform, master-key platform, or domain-specific shortcut is added.
