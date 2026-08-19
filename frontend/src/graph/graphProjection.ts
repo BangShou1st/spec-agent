@@ -16,7 +16,6 @@ import {
 } from './graphEdgeRouting'
 import {
   buildVisualInstances,
-  visualNodeKeyFor,
   type GraphVisualInstance,
 } from './graphVisualIdentity'
 
@@ -24,6 +23,7 @@ export type GraphVisualWeight = 'active' | 'focus' | 'normal' | 'dimmed'
 
 export interface GraphAnswerPresentation {
   routeId: string
+  routeLabel?: string
   selectedOptionId: string | null
   selectedOptionLabel: string | null
   freeText: string | null
@@ -34,6 +34,7 @@ export interface GraphAnswerPresentation {
 
 export interface GraphRouteAnswerState {
   routeId: string
+  routeLabel?: string
   answer: GraphAnswerPresentation | null
 }
 
@@ -185,7 +186,7 @@ export function selectPrimaryAnswer(
   nodeId: string,
   answers: GraphAnswerPresentation[],
   focusRouteId: string | null,
-  activeRouteId: string | null,
+  _activeRouteId: string | null,
   _options: GraphWorkspaceOptionView[],
 ): GraphAnswerPresentation | null {
   const nodeAnswers = answers.filter((answer) => {
@@ -193,8 +194,18 @@ export function selectPrimaryAnswer(
     return withNodeId.nodeId === undefined || withNodeId.nodeId === nodeId
   })
   if (focusRouteId) return nodeAnswers.find((answer) => answer.routeId === focusRouteId) ?? null
-  if (activeRouteId) return nodeAnswers.find((answer) => answer.routeId === activeRouteId) ?? null
   return null
+}
+
+function fallbackRouteLabel(route: Pick<GraphWorkspaceRouteView, 'branchType' | 'isActive'>): string {
+  if (route.branchType === 'fork') return '分支路线'
+  if (route.branchType === 'reanswer') return '重新回答路线'
+  if (route.branchType === 'regenerate') return '换题路线'
+  return route.isActive ? '主路线' : '路线'
+}
+
+function routeLabel(route: GraphWorkspaceRouteView | undefined): string {
+  return route?.label?.trim() || (route ? fallbackRouteLabel(route) : '当前路线')
 }
 
 function buildAnswerPresentations(view: GraphWorkspaceView): Map<string, GraphAnswerPresentation[]> {
@@ -205,6 +216,7 @@ function buildAnswerPresentations(view: GraphWorkspaceView): Map<string, GraphAn
     const option = optionsByNode.get(answer.nodeId)?.find((candidate) => candidate.id === answer.selectedOptionId)
     const presentation: GraphAnswerPresentation = {
       routeId: answer.routeId,
+      routeLabel: routeLabel(view.routes.find((route) => route.id === answer.routeId)),
       selectedOptionId: answer.selectedOptionId,
       selectedOptionLabel: option?.label ?? null,
       freeText: answer.freeText,
@@ -240,7 +252,6 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
   const visibleRouteIds = getVisibleRouteIds(view, uiState)
   const instances = buildVisualInstances(view)
   const activeRouteId = view.activeRouteId
-  const readingRouteId = uiState.focusRouteId ?? activeRouteId
   const visibleInstances = instances.filter((instance) => instance.routeIds.some((id) => visibleRouteIds.has(id)))
   const visibleKeys = new Set(visibleInstances.map((instance) => instance.visualNodeKey))
   const positions = computePositions(visibleInstances, savedPositions)
@@ -250,11 +261,14 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
     const routeIds = instance.routeIds
     const answers = (answersByCanonicalNode.get(instance.canonicalNodeId) ?? [])
       .filter((answer) => routeIds.includes(answer.routeId))
+    const readingRouteId = uiState.focusRouteId && routeIds.includes(uiState.focusRouteId)
+      ? uiState.focusRouteId
+      : routeIds.length === 1 ? routeIds[0] : null
     const primary = selectPrimaryAnswer(
       instance.canonicalNodeId,
       answers,
-      uiState.focusRouteId && routeIds.includes(uiState.focusRouteId) ? uiState.focusRouteId : null,
-      activeRouteId && routeIds.includes(activeRouteId) ? activeRouteId : null,
+      readingRouteId,
+      null,
       instance.node.options,
     )
     const isCurrent = activeNodeId === instance.canonicalNodeId && activeRouteId !== null && routeIds.includes(activeRouteId)
@@ -262,6 +276,7 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
     const visualWeight = routeVisualWeight(routeIds, activeRouteId, uiState.focusRouteId, uiState.routeDisplayStates)
     const routeStates = routeIds.map((routeId) => ({
       routeId,
+      routeLabel: routeLabel(view.routes.find((route) => route.id === routeId)),
       answer: answers.find((answer) => answer.routeId === routeId) ?? null,
     }))
     const routeMembership = routeIds
@@ -270,7 +285,7 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
         const route = view.routes.find((candidate) => candidate.id === routeId)
         return {
           routeId,
-          label: route?.label ?? routeId,
+          label: routeLabel(route),
           lifecycleStatus: route?.lifecycleStatus ?? 'open',
           isActive: route?.isActive === true || routeId === activeRouteId,
           branchType: route?.branchType,
@@ -326,38 +341,6 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
       },
       class: ['graph-edge--lineage', 'graph-edge--' + weight],
     })
-  }
-
-  for (const node of view.nodes) {
-    if (!node.supersedesNodeId) continue
-    const replacementInstances = instances.filter((instance) => instance.canonicalNodeId === node.id)
-    for (const replacementInstance of replacementInstances) {
-      const route = replacementInstance.routeIds
-        .map((id) => view.routes.find((candidate) => candidate.id === id))
-        .find((candidate) => candidate?.replacementOfNodeId === node.supersedesNodeId)
-      const sourceKey = route?.sourceRouteId
-        ? visualNodeKeyFor(view, route.sourceRouteId, node.supersedesNodeId)
-        : node.supersedesNodeId
-      if (!visibleKeys.has(sourceKey) || !visibleKeys.has(replacementInstance.visualNodeKey)) continue
-      const handles = selectHandlesFor(sourceKey, replacementInstance.visualNodeKey, positions)
-      const weight = routeVisualWeight(replacementInstance.routeIds, activeRouteId, uiState.focusRouteId, uiState.routeDisplayStates)
-      edges.push({
-        id: 'replacement:' + sourceKey + '->' + replacementInstance.visualNodeKey,
-        source: sourceKey,
-        target: replacementInstance.visualNodeKey,
-        type: 'adaptive',
-        sourceHandle: handles.sourceHandle,
-        targetHandle: handles.targetHandle,
-        markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12 },
-        data: {
-          kind: 'replacement',
-          routeIds: [...replacementInstance.routeIds],
-          visibleRouteIds: replacementInstance.routeIds.filter((id) => visibleRouteIds.has(id)),
-          visualWeight: weight,
-        },
-        class: ['graph-edge--replacement', 'graph-edge--' + weight],
-      })
-    }
   }
 
   return { nodes, edges }

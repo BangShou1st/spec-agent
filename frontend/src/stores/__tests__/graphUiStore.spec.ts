@@ -124,13 +124,13 @@ describe('graph ui store', () => {
     expect(store.selectedNodeIds).toEqual(['n2'])
   })
 
-  it('focus is independent of active and readingRouteId prefers focus', () => {
+  it('focus is independent of active and is the only reading route', () => {
     const store = useGraphUiStore()
-    expect(store.readingRouteId(ACTIVE_ROUTE_ID)).toBe(ACTIVE_ROUTE_ID)
+    expect(store.readingRouteId(ACTIVE_ROUTE_ID)).toBeNull()
     store.setFocusRoute('rFocus')
     expect(store.readingRouteId(ACTIVE_ROUTE_ID)).toBe('rFocus')
     store.clearFocusRoute()
-    expect(store.readingRouteId(ACTIVE_ROUTE_ID)).toBe(ACTIVE_ROUTE_ID)
+    expect(store.readingRouteId(ACTIVE_ROUTE_ID)).toBeNull()
   })
 
   it('hiding the active route is rejected', () => {
@@ -171,7 +171,7 @@ describe('graph ui store', () => {
     expect(store.focusRouteId).toBeNull()
   })
 
-  it('show all clears focus and manual dim/hide but preserves lifecycle filters', () => {
+  it('show all clears manual dim/hide but preserves focus and lifecycle filters', () => {
     const store = useGraphUiStore()
     store.setFocusRoute('rFocus')
     store.dimRoute('rArchived')
@@ -181,6 +181,19 @@ describe('graph ui store', () => {
     expect(store.focusRouteId).toBeNull()
     expect(store.routeDisplayStates).toEqual({})
     expect(store.lifecycleFilters.archived).toBe(false)
+  })
+
+  it('isolate is visibility-only and show all preserves the explicit Focus route', () => {
+    const store = useGraphUiStore()
+    store.reconcile(graphView())
+    store.setFocusRoute('rFocus')
+    store.isolateRoute('rFocus', [ACTIVE_ROUTE_ID, 'rFocus', 'rArchived'])
+    expect(store.focusRouteId).toBe('rFocus')
+    expect(store.routeDisplayStates[ACTIVE_ROUTE_ID]).toBeUndefined()
+    expect(store.routeDisplayStates.rArchived).toBe('hidden')
+    store.showAll()
+    expect(store.focusRouteId).toBe('rFocus')
+    expect(store.routeDisplayStates).toEqual({})
   })
 
   it('reset view restores lifecycle filter defaults too', () => {

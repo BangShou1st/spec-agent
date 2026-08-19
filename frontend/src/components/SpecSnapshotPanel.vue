@@ -4,13 +4,14 @@ import type { SpecSnapshotResponse } from '@/api/types'
 import SpecSnapshotList from './SpecSnapshotList.vue'
 
 /**
- * 规格快照标签页。快照始终属于读取路线（readingRouteId，可能与当前路线
+ * 规格快照标签页。快照始终属于显式读取路线（readingRouteId，可能与当前路线
  * 不同）。生成始终针对后端当前路线（Active）并明确提示。快照永远标注为
  * 派生产物——不是权威来源。
  */
 const props = defineProps<{
   routeId: string | null
   activeRouteId: string | null
+  routeLabels?: Record<string, string>
   snapshots: SpecSnapshotResponse[]
   selectedSpecId: string | null
   generating: boolean
@@ -46,6 +47,27 @@ function formatTime(iso: string): string {
 function truncated(value: string | null): string {
   return value ?? '—'
 }
+
+function routeLabel(routeId: string | null): string {
+  return routeId ? props.routeLabels?.[routeId] || '路线' : '未选择'
+}
+
+const displaySourceRefs = computed(() => {
+  const seen = new Set<string>()
+  return (selectedSpec.value?.sourceRefs ?? []).filter((ref) => {
+    const key = ref.kind + ':' + ref.refId
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+})
+
+function sourceLabel(ref: { kind: string; refId: string }): string {
+  if (ref.kind.toLowerCase().includes('route')) {
+    return `${ref.kind}：${routeLabel(ref.refId)}`
+  }
+  return `${ref.kind}：${shortId(ref.refId)}`
+}
 </script>
 
 <template>
@@ -66,18 +88,18 @@ function truncated(value: string | null): string {
       没有当前路线——无法生成规格。
     </p>
     <p v-else class="muted info-line" data-test="active-route-target">
-      当前路线：{{ shortId(activeRouteId) }}
+      当前路线：{{ routeLabel(activeRouteId) }}
     </p>
     <p
       v-if="!readingIsActive && routeId"
       class="info-line generate-warning"
       data-test="generate-focus-warning"
     >
-      你目前正在查看 {{ shortId(routeId) }}，生成操作将针对当前路线 {{ shortId(activeRouteId ?? '') }}。
+      你目前正在查看 {{ routeLabel(routeId) }}，生成操作将针对当前路线 {{ routeLabel(activeRouteId) }}。
     </p>
 
     <div class="meta-text" style="margin-top: 8px">
-      读取路线：{{ routeId ? shortId(routeId) : '—' }} 的规格快照
+      读取路线：{{ routeLabel(routeId) }} 的规格快照
     </div>
 
     <SpecSnapshotList
@@ -95,7 +117,8 @@ function truncated(value: string | null): string {
 
       <div class="provenance" data-test="spec-provenance">
         <div class="meta-text">快照：{{ selectedSpec.id }}</div>
-        <div class="meta-text">路线：{{ selectedSpec.routeId }}</div>
+        <div>路线：{{ routeLabel(selectedSpec.routeId) }}</div>
+        <div class="meta-text">路线标识：{{ shortId(selectedSpec.routeId) }}</div>
         <div class="meta-text">末端节点：{{ truncated(selectedSpec.tipNodeId) }}</div>
         <div class="meta-text">格式：{{ selectedSpec.format }}</div>
         <div class="meta-text">createdByRunId：{{ truncated(selectedSpec.createdByRunId) }}</div>
@@ -118,8 +141,8 @@ function truncated(value: string | null): string {
       <section v-if="selectedSpec.sourceRefs.length > 0" class="spec-section">
         <h4 style="margin: 0 0 4px">来源引用</h4>
         <ul style="margin: 0; padding-left: 18px">
-          <li v-for="(ref, index) in selectedSpec.sourceRefs" :key="index" data-test="source-reference">
-            {{ ref.kind }}:{{ ref.refId }}
+          <li v-for="ref in displaySourceRefs" :key="ref.kind + ':' + ref.refId" data-test="source-reference">
+            {{ sourceLabel(ref) }}
           </li>
         </ul>
       </section>

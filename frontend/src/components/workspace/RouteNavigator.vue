@@ -32,11 +32,26 @@ const filters: { status: RouteLifecycleStatus; label: string }[] = [
 const sortedRoutes = computed(() => props.routes)
 const displayState = (id: string): GraphRouteDisplayState => graphUi.routeDisplayStates[id] ?? 'normal'
 const focused = (id: string): boolean => graphUi.focusRouteId === id
+const routeLabel = (route: GraphWorkspaceRouteView): string => {
+  if (route.label?.trim()) return route.label.trim()
+  if (route.branchType === 'fork') return '分支路线'
+  if (route.branchType === 'reanswer') return '重新回答路线'
+  if (route.branchType === 'regenerate') return '换题路线'
+  return route.isActive ? '主路线' : '路线'
+}
 const branchLabel = (route: GraphWorkspaceRouteView): string | null => {
   if (route.branchType === 'fork') return '分支路线'
   if (route.branchType === 'reanswer') return '重新选择答案'
   if (route.branchType === 'regenerate') return '替代问题'
   return null
+}
+const sourceLabel = (route: GraphWorkspaceRouteView): string | null => {
+  if (!route.sourceRouteId) return null
+  return routeLabel(props.routes.find((candidate) => candidate.id === route.sourceRouteId) ?? {
+    ...route,
+    id: route.sourceRouteId,
+    label: null,
+  })
 }
 
 function setFilter(status: RouteLifecycleStatus, visible: boolean): void {
@@ -69,12 +84,13 @@ function openRoute(route: GraphWorkspaceRouteView): void {
           <span v-if="route.id === activeRouteId" class="badge badge-active" data-test="active-route">当前路线</span>
           <span v-if="focused(route.id)" class="badge badge-focus">聚焦</span>
         </div>
-        <div class="route-navigator__label">{{ route.label ?? route.id.slice(0, 8) }}</div>
+        <div class="route-navigator__label">{{ routeLabel(route) }}</div>
         <div class="meta-text">{{ route.lineageNodeIds.length }} 个节点</div>
-        <div v-if="branchLabel(route)" class="meta-text">来源：{{ branchLabel(route) }}<span v-if="route.branchAtNodeId"> · {{ route.branchAtNodeId.slice(0, 8) }}</span></div>
+        <div v-if="branchLabel(route)" class="meta-text">来源：{{ branchLabel(route) }}<span v-if="sourceLabel(route)"> · {{ sourceLabel(route) }}</span></div>
         <div class="route-navigator__actions" @click.stop>
           <button class="btn btn-small" data-test="locate-route" @click="emit('locate-route', route.id)">定位路线</button>
           <button class="btn btn-small" data-test="focus-route" @click="focused(route.id) ? graphUi.clearFocusRoute() : graphUi.setFocusRoute(route.id)">{{ focused(route.id) ? '取消聚焦' : '聚焦此路线' }}</button>
+          <button class="btn btn-small" data-test="isolate-route" @click="graphUi.isolateRoute(route.id, routes.map((candidate) => candidate.id))">独览此路线</button>
           <button class="btn btn-small" data-test="dim-route" @click="displayState(route.id) === 'dimmed' ? graphUi.restoreRouteDisplay(route.id) : graphUi.dimRoute(route.id)">{{ displayState(route.id) === 'dimmed' ? '取消弱化' : '弱化路线' }}</button>
           <button class="btn btn-small" data-test="hide-route" :disabled="route.id === activeRouteId" @click="displayState(route.id) === 'hidden' ? graphUi.restoreRouteDisplay(route.id) : graphUi.hideRoute(route.id)">{{ displayState(route.id) === 'hidden' ? '恢复显示' : '隐藏路线' }}</button>
         </div>

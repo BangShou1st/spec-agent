@@ -252,25 +252,17 @@ describe('WorkspaceView graph shell', () => {
     expect(wrapper.find('[data-test="confirm-route-action-dialog"]').exists()).toBe(false)
   })
 
-  it('fork dialog enforces the active+open base route rule', async () => {
+  it('fork dialog requires an explicit Focus route for a shared node', async () => {
     mockViews()
-    const { wrapper } = await mountWorkspace()
-    // 从共享节点 n1 fork：必须明确选择当前路线 r1（active+open）→ 允许。
+    const { wrapper, graphUi } = await mountWorkspace()
     await wrapper.findComponent(GraphCanvasStub).vm.$emit('fork', 'n1')
     expect(wrapper.find('[data-test="fork-dialog"]').exists()).toBe(true)
-    await wrapper.findAll('[data-test="fork-base-route"]')[0].setValue()
-    expect(wrapper.find('[data-test="fork-submit"]').attributes('disabled')).toBeUndefined()
-
-    // 选择 OPEN 但非当前的 r2 → 禁止 + 提示先设为当前路线。
-    await wrapper.findAll('[data-test="fork-base-route"]')[1].setValue()
-    await flushPromises()
     expect(wrapper.find('[data-test="fork-submit"]').attributes('disabled')).toBeDefined()
-    expect(wrapper.find('[data-test="fork-blocker"]').text()).toContain('先设为当前路线')
+    expect(wrapper.text()).toContain('当前查看')
 
-    // 选择 archived 的 r3 → 禁止 + 提示先恢复。
-    await wrapper.findAll('[data-test="fork-base-route"]')[2].setValue()
+    graphUi.setFocusRoute('r1')
     await flushPromises()
-    expect(wrapper.find('[data-test="fork-blocker"]').text()).toContain('先恢复这条路线')
+    expect(wrapper.find('[data-test="fork-submit"]').attributes('disabled')).toBeUndefined()
   })
 
   it('fork submits the explicit source route and user label through the existing API', async () => {
@@ -282,30 +274,26 @@ describe('WorkspaceView graph shell', () => {
     })
     const { wrapper } = await mountWorkspace()
     await wrapper.findComponent(GraphCanvasStub).vm.$emit('fork', 'n1')
-    await wrapper.findAll('[data-test="fork-base-route"]')[0].setValue()
+    useGraphUiStore().setFocusRoute('r1')
+    await flushPromises()
     await wrapper.find('[data-test="fork-label"]').setValue('替代路线')
     await wrapper.find('[data-test="fork-submit"]').trigger('click')
     await flushPromises()
     expect(vi.mocked(apiForkNode)).toHaveBeenCalledWith('p1', 'n1', { sourceRouteId: 'r1', label: '替代路线' })
   })
 
-  it('regenerate dialog submits a deterministic runtime-free payload', async () => {
+  it('regenerate dialog submits only the user direction and source route', async () => {
     mockViews()
     vi.mocked(apiRegenerateNode).mockResolvedValue(makeRegenerateResponse())
-    const { wrapper } = await mountWorkspace()
+    const { wrapper, graphUi } = await mountWorkspace()
+    graphUi.setFocusRoute('r1')
     await wrapper.findComponent(GraphCanvasStub).vm.$emit('regenerate', 'n2')
     expect(wrapper.find('[data-test="regenerate-dialog"]').exists()).toBe(true)
+    await wrapper.find('[data-test="regenerate-instruction"]').setValue('换个更可执行的切入点')
     await wrapper.find('[data-test="regenerate-submit"]').trigger('click')
     await flushPromises()
     const payload = vi.mocked(apiRegenerateNode).mock.calls[0][2]
-    expect(payload.replacementQuestion).toBe('Scope question')
-    expect(Object.keys(payload).sort()).toEqual([
-      'instruction',
-      'replacementOptions',
-      'replacementPurpose',
-      'replacementQuestion',
-      'sourceRouteId',
-    ])
+    expect(payload).toEqual({ sourceRouteId: 'r1', instruction: '换个更可执行的切入点' })
   })
 
   it('spec tab reads the reading route and generates for the active route', async () => {
@@ -314,7 +302,8 @@ describe('WorkspaceView graph shell', () => {
     vi.mocked(apiGenerateSpec).mockResolvedValue(
       makeSpecGeneration({ specSnapshot: makeSpecSnapshot({ id: 'spec-1', routeId: 'r1' }) }),
     )
-    const { wrapper } = await mountWorkspace()
+    const { wrapper, graphUi } = await mountWorkspace()
+    graphUi.setFocusRoute('r1')
     await wrapper.find('[data-test="tab-spec"]').trigger('click')
     await flushPromises()
     expect(wrapper.find('[data-test="generate-spec"]').exists()).toBe(true)
@@ -328,7 +317,9 @@ describe('WorkspaceView graph shell', () => {
 
   it('shell copy is chinese while backend content stays verbatim', async () => {
     mockViews()
-    const { wrapper } = await mountWorkspace()
+    const { wrapper, graphUi } = await mountWorkspace()
+    graphUi.setFocusRoute('r1')
+    await flushPromises()
     const text = wrapper.text()
     // 标题是项目名；壳层文案是中文。
     expect(text).toContain('Test project')

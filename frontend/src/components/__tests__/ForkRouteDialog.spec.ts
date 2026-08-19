@@ -4,99 +4,56 @@ import ForkRouteDialog from '@/components/ForkRouteDialog.vue'
 import { makeNode } from '@/test/fixtures'
 import type { GraphWorkspaceRouteView } from '@/api/types'
 
-function routeView(id: string, lifecycleStatus: GraphWorkspaceRouteView['lifecycleStatus'], lineage: string[]): GraphWorkspaceRouteView {
+function routeView(status: GraphWorkspaceRouteView['lifecycleStatus'] = 'open'): GraphWorkspaceRouteView {
   return {
-    id,
-    label: 'Route ' + id,
-    lifecycleStatus,
-    isActive: id === 'r1',
-    rootNodeId: lineage[0] ?? null,
-    tipNodeId: lineage[lineage.length - 1] ?? null,
+    id: 'r1',
+    label: '当前路线',
+    lifecycleStatus: status,
+    isActive: true,
+    rootNodeId: 'n1',
+    tipNodeId: 'n1',
     createdFromNodeId: null,
     supersedesRouteId: null,
     replacementOfNodeId: null,
-    lineageNodeIds: lineage,
+    lineageNodeIds: ['n1'],
   }
 }
 
-function mountDialog(overrides: Partial<{
-  open: boolean
-  node: ReturnType<typeof makeNode> | null
-  routes: GraphWorkspaceRouteView[]
-  activeRouteId: string | null
-  pending: boolean
-  finalizedRouteIds: string[]
-}> = {}) {
+function mountDialog(sourceRoute: GraphWorkspaceRouteView | null = routeView(), finalized = true) {
   return mount(ForkRouteDialog, {
-    props: {
-      open: true,
-      node: makeNode({ id: 'n1' }),
-      routes: [
-        routeView('r1', 'open', ['n1', 'n2']),
-        routeView('r2', 'open', ['n1', 'n3']),
-        routeView('r3', 'archived', ['n1', 'n4']),
-      ],
-      activeRouteId: 'r1',
-      pending: false,
-      finalizedRouteIds: ['r1', 'r2'],
-      ...overrides,
-    },
+    props: { open: true, node: makeNode({ id: 'n1' }), sourceRoute, pending: false, finalized },
   })
 }
 
 describe('ForkRouteDialog', () => {
-  it('lists only the routes that contain the node', () => {
+  it('does not expose a route picker and submits only the label', async () => {
     const wrapper = mountDialog()
-    const bases = wrapper.findAll('[data-test="fork-base-route"]')
-    expect(bases).toHaveLength(3)
-  })
-
-  it('allows fork when the selected base route is active and open', async () => {
-    const wrapper = mountDialog()
-    await wrapper.findAll('[data-test="fork-base-route"]')[0].setValue()
-    expect(wrapper.find('[data-test="fork-submit"]').attributes('disabled')).toBeUndefined()
+    expect(wrapper.find('[data-test="fork-base-route"]').exists()).toBe(false)
     await wrapper.find('[data-test="fork-label"]').setValue('新分支')
     await wrapper.find('[data-test="fork-submit"]').trigger('click')
-    expect(wrapper.emitted('submit')?.[0]).toEqual(['r1', '新分支'])
+    expect(wrapper.emitted('submit')?.[0]).toEqual(['新分支'])
   })
 
-  it('blocks open-but-not-active base routes with an explicit prerequisite', async () => {
-    const wrapper = mountDialog()
-    await wrapper.findAll('[data-test="fork-base-route"]')[1].setValue()
+  it('blocks when no current reading route is selected', () => {
+    const wrapper = mountDialog(null)
+    expect(wrapper.text()).toContain('当前查看')
     expect(wrapper.find('[data-test="fork-submit"]').attributes('disabled')).toBeDefined()
-    expect(wrapper.find('[data-test="fork-blocker"]').text()).toContain('先设为当前路线')
-    await wrapper.find('[data-test="fork-submit"]').trigger('click')
-    expect(wrapper.emitted('submit')).toBeUndefined()
   })
 
-  it('blocks non-open base routes with a restore prerequisite', async () => {
-    const wrapper = mountDialog()
-    await wrapper.findAll('[data-test="fork-base-route"]')[2].setValue()
-    expect(wrapper.find('[data-test="fork-blocker"]').text()).toContain('先恢复这条路线')
-    expect(wrapper.find('[data-test="restore-base-route"]').text()).toContain('恢复此路线')
+  it('offers restore for an archived source route', async () => {
+    const wrapper = mountDialog(routeView('archived'))
     await wrapper.find('[data-test="restore-base-route"]').trigger('click')
-    expect(wrapper.emitted('restore-base-route')?.[0]).toEqual(['r3'])
-    expect(wrapper.emitted('submit')).toBeUndefined()
+    expect(wrapper.emitted('restore-source')?.[0]).toEqual(['r1'])
+    expect(wrapper.find('[data-test="fork-submit"]').attributes('disabled')).toBeDefined()
   })
 
-  it('keeps the dialog open and offers explicit Activate for an open non-active base', async () => {
-    const wrapper = mountDialog()
-    await wrapper.findAll('[data-test="fork-base-route"]')[1].setValue()
-    expect(wrapper.find('[data-test="activate-base-route"]').text()).toContain('设为当前路线')
-    await wrapper.find('[data-test="activate-base-route"]').trigger('click')
-    expect(wrapper.emitted('activate-base-route')?.[0]).toEqual(['r2'])
-    expect(wrapper.emitted('submit')).toBeUndefined()
-    expect(wrapper.find('[data-test="fork-dialog"]').exists()).toBe(true)
+  it('requires a finalized answer', () => {
+    const wrapper = mountDialog(routeView(), false)
+    expect(wrapper.text()).toContain('还没有回答')
+    expect(wrapper.find('[data-test="fork-submit"]').attributes('disabled')).toBeDefined()
   })
 
-  it('always sends the explicitly selected base route id', async () => {
-    const wrapper = mountDialog()
-    await wrapper.findAll('[data-test="fork-base-route"]')[0].setValue()
-    await wrapper.find('[data-test="fork-submit"]').trigger('click')
-    expect(wrapper.emitted('submit')?.[0]).toEqual(['r1', null])
-  })
-
-  it('close emits without submitting', async () => {
+  it('closes without submitting', async () => {
     const wrapper = mountDialog()
     await wrapper.find('[data-test="fork-cancel"]').trigger('click')
     expect(wrapper.emitted('close')).toHaveLength(1)

@@ -38,8 +38,8 @@ const DEFAULT_FILTERS: Record<RouteLifecycleStatus, boolean> = {
  * and sidebar layout. It never owns Runtime facts: Active route, lifecycle,
  * answers, nodes, routes and Spec content stay in `workspaceStore`/backend.
  *
- * Focus Route is a reading context only: `readingRouteId(activeRouteId)`
- * prefers the focused route but never changes the Active route.
+ * Focus Route is the only explicit browser reading context. It never changes
+ * the Active route and shared nodes never infer a route from Active.
  *
  * Persisted locally: per-project node positions + route display states,
  * and the global sidebar open/width preferences. Never persisted:
@@ -93,9 +93,9 @@ export const useGraphUiStore = defineStore('graphUi', {
       this.routeDisplayStates = { ...v2.routeDisplayStates }
     },
 
-    /** readingRouteId = focusRouteId ?? activeRouteId (browser-only). */
-    readingRouteId(activeRouteId: string | null): string | null {
-      return this.focusRouteId ?? activeRouteId
+    /** Returns the explicit browser reading route, never the runtime Active route. */
+    readingRouteId(_activeRouteId?: string | null): string | null {
+      return this.focusRouteId
     },
 
     /** Normal click: single selection replaces the old selection. */
@@ -190,12 +190,21 @@ export const useGraphUiStore = defineStore('graphUi', {
       this.persistProjectState()
     },
 
-    /**
-     * Clears Focus and all manual dim/hide but preserves lifecycle filters.
-     */
+    /** Clears isolate/manual dim/hide but preserves Focus and lifecycle filters. */
     showAll(): void {
-      this.focusRouteId = null
       this.routeDisplayStates = {}
+      this.persistProjectState()
+    },
+
+    /** Separate visibility-only isolate mode; it never changes Focus or Active. */
+    isolateRoute(routeId: string, routeIds: string[]): void {
+      const next: Record<string, GraphRouteDisplayState> = {}
+      for (const candidate of routeIds) {
+        if (candidate !== routeId && candidate !== this.activeRouteId) {
+          next[candidate] = 'hidden'
+        }
+      }
+      this.routeDisplayStates = next
       this.persistProjectState()
     },
 

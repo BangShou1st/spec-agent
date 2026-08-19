@@ -243,21 +243,12 @@ describe('workspaceStore route workspace', () => {
     const store = useWorkspaceStore()
     await load(store)
 
-    const payload = {
-      sourceRouteId: 'r1',
-      instruction: '改窄一些',
-      replacementQuestion: '需要什么范围？',
-      replacementPurpose: null,
-      replacementOptions: [{ label: '极小', impact: '范围小' }],
-    }
+    const payload = { sourceRouteId: 'r1', instruction: '改窄一些' }
     await store.regenerateNode('lnode-2', payload)
 
     expect(mockedApiRegenerateNode).toHaveBeenCalledWith('p1', 'lnode-2', payload)
     const sentPayload = mockedApiRegenerateNode.mock.calls[0][2]
-    expect(sentPayload.replacementOptions?.[0]).not.toHaveProperty('id')
-    expect(Object.keys(sentPayload).sort()).toEqual(
-      ['instruction', 'replacementOptions', 'replacementPurpose', 'replacementQuestion', 'sourceRouteId'],
-    )
+    expect(Object.keys(sentPayload).sort()).toEqual(['instruction', 'sourceRouteId'])
   })
 
   it('regenerate success refreshes canonical state', async () => {
@@ -282,7 +273,7 @@ describe('workspaceStore route workspace', () => {
 
     const ok = await store.regenerateNode('lnode-2', {
       sourceRouteId: 'r1',
-      replacementQuestion: '替代问题',
+      instruction: '把问题聚焦到可执行范围',
     })
 
     expect(ok).toBe(true)

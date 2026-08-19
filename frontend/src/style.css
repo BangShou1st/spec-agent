@@ -477,6 +477,15 @@ textarea {
   font-size: 13px;
 }
 
+/* The pending node is allowed to grow within a bounded canvas footprint so
+   answering does not depend on a whole-node scrollbar. Only the free-text
+   control may scroll when its content is unusually long. */
+.graph-question-node--current {
+  height: auto;
+  min-height: var(--graph-node-height);
+  max-height: 620px;
+}
+
 .graph-question-node--current {
   border-color: var(--color-accent);
   box-shadow: 0 0 0 2px var(--color-accent-soft), 0 4px 12px rgb(0 0 0 / 10%);
@@ -522,6 +531,10 @@ textarea {
   min-height: 0;
   padding: 10px;
   overflow-y: auto;
+}
+
+.graph-question-node--current .graph-question-node__body {
+  overflow-y: visible;
 }
 
 .graph-route-chooser {
@@ -630,6 +643,8 @@ textarea {
   border-radius: var(--radius);
   padding: 8px;
   margin: 4px 0 10px;
+  max-height: 140px;
+  overflow-y: auto;
 }
 
 .graph-submit {

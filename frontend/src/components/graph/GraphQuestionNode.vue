@@ -81,7 +81,7 @@ watch(
 const node = computed(() => props.data.node)
 const primary = computed(() => props.data.primaryAnswer)
 
-/** 阅读路线（focus ?? active）在该节点上没有回答时，摘要区域显式显示等待。 */
+/** 显式阅读路线在该节点上没有回答时，摘要区域显式显示等待。 */
 const readingWaiting = computed(() => {
   if (props.data.primaryAnswer || !props.data.readingRouteId) {
     return null
@@ -90,6 +90,11 @@ const readingWaiting = computed(() => {
     (s) => s.routeId === props.data.readingRouteId,
   )
   return state && !state.answer ? state : null
+})
+const readingWaitingLabel = computed(() => {
+  const waiting = readingWaiting.value
+  if (!waiting) return '当前查看路线'
+  return props.data.routeStates.find((state) => state.routeId === waiting.routeId)?.routeLabel || '当前查看路线'
 })
 
 const canSubmit = computed(() => {
@@ -235,7 +240,7 @@ const isRootNode = computed(() => props.data.node.parentNodeId === null)
             {{ primary.selectedOptionLabel }}
           </span>
           <p v-if="primary.freeText" class="graph-answer-text">{{ primary.freeText }}</p>
-          <span class="graph-answer-route meta-text">路线：{{ primary.routeId }}</span>
+          <span class="graph-answer-route meta-text">{{ primary.routeLabel || '当前查看路线' }}</span>
         </div>
 
         <!-- 阅读路线没有回答时：明确显示等待，绝不拿其他路线的 answer 冒充。 -->
@@ -244,7 +249,7 @@ const isRootNode = computed(() => props.data.node.parentNodeId === null)
           class="graph-answer-summary"
           data-test="waiting-summary"
         >
-          <span class="badge badge-warn">路线 {{ readingWaiting.routeId }} · 等待回答</span>
+          <span class="badge badge-warn">{{ readingWaitingLabel }} · 等待回答</span>
         </div>
 
         <div class="graph-node-actions">

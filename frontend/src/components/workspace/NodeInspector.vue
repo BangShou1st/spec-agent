@@ -29,6 +29,20 @@ function branchLabel(branchType: string | null | undefined): string {
     regenerate: '替代问题',
   }[branchType ?? ''] ?? branchType ?? ''
 }
+
+function membershipLabel(data: SpecAgentGraphNodeData, routeId: string): string {
+  return data.routeMembership?.find((membership) => membership.routeId === routeId)?.label
+    || data.routeStates.find((state) => state.routeId === routeId)?.routeLabel
+    || '路线'
+}
+
+function orderedStates(data: SpecAgentGraphNodeData) {
+  return [...data.routeStates].sort((left, right) => {
+    if (left.routeId === data.readingRouteId) return -1
+    if (right.routeId === data.readingRouteId) return 1
+    return 0
+  })
+}
 </script>
 
 <template>
@@ -37,6 +51,9 @@ function branchLabel(branchType: string | null | undefined): string {
       <h3 class="node-inspector__title" data-test="node-detail-question">{{ data.node.question }}</h3>
       <p v-if="data.node.purpose" class="graph-node-purpose">{{ data.node.purpose }}</p>
       <p class="meta-text">创建于 {{ formatTime(data.node.createdAt) }}</p>
+      <p class="node-inspector__reading" data-test="current-reading-route">
+        当前查看路线：<strong>{{ data.readingRouteId ? membershipLabel(data, data.readingRouteId) : '未选择' }}</strong>
+      </p>
 
       <h4 class="node-inspector__heading">选项</h4>
       <ul class="node-inspector__options">
@@ -59,22 +76,22 @@ function branchLabel(branchType: string | null | undefined): string {
           :key="membership.routeId"
           class="meta-text"
         >
-          {{ membership.routeId }} · {{ branchLabel(membership.branchType) }}
-          <template v-if="membership.sourceRouteId"> · 来源 {{ membership.sourceRouteId }}</template>
-          <template v-if="membership.branchAtNodeId"> · 节点 {{ membership.branchAtNodeId }}</template>
+          {{ membership.label }} · {{ branchLabel(membership.branchType) }}
+          <template v-if="membership.sourceRouteId"> · 来源 {{ membershipLabel(data, membership.sourceRouteId) }}</template>
+          <template v-if="membership.branchAtNodeId"> · 节点 {{ membership.branchAtNodeId.slice(0, 8) }}</template>
         </p>
       </div>
 
       <h4 class="node-inspector__heading">各路线回答</h4>
       <div v-if="data.routeStates.length > 0" class="node-inspector__answers">
         <div
-          v-for="state in data.routeStates"
+          v-for="state in orderedStates(data)"
           :key="state.routeId"
           class="graph-route-answer"
           :class="{ 'graph-route-answer--primary': state.answer?.isPrimary }"
           :data-test="`route-answer-${state.routeId}`"
         >
-          <span class="meta-text">路线 {{ state.routeId }}</span>
+          <span class="meta-text">{{ state.routeLabel || membershipLabel(data, state.routeId) }}</span>
           <template v-if="state.answer">
             <span v-if="state.answer.selectedOptionLabel" class="badge badge-open">{{ state.answer.selectedOptionLabel }}</span>
             <p v-if="state.answer.freeText" class="graph-answer-text">{{ state.answer.freeText }}</p>
@@ -115,6 +132,14 @@ function branchLabel(branchType: string | null | undefined): string {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--color-text-secondary);
+}
+
+.node-inspector__reading {
+  margin: 10px 0;
+  padding: 8px;
+  border-radius: var(--radius);
+  background: var(--color-accent-soft);
+  font-size: 12px;
 }
 
 .node-inspector__options {

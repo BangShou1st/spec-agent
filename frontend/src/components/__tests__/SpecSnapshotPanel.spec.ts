@@ -6,6 +6,7 @@ import { makeSpecSnapshot } from '@/test/fixtures'
 function mountPanel(overrides: Partial<{
   routeId: string | null
   activeRouteId: string | null
+  routeLabels: Record<string, string>
   snapshots: ReturnType<typeof makeSpecSnapshot>[]
   selectedSpecId: string | null
   generating: boolean
@@ -19,6 +20,7 @@ function mountPanel(overrides: Partial<{
       selectedSpecId: null,
       generating: false,
       commandPending: false,
+      routeLabels: { r1: '主路线', rA: '当前路线', rB: '开放分支' },
       ...overrides,
     },
   })
@@ -29,13 +31,13 @@ describe('SpecSnapshotPanel', () => {
     const wrapper = mountPanel()
     expect(wrapper.find('[data-test="generate-spec"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('为当前路线生成规格')
-    expect(wrapper.text()).toContain('当前路线：r1')
+    expect(wrapper.text()).toContain('当前路线：主路线')
   })
 
   it('warns when reading a different route than the active one', () => {
     const wrapper = mountPanel({ routeId: 'rB', activeRouteId: 'rA' })
-    expect(wrapper.find('[data-test="generate-focus-warning"]').text()).toContain('rB')
-    expect(wrapper.find('[data-test="generate-focus-warning"]').text()).toContain('rA')
+    expect(wrapper.find('[data-test="generate-focus-warning"]').text()).toContain('开放分支')
+    expect(wrapper.find('[data-test="generate-focus-warning"]').text()).toContain('当前路线')
   })
 
   it('emits generate intent and disables while generating', async () => {
@@ -63,14 +65,15 @@ describe('SpecSnapshotPanel', () => {
       id: 'spec-1',
       sections: [{ id: 's1', title: 'Overview', content: 'Original English spec body.' }],
       unresolvedItems: [{ text: 'An open aspect.', category: 'unresolved' }],
-      sourceRefs: [{ kind: 'node', refId: 'n1' }],
+      sourceRefs: [{ kind: 'node', refId: 'n1' }, { kind: 'node', refId: 'n1' }],
     })
     const wrapper = mountPanel({ snapshots: [snapshot], selectedSpecId: 'spec-1' })
     expect(wrapper.find('[data-test="spec-snapshot-detail"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="derived-label"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('Original English spec body.')
     expect(wrapper.text()).toContain('An open aspect.')
-    expect(wrapper.find('[data-test="source-reference"]').text()).toContain('node:n1')
+    expect(wrapper.findAll('[data-test="source-reference"]')).toHaveLength(1)
+    expect(wrapper.find('[data-test="source-reference"]').text()).toContain('node：n1')
   })
 
   it('shows an empty state when no snapshots exist', () => {

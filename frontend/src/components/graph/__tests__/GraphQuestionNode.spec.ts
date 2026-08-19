@@ -276,8 +276,8 @@ describe('shared node route-specific waiting state', () => {
 
   it('Focus=B without an answer shows B waiting and never A answer as the summary', () => {
     const wrapper = mountNode(waitingData())
-    // 摘要显式「路线 r2 · 等待回答」；A 的回答不作为 primary 展示。
-    expect(wrapper.find('[data-test="waiting-summary"]').text()).toContain('路线 r2 · 等待回答')
+    // 摘要显式等待；A 的回答不作为 primary 展示。
+    expect(wrapper.find('[data-test="waiting-summary"]').text()).toContain('当前查看路线 · 等待回答')
     expect(wrapper.find('[data-test="answer-summary"]').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('A answer on shared node.')
   })

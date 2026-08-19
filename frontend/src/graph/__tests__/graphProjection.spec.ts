@@ -146,12 +146,12 @@ describe('graph projection', () => {
     expect(data.answers.find((a) => a.routeId === ROUTE_B_ID)?.isPrimary).toBe(true)
   })
 
-  it('without focus the active route answer is primary', () => {
+  it('without focus a shared node has no primary route answer', () => {
     const result = project()
     const bNode = result.nodes.find((n) => n.id === 'b')!
     const data = bNode.data as SpecAgentGraphNodeData
-    expect(data.primaryAnswer?.routeId).toBe(ACTIVE_ROUTE_ID)
-    expect(data.answers.find((a) => a.routeId === ACTIVE_ROUTE_ID)?.isPrimary).toBe(true)
+    expect(data.primaryAnswer).toBeNull()
+    expect(data.answers.every((answer) => !answer.isPrimary)).toBe(true)
   })
 
   it('hiding route B removes only its exclusive node d', () => {
@@ -232,15 +232,10 @@ describe('graph projection', () => {
     }
   })
 
-  it('replacement edge is separate from lineage and never becomes parent', () => {
+  it('replacement provenance is not rendered as a permanent graph edge', () => {
     const result = project()
     const repl = result.edges.find((e) => e.id === 'replacement:b->bprime')
-    expect(repl).toBeDefined()
-    expect(repl?.source).toBe('b')
-    expect(repl?.target).toBe('bprime')
-    expect(repl?.data?.kind).toBe('replacement')
-    expect(repl?.data?.routeIds).toEqual([ROUTE_D_ID])
-    expect(repl?.data?.visibleRouteIds).toEqual([ROUTE_D_ID])
+    expect(repl).toBeUndefined()
     // lineage a->bprime exists for the replacement route D
     const lineage = result.edges.find((e) => e.id === 'a->bprime')
     expect(lineage?.data?.routeIds).toEqual([ROUTE_D_ID])
@@ -287,7 +282,7 @@ describe('graph projection', () => {
     const focused = selectPrimaryAnswer('x', answers, ROUTE_B_ID, ACTIVE_ROUTE_ID, [])
     expect(focused?.freeText).toBe('b')
     const active = selectPrimaryAnswer('x', answers, null, ACTIVE_ROUTE_ID, [])
-    expect(active?.freeText).toBe('a')
+    expect(active).toBeNull()
     const none = selectPrimaryAnswer('y', answers, null, ACTIVE_ROUTE_ID, [])
     expect(none).toBeNull()
   })
@@ -464,7 +459,7 @@ describe('shared node route-specific waiting state', () => {
     expect(data.routeStates.find((s) => s.routeId === ACTIVE_ROUTE_ID)?.answer?.freeText).toBe('old route answer')
   })
 
-  it('readingRouteId follows focus ?? active for the node presentation', () => {
+  it('readingRouteId follows explicit focus and stays neutral for shared nodes otherwise', () => {
     const view = sharedView()
     const focused = projectGraph({
       view,
@@ -481,12 +476,12 @@ describe('shared node route-specific waiting state', () => {
       savedPositions: {},
     })
     const bActive = unfocused.nodes.find((n) => n.id === 'b')!
-    expect((bActive.data as SpecAgentGraphNodeData).readingRouteId).toBe(ACTIVE_ROUTE_ID)
+    expect((bActive.data as SpecAgentGraphNodeData).readingRouteId).toBeNull()
   })
 })
 
 describe('replacement edge visibility', () => {
-  it('renders the replacement edge only when both endpoints are currently visible', () => {
+  it('does not render a replacement edge even when both endpoints are visible', () => {
     // Active route D: a -> bprime（bprime 替代 b）；路线 A: a -> b。隐藏 A。
     const view = {
       projectId: PROJECT_ID,
@@ -505,11 +500,11 @@ describe('replacement edge visibility', () => {
     expect(ids).toContain('a')
     expect(ids).toContain('bprime')
     expect(ids).not.toContain('b')
-    // source b 不可见 → 不渲染 dangling replacement edge。
+    // source b 不可见 → no replacement edge.
     expect(hidden.edges.find((e) => e.id === 'replacement:b->bprime')).toBeUndefined()
-    // 显示全部路线后 edge 恢复。
+    // 显示全部路线后仍保持 lineage-only topology。
     const all = projectGraph({ view, activeNodeId: null, uiState: uiState(), savedPositions: {} })
-    expect(all.edges.find((e) => e.id === 'replacement:b->bprime')).toBeDefined()
+    expect(all.edges.find((e) => e.id === 'replacement:b->bprime')).toBeUndefined()
   })
 })
 
@@ -530,17 +525,10 @@ describe('adaptive edge routing in the canonical projection', () => {
     expect(bToC.targetHandle).toBe('target-left')
   })
 
-  it('replacement edges stay dashed and distinct while using adaptive curves', () => {
+  it('replacement provenance does not create a dashed cross-canvas edge', () => {
     const result = project()
     const repl = result.edges.find((e) => e.id === 'replacement:b->bprime')!
-    expect(repl?.data?.kind).toBe('replacement')
-    expect(repl?.type).toBe('adaptive')
-    expect(repl?.markerEnd).toBeDefined()
-    // b (520,110) -> bprime (520,330): vertical below.
-    expect(repl?.sourceHandle).toBe('source-bottom')
-    expect(repl?.targetHandle).toBe('target-top')
-    // The dashed rendering contract must survive the custom renderer switch.
-    expect(repl?.class).toContain('graph-edge--replacement')
+    expect(repl).toBeUndefined()
     // supersedesNodeId is still not treated as parentNodeId.
     const bprime = result.nodes.find((n) => n.id === 'bprime')!
     expect((bprime.data as SpecAgentGraphNodeData).node.parentNodeId).toBe('a')

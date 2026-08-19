@@ -11,8 +11,7 @@ import { useWorkspaceStore } from '@/stores/workspaceStore'
  * 右侧检查器：详情 / 需求状态 / 规格。
  *
  * 无节点选中时默认显示需求状态；选中节点后默认显示详情。需求状态与规格
- * 历史始终跟随 readingRouteId（focus ?? active）；生成规格始终针对后端
- * 当前路线，成功后清除 Focus 让读取路线跟随返回的产物。
+ * 历史始终跟随显式 Focus；生成规格始终针对后端 Active 路线，不改变 Focus。
  */
 interface SelectedEdge {
   id: string
@@ -37,9 +36,14 @@ const graphUi = useGraphUiStore()
 type InspectorTab = 'details' | 'requirement' | 'spec'
 const activeTab = ref<InspectorTab>('requirement')
 
-const readingRouteId = computed<string | null>(() =>
-  graphUi.readingRouteId(workspace.activeRoute?.id ?? null),
-)
+const readingRouteId = computed<string | null>(() => graphUi.readingRouteId())
+const readingRouteLabel = computed(() => {
+  if (!readingRouteId.value) return '未选择'
+  return workspace.graphView?.routes.find((route) => route.id === readingRouteId.value)?.label?.trim() || '当前路线'
+})
+const routeLabels = computed<Record<string, string>>(() => Object.fromEntries(
+  (workspace.graphView?.routes ?? []).map((route) => [route.id, route.label?.trim() || '路线']),
+))
 
 const requirementState = computed(() =>
   readingRouteId.value ? workspace.requirementStatesByRoute[readingRouteId.value] ?? null : null,
@@ -93,10 +97,7 @@ watch(
 
 async function handleGenerateSpec(): Promise<void> {
   const result = await workspace.generateSpec()
-  if (result) {
-    // 生成结果属于后端返回的路线：清除 Focus，让读取路线跟随该产物。
-    graphUi.clearFocusRoute()
-  }
+  void result
 }
 
 function selectSpec(snapshotId: string): void {
@@ -135,6 +136,10 @@ function selectSpec(snapshotId: string): void {
       </button>
     </div>
 
+    <div class="inspector-reading-context" data-test="current-reading-route">
+      当前查看路线：<strong>{{ readingRouteLabel }}</strong>
+    </div>
+
     <div class="inspector-body">
       <NodeInspector
         v-if="activeTab === 'details' && nodeData && !selectedEdge"
@@ -151,7 +156,7 @@ function selectSpec(snapshotId: string): void {
         <h4 class="node-inspector__heading">路线成员</h4>
         <ul class="node-inspector__options">
           <li v-for="routeId in selectedEdge.routeIds" :key="routeId" class="node-inspector__option">
-            {{ routeId }}
+            {{ workspace.graphView?.routes.find((route) => route.id === routeId)?.label || '路线' }}
           </li>
           <li v-if="selectedEdge.routeIds.length === 0" class="muted">暂无路线成员。</li>
         </ul>
@@ -168,6 +173,7 @@ function selectSpec(snapshotId: string): void {
         v-else
         :route-id="readingRouteId"
         :active-route-id="workspace.activeRoute?.id ?? null"
+        :route-labels="routeLabels"
         :snapshots="snapshots"
         :selected-spec-id="selectedSpecId"
         :generating="workspace.generatingSpec"
@@ -211,5 +217,12 @@ function selectSpec(snapshotId: string): void {
   overflow-y: auto;
   flex: 1;
   min-height: 0;
+}
+
+.inspector-reading-context {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-subdued);
+  font-size: 12px;
 }
 </style>

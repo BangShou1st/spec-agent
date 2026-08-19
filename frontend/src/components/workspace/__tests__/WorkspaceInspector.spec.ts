@@ -72,10 +72,10 @@ describe('workspace inspector', () => {
     useGraphUiStore().initProject('p1')
   })
 
-  it('with no focus the reading route is the active route', async () => {
+  it('with no focus there is no implicit reading route', async () => {
     const store = await loadStore()
     const ui = useGraphUiStore()
-    expect(ui.readingRouteId(store.activeRoute?.id ?? null)).toBe(store.activeRoute?.id)
+    expect(ui.readingRouteId(store.activeRoute?.id ?? null)).toBeNull()
   })
 
   it('Active=A + Focus=B reads requirement state and specs for B only', async () => {
@@ -243,7 +243,7 @@ describe('workspace inspector', () => {
     ui.setFocusRoute('rB')
     const wrapper = mount(WorkspaceInspector, { props: { nodeData: null } })
     await wrapper.find('[data-test="tab-spec"]').trigger('click')
-    expect(wrapper.text()).toContain('当前路线：rA')
-    expect(wrapper.text()).toContain('你目前正在查看 rB，生成操作将针对当前路线 rA。')
+    expect(wrapper.text()).toContain('当前查看路线：当前路线')
+    expect(wrapper.text()).toContain('你目前正在查看 路线，生成操作将针对当前路线 路线。')
   })
 })

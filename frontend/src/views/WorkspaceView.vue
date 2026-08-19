@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import ApiErrorBanner from '@/components/ApiErrorBanner.vue'
 import ConfirmRouteActionDialog from '@/components/ConfirmRouteActionDialog.vue'
 import ForkRouteDialog from '@/components/ForkRouteDialog.vue'
@@ -21,7 +21,7 @@ import type { RegenerateNodeRequest, SubmitAnswerRequest } from '@/api/types'
  * Layout: GraphCanvas with floating route navigation and inspector windows.
  * Runtime commands go through workspaceStore (Active-route only); Focus/
  * Dim/Hide/positions/sidebars live in graphUiStore (browser-only).
- * `readingRouteId = focus ?? active` drives the inspector reads.
+ * Focus drives shared-node reading; Active remains runtime-only.
  */
 const props = defineProps<{ projectId: string }>()
 
@@ -96,11 +96,32 @@ const reanswerNodeData = computed(() =>
     : null,
 )
 
+/** Resolves operation source from the visual node plus explicit reading Focus.
+ * A shared node with no Focus is intentionally ambiguous and returns null. */
+function sourceRouteForNode(nodeId: string | null) {
+  if (!nodeId || !store.graphView) return null
+  const memberships = store.graphView.routes.filter((route) => route.lineageNodeIds.includes(nodeId))
+  if (graphUi.focusRouteId) {
+    return memberships.find((route) => route.id === graphUi.focusRouteId) ?? null
+  }
+  return memberships.length === 1 ? memberships[0] : null
+}
+
+const forkSourceRoute = computed(() => sourceRouteForNode(forkNodeId.value))
+const reanswerSourceRoute = computed(() => sourceRouteForNode(reanswerNodeId.value))
+const regenerateSourceRoute = computed(() => sourceRouteForNode(regenerateNodeId.value))
+
 const forkFinalizedRouteIds = computed(() => {
   if (!forkNodeId.value || !store.graphView) return []
   return store.graphView.answers
     .filter((answer) => answer.nodeId === forkNodeId.value)
     .map((answer) => answer.routeId)
+})
+
+const reanswerFinalized = computed(() => {
+  if (!reanswerNodeId.value || !reanswerSourceRoute.value || !store.graphView) return false
+  return store.graphView.answers.some((answer) => answer.nodeId === reanswerNodeId.value
+    && answer.routeId === reanswerSourceRoute.value!.id)
 })
 
 async function retry(): Promise<void> {
@@ -130,21 +151,31 @@ function handleRegenerate(nodeId: string): void {
   regenerateDialogOpen.value = true
 }
 
-async function handleForkSubmit(sourceRouteId: string, label: string | null): Promise<void> {
+async function handleForkSubmit(label: string | null): Promise<void> {
   if (!forkNodeId.value) {
     return
   }
+  const sourceRouteId = forkSourceRoute.value?.id
+  if (!sourceRouteId) return
   const ok = await store.forkNode(forkNodeId.value, sourceRouteId, label)
   forkDialogOpen.value = false
   if (ok) {
+    graphUi.setFocusRoute(store.activeState?.activeRoute?.id ?? null)
+    await nextTick()
+    await canvasRef.value?.locateNode(store.activeState?.activeNode?.id ?? '')
     forkNodeId.value = null
   }
 }
 
-async function handleReanswerSubmit(sourceRouteId: string, label: string | null): Promise<void> {
+async function handleReanswerSubmit(label: string | null): Promise<void> {
   if (!reanswerNodeId.value) return
+  const sourceRouteId = reanswerSourceRoute.value?.id
+  if (!sourceRouteId) return
   const ok = await store.reanswerNode(reanswerNodeId.value, sourceRouteId, label)
   if (ok) {
+    graphUi.setFocusRoute(store.activeState?.activeRoute?.id ?? null)
+    await nextTick()
+    await canvasRef.value?.locateNode(store.activeState?.activeNode?.id ?? '')
     reanswerDialogOpen.value = false
     reanswerNodeId.value = null
   }
@@ -157,10 +188,6 @@ async function handleForkRestore(routeId: string): Promise<void> {
   await store.restoreRoute(routeId)
 }
 
-async function handleForkActivate(routeId: string): Promise<void> {
-  await store.activateRoute(routeId)
-}
-
 async function handleRegenerateSubmit(payload: RegenerateNodeRequest): Promise<void> {
   if (!regenerateNodeId.value) {
     return
@@ -168,6 +195,9 @@ async function handleRegenerateSubmit(payload: RegenerateNodeRequest): Promise<v
   const ok = await store.regenerateNode(regenerateNodeId.value, payload)
   regenerateDialogOpen.value = false
   if (ok) {
+    graphUi.setFocusRoute(store.activeState?.activeRoute?.id ?? null)
+    await nextTick()
+    await canvasRef.value?.locateNode(store.activeState?.activeNode?.id ?? '')
     regenerateNodeId.value = null
   }
 }
@@ -300,20 +330,18 @@ async function confirmDestructive(): Promise<void> {
     <ForkRouteDialog
       :open="forkDialogOpen"
       :node="forkNodeData"
-      :routes="store.graphView?.routes ?? []"
-      :active-route-id="store.activeRoute?.id ?? null"
+      :source-route="forkSourceRoute"
       :pending="store.routeCommandPending"
-      :finalized-route-ids="forkFinalizedRouteIds"
+      :finalized="forkSourceRoute ? forkFinalizedRouteIds.includes(forkSourceRoute.id) : false"
       @close="forkDialogOpen = false"
       @submit="handleForkSubmit"
-      @restore-base-route="handleForkRestore"
-      @activate-base-route="handleForkActivate"
+      @restore-source="handleForkRestore"
     />
 
       <RegenerateNodeDialog
         :open="regenerateDialogOpen"
         :node="regenerateNodeData"
-        :routes="store.graphView?.routes ?? []"
+        :source-route-id="regenerateSourceRoute?.id ?? null"
       :pending="store.pendingRouteCommand === 'regenerate'"
       @close="regenerateDialogOpen = false"
       @submit="handleRegenerateSubmit"
@@ -322,13 +350,12 @@ async function confirmDestructive(): Promise<void> {
     <ReanswerRouteDialog
       :open="reanswerDialogOpen"
       :node="reanswerNodeData"
-      :routes="store.graphView?.routes ?? []"
-      :active-route-id="store.activeRoute?.id ?? null"
+      :source-route="reanswerSourceRoute"
       :pending="store.pendingRouteCommand === 'reanswer'"
+      :finalized="reanswerFinalized"
       @close="reanswerDialogOpen = false"
       @submit="handleReanswerSubmit"
       @restore-source="store.restoreRoute($event)"
-      @activate-source="store.activateRoute($event)"
     />
 
     <ConfirmRouteActionDialog
