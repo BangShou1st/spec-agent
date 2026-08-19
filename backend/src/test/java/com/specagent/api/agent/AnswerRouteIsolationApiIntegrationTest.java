@@ -3,7 +3,7 @@ package com.specagent.api.agent;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.specagent.api.node.NodeResponse;
 import com.specagent.api.route.RouteMutationResponse;
-import com.specagent.agent.FakeModelAdapter;
+import com.specagent.testing.FakeModelAdapter;
 import com.specagent.agent.ModelRequest;
 import com.specagent.project.Project;
 import com.specagent.project.ProjectService;

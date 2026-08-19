@@ -3,92 +3,420 @@ import { computed, onMounted, ref } from 'vue'
 import ApiErrorBanner from '@/components/ApiErrorBanner.vue'
 import { useModelSettingsStore } from '@/stores/modelSettingsStore'
 
+type RetryAction = 'load' | 'probe' | 'save' | null
+
 const store = useModelSettingsStore()
 const apiKey = ref('')
 const probed = ref(false)
+const retryAction = ref<RetryAction>(null)
 
 const canProbe = computed(() => apiKey.value.trim().length > 0 && !store.probing && !store.saving)
 const canSave = computed(() => probed.value && apiKey.value.trim().length > 0
   && store.selectedModel !== null && !store.saving && !store.probing)
-
-onMounted(() => {
-  void store.loadStatus()
+const canReset = computed(() => apiKey.value.length > 0 || probed.value)
+const safeErrorMessage = computed(() => {
+  const code = store.error?.code ?? ''
+  if (code.includes('RATE_LIMITED')) return 'OpenCode 当前请求受限，请稍后再试。'
+  if (code.includes('AUTHENTICATION')) return 'OpenCode 凭证验证失败，请检查 API Key。'
+  if (code.includes('CONNECTION') || code.includes('NETWORK')) return '无法连接到 OpenCode，请检查网络后重试。'
+  return '操作失败，请稍后重试。'
 })
 
+async function loadStatus(): Promise<void> {
+  retryAction.value = 'load'
+  await store.loadStatus()
+  if (!store.error) retryAction.value = null
+}
+
 async function probe(): Promise<void> {
+  retryAction.value = 'probe'
   const models = await store.probe(apiKey.value)
   probed.value = models.length > 0
+  if (!store.error) retryAction.value = null
 }
 
 async function save(): Promise<void> {
   if (!store.selectedModel) return
+  retryAction.value = 'save'
   const saved = await store.save(apiKey.value, store.selectedModel)
   if (saved) {
     apiKey.value = ''
     probed.value = false
+    retryAction.value = null
   }
 }
+
+function resetDraft(): void {
+  apiKey.value = ''
+  probed.value = false
+  retryAction.value = null
+  store.resetProbe()
+}
+
+async function retryLastAction(): Promise<void> {
+  if (retryAction.value === 'load') {
+    await loadStatus()
+  } else if (retryAction.value === 'probe') {
+    await probe()
+  } else if (retryAction.value === 'save') {
+    await save()
+  } else {
+    store.clearError()
+  }
+}
+
+onMounted(() => {
+  void loadStatus()
+})
 </script>
 
 <template>
   <section class="settings-page" data-test="settings-page">
-    <div class="settings-page__heading">
-      <div>
-        <p class="eyebrow">设置</p>
-        <h1>模型设置</h1>
-      </div>
-      <span class="badge" :class="store.status?.configured ? 'badge-open' : 'badge-warn'">
-        {{ store.status?.configured ? '已配置' : '尚未配置' }}
-      </span>
-    </div>
+    <header class="settings-page__heading">
+      <p class="eyebrow">设置</p>
+      <h1>模型设置</h1>
+      <p class="settings-page__subtitle">管理 Spec Agent 使用的模型和 OpenCode 连接。</p>
+    </header>
 
     <ApiErrorBanner
       v-if="store.error"
-      :message="store.error.message"
+      class="settings-error"
+      data-test="settings-error"
+      :message="safeErrorMessage"
       :code="store.error.code"
       retry-label="重试"
-      :retrying="store.probing || store.saving"
-      @retry="store.clearError()"
+      :retrying="store.loading || store.probing || store.saving"
+      @retry="retryLastAction"
     />
 
-    <div class="settings-card panel">
-      <h2>OpenCode</h2>
-      <p class="muted">全局模型设置会用于下一次需要模型的操作。</p>
+    <article class="settings-card" data-test="opencode-card">
+      <header class="settings-card__header">
+        <div>
+          <p class="settings-card__eyebrow">模型连接</p>
+          <h2>OpenCode</h2>
+        </div>
+        <span
+          class="settings-status"
+          :class="store.status?.configured ? 'settings-status--configured' : 'settings-status--empty'"
+          data-test="configuration-status"
+        >
+          <span class="settings-status__dot" aria-hidden="true"></span>
+          {{ store.status?.configured ? '已配置' : '尚未配置' }}
+        </span>
+      </header>
 
-      <label class="field-label" for="opencode-api-key">OpenCode API Key</label>
-      <input
-        id="opencode-api-key"
-        v-model="apiKey"
-        class="answer-input settings-key-input"
-        type="password"
-        autocomplete="off"
-        data-test="opencode-api-key"
-        placeholder="输入你的 API Key"
-      />
-      <p v-if="store.status?.configured" class="meta-text" data-test="masked-key">
-        当前工作配置：{{ store.status.maskedKey }} · {{ store.status.selectedModel }}
-      </p>
+      <p class="settings-card__description">用于问题生成、回答理解和 Spec 生成。</p>
 
-      <button class="btn btn-primary" type="button" data-test="probe-opencode" :disabled="!canProbe" @click="probe">
-        {{ store.probing ? '正在验证…' : '验证并获取模型' }}
-      </button>
+      <section v-if="store.status?.configured" class="settings-current-config" data-test="current-config">
+        <div class="settings-current-config__item">
+          <span>API Key</span>
+          <strong data-test="masked-key">{{ store.status.maskedKey }}</strong>
+        </div>
+        <div class="settings-current-config__item">
+          <span>模型</span>
+          <strong>{{ store.status.selectedModel }}</strong>
+        </div>
+      </section>
 
-      <label class="field-label" for="opencode-model">可用模型</label>
-      <select
-        id="opencode-model"
-        v-model="store.selectedModel"
-        class="answer-input"
-        data-test="opencode-model"
-        :disabled="!probed || store.freeModels.length === 0 || store.saving"
-      >
-        <option :value="null" disabled>请选择一个 free model</option>
-        <option v-for="model in store.freeModels" :key="model" :value="model">{{ model }}</option>
-      </select>
-      <p v-if="probed && store.freeModels.length === 0" class="muted">当前没有可用的 free model。</p>
+      <div class="settings-form">
+        <label class="settings-field" for="opencode-api-key">
+          <span class="settings-field__label">OpenCode API Key</span>
+          <span class="settings-field__hint">密钥只用于验证和保存，不会显示完整内容。</span>
+          <input
+            id="opencode-api-key"
+            v-model="apiKey"
+            class="settings-control settings-key-input"
+            type="password"
+            autocomplete="off"
+            data-test="opencode-api-key"
+            placeholder="输入你的 API Key"
+          />
+        </label>
 
-      <button class="btn btn-primary" type="button" data-test="save-opencode" :disabled="!canSave" @click="save">
-        {{ store.saving ? '正在保存…' : '保存' }}
-      </button>
-    </div>
+        <div class="settings-form__action-row">
+          <button
+            class="btn settings-action settings-action--probe"
+            type="button"
+            data-test="probe-opencode"
+            :disabled="!canProbe"
+            @click="probe"
+          >
+            {{ store.probing ? '正在验证…' : '验证并获取模型' }}
+          </button>
+        </div>
+
+        <label class="settings-field" for="opencode-model">
+          <span class="settings-field__label">可用模型</span>
+          <span class="settings-field__hint">验证后请选择一个当前可用的 free model。</span>
+          <select
+            id="opencode-model"
+            v-model="store.selectedModel"
+            class="settings-control settings-model-select"
+            data-test="opencode-model"
+            :disabled="!probed || store.freeModels.length === 0 || store.saving"
+          >
+            <option :value="null" disabled>请选择一个 free model</option>
+            <option v-for="model in store.freeModels" :key="model" :value="model">{{ model }}</option>
+          </select>
+          <span v-if="probed && store.freeModels.length === 0" class="settings-field__empty">
+            当前没有可用的 free model。
+          </span>
+        </label>
+      </div>
+
+      <footer class="settings-card__footer">
+        <button
+          v-if="canReset"
+          class="btn settings-action"
+          type="button"
+          data-test="reset-opencode"
+          :disabled="store.probing || store.saving"
+          @click="resetDraft"
+        >
+          取消/重置
+        </button>
+        <button
+          class="btn btn-primary settings-action settings-action--save"
+          type="button"
+          data-test="save-opencode"
+          :disabled="!canSave"
+          @click="save"
+        >
+          {{ store.saving ? '正在保存…' : '保存' }}
+        </button>
+      </footer>
+    </article>
   </section>
 </template>
+
+<style scoped>
+.settings-page {
+  width: 100%;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 0 64px;
+}
+
+.settings-page__heading {
+  margin-bottom: 24px;
+}
+
+.settings-page__heading .eyebrow {
+  margin: 0 0 6px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.settings-page__heading h1 {
+  margin: 0;
+  font-size: 30px;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+.settings-page__subtitle {
+  margin: 8px 0 0;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+}
+
+.settings-card {
+  width: 100%;
+  padding: 28px 32px 24px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgb(31 36 48 / 7%);
+}
+
+.settings-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.settings-card__eyebrow {
+  margin: 0 0 4px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.settings-card h2 {
+  margin: 0;
+  font-size: 21px;
+  line-height: 1.25;
+}
+
+.settings-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 10px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.settings-status--configured {
+  color: var(--color-success);
+  background: var(--color-success-soft);
+  border-color: #c9e7d5;
+}
+
+.settings-status--empty {
+  color: var(--color-text-secondary);
+  background: var(--color-subdued);
+  border-color: var(--color-border);
+}
+
+.settings-status__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.settings-card__description {
+  margin: 12px 0 24px;
+  color: var(--color-text-secondary);
+}
+
+.settings-current-config {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 24px;
+  margin-bottom: 26px;
+  padding: 14px 16px;
+  background: #fafbfc;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+
+.settings-current-config__item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.settings-current-config__item span {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.settings-current-config__item strong {
+  overflow: hidden;
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-field__label {
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.settings-field__hint,
+.settings-field__empty {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.settings-control {
+  width: 100%;
+  min-height: 0;
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.settings-control:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-soft);
+}
+
+.settings-control:disabled {
+  color: var(--color-text-muted);
+  background: var(--color-subdued);
+}
+
+.settings-form__action-row {
+  display: flex;
+  align-items: center;
+}
+
+.settings-action {
+  min-width: 132px;
+  min-height: 40px;
+  padding: 8px 16px;
+}
+
+.settings-action--probe {
+  min-width: 148px;
+}
+
+.settings-card__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--color-border);
+}
+
+.settings-error {
+  margin-bottom: 16px;
+}
+
+@media (max-width: 700px) {
+  .settings-page {
+    padding: 24px 0 40px;
+  }
+
+  .settings-card {
+    padding: 22px 18px 18px;
+  }
+
+  .settings-current-config {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-card__footer,
+  .settings-form__action-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .settings-action {
+    width: 100%;
+  }
+}
+</style>

@@ -4,7 +4,7 @@ import com.specagent.agent.AgentRunService;
 import com.specagent.agent.FakeAgentOrchestrator;
 import com.specagent.agent.FakeAnswerRunResult;
 import com.specagent.agent.ModelRequest;
-import com.specagent.agent.FakeModelAdapter;
+import com.specagent.testing.FakeModelAdapter;
 import com.specagent.common.Ids;
 import com.specagent.context.ContextOperationType;
 import com.specagent.context.ContextSnapshot;

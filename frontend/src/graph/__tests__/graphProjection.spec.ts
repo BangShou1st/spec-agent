@@ -152,6 +152,7 @@ describe('graph projection', () => {
     const data = bNode.data as SpecAgentGraphNodeData
     expect(data.primaryAnswer).toBeNull()
     expect(data.answers.every((answer) => !answer.isPrimary)).toBe(true)
+    expect(bNode.class).toContain('graph-node--neutral')
   })
 
   it('hiding route B removes only its exclusive node d', () => {

@@ -49,11 +49,23 @@ class ArchitectureTests {
     void productionAgentOrchestrationHasNoFakeTypes() {
         ArchRule rule = noClasses()
                 .that().resideInAPackage("com.specagent.agent..")
-                .and().haveSimpleName("AgentOrchestrator")
-                .should().haveSimpleNameContaining("Fake")
-                .because("Production orchestration must stay neutral; test doubles are selected by profile");
+                .should().haveSimpleNameStartingWith("Fake")
+                .because("The production agent surface must not contain Fake test doubles");
 
         rule.check(CLASSES);
+    }
+
+    @Test
+    void fakeTypesMustStayOutOfTheProductionAgentSurface() throws IOException {
+        Path agentRoot = Path.of("src/main/java/com/specagent/agent");
+        try (var paths = Files.walk(agentRoot)) {
+            paths.filter(Files::isRegularFile).forEach(path ->
+                    org.assertj.core.api.Assertions.assertThat(path.getFileName().toString())
+                            .as("Fake test doubles must not be placed in the production agent package: %s", path)
+                            .doesNotStartWith("Fake"));
+        }
+        org.assertj.core.api.Assertions.assertThat(Path.of(
+                "src/main/java/com/specagent/testing/FakeModelAdapter.java")).exists();
     }
 
     @Test
@@ -68,7 +80,7 @@ class ArchitectureTests {
 
     @Test
     void fakeAdapterRequiresTheTestProfile() throws IOException {
-        String source = Files.readString(Path.of("src/main/java/com/specagent/agent/FakeModelAdapter.java"));
+        String source = Files.readString(Path.of("src/main/java/com/specagent/testing/FakeModelAdapter.java"));
         org.assertj.core.api.Assertions.assertThat(source)
                 .contains("@Profile(\"test\")")
                 .contains("havingValue = \"fake\"")

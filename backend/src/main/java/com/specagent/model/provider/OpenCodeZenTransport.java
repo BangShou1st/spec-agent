@@ -22,10 +22,9 @@ public interface OpenCodeZenTransport {
     String BASE_URL = "https://opencode.ai/zen/v1";
 
     /**
-     * OpenCode Zen rejects requests whose User-Agent does not identify an
-     * OpenCode client. This is the single definition of the header; the
-     * transport applies it to completion, model list and credential probe
-     * requests alike.
+     * OpenCode-compatible client identity for every HTTP request. This is the
+     * single definition of the header; the transport applies it to
+     * completion, model list and credential probe requests alike.
      */
     String USER_AGENT = "opencode/1.18.16";
 

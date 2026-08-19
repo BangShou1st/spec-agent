@@ -38,7 +38,9 @@ function submit(): void {
     <div class="dialog" role="dialog" aria-modal="true" aria-label="重新回答">
       <h3 style="margin-top: 0">重新回答</h3>
       <p class="muted">问题保持不变；新路线会从父级前缀开始，并等待你重新回答。</p>
-      <p v-if="!sourceRoute" class="info-line blocker">共享节点需要先在“当前查看”中选择一条路线。</p>
+      <p v-if="!sourceRoute" class="info-line blocker" data-test="choose-reading-route">
+        请先在该共享节点的“当前查看”控件中选择一条路线。
+      </p>
       <p v-else class="meta-text">来源：{{ sourceRoute.label ?? sourceRoute.id }}</p>
       <p v-if="sourceRoute && sourceRoute.lifecycleStatus === 'archived'" class="info-line blocker">请先恢复归档路线。</p>
       <p v-if="sourceRoute && sourceRoute.lifecycleStatus === 'deleted'" class="info-line blocker">已删除路线不能作为操作来源。</p>

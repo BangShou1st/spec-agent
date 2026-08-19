@@ -316,7 +316,11 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
         visualWeight,
       },
       dragHandle: '.graph-question-node__header',
-      class: ['graph-node', 'graph-node--' + visualWeight],
+      class: [
+        'graph-node',
+        'graph-node--' + visualWeight,
+        ...(routeIds.length > 1 && readingRouteId === null ? ['graph-node--neutral'] : []),
+      ],
     }
   })
 

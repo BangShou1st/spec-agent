@@ -5,7 +5,7 @@ import com.specagent.agent.AgentRunService;
 import com.specagent.agent.AgentRunStatus;
 import com.specagent.agent.AgentTaskType;
 import com.specagent.agent.AgentAction;
-import com.specagent.agent.FakeModelAdapter;
+import com.specagent.testing.FakeModelAdapter;
 import com.specagent.agent.ModelRequest;
 import com.specagent.agent.ModelResponse;
 import com.specagent.agent.contracts.AnswerInterpretationResult;

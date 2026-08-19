@@ -6,10 +6,13 @@ This document separates deterministic engineering proof from real OpenCode produ
 
 - Backend runs with Java 21 and PostgreSQL 17 in CI.
 - The normal product gateway defaults to OpenCode. The deterministic Fake adapter is available only when the explicit `test` profile and `spec.agent.model.gateway=fake` are selected.
-- CI runs backend tests, frontend typecheck, frontend unit tests, and the production frontend build without an OpenCode secret.
+- CI runs backend tests, frontend typecheck, frontend unit tests, the production frontend build, and deterministic Playwright E2E without an OpenCode secret. The E2E job uses PostgreSQL 17, the Spring `test` profile, and the explicit Fake gateway while it starts the backend itself.
+- Every OpenCode HTTP path (model catalog, credential probe, and completion) uses the transport-owned `User-Agent: opencode/1.18.16`; deterministic coverage asserts the same header is present on all three paths.
 - Settings probe/save never return or log the full key; the API returns only configuration status, masked suffix, and selected model.
 - Replacement generation uses the generic `DRAFT_NODE` contract, validates model output before mutation, and commits the sibling route atomically.
 - Shared-node reads use explicit Focus; Active remains the runtime working route. Focus, isolate, visibility, lifecycle, reveal, and node positions are browser/runtime concerns with separate ownership.
+
+The deterministic CI gate is not satisfied by frontend unit tests alone: `frontend` E2E must pass against the test-profile backend with no real OpenCode key.
 
 ## Real OpenCode acceptance
 

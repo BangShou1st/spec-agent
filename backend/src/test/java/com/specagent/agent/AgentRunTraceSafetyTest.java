@@ -4,6 +4,7 @@ import com.specagent.model.provider.OpenCodeModelErrorCategory;
 import com.specagent.model.provider.OpenCodeModelException;
 import com.specagent.project.Project;
 import com.specagent.project.ProjectService;
+import com.specagent.testing.FakeModelAdapter;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;

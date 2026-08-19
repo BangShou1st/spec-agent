@@ -79,5 +79,11 @@ export const useModelSettingsStore = defineStore('modelSettings', {
     clearError(): void {
       this.error = null
     },
+
+    resetProbe(): void {
+      this.freeModels = []
+      this.selectedModel = null
+      this.error = null
+    },
   },
 })

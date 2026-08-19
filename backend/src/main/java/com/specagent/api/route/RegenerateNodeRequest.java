@@ -1,7 +1,7 @@
 package com.specagent.api.route;
 
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
@@ -24,7 +24,7 @@ public record RegenerateNodeRequest(
         String instruction,
         /** Deprecated compatibility-only field; normal product UI never sends it. */
         @Deprecated
-        @NotBlank(message = "must not be blank")
+        @Pattern(regexp = ".*\\S.*", message = "must not be blank")
         String replacementQuestion,
         /** Deprecated compatibility-only field; normal product UI never sends it. */
         @Deprecated

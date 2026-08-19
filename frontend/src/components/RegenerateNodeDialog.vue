@@ -41,7 +41,7 @@ function submit(): void {
         根问题暂不支持替换。
       </p>
       <p v-else-if="!sourceRouteId" class="info-line regenerate-blocker" data-test="regenerate-source-blocker">
-        共享节点需要先在“当前查看”中选择一条路线。
+        请先在该共享节点的“当前查看”控件中选择一条路线。
       </p>
 
       <label class="field-label secondary">

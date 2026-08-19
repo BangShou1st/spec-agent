@@ -1,5 +1,10 @@
-package com.specagent.agent;
+package com.specagent.testing;
 
+import com.specagent.agent.AgentAction;
+import com.specagent.agent.AgentTaskType;
+import com.specagent.agent.ModelContractException;
+import com.specagent.agent.ModelRequest;
+import com.specagent.agent.ModelResponse;
 import com.specagent.agent.contracts.AgentPlan;
 import com.specagent.agent.contracts.AnswerInterpretationResult;
 import com.specagent.agent.contracts.AnswerPatchDraft;
@@ -26,7 +31,8 @@ import org.springframework.stereotype.Component;
  * wired in. Unsupported task types are rejected with {@link ModelContractException}.
  *
  * <p>Implements {@link ModelGateway}; normal product configuration never
- * selects this adapter.
+ * selects this adapter. The package is deliberately an explicit testing
+ * boundary rather than the production agent surface.
  *
  * <p>The fake speaks the same model-facing contract as a real model: its
  * outputs carry no runtime-owned identity fields (claim ids, source ids) and

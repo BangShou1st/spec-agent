@@ -1,6 +1,6 @@
 package com.specagent.api.common;
 
-import com.specagent.agent.FakeModelAdapter;
+import com.specagent.testing.FakeModelAdapter;
 import com.specagent.agent.ModelRequest;
 import com.specagent.model.gateway.ModelGatewayErrorCategory;
 import com.specagent.model.gateway.ModelGatewayException;

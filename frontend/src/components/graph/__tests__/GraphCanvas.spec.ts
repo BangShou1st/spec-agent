@@ -452,6 +452,18 @@ describe('graph canvas', () => {
     expect(wrapper.props('view')).toMatchObject({ activeRouteId: 'r3' })
   })
 
+  it('does not infer Active as Focus for an ambiguous shared node', () => {
+    const wrapper = mountCanvas(viewWithNodes({ activeRouteId: 'r1' }))
+    const ui = useGraphUiStore()
+    const flow = wrapper.findComponent(VueFlowStub)
+    flow.vm.$emit('node-click', {
+      event: new MouseEvent('click'),
+      node: { id: 'n1', data: { routeIds: ['r1', 'r2'], visibleRouteIds: ['r1', 'r2'] } },
+    })
+    expect(ui.focusRouteId).toBeNull()
+    expect(wrapper.props('view')).toMatchObject({ activeRouteId: 'r1' })
+  })
+
   it('pane click clears both selection and browser Focus', () => {
     const wrapper = mountCanvas(viewWithNodes())
     const ui = useGraphUiStore()

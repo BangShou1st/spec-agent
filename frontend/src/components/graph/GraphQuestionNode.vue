@@ -45,6 +45,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'submit-answer': [payload: SubmitAnswerRequest]
+  'focus-route': [routeId: string | null]
   fork: [nodeId: string]
   reanswer: [nodeId: string]
   regenerate: [nodeId: string]
@@ -127,6 +128,12 @@ function reanswerNode(): void {
 }
 
 const isRootNode = computed(() => props.data.node.parentNodeId === null)
+const readingRouteOptions = computed(() => props.data.routeMembership ?? [])
+
+function setReadingRoute(event: Event): void {
+  const value = (event.target as HTMLSelectElement).value
+  emit('focus-route', value || null)
+}
 
 </script>
 
@@ -181,6 +188,34 @@ const isRootNode = computed(() => props.data.node.parentNodeId === null)
     </header>
 
     <div class="graph-question-node__body nodrag" data-test="node-body">
+      <div
+        v-if="data.isShared"
+        class="graph-reading-route"
+        data-test="shared-reading-route"
+        @click.stop
+      >
+        <label class="graph-reading-route__label" :for="'shared-reading-route-select-' + data.visualNodeKey">
+          当前查看
+        </label>
+        <select
+          :id="'shared-reading-route-select-' + data.visualNodeKey"
+          class="graph-reading-route__select nodrag"
+          data-test="reading-route-select"
+          :value="data.readingRouteId ?? ''"
+          aria-label="当前查看路线"
+          @change="setReadingRoute"
+        >
+          <option value="">未选择</option>
+          <option
+            v-for="membership in readingRouteOptions"
+            :key="membership.routeId"
+            :value="membership.routeId"
+          >
+            {{ membership.label }}
+          </option>
+        </select>
+      </div>
+
       <!-- Current answerable node: direct answer interaction -->
       <template v-if="data.canAnswer">
         <h3 class="graph-node-question" data-test="question">{{ node.question }}</h3>

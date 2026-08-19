@@ -10,6 +10,7 @@ import com.specagent.project.ProjectService;
 import com.specagent.route.RegenerateResult;
 import com.specagent.route.Route;
 import com.specagent.route.RouteService;
+import com.specagent.testing.FakeModelAdapter;
 import com.specagent.spec.SourceReference;
 import com.specagent.spec.SpecSnapshot;
 import org.junit.jupiter.api.BeforeEach;

@@ -401,7 +401,6 @@ function onNodeClick(event: NodeMouseEvent): void {
   const intent = resolveRouteFocusIntent(
     visibleRouteIds,
     graphUi.focusRouteId,
-    props.view?.activeRouteId ?? null,
   )
   if (intent !== null) {
     graphUi.setFocusRoute(intent)
@@ -424,7 +423,6 @@ function onEdgeClick(event: EdgeMouseEvent): void {
   const intent = resolveRouteFocusIntent(
     visibleRouteIds,
     graphUi.focusRouteId,
-    props.view?.activeRouteId ?? null,
   )
   if (intent !== null) {
     graphUi.setFocusRoute(intent)
@@ -595,6 +593,7 @@ const isEmptyProject = computed(() =>
             :submitting="submitting"
             :pending="pending"
             @submit-answer="(payload) => emit('submit-answer', payload)"
+            @focus-route="(routeId) => graphUi.setFocusRoute(routeId)"
             @fork="(id) => emit('fork', id)"
             @reanswer="(id) => emit('reanswer', id)"
             @regenerate="(id) => emit('regenerate', id)"

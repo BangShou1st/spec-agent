@@ -225,7 +225,7 @@ describe('graph question node', () => {
     expect(wrapper.emitted('regenerate')?.[0]).toEqual(['n1'])
   })
 
-  it('shared nodes keep route chooser and full route history in the Inspector', async () => {
+  it('shared nodes expose the real current-reading selector without duplicating route history', async () => {
     const wrapper = mountNode(
       historicalData({
         routeMembership: [
@@ -235,10 +235,27 @@ describe('graph question node', () => {
       }),
       { selected: true },
     )
-    expect(wrapper.find('[data-test="route-chooser"]').exists()).toBe(false)
+    const selector = wrapper.find('[data-test="reading-route-select"]')
+    expect(selector.exists()).toBe(true)
+    expect((selector.element as HTMLSelectElement).value).toBe('r1')
+    await selector.setValue('r2')
+    expect(wrapper.emitted('focus-route')?.[0]).toEqual(['r2'])
     expect(wrapper.text()).not.toContain('Second route answer.')
     expect(wrapper.emitted('fork')).toBeUndefined()
     expect(wrapper.emitted('submit-answer')).toBeUndefined()
+  })
+
+  it('renders a shared node as neutral when Focus is absent', () => {
+    const wrapper = mountNode(historicalData({
+      readingRouteId: null,
+      primaryAnswer: null,
+      routeMembership: [
+        { routeId: 'r1', label: '主路线', lifecycleStatus: 'open', isActive: true },
+        { routeId: 'r2', label: '分支路线 1', lifecycleStatus: 'open', isActive: false },
+      ],
+    }))
+    expect((wrapper.find('[data-test="reading-route-select"]').element as HTMLSelectElement).value).toBe('')
+    expect(wrapper.find('[data-test="reading-route-select"]').text()).toContain('未选择')
   })
 })
 describe('shared node route-specific waiting state', () => {

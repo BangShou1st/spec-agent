@@ -8,6 +8,7 @@ import com.specagent.agent.contracts.NodeDraft;
 import com.specagent.agent.contracts.SpecDraft;
 import com.specagent.common.Json;
 import com.specagent.model.contract.StructuredModelOutputParser;
+import com.specagent.testing.FakeModelAdapter;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;

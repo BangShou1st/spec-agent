@@ -10,6 +10,7 @@ import com.specagent.node.Node;
 import com.specagent.node.NodeService;
 import com.specagent.patch.AnswerPatch;
 import com.specagent.patch.AnswerPatchService;
+import com.specagent.testing.FakeModelAdapter;
 import com.specagent.patch.Claim;
 import com.specagent.project.Project;
 import com.specagent.project.ProjectService;
