@@ -14,7 +14,7 @@ import com.specagent.project.Project;
 import com.specagent.project.ProjectService;
 import com.specagent.route.Route;
 import com.specagent.route.RouteService;
-import com.specagent.support.OpenCodeCredentialCleanup;
+import com.specagent.support.OpenCodeSettingsCleanup;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -112,7 +112,7 @@ class ExplicitOpenCodeModelGatewayWiringTest {
      */
     @BeforeEach
     void clearOpenCodeCredential() {
-        OpenCodeCredentialCleanup.clear(jdbcTemplate);
+        OpenCodeSettingsCleanup.clear(jdbcTemplate);
     }
 
     @Test

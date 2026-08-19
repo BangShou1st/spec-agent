@@ -12,10 +12,10 @@ import com.specagent.agent.contracts.AnswerPatchDraft;
 import com.specagent.agent.contracts.NodeDraft;
 import com.specagent.agent.contracts.SpecDraft;
 import com.specagent.agent.gates.SpecGroundingGate;
-import com.specagent.credential.CredentialStatus;
-import com.specagent.credential.OpenCodeCredentialService;
 import com.specagent.model.contract.StructuredModelOutputParser;
 import com.specagent.model.provider.OpenCodeModelCatalog;
+import com.specagent.settings.opencode.OpenCodeSettingsService;
+import com.specagent.settings.opencode.OpenCodeSettingsStatus;
 import com.specagent.support.LiveSmokeEnvironment;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
@@ -63,7 +63,7 @@ class OpenCodeZenLiveSmokeTest {
     @Autowired
     private ApplicationContext context;
     @Autowired
-    private OpenCodeCredentialService credentialService;
+    private OpenCodeSettingsService settingsService;
     @Autowired
     private OpenCodeModelCatalog catalog;
     @Autowired
@@ -92,7 +92,7 @@ class OpenCodeZenLiveSmokeTest {
     void liveSmokeSeedsCredentialDiscoversFreeModelsAndCompletes() throws Exception {
         System.out.println("=== OpenCodeZenLiveSmokeTest: explicit live smoke (public OpenCode allowed) ===");
         String apiKey = System.getenv("SPEC_AGENT_OPENCODE_KEY");
-        String resolved = seedCredential(apiKey);
+        String resolved = seedSettings(apiKey);
 
         // The runtime must actually resolve the OpenCode gateway through the
         // normal ModelGateway selection, not through a direct autowire.
@@ -139,7 +139,7 @@ class OpenCodeZenLiveSmokeTest {
     @Test
     void liveSmokeAllFourPromptContractsParseStrictly() throws Exception {
         String apiKey = System.getenv("SPEC_AGENT_OPENCODE_KEY");
-        seedCredential(apiKey);
+        seedSettings(apiKey);
         String snapshotId = UUID.randomUUID().toString();
         String routeId = UUID.randomUUID().toString();
         String nodeId = UUID.randomUUID().toString();
@@ -221,17 +221,14 @@ class OpenCodeZenLiveSmokeTest {
         }
     }
 
-    private String seedCredential(String apiKey) {
-        CredentialStatus status = credentialService.save(apiKey);
+    private String seedSettings(String apiKey) {
+        String selectedModel = System.getenv().getOrDefault("SPEC_AGENT_OPENCODE_MODEL", "mimo-v2.5-free");
+        OpenCodeSettingsStatus status = settingsService.save(apiKey, selectedModel);
         assertThat(status.configured()).isTrue();
-        assertThat(status.masked()).isEqualTo("••••" + apiKey.substring(apiKey.length() - 4));
-        assertThat(status.masked()).doesNotContain(apiKey);
-        System.out.println("credential configured: yes, masked: " + status.masked());
-
-        String resolved = credentialService.resolveOpenCode().orElseThrow();
-        assertThat(resolved).isEqualTo(apiKey);
-        System.out.println("credential resolved for OpenCode gateway: yes");
-        return resolved;
+        assertThat(status.maskedKey()).isEqualTo("••••" + apiKey.substring(apiKey.length() - 4));
+        assertThat(status.maskedKey()).doesNotContain(apiKey);
+        System.out.println("OpenCode settings configured: yes, masked: " + status.maskedKey());
+        return apiKey;
     }
 
     private String initialEnvelope() {

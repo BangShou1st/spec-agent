@@ -34,17 +34,9 @@ logging:
 
 spec:
   agent:
-    credential:
-      # External master key for AES-GCM credential encryption. Must come from
-      # environment configuration (SPEC_AGENT_CREDENTIAL_MASTER_KEY); never
-      # commit a real master key.
-      master-key: ${SPEC_AGENT_CREDENTIAL_MASTER_KEY:}
     model:
-      # Active gateway: "fake" (default) or "opencode". Switching is explicit:
-      # a configured credential or model never auto-selects the real gateway.
-      gateway: ${SPEC_AGENT_MODEL_GATEWAY:fake}
+      # Normal product execution always resolves the global settings aggregate.
+      # The fake gateway is test-only and must be selected explicitly there.
+      gateway: ${SPEC_AGENT_MODEL_GATEWAY:opencode}
       opencode:
-        # Explicit selected OpenCode model id; blank means the real gateway is
-        # not configured. Free models are discovered dynamically at runtime.
-        model: ${SPEC_AGENT_OPENCODE_MODEL:}
         timeout-seconds: ${SPEC_AGENT_OPENCODE_TIMEOUT_SECONDS:45}

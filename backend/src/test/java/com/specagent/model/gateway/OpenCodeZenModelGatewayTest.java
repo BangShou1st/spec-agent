@@ -7,7 +7,6 @@ import com.specagent.agent.AgentTaskType;
 import com.specagent.agent.ModelRequest;
 import com.specagent.agent.ModelResponse;
 import com.specagent.agent.TaskPromptCatalog;
-import com.specagent.credential.OpenCodeCredentialService;
 import com.specagent.model.provider.OpenCodeChatCompletionRequest;
 import com.specagent.model.provider.OpenCodeChatMessage;
 import com.specagent.model.provider.OpenCodeCompletionResponse;
@@ -15,11 +14,12 @@ import com.specagent.model.provider.OpenCodeModelErrorCategory;
 import com.specagent.model.provider.OpenCodeModelException;
 import com.specagent.model.provider.OpenCodeModelList;
 import com.specagent.model.provider.OpenCodeZenTransport;
+import com.specagent.settings.opencode.OpenCodeSettingsService;
+import com.specagent.settings.opencode.RuntimeOpenCodeSettings;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -32,7 +32,7 @@ class OpenCodeZenModelGatewayTest {
     private static final String API_KEY = "sk-test-key";
     private static final String SELECTED_MODEL = "mimo-v2.5-free";
 
-    private final OpenCodeCredentialService credentials = mock(OpenCodeCredentialService.class);
+    private final OpenCodeSettingsService settings = mock(OpenCodeSettingsService.class);
     private final ObjectMapper mapper = new ObjectMapper();
     private final AgentPromptRenderer promptRenderer = new AgentPromptRenderer(new TaskPromptCatalog());
 
@@ -68,12 +68,12 @@ class OpenCodeZenModelGatewayTest {
     }
 
     private OpenCodeZenModelGateway gateway(RecordingTransport transport, String model) {
-        return new OpenCodeZenModelGateway(transport, credentials, promptRenderer, mapper, model);
+        when(settings.requireRuntimeSettings()).thenReturn(new RuntimeOpenCodeSettings(API_KEY, model));
+        return new OpenCodeZenModelGateway(transport, settings, promptRenderer, mapper);
     }
 
     @Test
     void gatewayUsesActionReturnedByModel() {
-        when(credentials.resolveOpenCode()).thenReturn(Optional.of(API_KEY));
         RecordingTransport transport = new RecordingTransport();
         transport.content = "{\"action\":\"stop\",\"output\":{\"question\":\"q\"}}";
 OpenCodeZenModelGateway gateway = gateway(transport, SELECTED_MODEL);
@@ -111,7 +111,6 @@ OpenCodeZenModelGateway gateway = gateway(transport, SELECTED_MODEL);
 
     @Test
     void gatewayTracesPromptVersionAndHashes() {
-        when(credentials.resolveOpenCode()).thenReturn(Optional.of(API_KEY));
         RecordingTransport transport = new RecordingTransport();
         transport.content = "{\"action\":\"ask_next_question\",\"output\":{\"question\":\"q\"}}";
         OpenCodeZenModelGateway gateway = gateway(transport, SELECTED_MODEL);
@@ -128,7 +127,6 @@ OpenCodeZenModelGateway gateway = gateway(transport, SELECTED_MODEL);
 
     @Test
     void gatewayTraceNeverContainsTheApiKey() {
-        when(credentials.resolveOpenCode()).thenReturn(Optional.of(API_KEY));
         RecordingTransport transport = new RecordingTransport();
         OpenCodeZenModelGateway gateway = gateway(transport, SELECTED_MODEL);
 
@@ -139,7 +137,6 @@ OpenCodeZenModelGateway gateway = gateway(transport, SELECTED_MODEL);
 
     @Test
     void gatewayParsesOutputObjectIntoOutputJson() {
-        when(credentials.resolveOpenCode()).thenReturn(Optional.of(API_KEY));
         RecordingTransport transport = new RecordingTransport();
         transport.content = "{\"action\":\"ask_next_question\",\"output\":{\"a\":1,\"b\":[true,null]}}";
         OpenCodeZenModelGateway gateway = gateway(transport, SELECTED_MODEL);
@@ -156,7 +153,6 @@ OpenCodeZenModelGateway gateway = gateway(transport, SELECTED_MODEL);
 
     @Test
     void gatewayRejectsMalformedModelOutput() {
-        when(credentials.resolveOpenCode()).thenReturn(Optional.of(API_KEY));
         RecordingTransport transport = new RecordingTransport();
         transport.content = "this is not json";
         OpenCodeZenModelGateway gateway = gateway(transport, SELECTED_MODEL);
@@ -169,7 +165,6 @@ OpenCodeZenModelGateway gateway = gateway(transport, SELECTED_MODEL);
 
     @Test
     void gatewayRejectsMissingAction() {
-        when(credentials.resolveOpenCode()).thenReturn(Optional.of(API_KEY));
         RecordingTransport transport = new RecordingTransport();
         transport.content = "{\"output\":{}}";
         OpenCodeZenModelGateway gateway = gateway(transport, SELECTED_MODEL);
@@ -182,7 +177,6 @@ OpenCodeZenModelGateway gateway = gateway(transport, SELECTED_MODEL);
 
     @Test
     void gatewayRejectsUnknownAction() {
-        when(credentials.resolveOpenCode()).thenReturn(Optional.of(API_KEY));
         RecordingTransport transport = new RecordingTransport();
         transport.content = "{\"action\":\"fly\",\"output\":{}}";
         OpenCodeZenModelGateway gateway = gateway(transport, SELECTED_MODEL);
@@ -196,7 +190,6 @@ OpenCodeZenModelGateway gateway = gateway(transport, SELECTED_MODEL);
 
     @Test
     void gatewayRejectsMissingOutputObject() {
-        when(credentials.resolveOpenCode()).thenReturn(Optional.of(API_KEY));
         RecordingTransport transport = new RecordingTransport();
         transport.content = "{\"action\":\"stop\"}";
         OpenCodeZenModelGateway gateway = gateway(transport, SELECTED_MODEL);
@@ -209,9 +202,11 @@ OpenCodeZenModelGateway gateway = gateway(transport, SELECTED_MODEL);
 
     @Test
     void gatewayRejectsMissingCredentialBeforeCallingTransport() {
-        when(credentials.resolveOpenCode()).thenReturn(Optional.empty());
+        when(settings.requireRuntimeSettings()).thenThrow(new OpenCodeModelException(
+                OpenCodeModelErrorCategory.NOT_CONFIGURED, "not configured"));
         RecordingTransport transport = new RecordingTransport();
-        OpenCodeZenModelGateway gateway = gateway(transport, SELECTED_MODEL);
+        OpenCodeZenModelGateway gateway = new OpenCodeZenModelGateway(
+                transport, settings, promptRenderer, mapper);
 
         assertThatThrownBy(() -> gateway.run(request()))
                 .isInstanceOf(OpenCodeModelException.class)
@@ -222,7 +217,6 @@ OpenCodeZenModelGateway gateway = gateway(transport, SELECTED_MODEL);
 
     @Test
     void gatewayRejectsBlankSelectedModel() {
-        when(credentials.resolveOpenCode()).thenReturn(Optional.of(API_KEY));
         RecordingTransport transport = new RecordingTransport();
         OpenCodeZenModelGateway gateway = gateway(transport, "  ");
 
@@ -235,7 +229,6 @@ OpenCodeZenModelGateway gateway = gateway(transport, SELECTED_MODEL);
 
     @Test
     void gatewayRejectsNonFreeSelectedModelBeforeHttpCall() {
-        when(credentials.resolveOpenCode()).thenReturn(Optional.of(API_KEY));
         RecordingTransport transport = new RecordingTransport();
         OpenCodeZenModelGateway gateway = gateway(transport, "some-paid-model");
 
@@ -248,7 +241,6 @@ OpenCodeZenModelGateway gateway = gateway(transport, SELECTED_MODEL);
 
     @Test
     void gatewayExceptionsNeverContainTheApiKey() {
-        when(credentials.resolveOpenCode()).thenReturn(Optional.of(API_KEY));
         RecordingTransport transport = new RecordingTransport();
         OpenCodeZenModelGateway gateway = gateway(transport, "some-paid-model");
 

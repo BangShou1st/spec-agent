@@ -7,15 +7,15 @@ import com.specagent.agent.AgentPromptRenderer;
 import com.specagent.agent.ModelRequest;
 import com.specagent.agent.ModelResponse;
 import com.specagent.common.Hashes;
-import com.specagent.credential.OpenCodeCredentialService;
 import com.specagent.model.contract.ModelPrompt;
 import com.specagent.model.provider.OpenCodeChatCompletionRequest;
 import com.specagent.model.provider.OpenCodeChatMessage;
-import com.specagent.model.provider.OpenCodeCompletionResponse;
 import com.specagent.model.provider.OpenCodeModelErrorCategory;
 import com.specagent.model.provider.OpenCodeModelException;
+import com.specagent.model.provider.OpenCodeCompletionResponse;
 import com.specagent.model.provider.OpenCodeZenTransport;
-import org.springframework.beans.factory.annotation.Value;
+import com.specagent.settings.opencode.OpenCodeSettingsService;
+import com.specagent.settings.opencode.RuntimeOpenCodeSettings;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
@@ -42,42 +42,39 @@ import java.util.Map;
  * gateway never picks a model on its own, and the probe/discovery model list
  * stays dynamic.
  *
- * <p>The bean is only registered when {@code spec.agent.model.gateway=opencode};
- * the deterministic fake remains the ModelGateway for automated tests.
+ * <p>The bean is the normal product gateway. Deterministic scripted gateways
+ * are selected only by the explicit test profile.
  */
 @Component
-@ConditionalOnProperty(name = "spec.agent.model.gateway", havingValue = "opencode")
+@ConditionalOnProperty(name = "spec.agent.model.gateway", havingValue = "opencode", matchIfMissing = true)
 public class OpenCodeZenModelGateway implements ModelGateway {
 
     private static final int MAX_TOKENS = 4096;
     private static final double TEMPERATURE = 0.0;
 
     private final OpenCodeZenTransport transport;
-    private final OpenCodeCredentialService credentialService;
+    private final OpenCodeSettingsService settingsService;
     private final AgentPromptRenderer promptRenderer;
     private final ObjectMapper mapper;
-    private final String selectedModel;
 
     public OpenCodeZenModelGateway(OpenCodeZenTransport transport,
-                                   OpenCodeCredentialService credentialService,
+                                   OpenCodeSettingsService settingsService,
                                    AgentPromptRenderer promptRenderer,
-                                   ObjectMapper mapper,
-                                   @Value("${spec.agent.model.opencode.model:}") String selectedModel) {
+                                   ObjectMapper mapper) {
         this.transport = transport;
-        this.credentialService = credentialService;
+        this.settingsService = settingsService;
         this.promptRenderer = promptRenderer;
         this.mapper = mapper;
-        this.selectedModel = selectedModel == null ? "" : selectedModel.trim();
     }
 
     @Override
     public ModelResponse run(ModelRequest request) {
-        String apiKey = credentialService.resolveOpenCode().orElseThrow(
-                () -> new OpenCodeModelException(OpenCodeModelErrorCategory.NOT_CONFIGURED,
-                        "OpenCode credential is not configured"));
+        RuntimeOpenCodeSettings settings = settingsService.requireRuntimeSettings();
+        String apiKey = settings.apiKey();
+        String selectedModel = settings.selectedModel();
         if (selectedModel.isBlank()) {
             throw new OpenCodeModelException(OpenCodeModelErrorCategory.NOT_CONFIGURED,
-                    "No OpenCode model selected (spec.agent.model.opencode.model)");
+                    "No OpenCode model is selected");
         }
         if (!selectedModel.endsWith("-free")) {
             throw new OpenCodeModelException(OpenCodeModelErrorCategory.INVALID_MODEL,
@@ -94,7 +91,7 @@ public class OpenCodeZenModelGateway implements ModelGateway {
                         TEMPERATURE,
                         MAX_TOKENS));
 
-        return toModelResponse(request, completion.content(), prompt);
+        return toModelResponse(request, completion.content(), prompt, selectedModel);
     }
 
     /**
@@ -105,7 +102,8 @@ public class OpenCodeZenModelGateway implements ModelGateway {
      * prompt version and content hashes so output can be attributed; it never
      * carries the API key.
      */
-    private ModelResponse toModelResponse(ModelRequest request, String content, ModelPrompt prompt) {
+    private ModelResponse toModelResponse(ModelRequest request, String content, ModelPrompt prompt,
+                                          String selectedModel) {
         Envelope envelope = parseEnvelope(content);
         AgentAction action;
         try {

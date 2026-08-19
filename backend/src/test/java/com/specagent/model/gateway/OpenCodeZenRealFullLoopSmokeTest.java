@@ -13,8 +13,6 @@ import com.specagent.agent.gates.SpecSourceReferenceGuard;
 import com.specagent.answer.Answer;
 import com.specagent.answer.AnswerRepository;
 import com.specagent.answer.AnswerService;
-import com.specagent.credential.CredentialStatus;
-import com.specagent.credential.OpenCodeCredentialService;
 import com.specagent.node.Node;
 import com.specagent.node.NodeRepository;
 import com.specagent.node.NodeService;
@@ -27,6 +25,8 @@ import com.specagent.project.ProjectService;
 import com.specagent.route.Route;
 import com.specagent.route.RouteLifecycleStatus;
 import com.specagent.route.RouteService;
+import com.specagent.settings.opencode.OpenCodeSettingsService;
+import com.specagent.settings.opencode.OpenCodeSettingsStatus;
 import com.specagent.spec.SourceReference;
 import com.specagent.spec.SpecSnapshot;
 import com.specagent.spec.SpecSnapshotService;
@@ -96,7 +96,7 @@ class OpenCodeZenRealFullLoopSmokeTest {
     @Autowired
     private ApplicationContext context;
     @Autowired
-    private OpenCodeCredentialService credentialService;
+    private OpenCodeSettingsService settingsService;
     @Autowired
     private OpenCodeModelCatalog catalog;
     @Autowired
@@ -139,7 +139,7 @@ class OpenCodeZenRealFullLoopSmokeTest {
     void realFullLoopQuestionAnswerPatchNextNodeSpec() throws Exception {
         System.out.println("=== OpenCodeZenRealFullLoopSmokeTest: explicit live full loop (public OpenCode allowed) ===");
         String apiKey = System.getenv("SPEC_AGENT_OPENCODE_KEY");
-        String resolved = seedCredential(apiKey);
+        String resolved = seedSettings(apiKey);
 
         // The runtime must actually resolve the OpenCode gateway through the
         // normal ModelGateway selection, not through a direct autowire.
@@ -301,16 +301,13 @@ class OpenCodeZenRealFullLoopSmokeTest {
         assertThat(persisted.trace()).contains(steps);
     }
 
-    private String seedCredential(String apiKey) {
-        CredentialStatus status = credentialService.save(apiKey);
+    private String seedSettings(String apiKey) {
+        String selectedModel = System.getenv().getOrDefault("SPEC_AGENT_OPENCODE_MODEL", "mimo-v2.5-free");
+        OpenCodeSettingsStatus status = settingsService.save(apiKey, selectedModel);
         assertThat(status.configured()).isTrue();
-        assertThat(status.masked()).isEqualTo("••••" + apiKey.substring(apiKey.length() - 4));
-        assertThat(status.masked()).doesNotContain(apiKey);
-        System.out.println("credential configured: yes, masked: " + status.masked());
-
-        String resolved = credentialService.resolveOpenCode().orElseThrow();
-        assertThat(resolved).isEqualTo(apiKey);
-        System.out.println("credential resolved for OpenCode gateway: yes");
-        return resolved;
+        assertThat(status.maskedKey()).isEqualTo("••••" + apiKey.substring(apiKey.length() - 4));
+        assertThat(status.maskedKey()).doesNotContain(apiKey);
+        System.out.println("OpenCode settings configured: yes, masked: " + status.maskedKey());
+        return apiKey;
     }
 }

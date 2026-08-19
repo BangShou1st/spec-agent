@@ -32,11 +32,5 @@ logging:
 
 spec:
   agent:
-    credential:
-      # Test-only master key. Never a real secret: it only proves the
-      # encryption path works in automated tests.
-      master-key: spec-agent-test-master-key-8c3f96b2
     model:
-      opencode:
-        model: ${SPEC_AGENT_OPENCODE_MODEL:}
-        timeout-seconds: 45
+      gateway: fake
