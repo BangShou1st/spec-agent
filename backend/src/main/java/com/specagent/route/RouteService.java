@@ -10,6 +10,7 @@ import com.specagent.node.NodeService;
 import com.specagent.project.Project;
 import com.specagent.project.ProjectRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -68,6 +69,16 @@ public class RouteService {
         routeRepository.updateLifecycle(routeId, RouteLifecycleStatus.SUPERSEDED, Instant.now());
     }
 
+    /** Valid explicit source for branch/exploration mutations. */
+    public Route requireExplorationSource(UUID projectId, UUID sourceRouteId) {
+        Route route = requireRouteInProject(projectId, sourceRouteId);
+        if (route.lifecycleStatus() != RouteLifecycleStatus.OPEN
+                && route.lifecycleStatus() != RouteLifecycleStatus.SUPERSEDED) {
+            throw new IllegalStateException("Only an OPEN or SUPERSEDED route can be an exploration source");
+        }
+        return route;
+    }
+
     public Optional<Route> getRoute(UUID routeId) {
         return routeRepository.findById(routeId);
     }
@@ -99,6 +110,7 @@ public class RouteService {
      */
     public void archiveRoute(UUID projectId, UUID routeId) {
         Route route = requireRouteInProject(projectId, routeId);
+        requireTransition(route, RouteLifecycleStatus.ARCHIVED);
         routeRepository.updateLifecycle(routeId, RouteLifecycleStatus.ARCHIVED, Instant.now());
         clearActiveRouteIfMatches(projectId, routeId);
     }
@@ -110,6 +122,7 @@ public class RouteService {
      */
     public void softDeleteRoute(UUID projectId, UUID routeId) {
         Route route = requireRouteInProject(projectId, routeId);
+        requireTransition(route, RouteLifecycleStatus.DELETED);
         routeRepository.updateLifecycle(routeId, RouteLifecycleStatus.DELETED, Instant.now());
         clearActiveRouteIfMatches(projectId, routeId);
     }
@@ -120,6 +133,7 @@ public class RouteService {
      */
     public void restoreRoute(UUID projectId, UUID routeId) {
         Route route = requireRouteInProject(projectId, routeId);
+        requireTransition(route, RouteLifecycleStatus.OPEN);
         routeRepository.updateLifecycle(routeId, RouteLifecycleStatus.OPEN, Instant.now());
         projectRepository.updateActiveRoute(projectId, routeId, Instant.now());
     }
@@ -143,7 +157,7 @@ public class RouteService {
                     "Node " + sourceNodeId + " does not belong to project " + projectId);
         }
 
-        Route sourceRoute = requireOpenRouteInProject(projectId, sourceRouteId);
+        Route sourceRoute = requireExplorationSource(projectId, sourceRouteId);
         List<UUID> sourceLineage = routeHistoryResolver.resolveLineage(sourceRoute.tipNodeId());
         requireLineageContains(sourceLineage, sourceNodeId);
         if (routeHistoryResolver.resolveEffectiveAnswers(sourceRouteId, sourceLineage).stream()
@@ -154,7 +168,7 @@ public class RouteService {
         UUID routeId = Ids.random();
         Instant now = Instant.now();
         Route forkRoute = new Route(routeId, projectId, sourceRoute.rootNodeId(), sourceNodeId,
-                RouteLifecycleStatus.OPEN, label, sourceNodeId, null, null, null,
+                RouteLifecycleStatus.OPEN, effectiveLabel(projectId, RouteBranchType.FORK, label), sourceNodeId, null, null, null,
                 RouteBranchType.FORK, sourceRouteId, sourceNodeId, now, now);
         routeRepository.save(forkRoute);
         routeHistoryResolver.snapshotInheritedPrefix(routeId, sourceRouteId, sourceNodeId, true);
@@ -168,7 +182,7 @@ public class RouteService {
                                   UUID targetNodeId,
                                   String label) {
         Node targetNode = requireNodeInProject(projectId, targetNodeId);
-        Route sourceRoute = requireOpenRouteInProject(projectId, sourceRouteId);
+        Route sourceRoute = requireExplorationSource(projectId, sourceRouteId);
         List<UUID> sourceLineage = routeHistoryResolver.resolveLineage(sourceRoute.tipNodeId());
         requireLineageContains(sourceLineage, targetNodeId);
         if (routeHistoryResolver.resolveEffectiveAnswers(sourceRouteId, sourceLineage).stream()
@@ -179,12 +193,77 @@ public class RouteService {
         UUID routeId = Ids.random();
         Instant now = Instant.now();
         Route route = new Route(routeId, projectId, sourceRoute.rootNodeId(), targetNodeId,
-                RouteLifecycleStatus.OPEN, label, targetNodeId, null, null, null,
+                RouteLifecycleStatus.OPEN, effectiveLabel(projectId, RouteBranchType.REANSWER, label), targetNodeId, null, null, null,
                 RouteBranchType.REANSWER, sourceRouteId, targetNodeId, now, now);
         routeRepository.save(route);
         routeHistoryResolver.snapshotInheritedPrefix(routeId, sourceRouteId, targetNodeId, false);
         projectRepository.updateActiveRoute(projectId, routeId, now);
         return route;
+    }
+
+    /**
+     * Commits an already accepted replacement proposal. The method is the only
+     * place that creates canonical replacement history: proposal parsing,
+     * reflection, and validation happen before entering this transaction.
+     */
+    @Transactional
+    public RegenerateResult commitReplacementFromNode(UUID projectId,
+                                                      UUID sourceRouteId,
+                                                      UUID targetNodeId,
+                                                      String label,
+                                                      String question,
+                                                      String purpose,
+                                                      List<NodeOption> options,
+                                                      boolean allowFreeAnswer) {
+        Node targetNode = requireNodeInProject(projectId, targetNodeId);
+        if (targetNode.parentNodeId() == null) {
+            throw new IllegalStateException("Root node replacement is not supported");
+        }
+        Route sourceRoute = requireExplorationSource(projectId, sourceRouteId);
+        requireLineageContains(routeHistoryResolver.resolveLineage(sourceRoute.tipNodeId()), targetNodeId);
+        if (question == null || question.isBlank()) {
+            throw new IllegalArgumentException("Replacement question must not be blank");
+        }
+        if (normalize(question).equals(normalize(targetNode.question()))) {
+            throw new IllegalArgumentException("Replacement question must differ from the rejected question");
+        }
+
+        UUID replacementRouteId = Ids.random();
+        Instant now = Instant.now();
+        Route replacementRoute = new Route(
+                replacementRouteId,
+                projectId,
+                sourceRoute.rootNodeId(),
+                null,
+                RouteLifecycleStatus.OPEN,
+                effectiveLabel(projectId, RouteBranchType.REGENERATE, label),
+                targetNode.parentNodeId(),
+                sourceRouteId,
+                targetNodeId,
+                null,
+                RouteBranchType.REGENERATE,
+                sourceRouteId,
+                targetNodeId,
+                now,
+                now);
+        routeRepository.save(replacementRoute);
+
+        routeHistoryResolver.snapshotInheritedPrefix(
+                replacementRouteId, sourceRouteId, targetNode.parentNodeId(), true);
+        Node replacementNode = nodeService.createReplacementNode(
+                projectId, replacementRouteId, targetNode.parentNodeId(), targetNodeId,
+                question.trim(), purpose, options == null ? List.of() : options, allowFreeAnswer);
+
+        if (sourceRoute.lifecycleStatus() == RouteLifecycleStatus.OPEN) {
+            markRouteSuperseded(sourceRouteId);
+        }
+        projectRepository.updateActiveRoute(projectId, replacementRouteId, now);
+
+        Route updatedSource = routeRepository.findById(sourceRouteId)
+                .orElseThrow(() -> new IllegalStateException("Source route not found after replacement"));
+        Route updatedReplacement = routeRepository.findById(replacementRouteId)
+                .orElseThrow(() -> new IllegalStateException("Replacement route not found after commit"));
+        return new RegenerateResult(updatedSource, updatedReplacement, replacementNode, null);
     }
 
     /**
@@ -347,11 +426,43 @@ public class RouteService {
         }
     }
 
+    private void requireTransition(Route route, RouteLifecycleStatus target) {
+        boolean allowed = switch (route.lifecycleStatus()) {
+            case OPEN -> target == RouteLifecycleStatus.ARCHIVED || target == RouteLifecycleStatus.DELETED;
+            case SUPERSEDED -> target == RouteLifecycleStatus.OPEN
+                    || target == RouteLifecycleStatus.ARCHIVED || target == RouteLifecycleStatus.DELETED;
+            case ARCHIVED -> target == RouteLifecycleStatus.OPEN || target == RouteLifecycleStatus.DELETED;
+            case DELETED -> target == RouteLifecycleStatus.OPEN;
+        };
+        if (!allowed) {
+            throw new IllegalStateException("Illegal route lifecycle transition");
+        }
+    }
+
+    private String effectiveLabel(UUID projectId, RouteBranchType branchType, String requested) {
+        if (requested != null && !requested.isBlank()) {
+            return requested.trim();
+        }
+        long count = routeRepository.findByProject(projectId).stream()
+                .filter(route -> route.branchType() == branchType)
+                .count();
+        String prefix = switch (branchType) {
+            case FORK -> "分支路线";
+            case REANSWER -> "重新回答路线";
+            case REGENERATE -> "换题路线";
+        };
+        return prefix + " " + (count + 1);
+    }
+
     private void clearActiveRouteIfMatches(UUID projectId, UUID routeId) {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new IllegalArgumentException("Project not found: " + projectId));
         if (project.activeRouteId() != null && project.activeRouteId().equals(routeId)) {
             projectRepository.updateActiveRoute(projectId, null, Instant.now());
         }
+    }
+
+    private String normalize(String value) {
+        return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase();
     }
 }

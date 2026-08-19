@@ -9,10 +9,10 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Deterministic regenerate request.
+ * Model-powered question replacement request.
  *
- * <p>Clients may supply only the user instruction and the replacement node
- * content (question, purpose, option labels/impacts). Runtime-owned fields —
+ * <p>Normal clients supply only the user instruction. The replacement node
+ * content is proposed by the generic DRAFT_NODE model contract. Runtime-owned fields —
  * replacementNodeId, replacementRouteId, optionId, contextSnapshotId, source
  * refs, provenance, createdByRunId, lifecycle status, supersedes ids — are
  * never accepted.
@@ -22,11 +22,15 @@ public record RegenerateNodeRequest(
         UUID sourceRouteId,
         @Size(max = 2000, message = "must be at most 2000 characters")
         String instruction,
-        @NotBlank(message = "must not be blank")
-        @Size(max = 4000, message = "must be at most 4000 characters")
+        /** Deprecated compatibility-only field; normal product UI never sends it. */
+        @Deprecated
         String replacementQuestion,
+        /** Deprecated compatibility-only field; normal product UI never sends it. */
+        @Deprecated
         @Size(max = 4000, message = "must be at most 4000 characters")
         String replacementPurpose,
+        /** Deprecated compatibility-only field; normal product UI never sends it. */
+        @Deprecated
         @Valid
         List<ReplacementOptionRequest> replacementOptions) {
 

@@ -17,7 +17,8 @@ import java.util.List;
  * Deterministic validator for a context snapshot before any agent step runs.
  *
  * <p>A context may only be used when its route exists, belongs to the context
- * project, and is OPEN. Normal (non-regenerate) context must also match the
+ * project, and is OPEN (or SUPERSEDED for explicit replacement exploration).
+ * Normal (non-regenerate) context must also match the
  * project's active route; regenerate context is a special operation context and
  * therefore exempt from the active-route match.
  */
@@ -51,8 +52,13 @@ public class ContextGuard {
             if (!route.projectId().equals(snapshot.projectId())) {
                 errors.add("Context route does not belong to context project");
             }
-            if (route.lifecycleStatus() != RouteLifecycleStatus.OPEN) {
-                errors.add("Context route must be OPEN");
+            boolean replacementSource = snapshot.operationType() == ContextOperationType.REGENERATE;
+            boolean validLifecycle = route.lifecycleStatus() == RouteLifecycleStatus.OPEN
+                    || (replacementSource && route.lifecycleStatus() == RouteLifecycleStatus.SUPERSEDED);
+            if (!validLifecycle) {
+                errors.add(replacementSource
+                        ? "Replacement context route must be OPEN or SUPERSEDED"
+                        : "Context route must be OPEN");
             }
         }
 

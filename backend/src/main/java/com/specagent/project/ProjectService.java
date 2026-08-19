@@ -47,7 +47,7 @@ public class ProjectService {
         projectRepository.save(project);
 
         Route initialRoute = new Route(routeId, projectId, null, null,
-                RouteLifecycleStatus.OPEN, "Initial route", null, null, null, null, now, now);
+                RouteLifecycleStatus.OPEN, "主路线", null, null, null, null, now, now);
         routeRepository.save(initialRoute);
 
         projectRepository.updateActiveRoute(projectId, routeId, now);

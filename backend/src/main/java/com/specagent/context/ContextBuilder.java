@@ -148,6 +148,58 @@ public class ContextBuilder {
     }
 
     /**
+     * Freezes the pre-proposal context for model-powered question replacement.
+     * The snapshot is anchored to the explicit source route and the rejected
+     * node's parent tip. No accepted replacement route/node identity exists at
+     * this point.
+     */
+    public ContextSnapshot buildForReplacement(UUID projectId,
+                                               UUID sourceRouteId,
+                                               UUID targetNodeId) {
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new IllegalArgumentException("Project not found: " + projectId));
+        Route sourceRoute = routeRepository.findById(sourceRouteId)
+                .orElseThrow(() -> new IllegalArgumentException("Source route not found: " + sourceRouteId));
+        if (!sourceRoute.projectId().equals(projectId)) {
+            throw new IllegalArgumentException("Source route does not belong to project");
+        }
+        Node targetNode = nodeRepository.findById(targetNodeId)
+                .orElseThrow(() -> new IllegalArgumentException("Target node not found: " + targetNodeId));
+        if (!targetNode.projectId().equals(projectId)) {
+            throw new IllegalArgumentException("Target node does not belong to project");
+        }
+
+        List<UUID> sourceLineage = resolveLineage(sourceRoute.tipNodeId());
+        if (!sourceLineage.contains(targetNodeId)) {
+            throw new IllegalArgumentException("Target node is not on the explicit source route");
+        }
+        List<UUID> parentLineage = resolveLineage(targetNode.parentNodeId());
+        List<UUID> includedAnswerIds = routeHistoryResolver
+                .resolveEffectiveAnswers(sourceRouteId, parentLineage)
+                .stream().map(answer -> answer.id()).toList();
+        List<UUID> includedPatchIds = answerPatchRepository.findBySourceAnswerIds(includedAnswerIds)
+                .stream().map(patch -> patch.id()).toList();
+
+        List<UUID> excludedRouteIds = routeRepository.findByProject(projectId).stream()
+                .map(Route::id)
+                .filter(id -> !id.equals(sourceRouteId))
+                .toList();
+        Map<String, Object> specialInputsMap = Map.of(
+                "oldQuestion", targetNode.question() == null ? "" : targetNode.question(),
+                "oldPurpose", targetNode.purpose() == null ? "" : targetNode.purpose());
+        String specialInputs = json.write(specialInputsMap);
+        String contextHash = computeHash(ContextOperationType.REGENERATE, parentLineage,
+                includedAnswerIds, includedPatchIds, excludedRouteIds, specialInputsMap);
+
+        ContextSnapshot snapshot = new ContextSnapshot(
+                Ids.random(), projectId, sourceRouteId, targetNode.parentNodeId(),
+                ContextOperationType.REGENERATE, parentLineage, includedAnswerIds,
+                includedPatchIds, excludedRouteIds, specialInputs, contextHash, Instant.now());
+        contextSnapshotRepository.save(snapshot);
+        return snapshot;
+    }
+
+    /**
      * Resolves a route's root-to-tip lineage by following {@code parentNodeId}
      * pointers from the tip upward. The chain is deterministic: a route's
      * context is exactly this chain, and sibling or replacement nodes never

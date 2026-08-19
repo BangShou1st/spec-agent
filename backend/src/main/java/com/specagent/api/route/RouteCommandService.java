@@ -2,6 +2,8 @@ package com.specagent.api.route;
 
 import com.specagent.api.common.ApiException;
 import com.specagent.api.common.CommandExecution;
+import com.specagent.agent.AgentOrchestrator;
+import com.specagent.agent.ReplacementRunResult;
 import com.specagent.api.node.NodeResponse;
 import com.specagent.node.Node;
 import com.specagent.node.NodeOption;
@@ -31,13 +33,16 @@ public class RouteCommandService {
     private final ProjectService projectService;
     private final RouteService routeService;
     private final NodeService nodeService;
+    private final AgentOrchestrator orchestrator;
 
     public RouteCommandService(ProjectService projectService,
                                RouteService routeService,
-                               NodeService nodeService) {
+                               NodeService nodeService,
+                               AgentOrchestrator orchestrator) {
         this.projectService = projectService;
         this.routeService = routeService;
         this.nodeService = nodeService;
+        this.orchestrator = orchestrator;
     }
 
     public RouteMutationResponse activate(UUID projectId, UUID routeId) {
@@ -110,19 +115,28 @@ public class RouteCommandService {
                 throw ApiException.conflict("REGENERATE_ROOT_NOT_SUPPORTED",
                         "Root node regeneration is not supported");
             }
-            validateReplacementOptions(request);
-            List<NodeOption> replacementOptions = request.replacementOptions() == null ? List.of()
-                    : request.replacementOptions().stream()
-                            .map(option -> NodeOption.of(option.label(), option.impact()))
-                            .toList();
-            RegenerateResult result = routeService.regenerateFromNode(
-                    projectId,
-                    request.sourceRouteId(),
-                    nodeId,
-                    request.instruction(),
-                    request.replacementQuestion(),
-                    request.replacementPurpose(),
-                    replacementOptions);
+            RegenerateResult result;
+            if (request.replacementQuestion() != null) {
+                // Compatibility for pre-convergence clients only. The normal
+                // product contract omits authored replacement content and
+                // always uses the model-powered branch below.
+                if (request.replacementQuestion().isBlank()) {
+                    throw ApiException.badRequest("INVALID_REPLACEMENT_QUESTION",
+                            "Replacement question must not be blank");
+                }
+                validateReplacementOptions(request);
+                List<NodeOption> replacementOptions = request.replacementOptions() == null ? List.of()
+                        : request.replacementOptions().stream()
+                                .map(option -> NodeOption.of(option.label(), option.impact()))
+                                .toList();
+                result = routeService.regenerateFromNode(
+                        projectId, request.sourceRouteId(), nodeId, request.instruction(),
+                        request.replacementQuestion(), request.replacementPurpose(), replacementOptions);
+            } else {
+                ReplacementRunResult run = orchestrator.replaceQuestion(
+                        projectId, request.sourceRouteId(), nodeId, request.instruction());
+                result = run.replacement();
+            }
             return new RegenerateResponse(
                     projectId,
                     RouteResponse.from(result.oldRoute(), false),

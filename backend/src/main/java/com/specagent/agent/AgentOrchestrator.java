@@ -28,6 +28,8 @@ import com.specagent.project.Project;
 import com.specagent.project.ProjectRepository;
 import com.specagent.route.Route;
 import com.specagent.route.RouteRepository;
+import com.specagent.route.RouteService;
+import com.specagent.route.RegenerateResult;
 import com.specagent.spec.SourceKind;
 import com.specagent.spec.SourceReference;
 import com.specagent.spec.SpecSection;
@@ -74,6 +76,7 @@ public class AgentOrchestrator {
     private final AgentRunFailureService agentRunFailureService;
     private final ProjectRepository projectRepository;
     private final RouteRepository routeRepository;
+    private final RouteService routeService;
     private final ContextBuilder contextBuilder;
     private final ContextGuard contextGuard;
     private final ModelGateway modelGateway;
@@ -93,6 +96,7 @@ public class AgentOrchestrator {
                                  AgentRunFailureService agentRunFailureService,
                                  ProjectRepository projectRepository,
                                  RouteRepository routeRepository,
+                                 RouteService routeService,
                                  ContextBuilder contextBuilder,
                                  ContextGuard contextGuard,
                                  ModelGateway modelGateway,
@@ -111,6 +115,7 @@ public class AgentOrchestrator {
         this.agentRunFailureService = agentRunFailureService;
         this.projectRepository = projectRepository;
         this.routeRepository = routeRepository;
+        this.routeService = routeService;
         this.contextBuilder = contextBuilder;
         this.contextGuard = contextGuard;
         this.modelGateway = modelGateway;
@@ -391,6 +396,77 @@ public class AgentOrchestrator {
     }
 
     /**
+     * Generates a replacement question through the generic DRAFT_NODE
+     * capability. No route/node is created until the proposal passes every
+     * model and runtime gate.
+     */
+    public ReplacementRunResult replaceQuestion(UUID projectId,
+                                                UUID sourceRouteId,
+                                                UUID targetNodeId,
+                                                String userDirection) {
+        Project project = loadProject(projectId);
+        routeService.requireExplorationSource(projectId, sourceRouteId);
+        Node targetNode = nodeService.getNode(targetNodeId)
+                .orElseThrow(() -> new IllegalArgumentException("Target node not found: " + targetNodeId));
+        if (!targetNode.projectId().equals(projectId)) {
+            throw new IllegalArgumentException("Target node does not belong to project");
+        }
+        if (targetNode.parentNodeId() == null) {
+            throw new IllegalStateException("Root node replacement is not supported");
+        }
+
+        ContextSnapshot contextSnapshot = contextBuilder.buildForReplacement(
+                projectId, sourceRouteId, targetNodeId);
+        AgentRun run = agentRunService.create(
+                projectId, sourceRouteId, AgentRunTriggerType.REGENERATE_NODE,
+                targetNodeId, null);
+        String trace = "created";
+        try {
+            trace = appendTrace(trace, "context_built");
+            agentRunService.attachContext(run.id(), contextSnapshot.id(), trace);
+            ReflectionResult contextReflection = contextGuard.validate(contextSnapshot);
+            if (!contextReflection.accepted()) {
+                agentRunService.fail(run.id(), appendTrace(trace, "failed:context_guard_rejected"));
+                throw new ModelContractException("Replacement context rejected");
+            }
+
+            trace = appendTrace(trace, "model_called:" + AgentTaskType.DRAFT_NODE.name());
+            ModelResponse response = callModel(
+                    run, contextSnapshot, trace, AgentTaskType.DRAFT_NODE,
+                    projectionBuilder.buildInputJson(contextSnapshot,
+                            projectionBuilder.redirectedNodeTaskInput(userDirection)),
+                    AgentAction.ASK_NEXT_QUESTION,
+                    "Expected ASK_NEXT_QUESTION from replacement DRAFT_NODE");
+            NodeDraft draft = structuredOutputMapper.toNodeDraft(
+                    structuredModelOutputParser.parse(AgentTaskType.DRAFT_NODE, response.outputJson()));
+            ReflectionResult nodeReflection = nodeReflectionGate.validate(draft);
+            trace = appendTrace(trace, "reflected:NODE");
+            agentRunService.markReflected(run.id(), trace);
+            if (!nodeReflection.accepted()) {
+                agentRunService.fail(run.id(), appendTrace(trace, "failed:node_reflection_rejected"));
+                throw new ModelContractException("Replacement node reflection rejected");
+            }
+            if (normalize(draft.question()).equals(normalize(targetNode.question()))) {
+                agentRunService.fail(run.id(), appendTrace(trace, "failed:duplicate_question"));
+                throw new ModelContractException("Replacement question must differ from the rejected question");
+            }
+
+            RegenerateResult replacement = routeService.commitReplacementFromNode(
+                    projectId, sourceRouteId, targetNodeId, null,
+                    draft.question(), draft.purpose(), draft.options(), draft.allowFreeAnswer());
+            trace = appendTrace(trace, "persisted_node");
+            agentRunService.markPersistedNode(run.id(), replacement.replacementNode().id(), trace);
+            trace = appendTrace(trace, "completed");
+            agentRunService.complete(run.id(), AgentRunStatus.COMPLETED, trace);
+            AgentRun completedRun = agentRunService.getRun(run.id()).orElseThrow();
+            return new ReplacementRunResult(completedRun, contextSnapshot, response, replacement);
+        } catch (RuntimeException ex) {
+            failIfNotTerminal(run.id(), trace, ex);
+            throw ex;
+        }
+    }
+
+    /**
      * Shared post-answer processing: interpret the answer, draft and ground the
      * answer patch, persist the patch, then draft and persist the next node.
      * The answer is already immutable by the time this runs; the patch claims
@@ -618,6 +694,10 @@ public class AgentOrchestrator {
 
     private String appendTrace(String trace, String step) {
         return trace == null || trace.isBlank() ? step : trace + "\n" + step;
+    }
+
+    private String normalize(String value) {
+        return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase();
     }
 
     /**

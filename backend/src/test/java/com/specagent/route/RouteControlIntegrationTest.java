@@ -298,7 +298,10 @@ class RouteControlIntegrationTest {
         assertThat(forkCtx.routeId()).isEqualTo(fork.id());
         assertThat(forkCtx.includedNodeIds()).containsExactly(f.root().id());
 
-        routeService.restoreRoute(f.project().id(), f.routeId());
+        // The original route is still OPEN after creating a fork; repeating
+        // restore is an illegal lifecycle transition under the hardened matrix.
+        assertThatThrownBy(() -> routeService.restoreRoute(f.project().id(), f.routeId()))
+                .isInstanceOf(IllegalStateException.class);
 
         RegenerateResult regen = routeService.regenerateFromNode(
                 f.project().id(), f.routeId(), f.child().id(), "Make it clearer",

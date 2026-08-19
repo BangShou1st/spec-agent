@@ -115,6 +115,13 @@ public class ModelContextProjectionBuilder {
         return Map.of("mode", "initial");
     }
 
+    /** Generic redirected DRAFT_NODE input used by question replacement. */
+    public Map<String, Object> redirectedNodeTaskInput(String userDirection) {
+        return Map.of(
+                "mode", "redirected",
+                "userDirection", userDirection == null ? "" : userDirection.trim());
+    }
+
     /**
      * Task input for INTERPRET_ANSWER: the run-local answer being interpreted.
      */

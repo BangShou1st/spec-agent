@@ -5,8 +5,8 @@ import com.specagent.api.node.NodeResponse;
 import java.util.UUID;
 
 /**
- * Deterministic regenerate result: the superseded old route, the new OPEN and
- * active replacement route, and the replacement node created by the runtime.
+ * Replacement result: the historical source route, the new OPEN and active
+ * route, and the replacement node accepted by the Runtime.
  */
 public record RegenerateResponse(
         UUID projectId,
