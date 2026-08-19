@@ -136,7 +136,7 @@ fi
 # Escape application args
 save () {
     for i in "$@"; do
-        printf "%s\\n" "$i" | sed "s/'/'\\\\''/g;1s/^/''/;\\\$s/\\$/'\\''/"
+        printf "%s\n" "$i" | sed "s/'/'\\''/g;1s/^/''/;\$s/\$/'\\''/"
     done
 }
 
