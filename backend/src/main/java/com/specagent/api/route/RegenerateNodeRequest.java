@@ -24,6 +24,7 @@ public record RegenerateNodeRequest(
         String instruction,
         /** Deprecated compatibility-only field; normal product UI never sends it. */
         @Deprecated
+        @NotBlank(message = "must not be blank")
         String replacementQuestion,
         /** Deprecated compatibility-only field; normal product UI never sends it. */
         @Deprecated

@@ -130,7 +130,7 @@ class ExplicitOpenCodeModelGatewayWiringTest {
         // calls the OpenCode gateway, not the fake.
         assertThatThrownBy(() -> orchestrator.draftNextQuestion(project.id()))
                 .isInstanceOf(OpenCodeModelException.class)
-                .hasMessageContaining("credential");
+                .hasMessageContaining("settings");
 
         verify(openCodeGateway).run(any(ModelRequest.class));
 
