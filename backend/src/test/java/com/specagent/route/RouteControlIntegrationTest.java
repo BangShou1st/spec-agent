@@ -43,6 +43,8 @@ class RouteControlIntegrationTest {
     private AnswerPatchService answerPatchService;
     @Autowired
     private ContextBuilder contextBuilder;
+    @Autowired
+    private RouteInheritedAnswerRepository inheritedAnswerRepository;
 
     private record Fixture(Project project, UUID routeId, Node root, Node child,
                            Answer a1, Answer a2, AnswerPatch p1, AnswerPatch p2) {
@@ -75,6 +77,41 @@ class RouteControlIntegrationTest {
         assertThat(fork.tipNodeId()).isEqualTo(f.root().id());
         assertThat(fork.createdFromNodeId()).isEqualTo(f.root().id());
         assertThat(fork.label()).isEqualTo("Fork at root");
+    }
+
+    @Test
+    void explicitForkFreezesEffectivePrefixWithoutCloningAnswers() {
+        Fixture f = createFixture();
+
+        Route fork = routeService.forkFromNode(
+                f.project().id(), f.routeId(), f.child().id(), "Explicit fork");
+
+        assertThat(fork.branchType()).isEqualTo(RouteBranchType.FORK);
+        assertThat(fork.sourceRouteId()).isEqualTo(f.routeId());
+        assertThat(fork.branchAtNodeId()).isEqualTo(f.child().id());
+        assertThat(inheritedAnswerRepository.findByBranchRouteId(fork.id()))
+                .extracting(RouteInheritedAnswer::answerId)
+                .containsExactly(f.a1().id(), f.a2().id());
+        assertThat(answerService.getAnswer(f.a1().id()).orElseThrow().routeId())
+                .isEqualTo(f.routeId());
+
+        routeService.archiveRoute(f.project().id(), f.routeId());
+        assertThat(inheritedAnswerRepository.findByBranchRouteId(fork.id()))
+                .extracting(RouteInheritedAnswer::answerId)
+                .containsExactly(f.a1().id(), f.a2().id());
+    }
+
+    @Test
+    void chainedExplicitForkUsesEffectiveInheritedHistory() {
+        Fixture f = createFixture();
+        Route first = routeService.forkFromNode(
+                f.project().id(), f.routeId(), f.child().id(), "First fork");
+        Route second = routeService.forkFromNode(
+                f.project().id(), first.id(), f.child().id(), "Second fork");
+
+        assertThat(inheritedAnswerRepository.findByBranchRouteId(second.id()))
+                .extracting(RouteInheritedAnswer::answerId)
+                .containsExactly(f.a1().id(), f.a2().id());
     }
 
     @Test

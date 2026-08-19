@@ -23,6 +23,9 @@ public record RouteResponse(
         UUID createdFromNodeId,
         UUID supersedesRouteId,
         UUID replacementOfNodeId,
+        String branchType,
+        UUID sourceRouteId,
+        UUID branchAtNodeId,
         Instant createdAt,
         Instant updatedAt,
         boolean isActive) {
@@ -38,6 +41,9 @@ public record RouteResponse(
                 route.createdFromNodeId(),
                 route.supersedesRouteId(),
                 route.replacementOfNodeId(),
+                route.branchType() == null ? null : route.branchType().code(),
+                route.sourceRouteId(),
+                route.branchAtNodeId(),
                 route.createdAt(),
                 route.updatedAt(),
                 isActive);

@@ -15,7 +15,7 @@ export async function createProject(page: Page, title: string): Promise<void> {
   await page.getByRole('button', { name: '创建项目' }).click()
   await page.waitForURL(/\/projects\/[0-9a-f-]+/)
   await expect(page.getByTestId('graph-canvas')).toBeVisible()
-  await expect(page.getByTestId('route-sidebar')).toBeVisible()
+  await expect(page.getByTestId('route-navigator')).toBeVisible()
 }
 
 /** Fits the whole graph into the viewport (viewport-only; never moves nodes). */
@@ -51,12 +51,13 @@ export async function buildThreeNodeLineage(page: Page): Promise<void> {
 }
 
 /**
- * Forks from the given graph node index through the base-route dialog
- * (the default base = active+open route).
+ * Forks from the given graph node index through the explicit source-route
+ * dialog. The helper selects the only source route in this fixture.
  */
 export async function forkFromNode(page: Page, index: number, label: string): Promise<void> {
   await page.locator('[data-test="graph-question-node"]').nth(index).getByTestId('fork-node').click()
   await expect(page.getByTestId('fork-dialog')).toBeVisible()
+  await page.getByTestId('fork-base-route').first().check()
   if (label) {
     await page.getByTestId('fork-label').fill(label)
   }

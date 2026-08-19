@@ -2,9 +2,11 @@ package com.specagent.api.route;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Deterministic regenerate request.
@@ -16,6 +18,8 @@ import java.util.List;
  * never accepted.
  */
 public record RegenerateNodeRequest(
+        @NotNull(message = "must be provided")
+        UUID sourceRouteId,
         @Size(max = 2000, message = "must be at most 2000 characters")
         String instruction,
         @NotBlank(message = "must not be blank")
@@ -25,4 +29,5 @@ public record RegenerateNodeRequest(
         String replacementPurpose,
         @Valid
         List<ReplacementOptionRequest> replacementOptions) {
+
 }

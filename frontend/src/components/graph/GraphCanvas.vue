@@ -61,7 +61,11 @@ const emit = defineEmits<{
   draft: []
   'submit-answer': [payload: SubmitAnswerRequest]
   fork: [nodeId: string]
+  reanswer: [nodeId: string]
   regenerate: [nodeId: string]
+  routes: []
+  inspector: []
+  'reset-windows': []
 }>()
 
 const graphUi = useGraphUiStore()
@@ -144,6 +148,20 @@ function clearActiveNodeFitTimer(): void {
   }
 }
 
+/** Runtime commands identify canonical nodes; Vue Flow renders visual
+ * instances. Resolve a command target through the Active route so a
+ * Re-answer/Replace branch can still be located without guessing a route. */
+function resolveFlowNodeId(nodeId: string): string {
+  if (flowNodes.value.some((node) => node.id === nodeId)) {
+    return nodeId
+  }
+  const activeRouteId = props.view?.activeRouteId ?? null
+  return projection.value.nodes.find((node) =>
+    node.data?.canonicalNodeId === nodeId
+      && (activeRouteId === null || node.data?.routeIds.includes(activeRouteId)),
+  )?.id ?? nodeId
+}
+
 /**
  * 该节点当前在画布视口内的可见面积比例（0..1）。几何未知时保守返回 1，
  * 避免在加载中途自作主张移动视口。
@@ -155,7 +173,7 @@ function nodeVisibilityFraction(nodeId: string): number {
   if (!canvasWidth || !canvasHeight) {
     return 1
   }
-  const target = collectViewportNodes(new Set([nodeId]))[0]
+  const target = collectViewportNodes(new Set([resolveFlowNodeId(nodeId)]))[0]
   if (!target) {
     return 1
   }
@@ -297,7 +315,7 @@ function manualFitNode(nodeId: string, avoidOverlays = false): void {
   if (!canvasWidth || !canvasHeight) {
     return
   }
-  const target = collectViewportNodes(new Set([nodeId]))[0] ?? null
+  const target = collectViewportNodes(new Set([resolveFlowNodeId(nodeId)]))[0] ?? null
   applyViewport(
     avoidOverlays
       ? fitInReadableViewport(target ? [target] : [], { padding: 48 })
@@ -428,6 +446,15 @@ function onNodeClick(event: NodeMouseEvent): void {
 
 /** Edge clicks use the same deterministic route resolution as nodes. */
 function onEdgeClick(event: EdgeMouseEvent): void {
+  const allRouteIds = [...new Set(
+    ((event.edge.data as { routeIds?: string[] } | undefined)?.routeIds ?? []),
+  )]
+  if (allRouteIds.length > 1) {
+    // A shared physical edge is an ambiguous route segment. Selecting it is
+    // browser-only; Focus must not guess a member route.
+    graphUi.selectEdge(event.edge.id, allRouteIds)
+    return
+  }
   const visibleRouteIds =
     (event.edge.data as { visibleRouteIds?: string[] } | undefined)?.visibleRouteIds ?? []
   const intent = resolveRouteFocusIntent(
@@ -464,11 +491,10 @@ async function locateRoute(routeId: string): Promise<void> {
   if (!route) {
     return
   }
-  const visibleIds = new Set<string>()
-  for (const node of flowNodes.value) {
-    visibleIds.add(node.id)
-  }
-  const ids = route.lineageNodeIds.filter((id) => visibleIds.has(id))
+  const visibleIds = new Set(flowNodes.value.map((node) => node.id))
+  const ids = projection.value.nodes
+    .filter((node) => node.data?.routeIds.includes(routeId) && visibleIds.has(node.id))
+    .map((node) => node.id)
   const canvasWidth = vf.dimensions.value.width
   const canvasHeight = vf.dimensions.value.height
   if (ids.length === 0 || !canvasWidth || !canvasHeight) {
@@ -524,7 +550,15 @@ async function autoLayout(): Promise<void> {
   for (const node of flowNodes.value) {
     visibleIds.add(node.id)
   }
-  const nodes = props.view.nodes.filter((n) => visibleIds.has(n.id))
+  const projected = projection.value
+  const parentByVisualKey = new Map(
+    projected.edges
+      .filter((edge) => edge.data?.kind === 'lineage')
+      .map((edge) => [edge.target, edge.source]),
+  )
+  const nodes = projected.nodes
+    .filter((node) => visibleIds.has(node.id))
+    .map((node) => ({ id: node.id, parentNodeId: parentByVisualKey.get(node.id) ?? null }))
   const positions = computeInitialLayout(nodes, {})
   graphUi.setNodePositions(positions)
 
@@ -560,6 +594,9 @@ const isEmptyProject = computed(() =>
       @fit-view="fitView"
       @auto-layout="autoLayout"
       @show-all="showAll"
+      @routes="emit('routes')"
+      @inspector="emit('inspector')"
+      @reset-windows="emit('reset-windows')"
     />
 
     <div v-if="view && !isEmptyProject" class="graph-canvas__flow">
@@ -597,6 +634,7 @@ const isEmptyProject = computed(() =>
             @toggle-expanded="graphUi.toggleExpanded"
             @focus-route="graphUi.setFocusRoute"
             @fork="(id) => emit('fork', id)"
+            @reanswer="(id) => emit('reanswer', id)"
             @regenerate="(id) => emit('regenerate', id)"
           />
         </template>

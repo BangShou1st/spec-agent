@@ -53,6 +53,9 @@ export interface RouteResponse {
   createdFromNodeId: string | null
   supersedesRouteId: string | null
   replacementOfNodeId: string | null
+  branchType?: 'fork' | 'reanswer' | 'regenerate' | null
+  sourceRouteId?: string | null
+  branchAtNodeId?: string | null
   createdAt: string
   updatedAt: string
   /** Backend-derived: routeId === Project.activeRouteId at read time. */
@@ -173,8 +176,14 @@ export interface RouteMutationResponse {
   activeRouteId: string | null
 }
 
-/** Fork request: only user-controlled label; runtime owns every route id. */
+/** Explicit-source Fork request; runtime owns every generated route id. */
 export interface ForkRouteRequest {
+  sourceRouteId?: string
+  label?: string | null
+}
+
+export interface ReanswerRouteRequest {
+  sourceRouteId: string
   label?: string | null
 }
 
@@ -186,6 +195,7 @@ export interface ReplacementOptionRequest {
 
 /** Deterministic regenerate request; runtime-owned ids are never accepted. */
 export interface RegenerateNodeRequest {
+  sourceRouteId?: string
   instruction?: string | null
   replacementQuestion: string
   replacementPurpose?: string | null
@@ -292,6 +302,8 @@ export interface GraphWorkspaceNodeView {
 export interface GraphWorkspaceAnswerView {
   id: string
   routeId: string
+  ownerRouteId?: string
+  inherited?: boolean
   nodeId: string
   selectedOptionId: string | null
   freeText: string | null
@@ -309,6 +321,9 @@ export interface GraphWorkspaceRouteView {
   createdFromNodeId: string | null
   supersedesRouteId: string | null
   replacementOfNodeId: string | null
+  branchType?: 'fork' | 'reanswer' | 'regenerate' | null
+  sourceRouteId?: string | null
+  branchAtNodeId?: string | null
   lineageNodeIds: string[]
 }
 

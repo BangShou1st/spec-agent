@@ -8,9 +8,8 @@ import {
 
 /**
  * Fork semantics on the graph: from an answered shared history node the user
- * must pick an explicit base route; the runtime only forks when the base is
- * active + OPEN. Shared nodes are never copied, old answers stay, and the
- * new active route shows a waiting/answerable shared node.
+ * must pick an explicit source route. Shared nodes are never copied, old
+ * answers stay immutable, and the new route drafts its first child.
  */
 test('fork from an answered historical node keeps shared nodes and answers', async ({ page }) => {
   await createProject(page, 'E2E Fork Graph Flow')
@@ -21,12 +20,12 @@ test('fork from an answered historical node keeps shared nodes and answers', asy
   // 从已回答的 child（index 1）fork；基路线默认 = 当前路线（active+open）。
   await forkFromNode(page, 1, 'Forked from child')
 
-  // 两条路线可见；节点没有被复制（仍是 3 个）；新路线成为当前路线。
+  // 两条路线可见；共享前缀仍是一份视觉节点，新路线已自动起草首个子问题。
   await expect(page.locator('[data-route-id]')).toHaveCount(2)
-  await expect(page.locator('.graph-question-node')).toHaveCount(3)
+  await expect(page.locator('.graph-question-node')).toHaveCount(4)
   await expect(page.getByTestId('active-route')).toHaveCount(1)
 
-  // fork 不复制回答：共享 child 对新路线仍是等待回答状态（当前可回答节点）。
+  // 新路线的首个子问题是当前可回答节点。
   await expect(page.getByTestId('question')).toBeVisible()
 
   // 共享 root 对旧路线 A 有回答、对新路线 B 没有：默认摘要为空（B 是当前
@@ -34,7 +33,7 @@ test('fork from an answered historical node keeps shared nodes and answers', asy
   const sharedRoot = page.locator('[data-test="graph-question-node"]').nth(0)
   await sharedRoot.getByTestId('toggle-expanded').click()
   await expect(sharedRoot.getByTestId('node-details')).toBeVisible()
-  await expect(sharedRoot.getByText('First answer content')).toBeVisible()
+  await expect(sharedRoot.getByText('First answer content').first()).toBeVisible()
 })
 
 test('fork is blocked for an open-but-not-active base route until explicit activate', async ({ page }) => {
@@ -48,20 +47,14 @@ test('fork is blocked for an open-but-not-active base route until explicit activ
   const nonActiveCard = cards.filter({ hasNot: page.getByTestId('active-route') }).first()
   await expect(nonActiveCard).toHaveCount(1)
 
-  // 从共享 root（index 0）再次 fork，但选择非当前的 OPEN 路线 A → 禁止并提示先设为当前路线。
+  // 从共享 root（index 0）再次 fork，明确选择非当前的 OPEN 路线 A。
   await page.locator('[data-test="graph-question-node"]').nth(0).getByTestId('fork-node').click()
   await expect(page.getByTestId('fork-dialog')).toBeVisible()
   const nonActiveId = (await nonActiveCard.getAttribute('data-route-id')) ?? ''
   await page.locator(`input[name="fork-base-route"][value="${nonActiveId}"]`).check()
-  await expect(page.getByTestId('fork-submit')).toBeDisabled()
-  await expect(page.getByTestId('fork-blocker')).toContainText('先设为当前路线')
-  await page.getByTestId('fork-cancel').click()
-
-  // 显式把 A 设为当前路线后，同一节点可以正常 fork。
-  await nonActiveCard.getByTestId('activate-route').click()
-  await expect(page.getByTestId('active-route')).toHaveCount(1)
-  await page.locator('[data-test="graph-question-node"]').nth(0).getByTestId('fork-node').click()
   await expect(page.getByTestId('fork-submit')).toBeEnabled()
+  await page.getByTestId('fork-submit').click()
+  await expect(cards).toHaveCount(3)
 })
 
 test('fork dialog completes restore and activate locally without implicit fork', async ({ page }) => {
@@ -91,16 +84,7 @@ test('fork dialog completes restore and activate locally without implicit fork',
   await expect(cards).toHaveCount(routesBeforeRestore)
 
   // Restore makes the recovered route Active in the existing Runtime contract.
-  // Select the other OPEN route to exercise the separate explicit Activate step.
-  const nonActiveAfterRestore = cards.filter({ hasNot: page.getByTestId('active-route') }).first()
-  const nonActiveId = await nonActiveAfterRestore.getAttribute('data-route-id')
-  expect(nonActiveId).not.toBeNull()
-  await page.locator(`input[name="fork-base-route"][value="${nonActiveId}"]`).check()
-  await expect(page.getByTestId('activate-base-route')).toBeVisible()
-  await expect(page.getByTestId('fork-submit')).toBeDisabled()
-  await page.getByTestId('activate-base-route').click()
-  await expect(page.getByTestId('fork-dialog')).toBeVisible()
-  await expect(page.getByText('已设为当前路线。')).toBeVisible()
+  await expect(page.getByTestId('fork-submit')).toBeEnabled()
   await expect(cards).toHaveCount(routesBeforeRestore)
   await expect(page.getByTestId('fork-submit')).toBeEnabled()
 

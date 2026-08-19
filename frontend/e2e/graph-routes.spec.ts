@@ -44,12 +44,12 @@ test('focus, dim, hide, show-all and active protection on a two-route graph', as
   // 弱化：路线保留可见但视觉降权。
   await nonActive.getByTestId('dim-route').click()
   await expect(nonActive).toHaveClass(/route-card--dimmed/)
-  await expect(page.locator('.graph-question-node')).toHaveCount(3)
+  await expect(page.locator('.graph-question-node')).toHaveCount(4)
 
   // 隐藏非当前路线：只移除该路线专属元素，共享节点保留。
   await nonActive.getByTestId('hide-route').click()
   await expect(nonActive).toHaveClass(/route-card--hidden/)
-  await expect(page.locator('.graph-question-node--historical')).toHaveCount(1)
+  await expect(page.locator('.graph-question-node--historical')).toHaveCount(2)
 
   // Focus A → Hide A：Focus 自动清除，按钮回到“聚焦此路线”，焦点不再指向隐藏路线。
   await expect(nonActive).not.toHaveClass(/route-card--focused/)
@@ -64,7 +64,7 @@ test('focus, dim, hide, show-all and active protection on a two-route graph', as
   await expect(nonActive).not.toHaveClass(/route-card--focused/)
   await expect(nonActive).not.toHaveClass(/route-card--dimmed/)
   await expect(nonActive).not.toHaveClass(/route-card--hidden/)
-  await expect(page.locator('.graph-question-node--historical')).toHaveCount(2)
+  await expect(page.locator('.graph-question-node--historical')).toHaveCount(3)
 
   // 生命周期筛选：归档有专属节点的非当前路线 A（其专属节点 c）后再筛选
   // “已归档” → A 从图上消失，共享节点保留；B 的当前节点 b 不受影响。
@@ -73,40 +73,47 @@ test('focus, dim, hide, show-all and active protection on a two-route graph', as
   await page.getByTestId('confirm-route-action').click()
   await expect(page.getByText('已归档路线。')).toBeVisible()
   await page.getByTestId('filter-archived').uncheck()
-  await expect(page.locator('.graph-question-node--historical')).toHaveCount(1)
-  await page.getByTestId('filter-archived').check()
   await expect(page.locator('.graph-question-node--historical')).toHaveCount(2)
+  await page.getByTestId('filter-archived').check()
+  await expect(page.locator('.graph-question-node--historical')).toHaveCount(3)
 })
 
-test('sidebar collapse and resize persist across reload', async ({ page }) => {
-  await createProject(page, 'E2E Sidebar Persist')
+test('floating route window moves, resizes, closes, and persists across reload', async ({ page }) => {
+  await createProject(page, 'E2E Floating Window Persist')
   await buildThreeNodeLineage(page)
 
-  // 左侧栏默认展开；收起后 canvas 仍在。
-  await expect(page.getByTestId('left-sidebar')).toBeVisible()
-  await expect(page.locator('[data-test="left-sidebar"] .resizable-sidebar__content')).toBeVisible()
-  await page.getByTestId('toggle-left').click()
-  await expect(page.locator('[data-test="left-sidebar"] .resizable-sidebar__content')).toHaveCount(0)
-  await expect(page.locator('.graph-question-node')).toHaveCount(3)
-
-  // 拖动右侧 resize handle 改变宽度并持久化。
-  const handle = page.getByTestId('resize-handle-right')
-  const hb = (await handle.boundingBox()) ?? { x: 0, y: 0 }
-  await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2)
+  const canvasBefore = await page.getByTestId('graph-canvas').boundingBox()
+  const routesWindow = page.getByTestId('floating-window-routes')
+  await expect(routesWindow).toBeVisible()
+  const titlebar = routesWindow.getByTestId('floating-window-titlebar')
+  const titleBox = (await titlebar.boundingBox()) ?? { x: 0, y: 0, width: 0, height: 0 }
+  await page.mouse.move(titleBox.x + titleBox.width / 2, titleBox.y + titleBox.height / 2)
   await page.mouse.down()
-  await page.mouse.move(hb.x - 120, hb.y, { steps: 8 })
+  await page.mouse.move(titleBox.x + 120, titleBox.y + 60, { steps: 8 })
   await page.mouse.up()
+  const resize = routesWindow.getByTestId('resize-se')
+  const resizeBox = (await resize.boundingBox()) ?? { x: 0, y: 0, width: 0, height: 0 }
+  await page.mouse.move(resizeBox.x, resizeBox.y)
+  await page.mouse.down()
+  await page.mouse.move(resizeBox.x + 80, resizeBox.y + 60, { steps: 8 })
+  await page.mouse.up()
+  const canvasAfter = await page.getByTestId('graph-canvas').boundingBox()
+  expect(Math.abs((canvasAfter?.width ?? 0) - (canvasBefore?.width ?? 0))).toBeLessThan(2)
+
   const savedWidth = await page.evaluate(() => {
-    const raw = localStorage.getItem('spec-agent.workspace-ui.v1')
+    const raw = localStorage.getItem('spec-agent.workspace-ui.v2')
     if (!raw) return null
-    const parsed = JSON.parse(raw) as { rightSidebar?: { width?: number } }
-    return parsed.rightSidebar?.width ?? null
+    const parsed = JSON.parse(raw) as { windows?: { routes?: { width?: number } } }
+    return parsed.windows?.routes?.width ?? null
   })
   expect(savedWidth).not.toBeNull()
 
-  // reload 后：左侧仍收起、右侧宽度恢复。
+  await routesWindow.getByTestId('floating-window-close').click()
+  await expect(routesWindow).toHaveCount(0)
+  await page.getByTestId('open-routes').click()
+  await expect(routesWindow).toBeVisible()
   await page.reload()
-  await expect(page.locator('[data-test="left-sidebar"] .resizable-sidebar__content')).toHaveCount(0)
+  await expect(page.getByTestId('floating-window-routes')).toBeVisible()
   await expect(page.locator('.graph-question-node')).toHaveCount(3)
 })
 
@@ -116,7 +123,7 @@ test('immersive graph navigation keeps overlays off the canvas layout', async ({
   await fitGraph(page)
   await forkFromNode(page, 1, 'Route-B')
   await answerActiveNode(page, 'Route B answer')
-  await expect(page.locator('.graph-question-node')).toHaveCount(4)
+  await expect(page.locator('.graph-question-node')).toHaveCount(5)
 
   const workspace = page.getByTestId('workspace-shell')
   const canvas = page.getByTestId('graph-canvas')
@@ -126,15 +133,15 @@ test('immersive graph navigation keeps overlays off the canvas layout', async ({
   expect(canvasBox).not.toBeNull()
   expect(Math.abs((canvasBox?.width ?? 0) - (workspaceBox?.width ?? 0))).toBeLessThan(2)
 
-  const leftBox = await page.getByTestId('left-sidebar').boundingBox()
-  const rightBox = await page.getByTestId('right-sidebar').boundingBox()
+  const leftBox = await page.getByTestId('floating-window-routes').boundingBox()
+  const rightBox = await page.getByTestId('floating-window-inspector').boundingBox()
   expect(leftBox).not.toBeNull()
   expect(rightBox).not.toBeNull()
   expect((leftBox?.x ?? 0) + (leftBox?.width ?? 0)).toBeGreaterThan(canvasBox?.x ?? 0)
   expect(rightBox?.x ?? 0).toBeLessThan((canvasBox?.x ?? 0) + (canvasBox?.width ?? 0))
 
   const widthBeforeResize = (await canvas.boundingBox())?.width ?? 0
-  const resizeHandle = page.getByTestId('resize-handle-left')
+  const resizeHandle = page.getByTestId('floating-window-routes').getByTestId('resize-e')
   const handleBox = (await resizeHandle.boundingBox()) ?? { x: 0, y: 0, width: 0, height: 0 }
   await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2)
   await page.mouse.down()
@@ -146,15 +153,14 @@ test('immersive graph navigation keeps overlays off the canvas layout', async ({
   const activeCard = page.locator('[data-route-id]').filter({ has: page.getByTestId('active-route') }).first()
   const routeBId = await activeCard.getAttribute('data-route-id')
   expect(routeBId).not.toBeNull()
-  const routeBExclusiveNode = page.locator('[data-test="graph-question-node"]').last()
-  await routeBExclusiveNode.getByTestId('question').click()
+  await page.getByTestId('question').click()
   await expect(activeCard).toHaveClass(/route-card--focused/)
   await expect(page.locator('.graph-node--dimmed')).toHaveCount(1)
 
   await page.getByTestId('tab-requirement').click()
   await expect(page.getByTestId('requirement-state-panel')).toContainText(routeBId ?? '')
 
-  await page.getByTestId('graph-flow').click({ position: { x: 8, y: 8 } })
+  await page.getByTestId('show-all').click()
   await expect(activeCard).not.toHaveClass(/route-card--focused/)
   await expect(page.locator('.graph-node--dimmed')).toHaveCount(0)
 })

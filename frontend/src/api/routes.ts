@@ -1,6 +1,7 @@
 import { apiClient } from './client'
 import type {
   ForkRouteRequest,
+  ReanswerRouteRequest,
   RegenerateNodeRequest,
   RegenerateResponse,
   RouteLineageView,
@@ -47,6 +48,17 @@ export function forkNode(
 ): Promise<RouteMutationResponse> {
   return apiClient.post<RouteMutationResponse>(
     `/projects/${projectId}/nodes/${nodeId}/fork`,
+    payload,
+  )
+}
+
+export function reanswerNode(
+  projectId: string,
+  nodeId: string,
+  payload: ReanswerRouteRequest,
+): Promise<RouteMutationResponse> {
+  return apiClient.post<RouteMutationResponse>(
+    `/projects/${projectId}/nodes/${nodeId}/reanswer`,
     payload,
   )
 }

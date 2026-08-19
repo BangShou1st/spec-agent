@@ -26,6 +26,9 @@ public record GraphWorkspaceRouteView(
         UUID createdFromNodeId,
         UUID supersedesRouteId,
         UUID replacementOfNodeId,
+        String branchType,
+        UUID sourceRouteId,
+        UUID branchAtNodeId,
         List<UUID> lineageNodeIds) {
 
     public static GraphWorkspaceRouteView from(
@@ -34,6 +37,8 @@ public record GraphWorkspaceRouteView(
                 route.id(), route.label(), route.lifecycleStatus().code(),
                 route.isActive(activeRouteId), route.rootNodeId(), route.tipNodeId(),
                 route.createdFromNodeId(), route.supersedesRouteId(),
-                route.replacementOfNodeId(), List.copyOf(lineageNodeIds));
+                route.replacementOfNodeId(),
+                route.branchType() == null ? null : route.branchType().code(),
+                route.sourceRouteId(), route.branchAtNodeId(), List.copyOf(lineageNodeIds));
     }
 }

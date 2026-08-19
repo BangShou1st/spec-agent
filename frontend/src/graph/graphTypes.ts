@@ -21,9 +21,32 @@ export interface ProjectGraphPreferencesV1 {
   routeDisplayStates: Record<string, GraphRouteDisplayState>
 }
 
+/** V2 presentation namespace: positions are keyed by visual graph identity. */
+export interface ProjectGraphPreferencesV2 {
+  version: 2
+  nodePositions: Record<string, GraphPosition>
+  routeDisplayStates: Record<string, GraphRouteDisplayState>
+}
+
 /** Global workspace UI preferences persisted locally. */
 export interface WorkspaceUiPreferencesV1 {
   version: 1
   leftSidebar: { open: boolean; width: number }
   rightSidebar: { open: boolean; width: number }
+}
+
+export interface FloatingWindowPreference {
+  x: number
+  y: number
+  width: number
+  height: number
+  open: boolean
+}
+
+export interface WorkspaceUiPreferencesV2 {
+  version: 2
+  windows: {
+    routes: FloatingWindowPreference
+    inspector: FloatingWindowPreference
+  }
 }

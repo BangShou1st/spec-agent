@@ -133,10 +133,12 @@ class AnswerRouteIsolationApiIntegrationTest {
     }
 
     private RouteMutationResponse fork(UUID projectId, UUID nodeId) throws Exception {
+        UUID sourceRouteId = projectService.getProject(projectId).orElseThrow().activeRouteId();
         MvcResult result = mockMvc.perform(post("/api/v1/projects/{projectId}/nodes/{nodeId}/fork",
                         projectId, nodeId)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"label\": \"isolation fork\"}"))
+                        .content("{\"sourceRouteId\": \"" + sourceRouteId
+                                + "\", \"label\": \"isolation fork\"}"))
                 .andExpect(status().isOk())
                 .andReturn();
         return objectMapper.readValue(result.getResponse().getContentAsString(), RouteMutationResponse.class);

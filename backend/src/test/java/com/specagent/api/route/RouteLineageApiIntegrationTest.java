@@ -1,6 +1,7 @@
 package com.specagent.api.route;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.specagent.answer.AnswerService;
 import com.specagent.common.Ids;
 import com.specagent.node.Node;
 import com.specagent.node.NodeOption;
@@ -60,6 +61,8 @@ class RouteLineageApiIntegrationTest {
     private NodeService nodeService;
     @Autowired
     private NodeRepository nodeRepository;
+    @Autowired
+    private AnswerService answerService;
     @Autowired
     private DataSource dataSource;
 
@@ -205,10 +208,14 @@ class RouteLineageApiIntegrationTest {
         Chain chain = createRootChildGrandchild();
         UUID originalRouteId = chain.routeId();
         int nodeCountBefore = nodeRepository.findByProject(chain.project().id()).size();
+        answerService.finalizeAnswer(chain.project().id(), chain.routeId(), chain.child().id(),
+                null, "Child answer", "user");
 
         // Fork from the child node through the real command API.
         mockMvc.perform(post("/api/v1/projects/{projectId}/nodes/{nodeId}/fork",
-                        chain.project().id(), chain.child().id()))
+                        chain.project().id(), chain.child().id())
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"sourceRouteId\": \"" + chain.routeId() + "\"}"))
                 .andExpect(status().isOk());
 
         UUID forkRouteId = projectService.getProject(chain.project().id())

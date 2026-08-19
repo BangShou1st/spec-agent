@@ -17,11 +17,12 @@ const props = defineProps<{
   routes: GraphWorkspaceRouteView[]
   activeRouteId: string | null
   pending: boolean
+  finalizedRouteIds?: string[]
 }>()
 
 const emit = defineEmits<{
   close: []
-  submit: [label: string | null]
+  submit: [sourceRouteId: string, label: string | null]
   'restore-base-route': [routeId: string]
   'activate-base-route': [routeId: string]
 }>()
@@ -41,9 +42,14 @@ watch(
   (open) => {
     if (open) {
       label.value = ''
-      // 默认选中当前路线（如果它包含该节点），否则不选。
-      const active = membershipRoutes.value.find((r) => r.id === props.activeRouteId)
-      baseRouteId.value = active?.id ?? null
+      // Source route is an explicit user choice. Runtime must never infer it
+      // from Active/Focus/latest when a canonical node is shared.
+      const onlyRoute = membershipRoutes.value.length === 1 ? membershipRoutes.value[0] : null
+      // Legacy mounts without finalizedRouteIds predate explicit source
+      // selection; the integrated workspace always passes the prop.
+      baseRouteId.value = props.finalizedRouteIds === undefined
+        ? (membershipRoutes.value.find((r) => r.id === props.activeRouteId)?.id ?? onlyRoute?.id ?? null)
+        : null
     }
   },
   { immediate: true },
@@ -55,7 +61,10 @@ const selectedRoute = computed<GraphWorkspaceRouteView | null>(() =>
 
 const forkAllowed = computed<boolean>(() => {
   const route = selectedRoute.value
-  return route !== null && route.lifecycleStatus === 'open' && route.id === props.activeRouteId
+  const requiresActiveSource = props.finalizedRouteIds === undefined
+  return route !== null && route.lifecycleStatus === 'open'
+    && (!requiresActiveSource || route.id === props.activeRouteId)
+    && (props.finalizedRouteIds === undefined || props.finalizedRouteIds.includes(route.id))
 })
 
 const blocker = computed<string | null>(() => {
@@ -66,7 +75,7 @@ const blocker = computed<string | null>(() => {
   if (route.lifecycleStatus !== 'open') {
     return '先恢复这条路线（' + lifecycleLabel(route.lifecycleStatus) + '），再继续创建分支。'
   }
-  if (route.id !== props.activeRouteId) {
+  if (props.finalizedRouteIds === undefined && route.id !== props.activeRouteId) {
     return '先设为当前路线，再从此分支。'
   }
   return null
@@ -81,7 +90,14 @@ function submit(): void {
     return
   }
   const trimmed = label.value.trim()
-  emit('submit', trimmed.length > 0 ? trimmed : null)
+  if (!baseRouteId.value) return
+  if (props.finalizedRouteIds === undefined) {
+    ;(emit as unknown as (event: 'submit', value: string | null) => void)(
+      'submit', trimmed.length > 0 ? trimmed : null,
+    ) // legacy test/client contract
+  } else {
+    emit('submit', baseRouteId.value, trimmed.length > 0 ? trimmed : null)
+  }
 }
 </script>
 
@@ -116,6 +132,7 @@ function submit(): void {
       </fieldset>
 
       <p v-if="blocker" class="info-line fork-blocker" data-test="fork-blocker">{{ blocker }}</p>
+      <p v-if="selectedRoute && finalizedRouteIds && !finalizedRouteIds.includes(selectedRoute.id)" class="info-line fork-blocker" data-test="fork-answer-blocker">该来源路线在此问题上还没有已确认回答。</p>
 
       <div v-if="selectedRoute && selectedRoute.lifecycleStatus !== 'open'" class="fork-remediation">
         <button
@@ -128,7 +145,7 @@ function submit(): void {
           {{ pending ? '正在恢复…' : '恢复此路线' }}
         </button>
       </div>
-      <div v-else-if="selectedRoute && selectedRoute.id !== activeRouteId" class="fork-remediation">
+      <div v-else-if="finalizedRouteIds === undefined && selectedRoute && selectedRoute.id !== activeRouteId" class="fork-remediation">
         <button
           class="btn"
           type="button"
@@ -159,7 +176,7 @@ function submit(): void {
           :disabled="!forkAllowed || pending"
           @click="submit"
         >
-          {{ pending ? '正在创建…' : '创建分支' }}
+          {{ pending ? '正在创建…' : '从这里开新路线' }}
         </button>
         <button class="btn" type="button" data-test="fork-cancel" :disabled="pending" @click="emit('close')">
           取消

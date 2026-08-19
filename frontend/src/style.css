@@ -419,7 +419,8 @@ textarea {
   position: absolute;
   top: 52px;
   left: 50%;
-  z-index: 10;
+  z-index: 40;
+  pointer-events: none;
   transform: translateX(-50%);
   display: flex;
   gap: 6px;
@@ -436,6 +437,7 @@ textarea {
 .graph-toolbar__btn {
   padding: 4px 10px;
   font-size: 13px;
+  pointer-events: auto;
 }
 
 /* ---- start placeholder ---- */
@@ -808,6 +810,16 @@ textarea {
   height: 100%;
 }
 
+.workspace-shell__compat-control,
+.workspace-shell__compat-marker {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: auto;
+}
+
 .workspace-shell__status-layer,
 .workspace-shell__toast-layer {
   position: absolute;
@@ -852,6 +864,138 @@ textarea {
   border-radius: 999px;
   background: rgb(255 255 255 / 88%);
   box-shadow: 0 4px 12px rgb(31 36 48 / 10%);
+}
+
+/* ---------- Floating graph workspace windows ---------- */
+
+.floating-window {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: visible;
+  background: rgb(255 255 255 / 92%);
+  border: 1px solid rgb(135 145 165 / 42%);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgb(31 36 48 / 18%);
+  backdrop-filter: blur(10px);
+}
+
+.floating-window__titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 36px;
+  padding: 0 8px 0 12px;
+  border-bottom: 1px solid var(--color-border);
+  border-radius: 12px 12px 0 0;
+  cursor: move;
+  user-select: none;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.floating-window__titlebar-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.floating-window__button {
+  padding: 2px 6px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.floating-window__button:hover {
+  background: var(--color-subdued);
+  color: var(--color-text);
+}
+
+.floating-window__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px;
+}
+
+.floating-window__resize {
+  position: absolute;
+  z-index: 2;
+}
+
+.floating-window__resize--n,
+.floating-window__resize--s { left: 10px; right: 10px; height: 7px; cursor: ns-resize; }
+.floating-window__resize--n { top: -3px; }
+.floating-window__resize--s { bottom: -3px; }
+.floating-window__resize--e,
+.floating-window__resize--w { top: 10px; bottom: 10px; width: 7px; cursor: ew-resize; }
+.floating-window__resize--e { right: -3px; }
+.floating-window__resize--w { left: -3px; }
+.floating-window__resize--ne,
+.floating-window__resize--nw,
+.floating-window__resize--se,
+.floating-window__resize--sw { width: 12px; height: 12px; }
+.floating-window__resize--ne { right: -4px; top: -4px; cursor: nesw-resize; }
+.floating-window__resize--nw { left: -4px; top: -4px; cursor: nwse-resize; }
+.floating-window__resize--se { right: -4px; bottom: -4px; cursor: nwse-resize; }
+.floating-window__resize--sw { left: -4px; bottom: -4px; cursor: nesw-resize; }
+
+.route-navigator__heading {
+  margin: 0 0 6px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.route-navigator__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin-bottom: 12px;
+}
+
+.route-navigator__filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.route-navigator__route {
+  margin-bottom: 8px;
+  padding: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 72%);
+  cursor: pointer;
+}
+
+.route-navigator__route--focused {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 1px var(--color-accent-soft);
+}
+
+.route-navigator__route-head,
+.route-navigator__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.route-navigator__label {
+  margin: 4px 0 2px;
+  font-weight: 600;
+}
+
+.route-navigator__actions {
+  margin-top: 6px;
 }
 
 /* The graph remains the only layout surface; panels float above it. */

@@ -455,7 +455,7 @@ describe('graph canvas', () => {
     expect(ui.focusRouteId).toBe('r2')
   })
 
-  it('shared node and edge clicks resolve Focus without activating Runtime', () => {
+  it('shared node and edge clicks keep Focus explicit without activating Runtime', () => {
     const wrapper = mountCanvas(viewWithNodes({ activeRouteId: 'r3' }))
     const ui = useGraphUiStore()
     const flow = wrapper.findComponent(VueFlowStub)
@@ -467,9 +467,11 @@ describe('graph canvas', () => {
     ui.clearFocusRoute()
     flow.vm.$emit('edge-click', {
       event: new MouseEvent('click'),
-      edge: { data: { routeIds: ['r1', 'r2'], visibleRouteIds: ['r2'] } },
+      edge: { id: 'shared-edge', data: { routeIds: ['r1', 'r2'], visibleRouteIds: ['r2'] } },
     })
-    expect(ui.focusRouteId).toBe('r2')
+    expect(ui.focusRouteId).toBeNull()
+    expect(ui.selectedEdgeId).toBe('shared-edge')
+    expect(ui.selectedSharedEdgeRouteIds).toEqual(['r1', 'r2'])
     expect(wrapper.props('view')).toMatchObject({ activeRouteId: 'r3' })
   })
 

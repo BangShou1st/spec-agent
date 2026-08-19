@@ -110,6 +110,7 @@ class RegenerateApiIntegrationTest {
                         .contentType(APPLICATION_JSON)
                         .content("""
                                 {
+                                  "sourceRouteId": "%s",
                                   "instruction": "%s",
                                   "replacementQuestion": "A sharper replacement question",
                                   "replacementPurpose": "A sharper purpose",
@@ -117,7 +118,7 @@ class RegenerateApiIntegrationTest {
                                     {"label": "Option label", "impact": "Option impact"}
                                   ]
                                 }
-                                """.formatted(REGEN_INSTRUCTION)))
+                                """.formatted(s.sourceRouteId(), REGEN_INSTRUCTION)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.oldRoute.lifecycleStatus").value("superseded"))
                 .andExpect(jsonPath("$.oldRoute.isActive").value(false))
@@ -172,8 +173,8 @@ class RegenerateApiIntegrationTest {
                         project.id(), Ids.random())
                         .contentType(APPLICATION_JSON)
                         .content("""
-                                {"replacementQuestion": "Replacement question"}
-                                """))
+                                {"sourceRouteId": "%s", "replacementQuestion": "Replacement question"}
+                                """.formatted(project.activeRouteId())))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("NODE_NOT_FOUND"));
     }
@@ -188,8 +189,8 @@ class RegenerateApiIntegrationTest {
                         projectB.id(), nodeA.id())
                         .contentType(APPLICATION_JSON)
                         .content("""
-                                {"replacementQuestion": "Replacement question"}
-                                """))
+                                {"sourceRouteId": "%s", "replacementQuestion": "Replacement question"}
+                                """.formatted(projectB.activeRouteId())))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("NODE_NOT_FOUND"));
     }
@@ -204,8 +205,8 @@ class RegenerateApiIntegrationTest {
                         project.id(), root.id())
                         .contentType(APPLICATION_JSON)
                         .content("""
-                                {"replacementQuestion": "Replacement question"}
-                                """))
+                                {"sourceRouteId": "%s", "replacementQuestion": "Replacement question"}
+                                """.formatted(project.activeRouteId())))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("REGENERATE_ROOT_NOT_SUPPORTED"));
     }
@@ -230,8 +231,8 @@ class RegenerateApiIntegrationTest {
                         project.id(), target.id())
                         .contentType(APPLICATION_JSON)
                         .content("""
-                                {"replacementQuestion": "Replacement question"}
-                                """))
+                                {"sourceRouteId": "%s", "replacementQuestion": "Replacement question"}
+                                """.formatted(r1RouteId)))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("RUNTIME_CONFLICT"));
     }
@@ -250,8 +251,8 @@ class RegenerateApiIntegrationTest {
                         project.id(), target.id())
                         .contentType(APPLICATION_JSON)
                         .content("""
-                                {"replacementQuestion": "   "}
-                                """))
+                                {"sourceRouteId": "%s", "replacementQuestion": "   "}
+                                """.formatted(project.activeRouteId())))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
     }
@@ -272,10 +273,11 @@ class RegenerateApiIntegrationTest {
                         .contentType(APPLICATION_JSON)
                         .content("""
                                 {
+                                  "sourceRouteId": "%s",
                                   "replacementQuestion": "Replacement question",
                                   "replacementOptions": [{"label": "  ", "impact": "x"}]
                                 }
-                                """))
+                                """.formatted(project.activeRouteId())))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
     }
@@ -296,10 +298,11 @@ class RegenerateApiIntegrationTest {
                         .contentType(APPLICATION_JSON)
                         .content("""
                                 {
+                                  "sourceRouteId": "%s",
                                   "replacementQuestion": "Replacement question",
                                   "replacementOptions": [{"label": "%s", "impact": "x"}]
                                 }
-                                """.formatted("x".repeat(501))))
+                                """.formatted(project.activeRouteId(), "x".repeat(501))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
 
@@ -324,10 +327,11 @@ class RegenerateApiIntegrationTest {
                         .contentType(APPLICATION_JSON)
                         .content("""
                                 {
+                                  "sourceRouteId": "%s",
                                   "replacementQuestion": "Replacement question",
                                   "replacementOptions": [{"label": "x", "impact": "%s"}]
                                 }
-                                """.formatted("x".repeat(2001))))
+                                """.formatted(project.activeRouteId(), "x".repeat(2001))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
 

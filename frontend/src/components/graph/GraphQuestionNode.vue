@@ -48,6 +48,7 @@ const emit = defineEmits<{
   'toggle-expanded': [nodeId: string]
   'focus-route': [routeId: string]
   fork: [nodeId: string]
+  reanswer: [nodeId: string]
   regenerate: [nodeId: string]
 }>()
 
@@ -114,7 +115,7 @@ function submit(): void {
 }
 
 function toggleExpanded(): void {
-  emit('toggle-expanded', props.data.node.id)
+  emit('toggle-expanded', props.data.visualNodeKey ?? props.data.node.id)
 }
 
 function forkNode(): void {
@@ -123,6 +124,10 @@ function forkNode(): void {
 
 function regenerateNode(): void {
   emit('regenerate', props.data.node.id)
+}
+
+function reanswerNode(): void {
+  emit('reanswer', props.data.node.id)
 }
 
 const isRootNode = computed(() => props.data.node.parentNodeId === null)
@@ -352,19 +357,27 @@ const routeMembership = computed(() =>
           <button
             class="btn graph-action nodrag"
             data-test="fork-node"
-            title="从该问题创建新分支路线"
+            title="我接受现在，换未来。"
             @click.stop="forkNode"
           >
-            从此分支
+            从这里开新路线
+          </button>
+          <button
+            class="btn graph-action nodrag"
+            data-test="reanswer-node"
+            title="问题没错，答案换一个。"
+            @click.stop="reanswerNode"
+          >
+            重新选择答案
           </button>
           <button
             class="btn graph-action nodrag"
             data-test="regenerate-node"
             :disabled="isRootNode || pending"
-            title="重新生成这个问题"
+            title="问题本身换掉。"
             @click.stop="regenerateNode"
           >
-            重新生成这个问题
+            创建替代问题
           </button>
         </div>
       </template>

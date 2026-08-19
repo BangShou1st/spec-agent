@@ -31,6 +31,9 @@ public class RouteRepository {
                 rs.getObject("supersedes_route_id", UUID.class),
                 rs.getObject("replacement_of_node_id", UUID.class),
                 rs.getObject("created_by_run_id", UUID.class),
+                RouteBranchType.fromCode(rs.getString("branch_type")),
+                rs.getObject("source_route_id", UUID.class),
+                rs.getObject("branch_at_node_id", UUID.class),
                 rs.getTimestamp("created_at").toInstant(),
                 rs.getTimestamp("updated_at").toInstant());
     }
@@ -39,10 +42,12 @@ public class RouteRepository {
         String sql = """
                 INSERT INTO routes (id, project_id, root_node_id, tip_node_id, lifecycle_status,
                                     label, created_from_node_id, supersedes_route_id,
-                                    replacement_of_node_id, created_by_run_id, created_at, updated_at)
+                                    replacement_of_node_id, created_by_run_id, branch_type,
+                                    source_route_id, branch_at_node_id, created_at, updated_at)
                 VALUES (:id, :projectId, :rootNodeId, :tipNodeId, :lifecycleStatus, :label,
                         :createdFromNodeId, :supersedesRouteId, :replacementOfNodeId,
-                        :createdByRunId, :createdAt, :updatedAt)
+                        :createdByRunId, :branchType, :sourceRouteId, :branchAtNodeId,
+                        :createdAt, :updatedAt)
                 """;
         jdbcTemplate.update(sql, Maps.of(
                 "id", route.id(),
@@ -55,6 +60,9 @@ public class RouteRepository {
                 "supersedesRouteId", route.supersedesRouteId(),
                 "replacementOfNodeId", route.replacementOfNodeId(),
                 "createdByRunId", route.createdByRunId(),
+                "branchType", route.branchType() == null ? null : route.branchType().code(),
+                "sourceRouteId", route.sourceRouteId(),
+                "branchAtNodeId", route.branchAtNodeId(),
                 "createdAt", Timestamp.from(route.createdAt()),
                 "updatedAt", Timestamp.from(route.updatedAt())));
     }

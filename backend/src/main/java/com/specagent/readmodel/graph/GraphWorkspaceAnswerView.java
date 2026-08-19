@@ -15,14 +15,22 @@ import java.util.UUID;
 public record GraphWorkspaceAnswerView(
         UUID id,
         UUID routeId,
+        UUID ownerRouteId,
+        boolean inherited,
         UUID nodeId,
         String selectedOptionId,
         String freeText,
         Instant createdAt) {
 
     public static GraphWorkspaceAnswerView from(Answer answer) {
+        return from(answer, answer.routeId(), false);
+    }
+
+    public static GraphWorkspaceAnswerView from(Answer answer,
+                                                UUID traversingRouteId,
+                                                boolean inherited) {
         return new GraphWorkspaceAnswerView(
-                answer.id(), answer.routeId(), answer.nodeId(),
+                answer.id(), traversingRouteId, answer.routeId(), inherited, answer.nodeId(),
                 answer.selectedOptionId(), answer.freeText(), answer.createdAt());
     }
 }

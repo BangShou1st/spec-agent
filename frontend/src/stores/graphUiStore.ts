@@ -3,17 +3,24 @@ import type { RouteLifecycleStatus } from '@/api/types'
 import {
   LEFT_SIDEBAR_RANGE,
   RIGHT_SIDEBAR_RANGE,
-  loadProjectGraphPreferences,
+  loadProjectGraphPreferencesV2,
   loadWorkspaceUiPreferences,
+  loadWorkspaceUiPreferencesV2,
   saveProjectGraphPreferences,
+  saveProjectGraphPreferencesV2,
   saveWorkspaceUiPreferences,
+  saveWorkspaceUiPreferencesV2,
 } from '@/graph/graphLayoutStorage'
 import type {
   GraphPosition,
   GraphRouteDisplayState,
   ProjectGraphPreferencesV1,
+  ProjectGraphPreferencesV2,
   WorkspaceUiPreferencesV1,
+  WorkspaceUiPreferencesV2,
+  FloatingWindowPreference,
 } from '@/graph/graphTypes'
+import { buildVisualInstances } from '@/graph/graphVisualIdentity'
 
 const DEFAULT_FILTERS: Record<RouteLifecycleStatus, boolean> = {
   open: true,
@@ -40,16 +47,21 @@ const DEFAULT_FILTERS: Record<RouteLifecycleStatus, boolean> = {
 export const useGraphUiStore = defineStore('graphUi', {
   state: () => {
     const workspaceUi = loadWorkspaceUiPreferences()
+    const floatingUi = loadWorkspaceUiPreferencesV2()
     return {
       projectId: null as string | null,
       activeRouteId: null as string | null,
       selectedNodeIds: [] as string[],
       primarySelectedNodeId: null as string | null,
+      selectedEdgeId: null as string | null,
+      selectedSharedEdgeRouteIds: [] as string[],
       focusRouteId: null as string | null,
       lifecycleFilters: { ...DEFAULT_FILTERS } as Record<RouteLifecycleStatus, boolean>,
       routeDisplayStates: {} as Record<string, GraphRouteDisplayState>,
       expandedNodeIds: [] as string[],
       nodePositions: {} as Record<string, GraphPosition>,
+      floatingWindows: { ...floatingUi.windows } as WorkspaceUiPreferencesV2['windows'],
+      windowZOrder: ['routes', 'inspector'] as Array<'routes' | 'inspector'>,
       leftSidebarOpen: workspaceUi.leftSidebar.open,
       leftSidebarWidth: workspaceUi.leftSidebar.width,
       rightSidebarOpen: workspaceUi.rightSidebar.open,
@@ -75,9 +87,9 @@ export const useGraphUiStore = defineStore('graphUi', {
       this.primarySelectedNodeId = null
       this.focusRouteId = null
       this.expandedNodeIds = []
-      const prefs = loadProjectGraphPreferences(projectId)
-      this.nodePositions = { ...prefs.nodePositions }
-      this.routeDisplayStates = { ...prefs.routeDisplayStates }
+      const v2 = loadProjectGraphPreferencesV2(projectId)
+      this.nodePositions = { ...v2.nodePositions }
+      this.routeDisplayStates = { ...v2.routeDisplayStates }
     },
 
     /** readingRouteId = focusRouteId ?? activeRouteId (browser-only). */
@@ -89,10 +101,12 @@ export const useGraphUiStore = defineStore('graphUi', {
     selectNode(nodeId: string): void {
       this.selectedNodeIds = [nodeId]
       this.primarySelectedNodeId = nodeId
+      this.clearEdgeSelection()
     },
 
     /** Ctrl/Cmd + click: add/remove from multi-selection. */
     toggleSelectNode(nodeId: string): void {
+      this.clearEdgeSelection()
       if (this.selectedNodeIds.includes(nodeId)) {
         this.selectedNodeIds = this.selectedNodeIds.filter((id) => id !== nodeId)
         if (this.primarySelectedNodeId === nodeId) {
@@ -107,6 +121,7 @@ export const useGraphUiStore = defineStore('graphUi', {
     /** Mirrors a Vue Flow selection batch into the UI store. */
     setSelection(nodeIds: string[]): void {
       this.selectedNodeIds = [...nodeIds]
+      if (nodeIds.length > 0) this.clearEdgeSelection()
       if (!this.primarySelectedNodeId || !nodeIds.includes(this.primarySelectedNodeId)) {
         this.primarySelectedNodeId = nodeIds[0] ?? null
       }
@@ -115,6 +130,17 @@ export const useGraphUiStore = defineStore('graphUi', {
     clearSelection(): void {
       this.selectedNodeIds = []
       this.primarySelectedNodeId = null
+    },
+
+    selectEdge(edgeId: string, routeIds: string[]): void {
+      this.selectedEdgeId = edgeId
+      this.selectedSharedEdgeRouteIds = [...routeIds]
+      this.clearSelection()
+    },
+
+    clearEdgeSelection(): void {
+      this.selectedEdgeId = null
+      this.selectedSharedEdgeRouteIds = []
     },
 
     setFocusRoute(routeId: string | null): void {
@@ -189,6 +215,25 @@ export const useGraphUiStore = defineStore('graphUi', {
         : [...this.expandedNodeIds, nodeId]
     },
 
+    setFloatingWindow(name: 'routes' | 'inspector', value: Partial<FloatingWindowPreference>): void {
+      this.floatingWindows = {
+        ...this.floatingWindows,
+        [name]: { ...this.floatingWindows[name], ...value },
+      }
+      this.persistWorkspaceV2()
+    },
+
+    bringWindowToFront(name: 'routes' | 'inspector'): void {
+      this.windowZOrder = [...this.windowZOrder.filter((item) => item !== name), name]
+    },
+
+    resetWindows(): void {
+      const prefs = loadWorkspaceUiPreferencesV2()
+      this.floatingWindows = { ...prefs.windows }
+      this.windowZOrder = ['routes', 'inspector']
+      this.persistWorkspaceV2()
+    },
+
     setNodePosition(nodeId: string, position: GraphPosition): void {
       this.nodePositions = { ...this.nodePositions, [nodeId]: position }
       this.persistProjectState()
@@ -228,6 +273,11 @@ export const useGraphUiStore = defineStore('graphUi', {
       }
       this.activeRouteId = view.activeRouteId
       const nodeIds = new Set(view.nodes.map((node) => node.id))
+      if ('routes' in view && 'nodes' in view) {
+        for (const instance of buildVisualInstances(view as Parameters<typeof buildVisualInstances>[0])) {
+          nodeIds.add(instance.visualNodeKey)
+        }
+      }
       this.selectedNodeIds = this.selectedNodeIds.filter((id) => nodeIds.has(id))
       if (
         this.primarySelectedNodeId &&
@@ -271,6 +321,12 @@ export const useGraphUiStore = defineStore('graphUi', {
         routeDisplayStates: { ...this.routeDisplayStates },
       }
       saveProjectGraphPreferences(this.projectId, prefs)
+      const prefsV2: ProjectGraphPreferencesV2 = {
+        version: 2,
+        nodePositions: { ...this.nodePositions },
+        routeDisplayStates: { ...this.routeDisplayStates },
+      }
+      saveProjectGraphPreferencesV2(this.projectId, prefsV2)
     },
 
     persistWorkspaceState(): void {
@@ -280,6 +336,18 @@ export const useGraphUiStore = defineStore('graphUi', {
         rightSidebar: { open: this.rightSidebarOpen, width: this.rightSidebarWidth },
       }
       saveWorkspaceUiPreferences(prefs)
+      this.persistWorkspaceV2()
+    },
+
+    persistWorkspaceV2(): void {
+      const prefs: WorkspaceUiPreferencesV2 = {
+        version: 2,
+        windows: {
+          routes: { ...this.floatingWindows.routes },
+          inspector: { ...this.floatingWindows.inspector },
+        },
+      }
+      saveWorkspaceUiPreferencesV2(prefs)
     },
   },
 })

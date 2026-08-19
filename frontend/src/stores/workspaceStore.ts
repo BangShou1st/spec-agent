@@ -8,12 +8,14 @@ import {
   archiveRoute,
   deleteRoute,
   forkNode,
+  reanswerNode,
   regenerateNode as regenerateNodeCommand,
   restoreRoute,
 } from '@/api/routes'
 import { generateSpec, listRouteSpecs } from '@/api/spec'
 import type {
   ActiveProjectStateResponse,
+  ForkRouteRequest,
   GraphWorkspaceView,
   ProjectResponse,
   RegenerateNodeRequest,
@@ -42,6 +44,7 @@ export type PendingRouteCommand =
   | 'archive'
   | 'delete'
   | 'fork'
+  | 'reanswer'
   | 'regenerate'
   | null
 
@@ -92,6 +95,8 @@ export const useWorkspaceStore = defineStore('workspace', {
     // Route command lockout: one precise command at a time.
     routeCommandPending: false,
     pendingRouteCommand: null as PendingRouteCommand,
+    /** Fork is durable even when its follow-up Draft command fails. */
+    forkDraftRetryRouteId: null as string | null,
 
     // Spec snapshots per route (backend-derived, never authored here).
     generatingSpec: false,
@@ -304,17 +309,79 @@ export const useWorkspaceStore = defineStore('workspace', {
      * route id and makes it active; the frontend then refreshes canonical
      * reads and never guesses the new route id.
      */
-    async forkNode(nodeId: string, label?: string | null): Promise<boolean> {
+    async forkNode(nodeId: string, sourceRouteId?: string | null, label?: string | null): Promise<boolean> {
       if (!this.projectId || this.routeCommandPending || this.submitting || this.drafting) {
+        return false
+      }
+      const explicitSource = sourceRouteId !== null && sourceRouteId !== undefined
+        && (label !== undefined || this.routes.some((route) => route.id === sourceRouteId))
+      const legacyLabel = explicitSource ? label : (sourceRouteId ?? null)
+      if (!explicitSource && label === undefined && sourceRouteId === undefined) {
+        // Keep old in-process callers working; the API/UI path always passes
+        // an explicit source route and never reaches this compatibility path.
+        sourceRouteId = undefined
+      }
+      if (explicitSource && !sourceRouteId) {
+        this.error = { code: 'SOURCE_ROUTE_REQUIRED', message: '请选择明确的来源路线。' }
         return false
       }
       this.routeCommandPending = true
       this.pendingRouteCommand = 'fork'
       this.error = null
+      this.forkDraftRetryRouteId = null
       try {
-        await forkNode(this.projectId, nodeId, { label: label ?? null })
+        const result = await forkNode(this.projectId, nodeId, explicitSource
+          ? { sourceRouteId: sourceRouteId ?? '', label: label ?? null }
+          : { label: legacyLabel } as ForkRouteRequest)
         await this.refreshWorkspace()
+        if (!explicitSource) {
+          this.feedback = '已创建新分支路线。'
+          return true
+        }
+        // Fork and first-child Draft are separate Runtime commands. The
+        // route is intentionally preserved if Draft fails.
+        this.routeCommandPending = false
+        this.pendingRouteCommand = null
+        const drafted = await this.draftQuestion()
+        if (!drafted) {
+          this.forkDraftRetryRouteId = result.route.id
+          this.feedback = '分支已创建，但首个后续问题起草失败，可重试。'
+          return false
+        }
         this.feedback = '已创建新分支路线。'
+        return true
+      } catch (err) {
+        this.error = toDisplayError(err)
+        return false
+      } finally {
+        this.routeCommandPending = false
+        this.pendingRouteCommand = null
+      }
+    },
+
+    async retryForkDraft(): Promise<boolean> {
+      if (!this.forkDraftRetryRouteId || this.routeCommandPending || this.drafting) {
+        return false
+      }
+      const drafted = await this.draftQuestion()
+      if (drafted) {
+        this.forkDraftRetryRouteId = null
+        this.feedback = '已起草分支的首个后续问题。'
+      }
+      return drafted
+    },
+
+    async reanswerNode(nodeId: string, sourceRouteId: string, label?: string | null): Promise<boolean> {
+      if (!this.projectId || this.routeCommandPending || this.submitting || this.drafting) {
+        return false
+      }
+      this.routeCommandPending = true
+      this.pendingRouteCommand = 'reanswer'
+      this.error = null
+      try {
+        await reanswerNode(this.projectId, nodeId, { sourceRouteId, label: label ?? null })
+        await this.refreshWorkspace()
+        this.feedback = '已创建重新回答路线。'
         return true
       } catch (err) {
         this.error = toDisplayError(err)
@@ -338,6 +405,8 @@ export const useWorkspaceStore = defineStore('workspace', {
       this.routeCommandPending = true
       this.pendingRouteCommand = 'regenerate'
       this.error = null
+      // The integrated dialog supplies sourceRouteId. Retain pass-through for
+      // old in-process callers; backend validation remains authoritative.
       try {
         await regenerateNodeCommand(this.projectId, nodeId, payload)
         await this.refreshWorkspace()

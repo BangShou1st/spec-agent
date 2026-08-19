@@ -21,6 +21,9 @@ public class Route {
     private final UUID createdFromNodeId;
     private final UUID supersedesRouteId;
     private final UUID replacementOfNodeId;
+    private final RouteBranchType branchType;
+    private final UUID sourceRouteId;
+    private final UUID branchAtNodeId;
     private final UUID createdByRunId;
     private final Instant createdAt;
     private final Instant updatedAt;
@@ -37,6 +40,26 @@ public class Route {
                  UUID createdByRunId,
                  Instant createdAt,
                  Instant updatedAt) {
+        this(id, projectId, rootNodeId, tipNodeId, lifecycleStatus, label,
+                createdFromNodeId, supersedesRouteId, replacementOfNodeId,
+                createdByRunId, null, null, null, createdAt, updatedAt);
+    }
+
+    public Route(UUID id,
+                 UUID projectId,
+                 UUID rootNodeId,
+                 UUID tipNodeId,
+                 RouteLifecycleStatus lifecycleStatus,
+                 String label,
+                 UUID createdFromNodeId,
+                 UUID supersedesRouteId,
+                 UUID replacementOfNodeId,
+                 UUID createdByRunId,
+                 RouteBranchType branchType,
+                 UUID sourceRouteId,
+                 UUID branchAtNodeId,
+                 Instant createdAt,
+                 Instant updatedAt) {
         this.id = id;
         this.projectId = projectId;
         this.rootNodeId = rootNodeId;
@@ -47,6 +70,9 @@ public class Route {
         this.supersedesRouteId = supersedesRouteId;
         this.replacementOfNodeId = replacementOfNodeId;
         this.createdByRunId = createdByRunId;
+        this.branchType = branchType;
+        this.sourceRouteId = sourceRouteId;
+        this.branchAtNodeId = branchAtNodeId;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
     }
@@ -85,6 +111,18 @@ public class Route {
 
     public UUID replacementOfNodeId() {
         return replacementOfNodeId;
+    }
+
+    public RouteBranchType branchType() {
+        return branchType;
+    }
+
+    public UUID sourceRouteId() {
+        return sourceRouteId;
+    }
+
+    public UUID branchAtNodeId() {
+        return branchAtNodeId;
     }
 
     public UUID createdByRunId() {

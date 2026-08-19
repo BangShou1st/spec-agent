@@ -78,12 +78,26 @@ public class RouteCommandService {
         });
     }
 
-    public RouteMutationResponse fork(UUID projectId, UUID nodeId, String label) {
+    public RouteMutationResponse fork(UUID projectId, UUID nodeId, UUID sourceRouteId, String label) {
         return CommandExecution.execute(() -> {
             CommandExecution.requireProject(projectService, projectId);
             CommandExecution.requireNodeInProject(projectService, nodeService, projectId, nodeId);
-            Route fork = routeService.forkFromNode(projectId, nodeId, label);
+            CommandExecution.requireRouteInProject(projectService, routeService, projectId, sourceRouteId);
+            Route fork = routeService.forkFromNode(projectId, sourceRouteId, nodeId, label);
             return refresh(projectId, fork.id());
+        });
+    }
+
+    public RouteMutationResponse reanswer(UUID projectId,
+                                          UUID nodeId,
+                                          UUID sourceRouteId,
+                                          String label) {
+        return CommandExecution.execute(() -> {
+            CommandExecution.requireProject(projectService, projectId);
+            CommandExecution.requireNodeInProject(projectService, nodeService, projectId, nodeId);
+            CommandExecution.requireRouteInProject(projectService, routeService, projectId, sourceRouteId);
+            Route route = routeService.reanswerFromNode(projectId, sourceRouteId, nodeId, label);
+            return refresh(projectId, route.id());
         });
     }
 
@@ -103,6 +117,7 @@ public class RouteCommandService {
                             .toList();
             RegenerateResult result = routeService.regenerateFromNode(
                     projectId,
+                    request.sourceRouteId(),
                     nodeId,
                     request.instruction(),
                     request.replacementQuestion(),

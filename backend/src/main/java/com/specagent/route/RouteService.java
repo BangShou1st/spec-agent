@@ -36,17 +36,20 @@ public class RouteService {
     private final NodeRepository nodeRepository;
     private final NodeService nodeService;
     private final ContextBuilder contextBuilder;
+    private final RouteHistoryResolver routeHistoryResolver;
 
     public RouteService(RouteRepository routeRepository,
                         ProjectRepository projectRepository,
                         NodeRepository nodeRepository,
                         NodeService nodeService,
-                        ContextBuilder contextBuilder) {
+                        ContextBuilder contextBuilder,
+                        RouteHistoryResolver routeHistoryResolver) {
         this.routeRepository = routeRepository;
         this.projectRepository = projectRepository;
         this.nodeRepository = nodeRepository;
         this.nodeService = nodeService;
         this.contextBuilder = contextBuilder;
+        this.routeHistoryResolver = routeHistoryResolver;
     }
 
     public Route createRoute(UUID projectId, RouteLifecycleStatus status, String label) {
@@ -129,7 +132,11 @@ public class RouteService {
      * nodes, answers, patches, or sibling routes are copied, and the old route is
      * not modified. The new route becomes the project's active route.
      */
-    public Route forkFromNode(UUID projectId, UUID sourceNodeId, String label) {
+    /**
+     * Explicit-source Fork. The accepted answer at the branch point is frozen
+     * as an immutable reference in the new route prefix.
+     */
+    public Route forkFromNode(UUID projectId, UUID sourceRouteId, UUID sourceNodeId, String label) {
         Node sourceNode = nodeRepository.findById(sourceNodeId)
                 .orElseThrow(() -> new IllegalArgumentException("Node not found: " + sourceNodeId));
         if (!sourceNode.projectId().equals(projectId)) {
@@ -137,8 +144,33 @@ public class RouteService {
                     "Node " + sourceNodeId + " does not belong to project " + projectId);
         }
 
-        Route sourceRoute = findSourceRouteForNode(projectId, sourceNodeId);
+        Route sourceRoute = requireOpenRouteInProject(projectId, sourceRouteId);
+        List<UUID> sourceLineage = routeHistoryResolver.resolveLineage(sourceRoute.tipNodeId());
+        requireLineageContains(sourceLineage, sourceNodeId);
+        if (routeHistoryResolver.resolveEffectiveAnswers(sourceRouteId, sourceLineage).stream()
+                .noneMatch(answer -> answer.nodeId().equals(sourceNodeId))) {
+            throw new IllegalStateException("Fork branch point has no finalized answer: " + sourceNodeId);
+        }
 
+        UUID routeId = Ids.random();
+        Instant now = Instant.now();
+        Route forkRoute = new Route(routeId, projectId, sourceRoute.rootNodeId(), sourceNodeId,
+                RouteLifecycleStatus.OPEN, label, sourceNodeId, null, null, null,
+                RouteBranchType.FORK, sourceRouteId, sourceNodeId, now, now);
+        routeRepository.save(forkRoute);
+        routeHistoryResolver.snapshotInheritedPrefix(routeId, sourceRouteId, sourceNodeId, true);
+        projectRepository.updateActiveRoute(projectId, routeId, now);
+        return forkRoute;
+    }
+
+    /**
+     * Compatibility entry point retained for existing in-process callers from
+     * the pre-explicit-source API. New API commands must use the overload above
+     * and therefore cannot guess a route for a shared node.
+     */
+    @Deprecated
+    public Route forkFromNode(UUID projectId, UUID sourceNodeId, String label) {
+        Route sourceRoute = findSourceRouteForNode(projectId, sourceNodeId);
         UUID routeId = Ids.random();
         Instant now = Instant.now();
         Route forkRoute = new Route(routeId, projectId, sourceRoute.rootNodeId(), sourceNodeId,
@@ -146,6 +178,31 @@ public class RouteService {
         routeRepository.save(forkRoute);
         projectRepository.updateActiveRoute(projectId, routeId, now);
         return forkRoute;
+    }
+
+    /** Creates a Re-answer route with the target Question waiting again. */
+    public Route reanswerFromNode(UUID projectId,
+                                  UUID sourceRouteId,
+                                  UUID targetNodeId,
+                                  String label) {
+        Node targetNode = requireNodeInProject(projectId, targetNodeId);
+        Route sourceRoute = requireOpenRouteInProject(projectId, sourceRouteId);
+        List<UUID> sourceLineage = routeHistoryResolver.resolveLineage(sourceRoute.tipNodeId());
+        requireLineageContains(sourceLineage, targetNodeId);
+        if (routeHistoryResolver.resolveEffectiveAnswers(sourceRouteId, sourceLineage).stream()
+                .noneMatch(answer -> answer.nodeId().equals(targetNodeId))) {
+            throw new IllegalStateException("Re-answer target has no finalized answer: " + targetNodeId);
+        }
+
+        UUID routeId = Ids.random();
+        Instant now = Instant.now();
+        Route route = new Route(routeId, projectId, sourceRoute.rootNodeId(), targetNodeId,
+                RouteLifecycleStatus.OPEN, label, targetNodeId, null, null, null,
+                RouteBranchType.REANSWER, sourceRouteId, targetNodeId, now, now);
+        routeRepository.save(route);
+        routeHistoryResolver.snapshotInheritedPrefix(routeId, sourceRouteId, targetNodeId, false);
+        projectRepository.updateActiveRoute(projectId, routeId, now);
+        return route;
     }
 
     /**
@@ -157,6 +214,7 @@ public class RouteService {
      * its answers, patches, child subtree, and sibling conclusions.
      */
     public RegenerateResult regenerateFromNode(UUID projectId,
+                                                UUID sourceRouteId,
                                                 UUID targetNodeId,
                                                 String userInstruction,
                                                 String replacementQuestion,
@@ -174,8 +232,10 @@ public class RouteService {
             throw new IllegalStateException("Root node regeneration is not supported yet");
         }
 
-        // Find the source route that covers this node (must be OPEN)
-        Route sourceRoute = findSourceRouteForNode(projectId, targetNodeId);
+        // The source route is explicit; no active/latest/first-route fallback is
+        // permitted when a canonical node is shared.
+        Route sourceRoute = requireOpenRouteInProject(projectId, sourceRouteId);
+        requireLineageContains(routeHistoryResolver.resolveLineage(sourceRoute.tipNodeId()), targetNodeId);
         UUID oldRouteId = sourceRoute.id();
 
         // Mark the old route as SUPERSEDED
@@ -197,10 +257,16 @@ public class RouteService {
                 oldRouteId,
                 targetNodeId,
                 null,
+                RouteBranchType.REGENERATE,
+                sourceRouteId,
+                targetNodeId,
                 now,
                 now
         );
         routeRepository.save(replacementRoute);
+
+        routeHistoryResolver.snapshotInheritedPrefix(
+                replacementRouteId, sourceRouteId, targetNode.parentNodeId(), true);
 
         // Create the replacement node as part of the replacement route, which
         // advances only that route's tip to the new node.
@@ -233,6 +299,19 @@ public class RouteService {
                 updatedReplacementRoute,
                 replacementNode,
                 contextSnapshot);
+    }
+
+    /** Compatibility entry point for pre-explicit-source in-process callers. */
+    @Deprecated
+    public RegenerateResult regenerateFromNode(UUID projectId,
+                                                UUID targetNodeId,
+                                                String userInstruction,
+                                                String replacementQuestion,
+                                                String replacementPurpose,
+                                                List<NodeOption> replacementOptions) {
+        Route sourceRoute = findSourceRouteForNode(projectId, targetNodeId);
+        return regenerateFromNode(projectId, sourceRoute.id(), targetNodeId, userInstruction,
+                replacementQuestion, replacementPurpose, replacementOptions);
     }
 
     /**
@@ -274,7 +353,7 @@ public class RouteService {
             }
         }
 
-        throw new IllegalStateException(
+        throw new IllegalArgumentException(
                 "No OPEN route found that contains node " + nodeId + " in project " + projectId);
     }
 
@@ -369,6 +448,29 @@ public class RouteService {
             throw new IllegalArgumentException("Route " + routeId + " does not belong to project " + projectId);
         }
         return route;
+    }
+
+    private Route requireOpenRouteInProject(UUID projectId, UUID routeId) {
+        Route route = requireRouteInProject(projectId, routeId);
+        if (route.lifecycleStatus() != RouteLifecycleStatus.OPEN) {
+            throw new IllegalStateException("Only an OPEN route can be a branch source: " + routeId);
+        }
+        return route;
+    }
+
+    private Node requireNodeInProject(UUID projectId, UUID nodeId) {
+        Node node = nodeRepository.findById(nodeId)
+                .orElseThrow(() -> new IllegalArgumentException("Node not found: " + nodeId));
+        if (!node.projectId().equals(projectId)) {
+            throw new IllegalArgumentException("Node " + nodeId + " does not belong to project " + projectId);
+        }
+        return node;
+    }
+
+    private void requireLineageContains(List<UUID> lineage, UUID nodeId) {
+        if (!lineage.contains(nodeId)) {
+            throw new IllegalArgumentException("Node is not on the explicit source route: " + nodeId);
+        }
     }
 
     private void clearActiveRouteIfMatches(UUID projectId, UUID routeId) {

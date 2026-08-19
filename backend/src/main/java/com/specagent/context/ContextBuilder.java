@@ -1,6 +1,5 @@
 package com.specagent.context;
 
-import com.specagent.answer.AnswerRepository;
 import com.specagent.common.Hashes;
 import com.specagent.common.Ids;
 import com.specagent.common.Json;
@@ -11,6 +10,7 @@ import com.specagent.project.Project;
 import com.specagent.project.ProjectRepository;
 import com.specagent.route.Route;
 import com.specagent.route.RouteLifecycleStatus;
+import com.specagent.route.RouteHistoryResolver;
 import com.specagent.route.RouteRepository;
 import org.springframework.stereotype.Service;
 
@@ -40,25 +40,25 @@ public class ContextBuilder {
     private final ProjectRepository projectRepository;
     private final RouteRepository routeRepository;
     private final NodeRepository nodeRepository;
-    private final AnswerRepository answerRepository;
     private final AnswerPatchRepository answerPatchRepository;
+    private final RouteHistoryResolver routeHistoryResolver;
     private final ContextSnapshotRepository contextSnapshotRepository;
     private final Json json;
 
     public ContextBuilder(ProjectRepository projectRepository,
                          RouteRepository routeRepository,
                          NodeRepository nodeRepository,
-                         AnswerRepository answerRepository,
                          AnswerPatchRepository answerPatchRepository,
                          ContextSnapshotRepository contextSnapshotRepository,
-                         Json json) {
+                         Json json,
+                         RouteHistoryResolver routeHistoryResolver) {
         this.projectRepository = projectRepository;
         this.routeRepository = routeRepository;
         this.nodeRepository = nodeRepository;
-        this.answerRepository = answerRepository;
         this.answerPatchRepository = answerPatchRepository;
         this.contextSnapshotRepository = contextSnapshotRepository;
         this.json = json;
+        this.routeHistoryResolver = routeHistoryResolver;
     }
 
     public ContextSnapshot buildFromActiveRoute(UUID projectId, UUID agentRunId, ContextOperationType operationType) {
@@ -83,7 +83,8 @@ public class ContextBuilder {
         List<UUID> lineage = resolveLineage(activeRoute.tipNodeId());
         List<UUID> includedNodeIds = new ArrayList<>(lineage);
 
-        List<UUID> includedAnswerIds = answerRepository.findByRouteAndNodeIds(activeRouteId, includedNodeIds)
+        List<UUID> includedAnswerIds = routeHistoryResolver
+                .resolveEffectiveAnswers(activeRouteId, includedNodeIds)
                 .stream().map(a -> a.id()).toList();
         List<UUID> includedPatchIds = answerPatchRepository.findBySourceAnswerIds(includedAnswerIds)
                 .stream().map(p -> p.id()).toList();
@@ -118,7 +119,8 @@ public class ContextBuilder {
         // subtree are deliberately absent.
         List<UUID> parentLineage = resolveLineage(targetNode.parentNodeId());
 
-        List<UUID> includedAnswerIds = answerRepository.findByRouteAndNodeIds(oldRouteId, parentLineage)
+        List<UUID> includedAnswerIds = routeHistoryResolver
+                .resolveEffectiveAnswers(oldRouteId, parentLineage)
                 .stream().map(a -> a.id()).toList();
         List<UUID> includedPatchIds = answerPatchRepository.findBySourceAnswerIds(includedAnswerIds)
                 .stream().map(p -> p.id()).toList();

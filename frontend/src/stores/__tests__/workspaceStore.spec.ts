@@ -43,6 +43,7 @@ vi.mock('@/api/routes', () => ({
   archiveRoute: vi.fn(),
   deleteRoute: vi.fn(),
   forkNode: vi.fn(),
+  reanswerNode: vi.fn(),
   getRouteLineage: vi.fn(),
   regenerateNode: vi.fn(),
   restoreRoute: vi.fn(),
@@ -62,7 +63,7 @@ import {
 } from '@/api/workspace'
 import { getRequirementState, getRouteRequirementState } from '@/api/requirementState'
 import { getProjectGraph } from '@/api/graph'
-import { getRouteLineage } from '@/api/routes'
+import { forkNode as apiForkNode, getRouteLineage, reanswerNode as apiReanswerNode } from '@/api/routes'
 
 const mockedGetProject = vi.mocked(getProject)
 const mockedGetActiveState = vi.mocked(getActiveState)
@@ -73,6 +74,8 @@ const mockedGetProjectGraph = vi.mocked(getProjectGraph)
 const mockedDraftNextQuestion = vi.mocked(draftNextQuestion)
 const mockedSubmitAnswer = vi.mocked(submitAnswer)
 const mockedGetRouteLineage = vi.mocked(getRouteLineage)
+const mockedForkNode = vi.mocked(apiForkNode)
+const mockedReanswerNode = vi.mocked(apiReanswerNode)
 
 describe('workspaceStore', () => {
   beforeEach(() => {
@@ -396,5 +399,56 @@ describe('workspaceStore', () => {
 
     expect(state).toBeNull()
     expect(store.error?.code).toBe('ROUTE_NOT_FOUND')
+  })
+
+  it('sends an explicit Fork source and preserves the route when first-child Draft fails', async () => {
+    const active = makeActiveState({
+      project: makeProject({ id: 'p1', activeRouteId: 'r1' }),
+      activeRoute: makeRoute({ id: 'r1', projectId: 'p1', isActive: true }),
+    })
+    mockBackendViews(active, makeRequirementState())
+    mockedForkNode.mockResolvedValue({
+      projectId: 'p1',
+      route: makeRoute({ id: 'forked', projectId: 'p1', isActive: true }),
+      activeRouteId: 'forked',
+    })
+    mockedDraftNextQuestion.mockRejectedValue(new ApiError('draft failed', 'DRAFT_FAILED', 500))
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+
+    const ok = await store.forkNode('node-1', 'r1', 'future branch')
+
+    expect(ok).toBe(false)
+    expect(mockedForkNode).toHaveBeenCalledWith('p1', 'node-1', {
+      sourceRouteId: 'r1',
+      label: 'future branch',
+    })
+    expect(mockedDraftNextQuestion).toHaveBeenCalledWith('p1')
+    expect(store.forkDraftRetryRouteId).toBe('forked')
+    expect(store.feedback).toContain('分支已创建')
+  })
+
+  it('sends the explicit Re-answer source and refreshes canonical reads', async () => {
+    const active = makeActiveState({
+      project: makeProject({ id: 'p1', activeRouteId: 'r1' }),
+      activeRoute: makeRoute({ id: 'r1', projectId: 'p1', isActive: true }),
+    })
+    mockBackendViews(active, makeRequirementState())
+    mockedReanswerNode.mockResolvedValue({
+      projectId: 'p1',
+      route: makeRoute({ id: 'reanswer', projectId: 'p1', isActive: true }),
+      activeRouteId: 'reanswer',
+    })
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+
+    const ok = await store.reanswerNode('node-1', 'r1', 'different answer')
+
+    expect(ok).toBe(true)
+    expect(mockedReanswerNode).toHaveBeenCalledWith('p1', 'node-1', {
+      sourceRouteId: 'r1',
+      label: 'different answer',
+    })
+    expect(mockedGetProjectGraph.mock.calls.length).toBeGreaterThan(1)
   })
 })

@@ -6,6 +6,7 @@ import com.specagent.node.NodeService;
 import com.specagent.project.Project;
 import com.specagent.project.ProjectService;
 import com.specagent.route.Route;
+import com.specagent.route.RouteHistoryResolver;
 import com.specagent.route.RouteService;
 import org.springframework.stereotype.Service;
 
@@ -51,15 +52,18 @@ public class GraphWorkspaceQueryService {
     private final RouteService routeService;
     private final NodeService nodeService;
     private final AnswerService answerService;
+    private final RouteHistoryResolver routeHistoryResolver;
 
     public GraphWorkspaceQueryService(ProjectService projectService,
                                       RouteService routeService,
                                       NodeService nodeService,
-                                      AnswerService answerService) {
+                                      AnswerService answerService,
+                                      RouteHistoryResolver routeHistoryResolver) {
         this.projectService = projectService;
         this.routeService = routeService;
         this.nodeService = nodeService;
         this.answerService = answerService;
+        this.routeHistoryResolver = routeHistoryResolver;
     }
 
     public GraphWorkspaceView getForProject(UUID projectId) {
@@ -75,8 +79,13 @@ public class GraphWorkspaceQueryService {
             List<Node> lineage = resolveLineage(project.id(), route);
             List<UUID> lineageNodeIds = lineage.stream().map(Node::id).toList();
             lineage.forEach(node -> nodesById.putIfAbsent(node.id(), node));
-            answerService.findAnswersForRouteAndNodeIds(route.id(), lineageNodeIds)
-                    .stream().map(GraphWorkspaceAnswerView::from).forEach(answerViews::add);
+            List<com.specagent.answer.Answer> answers = routeHistoryResolver == null
+                    ? answerService.findAnswersForRouteAndNodeIds(route.id(), lineageNodeIds)
+                    : routeHistoryResolver.resolveEffectiveAnswers(route.id(), lineageNodeIds);
+            answers.stream()
+                    .map(answer -> GraphWorkspaceAnswerView.from(
+                            answer, route.id(), !route.id().equals(answer.routeId())))
+                    .forEach(answerViews::add);
             routeViews.add(GraphWorkspaceRouteView.from(route, project.activeRouteId(), lineageNodeIds));
         }
 

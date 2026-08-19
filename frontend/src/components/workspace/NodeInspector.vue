@@ -14,6 +14,7 @@ defineProps<{ data: SpecAgentGraphNodeData | null }>()
 
 const emit = defineEmits<{
   fork: [nodeId: string]
+  reanswer: [nodeId: string]
   regenerate: [nodeId: string]
 }>()
 
@@ -43,6 +44,18 @@ function formatTime(iso: string): string {
         {{ data.routeIds.length }} 条路线
         <template v-if="data.isShared">（共享节点）</template>
       </p>
+      <div v-if="data.routeMembership?.some((membership) => membership.branchType)" class="node-inspector__provenance">
+        <h4 class="node-inspector__heading">分支来源</h4>
+        <p
+          v-for="membership in data.routeMembership?.filter((item) => item.branchType)"
+          :key="membership.routeId"
+          class="meta-text"
+        >
+          {{ membership.routeId }} · {{ membership.branchType }}
+          <template v-if="membership.sourceRouteId"> · 来源 {{ membership.sourceRouteId }}</template>
+          <template v-if="membership.branchAtNodeId"> · 节点 {{ membership.branchAtNodeId }}</template>
+        </p>
+      </div>
 
       <h4 class="node-inspector__heading">各路线回答</h4>
       <div v-if="data.routeStates.length > 0" class="node-inspector__answers">
@@ -66,14 +79,15 @@ function formatTime(iso: string): string {
       <!-- 历史节点才提供 Fork / Regenerate；当前待回答节点保持只读详情，
            回答只发生在 Graph 节点内部。 -->
       <div v-if="!data.canAnswer" class="node-inspector__actions">
-        <button class="btn btn-small" data-test="inspector-fork" @click="emit('fork', data.node.id)">从此分支</button>
+        <button class="btn btn-small" data-test="inspector-fork" @click="emit('fork', data.node.id)">从这里开新路线</button>
+        <button class="btn btn-small" data-test="inspector-reanswer" @click="emit('reanswer', data.node.id)">重新选择答案</button>
         <button
           class="btn btn-small"
           data-test="inspector-regenerate"
           :disabled="data.node.parentNodeId === null"
           @click="emit('regenerate', data.node.id)"
         >
-          重新生成这个问题
+          创建替代问题
         </button>
       </div>
     </template>

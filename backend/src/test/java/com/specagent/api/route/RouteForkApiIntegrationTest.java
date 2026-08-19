@@ -68,11 +68,14 @@ class RouteForkApiIntegrationTest {
         Node child = nodeService.createChildNode(project.id(), project.activeRouteId(), root.id(),
                 "Child question", null, List.of(), true);
         UUID originalRouteId = project.activeRouteId();
+        answerService.finalizeAnswer(project.id(), originalRouteId, root.id(), null,
+                "Root answer", "user");
         int nodeCountBefore = nodeRepository.findByProject(project.id()).size();
 
         mockMvc.perform(post("/api/v1/projects/{projectId}/nodes/{nodeId}/fork", project.id(), root.id())
                         .contentType(APPLICATION_JSON)
-                        .content("{\"label\": \"Alternative route\"}"))
+                        .content("{\"sourceRouteId\": \"" + originalRouteId
+                                + "\", \"label\": \"Alternative route\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.route.label").value("Alternative route"))
                 .andExpect(jsonPath("$.route.lifecycleStatus").value("open"))
@@ -115,7 +118,7 @@ class RouteForkApiIntegrationTest {
 
         mockMvc.perform(post("/api/v1/projects/{projectId}/nodes/{nodeId}/fork", project.id(), root.id())
                         .contentType(APPLICATION_JSON)
-                        .content("{}"))
+                        .content("{\"sourceRouteId\": \"" + sourceRouteId + "\"}"))
                 .andExpect(status().isOk());
 
         UUID forkRouteId = projectService.getProject(project.id()).orElseThrow().activeRouteId();
@@ -135,7 +138,7 @@ class RouteForkApiIntegrationTest {
         mockMvc.perform(post("/api/v1/projects/{projectId}/nodes/{nodeId}/fork", project.id(),
                         UUID.randomUUID())
                         .contentType(APPLICATION_JSON)
-                        .content("{}"))
+                        .content("{\"sourceRouteId\": \"" + project.activeRouteId() + "\"}"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("NODE_NOT_FOUND"));
     }
@@ -149,7 +152,7 @@ class RouteForkApiIntegrationTest {
 
         mockMvc.perform(post("/api/v1/projects/{projectId}/nodes/{nodeId}/fork", projectB.id(), nodeA.id())
                         .contentType(APPLICATION_JSON)
-                        .content("{}"))
+                        .content("{\"sourceRouteId\": \"" + projectB.activeRouteId() + "\"}"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("NODE_NOT_FOUND"));
     }
@@ -161,10 +164,14 @@ class RouteForkApiIntegrationTest {
                 "Shared root", null, List.of(), true);
         Node siblingA = nodeService.createChildNode(project.id(), project.activeRouteId(), root.id(),
                 "Sibling branch question", null, List.of(), true);
+        UUID sourceRouteId = project.activeRouteId();
+        answerService.finalizeAnswer(project.id(), sourceRouteId, root.id(), null,
+                "Root answer", "user");
 
         mockMvc.perform(post("/api/v1/projects/{projectId}/nodes/{nodeId}/fork", project.id(), root.id())
                         .contentType(APPLICATION_JSON)
-                        .content("{\"label\": \"Root fork\"}"))
+                        .content("{\"sourceRouteId\": \"" + sourceRouteId
+                                + "\", \"label\": \"Root fork\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.route.tipNodeId").value(root.id().toString()));
 

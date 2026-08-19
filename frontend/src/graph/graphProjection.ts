@@ -14,6 +14,11 @@ import {
   type EdgeHandles,
   type NodeGeometry,
 } from './graphEdgeRouting'
+import {
+  buildVisualInstances,
+  visualNodeKeyFor,
+  type GraphVisualInstance,
+} from './graphVisualIdentity'
 
 export type GraphVisualWeight = 'active' | 'focus' | 'normal' | 'dimmed'
 
@@ -23,9 +28,10 @@ export interface GraphAnswerPresentation {
   selectedOptionLabel: string | null
   freeText: string | null
   isPrimary: boolean
+  inherited?: boolean
+  ownerRouteId?: string
 }
 
-/** Per-route state of one node: answered (with its answer) or waiting. */
 export interface GraphRouteAnswerState {
   routeId: string
   answer: GraphAnswerPresentation | null
@@ -36,38 +42,32 @@ export interface GraphRouteMembershipPresentation {
   label: string
   lifecycleStatus: RouteLifecycleStatus
   isActive: boolean
+  branchType?: GraphWorkspaceRouteView['branchType']
+  sourceRouteId?: string | null
+  branchAtNodeId?: string | null
 }
 
 export interface SpecAgentGraphNodeData {
   node: GraphWorkspaceNodeView
-  /** Canonical route membership, independent of current presentation filters. */
+  canonicalNodeId?: string
+  visualNodeKey?: string
   routeIds: string[]
-  /** Route membership currently visible in the projected graph. */
   visibleRouteIds: string[]
   answers: GraphAnswerPresentation[]
-  /**
-   * Route-specific state for EVERY member route (in membership order):
-   * a route without an answer gets `answer: null` and must be presented as
-   * waiting — the node can never show another route's answer as its own.
-   */
   routeStates: GraphRouteAnswerState[]
   primaryAnswer: GraphAnswerPresentation | null
-  /** Browser reading context = focusRouteId ?? activeRouteId (browser-only). */
   readingRouteId: string | null
   isCurrent: boolean
   canAnswer: boolean
   isExpanded: boolean
   isShared: boolean
-  /** Canonical route facts for the selected shared-node route chooser. */
   routeMembership?: GraphRouteMembershipPresentation[]
   visualWeight: GraphVisualWeight
 }
 
 export interface SpecAgentGraphEdgeData {
   kind: 'lineage' | 'replacement'
-  /** Canonical route membership, independent of current presentation filters. */
   routeIds: string[]
-  /** Route membership currently visible in the projected graph. */
   visibleRouteIds: string[]
   visualWeight: GraphVisualWeight
 }
@@ -98,76 +98,72 @@ export interface LineageEdgeMembership {
 function routeVisible(
   route: Pick<GraphWorkspaceRouteView, 'id' | 'lifecycleStatus'>,
   activeRouteId: string | null,
-  uiState: {
-    lifecycleFilters: Record<RouteLifecycleStatus, boolean>
-    routeDisplayStates: Record<string, GraphRouteDisplayState>
-  },
+  uiState: Pick<GraphProjectionInput['uiState'], 'lifecycleFilters' | 'routeDisplayStates'>,
 ): boolean {
-  if (route.id === activeRouteId) {
-    // The Active route can never be hidden by manual or persisted state.
-    return true
-  }
-  if (uiState.lifecycleFilters[route.lifecycleStatus] !== true) {
-    return false
-  }
+  if (route.id === activeRouteId) return true
+  if (uiState.lifecycleFilters[route.lifecycleStatus] !== true) return false
   return uiState.routeDisplayStates[route.id] !== 'hidden'
 }
 
-/** Route ids visible under lifecycle filters + manual hide. */
 export function getVisibleRouteIds(
   view: Pick<GraphWorkspaceView, 'routes' | 'activeRouteId'>,
-  uiState: {
-    lifecycleFilters: Record<RouteLifecycleStatus, boolean>
-    routeDisplayStates: Record<string, GraphRouteDisplayState>
-  },
+  uiState: Pick<GraphProjectionInput['uiState'], 'lifecycleFilters' | 'routeDisplayStates'>,
 ): Set<string> {
   const visible = new Set<string>()
   for (const route of view.routes) {
-    if (routeVisible(route, view.activeRouteId, uiState)) {
-      visible.add(route.id)
-    }
+    if (routeVisible(route, view.activeRouteId, uiState)) visible.add(route.id)
   }
   return visible
 }
 
-/** Node id -> route ids that contain it (canonical route membership). */
-export function getNodeRouteMembership(
-  view: GraphWorkspaceView,
-): Map<string, string[]> {
+/** Canonical membership remains available for non-visual consumers. */
+export function getNodeRouteMembership(view: GraphWorkspaceView): Map<string, string[]> {
   const membership = new Map<string, string[]>()
   for (const route of view.routes) {
     for (const nodeId of route.lineageNodeIds) {
       const ids = membership.get(nodeId) ?? []
-      if (!ids.includes(route.id)) {
-        membership.set(nodeId, [...ids, route.id])
+      if (!ids.includes(route.id)) membership.set(nodeId, [...ids, route.id])
+    }
+  }
+  return membership
+}
+
+/** Legacy canonical edge helper; visual projection uses the V2 helper. */
+export function getLineageEdgeMembership(view: GraphWorkspaceView): Map<string, LineageEdgeMembership> {
+  const membership = new Map<string, LineageEdgeMembership>()
+  for (const route of view.routes) {
+    for (let index = 1; index < route.lineageNodeIds.length; index += 1) {
+      const source = route.lineageNodeIds[index - 1]
+      const target = route.lineageNodeIds[index]
+      const key = source + '->' + target
+      const existing = membership.get(key)
+      if (existing) {
+        if (!existing.routeIds.includes(route.id)) existing.routeIds = [...existing.routeIds, route.id]
+      } else {
+        membership.set(key, { source, target, routeIds: [route.id] })
       }
     }
   }
   return membership
 }
 
-/**
- * Deduplicated lineage edge membership: edge key `source->target` -> the
- * routes that traverse it. Never uses supersedesNodeId as a parent.
- */
-export function getLineageEdgeMembership(
-  view: GraphWorkspaceView,
-): Map<string, LineageEdgeMembership> {
+/** Physical lineage edges are deduplicated by visual endpoints. */
+export function getVisualLineageEdgeMembership(view: GraphWorkspaceView): Map<string, LineageEdgeMembership> {
   const membership = new Map<string, LineageEdgeMembership>()
-  for (const route of view.routes) {
-    const lineage = route.lineageNodeIds
-    for (let i = 1; i < lineage.length; i++) {
-      const source = lineage[i - 1]
-      const target = lineage[i]
-      const key = source + '->' + target
-      const existing = membership.get(key)
-      if (existing) {
-        if (!existing.routeIds.includes(route.id)) {
-          existing.routeIds = [...existing.routeIds, route.id]
-        }
-      } else {
-        membership.set(key, { source, target, routeIds: [route.id] })
+  for (const instance of buildVisualInstances(view)) {
+    if (!instance.parentVisualNodeKey) continue
+    const key = instance.parentVisualNodeKey + '->' + instance.visualNodeKey
+    const existing = membership.get(key)
+    if (existing) {
+      for (const routeId of instance.routeIds) {
+        if (!existing.routeIds.includes(routeId)) existing.routeIds = [...existing.routeIds, routeId]
       }
+    } else {
+      membership.set(key, {
+        source: instance.parentVisualNodeKey,
+        target: instance.visualNodeKey,
+        routeIds: [...instance.routeIds],
+      })
     }
   }
   return membership
@@ -179,22 +175,12 @@ function routeVisualWeight(
   focusRouteId: string | null,
   routeDisplayStates: Record<string, GraphRouteDisplayState>,
 ): GraphVisualWeight {
-  if (focusRouteId) {
-    // Focus is a browser-only reading context: while reading route F, F's
-    // elements stay prominent and every other visible route — including the
-    // Active route — is temporarily dimmed. Exiting Focus restores the
-    // previous manual dim/hide state because Focus never touches it.
-    return routeIds.includes(focusRouteId) ? 'focus' : 'dimmed'
-  }
+  if (focusRouteId) return routeIds.includes(focusRouteId) ? 'focus' : 'dimmed'
   if (activeRouteId && routeIds.includes(activeRouteId)) return 'active'
   if (routeIds.some((id) => routeDisplayStates[id] === 'dimmed')) return 'dimmed'
   return 'normal'
 }
 
-/**
- * Selects the primary answer presentation for a node: Focus route answer
- * outranks the Active route answer; without either, no primary answer.
- */
 export function selectPrimaryAnswer(
   nodeId: string,
   answers: GraphAnswerPresentation[],
@@ -202,267 +188,174 @@ export function selectPrimaryAnswer(
   activeRouteId: string | null,
   _options: GraphWorkspaceOptionView[],
 ): GraphAnswerPresentation | null {
-  // Callers may pass a per-node list (no nodeId fields) or the full graph
-  // list (presentations extended with nodeId); filter only when present.
-  const nodeAnswers = answers.filter((a) => {
-    const withNodeId = a as GraphAnswerPresentation & { nodeId?: string }
+  const nodeAnswers = answers.filter((answer) => {
+    const withNodeId = answer as GraphAnswerPresentation & { nodeId?: string }
     return withNodeId.nodeId === undefined || withNodeId.nodeId === nodeId
   })
-  if (focusRouteId) {
-    const focus = nodeAnswers.find((a) => a.routeId === focusRouteId)
-    if (focus) return focus
-    // The focused route has no answer on this node: never present another
-    // route's answer as the focused route's primary (B must be shown as
-    // waiting instead).
-    return null
-  }
-  if (activeRouteId) {
-    const active = nodeAnswers.find((a) => a.routeId === activeRouteId)
-    if (active) return active
-  }
+  if (focusRouteId) return nodeAnswers.find((answer) => answer.routeId === focusRouteId) ?? null
+  if (activeRouteId) return nodeAnswers.find((answer) => answer.routeId === activeRouteId) ?? null
   return null
 }
 
-function buildAnswerPresentations(
-  view: GraphWorkspaceView,
-): Map<string, GraphAnswerPresentation[]> {
+function buildAnswerPresentations(view: GraphWorkspaceView): Map<string, GraphAnswerPresentation[]> {
   const optionsByNode = new Map<string, GraphWorkspaceOptionView[]>()
-  for (const node of view.nodes) {
-    optionsByNode.set(node.id, node.options)
-  }
+  for (const node of view.nodes) optionsByNode.set(node.id, node.options)
   const byNode = new Map<string, GraphAnswerPresentation[]>()
   for (const answer of view.answers) {
-    const option = optionsByNode
-      .get(answer.nodeId)
-      ?.find((o) => o.id === answer.selectedOptionId)
+    const option = optionsByNode.get(answer.nodeId)?.find((candidate) => candidate.id === answer.selectedOptionId)
     const presentation: GraphAnswerPresentation = {
       routeId: answer.routeId,
       selectedOptionId: answer.selectedOptionId,
       selectedOptionLabel: option?.label ?? null,
       freeText: answer.freeText,
       isPrimary: false,
+      inherited: answer.inherited,
+      ownerRouteId: answer.ownerRouteId,
     }
-    const list = byNode.get(answer.nodeId) ?? []
-    byNode.set(answer.nodeId, [...list, presentation])
-  }
-  return byNode
-}
-
-function buildRouteStates(
-  view: GraphWorkspaceView,
-  answersByNode: Map<string, GraphAnswerPresentation[]>,
-  membership: Map<string, string[]>,
-): Map<string, GraphRouteAnswerState[]> {
-  const byNode = new Map<string, GraphRouteAnswerState[]>()
-  for (const node of view.nodes) {
-    const routeIds = membership.get(node.id) ?? []
-    const answers = answersByNode.get(node.id) ?? []
-    byNode.set(
-      node.id,
-      routeIds.map((routeId) => ({
-        routeId,
-        answer: answers.find((a) => a.routeId === routeId) ?? null,
-      })),
-    )
+    byNode.set(answer.nodeId, [...(byNode.get(answer.nodeId) ?? []), presentation])
   }
   return byNode
 }
 
 function computePositions(
-  view: GraphWorkspaceView,
+  instances: GraphVisualInstance[],
   savedPositions: Record<string, GraphPosition>,
-  visibleNodeIds: Set<string>,
 ): Record<string, GraphPosition> {
-  const nodes = view.nodes.filter((n) => visibleNodeIds.has(n.id))
-  // First-ever layout fills every missing position deterministically; any
-  // later refresh only places genuinely new ids next to their parents and
-  // preserves all existing coordinates byte-for-byte.
-  return resolvePositions(nodes, savedPositions)
+  return resolvePositions(
+    instances.map((instance) => ({ id: instance.visualNodeKey, parentNodeId: instance.parentVisualNodeKey })),
+    savedPositions,
+  )
 }
 
-/**
- * Projects the canonical graph + browser UI state into Vue Flow nodes/edges.
- *
- * Nodes are deduplicated, route-specific answers stay separate, lineage and
- * replacement relationships are distinct edges, and only unanswered Active
- * nodes are answerable. This is a pure projection: it never mutates Runtime
- * data and never writes anything.
- */
+function selectHandlesFor(sourceId: string, targetId: string, positions: Record<string, GraphPosition>): EdgeHandles {
+  const geometry = (id: string): NodeGeometry => ({
+    position: positions[id] ?? { x: 0, y: 0 },
+    width: FALLBACK_NODE_WIDTH,
+  })
+  return selectEdgeHandles(geometry(sourceId), geometry(targetId))
+}
+
 export function projectGraph(input: GraphProjectionInput): GraphProjectionResult {
   const { view, activeNodeId, uiState, savedPositions } = input
-  const activeRouteId = view.activeRouteId
-
   const visibleRouteIds = getVisibleRouteIds(view, uiState)
-  const membership = getNodeRouteMembership(view)
-  const lineageEdges = getLineageEdgeMembership(view)
-
-  // Node visibility: a shared node stays visible when any of its routes is.
-  const visibleNodeIds = new Set<string>()
-  for (const node of view.nodes) {
-    const routeIds = membership.get(node.id) ?? []
-    if (routeIds.some((id) => visibleRouteIds.has(id))) {
-      visibleNodeIds.add(node.id)
-    }
-  }
-
-  const positions = computePositions(view, savedPositions, visibleNodeIds)
-  const answersByNode = buildAnswerPresentations(view)
-  const optionsByNode = new Map(view.nodes.map((n) => [n.id, n.options]))
-  const statesByNode = buildRouteStates(view, answersByNode, membership)
+  const instances = buildVisualInstances(view)
+  const activeRouteId = view.activeRouteId
   const readingRouteId = uiState.focusRouteId ?? activeRouteId
+  const visibleInstances = instances.filter((instance) => instance.routeIds.some((id) => visibleRouteIds.has(id)))
+  const visibleKeys = new Set(visibleInstances.map((instance) => instance.visualNodeKey))
+  const positions = computePositions(visibleInstances, savedPositions)
+  const answersByCanonicalNode = buildAnswerPresentations(view)
 
-  const nodes: Node<SpecAgentGraphNodeData>[] = view.nodes
-    .filter((node) => visibleNodeIds.has(node.id))
-    .map((node) => {
-      const routeIds = membership.get(node.id) ?? []
-      const answers = answersByNode.get(node.id) ?? []
-      const primary = selectPrimaryAnswer(
-        node.id,
-        answers,
-        uiState.focusRouteId,
-        activeRouteId,
-        optionsByNode.get(node.id) ?? [],
-      )
-      const canAnswer =
-        activeNodeId != null &&
-        node.id === activeNodeId &&
-        activeRouteId != null &&
-        !view.answers.some(
-          (answer) => answer.routeId === activeRouteId && answer.nodeId === node.id,
-        )
-      const visualWeight = routeVisualWeight(
+  const nodes: Node<SpecAgentGraphNodeData>[] = visibleInstances.map((instance) => {
+    const routeIds = instance.routeIds
+    const answers = (answersByCanonicalNode.get(instance.canonicalNodeId) ?? [])
+      .filter((answer) => routeIds.includes(answer.routeId))
+    const primary = selectPrimaryAnswer(
+      instance.canonicalNodeId,
+      answers,
+      uiState.focusRouteId && routeIds.includes(uiState.focusRouteId) ? uiState.focusRouteId : null,
+      activeRouteId && routeIds.includes(activeRouteId) ? activeRouteId : null,
+      instance.node.options,
+    )
+    const isCurrent = activeNodeId === instance.canonicalNodeId && activeRouteId !== null && routeIds.includes(activeRouteId)
+    const canAnswer = isCurrent && !answers.some((answer) => answer.routeId === activeRouteId)
+    const visualWeight = routeVisualWeight(routeIds, activeRouteId, uiState.focusRouteId, uiState.routeDisplayStates)
+    const routeStates = routeIds.map((routeId) => ({
+      routeId,
+      answer: answers.find((answer) => answer.routeId === routeId) ?? null,
+    }))
+    const routeMembership = routeIds
+      .filter((routeId) => visibleRouteIds.has(routeId))
+      .map((routeId) => {
+        const route = view.routes.find((candidate) => candidate.id === routeId)
+        return {
+          routeId,
+          label: route?.label ?? routeId,
+          lifecycleStatus: route?.lifecycleStatus ?? 'open',
+          isActive: route?.isActive === true || routeId === activeRouteId,
+          branchType: route?.branchType,
+          sourceRouteId: route?.sourceRouteId,
+          branchAtNodeId: route?.branchAtNodeId,
+        }
+      })
+    return {
+      id: instance.visualNodeKey,
+      type: 'question' as const,
+      position: positions[instance.visualNodeKey] ?? { x: 0, y: 0 },
+      data: {
+        node: instance.node,
+        canonicalNodeId: instance.canonicalNodeId,
+        visualNodeKey: instance.visualNodeKey,
         routeIds,
-        activeRouteId,
-        uiState.focusRouteId,
-        uiState.routeDisplayStates,
-      )
-      const data: SpecAgentGraphNodeData = {
-        node,
-        routeIds,
-        visibleRouteIds: routeIds.filter((routeId) => visibleRouteIds.has(routeId)),
-        answers: answers.map((a) => ({ ...a, isPrimary: a === primary })),
-        routeStates: statesByNode.get(node.id) ?? [],
+        visibleRouteIds: routeIds.filter((id) => visibleRouteIds.has(id)),
+        answers: answers.map((answer) => ({ ...answer, isPrimary: answer === primary })),
+        routeStates,
         primaryAnswer: primary,
         readingRouteId,
-        isCurrent: node.id === activeNodeId,
+        isCurrent,
         canAnswer,
-        isExpanded: uiState.expandedNodeIds.includes(node.id),
+        isExpanded: uiState.expandedNodeIds.includes(instance.visualNodeKey)
+          || uiState.expandedNodeIds.includes(instance.canonicalNodeId),
         isShared: routeIds.length > 1,
-        routeMembership: routeIds
-          .filter((routeId) => visibleRouteIds.has(routeId))
-          .map((routeId) => {
-            const route = view.routes.find((candidate) => candidate.id === routeId)
-            return {
-              routeId,
-              label: route?.label ?? routeId,
-              lifecycleStatus: route?.lifecycleStatus ?? 'open',
-              isActive: route?.isActive === true || routeId === activeRouteId,
-            }
-          }),
+        routeMembership,
         visualWeight,
-      }
-      return {
-        id: node.id,
-        type: 'question' as const,
-        position: positions[node.id] ?? { x: 0, y: 0 },
-        data,
-        dragHandle: '.graph-question-node__header',
-        class: ['graph-node', 'graph-node--' + visualWeight],
-      }
-    })
-
-  // Adaptive edge anchors use one stable node footprint. Without live
-  // measurements the projection uses the same safe fallback dimensions as
-  // the rendered node; browser-side drag rerouting then refines with the
-  // measured dimensions (see GraphCanvas @node-drag).
-  const nodeFallbackWidth = new Map<string, number>()
-  for (const projected of nodes) {
-    nodeFallbackWidth.set(projected.id, FALLBACK_NODE_WIDTH)
-  }
-  const selectHandles = (sourceId: string, targetId: string): EdgeHandles => {
-    const geometry = (nodeId: string): NodeGeometry => {
-      const position = positions[nodeId]
-      if (!position) {
-        // Edge endpoints are always visible nodes, but stay defensive: a
-        // missing coordinate resolves deterministically like the fallback.
-        return { position: { x: 0, y: 0 } }
-      }
-      return {
-        position,
-        width: nodeFallbackWidth.get(nodeId) ?? FALLBACK_NODE_WIDTH,
-      }
+      },
+      dragHandle: '.graph-question-node__header',
+      class: ['graph-node', 'graph-node--' + visualWeight],
     }
-    return selectEdgeHandles(geometry(sourceId), geometry(targetId))
-  }
+  })
 
   const edges: Edge<SpecAgentGraphEdgeData>[] = []
-  for (const [key, edge] of lineageEdges) {
-    if (visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target)) {
-      const handles = selectHandles(edge.source, edge.target)
-      edges.push({
-        id: key,
-        source: edge.source,
-        target: edge.target,
-        type: 'adaptive',
-        sourceHandle: handles.sourceHandle,
-        targetHandle: handles.targetHandle,
-        markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12 },
-        data: {
-          kind: 'lineage',
-          routeIds: [...edge.routeIds],
-          visibleRouteIds: edge.routeIds.filter((routeId) => visibleRouteIds.has(routeId)),
-          visualWeight: routeVisualWeight(
-            edge.routeIds,
-            activeRouteId,
-            uiState.focusRouteId,
-            uiState.routeDisplayStates,
-          ),
-        },
-        class: ['graph-edge--lineage', 'graph-edge--' + routeVisualWeight(
-          edge.routeIds,
-          activeRouteId,
-          uiState.focusRouteId,
-          uiState.routeDisplayStates,
-        )],
-      })
-    }
+  for (const [key, edge] of getVisualLineageEdgeMembership(view)) {
+    if (!visibleKeys.has(edge.source) || !visibleKeys.has(edge.target)) continue
+    const handles = selectHandlesFor(edge.source, edge.target, positions)
+    const weight = routeVisualWeight(edge.routeIds, activeRouteId, uiState.focusRouteId, uiState.routeDisplayStates)
+    edges.push({
+      id: key,
+      source: edge.source,
+      target: edge.target,
+      type: 'adaptive',
+      sourceHandle: handles.sourceHandle,
+      targetHandle: handles.targetHandle,
+      markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12 },
+      data: {
+        kind: 'lineage',
+        routeIds: [...edge.routeIds],
+        visibleRouteIds: edge.routeIds.filter((id) => visibleRouteIds.has(id)),
+        visualWeight: weight,
+      },
+      class: ['graph-edge--lineage', 'graph-edge--' + weight],
+    })
   }
 
   for (const node of view.nodes) {
-    if (
-      node.supersedesNodeId &&
-      visibleNodeIds.has(node.id) &&
-      visibleNodeIds.has(node.supersedesNodeId)
-    ) {
-      const routeIds = membership.get(node.id) ?? []
-      const edgeVisibleRouteIds = routeIds.filter((routeId) => visibleRouteIds.has(routeId))
-      const handles = selectHandles(node.supersedesNodeId, node.id)
+    if (!node.supersedesNodeId) continue
+    const replacementInstances = instances.filter((instance) => instance.canonicalNodeId === node.id)
+    for (const replacementInstance of replacementInstances) {
+      const route = replacementInstance.routeIds
+        .map((id) => view.routes.find((candidate) => candidate.id === id))
+        .find((candidate) => candidate?.replacementOfNodeId === node.supersedesNodeId)
+      const sourceKey = route?.sourceRouteId
+        ? visualNodeKeyFor(view, route.sourceRouteId, node.supersedesNodeId)
+        : node.supersedesNodeId
+      if (!visibleKeys.has(sourceKey) || !visibleKeys.has(replacementInstance.visualNodeKey)) continue
+      const handles = selectHandlesFor(sourceKey, replacementInstance.visualNodeKey, positions)
+      const weight = routeVisualWeight(replacementInstance.routeIds, activeRouteId, uiState.focusRouteId, uiState.routeDisplayStates)
       edges.push({
-        id: 'replacement:' + node.supersedesNodeId + '->' + node.id,
-        source: node.supersedesNodeId,
-        target: node.id,
-        // Replacement stays a fully distinct relation (dashed class kept).
+        id: 'replacement:' + sourceKey + '->' + replacementInstance.visualNodeKey,
+        source: sourceKey,
+        target: replacementInstance.visualNodeKey,
         type: 'adaptive',
         sourceHandle: handles.sourceHandle,
         targetHandle: handles.targetHandle,
         markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12 },
         data: {
           kind: 'replacement',
-          routeIds: [...routeIds],
-          visibleRouteIds: edgeVisibleRouteIds,
-          visualWeight: routeVisualWeight(
-            routeIds,
-            activeRouteId,
-            uiState.focusRouteId,
-            uiState.routeDisplayStates,
-          ),
+          routeIds: [...replacementInstance.routeIds],
+          visibleRouteIds: replacementInstance.routeIds.filter((id) => visibleRouteIds.has(id)),
+          visualWeight: weight,
         },
-        class: ['graph-edge--replacement', 'graph-edge--' + routeVisualWeight(
-          routeIds,
-          activeRouteId,
-          uiState.focusRouteId,
-          uiState.routeDisplayStates,
-        )],
+        class: ['graph-edge--replacement', 'graph-edge--' + weight],
       })
     }
   }
@@ -470,7 +363,6 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
   return { nodes, edges }
 }
 
-/** Free-vertical-slot helper reused by callers for new-node placement. */
 export function freeSlotDistance(): number {
   return VERTICAL_GAP * 0.5
 }

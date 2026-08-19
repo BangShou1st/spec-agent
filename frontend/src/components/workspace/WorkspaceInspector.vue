@@ -14,10 +14,20 @@ import { useWorkspaceStore } from '@/stores/workspaceStore'
  * 历史始终跟随 readingRouteId（focus ?? active）；生成规格始终针对后端
  * 当前路线，成功后清除 Focus 让读取路线跟随返回的产物。
  */
-const props = defineProps<{ nodeData: SpecAgentGraphNodeData | null }>()
+interface SelectedEdge {
+  id: string
+  kind: 'lineage' | 'replacement'
+  routeIds: string[]
+}
+
+const props = defineProps<{
+  nodeData: SpecAgentGraphNodeData | null
+  selectedEdge?: SelectedEdge | null
+}>()
 
 const emit = defineEmits<{
   fork: [nodeId: string]
+  reanswer: [nodeId: string]
   regenerate: [nodeId: string]
 }>()
 
@@ -127,11 +137,25 @@ function selectSpec(snapshotId: string): void {
 
     <div class="inspector-body">
       <NodeInspector
-        v-if="activeTab === 'details' && nodeData"
+        v-if="activeTab === 'details' && nodeData && !selectedEdge"
         :data="nodeData"
         @fork="emit('fork', $event)"
+        @reanswer="emit('reanswer', $event)"
         @regenerate="emit('regenerate', $event)"
       />
+
+      <div v-else-if="selectedEdge" class="edge-inspector" data-test="edge-inspector">
+        <h3 class="node-inspector__title">{{ selectedEdge.kind === 'replacement' ? '替代关系' : '共享路线边' }}</h3>
+        <p class="meta-text">该物理边不会自动猜测或切换 Focus 路线。</p>
+        <p class="meta-text">边：{{ selectedEdge.id }}</p>
+        <h4 class="node-inspector__heading">路线成员</h4>
+        <ul class="node-inspector__options">
+          <li v-for="routeId in selectedEdge.routeIds" :key="routeId" class="node-inspector__option">
+            {{ routeId }}
+          </li>
+          <li v-if="selectedEdge.routeIds.length === 0" class="muted">暂无路线成员。</li>
+        </ul>
+      </div>
 
       <RequirementStatePanel
         v-else-if="activeTab === 'requirement'"

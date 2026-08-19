@@ -3,6 +3,10 @@ package com.specagent.context;
 import com.specagent.patch.AnswerPatch;
 import com.specagent.patch.AnswerPatchRepository;
 import com.specagent.patch.Claim;
+import com.specagent.route.Route;
+import com.specagent.route.RouteHistoryResolver;
+import com.specagent.route.RouteRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -21,9 +25,20 @@ import java.util.UUID;
 public class RequirementStateBuilder {
 
     private final AnswerPatchRepository answerPatchRepository;
+    private final RouteRepository routeRepository;
+    private final RouteHistoryResolver routeHistoryResolver;
 
     public RequirementStateBuilder(AnswerPatchRepository answerPatchRepository) {
+        this(answerPatchRepository, null, null);
+    }
+
+    @Autowired
+    public RequirementStateBuilder(AnswerPatchRepository answerPatchRepository,
+                                   RouteRepository routeRepository,
+                                   RouteHistoryResolver routeHistoryResolver) {
         this.answerPatchRepository = answerPatchRepository;
+        this.routeRepository = routeRepository;
+        this.routeHistoryResolver = routeHistoryResolver;
     }
 
     /**
@@ -47,6 +62,18 @@ public class RequirementStateBuilder {
      * in creation order and replaying them.
      */
     public RequirementState buildForRoute(UUID projectId, UUID routeId) {
+        if (routeHistoryResolver != null && routeRepository != null) {
+            Route route = routeRepository.findById(routeId)
+                    .orElseThrow(() -> new IllegalArgumentException("Route not found: " + routeId));
+            List<UUID> lineage = routeHistoryResolver.resolveLineage(route.tipNodeId());
+            List<UUID> answerIds = routeHistoryResolver.resolveEffectiveAnswerRefs(routeId, lineage)
+                    .stream().map(ref -> ref.answerId()).toList();
+            List<AnswerPatch> effectivePatches = answerPatchRepository.findBySourceAnswerIds(answerIds);
+            java.util.Map<UUID, AnswerPatch> byAnswer = new java.util.HashMap<>();
+            for (AnswerPatch patch : effectivePatches) byAnswer.put(patch.sourceAnswerId(), patch);
+            List<AnswerPatch> ordered = answerIds.stream().map(byAnswer::get).filter(java.util.Objects::nonNull).toList();
+            return rebuild(ordered);
+        }
         List<AnswerPatch> patches = answerPatchRepository.findByRoute(routeId);
         return rebuild(patches);
     }

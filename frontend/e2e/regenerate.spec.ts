@@ -21,6 +21,7 @@ test('regenerate creates a replacement route and keeps old history', async ({ pa
   await page.locator('[data-test="graph-question-node"]').nth(1).getByTestId('regenerate-node').click()
   await expect(page.getByTestId('regenerate-dialog')).toBeVisible()
   await expect(page.getByTestId('regenerate-question')).toHaveValue(FAKE_ROOT_QUESTION)
+  await page.getByTestId('regenerate-source-route').first().check()
   await page.getByTestId('regenerate-question').fill('E2E Replacement Question')
   await page.getByTestId('regenerate-submit').click()
 

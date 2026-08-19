@@ -53,9 +53,16 @@ public class RouteCommandController {
     @PostMapping("/nodes/{nodeId}/fork")
     public RouteMutationResponse fork(@PathVariable UUID projectId,
                                       @PathVariable UUID nodeId,
-                                      @Valid @RequestBody(required = false) ForkRouteRequest request) {
-        return routeCommandService.fork(projectId, nodeId,
-                request == null ? null : request.label());
+                                      @Valid @RequestBody ForkRouteRequest request) {
+        return routeCommandService.fork(projectId, nodeId, request.sourceRouteId(), request.label());
+    }
+
+    @PostMapping("/nodes/{nodeId}/reanswer")
+    public RouteMutationResponse reanswer(@PathVariable UUID projectId,
+                                          @PathVariable UUID nodeId,
+                                          @Valid @RequestBody ReanswerRouteRequest request) {
+        return routeCommandService.reanswer(projectId, nodeId,
+                request.sourceRouteId(), request.label());
     }
 
     @PostMapping("/nodes/{nodeId}/regenerate")

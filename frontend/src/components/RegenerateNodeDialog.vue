@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import type { GraphWorkspaceNodeView, RegenerateNodeRequest } from '@/api/types'
+import type { GraphWorkspaceNodeView, GraphWorkspaceRouteView, RegenerateNodeRequest } from '@/api/types'
 
 /**
  * 重新生成这个问题（确定性）对话框。打开时用所选历史节点的内容预填替代
@@ -11,6 +11,7 @@ const props = defineProps<{
   open: boolean
   node: GraphWorkspaceNodeView | null
   pending: boolean
+  routes?: GraphWorkspaceRouteView[]
 }>()
 
 const emit = defineEmits<{
@@ -27,6 +28,11 @@ const instruction = ref('')
 const question = ref('')
 const purpose = ref('')
 const options = ref<EditableOption[]>([])
+const sourceRouteId = ref<string | null>(null)
+
+const sourceRoutes = computed(() => props.node && props.routes
+  ? props.routes.filter((route) => route.lineageNodeIds.includes(props.node!.id))
+  : [])
 
 watch(
   () => props.open,
@@ -39,6 +45,9 @@ watch(
         label: option.label,
         impact: option.impact ?? '',
       }))
+      sourceRouteId.value = null
+      const openSources = sourceRoutes.value.filter((route) => route.lifecycleStatus === 'open')
+      if (openSources.length === 1) sourceRouteId.value = openSources[0].id
     }
   },
   { immediate: true },
@@ -58,6 +67,9 @@ const canSubmit = computed<boolean>(() => {
   if (props.pending || isRootNode.value || questionError.value !== null) {
     return false
   }
+  if (props.routes && (sourceRoutes.value.length === 0
+    || sourceRouteId.value === null
+    || sourceRoutes.value.find((route) => route.id === sourceRouteId.value)?.lifecycleStatus !== 'open')) return false
   return !optionErrors.value.some(Boolean)
 })
 
@@ -73,7 +85,7 @@ function submit(): void {
   if (!canSubmit.value) {
     return
   }
-  const payload: RegenerateNodeRequest = {
+  const payload = {
     instruction: instruction.value.trim().length > 0 ? instruction.value.trim() : null,
     replacementQuestion: question.value.trim(),
     replacementPurpose: purpose.value.trim().length > 0 ? purpose.value.trim() : null,
@@ -81,7 +93,8 @@ function submit(): void {
       label: option.label.trim(),
       impact: option.impact.trim().length > 0 ? option.impact.trim() : null,
     })),
-  }
+  } as RegenerateNodeRequest
+  if (sourceRouteId.value) payload.sourceRouteId = sourceRouteId.value
   emit('submit', payload)
 }
 </script>
@@ -97,6 +110,15 @@ function submit(): void {
       <p v-if="isRootNode" class="info-line regenerate-blocker" data-test="regenerate-root-blocker">
         根问题暂不支持重新生成。
       </p>
+
+      <fieldset v-if="routes" class="regenerate-source-routes">
+        <legend class="secondary">明确选择来源路线</legend>
+        <label v-for="route in sourceRoutes" :key="route.id" class="fork-base-route">
+          <input v-model="sourceRouteId" type="radio" name="regenerate-source-route" :value="route.id" data-test="regenerate-source-route" />
+          <span>{{ route.label ?? route.id.slice(0, 8) }}</span>
+          <span class="badge" :class="`badge-${route.lifecycleStatus}`">{{ route.lifecycleStatus }}</span>
+        </label>
+      </fieldset>
 
       <label class="field-label secondary">
         <span>说明（可选，要改什么）</span>
@@ -232,6 +254,22 @@ function submit(): void {
 .regenerate-blocker {
   color: var(--color-warn);
   margin: 0 0 6px;
+}
+
+.regenerate-source-routes {
+  border: 0;
+  padding: 0;
+  margin: 0 0 10px;
+}
+
+.fork-base-route {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  margin-bottom: 4px;
 }
 
 .replacement-option {
