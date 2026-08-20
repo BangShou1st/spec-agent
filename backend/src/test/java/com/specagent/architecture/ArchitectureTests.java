@@ -81,12 +81,12 @@ class ArchitectureTests {
 
     @Test
     void testProfileUsesDedicatedDatabase() throws IOException {
-        String normalUrl = "jdbc:postgresql://localhost:5434/spec_agent";
         String testUrl = "jdbc:postgresql://localhost:5434/spec_agent_test";
 
-        String localConfig = Files.readString(Path.of("src/main/resources/application-local.yml"));
-        assertThat(localConfig).contains("url: " + normalUrl);
-        assertThat(localConfig).doesNotContain("spec_agent_test");
+        String productConfig = Files.readString(Path.of("src/main/resources/application.yml"));
+        assertThat(productConfig)
+                .contains("SPEC_AGENT_DB_NAME:spec_agent")
+                .doesNotContain("SPEC_AGENT_DB_NAME:spec_agent_test");
 
         for (Path testConfig : List.of(
                 Path.of("src/main/resources/application-test.yml"),
@@ -95,9 +95,8 @@ class ArchitectureTests {
             assertThat(text)
                     .as("test profile must use an isolated database: %s", testConfig)
                     .contains("url: " + testUrl)
-                    .doesNotContain("url: " + normalUrl + System.lineSeparator())
-                    .doesNotContain("url: " + normalUrl + "\n")
-                    .doesNotContain("url: " + normalUrl + "\r\n");
+                    .doesNotContain("url: jdbc:postgresql://localhost:5434/spec_agent\n")
+                    .doesNotContain("url: jdbc:postgresql://localhost:5434/spec_agent\r\n");
         }
     }
 
