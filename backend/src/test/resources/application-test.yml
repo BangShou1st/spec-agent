@@ -2,7 +2,7 @@ spring:
   application:
     name: spec-agent
   datasource:
-    url: jdbc:postgresql://localhost:5434/spec_agent
+    url: jdbc:postgresql://localhost:5434/spec_agent_test
     username: spec_agent
     password: spec_agent_dev
     driver-class-name: org.postgresql.Driver

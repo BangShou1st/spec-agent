@@ -30,4 +30,43 @@ If any real OpenCode request returns HTTP 429 or the stable `MODEL_PROVIDER_RATE
 
 ## Latest local acceptance result
 
-- 2026-08-19: the normal UI probe stopped at the settings step after the provider returned the safe `RATE_LIMITED` / `MODEL_PROVIDER_RATE_LIMITED` category. No retry, model switch, Fake fallback, or key persistence followed.
+### Pre-streaming-fix real acceptance (historical, 2026-08-20)
+
+- Settings probe: PASS.
+- Explicit free-model selection: PASS.
+- Save: PASS.
+- First real question generation: PASS.
+- First answer → real interpretation/patch: PASS.
+- Next real question: PASS.
+- A later clarification call returned HTTP 504 with stable category
+  `MODEL_PROVIDER_TIMEOUT`.
+- A Re-answer attempt returned HTTP 504 with stable category
+  `MODEL_PROVIDER_TIMEOUT`.
+- Task 13 stopped at the pre-streaming-fix provider timeout boundary; Fork,
+  replacement, SpecSnapshot, and the remaining graph acceptance checkpoints
+  were not claimed as passed.
+
+### Earlier rate-limit observation (historical, 2026-08-19)
+
+- Settings probe: PASS; explicit free-model selection: PASS; save: PASS.
+- Creating a project via `POST /projects` is model-free and was not the
+  rate-limit point.
+- The first real model draft / first-question generation returned HTTP 429,
+  stable `RATE_LIMITED` / `MODEL_PROVIDER_RATE_LIMITED`; that run stopped
+  immediately. No retry, model/provider switch, Fake fallback, prompt/parser
+  workaround, or provider switch followed.
+
+### Transport correction
+
+- Completion changed to SSE streaming with delta aggregation.
+- Completion `response_format` was removed.
+- Exact `User-Agent: opencode/1.18.16` was retained for every OpenCode path.
+- Bounded task-level token budgets were added.
+
+### Post-transport-fix real acceptance
+
+- Not yet executed.
+- Blocked because deterministic regression exposed and then fixed the
+  test/local database isolation defect: test profile now uses `spec_agent_test`
+  while normal/local uses `spec_agent`.
+- No new real OpenCode request was sent after the transport correction.

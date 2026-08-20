@@ -5,9 +5,10 @@ import java.util.List;
 /**
  * Minimal chat completion payload for OpenCode Zen.
  *
- * <p>Phase 5.1 keeps the payload minimal: model, messages, a JSON object
- * response format, no streaming, fixed temperature and token cap. Per-task
- * prompt engineering is Phase 5.2.
+ * <p>Production completion requests use the OpenAI-compatible streaming shape
+ * required by the verified OpenCode client. The transport owns the wire-only
+ * fields; this DTO carries the model, messages, temperature and bounded task
+ * budget without coupling the agent contracts to a provider response format.
  */
 public record OpenCodeChatCompletionRequest(
         String model,

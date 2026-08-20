@@ -15,6 +15,7 @@ import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -55,7 +56,8 @@ class HttpOpenCodeZenTransportTest {
                 exchange.getRequestURI().getPath(),
                 exchange.getRequestHeaders(), requestBody));
         byte[] responseBody = stubBody.getBytes(StandardCharsets.UTF_8);
-        exchange.getResponseHeaders().set("Content-Type", "application/json");
+        exchange.getResponseHeaders().set("Content-Type",
+                stubBody.startsWith("data:") ? "text/event-stream" : "application/json");
         exchange.sendResponseHeaders(stubStatus, responseBody.length);
         try (OutputStream out = exchange.getResponseBody()) {
             out.write(responseBody);
@@ -87,6 +89,7 @@ class HttpOpenCodeZenTransportTest {
 
     @Test
     void completionRequestSendsOpenCodeUserAgentAndHeaders() throws IOException {
+        stubBody = streamingJson("{\"action\":\"finish\"}");
         OpenCodeCompletionResponse result = transport().complete(TEST_KEY, completionRequest());
 
         assertThat(result.content()).isEqualTo("{\"action\":\"finish\"}");
@@ -105,8 +108,17 @@ class HttpOpenCodeZenTransportTest {
         assertThat(payload.get("messages").get(1).get("content").asText()).isEqualTo("user context");
         assertThat(payload.get("temperature").asDouble()).isZero();
         assertThat(payload.get("max_tokens").asInt()).isEqualTo(4096);
-        assertThat(payload.get("response_format").get("type").asText()).isEqualTo("json_object");
-        assertThat(payload.get("stream").asBoolean()).isFalse();
+        assertThat(payload.get("response_format")).isNull();
+        assertThat(payload.get("stream").asBoolean()).isTrue();
+    }
+
+    @Test
+    void streamingChunksAreAggregatedUntilDone() {
+        stubBody = streamingJson("foo", "bar");
+
+        OpenCodeCompletionResponse result = transport().complete(TEST_KEY, completionRequest());
+
+        assertThat(result.content()).isEqualTo("foobar");
     }
 
     @Test
@@ -193,13 +205,13 @@ class HttpOpenCodeZenTransportTest {
 
     @Test
     void serverErrorIsMapped() {
-        stubStatus = 500;
+        stubStatus = 504;
         assertThatThrownBy(() -> transport().complete(TEST_KEY, completionRequest()))
                 .isInstanceOf(OpenCodeModelException.class)
                 .satisfies(ex -> {
                     OpenCodeModelException modelException = (OpenCodeModelException) ex;
                     assertThat(modelException.category()).isEqualTo(OpenCodeModelErrorCategory.SERVER_ERROR);
-                    assertThat(modelException.httpStatus()).isEqualTo(500);
+                    assertThat(modelException.httpStatus()).isEqualTo(504);
                 });
     }
 
@@ -217,7 +229,7 @@ class HttpOpenCodeZenTransportTest {
 
     @Test
     void malformedJsonIsMappedToInvalidResponse() {
-        stubBody = "not-json-at-all";
+        stubBody = "data: not-json-at-all\n\n";
         assertThatThrownBy(() -> transport().complete(TEST_KEY, completionRequest()))
                 .isInstanceOf(OpenCodeModelException.class)
                 .satisfies(ex -> assertThat(((OpenCodeModelException) ex).category())
@@ -226,7 +238,7 @@ class HttpOpenCodeZenTransportTest {
 
     @Test
     void unexpectedCompletionPayloadIsMappedToInvalidResponse() throws IOException {
-        stubBody = mapper.writeValueAsString(Map.of("object", "list", "data", List.of()));
+        stubBody = "data: " + mapper.writeValueAsString(Map.of("object", "list", "data", List.of())) + "\n\n";
         assertThatThrownBy(() -> transport().complete(TEST_KEY, completionRequest()))
                 .isInstanceOf(OpenCodeModelException.class)
                 .satisfies(ex -> assertThat(((OpenCodeModelException) ex).category())
@@ -235,7 +247,7 @@ class HttpOpenCodeZenTransportTest {
 
     @Test
     void emptyModelContentIsMappedToEmptyContent() {
-        stubBody = completionJson("   ");
+        stubBody = streamingJson("   ");
         assertThatThrownBy(() -> transport().complete(TEST_KEY, completionRequest()))
                 .isInstanceOf(OpenCodeModelException.class)
                 .satisfies(ex -> assertThat(((OpenCodeModelException) ex).category())
@@ -302,5 +314,23 @@ class HttpOpenCodeZenTransportTest {
     }
 
     private record CapturedRequest(String method, String path, Headers headers, byte[] body) {
+    }
+
+    private String streamingJson(String... contents) {
+        StringBuilder stream = new StringBuilder();
+        for (String content : contents) {
+            try {
+                Map<String, Object> choice = new LinkedHashMap<>();
+                choice.put("index", 0);
+                choice.put("delta", Map.of("content", content));
+                choice.put("finish_reason", null);
+                stream.append("data: ")
+                        .append(mapper.writeValueAsString(Map.of("choices", List.of(choice))))
+                        .append("\n\n");
+            } catch (IOException ex) {
+                throw new IllegalStateException(ex);
+            }
+        }
+        return stream.append("data: [DONE]\n\n").toString();
     }
 }

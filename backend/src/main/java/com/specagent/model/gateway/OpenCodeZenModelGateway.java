@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.specagent.agent.AgentAction;
 import com.specagent.agent.AgentPromptRenderer;
+import com.specagent.agent.AgentTaskType;
 import com.specagent.agent.ModelRequest;
 import com.specagent.agent.ModelResponse;
 import com.specagent.common.Hashes;
@@ -49,7 +50,6 @@ import java.util.Map;
 @ConditionalOnProperty(name = "spec.agent.model.gateway", havingValue = "opencode", matchIfMissing = true)
 public class OpenCodeZenModelGateway implements ModelGateway {
 
-    private static final int MAX_TOKENS = 4096;
     private static final double TEMPERATURE = 0.0;
 
     private final OpenCodeZenTransport transport;
@@ -89,9 +89,24 @@ public class OpenCodeZenModelGateway implements ModelGateway {
                         List.of(new OpenCodeChatMessage("system", prompt.systemPrompt()),
                                 new OpenCodeChatMessage("user", prompt.userPrompt())),
                         TEMPERATURE,
-                        MAX_TOKENS));
+                        maxTokensFor(request.taskType())));
 
         return toModelResponse(request, completion.content(), prompt, selectedModel);
+    }
+
+    /**
+     * Keep each production call bounded while allowing the larger spec task
+     * enough room for its structured output. These are transport budgets, not
+     * prompt text or parser rules.
+     */
+    static int maxTokensFor(AgentTaskType taskType) {
+        return switch (taskType) {
+            case DRAFT_NODE -> 1024;
+            case INTERPRET_ANSWER -> 768;
+            case DRAFT_ANSWER_PATCH -> 1024;
+            case DRAFT_SPEC -> 2048;
+            default -> 1024;
+        };
     }
 
     /**

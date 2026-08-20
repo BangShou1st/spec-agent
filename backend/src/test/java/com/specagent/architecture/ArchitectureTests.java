@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
 class ArchitectureTests {
@@ -76,6 +77,28 @@ class ArchitectureTests {
                 .contains("gateway: ${SPEC_AGENT_MODEL_GATEWAY:opencode}")
                 .doesNotContain("matchIfMissing: true")
                 .doesNotContain("gateway: fake");
+    }
+
+    @Test
+    void testProfileUsesDedicatedDatabase() throws IOException {
+        String normalUrl = "jdbc:postgresql://localhost:5434/spec_agent";
+        String testUrl = "jdbc:postgresql://localhost:5434/spec_agent_test";
+
+        String localConfig = Files.readString(Path.of("src/main/resources/application-local.yml"));
+        assertThat(localConfig).contains("url: " + normalUrl);
+        assertThat(localConfig).doesNotContain("spec_agent_test");
+
+        for (Path testConfig : List.of(
+                Path.of("src/main/resources/application-test.yml"),
+                Path.of("src/test/resources/application-test.yml"))) {
+            String text = Files.readString(testConfig);
+            assertThat(text)
+                    .as("test profile must use an isolated database: %s", testConfig)
+                    .contains("url: " + testUrl)
+                    .doesNotContain("url: " + normalUrl + System.lineSeparator())
+                    .doesNotContain("url: " + normalUrl + "\n")
+                    .doesNotContain("url: " + normalUrl + "\r\n");
+        }
     }
 
     @Test

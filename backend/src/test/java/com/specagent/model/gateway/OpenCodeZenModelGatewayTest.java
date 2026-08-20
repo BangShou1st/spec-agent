@@ -62,9 +62,13 @@ class OpenCodeZenModelGatewayTest {
     }
 
     private ModelRequest request() {
+        return request(AgentTaskType.DRAFT_NODE);
+    }
+
+    private ModelRequest request(AgentTaskType taskType) {
         return new ModelRequest(
                 UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
-                AgentTaskType.DRAFT_NODE, "{\"input\":true}", Map.of());
+                taskType, "{\"input\":true}", Map.of());
     }
 
     private OpenCodeZenModelGateway gateway(RecordingTransport transport, String model) {
@@ -107,6 +111,21 @@ OpenCodeZenModelGateway gateway = gateway(transport, SELECTED_MODEL);
         assertThat(transport.request.messages().get(1).content())
                 .contains(AgentTaskType.DRAFT_NODE.code())
                 .contains(request.inputJson());
+    }
+
+    @Test
+    void gatewayUsesBoundedTaskSpecificTokenBudgets() {
+        Map<AgentTaskType, Integer> expectedBudgets = Map.of(
+                AgentTaskType.DRAFT_NODE, 1024,
+                AgentTaskType.INTERPRET_ANSWER, 768,
+                AgentTaskType.DRAFT_ANSWER_PATCH, 1024,
+                AgentTaskType.DRAFT_SPEC, 2048);
+
+        expectedBudgets.forEach((taskType, expectedBudget) -> {
+            RecordingTransport transport = new RecordingTransport();
+            gateway(transport, SELECTED_MODEL).run(request(taskType));
+            assertThat(transport.request.maxTokens()).isEqualTo(expectedBudget);
+        });
     }
 
     @Test

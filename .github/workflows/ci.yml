@@ -15,13 +15,13 @@ jobs:
       postgres:
         image: postgres:17-alpine
         env:
-          POSTGRES_DB: spec_agent
+          POSTGRES_DB: spec_agent_test
           POSTGRES_USER: spec_agent
           POSTGRES_PASSWORD: spec_agent_dev
         ports:
           - 5434:5432
         options: >-
-          --health-cmd "pg_isready -U spec_agent -d spec_agent"
+          --health-cmd "pg_isready -U spec_agent -d spec_agent_test"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
@@ -67,13 +67,13 @@ jobs:
       postgres:
         image: postgres:17-alpine
         env:
-          POSTGRES_DB: spec_agent
+          POSTGRES_DB: spec_agent_test
           POSTGRES_USER: spec_agent
           POSTGRES_PASSWORD: spec_agent_dev
         ports:
           - 5434:5432
         options: >-
-          --health-cmd "pg_isready -U spec_agent -d spec_agent"
+          --health-cmd "pg_isready -U spec_agent -d spec_agent_test"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20

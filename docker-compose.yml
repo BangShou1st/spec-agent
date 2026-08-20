@@ -9,6 +9,7 @@ services:
     ports:
       - "5434:5432"
     volumes:
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
       - spec-agent-postgres-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U spec_agent -d spec_agent"]

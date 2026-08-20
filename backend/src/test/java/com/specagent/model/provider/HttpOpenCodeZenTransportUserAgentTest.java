@@ -60,10 +60,15 @@ class HttpOpenCodeZenTransportUserAgentTest {
     private void handle(HttpExchange exchange) throws IOException {
         paths.add(exchange.getRequestURI().getPath());
         userAgents.add(exchange.getRequestHeaders().getFirst("User-Agent"));
+        String requestBody = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
         String body = exchange.getRequestURI().getPath().equals("/models")
                 ? "{\"data\":[{\"id\":\"alpha-free\"}]}"
+                : requestBody.contains("\"stream\":true")
+                ? "data: {\"choices\":[{\"delta\":{\"content\":\"{\\\"action\\\":\\\"finish\\\",\\\"output\\\":{}}\"}}]}\n\ndata: [DONE]\n\n"
                 : "{\"choices\":[{\"message\":{\"content\":\"{\\\"action\\\":\\\"finish\\\",\\\"output\\\":{}}\"}}]}";
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().set("Content-Type",
+                body.startsWith("data:") ? "text/event-stream" : "application/json");
         exchange.sendResponseHeaders(200, bytes.length);
         try (var output = exchange.getResponseBody()) {
             output.write(bytes);
