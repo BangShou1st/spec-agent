@@ -2,6 +2,7 @@ package com.specagent.model.provider;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.specagent.common.Hashes;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -24,6 +25,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -69,7 +71,7 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
     public OpenCodeCompletionResponse complete(String apiKey, OpenCodeChatCompletionRequest request) {
         HttpResponse<InputStream> response = sendStreaming(
                 "POST", "/chat/completions", apiKey, completionPayload(request), request.model());
-        return parseStreaming(response.body());
+        return parseStreaming(response, request.model());
     }
 
     @Override
@@ -88,7 +90,7 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
         probe.put("stream", false);
         HttpResponse<String> response = sendBuffered(
                 "POST", "/chat/completions", apiKey, writeJson(probe), model);
-        parseCompletion(response.body());
+        parseCompletion(response.body(), response.statusCode());
     }
 
     private HttpResponse<String> sendBuffered(String method,
@@ -109,7 +111,7 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
                                                     String selectedModel) {
         HttpResponse<InputStream> response = send(
                 buildRequest(method, path, apiKey, body), HttpResponse.BodyHandlers.ofInputStream());
-        if (response.statusCode() >= 400) {
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
             String diagnosticBody = readBounded(response.body());
             ensureSuccessful(response.statusCode(), path, selectedModel, diagnosticBody, response.headers());
         }
@@ -154,24 +156,32 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
                                   String selectedModel,
                                   String responseBody,
                                   HttpHeaders headers) {
+        if (status >= 200 && status < 300) {
+            return;
+        }
+        OpenCodeModelErrorCategory category;
+        String message;
         if (status == 401 || status == 403) {
-            throw new OpenCodeModelException(OpenCodeModelErrorCategory.AUTHENTICATION,
-                    "OpenCode request failed (HTTP " + status + ")", status);
+            category = OpenCodeModelErrorCategory.AUTHENTICATION;
+            message = "OpenCode request failed (HTTP " + status + ")";
+        } else if (status == 429) {
+            category = OpenCodeModelErrorCategory.RATE_LIMITED;
+            message = "OpenCode service rate limited the request";
+        } else if (status >= 500) {
+            category = OpenCodeModelErrorCategory.SERVER_ERROR;
+            message = "OpenCode service is temporarily unavailable";
+        } else {
+            category = OpenCodeModelErrorCategory.PROVIDER_REQUEST_ERROR;
+            message = "OpenCode request failed (HTTP " + status + ")";
         }
-        if (status == 429) {
-            logProviderDiagnostics("rate-limit", path, selectedModel, responseBody, headers);
-            throw new OpenCodeModelException(OpenCodeModelErrorCategory.RATE_LIMITED,
-                    "OpenCode service rate limited the request", status);
+        OpenCodeModelException failure = httpFailure(
+                category, message, status, path, selectedModel, responseBody, headers);
+        if (category == OpenCodeModelErrorCategory.RATE_LIMITED) {
+            logProviderDiagnostics(failure, "rate-limit");
+        } else if (category == OpenCodeModelErrorCategory.SERVER_ERROR) {
+            logProviderDiagnostics(failure, "server-error");
         }
-        if (status >= 500) {
-            logProviderDiagnostics("server-error", path, selectedModel, responseBody, headers);
-            throw new OpenCodeModelException(OpenCodeModelErrorCategory.SERVER_ERROR,
-                    "OpenCode service is temporarily unavailable", status);
-        }
-        if (status >= 400) {
-            throw new OpenCodeModelException(OpenCodeModelErrorCategory.PROVIDER_REQUEST_ERROR,
-                    "OpenCode request failed (HTTP " + status + ")", status);
-        }
+        throw failure;
     }
 
     /**
@@ -180,24 +190,43 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
      * wholesale; Authorization, API keys, prompts, and arbitrary headers are
      * never included.
      */
-    private void logProviderDiagnostics(String category,
-                                        String path,
-                                        String selectedModel,
-                                        String responseBody,
-                                        HttpHeaders headers) {
+    private void logProviderDiagnostics(OpenCodeModelException exception, String category) {
+        OpenCodeFailureDiagnostics diagnostics = exception.diagnostics();
+        LOG.warn("OpenCode provider diagnostics category={} endpoint={} path={} providerType={} "
+                        + "providerCode={} providerMessage={} retryAfter={} xRequestId={} "
+                        + "requestId={} cfRay={} traceId={} task={} selectedModel={} "
+                        + "initialHttpStatus={} diagnosticReason={} finishReason={} "
+                        + "streamedEventCount={} contentCharCount={} contentSha256={} eventIndex={} "
+                        + "topLevelFields={} choicesCount={} deltaFields={}",
+                category,
+                baseUrl,
+                diagnostics.endpointPath(), diagnostics.providerType(), diagnostics.providerCode(),
+                diagnostics.providerMessage(), diagnostics.retryAfter(), diagnostics.xRequestId(),
+                diagnostics.requestId(), diagnostics.cfRay(), diagnostics.traceId(), diagnostics.task(),
+                diagnostics.selectedModel(), diagnostics.initialHttpStatus(), diagnosticReason(diagnostics),
+                diagnostics.finishReason(), diagnostics.streamedEventCount(), diagnostics.contentCharCount(),
+                diagnostics.contentSha256(), diagnostics.eventIndex(), diagnostics.topLevelFields(),
+                diagnostics.choicesCount(), diagnostics.deltaFields());
+    }
+
+    private OpenCodeModelException httpFailure(OpenCodeModelErrorCategory category,
+                                               String message,
+                                               int status,
+                                               String path,
+                                               String selectedModel,
+                                               String responseBody,
+                                               HttpHeaders headers) {
         JsonNode error = null;
         try {
             JsonNode root = mapper.readTree(responseBody == null ? "" : responseBody);
             error = root == null ? null : root.get("error");
         } catch (IOException ignored) {
-            // Keep the stable category even when the provider body is not JSON.
+            // Keep safe "not provided" diagnostics for non-JSON provider bodies.
         }
-        LOG.warn("OpenCode provider diagnostics category={} endpoint={} path={} providerType={} "
-                        + "providerCode={} providerMessage={} retryAfter={} xRequestId={} "
-                        + "requestId={} cfRay={} traceId={} selectedModel={}",
-                category,
-                baseUrl,
+        OpenCodeFailureDiagnostics diagnostics = OpenCodeFailureDiagnostics.httpFailure(
+                selectedModel,
                 path,
+                status,
                 safeDiagnostic(error == null ? null : error.get("type")),
                 safeDiagnostic(error == null ? null : error.get("code")),
                 safeDiagnostic(error == null ? null : error.get("message")),
@@ -205,8 +234,13 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
                 safeHeader(headers.firstValue("x-request-id").orElse("not provided")),
                 safeHeader(headers.firstValue("request-id").orElse("not provided")),
                 safeHeader(headers.firstValue("cf-ray").orElse("not provided")),
-                safeHeader(headers.firstValue("trace-id").orElse("not provided")),
-                safeHeader(selectedModel == null ? "not provided" : selectedModel));
+                safeHeader(headers.firstValue("trace-id").orElse("not provided")));
+        return new OpenCodeModelException(category, message, status).withDiagnostics(diagnostics);
+    }
+
+    private static String diagnosticReason(OpenCodeFailureDiagnostics diagnostics) {
+        return diagnostics.diagnosticReason() == null
+                ? "not provided" : diagnostics.diagnosticReason().name();
     }
 
     private static String safeDiagnostic(JsonNode value) {
@@ -226,27 +260,33 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
         return singleLine.substring(0, 512);
     }
 
-    private OpenCodeCompletionResponse parseStreaming(InputStream body) {
+    private OpenCodeCompletionResponse parseStreaming(HttpResponse<InputStream> response,
+                                                      String selectedModel) {
         StringBuilder eventData = new StringBuilder();
         StringBuilder content = new StringBuilder();
-        String finishReason = null;
+        StreamState state = new StreamState();
         Integer promptTokens = null;
         Integer completionTokens = null;
         Integer totalTokens = null;
         boolean done = false;
 
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(body, StandardCharsets.UTF_8))) {
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(
+                response.body(), StandardCharsets.UTF_8))) {
             String line;
             while ((line = reader.readLine()) != null) {
                 if (line.isEmpty()) {
-                    StreamChunk chunk = parseStreamEvent(eventData);
+                    if (eventData.length() == 0) {
+                        continue;
+                    }
+                    StreamChunk chunk = parseStreamEvent(eventData, state, content,
+                            response.statusCode(), response.headers(), selectedModel);
                     eventData.setLength(0);
                     if (chunk.done()) {
                         done = true;
                         break;
                     }
                     content.append(chunk.content());
-                    finishReason = firstNonNull(chunk.finishReason(), finishReason);
+                    state.finishReason = firstNonNull(chunk.finishReason(), state.finishReason);
                     promptTokens = firstNonNull(chunk.promptTokens(), promptTokens);
                     completionTokens = firstNonNull(chunk.completionTokens(), completionTokens);
                     totalTokens = firstNonNull(chunk.totalTokens(), totalTokens);
@@ -264,12 +304,13 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
             }
 
             if (!done && eventData.length() > 0) {
-                StreamChunk chunk = parseStreamEvent(eventData);
+                StreamChunk chunk = parseStreamEvent(eventData, state, content,
+                        response.statusCode(), response.headers(), selectedModel);
                 if (chunk.done()) {
                     done = true;
                 } else {
                     content.append(chunk.content());
-                    finishReason = firstNonNull(chunk.finishReason(), finishReason);
+                    state.finishReason = firstNonNull(chunk.finishReason(), state.finishReason);
                     promptTokens = firstNonNull(chunk.promptTokens(), promptTokens);
                     completionTokens = firstNonNull(chunk.completionTokens(), completionTokens);
                     totalTokens = firstNonNull(chunk.totalTokens(), totalTokens);
@@ -279,22 +320,32 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
             throw ex;
         } catch (IOException ex) {
             if (ex instanceof HttpTimeoutException || ex instanceof SocketTimeoutException) {
-                throw new OpenCodeModelException(OpenCodeModelErrorCategory.TIMEOUT,
-                        "OpenCode streaming request timed out", ex);
+                throw streamingFailure(OpenCodeModelErrorCategory.TIMEOUT, null,
+                        "OpenCode streaming request timed out", ex, state, content,
+                        response.statusCode(), response.headers(), selectedModel, null, null, null);
             }
-            throw new OpenCodeModelException(OpenCodeModelErrorCategory.CONNECTION,
-                    "OpenCode streaming response was interrupted", ex);
+            throw streamingFailure(OpenCodeModelErrorCategory.CONNECTION, null,
+                    "OpenCode streaming response was interrupted", ex, state, content,
+                    response.statusCode(), response.headers(), selectedModel, null, null, null);
         }
 
         if (content.toString().isBlank()) {
-            throw new OpenCodeModelException(OpenCodeModelErrorCategory.EMPTY_CONTENT,
-                    "OpenCode returned empty streamed model content");
+            throw streamingFailure(OpenCodeModelErrorCategory.EMPTY_CONTENT, null,
+                    "OpenCode returned empty streamed model content", null, state, content,
+                    response.statusCode(), response.headers(), selectedModel, null, null, null);
         }
         return new OpenCodeCompletionResponse(
-                content.toString(), finishReason, promptTokens, completionTokens, totalTokens);
+                content.toString(), state.finishReason, promptTokens, completionTokens, totalTokens,
+                response.statusCode(), state.eventCount);
     }
 
-    private StreamChunk parseStreamEvent(CharSequence eventData) {
+    private StreamChunk parseStreamEvent(CharSequence eventData,
+                                         StreamState state,
+                                         StringBuilder content,
+                                         int initialHttpStatus,
+                                         HttpHeaders headers,
+                                         String selectedModel) {
+        int eventIndex = ++state.eventCount;
         String data = eventData.toString().trim();
         if (data.isEmpty()) {
             return StreamChunk.empty();
@@ -303,27 +354,58 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
             return StreamChunk.doneChunk();
         }
 
-        JsonNode root = readJson(data);
+        JsonNode root;
+        try {
+            root = mapper.readTree(data);
+        } catch (IOException ex) {
+            throw streamingFailure(OpenCodeModelErrorCategory.INVALID_RESPONSE,
+                    OpenCodeDiagnosticReason.STREAM_MALFORMED_JSON,
+                    "OpenCode returned malformed streaming JSON", ex, state, content,
+                    initialHttpStatus, headers, selectedModel, eventIndex, null, null);
+        }
+        if (root == null || !root.isObject()) {
+            throw streamingFailure(OpenCodeModelErrorCategory.INVALID_RESPONSE,
+                    OpenCodeDiagnosticReason.STREAM_MALFORMED_JSON,
+                    "OpenCode returned a non-object streaming event", null, state, content,
+                    initialHttpStatus, headers, selectedModel, eventIndex, root, null);
+        }
+        JsonNode error = root.get("error");
+        if (error != null) {
+            OpenCodeModelErrorCategory category = classifyProviderStreamError(error);
+            throw streamingFailure(category, OpenCodeDiagnosticReason.STREAM_ERROR_EVENT,
+                    "OpenCode returned a provider error event", null, state, content,
+                    initialHttpStatus, headers, selectedModel, eventIndex, root, null, error, null);
+        }
         JsonNode choices = root.get("choices");
         if (choices == null || !choices.isArray()) {
-            throw new OpenCodeModelException(OpenCodeModelErrorCategory.INVALID_RESPONSE,
-                    "OpenCode returned a malformed streaming chunk");
+            throw streamingFailure(OpenCodeModelErrorCategory.INVALID_RESPONSE,
+                    OpenCodeDiagnosticReason.STREAM_MISSING_CHOICES,
+                    "OpenCode streaming event has no choices array", null, state, content,
+                    initialHttpStatus, headers, selectedModel, eventIndex, root, null);
         }
+        JsonNode usage = root.get("usage");
         if (choices.isEmpty()) {
-            return StreamChunk.empty();
+            return new StreamChunk(
+                    "", null, false,
+                    intOrNull(usage == null ? null : usage.get("prompt_tokens")),
+                    intOrNull(usage == null ? null : usage.get("completion_tokens")),
+                    intOrNull(usage == null ? null : usage.get("total_tokens")));
         }
         JsonNode choice = choices.get(0);
-        JsonNode delta = choice.get("delta");
+        JsonNode delta = choice.isObject() ? choice.get("delta") : null;
         if (delta == null || !delta.isObject()) {
-            throw new OpenCodeModelException(OpenCodeModelErrorCategory.INVALID_RESPONSE,
-                    "OpenCode returned a streaming chunk without delta content");
+            throw streamingFailure(OpenCodeModelErrorCategory.INVALID_RESPONSE,
+                    OpenCodeDiagnosticReason.STREAM_MISSING_DELTA,
+                    "OpenCode streaming choice has no delta object", null, state, content,
+                    initialHttpStatus, headers, selectedModel, eventIndex, root, choices.size());
         }
         JsonNode deltaContent = delta.get("content");
         if (deltaContent != null && !deltaContent.isNull() && !deltaContent.isTextual()) {
-            throw new OpenCodeModelException(OpenCodeModelErrorCategory.INVALID_RESPONSE,
-                    "OpenCode returned non-text streaming content");
+            throw streamingFailure(OpenCodeModelErrorCategory.INVALID_RESPONSE,
+                    OpenCodeDiagnosticReason.STREAM_NON_TEXT_CONTENT,
+                    "OpenCode returned non-text streaming content", null, state, content,
+                    initialHttpStatus, headers, selectedModel, eventIndex, root, choices.size(), null, delta);
         }
-        JsonNode usage = root.get("usage");
         return new StreamChunk(
                 deltaContent == null || deltaContent.isNull() ? "" : deltaContent.asText(),
                 textOrNull(choice.get("finish_reason")),
@@ -331,6 +413,94 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
                 intOrNull(usage == null ? null : usage.get("prompt_tokens")),
                 intOrNull(usage == null ? null : usage.get("completion_tokens")),
                 intOrNull(usage == null ? null : usage.get("total_tokens")));
+    }
+
+    private OpenCodeModelException streamingFailure(OpenCodeModelErrorCategory category,
+                                                    OpenCodeDiagnosticReason reason,
+                                                    String message,
+                                                    Throwable cause,
+                                                    StreamState state,
+                                                    StringBuilder content,
+                                                    int initialHttpStatus,
+                                                    HttpHeaders headers,
+                                                    String selectedModel,
+                                                    Integer eventIndex,
+                                                    JsonNode root,
+                                                    Integer choicesCount) {
+        return streamingFailure(category, reason, message, cause, state, content,
+                initialHttpStatus, headers, selectedModel, eventIndex, root, choicesCount, null, null);
+    }
+
+    private OpenCodeModelException streamingFailure(OpenCodeModelErrorCategory category,
+                                                    OpenCodeDiagnosticReason reason,
+                                                    String message,
+                                                    Throwable cause,
+                                                    StreamState state,
+                                                    StringBuilder content,
+                                                    int initialHttpStatus,
+                                                    HttpHeaders headers,
+                                                    String selectedModel,
+                                                    Integer eventIndex,
+                                                    JsonNode root,
+                                                    Integer choicesCount,
+                                                    JsonNode providerError,
+                                                    JsonNode delta) {
+        String contentText = content.toString();
+        OpenCodeFailureDiagnostics diagnostics = new OpenCodeFailureDiagnostics(
+                "not provided", selectedModel, "/chat/completions", initialHttpStatus, reason,
+                state.finishReason, state.eventCount, contentText.length(), Hashes.sha256Hex(contentText),
+                eventIndex, fieldNames(root), choicesCount, fieldNames(delta),
+                safeDiagnostic(providerError == null ? null : providerError.get("type")),
+                safeDiagnostic(providerError == null ? null : providerError.get("code")),
+                safeDiagnostic(providerError == null ? null : providerError.get("message")),
+                safeHeader(headers.firstValue("retry-after").orElse("not provided")),
+                safeHeader(headers.firstValue("x-request-id").orElse("not provided")),
+                safeHeader(headers.firstValue("request-id").orElse("not provided")),
+                safeHeader(headers.firstValue("cf-ray").orElse("not provided")),
+                safeHeader(headers.firstValue("trace-id").orElse("not provided")));
+        return new OpenCodeModelException(category, message, initialHttpStatus, cause)
+                .withDiagnostics(diagnostics);
+    }
+
+    private OpenCodeModelErrorCategory classifyProviderStreamError(JsonNode error) {
+        String type = safeDiagnostic(error == null ? null : error.get("type"));
+        String code = safeDiagnostic(error == null ? null : error.get("code"));
+        String value = (type + " " + code).toLowerCase(Locale.ROOT);
+        if (containsAny(value, "rate", "429", "too_many", "throttl")) {
+            return OpenCodeModelErrorCategory.RATE_LIMITED;
+        }
+        if (containsAny(value, "auth", "unauthor", "forbidden", "401", "403")) {
+            return OpenCodeModelErrorCategory.AUTHENTICATION;
+        }
+        if (containsAny(value, "timeout", "timed_out")) {
+            return OpenCodeModelErrorCategory.TIMEOUT;
+        }
+        if (containsAny(value, "server", "internal", "500", "502", "503", "504")) {
+            return OpenCodeModelErrorCategory.SERVER_ERROR;
+        }
+        return OpenCodeModelErrorCategory.PROVIDER_REQUEST_ERROR;
+    }
+
+    private boolean containsAny(String value, String... tokens) {
+        for (String token : tokens) {
+            if (value.contains(token)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private List<String> fieldNames(JsonNode node) {
+        if (node == null || !node.isObject()) {
+            return List.of();
+        }
+        List<String> fields = new ArrayList<>();
+        node.fieldNames().forEachRemaining(field -> {
+            if (fields.size() < 32) {
+                fields.add(field.replaceAll("[^A-Za-z0-9_.-]", "_"));
+            }
+        });
+        return List.copyOf(fields);
     }
 
     private byte[] completionPayload(OpenCodeChatCompletionRequest request) {
@@ -343,7 +513,7 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
         return writeJson(payload);
     }
 
-    private OpenCodeCompletionResponse parseCompletion(String body) {
+    private OpenCodeCompletionResponse parseCompletion(String body, int initialHttpStatus) {
         JsonNode root = readJson(body);
         JsonNode choices = root.get("choices");
         if (choices == null || !choices.isArray() || choices.isEmpty()) {
@@ -366,7 +536,9 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
                 textOrNull(choices.get(0).get("finish_reason")),
                 intOrNull(usage == null ? null : usage.get("prompt_tokens")),
                 intOrNull(usage == null ? null : usage.get("completion_tokens")),
-                intOrNull(usage == null ? null : usage.get("total_tokens")));
+                intOrNull(usage == null ? null : usage.get("total_tokens")),
+                initialHttpStatus,
+                0);
     }
 
     private OpenCodeModelList parseModelList(String body) {
@@ -459,5 +631,10 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
         private static StreamChunk doneChunk() {
             return new StreamChunk("", null, true, null, null, null);
         }
+    }
+
+    private static final class StreamState {
+        private int eventCount;
+        private String finishReason;
     }
 }

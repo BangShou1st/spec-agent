@@ -15,6 +15,7 @@ import com.specagent.model.gateway.ModelGatewayException;
 public class OpenCodeModelException extends ModelGatewayException {
 
     private final OpenCodeModelErrorCategory category;
+    private final OpenCodeFailureDiagnostics diagnostics;
 
     public OpenCodeModelException(OpenCodeModelErrorCategory category, String message) {
         this(category, message, null, null);
@@ -28,16 +29,33 @@ public class OpenCodeModelException extends ModelGatewayException {
         this(category, message, null, cause);
     }
 
+    public OpenCodeModelException(OpenCodeModelErrorCategory category,
+                                  String message,
+                                  Integer httpStatus,
+                                  Throwable cause) {
+        this(category, message, httpStatus, cause, OpenCodeFailureDiagnostics.empty());
+    }
+
     private OpenCodeModelException(OpenCodeModelErrorCategory category,
                                    String message,
                                    Integer httpStatus,
-                                   Throwable cause) {
+                                   Throwable cause,
+                                   OpenCodeFailureDiagnostics diagnostics) {
         super(toGatewayCategory(category), message, httpStatus, cause);
         this.category = category;
+        this.diagnostics = diagnostics == null ? OpenCodeFailureDiagnostics.empty() : diagnostics;
     }
 
     public OpenCodeModelErrorCategory category() {
         return category;
+    }
+
+    public OpenCodeFailureDiagnostics diagnostics() {
+        return diagnostics;
+    }
+
+    public OpenCodeModelException withDiagnostics(OpenCodeFailureDiagnostics nextDiagnostics) {
+        return new OpenCodeModelException(category(), getMessage(), httpStatus(), getCause(), nextDiagnostics);
     }
 
     private static ModelGatewayErrorCategory toGatewayCategory(OpenCodeModelErrorCategory category) {

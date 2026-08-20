@@ -10,6 +10,7 @@ import com.specagent.agent.TaskPromptCatalog;
 import com.specagent.model.provider.OpenCodeChatCompletionRequest;
 import com.specagent.model.provider.OpenCodeChatMessage;
 import com.specagent.model.provider.OpenCodeCompletionResponse;
+import com.specagent.model.provider.OpenCodeDiagnosticReason;
 import com.specagent.model.provider.OpenCodeModelErrorCategory;
 import com.specagent.model.provider.OpenCodeModelException;
 import com.specagent.model.provider.OpenCodeModelList;
@@ -40,6 +41,9 @@ class OpenCodeZenModelGatewayTest {
         String apiKey;
         OpenCodeChatCompletionRequest request;
         String content = "{\"action\":\"ask_next_question\",\"output\":{\"question\":\"what?\"}}";
+        String finishReason = "stop";
+        Integer initialHttpStatus = 200;
+        int streamedEventCount = 4;
         boolean completeCalled;
 
         @Override
@@ -47,7 +51,8 @@ class OpenCodeZenModelGatewayTest {
             this.apiKey = apiKey;
             this.request = request;
             this.completeCalled = true;
-            return new OpenCodeCompletionResponse(content, "stop", 10, 5, 15);
+            return new OpenCodeCompletionResponse(content, finishReason, 10, 5, 15,
+                    initialHttpStatus, streamedEventCount);
         }
 
         @Override
@@ -178,8 +183,15 @@ OpenCodeZenModelGateway gateway = gateway(transport, SELECTED_MODEL);
 
         assertThatThrownBy(() -> gateway.run(request()))
                 .isInstanceOf(OpenCodeModelException.class)
-                .satisfies(ex -> assertThat(((OpenCodeModelException) ex).category())
-                        .isEqualTo(OpenCodeModelErrorCategory.INVALID_RESPONSE));
+                .satisfies(ex -> {
+                    OpenCodeModelException modelException = (OpenCodeModelException) ex;
+                    assertThat(modelException.category()).isEqualTo(OpenCodeModelErrorCategory.INVALID_RESPONSE);
+                    assertThat(modelException.diagnostics().diagnosticReason())
+                            .isEqualTo(OpenCodeDiagnosticReason.MODEL_OUTPUT_NOT_JSON);
+                    assertThat(modelException.diagnostics().task()).isEqualTo(AgentTaskType.DRAFT_NODE.code());
+                    assertThat(modelException.diagnostics().selectedModel()).isEqualTo(SELECTED_MODEL);
+                    assertThat(modelException.diagnostics().initialHttpStatus()).isEqualTo(200);
+                });
     }
 
     @Test
@@ -190,8 +202,8 @@ OpenCodeZenModelGateway gateway = gateway(transport, SELECTED_MODEL);
 
         assertThatThrownBy(() -> gateway.run(request()))
                 .isInstanceOf(OpenCodeModelException.class)
-                .satisfies(ex -> assertThat(((OpenCodeModelException) ex).category())
-                        .isEqualTo(OpenCodeModelErrorCategory.INVALID_RESPONSE));
+                .satisfies(ex -> assertThat(((OpenCodeModelException) ex).diagnostics().diagnosticReason())
+                        .isEqualTo(OpenCodeDiagnosticReason.MODEL_OUTPUT_MISSING_ACTION));
     }
 
     @Test
@@ -202,8 +214,8 @@ OpenCodeZenModelGateway gateway = gateway(transport, SELECTED_MODEL);
 
         assertThatThrownBy(() -> gateway.run(request()))
                 .isInstanceOf(OpenCodeModelException.class)
-                .satisfies(ex -> assertThat(((OpenCodeModelException) ex).category())
-                        .isEqualTo(OpenCodeModelErrorCategory.INVALID_RESPONSE))
+                .satisfies(ex -> assertThat(((OpenCodeModelException) ex).diagnostics().diagnosticReason())
+                        .isEqualTo(OpenCodeDiagnosticReason.MODEL_OUTPUT_UNKNOWN_ACTION))
                 .hasMessageContaining("fly");
     }
 
@@ -215,8 +227,32 @@ OpenCodeZenModelGateway gateway = gateway(transport, SELECTED_MODEL);
 
         assertThatThrownBy(() -> gateway.run(request()))
                 .isInstanceOf(OpenCodeModelException.class)
-                .satisfies(ex -> assertThat(((OpenCodeModelException) ex).category())
-                        .isEqualTo(OpenCodeModelErrorCategory.INVALID_RESPONSE));
+                .satisfies(ex -> assertThat(((OpenCodeModelException) ex).diagnostics().diagnosticReason())
+                        .isEqualTo(OpenCodeDiagnosticReason.MODEL_OUTPUT_MISSING_OUTPUT));
+    }
+
+    @Test
+    void truncatedModelOutputIsDiagnosedFromFinishReason() {
+        RecordingTransport transport = new RecordingTransport();
+        String truncatedContent = "{\"action\":\"ask_next_question\",\"output\":{";
+        transport.content = truncatedContent;
+        transport.finishReason = "length";
+        transport.streamedEventCount = 3;
+        OpenCodeZenModelGateway gateway = gateway(transport, SELECTED_MODEL);
+
+        assertThatThrownBy(() -> gateway.run(request(AgentTaskType.INTERPRET_ANSWER)))
+                .isInstanceOf(OpenCodeModelException.class)
+                .satisfies(ex -> {
+                    OpenCodeModelException modelException = (OpenCodeModelException) ex;
+                    assertThat(modelException.category()).isEqualTo(OpenCodeModelErrorCategory.INVALID_RESPONSE);
+                    assertThat(modelException.diagnostics().diagnosticReason())
+                            .isEqualTo(OpenCodeDiagnosticReason.MODEL_OUTPUT_TRUNCATED);
+                    assertThat(modelException.diagnostics().finishReason()).isEqualTo("length");
+                    assertThat(modelException.diagnostics().initialHttpStatus()).isEqualTo(200);
+                    assertThat(modelException.diagnostics().streamedEventCount()).isEqualTo(3);
+                    assertThat(modelException.diagnostics().contentCharCount()).isEqualTo(truncatedContent.length());
+                    assertThat(modelException.diagnostics().toString()).doesNotContain(truncatedContent);
+                });
     }
 
     @Test

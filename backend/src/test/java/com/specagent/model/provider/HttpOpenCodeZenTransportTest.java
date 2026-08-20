@@ -182,6 +182,7 @@ class HttpOpenCodeZenTransportTest {
                     OpenCodeModelException modelException = (OpenCodeModelException) ex;
                     assertThat(modelException.category()).isEqualTo(OpenCodeModelErrorCategory.AUTHENTICATION);
                     assertThat(modelException.httpStatus()).isEqualTo(401);
+                    assertThat(modelException.diagnostics().initialHttpStatus()).isEqualTo(401);
                 });
 
         stubStatus = 403;
@@ -200,6 +201,8 @@ class HttpOpenCodeZenTransportTest {
                     OpenCodeModelException modelException = (OpenCodeModelException) ex;
                     assertThat(modelException.category()).isEqualTo(OpenCodeModelErrorCategory.RATE_LIMITED);
                     assertThat(modelException.httpStatus()).isEqualTo(429);
+                    assertThat(modelException.diagnostics().initialHttpStatus()).isEqualTo(429);
+                    assertThat(captured).hasSize(1);
                 });
     }
 
@@ -232,8 +235,14 @@ class HttpOpenCodeZenTransportTest {
         stubBody = "data: not-json-at-all\n\n";
         assertThatThrownBy(() -> transport().complete(TEST_KEY, completionRequest()))
                 .isInstanceOf(OpenCodeModelException.class)
-                .satisfies(ex -> assertThat(((OpenCodeModelException) ex).category())
-                        .isEqualTo(OpenCodeModelErrorCategory.INVALID_RESPONSE));
+                .satisfies(ex -> {
+                    OpenCodeModelException modelException = (OpenCodeModelException) ex;
+                    assertThat(modelException.category()).isEqualTo(OpenCodeModelErrorCategory.INVALID_RESPONSE);
+                    assertThat(modelException.diagnostics().diagnosticReason())
+                            .isEqualTo(OpenCodeDiagnosticReason.STREAM_MALFORMED_JSON);
+                    assertThat(modelException.diagnostics().initialHttpStatus()).isEqualTo(200);
+                    assertThat(modelException.diagnostics().eventIndex()).isEqualTo(1);
+                });
     }
 
     @Test
@@ -241,8 +250,131 @@ class HttpOpenCodeZenTransportTest {
         stubBody = "data: " + mapper.writeValueAsString(Map.of("object", "list", "data", List.of())) + "\n\n";
         assertThatThrownBy(() -> transport().complete(TEST_KEY, completionRequest()))
                 .isInstanceOf(OpenCodeModelException.class)
-                .satisfies(ex -> assertThat(((OpenCodeModelException) ex).category())
-                        .isEqualTo(OpenCodeModelErrorCategory.INVALID_RESPONSE));
+                .satisfies(ex -> {
+                    OpenCodeModelException modelException = (OpenCodeModelException) ex;
+                    assertThat(modelException.category()).isEqualTo(OpenCodeModelErrorCategory.INVALID_RESPONSE);
+                    assertThat(modelException.diagnostics().diagnosticReason())
+                            .isEqualTo(OpenCodeDiagnosticReason.STREAM_MISSING_CHOICES);
+                    assertThat(modelException.diagnostics().topLevelFields())
+                            .containsExactly("object", "data");
+                });
+    }
+
+    @Test
+    void providerErrorEventAtHttp200IsMappedWithoutGenericMalformedChunk() throws IOException {
+        stubBody = streamingError("provider_error", "upstream_failure", "provider is temporarily busy");
+
+        assertThatThrownBy(() -> transport().complete(TEST_KEY, completionRequest()))
+                .isInstanceOf(OpenCodeModelException.class)
+                .satisfies(ex -> {
+                    OpenCodeModelException modelException = (OpenCodeModelException) ex;
+                    assertThat(modelException.category())
+                            .isEqualTo(OpenCodeModelErrorCategory.PROVIDER_REQUEST_ERROR);
+                    assertThat(modelException.httpStatus()).isEqualTo(200);
+                    assertThat(modelException.diagnostics().diagnosticReason())
+                            .isEqualTo(OpenCodeDiagnosticReason.STREAM_ERROR_EVENT);
+                    assertThat(modelException.diagnostics().providerType()).isEqualTo("provider_error");
+                    assertThat(modelException.diagnostics().providerCode()).isEqualTo("upstream_failure");
+                    assertThat(modelException.diagnostics().providerMessage())
+                            .isEqualTo("provider is temporarily busy");
+                });
+    }
+
+    @Test
+    void knownRateLimitProviderErrorEventAtHttp200MapsToRateLimited() throws IOException {
+        stubBody = streamingError("rate_limit", "too_many_requests", "slow down");
+
+        assertThatThrownBy(() -> transport().complete(TEST_KEY, completionRequest()))
+                .isInstanceOf(OpenCodeModelException.class)
+                .satisfies(ex -> {
+                    OpenCodeModelException modelException = (OpenCodeModelException) ex;
+                    assertThat(modelException.category()).isEqualTo(OpenCodeModelErrorCategory.RATE_LIMITED);
+                    assertThat(modelException.diagnostics().diagnosticReason())
+                            .isEqualTo(OpenCodeDiagnosticReason.STREAM_ERROR_EVENT);
+                    assertThat(modelException.diagnostics().providerCode()).isEqualTo("too_many_requests");
+                });
+    }
+
+    @Test
+    void roleOnlyAndUsageOnlyChunksAreAccepted() {
+        stubBody = "data: {\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null}]}\n\n"
+                + "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":2,\"completion_tokens\":1,\"total_tokens\":3}}\n\n"
+                + "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\n"
+                + "data: [DONE]\n\n";
+
+        OpenCodeCompletionResponse result = transport().complete(TEST_KEY, completionRequest());
+
+        assertThat(result.content()).isEqualTo("ok");
+        assertThat(result.finishReason()).isEqualTo("stop");
+        assertThat(result.promptTokens()).isEqualTo(2);
+        assertThat(result.completionTokens()).isEqualTo(1);
+        assertThat(result.totalTokens()).isEqualTo(3);
+        assertThat(result.streamedEventCount()).isEqualTo(4);
+    }
+
+    @Test
+    void missingDeltaIsDiagnosedPrecisely() throws IOException {
+        Map<String, Object> choice = new LinkedHashMap<>();
+        choice.put("index", 0);
+        choice.put("finish_reason", null);
+        stubBody = streamEvent(mapper.writeValueAsString(Map.of("choices", List.of(choice))));
+
+        assertThatThrownBy(() -> transport().complete(TEST_KEY, completionRequest()))
+                .isInstanceOf(OpenCodeModelException.class)
+                .satisfies(ex -> assertThat(((OpenCodeModelException) ex).diagnostics().diagnosticReason())
+                        .isEqualTo(OpenCodeDiagnosticReason.STREAM_MISSING_DELTA));
+    }
+
+    @Test
+    void nonTextDeltaContentIsDiagnosedPrecisely() throws IOException {
+        Map<String, Object> choice = new LinkedHashMap<>();
+        choice.put("index", 0);
+        choice.put("delta", Map.of("content", List.of("not-text")));
+        choice.put("finish_reason", null);
+        stubBody = streamEvent(mapper.writeValueAsString(Map.of("choices", List.of(choice))));
+
+        assertThatThrownBy(() -> transport().complete(TEST_KEY, completionRequest()))
+                .isInstanceOf(OpenCodeModelException.class)
+                .satisfies(ex -> assertThat(((OpenCodeModelException) ex).diagnostics().diagnosticReason())
+                        .isEqualTo(OpenCodeDiagnosticReason.STREAM_NON_TEXT_CONTENT));
+    }
+
+    @Test
+    void non2xxIncludingRedirectIsRejectedBeforeSseParsing() {
+        stubStatus = 302;
+        stubBody = streamingJson("would-not-be-parsed");
+
+        assertThatThrownBy(() -> transport().complete(TEST_KEY, completionRequest()))
+                .isInstanceOf(OpenCodeModelException.class)
+                .satisfies(ex -> {
+                    OpenCodeModelException modelException = (OpenCodeModelException) ex;
+                    assertThat(modelException.category())
+                            .isEqualTo(OpenCodeModelErrorCategory.PROVIDER_REQUEST_ERROR);
+                    assertThat(modelException.httpStatus()).isEqualTo(302);
+                    assertThat(modelException.diagnostics().initialHttpStatus()).isEqualTo(302);
+                    assertThat(modelException.diagnostics().diagnosticReason()).isNull();
+                });
+    }
+
+    @Test
+    void streamDiagnosticsContainMetadataButNotRawBodyOrCredential() throws IOException {
+        String rawBodyMarker = "raw-body-marker-that-must-not-escape";
+        stubBody = "data: " + mapper.writeValueAsString(Map.of(
+                "error", Map.of("type", "provider_error", "code", "bad_response",
+                        "message", "Bearer sk-provider-secret-value"),
+                "raw_body", rawBodyMarker)) + "\n\n";
+
+        assertThatThrownBy(() -> transport().complete("sk-test-credential", completionRequest()))
+                .isInstanceOf(OpenCodeModelException.class)
+                .satisfies(ex -> {
+                    OpenCodeModelException modelException = (OpenCodeModelException) ex;
+                    String diagnosticText = modelException.diagnostics().toString();
+                    assertThat(diagnosticText).doesNotContain("sk-provider-secret-value");
+                    assertThat(diagnosticText).doesNotContain(rawBodyMarker);
+                    assertThat(diagnosticText).doesNotContain("Authorization");
+                    assertThat(modelException.diagnostics().providerMessage())
+                            .isEqualTo("Bearer <redacted>");
+                });
     }
 
     @Test
@@ -332,5 +464,14 @@ class HttpOpenCodeZenTransportTest {
             }
         }
         return stream.append("data: [DONE]\n\n").toString();
+    }
+
+    private String streamingError(String type, String code, String message) throws IOException {
+        return streamEvent(mapper.writeValueAsString(Map.of(
+                "error", Map.of("type", type, "code", code, "message", message))));
+    }
+
+    private String streamEvent(String json) {
+        return "data: " + json + "\n\n";
     }
 }

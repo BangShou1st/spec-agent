@@ -11,11 +11,22 @@ public record OpenCodeCompletionResponse(
         String finishReason,
         Integer promptTokens,
         Integer completionTokens,
-        Integer totalTokens) {
+        Integer totalTokens,
+        Integer initialHttpStatus,
+        int streamedEventCount) {
+
+    public OpenCodeCompletionResponse(String content,
+                                      String finishReason,
+                                      Integer promptTokens,
+                                      Integer completionTokens,
+                                      Integer totalTokens) {
+        this(content, finishReason, promptTokens, completionTokens, totalTokens, null, 0);
+    }
 
     public OpenCodeCompletionResponse {
         if (content == null || content.isBlank()) {
             throw new IllegalArgumentException("completion content is required");
         }
+        streamedEventCount = Math.max(0, streamedEventCount);
     }
 }
