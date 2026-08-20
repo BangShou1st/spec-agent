@@ -542,8 +542,103 @@ describe('workspaceStore', () => {
 
     expect(await store.retryForkDraft()).toBe(false)
     expect(mockedDraftNextQuestion).not.toHaveBeenCalled()
-    expect(store.forkDraftRetryRouteId).toBe('forked')
-    expect(store.error?.code).toBe('FORK_DRAFT_RETRY_REQUIRES_ACTIVE_ROUTE')
+    expect(store.forkDraftRetryRouteId).toBeNull()
+  })
+
+  it('does not retain a Fork retry checkpoint after a successful first Draft', async () => {
+    const initialRoute = makeRoute({ id: 'r1', projectId: 'p1', tipNodeId: 'n1', isActive: true })
+    const forkRoute = makeRoute({
+      id: 'forked', projectId: 'p1', tipNodeId: 'n1', isActive: true,
+      branchType: 'fork', branchAtNodeId: 'n1',
+    })
+    const activeBefore = makeActiveState({
+      project: makeProject({ id: 'p1', activeRouteId: 'r1' }),
+      activeRoute: initialRoute,
+    })
+    const activeAfterDraft = makeActiveState({
+      project: makeProject({ id: 'p1', activeRouteId: 'forked' }),
+      activeRoute: { ...forkRoute, tipNodeId: 'n2' },
+    })
+    mockBackendViews(activeBefore, makeRequirementState())
+    mockedGetActiveState.mockResolvedValueOnce(activeBefore).mockResolvedValue(activeAfterDraft)
+    mockedGetProjectGraph
+      .mockResolvedValueOnce(makeGraphWorkspaceView({ projectId: 'p1', activeRouteId: 'r1' }))
+      .mockResolvedValue(makeGraphWorkspaceView({
+        projectId: 'p1',
+        activeRouteId: 'forked',
+        routes: [{ ...forkRoute, tipNodeId: 'n2', rootNodeId: 'n1', lineageNodeIds: ['n1', 'n2'] }],
+        nodes: [makeNode({ id: 'n1' }), makeNode({ id: 'n2' })],
+      }))
+    mockedForkNode.mockResolvedValue({
+      projectId: 'p1', route: forkRoute, activeRouteId: 'forked',
+    })
+    mockedDraftNextQuestion.mockResolvedValue({
+      agentRun: makeAnswerExecution().agentRun,
+      producedNode: makeNode({ id: 'n2' }),
+    })
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+
+    expect(await store.forkNode('n1', 'r1', 'future branch')).toBe(true)
+    expect(mockedDraftNextQuestion).toHaveBeenCalledTimes(1)
+    expect(store.forkDraftRetryRouteId).toBeNull()
+
+    expect(await store.retryForkDraft()).toBe(false)
+    expect(mockedDraftNextQuestion).toHaveBeenCalledTimes(1)
+  })
+
+  it('treats a lost Fork first-Draft response as success when the canonical tip advanced', async () => {
+    const initialRoute = makeRoute({ id: 'r1', projectId: 'p1', tipNodeId: 'n1', isActive: true })
+    const forkRoute = makeRoute({
+      id: 'forked', projectId: 'p1', tipNodeId: 'n1', isActive: true,
+      branchType: 'fork', branchAtNodeId: 'n1',
+    })
+    const activeBefore = makeActiveState({
+      project: makeProject({ id: 'p1', activeRouteId: 'r1' }), activeRoute: initialRoute,
+    })
+    const activeOnFork = makeActiveState({
+      project: makeProject({ id: 'p1', activeRouteId: 'forked' }), activeRoute: forkRoute,
+    })
+    const activeAfterDraft = makeActiveState({
+      project: makeProject({ id: 'p1', activeRouteId: 'forked' }),
+      activeRoute: { ...forkRoute, tipNodeId: 'n2' },
+    })
+    const checkpointGraph = makeGraphWorkspaceView({
+      projectId: 'p1', activeRouteId: 'forked',
+      routes: [{ ...forkRoute, rootNodeId: 'n1', lineageNodeIds: ['n1'] }],
+      answers: [{
+        id: 'inherited-answer', routeId: 'forked', ownerRouteId: 'r1', inherited: true,
+        nodeId: 'n1', selectedOptionId: null, freeText: 'source answer',
+        createdAt: '2026-01-01T00:00:00Z',
+      }],
+    })
+    const advancedGraph = makeGraphWorkspaceView({
+      projectId: 'p1', activeRouteId: 'forked',
+      routes: [{ ...forkRoute, tipNodeId: 'n2', rootNodeId: 'n1', lineageNodeIds: ['n1', 'n2'] }],
+      nodes: [makeNode({ id: 'n1' }), makeNode({ id: 'n2' })],
+    })
+    mockBackendViews(activeBefore, makeRequirementState())
+    mockedGetActiveState
+      .mockResolvedValueOnce(activeBefore)
+      .mockResolvedValueOnce(activeOnFork)
+      .mockResolvedValue(activeAfterDraft)
+    mockedGetProjectGraph
+      .mockResolvedValueOnce(makeGraphWorkspaceView({ projectId: 'p1', activeRouteId: 'r1' }))
+      .mockResolvedValueOnce(checkpointGraph)
+      .mockResolvedValue(advancedGraph)
+    mockedForkNode.mockResolvedValue({
+      projectId: 'p1', route: forkRoute, activeRouteId: 'forked',
+    })
+    mockedDraftNextQuestion.mockRejectedValue(new ApiError('network lost', 'NETWORK_ERROR', 0))
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+
+    expect(await store.forkNode('n1', 'r1', 'future branch')).toBe(true)
+    expect(mockedDraftNextQuestion).toHaveBeenCalledTimes(1)
+    expect(store.forkDraftRetryRouteId).toBeNull()
+    expect(store.manualModelRetry).toBeNull()
+    expect(store.error).toBeNull()
+    expect(store.feedback).toBe('已创建新分支路线。')
   })
 
   it('reload restores an owned active-tip Answer as the repair target', async () => {

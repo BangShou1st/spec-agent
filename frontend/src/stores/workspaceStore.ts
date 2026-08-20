@@ -230,10 +230,7 @@ export const useWorkspaceStore = defineStore('workspace', {
     /** Rebuilds recovery affordances from canonical reads after reload/refresh. */
     restoreCanonicalRecoveryCheckpoints(): void {
       this.repairableAnswerId = this.findFinalizedAnswerForActiveTip()
-      const canonicalForkDraftRetryRouteId = this.findForkDraftRetryRouteId()
-      if (canonicalForkDraftRetryRouteId) {
-        this.forkDraftRetryRouteId = canonicalForkDraftRetryRouteId
-      }
+      this.forkDraftRetryRouteId = this.findForkDraftRetryRouteId()
     },
 
     /** Drafts the next question. Explicit user action only. */
@@ -243,6 +240,7 @@ export const useWorkspaceStore = defineStore('workspace', {
       }
       this.drafting = true
       this.error = null
+      const beforeRouteId = this.activeState?.activeRoute?.id ?? null
       const beforeTipNodeId = this.activeState?.activeRoute?.tipNodeId ?? null
       try {
         await draftNextQuestion(this.projectId)
@@ -254,23 +252,26 @@ export const useWorkspaceStore = defineStore('workspace', {
         const safeError = toDisplayError(err)
         this.error = safeError
         const disposition = classifyModelFailure(safeError.code, safeError.status)
-        this.manualModelRetry = disposition === 'none' ? null : {
+        const retryIntent = disposition === 'none' ? null : {
           kind: 'draft',
-          beforeRouteId: this.activeState?.activeRoute?.id ?? null,
+          beforeRouteId,
           beforeTipNodeId,
           state: disposition === 'unknown' ? 'needs_reconcile' : 'ready',
-        }
-        if (this.manualModelRetry?.state === 'needs_reconcile') {
+        } as ManualModelRetryIntent
+        this.manualModelRetry = retryIntent
+        if (retryIntent?.kind === 'draft' && retryIntent.state === 'needs_reconcile') {
           const reconciled = await this.refreshWorkspace()
           const afterRouteId = this.activeState?.activeRoute?.id ?? null
           const afterTipNodeId = this.activeState?.activeRoute?.tipNodeId ?? null
           if (
             reconciled
-            && (afterRouteId !== this.manualModelRetry.beforeRouteId
+            && (afterRouteId !== beforeRouteId
               || afterTipNodeId !== beforeTipNodeId)
           ) {
             this.manualModelRetry = null
+            this.error = null
             this.feedback = '问题已起草。'
+            return true
           } else {
             this.error = safeError
           }
