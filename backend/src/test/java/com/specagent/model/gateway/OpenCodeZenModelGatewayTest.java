@@ -44,6 +44,9 @@ class OpenCodeZenModelGatewayTest {
         String finishReason = "stop";
         Integer initialHttpStatus = 200;
         int streamedEventCount = 4;
+        int reasoningEventCount;
+        int reasoningCharCount;
+        String reasoningSha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
         boolean completeCalled;
 
         @Override
@@ -52,7 +55,8 @@ class OpenCodeZenModelGatewayTest {
             this.request = request;
             this.completeCalled = true;
             return new OpenCodeCompletionResponse(content, finishReason, 10, 5, 15,
-                    initialHttpStatus, streamedEventCount);
+                    initialHttpStatus, streamedEventCount, reasoningEventCount,
+                    reasoningCharCount, reasoningSha256);
         }
 
         @Override
@@ -99,7 +103,6 @@ OpenCodeZenModelGateway gateway = gateway(transport, SELECTED_MODEL);
         assertThat(transport.apiKey).isEqualTo(API_KEY);
         assertThat(transport.request.model()).isEqualTo(SELECTED_MODEL);
         assertThat(transport.request.temperature()).isEqualTo(0.0);
-        assertThat(transport.request.maxTokens()).isGreaterThan(0);
         assertThat(transport.request.messages()).hasSize(2);
         assertThat(transport.request.messages().get(0).role()).isEqualTo("system");
         assertThat(transport.request.messages().get(1).role()).isEqualTo("user");
@@ -119,21 +122,6 @@ OpenCodeZenModelGateway gateway = gateway(transport, SELECTED_MODEL);
     }
 
     @Test
-    void gatewayUsesBoundedTaskSpecificTokenBudgets() {
-        Map<AgentTaskType, Integer> expectedBudgets = Map.of(
-                AgentTaskType.DRAFT_NODE, 1024,
-                AgentTaskType.INTERPRET_ANSWER, 768,
-                AgentTaskType.DRAFT_ANSWER_PATCH, 1024,
-                AgentTaskType.DRAFT_SPEC, 2048);
-
-        expectedBudgets.forEach((taskType, expectedBudget) -> {
-            RecordingTransport transport = new RecordingTransport();
-            gateway(transport, SELECTED_MODEL).run(request(taskType));
-            assertThat(transport.request.maxTokens()).isEqualTo(expectedBudget);
-        });
-    }
-
-    @Test
     void gatewayTracesPromptVersionAndHashes() {
         RecordingTransport transport = new RecordingTransport();
         transport.content = "{\"action\":\"ask_next_question\",\"output\":{\"question\":\"q\"}}";
@@ -147,6 +135,23 @@ OpenCodeZenModelGateway gateway = gateway(transport, SELECTED_MODEL);
         assertThat(response.trace()).containsKey("modelOutputHash");
         assertThat(response.trace().get("promptHash")).matches("[0-9a-f]{64}");
         assertThat(response.trace().get("modelOutputHash")).matches("[0-9a-f]{64}");
+    }
+
+    @Test
+    void reasoningMetadataIsObservedButRuntimeReceivesOnlyFinalContent() {
+        RecordingTransport transport = new RecordingTransport();
+        transport.reasoningEventCount = 2;
+        transport.reasoningCharCount = 12;
+        transport.reasoningSha256 = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08";
+        OpenCodeZenModelGateway gateway = gateway(transport, SELECTED_MODEL);
+
+        ModelResponse response = gateway.run(request());
+
+        assertThat(response.outputJson()).isEqualTo("{\"question\":\"what?\"}");
+        assertThat(response.outputJson()).doesNotContain("reasoning_content", "internal");
+        assertThat(response.trace()).containsEntry("reasoningEventCount", "2");
+        assertThat(response.trace()).containsEntry("reasoningCharCount", "12");
+        assertThat(response.trace()).containsEntry("reasoningSha256", transport.reasoningSha256);
     }
 
     @Test
@@ -252,6 +257,26 @@ OpenCodeZenModelGateway gateway = gateway(transport, SELECTED_MODEL);
                     assertThat(modelException.diagnostics().streamedEventCount()).isEqualTo(3);
                     assertThat(modelException.diagnostics().contentCharCount()).isEqualTo(truncatedContent.length());
                     assertThat(modelException.diagnostics().toString()).doesNotContain(truncatedContent);
+                });
+    }
+
+    @Test
+    void emptyModelOutputWithLengthFinishReasonIsTruncationNotEmptyContent() {
+        RecordingTransport transport = new RecordingTransport();
+        transport.content = "";
+        transport.finishReason = "length";
+        OpenCodeZenModelGateway gateway = gateway(transport, SELECTED_MODEL);
+
+        assertThatThrownBy(() -> gateway.run(request(AgentTaskType.DRAFT_ANSWER_PATCH)))
+                .isInstanceOf(OpenCodeModelException.class)
+                .satisfies(ex -> {
+                    OpenCodeModelException modelException = (OpenCodeModelException) ex;
+                    assertThat(modelException.category())
+                            .isEqualTo(OpenCodeModelErrorCategory.INVALID_RESPONSE);
+                    assertThat(modelException.diagnostics().diagnosticReason())
+                            .isEqualTo(OpenCodeDiagnosticReason.MODEL_OUTPUT_TRUNCATED);
+                    assertThat(modelException.diagnostics().finishReason()).isEqualTo("length");
+                    assertThat(modelException.diagnostics().contentCharCount()).isZero();
                 });
     }
 

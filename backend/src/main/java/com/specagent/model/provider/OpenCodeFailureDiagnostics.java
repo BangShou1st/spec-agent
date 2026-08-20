@@ -32,7 +32,40 @@ public record OpenCodeFailureDiagnostics(
         String xRequestId,
         String requestId,
         String cfRay,
-        String traceId) {
+        String traceId,
+        int reasoningEventCount,
+        int reasoningCharCount,
+        String reasoningSha256) {
+
+    /** Compatibility constructor for diagnostics without reasoning metadata. */
+    public OpenCodeFailureDiagnostics(
+            String task,
+            String selectedModel,
+            String endpointPath,
+            Integer initialHttpStatus,
+            OpenCodeDiagnosticReason diagnosticReason,
+            String finishReason,
+            int streamedEventCount,
+            int contentCharCount,
+            String contentSha256,
+            Integer eventIndex,
+            List<String> topLevelFields,
+            Integer choicesCount,
+            List<String> deltaFields,
+            String providerType,
+            String providerCode,
+            String providerMessage,
+            String retryAfter,
+            String xRequestId,
+            String requestId,
+            String cfRay,
+            String traceId) {
+        this(task, selectedModel, endpointPath, initialHttpStatus, diagnosticReason,
+                finishReason, streamedEventCount, contentCharCount, contentSha256,
+                eventIndex, topLevelFields, choicesCount, deltaFields, providerType,
+                providerCode, providerMessage, retryAfter, xRequestId, requestId,
+                cfRay, traceId, 0, 0, Hashes.sha256Hex(""));
+    }
 
     public OpenCodeFailureDiagnostics {
         task = safeText(task);
@@ -42,6 +75,9 @@ public record OpenCodeFailureDiagnostics(
         streamedEventCount = Math.max(0, streamedEventCount);
         contentCharCount = Math.max(0, contentCharCount);
         contentSha256 = safeHash(contentSha256);
+        reasoningEventCount = Math.max(0, reasoningEventCount);
+        reasoningCharCount = Math.max(0, reasoningCharCount);
+        reasoningSha256 = safeHash(reasoningSha256);
         topLevelFields = safeFieldNames(topLevelFields);
         deltaFields = safeFieldNames(deltaFields);
         providerType = safeText(providerType);
@@ -67,14 +103,16 @@ public record OpenCodeFailureDiagnostics(
         return copy(value, selectedModel, endpointPath, initialHttpStatus, diagnosticReason,
                 finishReason, streamedEventCount, contentCharCount, contentSha256, eventIndex,
                 topLevelFields, choicesCount, deltaFields, providerType, providerCode,
-                providerMessage, retryAfter, xRequestId, requestId, cfRay, traceId);
+                providerMessage, retryAfter, xRequestId, requestId, cfRay, traceId,
+                reasoningEventCount, reasoningCharCount, reasoningSha256);
     }
 
     public OpenCodeFailureDiagnostics withSelectedModel(String value) {
         return copy(task, value, endpointPath, initialHttpStatus, diagnosticReason,
                 finishReason, streamedEventCount, contentCharCount, contentSha256, eventIndex,
                 topLevelFields, choicesCount, deltaFields, providerType, providerCode,
-                providerMessage, retryAfter, xRequestId, requestId, cfRay, traceId);
+                providerMessage, retryAfter, xRequestId, requestId, cfRay, traceId,
+                reasoningEventCount, reasoningCharCount, reasoningSha256);
     }
 
     public static OpenCodeFailureDiagnostics httpFailure(
@@ -117,13 +155,17 @@ public record OpenCodeFailureDiagnostics(
             String nextXRequestId,
             String nextRequestId,
             String nextCfRay,
-            String nextTraceId) {
+            String nextTraceId,
+            int nextReasoningEventCount,
+            int nextReasoningCharCount,
+            String nextReasoningSha256) {
         return new OpenCodeFailureDiagnostics(
                 nextTask, nextModel, nextPath, nextStatus, nextReason, nextFinishReason,
                 nextEventCount, nextContentChars, nextContentHash, nextEventIndex,
                 nextTopLevelFields, nextChoicesCount, nextDeltaFields, nextProviderType,
                 nextProviderCode, nextProviderMessage, nextRetryAfter, nextXRequestId,
-                nextRequestId, nextCfRay, nextTraceId);
+                nextRequestId, nextCfRay, nextTraceId, nextReasoningEventCount,
+                nextReasoningCharCount, nextReasoningSha256);
     }
 
     private static String safeText(String value) {

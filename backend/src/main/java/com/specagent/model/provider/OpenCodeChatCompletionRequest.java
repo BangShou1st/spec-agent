@@ -7,14 +7,13 @@ import java.util.List;
  *
  * <p>Production completion requests use the OpenAI-compatible streaming shape
  * required by the verified OpenCode client. The transport owns the wire-only
- * fields; this DTO carries the model, messages, temperature and bounded task
- * budget without coupling the agent contracts to a provider response format.
+ * fields; this DTO carries the model, messages and temperature. Production
+ * task types do not carry a task-specific generation limit.
  */
 public record OpenCodeChatCompletionRequest(
         String model,
         List<OpenCodeChatMessage> messages,
-        double temperature,
-        int maxTokens) {
+        double temperature) {
 
     public OpenCodeChatCompletionRequest {
         if (model == null || model.isBlank()) {
@@ -23,9 +22,6 @@ public record OpenCodeChatCompletionRequest(
         messages = messages == null ? List.of() : List.copyOf(messages);
         if (messages.isEmpty()) {
             throw new IllegalArgumentException("messages are required");
-        }
-        if (maxTokens <= 0) {
-            throw new IllegalArgumentException("maxTokens must be positive");
         }
     }
 }

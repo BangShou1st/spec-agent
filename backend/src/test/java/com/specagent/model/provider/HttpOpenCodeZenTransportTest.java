@@ -2,6 +2,7 @@ package com.specagent.model.provider;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.specagent.common.Hashes;
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -73,7 +74,7 @@ class HttpOpenCodeZenTransportTest {
         return new OpenCodeChatCompletionRequest("mimo-v2.5-free",
                 List.of(new OpenCodeChatMessage("system", "system contract"),
                         new OpenCodeChatMessage("user", "user context")),
-                0.0, 4096);
+                0.0);
     }
 
     private String completionJson(String content) {
@@ -107,7 +108,7 @@ class HttpOpenCodeZenTransportTest {
         assertThat(payload.get("messages").get(0).get("role").asText()).isEqualTo("system");
         assertThat(payload.get("messages").get(1).get("content").asText()).isEqualTo("user context");
         assertThat(payload.get("temperature").asDouble()).isZero();
-        assertThat(payload.get("max_tokens").asInt()).isEqualTo(4096);
+        assertThat(payload.get("max_tokens")).isNull();
         assertThat(payload.get("response_format")).isNull();
         assertThat(payload.get("stream").asBoolean()).isTrue();
     }
@@ -119,6 +120,24 @@ class HttpOpenCodeZenTransportTest {
         OpenCodeCompletionResponse result = transport().complete(TEST_KEY, completionRequest());
 
         assertThat(result.content()).isEqualTo("foobar");
+    }
+
+    @Test
+    void reasoningContentIsObservedButNeverAppendedToContent() {
+        String reasoningOne = "internal thought";
+        String reasoningTwo = "more internal thought";
+        stubBody = streamDelta(Map.of("reasoning_content", reasoningOne), null)
+                + streamDelta(Map.of("reasoning_content", reasoningTwo), null)
+                + streamDelta(Map.of("content", "{\"action\":\"finish\",\"output\":{}}"), "stop")
+                + "data: [DONE]\n\n";
+
+        OpenCodeCompletionResponse result = transport().complete(TEST_KEY, completionRequest());
+
+        assertThat(result.content()).isEqualTo("{\"action\":\"finish\",\"output\":{}}");
+        assertThat(result.reasoningEventCount()).isEqualTo(2);
+        assertThat(result.reasoningCharCount()).isEqualTo(reasoningOne.length() + reasoningTwo.length());
+        assertThat(result.reasoningSha256()).isEqualTo(Hashes.sha256Hex(reasoningOne + reasoningTwo));
+        assertThat(result.content()).doesNotContain(reasoningOne, reasoningTwo);
     }
 
     @Test
@@ -169,6 +188,7 @@ class HttpOpenCodeZenTransportTest {
         JsonNode payload = mapper.readTree(request.body());
         assertThat(payload.get("model").asText()).isEqualTo("current-free");
         assertThat(payload.get("messages").get(0).get("role").asText()).isEqualTo("user");
+        assertThat(payload.get("max_tokens").asInt()).isEqualTo(256);
         assertThat(payload.get("response_format").get("type").asText()).isEqualTo("json_object");
         assertThat(payload.get("stream").asBoolean()).isFalse();
     }
@@ -256,7 +276,7 @@ class HttpOpenCodeZenTransportTest {
                     assertThat(modelException.diagnostics().diagnosticReason())
                             .isEqualTo(OpenCodeDiagnosticReason.STREAM_MISSING_CHOICES);
                     assertThat(modelException.diagnostics().topLevelFields())
-                            .containsExactly("object", "data");
+                            .containsExactlyInAnyOrder("object", "data");
                 });
     }
 
@@ -276,7 +296,7 @@ class HttpOpenCodeZenTransportTest {
                     assertThat(modelException.diagnostics().providerType()).isEqualTo("provider_error");
                     assertThat(modelException.diagnostics().providerCode()).isEqualTo("upstream_failure");
                     assertThat(modelException.diagnostics().providerMessage())
-                            .isEqualTo("provider is temporarily busy");
+                            .isEqualTo("not provided");
                 });
     }
 
@@ -359,9 +379,13 @@ class HttpOpenCodeZenTransportTest {
     @Test
     void streamDiagnosticsContainMetadataButNotRawBodyOrCredential() throws IOException {
         String rawBodyMarker = "raw-body-marker-that-must-not-escape";
+        String promptMarker = "prompt-marker-that-must-not-escape";
+        String answerMarker = "answer-marker-that-must-not-escape";
+        String reasoningMarker = "reasoning-marker-that-must-not-escape";
         stubBody = "data: " + mapper.writeValueAsString(Map.of(
                 "error", Map.of("type", "provider_error", "code", "bad_response",
-                        "message", "Bearer sk-provider-secret-value"),
+                        "message", "Bearer sk-provider-secret-value " + promptMarker
+                                + " " + answerMarker + " " + reasoningMarker),
                 "raw_body", rawBodyMarker)) + "\n\n";
 
         assertThatThrownBy(() -> transport().complete("sk-test-credential", completionRequest()))
@@ -371,9 +395,30 @@ class HttpOpenCodeZenTransportTest {
                     String diagnosticText = modelException.diagnostics().toString();
                     assertThat(diagnosticText).doesNotContain("sk-provider-secret-value");
                     assertThat(diagnosticText).doesNotContain(rawBodyMarker);
+                    assertThat(diagnosticText).doesNotContain(promptMarker, answerMarker, reasoningMarker);
                     assertThat(diagnosticText).doesNotContain("Authorization");
                     assertThat(modelException.diagnostics().providerMessage())
-                            .isEqualTo("Bearer <redacted>");
+                            .isEqualTo("not provided");
+                });
+    }
+
+    @Test
+    void reasoningTextNeverAppearsInDiagnostics() {
+        String reasoningText = "private reasoning that must never escape";
+        stubBody = streamDelta(Map.of("reasoning_content", reasoningText), null)
+                + "data: malformed-json\n\n";
+
+        assertThatThrownBy(() -> transport().complete(TEST_KEY, completionRequest()))
+                .isInstanceOf(OpenCodeModelException.class)
+                .satisfies(ex -> {
+                    OpenCodeModelException modelException = (OpenCodeModelException) ex;
+                    String diagnosticText = modelException.diagnostics().toString();
+                    assertThat(diagnosticText).doesNotContain(reasoningText);
+                    assertThat(modelException.diagnostics().reasoningEventCount()).isEqualTo(1);
+                    assertThat(modelException.diagnostics().reasoningCharCount())
+                            .isEqualTo(reasoningText.length());
+                    assertThat(modelException.diagnostics().reasoningSha256())
+                            .matches("[0-9a-f]{64}");
                 });
     }
 
@@ -384,6 +429,22 @@ class HttpOpenCodeZenTransportTest {
                 .isInstanceOf(OpenCodeModelException.class)
                 .satisfies(ex -> assertThat(((OpenCodeModelException) ex).category())
                         .isEqualTo(OpenCodeModelErrorCategory.EMPTY_CONTENT));
+    }
+
+    @Test
+    void lengthFinishReasonWithEmptyContentIsMappedToTruncation() {
+        stubBody = streamDelta(Map.of("content", ""), "length") + "data: [DONE]\n\n";
+
+        assertThatThrownBy(() -> transport().complete(TEST_KEY, completionRequest()))
+                .isInstanceOf(OpenCodeModelException.class)
+                .satisfies(ex -> {
+                    OpenCodeModelException modelException = (OpenCodeModelException) ex;
+                    assertThat(modelException.category())
+                            .isEqualTo(OpenCodeModelErrorCategory.INVALID_RESPONSE);
+                    assertThat(modelException.diagnostics().diagnosticReason())
+                            .isEqualTo(OpenCodeDiagnosticReason.MODEL_OUTPUT_TRUNCATED);
+                    assertThat(modelException.diagnostics().contentCharCount()).isZero();
+                });
     }
 
     @Test
@@ -473,5 +534,17 @@ class HttpOpenCodeZenTransportTest {
 
     private String streamEvent(String json) {
         return "data: " + json + "\n\n";
+    }
+
+    private String streamDelta(Map<String, Object> delta, String finishReason) {
+        try {
+            Map<String, Object> choice = new LinkedHashMap<>();
+            choice.put("index", 0);
+            choice.put("delta", delta);
+            choice.put("finish_reason", finishReason);
+            return streamEvent(mapper.writeValueAsString(Map.of("choices", List.of(choice))));
+        } catch (IOException ex) {
+            throw new IllegalStateException(ex);
+        }
     }
 }

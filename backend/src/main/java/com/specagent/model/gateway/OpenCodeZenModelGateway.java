@@ -95,8 +95,7 @@ public class OpenCodeZenModelGateway implements ModelGateway {
                             selectedModel,
                             List.of(new OpenCodeChatMessage("system", prompt.systemPrompt()),
                                     new OpenCodeChatMessage("user", prompt.userPrompt())),
-                            TEMPERATURE,
-                            maxTokensFor(request.taskType())));
+                            TEMPERATURE));
 
             return toModelResponse(request, completion, prompt, selectedModel);
         } catch (OpenCodeModelException ex) {
@@ -104,21 +103,6 @@ public class OpenCodeZenModelGateway implements ModelGateway {
             logFailure(enriched);
             throw enriched;
         }
-    }
-
-    /**
-     * Keep each production call bounded while allowing the larger spec task
-     * enough room for its structured output. These are transport budgets, not
-     * prompt text or parser rules.
-     */
-    static int maxTokensFor(AgentTaskType taskType) {
-        return switch (taskType) {
-            case DRAFT_NODE -> 1024;
-            case INTERPRET_ANSWER -> 768;
-            case DRAFT_ANSWER_PATCH -> 1024;
-            case DRAFT_SPEC -> 2048;
-            default -> 1024;
-        };
     }
 
     /**
@@ -133,6 +117,10 @@ public class OpenCodeZenModelGateway implements ModelGateway {
                                           OpenCodeCompletionResponse completion,
                                           ModelPrompt prompt,
                                           String selectedModel) {
+        if ("length".equalsIgnoreCase(completion.finishReason())) {
+            throw modelOutputFailure(OpenCodeDiagnosticReason.MODEL_OUTPUT_TRUNCATED,
+                    "OpenCode model output was truncated", completion, null);
+        }
         Envelope envelope = parseEnvelope(completion);
         AgentAction action;
         try {
@@ -149,6 +137,9 @@ public class OpenCodeZenModelGateway implements ModelGateway {
         trace.put("promptVersion", prompt.version());
         trace.put("promptHash", Hashes.sha256Hex(prompt.systemPrompt() + "\n" + prompt.userPrompt()));
         trace.put("modelOutputHash", Hashes.sha256Hex(completion.content()));
+        trace.put("reasoningEventCount", Integer.toString(completion.reasoningEventCount()));
+        trace.put("reasoningCharCount", Integer.toString(completion.reasoningCharCount()));
+        trace.put("reasoningSha256", completion.reasoningSha256());
         return new ModelResponse(
                 request.agentRunId(),
                 request.contextSnapshotId(),
@@ -199,15 +190,19 @@ public class OpenCodeZenModelGateway implements ModelGateway {
                                                       Throwable cause) {
         OpenCodeDiagnosticReason effectiveReason = "length".equalsIgnoreCase(completion.finishReason())
                 ? OpenCodeDiagnosticReason.MODEL_OUTPUT_TRUNCATED : reason;
+        String effectiveMessage = "length".equalsIgnoreCase(completion.finishReason())
+                ? "OpenCode model output was truncated" : message;
         String content = completion.content();
         OpenCodeFailureDiagnostics diagnostics = new OpenCodeFailureDiagnostics(
                 "not provided", "not provided", "/chat/completions", completion.initialHttpStatus(),
                 effectiveReason, completion.finishReason(), completion.streamedEventCount(),
                 content.length(), Hashes.sha256Hex(content), null, List.of(), null, List.of(),
                 "not provided", "not provided", "not provided", "not provided", "not provided",
-                "not provided", "not provided", "not provided");
+                "not provided", "not provided", "not provided",
+                completion.reasoningEventCount(), completion.reasoningCharCount(),
+                completion.reasoningSha256());
         return new OpenCodeModelException(OpenCodeModelErrorCategory.INVALID_RESPONSE,
-                message, completion.initialHttpStatus(), cause).withDiagnostics(diagnostics);
+                effectiveMessage, completion.initialHttpStatus(), cause).withDiagnostics(diagnostics);
     }
 
     private OpenCodeModelException enrichDiagnostics(OpenCodeModelException exception,
@@ -227,14 +222,17 @@ public class OpenCodeZenModelGateway implements ModelGateway {
                         + "initialHttpStatus={} diagnosticReason={} finishReason={} streamedEventCount={} "
                         + "contentCharCount={} contentSha256={} eventIndex={} topLevelFields={} choicesCount={} "
                         + "deltaFields={} providerType={} providerCode={} providerMessage={} retryAfter={} "
-                        + "xRequestId={} requestId={} cfRay={} traceId={}",
+                        + "xRequestId={} requestId={} cfRay={} traceId={} reasoningEventCount={} "
+                        + "reasoningCharCount={} reasoningSha256={}",
                 exception.category(), diagnostics.task(), diagnostics.selectedModel(), diagnostics.endpointPath(),
                 diagnostics.initialHttpStatus(), diagnosticReason(diagnostics), diagnostics.finishReason(),
                 diagnostics.streamedEventCount(), diagnostics.contentCharCount(), diagnostics.contentSha256(),
                 diagnostics.eventIndex(), diagnostics.topLevelFields(), diagnostics.choicesCount(),
                 diagnostics.deltaFields(), diagnostics.providerType(), diagnostics.providerCode(),
                 diagnostics.providerMessage(), diagnostics.retryAfter(), diagnostics.xRequestId(),
-                diagnostics.requestId(), diagnostics.cfRay(), diagnostics.traceId());
+                diagnostics.requestId(), diagnostics.cfRay(), diagnostics.traceId(),
+                diagnostics.reasoningEventCount(), diagnostics.reasoningCharCount(),
+                diagnostics.reasoningSha256());
     }
 
     private static String diagnosticReason(OpenCodeFailureDiagnostics diagnostics) {

@@ -21,6 +21,8 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -197,7 +199,8 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
                         + "requestId={} cfRay={} traceId={} task={} selectedModel={} "
                         + "initialHttpStatus={} diagnosticReason={} finishReason={} "
                         + "streamedEventCount={} contentCharCount={} contentSha256={} eventIndex={} "
-                        + "topLevelFields={} choicesCount={} deltaFields={}",
+                        + "topLevelFields={} choicesCount={} deltaFields={} reasoningEventCount={} "
+                        + "reasoningCharCount={} reasoningSha256={}",
                 category,
                 baseUrl,
                 diagnostics.endpointPath(), diagnostics.providerType(), diagnostics.providerCode(),
@@ -206,7 +209,8 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
                 diagnostics.selectedModel(), diagnostics.initialHttpStatus(), diagnosticReason(diagnostics),
                 diagnostics.finishReason(), diagnostics.streamedEventCount(), diagnostics.contentCharCount(),
                 diagnostics.contentSha256(), diagnostics.eventIndex(), diagnostics.topLevelFields(),
-                diagnostics.choicesCount(), diagnostics.deltaFields());
+                diagnostics.choicesCount(), diagnostics.deltaFields(), diagnostics.reasoningEventCount(),
+                diagnostics.reasoningCharCount(), diagnostics.reasoningSha256());
     }
 
     private OpenCodeModelException httpFailure(OpenCodeModelErrorCategory category,
@@ -229,7 +233,7 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
                 status,
                 safeDiagnostic(error == null ? null : error.get("type")),
                 safeDiagnostic(error == null ? null : error.get("code")),
-                safeDiagnostic(error == null ? null : error.get("message")),
+                "not provided",
                 safeHeader(headers.firstValue("retry-after").orElse("not provided")),
                 safeHeader(headers.firstValue("x-request-id").orElse("not provided")),
                 safeHeader(headers.firstValue("request-id").orElse("not provided")),
@@ -330,13 +334,20 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
         }
 
         if (content.toString().isBlank()) {
+            if ("length".equalsIgnoreCase(state.finishReason)) {
+                throw streamingFailure(OpenCodeModelErrorCategory.INVALID_RESPONSE,
+                        OpenCodeDiagnosticReason.MODEL_OUTPUT_TRUNCATED,
+                        "OpenCode model output was truncated", null, state, content,
+                        response.statusCode(), response.headers(), selectedModel, null, null, null);
+            }
             throw streamingFailure(OpenCodeModelErrorCategory.EMPTY_CONTENT, null,
                     "OpenCode returned empty streamed model content", null, state, content,
                     response.statusCode(), response.headers(), selectedModel, null, null, null);
         }
         return new OpenCodeCompletionResponse(
                 content.toString(), state.finishReason, promptTokens, completionTokens, totalTokens,
-                response.statusCode(), state.eventCount);
+                response.statusCode(), state.eventCount, state.reasoningEventCount,
+                state.reasoningCharCount, state.reasoningSha256());
     }
 
     private StreamChunk parseStreamEvent(CharSequence eventData,
@@ -406,6 +417,10 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
                     "OpenCode returned non-text streaming content", null, state, content,
                     initialHttpStatus, headers, selectedModel, eventIndex, root, choices.size(), null, delta);
         }
+        JsonNode reasoningContent = delta.get("reasoning_content");
+        if (reasoningContent != null && reasoningContent.isTextual()) {
+            state.observeReasoning(reasoningContent.asText());
+        }
         return new StreamChunk(
                 deltaContent == null || deltaContent.isNull() ? "" : deltaContent.asText(),
                 textOrNull(choice.get("finish_reason")),
@@ -452,12 +467,13 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
                 eventIndex, fieldNames(root), choicesCount, fieldNames(delta),
                 safeDiagnostic(providerError == null ? null : providerError.get("type")),
                 safeDiagnostic(providerError == null ? null : providerError.get("code")),
-                safeDiagnostic(providerError == null ? null : providerError.get("message")),
+                "not provided",
                 safeHeader(headers.firstValue("retry-after").orElse("not provided")),
                 safeHeader(headers.firstValue("x-request-id").orElse("not provided")),
                 safeHeader(headers.firstValue("request-id").orElse("not provided")),
                 safeHeader(headers.firstValue("cf-ray").orElse("not provided")),
-                safeHeader(headers.firstValue("trace-id").orElse("not provided")));
+                safeHeader(headers.firstValue("trace-id").orElse("not provided")),
+                state.reasoningEventCount, state.reasoningCharCount, state.reasoningSha256());
         return new OpenCodeModelException(category, message, initialHttpStatus, cause)
                 .withDiagnostics(diagnostics);
     }
@@ -508,7 +524,6 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
         payload.put("model", request.model());
         payload.put("messages", request.messages());
         payload.put("temperature", request.temperature());
-        payload.put("max_tokens", request.maxTokens());
         payload.put("stream", true);
         return writeJson(payload);
     }
@@ -636,5 +651,31 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
     private static final class StreamState {
         private int eventCount;
         private String finishReason;
+        private int reasoningEventCount;
+        private int reasoningCharCount;
+        private final MessageDigest reasoningDigest = sha256Digest();
+
+        private void observeReasoning(String value) {
+            reasoningEventCount++;
+            reasoningCharCount += value.length();
+            reasoningDigest.update(value.getBytes(StandardCharsets.UTF_8));
+        }
+
+        private String reasoningSha256() {
+            byte[] digest = reasoningDigest.digest();
+            StringBuilder hex = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                hex.append(String.format("%02x", b));
+            }
+            return hex.toString();
+        }
+
+        private static MessageDigest sha256Digest() {
+            try {
+                return MessageDigest.getInstance("SHA-256");
+            } catch (NoSuchAlgorithmException ex) {
+                throw new IllegalStateException("SHA-256 not available", ex);
+            }
+        }
     }
 }
