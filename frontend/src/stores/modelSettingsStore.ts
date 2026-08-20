@@ -142,6 +142,18 @@ export const useModelSettingsStore = defineStore('modelSettings', {
       this.error = null
     },
 
+    cancelCredentialChange(): void {
+      if (!this.status?.configured) {
+        this.resetProbe()
+        return
+      }
+      this.changingCredential = false
+      this.freeModels = []
+      this.selectedModel = this.status.selectedModel
+      this.modelUnavailable = false
+      this.error = null
+    },
+
     clearError(): void {
       this.error = null
     },

@@ -23,7 +23,10 @@ function stableCode(code: string): string {
   if (normalized.includes('AUTHENTICATION')) return 'AUTHENTICATION'
   if (normalized.includes('RATE_LIMITED')) return 'RATE_LIMITED'
   if (normalized.includes('TIMEOUT')) return 'TIMEOUT'
-  if (normalized.includes('CONNECTION') || normalized === 'NETWORK_ERROR') return 'CONNECTION'
+  if (normalized === 'NETWORK_ERROR') return 'NETWORK_ERROR'
+  if (normalized.includes('CONNECTION') || normalized.includes('MODEL_PROVIDER_UNREACHABLE')) {
+    return 'CONNECTION'
+  }
   if (normalized.includes('SERVER_ERROR') || normalized === 'MODEL_PROVIDER_ERROR') return 'SERVER_ERROR'
   if (normalized.includes('INVALID_MODEL')) return 'INVALID_MODEL'
   if (normalized.includes('INVALID_RESPONSE')) return 'INVALID_RESPONSE'
@@ -38,4 +41,28 @@ export function productErrorMessage(code: string, _safeFallback?: string): strin
 
 export function requiresModelSettings(code: string): boolean {
   return ['NOT_CONFIGURED', 'AUTHENTICATION', 'INVALID_MODEL'].includes(stableCode(code))
+}
+
+export type ModelFailureDisposition = 'retryable' | 'unknown' | 'none'
+
+/**
+ * Classifies only model/provider failures that are safe to offer as a manual
+ * model retry. Network outcome is deliberately separate: a request with an
+ * unknown result must reconcile canonical state before any new mutation.
+ */
+export function classifyModelFailure(code: string, status?: number): ModelFailureDisposition {
+  const normalized = stableCode(code)
+  if (status === 0 || normalized === 'NETWORK_ERROR') return 'unknown'
+  if ([
+    'RATE_LIMITED',
+    'TIMEOUT',
+    'CONNECTION',
+    'SERVER_ERROR',
+    'INVALID_RESPONSE',
+    'EMPTY_CONTENT',
+    'MODEL_CONTRACT_REJECTED',
+  ].includes(normalized)) {
+    return 'retryable'
+  }
+  return 'none'
 }

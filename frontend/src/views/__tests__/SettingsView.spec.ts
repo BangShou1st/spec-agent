@@ -51,7 +51,7 @@ describe('SettingsView', () => {
     await wrapper.find('[data-test="save-opencode"]').trigger('click')
     await flushPromises()
     expect(mockedSave).toHaveBeenCalledWith('secret', 'alpha-free')
-    expect((key.element as HTMLInputElement).value).toBe('')
+    expect(wrapper.find('[data-test="opencode-api-key"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="masked-key"]').text()).toContain('…1234')
   })
 
@@ -95,6 +95,8 @@ describe('SettingsView', () => {
     mockedSave.mockRejectedValue(new ApiError('Save failed', 'NETWORK_ERROR', 503))
     const wrapper = mount(SettingsView)
     await flushPromises()
+    await wrapper.get('[data-test="change-api-key"]').trigger('click')
+    await flushPromises()
     await wrapper.get('[data-test="opencode-api-key"]').setValue('new-api-key')
     await wrapper.get('[data-test="probe-opencode"]').trigger('click')
     await flushPromises()
@@ -121,5 +123,27 @@ describe('SettingsView', () => {
 
     expect(mockedSaveModel).toHaveBeenCalledWith('new-free')
     expect(wrapper.get('[data-test="current-config"]').text()).toContain('new-free')
+  })
+
+  it('cancels API-key replacement by restoring the saved model and reloading choices', async () => {
+    mockedGet.mockResolvedValue({ configured: true, maskedKey: '••••old1', selectedModel: 'old-free' })
+    mockedList.mockResolvedValue({ freeModels: ['old-free', 'new-free'] })
+    const wrapper = mount(SettingsView)
+    await flushPromises()
+
+    await wrapper.get('[data-test="change-api-key"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.findAll('[data-test="opencode-model"]')).toHaveLength(1)
+    await wrapper.get('[data-test="opencode-api-key"]').setValue('candidate')
+
+    await wrapper.get('[data-test="reset-opencode"]').trigger('click')
+    await flushPromises()
+
+    expect(mockedList).toHaveBeenCalledTimes(2)
+    expect(wrapper.find('[data-test="opencode-api-key"]').exists()).toBe(false)
+    expect(wrapper.findAll('[data-test="opencode-model"]')).toHaveLength(1)
+    expect((wrapper.get('[data-test="opencode-model"]').element as HTMLSelectElement).value)
+      .toBe('old-free')
+    expect(wrapper.find('[data-test="save-opencode"]').exists()).toBe(false)
   })
 })

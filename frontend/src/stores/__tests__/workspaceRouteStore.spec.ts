@@ -82,6 +82,7 @@ describe('workspaceStore route workspace', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
+    mockedListRouteSpecs.mockResolvedValue([])
   })
 
   function mockBackendViews(active: ActiveProjectStateResponse, state: RequirementStateView): void {
@@ -361,6 +362,7 @@ describe('workspaceStore route workspace', () => {
     const first = store.generateSpec()
     const second = store.generateSpec()
 
+    await Promise.resolve()
     expect(mockedApiGenerateSpec).toHaveBeenCalledTimes(1)
     resolveGenerate(makeSpecGeneration())
     await first

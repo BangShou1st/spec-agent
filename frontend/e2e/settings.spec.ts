@@ -23,6 +23,6 @@ test('model settings probes, selects, and saves without exposing the key', async
   await page.getByTestId('opencode-model').selectOption('beta-free')
   await page.getByTestId('save-opencode').click()
   await expect(page.getByTestId('masked-key')).toContainText('••••1234')
-  await expect(page.getByTestId('opencode-api-key')).toHaveValue('')
+  await expect(page.getByTestId('opencode-api-key')).toHaveCount(0)
   await expect(page.getByText('ui-only-secret')).toHaveCount(0)
 })

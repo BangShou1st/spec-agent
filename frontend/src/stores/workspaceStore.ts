@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ApiError, GENERIC_ERROR_MESSAGE } from '@/api/client'
+import { classifyModelFailure } from '@/api/errorCopy'
 import { getProjectGraph } from '@/api/graph'
 import { getProject } from '@/api/projects'
 import { getRequirementState, getRouteRequirementState } from '@/api/requirementState'
@@ -49,12 +50,33 @@ export type PendingRouteCommand =
   | 'regenerate'
   | null
 
-type ManualModelRetryIntent = {
-  kind: 'draft' | 'spec' | 'regenerate'
-  nodeId?: string
-  payload?: RegenerateNodeRequest
-  beforeTipNodeId: string | null
-  state: 'ready' | 'needs_reconcile'
+type RetryState = 'ready' | 'needs_reconcile' | 'ambiguous'
+
+type ManualModelRetryIntent =
+  | {
+      kind: 'draft'
+      beforeRouteId: string | null
+      beforeTipNodeId: string | null
+      state: RetryState
+    }
+  | {
+      kind: 'spec'
+      routeId: string
+      beforeSpecIds: string[]
+      state: RetryState
+    }
+  | {
+      kind: 'regenerate'
+      nodeId: string
+      payload: RegenerateNodeRequest
+      beforeRouteIds: string[]
+      beforeActiveRouteId: string | null
+      state: RetryState
+    }
+
+type MutationFocusTarget = {
+  routeId: string
+  nodeId: string | null
 }
 
 function toDisplayError(err: unknown): DisplayError {
@@ -97,6 +119,7 @@ export const useWorkspaceStore = defineStore('workspace', {
     pendingAnswerNodeId: null as string | null,
     answerOutcomeUnknown: false,
     manualModelRetry: null as ManualModelRetryIntent | null,
+    focusAfterMutation: null as MutationFocusTarget | null,
 
     // Canonical graph read (Phase 7.3A): replaced from the backend on every
     // refresh; the frontend never patches it locally.
@@ -144,6 +167,8 @@ export const useWorkspaceStore = defineStore('workspace', {
       this.pendingAnswerNodeId = null
       this.answerOutcomeUnknown = false
       this.manualModelRetry = null
+      this.forkDraftRetryRouteId = null
+      this.focusAfterMutation = null
       try {
         const [project, activeState, routes, requirementState, graphView] = await Promise.all([
           getProject(projectId),
@@ -157,6 +182,7 @@ export const useWorkspaceStore = defineStore('workspace', {
         this.routes = routes
         this.requirementState = requirementState
         this.graphView = graphView
+        this.restoreCanonicalRecoveryCheckpoints()
         this.requirementStatesByRoute = {}
         this.specsByRoute = {}
         this.selectedSpecIdByRoute = {}
@@ -187,6 +213,7 @@ export const useWorkspaceStore = defineStore('workspace', {
         this.routes = routes
         this.requirementState = requirementState
         this.graphView = graphView
+        this.restoreCanonicalRecoveryCheckpoints()
         // RequirementState is derived and answers/patches change it: drop the
         // route-scoped cache on every canonical refresh so the reading UI
         // reloads it from the backend.
@@ -197,6 +224,15 @@ export const useWorkspaceStore = defineStore('workspace', {
         return false
       } finally {
         this.refreshing = false
+      }
+    },
+
+    /** Rebuilds recovery affordances from canonical reads after reload/refresh. */
+    restoreCanonicalRecoveryCheckpoints(): void {
+      this.repairableAnswerId = this.findFinalizedAnswerForActiveTip()
+      const canonicalForkDraftRetryRouteId = this.findForkDraftRetryRouteId()
+      if (canonicalForkDraftRetryRouteId) {
+        this.forkDraftRetryRouteId = canonicalForkDraftRetryRouteId
       }
     },
 
@@ -217,16 +253,22 @@ export const useWorkspaceStore = defineStore('workspace', {
       } catch (err) {
         const safeError = toDisplayError(err)
         this.error = safeError
-        this.manualModelRetry = {
+        const disposition = classifyModelFailure(safeError.code, safeError.status)
+        this.manualModelRetry = disposition === 'none' ? null : {
           kind: 'draft',
+          beforeRouteId: this.activeState?.activeRoute?.id ?? null,
           beforeTipNodeId,
-          state: safeError.code === 'NETWORK_ERROR' || safeError.status === 0
-            ? 'needs_reconcile' : 'ready',
+          state: disposition === 'unknown' ? 'needs_reconcile' : 'ready',
         }
-        if (this.manualModelRetry.state === 'needs_reconcile') {
+        if (this.manualModelRetry?.state === 'needs_reconcile') {
           const reconciled = await this.refreshWorkspace()
+          const afterRouteId = this.activeState?.activeRoute?.id ?? null
           const afterTipNodeId = this.activeState?.activeRoute?.tipNodeId ?? null
-          if (reconciled && afterTipNodeId !== beforeTipNodeId) {
+          if (
+            reconciled
+            && (afterRouteId !== this.manualModelRetry.beforeRouteId
+              || afterTipNodeId !== beforeTipNodeId)
+          ) {
             this.manualModelRetry = null
             this.feedback = '问题已起草。'
           } else {
@@ -353,8 +395,7 @@ export const useWorkspaceStore = defineStore('workspace', {
     /** Re-submits only after reconciliation proved that the Answer was absent. */
     async resubmitFailedAnswer(): Promise<boolean> {
       const payload = this.resubmitAnswerPayload
-      if (!payload) return false
-      this.resubmitAnswerPayload = null
+      if (!payload || !this.projectId || this.submitting || this.routeCommandPending) return false
       return this.submitAnswer(payload)
     },
 
@@ -362,41 +403,187 @@ export const useWorkspaceStore = defineStore('workspace', {
       const activeRoute = this.activeState?.activeRoute
       const tipNodeId = activeRoute?.tipNodeId
       if (!activeRoute || !tipNodeId) return null
-      return this.findFinalizedAnswerForNode(tipNodeId)
+      return this.graphView?.answers.find((answer) =>
+        answer.nodeId === tipNodeId
+        && answer.routeId === activeRoute.id
+        && answer.inherited === false
+        && answer.ownerRouteId === activeRoute.id,
+      )?.id ?? null
     },
 
     findFinalizedAnswerForNode(nodeId: string | null): string | null {
       const activeRoute = this.activeState?.activeRoute
       if (!activeRoute || !nodeId) return null
       return this.graphView?.answers.find((answer) =>
-        answer.routeId === activeRoute.id && answer.nodeId === nodeId,
+        answer.routeId === activeRoute.id
+        && answer.nodeId === nodeId
+        && answer.inherited === false
+        && answer.ownerRouteId === activeRoute.id,
       )?.id ?? null
+    },
+
+    findForkDraftRetryRouteId(): string | null {
+      const activeRoute = this.activeState?.activeRoute
+      const graphRoute = activeRoute
+        ? this.graphView?.routes.find((route) => route.id === activeRoute.id)
+        : null
+      const tipNodeId = graphRoute?.tipNodeId ?? activeRoute?.tipNodeId
+      if (
+        !activeRoute
+        || !graphRoute
+        || graphRoute.branchType !== 'fork'
+        || !tipNodeId
+        || graphRoute.branchAtNodeId !== tipNodeId
+      ) {
+        return null
+      }
+      const tipAnswers = this.graphView?.answers.filter((answer) =>
+        answer.routeId === graphRoute.id && answer.nodeId === tipNodeId,
+      ) ?? []
+      return tipAnswers.length === 1
+        && tipAnswers[0].inherited === true
+        && tipAnswers[0].ownerRouteId !== graphRoute.id
+        ? graphRoute.id
+        : null
+    },
+
+    setFocusAfterMutation(target: MutationFocusTarget | null): void {
+      this.focusAfterMutation = target
+    },
+
+    consumeFocusAfterMutation(): MutationFocusTarget | null {
+      const target = this.focusAfterMutation
+      this.focusAfterMutation = null
+      return target
     },
 
     async retryManualModelOperation(): Promise<boolean> {
       const intent = this.manualModelRetry
       if (!intent) return false
+      if (intent.state === 'ambiguous') {
+        const previousError = this.error
+        await this.refreshWorkspace()
+        this.error = previousError
+        return false
+      }
       if (intent.state === 'needs_reconcile') {
         const previousError = this.error
-        const reconciled = await this.refreshWorkspace()
-        const afterTipNodeId = this.activeState?.activeRoute?.tipNodeId ?? null
-        if (!reconciled) {
+        if (intent.kind === 'draft') {
+          const reconciled = await this.refreshWorkspace()
+          const afterRouteId = this.activeState?.activeRoute?.id ?? null
+          const afterTipNodeId = this.activeState?.activeRoute?.tipNodeId ?? null
+          if (!reconciled) {
+            this.error = previousError
+            return false
+          }
+          if (
+            afterRouteId !== intent.beforeRouteId
+            || afterTipNodeId !== intent.beforeTipNodeId
+          ) {
+            this.manualModelRetry = null
+            this.error = null
+            this.feedback = '问题已起草。'
+            return true
+          }
+          this.manualModelRetry = { ...intent, state: 'ready' }
           this.error = previousError
           return false
         }
-        if (intent.kind === 'draft' && afterTipNodeId !== intent.beforeTipNodeId) {
-          this.manualModelRetry = null
-          this.feedback = '问题已起草。'
-          return true
-        }
+        if (intent.kind === 'spec') return this.reconcileSpecRetry(intent)
+        return this.reconcileRegenerateRetry(intent)
+      }
+      if (intent.kind === 'draft') return this.draftQuestion()
+      if (intent.kind === 'spec') {
+        const result = await this.generateSpec()
+        return result !== null || (
+          this.manualModelRetry === null && this.feedback === '已生成规格快照。'
+        )
+      }
+      return this.regenerateNode(intent.nodeId, intent.payload)
+    },
+
+    async reconcileRegenerateRetry(intent: Extract<ManualModelRetryIntent, { kind: 'regenerate' }>): Promise<boolean> {
+      const previousError = this.error
+      const reconciled = await this.refreshWorkspace()
+      if (!reconciled) {
+        this.error = previousError
+        return false
+      }
+      const afterRoutes = this.graphView?.routes ?? []
+      const newRoutes = afterRoutes.filter((route) => !intent.beforeRouteIds.includes(route.id))
+      const matchingRoutes = newRoutes.filter((route) =>
+        route.branchType === 'regenerate'
+        && route.sourceRouteId === intent.payload.sourceRouteId
+        && route.branchAtNodeId === intent.nodeId
+        && route.replacementOfNodeId === intent.nodeId,
+      )
+      const activeRouteId = this.activeState?.activeRoute?.id ?? null
+      if (matchingRoutes.length === 1 && activeRouteId === matchingRoutes[0].id) {
+        this.manualModelRetry = null
+        this.error = null
+        this.feedback = '已创建换一个问题路线。'
+        this.setFocusAfterMutation({
+          routeId: matchingRoutes[0].id,
+          nodeId: matchingRoutes[0].tipNodeId,
+        })
+        return true
+      }
+      if (matchingRoutes.length === 0 && activeRouteId === intent.beforeActiveRouteId) {
         this.manualModelRetry = { ...intent, state: 'ready' }
         this.error = previousError
         return false
       }
-      if (intent.kind === 'draft') return this.draftQuestion()
-      if (intent.kind === 'spec') return (await this.generateSpec()) !== null
-      if (intent.nodeId && intent.payload) {
-        return this.regenerateNode(intent.nodeId, intent.payload)
+      this.manualModelRetry = { ...intent, state: 'ambiguous' }
+      this.error = {
+        code: 'RECOVERY_AMBIGUOUS',
+        message: '请求结果无法安全确认，请刷新状态后人工核对。',
+      }
+      return false
+    },
+
+    async reconcileSpecRetry(intent: Extract<ManualModelRetryIntent, { kind: 'spec' }>): Promise<boolean> {
+      const previousError = this.error
+      const reconciled = await this.refreshWorkspace()
+      if (!reconciled) {
+        this.error = previousError
+        return false
+      }
+      if (this.activeState?.activeRoute?.id !== intent.routeId) {
+        this.manualModelRetry = { ...intent, state: 'ambiguous' }
+        this.error = {
+          code: 'RECOVERY_AMBIGUOUS',
+          message: '请求结果无法安全确认，请刷新状态后人工核对。',
+        }
+        return false
+      }
+      let specs: SpecSnapshotResponse[]
+      try {
+        specs = await listRouteSpecs(this.projectId!, intent.routeId)
+      } catch {
+        this.error = previousError
+        return false
+      }
+      this.specsByRoute = { ...this.specsByRoute, [intent.routeId]: specs }
+      const newSpecs = specs.filter((snapshot) => !intent.beforeSpecIds.includes(snapshot.id))
+      if (newSpecs.length === 1) {
+        this.selectedSpecIdByRoute = {
+          ...this.selectedSpecIdByRoute,
+          [intent.routeId]: newSpecs[0].id,
+        }
+        this.manualModelRetry = null
+        this.error = null
+        this.feedback = '已生成规格快照。'
+        return true
+      }
+      if (newSpecs.length === 0) {
+        this.manualModelRetry = { ...intent, state: 'ready' }
+        this.error = previousError
+        return false
+      }
+      this.manualModelRetry = { ...intent, state: 'ambiguous' }
+      this.error = {
+        code: 'RECOVERY_AMBIGUOUS',
+        message: '请求结果无法安全确认，请刷新状态后人工核对。',
       }
       return false
     },
@@ -517,9 +704,17 @@ export const useWorkspaceStore = defineStore('workspace', {
         const drafted = await this.draftQuestion()
         if (!drafted) {
           this.forkDraftRetryRouteId = result.route.id
+          this.setFocusAfterMutation({
+            routeId: result.route.id,
+            nodeId: this.activeState?.activeRoute?.tipNodeId ?? result.route.tipNodeId,
+          })
           this.feedback = '分支已创建，但首个后续问题起草失败，可重试。'
           return false
         }
+        this.setFocusAfterMutation({
+          routeId: result.route.id,
+          nodeId: this.activeState?.activeRoute?.tipNodeId ?? result.route.tipNodeId,
+        })
         this.feedback = '已创建新分支路线。'
         return true
       } catch (err) {
@@ -550,6 +745,10 @@ export const useWorkspaceStore = defineStore('workspace', {
         : await this.draftQuestion()
       if (drafted) {
         this.forkDraftRetryRouteId = null
+        this.setFocusAfterMutation({
+          routeId: retryRouteId,
+          nodeId: this.activeState?.activeRoute?.tipNodeId ?? null,
+        })
         this.feedback = '已起草分支的首个后续问题。'
       }
       return drafted
@@ -589,29 +788,40 @@ export const useWorkspaceStore = defineStore('workspace', {
       this.routeCommandPending = true
       this.pendingRouteCommand = 'regenerate'
       this.error = null
-      const beforeTipNodeId = this.activeState?.activeRoute?.tipNodeId ?? null
+      const beforeRouteIds = this.graphView?.routes.map((route) => route.id) ?? []
+      const beforeActiveRouteId = this.activeState?.activeRoute?.id ?? null
       // The integrated dialog supplies the explicit sourceRouteId required by
       // the Runtime contract; no compatibility payload is synthesized here.
       try {
-        await regenerateNodeCommand(this.projectId, nodeId, payload)
+        const result = await regenerateNodeCommand(this.projectId, nodeId, payload)
         await this.refreshWorkspace()
         this.feedback = '已创建换一个问题路线。'
         this.manualModelRetry = null
+        this.setFocusAfterMutation({
+          routeId: result.replacementRoute.id,
+          nodeId: result.replacementNode.id,
+        })
         return true
       } catch (err) {
         const safeError = toDisplayError(err)
         this.error = safeError
-        this.manualModelRetry = {
+        const disposition = classifyModelFailure(safeError.code, safeError.status)
+        if (disposition === 'none') {
+          this.manualModelRetry = null
+          return false
+        }
+        const intent: Extract<ManualModelRetryIntent, { kind: 'regenerate' }> = {
           kind: 'regenerate',
           nodeId,
           payload: { ...payload },
-          beforeTipNodeId,
-          state: safeError.code === 'NETWORK_ERROR' || safeError.status === 0
-            ? 'needs_reconcile' : 'ready',
+          beforeRouteIds,
+          beforeActiveRouteId,
+          state: disposition === 'unknown' ? 'needs_reconcile' : 'ready',
         }
-        if (this.manualModelRetry.state === 'needs_reconcile') {
-          await this.refreshWorkspace()
-          this.error = safeError
+        this.manualModelRetry = intent
+        if (intent.state === 'needs_reconcile') {
+          const recovered = await this.reconcileRegenerateRetry(intent)
+          if (recovered) return true
         }
         return false
       } finally {
@@ -697,13 +907,37 @@ export const useWorkspaceStore = defineStore('workspace', {
       }
       this.generatingSpec = true
       this.error = null
+      const routeId = activeRoute.id
+      let baselineSpecs: SpecSnapshotResponse[]
+      try {
+        // This read is the mutation baseline. If it fails, do not start a
+        // generation request whose outcome could no longer be reconciled.
+        baselineSpecs = await listRouteSpecs(this.projectId, routeId)
+        this.specsByRoute = { ...this.specsByRoute, [routeId]: baselineSpecs }
+      } catch (err) {
+        this.error = toDisplayError(err)
+        this.manualModelRetry = null
+        return null
+      }
+      const beforeSpecIds = baselineSpecs.map((snapshot) => snapshot.id)
       try {
         const result = await generateSpec(this.projectId)
-        const routeId = result.specSnapshot.routeId
-        await this.loadRouteSpecs(routeId)
+        const resultRouteId = result.specSnapshot.routeId
+        let specs: SpecSnapshotResponse[]
+        try {
+          specs = await listRouteSpecs(this.projectId, resultRouteId)
+        } catch {
+          // The command already returned a durable artifact. Preserve it in
+          // the local read cache without issuing another generation request.
+          specs = [
+            ...baselineSpecs.filter((snapshot) => snapshot.id !== result.specSnapshot.id),
+            result.specSnapshot,
+          ]
+        }
+        this.specsByRoute = { ...this.specsByRoute, [resultRouteId]: specs }
         this.selectedSpecIdByRoute = {
           ...this.selectedSpecIdByRoute,
-          [routeId]: result.specSnapshot.id,
+          [resultRouteId]: result.specSnapshot.id,
         }
         this.feedback = '已生成规格快照。'
         this.manualModelRetry = null
@@ -711,15 +945,20 @@ export const useWorkspaceStore = defineStore('workspace', {
       } catch (err) {
         const safeError = toDisplayError(err)
         this.error = safeError
-        this.manualModelRetry = {
-          kind: 'spec',
-          beforeTipNodeId: activeRoute.tipNodeId,
-          state: safeError.code === 'NETWORK_ERROR' || safeError.status === 0
-            ? 'needs_reconcile' : 'ready',
+        const disposition = classifyModelFailure(safeError.code, safeError.status)
+        if (disposition === 'none') {
+          this.manualModelRetry = null
+          return null
         }
-        if (this.manualModelRetry.state === 'needs_reconcile') {
-          await this.refreshWorkspace()
-          this.error = safeError
+        const intent: Extract<ManualModelRetryIntent, { kind: 'spec' }> = {
+          kind: 'spec',
+          routeId,
+          beforeSpecIds,
+          state: disposition === 'unknown' ? 'needs_reconcile' : 'ready',
+        }
+        this.manualModelRetry = intent
+        if (intent.state === 'needs_reconcile') {
+          await this.reconcileSpecRetry(intent)
         }
         return null
       } finally {

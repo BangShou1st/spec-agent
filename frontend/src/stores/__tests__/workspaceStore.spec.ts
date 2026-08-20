@@ -8,9 +8,12 @@ import {
   makeGraphWorkspaceView,
   makeNode,
   makeProject,
+  makeRegenerateResponse,
   makeRequirementState,
   makeRoute,
   makeRouteLineage,
+  makeSpecGeneration,
+  makeSpecSnapshot,
 } from '@/test/fixtures'
 import type {
   ActiveProjectStateResponse,
@@ -70,7 +73,9 @@ import {
   forkNode as apiForkNode,
   getRouteLineage,
   reanswerNode as apiReanswerNode,
+  regenerateNode as apiRegenerateNode,
 } from '@/api/routes'
+import { generateSpec as apiGenerateSpec, listRouteSpecs } from '@/api/spec'
 
 const mockedGetProject = vi.mocked(getProject)
 const mockedGetActiveState = vi.mocked(getActiveState)
@@ -85,6 +90,9 @@ const mockedGetRouteLineage = vi.mocked(getRouteLineage)
 const mockedActivateRoute = vi.mocked(apiActivateRoute)
 const mockedForkNode = vi.mocked(apiForkNode)
 const mockedReanswerNode = vi.mocked(apiReanswerNode)
+const mockedRegenerateNode = vi.mocked(apiRegenerateNode)
+const mockedApiGenerateSpec = vi.mocked(apiGenerateSpec)
+const mockedListRouteSpecs = vi.mocked(listRouteSpecs)
 
 describe('workspaceStore', () => {
   beforeEach(() => {
@@ -321,6 +329,7 @@ describe('workspaceStore', () => {
       answers: [{
         id: 'answer-1', routeId: 'r1', nodeId: 'node-1', selectedOptionId: null,
         freeText: 'answer', createdAt: '2026-01-01T00:00:00Z',
+        ownerRouteId: 'r1', inherited: false,
       }],
     }))
     mockedRepairAnswer.mockResolvedValue(makeAnswerExecution())
@@ -535,6 +544,312 @@ describe('workspaceStore', () => {
     expect(mockedDraftNextQuestion).not.toHaveBeenCalled()
     expect(store.forkDraftRetryRouteId).toBe('forked')
     expect(store.error?.code).toBe('FORK_DRAFT_RETRY_REQUIRES_ACTIVE_ROUTE')
+  })
+
+  it('reload restores an owned active-tip Answer as the repair target', async () => {
+    const active = makeActiveState({
+      project: makeProject({ id: 'p1', activeRouteId: 'r1' }),
+      activeRoute: makeRoute({ id: 'r1', projectId: 'p1', tipNodeId: 'n1', isActive: true }),
+      activeNode: makeNode({ id: 'n1', projectId: 'p1' }),
+    })
+    mockBackendViews(active, makeRequirementState())
+    mockedGetProjectGraph.mockResolvedValue(makeGraphWorkspaceView({
+      projectId: 'p1',
+      activeRouteId: 'r1',
+      routes: [{
+        ...makeRoute({ id: 'r1', projectId: 'p1', tipNodeId: 'n1', isActive: true }),
+        rootNodeId: 'n1',
+        lineageNodeIds: ['n1'],
+      }],
+      nodes: [makeNode({ id: 'n1', projectId: 'p1' })],
+      answers: [{
+        id: 'answer-owned',
+        routeId: 'r1',
+        ownerRouteId: 'r1',
+        inherited: false,
+        nodeId: 'n1',
+        selectedOptionId: null,
+        freeText: 'saved answer',
+        createdAt: '2026-01-01T00:00:00Z',
+      }],
+    }))
+    const store = useWorkspaceStore()
+
+    await store.loadWorkspace('p1')
+
+    expect(store.repairableAnswerId).toBe('answer-owned')
+  })
+
+  it('never treats an inherited active-tip Answer as a repair target', async () => {
+    const active = makeActiveState({
+      project: makeProject({ id: 'p1', activeRouteId: 'r-fork' }),
+      activeRoute: makeRoute({ id: 'r-fork', projectId: 'p1', tipNodeId: 'n1', isActive: true }),
+      activeNode: makeNode({ id: 'n1', projectId: 'p1' }),
+    })
+    mockBackendViews(active, makeRequirementState())
+    mockedGetProjectGraph.mockResolvedValue(makeGraphWorkspaceView({
+      projectId: 'p1',
+      activeRouteId: 'r-fork',
+      routes: [{
+        ...makeRoute({ id: 'r-fork', projectId: 'p1', tipNodeId: 'n1', isActive: true }),
+        rootNodeId: 'n1',
+        lineageNodeIds: ['n1'],
+      }],
+      nodes: [makeNode({ id: 'n1', projectId: 'p1' })],
+      answers: [{
+        id: 'answer-inherited',
+        routeId: 'r-fork',
+        ownerRouteId: 'r-source',
+        inherited: true,
+        nodeId: 'n1',
+        selectedOptionId: null,
+        freeText: 'inherited answer',
+        createdAt: '2026-01-01T00:00:00Z',
+      }],
+    }))
+    const store = useWorkspaceStore()
+
+    await store.loadWorkspace('p1')
+
+    expect(store.repairableAnswerId).toBeNull()
+  })
+
+  it('reload restores the failed Fork first-draft checkpoint', async () => {
+    const active = makeActiveState({
+      project: makeProject({ id: 'p1', activeRouteId: 'r-fork' }),
+      activeRoute: makeRoute({
+        id: 'r-fork', projectId: 'p1', tipNodeId: 'n1', isActive: true,
+        branchType: 'fork', branchAtNodeId: 'n1',
+      }),
+      activeNode: makeNode({ id: 'n1', projectId: 'p1' }),
+    })
+    mockBackendViews(active, makeRequirementState())
+    mockedGetProjectGraph.mockResolvedValue(makeGraphWorkspaceView({
+      projectId: 'p1',
+      activeRouteId: 'r-fork',
+      routes: [{
+        ...makeRoute({
+          id: 'r-fork', projectId: 'p1', tipNodeId: 'n1', isActive: true,
+          branchType: 'fork', branchAtNodeId: 'n1',
+        }),
+        rootNodeId: 'n1',
+        lineageNodeIds: ['n1'],
+      }],
+      nodes: [makeNode({ id: 'n1', projectId: 'p1' })],
+      answers: [{
+        id: 'answer-inherited', routeId: 'r-fork', ownerRouteId: 'r-source', inherited: true,
+        nodeId: 'n1', selectedOptionId: null, freeText: 'source answer',
+        createdAt: '2026-01-01T00:00:00Z',
+      }],
+    }))
+    const store = useWorkspaceStore()
+
+    await store.loadWorkspace('p1')
+
+    expect(store.forkDraftRetryRouteId).toBe('r-fork')
+  })
+
+  it('reconciles a lost regenerate response after persistence without a second POST', async () => {
+    const oldRoute = makeRoute({ id: 'r-old', projectId: 'p1', tipNodeId: 'n1', isActive: true })
+    const replacementRoute = makeRoute({
+      id: 'r-new', projectId: 'p1', tipNodeId: 'n2', isActive: true,
+      branchType: 'regenerate', sourceRouteId: 'r-old', branchAtNodeId: 'n1',
+      replacementOfNodeId: 'n1',
+    })
+    const initial = makeActiveState({
+      project: makeProject({ id: 'p1', activeRouteId: 'r-old' }),
+      activeRoute: oldRoute,
+    })
+    const after = makeActiveState({
+      project: makeProject({ id: 'p1', activeRouteId: 'r-new' }),
+      activeRoute: replacementRoute,
+    })
+    const initialGraph = makeGraphWorkspaceView({
+      projectId: 'p1', activeRouteId: 'r-old',
+      routes: [{ ...oldRoute, rootNodeId: 'n1', lineageNodeIds: ['n1'] }],
+    })
+    const afterGraph = makeGraphWorkspaceView({
+      projectId: 'p1', activeRouteId: 'r-new',
+      routes: [
+        { ...oldRoute, rootNodeId: 'n1', lineageNodeIds: ['n1'] },
+        { ...replacementRoute, rootNodeId: 'n2', lineageNodeIds: ['n2'] },
+      ],
+    })
+    mockBackendViews(initial, makeRequirementState())
+    mockedGetActiveState.mockResolvedValueOnce(initial).mockResolvedValueOnce(after)
+    mockedGetProjectGraph.mockResolvedValueOnce(initialGraph).mockResolvedValueOnce(afterGraph)
+    mockedRegenerateNode.mockRejectedValue(new ApiError('network lost', 'NETWORK_ERROR', 0))
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+
+    expect(await store.regenerateNode('n1', { sourceRouteId: 'r-old', instruction: 'new angle' })).toBe(true)
+
+    expect(mockedRegenerateNode).toHaveBeenCalledTimes(1)
+    expect(store.manualModelRetry).toBeNull()
+    expect(store.consumeFocusAfterMutation()).toEqual({ routeId: 'r-new', nodeId: 'n2' })
+  })
+
+  it('allows exactly one explicit regenerate retry when reconciliation finds no new route', async () => {
+    const oldRoute = makeRoute({ id: 'r-old', projectId: 'p1', tipNodeId: 'n1', isActive: true })
+    const graph = makeGraphWorkspaceView({
+      projectId: 'p1', activeRouteId: 'r-old',
+      routes: [{ ...oldRoute, rootNodeId: 'n1', lineageNodeIds: ['n1'] }],
+    })
+    const active = makeActiveState({
+      project: makeProject({ id: 'p1', activeRouteId: 'r-old' }),
+      activeRoute: oldRoute,
+    })
+    mockBackendViews(active, makeRequirementState())
+    mockedGetProjectGraph.mockResolvedValue(graph)
+    mockedRegenerateNode.mockRejectedValueOnce(new ApiError('network lost', 'NETWORK_ERROR', 0))
+    const regenerated = makeRegenerateResponse({
+      oldRoute: makeRoute({ id: 'r-old', lifecycleStatus: 'superseded', isActive: false }),
+      replacementRoute: makeRoute({ id: 'r-new', isActive: true, tipNodeId: 'n2' }),
+      replacementNode: makeNode({ id: 'n2' }),
+    })
+    mockedRegenerateNode.mockResolvedValueOnce(regenerated)
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+
+    expect(await store.regenerateNode('n1', { sourceRouteId: 'r-old' })).toBe(false)
+    expect(store.manualModelRetry?.state).toBe('ready')
+    expect(await store.retryManualModelOperation()).toBe(true)
+    expect(mockedRegenerateNode).toHaveBeenCalledTimes(2)
+  })
+
+  it('fails closed on an incompatible regenerate active transition without mutation', async () => {
+    const oldRoute = makeRoute({ id: 'r-old', projectId: 'p1', tipNodeId: 'n1', isActive: true })
+    const replacementRoute = makeRoute({
+      id: 'r-new', projectId: 'p1', tipNodeId: 'n2', isActive: false,
+      branchType: 'regenerate', sourceRouteId: 'r-old', branchAtNodeId: 'n1',
+      replacementOfNodeId: 'n1',
+    })
+    const initial = makeActiveState({
+      project: makeProject({ id: 'p1', activeRouteId: 'r-old' }), activeRoute: oldRoute,
+    })
+    const after = makeActiveState({
+      project: makeProject({ id: 'p1', activeRouteId: 'r-old' }), activeRoute: oldRoute,
+    })
+    mockBackendViews(initial, makeRequirementState())
+    mockedGetActiveState.mockResolvedValueOnce(initial).mockResolvedValueOnce(after)
+    mockedGetProjectGraph.mockResolvedValueOnce(makeGraphWorkspaceView({
+      projectId: 'p1', activeRouteId: 'r-old',
+      routes: [{ ...oldRoute, rootNodeId: 'n1', lineageNodeIds: ['n1'] }],
+    })).mockResolvedValueOnce(makeGraphWorkspaceView({
+      projectId: 'p1', activeRouteId: 'r-old',
+      routes: [
+        { ...oldRoute, rootNodeId: 'n1', lineageNodeIds: ['n1'] },
+        { ...replacementRoute, rootNodeId: 'n2', lineageNodeIds: ['n2'] },
+      ],
+    }))
+    mockedRegenerateNode.mockRejectedValue(new ApiError('network lost', 'NETWORK_ERROR', 0))
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+
+    expect(await store.regenerateNode('n1', { sourceRouteId: 'r-old' })).toBe(false)
+    expect(store.manualModelRetry?.state).toBe('ambiguous')
+    expect(await store.retryManualModelOperation()).toBe(false)
+    expect(mockedRegenerateNode).toHaveBeenCalledTimes(1)
+  })
+
+  it('reconciles a persisted spec snapshot after a lost response without a second POST', async () => {
+    const oldSnapshot = makeSpecSnapshot({ id: 'spec-old', routeId: 'r1' })
+    const newSnapshot = makeSpecSnapshot({ id: 'spec-new', routeId: 'r1' })
+    const active = makeActiveState({
+      project: makeProject({ id: 'p1', activeRouteId: 'r1' }),
+      activeRoute: makeRoute({ id: 'r1', projectId: 'p1', tipNodeId: 'n1', isActive: true }),
+    })
+    mockBackendViews(active, makeRequirementState())
+    mockedListRouteSpecs.mockResolvedValueOnce([oldSnapshot]).mockResolvedValueOnce([oldSnapshot, newSnapshot])
+    mockedApiGenerateSpec.mockRejectedValue(new ApiError('network lost', 'NETWORK_ERROR', 0))
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+
+    expect(await store.generateSpec()).toBeNull()
+    expect(mockedApiGenerateSpec).toHaveBeenCalledTimes(1)
+    expect(store.manualModelRetry).toBeNull()
+    expect(store.selectedSpecIdByRoute['r1']).toBe('spec-new')
+  })
+
+  it('allows exactly one explicit spec retry when reconciliation finds no new snapshot', async () => {
+    const oldSnapshot = makeSpecSnapshot({ id: 'spec-old', routeId: 'route-1' })
+    const newSnapshot = makeSpecSnapshot({ id: 'spec-new', routeId: 'route-1' })
+    mockBackendViews(makeActiveState({
+      project: makeProject({ id: 'p1', activeRouteId: 'route-1' }),
+      activeRoute: makeRoute({ id: 'route-1', projectId: 'p1', tipNodeId: 'n1', isActive: true }),
+    }), makeRequirementState())
+    mockedListRouteSpecs
+      .mockResolvedValueOnce([oldSnapshot])
+      .mockResolvedValueOnce([oldSnapshot])
+      .mockResolvedValueOnce([oldSnapshot])
+      .mockResolvedValueOnce([oldSnapshot, newSnapshot])
+    mockedApiGenerateSpec.mockRejectedValueOnce(new ApiError('network lost', 'NETWORK_ERROR', 0))
+      .mockResolvedValueOnce(makeSpecGeneration({ specSnapshot: newSnapshot }))
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+
+    expect(await store.generateSpec()).toBeNull()
+    expect(store.manualModelRetry?.state).toBe('ready')
+    expect(await store.retryManualModelOperation()).toBe(true)
+    expect(mockedApiGenerateSpec).toHaveBeenCalledTimes(2)
+  })
+
+  it('fails closed when more than one new spec snapshot appears during reconciliation', async () => {
+    const oldSnapshot = makeSpecSnapshot({ id: 'spec-old', routeId: 'route-1' })
+    const newSnapshotA = makeSpecSnapshot({ id: 'spec-new-a', routeId: 'route-1' })
+    const newSnapshotB = makeSpecSnapshot({ id: 'spec-new-b', routeId: 'route-1' })
+    mockBackendViews(makeActiveState({
+      project: makeProject({ id: 'p1', activeRouteId: 'route-1' }),
+      activeRoute: makeRoute({ id: 'route-1', projectId: 'p1', tipNodeId: 'n1', isActive: true }),
+    }), makeRequirementState())
+    mockedListRouteSpecs.mockResolvedValueOnce([oldSnapshot]).mockResolvedValueOnce([
+      oldSnapshot, newSnapshotA, newSnapshotB,
+    ])
+    mockedApiGenerateSpec.mockRejectedValue(new ApiError('network lost', 'NETWORK_ERROR', 0))
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+
+    expect(await store.generateSpec()).toBeNull()
+    expect(store.manualModelRetry?.state).toBe('ambiguous')
+    expect(await store.retryManualModelOperation()).toBe(false)
+    expect(mockedApiGenerateSpec).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not discard a failed answer payload while a mutation guard is active', async () => {
+    mockBackendViews(makeActiveState(), makeRequirementState())
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+    store.resubmitAnswerPayload = { freeText: 'retry me' }
+    store.submitting = true
+
+    expect(await store.resubmitFailedAnswer()).toBe(false)
+    expect(store.resubmitAnswerPayload).toEqual({ freeText: 'retry me' })
+    expect(mockedSubmitAnswer).not.toHaveBeenCalled()
+  })
+
+  it('does not start spec generation when its baseline read fails', async () => {
+    const active = makeActiveState({
+      project: makeProject({ id: 'p1', activeRouteId: 'r1' }),
+      activeRoute: makeRoute({ id: 'r1', projectId: 'p1', tipNodeId: 'n1', isActive: true }),
+    })
+    mockBackendViews(active, makeRequirementState())
+    mockedListRouteSpecs.mockRejectedValue(new ApiError('read failed', 'NETWORK_ERROR', 0))
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+
+    expect(await store.generateSpec()).toBeNull()
+    expect(mockedApiGenerateSpec).not.toHaveBeenCalled()
+    expect(store.manualModelRetry).toBeNull()
+  })
+
+  it('does not create a model retry intent for deterministic non-model failures', async () => {
+    mockBackendViews(makeActiveState({ activeNode: null }), makeRequirementState())
+    mockedDraftNextQuestion.mockRejectedValue(new ApiError('invalid command', 'VALIDATION_ERROR', 422))
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+
+    expect(await store.draftQuestion()).toBe(false)
+    expect(store.manualModelRetry).toBeNull()
   })
 
   it('sends the explicit Re-answer source and refreshes canonical reads', async () => {

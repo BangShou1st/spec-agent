@@ -18,7 +18,8 @@ const canSaveModel = computed(() => store.status?.configured === true
   && !store.changingCredential && store.selectedModel !== null
   && store.freeModels.includes(store.selectedModel)
   && !store.saving && !store.loadingModels)
-const canReset = computed(() => apiKey.value.length > 0 || probed.value)
+const canReset = computed(() => apiKey.value.length > 0 || probed.value
+  || (store.status?.configured === true && store.changingCredential))
 const safeErrorMessage = computed(() => productErrorMessage(store.error?.code ?? 'UNKNOWN_ERROR'))
 const showCredentialForm = computed(() => !store.status?.configured || store.changingCredential)
 const authenticationFailed = computed(() => store.error?.code.toUpperCase().includes('AUTHENTICATION') ?? false)
@@ -62,11 +63,16 @@ async function saveModel(): Promise<void> {
   if (saved) retryAction.value = null
 }
 
-function resetDraft(): void {
+async function resetDraft(): Promise<void> {
   apiKey.value = ''
   probed.value = false
   retryAction.value = null
-  store.resetProbe()
+  if (store.status?.configured && store.changingCredential) {
+    store.cancelCredentialChange()
+    await store.refreshModels()
+  } else {
+    store.resetProbe()
+  }
 }
 
 async function retryLastAction(): Promise<void> {
@@ -156,7 +162,7 @@ onMounted(() => {
         </button>
       </section>
 
-      <div v-show="showCredentialForm" class="settings-form settings-form--credential">
+      <div v-if="showCredentialForm" class="settings-form settings-form--credential">
         <label class="settings-field" for="opencode-api-key">
           <span class="settings-field__label">新 API Key</span>
           <span class="settings-field__hint">密钥只用于验证和保存，不会显示完整内容。</span>
@@ -183,7 +189,7 @@ onMounted(() => {
           </button>
         </div>
 
-        <label v-if="showCredentialForm" class="settings-field" for="opencode-model">
+        <label class="settings-field" for="opencode-model">
           <span class="settings-field__label">可用模型</span>
           <span class="settings-field__hint">验证后请选择一个当前可用的 free model。</span>
           <select
@@ -250,9 +256,10 @@ onMounted(() => {
           :disabled="store.probing || store.saving"
           @click="resetDraft"
         >
-          取消/重置
+          {{ store.status?.configured && store.changingCredential ? '取消更换' : '取消/重置' }}
         </button>
         <button
+          v-if="showCredentialForm"
           class="btn btn-primary settings-action settings-action--save"
           type="button"
           data-test="save-opencode"

@@ -121,12 +121,14 @@ const workspaceRetryLabel = computed(() => {
   if (store.answerOutcomeUnknown) return '刷新状态'
   if (store.repairableAnswerId) return '重新请求'
   if (store.resubmitAnswerPayload) return '再次提交'
-  if (store.manualModelRetry?.state === 'needs_reconcile') return '刷新状态'
+  if (store.manualModelRetry?.state === 'needs_reconcile'
+    || store.manualModelRetry?.state === 'ambiguous') return '刷新状态'
   if (store.manualModelRetry?.state === 'ready') return '重新请求'
   return '刷新状态'
 })
 const workspaceRetrying = computed(() => store.loading || store.refreshing
-  || store.submitting || store.repairingAnswer || store.drafting)
+  || store.submitting || store.repairingAnswer || store.drafting
+  || store.routeCommandPending || store.generatingSpec)
 
 const forkFinalizedRouteIds = computed(() => {
   if (!forkNodeId.value || !store.graphView) return []
@@ -151,10 +153,24 @@ async function retry(): Promise<void> {
   } else if (store.resubmitAnswerPayload) {
     await store.resubmitFailedAnswer()
   } else if (store.manualModelRetry) {
-    await store.retryManualModelOperation()
+    const retryKind = store.manualModelRetry.kind
+    const ok = await store.retryManualModelOperation()
+    if (ok && retryKind === 'regenerate') {
+      await focusAfterMutation()
+    }
   } else {
     await store.loadWorkspace(props.projectId)
   }
+}
+
+async function focusAfterMutation(): Promise<void> {
+  const target = store.consumeFocusAfterMutation()
+  const routeId = target?.routeId ?? store.activeState?.activeRoute?.id ?? null
+  const nodeId = target?.nodeId ?? store.activeState?.activeNode?.id ?? null
+  if (!routeId) return
+  graphUi.setFocusRoute(routeId)
+  await nextTick()
+  if (nodeId) await canvasRef.value?.locateNode(nodeId)
 }
 
 async function handleDraft(): Promise<void> {
@@ -188,10 +204,8 @@ async function handleForkSubmit(label: string | null): Promise<void> {
   if (!sourceRouteId) return
   const ok = await store.forkNode(forkNodeId.value, sourceRouteId, label)
   forkDialogOpen.value = false
-  if (ok) {
-    graphUi.setFocusRoute(store.activeState?.activeRoute?.id ?? null)
-    await nextTick()
-    await canvasRef.value?.locateNode(store.activeState?.activeNode?.id ?? '')
+  if (ok || store.forkDraftRetryRouteId) {
+    await focusAfterMutation()
     forkNodeId.value = null
   }
 }
@@ -224,11 +238,14 @@ async function handleRegenerateSubmit(payload: RegenerateNodeRequest): Promise<v
   const ok = await store.regenerateNode(regenerateNodeId.value, payload)
   regenerateDialogOpen.value = false
   if (ok) {
-    graphUi.setFocusRoute(store.activeState?.activeRoute?.id ?? null)
-    await nextTick()
-    await canvasRef.value?.locateNode(store.activeState?.activeNode?.id ?? '')
+    await focusAfterMutation()
     regenerateNodeId.value = null
   }
+}
+
+async function retryForkDraft(): Promise<void> {
+  const ok = await store.retryForkDraft()
+  if (ok) await focusAfterMutation()
 }
 
 function handleLocateRoute(routeId: string): void {
@@ -371,7 +388,7 @@ async function confirmDestructive(): Promise<void> {
         正在刷新工作区…
       </p>
       <p v-if="store.feedback" class="feedback-line" data-test="feedback">{{ store.feedback }}</p>
-      <button v-if="store.forkDraftRetryRouteId" class="btn btn-primary workspace-shell__retry-draft" data-test="retry-fork-draft" @click="store.retryForkDraft()">重试起草</button>
+      <button v-if="store.forkDraftRetryRouteId" class="btn btn-primary workspace-shell__retry-draft" data-test="retry-fork-draft" :disabled="workspaceRetrying" @click="retryForkDraft">重试起草</button>
     </div>
 
     <ForkRouteDialog
