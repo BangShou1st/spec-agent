@@ -107,4 +107,29 @@ class OpenCodeSettingsApiIntegrationTest {
         mockMvc.perform(get("/api/v1/settings/opencode"))
                 .andExpect(jsonPath("$.selectedModel").value("alpha-free"));
     }
+
+    @Test
+    void savedKeyModelEndpointsDoNotRequireTheKeyOrReturnIt() throws Exception {
+        when(catalog.listFreeModels("saved-key")).thenReturn(List.of("alpha-free", "beta-free"));
+        doNothing().when(transport).validateCredential("saved-key", "alpha-free");
+        mockMvc.perform(put("/api/v1/settings/opencode")
+                        .contentType("application/json")
+                        .content("{\"apiKey\":\"saved-key\",\"selectedModel\":\"alpha-free\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/settings/opencode/models"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.freeModels[1]").value("beta-free"))
+                .andExpect(content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("saved-key"))));
+
+        doNothing().when(transport).validateCredential("saved-key", "beta-free");
+        mockMvc.perform(put("/api/v1/settings/opencode/model")
+                        .contentType("application/json")
+                        .content("{\"selectedModel\":\"beta-free\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.selectedModel").value("beta-free"))
+                .andExpect(content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("saved-key"))));
+    }
 }

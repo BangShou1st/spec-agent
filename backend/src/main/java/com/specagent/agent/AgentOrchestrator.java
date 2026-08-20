@@ -482,45 +482,59 @@ public class AgentOrchestrator {
         trace = appendTrace(trace, "persisted_answer");
         agentRunService.markPersistedAnswer(run.id(), answer.id(), trace);
 
-        trace = appendTrace(trace, "model_called:" + AgentTaskType.INTERPRET_ANSWER.name());
-        ModelResponse interpretResponse = callModel(run, contextSnapshot, trace,
-                AgentTaskType.INTERPRET_ANSWER,
-                projectionBuilder.buildInputJson(contextSnapshot,
-                        projectionBuilder.answerTaskInput(answer)),
-                AgentAction.INTERPRET_ANSWER,
-                "Expected INTERPRET_ANSWER from INTERPRET_ANSWER");
-        AnswerInterpretationResult interpretation = structuredOutputMapper.toInterpretation(
-                structuredModelOutputParser.parse(AgentTaskType.INTERPRET_ANSWER,
-                        interpretResponse.outputJson()));
+        AnswerPatch patch = answerPatchService.findBySourceAnswerId(answer.id()).orElse(null);
+        ModelResponse interpretResponse;
+        ModelResponse patchResponse;
+        if (patch == null) {
+            trace = appendTrace(trace, "model_called:" + AgentTaskType.INTERPRET_ANSWER.name());
+            interpretResponse = callModel(run, contextSnapshot, trace,
+                    AgentTaskType.INTERPRET_ANSWER,
+                    projectionBuilder.buildInputJson(contextSnapshot,
+                            projectionBuilder.answerTaskInput(answer)),
+                    AgentAction.INTERPRET_ANSWER,
+                    "Expected INTERPRET_ANSWER from INTERPRET_ANSWER");
+            AnswerInterpretationResult interpretation = structuredOutputMapper.toInterpretation(
+                    structuredModelOutputParser.parse(AgentTaskType.INTERPRET_ANSWER,
+                            interpretResponse.outputJson()));
 
-        trace = appendTrace(trace, "model_called:" + AgentTaskType.DRAFT_ANSWER_PATCH.name());
-        ModelResponse patchResponse = callModel(run, contextSnapshot, trace,
-                AgentTaskType.DRAFT_ANSWER_PATCH,
-                projectionBuilder.buildInputJson(contextSnapshot,
-                        projectionBuilder.interpretationTaskInput(answer, interpretation)),
-                AgentAction.INTERPRET_ANSWER,
-                "Expected INTERPRET_ANSWER from DRAFT_ANSWER_PATCH");
-        AnswerPatchDraft patchDraft = structuredOutputMapper.toPatchDraft(
-                structuredModelOutputParser.parse(AgentTaskType.DRAFT_ANSWER_PATCH,
-                        patchResponse.outputJson()));
+            trace = appendTrace(trace, "model_called:" + AgentTaskType.DRAFT_ANSWER_PATCH.name());
+            patchResponse = callModel(run, contextSnapshot, trace,
+                    AgentTaskType.DRAFT_ANSWER_PATCH,
+                    projectionBuilder.buildInputJson(contextSnapshot,
+                            projectionBuilder.interpretationTaskInput(answer, interpretation)),
+                    AgentAction.INTERPRET_ANSWER,
+                    "Expected INTERPRET_ANSWER from DRAFT_ANSWER_PATCH");
+            AnswerPatchDraft patchDraft = structuredOutputMapper.toPatchDraft(
+                    structuredModelOutputParser.parse(AgentTaskType.DRAFT_ANSWER_PATCH,
+                            patchResponse.outputJson()));
 
-        // The model never fabricates real source ids. The runtime grounds
-        // confirmed claims with the real answered node and answer before the
-        // patch may enter requirement state.
-        AnswerPatchDraft groundedDraft = withRealSources(patchDraft, answeredNodeId, answer.id());
-        ReflectionResult patchReflection = patchReflectionGate.validate(groundedDraft);
-        trace = appendTrace(trace, "reflected:PATCH");
-        agentRunService.markReflected(run.id(), trace);
-        if (!patchReflection.accepted()) {
-            agentRunService.fail(run.id(), appendTrace(trace, "failed:patch_reflection_rejected"));
-            throw new ModelContractException("Patch reflection rejected answer patch draft");
+            // The model never fabricates real source ids. The runtime grounds
+            // confirmed claims with the real answered node and answer before
+            // the patch may enter requirement state.
+            AnswerPatchDraft groundedDraft = withRealSources(patchDraft, answeredNodeId, answer.id());
+            ReflectionResult patchReflection = patchReflectionGate.validate(groundedDraft);
+            trace = appendTrace(trace, "reflected:PATCH");
+            agentRunService.markReflected(run.id(), trace);
+            if (!patchReflection.accepted()) {
+                agentRunService.fail(run.id(), appendTrace(trace, "failed:patch_reflection_rejected"));
+                throw new ModelContractException("Patch reflection rejected answer patch draft");
+            }
+
+            patch = answerPatchService.save(
+                    run.projectId(), run.routeId(), answeredNodeId, answer.id(),
+                    groundedDraft.claims(), run.id());
+            trace = appendTrace(trace, "persisted_patch");
+            agentRunService.markPersistedAnswerPatch(run.id(), patch.id(), trace);
+        } else {
+            trace = appendTrace(trace, "reused_persisted_patch:" + patch.id());
+            agentRunService.markPersistedAnswerPatch(run.id(), patch.id(), trace);
+            interpretResponse = skippedModelResponse(run, contextSnapshot,
+                    AgentTaskType.INTERPRET_ANSWER, AgentAction.INTERPRET_ANSWER,
+                    "persisted_patch_reuse");
+            patchResponse = skippedModelResponse(run, contextSnapshot,
+                    AgentTaskType.DRAFT_ANSWER_PATCH, AgentAction.INTERPRET_ANSWER,
+                    "persisted_patch_reuse");
         }
-
-        AnswerPatch patch = answerPatchService.save(
-                run.projectId(), run.routeId(), answeredNodeId, answer.id(),
-                groundedDraft.claims(), run.id());
-        trace = appendTrace(trace, "persisted_patch");
-        agentRunService.markPersistedAnswerPatch(run.id(), patch.id(), trace);
 
         trace = appendTrace(trace, "model_called:" + AgentTaskType.DRAFT_NODE.name());
         ModelResponse nodeResponse = callModel(run, contextSnapshot, trace,
@@ -551,6 +565,15 @@ public class AgentOrchestrator {
         AgentRun completedRun = agentRunService.getRun(run.id()).orElseThrow();
         return new AnswerRunResult(completedRun, contextSnapshot,
                 interpretResponse, patchResponse, nodeResponse, answer, patch, producedNode);
+    }
+
+    private ModelResponse skippedModelResponse(AgentRun run,
+                                                ContextSnapshot contextSnapshot,
+                                                AgentTaskType taskType,
+                                                AgentAction action,
+                                                String reason) {
+        return new ModelResponse(run.id(), contextSnapshot.id(), taskType, action, "{}",
+                Map.of("skipped", reason));
     }
 
     private Project loadProject(UUID projectId) {

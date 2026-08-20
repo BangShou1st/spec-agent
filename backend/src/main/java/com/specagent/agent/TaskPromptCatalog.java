@@ -133,6 +133,65 @@ public class TaskPromptCatalog {
             - unresolvedItems: open points that must be clarified before the spec is final.
             """;
 
+    private static final String LANGUAGE_CONTRACT = """
+
+            LANGUAGE CONTRACT:
+            - All natural-language text intended for the user must be Simplified Chinese (zh-CN).
+            - This includes question, purpose, option.label, option.impact,
+              confirmedTexts, assumedTexts, unresolvedTexts, conflictTexts,
+              claim.text, spec section names, spec section content, and unresolvedItems.
+            - Keep JSON keys, action values, kind/status enums, ids, and source refs as
+              the exact protocol values required by the schema; do not translate them.
+            - Do not detect language automatically and do not branch on requirement domain.
+            """;
+
+    private static final String DRAFT_NODE_QUALITY_RULES = """
+
+            GENERIC QUESTION QUALITY RULES:
+            - Use frozen specialInputs.projectTitle, lineage, requirementState, and taskInput as data.
+            - For mode initial, when projectTitle is meaningful, ask the first question about that
+              project context instead of using a generic intake questionnaire.
+            - For mode after_answer, use the accepted patch and current requirement state to ask
+              about the highest-value unresolved information next.
+            - For mode redirected, respect taskInput.userDirection as preference data while still
+              obeying system policy and context isolation.
+            - Ask one main question at a time.
+            - Do not repeat information already confirmed unless there is a real conflict.
+            - Keep question concise, natural, and directly answerable by the user.
+            - Keep purpose short and explain why the uncertainty affects the final Spec.
+            - Offer 2–5 mutually exclusive or clearly different reasonable options when helpful.
+            - Each option label must be understandable on its own; each impact must describe a
+              consequence or trade-off, not merely repeat the label.
+            - Do not invent concrete business-domain assumptions.
+            - Preserve free-form answer capability by default unless the options genuinely exhaust
+              the meaningful choices.
+            """;
+
+    private static final String INTERPRETATION_QUALITY_RULES = """
+
+            INTERPRETATION QUALITY RULES:
+            - A direct statement from the user's answer is confirmed.
+            - An inference is assumed.
+            - An unanswered point is unresolved.
+            - A contradiction with the current requirement state is conflict.
+            """;
+
+    private static final String PATCH_QUALITY_RULES = """
+
+            PATCH QUALITY RULES:
+            - Preserve the distinction between confirmed, assumed, unresolved, and conflict claims.
+            - Do not treat option impact wording itself as the user's complete confirmation unless
+              the user's selected option necessarily entails that fact.
+            """;
+
+    private static final String SPEC_QUALITY_RULES = """
+
+            SPEC QUALITY RULES:
+            - Write section titles and section content in Simplified Chinese.
+            - Keep confirmed, assumed, and unresolved content distinct.
+            - Every source reference must remain strictly within context.allowedSourceRefs.
+            """;
+
     private static final String USER_PROMPT_TEMPLATE = """
             TASK: %s
 
@@ -148,18 +207,22 @@ public class TaskPromptCatalog {
      */
     public ModelPrompt promptFor(AgentTaskType taskType, String inputJson) {
         String systemPrompt = switch (taskType) {
-            case DRAFT_NODE -> SYSTEM_POLICY + "\n" + DRAFT_NODE_TASK;
-            case INTERPRET_ANSWER -> SYSTEM_POLICY + "\n" + INTERPRET_ANSWER_TASK;
-            case DRAFT_ANSWER_PATCH -> SYSTEM_POLICY + "\n" + DRAFT_ANSWER_PATCH_TASK;
-            case DRAFT_SPEC -> SYSTEM_POLICY + "\n" + DRAFT_SPEC_TASK;
+            case DRAFT_NODE -> SYSTEM_POLICY + "\n" + DRAFT_NODE_TASK
+                    + LANGUAGE_CONTRACT + DRAFT_NODE_QUALITY_RULES;
+            case INTERPRET_ANSWER -> SYSTEM_POLICY + "\n" + INTERPRET_ANSWER_TASK
+                    + LANGUAGE_CONTRACT + INTERPRETATION_QUALITY_RULES;
+            case DRAFT_ANSWER_PATCH -> SYSTEM_POLICY + "\n" + DRAFT_ANSWER_PATCH_TASK
+                    + LANGUAGE_CONTRACT + INTERPRETATION_QUALITY_RULES + PATCH_QUALITY_RULES;
+            case DRAFT_SPEC -> SYSTEM_POLICY + "\n" + DRAFT_SPEC_TASK
+                    + LANGUAGE_CONTRACT + SPEC_QUALITY_RULES;
             default -> throw new ModelContractException(
                     "No production prompt for task: " + taskType.code());
         };
         String version = switch (taskType) {
-            case DRAFT_NODE -> "draft-node.v1";
-            case INTERPRET_ANSWER -> "interpret-answer.v1";
-            case DRAFT_ANSWER_PATCH -> "draft-answer-patch.v1";
-            case DRAFT_SPEC -> "draft-spec.v1";
+            case DRAFT_NODE -> "draft-node.v2";
+            case INTERPRET_ANSWER -> "interpret-answer.v2";
+            case DRAFT_ANSWER_PATCH -> "draft-answer-patch.v2";
+            case DRAFT_SPEC -> "draft-spec.v2";
             default -> throw new ModelContractException(
                     "No production prompt for task: " + taskType.code());
         };

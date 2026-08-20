@@ -20,7 +20,7 @@ export class ApiError extends Error {
   }
 }
 
-export const GENERIC_ERROR_MESSAGE = 'Something went wrong. Please try again.'
+export const GENERIC_ERROR_MESSAGE = '操作失败，请稍后重试。'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api/v1'
 

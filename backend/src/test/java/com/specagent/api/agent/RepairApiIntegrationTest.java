@@ -20,6 +20,8 @@ import com.specagent.project.Project;
 import com.specagent.project.ProjectService;
 import com.specagent.route.Route;
 import com.specagent.route.RouteService;
+import com.specagent.model.gateway.ModelGatewayErrorCategory;
+import com.specagent.model.gateway.ModelGatewayException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -36,6 +38,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -205,5 +211,65 @@ class RepairApiIntegrationTest {
                         project.id(), UUID.randomUUID()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("ANSWER_NOT_FOUND"));
+    }
+
+    @Test
+    void repairApiReusesCheckpointWhenNextNodeGenerationFails() throws Exception {
+        AtomicBoolean failNextNode = new AtomicBoolean(false);
+        when(fakeModelAdapter.run(any(ModelRequest.class))).thenAnswer(invocation -> {
+            ModelRequest request = invocation.getArgument(0);
+            if (request.taskType() == AgentTaskType.DRAFT_NODE && failNextNode.get()) {
+                throw new ModelGatewayException(ModelGatewayErrorCategory.CONNECTION,
+                        "deterministic next node failure");
+            }
+            Map<String, String> trace = Map.of("adapter", "mock");
+            return switch (request.taskType()) {
+                case DRAFT_NODE -> new ModelResponse(request.agentRunId(), request.contextSnapshotId(),
+                        request.taskType(), AgentAction.ASK_NEXT_QUESTION,
+                        json.write(new NodeDraft("What should be clarified next?", "Purpose",
+                                List.of(), true)), trace);
+                case INTERPRET_ANSWER -> new ModelResponse(request.agentRunId(), request.contextSnapshotId(),
+                        request.taskType(), AgentAction.INTERPRET_ANSWER,
+                        json.write(new AnswerInterpretationResult(List.of("A goal was stated."),
+                                List.of(), List.of(), List.of())), trace);
+                case DRAFT_ANSWER_PATCH -> new ModelResponse(request.agentRunId(), request.contextSnapshotId(),
+                        request.taskType(), AgentAction.INTERPRET_ANSWER,
+                        json.write(Map.of("claims", List.of(Map.of("kind", "goal",
+                                "text", "A goal was stated.", "status", "confirmed", "confidence", 0.9)))), trace);
+                default -> throw new IllegalStateException("Unexpected task " + request.taskType());
+            };
+        });
+
+        Project project = projectService.createProject("API checkpoint reuse");
+        mockMvc.perform(post("/api/v1/projects/{projectId}/questions/next", project.id()))
+                .andExpect(status().isOk());
+        UUID nodeId = routeService.getRoute(project.activeRouteId()).orElseThrow().tipNodeId();
+        clearInvocations(fakeModelAdapter);
+        failNextNode.set(true);
+
+        mockMvc.perform(post("/api/v1/projects/{projectId}/answers", project.id())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"freeText\": \"goal\"}"))
+                .andExpect(status().isBadGateway());
+
+        UUID answerId = answerRepository.findByRouteAndNodeIds(project.activeRouteId(), List.of(nodeId))
+                .get(0).id();
+        UUID patchId = agentRunService.listByProject(project.id()).get(1).producedPatchId();
+        clearInvocations(fakeModelAdapter);
+        failNextNode.set(false);
+
+        mockMvc.perform(post("/api/v1/projects/{projectId}/answers/{answerId}/repair",
+                        project.id(), answerId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.answerPatch.id").value(patchId.toString()));
+
+        verify(fakeModelAdapter, never()).run(org.mockito.ArgumentMatchers.argThat(
+                request -> request.taskType() == AgentTaskType.INTERPRET_ANSWER));
+        verify(fakeModelAdapter, never()).run(org.mockito.ArgumentMatchers.argThat(
+                request -> request.taskType() == AgentTaskType.DRAFT_ANSWER_PATCH));
+        verify(fakeModelAdapter, times(1)).run(org.mockito.ArgumentMatchers.argThat(
+                request -> request.taskType() == AgentTaskType.DRAFT_NODE));
+        assertThat(answerRepository.findByRouteAndNodeIds(project.activeRouteId(), List.of(nodeId)))
+                .hasSize(1);
     }
 }

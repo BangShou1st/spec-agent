@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import ApiErrorBanner from '@/components/ApiErrorBanner.vue'
+import { productErrorMessage, requiresModelSettings } from '@/api/errorCopy'
 import { useModelSettingsStore } from '@/stores/modelSettingsStore'
 
-type RetryAction = 'load' | 'probe' | 'save' | null
+type RetryAction = 'load' | 'models' | 'probe' | 'save' | 'save-model' | null
 
 const store = useModelSettingsStore()
 const apiKey = ref('')
@@ -13,18 +14,26 @@ const retryAction = ref<RetryAction>(null)
 const canProbe = computed(() => apiKey.value.trim().length > 0 && !store.probing && !store.saving)
 const canSave = computed(() => probed.value && apiKey.value.trim().length > 0
   && store.selectedModel !== null && !store.saving && !store.probing)
+const canSaveModel = computed(() => store.status?.configured === true
+  && !store.changingCredential && store.selectedModel !== null
+  && store.freeModels.includes(store.selectedModel)
+  && !store.saving && !store.loadingModels)
 const canReset = computed(() => apiKey.value.length > 0 || probed.value)
-const safeErrorMessage = computed(() => {
-  const code = store.error?.code ?? ''
-  if (code.includes('RATE_LIMITED')) return 'OpenCode 当前请求受限，请稍后再试。'
-  if (code.includes('AUTHENTICATION')) return 'OpenCode 凭证验证失败，请检查 API Key。'
-  if (code.includes('CONNECTION') || code.includes('NETWORK')) return '无法连接到 OpenCode，请检查网络后重试。'
-  return '操作失败，请稍后重试。'
-})
+const safeErrorMessage = computed(() => productErrorMessage(store.error?.code ?? 'UNKNOWN_ERROR'))
+const showCredentialForm = computed(() => !store.status?.configured || store.changingCredential)
+const authenticationFailed = computed(() => store.error?.code.toUpperCase().includes('AUTHENTICATION') ?? false)
+const settingsActionRequired = computed(() => store.error !== null
+  && requiresModelSettings(store.error.code))
 
 async function loadStatus(): Promise<void> {
   retryAction.value = 'load'
   await store.loadStatus()
+  if (!store.error) retryAction.value = null
+}
+
+async function refreshModels(): Promise<void> {
+  retryAction.value = 'models'
+  await store.refreshModels()
   if (!store.error) retryAction.value = null
 }
 
@@ -46,6 +55,13 @@ async function save(): Promise<void> {
   }
 }
 
+async function saveModel(): Promise<void> {
+  if (!store.selectedModel) return
+  retryAction.value = 'save-model'
+  const saved = await store.saveModel(store.selectedModel)
+  if (saved) retryAction.value = null
+}
+
 function resetDraft(): void {
   apiKey.value = ''
   probed.value = false
@@ -54,12 +70,25 @@ function resetDraft(): void {
 }
 
 async function retryLastAction(): Promise<void> {
+  if (authenticationFailed.value || store.error?.code.toUpperCase().includes('NOT_CONFIGURED')) {
+    store.beginCredentialChange()
+    retryAction.value = null
+    return
+  }
+  if (settingsActionRequired.value) {
+    await refreshModels()
+    return
+  }
   if (retryAction.value === 'load') {
     await loadStatus()
+  } else if (retryAction.value === 'models') {
+    await refreshModels()
   } else if (retryAction.value === 'probe') {
     await probe()
   } else if (retryAction.value === 'save') {
     await save()
+  } else if (retryAction.value === 'save-model') {
+    await saveModel()
   } else {
     store.clearError()
   }
@@ -84,8 +113,8 @@ onMounted(() => {
       data-test="settings-error"
       :message="safeErrorMessage"
       :code="store.error.code"
-      retry-label="重试"
-      :retrying="store.loading || store.probing || store.saving"
+      :retry-label="settingsActionRequired ? '前往模型设置' : '重试'"
+      :retrying="store.loading || store.probing || store.saving || store.loadingModels"
       @retry="retryLastAction"
     />
 
@@ -113,14 +142,23 @@ onMounted(() => {
           <strong data-test="masked-key">{{ store.status.maskedKey }}</strong>
         </div>
         <div class="settings-current-config__item">
-          <span>模型</span>
+          <span>当前模型</span>
           <strong>{{ store.status.selectedModel }}</strong>
         </div>
+        <button
+          class="btn settings-action"
+          type="button"
+          data-test="change-api-key"
+          :disabled="store.probing || store.saving"
+          @click="store.beginCredentialChange()"
+        >
+          更换 API Key
+        </button>
       </section>
 
-      <div class="settings-form">
+      <div v-show="showCredentialForm" class="settings-form settings-form--credential">
         <label class="settings-field" for="opencode-api-key">
-          <span class="settings-field__label">OpenCode API Key</span>
+          <span class="settings-field__label">新 API Key</span>
           <span class="settings-field__hint">密钥只用于验证和保存，不会显示完整内容。</span>
           <input
             id="opencode-api-key"
@@ -145,7 +183,7 @@ onMounted(() => {
           </button>
         </div>
 
-        <label class="settings-field" for="opencode-model">
+        <label v-if="showCredentialForm" class="settings-field" for="opencode-model">
           <span class="settings-field__label">可用模型</span>
           <span class="settings-field__hint">验证后请选择一个当前可用的 free model。</span>
           <select
@@ -163,6 +201,45 @@ onMounted(() => {
           </span>
         </label>
       </div>
+      <section v-if="store.status?.configured && !store.changingCredential" class="settings-models" data-test="saved-key-models">
+        <label class="settings-field" for="opencode-model">
+          <span class="settings-field__label">可用模型</span>
+          <span class="settings-field__hint">使用当前已保存的 API Key 获取，不需要重新输入密钥。</span>
+          <select
+            id="opencode-model"
+            v-model="store.selectedModel"
+            class="settings-control settings-model-select"
+            data-test="opencode-model"
+            :disabled="store.loadingModels || store.saving || store.freeModels.length === 0"
+          >
+            <option :value="null" disabled>请选择一个 free model</option>
+            <option v-for="model in store.freeModels" :key="model" :value="model">{{ model }}</option>
+          </select>
+          <span v-if="store.modelUnavailable" class="settings-field__empty settings-field__warning">
+            当前模型已不可用，请重新选择。
+          </span>
+        </label>
+        <div class="settings-form__action-row">
+          <button
+            class="btn settings-action"
+            type="button"
+            data-test="refresh-models"
+            :disabled="store.loadingModels || store.saving"
+            @click="refreshModels"
+          >
+            {{ store.loadingModels ? '正在刷新…' : '刷新可用模型' }}
+          </button>
+          <button
+            class="btn btn-primary settings-action"
+            type="button"
+            data-test="save-model"
+            :disabled="!canSaveModel"
+            @click="saveModel"
+          >
+            {{ store.saving ? '正在保存…' : '保存模型' }}
+          </button>
+        </div>
+      </section>
 
       <footer class="settings-card__footer">
         <button
@@ -182,7 +259,7 @@ onMounted(() => {
           :disabled="!canSave"
           @click="save"
         >
-          {{ store.saving ? '正在保存…' : '保存' }}
+          {{ store.saving ? '正在保存…' : '保存凭证' }}
         </button>
       </footer>
     </article>

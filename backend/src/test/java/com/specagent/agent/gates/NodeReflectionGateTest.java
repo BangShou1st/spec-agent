@@ -41,6 +41,15 @@ class NodeReflectionGateTest {
     }
 
     @Test
+    void nodeReflectionCountsChineseQuestionMarks() {
+        ReflectionResult result = nodeReflectionGate.validate(
+                new NodeDraft("你想做什么？为什么？", "Purpose", List.of(), true));
+
+        assertThat(result.accepted()).isFalse();
+        assertThat(result.errors()).contains("Node draft must ask one main question");
+    }
+
+    @Test
     void nodeReflectionRejectsQuestionWithAndWhy() {
         ReflectionResult result = nodeReflectionGate.validate(
                 new NodeDraft("What do you need and why do you need it?", "Purpose", List.of(), true));
@@ -77,5 +86,19 @@ class NodeReflectionGateTest {
                         false));
 
         assertThat(result.accepted()).isTrue();
+    }
+
+    @Test
+    void nodeReflectionRejectsBlankAndDuplicateOptionLabels() {
+        ReflectionResult result = nodeReflectionGate.validate(
+                new NodeDraft("Which fits?", "Purpose",
+                        List.of(com.specagent.node.NodeOption.of(" ", "blank"),
+                                com.specagent.node.NodeOption.of("Same", "first"),
+                                com.specagent.node.NodeOption.of(" same ", "duplicate")),
+                        false));
+
+        assertThat(result.accepted()).isFalse();
+        assertThat(result.errors()).contains("Node option label must not be blank",
+                "Node options must have unique labels");
     }
 }

@@ -30,6 +30,11 @@ public class AnswerPatchService {
                             UUID sourceAnswerId,
                             List<Claim> claims,
                             UUID createdByRunId) {
+        Optional<AnswerPatch> existing = findBySourceAnswerId(sourceAnswerId);
+        if (existing.isPresent()) {
+            throw new IllegalStateException(
+                    "Answer already has a persisted patch: " + sourceAnswerId);
+        }
         UUID patchId = Ids.random();
         Instant now = Instant.now();
         AnswerPatch patch = new AnswerPatch(patchId, projectId, routeId, sourceNodeId,
@@ -44,6 +49,20 @@ public class AnswerPatchService {
 
     public List<AnswerPatch> findBySourceAnswerIds(List<UUID> answerIds) {
         return answerPatchRepository.findBySourceAnswerIds(answerIds);
+    }
+
+    /**
+     * Returns the one patch checkpoint for an answer, or empty when the patch
+     * step has not completed. Multiple rows are never resolved by first/latest
+     * fallback because that would hide a correctness violation.
+     */
+    public Optional<AnswerPatch> findBySourceAnswerId(UUID sourceAnswerId) {
+        List<AnswerPatch> patches = answerPatchRepository.findBySourceAnswerId(sourceAnswerId);
+        if (patches.size() > 1) {
+            throw new IllegalStateException(
+                    "Answer has multiple persisted patches: " + sourceAnswerId);
+        }
+        return patches.stream().findFirst();
     }
 
     public Optional<AnswerPatch> getPatch(UUID patchId) {

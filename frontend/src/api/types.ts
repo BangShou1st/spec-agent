@@ -53,6 +53,10 @@ export interface OpenCodeProbeResponse {
   freeModels: string[]
 }
 
+export interface OpenCodeModelChangeRequest {
+  selectedModel: string
+}
+
 export interface RouteResponse {
   id: string
   projectId: string

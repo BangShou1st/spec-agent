@@ -18,6 +18,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -94,12 +95,13 @@ public class ContextBuilder {
                 .filter(id -> !id.equals(activeRouteId))
                 .toList();
 
+        Map<String, Object> specialInputsMap = withProjectTitle(project, Map.of());
         String contextHash = computeHash(operationType, includedNodeIds, includedAnswerIds,
-                includedPatchIds, excludedRouteIds, null);
+                includedPatchIds, excludedRouteIds, specialInputsMap);
 
         ContextSnapshot snapshot = new ContextSnapshot(Ids.random(), projectId, activeRouteId,
                 activeRoute.tipNodeId(), operationType, includedNodeIds, includedAnswerIds,
-                includedPatchIds, excludedRouteIds, null, contextHash, Instant.now());
+                includedPatchIds, excludedRouteIds, json.write(specialInputsMap), contextHash, Instant.now());
 
         contextSnapshotRepository.save(snapshot);
         return snapshot;
@@ -111,6 +113,8 @@ public class ContextBuilder {
                                               UUID replacementRouteId,
                                               UUID replacementNodeId,
                                               String userInstruction) {
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new IllegalArgumentException("Project not found: " + projectId));
         Node targetNode = nodeRepository.findById(targetNodeId)
                 .orElseThrow(() -> new IllegalArgumentException("Target node not found: " + targetNodeId));
 
@@ -130,10 +134,10 @@ public class ContextBuilder {
                 .filter(id -> !id.equals(replacementRouteId))
                 .toList();
 
-        Map<String, Object> specialInputsMap = Map.of(
+        Map<String, Object> specialInputsMap = withProjectTitle(project, Map.of(
                 "oldQuestion", targetNode.question() == null ? "" : targetNode.question(),
                 "oldPurpose", targetNode.purpose() == null ? "" : targetNode.purpose(),
-                "userInstruction", userInstruction == null ? "" : userInstruction);
+                "userInstruction", userInstruction == null ? "" : userInstruction));
         String specialInputs = json.write(specialInputsMap);
         String contextHash = computeHash(ContextOperationType.REGENERATE, parentLineage,
                 includedAnswerIds, includedPatchIds, excludedRouteIds, specialInputsMap);
@@ -184,9 +188,9 @@ public class ContextBuilder {
                 .map(Route::id)
                 .filter(id -> !id.equals(sourceRouteId))
                 .toList();
-        Map<String, Object> specialInputsMap = Map.of(
+        Map<String, Object> specialInputsMap = withProjectTitle(project, Map.of(
                 "oldQuestion", targetNode.question() == null ? "" : targetNode.question(),
-                "oldPurpose", targetNode.purpose() == null ? "" : targetNode.purpose());
+                "oldPurpose", targetNode.purpose() == null ? "" : targetNode.purpose()));
         String specialInputs = json.write(specialInputsMap);
         String contextHash = computeHash(ContextOperationType.REGENERATE, parentLineage,
                 includedAnswerIds, includedPatchIds, excludedRouteIds, specialInputsMap);
@@ -250,5 +254,20 @@ public class ContextBuilder {
                 + "|X:" + sortedExcluded
                 + "|S:" + sortedSpecialInputs;
         return Hashes.sha256Hex(canonical);
+    }
+
+    /**
+     * Adds frozen project metadata to any operation-specific special inputs.
+     * The helper keeps replacement/regenerate inputs extensible while ensuring
+     * the title is always part of the exact snapshot and its hash.
+     */
+    private Map<String, Object> withProjectTitle(Project project,
+                                                  Map<String, Object> existing) {
+        Map<String, Object> merged = new LinkedHashMap<>();
+        merged.put("projectTitle", project.title() == null ? "" : project.title());
+        if (existing != null) {
+            merged.putAll(existing);
+        }
+        return Map.copyOf(merged);
     }
 }

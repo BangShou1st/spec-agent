@@ -72,6 +72,20 @@ public class AnswerPatchRepository {
     }
 
     /**
+     * Reads every patch for one immutable answer. The list is deliberately
+     * retained here instead of using a first/latest query: more than one row
+     * is an invariant violation and callers must fail closed.
+     */
+    public List<AnswerPatch> findBySourceAnswerId(UUID sourceAnswerId) {
+        String sql = """
+                SELECT * FROM answer_patches
+                WHERE source_answer_id = :sourceAnswerId
+                ORDER BY created_at, id
+                """;
+        return jdbcTemplate.query(sql, Maps.of("sourceAnswerId", sourceAnswerId), rowMapper);
+    }
+
+    /**
      * Returns patches for the given ids, preserving the caller's order.
      *
      * <p>Order matters for replay: the same patches replayed in different order

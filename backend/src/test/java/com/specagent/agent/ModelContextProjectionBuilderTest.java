@@ -85,6 +85,8 @@ class ModelContextProjectionBuilderTest {
         assertThat(context.get("operationType").asText()).isEqualTo(snapshot.operationType().code());
         assertThat(context.get("contextHash").asText()).isEqualTo(snapshot.contextHash());
         assertThat(context.get("specialInputs")).isNotNull();
+        assertThat(context.get("specialInputs").get("projectTitle").asText())
+                .isEqualTo(project.title());
         assertThat(context.get("lineage")).isEmpty();
 
         assertThat(context.get("allowedSourceRefs"))

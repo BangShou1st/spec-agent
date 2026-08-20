@@ -26,3 +26,8 @@ export function submitAnswer(
 ): Promise<AnswerExecutionResponse> {
   return apiClient.post<AnswerExecutionResponse>(`/projects/${projectId}/answers`, payload)
 }
+
+/** Explicit user repair of an already persisted answer; never a second answer submission. */
+export function repairAnswer(projectId: string, answerId: string): Promise<AnswerExecutionResponse> {
+  return apiClient.post<AnswerExecutionResponse>(`/projects/${projectId}/answers/${answerId}/repair`)
+}

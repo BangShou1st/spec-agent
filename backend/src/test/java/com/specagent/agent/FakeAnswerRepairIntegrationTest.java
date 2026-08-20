@@ -11,6 +11,8 @@ import com.specagent.node.NodeService;
 import com.specagent.patch.AnswerPatch;
 import com.specagent.patch.AnswerPatchService;
 import com.specagent.testing.FakeModelAdapter;
+import com.specagent.model.gateway.ModelGatewayErrorCategory;
+import com.specagent.model.gateway.ModelGatewayException;
 import com.specagent.patch.Claim;
 import com.specagent.project.Project;
 import com.specagent.project.ProjectService;
@@ -30,6 +32,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.argThat;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -184,5 +191,70 @@ class FakeAnswerRepairIntegrationTest {
         assertThatThrownBy(() -> fakeAgentOrchestrator.repairAnswerProcessingAndDraftNext(projectA.id(), answer.id()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("active route");
+    }
+
+    @Test
+    void repairReusesPersistedPatchWhenOnlyNextNodeFailed() {
+        Project project = projectService.createProject("Checkpoint reuse project");
+        AtomicBoolean failNextNode = new AtomicBoolean(false);
+
+        when(fakeModelAdapter.run(any(ModelRequest.class))).thenAnswer(invocation -> {
+            ModelRequest request = invocation.getArgument(0);
+            Map<String, String> trace = Map.of("adapter", "mock");
+            if (request.taskType() == AgentTaskType.DRAFT_NODE && failNextNode.get()) {
+                throw new ModelGatewayException(ModelGatewayErrorCategory.CONNECTION,
+                        "deterministic next node failure");
+            }
+            return switch (request.taskType()) {
+                case DRAFT_NODE -> new ModelResponse(
+                        request.agentRunId(), request.contextSnapshotId(), request.taskType(),
+                        AgentAction.ASK_NEXT_QUESTION,
+                        json.write(new NodeDraft("What should be clarified next?", "Purpose",
+                                List.of(), true)), trace);
+                case INTERPRET_ANSWER -> new ModelResponse(
+                        request.agentRunId(), request.contextSnapshotId(), request.taskType(),
+                        AgentAction.INTERPRET_ANSWER,
+                        json.write(new AnswerInterpretationResult(
+                                List.of("The answer states a goal."), List.of(), List.of(), List.of())), trace);
+                case DRAFT_ANSWER_PATCH -> new ModelResponse(
+                        request.agentRunId(), request.contextSnapshotId(), request.taskType(),
+                        AgentAction.INTERPRET_ANSWER,
+                        json.write(Map.of("claims", List.of(Map.of(
+                                "kind", "goal", "text", "The answer states a goal.",
+                                "status", "confirmed", "confidence", 0.9)))), trace);
+                default -> throw new IllegalStateException("Unexpected task " + request.taskType());
+            };
+        });
+
+        FakeAgentRunResult first = fakeAgentOrchestrator.draftNextQuestion(project.id());
+        UUID nodeId = first.producedNode().id();
+        clearInvocations(fakeModelAdapter);
+        failNextNode.set(true);
+
+        assertThatThrownBy(() -> fakeAgentOrchestrator.answerActiveNodeAndDraftNext(
+                project.id(), "goal answer"))
+                .isInstanceOf(ModelGatewayException.class);
+
+        Answer failedAnswer = answerRepository.findByRouteAndNodeIds(
+                project.activeRouteId(), List.of(nodeId)).get(0);
+        AnswerPatch persistedPatch = answerPatchService.findBySourceAnswerId(failedAnswer.id())
+                .orElseThrow();
+        assertThat(answerPatchService.findByRoute(project.activeRouteId())).hasSize(1);
+
+        clearInvocations(fakeModelAdapter);
+        failNextNode.set(false);
+        FakeAnswerRunResult repaired = fakeAgentOrchestrator.repairAnswerProcessingAndDraftNext(
+                project.id(), failedAnswer.id());
+
+        assertThat(repaired.patch().id()).isEqualTo(persistedPatch.id());
+        assertThat(answerRepository.findByRouteAndNodeIds(project.activeRouteId(), List.of(nodeId)))
+                .hasSize(1);
+        assertThat(answerPatchService.findByRoute(project.activeRouteId())).hasSize(1);
+        verify(fakeModelAdapter, never()).run(argThat(request ->
+                request.taskType() == AgentTaskType.INTERPRET_ANSWER));
+        verify(fakeModelAdapter, never()).run(argThat(request ->
+                request.taskType() == AgentTaskType.DRAFT_ANSWER_PATCH));
+        verify(fakeModelAdapter, times(1)).run(argThat(request ->
+                request.taskType() == AgentTaskType.DRAFT_NODE));
     }
 }

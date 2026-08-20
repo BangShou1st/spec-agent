@@ -129,7 +129,7 @@ OpenCodeZenModelGateway gateway = gateway(transport, SELECTED_MODEL);
 
         ModelResponse response = gateway.run(request);
 
-        assertThat(response.trace()).containsEntry("promptVersion", "draft-node.v1");
+        assertThat(response.trace()).containsEntry("promptVersion", "draft-node.v2");
         assertThat(response.trace()).containsKey("promptHash");
         assertThat(response.trace()).containsKey("modelOutputHash");
         assertThat(response.trace().get("promptHash")).matches("[0-9a-f]{64}");

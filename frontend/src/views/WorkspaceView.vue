@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, inject, nextTick, onMounted, ref, watch } from 'vue'
+import { routerKey } from 'vue-router'
 import ApiErrorBanner from '@/components/ApiErrorBanner.vue'
 import ConfirmRouteActionDialog from '@/components/ConfirmRouteActionDialog.vue'
 import ForkRouteDialog from '@/components/ForkRouteDialog.vue'
@@ -11,6 +12,7 @@ import RouteNavigator from '@/components/workspace/RouteNavigator.vue'
 import WorkspaceInspector from '@/components/workspace/WorkspaceInspector.vue'
 import { projectGraph, type SpecAgentGraphNodeData } from '@/graph/graphProjection'
 import { FLOATING_WINDOW_RANGES } from '@/graph/graphLayoutStorage'
+import { productErrorMessage, requiresModelSettings } from '@/api/errorCopy'
 import { useGraphUiStore } from '@/stores/graphUiStore'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
 import type { RegenerateNodeRequest, SubmitAnswerRequest } from '@/api/types'
@@ -27,6 +29,7 @@ const props = defineProps<{ projectId: string }>()
 
 const store = useWorkspaceStore()
 const graphUi = useGraphUiStore()
+const router = inject(routerKey, null)
 const canvasRef = ref<InstanceType<typeof GraphCanvas> | null>(null)
 
 const forkDialogOpen = ref(false)
@@ -110,6 +113,20 @@ function sourceRouteForNode(nodeId: string | null) {
 const forkSourceRoute = computed(() => sourceRouteForNode(forkNodeId.value))
 const reanswerSourceRoute = computed(() => sourceRouteForNode(reanswerNodeId.value))
 const regenerateSourceRoute = computed(() => sourceRouteForNode(regenerateNodeId.value))
+const workspaceErrorMessage = computed(() =>
+  productErrorMessage(store.error?.code ?? 'UNKNOWN_ERROR'),
+)
+const workspaceRetryLabel = computed(() => {
+  if (store.error && requiresModelSettings(store.error.code)) return '前往模型设置'
+  if (store.answerOutcomeUnknown) return '刷新状态'
+  if (store.repairableAnswerId) return '重新请求'
+  if (store.resubmitAnswerPayload) return '再次提交'
+  if (store.manualModelRetry?.state === 'needs_reconcile') return '刷新状态'
+  if (store.manualModelRetry?.state === 'ready') return '重新请求'
+  return '刷新状态'
+})
+const workspaceRetrying = computed(() => store.loading || store.refreshing
+  || store.submitting || store.repairingAnswer || store.drafting)
 
 const forkFinalizedRouteIds = computed(() => {
   if (!forkNodeId.value || !store.graphView) return []
@@ -125,7 +142,19 @@ const reanswerFinalized = computed(() => {
 })
 
 async function retry(): Promise<void> {
-  await store.loadWorkspace(props.projectId)
+  if (store.error && requiresModelSettings(store.error.code)) {
+    if (router) await router.push({ name: 'settings' })
+  } else if (store.answerOutcomeUnknown) {
+    await store.reconcileAnswerOutcome()
+  } else if (store.repairableAnswerId) {
+    await store.repairAnswerForActiveFlow(store.repairableAnswerId)
+  } else if (store.resubmitAnswerPayload) {
+    await store.resubmitFailedAnswer()
+  } else if (store.manualModelRetry) {
+    await store.retryManualModelOperation()
+  } else {
+    await store.loadWorkspace(props.projectId)
+  }
 }
 
 async function handleDraft(): Promise<void> {
@@ -239,12 +268,30 @@ async function confirmDestructive(): Promise<void> {
     <div class="workspace-shell__status-layer">
       <ApiErrorBanner
         v-if="store.error"
-        :message="store.error.message"
+        :message="workspaceErrorMessage"
         :code="store.error.code"
-        retry-label="重试"
-        :retrying="store.loading"
+        :retry-label="workspaceRetryLabel"
+        :retrying="workspaceRetrying"
         @retry="retry"
       />
+      <div v-if="store.repairableAnswerId" class="workspace-answer-retry" data-test="answer-retry">
+        <span>回答已保存，后续生成未完成。</span>
+        <button class="btn btn-primary" type="button" :disabled="workspaceRetrying" @click="retry">
+          {{ workspaceRetrying ? '正在请求…' : '重新请求' }}
+        </button>
+      </div>
+      <div v-else-if="store.answerOutcomeUnknown" class="workspace-answer-retry" data-test="answer-outcome-unknown">
+        <span>提交结果未知，请先恢复状态。</span>
+        <button class="btn" type="button" :disabled="workspaceRetrying" @click="retry">
+          刷新状态
+        </button>
+      </div>
+      <div v-else-if="store.resubmitAnswerPayload" class="workspace-answer-retry" data-test="answer-resubmit">
+        <span>回答尚未保存，可以再次提交。</span>
+        <button class="btn btn-primary" type="button" :disabled="workspaceRetrying" @click="retry">
+          再次提交
+        </button>
+      </div>
     </div>
 
     <p v-if="store.loading" class="muted workspace-shell__loading">正在加载工作区…</p>

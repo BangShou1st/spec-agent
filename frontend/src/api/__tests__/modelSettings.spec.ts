@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
-import { getOpenCodeSettings, probeOpenCode, saveOpenCode } from '@/api/modelSettings'
+import {
+  getOpenCodeSettings,
+  listOpenCodeModels,
+  probeOpenCode,
+  saveOpenCode,
+  saveOpenCodeModel,
+} from '@/api/modelSettings'
 
 describe('model settings api', () => {
   it('uses the settings probe/save endpoints without exposing the key in reads', async () => {
@@ -21,6 +27,23 @@ describe('model settings api', () => {
     expect(get).toHaveBeenCalledWith('/settings/opencode')
     expect(post).toHaveBeenCalledWith('/settings/opencode/probe', { apiKey: 'secret' })
     expect(put).toHaveBeenCalledWith('/settings/opencode', { apiKey: 'secret', selectedModel: 'model-free' })
+    vi.restoreAllMocks()
+  })
+
+  it('uses saved-key model discovery and model-only save endpoints', async () => {
+    const get = vi.spyOn((await import('@/api/client')).apiClient, 'get').mockResolvedValue({
+      freeModels: ['alpha-free', 'beta-free'],
+    })
+    const put = vi.spyOn((await import('@/api/client')).apiClient, 'put').mockResolvedValue({
+      configured: true,
+      maskedKey: '••••1234',
+      selectedModel: 'beta-free',
+    })
+
+    await expect(listOpenCodeModels()).resolves.toEqual({ freeModels: ['alpha-free', 'beta-free'] })
+    await expect(saveOpenCodeModel('beta-free')).resolves.toMatchObject({ selectedModel: 'beta-free' })
+    expect(get).toHaveBeenCalledWith('/settings/opencode/models')
+    expect(put).toHaveBeenCalledWith('/settings/opencode/model', { selectedModel: 'beta-free' })
     vi.restoreAllMocks()
   })
 })

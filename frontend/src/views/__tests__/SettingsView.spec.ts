@@ -3,23 +3,34 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import SettingsView from '@/views/SettingsView.vue'
 import { ApiError } from '@/api/client'
-import { getOpenCodeSettings, probeOpenCode, saveOpenCode } from '@/api/modelSettings'
+import {
+  getOpenCodeSettings,
+  listOpenCodeModels,
+  probeOpenCode,
+  saveOpenCode,
+  saveOpenCodeModel,
+} from '@/api/modelSettings'
 
 vi.mock('@/api/modelSettings', () => ({
   getOpenCodeSettings: vi.fn(),
+  listOpenCodeModels: vi.fn(),
   probeOpenCode: vi.fn(),
   saveOpenCode: vi.fn(),
+  saveOpenCodeModel: vi.fn(),
 }))
 
 const mockedGet = vi.mocked(getOpenCodeSettings)
+const mockedList = vi.mocked(listOpenCodeModels)
 const mockedProbe = vi.mocked(probeOpenCode)
 const mockedSave = vi.mocked(saveOpenCode)
+const mockedSaveModel = vi.mocked(saveOpenCodeModel)
 
 describe('SettingsView', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
     mockedGet.mockResolvedValue({ configured: false, maskedKey: null, selectedModel: null })
+    mockedList.mockResolvedValue({ freeModels: [] })
   })
 
   it('probes, requires an explicit free-model selection, then clears the key after save', async () => {
@@ -94,5 +105,21 @@ describe('SettingsView', () => {
     expect(wrapper.get('[data-test="masked-key"]').text()).toContain('••••old1')
     expect(wrapper.get('[data-test="current-config"]').text()).toContain('old-free')
     expect(wrapper.text()).not.toContain('new-api-key')
+  })
+
+  it('lists saved-key models on load and saves a model change without an API key', async () => {
+    mockedGet.mockResolvedValue({ configured: true, maskedKey: '••••old1', selectedModel: 'old-free' })
+    mockedList.mockResolvedValue({ freeModels: ['old-free', 'new-free'] })
+    mockedSaveModel.mockResolvedValue({ configured: true, maskedKey: '••••old1', selectedModel: 'new-free' })
+    const wrapper = mount(SettingsView)
+    await flushPromises()
+
+    expect(mockedList).toHaveBeenCalledTimes(1)
+    await wrapper.get('[data-test="opencode-model"]').setValue('new-free')
+    await wrapper.get('[data-test="save-model"]').trigger('click')
+    await flushPromises()
+
+    expect(mockedSaveModel).toHaveBeenCalledWith('new-free')
+    expect(wrapper.get('[data-test="current-config"]').text()).toContain('new-free')
   })
 })

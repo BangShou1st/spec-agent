@@ -311,7 +311,7 @@ function setReadingRoute(event: Event): void {
             title="问题本身换掉。"
             @click.stop="regenerateNode"
           >
-            创建替代问题
+            换一个问题
           </button>
         </div>
       </template>

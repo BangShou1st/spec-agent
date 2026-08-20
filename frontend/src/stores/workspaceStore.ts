@@ -28,12 +28,14 @@ import {
   draftNextQuestion,
   getActiveState,
   listRoutes,
+  repairAnswer,
   submitAnswer,
 } from '@/api/workspace'
 
 export interface DisplayError {
   code: string
   message: string
+  status?: number
 }
 
 /** Precise route command in flight, used for pending labels and lockouts. */
@@ -47,9 +49,17 @@ export type PendingRouteCommand =
   | 'regenerate'
   | null
 
+type ManualModelRetryIntent = {
+  kind: 'draft' | 'spec' | 'regenerate'
+  nodeId?: string
+  payload?: RegenerateNodeRequest
+  beforeTipNodeId: string | null
+  state: 'ready' | 'needs_reconcile'
+}
+
 function toDisplayError(err: unknown): DisplayError {
   if (err instanceof ApiError) {
-    return { code: err.code, message: err.message }
+    return { code: err.code, message: err.message, status: err.status }
   }
   return { code: 'UNKNOWN_ERROR', message: GENERIC_ERROR_MESSAGE }
 }
@@ -79,8 +89,14 @@ export const useWorkspaceStore = defineStore('workspace', {
     refreshing: false,
     drafting: false,
     submitting: false,
+    repairingAnswer: false,
     feedback: null as string | null,
     error: null as DisplayError | null,
+    repairableAnswerId: null as string | null,
+    resubmitAnswerPayload: null as SubmitAnswerRequest | null,
+    pendingAnswerNodeId: null as string | null,
+    answerOutcomeUnknown: false,
+    manualModelRetry: null as ManualModelRetryIntent | null,
 
     // Canonical graph read (Phase 7.3A): replaced from the backend on every
     // refresh; the frontend never patches it locally.
@@ -123,6 +139,11 @@ export const useWorkspaceStore = defineStore('workspace', {
       this.loading = true
       this.error = null
       this.feedback = null
+      this.repairableAnswerId = null
+      this.resubmitAnswerPayload = null
+      this.pendingAnswerNodeId = null
+      this.answerOutcomeUnknown = false
+      this.manualModelRetry = null
       try {
         const [project, activeState, routes, requirementState, graphView] = await Promise.all([
           getProject(projectId),
@@ -147,9 +168,9 @@ export const useWorkspaceStore = defineStore('workspace', {
     },
 
     /** Re-reads canonical backend-derived workspace views after a command. */
-    async refreshWorkspace(): Promise<void> {
+    async refreshWorkspace(): Promise<boolean> {
       if (!this.projectId || this.refreshing) {
-        return
+        return false
       }
       this.refreshing = true
       this.error = null
@@ -170,8 +191,10 @@ export const useWorkspaceStore = defineStore('workspace', {
         // route-scoped cache on every canonical refresh so the reading UI
         // reloads it from the backend.
         this.requirementStatesByRoute = {}
+        return true
       } catch (err) {
         this.error = toDisplayError(err)
+        return false
       } finally {
         this.refreshing = false
       }
@@ -184,13 +207,32 @@ export const useWorkspaceStore = defineStore('workspace', {
       }
       this.drafting = true
       this.error = null
+      const beforeTipNodeId = this.activeState?.activeRoute?.tipNodeId ?? null
       try {
         await draftNextQuestion(this.projectId)
         this.feedback = '问题已起草。'
         await this.refreshWorkspace()
+        this.manualModelRetry = null
         return true
       } catch (err) {
-        this.error = toDisplayError(err)
+        const safeError = toDisplayError(err)
+        this.error = safeError
+        this.manualModelRetry = {
+          kind: 'draft',
+          beforeTipNodeId,
+          state: safeError.code === 'NETWORK_ERROR' || safeError.status === 0
+            ? 'needs_reconcile' : 'ready',
+        }
+        if (this.manualModelRetry.state === 'needs_reconcile') {
+          const reconciled = await this.refreshWorkspace()
+          const afterTipNodeId = this.activeState?.activeRoute?.tipNodeId ?? null
+          if (reconciled && afterTipNodeId !== beforeTipNodeId) {
+            this.manualModelRetry = null
+            this.feedback = '问题已起草。'
+          } else {
+            this.error = safeError
+          }
+        }
         return false
       } finally {
         this.drafting = false
@@ -204,17 +246,159 @@ export const useWorkspaceStore = defineStore('workspace', {
       }
       this.submitting = true
       this.error = null
+      this.repairableAnswerId = null
+      this.resubmitAnswerPayload = null
+      this.pendingAnswerNodeId = this.activeState?.activeNode?.id
+        ?? this.activeState?.activeRoute?.tipNodeId
+        ?? null
+      this.answerOutcomeUnknown = false
       try {
         await submitAnswer(this.projectId, payload)
         this.feedback = '回答已记录。'
         await this.refreshWorkspace()
+        this.manualModelRetry = null
         return true
       } catch (err) {
-        this.error = toDisplayError(err)
+        const safeError = toDisplayError(err)
+        this.resubmitAnswerPayload = { ...payload }
+        const reconciled = await this.refreshWorkspace()
+        let canonicalMutationCompleted = false
+        if (!reconciled) {
+          this.answerOutcomeUnknown = true
+        } else {
+          const answerId = this.findFinalizedAnswerForNode(this.pendingAnswerNodeId)
+          if (answerId) {
+            if (this.activeState?.activeRoute?.tipNodeId === this.pendingAnswerNodeId) {
+              this.repairableAnswerId = answerId
+              this.resubmitAnswerPayload = null
+              this.feedback = '回答已保存，后续生成未完成。'
+            } else {
+              // The canonical tip moved past the submitted node: the lost
+              // response was for a completed mutation, so never resubmit it.
+              this.repairableAnswerId = null
+              this.resubmitAnswerPayload = null
+              this.pendingAnswerNodeId = null
+              this.feedback = '回答已记录。'
+              this.error = null
+              canonicalMutationCompleted = true
+            }
+          }
+        }
+        if (!canonicalMutationCompleted) this.error = safeError
         return false
       } finally {
         this.submitting = false
       }
+    },
+
+    /** Reconciles canonical state before allowing a failed submit to mutate again. */
+    async reconcileAnswerOutcome(): Promise<boolean> {
+      const payload = this.resubmitAnswerPayload
+      if (!payload && !this.answerOutcomeUnknown) return false
+      const previousError = this.error
+      const reconciled = await this.refreshWorkspace()
+      if (!reconciled) {
+        this.answerOutcomeUnknown = true
+        this.error = previousError
+        return false
+      }
+      const answerId = this.findFinalizedAnswerForNode(this.pendingAnswerNodeId)
+      this.answerOutcomeUnknown = false
+      if (answerId) {
+        if (this.activeState?.activeRoute?.tipNodeId === this.pendingAnswerNodeId) {
+          this.repairableAnswerId = answerId
+          this.resubmitAnswerPayload = null
+          this.feedback = '回答已保存，后续生成未完成。'
+        } else {
+          this.repairableAnswerId = null
+          this.resubmitAnswerPayload = null
+          this.pendingAnswerNodeId = null
+          this.feedback = '回答已记录。'
+        }
+      } else {
+        this.repairableAnswerId = null
+        this.resubmitAnswerPayload = payload
+      }
+      this.error = previousError
+      return true
+    },
+
+    /** Repairs an existing answer checkpoint; it never creates a second Answer. */
+    async repairAnswerForActiveFlow(answerId: string): Promise<boolean> {
+      if (!this.projectId || this.repairingAnswer || this.routeCommandPending) return false
+      this.repairingAnswer = true
+      this.error = null
+      try {
+        await repairAnswer(this.projectId, answerId)
+        this.repairableAnswerId = null
+        this.resubmitAnswerPayload = null
+        this.pendingAnswerNodeId = null
+        this.answerOutcomeUnknown = false
+        this.feedback = '已重新请求后续生成。'
+        await this.refreshWorkspace()
+        return true
+      } catch (err) {
+        const safeError = toDisplayError(err)
+        const reconciled = await this.refreshWorkspace()
+        if (reconciled) {
+          this.repairableAnswerId = this.findFinalizedAnswerForActiveTip()
+        }
+        this.error = safeError
+        return false
+      } finally {
+        this.repairingAnswer = false
+      }
+    },
+
+    /** Re-submits only after reconciliation proved that the Answer was absent. */
+    async resubmitFailedAnswer(): Promise<boolean> {
+      const payload = this.resubmitAnswerPayload
+      if (!payload) return false
+      this.resubmitAnswerPayload = null
+      return this.submitAnswer(payload)
+    },
+
+    findFinalizedAnswerForActiveTip(): string | null {
+      const activeRoute = this.activeState?.activeRoute
+      const tipNodeId = activeRoute?.tipNodeId
+      if (!activeRoute || !tipNodeId) return null
+      return this.findFinalizedAnswerForNode(tipNodeId)
+    },
+
+    findFinalizedAnswerForNode(nodeId: string | null): string | null {
+      const activeRoute = this.activeState?.activeRoute
+      if (!activeRoute || !nodeId) return null
+      return this.graphView?.answers.find((answer) =>
+        answer.routeId === activeRoute.id && answer.nodeId === nodeId,
+      )?.id ?? null
+    },
+
+    async retryManualModelOperation(): Promise<boolean> {
+      const intent = this.manualModelRetry
+      if (!intent) return false
+      if (intent.state === 'needs_reconcile') {
+        const previousError = this.error
+        const reconciled = await this.refreshWorkspace()
+        const afterTipNodeId = this.activeState?.activeRoute?.tipNodeId ?? null
+        if (!reconciled) {
+          this.error = previousError
+          return false
+        }
+        if (intent.kind === 'draft' && afterTipNodeId !== intent.beforeTipNodeId) {
+          this.manualModelRetry = null
+          this.feedback = '问题已起草。'
+          return true
+        }
+        this.manualModelRetry = { ...intent, state: 'ready' }
+        this.error = previousError
+        return false
+      }
+      if (intent.kind === 'draft') return this.draftQuestion()
+      if (intent.kind === 'spec') return (await this.generateSpec()) !== null
+      if (intent.nodeId && intent.payload) {
+        return this.regenerateNode(intent.nodeId, intent.payload)
+      }
+      return false
     },
 
     // ---------------- Route commands ----------------
@@ -361,7 +545,9 @@ export const useWorkspaceStore = defineStore('workspace', {
         }
         return false
       }
-      const drafted = await this.draftQuestion()
+      const drafted = this.manualModelRetry?.kind === 'draft'
+        ? await this.retryManualModelOperation()
+        : await this.draftQuestion()
       if (drafted) {
         this.forkDraftRetryRouteId = null
         this.feedback = '已起草分支的首个后续问题。'
@@ -403,15 +589,30 @@ export const useWorkspaceStore = defineStore('workspace', {
       this.routeCommandPending = true
       this.pendingRouteCommand = 'regenerate'
       this.error = null
+      const beforeTipNodeId = this.activeState?.activeRoute?.tipNodeId ?? null
       // The integrated dialog supplies the explicit sourceRouteId required by
       // the Runtime contract; no compatibility payload is synthesized here.
       try {
         await regenerateNodeCommand(this.projectId, nodeId, payload)
         await this.refreshWorkspace()
-        this.feedback = '已创建替代问题路线。'
+        this.feedback = '已创建换一个问题路线。'
+        this.manualModelRetry = null
         return true
       } catch (err) {
-        this.error = toDisplayError(err)
+        const safeError = toDisplayError(err)
+        this.error = safeError
+        this.manualModelRetry = {
+          kind: 'regenerate',
+          nodeId,
+          payload: { ...payload },
+          beforeTipNodeId,
+          state: safeError.code === 'NETWORK_ERROR' || safeError.status === 0
+            ? 'needs_reconcile' : 'ready',
+        }
+        if (this.manualModelRetry.state === 'needs_reconcile') {
+          await this.refreshWorkspace()
+          this.error = safeError
+        }
         return false
       } finally {
         this.routeCommandPending = false
@@ -505,9 +706,21 @@ export const useWorkspaceStore = defineStore('workspace', {
           [routeId]: result.specSnapshot.id,
         }
         this.feedback = '已生成规格快照。'
+        this.manualModelRetry = null
         return result
       } catch (err) {
-        this.error = toDisplayError(err)
+        const safeError = toDisplayError(err)
+        this.error = safeError
+        this.manualModelRetry = {
+          kind: 'spec',
+          beforeTipNodeId: activeRoute.tipNodeId,
+          state: safeError.code === 'NETWORK_ERROR' || safeError.status === 0
+            ? 'needs_reconcile' : 'ready',
+        }
+        if (this.manualModelRetry.state === 'needs_reconcile') {
+          await this.refreshWorkspace()
+          this.error = safeError
+        }
         return null
       } finally {
         this.generatingSpec = false

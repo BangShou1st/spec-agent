@@ -42,6 +42,16 @@ public class OpenCodeSettingsService {
         return List.copyOf(freeModels);
     }
 
+    /**
+     * Lists current free models with the already persisted credential. The
+     * key is resolved explicitly from storage; an empty request key is never
+     * interpreted as "reuse the old key".
+     */
+    public List<String> listSavedKeyModels() {
+        OpenCodeSettings settings = requireStoredSettings();
+        return List.copyOf(currentFreeModels(settings.apiKey()));
+    }
+
     /** Revalidates the complete candidate configuration before one upsert. */
     public OpenCodeSettingsStatus save(String apiKey, String selectedModel) {
         String candidate = requireKey(apiKey);
@@ -61,11 +71,30 @@ public class OpenCodeSettingsService {
         return status();
     }
 
+    /**
+     * Changes only the selected model using the persisted key. All provider
+     * validation happens before the single upsert, so a failed switch leaves
+     * the previous working settings active and preserves credential metadata.
+     */
+    public OpenCodeSettingsStatus changeModel(String selectedModel) {
+        OpenCodeSettings current = requireStoredSettings();
+        String model = requireModel(selectedModel);
+        List<String> freeModels = currentFreeModels(current.apiKey());
+        if (!model.endsWith("-free") || !freeModels.contains(model)) {
+            throw new OpenCodeModelException(OpenCodeModelErrorCategory.INVALID_MODEL,
+                    "Selected OpenCode model is not currently available");
+        }
+        transport.validateCredential(current.apiKey(), model);
+
+        repository.upsert(new OpenCodeSettings(
+                current.apiKey(), current.maskedSuffix(), model,
+                current.createdAt(), Instant.now()));
+        return status();
+    }
+
     /** The only normal service method that returns the full key to backend code. */
     public RuntimeOpenCodeSettings requireRuntimeSettings() {
-        OpenCodeSettings settings = repository.find().orElseThrow(
-                () -> new OpenCodeModelException(OpenCodeModelErrorCategory.NOT_CONFIGURED,
-                        "OpenCode settings are not configured"));
+        OpenCodeSettings settings = requireStoredSettings();
         if (settings.apiKey() == null || settings.apiKey().isBlank()
                 || settings.selectedModel() == null || settings.selectedModel().isBlank()) {
             throw new OpenCodeModelException(OpenCodeModelErrorCategory.NOT_CONFIGURED,
@@ -85,6 +114,19 @@ public class OpenCodeSettingsService {
                     "OpenCode has no currently available free models");
         }
         return models;
+    }
+
+    private OpenCodeSettings requireStoredSettings() {
+        return repository.find().orElseThrow(
+                () -> new OpenCodeModelException(OpenCodeModelErrorCategory.NOT_CONFIGURED,
+                        "OpenCode settings are not configured"));
+    }
+
+    private static String requireModel(String selectedModel) {
+        if (selectedModel == null || selectedModel.isBlank()) {
+            throw new IllegalArgumentException("A free model must be selected");
+        }
+        return selectedModel.trim();
     }
 
     private static String requireKey(String apiKey) {

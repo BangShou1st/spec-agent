@@ -26,6 +26,9 @@ class OpenCodeSettingsIntegrationTest {
     private OpenCodeSettingsService service;
 
     @Autowired
+    private OpenCodeSettingsRepository repository;
+
+    @Autowired
     private NamedParameterJdbcTemplate jdbc;
 
     @MockBean
@@ -76,5 +79,41 @@ class OpenCodeSettingsIntegrationTest {
                 .isInstanceOf(RuntimeException.class);
         assertThat(service.requireRuntimeSettings()).isEqualTo(
                 new RuntimeOpenCodeSettings("first-key", "alpha-free"));
+    }
+
+    @Test
+    void savedKeyListsModelsAndChangesModelWithoutBeingSubmittedAgain() {
+        when(catalog.listFreeModels("saved-key")).thenReturn(List.of("alpha-free", "beta-free"));
+        doNothing().when(transport).validateCredential("saved-key", "alpha-free");
+        service.save("saved-key", "alpha-free");
+        OpenCodeSettings before = repository.find().orElseThrow();
+
+        assertThat(service.listSavedKeyModels()).containsExactly("alpha-free", "beta-free");
+
+        doNothing().when(transport).validateCredential("saved-key", "beta-free");
+        OpenCodeSettingsStatus changed = service.changeModel("beta-free");
+
+        assertThat(changed.selectedModel()).isEqualTo("beta-free");
+        OpenCodeSettings after = repository.find().orElseThrow();
+        assertThat(after.apiKey()).isEqualTo(before.apiKey());
+        assertThat(after.maskedSuffix()).isEqualTo(before.maskedSuffix());
+        assertThat(after.createdAt()).isEqualTo(before.createdAt());
+        assertThat(after.updatedAt()).isAfterOrEqualTo(before.updatedAt());
+        assertThat(service.requireRuntimeSettings()).isEqualTo(
+                new RuntimeOpenCodeSettings("saved-key", "beta-free"));
+    }
+
+    @Test
+    void failedSavedKeyModelChangePreservesTheExistingConfiguration() {
+        when(catalog.listFreeModels("saved-key")).thenReturn(List.of("alpha-free"));
+        doNothing().when(transport).validateCredential("saved-key", "alpha-free");
+        service.save("saved-key", "alpha-free");
+
+        when(catalog.listFreeModels("saved-key")).thenReturn(List.of("beta-free"));
+        assertThatThrownBy(() -> service.changeModel("alpha-free"))
+                .isInstanceOf(RuntimeException.class);
+
+        assertThat(service.requireRuntimeSettings()).isEqualTo(
+                new RuntimeOpenCodeSettings("saved-key", "alpha-free"));
     }
 }

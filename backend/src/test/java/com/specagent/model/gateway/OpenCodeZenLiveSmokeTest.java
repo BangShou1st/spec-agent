@@ -122,7 +122,7 @@ class OpenCodeZenLiveSmokeTest {
         assertThat(response.taskType()).isEqualTo(AgentTaskType.DRAFT_NODE);
         assertThat(response.action()).isEqualTo(AgentAction.ASK_NEXT_QUESTION);
         assertThat(response.outputJson()).isNotBlank();
-        assertThat(response.trace()).containsEntry("promptVersion", "draft-node.v1");
+        assertThat(response.trace()).containsEntry("promptVersion", "draft-node.v2");
         assertThat(response.trace()).containsKey("promptHash");
         assertThat(response.trace()).containsKey("modelOutputHash");
 

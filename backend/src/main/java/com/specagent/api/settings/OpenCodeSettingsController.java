@@ -29,8 +29,19 @@ public class OpenCodeSettingsController {
         return new OpenCodeProbeResponse(service.probe(request.apiKey()));
     }
 
+    @GetMapping("/models")
+    public OpenCodeProbeResponse models() {
+        return new OpenCodeProbeResponse(service.listSavedKeyModels());
+    }
+
     @PutMapping
     public OpenCodeSettingsResponse save(@Valid @RequestBody OpenCodeSaveRequest request) {
         return OpenCodeSettingsResponse.from(service.save(request.apiKey(), request.selectedModel()));
+    }
+
+    @PutMapping("/model")
+    public OpenCodeSettingsResponse changeModel(
+            @Valid @RequestBody OpenCodeModelChangeRequest request) {
+        return OpenCodeSettingsResponse.from(service.changeModel(request.selectedModel()));
     }
 }

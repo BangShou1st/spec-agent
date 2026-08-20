@@ -112,7 +112,7 @@ function orderedStates(data: SpecAgentGraphNodeData) {
           :disabled="data.node.parentNodeId === null"
           @click="emit('regenerate', data.node.id)"
         >
-          创建替代问题
+          换一个问题
         </button>
       </div>
     </template>

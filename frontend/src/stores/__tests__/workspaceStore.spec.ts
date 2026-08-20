@@ -26,6 +26,7 @@ vi.mock('@/api/workspace', () => ({
   draftNextQuestion: vi.fn(),
   getActiveState: vi.fn(),
   listRoutes: vi.fn(),
+  repairAnswer: vi.fn(),
   submitAnswer: vi.fn(),
 }))
 
@@ -59,6 +60,7 @@ import {
   draftNextQuestion,
   getActiveState,
   listRoutes,
+  repairAnswer,
   submitAnswer,
 } from '@/api/workspace'
 import { getRequirementState, getRouteRequirementState } from '@/api/requirementState'
@@ -78,6 +80,7 @@ const mockedGetRouteRequirementState = vi.mocked(getRouteRequirementState)
 const mockedGetProjectGraph = vi.mocked(getProjectGraph)
 const mockedDraftNextQuestion = vi.mocked(draftNextQuestion)
 const mockedSubmitAnswer = vi.mocked(submitAnswer)
+const mockedRepairAnswer = vi.mocked(repairAnswer)
 const mockedGetRouteLineage = vi.mocked(getRouteLineage)
 const mockedActivateRoute = vi.mocked(apiActivateRoute)
 const mockedForkNode = vi.mocked(apiForkNode)
@@ -296,6 +299,41 @@ describe('workspaceStore', () => {
     expect(store.error?.message).toBe('The model provider is temporarily rate limited')
     expect(store.error?.message).not.toContain('provider raw payload')
     expect(store.submitting).toBe(false)
+  })
+
+  it('reconciles a failed submit and repairs the saved Answer without POSTing another answer', async () => {
+    const active = makeActiveState({
+      project: makeProject({ id: 'p1', activeRouteId: 'r1' }),
+      activeRoute: makeRoute({ id: 'r1', projectId: 'p1', tipNodeId: 'node-1', isActive: true }),
+      activeNode: makeNode({ id: 'node-1', projectId: 'p1' }),
+    })
+    mockBackendViews(active, makeRequirementState())
+    mockedSubmitAnswer.mockRejectedValue(new ApiError('model failed', 'MODEL_PROVIDER_ERROR', 502))
+    mockedGetProjectGraph.mockResolvedValue(makeGraphWorkspaceView({
+      projectId: 'p1',
+      activeRouteId: 'r1',
+      routes: [{
+        ...makeRoute({ id: 'r1', projectId: 'p1', tipNodeId: 'node-1', isActive: true }),
+        rootNodeId: 'node-1',
+        lineageNodeIds: ['node-1'],
+      }],
+      nodes: [makeNode({ id: 'node-1', projectId: 'p1' })],
+      answers: [{
+        id: 'answer-1', routeId: 'r1', nodeId: 'node-1', selectedOptionId: null,
+        freeText: 'answer', createdAt: '2026-01-01T00:00:00Z',
+      }],
+    }))
+    mockedRepairAnswer.mockResolvedValue(makeAnswerExecution())
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+
+    expect(await store.submitAnswer({ freeText: 'answer' })).toBe(false)
+    expect(store.repairableAnswerId).toBe('answer-1')
+    expect(mockedSubmitAnswer).toHaveBeenCalledTimes(1)
+
+    expect(await store.repairAnswerForActiveFlow('answer-1')).toBe(true)
+    expect(mockedRepairAnswer).toHaveBeenCalledWith('p1', 'answer-1')
+    expect(mockedSubmitAnswer).toHaveBeenCalledTimes(1)
   })
 
   it('keeps routes visible after a refresh with a changeset', async () => {

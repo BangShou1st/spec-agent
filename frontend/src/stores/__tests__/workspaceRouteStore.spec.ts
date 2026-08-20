@@ -280,7 +280,7 @@ describe('workspaceStore route workspace', () => {
     expect(store.activeState?.activeRoute?.id).toBe('route-new')
     expect(mockedGetRequirementState).toHaveBeenCalledTimes(2)
     expect(mockedGetProjectGraph).toHaveBeenCalledTimes(2)
-    expect(store.feedback).toBe('已创建替代问题路线。')
+    expect(store.feedback).toBe('已创建换一个问题路线。')
   })
 
   it('prevents duplicate route commands while one is pending', async () => {

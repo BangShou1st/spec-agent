@@ -5,7 +5,10 @@ import com.specagent.agent.contracts.ReflectionResult;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 
 /**
  * Deterministic validator for a proposed clarification node.
@@ -46,6 +49,8 @@ public class NodeReflectionGate {
             errors.add("Node without free answer must provide options");
         }
 
+        validateOptions(draft.options(), errors);
+
         if (errors.isEmpty()) {
             return new ReflectionResult(true, List.of(), warnings);
         }
@@ -55,7 +60,7 @@ public class NodeReflectionGate {
     private int countQuestionMarks(String text) {
         int count = 0;
         for (char c : text.toCharArray()) {
-            if (c == '?') {
+            if (c == '?' || c == '？') {
                 count++;
             }
         }
@@ -68,5 +73,23 @@ public class NodeReflectionGate {
                 || normalized.contains("? also ")
                 || normalized.contains(" and why ")
                 || normalized.contains(" and how ");
+    }
+
+    private void validateOptions(List<com.specagent.node.NodeOption> options,
+                                 List<String> errors) {
+        if (options == null || options.isEmpty()) {
+            return;
+        }
+        Set<String> normalizedLabels = new HashSet<>();
+        for (com.specagent.node.NodeOption option : options) {
+            if (option == null || option.label() == null || option.label().isBlank()) {
+                errors.add("Node option label must not be blank");
+                continue;
+            }
+            String normalized = option.label().trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+            if (!normalizedLabels.add(normalized)) {
+                errors.add("Node options must have unique labels");
+            }
+        }
     }
 }
