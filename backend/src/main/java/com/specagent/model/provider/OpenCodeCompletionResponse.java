@@ -18,15 +18,16 @@ public record OpenCodeCompletionResponse(
         int streamedEventCount,
         int reasoningEventCount,
         int reasoningCharCount,
-        String reasoningSha256) {
+        String reasoningSha256,
+        OpenCodeRequestDiagnostics requestDiagnostics) {
 
     public OpenCodeCompletionResponse(String content,
                                       String finishReason,
                                       Integer promptTokens,
                                       Integer completionTokens,
                                       Integer totalTokens) {
-        this(content, finishReason, promptTokens, completionTokens, totalTokens,
-                null, 0, 0, 0, Hashes.sha256Hex(""));
+                this(content, finishReason, promptTokens, completionTokens, totalTokens,
+                null, 0, 0, 0, Hashes.sha256Hex(""), OpenCodeRequestDiagnostics.empty());
     }
 
     /** Compatibility constructor for callers that do not observe reasoning metadata. */
@@ -34,11 +35,28 @@ public record OpenCodeCompletionResponse(
                                       String finishReason,
                                       Integer promptTokens,
                                       Integer completionTokens,
+                Integer totalTokens,
+                Integer initialHttpStatus,
+                int streamedEventCount) {
+        this(content, finishReason, promptTokens, completionTokens, totalTokens,
+                initialHttpStatus, streamedEventCount, 0, 0, Hashes.sha256Hex(""),
+                OpenCodeRequestDiagnostics.empty());
+    }
+
+    /** Compatibility constructor for callers that observe reasoning metadata. */
+    public OpenCodeCompletionResponse(String content,
+                                      String finishReason,
+                                      Integer promptTokens,
+                                      Integer completionTokens,
                                       Integer totalTokens,
                                       Integer initialHttpStatus,
-                                      int streamedEventCount) {
+                                      int streamedEventCount,
+                                      int reasoningEventCount,
+                                      int reasoningCharCount,
+                                      String reasoningSha256) {
         this(content, finishReason, promptTokens, completionTokens, totalTokens,
-                initialHttpStatus, streamedEventCount, 0, 0, Hashes.sha256Hex(""));
+                initialHttpStatus, streamedEventCount, reasoningEventCount,
+                reasoningCharCount, reasoningSha256, OpenCodeRequestDiagnostics.empty());
     }
 
     public OpenCodeCompletionResponse {
@@ -48,5 +66,7 @@ public record OpenCodeCompletionResponse(
         reasoningCharCount = Math.max(0, reasoningCharCount);
         reasoningSha256 = reasoningSha256 != null && reasoningSha256.matches("[0-9a-fA-F]{64}")
                 ? reasoningSha256 : Hashes.sha256Hex("");
+        requestDiagnostics = requestDiagnostics == null
+                ? OpenCodeRequestDiagnostics.empty() : requestDiagnostics;
     }
 }

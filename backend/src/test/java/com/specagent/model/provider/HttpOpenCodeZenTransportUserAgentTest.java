@@ -44,8 +44,7 @@ class HttpOpenCodeZenTransportUserAgentTest {
         transport.validateCredential("probe-key", "alpha-free");
         transport.complete("completion-key", new OpenCodeChatCompletionRequest(
                 "alpha-free",
-                List.of(new OpenCodeChatMessage("user", "hello")),
-                0.0));
+                List.of(new OpenCodeChatMessage("user", "hello"))));
 
         assertThat(paths).containsExactly("/models", "/chat/completions", "/chat/completions");
         assertThat(userAgents)

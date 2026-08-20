@@ -55,7 +55,6 @@ import java.util.Map;
 public class OpenCodeZenModelGateway implements ModelGateway {
 
     private static final Logger LOG = LoggerFactory.getLogger(OpenCodeZenModelGateway.class);
-    private static final double TEMPERATURE = 0.0;
 
     private final OpenCodeZenTransport transport;
     private final OpenCodeSettingsService settingsService;
@@ -94,8 +93,7 @@ public class OpenCodeZenModelGateway implements ModelGateway {
                     new OpenCodeChatCompletionRequest(
                             selectedModel,
                             List.of(new OpenCodeChatMessage("system", prompt.systemPrompt()),
-                                    new OpenCodeChatMessage("user", prompt.userPrompt())),
-                            TEMPERATURE));
+                                    new OpenCodeChatMessage("user", prompt.userPrompt()))));
 
             return toModelResponse(request, completion, prompt, selectedModel);
         } catch (OpenCodeModelException ex) {
@@ -200,7 +198,7 @@ public class OpenCodeZenModelGateway implements ModelGateway {
                 "not provided", "not provided", "not provided", "not provided", "not provided",
                 "not provided", "not provided", "not provided",
                 completion.reasoningEventCount(), completion.reasoningCharCount(),
-                completion.reasoningSha256());
+                completion.reasoningSha256(), completion.requestDiagnostics());
         return new OpenCodeModelException(OpenCodeModelErrorCategory.INVALID_RESPONSE,
                 effectiveMessage, completion.initialHttpStatus(), cause).withDiagnostics(diagnostics);
     }
@@ -223,7 +221,11 @@ public class OpenCodeZenModelGateway implements ModelGateway {
                         + "contentCharCount={} contentSha256={} eventIndex={} topLevelFields={} choicesCount={} "
                         + "deltaFields={} providerType={} providerCode={} providerMessage={} retryAfter={} "
                         + "xRequestId={} requestId={} cfRay={} traceId={} reasoningEventCount={} "
-                        + "reasoningCharCount={} reasoningSha256={}",
+                        + "reasoningCharCount={} reasoningSha256={} requestType={} requestStartedAt={} "
+                        + "elapsedMillis={} responseHeadersLatencyMillis={} firstSseEventLatencyMillis={} "
+                        + "messageCount={} messageDiagnostics={} requestBodyByteCount={} requestBodySha256={} "
+                        + "stream={} temperaturePresent={} maxTokensPresent={} responseFormatPresent={} "
+                        + "requestTimeoutPresent={} connectTimeoutPresent={}",
                 exception.category(), diagnostics.task(), diagnostics.selectedModel(), diagnostics.endpointPath(),
                 diagnostics.initialHttpStatus(), diagnosticReason(diagnostics), diagnostics.finishReason(),
                 diagnostics.streamedEventCount(), diagnostics.contentCharCount(), diagnostics.contentSha256(),
@@ -232,7 +234,18 @@ public class OpenCodeZenModelGateway implements ModelGateway {
                 diagnostics.providerMessage(), diagnostics.retryAfter(), diagnostics.xRequestId(),
                 diagnostics.requestId(), diagnostics.cfRay(), diagnostics.traceId(),
                 diagnostics.reasoningEventCount(), diagnostics.reasoningCharCount(),
-                diagnostics.reasoningSha256());
+                diagnostics.reasoningSha256(), diagnostics.requestDiagnostics().requestType(),
+                diagnostics.requestDiagnostics().requestStartedAt(), diagnostics.requestDiagnostics().elapsedMillis(),
+                diagnostics.requestDiagnostics().responseHeadersLatencyMillis(),
+                diagnostics.requestDiagnostics().firstSseEventLatencyMillis(),
+                diagnostics.requestDiagnostics().messageCount(), diagnostics.requestDiagnostics().messages(),
+                diagnostics.requestDiagnostics().requestBodyByteCount(),
+                diagnostics.requestDiagnostics().requestBodySha256(),
+                diagnostics.requestDiagnostics().stream(), diagnostics.requestDiagnostics().temperaturePresent(),
+                diagnostics.requestDiagnostics().maxTokensPresent(),
+                diagnostics.requestDiagnostics().responseFormatPresent(),
+                diagnostics.requestDiagnostics().requestTimeoutPresent(),
+                diagnostics.requestDiagnostics().connectTimeoutPresent());
     }
 
     private static String diagnosticReason(OpenCodeFailureDiagnostics diagnostics) {

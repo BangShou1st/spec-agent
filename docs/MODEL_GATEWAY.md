@@ -75,7 +75,7 @@ spec-agent:
     model: resolved-from-opencode-settings
     api-key: resolved-from-opencode-settings
     user-agent: ${SPEC_AGENT_MODEL_USER_AGENT:opencode/1.18.16}
-    timeout-ms: 60000
+    settings-timeout-seconds: 45
 ```
 
 Provider-specific defaults may live in configuration or adapter setup. Runtime Kernel code must not know them.
@@ -168,13 +168,22 @@ The concrete authorization header must be produced by the provider adapter, not 
 Production task completions use the verified streaming shape:
 
 - `stream=true`.
+- The production completion body contains exactly `model`, `messages` and `stream`.
 - No `response_format` field.
-- No task-specific `max_tokens` field; the selected model/provider policy owns its generation limit.
+- No `temperature`, sampling, generation-limit, response-format or reasoning override fields.
+- Production completion requests have no `HttpRequest` timeout and use an `HttpClient` without a
+  Spec Agent connect deadline. Model-list and credential-probe requests use a separate bounded
+  settings policy.
 - No automatic retry, model substitution, provider substitution, or additional reasoning parameters.
 
 Credential probes are separate bounded requests and may retain a small probe-only `max_tokens` value.
 
 If a streamed delta contains `reasoning_content`, the adapter may retain only event/character counts and a SHA-256 hash for safe observation. Reasoning text is never persisted, logged, appended to assistant content, or passed to the runtime parser. The runtime consumes assistant `content` only.
+
+Production failure diagnostics may include request start/elapsed/header/first-event timing,
+message and body counts/hashes, request-shape presence flags, SSE counts/hashes, and safe provider
+request identifiers. They never include raw prompts, answers, reasoning, request/response bodies,
+or credentials. Connect and response timeout reasons remain distinct.
 
 ## 9. Structured Output Rule
 

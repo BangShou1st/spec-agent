@@ -22,7 +22,7 @@
 
 | 变量 | 作用 |
 | --- | --- |
-| `SPEC_AGENT_OPENCODE_TIMEOUT_SECONDS` | 请求超时秒数，默认 45 |
+| `SPEC_AGENT_OPENCODE_SETTINGS_TIMEOUT_SECONDS` | 仅模型目录/credential probe 的 bounded timeout 秒数，默认 45；production completion 不设置 Spec Agent timeout |
 | `SPEC_AGENT_DB_HOST` / `SPEC_AGENT_DB_PORT` / `SPEC_AGENT_DB_NAME` / `SPEC_AGENT_DB_USER` / `SPEC_AGENT_DB_PASSWORD` | dev/test 数据库连接，默认 `localhost:5434/spec_agent`（docker-compose） |
 
 ## 2. 准备 .local-secrets.env

@@ -39,4 +39,4 @@ spec:
       # The fake gateway is test-only and must be selected explicitly there.
       gateway: ${SPEC_AGENT_MODEL_GATEWAY:opencode}
       opencode:
-        timeout-seconds: ${SPEC_AGENT_OPENCODE_TIMEOUT_SECONDS:45}
+        settings-timeout-seconds: ${SPEC_AGENT_OPENCODE_SETTINGS_TIMEOUT_SECONDS:45}

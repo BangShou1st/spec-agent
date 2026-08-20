@@ -7,6 +7,8 @@ package com.specagent.model.provider;
  * returning the stable provider-neutral INVALID_RESPONSE category.</p>
  */
 public enum OpenCodeDiagnosticReason {
+    CONNECT_TIMEOUT,
+    RESPONSE_TIMEOUT,
     STREAM_ERROR_EVENT,
     STREAM_MALFORMED_JSON,
     STREAM_MISSING_CHOICES,

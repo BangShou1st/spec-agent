@@ -102,7 +102,6 @@ OpenCodeZenModelGateway gateway = gateway(transport, SELECTED_MODEL);
         // Transport received the resolved credential and the minimal payload.
         assertThat(transport.apiKey).isEqualTo(API_KEY);
         assertThat(transport.request.model()).isEqualTo(SELECTED_MODEL);
-        assertThat(transport.request.temperature()).isEqualTo(0.0);
         assertThat(transport.request.messages()).hasSize(2);
         assertThat(transport.request.messages().get(0).role()).isEqualTo("system");
         assertThat(transport.request.messages().get(1).role()).isEqualTo("user");

@@ -37,6 +37,7 @@ class HttpOpenCodeZenTransportTest {
     private final List<CapturedRequest> captured = new ArrayList<>();
     private int stubStatus = 200;
     private String stubBody;
+    private boolean stallResponse;
 
     @BeforeEach
     void startStub() throws IOException {
@@ -56,6 +57,14 @@ class HttpOpenCodeZenTransportTest {
         captured.add(new CapturedRequest(exchange.getRequestMethod(),
                 exchange.getRequestURI().getPath(),
                 exchange.getRequestHeaders(), requestBody));
+        if (stallResponse) {
+            try {
+                Thread.sleep(1_500);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+            }
+            return;
+        }
         byte[] responseBody = stubBody.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("Content-Type",
                 stubBody.startsWith("data:") ? "text/event-stream" : "application/json");
@@ -73,8 +82,7 @@ class HttpOpenCodeZenTransportTest {
     private OpenCodeChatCompletionRequest completionRequest() {
         return new OpenCodeChatCompletionRequest("mimo-v2.5-free",
                 List.of(new OpenCodeChatMessage("system", "system contract"),
-                        new OpenCodeChatMessage("user", "user context")),
-                0.0);
+                        new OpenCodeChatMessage("user", "user context")));
     }
 
     private String completionJson(String content) {
@@ -107,10 +115,73 @@ class HttpOpenCodeZenTransportTest {
         assertThat(payload.get("messages")).hasSize(2);
         assertThat(payload.get("messages").get(0).get("role").asText()).isEqualTo("system");
         assertThat(payload.get("messages").get(1).get("content").asText()).isEqualTo("user context");
-        assertThat(payload.get("temperature").asDouble()).isZero();
-        assertThat(payload.get("max_tokens")).isNull();
-        assertThat(payload.get("response_format")).isNull();
         assertThat(payload.get("stream").asBoolean()).isTrue();
+        assertThat(payload.fieldNames()).toIterable()
+                .containsExactlyInAnyOrder("model", "messages", "stream");
+        assertThat(payload.get("temperature")).isNull();
+        assertThat(payload.get("top_p")).isNull();
+        assertThat(payload.get("top_k")).isNull();
+        assertThat(payload.get("max_tokens")).isNull();
+        assertThat(payload.get("max_completion_tokens")).isNull();
+        assertThat(payload.get("response_format")).isNull();
+        assertThat(payload.get("reasoning_effort")).isNull();
+        assertThat(payload.get("thinking")).isNull();
+        assertThat(payload.get("stream_options")).isNull();
+
+        OpenCodeRequestDiagnostics diagnostics = result.requestDiagnostics();
+        assertThat(diagnostics.requestType()).isEqualTo("PRODUCTION_COMPLETION");
+        assertThat(diagnostics.requestStartedAt()).isNotBlank();
+        assertThat(diagnostics.elapsedMillis()).isNotNull().isGreaterThanOrEqualTo(0L);
+        assertThat(diagnostics.responseHeadersLatencyMillis()).isNotNull().isGreaterThanOrEqualTo(0L);
+        assertThat(diagnostics.firstSseEventLatencyMillis()).isNotNull().isGreaterThanOrEqualTo(0L);
+        assertThat(diagnostics.messageCount()).isEqualTo(2);
+        assertThat(diagnostics.messages()).hasSize(2);
+        assertThat(diagnostics.messages().get(0).charCount()).isEqualTo("system contract".length());
+        assertThat(diagnostics.messages().get(1).byteCount()).isEqualTo("user context".getBytes(StandardCharsets.UTF_8).length);
+        assertThat(diagnostics.requestBodyByteCount()).isEqualTo(request.body().length);
+        assertThat(diagnostics.requestBodySha256())
+                .isEqualTo(Hashes.sha256Hex(new String(request.body(), StandardCharsets.UTF_8)));
+        assertThat(diagnostics.stream()).isTrue();
+        assertThat(diagnostics.temperaturePresent()).isFalse();
+        assertThat(diagnostics.maxTokensPresent()).isFalse();
+        assertThat(diagnostics.responseFormatPresent()).isFalse();
+        assertThat(diagnostics.requestTimeoutPresent()).isFalse();
+        assertThat(diagnostics.connectTimeoutPresent()).isFalse();
+    }
+
+    @Test
+    void productionCompletionHasNoRequestOrConnectDeadline() {
+        HttpOpenCodeZenTransport transport = (HttpOpenCodeZenTransport) transport();
+
+        assertThat(transport.completionRequestForTest(completionRequest()).timeout()).isEmpty();
+        assertThat(transport.productionHttpClientForTest().connectTimeout()).isEmpty();
+    }
+
+    @Test
+    void settingsRequestsKeepTheirIndependentBoundedTimeoutPolicy() {
+        HttpOpenCodeZenTransport transport = (HttpOpenCodeZenTransport) transport();
+
+        assertThat(transport.settingsTimeoutForTest()).isEqualTo(java.time.Duration.ofSeconds(5));
+        assertThat(transport.settingsHttpClientForTest().connectTimeout())
+                .contains(java.time.Duration.ofSeconds(5));
+    }
+
+    @Test
+    void settingsResponseTimeoutIsDiagnosedSeparately() {
+        stallResponse = true;
+        HttpOpenCodeZenTransport transport = new HttpOpenCodeZenTransport(mapper,
+                "http://127.0.0.1:" + server.getAddress().getPort(), 1);
+
+        assertThatThrownBy(() -> transport.validateCredential(TEST_KEY, "current-free"))
+                .isInstanceOf(OpenCodeModelException.class)
+                .satisfies(ex -> {
+                    OpenCodeModelException modelException = (OpenCodeModelException) ex;
+                    assertThat(modelException.category()).isEqualTo(OpenCodeModelErrorCategory.TIMEOUT);
+                    assertThat(modelException.diagnostics().diagnosticReason())
+                            .isEqualTo(OpenCodeDiagnosticReason.RESPONSE_TIMEOUT);
+                    assertThat(modelException.diagnostics().requestDiagnostics().requestTimeoutPresent())
+                            .isTrue();
+                });
     }
 
     @Test
@@ -454,33 +525,6 @@ class HttpOpenCodeZenTransportTest {
                 .isInstanceOf(OpenCodeModelException.class)
                 .satisfies(ex -> assertThat(((OpenCodeModelException) ex).category())
                         .isEqualTo(OpenCodeModelErrorCategory.INVALID_RESPONSE));
-    }
-
-    @Test
-    void timeoutIsMappedToTimeoutCategory() throws Exception {
-        try (ServerSocket blackhole = new ServerSocket(0)) {
-            Thread acceptor = new Thread(() -> {
-                while (true) {
-                    try {
-                        blackhole.accept();
-                    } catch (IOException ex) {
-                        break;
-                    }
-                }
-            });
-            acceptor.setDaemon(true);
-            acceptor.start();
-
-            OpenCodeZenTransport transport = new HttpOpenCodeZenTransport(mapper,
-                    "http://127.0.0.1:" + blackhole.getLocalPort(), 1);
-            assertThatThrownBy(() -> transport.complete(TEST_KEY, completionRequest()))
-                    .isInstanceOf(OpenCodeModelException.class)
-                    .satisfies(ex -> {
-                        OpenCodeModelException modelException = (OpenCodeModelException) ex;
-                        assertThat(modelException.category()).isEqualTo(OpenCodeModelErrorCategory.TIMEOUT);
-                        assertThat(modelException.getMessage()).contains("timed out");
-                    });
-        }
     }
 
     @Test

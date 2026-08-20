@@ -7,13 +7,12 @@ import java.util.List;
  *
  * <p>Production completion requests use the OpenAI-compatible streaming shape
  * required by the verified OpenCode client. The transport owns the wire-only
- * fields; this DTO carries the model, messages and temperature. Production
+ * fields; this DTO carries only the model and messages. Production
  * task types do not carry a task-specific generation limit.
  */
 public record OpenCodeChatCompletionRequest(
         String model,
-        List<OpenCodeChatMessage> messages,
-        double temperature) {
+        List<OpenCodeChatMessage> messages) {
 
     public OpenCodeChatCompletionRequest {
         if (model == null || model.isBlank()) {
