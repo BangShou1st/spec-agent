@@ -1,27 +1,10 @@
-# Agent State Schema
+# Agent State Schema (Compatibility Entry)
 
-Agent State is the temporary cognition of the agent.
+This file is retained only to avoid stale links.
 
-It is not chat history and not the source of truth.
+The canonical V2 state contract is:
 
-## Structure
+- `docs/v2/AGENT_STATE_MODEL.md`
+- `docs/v2/AGENT_MEMORY_AND_CONTEXT.md`
 
-```json
-{
-  "objective": {},
-  "focus": {},
-  "knownFacts": [],
-  "unknowns": [],
-  "conflicts": [],
-  "risks": [],
-  "constraints": [],
-  "availableActions": []
-}
-```
-
-## Rules
-
-- Graph stores facts.
-- Agent State stores interpretation.
-- State may be rebuilt.
-- Historical truth remains in Graph snapshots.
+V2 distinguishes Runtime-built `AgentInputSnapshot` from temporary Decision/Observation state. Do not treat a single model-owned JSON state object as durable project truth.
