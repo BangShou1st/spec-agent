@@ -36,6 +36,13 @@ These relations are useful for reasoning and Inspector views, but are not shown 
 
 This separation prevents the Graph from becoming a spider web while still allowing richer reasoning.
 
+### 2.3 Who may create relations
+
+- deterministic provenance relations created by Runtime from known operations may be persisted automatically;
+- user-created relations are explicit user operations;
+- model-inferred semantic relations are proposals in Advisor Mode and must pass Policy/Validator before persistence;
+- Agent confidence alone cannot turn an inferred relation into fact.
+
 ## 3. Append-Preserving Connection Rule
 
 Users and Agent may connect/continue from any existing Node, but they may not retroactively insert a new Node between two already-established historical continuation nodes.
@@ -85,6 +92,8 @@ These remain independent:
 
 Changing Focus must not silently Activate a route. Focusing a route highlights it and reduces visual weight of others; it does not hide all other routes.
 
+A route selector shown on a Shared Node changes **Focus/read context only**. It must not Activate a route.
+
 ## 5. Shared Node
 
 One Node may participate in multiple routes without duplication.
@@ -100,12 +109,14 @@ Route A ─→ Shared Q2 ─→ Answer A
 Route B ─→ Shared Q2 ─→ Answer B
 ```
 
-UI rules:
+UI/read rules:
 
 - if effective answers are equivalent, the Node may show a common answer plus route membership;
 - if effective answers differ, show route-labelled answer summaries;
-- Focus Route determines the default expanded answer/read context;
-- other route answers remain discoverable and are not hidden merely because one route is focused.
+- explicit Focus Route determines the default expanded answer/read context;
+- other route answers remain discoverable and are not hidden merely because one route is focused;
+- if answers differ and **no Focus is selected**, the shared-node read context stays neutral/ambiguous and the UI should ask the user to choose a route context when an operation requires one;
+- do not fall back to Active Route, first route, most-recent route or latest answer merely to resolve shared-node ambiguity.
 
 A shared Node must never invent one globally authoritative answer when the runtime truth is route-scoped.
 
@@ -151,6 +162,18 @@ From a draft/user Node, the user may request:
 - ask AI about the local context;
 - create another branch;
 - connect semantic relations through explicit UI/actions.
+
+### 7.1 User-added requirement becomes route context
+
+If the user continues from `Q2` into a user-authored Requirement Node:
+
+```text
+Q2 ─────→ Requirement R ─────→ ...
+```
+
+then `Requirement R` is part of that route's lineage/anchor context. A subsequent “继续生成” Decision Cycle must see it as current route context and should reason with it, rather than ignoring the user-authored node and continuing as if Q2 were still the tip.
+
+This is how users can steer a route by adding their own requirements without requiring a special “branch requirement” button.
 
 ## 8. Route Naming
 
