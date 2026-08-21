@@ -1,10 +1,13 @@
 # Python Agent Runtime Boundary V2
 
+> Status: **Frozen 2026-08-21** after owner approval of `CODE_ARCHITECTURE_REVIEW_2026-08-21.md`.
+> Python is bootstrapped in Stage A, before any new V2 reasoning logic is written.
+
 ## 1. Principle
 
 Keep authoritative Graph Runtime and Agent Brain replaceable through a versioned contract.
 
-Python is a future **Decision Engine implementation option**, not a second application backend and not a database owner.
+Python is the **Decision Engine implementation for V2** (the `agent-brain` service), not a second application backend and not a database owner. New V2 reasoning code starts in Python from the first stage; stable Graph, persistence, recovery, policy and provider transport stay in Java permanently.
 
 ## 2. Spring Runtime Responsibilities
 
@@ -29,7 +32,7 @@ Spring remains authoritative for:
 
 ## 3. Python Decision Engine Responsibilities
 
-A future Python service/module may own:
+The Python `agent-brain` service owns:
 
 - model orchestration inside one Decision Cycle;
 - reflection + planning reasoning;
@@ -77,25 +80,58 @@ Python must not:
 - silently mutate Graph state;
 - store a competing durable project memory;
 - own project route selection truth;
-- receive raw provider/API credentials unless a narrowly defined future adapter explicitly requires it;
+- receive raw provider/API credentials (model inference goes through the Java inference broker; Python never holds keys);
 - bypass Capability/Policy approvals;
 - assume MCP connections are unrestricted.
 
-## 6. Java First, Python Later
+## 6. Python Early (Stage A) and the Internal Inference Broker
 
-Do not migrate merely because Python has more Agent libraries.
+New V2 reasoning code starts in Python from the first implementation stage. Implementing Reflection/Planning/prompt orchestration in Java first and migrating later would create avoidable double work and two implementations of the most changeable layer.
 
-First create Java interfaces/contracts so the current Runtime can support:
+This does **not** move the application backend to Python. The stable Java code is primarily Runtime and provider infrastructure, which stays in Java permanently unless a future review proves otherwise:
 
 ```text
 AgentDecisionEngine
-  ├── LocalJavaDecisionEngine
-  └── RemotePythonDecisionEngine
+  ├── RemotePythonDecisionEngine   (V2 default)
+  └── LocalFakeDecisionEngine      (deterministic tests)
 ```
 
-Only introduce Python when it provides measurable value such as faster Agent experimentation, richer model/tool libraries, or evaluation workflows.
+Model inference crosses the language boundary through a host-owned broker, so provider transport is never duplicated:
 
-The application must remain correct if the Decision Engine implementation changes.
+```text
+Spring background AgentRun worker
+        |
+        v
+Python Agent Brain
+        | internal model inference request
+        v
+Spring Internal Model Inference Broker
+        |
+        v
+existing Java OpenCode transport/settings
+        |
+        v
+provider
+```
+
+Consequences:
+
+- Python owns prompts and model-call orchestration for V2;
+- Java owns provider credentials, selected model and HTTP transport;
+- Python never receives the OpenCode API key;
+- swapping Agent Brain implementations does not touch providers; provider changes do not touch the Brain.
+
+Broker safety requirements:
+
+- internal-network access only where possible, with service authentication/shared internal secret;
+- requests tied to `runId` and call budget;
+- no arbitrary user-supplied URL/header forwarding;
+- no API key in responses/logs/traces;
+- no provider fallback and no hidden retry;
+- call type and prompt hashes recorded as sanitized AgentRun events;
+- the frozen OpenCode completion transport contract is preserved.
+
+Asynchronous AgentRun execution is the prerequisite for this boundary: browser commands create a durable run and return 202 immediately, so no request thread waits while Spring ↔ Python ↔ Spring calls complete.
 
 ## 7. Capability Execution
 
@@ -119,4 +155,4 @@ Do not fall back automatically to another planner/provider in a way that can dup
 
 The remote boundary must not force Reflection and Planning into separate HTTP/LLM round trips. The default API represents one Decision Cycle.
 
-Track serialization overhead, remote latency and total model calls before deciding that Python is beneficial in production.
+Track serialization overhead, remote latency and total model calls continuously. If the remote boundary measurably harms latency without offsetting benefits, revisit the decision inside a stage gate — never by silently duplicating provider transport into Python.
