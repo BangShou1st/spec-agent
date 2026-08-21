@@ -1,17 +1,9 @@
-# Agent Policy Engine
+# Agent Policy Engine (Compatibility Entry)
 
-The policy engine controls whether proposed actions can execute.
+This file is retained only to avoid stale links.
 
-## Modes
+The canonical V2 policy design is:
 
-Advisor Mode:
-- default
-- important changes require approval
+- `docs/v2/AGENT_AUTONOMY_MODEL.md`
 
-Autonomous Mode:
-- low-risk actions may execute automatically
-- high-risk actions still require approval
-
-## Purpose
-
-Prevent LLM output from directly changing user intent or corrupting graph history.
+V2 policy is Runtime-owned and evaluates action type, mutation scope, lifecycle, side effects, permissions and grounding. Model confidence is advisory and never self-authorizes execution.
