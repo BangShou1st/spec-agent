@@ -16,23 +16,26 @@ Before implementing or modifying behavior, read:
 8. `docs/IMPLEMENTATION_PLAN.md`
 9. `docs/DEVELOPMENT_ENVIRONMENT.md`
 10. `docs/DEVELOPMENT_WORKFLOW.md`
+11. For V2 work: `docs/v2/README.md` and the canonical documents it lists.
 
 Do not infer product scope from a single user example. The system is generic requirement clarification, not a domain-specific requirement generator.
 
+**Authority split:** the V1 documents above describe the current production system. For V2 work, `docs/v2/README.md` and its canonical documents are authoritative. V1 rules remain binding only as migration compatibility constraints; where a `docs/v2` canonical document defines different target semantics, follow `docs/v2` and migrate explicitly — never silently reinterpret one side to match the other.
+
 ## 2. Product Boundary
 
-Spec Agent is a branchable requirement clarification agent.
+Spec Agent is an AI-assisted requirement knowledge workspace: users and the Agent jointly explore, record, confirm, challenge and evolve requirements in a Graph (V2 target, see `docs/v2/AGENT_V2_OVERVIEW.md`). The V1 questionnaire-style clarification workflow remains supported during migration.
 
 It is not:
 
 - A collaboration platform.
 - A project management system.
 - A task board.
-- A knowledge base or RAG product.
+- A generic knowledge base or RAG product.
 - A browser automation agent.
 - A code generation agent.
 - A generic multi-agent framework.
-- A complex visual workflow canvas.
+- A generic visual workflow/builder canvas product (the V2 Graph workspace is our own product surface, not a general-purpose graph editor).
 - A domain-specific PRD generator.
 
 If a requested change pushes the project toward one of these, stop and update the product/design docs before implementing.
@@ -51,10 +54,14 @@ Because all work lands on `main`, keep commits small, run tests before claiming 
 
 ## 4. Core Invariants
 
-These invariants must not be broken:
+These describe the current V1 production system. During V2 migration they remain binding as migration compatibility constraints; where a `docs/v2` canonical document defines different target semantics, follow `docs/v2` and migrate explicitly.
 
-1. Nodes form an immutable exploration tree.
-2. A Node is an immutable clarification prompt.
+Invariants that carry into V2 unchanged: immutable finalized Answers, append-preserving history, route isolation and shared-node identity, AnswerPatch recovery checkpoints, source grounding, Runtime-owned IDs/provenance, frozen OpenCode transport contract.
+
+V1 baseline invariants:
+
+1. Continuation history is append-preserving: established lineage must not be rewritten, and nodes must not be inserted retroactively between historical nodes.
+2. In the current V1 schema every Node is a clarification Question. V2 generalizes Node to a Workspace Unit (`docs/v2/NODE_MODEL_V2.md`); existing nodes are treated as INTERACTION/QUESTION during migration.
 3. Answers are immutable records.
 4. A historical answer must not be overwritten.
 5. Routes are explicit objects with root, tip, lifecycle status, label, and current focus metadata.
@@ -123,6 +130,8 @@ SourceReference
 ```
 
 Concrete domains may appear in tests as examples, in seed profile data, in prompts, in documentation examples, or in user-provided content. They must not become runtime control flow.
+
+V2 extension discipline: add new product ability as a Node subtype/content handler, a capability descriptor/adapter, or payload semantics on the generic action families (`CREATE_NODE`, `INVOKE_CAPABILITY`, ...). Never add business-specific action names (`MARK_RISK`, `ANALYZE_FILE`), per-domain Agent classes (`FileAgent`, `RiskAgent`, `PRDAgent`), or per-file-type node classes (`PdfNode`, `GithubNode`).
 
 ## 6. Model Boundary
 
