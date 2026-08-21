@@ -19,7 +19,8 @@ Preserve unless a separately reviewed migration explicitly replaces them:
 - AgentRun failure persistence and traceability;
 - Runtime-owned IDs/provenance;
 - Model Gateway/provider boundary;
-- no LLM direct persistence.
+- no LLM direct persistence;
+- Agent V2 work does not casually change the frozen OpenCode HTTP transport contract; provider transport changes require separate evidence/review.
 
 ## 3. Migration Strategy
 
@@ -162,6 +163,7 @@ Initial action families:
 - CONNECT_NODE
 - CREATE_ROUTE
 - REQUEST_USER_INPUT
+- RESPOND_TO_USER
 - INVOKE_CAPABILITY
 - GENERATE_ARTIFACT
 - WAIT
@@ -222,6 +224,8 @@ Required capabilities:
 7. shared Node remains one identity across routes;
 8. route-scoped answers remain explicit;
 9. any Node can anchor contextual AI query.
+
+Contextual AI query should normally use one Decision/generation call and may return `RESPOND_TO_USER` without creating a Node. Graph proposals are separate actions and follow Advisor policy.
 
 Migration should prefer additive schema/content changes and adapters over rewriting all existing Nodes at once.
 
@@ -299,7 +303,7 @@ provenance-preserving result
    |
 Decision Cycle
    |
-proposal(s)
+proposal(s) / response
 ```
 
 Large resource contents use retrieval/chunk/excerpt references rather than full prompt injection.
@@ -327,7 +331,7 @@ Do not create a growing prompt catalog for every new operation/resource.
 Converge toward a small set of capabilities:
 
 1. **STATE_UPDATE** — answer/evidence -> grounded claims/patch.
-2. **DECISION** — reflection + planning + primary action payload.
+2. **DECISION** — reflection + planning + primary action/response payload.
 3. **ARTIFACT_GENERATION** — Spec/summary/report under source grounding.
 
 Optional capability-specific prompts live with their capability adapter/skill where appropriate, not in a monolithic core `TaskPromptCatalog`.
