@@ -1,46 +1,9 @@
-# Agent Action Protocol
+# Agent Action Protocol (Compatibility Entry)
 
-Agent never directly modifies persistence.
+This file is retained only to avoid stale links.
 
-```
-Agent
- |
- v
-Action Proposal
- |
- v
-Runtime Validator
- |
- v
-Graph Mutation
-```
+The canonical V2 contract is:
 
-## Initial Actions
+- `docs/v2/AGENT_ACTION_PROTOCOL_V2.md`
 
-```
-ASK_USER
-CREATE_NODE
-UPDATE_NODE
-LINK_NODE
-CREATE_ROUTE
-MARK_RISK
-SUMMARIZE
-GENERATE_SPEC
-WAIT
-```
-
-Actions are generic Graph operations, not requirement-specific commands.
-
-Example:
-
-```json
-{
-  "action": "CREATE_NODE",
-  "type": "QUESTION",
-  "content": {
-    "question": "Does this require realtime synchronization?"
-  }
-}
-```
-
-Runtime validates ownership, route rules, history constraints and consistency before applying changes.
+Do not implement from the older action list in this file's history. In particular, V2 deliberately removes business-content verbs such as `MARK_RISK` from the core action family and uses generic Graph/Capability actions instead.
