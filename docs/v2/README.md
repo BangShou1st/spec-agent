@@ -36,6 +36,7 @@
 - `AGENT_EVALUATION_MODEL.md` — Agent 质量、延迟、调用次数、groundedness 和防过拟合评估。
 - `PYTHON_AGENT_RUNTIME_BOUNDARY.md` — Java Graph Runtime 与未来 Python Brain Adapter 的稳定边界。
 - `AGENT_RUNTIME_IMPLEMENTATION_PLAN.md` — 分阶段实施顺序、兼容策略与验收门槛。
+- `REQUIREMENTS_TRACEABILITY.md` — 昨天讨论要求到 Canonical 文档的逐项映射，用于防漏需求。
 
 ## 3. 兼容/重复文档
 
@@ -74,3 +75,14 @@ V2 第一阶段不做：
 - 把所有 semantic relation 默认渲染到 Canvas；
 - 用 arbitrary confidence threshold 代替 Runtime policy；
 - 通过项目名猜测用户已经确认的目标。
+
+## 6. Change Discipline
+
+任何后续实现若要改变已冻结决策：
+
+1. 先更新对应 Canonical 文档；
+2. 同步更新 `REQUIREMENTS_TRACEABILITY.md`；
+3. 说明为何不是针对单一例子的过拟合修补；
+4. 再进入实现/测试。
+
+不要为了方便编码，静默选择一个与产品语义不同的解释。
