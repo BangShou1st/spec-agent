@@ -26,6 +26,8 @@ Validator
       +--------> Graph Executor
       |
       +--------> Capability Runtime
+      |
+      +--------> User Response
 ```
 
 Runtime assigns IDs, validates references and owns history.
@@ -86,7 +88,23 @@ Request user input and optionally include a proposed Question Node payload.
 
 This is the normal planner action for “ask the user next”. It prevents needing a separate third LLM request solely to write the question after the planner already chose to ask.
 
-### 3.6 `INVOKE_CAPABILITY`
+### 3.6 `RESPOND_TO_USER`
+
+Return a grounded user-visible answer without requiring a Graph mutation.
+
+This is the normal action for contextual AI queries such as:
+
+```text
+“这个节点意味着什么？”
+“这个需求会影响哪些部分？”
+“帮我解释这个文件和当前路线的关系。”
+```
+
+The payload contains user-visible natural language plus evidence/source references where applicable. It may include optional **suggested next actions**, but those suggestions do not mutate Graph until a separate validated action/proposal is accepted/executed.
+
+This action is essential so “ask AI about any Node” does not have to abuse `WAIT` or create unnecessary Nodes.
+
+### 3.7 `INVOKE_CAPABILITY`
 
 Ask Capability Runtime to resolve and execute an available capability.
 
@@ -100,18 +118,20 @@ Examples:
 
 Planner references capability descriptors, not concrete SDK/client implementation details.
 
-### 3.7 `GENERATE_ARTIFACT`
+### 3.8 `GENERATE_ARTIFACT`
 
 Generate a derived artifact such as Spec/Summary/Report through the existing artifact runtime. This remains distinct because artifact persistence/grounding may have stronger invariants than ordinary Node creation.
 
-### 3.8 `WAIT`
+### 3.9 `WAIT`
 
-Take no graph mutation and stop the current automatic cycle. Typical reasons:
+Take no Graph mutation and stop the current automatic cycle. Typical reasons:
 
 - information is sufficient for now;
 - user must choose what to explore next;
 - no useful action is justified;
 - policy/budget says to stop.
+
+`WAIT` is not the normal way to deliver an answer; use `RESPOND_TO_USER` when the user asked a contextual question.
 
 ## 4. One Primary Action per Decision Cycle
 
@@ -146,6 +166,7 @@ Rules:
 - `modelSuggestedRisk` is advisory only; Policy Engine computes/enforces actual policy.
 - `rationaleSummary` is a short user-safe/trace-safe explanation, not hidden chain-of-thought.
 - IDs not supplied in allowed context must never be invented.
+- user-visible text follows the product language contract; machine protocol keys/enums do not get translated.
 
 ## 6. Validation
 
