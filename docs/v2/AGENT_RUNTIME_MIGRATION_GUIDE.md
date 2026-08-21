@@ -1,25 +1,19 @@
-# Agent Runtime Migration Guide
+# Agent Runtime Migration Guide (Compatibility Entry)
 
-## Goal
+This file remains as a short migration pointer.
 
-Move from workflow-driven execution to graph reasoning while preserving existing capabilities.
+Canonical implementation/migration order:
 
-## Preserve
+- `docs/v2/AGENT_RUNTIME_IMPLEMENTATION_PLAN.md`
 
-- Graph
-- Node
-- Route
-- Snapshot
-- Recovery
-- AgentRun trace
-- Model Gateway
+Preserve throughout migration:
 
-## Migration Steps
+- Graph / Node / Route history semantics;
+- immutable Answer;
+- AnswerPatch repair checkpoints;
+- ContextSnapshot lineage isolation;
+- AgentRun trace/failure persistence;
+- Runtime-owned validation and persistence;
+- Model Gateway boundary.
 
-1. Introduce AgentState and Action contracts.
-2. Wrap existing answer interpretation flow as actions.
-3. Add Reflection Engine.
-4. Add Planner decision layer.
-5. Add Policy Engine.
-
-Migration must be incremental and avoid replacing stable runtime components.
+Do not perform a “big bang” rewrite. The canonical plan introduces contracts first, then state projection, two-call answer convergence, Decision Engine/Policy, Graph V2 interaction, UI projection, operation history, Capability Runtime and only later an optional Python brain.
