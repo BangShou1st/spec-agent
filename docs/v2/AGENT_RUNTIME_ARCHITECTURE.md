@@ -1,58 +1,254 @@
-# Agent Runtime Architecture
+# Agent Runtime Architecture V2
 
-## Overview
+## 1. Goal
 
-Agent Runtime manages Graph evolution.
+将当前固定 task pipeline 演进为一个 **bounded Graph Reasoning Runtime**。
 
-It is not a domain-specific requirement bot.
+Agent 的职责是决定下一步最有价值的动作；Runtime 的职责是决定哪些输入可信、哪些动作合法、什么会进入持久化历史。
 
+## 2. Canonical Runtime Flow
+
+```text
+User / Graph / Capability Event
+            |
+            v
++-------------------------------+
+| Spring Graph Runtime          |
+| authoritative state           |
+| route/history/source refs     |
++---------------+---------------+
+                |
+        AgentInputSnapshot
+                |
+                v
++-------------------------------+
+| Decision Engine               |
+|                               |
+| Reflection + Planning         |
+| default: ONE model call       |
++---------------+---------------+
+                |
+        Action Proposal
+                |
+                v
++-------------------------------+
+| Policy Engine + Validator     |
++-----------+-------------------+
+            |
+      +-----+-------------------+
+      |                         |
+      v                         v
+Graph Executor          Capability Runtime
+      |                         |
+      |                    Observation
+      +-----------+-------------+
+                  |
+                  v
+             New Graph State
+                  |
+                  v
+        stop or next bounded cycle
 ```
-Graph State
-    |
-    v
-Observer
-    |
-    v
-Reflection
-    |
-    v
-Planner
-    |
-    v
-Action Proposal
-    |
-    v
-Runtime Validation
-    |
-    v
-Graph Mutation
+
+## 3. Important Clarification: Reflection Is Not a Mandatory Extra Call
+
+`Observe -> Reflect -> Plan -> Act` describes **logical responsibilities**, not four LLM requests.
+
+Default Decision Cycle should combine reflection and planning into one structured model response:
+
+```text
+AgentInputSnapshot
+        |
+        v
+one Decision call
+  - observations
+  - important gaps/conflicts/risks
+  - primary next action
+  - grounded payload/evidence refs
 ```
 
-## Components
+Do not implement a mandatory chain such as:
 
-### Observer
-Reads current graph context, routes, history and available context.
+```text
+LLM Reflection
+  -> LLM Planner
+  -> LLM Question Writer
+```
 
-### Reflection
-Evaluates:
+That would increase latency without proving better product quality.
 
-- What is known?
-- What is unknown?
-- What conflicts exist?
-- What risks exist?
+An additional Critic/Reflection model call is allowed only when explicit policy/evaluation evidence justifies it, for example:
 
-Reflection does not mutate the graph.
+- high-risk proposal;
+- low-confidence or internally inconsistent proposal;
+- unresolved conflict before final artifact publication;
+- capability output that materially changes user intent;
+- repeated low-progress cycles;
+- evaluation shows a specific class of mistakes that one extra check fixes generally.
 
-### Planner
-Chooses the next action.
+It must not become a domain-specific workaround.
 
-The goal is not always asking a question. Actions may include creating knowledge, marking risk, summarizing or waiting.
+## 4. Answer Processing Call Budget
 
-### Executor
-Produces action proposals. Runtime remains responsible for persistence.
+Current production flow uses separate `INTERPRET_ANSWER -> DRAFT_ANSWER_PATCH -> DRAFT_NODE` calls. V2 should not preserve three calls merely by renaming them as actions.
 
-## Anti Overfitting Rule
+Target normal answer path:
 
-Agent prompts must describe graph reasoning, not a specific business domain.
+```text
+User submits Answer
+        |
+        v
+Runtime persists immutable Answer
+        |
+        v
+Call 1: Grounded State Update
+  - interpret answer
+  - produce claims/patch
+        |
+        v
+Runtime validate + persist AnswerPatch checkpoint
+        |
+        v
+Call 2: Decision Cycle
+  - reflect on updated state
+  - choose primary next action
+  - if REQUEST_USER_INPUT, include the question content
+        |
+        v
+Runtime validate + execute/propose
+```
 
-The Agent should learn from Node context, not hard-coded requirement workflows.
+Baseline target: **2 serialized model calls for a normal answered-question turn**.
+
+Do not add a third content-generation call for the next question if the Decision Cycle already selected `REQUEST_USER_INPUT`; the same decision output should carry the grounded question proposal.
+
+This is a target architecture, not an excuse to weaken validation. If later deterministic/real evaluation proves a one-call state-update+decision contract is reliable, it may be considered separately; do not collapse it merely for speed without evidence.
+
+## 5. Other Operation Budgets
+
+Desired baseline behavior:
+
+- Project creation: **0 model calls**.
+- Create/edit blank user draft Node: **0 model calls**.
+- Create/Fork Route structure: **0 model calls**; route appears immediately.
+- Continue exploration from a Node: normally **1 Decision call** after Runtime context build.
+- Contextual AI query that only answers: normally **1 model call**.
+- Generate Spec/artifact: normally **1 generation call** plus deterministic Runtime grounding/validation; additional critic call only by explicit policy.
+- Capability execution: capability call itself plus at most bounded follow-up Decision cycles.
+
+These are latency/cost budgets to test, not prompts to artificially skip necessary domain validation.
+
+## 6. Components
+
+### 6.1 AgentInputSnapshot Builder
+
+Lives with the authoritative Graph Runtime. Deterministically projects:
+
+- anchor Node;
+- current route/read context;
+- lineage and route-scoped effective answers/patches;
+- selected semantic relations;
+- confirmed decisions/constraints;
+- allowed source refs;
+- relevant resource excerpts/descriptors;
+- available capabilities;
+- current autonomy policy and allowed action families.
+
+It does not call a model.
+
+### 6.2 Decision Engine
+
+Consumes `AgentInputSnapshot` and returns `AgentDecision`:
+
+- structured observations;
+- important uncertainty/conflict/risk assessment;
+- one primary next action proposal;
+- evidence/source references;
+- confidence signal;
+- short user-safe rationale/summary if needed.
+
+The Decision Engine does not persist Graph state.
+
+### 6.3 Policy Engine
+
+Determines whether the proposal can:
+
+- execute automatically;
+- be staged as a user-confirmable proposal;
+- be rejected by policy;
+- require additional validation/confirmation.
+
+Policy is Runtime-owned. The model may suggest risk/confidence, but cannot self-authorize.
+
+### 6.4 Validator
+
+Validates invariants such as:
+
+- referenced IDs exist and belong to the project/context;
+- route/focus/history rules;
+- allowed Node kinds/subtypes;
+- no historical insertion/rewrite;
+- provenance/source refs;
+- action payload schema;
+- autonomy/permission requirements;
+- duplicate/idempotency constraints.
+
+### 6.5 Graph Executor
+
+Applies validated Graph mutations through domain services and transactions. It is the only layer that makes Agent-proposed graph changes durable.
+
+### 6.6 Capability Runtime
+
+Resolves `INVOKE_CAPABILITY` into Skill, MCP adapter, internal service or other provider. Tool/capability output is treated as an observation/resource with provenance, not automatically as confirmed Graph truth.
+
+## 7. Bounded Loop and Stop Conditions
+
+Every Agent run must have a finite step budget and explicit terminal outcomes.
+
+Stop when one of these is true:
+
+- user input is required;
+- a proposal requires approval;
+- primary goal for this run is achieved;
+- `WAIT` is selected;
+- no useful action is available;
+- step budget reached;
+- repeated action/no-progress detected;
+- capability/model failure requires user/runtime recovery;
+- policy rejects further automatic actions.
+
+No recursive autonomous loop may continue without a Runtime-owned budget.
+
+## 8. Single-Agent First
+
+V2 starts with one Decision Engine composed of clear modules/interfaces. Do not create Planner Agent, Critic Agent, File Agent, Research Agent, etc. as independent conversational agents by default.
+
+If future evaluation shows a separate specialized evaluator is materially useful, add it behind a stable interface and only for that evaluated purpose.
+
+## 9. Trace
+
+Existing `AgentRun`/trace should evolve to record safe lifecycle facts such as:
+
+```text
+run_created
+input_snapshot_built
+state_update_called
+state_update_validated
+state_update_persisted
+decision_called
+action_proposed:<type>
+policy:<decision>
+action_executed | awaiting_approval
+capability_started/completed
+run_completed/failed
+```
+
+Trace records operational decisions and references, not hidden chain-of-thought or raw secrets/prompts.
+
+## 10. Anti-Overfitting Rules
+
+- Prompt speaks in Graph/state/action terms, not one business domain.
+- No special branch such as `if ecommerce -> ask X`.
+- Action types remain generic; risk/requirement/summary are payload/subtype semantics where possible.
+- New resource/tool types register capabilities rather than modify Planner core `if/else` chains.
+- Agent quality is validated across varied domains, vague starts, manual graph edits, route conflicts and capability scenarios.
