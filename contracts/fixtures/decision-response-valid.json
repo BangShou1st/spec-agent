@@ -1,0 +1,39 @@
+{
+  "protocolVersion": "agent-decision.v2",
+  "runId": "22222222-2222-2222-2222-222222222222",
+  "stateUpdate": null,
+  "observation": {
+    "known": [
+      "用户希望减少因邮件沟通导致的需求遗漏。"
+    ],
+    "unknowns": [
+      "工单系统的范围边界尚未确认。"
+    ],
+    "conflicts": [],
+    "risks": []
+  },
+  "actionProposal": {
+    "actionFamily": "REQUEST_USER_INPUT",
+    "payload": {
+      "questionText": "除了减少邮件沟通之外，新系统最重要的目标是什么？",
+      "options": [
+        {
+          "label": "明确首要目标"
+        }
+      ],
+      "allowFreeAnswer": true
+    },
+    "baseContextSnapshotId": "44444444-4444-4444-4444-444444444444",
+    "baseContextHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "sourceRefs": [
+      "answer:99999999-9999-9999-9999-999999999999"
+    ]
+  },
+  "usage": {
+    "modelCalls": 1,
+    "promptHashes": [
+      "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    ]
+  },
+  "diagnostics": {}
+}

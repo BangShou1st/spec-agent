@@ -1,0 +1,24 @@
+{
+  "protocolVersion": "agent-decision.v2",
+  "runId": "22222222-2222-2222-2222-222222222222",
+  "stateUpdate": {
+    "claims": [
+      {
+        "kind": "goal",
+        "text": "用户希望减少因邮件沟通导致的需求遗漏。",
+        "status": "confirmed",
+        "confidence": 0.9,
+        "sourceRefs": [
+          "answer:99999999-9999-9999-9999-999999999999"
+        ]
+      }
+    ]
+  },
+  "observation": null,
+  "actionProposal": null,
+  "usage": {
+    "modelCalls": 1,
+    "promptHashes": []
+  },
+  "diagnostics": {}
+}

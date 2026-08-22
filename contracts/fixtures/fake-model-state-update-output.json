@@ -1,0 +1,11 @@
+{
+  "claims": [
+    {
+      "kind": "goal",
+      "text": "The user clarified the main outcome.",
+      "status": "confirmed",
+      "confidence": 0.9,
+      "sourceRefs": []
+    }
+  ]
+}

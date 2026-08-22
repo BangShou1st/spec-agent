@@ -1,0 +1,98 @@
+{
+  "protocolVersion": "agent-input.v2",
+  "runId": "22222222-2222-2222-2222-222222222222",
+  "event": {
+    "kind": "ANSWER_SUBMITTED",
+    "anchorNodeId": "33333333-3333-3333-3333-333333333333",
+    "selectedOptionId": null,
+    "freeText": "团队需要一个内部工单系统，主要目标是减少邮件沟通。"
+  },
+  "snapshot": {
+    "snapshotId": "44444444-4444-4444-4444-444444444444",
+    "contextHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "projectId": "55555555-5555-5555-5555-555555555555",
+    "routeId": "66666666-6666-6666-6666-666666666666",
+    "anchorNodeId": "33333333-3333-3333-3333-333333333333",
+    "routeContext": {
+      "routeId": "66666666-6666-6666-6666-666666666666",
+      "tipNodeId": "33333333-3333-3333-3333-333333333333",
+      "label": null
+    },
+    "lineage": [
+      {
+        "node": {
+          "id": "77777777-7777-7777-7777-777777777777",
+          "body": {
+            "text": "这个项目最重要的目标是什么？",
+            "options": [
+              {"id": "88888888-8888-8888-8888-888888888888", "label": "明确首要目标"}
+            ],
+            "acceptsFreeText": true
+          }
+        },
+        "answer": null,
+        "patches": []
+      },
+      {
+        "node": {
+          "id": "33333333-3333-3333-3333-333333333333",
+          "body": {
+            "text": "当前如何收集需求？",
+            "options": [],
+            "acceptsFreeText": true
+          }
+        },
+        "answer": {
+          "id": "99999999-9999-9999-9999-999999999999",
+          "nodeId": "33333333-3333-3333-3333-333333333333",
+          "selectedOptionId": null,
+          "freeText": "目前通过邮件收集，容易遗漏。"
+        },
+        "patches": [
+          {
+            "id": "aaaa0000-0000-0000-0000-000000000000",
+            "claims": [
+              {
+                "kind": "goal",
+                "text": "用户希望减少因邮件沟通导致的需求遗漏。",
+                "status": "confirmed",
+                "confidence": 0.9,
+                "sourceNodeId": "33333333-3333-3333-3333-333333333333",
+                "sourceAnswerId": "99999999-9999-9999-9999-999999999999"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "effectiveClaims": [
+      {
+        "kind": "goal",
+        "text": "用户希望减少因邮件沟通导致的需求遗漏。",
+        "status": "confirmed",
+        "confidence": 0.9,
+        "sourceNodeId": "33333333-3333-3333-3333-333333333333",
+        "sourceAnswerId": "99999999-9999-9999-9999-999999999999"
+      }
+    ],
+    "metadata": {
+      "projectTitle": "内部工单系统探索"
+    },
+    "allowedSourceRefs": [
+      "node:77777777-7777-7777-7777-777777777777",
+      "node:33333333-3333-3333-3333-333333333333",
+      "answer:99999999-9999-9999-9999-999999999999",
+      "patch:aaaa0000-0000-0000-0000-000000000000",
+      "context:44444444-4444-4444-4444-444444444444",
+      "route:66666666-6666-6666-6666-666666666666"
+    ],
+    "availableCapabilities": [],
+    "autonomy": {
+      "mode": "ADVISOR"
+    }
+  },
+  "capabilities": [],
+  "decisionBudget": {
+    "maxModelCalls": 2
+  }
+}
