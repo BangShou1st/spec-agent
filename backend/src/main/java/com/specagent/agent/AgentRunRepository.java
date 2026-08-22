@@ -223,4 +223,28 @@ public class AgentRunRepository {
         String sql = "SELECT * FROM agent_runs WHERE project_id = :projectId ORDER BY created_at";
         return jdbcTemplate.query(sql, Maps.of("projectId", projectId), rowMapper);
     }
+
+    /**
+     * Atomically claims the oldest queued decision-cycle run by moving it
+     * from CREATED to RUNNING. Returns empty when no run is claimable. The
+     * single-statement claim keeps concurrent workers from double-executing.
+     */
+    public Optional<AgentRun> claimNextDecisionCycleRun() {
+        String sql = """
+                UPDATE agent_runs SET status = :running
+                WHERE id = (
+                    SELECT id FROM agent_runs
+                    WHERE trigger_type = :trigger AND status = :created
+                    ORDER BY created_at
+                    LIMIT 1
+                    FOR UPDATE SKIP LOCKED
+                )
+                RETURNING *
+                """;
+        return jdbcTemplate.query(sql, Maps.of(
+                        "running", AgentRunStatus.RUNNING.code(),
+                        "trigger", AgentRunTriggerType.DECISION_CYCLE.code(),
+                        "created", AgentRunStatus.CREATED.code()),
+                rowMapper).stream().findFirst();
+    }
 }

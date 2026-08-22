@@ -14,7 +14,8 @@ public enum AgentRunTriggerType {
     RESTORE_ROUTE,
     ARCHIVE_ROUTE,
     DELETE_ROUTE,
-    GENERATE_SPEC;
+    GENERATE_SPEC,
+    DECISION_CYCLE;
 
     public String code() {
         return name().toLowerCase();

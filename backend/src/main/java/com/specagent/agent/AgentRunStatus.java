@@ -5,6 +5,7 @@ package com.specagent.agent;
  */
 public enum AgentRunStatus {
     CREATED,
+    RUNNING,
     CONTEXT_BUILT,
     MODEL_CALLED,
     REFLECTED,
