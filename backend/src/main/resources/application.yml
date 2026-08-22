@@ -38,5 +38,21 @@ spec:
       # Normal product execution always resolves the global settings aggregate.
       # The fake gateway is test-only and must be selected explicitly there.
       gateway: ${SPEC_AGENT_MODEL_GATEWAY:opencode}
+      # Lower-level inference seam used by the internal broker for the Python
+      # brain. Shares the frozen OpenCode transport; fake is test-only.
+      inference: ${SPEC_AGENT_MODEL_INFERENCE:opencode}
       opencode:
         settings-timeout-seconds: ${SPEC_AGENT_OPENCODE_SETTINGS_TIMEOUT_SECONDS:45}
+    brain:
+      # V2 agent-brain boundary (Stage A). Off by default: no product path
+      # enqueues V2 runs until Stage B cuts over.
+      enabled: ${SPEC_AGENT_BRAIN_ENABLED:false}
+      base-url: ${SPEC_AGENT_BRAIN_BASE_URL:http://localhost:8100}
+      internal-secret: ${SPEC_AGENT_BRAIN_INTERNAL_SECRET:dev-internal-secret}
+      engine: ${SPEC_AGENT_BRAIN_ENGINE:remote-python}
+      worker:
+        enabled: ${SPEC_AGENT_BRAIN_WORKER_ENABLED:false}
+        poll-interval-ms: ${SPEC_AGENT_BRAIN_WORKER_POLL_INTERVAL_MS:2000}
+      broker:
+        max-prompt-chars: ${SPEC_AGENT_BROKER_MAX_PROMPT_CHARS:200000}
+        max-output-tokens: ${SPEC_AGENT_BROKER_MAX_OUTPUT_TOKENS:32768}

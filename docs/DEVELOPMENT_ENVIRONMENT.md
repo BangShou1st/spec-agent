@@ -158,3 +158,36 @@ Phase 1 should deliver:
 - Architecture-test harness.
 
 It should not deliver model integration, frontend UI, Redis, MinIO, or external tools.
+
+## 10. V2 Agent Brain (Stage A)
+
+The Python decision engine lives in `agent-brain/` and is part of the dev
+environment from Stage A (`docs/v2/PYTHON_AGENT_RUNTIME_BOUNDARY.md`):
+
+```text
+docker compose up -d          # postgres + agent-brain (broker mode)
+```
+
+Local (no Docker) alternative:
+
+```bash
+cd agent-brain
+python -m venv .venv && .venv/Scripts/pip install -e ".[dev]"
+.venv/Scripts/python -m pytest
+.venv/Scripts/uvicorn spec_agent_brain.app:app --port 8100
+```
+
+Environment defaults:
+
+- `SPEC_AGENT_BRAIN_INTERNAL_SECRET=dev-internal-secret` — shared internal
+  token for brain requests and the Spring inference broker.
+- `SPEC_AGENT_BRAIN_MODEL_MODE=fake|broker` — fake runs fully offline;
+  broker routes model calls through Spring at
+  `SPEC_AGENT_INTERNAL_BROKER_URL`.
+- `SPEC_AGENT_BRAIN_WORKER_ENABLED=true` — opt-in background V2 run worker.
+
+The brain has no database driver and no provider SDK by design. The
+cross-language integration test
+(`PythonBrainCrossLanguageIntegrationTest`) requires a running brain on port
+8100 and binds Spring to port 18080; it skips automatically when the brain is
+not running so the default suite stays green offline.

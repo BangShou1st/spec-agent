@@ -17,5 +17,19 @@ services:
       timeout: 5s
       retries: 10
 
+  # V2 Python agent brain (Stage A). The Spring backend keeps running on the
+  # host (start-dev.bat / gradlew bootRun); the brain reaches its internal
+  # inference broker through host.docker.internal. No database credentials are
+  # mounted into this service by design.
+  agent-brain:
+    build: ./agent-brain
+    container_name: spec-agent-brain
+    environment:
+      SPEC_AGENT_BRAIN_INTERNAL_SECRET: ${SPEC_AGENT_BRAIN_INTERNAL_SECRET:-dev-internal-secret}
+      SPEC_AGENT_BRAIN_MODEL_MODE: ${SPEC_AGENT_BRAIN_MODEL_MODE:-broker}
+      SPEC_AGENT_INTERNAL_BROKER_URL: ${SPEC_AGENT_INTERNAL_BROKER_URL:-http://host.docker.internal:8080/internal/v1/model-inference}
+    ports:
+      - "8100:8100"
+
 volumes:
   spec-agent-postgres-data:

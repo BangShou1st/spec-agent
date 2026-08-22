@@ -304,3 +304,31 @@ Provider details stay behind adapters.
 Runtime stays model-free.
 Model output is validated before persistence.
 ```
+
+## 15. Stage A: Lower-Level Inference Seam and Internal Broker (V2)
+
+Stage A of the V2 migration (`docs/v2/AGENT_RUNTIME_IMPLEMENTATION_PLAN.md`)
+adds a provider-neutral seam below `ModelGateway` without changing the frozen
+OpenCode transport:
+
+```text
+Legacy flow:   ModelGateway -> TaskPromptCatalog -> OpenCodeZenTransport
+V2 flow:       Python brain -> internal inference broker -> ModelInferenceGateway -> OpenCodeZenTransport
+```
+
+- `com.specagent.model.inference.ModelInferenceGateway` — one method,
+  `complete(ModelInferenceRequest)`, carrying runtime-approved messages, a
+  `runId`, and a sanitized call type; never an `AgentTaskType`.
+- `OpenCodeModelInferenceGateway` — resolves credentials and free-model policy
+  exactly like before and reuses the same transport. No retry, no fallback.
+- `InternalModelInferenceController` (`POST /internal/v1/model-inference`) —
+  authenticated by the shared internal secret
+  (`SPEC_AGENT_BRAIN_INTERNAL_SECRET`, header `X-Spec-Agent-Internal-Token`),
+  tied to a `runId`, bounded prompt size, closed call types, no arbitrary
+  header forwarding, and sanitized AgentRun events (call type + hashes only).
+- Python never receives an API key; provider keys never appear in broker
+  responses or logs.
+
+The fake gateway for this seam is test-only
+(`spec.agent.model.inference=fake` with the `test` profile), mirroring the
+legacy fake adapter rules.

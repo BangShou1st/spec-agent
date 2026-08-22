@@ -446,3 +446,39 @@ If a domain needs specialized behavior later, it must enter through a configurab
 8. SpecSnapshot is derived from one ContextSnapshot.
 9. Confirmed spec claims have source references.
 10. Runtime code has no concrete business-domain branches.
+
+## 11. Stage A: V2 Run Events and Phases
+
+Stage A of the V2 migration adds an append-only run event model next to the
+existing `agent_runs` compatibility columns (which are kept unchanged):
+
+```text
+agent_run_events
+- id
+- run_id
+- sequence (per-run, assigned atomically)
+- phase
+- event_type
+- payload (sanitized JSON: hashes, counts, categories)
+- created_at
+```
+
+Public phases (`com.specagent.agent.runevent.AgentRunPhase`):
+
+```text
+CREATED / SNAPSHOT_BUILT / STATE_UPDATING / STATE_UPDATED / DECIDING /
+PROPOSAL_CREATED / AWAITING_APPROVAL / EXECUTING / WAITING_USER /
+COMPLETED / FAILED / STALE
+```
+
+Rules:
+
+1. Events are append-only; they are never updated or deleted.
+2. Event payloads are sanitized trace/progress records — never prompt text,
+   provider payloads, credentials, or hidden chain-of-thought.
+3. UI progress text must derive from these real phases.
+4. The V2 background worker (`V2AgentRunWorker`) executes queued
+   `v2_decision_cycle` runs through the `AgentDecisionEngine` port. In Stage A
+   it records proposals only and never mutates the Graph; the worker is off by
+   default (`SPEC_AGENT_BRAIN_WORKER_ENABLED`).
+5. The legacy synchronous orchestrator paths are unchanged.

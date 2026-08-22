@@ -37,3 +37,6 @@ spec:
   agent:
     model:
       gateway: fake
+      inference: fake
+    brain:
+      engine: ${SPEC_AGENT_BRAIN_ENGINE:fake}
