@@ -621,6 +621,14 @@ This is necessary for the non-blocking workspace experience.
 
 ## 10. Architecture tests to add before/with V2 code
 
+> Post-approval structure note (2026-08-22): the owner removed version
+> markers from code structure, so the package names below were renamed.
+> Authoritative mapping: `agent.v2.contract` -> `agent.contract`,
+> `agent.v2.decision` -> `agent.decision`, `agent.v2.executor` ->
+> `agent.runtime` plus a separate `agent.runevent` for run-event persistence;
+> future Stage B packages are `agent.policy` and `agent.action`. The scope
+> strings in `AgentBoundaryArchitectureTests` are the live authority.
+
 The existing ArchUnit suite is a strong asset. Extend it rather than replacing it.
 
 Required new rules:

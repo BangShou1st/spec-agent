@@ -74,7 +74,7 @@ Deliverables:
 - strict fail-closed Java validation of every Python result;
 - Fake Python/model path for deterministic integration tests;
 - Docker/dev wiring for Spring + Python + Postgres;
-- ArchUnit boundary tests for the new packages (contract packages free of repository/service/provider dependencies; executor packages free of LLM/gateway dependencies).
+- ArchUnit boundary tests for the final Java package layout `com.specagent.agent.{contract,snapshot,decision,broker,runevent,runtime}` (Stage B adds `policy` and `action`): contracts stay free of repository/service/provider dependencies; decision has no repositories; broker reaches neither repositories nor credentials/provider internals; runtime never touches model/gateway packages.
 
 Explicitly NOT in Stage A: Skill/MCP, broad Graph schema/UI rewrite, product-visible behavior change.
 

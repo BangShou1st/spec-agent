@@ -477,8 +477,8 @@ Rules:
 2. Event payloads are sanitized trace/progress records — never prompt text,
    provider payloads, credentials, or hidden chain-of-thought.
 3. UI progress text must derive from these real phases.
-4. The V2 background worker (`V2AgentRunWorker`) executes queued
-   `v2_decision_cycle` runs through the `AgentDecisionEngine` port. In Stage A
+4. the background worker (`agent.runtime.RunWorker`) executes queued
+   `DECISION_CYCLE`-triggered runs through the `AgentDecisionEngine` port. In Stage A
    it records proposals only and never mutates the Graph; the worker is off by
    default (`SPEC_AGENT_BRAIN_WORKER_ENABLED`).
 5. The legacy synchronous orchestrator paths are unchanged.
