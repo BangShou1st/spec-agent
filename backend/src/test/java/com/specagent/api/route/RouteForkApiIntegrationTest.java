@@ -1,6 +1,5 @@
 package com.specagent.api.route;
 
-import com.specagent.agent.FakeAgentOrchestrator;
 import com.specagent.answer.Answer;
 import com.specagent.answer.AnswerRepository;
 import com.specagent.answer.AnswerService;
@@ -50,7 +49,7 @@ class RouteForkApiIntegrationTest {
     @Autowired
     private NodeService nodeService;
     @Autowired
-    private FakeAgentOrchestrator orchestrator;
+    private com.specagent.agent.DecisionCycleTestDriver draftDriver;
     @Autowired
     private com.specagent.agent.AnswerCycleTestDriver answerDriver;
     @Autowired
@@ -110,7 +109,8 @@ class RouteForkApiIntegrationTest {
     @Test
     void forkDoesNotCopyAnswersOrPatchesFromSourceRoute() throws Exception {
         Project project = projectService.createProject("Fork copy check");
-        Node root = orchestrator.draftNextQuestion(project.id()).producedNode();
+        var draftRun = draftDriver.draftQuestion(project.id());
+        Node root = nodeService.getNode(draftRun.producedNodeId()).orElseThrow();
         UUID sourceRouteId = project.activeRouteId();
         var answerResult = answerDriver.submitFreeText(project.id(), "Root answer content");
         Answer answer = answerService.getAnswer(answerResult.answerId()).orElseThrow();

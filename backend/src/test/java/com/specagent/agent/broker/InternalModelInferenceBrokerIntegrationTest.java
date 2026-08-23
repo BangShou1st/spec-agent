@@ -123,7 +123,7 @@ class InternalModelInferenceBrokerIntegrationTest {
 
     private UUID newRun() {
         Project project = projectService.createProject("Broker 测试项目");
-        return runService.createQueuedRun(project.id()).id();
+        return runService.createQueuedDraftQuestion(project.id()).id();
     }
 
     private String eventText(UUID runId) {

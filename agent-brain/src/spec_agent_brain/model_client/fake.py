@@ -21,7 +21,8 @@ DECISION_OUTPUT = (
     '{"observation":{"known":["The user clarified the main outcome."],'
     '"unknowns":["The user must confirm scope boundaries."],"conflicts":[],"risks":[]},'
     '"action":{"actionFamily":"REQUEST_USER_INPUT","payload":{"questionText":'
-    '"What is the most important outcome?","options":[{"label":"Clarify the primary goal"}],'
+    '"What is the most important outcome?","purpose":"This clarifies the primary '
+    'requirement goal.","options":[{"label":"Clarify the primary goal"}],'
     '"allowFreeAnswer":true},"sourceRefs":[]}}'
 )
 

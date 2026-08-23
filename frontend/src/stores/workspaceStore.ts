@@ -45,7 +45,6 @@ import type {
   SubmitAnswerRequest,
 } from '@/api/types'
 import {
-  draftNextQuestion,
   getActiveState,
   listRoutes,
 } from '@/api/workspace'
@@ -273,7 +272,10 @@ export const useWorkspaceStore = defineStore('workspace', {
       this.forkDraftRetryRouteId = this.findForkDraftRetryRouteId()
     },
 
-    /** Drafts the next question. Explicit user action only. */
+    /**
+     * Drafts the next question through the async Agent Runtime. Explicit user
+     * action only; a fresh project enqueues no run until this fires.
+     */
     async draftQuestion(): Promise<boolean> {
       if (!this.projectId || this.drafting || this.routeCommandPending) {
         return false
@@ -283,43 +285,98 @@ export const useWorkspaceStore = defineStore('workspace', {
       const beforeRouteId = this.activeState?.activeRoute?.id ?? null
       const beforeTipNodeId = this.activeState?.activeRoute?.tipNodeId ?? null
       try {
-        await draftNextQuestion(this.projectId)
-        this.feedback = '问题已起草。'
-        await this.refreshWorkspace()
-        this.manualModelRetry = null
-        return true
+        const run = await createAgentRun(this.projectId, { operation: 'DRAFT_QUESTION' })
+        const outcome = await this.pollDraftRun(run.runId)
+        if (outcome === 'completed') {
+          this.feedback = '问题已起草。'
+          await this.refreshWorkspace()
+          this.manualModelRetry = null
+          return true
+        }
+        // FAILED or outcome unknown: reconcile against canonical reads, then
+        // surface the retry affordance keyed to the pre-draft graph state.
+        const reconciled = await this.refreshWorkspace()
+        const afterRouteId = this.activeState?.activeRoute?.id ?? null
+        const afterTipNodeId = this.activeState?.activeRoute?.tipNodeId ?? null
+        if (
+          reconciled
+          && (afterRouteId !== beforeRouteId || afterTipNodeId !== beforeTipNodeId)
+        ) {
+          // The draft actually landed (e.g. the run finished after the last
+          // poll); never offer a retry that would double-draft.
+          this.manualModelRetry = null
+          this.error = null
+          this.feedback = '问题已起草。'
+          return true
+        }
+        this.error = {
+          code: outcome === 'failed' ? 'AGENT_RUN_FAILED' : 'AGENT_RUN_OUTCOME_UNKNOWN',
+          message: outcome === 'failed'
+            ? '起草问题的运行失败，请重试。'
+            : '起草结果未知，已按最新状态核对。请重试。',
+        }
+        this.manualModelRetry = {
+          kind: 'draft',
+          beforeRouteId,
+          beforeTipNodeId,
+          state: outcome === 'failed' ? 'ready' : 'needs_reconcile',
+        } as ManualModelRetryIntent
+        return false
       } catch (err) {
+        // The create-run request itself failed; the run may or may not exist.
+        // Reconcile canonical state before allowing a retry.
         const safeError = toDisplayError(err)
         this.error = safeError
+        const reconciled = await this.refreshWorkspace()
+        const afterRouteId = this.activeState?.activeRoute?.id ?? null
+        const afterTipNodeId = this.activeState?.activeRoute?.tipNodeId ?? null
+        if (
+          reconciled
+          && (afterRouteId !== beforeRouteId || afterTipNodeId !== beforeTipNodeId)
+        ) {
+          this.manualModelRetry = null
+          this.error = null
+          this.feedback = '问题已起草。'
+          return true
+        }
         const disposition = classifyModelFailure(safeError.code, safeError.status)
-        const retryIntent = disposition === 'none' ? null : {
+        this.manualModelRetry = disposition === 'none' ? null : {
           kind: 'draft',
           beforeRouteId,
           beforeTipNodeId,
           state: disposition === 'unknown' ? 'needs_reconcile' : 'ready',
         } as ManualModelRetryIntent
-        this.manualModelRetry = retryIntent
-        if (retryIntent?.kind === 'draft' && retryIntent.state === 'needs_reconcile') {
-          const reconciled = await this.refreshWorkspace()
-          const afterRouteId = this.activeState?.activeRoute?.id ?? null
-          const afterTipNodeId = this.activeState?.activeRoute?.tipNodeId ?? null
-          if (
-            reconciled
-            && (afterRouteId !== beforeRouteId
-              || afterTipNodeId !== beforeTipNodeId)
-          ) {
-            this.manualModelRetry = null
-            this.error = null
-            this.feedback = '问题已起草。'
-            return true
-          } else {
-            this.error = safeError
-          }
-        }
         return false
       } finally {
         this.drafting = false
       }
+    },
+
+    /**
+     * Polls one question-draft run to a terminal status. Drafting has no
+     * immutable-input concerns: 'completed' refreshes canonical state in the
+     * caller, anything else reconciles. Stops observing when the project
+     * switches.
+     */
+    async pollDraftRun(runId: string): Promise<'completed' | 'failed' | 'unknown'> {
+      const projectId = this.projectId
+      if (!projectId) return 'unknown'
+      for (let attempt = 0; attempt < AGENT_RUN_MAX_POLLS; attempt += 1) {
+        if (attempt > 0) {
+          await new Promise((resolve) => setTimeout(resolve, AGENT_RUN_POLL_INTERVAL_MS))
+          if (projectId !== this.projectId) {
+            return 'unknown'
+          }
+        }
+        try {
+          const view = await getAgentRun(projectId, runId)
+          if (!isTerminalRunStatus(view.status)) continue
+          return view.status === 'completed' ? 'completed' : 'failed'
+        } catch {
+          // Transient poll failure: keep polling within budget.
+        }
+      }
+      return 'unknown'
     },
 
     /**

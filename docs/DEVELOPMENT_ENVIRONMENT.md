@@ -189,7 +189,7 @@ Environment defaults:
 The brain has no database driver and no provider SDK by design. The
 cross-language integration test
 (`PythonBrainCrossLanguageIntegrationTest`) requires a running brain on port
-8100 and binds Spring to port 18080; it skips automatically when the brain is
+8100 and binds Spring to port 18081; it skips automatically when the brain is
 not running so the default suite stays green offline.
 
 ## 11. Internal Broker Network Isolation

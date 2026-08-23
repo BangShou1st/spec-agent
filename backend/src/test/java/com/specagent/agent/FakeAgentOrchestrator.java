@@ -4,7 +4,11 @@ import org.springframework.stereotype.Component;
 
 import java.util.UUID;
 
-/** Test-only compatibility facade; deterministic behavior stays at ModelGateway. */
+/**
+ * Test-only compatibility facade over the remaining legacy orchestrator flow
+ * (spec generation). Question drafting moved to the decision runtime; drive
+ * it with {@link DecisionCycleTestDriver} instead.
+ */
 @Component
 public class FakeAgentOrchestrator {
 
@@ -12,12 +16,6 @@ public class FakeAgentOrchestrator {
 
     FakeAgentOrchestrator(AgentOrchestrator delegate) {
         this.delegate = delegate;
-    }
-
-    public FakeAgentRunResult draftNextQuestion(UUID projectId) {
-        AgentRunResult result = delegate.draftNextQuestion(projectId);
-        return new FakeAgentRunResult(result.run(), result.contextSnapshot(),
-                result.modelResponse(), result.producedNode());
     }
 
     public FakeSpecRunResult generateSpec(UUID projectId) {

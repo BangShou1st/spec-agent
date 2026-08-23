@@ -27,6 +27,8 @@ class AgentRunTraceIntegrationTest {
     @Autowired
     private FakeAgentOrchestrator fakeAgentOrchestrator;
     @Autowired
+    private DecisionCycleTestDriver draftDriver;
+    @Autowired
     private AnswerCycleTestDriver answerDriver;
     @Autowired
     private AgentRunService agentRunService;
@@ -39,7 +41,7 @@ class AgentRunTraceIntegrationTest {
     @Test
     void answerRunTraceContainsMajorSteps() {
         Project project = projectService.createProject("Trace answer project");
-        fakeAgentOrchestrator.draftNextQuestion(project.id());
+        draftDriver.draftQuestion(project.id());
 
         var result = answerDriver.submitFreeText(project.id(), "trace the answer loop");
 
@@ -56,7 +58,7 @@ class AgentRunTraceIntegrationTest {
     @Test
     void specRunTraceContainsMajorSteps() {
         Project project = projectService.createProject("Trace spec project");
-        fakeAgentOrchestrator.draftNextQuestion(project.id());
+        draftDriver.draftQuestion(project.id());
         answerDriver.submitFreeText(project.id(), "trace the spec loop");
 
         FakeSpecRunResult result = fakeAgentOrchestrator.generateSpec(project.id());
@@ -75,7 +77,7 @@ class AgentRunTraceIntegrationTest {
     @Test
     void failedRunTraceContainsFailureStep() {
         Project project = projectService.createProject("Trace failure project");
-        fakeAgentOrchestrator.draftNextQuestion(project.id());
+        draftDriver.draftQuestion(project.id());
 
         // A spec draft without any source reference is rejected by the
         // grounding gate before anything may persist.

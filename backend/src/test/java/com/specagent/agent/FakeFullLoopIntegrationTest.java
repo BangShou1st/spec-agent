@@ -44,6 +44,8 @@ class FakeFullLoopIntegrationTest {
     @Autowired
     private FakeAgentOrchestrator fakeAgentOrchestrator;
     @Autowired
+    private DecisionCycleTestDriver draftDriver;
+    @Autowired
     private AnswerCycleTestDriver answerDriver;
     @Autowired
     private AgentRunService agentRunService;
@@ -64,8 +66,7 @@ class FakeFullLoopIntegrationTest {
     void fullFakeLoopFromQuestionToAnswerPatchToNextNode() {
         Project project = projectService.createProject("Full loop project");
 
-        FakeAgentRunResult first = fakeAgentOrchestrator.draftNextQuestion(project.id());
-        UUID answeredNodeId = first.producedNode().id();
+        UUID answeredNodeId = draftDriver.draftQuestion(project.id()).producedNodeId();
 
         var result = answerDriver.submitFreeText(
                 project.id(), "I need to clarify the main outcome");
@@ -115,7 +116,7 @@ class FakeFullLoopIntegrationTest {
     @Test
     void fakeAnswerRunPersistsAnswerAndPatch() {
         Project project = projectService.createProject("Answer run project");
-        fakeAgentOrchestrator.draftNextQuestion(project.id());
+        draftDriver.draftQuestion(project.id());
 
         var result = answerDriver.submitFreeText(
                 project.id(), "The primary outcome must be measurable");
@@ -131,7 +132,7 @@ class FakeFullLoopIntegrationTest {
     @Test
     void fakeSpecRunCreatesGroundedSpecSnapshot() {
         Project project = projectService.createProject("Spec run project");
-        fakeAgentOrchestrator.draftNextQuestion(project.id());
+        draftDriver.draftQuestion(project.id());
         answerDriver.submitFreeText(project.id(), "I need to clarify the main outcome");
 
         FakeSpecRunResult result = fakeAgentOrchestrator.generateSpec(project.id());

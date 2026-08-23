@@ -39,7 +39,7 @@ class ScriptedModelGatewayFullLoopIntegrationTest {
     @Autowired
     private ProjectService projectService;
     @Autowired
-    private FakeAgentOrchestrator fakeAgentOrchestrator;
+    private DecisionCycleTestDriver draftDriver;
     @Autowired
     private AnswerCycleTestDriver answerDriver;
     @Autowired
@@ -126,7 +126,7 @@ class ScriptedModelGatewayFullLoopIntegrationTest {
     @Test
     void completedCycleArtifactsSurviveAFailedFollowup() {
         project = projectService.createProject("Completed then failed");
-        fakeAgentOrchestrator.draftNextQuestion(project.id());
+        draftDriver.draftQuestion(project.id());
 
         var first = answerDriver.submitFreeText(project.id(), "the clarified outcome");
         assertThat(first.run().status()).isEqualTo(AgentRunStatus.COMPLETED);

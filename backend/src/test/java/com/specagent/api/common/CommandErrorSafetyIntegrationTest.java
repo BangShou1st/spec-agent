@@ -4,8 +4,11 @@ import com.specagent.testing.FakeModelAdapter;
 import com.specagent.agent.ModelRequest;
 import com.specagent.model.gateway.ModelGatewayErrorCategory;
 import com.specagent.model.gateway.ModelGatewayException;
+import com.specagent.node.NodeService;
 import com.specagent.project.Project;
 import com.specagent.project.ProjectService;
+
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -45,6 +48,16 @@ class CommandErrorSafetyIntegrationTest {
     private MockMvc mockMvc;
     @Autowired
     private ProjectService projectService;
+    @Autowired
+    private NodeService nodeService;
+
+    /** The draft endpoint is retired; spec generation is the remaining sync surface. */
+    private Project projectWithTip(String title) {
+        Project project = projectService.createProject(title);
+        nodeService.createRootNode(project.id(), project.activeRouteId(),
+                "Root question?", null, List.of(), true);
+        return project;
+    }
 
     @SpyBean
     private FakeModelAdapter fakeModelAdapter;
@@ -55,9 +68,9 @@ class CommandErrorSafetyIntegrationTest {
             throw new ModelGatewayException(ModelGatewayErrorCategory.RATE_LIMITED,
                     RAW_PAYLOAD_SENTINEL + " " + SECRET_SENTINEL);
         }).when(fakeModelAdapter).run(any(ModelRequest.class));
-        Project project = projectService.createProject("Gateway rate limit");
+        Project project = projectWithTip("Gateway rate limit");
 
-        MvcResult result = mockMvc.perform(post("/api/v1/projects/{projectId}/questions/next", project.id()))
+        MvcResult result = mockMvc.perform(post("/api/v1/projects/{projectId}/specs/generate", project.id()))
                 .andExpect(status().isTooManyRequests())
                 .andExpect(jsonPath("$.code").value("MODEL_PROVIDER_RATE_LIMITED"))
                 .andExpect(jsonPath("$.message").value("The model provider is temporarily rate limited"))
@@ -79,9 +92,9 @@ class CommandErrorSafetyIntegrationTest {
             throw new ModelGatewayException(ModelGatewayErrorCategory.CONNECTION,
                     "connect to 10.0.0.7:443 failed: " + SECRET_SENTINEL);
         }).when(fakeModelAdapter).run(any(ModelRequest.class));
-        Project project = projectService.createProject("Gateway connection");
+        Project project = projectWithTip("Gateway connection");
 
-        MvcResult result = mockMvc.perform(post("/api/v1/projects/{projectId}/questions/next", project.id()))
+        MvcResult result = mockMvc.perform(post("/api/v1/projects/{projectId}/specs/generate", project.id()))
                 .andExpect(status().isBadGateway())
                 .andExpect(jsonPath("$.code").value("MODEL_PROVIDER_UNREACHABLE"))
                 .andExpect(jsonPath("$.message").value("The model provider could not be reached"))
@@ -100,9 +113,9 @@ class CommandErrorSafetyIntegrationTest {
             throw new ModelGatewayException(ModelGatewayErrorCategory.SERVER_ERROR,
                     "500 " + RAW_PAYLOAD_SENTINEL);
         }).when(fakeModelAdapter).run(any(ModelRequest.class));
-        Project project = projectService.createProject("Gateway failure trace");
+        Project project = projectWithTip("Gateway failure trace");
 
-        mockMvc.perform(post("/api/v1/projects/{projectId}/questions/next", project.id()))
+        mockMvc.perform(post("/api/v1/projects/{projectId}/specs/generate", project.id()))
                 .andExpect(status().isBadGateway());
 
         MvcResult result = mockMvc.perform(get("/api/v1/projects/{projectId}/runs", project.id()))
@@ -112,7 +125,7 @@ class CommandErrorSafetyIntegrationTest {
         String body = result.getResponse().getContentAsString();
         assertThat(body)
                 .contains("failed:provider:SERVER_ERROR")
-                .contains("model_called:DRAFT_NODE")
+                .contains("model_called:DRAFT_SPEC")
                 .doesNotContain(RAW_PAYLOAD_SENTINEL)
                 .doesNotContain(SECRET_SENTINEL);
     }
@@ -123,9 +136,9 @@ class CommandErrorSafetyIntegrationTest {
             throw new ModelGatewayException(ModelGatewayErrorCategory.NOT_CONFIGURED,
                     "gateway has no configured credential");
         }).when(fakeModelAdapter).run(any(ModelRequest.class));
-        Project project = projectService.createProject("Gateway not configured");
+        Project project = projectWithTip("Gateway not configured");
 
-        mockMvc.perform(post("/api/v1/projects/{projectId}/questions/next", project.id()))
+        mockMvc.perform(post("/api/v1/projects/{projectId}/specs/generate", project.id()))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.code").value("MODEL_PROVIDER_NOT_CONFIGURED"))
                 .andExpect(jsonPath("$.message").value("The model provider is not configured"));

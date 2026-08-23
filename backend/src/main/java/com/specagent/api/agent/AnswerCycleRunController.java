@@ -18,12 +18,13 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Async answer-cycle command + run read surface.
+ * Async agent-run command + run read surface.
  *
- * <p>POST enqueues an ANSWER_CYCLE run (202 + runId) with an explicit
- * operation ({@code ANSWER_TIP} for a fresh answer, {@code RESUME_ANSWER} to
- * resume the persisted Answer of a failed cycle — never a second Answer).
- * The background worker executes the 2-call convergence; clients poll
+ * <p>POST enqueues a run (202 + runId) with an explicit operation:
+ * {@code ANSWER_TIP} for a fresh answer, {@code RESUME_ANSWER} to resume the
+ * persisted Answer of a failed cycle (never a second Answer), and
+ * {@code DRAFT_QUESTION} for the pure-continuation question draft. The
+ * background worker executes the cycle; clients poll
  * {@code GET .../agent-runs/{runId}} until a terminal status. The read view
  * exposes the real persisted phase (latest run event) and the produced record
  * ids so callers can reconcile without guessing outcomes.
@@ -55,12 +56,23 @@ public class AnswerCycleRunController {
             @PathVariable UUID projectId,
             @RequestBody CreateRunRequest request) {
 
+        String operation = request.operation();
+
+        // Question draft: a pure-continuation DECISION_CYCLE run against the
+        // active route. No node/answer inputs — the runtime owns the target.
+        if ("DRAFT_QUESTION".equals(operation)) {
+            UUID draftRunId = runService.createQueuedDraftQuestion(projectId).id();
+            return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of(
+                    "runId", draftRunId.toString(),
+                    "operation", operation,
+                    "phase", "CREATED"));
+        }
+
         // Determine operation: if answer already exists for this node+route,
         // route to RESUME_ANSWER when the answer's cycle is still unfinished
         // (the node is still the active tip). When the tip has already moved
         // past the answered node, the original cycle completed — reject the
         // duplicate synchronously instead of enqueueing a doomed run.
-        String operation = request.operation();
         UUID answerId = request.answerId();
 
         if ("ANSWER_TIP".equals(operation) && request.nodeId() != null && answerId == null) {

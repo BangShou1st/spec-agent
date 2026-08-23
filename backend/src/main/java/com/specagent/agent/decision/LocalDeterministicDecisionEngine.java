@@ -123,6 +123,7 @@ public class LocalDeterministicDecisionEngine implements AgentDecisionEngine {
                         "REQUEST_USER_INPUT",
                         Map.of(
                                 "questionText", "What is the most important outcome?",
+                                "purpose", "This clarifies the primary requirement goal.",
                                 "options", List.of(Map.of("label", "Clarify the primary goal")),
                                 "allowFreeAnswer", true),
                         snapshotId,

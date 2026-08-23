@@ -2,7 +2,7 @@ package com.specagent.api.requirement;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.specagent.agent.AnswerCycleTestDriver;
-import com.specagent.agent.FakeAgentOrchestrator;
+import com.specagent.agent.DecisionCycleTestDriver;
 import com.specagent.answer.Answer;
 import com.specagent.answer.AnswerService;
 import com.specagent.common.Ids;
@@ -70,7 +70,7 @@ class RequirementStateApiIntegrationTest {
     @Autowired
     private AnswerPatchService answerPatchService;
     @Autowired
-    private FakeAgentOrchestrator orchestrator;
+    private DecisionCycleTestDriver draftDriver;
     @Autowired
     private AnswerCycleTestDriver answerDriver;
 
@@ -95,7 +95,7 @@ class RequirementStateApiIntegrationTest {
         // Run the normal runtime path so the first confirmed claim is derived
         // from a real answer (deterministic engine, no provider). The fake
         // engine's STATE_UPDATE proposes a single confirmed goal claim.
-        orchestrator.draftNextQuestion(project.id());
+        draftDriver.draftQuestion(project.id());
         answerDriver.submitFreeText(project.id(), "Primary outcome answer");
 
         // Add assumed, unresolved, and rejected claims on the same active
@@ -141,8 +141,8 @@ class RequirementStateApiIntegrationTest {
     @Test
     void activeRouteStateDoesNotExposeSiblingRouteClaims() throws Exception {
         Project project = projectService.createProject("Isolation project");
-        // Active route gets real derived claims through the orchestrator.
-        orchestrator.draftNextQuestion(project.id());
+        // Active route gets real derived claims through the decision runtime.
+        draftDriver.draftQuestion(project.id());
         answerDriver.submitFreeText(project.id(), "Active route answer");
         UUID activeRouteId = projectService.getProject(project.id()).orElseThrow().activeRouteId();
 
@@ -244,8 +244,8 @@ class RequirementStateApiIntegrationTest {
     @Test
     void routeScopedReadReturnsExplicitRouteBWhileActiveRouteIsA() throws Exception {
         Project project = projectService.createProject("Route scoped project");
-        // Active route A gets real derived claims through the orchestrator.
-        orchestrator.draftNextQuestion(project.id());
+        // Active route A gets real derived claims through the decision runtime.
+        draftDriver.draftQuestion(project.id());
         answerDriver.submitFreeText(project.id(), "Active route answer");
         UUID activeRouteId = projectService.getProject(project.id()).orElseThrow().activeRouteId();
         Route routeB = createRouteWithSentinelClaim(project, "ROUTE_B_ONLY_CLAIM_5D1F");
@@ -268,7 +268,7 @@ class RequirementStateApiIntegrationTest {
     @Test
     void legacyActiveEndpointStillReturnsActiveRouteA() throws Exception {
         Project project = projectService.createProject("Legacy endpoint project");
-        orchestrator.draftNextQuestion(project.id());
+        draftDriver.draftQuestion(project.id());
         answerDriver.submitFreeText(project.id(), "Active route answer");
         UUID activeRouteId = projectService.getProject(project.id()).orElseThrow().activeRouteId();
         createRouteWithSentinelClaim(project, "ROUTE_B_ONLY_CLAIM_9B17");

@@ -61,6 +61,8 @@ class AnswerRouteIsolationApiIntegrationTest {
     private RunWorker worker;
     @Autowired
     private com.specagent.node.NodeService nodeService;
+    @Autowired
+    private com.specagent.agent.DecisionCycleTestDriver draftDriver;
 
     @SpyBean
     private AgentDecisionEngine decisionEngine;
@@ -212,11 +214,10 @@ class AnswerRouteIsolationApiIntegrationTest {
     }
 
     private NodeResponse draftNext(UUID projectId) throws Exception {
-        MvcResult result = mockMvc.perform(post("/api/v1/projects/{projectId}/questions/next", projectId))
-                .andExpect(status().isOk())
-                .andReturn();
-        return objectMapper.readValue(result.getResponse().getContentAsString(), DraftQuestionResponse.class)
-                .producedNode();
+        // The synchronous draft endpoint is retired; drive the async
+        // DRAFT_QUESTION run through the production runtime path.
+        com.specagent.agent.AgentRun draftRun = draftDriver.draftQuestion(projectId);
+        return NodeResponse.from(nodeService.getNode(draftRun.producedNodeId()).orElseThrow());
     }
 
     private RouteMutationResponse fork(UUID projectId, UUID nodeId) throws Exception {

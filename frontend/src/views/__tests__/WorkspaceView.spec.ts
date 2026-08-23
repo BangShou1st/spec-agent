@@ -20,7 +20,6 @@ import type { GraphWorkspaceView } from '@/api/types'
 
 vi.mock('@/api/projects', () => ({ getProject: vi.fn() }))
 vi.mock('@/api/workspace', () => ({
-  draftNextQuestion: vi.fn(),
   getActiveState: vi.fn(),
   listRoutes: vi.fn(),
 }))
@@ -46,7 +45,7 @@ vi.mock('@/api/routes', () => ({
 vi.mock('@/api/spec', () => ({ generateSpec: vi.fn(), listRouteSpecs: vi.fn() }))
 
 import { getProject } from '@/api/projects'
-import { getActiveState, listRoutes, draftNextQuestion } from '@/api/workspace'
+import { getActiveState, listRoutes } from '@/api/workspace'
 import { createAgentRun, getAgentRun } from '@/api/agentRuns'
 import { getRequirementState, getRouteRequirementState } from '@/api/requirementState'
 import { getProjectGraph } from '@/api/graph'
@@ -64,7 +63,6 @@ const mockedGetRequirementState = vi.mocked(getRequirementState)
 const mockedGetRouteRequirementState = vi.mocked(getRouteRequirementState)
 const mockedGetProjectGraph = vi.mocked(getProjectGraph)
 
-const mockedDraftNextQuestion = vi.mocked(draftNextQuestion)
 const mockedCreateAgentRun = vi.mocked(createAgentRun)
 const mockedGetAgentRun = vi.mocked(getAgentRun)
 
@@ -196,16 +194,29 @@ describe('WorkspaceView graph shell', () => {
     expect(wrapper.find('[data-test="workspace-inspector"]').exists()).toBe(true)
   })
 
-  it('drafts through the canvas draft intent', async () => {
+  it('drafts through the canvas draft intent as an async run', async () => {
     mockViews()
-    mockedDraftNextQuestion.mockResolvedValue({
-      agentRun: { id: 'run-1' } as never,
-      producedNode: makeNode({ id: 'n5' }),
+    mockedCreateAgentRun.mockResolvedValue({
+      runId: 'run-draft',
+      operation: 'DRAFT_QUESTION',
+      phase: 'CREATED',
+    })
+    mockedGetAgentRun.mockResolvedValue({
+      runId: 'run-draft',
+      projectId: 'p1',
+      routeId: 'r1',
+      operation: 'DRAFT_QUESTION',
+      status: 'completed',
+      phase: 'COMPLETED',
+      producedNodeId: 'n5',
+      producedAnswerId: null,
+      producedPatchId: null,
+      producedSpecSnapshotId: null,
     })
     const { wrapper } = await mountWorkspace()
     await wrapper.findComponent(GraphCanvasStub).vm.$emit('draft')
     await flushPromises()
-    expect(mockedDraftNextQuestion).toHaveBeenCalledWith('p1')
+    expect(mockedCreateAgentRun).toHaveBeenCalledWith('p1', { operation: 'DRAFT_QUESTION' })
     expect(useWorkspaceStore().feedback).toBe('问题已起草。')
   })
 

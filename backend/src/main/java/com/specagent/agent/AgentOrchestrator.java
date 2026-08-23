@@ -53,14 +53,12 @@ import java.util.UUID;
  * through the {@link ModelGateway} abstraction; all persistence happens
  * through runtime services.
  *
- * <p>{@link #draftNextQuestion} runs one DRAFT_NODE cycle.
- * {@link #answerActiveNodeAndDraftNext} runs the answer loop: persist the
- * immutable answer, interpret it, draft and ground an answer patch, then draft
- * the next node. {@link #repairAnswerProcessingAndDraftNext} resumes an
- * existing immutable answer whose patch step failed, without finalizing a
- * second answer. {@link #generateSpec} runs the spec loop: draft a spec,
- * validate grounding and source references, and persist a derived spec
- * snapshot.
+ * <p>After the answer and question-draft cutovers only two flows remain here:
+ * {@link #generateSpec} runs the spec loop (draft a spec, validate grounding
+ * and source references, persist a derived spec snapshot) and
+ * {@link #replaceQuestion} generates replacement question content through the
+ * generic DRAFT_NODE model contract. Both migrate to the decision runtime in
+ * a later slice.
  *
  * <p>Every run keeps a cumulative trace of its steps so the final trace shows
  * the major lifecycle steps instead of only the last one. No loop wraps the
@@ -130,74 +128,6 @@ public class AgentOrchestrator {
         this.projectionBuilder = projectionBuilder;
         this.structuredModelOutputParser = structuredModelOutputParser;
         this.structuredOutputMapper = structuredOutputMapper;
-    }
-
-    public AgentRunResult draftNextQuestion(UUID projectId) {
-        Project project = loadProject(projectId);
-        Route route = loadActiveRoute(project);
-
-        AgentRun run = agentRunService.create(
-                projectId,
-                route.id(),
-                AgentRunTriggerType.INITIAL_REQUIREMENT,
-                route.tipNodeId(),
-                null);
-        String trace = "created";
-
-        try {
-            trace = appendTrace(trace, "context_built");
-            ContextSnapshot contextSnapshot = buildAndValidateContext(run, projectId, trace);
-
-            trace = appendTrace(trace, "model_called:" + AgentTaskType.DRAFT_NODE.name());
-            ModelResponse response = callModel(run, contextSnapshot, trace,
-                    AgentTaskType.DRAFT_NODE,
-                    projectionBuilder.buildInputJson(contextSnapshot,
-                            projectionBuilder.initialNodeTaskInput()),
-                    AgentAction.ASK_NEXT_QUESTION,
-                    "Expected ASK_NEXT_QUESTION from DRAFT_NODE");
-
-            NodeDraft draft = structuredOutputMapper.toNodeDraft(
-                    structuredModelOutputParser.parse(AgentTaskType.DRAFT_NODE, response.outputJson()));
-            ReflectionResult nodeReflection = nodeReflectionGate.validate(draft);
-            trace = appendTrace(trace, "reflected:NODE");
-            agentRunService.markReflected(run.id(), trace);
-
-            if (!nodeReflection.accepted()) {
-                agentRunService.fail(run.id(), appendTrace(trace, "failed:node_reflection_rejected"));
-                throw new ModelContractException("Node reflection rejected node draft");
-            }
-
-            Node producedNode;
-            if (route.tipNodeId() == null) {
-                producedNode = nodeService.createRootNode(
-                        projectId,
-                        route.id(),
-                        draft.question(),
-                        draft.purpose(),
-                        draft.options(),
-                        draft.allowFreeAnswer());
-            } else {
-                producedNode = nodeService.createChildNode(
-                        projectId,
-                        route.id(),
-                        route.tipNodeId(),
-                        draft.question(),
-                        draft.purpose(),
-                        draft.options(),
-                        draft.allowFreeAnswer());
-            }
-
-            trace = appendTrace(trace, "persisted_node");
-            agentRunService.markPersistedNode(run.id(), producedNode.id(), trace);
-            trace = appendTrace(trace, "completed");
-            agentRunService.complete(run.id(), AgentRunStatus.COMPLETED, trace);
-
-            AgentRun completedRun = agentRunService.getRun(run.id()).orElseThrow();
-            return new AgentRunResult(completedRun, contextSnapshot, response, producedNode);
-        } catch (RuntimeException ex) {
-            failIfNotTerminal(run.id(), trace, ex);
-            throw ex;
-        }
     }
 
     /**

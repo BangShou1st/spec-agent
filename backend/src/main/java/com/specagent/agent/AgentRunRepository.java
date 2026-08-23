@@ -274,6 +274,25 @@ public class AgentRunRepository {
     }
 
     /**
+     * Atomically claims one specific queued decision-cycle run by id. The
+     * claim stays conditional on the CREATED status, so a run already claimed
+     * (or executed) by anyone else is never claimed twice.
+     */
+    public Optional<AgentRun> claimDecisionCycleRun(UUID runId) {
+        String sql = """
+                UPDATE agent_runs SET status = :running
+                WHERE id = :id AND trigger_type = :trigger AND status = :created
+                RETURNING *
+                """;
+        return jdbcTemplate.query(sql, Maps.of(
+                        "running", AgentRunStatus.RUNNING.code(),
+                        "id", runId,
+                        "trigger", AgentRunTriggerType.DECISION_CYCLE.code(),
+                        "created", AgentRunStatus.CREATED.code()),
+                rowMapper).stream().findFirst();
+    }
+
+    /**
      * Atomically claims the oldest queued node-query run by moving it
      * from CREATED to RUNNING.
      */

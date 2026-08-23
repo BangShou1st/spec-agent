@@ -25,7 +25,11 @@ import static org.mockito.Mockito.when;
  * taskType must fail the run before anything derived from that response can be
  * persisted.
  *
- * <p>The default fake adapter is replaced by a mock whose proposals corrupt the
+ * <p>The question draft itself no longer crosses the legacy {@code ModelGateway}
+ * (it runs on the async decision runtime), so the correlation contract is
+ * exercised through spec generation — the remaining production ModelGateway
+ * consumer — after the route tip is seeded with {@link DecisionCycleTestDriver}.
+ * The default fake adapter is replaced by a mock whose proposals corrupt the
  * selected correlation field, so the orchestrator must reject it at correlation
  * time. The mock replacement keeps the adapter's primary status, exactly like
  * {@link FakeAgentOrchestratorFailureIntegrationTest}.
@@ -40,6 +44,8 @@ class ModelCorrelationIntegrationTest {
     private ProjectService projectService;
     @Autowired
     private FakeAgentOrchestrator orchestrator;
+    @Autowired
+    private DecisionCycleTestDriver draftDriver;
     @Autowired
     private AgentRunService agentRunService;
     @Autowired
@@ -71,18 +77,24 @@ class ModelCorrelationIntegrationTest {
             UUID snapshotId = field == CorruptField.CONTEXT_SNAPSHOT_ID
                     ? UUID.randomUUID() : request.contextSnapshotId();
             AgentTaskType taskType = field == CorruptField.TASK_TYPE
-                    ? AgentTaskType.DRAFT_SPEC : request.taskType();
+                    ? AgentTaskType.DRAFT_NODE : request.taskType();
             return new ModelResponse(runId, snapshotId, taskType,
-                    AgentAction.ASK_NEXT_QUESTION, "{}", Map.of("adapter", "corrupted"));
+                    AgentAction.GENERATE_SPEC, "{}", Map.of("adapter", "corrupted"));
         });
 
         Project project = projectService.createProject("Correlation project");
+        // Seed the route tip the spec path needs; the draft runs on the async
+        // decision runtime and never reaches the mocked gateway.
+        AgentRun draftRun = draftDriver.draftQuestion(project.id());
 
-        assertThatThrownBy(() -> orchestrator.draftNextQuestion(project.id()))
+        assertThatThrownBy(() -> orchestrator.generateSpec(project.id()))
                 .isInstanceOf(ModelContractException.class)
                 .hasMessageContaining(messagePart);
 
-        AgentRun run = agentRunService.listByProject(project.id()).get(0);
+        AgentRun run = agentRunService.listByProject(project.id()).stream()
+                .filter(r -> r.status() == AgentRunStatus.FAILED)
+                .findFirst()
+                .orElseThrow();
         assertThat(run.status()).isEqualTo(AgentRunStatus.FAILED);
         assertThat(run.trace()).contains("model_called").contains("failed");
         assertThat(run.producedNodeId()).isNull();
@@ -90,9 +102,10 @@ class ModelCorrelationIntegrationTest {
         assertThat(run.producedPatchId()).isNull();
         assertThat(run.producedSpecSnapshotId()).isNull();
 
-        // No node was created by the rejected proposal.
+        // No spec snapshot was created by the rejected proposal; the route
+        // keeps exactly the node the draft produced.
         Route route = routeService.getRoute(project.activeRouteId()).orElseThrow();
-        assertThat(route.tipNodeId()).isNull();
-        assertThat(route.rootNodeId()).isNull();
+        assertThat(route.tipNodeId()).isEqualTo(draftRun.producedNodeId());
+        assertThat(route.rootNodeId()).isEqualTo(draftRun.producedNodeId());
     }
 }

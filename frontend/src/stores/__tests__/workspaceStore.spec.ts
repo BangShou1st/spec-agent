@@ -4,7 +4,6 @@ import { ApiError } from '@/api/client'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
 import {
   makeActiveState,
-  makeAnswerExecution,
   makeGraphWorkspaceView,
   makeNode,
   makeProject,
@@ -26,7 +25,6 @@ vi.mock('@/api/projects', () => ({
 }))
 
 vi.mock('@/api/workspace', () => ({
-  draftNextQuestion: vi.fn(),
   getActiveState: vi.fn(),
   listRoutes: vi.fn(),
 }))
@@ -69,7 +67,6 @@ import {
 } from '@/api/agentRuns'
 import type { AgentRunView } from '@/api/agentRuns'
 import {
-  draftNextQuestion,
   getActiveState,
   listRoutes,
 } from '@/api/workspace'
@@ -91,7 +88,6 @@ const mockedListRoutes = vi.mocked(listRoutes)
 const mockedGetRequirementState = vi.mocked(getRequirementState)
 const mockedGetRouteRequirementState = vi.mocked(getRouteRequirementState)
 const mockedGetProjectGraph = vi.mocked(getProjectGraph)
-const mockedDraftNextQuestion = vi.mocked(draftNextQuestion)
 const mockedCreateAgentRun = vi.mocked(createAgentRun)
 const mockedGetAgentRun = vi.mocked(getAgentRun)
 const mockedGetRouteLineage = vi.mocked(getRouteLineage)
@@ -134,6 +130,39 @@ describe('workspaceStore', () => {
     }
   }
 
+  /** Completed DRAFT_QUESTION run view for the happy draft path. */
+  function draftRunView(overrides: Partial<AgentRunView> = {}): AgentRunView {
+    return completedRunView({
+      operation: 'DRAFT_QUESTION',
+      producedNodeId: 'drafted-node',
+      producedAnswerId: null,
+      producedPatchId: null,
+      ...overrides,
+    })
+  }
+
+  /** Wires the run mocks so one draft run reaches 'completed'. */
+  function mockDraftRunSuccess(view: AgentRunView = draftRunView()): void {
+    mockedCreateAgentRun.mockResolvedValue({
+      runId: view.runId,
+      operation: 'DRAFT_QUESTION',
+      phase: 'CREATED',
+    })
+    mockedGetAgentRun.mockResolvedValue(view)
+  }
+
+  /** Wires the run mocks so one draft run reaches 'failed'. */
+  function mockDraftRunFailure(): void {
+    mockedCreateAgentRun.mockResolvedValue({
+      runId: 'run-draft',
+      operation: 'DRAFT_QUESTION',
+      phase: 'CREATED',
+    })
+    mockedGetAgentRun.mockResolvedValue(
+      draftRunView({ runId: 'run-draft', status: 'failed', phase: 'FAILED' }),
+    )
+  }
+
   it('loads workspace from the four backend reads', async () => {
     const active = makeActiveState()
     const state = makeRequirementState()
@@ -170,31 +199,28 @@ describe('workspaceStore', () => {
 
     await store.loadWorkspace('p1')
 
-    expect(mockedDraftNextQuestion).not.toHaveBeenCalled()
+    expect(mockedCreateAgentRun).not.toHaveBeenCalled()
   })
 
   it('drafts a question only on explicit action and refreshes backend views', async () => {
     const before = makeActiveState({ activeNode: null })
     const draftedNode = makeNode({ question: 'First drafted question' })
     mockBackendViews(before, makeRequirementState())
-    mockedDraftNextQuestion.mockResolvedValue({
-      agentRun: makeAnswerExecution().agentRun,
-      producedNode: draftedNode,
-    })
+    mockDraftRunSuccess(draftRunView({ producedNodeId: 'drafted-node' }))
     const store = useWorkspaceStore()
     await store.loadWorkspace('p1')
 
     expect(store.activeState?.activeNode).toBeNull()
     const readCallsBefore = mockedGetActiveState.mock.calls.length
 
-    // After the draft command the backend serves the new tip node; the
+    // After the draft run completes the backend serves the new tip node; the
     // frontend must re-read it instead of building it locally.
     mockedGetActiveState.mockResolvedValue(makeActiveState({ activeNode: draftedNode }))
 
     const ok = await store.draftQuestion()
 
     expect(ok).toBe(true)
-    expect(mockedDraftNextQuestion).toHaveBeenCalledWith('p1')
+    expect(mockedCreateAgentRun).toHaveBeenCalledWith('p1', { operation: 'DRAFT_QUESTION' })
     expect(mockedGetActiveState.mock.calls.length).toBe(readCallsBefore + 1)
     expect(store.activeState?.activeNode?.question).toBe('First drafted question')
     expect(store.feedback).toBe('问题已起草。')
@@ -330,18 +356,25 @@ describe('workspaceStore', () => {
 
   it('prevents duplicate drafts while the first is pending', async () => {
     mockBackendViews(makeActiveState({ activeNode: null }), makeRequirementState())
-    let resolveDraft: (v: never) => void = () => undefined
-    mockedDraftNextQuestion.mockReturnValue(new Promise((resolve) => {
-      resolveDraft = resolve as (v: never) => void
-    }))
+    mockedCreateAgentRun.mockResolvedValue({
+      runId: 'run-draft',
+      operation: 'DRAFT_QUESTION',
+      phase: 'CREATED',
+    })
+    let resolveRun: (v: AgentRunView) => void = () => undefined
+    mockedGetAgentRun.mockReturnValue(
+      new Promise<AgentRunView>((resolve) => {
+        resolveRun = resolve
+      }),
+    )
     const store = useWorkspaceStore()
     await store.loadWorkspace('p1')
 
     const first = store.draftQuestion()
     const second = store.draftQuestion()
 
-    expect(mockedDraftNextQuestion).toHaveBeenCalledTimes(1)
-    resolveDraft(undefined as never)
+    expect(mockedCreateAgentRun).toHaveBeenCalledTimes(1)
+    resolveRun(draftRunView({ runId: 'run-draft' }))
     await first
     await second
     expect(store.drafting).toBe(false)
@@ -601,7 +634,7 @@ describe('workspaceStore', () => {
       route: makeRoute({ id: 'forked', projectId: 'p1', isActive: true }),
       activeRouteId: 'forked',
     })
-    mockedDraftNextQuestion.mockRejectedValue(new ApiError('draft failed', 'DRAFT_FAILED', 500))
+    mockDraftRunFailure()
     const store = useWorkspaceStore()
     await store.loadWorkspace('p1')
 
@@ -612,7 +645,7 @@ describe('workspaceStore', () => {
       sourceRouteId: 'r1',
       label: 'future branch',
     })
-    expect(mockedDraftNextQuestion).toHaveBeenCalledWith('p1')
+    expect(mockedCreateAgentRun).toHaveBeenCalledWith('p1', { operation: 'DRAFT_QUESTION' })
     expect(store.forkDraftRetryRouteId).toBe('forked')
     expect(store.feedback).toContain('分支已创建')
   })
@@ -628,7 +661,7 @@ describe('workspaceStore', () => {
       route: makeRoute({ id: 'forked', projectId: 'p1', isActive: true }),
       activeRouteId: 'forked',
     })
-    mockedDraftNextQuestion.mockRejectedValueOnce(new ApiError('draft failed', 'DRAFT_FAILED', 500))
+    mockDraftRunFailure()
     const store = useWorkspaceStore()
     await store.loadWorkspace('p1')
 
@@ -674,10 +707,10 @@ describe('workspaceStore', () => {
     }))
 
     expect(await store.activateRoute('route-a')).toBe(true)
-    mockedDraftNextQuestion.mockClear()
+    mockedCreateAgentRun.mockClear()
 
     expect(await store.retryForkDraft()).toBe(false)
-    expect(mockedDraftNextQuestion).not.toHaveBeenCalled()
+    expect(mockedCreateAgentRun).not.toHaveBeenCalled()
     expect(store.forkDraftRetryRouteId).toBeNull()
   })
 
@@ -708,19 +741,16 @@ describe('workspaceStore', () => {
     mockedForkNode.mockResolvedValue({
       projectId: 'p1', route: forkRoute, activeRouteId: 'forked',
     })
-    mockedDraftNextQuestion.mockResolvedValue({
-      agentRun: makeAnswerExecution().agentRun,
-      producedNode: makeNode({ id: 'n2' }),
-    })
+    mockDraftRunSuccess(draftRunView({ producedNodeId: 'n2' }))
     const store = useWorkspaceStore()
     await store.loadWorkspace('p1')
 
     expect(await store.forkNode('n1', 'r1', 'future branch')).toBe(true)
-    expect(mockedDraftNextQuestion).toHaveBeenCalledTimes(1)
+    expect(mockedCreateAgentRun).toHaveBeenCalledTimes(1)
     expect(store.forkDraftRetryRouteId).toBeNull()
 
     expect(await store.retryForkDraft()).toBe(false)
-    expect(mockedDraftNextQuestion).toHaveBeenCalledTimes(1)
+    expect(mockedCreateAgentRun).toHaveBeenCalledTimes(1)
   })
 
   it('treats a lost Fork first-Draft response as success when the canonical tip advanced', async () => {
@@ -765,12 +795,14 @@ describe('workspaceStore', () => {
     mockedForkNode.mockResolvedValue({
       projectId: 'p1', route: forkRoute, activeRouteId: 'forked',
     })
-    mockedDraftNextQuestion.mockRejectedValue(new ApiError('network lost', 'NETWORK_ERROR', 0))
+    // The create-run request is lost on the network; the canonical reads
+    // afterwards prove the draft actually landed (tip advanced to n2).
+    mockedCreateAgentRun.mockRejectedValue(new ApiError('network lost', 'NETWORK_ERROR', 0))
     const store = useWorkspaceStore()
     await store.loadWorkspace('p1')
 
     expect(await store.forkNode('n1', 'r1', 'future branch')).toBe(true)
-    expect(mockedDraftNextQuestion).toHaveBeenCalledTimes(1)
+    expect(mockedCreateAgentRun).toHaveBeenCalledTimes(1)
     expect(store.forkDraftRetryRouteId).toBeNull()
     expect(store.manualModelRetry).toBeNull()
     expect(store.error).toBeNull()
@@ -1075,7 +1107,7 @@ describe('workspaceStore', () => {
 
   it('does not create a model retry intent for deterministic non-model failures', async () => {
     mockBackendViews(makeActiveState({ activeNode: null }), makeRequirementState())
-    mockedDraftNextQuestion.mockRejectedValue(new ApiError('invalid command', 'VALIDATION_ERROR', 422))
+    mockedCreateAgentRun.mockRejectedValue(new ApiError('invalid command', 'VALIDATION_ERROR', 422))
     const store = useWorkspaceStore()
     await store.loadWorkspace('p1')
 
@@ -1265,7 +1297,7 @@ describe('workspaceStore', () => {
       route: makeRoute({ id: 'forked', projectId: 'p1', isActive: true }),
       activeRouteId: 'forked',
     })
-    mockedDraftNextQuestion.mockRejectedValue(new ApiError('draft failed', 'DRAFT_FAILED', 500))
+    mockDraftRunFailure()
     const forkedRoute = makeRoute({ id: 'forked', projectId: 'p1', isActive: true })
     // Canonical reads after the fork list both routes; the failed draft has
     // produced nothing yet (the forked route tip is still the branch point).

@@ -80,6 +80,8 @@ class OpenCodeZenRouteIsolationSmokeTest {
     @Autowired
     private com.specagent.agent.AnswerCycleTestDriver answerDriver;
     @Autowired
+    private com.specagent.agent.DecisionCycleTestDriver draftDriver;
+    @Autowired
     private com.specagent.node.NodeService nodeService;
     @Autowired
     private AgentRunService agentRunService;
@@ -129,7 +131,8 @@ class OpenCodeZenRouteIsolationSmokeTest {
 
         // Route R1: root -> A -> A2. The answer on A carries the sibling
         // sentinel that must never reach the fork route's model input.
-        Node root = orchestrator.draftNextQuestion(project.id()).producedNode();
+        var draftRun = draftDriver.draftQuestion(project.id());
+        Node root = nodeService.getNode(draftRun.producedNodeId()).orElseThrow();
         var rootRun = answerDriver.submitFreeText(project.id(), "Root answer: tracking workflow progress.");
         com.specagent.node.Node a = nodeService.getNode(rootRun.producedNodeId()).orElseThrow();
         var siblingRun = answerDriver.submitFreeText(project.id(), SIBLING_SENTINEL + " sibling branch preference");

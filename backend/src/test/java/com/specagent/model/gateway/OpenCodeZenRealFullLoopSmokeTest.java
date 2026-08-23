@@ -5,7 +5,6 @@ import com.specagent.agent.AgentRunService;
 import com.specagent.agent.AgentRunStatus;
 import com.specagent.agent.AgentTaskType;
 import com.specagent.agent.FakeAgentOrchestrator;
-import com.specagent.agent.FakeAgentRunResult;
 import com.specagent.agent.FakeAnswerRunResult;
 import com.specagent.agent.FakeSpecRunResult;
 import com.specagent.agent.contracts.ReflectionResult;
@@ -63,8 +62,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  * </pre>
  *
  * <p>The smoke drives the normal runtime public path end to end with the real
- * model: create project, {@link FakeAgentOrchestrator#draftNextQuestion}, answer
- * two nodes with deterministic domain-neutral answers,
+ * model: create project, a single DECISION question draft through the async
+ * decision runtime ({@link com.specagent.agent.DecisionCycleTestDriver#draftQuestion}),
+ * answer two nodes with deterministic domain-neutral answers,
  * two async ANSWER_CYCLE answer turns, and
  * {@link FakeAgentOrchestrator#generateSpec}. Every assertion targets runtime
  * structure, persistence, grounding and state transitions — never the model's
@@ -105,6 +105,8 @@ class OpenCodeZenRealFullLoopSmokeTest {
     private FakeAgentOrchestrator orchestrator;
     @Autowired
     private com.specagent.agent.AnswerCycleTestDriver answerDriver;
+    @Autowired
+    private com.specagent.agent.DecisionCycleTestDriver draftDriver;
     @Autowired
     private AgentRunService agentRunService;
     @Autowired
@@ -161,19 +163,19 @@ class OpenCodeZenRealFullLoopSmokeTest {
 
         Project project = projectService.createProject("Real full loop smoke project");
 
-        // 1. First real DRAFT_NODE creates a persisted root node.
-        FakeAgentRunResult first = orchestrator.draftNextQuestion(project.id());
-        assertRunCompleted(first.run());
-        Node firstNode = first.producedNode();
-        assertThat(nodeService.getNode(firstNode.id())).isPresent();
+        // 1. First single-DECISION draft creates a persisted root node.
+        AgentRun first = draftDriver.draftQuestion(project.id());
+        assertRunCompleted(first);
+        assertThat(first.producedNodeId()).isNotNull();
+        Node firstNode = nodeService.getNode(first.producedNodeId()).orElseThrow();
         assertThat(firstNode.question()).isNotBlank();
-        assertThat(firstNode.purpose()).isNotNull();
+        assertThat(firstNode.purpose()).isNotBlank();
         assertThat(firstNode.options()).allMatch(option -> option.id() != null);
         Route route = routeService.getRoute(project.activeRouteId()).orElseThrow();
         assertThat(route.lifecycleStatus()).isEqualTo(RouteLifecycleStatus.OPEN);
         assertThat(route.rootNodeId()).isEqualTo(firstNode.id());
         assertThat(route.tipNodeId()).isEqualTo(firstNode.id());
-        traceContains(first.run(), "model_called:DRAFT_NODE", "reflected:NODE", "persisted_node", "completed");
+        traceContains(first, "context_built", "executing", "completed");
         System.out.println("draft first question: PASS");
 
         // 2. Real answer flow: answer node 1, interpret, draft and persist

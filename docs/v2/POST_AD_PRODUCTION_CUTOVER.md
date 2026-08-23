@@ -24,7 +24,7 @@ State at branch point `0e5aa36` (verified against source, not delivery notes):
 
 | Product operation | Frontend entry (before) | Backend entry (before) | Reasoning path (before) | New Runtime equivalent | Cutover state |
 |---|---|---|---|---|---|
-| initial/draft question | `workspaceStore.draftQuestion()` → POST `/questions/next` (sync) | `AgentCommandController.draftNextQuestion` → `AgentCommandService.draftNext` | `AgentOrchestrator.draftNextQuestion` (`DRAFT_NODE`) | DECISION_CYCLE run → 1 DECISION → `REQUEST_USER_INPUT` executed by policy/executor | slice 2 |
+| initial/draft question | `workspaceStore.draftQuestion()` → POST `/questions/next` (sync) | `AgentCommandController.draftNextQuestion` → `AgentCommandService.draftNext` | `AgentOrchestrator.draftNextQuestion` (`DRAFT_NODE`) | DECISION_CYCLE run (`DRAFT_QUESTION`) → 1 DECISION → `REQUEST_USER_INPUT` executed by policy/executor | slice 2 ✅ |
 | submit answer | `workspaceStore.submitAnswer()` → POST `/answers` (sync) | `AgentCommandController.submitAnswer` → `AgentCommandService.submitAnswer` | `AgentOrchestrator.answerActiveNodeAndDraftNext` (`INTERPRET_ANSWER` + `DRAFT_ANSWER_PATCH` + `DRAFT_NODE`) | ANSWER_CYCLE run (`ANSWER_TIP`) via POST `/agent-runs` + polling | slice 1 |
 | repair answer | `workspaceStore.repairAnswerForActiveFlow()` → POST `/answers/{id}/repair` (sync) | `AgentCommandController.repairAnswer` → `AgentCommandService.repairAnswer` | `AgentOrchestrator.repairAnswerProcessingAndDraftNext` | ANSWER_CYCLE run (`RESUME_ANSWER`, persisted Answer replayed server-side) | slice 1 |
 | contextual node query | `askNodeAI()` → POST `/nodes/{id}/query` + poll | `NodeQueryRunController` | 1 DECISION via `NodeQueryService` (read-only) | existing | already |
@@ -85,7 +85,38 @@ drive `RunWorker` synchronously through `AnswerCycleTestDriver`.
 
 ### Slice 2 — Question / continuation
 
-(filled in when the slice lands)
+Before: the initial/continuation question was drafted synchronously through
+`POST /api/v1/projects/{id}/questions/next` → `AgentOrchestrator.draftNextQuestion`
+(the legacy 1-call DRAFT_NODE workflow with its own prompt, reflection gate, and
+projection task input).
+
+After:
+
+- migrated path: `POST /agent-runs` with
+  `operation=DRAFT_QUESTION` → `202` + `{runId}` → the worker executes a pure
+  continuation (`DecisionCycleService`): ONE DECISION call against the frozen
+  snapshot — never a mechanical STATE_UPDATE — then the shared fail-closed chain
+  (validator → policy → auto-execute / persist proposal + AWAITING_APPROVAL /
+  deny). An auto-executed `REQUEST_USER_INPUT` lands as an INTERACTION node via
+  the runtime: the route's root node on an empty route, a tip child afterwards.
+- policy extension: appending the bootstrap root node to a route without a tip
+  is classified as append-only (auto-executable), mirroring the existing
+  tip-child rule; a null anchor over a non-empty route stays fail-closed.
+- stale-target rejection mirrors the answer cycle: the run's recorded tip must
+  still be the active route's tip at execution time, and the run's route must
+  still be the active route.
+- frontend: `draftQuestion()` creates the run and polls it; FAILED/unknown
+  outcomes reconcile canonical reads before offering a retry keyed to the
+  pre-draft graph state. The fork flow keeps its durable-first sequencing:
+  fork persists (and activates) the route first, the draft runs after, and a
+  failed draft leaves the route in place with retry targeted at that route.
+- retired path: sync `draftNextQuestion` controller/service endpoints,
+  `AgentOrchestrator.draftNextQuestion`, `DraftQuestionResponse`,
+  `AgentRunResult`/`FakeAgentRunResult`, and the Stage-A record-proposal-only
+  decision cycle.
+- remaining legacy: `AgentTaskType.DRAFT_NODE`, its TaskPromptCatalog prompt,
+  and `NodeReflectionGate` stay until slice 3 retires `replaceQuestion`
+  (the last DRAFT_NODE consumer).
 
 ### Slice 3 — Artifact/spec + replacement
 
@@ -98,8 +129,8 @@ drive `RunWorker` synchronously through `AnswerCycleTestDriver`.
 | `POST /answers`, `POST /answers/{id}/repair` | removed | slice 1 |
 | `AgentCommandService.submitAnswer/repairAnswer` | removed | slice 1 |
 | `AgentOrchestrator.answerActiveNodeAndDraftNext` / `repairAnswerProcessingAndDraftNext` | removed | slice 1 |
-| `POST /questions/next`, `AgentOrchestrator.draftNextQuestion` | removed | slice 2 |
-| `TaskPromptCatalog` `DRAFT_NODE` prompt | removed | slice 2 |
+| `POST /questions/next`, `AgentOrchestrator.draftNextQuestion`, `DraftQuestionResponse`, `AgentRunResult`/`FakeAgentRunResult` | removed | slice 2 |
+| `TaskPromptCatalog` `DRAFT_NODE` prompt, `AgentTaskType.DRAFT_NODE`, `NodeReflectionGate` | removed (last consumer `replaceQuestion`) | slice 3 |
 | `POST /specs/generate`, `AgentOrchestrator.generateSpec`, `DRAFT_SPEC` prompt | removed | slice 3 |
 | authored-replacement compatibility branch (`replacementQuestion` DTO fields + `RouteService.regenerateFromNode`) | removed (no production caller; verified) | slice 3 |
 | `AgentOrchestrator.replaceQuestion` | removed | slice 3 |

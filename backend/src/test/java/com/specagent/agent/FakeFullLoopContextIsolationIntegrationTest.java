@@ -44,6 +44,8 @@ class FakeFullLoopContextIsolationIntegrationTest {
     @Autowired
     private FakeAgentOrchestrator fakeAgentOrchestrator;
     @Autowired
+    private DecisionCycleTestDriver draftDriver;
+    @Autowired
     private AnswerCycleTestDriver answerDriver;
     @Autowired
     private RouteService routeService;
@@ -60,8 +62,8 @@ class FakeFullLoopContextIsolationIntegrationTest {
     void fakeAnswerLoopContextExcludesSiblingRoutePatch() {
         Project project = projectService.createProject("Sibling isolation project");
         UUID originalRouteId = project.activeRouteId();
-        FakeAgentRunResult first = fakeAgentOrchestrator.draftNextQuestion(project.id());
-        UUID node1 = first.producedNode().id();
+        AgentRun firstDraft = draftDriver.draftQuestion(project.id());
+        UUID node1 = firstDraft.producedNodeId();
         var firstAnswer = answerDriver.submitFreeText(project.id(), "main route answer");
         assertThat(firstAnswer.run().status()).isEqualTo(AgentRunStatus.COMPLETED);
 
@@ -93,10 +95,10 @@ class FakeFullLoopContextIsolationIntegrationTest {
     @Test
     void fakeSpecContextExcludesSupersededRouteContent() {
         Project project = projectService.createProject("Superseded isolation project");
-        FakeAgentRunResult first = fakeAgentOrchestrator.draftNextQuestion(project.id());
-        FakeAgentRunResult second = fakeAgentOrchestrator.draftNextQuestion(project.id());
-        UUID node1 = first.producedNode().id();
-        UUID node2 = second.producedNode().id();
+        AgentRun first = draftDriver.draftQuestion(project.id());
+        AgentRun second = draftDriver.draftQuestion(project.id());
+        UUID node1 = first.producedNodeId();
+        UUID node2 = second.producedNodeId();
 
         // Answer node2, patch it, and extend with a next node.
         var answered = answerDriver.submitFreeText(project.id(), "clarified");
@@ -105,7 +107,7 @@ class FakeFullLoopContextIsolationIntegrationTest {
 
         // Regenerate node2: old route SUPERSEDED, replacement route active.
         RegenerateResult regenerated = routeService.regenerateFromNode(
-                project.id(), first.run().routeId(), node2, "make it clearer",
+                project.id(), first.routeId(), node2, "make it clearer",
                 "What is the clarified outcome?", "clarifies", List.of());
         UUID replacementRouteId = regenerated.replacementRoute().id();
         UUID replacementNodeId = regenerated.replacementNode().id();

@@ -44,13 +44,15 @@ class SpecGenerateApiIntegrationTest {
     private ObjectMapper objectMapper;
     @Autowired
     private AnswerCycleTestDriver answerDriver;
+    @Autowired
+    private com.specagent.agent.DecisionCycleTestDriver draftDriver;
 
     private Project projectWithAnsweredLineage() throws Exception {
         Project project = projectService.createProject("Spec generation project");
-        mockMvc.perform(post("/api/v1/projects/{projectId}/questions/next", project.id()))
-                .andExpect(status().isOk());
-        // The synchronous answer endpoint is retired; drive the async answer
-        // cycle through the production runtime path instead.
+        // Both the initial draft and the answer cycle go through the async
+        // runtime; the spec generation endpoint itself stays synchronous
+        // until the artifact cutover slice.
+        draftDriver.draftQuestion(project.id());
         answerDriver.submitFreeText(project.id(), "The clarified requirement");
         return project;
     }

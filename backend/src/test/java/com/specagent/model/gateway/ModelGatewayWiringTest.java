@@ -4,6 +4,7 @@ import com.specagent.agent.AgentAction;
 import com.specagent.agent.AgentRun;
 import com.specagent.agent.AgentRunService;
 import com.specagent.agent.AgentRunStatus;
+import com.specagent.agent.DecisionCycleTestDriver;
 import com.specagent.agent.FakeAgentOrchestrator;
 import com.specagent.testing.FakeModelAdapter;
 import com.specagent.agent.ModelContractException;
@@ -93,6 +94,8 @@ class ExplicitOpenCodeModelGatewayWiringTest {
     @Autowired
     private FakeAgentOrchestrator orchestrator;
     @Autowired
+    private DecisionCycleTestDriver draftDriver;
+    @Autowired
     private ProjectService projectService;
     @Autowired
     private AgentRunService agentRunService;
@@ -125,23 +128,32 @@ class ExplicitOpenCodeModelGatewayWiringTest {
     void orchestratorUsesOpenCodeGatewayWhenConfigured() {
         Project project = projectService.createProject("opencode wiring");
 
+        // The question draft runs on the async decision runtime (fake engine
+        // under the test profile) and never crosses the legacy ModelGateway;
+        // spec generation is the remaining production ModelGateway consumer.
+        AgentRun draft = draftDriver.draftQuestion(project.id());
+        assertThat(draft.status()).isEqualTo(AgentRunStatus.COMPLETED);
+
         // No credential is stored, so the real gateway fails fast with
-        // NOT_CONFIGURED; the point is that the default runtime path actually
-        // calls the OpenCode gateway, not the fake.
-        assertThatThrownBy(() -> orchestrator.draftNextQuestion(project.id()))
+        // NOT_CONFIGURED; the point is that the spec path actually calls the
+        // OpenCode gateway, not the fake.
+        assertThatThrownBy(() -> orchestrator.generateSpec(project.id()))
                 .isInstanceOf(OpenCodeModelException.class)
                 .hasMessageContaining("settings");
 
         verify(openCodeGateway).run(any(ModelRequest.class));
 
-        AgentRun run = agentRunService.listByProject(project.id()).get(0);
+        AgentRun run = agentRunService.listByProject(project.id()).stream()
+                .filter(r -> r.status() == AgentRunStatus.FAILED)
+                .findFirst()
+                .orElseThrow();
         assertThat(run.status()).isEqualTo(AgentRunStatus.FAILED);
     }
 
     @Test
     void runtimeRejectsUnexpectedRealGatewayAction() {
         // The real gateway path: the model proposes an action the runtime did
-        // not expect for DRAFT_NODE. The runtime must reject it, fail the run
+        // not expect for DRAFT_SPEC. The runtime must reject it, fail the run
         // and persist nothing derived from the proposal. doAnswer is used so
         // the spy's real method (which fails on the missing credential) is
         // never invoked while stubbing.
@@ -152,16 +164,22 @@ class ExplicitOpenCodeModelGatewayWiringTest {
                     Map.of("adapter", "opencode"));
         }).when(openCodeGateway).run(any(ModelRequest.class));
         Project project = projectService.createProject("unexpected action");
+        draftDriver.draftQuestion(project.id());
 
-        assertThatThrownBy(() -> orchestrator.draftNextQuestion(project.id()))
+        assertThatThrownBy(() -> orchestrator.generateSpec(project.id()))
                 .isInstanceOf(ModelContractException.class)
-                .hasMessageContaining("Expected ASK_NEXT_QUESTION");
+                .hasMessageContaining("Expected GENERATE_SPEC");
 
-        AgentRun run = agentRunService.listByProject(project.id()).get(0);
+        AgentRun run = agentRunService.listByProject(project.id()).stream()
+                .filter(r -> r.status() == AgentRunStatus.FAILED)
+                .findFirst()
+                .orElseThrow();
         assertThat(run.status()).isEqualTo(AgentRunStatus.FAILED);
-        assertThat(run.producedNodeId()).isNull();
+        assertThat(run.producedSpecSnapshotId()).isNull();
 
+        // The rejected proposal never mutated the route: the drafted root
+        // stays the tip and no replacement happened.
         Route route = routeService.getRoute(project.activeRouteId()).orElseThrow();
-        assertThat(route.tipNodeId()).isNull();
+        assertThat(route.tipNodeId()).isNotNull();
     }
 }

@@ -18,7 +18,8 @@
           "label": "Clarify the primary goal"
         }
       ],
-      "allowFreeAnswer": true
+      "allowFreeAnswer": true,
+      "purpose": "This clarifies the primary requirement goal."
     },
     "sourceRefs": []
   }

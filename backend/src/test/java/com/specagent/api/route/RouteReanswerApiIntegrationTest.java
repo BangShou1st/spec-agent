@@ -1,6 +1,5 @@
 package com.specagent.api.route;
 
-import com.specagent.agent.FakeAgentOrchestrator;
 import com.specagent.answer.AnswerRepository;
 import com.specagent.agent.FakeAnswerRunResult;
 import com.specagent.node.Node;
@@ -38,7 +37,7 @@ class RouteReanswerApiIntegrationTest {
     @Autowired
     private ProjectService projectService;
     @Autowired
-    private FakeAgentOrchestrator orchestrator;
+    private com.specagent.agent.DecisionCycleTestDriver draftDriver;
     @Autowired
     private com.specagent.agent.AnswerCycleTestDriver answerDriver;
     @Autowired
@@ -53,7 +52,7 @@ class RouteReanswerApiIntegrationTest {
     @Test
     void reanswerKeepsCanonicalQuestionAndFreezesOnlyParentPrefix() throws Exception {
         Project project = projectService.createProject("Re-answer project");
-        orchestrator.draftNextQuestion(project.id());
+        draftDriver.draftQuestion(project.id());
         answerDriver.submitFreeText(project.id(), "Root answer");
         var targetRun = answerDriver.submitFreeText(project.id(), "Original answer");
         // The run records the answered node as its input; re-answer that node.
@@ -90,7 +89,7 @@ class RouteReanswerApiIntegrationTest {
     @Test
     void reanswerRequiresExplicitSourceRoute() throws Exception {
         Project project = projectService.createProject("Re-answer validation");
-        orchestrator.draftNextQuestion(project.id());
+        draftDriver.draftQuestion(project.id());
         answerDriver.submitFreeText(project.id(), "Root answer");
         var targetRun = answerDriver.submitFreeText(project.id(), "Original answer");
         Node target = nodeRepository.findById(targetRun.run().inputNodeId()).orElseThrow();

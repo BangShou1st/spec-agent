@@ -1,8 +1,9 @@
 package com.specagent.api.agent;
 
+import com.specagent.agent.AgentRun;
 import com.specagent.agent.AgentRunService;
-import com.specagent.agent.FakeAgentOrchestrator;
 import com.specagent.agent.AgentRunTriggerType;
+import com.specagent.agent.DecisionCycleTestDriver;
 import com.specagent.common.Ids;
 import com.specagent.project.Project;
 import com.specagent.project.ProjectService;
@@ -24,9 +25,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * AgentRun read API integration tests. The fake orchestrator (default
- * {@code SPEC_AGENT_MODEL_GATEWAY=fake}) produces runs with zero public
- * provider requests; only safe metadata and sanitized trace steps are exposed.
+ * AgentRun read API integration tests. The question draft runs through the
+ * async decision runtime (deterministic fake engine under the test profile),
+ * so runs are produced with zero public provider requests; only safe metadata
+ * and sanitized trace steps are exposed.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -39,15 +41,15 @@ class AgentRunApiIntegrationTest {
     @Autowired
     private ProjectService projectService;
     @Autowired
-    private FakeAgentOrchestrator orchestrator;
+    private DecisionCycleTestDriver draftDriver;
     @Autowired
     private AgentRunService agentRunService;
 
     @Test
     void getRunExposesSafeTraceSteps() throws Exception {
         Project project = projectService.createProject("Run reading");
-        var result = orchestrator.draftNextQuestion(project.id());
-        UUID runId = result.run().id();
+        AgentRun result = draftDriver.draftQuestion(project.id());
+        UUID runId = result.id();
 
         MvcResult mvcResult = mockMvc.perform(get("/api/v1/projects/{projectId}/runs/{runId}",
                         project.id(), runId))
@@ -55,13 +57,11 @@ class AgentRunApiIntegrationTest {
                 .andExpect(jsonPath("$.id").value(runId.toString()))
                 .andExpect(jsonPath("$.projectId").value(project.id().toString()))
                 .andExpect(jsonPath("$.routeId").value(project.activeRouteId().toString()))
-                .andExpect(jsonPath("$.triggerType").value(AgentRunTriggerType.INITIAL_REQUIREMENT.code()))
+                .andExpect(jsonPath("$.triggerType").value(AgentRunTriggerType.DECISION_CYCLE.code()))
                 .andExpect(jsonPath("$.status").value("completed"))
-                .andExpect(jsonPath("$.traceSteps", hasSize(6)))
-                .andExpect(jsonPath("$.traceSteps[0]").value("created"))
-                .andExpect(jsonPath("$.traceSteps[1]").value("context_built"))
-                .andExpect(jsonPath("$.traceSteps[2]").value("model_called:DRAFT_NODE"))
-                .andExpect(jsonPath("$.traceSteps[5]").value("completed"))
+                .andExpect(jsonPath("$.traceSteps", hasSize(1)))
+                .andExpect(jsonPath("$.traceSteps[0]")
+                        .value("created>context_built>executing>completed"))
                 .andExpect(jsonPath("$.producedNodeId").exists())
                 .andReturn();
 
@@ -77,7 +77,7 @@ class AgentRunApiIntegrationTest {
     @Test
     void listRunsForProject() throws Exception {
         Project project = projectService.createProject("Run listing");
-        orchestrator.draftNextQuestion(project.id());
+        draftDriver.draftQuestion(project.id());
 
         mockMvc.perform(get("/api/v1/projects/{projectId}/runs", project.id()))
                 .andExpect(status().isOk())
@@ -98,7 +98,7 @@ class AgentRunApiIntegrationTest {
     @Test
     void runFromAnotherProjectCannotBeReadThroughWrongProject() throws Exception {
         Project projectA = projectService.createProject("Owner project");
-        orchestrator.draftNextQuestion(projectA.id());
+        draftDriver.draftQuestion(projectA.id());
         UUID runId = agentRunService.listByProject(projectA.id()).get(0).id();
 
         Project projectB = projectService.createProject("Unrelated project");

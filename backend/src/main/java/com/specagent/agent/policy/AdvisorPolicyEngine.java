@@ -230,23 +230,24 @@ public class AdvisorPolicyEngine {
     }
 
     /**
-     * An append-only continuation is a mutation that adds a new child node
-     * to the current route tip without changing any existing confirmed intent.
-     * The anchor must be the current route tip and the action must be a
-     * forward-adding family.
+     * An append-only continuation is a mutation that only appends to the
+     * route: either a new child node at the current route tip (anchor equals
+     * tip) or the bootstrap root node on a route that has no tip yet (both
+     * null). Anything that would touch existing confirmed intent is not
+     * append-only. A null anchor over a non-empty route is never append-only
+     * (fail-closed).
      */
     private boolean isAppendOnlyContinuation(ActionProposal proposal,
                                              ActionExecutionContext context) {
-        if (context.anchorNodeId() == null) {
-            return false;
-        }
         Route route = routeRepository.findById(context.routeId()).orElse(null);
         if (route == null) {
             return false;
         }
         UUID tipNodeId = route.tipNodeId();
         if (tipNodeId == null) {
-            return false;
+            // Route bootstrap: appending the first root node adds lineage
+            // without changing any existing intent.
+            return context.anchorNodeId() == null;
         }
         return tipNodeId.equals(context.anchorNodeId());
     }

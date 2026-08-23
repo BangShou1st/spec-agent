@@ -9,7 +9,7 @@
  */
 import { apiClient } from './client'
 
-export type AgentRunOperation = 'ANSWER_TIP' | 'RESUME_ANSWER'
+export type AgentRunOperation = 'ANSWER_TIP' | 'RESUME_ANSWER' | 'DRAFT_QUESTION'
 
 /** Coarse lifecycle statuses returned by GET /agent-runs/{runId}. */
 export type AgentRunStatus =

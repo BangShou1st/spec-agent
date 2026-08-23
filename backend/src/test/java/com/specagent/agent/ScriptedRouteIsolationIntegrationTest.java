@@ -54,7 +54,7 @@ class ScriptedRouteIsolationIntegrationTest {
     @Autowired
     private NodeService nodeService;
     @Autowired
-    private FakeAgentOrchestrator orchestrator;
+    private DecisionCycleTestDriver draftDriver;
     @Autowired
     private AnswerCycleTestDriver answerDriver;
     @Autowired
@@ -114,7 +114,8 @@ class ScriptedRouteIsolationIntegrationTest {
 
         // Route R1: root -> A -> A2. The answer on A carries the sentinel that
         // must never reach the fork route's model input.
-        Node root = orchestrator.draftNextQuestion(project.id()).producedNode();
+        var draftRun = draftDriver.draftQuestion(project.id());
+        Node root = nodeService.getNode(draftRun.producedNodeId()).orElseThrow();
         var rootRun = answerDriver.submitFreeText(project.id(), "First answer on R1 root");
         Node a = nodeService.getNode(rootRun.producedNodeId()).orElseThrow();
         var siblingRun = answerDriver.submitFreeText(project.id(),
@@ -178,7 +179,8 @@ class ScriptedRouteIsolationIntegrationTest {
 
         // Route: root answered, then A answered (its answer and patch carry the
         // sentinel), which also produced A's child node.
-        Node root = orchestrator.draftNextQuestion(project.id()).producedNode();
+        var draftRun = draftDriver.draftQuestion(project.id());
+        Node root = nodeService.getNode(draftRun.producedNodeId()).orElseThrow();
         answerDriver.submitFreeText(project.id(), "Root answer stays");
         var targetRun = answerDriver.submitFreeText(project.id(),
                 OLD_ANSWER_SENTINEL + " the replaced answer");
@@ -212,7 +214,8 @@ class ScriptedRouteIsolationIntegrationTest {
     void archivedSiblingRouteStaysExcludedFromActiveEnvelopes() {
         Project project = projectService.createProject("Archived route exclusion");
 
-        Node root = orchestrator.draftNextQuestion(project.id()).producedNode();
+        var draftRun = draftDriver.draftQuestion(project.id());
+        Node root = nodeService.getNode(draftRun.producedNodeId()).orElseThrow();
         var r1Run = answerDriver.submitFreeText(project.id(), "R1 archived content");
         Node a = nodeService.getNode(r1Run.producedNodeId()).orElseThrow();
         UUID r1RouteId = r1Run.run().routeId();

@@ -20,10 +20,14 @@ vi.mock('@/api/projects', () => ({
 }))
 
 vi.mock('@/api/workspace', () => ({
-  draftNextQuestion: vi.fn(),
   getActiveState: vi.fn(),
   listRoutes: vi.fn(),
-  submitAnswer: vi.fn(),
+}))
+
+vi.mock('@/api/agentRuns', async () => ({
+  ...(await vi.importActual<typeof import('@/api/agentRuns')>('@/api/agentRuns')),
+  createAgentRun: vi.fn(),
+  getAgentRun: vi.fn(),
 }))
 
 vi.mock('@/api/requirementState', () => ({
@@ -52,6 +56,7 @@ vi.mock('@/api/spec', () => ({
 
 import { getProject } from '@/api/projects'
 import { getActiveState, listRoutes } from '@/api/workspace'
+import { createAgentRun, getAgentRun } from '@/api/agentRuns'
 import { getRequirementState } from '@/api/requirementState'
 import { getProjectGraph } from '@/api/graph'
 import {
@@ -69,6 +74,8 @@ const mockedGetActiveState = vi.mocked(getActiveState)
 const mockedListRoutes = vi.mocked(listRoutes)
 const mockedGetRequirementState = vi.mocked(getRequirementState)
 const mockedGetProjectGraph = vi.mocked(getProjectGraph)
+const mockedCreateAgentRun = vi.mocked(createAgentRun)
+const mockedGetAgentRun = vi.mocked(getAgentRun)
 const mockedApiActivateRoute = vi.mocked(apiActivateRoute)
 const mockedApiRestoreRoute = vi.mocked(apiRestoreRoute)
 const mockedApiArchiveRoute = vi.mocked(apiArchiveRoute)
@@ -213,6 +220,25 @@ describe('workspaceStore route workspace', () => {
   })
 
   it('fork success refreshes canonical reads and never guesses the new route id', async () => {
+    // The fork's first-child draft goes through the async run surface; a
+    // completed DRAFT_QUESTION run keeps the fork flow successful.
+    mockedCreateAgentRun.mockResolvedValue({
+      runId: 'run-draft',
+      operation: 'DRAFT_QUESTION',
+      phase: 'CREATED',
+    })
+    mockedGetAgentRun.mockResolvedValue({
+      runId: 'run-draft',
+      projectId: 'p1',
+      routeId: 'route-fork',
+      operation: 'DRAFT_QUESTION',
+      status: 'completed',
+      phase: 'COMPLETED',
+      producedNodeId: 'n-draft',
+      producedAnswerId: null,
+      producedPatchId: null,
+      producedSpecSnapshotId: null,
+    })
     const active = makeActiveState()
     const forkActive = makeActiveState({
       project: { ...active.project, id: 'p1' },

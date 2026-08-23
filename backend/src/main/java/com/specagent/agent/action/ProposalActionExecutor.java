@@ -96,17 +96,17 @@ public class ProposalActionExecutor implements ActionExecutor {
         boolean allowFreeAnswer = payload.get("allowFreeAnswer") instanceof Boolean b && b;
         List<NodeOption> options = parseOptions(payload.get("options"));
 
-        UUID parentNodeId = context.anchorNodeId();
-        if (parentNodeId == null) {
-            Route route = routeRepository.findById(context.routeId())
-                    .orElseThrow(() -> new IllegalStateException(
-                            "Route not found: " + context.routeId()));
-            parentNodeId = route.tipNodeId();
-        }
+        // Null parent means the route is empty: the question becomes the
+        // route's root node.
+        UUID parentNodeId = resolveParentNodeId(context);
 
-        Node node = nodeService.createChildNode(
-                context.projectId(), context.routeId(), parentNodeId,
-                questionText, purpose, options, allowFreeAnswer);
+        Node node = parentNodeId == null
+                ? nodeService.createRootNode(
+                        context.projectId(), context.routeId(),
+                        questionText, purpose, options, allowFreeAnswer)
+                : nodeService.createChildNode(
+                        context.projectId(), context.routeId(), parentNodeId,
+                        questionText, purpose, options, allowFreeAnswer);
 
         return new ActionResult("REQUEST_USER_INPUT", node.id(), null, null);
     }
@@ -117,13 +117,7 @@ public class ProposalActionExecutor implements ActionExecutor {
         Map<String, Object> payload = proposal.payload();
         String kind = payload.get("kind") instanceof String s ? s : "INTERACTION";
 
-        UUID parentNodeId = context.anchorNodeId();
-        if (parentNodeId == null) {
-            Route route = routeRepository.findById(context.routeId())
-                    .orElseThrow(() -> new IllegalStateException(
-                            "Route not found: " + context.routeId()));
-            parentNodeId = route.tipNodeId();
-        }
+        UUID parentNodeId = resolveParentNodeId(context);
 
         if (!"INTERACTION".equals(kind)) {
             // Generic workspace unit: payload lives in content; the runtime
@@ -147,11 +141,29 @@ public class ProposalActionExecutor implements ActionExecutor {
         boolean allowFreeAnswer = payload.get("allowFreeAnswer") instanceof Boolean b && b;
         List<NodeOption> options = parseOptions(payload.get("options"));
 
-        Node node = nodeService.createChildNode(
-                context.projectId(), context.routeId(), parentNodeId,
-                questionText, purpose, options, allowFreeAnswer);
+        Node node = parentNodeId == null
+                ? nodeService.createRootNode(
+                        context.projectId(), context.routeId(),
+                        questionText, purpose, options, allowFreeAnswer)
+                : nodeService.createChildNode(
+                        context.projectId(), context.routeId(), parentNodeId,
+                        questionText, purpose, options, allowFreeAnswer);
 
         return new ActionResult("CREATE_NODE", node.id(), null, null);
+    }
+
+    /**
+     * Resolves the parent for an anchored-append action: the explicit anchor
+     * when present, else the route tip. A null result means the route is
+     * empty and the action appends the route's root node.
+     */
+    private UUID resolveParentNodeId(ActionExecutionContext context) {
+        if (context.anchorNodeId() != null) {
+            return context.anchorNodeId();
+        }
+        return routeRepository.findById(context.routeId())
+                .map(Route::tipNodeId)
+                .orElse(null);
     }
 
     private ActionResult executeRespondToUser(ActionProposal proposal) {

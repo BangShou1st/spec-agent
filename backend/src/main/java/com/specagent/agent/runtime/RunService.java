@@ -45,8 +45,10 @@ public class RunService {
 
     /**
      * Enqueues one decision-cycle run against the project's active route.
+     * Stage-A callers queued a bare decision cycle; the production operation
+     * is now the explicit question draft ({@code DRAFT_QUESTION}).
      */
-    public AgentRun createQueuedRun(UUID projectId) {
+    public AgentRun createQueuedDraftQuestion(UUID projectId) {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new IllegalArgumentException("Project not found: " + projectId));
         if (project.activeRouteId() == null) {
@@ -58,9 +60,10 @@ public class RunService {
 
         AgentRun run = agentRunService.create(
                 projectId, route.id(), AgentRunTriggerType.DECISION_CYCLE,
-                route.tipNodeId(), null);
+                route.tipNodeId(), null, "DRAFT_QUESTION");
         eventService.append(run.id(), AgentRunPhase.CREATED, "RUN_CREATED", Map.of(
                 "triggerType", AgentRunTriggerType.DECISION_CYCLE.code(),
+                "operation", "DRAFT_QUESTION",
                 "routeId", route.id().toString()));
         return run;
     }
@@ -156,6 +159,15 @@ public class RunService {
     /** Atomically claims the next queued run, if any. */
     public Optional<AgentRun> claimNext() {
         return agentRunRepository.claimNextDecisionCycleRun();
+    }
+
+    /**
+     * Atomically claims one specific queued decision-cycle run by id. Used by
+     * the deterministic test driver so a fixture always executes the run it
+     * enqueued, never an unrelated queued row.
+     */
+    public Optional<AgentRun> claimDecisionCycleRun(UUID runId) {
+        return agentRunRepository.claimDecisionCycleRun(runId);
     }
 
     /**

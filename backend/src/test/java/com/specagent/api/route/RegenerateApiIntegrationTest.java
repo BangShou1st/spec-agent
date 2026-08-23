@@ -1,7 +1,7 @@
 package com.specagent.api.route;
 
 import com.specagent.agent.AgentRunService;
-import com.specagent.agent.FakeAgentOrchestrator;
+import com.specagent.agent.DecisionCycleTestDriver;
 import com.specagent.answer.AnswerService;
 import com.specagent.agent.FakeAnswerRunResult;
 import com.specagent.agent.ModelRequest;
@@ -66,7 +66,7 @@ class RegenerateApiIntegrationTest {
     @Autowired
     private NodeService nodeService;
     @Autowired
-    private FakeAgentOrchestrator orchestrator;
+    private DecisionCycleTestDriver draftDriver;
     @Autowired
     private com.specagent.agent.AnswerCycleTestDriver answerDriver;
     @Autowired
@@ -95,7 +95,8 @@ class RegenerateApiIntegrationTest {
 
     private RegenerateSetup buildLineageWithAnsweredTarget() {
         Project project = projectService.createProject("Regenerate project");
-        Node root = orchestrator.draftNextQuestion(project.id()).producedNode();
+        var draftRun = draftDriver.draftQuestion(project.id());
+        Node root = nodeService.getNode(draftRun.producedNodeId()).orElseThrow();
         answerDriver.submitFreeText(project.id(), "Root answer stays");
         var targetRun = answerDriver.submitFreeText(project.id(), OLD_ANSWER_SENTINEL + " the replaced answer");
         Node target = nodeService.getNode(targetRun.run().inputNodeId()).orElseThrow();
@@ -187,7 +188,8 @@ class RegenerateApiIntegrationTest {
     void regenerateNodeFromAnotherProjectRejected() throws Exception {
         Project projectA = projectService.createProject("Regenerate owner A");
         Project projectB = projectService.createProject("Regenerate owner B");
-        Node nodeA = orchestrator.draftNextQuestion(projectA.id()).producedNode();
+        var draftRun = draftDriver.draftQuestion(projectA.id());
+        Node nodeA = nodeService.getNode(draftRun.producedNodeId()).orElseThrow();
 
         mockMvc.perform(post("/api/v1/projects/{projectId}/nodes/{nodeId}/regenerate",
                         projectB.id(), nodeA.id())
@@ -202,7 +204,8 @@ class RegenerateApiIntegrationTest {
     @Test
     void regenerateRootNodeRemainsUnsupported() throws Exception {
         Project project = projectService.createProject("Regenerate root project");
-        Node root = orchestrator.draftNextQuestion(project.id()).producedNode();
+        var draftRun = draftDriver.draftQuestion(project.id());
+        Node root = nodeService.getNode(draftRun.producedNodeId()).orElseThrow();
         assertThat(root.isRoot()).isTrue();
 
         mockMvc.perform(post("/api/v1/projects/{projectId}/nodes/{nodeId}/regenerate",
@@ -218,7 +221,8 @@ class RegenerateApiIntegrationTest {
     @Test
     void regenerateWithoutOpenSourceRouteRejected() throws Exception {
         Project project = projectService.createProject("Regenerate no open route");
-        Node root = orchestrator.draftNextQuestion(project.id()).producedNode();
+        var draftRun = draftDriver.draftQuestion(project.id());
+        Node root = nodeService.getNode(draftRun.producedNodeId()).orElseThrow();
         // Answer the root; the child A produced by the run lives on route R1.
         var targetRun = answerDriver.submitFreeText(project.id(), "Branch content");
         Node target = nodeService.getNode(targetRun.producedNodeId()).orElseThrow();
@@ -243,7 +247,7 @@ class RegenerateApiIntegrationTest {
     @Test
     void regenerateBlankReplacementQuestionRejected() throws Exception {
         Project project = projectService.createProject("Regenerate blank question");
-        orchestrator.draftNextQuestion(project.id());
+        draftDriver.draftQuestion(project.id());
         answerDriver.submitFreeText(project.id(), "content");
         Node target = nodeService.getNode(routeService.getRoute(project.activeRouteId())
                 .orElseThrow().tipNodeId()).orElseThrow();
@@ -263,7 +267,7 @@ class RegenerateApiIntegrationTest {
     @Test
     void regenerateBlankReplacementOptionLabelRejected() throws Exception {
         Project project = projectService.createProject("Regenerate blank option");
-        orchestrator.draftNextQuestion(project.id());
+        draftDriver.draftQuestion(project.id());
         answerDriver.submitFreeText(project.id(), "content");
         Node target = nodeService.getNode(routeService.getRoute(project.activeRouteId())
                 .orElseThrow().tipNodeId()).orElseThrow();
@@ -288,7 +292,7 @@ class RegenerateApiIntegrationTest {
     @Test
     void regenerateOversizedReplacementOptionLabelRejected() throws Exception {
         Project project = projectService.createProject("Regenerate oversized label");
-        orchestrator.draftNextQuestion(project.id());
+        draftDriver.draftQuestion(project.id());
         answerDriver.submitFreeText(project.id(), "content");
         Node target = nodeService.getNode(routeService.getRoute(project.activeRouteId())
                 .orElseThrow().tipNodeId()).orElseThrow();
@@ -317,7 +321,7 @@ class RegenerateApiIntegrationTest {
     @Test
     void regenerateOversizedReplacementOptionImpactRejected() throws Exception {
         Project project = projectService.createProject("Regenerate oversized impact");
-        orchestrator.draftNextQuestion(project.id());
+        draftDriver.draftQuestion(project.id());
         answerDriver.submitFreeText(project.id(), "content");
         Node target = nodeService.getNode(routeService.getRoute(project.activeRouteId())
                 .orElseThrow().tipNodeId()).orElseThrow();

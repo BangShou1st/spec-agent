@@ -1,5 +1,7 @@
 package com.specagent.api.agent;
 
+import com.specagent.agent.AgentRunService;
+import com.specagent.agent.AgentRunStatus;
 import com.specagent.node.Node;
 import com.specagent.node.NodeService;
 import com.specagent.project.Project;
@@ -8,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -17,18 +20,17 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Draft-next-question legacy command integration tests (default fake gateway,
- * zero public provider calls).
- *
- * <p>Answer/repair command tests moved to {@link AnswerCycleRunApiIntegrationTest}
- * when the answer flow cut over to the async AgentRun surface; the input-policy
- * scenarios (option ownership, free-text permission) are enforced by
- * {@code AnswerCycleService} and covered there at execution time.
+ * Question-draft cutover integration tests: the real
+ * {@code POST /api/v1/projects/{id}/agent-runs} endpoint returns 202 + runId
+ * for {@code DRAFT_QUESTION}, the background worker executes the single-
+ * DECISION cycle, and the produced question node lands on the active route
+ * (root node on an empty route, tip child afterwards).
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -42,33 +44,56 @@ class AgentCommandApiIntegrationTest {
     private ProjectService projectService;
     @Autowired
     private NodeService nodeService;
+    @Autowired
+    private AgentRunService agentRunService;
+    @Autowired
+    private com.specagent.agent.runtime.RunWorker worker;
+    @Autowired
+    private com.specagent.agent.runtime.RunService runService;
 
     private static final String FAKE_QUESTION = "What is the most important outcome?";
 
     @Test
-    void draftNextQuestionCreatesRootNodeAndRun() throws Exception {
+    void draftQuestionRunCreatesRootNodeAndRun() throws Exception {
         Project project = projectService.createProject("Draft project");
 
-        mockMvc.perform(post("/api/v1/projects/{projectId}/questions/next", project.id()))
+        String runId = enqueueDraft(project);
+
+        // The HTTP command returned before any model work happened: the run
+        // is still queued at this point.
+        assertThat(agentRunService.getRun(UUID.fromString(runId)).orElseThrow().status())
+                .isEqualTo(AgentRunStatus.CREATED);
+
+        var claimed = runService.claimNext().orElseThrow();
+        worker.executeRun(claimed);
+
+        UUID producedNodeId = agentRunService.getRun(UUID.fromString(runId)).orElseThrow()
+                .producedNodeId();
+        Node produced = nodeService.getNode(producedNodeId).orElseThrow();
+        assertThat(produced.projectId()).isEqualTo(project.id());
+        assertThat(produced.parentNodeId()).isNull();
+        assertThat(produced.question()).isEqualTo(FAKE_QUESTION);
+
+        mockMvc.perform(get("/api/v1/projects/{projectId}/agent-runs/{runId}",
+                        project.id(), runId))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.agentRun.id").exists())
-                .andExpect(jsonPath("$.agentRun.status").value("completed"))
-                .andExpect(jsonPath("$.agentRun.producedNodeId").exists())
-                .andExpect(jsonPath("$.producedNode.id").exists())
-                .andExpect(jsonPath("$.producedNode.projectId").value(project.id().toString()))
-                .andExpect(jsonPath("$.producedNode.parentNodeId").isEmpty())
-                .andExpect(jsonPath("$.producedNode.question").value(FAKE_QUESTION));
+                .andExpect(jsonPath("$.status").value("completed"))
+                .andExpect(jsonPath("$.operation").value("DRAFT_QUESTION"))
+                .andExpect(jsonPath("$.producedNodeId").value(producedNodeId.toString()));
     }
 
     @Test
-    void draftNextQuestionResponseExposesNoRawModelMaterial() throws Exception {
+    void draftQuestionRunResponseExposesNoRawModelMaterial() throws Exception {
         Project project = projectService.createProject("Draft safety");
 
-        MvcResult result = mockMvc.perform(post("/api/v1/projects/{projectId}/questions/next", project.id()))
-                .andExpect(status().isOk())
+        MvcResult created = mockMvc.perform(
+                        post("/api/v1/projects/{projectId}/agent-runs", project.id())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"operation\": \"DRAFT_QUESTION\"}"))
+                .andExpect(status().isAccepted())
                 .andReturn();
 
-        String body = result.getResponse().getContentAsString();
+        String body = created.getResponse().getContentAsString();
         assertThat(body)
                 .doesNotContain("inputJson")
                 .doesNotContain("outputJson")
@@ -78,13 +103,37 @@ class AgentCommandApiIntegrationTest {
     }
 
     @Test
-    void draftNextQuestionCreatesChildWhenTipExists() throws Exception {
+    void draftQuestionRunCreatesChildWhenTipExists() throws Exception {
         Project project = projectService.createProject("Draft child project");
         Node root = nodeService.createRootNode(project.id(), project.activeRouteId(),
                 "Root question", null, List.of(), true);
 
-        mockMvc.perform(post("/api/v1/projects/{projectId}/questions/next", project.id()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.producedNode.parentNodeId").value(root.id().toString()));
+        String runId = enqueueDraft(project);
+        var claimed = runService.claimNext().orElseThrow();
+        worker.executeRun(claimed);
+
+        UUID producedNodeId = agentRunService.getRun(UUID.fromString(runId)).orElseThrow()
+                .producedNodeId();
+        Node produced = nodeService.getNode(producedNodeId).orElseThrow();
+        assertThat(produced.parentNodeId()).isEqualTo(root.id());
+    }
+
+    private String enqueueDraft(Project project) throws Exception {
+        MvcResult created = mockMvc.perform(
+                        post("/api/v1/projects/{projectId}/agent-runs", project.id())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"operation\": \"DRAFT_QUESTION\"}"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.runId").exists())
+                .andExpect(jsonPath("$.operation").value("DRAFT_QUESTION"))
+                .andExpect(jsonPath("$.phase").value("CREATED"))
+                .andReturn();
+        return extractString(created.getResponse().getContentAsString(), "runId");
+    }
+
+    private String extractString(String body, String field) throws Exception {
+        com.fasterxml.jackson.databind.JsonNode node =
+                new com.fasterxml.jackson.databind.ObjectMapper().readTree(body).get(field);
+        return node.asText();
     }
 }
