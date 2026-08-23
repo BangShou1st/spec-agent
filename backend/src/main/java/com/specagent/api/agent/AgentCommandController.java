@@ -10,12 +10,12 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.UUID;
 
 /**
- * Agent execution command API.
+ * Legacy agent command API.
  *
- * <p>Every command goes through {@link AgentCommandService} and the existing
- * orchestrator; the controller never calls the model gateway, never builds a
- * {@code ContextSnapshot}, and never persists runtime records. Execution stays
- * synchronous in Phase 6.2.
+ * <p>After the answer cutover only the flows that have not migrated to the
+ * async Agent Runtime remain here (draft question, spec generation). Answer
+ * and repair mutations go through {@code AnswerCycleRunController}
+ * ({@code POST /agent-runs}, 202 + runId + polling).
  */
 @RestController
 @RequestMapping("/api/v1/projects/{projectId}")
@@ -30,18 +30,6 @@ public class AgentCommandController {
     @PostMapping("/questions/next")
     public DraftQuestionResponse draftNextQuestion(@PathVariable UUID projectId) {
         return agentCommandService.draftNext(projectId);
-    }
-
-    @PostMapping("/answers")
-    public AnswerExecutionResponse submitAnswer(@PathVariable UUID projectId,
-                                                @Valid @RequestBody SubmitAnswerRequest request) {
-        return agentCommandService.submitAnswer(projectId, request);
-    }
-
-    @PostMapping("/answers/{answerId}/repair")
-    public AnswerExecutionResponse repairAnswer(@PathVariable UUID projectId,
-                                                @PathVariable UUID answerId) {
-        return agentCommandService.repairAnswer(projectId, answerId);
     }
 
     @PostMapping("/specs/generate")

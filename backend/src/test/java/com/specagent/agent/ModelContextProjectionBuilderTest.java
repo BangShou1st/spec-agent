@@ -3,6 +3,7 @@ package com.specagent.agent;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.specagent.agent.contracts.AnswerInterpretationResult;
+import com.specagent.agent.AnswerCycleTestDriver;
 import com.specagent.answer.Answer;
 import com.specagent.answer.AnswerService;
 import com.specagent.context.ContextSnapshot;
@@ -50,6 +51,8 @@ class ModelContextProjectionBuilderTest {
     @Autowired
     private FakeAgentOrchestrator fakeAgentOrchestrator;
     @Autowired
+    private AnswerCycleTestDriver answerDriver;
+    @Autowired
     private RouteService routeService;
     @Autowired
     private NodeService nodeService;
@@ -59,6 +62,8 @@ class ModelContextProjectionBuilderTest {
     private AnswerPatchService answerPatchService;
     @Autowired
     private ModelContextProjectionBuilder projectionBuilder;
+    @Autowired
+    private com.specagent.context.ContextBuilder contextBuilder;
 
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -98,14 +103,13 @@ class ModelContextProjectionBuilderTest {
     void answeredLineageCarriesAnswerPatchesAndRequirementStateWithoutClaimIds() throws Exception {
         Project project = projectService.createProject("Answered projection project");
         fakeAgentOrchestrator.draftNextQuestion(project.id());
-        FakeAnswerRunResult answered = fakeAgentOrchestrator.answerActiveNodeAndDraftNext(
-                project.id(), "the clarified requirement");
+        var answered = answerDriver.submitFreeText(project.id(), "the clarified requirement");
         // The next draft run's snapshot freezes the lineage that now includes
         // the first answer and its patch.
         FakeAgentRunResult nextDraft = fakeAgentOrchestrator.draftNextQuestion(project.id());
         ContextSnapshot snapshot = nextDraft.contextSnapshot();
-        Answer answer = answered.answer();
-        AnswerPatch patch = answered.patch();
+        Answer answer = answerService.getAnswer(answered.answerId()).orElseThrow();
+        AnswerPatch patch = answerPatchService.getPatch(answered.patchId()).orElseThrow();
 
         JsonNode context = mapper.readTree(projectionBuilder.buildInputJson(snapshot, Map.of()))
                 .get("context");
@@ -143,10 +147,9 @@ class ModelContextProjectionBuilderTest {
     void taskInputCarriesExplicitRunLocalData() {
         Project project = projectService.createProject("Task input project");
         fakeAgentOrchestrator.draftNextQuestion(project.id());
-        FakeAnswerRunResult answered = fakeAgentOrchestrator.answerActiveNodeAndDraftNext(
-                project.id(), "free text answer");
-        Answer answer = answered.answer();
-        AnswerPatch patch = answered.patch();
+        var answered = answerDriver.submitFreeText(project.id(), "free text answer");
+        Answer answer = answerService.getAnswer(answered.answerId()).orElseThrow();
+        AnswerPatch patch = answerPatchService.getPatch(answered.patchId()).orElseThrow();
 
         Map<String, Object> answerInput = projectionBuilder.answerTaskInput(answer);
         assertThat(answerInput).containsKeys("answer");
@@ -203,14 +206,12 @@ class ModelContextProjectionBuilderTest {
     void regenerateProjectionKeepsParentLineageAndForbidsOldContent() throws Exception {
         Project project = projectService.createProject("Regenerate projection project");
         fakeAgentOrchestrator.draftNextQuestion(project.id());
-        FakeAnswerRunResult firstAnswer = fakeAgentOrchestrator.answerActiveNodeAndDraftNext(
-                project.id(), "first requirement");
-        UUID node1 = firstAnswer.answer().nodeId();
-        FakeAnswerRunResult secondAnswer = fakeAgentOrchestrator.answerActiveNodeAndDraftNext(
-                project.id(), REGENERATE_SECRET_ANSWER);
-        UUID node2 = secondAnswer.answer().nodeId();
-        UUID oldAnswerId = secondAnswer.answer().id();
-        UUID oldPatchId = secondAnswer.patch().id();
+        var firstAnswer = answerDriver.submitFreeText(project.id(), "first requirement");
+        UUID node1 = answerService.getAnswer(firstAnswer.answerId()).orElseThrow().nodeId();
+        var secondAnswer = answerDriver.submitFreeText(project.id(), REGENERATE_SECRET_ANSWER);
+        UUID node2 = answerService.getAnswer(secondAnswer.answerId()).orElseThrow().nodeId();
+        UUID oldAnswerId = secondAnswer.answerId();
+        UUID oldPatchId = secondAnswer.patchId();
 
         // Regenerate node2: node2's own answer/patch and the child subtree
         // below it must vanish from the projection; only the parent lineage
@@ -240,6 +241,10 @@ class ModelContextProjectionBuilderTest {
         assertThat(context.get("lineage")).hasSize(1);
         assertThat(context.get("lineage").get(0).get("node").get("id").asText())
                 .isEqualTo(node1.toString());
+        // The surviving parent is the legacy-drafted root: its purpose keeps
+        // round-tripping through the lineage projection.
+        assertThat(context.get("lineage").get(0).get("node").get("purpose").asText())
+                .isEqualTo(node1Purpose());
         assertThat(context.get("allowedSourceRefs"))
                 .extracting(node -> node.asText())
                 .doesNotContain("node:" + node2, "answer:" + oldAnswerId, "patch:" + oldPatchId);
@@ -249,10 +254,12 @@ class ModelContextProjectionBuilderTest {
     void projectionNeverContainsRuntimeMetadata() throws Exception {
         Project project = projectService.createProject("Metadata-free projection project");
         fakeAgentOrchestrator.draftNextQuestion(project.id());
-        FakeAnswerRunResult answered = fakeAgentOrchestrator.answerActiveNodeAndDraftNext(
-                project.id(), "answer text");
+        var answered = answerDriver.submitFreeText(project.id(), "answer text");
 
-        String inputJson = projectionBuilder.buildInputJson(answered.contextSnapshot(), Map.of());
+        // A fresh snapshot from the active route covers the answered lineage.
+        ContextSnapshot snapshot = contextBuilder.buildFromActiveRoute(
+                project.id(), answered.run().id(), com.specagent.context.ContextOperationType.NORMAL);
+        String inputJson = projectionBuilder.buildInputJson(snapshot, Map.of());
 
         assertThat(inputJson).doesNotContain("createdByUser");
         assertThat(inputJson).doesNotContain("createdAt");
@@ -262,14 +269,20 @@ class ModelContextProjectionBuilderTest {
     }
 
     /**
-     * The fake DRAFT_NODE model output is deterministic; these are the
-     * question and purpose of every fake-drafted node.
+     * The fake DRAFT_NODE model output is deterministic: node1 is the
+     * legacy-drafted root and carries the fake purpose. node2 is drafted by
+     * the decision runtime's REQUEST_USER_INPUT action, whose contract has no
+     * purpose field, so its purpose round-trips as empty.
      */
     private String node2Question() {
         return "What is the most important outcome?";
     }
 
     private String node2Purpose() {
+        return "";
+    }
+
+    private String node1Purpose() {
         return "This clarifies the primary requirement goal.";
     }
 }

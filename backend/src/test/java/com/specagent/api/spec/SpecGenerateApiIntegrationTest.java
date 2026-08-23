@@ -1,6 +1,7 @@
 package com.specagent.api.spec;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.specagent.agent.AnswerCycleTestDriver;
 import com.specagent.api.agent.SpecGenerationResponse;
 import com.specagent.project.Project;
 import com.specagent.project.ProjectService;
@@ -9,7 +10,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -42,15 +42,16 @@ class SpecGenerateApiIntegrationTest {
     private RouteService routeService;
     @Autowired
     private ObjectMapper objectMapper;
+    @Autowired
+    private AnswerCycleTestDriver answerDriver;
 
     private Project projectWithAnsweredLineage() throws Exception {
         Project project = projectService.createProject("Spec generation project");
         mockMvc.perform(post("/api/v1/projects/{projectId}/questions/next", project.id()))
                 .andExpect(status().isOk());
-        mockMvc.perform(post("/api/v1/projects/{projectId}/answers", project.id())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"freeText\": \"The clarified requirement\"}"))
-                .andExpect(status().isOk());
+        // The synchronous answer endpoint is retired; drive the async answer
+        // cycle through the production runtime path instead.
+        answerDriver.submitFreeText(project.id(), "The clarified requirement");
         return project;
     }
 

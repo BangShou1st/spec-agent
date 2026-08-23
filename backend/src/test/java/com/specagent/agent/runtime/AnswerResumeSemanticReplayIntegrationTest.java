@@ -149,7 +149,9 @@ class AnswerResumeSemanticReplayIntegrationTest {
         route = routeRepository.findById(project.activeRouteId()).orElseThrow();
         rootNode = nodeService.createRootNode(project.id(), route.id(),
                 "最重要的目标是什么？", null, List.of(), true);
-        selectedOptionId = UUID.randomUUID();
+        // Free-text-only submission: the node owns its options, and a random
+        // option id would be rejected before any Answer is persisted.
+        selectedOptionId = null;
         freeText = "聚焦离线同步的冲突处理";
         scriptedEngine.stateUpdates.clear();
         scriptedEngine.decisions.clear();

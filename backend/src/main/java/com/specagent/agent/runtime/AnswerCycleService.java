@@ -22,6 +22,7 @@ import com.specagent.answer.AnswerService;
 import com.specagent.context.ContextBuilder;
 import com.specagent.context.ContextOperationType;
 import com.specagent.context.ContextSnapshot;
+import com.specagent.node.Node;
 import com.specagent.node.NodeService;
 import com.specagent.patch.AnswerPatch;
 import com.specagent.patch.AnswerPatchService;
@@ -114,6 +115,11 @@ public class AnswerCycleService {
 
     /**
      * Executes the answer cycle for a submitted answer.
+     *
+     * <p>Input validation mirrors the legacy orchestrator contract: the
+     * selected option must belong to the exact node being answered, free text
+     * is only accepted when the node allows it, and at least one meaningful
+     * input is required. All checks run before any Answer is persisted.
      */
     public AnswerCycleResult submitAnswer(AgentRun run, UUID projectId,
                                           UUID selectedOptionId, String freeText) {
@@ -121,6 +127,21 @@ public class AnswerCycleService {
         if (route.tipNodeId() == null) {
             throw new IllegalStateException("Active route has no tip node");
         }
+        Node tipNode = nodeService.getNode(route.tipNodeId())
+                .orElseThrow(() -> new IllegalStateException(
+                        "Active tip node not found: " + route.tipNodeId()));
+
+        // A queued run records its input node at enqueue time. If the graph
+        // moved on before the worker claimed the run, fail instead of
+        // answering a different node than the user was looking at.
+        if (run.inputNodeId() != null && !run.inputNodeId().equals(route.tipNodeId())) {
+            throw new IllegalStateException(
+                    "Answer target is no longer the active route tip: " + run.inputNodeId());
+        }
+
+        String selectedOption = validateSelectedOption(tipNode, selectedOptionId);
+        String normalizedFreeText = normalizeFreeText(freeText);
+        validateAnswerInput(tipNode, selectedOption, normalizedFreeText);
 
         String trace = "created";
         try {
@@ -130,21 +151,20 @@ public class AnswerCycleService {
             // Persist immutable Answer BEFORE any model call.
             Answer answer = answerService.finalizeAnswer(
                     projectId, route.id(), route.tipNodeId(),
-                    selectedOptionId != null ? selectedOptionId.toString() : null,
-                    freeText, "user");
+                    selectedOption, normalizedFreeText, "user");
             trace = appendTrace(trace, "persisted_answer");
             agentRunService.markPersistedAnswer(run.id(), answer.id(), trace);
 
             // Build envelope with answer event.
             AgentEvent event = new AgentEvent(
                     "ANSWER_SUBMITTED", route.tipNodeId(),
-                    selectedOptionId, freeText);
+                    selectedOptionId, normalizedFreeText);
             AgentRequestEnvelope envelope = snapshotBuilder.buildEnvelope(
                     run.id(), snapshot, event, new DecisionBudget(2));
 
             // STATE_UPDATE + DECISION + policy + execute.
             return completeCycle(run, projectId, route, snapshot, envelope,
-                    answer, selectedOptionId, freeText, trace);
+                    answer, selectedOptionId, normalizedFreeText, trace);
 
         } catch (RuntimeException ex) {
             failIfNotTerminal(run.id(), trace, ex);
@@ -371,6 +391,42 @@ public class AnswerCycleService {
             }
         }
         return grounded;
+    }
+
+    /**
+     * Validates a client-selected option id against the exact answering node.
+     * The client may only reference an existing runtime-owned option id
+     * previously returned by that node; ids from other nodes, sibling routes,
+     * or random fabrication are rejected before any answer is persisted.
+     */
+    private String validateSelectedOption(Node tipNode, UUID selectedOptionId) {
+        if (selectedOptionId == null) {
+            return null;
+        }
+        return tipNode.options().stream()
+                .filter(option -> option.id().equals(selectedOptionId))
+                .findFirst()
+                .map(option -> option.id().toString())
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Selected option id does not belong to the active node"));
+    }
+
+    private String normalizeFreeText(String freeText) {
+        return (freeText == null || freeText.isBlank()) ? null : freeText;
+    }
+
+    /**
+     * Enforces the answer input policy: at least one meaningful input (a valid
+     * selected option or non-blank free text) is required, and non-blank free
+     * text is rejected when the node does not allow free-form answers.
+     */
+    private void validateAnswerInput(Node tipNode, String selectedOption, String freeText) {
+        if (selectedOption == null && freeText == null) {
+            throw new IllegalArgumentException("Answer requires a selected option or free text");
+        }
+        if (freeText != null && !tipNode.allowFreeAnswer()) {
+            throw new IllegalArgumentException("This node does not allow free-form answers");
+        }
     }
 
     private Route loadActiveRoute(UUID projectId) {

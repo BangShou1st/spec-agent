@@ -2,6 +2,13 @@ import { defineStore } from 'pinia'
 import { ApiError, GENERIC_ERROR_MESSAGE } from '@/api/client'
 import { classifyModelFailure } from '@/api/errorCopy'
 import {
+  AGENT_RUN_MAX_POLLS,
+  AGENT_RUN_POLL_INTERVAL_MS,
+  createAgentRun,
+  getAgentRun,
+  isTerminalRunStatus,
+} from '@/api/agentRuns'
+import {
   appendContinuation,
   attachResource as attachResourceCommand,
   createNodeQuery,
@@ -41,9 +48,8 @@ import {
   draftNextQuestion,
   getActiveState,
   listRoutes,
-  repairAnswer,
-  submitAnswer,
 } from '@/api/workspace'
+import { useInputDraftStore } from '@/stores/inputDraftStore'
 
 export interface DisplayError {
   code: string
@@ -130,6 +136,12 @@ export const useWorkspaceStore = defineStore('workspace', {
     resubmitAnswerPayload: null as SubmitAnswerRequest | null,
     pendingAnswerNodeId: null as string | null,
     answerOutcomeUnknown: false,
+    /** In-flight answer run (async Runtime); null when no run is being polled. */
+    answerRunId: null as string | null,
+    /** Latest observed phase of the in-flight answer run. */
+    answerRunPhase: null as string | null,
+    /** Last payload handed to submitAnswer; used only for proven-safe resubmit. */
+    lastSubmittedAnswerPayload: null as SubmitAnswerRequest | null,
     manualModelRetry: null as ManualModelRetryIntent | null,
     focusAfterMutation: null as MutationFocusTarget | null,
 
@@ -191,6 +203,9 @@ export const useWorkspaceStore = defineStore('workspace', {
       this.resubmitAnswerPayload = null
       this.pendingAnswerNodeId = null
       this.answerOutcomeUnknown = false
+      this.answerRunId = null
+      this.answerRunPhase = null
+      this.lastSubmittedAnswerPayload = null
       this.manualModelRetry = null
       this.forkDraftRetryRouteId = null
       this.focusAfterMutation = null
@@ -307,56 +322,234 @@ export const useWorkspaceStore = defineStore('workspace', {
       }
     },
 
-    /** Submits an answer; the backend owns validity, history, and next state. */
+    /**
+     * Submits an answer through the async Agent Runtime.
+     *
+     * The HTTP command returns immediately with a runId (202); the model
+     * workflow runs in the background worker. `submitting` therefore means
+     * "a run is in flight for this node", never "an HTTP request is blocked".
+     * While the run is pending only the answering node is locked; pan, zoom,
+     * inspect and route navigation stay available. Completion is observed by
+     * polling the run read endpoint; the canonical graph is refreshed from
+     * the backend after a terminal state — never patched locally.
+     */
     async submitAnswer(payload: SubmitAnswerRequest): Promise<boolean> {
       if (!this.projectId || this.submitting || this.routeCommandPending) {
         return false
       }
+      const answeringNodeId = this.activeState?.activeNode?.id
+        ?? this.activeState?.activeRoute?.tipNodeId
+        ?? null
+
       this.submitting = true
       this.error = null
       this.repairableAnswerId = null
       this.resubmitAnswerPayload = null
-      this.pendingAnswerNodeId = this.activeState?.activeNode?.id
-        ?? this.activeState?.activeRoute?.tipNodeId
-        ?? null
+      this.pendingAnswerNodeId = answeringNodeId
+      this.answerRunId = null
+      this.answerRunPhase = null
       this.answerOutcomeUnknown = false
+      this.lastSubmittedAnswerPayload = { ...payload }
+
+      let created = false
       try {
-        await submitAnswer(this.projectId, payload)
-        this.feedback = '回答已记录。'
-        await this.refreshWorkspace()
-        this.manualModelRetry = null
-        return true
+        // The backend routes an ANSWER_TIP whose node already carries a
+        // persisted Answer to RESUME_ANSWER itself; the frontend never
+        // guesses which one applies.
+        const run = await createAgentRun(this.projectId, {
+          operation: 'ANSWER_TIP',
+          nodeId: answeringNodeId,
+          selectedOptionId: payload.selectedOptionId ?? null,
+          freeText: payload.freeText ?? null,
+        })
+        created = true
+        this.answerRunId = run.runId
+        await this.pollAnswerRun(run.runId)
+        if (this.answerOutcomeUnknown) {
+          // Polling ended without a terminal read (network loss beyond the
+          // budget). Reconcile canonical state; never auto-resubmit.
+          await this.reconcileUnknownAnswerOutcome()
+          return false
+        }
+        return this.pendingAnswerNodeId === null
       } catch (err) {
         const safeError = toDisplayError(err)
-        this.resubmitAnswerPayload = { ...payload }
-        const reconciled = await this.refreshWorkspace()
-        let canonicalMutationCompleted = false
-        if (!reconciled) {
-          this.answerOutcomeUnknown = true
-        } else {
-          const answerId = this.findFinalizedAnswerForNode(this.pendingAnswerNodeId)
-          if (answerId) {
-            if (this.activeState?.activeRoute?.tipNodeId === this.pendingAnswerNodeId) {
-              this.repairableAnswerId = answerId
+        if (!created) {
+          // The create-run request itself failed or its outcome is unknown.
+          // Reconcile against canonical reads before ever allowing a second
+          // mutation: only a proven absent Answer + no run may resubmit.
+          const reconciled = await this.refreshWorkspace()
+          let canonicalMutationCompleted = false
+          if (!reconciled) {
+            this.answerOutcomeUnknown = true
+            this.resubmitAnswerPayload = { ...payload }
+          } else {
+            const answerId = this.findFinalizedAnswerForNode(answeringNodeId)
+            if (answerId) {
+              // An Answer was already persisted (the create request may have
+              // landed even though its response was lost). Never resubmit —
+              // surface repair instead.
+              if (this.activeState?.activeRoute?.tipNodeId === answeringNodeId) {
+                this.repairableAnswerId = answerId
+                this.feedback = '回答已保存，后续生成未完成。'
+              } else {
+                this.pendingAnswerNodeId = null
+                this.feedback = '回答已记录。'
+                this.error = null
+                canonicalMutationCompleted = true
+              }
               this.resubmitAnswerPayload = null
-              this.feedback = '回答已保存，后续生成未完成。'
             } else {
-              // The canonical tip moved past the submitted node: the lost
-              // response was for a completed mutation, so never resubmit it.
-              this.repairableAnswerId = null
-              this.resubmitAnswerPayload = null
-              this.pendingAnswerNodeId = null
-              this.feedback = '回答已记录。'
-              this.error = null
-              canonicalMutationCompleted = true
+              // Canonical reads prove: no Answer, and the run was never
+              // created. A one-shot resubmit is now provably safe.
+              this.resubmitAnswerPayload = { ...payload }
             }
           }
+          if (!canonicalMutationCompleted) this.error = safeError
+          return false
         }
-        if (!canonicalMutationCompleted) this.error = safeError
+        // Run was created but polling ended without a terminal read (budget
+        // exhausted on network loss). Do NOT resubmit: reconcile instead.
+        const reconciled = await this.refreshWorkspace()
+        if (!reconciled) {
+          this.answerOutcomeUnknown = true
+          this.error = safeError
+          return false
+        }
+        const answerId = this.findFinalizedAnswerForNode(this.pendingAnswerNodeId)
+        if (answerId && this.activeState?.activeRoute?.tipNodeId === this.pendingAnswerNodeId) {
+          this.repairableAnswerId = answerId
+          this.resubmitAnswerPayload = null
+          this.feedback = '回答已保存，后续生成未完成。'
+        } else {
+          this.answerOutcomeUnknown = true
+        }
+        this.error = safeError
         return false
       } finally {
         this.submitting = false
       }
+    },
+
+    /**
+     * Polls one answer run until a terminal status. One loop per call — the
+     * same run never gets two timers because submit guards on `submitting`.
+     * Network failures inside the loop keep polling within the attempt
+     * budget; exhausting it surfaces an unknown outcome for reconciliation
+     * instead of re-submitting anything. Stops observing when the project
+     * switches.
+     */
+    async pollAnswerRun(runId: string): Promise<void> {
+      const projectId = this.projectId
+      if (!projectId) return
+      for (let attempt = 0; attempt < AGENT_RUN_MAX_POLLS; attempt += 1) {
+        if (attempt > 0) {
+          await new Promise((resolve) => setTimeout(resolve, AGENT_RUN_POLL_INTERVAL_MS))
+          if (projectId !== this.projectId) {
+            // Project switched away: stop observing the old project's run.
+            return
+          }
+        }
+        try {
+          const view = await getAgentRun(projectId, runId)
+          this.answerRunPhase = view.phase
+          if (!isTerminalRunStatus(view.status)) continue
+          if (view.status === 'failed') {
+            // FAILED run: the Answer may or may not be persisted. Canonical
+            // reads decide between repair and resubmit affordances.
+            await this.reconcileFailedAnswerRun()
+            return
+          }
+          await this.finishSuccessfulAnswerRun(view)
+          return
+        } catch {
+          // Transient poll failure: keep polling within budget.
+        }
+      }
+      // Budget exhausted with no terminal read: treat as outcome unknown.
+      this.answerOutcomeUnknown = true
+    },
+
+    /** COMPLETED run: refresh canonical state and clear pending affordances. */
+    async finishSuccessfulAnswerRun(
+      view: Awaited<ReturnType<typeof getAgentRun>>,
+    ): Promise<void> {
+      const answeredNodeId = view.producedNodeId ?? this.pendingAnswerNodeId
+      this.feedback = '回答已记录。'
+      await this.refreshWorkspace()
+      this.manualModelRetry = null
+      this.repairableAnswerId = null
+      this.resubmitAnswerPayload = null
+      this.pendingAnswerNodeId = null
+      this.answerOutcomeUnknown = false
+      if (answeredNodeId) {
+        useInputDraftStore().clearDraft(
+          this.projectId ?? '',
+          answeredNodeId,
+          this.activeState?.activeRoute?.id ?? null,
+        )
+      }
+    },
+
+    /**
+     * FAILED run reconciliation: canonical reads decide whether the Answer
+     * persisted (→ repair affordance, never a second submission) or nothing
+     * landed (→ explicit one-shot resubmit payload).
+     */
+    async reconcileFailedAnswerRun(): Promise<void> {
+      const reconciled = await this.refreshWorkspace()
+      if (!reconciled) {
+        this.answerOutcomeUnknown = true
+        return
+      }
+      const answerId = this.findFinalizedAnswerForNode(this.pendingAnswerNodeId)
+      if (answerId) {
+        if (this.activeState?.activeRoute?.tipNodeId === this.pendingAnswerNodeId) {
+          this.repairableAnswerId = answerId
+          this.resubmitAnswerPayload = null
+          this.feedback = '回答已保存，后续生成未完成。'
+        } else {
+          // The tip moved past the answered node: the mutation completed
+          // despite the failure report. Never offer resubmit or repair.
+          this.repairableAnswerId = null
+          this.resubmitAnswerPayload = null
+          this.pendingAnswerNodeId = null
+          this.feedback = '回答已记录。'
+        }
+      } else {
+        this.resubmitAnswerPayload = this.lastSubmittedAnswerPayload
+      }
+    },
+
+    /**
+     * Reconciliation after the run could not be observed to a terminal state
+     * (poll network loss beyond the budget). Canonical reads decide between
+     * repair (Answer persisted), completed-anyway (tip advanced), and an
+     * explicit unknown-outcome affordance. Never resubmits by itself.
+     */
+    async reconcileUnknownAnswerOutcome(): Promise<void> {
+      const reconciled = await this.refreshWorkspace()
+      if (!reconciled) {
+        this.answerOutcomeUnknown = true
+        return
+      }
+      const answerId = this.findFinalizedAnswerForNode(this.pendingAnswerNodeId)
+      if (answerId) {
+        this.answerOutcomeUnknown = false
+        if (this.activeState?.activeRoute?.tipNodeId === this.pendingAnswerNodeId) {
+          this.repairableAnswerId = answerId
+          this.resubmitAnswerPayload = null
+          this.feedback = '回答已保存，后续生成未完成。'
+        } else {
+          this.repairableAnswerId = null
+          this.resubmitAnswerPayload = null
+          this.pendingAnswerNodeId = null
+          this.feedback = '回答已记录。'
+        }
+      }
+      // Without a persisted Answer the run may still be executing server
+      // side: keep answerOutcomeUnknown so the user reconciles instead of
+      // creating a second mutation.
     },
 
     /** Reconciles canonical state before allowing a failed submit to mutate again. */
@@ -391,19 +584,31 @@ export const useWorkspaceStore = defineStore('workspace', {
       return true
     },
 
-    /** Repairs an existing answer checkpoint; it never creates a second Answer. */
+    /**
+     * Repairs an existing answer checkpoint through a RESUME_ANSWER run. The
+     * backend replays the original ANSWER_SUBMITTED semantics from the
+     * persisted Answer, so this never creates a second Answer and the
+     * frontend never re-sends its guessed copy of the user input.
+     */
     async repairAnswerForActiveFlow(answerId: string): Promise<boolean> {
       if (!this.projectId || this.repairingAnswer || this.routeCommandPending) return false
       this.repairingAnswer = true
       this.error = null
       try {
-        await repairAnswer(this.projectId, answerId)
-        this.repairableAnswerId = null
-        this.resubmitAnswerPayload = null
-        this.pendingAnswerNodeId = null
-        this.answerOutcomeUnknown = false
+        const run = await createAgentRun(this.projectId, {
+          operation: 'RESUME_ANSWER',
+          nodeId: this.activeState?.activeRoute?.tipNodeId ?? null,
+          answerId,
+        })
+        this.answerRunId = run.runId
+        this.answerRunPhase = run.phase
+        await this.pollAnswerRun(run.runId)
+        if (this.answerOutcomeUnknown) {
+          this.error = toDisplayError(new ApiError(
+            GENERIC_ERROR_MESSAGE, 'UNKNOWN_ERROR', 0))
+          return false
+        }
         this.feedback = '已重新请求后续生成。'
-        await this.refreshWorkspace()
         return true
       } catch (err) {
         const safeError = toDisplayError(err)

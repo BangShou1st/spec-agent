@@ -40,6 +40,8 @@ class RouteReanswerApiIntegrationTest {
     @Autowired
     private FakeAgentOrchestrator orchestrator;
     @Autowired
+    private com.specagent.agent.AnswerCycleTestDriver answerDriver;
+    @Autowired
     private RouteService routeService;
     @Autowired
     private NodeRepository nodeRepository;
@@ -52,14 +54,12 @@ class RouteReanswerApiIntegrationTest {
     void reanswerKeepsCanonicalQuestionAndFreezesOnlyParentPrefix() throws Exception {
         Project project = projectService.createProject("Re-answer project");
         orchestrator.draftNextQuestion(project.id());
-        orchestrator.answerActiveNodeAndDraftNext(project.id(), "Root answer");
-        FakeAnswerRunResult targetRun = orchestrator.answerActiveNodeAndDraftNext(
-                project.id(), "Original answer");
-        // The run produces the next unanswered question; re-answer the node
-        // whose answer was just recorded.
-        Node target = nodeRepository.findById(targetRun.answer().nodeId()).orElseThrow();
+        answerDriver.submitFreeText(project.id(), "Root answer");
+        var targetRun = answerDriver.submitFreeText(project.id(), "Original answer");
+        // The run records the answered node as its input; re-answer that node.
+        Node target = nodeRepository.findById(targetRun.run().inputNodeId()).orElseThrow();
         UUID sourceRouteId = targetRun.run().routeId();
-        UUID oldAnswerId = targetRun.answer().id();
+        UUID oldAnswerId = targetRun.answerId();
 
         mockMvc.perform(post("/api/v1/projects/{projectId}/nodes/{nodeId}/reanswer",
                         project.id(), target.id())
@@ -91,10 +91,9 @@ class RouteReanswerApiIntegrationTest {
     void reanswerRequiresExplicitSourceRoute() throws Exception {
         Project project = projectService.createProject("Re-answer validation");
         orchestrator.draftNextQuestion(project.id());
-        orchestrator.answerActiveNodeAndDraftNext(project.id(), "Root answer");
-        FakeAnswerRunResult targetRun = orchestrator.answerActiveNodeAndDraftNext(
-                project.id(), "Original answer");
-        Node target = nodeRepository.findById(targetRun.answer().nodeId()).orElseThrow();
+        answerDriver.submitFreeText(project.id(), "Root answer");
+        var targetRun = answerDriver.submitFreeText(project.id(), "Original answer");
+        Node target = nodeRepository.findById(targetRun.run().inputNodeId()).orElseThrow();
 
         mockMvc.perform(post("/api/v1/projects/{projectId}/nodes/{nodeId}/reanswer",
                         project.id(), target.id())

@@ -52,6 +52,8 @@ class RouteForkApiIntegrationTest {
     @Autowired
     private FakeAgentOrchestrator orchestrator;
     @Autowired
+    private com.specagent.agent.AnswerCycleTestDriver answerDriver;
+    @Autowired
     private NodeRepository nodeRepository;
     @Autowired
     private AnswerRepository answerRepository;
@@ -110,9 +112,9 @@ class RouteForkApiIntegrationTest {
         Project project = projectService.createProject("Fork copy check");
         Node root = orchestrator.draftNextQuestion(project.id()).producedNode();
         UUID sourceRouteId = project.activeRouteId();
-        var answerResult = orchestrator.answerActiveNodeAndDraftNext(project.id(), "Root answer content");
-        Answer answer = answerResult.answer();
-        AnswerPatch patch = answerResult.patch();
+        var answerResult = answerDriver.submitFreeText(project.id(), "Root answer content");
+        Answer answer = answerService.getAnswer(answerResult.answerId()).orElseThrow();
+        AnswerPatch patch = answerPatchService.getPatch(answerResult.patchId()).orElseThrow();
         assertThat(answer.routeId()).isEqualTo(sourceRouteId);
         assertThat(patch.routeId()).isEqualTo(sourceRouteId);
 

@@ -23,7 +23,11 @@ vi.mock('@/api/workspace', () => ({
   draftNextQuestion: vi.fn(),
   getActiveState: vi.fn(),
   listRoutes: vi.fn(),
-  submitAnswer: vi.fn(),
+}))
+vi.mock('@/api/agentRuns', async () => ({
+  ...(await vi.importActual<typeof import('@/api/agentRuns')>('@/api/agentRuns')),
+  createAgentRun: vi.fn(),
+  getAgentRun: vi.fn(),
 }))
 vi.mock('@/api/requirementState', () => ({
   getRequirementState: vi.fn(),
@@ -42,7 +46,8 @@ vi.mock('@/api/routes', () => ({
 vi.mock('@/api/spec', () => ({ generateSpec: vi.fn(), listRouteSpecs: vi.fn() }))
 
 import { getProject } from '@/api/projects'
-import { getActiveState, listRoutes, draftNextQuestion, submitAnswer } from '@/api/workspace'
+import { getActiveState, listRoutes, draftNextQuestion } from '@/api/workspace'
+import { createAgentRun, getAgentRun } from '@/api/agentRuns'
 import { getRequirementState, getRouteRequirementState } from '@/api/requirementState'
 import { getProjectGraph } from '@/api/graph'
 import {
@@ -60,7 +65,8 @@ const mockedGetRouteRequirementState = vi.mocked(getRouteRequirementState)
 const mockedGetProjectGraph = vi.mocked(getProjectGraph)
 
 const mockedDraftNextQuestion = vi.mocked(draftNextQuestion)
-const mockedSubmitAnswer = vi.mocked(submitAnswer)
+const mockedCreateAgentRun = vi.mocked(createAgentRun)
+const mockedGetAgentRun = vi.mocked(getAgentRun)
 
 /**
  * GraphCanvas stub: real Vue Flow cannot render in jsdom; the shell tests
@@ -203,13 +209,34 @@ describe('WorkspaceView graph shell', () => {
     expect(useWorkspaceStore().feedback).toBe('问题已起草。')
   })
 
-  it('submits answers through the canvas submit intent', async () => {
+  it('submits answers through the canvas submit intent as an async run', async () => {
     mockViews()
-    mockedSubmitAnswer.mockResolvedValue({ id: 'answer-1' } as never)
+    mockedCreateAgentRun.mockResolvedValue({
+      runId: 'run-1',
+      operation: 'ANSWER_TIP',
+      phase: 'CREATED',
+    })
+    mockedGetAgentRun.mockResolvedValue({
+      runId: 'run-1',
+      projectId: 'p1',
+      routeId: 'r1',
+      operation: 'ANSWER_TIP',
+      status: 'completed',
+      phase: 'COMPLETED',
+      producedNodeId: 'n5',
+      producedAnswerId: 'answer-1',
+      producedPatchId: 'patch-1',
+      producedSpecSnapshotId: null,
+    })
     const { wrapper } = await mountWorkspace()
     await wrapper.findComponent(GraphCanvasStub).vm.$emit('submit-answer', { freeText: 'answer' })
     await flushPromises()
-    expect(mockedSubmitAnswer).toHaveBeenCalledWith('p1', { freeText: 'answer' })
+    expect(mockedCreateAgentRun).toHaveBeenCalledWith('p1', {
+      operation: 'ANSWER_TIP',
+      nodeId: 'n2',
+      selectedOptionId: null,
+      freeText: 'answer',
+    })
     expect(useWorkspaceStore().feedback).toBe('回答已记录。')
   })
 

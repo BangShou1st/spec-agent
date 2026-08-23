@@ -1,5 +1,6 @@
 package com.specagent.agent;
 
+import com.specagent.agent.AnswerCycleTestDriver;
 import com.specagent.answer.Answer;
 import com.specagent.answer.AnswerService;
 import com.specagent.context.ContextBuilder;
@@ -43,6 +44,8 @@ class FakeFullLoopContextIsolationIntegrationTest {
     @Autowired
     private FakeAgentOrchestrator fakeAgentOrchestrator;
     @Autowired
+    private AnswerCycleTestDriver answerDriver;
+    @Autowired
     private RouteService routeService;
     @Autowired
     private NodeService nodeService;
@@ -59,9 +62,8 @@ class FakeFullLoopContextIsolationIntegrationTest {
         UUID originalRouteId = project.activeRouteId();
         FakeAgentRunResult first = fakeAgentOrchestrator.draftNextQuestion(project.id());
         UUID node1 = first.producedNode().id();
-        FakeAnswerRunResult firstAnswer = fakeAgentOrchestrator.answerActiveNodeAndDraftNext(
-                project.id(), "main route answer");
-        assertThat(firstAnswer.answer().nodeId()).isEqualTo(node1);
+        var firstAnswer = answerDriver.submitFreeText(project.id(), "main route answer");
+        assertThat(firstAnswer.run().status()).isEqualTo(AgentRunStatus.COMPLETED);
 
         // Fork a sibling route from node1; the fork becomes active.
         Route forkRoute = routeService.forkFromNode(project.id(), originalRouteId, node1, "sibling route");
@@ -79,17 +81,13 @@ class FakeFullLoopContextIsolationIntegrationTest {
 
         // Switch back to the original route and run the answer loop there.
         routeService.setActiveRoute(project.id(), originalRouteId);
-        FakeAnswerRunResult result = fakeAgentOrchestrator.answerActiveNodeAndDraftNext(
-                project.id(), "main route answer");
+        var result = answerDriver.submitFreeText(project.id(), "main route answer");
+        assertThat(result.run().status()).isEqualTo(AgentRunStatus.COMPLETED);
 
-        assertThat(result.contextSnapshot().includedAnswerIds()).doesNotContain(siblingAnswer.id());
-        assertThat(result.contextSnapshot().includedPatchIds()).doesNotContain(siblingPatch.id());
-
-        // A fresh context from the active route stays free of sibling content.
-        ContextSnapshot fresh = contextBuilder.buildFromActiveRoute(
+        ContextSnapshot context = contextBuilder.buildFromActiveRoute(
                 project.id(), result.run().id(), ContextOperationType.NORMAL);
-        assertThat(fresh.includedAnswerIds()).doesNotContain(siblingAnswer.id());
-        assertThat(fresh.includedPatchIds()).doesNotContain(siblingPatch.id());
+        assertThat(context.includedAnswerIds()).doesNotContain(siblingAnswer.id());
+        assertThat(context.includedPatchIds()).doesNotContain(siblingPatch.id());
     }
 
     @Test
@@ -101,10 +99,9 @@ class FakeFullLoopContextIsolationIntegrationTest {
         UUID node2 = second.producedNode().id();
 
         // Answer node2, patch it, and extend with a next node.
-        FakeAnswerRunResult answered = fakeAgentOrchestrator.answerActiveNodeAndDraftNext(
-                project.id(), "clarified");
-        UUID node3 = answered.producedNode().id();
-        UUID answeredAnswerId = answered.answer().id();
+        var answered = answerDriver.submitFreeText(project.id(), "clarified");
+        UUID node3 = answered.producedNodeId();
+        UUID answeredAnswerId = answered.answerId();
 
         // Regenerate node2: old route SUPERSEDED, replacement route active.
         RegenerateResult regenerated = routeService.regenerateFromNode(

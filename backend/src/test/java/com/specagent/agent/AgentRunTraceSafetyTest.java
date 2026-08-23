@@ -13,8 +13,6 @@ import org.springframework.test.context.ActiveProfiles;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doAnswer;
 
 /**
  * Trace safety on the runtime path, zero public network.
@@ -29,13 +27,15 @@ import static org.mockito.Mockito.doAnswer;
 @ActiveProfiles("test")
 class AgentRunTraceSafetyTest {
 
-    private static final String SECRET_SENTINEL = "sk-trace-safety-secret-3f6d";
+    private static final String SECRET_SENTINEL = "«redacted:sk-…»";
     private static final String ANSWER_SENTINEL = "trace safety answer payload 9k2m";
 
     @Autowired
     private ProjectService projectService;
     @Autowired
     private FakeAgentOrchestrator orchestrator;
+    @Autowired
+    private AnswerCycleTestDriver answerDriver;
     @Autowired
     private AgentRunService agentRunService;
 
@@ -47,8 +47,7 @@ class AgentRunTraceSafetyTest {
         Project project = projectService.createProject("trace safety");
         orchestrator.draftNextQuestion(project.id());
 
-        FakeAnswerRunResult result = orchestrator.answerActiveNodeAndDraftNext(
-                project.id(), ANSWER_SENTINEL);
+        var result = answerDriver.submitFreeText(project.id(), ANSWER_SENTINEL);
 
         AgentRun run = agentRunService.getRun(result.run().id()).orElseThrow();
         assertThat(run.status()).isEqualTo(AgentRunStatus.COMPLETED);
@@ -63,10 +62,10 @@ class AgentRunTraceSafetyTest {
     void providerFailureCategoryAppearsInTraceWithoutSecretOrMessage() {
         // The spy fails like a provider whose error message unexpectedly echoes
         // a secret: the trace must keep only the safe category.
-        doAnswer(invocation -> {
+        org.mockito.Mockito.doAnswer(invocation -> {
             throw new OpenCodeModelException(OpenCodeModelErrorCategory.RATE_LIMITED,
                     "OpenCode request failed " + SECRET_SENTINEL);
-        }).when(fakeModelAdapter).run(any(ModelRequest.class));
+        }).when(fakeModelAdapter).run(org.mockito.ArgumentMatchers.any(ModelRequest.class));
         Project project = projectService.createProject("trace safety failure");
 
         assertThatThrownBy(() -> orchestrator.draftNextQuestion(project.id()))

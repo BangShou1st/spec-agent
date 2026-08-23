@@ -47,9 +47,9 @@ test('empty start drafts the first real node and answers inside the graph node',
   // 新节点放在父节点右侧。
   expect((nextBox?.x ?? 0)).toBeGreaterThan(rootBoxAfter?.x ?? 0)
 
-  // 需求状态跟随回答更新（后端派生内容 verbatim）。
+  // 需求状态跟随回答更新（后端派生内容 verbatim）。决策引擎的 STATE_UPDATE
+  // 只产出一条 confirmed claim；不会再有旧的 unresolved claim。
   await expect(page.getByText('The user clarified the main outcome.')).toBeVisible()
-  await expect(page.getByText('The user must confirm scope boundaries.')).toBeVisible()
   await expect(page.locator('.error-banner')).toHaveCount(0)
 })
 

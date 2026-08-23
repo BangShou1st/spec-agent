@@ -2,6 +2,7 @@ package com.specagent.api.route;
 
 import com.specagent.agent.AgentRunService;
 import com.specagent.agent.FakeAgentOrchestrator;
+import com.specagent.answer.AnswerService;
 import com.specagent.agent.FakeAnswerRunResult;
 import com.specagent.agent.ModelRequest;
 import com.specagent.testing.FakeModelAdapter;
@@ -67,6 +68,10 @@ class RegenerateApiIntegrationTest {
     @Autowired
     private FakeAgentOrchestrator orchestrator;
     @Autowired
+    private com.specagent.agent.AnswerCycleTestDriver answerDriver;
+    @Autowired
+    private AnswerService answerService;
+    @Autowired
     private AgentRunService agentRunService;
     @Autowired
     private ContextSnapshotRepository contextSnapshotRepository;
@@ -91,13 +96,12 @@ class RegenerateApiIntegrationTest {
     private RegenerateSetup buildLineageWithAnsweredTarget() {
         Project project = projectService.createProject("Regenerate project");
         Node root = orchestrator.draftNextQuestion(project.id()).producedNode();
-        orchestrator.answerActiveNodeAndDraftNext(project.id(), "Root answer stays");
-        FakeAnswerRunResult targetRun = orchestrator.answerActiveNodeAndDraftNext(
-                project.id(), OLD_ANSWER_SENTINEL + " the replaced answer");
-        Node target = nodeService.getNode(targetRun.answer().nodeId()).orElseThrow();
-        Node targetChild = targetRun.producedNode();
+        answerDriver.submitFreeText(project.id(), "Root answer stays");
+        var targetRun = answerDriver.submitFreeText(project.id(), OLD_ANSWER_SENTINEL + " the replaced answer");
+        Node target = nodeService.getNode(targetRun.run().inputNodeId()).orElseThrow();
+        Node targetChild = nodeService.getNode(targetRun.producedNodeId()).orElseThrow();
         return new RegenerateSetup(project, root, target, targetChild,
-                targetRun.run().routeId(), targetRun.answer().id(), targetRun.patch().id());
+                targetRun.run().routeId(), targetRun.answerId(), targetRun.patchId());
     }
 
     @Test
@@ -216,9 +220,8 @@ class RegenerateApiIntegrationTest {
         Project project = projectService.createProject("Regenerate no open route");
         Node root = orchestrator.draftNextQuestion(project.id()).producedNode();
         // Answer the root; the child A produced by the run lives on route R1.
-        FakeAnswerRunResult targetRun = orchestrator.answerActiveNodeAndDraftNext(
-                project.id(), "Branch content");
-        Node target = targetRun.producedNode();
+        var targetRun = answerDriver.submitFreeText(project.id(), "Branch content");
+        Node target = nodeService.getNode(targetRun.producedNodeId()).orElseThrow();
         assertThat(target.parentNodeId()).isEqualTo(root.id());
         UUID r1RouteId = targetRun.run().routeId();
 
@@ -241,7 +244,7 @@ class RegenerateApiIntegrationTest {
     void regenerateBlankReplacementQuestionRejected() throws Exception {
         Project project = projectService.createProject("Regenerate blank question");
         orchestrator.draftNextQuestion(project.id());
-        orchestrator.answerActiveNodeAndDraftNext(project.id(), "content");
+        answerDriver.submitFreeText(project.id(), "content");
         Node target = nodeService.getNode(routeService.getRoute(project.activeRouteId())
                 .orElseThrow().tipNodeId()).orElseThrow();
         // The tip is a non-root child node at this point.
@@ -261,7 +264,7 @@ class RegenerateApiIntegrationTest {
     void regenerateBlankReplacementOptionLabelRejected() throws Exception {
         Project project = projectService.createProject("Regenerate blank option");
         orchestrator.draftNextQuestion(project.id());
-        orchestrator.answerActiveNodeAndDraftNext(project.id(), "content");
+        answerDriver.submitFreeText(project.id(), "content");
         Node target = nodeService.getNode(routeService.getRoute(project.activeRouteId())
                 .orElseThrow().tipNodeId()).orElseThrow();
         assertThat(target.isRoot()).isFalse();
@@ -286,7 +289,7 @@ class RegenerateApiIntegrationTest {
     void regenerateOversizedReplacementOptionLabelRejected() throws Exception {
         Project project = projectService.createProject("Regenerate oversized label");
         orchestrator.draftNextQuestion(project.id());
-        orchestrator.answerActiveNodeAndDraftNext(project.id(), "content");
+        answerDriver.submitFreeText(project.id(), "content");
         Node target = nodeService.getNode(routeService.getRoute(project.activeRouteId())
                 .orElseThrow().tipNodeId()).orElseThrow();
         assertThat(target.isRoot()).isFalse();
@@ -315,7 +318,7 @@ class RegenerateApiIntegrationTest {
     void regenerateOversizedReplacementOptionImpactRejected() throws Exception {
         Project project = projectService.createProject("Regenerate oversized impact");
         orchestrator.draftNextQuestion(project.id());
-        orchestrator.answerActiveNodeAndDraftNext(project.id(), "content");
+        answerDriver.submitFreeText(project.id(), "content");
         Node target = nodeService.getNode(routeService.getRoute(project.activeRouteId())
                 .orElseThrow().tipNodeId()).orElseThrow();
         assertThat(target.isRoot()).isFalse();

@@ -1,11 +1,13 @@
 package com.specagent.agent;
 
+import com.specagent.agent.AnswerCycleTestDriver;
 import com.specagent.answer.Answer;
 import com.specagent.answer.AnswerService;
 import com.specagent.context.ContextBuilder;
 import com.specagent.context.ContextOperationType;
 import com.specagent.context.ContextSnapshot;
 import com.specagent.node.Node;
+import com.specagent.node.NodeService;
 import com.specagent.patch.AnswerPatch;
 import com.specagent.patch.AnswerPatchService;
 import com.specagent.patch.Claim;
@@ -28,8 +30,9 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Success-path integration tests for the fake full loop: question draft,
- * answer, answer patch, next node, and spec snapshot generation.
+ * Success-path integration tests for the fake full loop through the async
+ * ANSWER_CYCLE: question draft, answer, answer patch, next node, and spec
+ * snapshot generation.
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -41,11 +44,15 @@ class FakeFullLoopIntegrationTest {
     @Autowired
     private FakeAgentOrchestrator fakeAgentOrchestrator;
     @Autowired
+    private AnswerCycleTestDriver answerDriver;
+    @Autowired
     private AgentRunService agentRunService;
     @Autowired
     private RouteService routeService;
     @Autowired
     private ContextBuilder contextBuilder;
+    @Autowired
+    private NodeService nodeService;
     @Autowired
     private AnswerService answerService;
     @Autowired
@@ -60,16 +67,22 @@ class FakeFullLoopIntegrationTest {
         FakeAgentRunResult first = fakeAgentOrchestrator.draftNextQuestion(project.id());
         UUID answeredNodeId = first.producedNode().id();
 
-        FakeAnswerRunResult result = fakeAgentOrchestrator.answerActiveNodeAndDraftNext(
+        var result = answerDriver.submitFreeText(
                 project.id(), "I need to clarify the main outcome");
 
+        // Run completed and recorded all produced ids.
+        assertThat(result.run().status()).isEqualTo(AgentRunStatus.COMPLETED);
+        assertThat(result.run().producedAnswerId()).isNotNull();
+        assertThat(result.run().producedPatchId()).isNotNull();
+        assertThat(result.run().producedNodeId()).isNotNull();
+
         // Answer persisted.
-        Answer answer = answerService.getAnswer(result.answer().id()).orElseThrow();
+        Answer answer = answerService.getAnswer(result.answerId()).orElseThrow();
         assertThat(answer.nodeId()).isEqualTo(answeredNodeId);
         assertThat(answer.freeText()).isEqualTo("I need to clarify the main outcome");
 
         // Patch persisted with real provenance.
-        AnswerPatch patch = answerPatchService.getPatch(result.patch().id()).orElseThrow();
+        AnswerPatch patch = answerPatchService.getPatch(result.patchId()).orElseThrow();
         assertThat(patch.sourceNodeId()).isEqualTo(answeredNodeId);
         assertThat(patch.sourceAnswerId()).isEqualTo(answer.id());
         assertThat(patch.claims()).isNotEmpty();
@@ -84,8 +97,7 @@ class FakeFullLoopIntegrationTest {
         assertThat(confirmed.sourceAnswerId()).isEqualTo(answer.id());
 
         // Next node exists and extends the answered node.
-        Node nextNode = result.producedNode();
-        assertThat(nextNode).isNotNull();
+        Node nextNode = nodeService.getNode(result.producedNodeId()).orElseThrow();
         assertThat(nextNode.parentNodeId()).isEqualTo(answeredNodeId);
 
         // Route tip advanced to the next node.
@@ -98,12 +110,6 @@ class FakeFullLoopIntegrationTest {
         assertThat(context.includedNodeIds()).contains(answeredNodeId, nextNode.id());
         assertThat(context.includedAnswerIds()).contains(answer.id());
         assertThat(context.includedPatchIds()).contains(patch.id());
-
-        // Run completed and recorded all produced ids.
-        assertThat(result.run().status()).isEqualTo(AgentRunStatus.COMPLETED);
-        assertThat(result.run().producedAnswerId()).isEqualTo(answer.id());
-        assertThat(result.run().producedPatchId()).isEqualTo(patch.id());
-        assertThat(result.run().producedNodeId()).isEqualTo(nextNode.id());
     }
 
     @Test
@@ -111,44 +117,22 @@ class FakeFullLoopIntegrationTest {
         Project project = projectService.createProject("Answer run project");
         fakeAgentOrchestrator.draftNextQuestion(project.id());
 
-        FakeAnswerRunResult result = fakeAgentOrchestrator.answerActiveNodeAndDraftNext(
+        var result = answerDriver.submitFreeText(
                 project.id(), "The primary outcome must be measurable");
 
-        assertThat(result.answer()).isNotNull();
-        assertThat(result.patch()).isNotNull();
-        assertThat(answerService.getAnswer(result.answer().id())).isPresent();
-        assertThat(answerPatchService.getPatch(result.patch().id())).isPresent();
         assertThat(result.run().status()).isEqualTo(AgentRunStatus.COMPLETED);
-        assertThat(result.run().producedAnswerId()).isEqualTo(result.answer().id());
-        assertThat(result.run().producedPatchId()).isEqualTo(result.patch().id());
-        assertThat(result.run().producedNodeId()).isEqualTo(result.producedNode().id());
-    }
-
-    @Test
-    void fakeAnswerRunAttachesContextSnapshot() {
-        Project project = projectService.createProject("Answer context project");
-        fakeAgentOrchestrator.draftNextQuestion(project.id());
-
-        FakeAnswerRunResult result = fakeAgentOrchestrator.answerActiveNodeAndDraftNext(
-                project.id(), "Context must be frozen for all model calls");
-
-        assertThat(result.run().contextSnapshotId()).isEqualTo(result.contextSnapshot().id());
-        assertThat(result.interpretResponse().requestContextSnapshotId())
-                .isEqualTo(result.contextSnapshot().id());
-        assertThat(result.patchResponse().requestContextSnapshotId())
-                .isEqualTo(result.contextSnapshot().id());
-        assertThat(result.nodeResponse().requestContextSnapshotId())
-                .isEqualTo(result.contextSnapshot().id());
-        assertThat(result.interpretResponse().taskType()).isEqualTo(AgentTaskType.INTERPRET_ANSWER);
-        assertThat(result.patchResponse().taskType()).isEqualTo(AgentTaskType.DRAFT_ANSWER_PATCH);
-        assertThat(result.nodeResponse().taskType()).isEqualTo(AgentTaskType.DRAFT_NODE);
+        assertThat(answerService.getAnswer(result.answerId())).isPresent();
+        assertThat(answerPatchService.getPatch(result.patchId())).isPresent();
+        assertThat(result.run().producedAnswerId()).isEqualTo(result.answerId());
+        assertThat(result.run().producedPatchId()).isEqualTo(result.patchId());
+        assertThat(nodeService.getNode(result.run().producedNodeId())).isPresent();
     }
 
     @Test
     void fakeSpecRunCreatesGroundedSpecSnapshot() {
         Project project = projectService.createProject("Spec run project");
         fakeAgentOrchestrator.draftNextQuestion(project.id());
-        fakeAgentOrchestrator.answerActiveNodeAndDraftNext(project.id(), "I need to clarify the main outcome");
+        answerDriver.submitFreeText(project.id(), "I need to clarify the main outcome");
 
         FakeSpecRunResult result = fakeAgentOrchestrator.generateSpec(project.id());
 

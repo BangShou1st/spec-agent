@@ -102,20 +102,15 @@ class AnswerCycleIntegrationTest {
 
     @Test
     void retrySameNodeUsesResumePathWithSingleAnswer() {
-        // 1. First submission: enqueue and execute.
-        UUID firstRunId = runService.createQueuedRunWithInput(
-                project.id(), "ANSWER_TIP", rootNode.id(),
-                null, "第一次回答", null);
-        AgentRun firstClaimed = runService.claimNextAnswerCycle().orElseThrow();
-        worker.executeRun(firstClaimed);
+        // 1. Simulate a cycle that persisted the Answer but did not finish:
+        //    the answered node is still the active route tip.
+        Answer persisted = answerService.finalizeAnswer(project.id(), route.id(), rootNode.id(),
+                null, "第一次回答", "user");
 
-        AgentRun firstCompleted = agentRunService.getRun(firstRunId).orElseThrow();
-        assertThat(firstCompleted.status()).isEqualTo(AgentRunStatus.COMPLETED);
-
-        // 2. Second submission on same node: should route to resume.
+        // 2. Resume with the explicit persisted answer id (the repair path).
         UUID secondRunId = runService.createQueuedRunWithInput(
                 project.id(), "RESUME_ANSWER", rootNode.id(),
-                null, null, null);
+                null, null, persisted.id());
         AgentRun secondClaimed = runService.claimNextAnswerCycle().orElseThrow();
         worker.executeRun(secondClaimed);
 

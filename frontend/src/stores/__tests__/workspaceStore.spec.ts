@@ -29,8 +29,12 @@ vi.mock('@/api/workspace', () => ({
   draftNextQuestion: vi.fn(),
   getActiveState: vi.fn(),
   listRoutes: vi.fn(),
-  repairAnswer: vi.fn(),
-  submitAnswer: vi.fn(),
+}))
+
+vi.mock('@/api/agentRuns', async () => ({
+  ...(await vi.importActual<typeof import('@/api/agentRuns')>('@/api/agentRuns')),
+  createAgentRun: vi.fn(),
+  getAgentRun: vi.fn(),
 }))
 
 vi.mock('@/api/requirementState', () => ({
@@ -60,12 +64,16 @@ vi.mock('@/api/spec', () => ({
 
 import { getProject } from '@/api/projects'
 import {
+  createAgentRun,
+  getAgentRun,
+} from '@/api/agentRuns'
+import type { AgentRunView } from '@/api/agentRuns'
+import {
   draftNextQuestion,
   getActiveState,
   listRoutes,
-  repairAnswer,
-  submitAnswer,
 } from '@/api/workspace'
+import { useInputDraftStore } from '@/stores/inputDraftStore'
 import { getRequirementState, getRouteRequirementState } from '@/api/requirementState'
 import { getProjectGraph } from '@/api/graph'
 import {
@@ -84,8 +92,8 @@ const mockedGetRequirementState = vi.mocked(getRequirementState)
 const mockedGetRouteRequirementState = vi.mocked(getRouteRequirementState)
 const mockedGetProjectGraph = vi.mocked(getProjectGraph)
 const mockedDraftNextQuestion = vi.mocked(draftNextQuestion)
-const mockedSubmitAnswer = vi.mocked(submitAnswer)
-const mockedRepairAnswer = vi.mocked(repairAnswer)
+const mockedCreateAgentRun = vi.mocked(createAgentRun)
+const mockedGetAgentRun = vi.mocked(getAgentRun)
 const mockedGetRouteLineage = vi.mocked(getRouteLineage)
 const mockedActivateRoute = vi.mocked(apiActivateRoute)
 const mockedForkNode = vi.mocked(apiForkNode)
@@ -107,6 +115,23 @@ describe('workspaceStore', () => {
     mockedGetRequirementState.mockResolvedValue(state)
     mockedGetRouteLineage.mockResolvedValue(makeRouteLineage())
     mockedGetProjectGraph.mockResolvedValue(makeGraphWorkspaceView())
+  }
+
+  /** Completed-run view factory for the happy answer path. */
+  function completedRunView(overrides: Partial<AgentRunView> = {}): AgentRunView {
+    return {
+      runId: 'run-1',
+      projectId: 'p1',
+      routeId: 'r1',
+      operation: 'ANSWER_TIP',
+      status: 'completed',
+      phase: 'COMPLETED',
+      producedNodeId: 'node-next',
+      producedAnswerId: 'answer-1',
+      producedPatchId: 'patch-1',
+      producedSpecSnapshotId: null,
+      ...overrides,
+    }
   }
 
   it('loads workspace from the four backend reads', async () => {
@@ -175,61 +200,131 @@ describe('workspaceStore', () => {
     expect(store.feedback).toBe('问题已起草。')
   })
 
+  it('creates an ANSWER_TIP run and returns pending immediately', async () => {
+    mockBackendViews(makeActiveState(), makeRequirementState())
+    let resolveRun: (v: ReturnType<typeof completedRunView>) => void = () => undefined
+    mockedCreateAgentRun.mockResolvedValue({
+      runId: 'run-1',
+      operation: 'ANSWER_TIP',
+      phase: 'CREATED',
+    })
+    mockedGetAgentRun.mockReturnValue(
+      new Promise((resolve) => {
+        resolveRun = resolve
+      }),
+    )
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+
+    const pending = store.submitAnswer({ freeText: 'async answer' })
+
+    // The create call returned 202 already; the run is being polled in the
+    // background while submitAnswer has NOT resolved yet.
+    await vi.waitFor(() => expect(mockedCreateAgentRun).toHaveBeenCalledTimes(1))
+    expect(mockedCreateAgentRun).toHaveBeenCalledWith('p1', {
+      operation: 'ANSWER_TIP',
+      nodeId: store.pendingAnswerNodeId,
+      selectedOptionId: null,
+      freeText: 'async answer',
+    })
+    expect(store.submitting).toBe(true)
+    expect(store.answerRunId).toBe('run-1')
+    expect(mockedGetAgentRun).toHaveBeenCalledWith('p1', 'run-1')
+
+    resolveRun(completedRunView())
+    expect(await pending).toBe(true)
+    expect(store.submitting).toBe(false)
+  })
+
   it('submits an option-only answer payload exactly as selected', async () => {
     mockBackendViews(makeActiveState(), makeRequirementState())
-    mockedSubmitAnswer.mockResolvedValue(makeAnswerExecution())
+    mockedCreateAgentRun.mockResolvedValue({
+      runId: 'run-1',
+      operation: 'ANSWER_TIP',
+      phase: 'CREATED',
+    })
+    mockedGetAgentRun.mockResolvedValue(completedRunView())
     const store = useWorkspaceStore()
     await store.loadWorkspace('p1')
 
     const ok = await store.submitAnswer({ selectedOptionId: 'opt-a' })
 
     expect(ok).toBe(true)
-    expect(mockedSubmitAnswer).toHaveBeenCalledWith('p1', { selectedOptionId: 'opt-a' })
+    expect(mockedCreateAgentRun).toHaveBeenCalledWith('p1', {
+      operation: 'ANSWER_TIP',
+      nodeId: expect.any(String),
+      selectedOptionId: 'opt-a',
+      freeText: null,
+    })
   })
 
   it('submits a free-text-only answer payload', async () => {
     mockBackendViews(makeActiveState(), makeRequirementState())
-    mockedSubmitAnswer.mockResolvedValue(makeAnswerExecution())
+    mockedCreateAgentRun.mockResolvedValue({
+      runId: 'run-1',
+      operation: 'ANSWER_TIP',
+      phase: 'CREATED',
+    })
+    mockedGetAgentRun.mockResolvedValue(completedRunView())
     const store = useWorkspaceStore()
     await store.loadWorkspace('p1')
 
     await store.submitAnswer({ freeText: 'We need a single-user tool' })
 
-    expect(mockedSubmitAnswer).toHaveBeenCalledWith('p1', { freeText: 'We need a single-user tool' })
+    expect(mockedCreateAgentRun).toHaveBeenCalledWith('p1', {
+      operation: 'ANSWER_TIP',
+      nodeId: expect.any(String),
+      selectedOptionId: null,
+      freeText: 'We need a single-user tool',
+    })
   })
 
   it('submits combined option + free-text payload without discarding either', async () => {
     mockBackendViews(makeActiveState(), makeRequirementState())
-    mockedSubmitAnswer.mockResolvedValue(makeAnswerExecution())
+    mockedCreateAgentRun.mockResolvedValue({
+      runId: 'run-1',
+      operation: 'ANSWER_TIP',
+      phase: 'CREATED',
+    })
+    mockedGetAgentRun.mockResolvedValue(completedRunView())
     const store = useWorkspaceStore()
     await store.loadWorkspace('p1')
 
     await store.submitAnswer({ selectedOptionId: 'opt-a', freeText: 'explanation text' })
 
-    expect(mockedSubmitAnswer).toHaveBeenCalledWith('p1', {
+    expect(mockedCreateAgentRun).toHaveBeenCalledWith('p1', {
+      operation: 'ANSWER_TIP',
+      nodeId: expect.any(String),
       selectedOptionId: 'opt-a',
       freeText: 'explanation text',
     })
   })
 
-  it('prevents duplicate answer submission while the first is pending', async () => {
+  it('prevents duplicate answer submission while a run is still pending', async () => {
     mockBackendViews(makeActiveState(), makeRequirementState())
-    let resolveSubmit: (v: ReturnType<typeof makeAnswerExecution>) => void = () => undefined
-    mockedSubmitAnswer.mockReturnValue(
+    mockedCreateAgentRun.mockResolvedValue({
+      runId: 'run-1',
+      operation: 'ANSWER_TIP',
+      phase: 'CREATED',
+    })
+    let resolvePoll: (v: AgentRunView) => void = () => undefined
+    mockedGetAgentRun.mockReturnValue(
       new Promise((resolve) => {
-        resolveSubmit = resolve
+        resolvePoll = resolve
       }),
     )
     const store = useWorkspaceStore()
     await store.loadWorkspace('p1')
 
     const first = store.submitAnswer({ freeText: 'first' })
+    await vi.waitFor(() => expect(store.answerRunId).toBe('run-1'))
     const second = store.submitAnswer({ freeText: 'second' })
 
-    expect(mockedSubmitAnswer).toHaveBeenCalledTimes(1)
-    resolveSubmit(makeAnswerExecution())
-    await first
-    await second
+    expect(await second).toBe(false)
+    expect(mockedCreateAgentRun).toHaveBeenCalledTimes(1)
+
+    resolvePoll(completedRunView())
+    expect(await first).toBe(true)
     expect(store.submitting).toBe(false)
   })
 
@@ -268,13 +363,19 @@ describe('workspaceStore', () => {
       ],
     })
     mockBackendViews(active, before)
-    mockedSubmitAnswer.mockResolvedValue(makeAnswerExecution())
+    mockedCreateAgentRun.mockResolvedValue({
+      runId: 'run-1',
+      operation: 'ANSWER_TIP',
+      phase: 'CREATED',
+    })
+    mockedGetAgentRun.mockResolvedValue(completedRunView())
     const store = useWorkspaceStore()
     await store.loadWorkspace('p1')
 
     expect(store.requirementState?.confirmed).toHaveLength(0)
 
-    // The backend now reports the new state; the frontend must re-read it.
+    // The backend now reports the new state; the frontend must re-read it
+    // after the run completes.
     mockedGetRequirementState.mockResolvedValue(after)
     mockedGetActiveState.mockResolvedValue(
       makeActiveState({ activeNode: makeNode({ question: 'Drafted next question' }) }),
@@ -288,35 +389,34 @@ describe('workspaceStore', () => {
     expect(store.feedback).toBe('回答已记录。')
   })
 
-  it('surfaces a provider-neutral rate-limit error safely', async () => {
+  it('surfaces a provider-neutral rate-limit error safely when the run fails', async () => {
     mockBackendViews(makeActiveState(), makeRequirementState())
-    mockedSubmitAnswer.mockRejectedValue(
-      new ApiError(
-        'The model provider is temporarily rate limited',
-        'MODEL_PROVIDER_RATE_LIMITED',
-        429,
-      ),
-    )
+    mockedCreateAgentRun.mockResolvedValue({
+      runId: 'run-1',
+      operation: 'ANSWER_TIP',
+      phase: 'CREATED',
+    })
+    mockedGetAgentRun.mockResolvedValue(completedRunView({ status: 'failed', phase: 'FAILED' }))
     const store = useWorkspaceStore()
     await store.loadWorkspace('p1')
 
+    // The failed run reconciles against canonical reads; nothing landed, so a
+    // one-shot resubmit affordance is offered instead of an opaque error.
     const ok = await store.submitAnswer({ freeText: 'answer' })
 
     expect(ok).toBe(false)
-    expect(store.error?.code).toBe('MODEL_PROVIDER_RATE_LIMITED')
-    expect(store.error?.message).toBe('The model provider is temporarily rate limited')
-    expect(store.error?.message).not.toContain('provider raw payload')
     expect(store.submitting).toBe(false)
+    expect(store.resubmitAnswerPayload).toEqual({ freeText: 'answer' })
+    expect(mockedCreateAgentRun).toHaveBeenCalledTimes(1)
   })
 
-  it('reconciles a failed submit and repairs the saved Answer without POSTing another answer', async () => {
+  it('polls a FAILED run and offers repair for the persisted Answer without another submit', async () => {
     const active = makeActiveState({
       project: makeProject({ id: 'p1', activeRouteId: 'r1' }),
       activeRoute: makeRoute({ id: 'r1', projectId: 'p1', tipNodeId: 'node-1', isActive: true }),
       activeNode: makeNode({ id: 'node-1', projectId: 'p1' }),
     })
     mockBackendViews(active, makeRequirementState())
-    mockedSubmitAnswer.mockRejectedValue(new ApiError('model failed', 'MODEL_PROVIDER_ERROR', 502))
     mockedGetProjectGraph.mockResolvedValue(makeGraphWorkspaceView({
       projectId: 'p1',
       activeRouteId: 'r1',
@@ -332,17 +432,53 @@ describe('workspaceStore', () => {
         ownerRouteId: 'r1', inherited: false,
       }],
     }))
-    mockedRepairAnswer.mockResolvedValue(makeAnswerExecution())
+    mockedCreateAgentRun.mockResolvedValue({
+      runId: 'run-1',
+      operation: 'ANSWER_TIP',
+      phase: 'CREATED',
+    })
+    // The Answer persisted but DECISION crashed afterwards → run FAILED.
+    mockedGetAgentRun.mockResolvedValue(completedRunView({
+      status: 'failed',
+      phase: 'FAILED',
+      producedNodeId: null,
+    }))
     const store = useWorkspaceStore()
     await store.loadWorkspace('p1')
 
     expect(await store.submitAnswer({ freeText: 'answer' })).toBe(false)
     expect(store.repairableAnswerId).toBe('answer-1')
-    expect(mockedSubmitAnswer).toHaveBeenCalledTimes(1)
+    expect(mockedCreateAgentRun).toHaveBeenCalledTimes(1)
+  })
+
+  it('repairs through a RESUME_ANSWER run and never POSTs a second answer', async () => {
+    const active = makeActiveState({
+      project: makeProject({ id: 'p1', activeRouteId: 'r1' }),
+      activeRoute: makeRoute({ id: 'r1', projectId: 'p1', tipNodeId: 'node-1', isActive: true }),
+      activeNode: makeNode({ id: 'node-1', projectId: 'p1' }),
+    })
+    mockBackendViews(active, makeRequirementState())
+    mockedCreateAgentRun.mockResolvedValue({
+      runId: 'resume-run-1',
+      operation: 'RESUME_ANSWER',
+      phase: 'CREATED',
+    })
+    mockedGetAgentRun.mockResolvedValue(completedRunView({
+      runId: 'resume-run-1',
+      operation: 'RESUME_ANSWER',
+      producedNodeId: 'node-next',
+    }))
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
 
     expect(await store.repairAnswerForActiveFlow('answer-1')).toBe(true)
-    expect(mockedRepairAnswer).toHaveBeenCalledWith('p1', 'answer-1')
-    expect(mockedSubmitAnswer).toHaveBeenCalledTimes(1)
+    expect(mockedCreateAgentRun).toHaveBeenCalledWith('p1', {
+      operation: 'RESUME_ANSWER',
+      nodeId: 'node-1',
+      answerId: 'answer-1',
+    })
+    expect(store.repairableAnswerId).toBeNull()
+    expect(mockedGetAgentRun).toHaveBeenCalledWith('p1', 'resume-run-1')
   })
 
   it('keeps routes visible after a refresh with a changeset', async () => {
@@ -919,7 +1055,7 @@ describe('workspaceStore', () => {
 
     expect(await store.resubmitFailedAnswer()).toBe(false)
     expect(store.resubmitAnswerPayload).toEqual({ freeText: 'retry me' })
-    expect(mockedSubmitAnswer).not.toHaveBeenCalled()
+    expect(mockedCreateAgentRun).not.toHaveBeenCalled()
   })
 
   it('does not start spec generation when its baseline read fails', async () => {
@@ -971,12 +1107,17 @@ describe('workspaceStore', () => {
     expect(mockedGetProjectGraph.mock.calls.length).toBeGreaterThan(1)
   })
 
-  it('scopes the pending answer to the answering node and refreshes canonical reads after completion', async () => {
+  it('scopes the pending answer to the answering node while the run polls', async () => {
     mockBackendViews(makeActiveState(), makeRequirementState())
-    let resolveSubmit: (v: ReturnType<typeof makeAnswerExecution>) => void = () => undefined
-    mockedSubmitAnswer.mockReturnValue(
+    mockedCreateAgentRun.mockResolvedValue({
+      runId: 'run-1',
+      operation: 'ANSWER_TIP',
+      phase: 'CREATED',
+    })
+    let resolvePoll: (v: AgentRunView) => void = () => undefined
+    mockedGetAgentRun.mockReturnValue(
       new Promise((resolve) => {
-        resolveSubmit = resolve
+        resolvePoll = resolve
       }),
     )
     const store = useWorkspaceStore()
@@ -986,18 +1127,132 @@ describe('workspaceStore', () => {
 
     const pending = store.submitAnswer({ freeText: 'async answer' })
 
-    // While the request is in flight the UI is not globally frozen: a
+    await vi.waitFor(() => expect(store.answerRunId).toBe('run-1'))
+    // While the run is in flight the UI is not globally frozen: a
     // node-scoped pending marker names exactly the node being answered.
     expect(store.submitting).toBe(true)
     expect(store.pendingAnswerNodeId).toBe(answeringNodeId)
 
-    resolveSubmit(makeAnswerExecution())
+    resolvePoll(completedRunView())
     expect(await pending).toBe(true)
 
     expect(store.submitting).toBe(false)
     // The canonical graph is re-read from the backend after the run
     // completes — never patched locally from optimistic state.
     expect(mockedGetProjectGraph.mock.calls.length).toBeGreaterThan(graphReadsBeforeSubmit)
+  })
+
+  it('stops observing the old project run after switching projects', async () => {
+    mockBackendViews(makeActiveState(), makeRequirementState())
+    mockedCreateAgentRun.mockResolvedValue({
+      runId: 'run-1',
+      operation: 'ANSWER_TIP',
+      phase: 'CREATED',
+    })
+    let resolvePoll: (v: AgentRunView) => void = () => undefined
+    mockedGetAgentRun.mockReturnValue(
+      new Promise((resolve) => {
+        resolvePoll = resolve
+      }),
+    )
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+
+    const pending = store.submitAnswer({ freeText: 'answer' })
+    await vi.waitFor(() => expect(store.answerRunId).toBe('run-1'))
+
+    // Switching projects clears run observation state; the poll loop exits
+    // without ever resolving the old run.
+    await store.loadWorkspace('p2')
+    expect(store.answerRunId).toBeNull()
+    expect(store.pendingAnswerNodeId).toBeNull()
+
+    resolvePoll(completedRunView())
+    await pending
+    expect(mockedGetAgentRun).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not auto-resubmit after poll network errors; reconcile first', async () => {
+    vi.useFakeTimers()
+    try {
+      const active = makeActiveState({
+        project: makeProject({ id: 'p1', activeRouteId: 'r1' }),
+        activeRoute: makeRoute({ id: 'r1', projectId: 'p1', tipNodeId: 'node-1', isActive: true }),
+        activeNode: makeNode({ id: 'node-1', projectId: 'p1' }),
+      })
+      mockBackendViews(active, makeRequirementState())
+      mockedGetProjectGraph.mockResolvedValue(makeGraphWorkspaceView({
+        projectId: 'p1',
+        activeRouteId: 'r1',
+        routes: [{
+          ...makeRoute({ id: 'r1', projectId: 'p1', tipNodeId: 'node-1', isActive: true }),
+          rootNodeId: 'node-1',
+          lineageNodeIds: ['node-1'],
+        }],
+        nodes: [makeNode({ id: 'node-1', projectId: 'p1' })],
+        answers: [{
+          id: 'answer-1', routeId: 'r1', nodeId: 'node-1', selectedOptionId: null,
+          freeText: 'answer', createdAt: '2026-01-01T00:00:00Z',
+          ownerRouteId: 'r1', inherited: false,
+        }],
+      }))
+      mockedCreateAgentRun.mockResolvedValue({
+        runId: 'run-1',
+        operation: 'ANSWER_TIP',
+        phase: 'CREATED',
+      })
+      // Every poll read fails (network loss after the run was created).
+      mockedGetAgentRun.mockRejectedValue(new ApiError('network lost', 'NETWORK_ERROR', 0))
+      const store = useWorkspaceStore()
+      await store.loadWorkspace('p1')
+
+      const pending = store.submitAnswer({ freeText: 'answer' })
+      // Drive the full poll budget (120 attempts × 1.5s) instantly.
+      await vi.runAllTimersAsync()
+      await pending
+
+      // The create-run call happened exactly once; no automatic second
+      // mutation was issued despite the polls all failing. Canonical
+      // reconciliation found the persisted Answer → repair affordance.
+      expect(mockedCreateAgentRun).toHaveBeenCalledTimes(1)
+      expect(store.resubmitAnswerPayload).toBeNull()
+      expect(store.repairableAnswerId).toBe('answer-1')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('keeps draft input intact while a run is polling', async () => {
+    mockBackendViews(makeActiveState(), makeRequirementState())
+    mockedCreateAgentRun.mockResolvedValue({
+      runId: 'run-1',
+      operation: 'ANSWER_TIP',
+      phase: 'CREATED',
+    })
+    let resolvePoll: (v: AgentRunView) => void = () => undefined
+    mockedGetAgentRun.mockReturnValue(
+      new Promise((resolve) => {
+        resolvePoll = resolve
+      }),
+    )
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+    const nodeId = store.activeState?.activeNode?.id ?? 'node-1'
+    useInputDraftStore().setDraft('p1', nodeId, {
+      selectedOptionId: null,
+      freeText: 'draft being typed',
+    })
+
+    const pending = store.submitAnswer({ freeText: 'final answer' })
+    await vi.waitFor(() => expect(store.answerRunId).toBe('run-1'))
+
+    // Simulate a canonical refresh while the run is pending: the typed draft
+    // must survive it.
+    await store.refreshWorkspace()
+    expect(useInputDraftStore().getDraft('p1', nodeId)?.freeText).toBe('draft being typed')
+
+    resolvePoll(completedRunView())
+    expect(await pending).toBe(true)
   })
 
   it('keeps the forked route and the source route visible immediately when the first draft fails', async () => {

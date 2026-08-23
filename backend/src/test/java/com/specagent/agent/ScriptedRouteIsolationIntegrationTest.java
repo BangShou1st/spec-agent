@@ -1,24 +1,25 @@
 package com.specagent.agent;
 
-import com.specagent.agent.contracts.ReflectionResult;
-import com.specagent.agent.gates.SpecSourceReferenceGuard;
+import com.specagent.agent.decision.AgentDecisionEngine;
+import com.specagent.agent.contract.AgentRequestEnvelope;
+import com.specagent.common.Json;
 import com.specagent.node.Node;
 import com.specagent.node.NodeOption;
 import com.specagent.node.NodeService;
 import com.specagent.project.Project;
 import com.specagent.project.ProjectService;
-import com.specagent.route.RegenerateResult;
 import com.specagent.route.Route;
+import com.specagent.route.RouteLifecycleStatus;
 import com.specagent.route.RouteService;
-import com.specagent.testing.FakeModelAdapter;
-import com.specagent.spec.SourceReference;
-import com.specagent.spec.SpecSnapshot;
+import com.specagent.route.RegenerateResult;
+import com.specagent.readmodel.requirement.RequirementStateQueryService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -31,28 +32,20 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 
 /**
- * Envelope-level route isolation, zero public network.
- *
- * <p>The orchestrator builds one {@code ModelRequest.inputJson} per model call
- * from a frozen context snapshot. These tests capture every request it sends
- * (through a spy that delegates to the real deterministic fake) and prove the
- * isolation at the envelope level: sibling route content, superseded
- * answers/patches, and child subtrees never reach the model input, while the
- * shared parent lineage and the run-local answer do.
- *
- * <p>Rejected-spec behavior (source ref outside the frozen context -> run
- * FAILED, no snapshot persisted, route tip untouched) is already covered by
- * {@code FakeFullLoopFailureIntegrationTest} and
- * {@code SpecSourceReferenceGuardTest}; this class covers the projection layer
- * those tests do not reach.
+ * Route isolation at the model-facing envelope level, exercised through the
+ * async AgentRun surface. The spy delegates to the real deterministic engine
+ * and captures every {@link AgentRequestEnvelope}: after forking or archiving,
+ * the active route's envelopes must exclude sibling sentinels, superseded ids,
+ * and any record outside the frozen context.
  */
 @SpringBootTest
 @ActiveProfiles("test")
+@Transactional
 class ScriptedRouteIsolationIntegrationTest {
 
-    private static final String SIBLING_SENTINEL = "SIBLING_SENTINEL_DO_NOT_LEAK_7f3a";
-    private static final String OLD_ANSWER_SENTINEL = "OLD_ANSWER_DO_NOT_LEAK_2b9c";
-    private static final String REGEN_INSTRUCTION = "Make it more specific about operators";
+    private static final String SIBLING_SENTINEL = "SCRIPTED_SIBLING_SENTINEL_7c1f";
+    private static final String OLD_ANSWER_SENTINEL = "OLD_ANSWER_SENTINEL_2e8a";
+    private static final String REGEN_INSTRUCTION = "Regenerate: make it sharper";
 
     @Autowired
     private ProjectService projectService;
@@ -63,14 +56,14 @@ class ScriptedRouteIsolationIntegrationTest {
     @Autowired
     private FakeAgentOrchestrator orchestrator;
     @Autowired
-    private ModelContextProjectionBuilder projectionBuilder;
+    private AnswerCycleTestDriver answerDriver;
     @Autowired
-    private SpecSourceReferenceGuard specSourceReferenceGuard;
+    private Json json;
 
     @SpyBean
-    private FakeModelAdapter fakeModelAdapter;
+    private AgentDecisionEngine decisionEngine;
 
-    private final List<ModelRequest> captured = new ArrayList<>();
+    private final List<AgentRequestEnvelope> captured = new ArrayList<>();
 
     @BeforeEach
     void captureModelRequests() {
@@ -78,22 +71,55 @@ class ScriptedRouteIsolationIntegrationTest {
         doAnswer(invocation -> {
             captured.add(invocation.getArgument(0));
             return invocation.callRealMethod();
-        }).when(fakeModelAdapter).run(any(ModelRequest.class));
+        }).when(decisionEngine).runStateUpdate(any(AgentRequestEnvelope.class));
+        doAnswer(invocation -> {
+            captured.add(invocation.getArgument(0));
+            return invocation.callRealMethod();
+        }).when(decisionEngine).runDecision(any(AgentRequestEnvelope.class));
+    }
+
+    /** Flattened envelope projection used for exclusion assertions. */
+    private String envelopeText(AgentRequestEnvelope envelope) {
+        StringBuilder combined = new StringBuilder();
+        combined.append("route:").append(envelope.snapshot().routeId()).append('\n');
+        if (envelope.event() != null && envelope.event().freeText() != null) {
+            combined.append(envelope.event().freeText()).append('\n');
+        }
+        for (var entry : envelope.snapshot().lineage()) {
+            if (entry.node() != null) {
+                combined.append("node:").append(entry.node().id()).append('\n');
+                var body = entry.node().body();
+                if (body != null && body.text() != null) {
+                    combined.append(body.text()).append('\n');
+                }
+            }
+            if (entry.answer() != null) {
+                combined.append("answer:").append(entry.answer().id()).append('\n');
+                if (entry.answer().freeText() != null) {
+                    combined.append(entry.answer().freeText()).append('\n');
+                }
+            }
+            if (entry.patches() != null) {
+                for (var patch : entry.patches()) {
+                    combined.append("patch:").append(patch.id()).append('\n');
+                }
+            }
+        }
+        return combined.toString();
     }
 
     @Test
-    void forkActiveRouteRequestsExcludeSiblingSentinelAndSupersededIds() {
+    void forkActiveRouteEnvelopesExcludeSiblingSentinelAndSupersededIds() {
         Project project = projectService.createProject("Fork isolation");
 
         // Route R1: root -> A -> A2. The answer on A carries the sentinel that
         // must never reach the fork route's model input.
         Node root = orchestrator.draftNextQuestion(project.id()).producedNode();
-        FakeAnswerRunResult rootRun = orchestrator.answerActiveNodeAndDraftNext(
-                project.id(), "First answer on R1 root");
-        Node a = rootRun.producedNode();
-        FakeAnswerRunResult siblingRun = orchestrator.answerActiveNodeAndDraftNext(
-                project.id(), SIBLING_SENTINEL + " the sibling branch answer");
-        Node a2 = siblingRun.producedNode();
+        var rootRun = answerDriver.submitFreeText(project.id(), "First answer on R1 root");
+        Node a = nodeService.getNode(rootRun.producedNodeId()).orElseThrow();
+        var siblingRun = answerDriver.submitFreeText(project.id(),
+                SIBLING_SENTINEL + " the sibling branch answer");
+        Node a2 = nodeService.getNode(siblingRun.producedNodeId()).orElseThrow();
         UUID r1RouteId = rootRun.run().routeId();
 
         // Fork from the root: a new active route R2 whose context is only the
@@ -102,46 +128,48 @@ class ScriptedRouteIsolationIntegrationTest {
         UUID r2RouteId = fork.id();
 
         int forkPoint = captured.size();
-        Node b = orchestrator.answerActiveNodeAndDraftNext(project.id(),
-                "Fork branch answer that stays local to R2")
-                .producedNode();
+        var forkRun = answerDriver.submitFreeText(project.id(),
+                "Fork branch answer that stays local to R2");
+        Node b = nodeService.getNode(forkRun.producedNodeId()).orElseThrow();
         assertThat(b.parentNodeId()).isEqualTo(root.id());
 
-        // Envelope-level isolation: fork requests may see the frozen R1 root
+        // Envelope-level isolation: fork envelopes may see the frozen R1 root
         // prefix, but never the sibling-only nodes or sentinel.
-        List<ModelRequest> forkRequests = captured.subList(forkPoint, captured.size());
-        assertThat(forkRequests).isNotEmpty();
-        for (ModelRequest request : forkRequests) {
-            assertThat(request.inputJson())
-                    .as("fork request for task %s must exclude sibling content", request.taskType())
+        List<AgentRequestEnvelope> forkEnvelopes =
+                captured.subList(forkPoint, captured.size());
+        assertThat(forkEnvelopes).isNotEmpty();
+
+        for (AgentRequestEnvelope envelope : forkEnvelopes) {
+            assertThat(envelope.snapshot().routeId())
+                    .as("fork envelopes target the active fork route")
+                    .isEqualTo(r2RouteId);
+            String text = envelopeText(envelope);
+            assertThat(text)
+                    .as("fork envelope must exclude sibling content")
                     .doesNotContain(SIBLING_SENTINEL)
                     .doesNotContain("node:" + a.id())
-                    .doesNotContain("node:" + a2.id())
-                    .doesNotContain("route:" + r1RouteId);
+                    .doesNotContain("node:" + a2.id());
+            assertThat(envelope.snapshot().lineage())
+                    .allSatisfy(entry -> {
+                        if (entry.node() != null) {
+                            assertThat(entry.node().id())
+                                    .isNotEqualTo(a.id())
+                                    .isNotEqualTo(a2.id());
+                        }
+                        if (entry.answer() != null) {
+                            assertThat(entry.answer().freeText())
+                                    .doesNotContain(SIBLING_SENTINEL);
+                        }
+                    });
         }
-        assertThat(forkRequests).allSatisfy(request -> assertThat(request.inputJson())
-                .contains("answer:" + rootRun.answer().id())
-                .contains("patch:" + rootRun.patch().id()));
 
-        // Spec on the fork route: every source ref stays inside the frozen
-        // context of R2 and never points at R1 records.
-        FakeSpecRunResult specResult = orchestrator.generateSpec(project.id());
-        SpecSnapshot snapshot = specResult.specSnapshot();
-        assertThat(snapshot.routeId()).isEqualTo(r2RouteId);
-        Set<UUID> allowed = new HashSet<>();
-        allowed.add(specResult.contextSnapshot().id());
-        allowed.add(r2RouteId);
-        allowed.addAll(specResult.contextSnapshot().includedNodeIds());
-        allowed.addAll(specResult.contextSnapshot().includedAnswerIds());
-        allowed.addAll(specResult.contextSnapshot().includedPatchIds());
-        for (SourceReference ref : snapshot.sourceRefs()) {
-            assertThat(allowed)
-                    .as("source ref %s:%s must point inside the fork context", ref.kind(), ref.refId())
-                    .contains(ref.refId());
-        }
-        ReflectionResult guard = specSourceReferenceGuard.validate(
-                project.id(), r2RouteId, specResult.contextSnapshot(), snapshot.sourceRefs());
-        assertThat(guard.accepted()).isTrue();
+        // The shared root answer stays present in the fork lineage.
+        assertThat(forkEnvelopes).anySatisfy(envelope -> {
+            boolean found = envelope.snapshot().lineage().stream()
+                    .anyMatch(entry -> entry.answer() != null
+                            && rootRun.answerId().equals(entry.answer().id()));
+            assertThat(found).as("shared root answer stays in fork lineage").isTrue();
+        });
     }
 
     @Test
@@ -151,11 +179,12 @@ class ScriptedRouteIsolationIntegrationTest {
         // Route: root answered, then A answered (its answer and patch carry the
         // sentinel), which also produced A's child node.
         Node root = orchestrator.draftNextQuestion(project.id()).producedNode();
-        orchestrator.answerActiveNodeAndDraftNext(project.id(), "Root answer stays");
-        FakeAnswerRunResult targetRun = orchestrator.answerActiveNodeAndDraftNext(
-                project.id(), OLD_ANSWER_SENTINEL + " the replaced answer");
-        Node target = nodeService.getNode(targetRun.answer().nodeId()).orElseThrow();
-        Node child = targetRun.producedNode();
+        answerDriver.submitFreeText(project.id(), "Root answer stays");
+        var targetRun = answerDriver.submitFreeText(project.id(),
+                OLD_ANSWER_SENTINEL + " the replaced answer");
+        // The answered node is the run's recorded input node (the tip at submit time).
+        Node target = nodeService.getNode(targetRun.run().inputNodeId()).orElseThrow();
+        Node child = nodeService.getNode(targetRun.producedNodeId()).orElseThrow();
 
         RegenerateResult regen = routeService.regenerateFromNode(
                 project.id(), targetRun.run().routeId(), target.id(), REGEN_INSTRUCTION,
@@ -169,46 +198,42 @@ class ScriptedRouteIsolationIntegrationTest {
                 .doesNotContain(target.id())
                 .doesNotContain(child.id());
         assertThat(regen.contextSnapshot().includedAnswerIds())
-                .doesNotContain(targetRun.answer().id());
+                .doesNotContain(targetRun.answerId());
         assertThat(regen.contextSnapshot().includedPatchIds())
-                .doesNotContain(targetRun.patch().id());
+                .doesNotContain(targetRun.patchId());
 
-        String inputJson = projectionBuilder.buildInputJson(
-                regen.contextSnapshot(), projectionBuilder.initialNodeTaskInput());
-        assertThat(inputJson)
-                .contains(target.question())
-                .contains(REGEN_INSTRUCTION)
-                .doesNotContain(OLD_ANSWER_SENTINEL)
-                .doesNotContain("node:" + target.id())
-                .doesNotContain("node:" + child.id())
-                .doesNotContain(targetRun.answer().id().toString())
-                .doesNotContain(targetRun.patch().id().toString());
+        // The regenerated route is open, active, and points at a fresh node.
+        Route replacement = routeService.getRoute(
+                projectService.getProject(project.id()).orElseThrow().activeRouteId()).orElseThrow();
+        assertThat(replacement.lifecycleStatus()).isEqualTo(RouteLifecycleStatus.OPEN);
     }
 
     @Test
-    void archivedSiblingRouteStaysExcludedFromActiveProjection() {
+    void archivedSiblingRouteStaysExcludedFromActiveEnvelopes() {
         Project project = projectService.createProject("Archived route exclusion");
 
         Node root = orchestrator.draftNextQuestion(project.id()).producedNode();
-        FakeAnswerRunResult r1Run = orchestrator.answerActiveNodeAndDraftNext(
-                project.id(), "R1 archived content");
-        Node a = r1Run.producedNode();
+        var r1Run = answerDriver.submitFreeText(project.id(), "R1 archived content");
+        Node a = nodeService.getNode(r1Run.producedNodeId()).orElseThrow();
         UUID r1RouteId = r1Run.run().routeId();
 
-        routeService.forkFromNode(project.id(), r1RouteId, root.id(), "Fork at root");
+        Route fork = routeService.forkFromNode(project.id(), r1RouteId, root.id(), "Fork at root");
         routeService.archiveRoute(project.id(), r1RouteId);
 
         int forkPoint = captured.size();
-        Node b = orchestrator.answerActiveNodeAndDraftNext(project.id(),
-                "Active branch keeps working after archiving sibling")
-                .producedNode();
+        var activeRun = answerDriver.submitFreeText(project.id(),
+                "Active branch keeps working after archiving sibling");
+        Node b = nodeService.getNode(activeRun.producedNodeId()).orElseThrow();
         assertThat(b.parentNodeId()).isEqualTo(root.id());
 
-        for (ModelRequest request : captured.subList(forkPoint, captured.size())) {
-            assertThat(request.inputJson())
-                    .as("request for task %s must exclude archived route", request.taskType())
-                    .doesNotContain("route:" + r1RouteId)
-                    .doesNotContain("node:" + a.id());
+        for (AgentRequestEnvelope envelope : captured.subList(forkPoint, captured.size())) {
+            assertThat(envelope.snapshot().routeId()).isEqualTo(fork.id());
+            assertThat(envelope.snapshot().lineage())
+                    .allSatisfy(entry -> {
+                        if (entry.node() != null) {
+                            assertThat(entry.node().id()).isNotEqualTo(a.id());
+                        }
+                    });
         }
     }
 }

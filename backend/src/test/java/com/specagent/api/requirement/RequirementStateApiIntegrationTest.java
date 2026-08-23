@@ -1,6 +1,7 @@
 package com.specagent.api.requirement;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.specagent.agent.AnswerCycleTestDriver;
 import com.specagent.agent.FakeAgentOrchestrator;
 import com.specagent.answer.Answer;
 import com.specagent.answer.AnswerService;
@@ -70,6 +71,8 @@ class RequirementStateApiIntegrationTest {
     private AnswerPatchService answerPatchService;
     @Autowired
     private FakeAgentOrchestrator orchestrator;
+    @Autowired
+    private AnswerCycleTestDriver answerDriver;
 
     @Test
     void newProjectHasEmptyDerivedState() throws Exception {
@@ -89,19 +92,22 @@ class RequirementStateApiIntegrationTest {
     @Test
     void groupsClaimsByActualRuntimeStatusAfterAnswer() throws Exception {
         Project project = projectService.createProject("Grouped state project");
-        // Run the normal orchestrator path so the first confirmed/unresolved
-        // claims are derived from a real answer (fake gateway, no provider).
+        // Run the normal runtime path so the first confirmed claim is derived
+        // from a real answer (deterministic engine, no provider). The fake
+        // engine's STATE_UPDATE proposes a single confirmed goal claim.
         orchestrator.draftNextQuestion(project.id());
-        orchestrator.answerActiveNodeAndDraftNext(project.id(), "Primary outcome answer");
+        answerDriver.submitFreeText(project.id(), "Primary outcome answer");
 
-        // Add an assumed and a rejected claim on the same active route through
-        // the runtime patch service so every status group is populated.
+        // Add assumed, unresolved, and rejected claims on the same active
+        // route through the runtime patch service so every status group is
+        // populated.
         UUID activeRouteId = projectService.getProject(project.id()).orElseThrow().activeRouteId();
         UUID childTip = routeService.getRoute(activeRouteId).orElseThrow().tipNodeId();
         Answer extraAnswer = answerService.finalizeAnswer(project.id(), activeRouteId, childTip,
                 null, "Assumption and rejection content", "test");
         answerPatchService.save(project.id(), activeRouteId, childTip, extraAnswer.id(),
                 List.of(Claim.of(ClaimKind.ASSUMPTION, "Assumed scope detail", ClaimStatus.ASSUMED, null, null),
+                        Claim.of(ClaimKind.OPEN_QUESTION, "Open follow-up detail", ClaimStatus.UNRESOLVED, null, null),
                         Claim.of(ClaimKind.OTHER, "Rejected idea detail", ClaimStatus.REJECTED, null, null)),
                 null);
 
@@ -126,7 +132,7 @@ class RequirementStateApiIntegrationTest {
         assertThat(view.confirmed()).extracting(RequirementClaimView::text)
                 .contains("The user clarified the main outcome.");
         assertThat(view.unresolved()).extracting(RequirementClaimView::text)
-                .contains("The user must confirm scope boundaries.");
+                .contains("Open follow-up detail");
         // Groups are mutually exclusive: a claim appears exactly once by its
         // actual runtime status.
         assertThat(view.confirmed()).doesNotContain(view.unresolved().get(0));
@@ -137,7 +143,7 @@ class RequirementStateApiIntegrationTest {
         Project project = projectService.createProject("Isolation project");
         // Active route gets real derived claims through the orchestrator.
         orchestrator.draftNextQuestion(project.id());
-        orchestrator.answerActiveNodeAndDraftNext(project.id(), "Active route answer");
+        answerDriver.submitFreeText(project.id(), "Active route answer");
         UUID activeRouteId = projectService.getProject(project.id()).orElseThrow().activeRouteId();
 
         // Sibling route with unmistakable sentinel content, never activated.
@@ -240,7 +246,7 @@ class RequirementStateApiIntegrationTest {
         Project project = projectService.createProject("Route scoped project");
         // Active route A gets real derived claims through the orchestrator.
         orchestrator.draftNextQuestion(project.id());
-        orchestrator.answerActiveNodeAndDraftNext(project.id(), "Active route answer");
+        answerDriver.submitFreeText(project.id(), "Active route answer");
         UUID activeRouteId = projectService.getProject(project.id()).orElseThrow().activeRouteId();
         Route routeB = createRouteWithSentinelClaim(project, "ROUTE_B_ONLY_CLAIM_5D1F");
         assertThat(activeRouteId).isNotEqualTo(routeB.id());
@@ -263,7 +269,7 @@ class RequirementStateApiIntegrationTest {
     void legacyActiveEndpointStillReturnsActiveRouteA() throws Exception {
         Project project = projectService.createProject("Legacy endpoint project");
         orchestrator.draftNextQuestion(project.id());
-        orchestrator.answerActiveNodeAndDraftNext(project.id(), "Active route answer");
+        answerDriver.submitFreeText(project.id(), "Active route answer");
         UUID activeRouteId = projectService.getProject(project.id()).orElseThrow().activeRouteId();
         createRouteWithSentinelClaim(project, "ROUTE_B_ONLY_CLAIM_9B17");
 

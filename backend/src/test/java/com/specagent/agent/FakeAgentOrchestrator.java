@@ -20,29 +20,9 @@ public class FakeAgentOrchestrator {
                 result.modelResponse(), result.producedNode());
     }
 
-    public FakeAnswerRunResult answerActiveNodeAndDraftNext(UUID projectId, String freeText) {
-        return wrap(delegate.answerActiveNodeAndDraftNext(projectId, freeText));
-    }
-
-    public FakeAnswerRunResult answerActiveNodeAndDraftNext(UUID projectId,
-                                                            UUID selectedOptionId,
-                                                            String freeText) {
-        return wrap(delegate.answerActiveNodeAndDraftNext(projectId, selectedOptionId, freeText));
-    }
-
-    public FakeAnswerRunResult repairAnswerProcessingAndDraftNext(UUID projectId, UUID answerId) {
-        return wrap(delegate.repairAnswerProcessingAndDraftNext(projectId, answerId));
-    }
-
     public FakeSpecRunResult generateSpec(UUID projectId) {
         SpecRunResult result = delegate.generateSpec(projectId);
         return new FakeSpecRunResult(result.run(), result.contextSnapshot(),
                 result.modelResponse(), result.specSnapshot());
-    }
-
-    private FakeAnswerRunResult wrap(AnswerRunResult result) {
-        return new FakeAnswerRunResult(result.run(), result.contextSnapshot(),
-                result.interpretResponse(), result.patchResponse(), result.nodeResponse(),
-                result.answer(), result.patch(), result.producedNode());
     }
 }

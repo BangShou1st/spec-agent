@@ -78,6 +78,10 @@ class OpenCodeZenRouteIsolationSmokeTest {
     @Autowired
     private FakeAgentOrchestrator orchestrator;
     @Autowired
+    private com.specagent.agent.AnswerCycleTestDriver answerDriver;
+    @Autowired
+    private com.specagent.node.NodeService nodeService;
+    @Autowired
     private AgentRunService agentRunService;
     @Autowired
     private OpenCodeModelCatalog catalog;
@@ -126,12 +130,10 @@ class OpenCodeZenRouteIsolationSmokeTest {
         // Route R1: root -> A -> A2. The answer on A carries the sibling
         // sentinel that must never reach the fork route's model input.
         Node root = orchestrator.draftNextQuestion(project.id()).producedNode();
-        FakeAnswerRunResult rootRun = orchestrator.answerActiveNodeAndDraftNext(
-                project.id(), "Root answer: tracking workflow progress.");
-        Node a = rootRun.producedNode();
-        FakeAnswerRunResult siblingRun = orchestrator.answerActiveNodeAndDraftNext(
-                project.id(), SIBLING_SENTINEL + " sibling branch preference");
-        Node a2 = siblingRun.producedNode();
+        var rootRun = answerDriver.submitFreeText(project.id(), "Root answer: tracking workflow progress.");
+        com.specagent.node.Node a = nodeService.getNode(rootRun.producedNodeId()).orElseThrow();
+        var siblingRun = answerDriver.submitFreeText(project.id(), SIBLING_SENTINEL + " sibling branch preference");
+        com.specagent.node.Node a2 = nodeService.getNode(siblingRun.producedNodeId()).orElseThrow();
         UUID r1RouteId = rootRun.run().routeId();
 
         // Fork from the root; the fork route becomes active.
@@ -140,9 +142,8 @@ class OpenCodeZenRouteIsolationSmokeTest {
         System.out.println("fork: R1=" + r1RouteId + " -> R2=" + r2RouteId);
 
         int forkPoint = captured.size();
-        FakeAnswerRunResult forkRun = orchestrator.answerActiveNodeAndDraftNext(
-                project.id(), FORK_ANSWER);
-        Node b = forkRun.producedNode();
+        var forkRun = answerDriver.submitFreeText(project.id(), FORK_ANSWER);
+        Node b = nodeService.getNode(forkRun.producedNodeId()).orElseThrow();
         assertThat(b.parentNodeId()).isEqualTo(root.id());
         System.out.println("fork answer loop: PASS; requests: "
                 + (captured.size() - forkPoint) + " (interpret, patch, draft node)");
@@ -154,7 +155,7 @@ class OpenCodeZenRouteIsolationSmokeTest {
                     .doesNotContain(SIBLING_SENTINEL)
                     .doesNotContain("node:" + a.id())
                     .doesNotContain("node:" + a2.id())
-                    .doesNotContain("answer:" + rootRun.answer().id())
+                    .doesNotContain("answer:" + rootRun.answerId())
                     .doesNotContain("route:" + r1RouteId)
                     .contains("node:" + root.id());
         }
