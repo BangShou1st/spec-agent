@@ -1,6 +1,7 @@
 package com.specagent.api.common;
 
 import com.specagent.agent.ModelContractException;
+import com.specagent.agent.policy.ProposalAlreadyDecidedException;
 import com.specagent.readmodel.graph.GraphWorkspaceQueryException;
 import com.specagent.readmodel.requirement.RequirementStateQueryException;
 import com.specagent.readmodel.route.RouteLineageQueryException;
@@ -90,6 +91,19 @@ public class ApiExceptionHandler {
         return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
                 .body(ApiErrorResponse.of("MODEL_CONTRACT_REJECTED",
                         "The model output did not satisfy the runtime contract"));
+    }
+
+    /**
+     * A proposal lifecycle decision lost the single-winner race (another
+     * accept/reject/expire committed first). Expected business outcome:
+     * deterministic 409, never a 500 or a constraint violation.
+     */
+    @ExceptionHandler(ProposalAlreadyDecidedException.class)
+    public ResponseEntity<ApiErrorResponse> handleProposalAlreadyDecided(
+            ProposalAlreadyDecidedException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiErrorResponse.of("PROPOSAL_ALREADY_DECIDED",
+                        "Proposal has already been decided"));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

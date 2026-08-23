@@ -140,7 +140,9 @@ class ProposalAcceptanceIntegrationTest {
         acceptanceService.acceptAndExecute(pending.id(), "user");
 
         assertThatThrownBy(() -> acceptanceService.acceptAndExecute(pending.id(), "user"))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("not pending acceptance");
+                .isInstanceOf(ProposalAlreadyDecidedException.class)
+                .hasMessageContaining("already been decided")
+                .extracting(e -> ((ProposalAlreadyDecidedException) e).currentStatus())
+                .isEqualTo("ACCEPTED");
     }
 }

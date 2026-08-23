@@ -116,7 +116,7 @@ Advisor Mode (default before any autonomous execution):
 
 - policy evaluates Runtime facts (mutation scope, lifecycle state, confirmed-intent change, destructiveness, external side effects, permission scope, replay safety), not model confidence alone;
 - distinguish read-only/internal operations, visible Graph mutations, confirmed-intent changes, destructive/history operations, external side effects;
-- proposal lifecycle read model: `PROPOSED -> ACCEPTED | MODIFIED | REJECTED | EXPIRED` (distinct from Node knowledge state).
+- proposal lifecycle read model: `PROPOSED -> ACCEPTED | MODIFIED | REJECTED | EXPIRED` (distinct from Node knowledge state); leaving `PROPOSED` is a single-winner terminal transition — concurrent accept/reject/expire serialize on the proposal row lock plus a conditional `status = 'PROPOSED'` CAS update, the loser receives a deterministic `PROPOSAL_ALREADY_DECIDED` (409) business error, and acceptance keeps mutation + status change + operation log in one transaction.
 
 Asynchronous command surface and non-blocking UI:
 

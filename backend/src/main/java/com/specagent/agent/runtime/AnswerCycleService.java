@@ -13,6 +13,7 @@ import com.specagent.agent.policy.AdvisorPolicyEngine;
 import com.specagent.agent.policy.AgentProposal;
 import com.specagent.agent.policy.AgentProposalService;
 import com.specagent.agent.policy.PolicyDecision;
+import com.specagent.agent.policy.ProposalStatus;
 import com.specagent.agent.runevent.AgentRunEventService;
 import com.specagent.agent.runevent.AgentRunPhase;
 import com.specagent.agent.snapshot.AgentInputSnapshotBuilder;
@@ -264,7 +265,12 @@ public class AnswerCycleService {
         if (policyDecision.denyReason() != null) {
             AgentProposal agentProposal = proposalService.createProposal(
                     proposal, run.id(), projectId, route.id());
-            proposalService.expireProposal(agentProposal.id());
+            // Idempotent deny: on a retry the proposal row already exists and
+            // may have been expired by an earlier attempt. Expiring it again
+            // must stay a no-op here, not a lifecycle-race failure.
+            if (agentProposal.status() == ProposalStatus.PROPOSED) {
+                proposalService.expireProposal(agentProposal.id());
+            }
             trace = appendTrace(trace, "policy_denied:" + policyDecision.denyReason());
             agentRunService.complete(run.id(), AgentRunStatus.COMPLETED, trace);
             return new AnswerCycleResult(run.id(), answer.id(), patch.id(),

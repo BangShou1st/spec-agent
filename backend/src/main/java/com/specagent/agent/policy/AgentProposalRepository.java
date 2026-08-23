@@ -120,12 +120,39 @@ public class AgentProposalRepository {
                 MAPPER);
     }
 
-    public void updateStatus(UUID id, ProposalStatus status, Instant decidedAt, String decidedBy) {
-        jdbc.update(
-                "UPDATE agent_proposals SET status = :status, decided_at = :decidedAt, decided_by = :decidedBy WHERE id = :id",
-                Map.of("id", id, "status", status.code(),
+    /**
+     * Locking read of one proposal for a lifecycle decision. The row lock is
+     * held until the surrounding transaction commits or rolls back, so
+     * concurrent terminal transitions on the same proposal serialize behind
+     * this read and each one re-observes the committed status.
+     */
+    public Optional<AgentProposal> findByIdForUpdate(UUID id) {
+        List<AgentProposal> results = jdbc.query(
+                "SELECT * FROM agent_proposals WHERE id = :id FOR UPDATE",
+                Map.of("id", id),
+                MAPPER);
+        return results.isEmpty() ? Optional.empty() : Optional.of(results.getFirst());
+    }
+
+    /**
+     * Compare-and-set terminal transition out of PROPOSED. The conditional
+     * WHERE clause is the final arbiter: exactly one concurrent caller
+     * observes an affected row count of 1 (the winner); every other caller
+     * sees 0 and must treat the proposal as already decided. Never overwrites
+     * an existing terminal state.
+     */
+    public boolean transitionFromProposed(UUID id, ProposalStatus targetStatus,
+                                          Instant decidedAt, String decidedBy) {
+        int updated = jdbc.update(
+                """
+                UPDATE agent_proposals
+                SET status = :status, decided_at = :decidedAt, decided_by = :decidedBy
+                WHERE id = :id AND status = 'PROPOSED'
+                """,
+                Map.of("id", id, "status", targetStatus.code(),
                         "decidedAt", decidedAt == null ? null : java.sql.Timestamp.from(decidedAt),
                         "decidedBy", decidedBy));
+        return updated == 1;
     }
 
     @SuppressWarnings("unchecked")

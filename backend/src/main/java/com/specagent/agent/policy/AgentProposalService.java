@@ -56,29 +56,82 @@ public class AgentProposalService {
 
     /**
      * Accepts a proposal, marking it as ACCEPTED with the current timestamp.
+     * The transition out of PROPOSED is atomic and single-winner: a proposal
+     * already decided (ACCEPTED/REJECTED/EXPIRED by another request racing
+     * this one) raises {@link ProposalAlreadyDecidedException} instead of
+     * overwriting the terminal state.
      */
     @Transactional
     public void acceptProposal(UUID proposalId, String decidedBy) {
-        repository.updateStatus(proposalId, ProposalStatus.ACCEPTED,
-                Instant.now(), decidedBy);
+        requirePending(proposalId);
+        if (!repository.transitionFromProposed(proposalId, ProposalStatus.ACCEPTED,
+                Instant.now(), decidedBy)) {
+            throw alreadyDecided(proposalId);
+        }
     }
 
     /**
      * Rejects a proposal, marking it as REJECTED with the current timestamp.
+     * Same single-winner rule as acceptance: an existing terminal state is
+     * never overwritten.
      */
     @Transactional
     public void rejectProposal(UUID proposalId, String decidedBy) {
-        repository.updateStatus(proposalId, ProposalStatus.REJECTED,
-                Instant.now(), decidedBy);
+        requirePending(proposalId);
+        if (!repository.transitionFromProposed(proposalId, ProposalStatus.REJECTED,
+                Instant.now(), decidedBy)) {
+            throw alreadyDecided(proposalId);
+        }
     }
 
     /**
      * Expires a proposal, marking it as EXPIRED with the current timestamp.
+     * Same single-winner rule as acceptance: an existing terminal state is
+     * never overwritten.
      */
     @Transactional
     public void expireProposal(UUID proposalId) {
-        repository.updateStatus(proposalId, ProposalStatus.EXPIRED,
-                Instant.now(), "system");
+        requirePending(proposalId);
+        if (!repository.transitionFromProposed(proposalId, ProposalStatus.EXPIRED,
+                Instant.now(), "system")) {
+            throw alreadyDecided(proposalId);
+        }
+    }
+
+    /**
+     * Locks the proposal row and fails fast when it is already decided or
+     * does not exist. The lock is held to the end of the transaction, so a
+     * racing decision on the same proposal waits here and re-reads the
+     * committed status before its own CAS attempt.
+     */
+    private void requirePending(UUID proposalId) {
+        AgentProposal locked = repository.findByIdForUpdate(proposalId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Proposal not found: " + proposalId));
+        if (locked.status() != ProposalStatus.PROPOSED) {
+            throw new ProposalAlreadyDecidedException(locked.status().code());
+        }
+    }
+
+    /**
+     * Builds the loser error after the CAS observed zero affected rows. The
+     * status is read fresh (the winner's row is already committed at that
+     * point under READ_COMMITTED), so the reported state matches the DB.
+     */
+    private ProposalAlreadyDecidedException alreadyDecided(UUID proposalId) {
+        String currentStatus = repository.findById(proposalId)
+                .map(p -> p.status().code())
+                .orElse("UNKNOWN");
+        return new ProposalAlreadyDecidedException(currentStatus);
+    }
+
+    /**
+     * Locking read for lifecycle decisions. Callers that are about to execute
+     * work on behalf of a PROPOSED proposal (acceptance) must take the row
+     * lock up front so the lock spans their entire transaction.
+     */
+    public Optional<AgentProposal> getProposalForUpdate(UUID id) {
+        return repository.findByIdForUpdate(id);
     }
 
     public Optional<AgentProposal> getProposal(UUID id) {

@@ -64,11 +64,14 @@ public class ProposalAcceptanceService {
      */
     @Transactional
     public AcceptedProposalResult acceptAndExecute(UUID proposalId, String decidedBy) {
-        AgentProposal stored = proposalService.getProposal(proposalId)
+        // Single-winner arbitration starts here: the proposal row lock is
+        // taken before any validation or graph mutation and is held until
+        // this transaction commits or rolls back, so a racing accept/reject/
+        // expire waits behind it and then observes the committed outcome.
+        AgentProposal stored = proposalService.getProposalForUpdate(proposalId)
                 .orElseThrow(() -> new IllegalArgumentException("Proposal not found: " + proposalId));
         if (stored.status() != ProposalStatus.PROPOSED) {
-            throw new IllegalStateException(
-                    "Proposal is not pending acceptance: " + proposalId + " is " + stored.status());
+            throw new ProposalAlreadyDecidedException(stored.status().code());
         }
 
         ActionProposal proposal = rebuildActionProposal(stored);
