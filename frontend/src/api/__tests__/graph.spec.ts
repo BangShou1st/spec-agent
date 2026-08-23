@@ -15,6 +15,7 @@ const emptyGraph: GraphWorkspaceView = {
   routes: [],
   nodes: [],
   answers: [],
+  relations: [],
 }
 
 describe('graph api', () => {

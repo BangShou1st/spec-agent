@@ -4,8 +4,10 @@ import com.specagent.agent.AgentRun;
 import com.specagent.agent.AgentRunFailureService;
 import com.specagent.agent.AgentRunService;
 import com.specagent.agent.AgentRunStatus;
+import com.specagent.agent.AgentRunTriggerType;
 import com.specagent.agent.ModelContractException;
 import com.specagent.agent.gates.ContextGuard;
+import com.specagent.agent.runevent.AgentRunEvent;
 import com.specagent.agent.runevent.AgentRunEventService;
 import com.specagent.agent.runevent.AgentRunPhase;
 import com.specagent.agent.contract.ActionProposal;
@@ -23,20 +25,16 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 /**
- * Background executor for one decision-cycle run.
- *
- * <p>Runs the full cycle against the {@link AgentDecisionEngine} port: freeze
- * a context snapshot, project it into the input snapshot, run STATE_UPDATE
- * and DECISION, and record every phase as an append-only run event. Stage A
- * records proposals only — nothing is executed against the Graph, so there is
- * no product-visible behavior change.
- *
- * <p>The worker never touches a model gateway or provider package directly;
- * all model access stays behind the decision engine boundary.
+ * Background executor for queued runs. Dispatches by trigger type:
+ * <ul>
+ *   <li>DECISION_CYCLE → Stage A logic: STATE_UPDATE + DECISION, record proposal only.</li>
+ *   <li>ANSWER_CYCLE → AnswerCycleService: 2-call convergence with policy + execution.</li>
+ * </ul>
  */
 @Component
 public class RunWorker {
@@ -51,6 +49,8 @@ public class RunWorker {
     private final AgentInputSnapshotBuilder snapshotBuilder;
     private final AgentDecisionEngine decisionEngine;
     private final AgentRunEventService eventService;
+    private final AnswerCycleService answerCycleService;
+    private final NodeQueryService nodeQueryService;
 
     public RunWorker(RunService runService,
                             AgentRunService agentRunService,
@@ -59,7 +59,9 @@ public class RunWorker {
                             ContextGuard contextGuard,
                             AgentInputSnapshotBuilder snapshotBuilder,
                             AgentDecisionEngine decisionEngine,
-                            AgentRunEventService eventService) {
+                            AgentRunEventService eventService,
+                            AnswerCycleService answerCycleService,
+                            NodeQueryService nodeQueryService) {
         this.runService = runService;
         this.agentRunService = agentRunService;
         this.agentRunFailureService = agentRunFailureService;
@@ -68,19 +70,35 @@ public class RunWorker {
         this.snapshotBuilder = snapshotBuilder;
         this.decisionEngine = decisionEngine;
         this.eventService = eventService;
+        this.answerCycleService = answerCycleService;
+        this.nodeQueryService = nodeQueryService;
     }
 
-    /** Claims and executes at most one queued run; used by the poller loop. */
+    /** Claims and executes at most one queued run from each queue. */
     public void tryClaimAndExecute() {
+        // Try DECISION_CYCLE first, then ANSWER_CYCLE, then NODE_QUERY.
         runService.claimNext().ifPresent(this::executeRun);
+        runService.claimNextAnswerCycle().ifPresent(this::executeRun);
+        runService.claimNextNodeQuery().ifPresent(this::executeRun);
     }
 
     /**
-     * Executes one claimed run to a terminal state. Unexpected failures mark
-     * the run FAILED in their own transaction so it stays queryable, then
-     * rethrow.
+     * Dispatches a claimed run to the appropriate handler based on trigger type.
      */
     public void executeRun(AgentRun run) {
+        if (run.triggerType() == AgentRunTriggerType.ANSWER_CYCLE) {
+            executeAnswerCycle(run);
+        } else if (run.triggerType() == AgentRunTriggerType.NODE_QUERY) {
+            executeNodeQuery(run);
+        } else {
+            executeDecisionCycle(run);
+        }
+    }
+
+    /**
+     * Stage A decision cycle: STATE_UPDATE + DECISION, record proposal only.
+     */
+    private void executeDecisionCycle(AgentRun run) {
         UUID runId = run.id();
         try {
             ContextSnapshot snapshot = contextBuilder.buildFromActiveRoute(
@@ -124,21 +142,79 @@ public class RunWorker {
         }
     }
 
+    /**
+     * Answer cycle: 2-call convergence with policy + execution.
+     * Reads input parameters from the persisted run event payload.
+     */
+    private void executeAnswerCycle(AgentRun run) {
+        UUID runId = run.id();
+        try {
+            // Read input parameters from the RUN_CREATED event payload.
+            Map<String, Object> input = readRunInput(runId);
+            String operation = run.operation() != null ? run.operation() : "ANSWER_TIP";
+            UUID selectedOptionId = input.containsKey("selectedOptionId")
+                    ? UUID.fromString((String) input.get("selectedOptionId")) : null;
+            String freeText = (String) input.get("freeText");
+            UUID answerId = input.containsKey("answerId")
+                    ? UUID.fromString((String) input.get("answerId")) : null;
+
+            if ("RESUME_ANSWER".equals(operation) && answerId != null) {
+                answerCycleService.resumeAnswer(run, run.projectId(), answerId);
+            } else {
+                answerCycleService.submitAnswer(run, run.projectId(), selectedOptionId, freeText);
+            }
+        } catch (RuntimeException ex) {
+            failIfNotTerminal(runId, ex);
+            throw ex;
+        }
+    }
+
+    /**
+     * Node query: one DECISION call answering a contextual question about a
+     * node; read-only by construction (mutations become pending proposals).
+     */
+    private void executeNodeQuery(AgentRun run) {
+        UUID runId = run.id();
+        try {
+            Map<String, Object> input = readRunInput(runId);
+            UUID routeId = input.containsKey("routeId")
+                    ? UUID.fromString((String) input.get("routeId")) : run.routeId();
+            UUID nodeId = input.containsKey("nodeId")
+                    ? UUID.fromString((String) input.get("nodeId")) : run.inputNodeId();
+            String question = (String) input.get("question");
+            if (routeId == null || nodeId == null || question == null) {
+                throw new IllegalStateException("Node query run is missing input parameters");
+            }
+            nodeQueryService.executeNodeQuery(run, routeId, nodeId, question);
+        } catch (RuntimeException ex) {
+            failIfNotTerminal(runId, ex);
+            throw ex;
+        }
+    }
+
+    /**
+     * Reads the input parameters from the RUN_CREATED event for this run.
+     */
+    private Map<String, Object> readRunInput(UUID runId) {
+        List<AgentRunEvent> events = eventService.findByRunId(runId);
+        return events.stream()
+                .filter(e -> "RUN_CREATED".equals(e.eventType()))
+                .map(AgentRunEvent::payload)
+                .findFirst()
+                .orElse(Map.of());
+    }
+
     private void failIfNotTerminal(UUID runId, RuntimeException ex) {
         String step = failureStepFor(ex);
         LOG.warn("Agent run {} failed: {}", runId, step);
         AgentRun latest = agentRunService.getRun(runId).orElse(null);
         if (latest != null && latest.status() != AgentRunStatus.FAILED
                 && latest.status() != AgentRunStatus.COMPLETED) {
-            agentRunFailureService.fail(runId, "decision-cycle:failed:" + step);
+            agentRunFailureService.fail(runId, "failed:" + step);
             eventService.append(runId, AgentRunPhase.FAILED, "RUN_FAILED", Map.of("reason", step));
         }
     }
 
-    /**
-     * Safe failure category only — never exception messages that could echo
-     * provider payloads or brain response bodies.
-     */
     private String failureStepFor(RuntimeException ex) {
         if (ex instanceof AgentBrainUnavailableException) {
             return "brain_unavailable";

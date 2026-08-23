@@ -15,7 +15,9 @@ public enum AgentRunTriggerType {
     ARCHIVE_ROUTE,
     DELETE_ROUTE,
     GENERATE_SPEC,
-    DECISION_CYCLE;
+    DECISION_CYCLE,
+    ANSWER_CYCLE,
+    NODE_QUERY;
 
     public String code() {
         return name().toLowerCase();

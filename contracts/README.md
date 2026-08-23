@@ -1,6 +1,6 @@
 # Agent Runtime V2 Cross-Language Contracts
 
-> Status: **Frozen wire contract for Stage A** (see `docs/v2/PYTHON_AGENT_RUNTIME_BOUNDARY.md`).
+> Status: **Frozen wire contract** (Stage A frozen; Stage C additions marked below — see `docs/v2/PYTHON_AGENT_RUNTIME_BOUNDARY.md`).
 > This directory is the single authority for the Java ↔ Python agent-brain wire
 > format and its golden fixtures. Both implementations must accept/reject these
 > fixtures identically.
@@ -24,7 +24,7 @@ Unknown fields are rejected by both sides (`extra = forbid` in Pydantic,
   "protocolVersion": "agent-input.v2",
   "runId": "<runtime-owned uuid>",
   "event": {
-    "kind": "INITIAL | CONTINUE | ANSWER_SUBMITTED",
+    "kind": "INITIAL | CONTINUE | ANSWER_SUBMITTED | NODE_QUERY (Stage C)",
     "anchorNodeId": "<uuid|null>",
     "selectedOptionId": "<uuid|null>",
     "freeText": "<string|null>"
@@ -44,7 +44,8 @@ Unknown fields are rejected by both sides (`extra = forbid` in Pydantic,
             "text": "<string>",
             "options": [{"id": "<uuid>", "label": "<string>"}],
             "acceptsFreeText": true
-          }
+          },
+          "kind": "KNOWLEDGE | INTERACTION | RESOURCE | ARTIFACT (Stage C; default INTERACTION)"
         },
         "answer": {"id": "<uuid>", "nodeId": "<uuid>", "selectedOptionId": "<uuid|null>", "freeText": "<string|null>"},
         "patches": [{"id": "<uuid>", "claims": ["<claim view>"]}]
@@ -54,6 +55,7 @@ Unknown fields are rejected by both sides (`extra = forbid` in Pydantic,
     "metadata": {"projectTitle": "<low-authority display metadata>"},
     "allowedSourceRefs": ["node:<uuid>", "answer:<uuid>", "patch:<uuid>", "context:<uuid>", "route:<uuid>"],
     "availableCapabilities": [],
+    "capabilityResults": [],
     "autonomy": {"mode": "ADVISOR"}
   },
   "capabilities": [],
@@ -70,6 +72,20 @@ Rules:
   source reference in a response is rejected Java-side.
 - Node bodies use generic Graph language (`body.text`, `acceptsFreeText`);
   question-workflow names must not appear in the contract.
+- Stage C: non-interaction nodes project their primary content payload into
+  `body.text` (the `question` column stays interaction-only), and `node.kind`
+  carries the stable outer classification. `NODE_QUERY` events carry the user's
+  contextual question in `freeText`; the expected primary action is
+  `RESPOND_TO_USER` and the runtime refuses graph mutations from a query.
+- Stage D: `availableCapabilities` are runtime-owned descriptors filtered by
+  permission and context relevance (`supports` declarations against lineage
+  node kinds) — the planner never sees implementation classes, and irrelevant
+  capabilities are invisible. `INVOKE_CAPABILITY` payloads carry
+  `{capabilityId, arguments}`; any argument value shaped like a runtime ref
+  must be inside `allowedSourceRefs`. `capabilityResults` are bounded
+  observations from earlier invocations (external evidence / generated
+  summaries with `sourceRefs` + `provenance`) — they are never auto-confirmed
+  graph truth.
 
 ### Claim view
 

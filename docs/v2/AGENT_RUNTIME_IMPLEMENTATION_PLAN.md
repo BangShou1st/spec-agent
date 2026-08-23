@@ -1,8 +1,10 @@
 # Agent Runtime V2 Implementation Plan
 
-> Status: **Approved implementation order — 2026-08-21.**
+> Status: **Approved implementation order — 2026-08-21. Stages A–D implemented (A/B/C 2026-08-22, D 2026-08-23).**
 > Updated after owner approval of `CODE_ARCHITECTURE_REVIEW_2026-08-21.md`.
 > The migration runs as four large stages (A–D). The Python Agent Brain is bootstrapped in **Stage A**, before any new V2 reasoning logic is written; it is no longer a late optional phase.
+>
+> **API prefix note (2026-08-22):** all new command surfaces (agent-runs, proposals, graph commands, node queries) live under the single `/api/v1` REST prefix together with the existing workspace APIs. The product ships one system, not a parallel "V2 API"; version-like stage names never appear in file, class, or URL structure.
 
 ## 1. Objective
 
@@ -118,7 +120,7 @@ Advisor Mode (default before any autonomous execution):
 
 Asynchronous command surface and non-blocking UI:
 
-- `POST /api/v2/projects/{projectId}/agent-runs` -> 202 + runId; background worker executes; frontend polls run/graph status (no WebSocket/SSE required in this stage);
+- `POST /api/v1/projects/{projectId}/agent-runs` -> 202 + runId; background worker executes; frontend polls run/graph status (no WebSocket/SSE required in this stage);
 - Fork/new-route appears immediately; virtual pending card projected from in-flight run state; atomically replaced by the validated Node; never persist a half-generated Node for animation;
 - implement the `UI_UX_IMPROVEMENT_PLAN.md` checklist: vertical option layout, Q1/Q2 labels preserving question text, single Latest marker, friendly route labels and multi-route Shared Node badges, route-scoped answer display, Focus highlight without isolation, hover/focus action toolbar, answer input persistence across drag/navigation/submission (dedicated input draft store keyed by node + route/read context), truthful dynamic phase copy, reveal without whole-graph relayout;
 - scoped lockouts instead of whole-workspace blocking.
@@ -131,6 +133,8 @@ Exit gate:
 - legacy recovery scenarios remain green.
 
 ## 7. Stage C — Graph Workspace V2
+
+> **Status: implemented 2026-08-22** (see `STAGE_C_DELIVERY_NOTES.md`). Additive node migration (V10) plus the follow-up `question NOT NULL` relaxation (V11); semantic relations (V10 `node_relations`); typed operation log with undo/redo compensation (V10 `graph_operations`, `UndoRedoService`); transactional commands in `com.specagent.graph.GraphCommandService`; contextual node queries (`NODE_QUERY` trigger → 1 DECISION call → `RESPOND_TO_USER`, never mutating); proposal acceptance now executes through the command layer with staleness re-validation (V12 `agent_proposals.anchor_refs`); frontend registry-typed node cards (`question`/`knowledge`), undo/redo toolbar, ask-AI in the Inspector, and semantic-relation Inspector display.
 
 Generic Workspace Unit model, introduced incrementally without breaking existing Question nodes:
 
@@ -160,6 +164,8 @@ Exit gate:
 - no node-type/business-agent explosion; undo/redo precondition tests pass.
 
 ## 8. Stage D — Capability Foundation
+
+> **Status: implemented 2026-08-23** (see `STAGE_D_DELIVERY_NOTES.md`). Generic adapter boundary (`CapabilityAdapter` with `InternalCapabilityAdapter` implemented, `SkillAdapter`/`McpAdapter` boundaries declared; MCP adapter maps tools/resources/prompts kinds explicitly); runtime-owned descriptors with permission filtering and `supports`-driven context-relevance filtering in the snapshot builder (the planner only ever sees filtered descriptors — no capability id or kind is hardcoded in planner code or prompts); `resource.extract_text` internal capability returning bounded excerpts with provenance; durable invocation log with runtime-owned idempotency keys (replay returns the recorded result, never re-executes); `INVOKE_CAPABILITY` classified by descriptor side-effect class (NONE → auto, LOCAL_DURABLE → confirm, EXTERNAL_* → deny) with GENERATE_ARTIFACT reclassified as local generation; completed invocations enter later snapshots as bounded observations (`capabilityResults`), never auto-confirmed truth; RESOURCE node subtypes attachable by users (root or tip) with undo support.
 
 Only after Stage C stabilizes.
 

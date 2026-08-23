@@ -36,6 +36,7 @@ public class AgentRunRepository {
                 rs.getObject("produced_spec_snapshot_id", UUID.class),
                 AgentRunStatus.fromCode(rs.getString("status")),
                 rs.getString("trace"),
+                rs.getString("operation"),
                 rs.getTimestamp("created_at").toInstant(),
                 rs.getTimestamp("completed_at") == null ? null : rs.getTimestamp("completed_at").toInstant());
     }
@@ -45,10 +46,10 @@ public class AgentRunRepository {
                 INSERT INTO agent_runs (id, project_id, route_id, trigger_type, input_node_id,
                                         context_snapshot_id, produced_node_id, produced_answer_id,
                                         produced_patch_id, produced_spec_snapshot_id, status, trace,
-                                        created_at, completed_at)
+                                        operation, created_at, completed_at)
                 VALUES (:id, :projectId, :routeId, :triggerType, :inputNodeId, :contextSnapshotId,
                         :producedNodeId, :producedAnswerId, :producedPatchId, :producedSpecSnapshotId,
-                        :status, CAST(:trace AS jsonb), :createdAt, :completedAt)
+                        :status, CAST(:trace AS jsonb), :operation, :createdAt, :completedAt)
                 """;
         jdbcTemplate.update(sql, Maps.of(
                 "id", run.id(),
@@ -63,6 +64,7 @@ public class AgentRunRepository {
                 "producedSpecSnapshotId", run.producedSpecSnapshotId(),
                 "status", run.status().code(),
                 "trace", json.write(run.trace()),
+                "operation", run.operation(),
                 "createdAt", Timestamp.from(run.createdAt()),
                 "completedAt", run.completedAt() == null ? null : Timestamp.from(run.completedAt())));
     }
@@ -244,6 +246,52 @@ public class AgentRunRepository {
         return jdbcTemplate.query(sql, Maps.of(
                         "running", AgentRunStatus.RUNNING.code(),
                         "trigger", AgentRunTriggerType.DECISION_CYCLE.code(),
+                        "created", AgentRunStatus.CREATED.code()),
+                rowMapper).stream().findFirst();
+    }
+
+    /**
+     * Atomically claims the oldest queued answer-cycle run by moving it
+     * from CREATED to RUNNING.
+     */
+    public Optional<AgentRun> claimNextAnswerCycleRun() {
+        String sql = """
+                UPDATE agent_runs SET status = :running
+                WHERE id = (
+                    SELECT id FROM agent_runs
+                    WHERE trigger_type = :trigger AND status = :created
+                    ORDER BY created_at
+                    LIMIT 1
+                    FOR UPDATE SKIP LOCKED
+                )
+                RETURNING *
+                """;
+        return jdbcTemplate.query(sql, Maps.of(
+                        "running", AgentRunStatus.RUNNING.code(),
+                        "trigger", AgentRunTriggerType.ANSWER_CYCLE.code(),
+                        "created", AgentRunStatus.CREATED.code()),
+                rowMapper).stream().findFirst();
+    }
+
+    /**
+     * Atomically claims the oldest queued node-query run by moving it
+     * from CREATED to RUNNING.
+     */
+    public Optional<AgentRun> claimNextNodeQueryRun() {
+        String sql = """
+                UPDATE agent_runs SET status = :running
+                WHERE id = (
+                    SELECT id FROM agent_runs
+                    WHERE trigger_type = :trigger AND status = :created
+                    ORDER BY created_at
+                    LIMIT 1
+                    FOR UPDATE SKIP LOCKED
+                )
+                RETURNING *
+                """;
+        return jdbcTemplate.query(sql, Maps.of(
+                        "running", AgentRunStatus.RUNNING.code(),
+                        "trigger", AgentRunTriggerType.NODE_QUERY.code(),
                         "created", AgentRunStatus.CREATED.code()),
                 rowMapper).stream().findFirst();
     }

@@ -58,6 +58,13 @@ public class AnswerRepository {
         return count != null && count > 0;
     }
 
+    /** Cross-route answer existence: immutable answers block node retraction. */
+    public boolean existsByNodeId(UUID nodeId) {
+        String sql = "SELECT COUNT(*) FROM answers WHERE node_id = :nodeId";
+        Integer count = jdbcTemplate.queryForObject(sql, Maps.of("nodeId", nodeId), Integer.class);
+        return count != null && count > 0;
+    }
+
     public List<Answer> findByRouteAndNodeIds(UUID routeId, List<UUID> nodeIds) {
         if (nodeIds == null || nodeIds.isEmpty()) {
             return List.of();

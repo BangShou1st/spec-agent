@@ -11,6 +11,7 @@ import { computed, ref, watch } from 'vue'
 import { Position } from '@vue-flow/core'
 import type { SubmitAnswerRequest } from '@/api/types'
 import type { SpecAgentGraphNodeData } from '@/graph/graphProjection'
+import { useInputDraftStore } from '@/stores/inputDraftStore'
 
 /**
  * Four-side edge anchors for adaptive routing. Every side carries one
@@ -66,18 +67,44 @@ const emit = defineEmits<{
  * reaches Vue Flow so clicking it selects the node normally.
  */
 
+const inputDraftStore = useInputDraftStore()
+
+// Local refs backed by the draft store. The store survives remounts,
+// drags, and focus changes.
 const selectedOptionId = ref<string | null>(null)
 const freeText = ref('')
 
-// Local drafts never outlive the node: reset when the node identity or the
-// answerability (Active-route answer identity) changes.
+// Load draft from store when node identity changes; never clear existing input.
 watch(
   () => [props.data.node.id, props.data.canAnswer] as const,
   () => {
-    selectedOptionId.value = null
-    freeText.value = ''
+    const draft = inputDraftStore.getDraft(
+      props.data.projectId,
+      props.data.node.id,
+      props.data.readingRouteId,
+    )
+    if (draft) {
+      selectedOptionId.value = draft.selectedOptionId
+      freeText.value = draft.freeText
+    } else {
+      selectedOptionId.value = null
+      freeText.value = ''
+    }
   },
+  { immediate: true },
 )
+
+// Persist draft to store on every change.
+watch([selectedOptionId, freeText], () => {
+  if (props.data.canAnswer) {
+    inputDraftStore.setDraft(
+      props.data.projectId,
+      props.data.node.id,
+      { selectedOptionId: selectedOptionId.value, freeText: freeText.value },
+      props.data.readingRouteId,
+    )
+  }
+})
 
 const node = computed(() => props.data.node)
 const primary = computed(() => props.data.primaryAnswer)
@@ -178,8 +205,11 @@ function setReadingRoute(event: Event): void {
       aria-hidden="true"
     />
     <header class="graph-question-node__header" data-test="node-drag-handle" title="拖动标题栏移动节点">
-      <span class="graph-question-node__kind">
-        {{ data.canAnswer ? '当前问题' : '历史问题' }}
+      <span v-if="data.qLabel" class="graph-question-node__q-label">
+        {{ data.qLabel }}
+      </span>
+      <span v-if="data.isLatest" class="graph-question-node__latest" data-test="latest-marker">
+        最新
       </span>
       <span class="graph-question-node__meta">
         <template v-if="data.isShared">共享 · {{ data.routeIds.length }} 条路线</template>
@@ -287,7 +317,7 @@ function setReadingRoute(event: Event): void {
           <span class="badge badge-warn">{{ readingWaitingLabel }} · 等待回答</span>
         </div>
 
-        <div class="graph-node-actions">
+        <div class="graph-node-actions graph-node-actions--toolbar" tabindex="0" role="toolbar" aria-label="节点操作">
           <button
             class="btn graph-action nodrag"
             data-test="fork-node"

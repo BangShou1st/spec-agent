@@ -17,6 +17,9 @@ Thumbs.db
 *.local.yml
 application-local.yml
 
+# ZCode tool sessions
+.zcode/
+
 # Logs
 *.log
 

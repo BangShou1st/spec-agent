@@ -751,6 +751,33 @@ textarea {
   margin-top: 10px;
 }
 
+/* Hover/focus toolbar: hidden by default, visible on hover or keyboard focus. */
+.graph-node-actions--toolbar {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  outline: none;
+}
+.graph-question-node:hover .graph-node-actions--toolbar,
+.graph-node-actions--toolbar:focus-within {
+  opacity: 1;
+}
+
+/* Q label and Latest marker */
+.graph-question-node__q-label {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--color-accent);
+}
+.graph-question-node__latest {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+  padding: 1px 6px;
+  border-radius: 8px;
+  margin-left: 6px;
+}
+
 .graph-action {
   font-size: 12px;
   padding: 4px 8px;

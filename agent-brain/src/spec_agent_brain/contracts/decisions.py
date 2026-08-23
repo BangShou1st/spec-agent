@@ -54,6 +54,9 @@ class ActionProposal(StrictModel):
     base_context_snapshot_id: UUID
     base_context_hash: str
     source_refs: List[str] = []
+    proposal_id: UUID = None
+    idempotency_key: str = None
+    anchor_refs: List[str] = []
 
     @field_validator("action_family")
     @classmethod
@@ -91,6 +94,7 @@ class ModelDecisionAction(StrictModel):
     action_family: str
     payload: Dict[str, Any]
     source_refs: List[str] = []
+    anchor_refs: List[str] = []
 
     @field_validator("action_family")
     @classmethod

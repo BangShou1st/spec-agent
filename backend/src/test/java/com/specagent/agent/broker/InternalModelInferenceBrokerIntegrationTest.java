@@ -97,6 +97,16 @@ class InternalModelInferenceBrokerIntegrationTest {
     }
 
     @Test
+    void rejectsNonExistentRunId() throws Exception {
+        UUID fabricatedRunId = UUID.randomUUID();
+        mockMvc.perform(post("/internal/v1/model-inference")
+                        .header(AgentProtocol.INTERNAL_TOKEN_HEADER, TOKEN)
+                        .contentType("application/json")
+                        .content(body(fabricatedRunId, "STATE_UPDATE", 10)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void rejectsUnknownCallTypeAndOversizedPrompt() throws Exception {
         UUID runId = newRun();
         mockMvc.perform(post("/internal/v1/model-inference")

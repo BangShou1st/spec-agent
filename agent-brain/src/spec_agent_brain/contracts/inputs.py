@@ -45,6 +45,14 @@ class NodeBodyView(StrictModel):
 class NodeView(StrictModel):
     id: UUID
     body: NodeBodyView
+    kind: str = "INTERACTION"
+
+    @field_validator("kind")
+    @classmethod
+    def _known_kind(cls, value: str) -> str:
+        if value not in protocol.NODE_KINDS:
+            raise ValueError(f"unknown node kind: {value}")
+        return value
 
 
 class AnswerView(StrictModel):
@@ -106,6 +114,23 @@ class CapabilityDescriptor(StrictModel):
     id: str
     version: str
     read_only: bool
+    description: str = ""
+    side_effect_class: str = "NONE"
+
+
+class CapabilityResultView(StrictModel):
+    """A completed capability invocation exposed as a bounded observation.
+
+    Capability results are external evidence or generated summaries for
+    later cycles — never auto-confirmed graph truth.
+    """
+
+    invocation_id: str
+    capability_id: str
+    status: str
+    content: Dict[str, Any] = Field(default_factory=dict)
+    source_refs: List[str] = Field(default_factory=list)
+    provenance: Dict[str, Any] = Field(default_factory=dict)
 
 
 class AgentInputSnapshot(StrictModel):
@@ -120,6 +145,7 @@ class AgentInputSnapshot(StrictModel):
     metadata: SnapshotMetadata
     allowed_source_refs: List[str] = Field(default_factory=list)
     available_capabilities: List[CapabilityDescriptor] = Field(default_factory=list)
+    capability_results: List[CapabilityResultView] = Field(default_factory=list)
     autonomy: AutonomyInputs
 
 

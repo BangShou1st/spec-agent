@@ -14,10 +14,14 @@ public record ActionProposal(String actionFamily,
                              Map<String, Object> payload,
                              UUID baseContextSnapshotId,
                              String baseContextHash,
-                             List<String> sourceRefs) {
+                             List<String> sourceRefs,
+                             UUID proposalId,
+                             String idempotencyKey,
+                             List<String> anchorRefs) {
 
     public ActionProposal {
         payload = payload == null ? Map.of() : Map.copyOf(payload);
         sourceRefs = sourceRefs == null ? List.of() : List.copyOf(sourceRefs);
+        anchorRefs = anchorRefs == null ? List.of() : List.copyOf(anchorRefs);
     }
 }

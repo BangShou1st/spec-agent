@@ -28,10 +28,19 @@ public class AgentRunService {
                            AgentRunTriggerType triggerType,
                            UUID inputNodeId,
                            UUID createdByRunId) {
+        return create(projectId, routeId, triggerType, inputNodeId, createdByRunId, null);
+    }
+
+    public AgentRun create(UUID projectId,
+                           UUID routeId,
+                           AgentRunTriggerType triggerType,
+                           UUID inputNodeId,
+                           UUID createdByRunId,
+                           String operation) {
         UUID runId = Ids.random();
         Instant now = Instant.now();
         AgentRun run = new AgentRun(runId, projectId, routeId, triggerType, inputNodeId, null,
-                null, null, null, null, AgentRunStatus.CREATED, null, now, null);
+                null, null, null, null, AgentRunStatus.CREATED, null, operation, now, null);
         agentRunRepository.save(run);
         return run;
     }

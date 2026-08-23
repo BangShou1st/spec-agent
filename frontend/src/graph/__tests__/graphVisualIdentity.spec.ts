@@ -16,6 +16,12 @@ const node = (id: string, parentNodeId: string | null) => ({
   options: [],
   allowFreeAnswer: true,
   createdAt: '2026-08-19T00:00:00Z',
+  kind: 'INTERACTION' as const,
+  subtype: 'QUESTION',
+  content: {},
+  authorKind: 'AGENT' as const,
+  knowledgeStatus: null,
+  userEditableDraft: false,
 })
 
 const route = (
@@ -50,6 +56,7 @@ function view(overrides: Partial<GraphWorkspaceView> = {}): GraphWorkspaceView {
     ],
     nodes: [node('q1', null), node('q2', 'q1'), node('q3', 'q2')],
     answers: [],
+    relations: [],
     ...overrides,
   }
 }

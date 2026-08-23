@@ -23,6 +23,7 @@ public record AgentInputSnapshot(String snapshotId,
                                  SnapshotMetadata metadata,
                                  List<String> allowedSourceRefs,
                                  List<CapabilityDescriptor> availableCapabilities,
+                                 List<CapabilityResultView> capabilityResults,
                                  AutonomyInputs autonomy) {
 
     public AgentInputSnapshot {
@@ -31,5 +32,7 @@ public record AgentInputSnapshot(String snapshotId,
         allowedSourceRefs = allowedSourceRefs == null ? List.of() : List.copyOf(allowedSourceRefs);
         availableCapabilities = availableCapabilities == null
                 ? List.of() : List.copyOf(availableCapabilities);
+        capabilityResults = capabilityResults == null
+                ? List.of() : List.copyOf(capabilityResults);
     }
 }

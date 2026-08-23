@@ -5,7 +5,7 @@ package com.specagent.model.inference;
  *
  * <p>The legacy {@code ModelGateway} renders task prompts and parses the model
  * envelope; this seam sits below it and carries runtime-approved messages
- * only. The V2 internal inference broker (serving the Python brain) and any
+ * only. The internal inference broker (serving the Python brain) and any
  * future Java-side caller share this port, so provider transport is never
  * duplicated across language boundaries.
  *

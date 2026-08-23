@@ -118,4 +118,87 @@ class AgentBoundaryArchitectureTests {
 
         rule.check(CLASSES);
     }
+
+    @Test
+    void agentActionPackageCannotDependOnModelOrLlmPackages() {
+        ArchRule rule = noClasses()
+            .that().resideInAPackage("com.specagent.agent.action..")
+            .should().dependOnClassesThat()
+            .resideInAnyPackage("com.specagent.model..")
+            .because("Action executors apply validated proposals to the graph; "
+                + "they never call LLM/gateway directly");
+
+        rule.check(CLASSES);
+    }
+
+    @Test
+    void agentPolicyPackageCannotDependOnModelOrLlmPackages() {
+        ArchRule rule = noClasses()
+            .that().resideInAPackage("com.specagent.agent.policy..")
+            .should().dependOnClassesThat()
+            .resideInAnyPackage("com.specagent.model..")
+            .because("Policy engine evaluates proposals against runtime facts; "
+                + "it never calls LLM/gateway directly");
+
+        rule.check(CLASSES);
+    }
+
+    @Test
+    void agentPolicyPackageCannotDependOnPythonOrFastApi() {
+        ArchRule rule = noClasses()
+            .that().resideInAPackage("com.specagent.agent.policy..")
+            .should().dependOnClassesThat()
+            .resideInAnyPackage("com.specagent.agent.decision..")
+            .because("Policy decisions are Java-side runtime facts only; "
+                + "they never depend on Python/FastAPI implementation details");
+
+        rule.check(CLASSES);
+    }
+    @Test
+    void graphCommandPackageCannotDependOnModelOrAgentBrains() {
+        ArchRule rule = noClasses()
+            .that().resideInAPackage("com.specagent.graph..")
+            .should().dependOnClassesThat()
+            .resideInAnyPackage("com.specagent.model..", "com.specagent.agent.decision..",
+                "com.specagent.agent.broker..", "com.specagent.model.gateway..",
+                "com.specagent.model.provider..")
+            .because("Graph commands are deterministic runtime mutations; they never call models or brains");
+
+        rule.check(CLASSES);
+    }
+
+    @Test
+    void graphCommandPackageCannotCallModelGateways() {
+        ArchRule rule = noClasses()
+            .that().resideInAPackage("com.specagent.graph..")
+            .should().dependOnClassesThat()
+            .haveSimpleNameEndingWith("Gateway")
+            .because("Undo/redo compensation and graph commands must stay provider-free");
+
+        rule.check(CLASSES);
+    }
+    @Test
+    void capabilityPackageIsSelfContainedAndNeverReachesIntoAgentOrModel() {
+        ArchRule rule = noClasses()
+            .that().resideInAPackage("com.specagent.capability..")
+            .should().dependOnClassesThat()
+            .resideInAnyPackage("com.specagent.agent..", "com.specagent.model..",
+                "com.specagent.api..", "com.specagent.web..")
+            .because("Capability foundation is a self-contained boundary: agent depends on capabilities, never the reverse");
+
+        rule.check(CLASSES);
+    }
+
+    @Test
+    void capabilityPackageOwnsNoModelGatewaysOrCredentials() {
+        ArchRule rule = noClasses()
+            .that().resideInAPackage("com.specagent.capability..")
+            .should().dependOnClassesThat()
+            .haveSimpleNameEndingWith("Gateway")
+            .orShould().dependOnClassesThat()
+            .resideInAnyPackage("com.specagent.credential..", "com.specagent.settings..")
+            .because("Capabilities never touch provider gateways, credentials, or model settings; the host runtime owns them");
+
+        rule.check(CLASSES);
+    }
 }

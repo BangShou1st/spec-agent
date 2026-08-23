@@ -204,6 +204,57 @@ public class ContextBuilder {
     }
 
     /**
+     * Builds a read context anchored at an arbitrary node for a contextual
+     * AI query ("ask AI about this node").
+     *
+     * <p>The lineage is the anchor's own root-to-anchor chain along parent
+     * pointers; the read context is the explicit {@code routeId} the caller
+     * chose (never an active/first/latest fallback). The user's question is
+     * frozen into {@code specialInputs} so it is part of the context hash.
+     */
+    public ContextSnapshot buildForNodeQuery(UUID projectId,
+                                             UUID routeId,
+                                             UUID anchorNodeId,
+                                             String userQuestion) {
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new IllegalArgumentException("Project not found: " + projectId));
+        Route route = routeRepository.findById(routeId)
+                .orElseThrow(() -> new IllegalArgumentException("Route not found: " + routeId));
+        if (!route.projectId().equals(projectId)) {
+            throw new IllegalArgumentException("Route does not belong to project: " + routeId);
+        }
+        Node anchor = nodeRepository.findById(anchorNodeId)
+                .orElseThrow(() -> new IllegalArgumentException("Anchor node not found: " + anchorNodeId));
+        if (!anchor.projectId().equals(projectId)) {
+            throw new IllegalArgumentException("Anchor node does not belong to project: " + anchorNodeId);
+        }
+
+        List<UUID> lineage = resolveLineage(anchorNodeId);
+        List<UUID> includedAnswerIds = routeHistoryResolver
+                .resolveEffectiveAnswers(routeId, lineage)
+                .stream().map(answer -> answer.id()).toList();
+        List<UUID> includedPatchIds = answerPatchRepository.findBySourceAnswerIds(includedAnswerIds)
+                .stream().map(patch -> patch.id()).toList();
+        List<UUID> excludedRouteIds = routeRepository.findByProject(projectId).stream()
+                .map(Route::id)
+                .filter(id -> !id.equals(routeId))
+                .toList();
+
+        Map<String, Object> specialInputsMap = withProjectTitle(project, Map.of(
+                "userQuestion", userQuestion == null ? "" : userQuestion));
+        String specialInputs = json.write(specialInputsMap);
+        String contextHash = computeHash(ContextOperationType.NODE_QUERY, lineage,
+                includedAnswerIds, includedPatchIds, excludedRouteIds, specialInputsMap);
+
+        ContextSnapshot snapshot = new ContextSnapshot(
+                Ids.random(), projectId, routeId, anchorNodeId,
+                ContextOperationType.NODE_QUERY, lineage, includedAnswerIds,
+                includedPatchIds, excludedRouteIds, specialInputs, contextHash, Instant.now());
+        contextSnapshotRepository.save(snapshot);
+        return snapshot;
+    }
+
+    /**
      * Resolves a route's root-to-tip lineage by following {@code parentNodeId}
      * pointers from the tip upward. The chain is deterministic: a route's
      * context is exactly this chain, and sibling or replacement nodes never

@@ -22,6 +22,12 @@ function node(id: string, parentNodeId: string | null, supersedesNodeId: string 
     options: [],
     allowFreeAnswer: true,
     createdAt: '2026-08-18T00:00:00Z',
+    kind: 'INTERACTION' as const,
+    subtype: 'QUESTION',
+    content: {},
+    authorKind: 'AGENT' as const,
+    knowledgeStatus: null,
+    userEditableDraft: false,
   }
 }
 
@@ -81,6 +87,7 @@ function fixture() {
       answer(ROUTE_B_ID, 'b', 'route b answer'),
       answer(ROUTE_C_ID, 'e', 'archived e answer'),
     ],
+    relations: [],
   }
 }
 
@@ -311,6 +318,7 @@ describe('incremental placement on canonical refresh', () => {
       routes: [route(ACTIVE_ROUTE_ID, 'open', ['a', 'b', 'c'])],
       nodes: [node('a', null), node('b', 'a'), node('c', 'b')],
       answers: [],
+      relations: [],
     }
     const saved: Record<string, GraphPosition> = {
       a: { x: 0, y: 0 },
@@ -347,6 +355,7 @@ describe('incremental placement on canonical refresh', () => {
       routes: [route(ACTIVE_ROUTE_ID, 'open', ['a', 'b', 'c'])],
       nodes: [node('a', null), node('b', 'a'), node('c', 'b')],
       answers: [],
+      relations: [],
     }
     const result = projectGraph({
       view,
@@ -416,6 +425,7 @@ describe('shared node route-specific waiting state', () => {
       routes: [route(ACTIVE_ROUTE_ID, 'open', ['a', 'b']), route(ROUTE_B_ID, 'open', ['a', 'b'])],
       nodes: [node('a', null), node('b', 'a')],
       answers: [answer(ACTIVE_ROUTE_ID, 'b', 'A answer on shared b')],
+      relations: [],
     }
   }
 
@@ -446,6 +456,7 @@ describe('shared node route-specific waiting state', () => {
       routes: [route(ACTIVE_ROUTE_ID, 'open', ['a', 'b']), route(ROUTE_B_ID, 'open', ['a', 'b'])],
       nodes: [node('a', null), node('b', 'a')],
       answers: [answer(ACTIVE_ROUTE_ID, 'b', 'old route answer')],
+      relations: [],
     }
     const result = projectGraph({
       view,
@@ -490,6 +501,7 @@ describe('replacement edge visibility', () => {
       routes: [route(ACTIVE_ROUTE_ID, 'open', ['a', 'b']), route(ROUTE_D_ID, 'open', ['a', 'bprime'])],
       nodes: [node('a', null), node('b', 'a'), node('bprime', 'a', 'b')],
       answers: [],
+      relations: [],
     }
     const hidden = projectGraph({
       view,

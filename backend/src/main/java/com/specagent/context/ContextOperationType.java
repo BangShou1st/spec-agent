@@ -11,7 +11,8 @@ public enum ContextOperationType {
     FORK,
     RESTORE,
     GENERATE_SPEC,
-    INITIAL;
+    INITIAL,
+    NODE_QUERY;
 
     public String code() {
         return name().toLowerCase();

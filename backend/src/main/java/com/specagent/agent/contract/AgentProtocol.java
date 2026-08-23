@@ -27,7 +27,8 @@ public final class AgentProtocol {
     public static final Set<String> CALL_TYPES = Set.of("STATE_UPDATE", "DECISION");
 
     /** Closed set of event kinds the runtime may send to the brain. */
-    public static final Set<String> EVENT_KINDS = Set.of("INITIAL", "CONTINUE", "ANSWER_SUBMITTED");
+    public static final Set<String> EVENT_KINDS = Set.of(
+            "INITIAL", "CONTINUE", "ANSWER_SUBMITTED", "NODE_QUERY");
 
     private AgentProtocol() {
     }

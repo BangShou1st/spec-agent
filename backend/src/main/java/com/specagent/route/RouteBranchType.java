@@ -4,7 +4,9 @@ package com.specagent.route;
 public enum RouteBranchType {
     FORK,
     REANSWER,
-    REGENERATE;
+    REGENERATE,
+    /** Free continuation from a non-tip node (free continuation branching). */
+    CONTINUATION;
 
     public static RouteBranchType fromCode(String code) {
         return code == null ? null : valueOf(code.toUpperCase());

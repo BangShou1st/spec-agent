@@ -450,6 +450,7 @@ public class RouteService {
             case FORK -> "分支路线";
             case REANSWER -> "重新回答路线";
             case REGENERATE -> "换题路线";
+            case CONTINUATION -> "探索分支";
         };
         return prefix + " " + (count + 1);
     }

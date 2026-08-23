@@ -116,7 +116,7 @@ describe('graph canvas', () => {
     })
     const wrapper = mountCanvas(view)
     expect(wrapper.text()).toContain('开始需求澄清')
-    expect(wrapper.text()).toContain('还没有生成任何问题。')
+    expect(wrapper.text()).toContain('还没有任何内容')
     await wrapper.find('[data-test="draft-question"]').trigger('click')
     expect(wrapper.emitted('draft')).toHaveLength(1)
     // The placeholder never creates a fake node or persists a coordinate.

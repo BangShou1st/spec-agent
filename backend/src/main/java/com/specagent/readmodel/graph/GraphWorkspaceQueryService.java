@@ -1,6 +1,7 @@
 package com.specagent.readmodel.graph;
 
 import com.specagent.answer.AnswerService;
+import com.specagent.graph.NodeRelationRepository;
 import com.specagent.node.Node;
 import com.specagent.node.NodeService;
 import com.specagent.project.Project;
@@ -53,17 +54,20 @@ public class GraphWorkspaceQueryService {
     private final NodeService nodeService;
     private final AnswerService answerService;
     private final RouteHistoryResolver routeHistoryResolver;
+    private final NodeRelationRepository relationRepository;
 
     public GraphWorkspaceQueryService(ProjectService projectService,
                                       RouteService routeService,
                                       NodeService nodeService,
                                       AnswerService answerService,
-                                      RouteHistoryResolver routeHistoryResolver) {
+                                      RouteHistoryResolver routeHistoryResolver,
+                                      NodeRelationRepository relationRepository) {
         this.projectService = projectService;
         this.routeService = routeService;
         this.nodeService = nodeService;
         this.answerService = answerService;
         this.routeHistoryResolver = routeHistoryResolver;
+        this.relationRepository = relationRepository;
     }
 
     public GraphWorkspaceView getForProject(UUID projectId) {
@@ -91,8 +95,12 @@ public class GraphWorkspaceQueryService {
 
         return new GraphWorkspaceView(
                 project.id(), project.activeRouteId(), List.copyOf(routeViews),
-                nodesById.values().stream().map(GraphWorkspaceNodeView::from).toList(),
-                List.copyOf(answerViews));
+                nodesById.values().stream()
+                        .filter(node -> !node.isRetracted())
+                        .map(GraphWorkspaceNodeView::from).toList(),
+                List.copyOf(answerViews),
+                relationRepository.findActiveByProject(projectId).stream()
+                        .map(GraphWorkspaceRelationView::from).toList());
     }
 
     private List<Node> resolveLineage(UUID projectId, Route route) {

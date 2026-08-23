@@ -13,6 +13,7 @@ import {
   type EdgeMouseEvent,
 } from '@vue-flow/core'
 import AdaptiveGraphEdge from '@/components/graph/AdaptiveGraphEdge.vue'
+import GraphKnowledgeNode from '@/components/graph/GraphKnowledgeNode.vue'
 import GraphQuestionNode from '@/components/graph/GraphQuestionNode.vue'
 import GraphStartPlaceholder from '@/components/graph/GraphStartPlaceholder.vue'
 import GraphToolbar from '@/components/graph/GraphToolbar.vue'
@@ -63,6 +64,10 @@ const emit = defineEmits<{
   fork: [nodeId: string]
   reanswer: [nodeId: string]
   regenerate: [nodeId: string]
+  'add-idea': []
+  'add-resource': []
+  undo: []
+  redo: []
   routes: []
   inspector: []
   'reset-windows': []
@@ -556,6 +561,10 @@ const isEmptyProject = computed(() =>
       @fit-view="fitView"
       @auto-layout="autoLayout"
       @show-all="showAll"
+      @add-idea="emit('add-idea')"
+      @add-resource="emit('add-resource')"
+      @undo="emit('undo')"
+      @redo="emit('redo')"
       @routes="emit('routes')"
       @inspector="emit('inspector')"
       @reset-windows="emit('reset-windows')"
@@ -597,6 +606,12 @@ const isEmptyProject = computed(() =>
             @fork="(id) => emit('fork', id)"
             @reanswer="(id) => emit('reanswer', id)"
             @regenerate="(id) => emit('regenerate', id)"
+          />
+        </template>
+        <template #node-knowledge="nodeProps: NodeProps<SpecAgentGraphNodeData>">
+          <GraphKnowledgeNode
+            :data="nodeProps.data"
+            :selected="nodeProps.selected"
           />
         </template>
       </VueFlow>

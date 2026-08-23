@@ -56,6 +56,14 @@ public class AnswerService {
     }
 
     /**
+     * Returns the single finalized answer for a given route and node, or empty.
+     */
+    public Optional<Answer> findAnswerForNode(UUID routeId, UUID nodeId) {
+        return answerRepository.findByRouteAndNodeIds(routeId, List.of(nodeId))
+                .stream().findFirst();
+    }
+
+    /**
      * Read-only existence check for the single-finalization invariant:
      * whether the given route flow already has a finalized answer for the node.
      */

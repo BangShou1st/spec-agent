@@ -120,6 +120,9 @@ describe('workspace inspector', () => {
       canAnswer: false,
       isExpanded: false,
       isShared: false,
+      projectId: 'project-1',
+      isLatest: false,
+      qLabel: null,
       visualWeight: 'normal' as const,
     }
     const wrapper = mount(WorkspaceInspector, { props: { nodeData } })
@@ -140,6 +143,9 @@ describe('workspace inspector', () => {
       canAnswer: false,
       isExpanded: false,
       isShared: false,
+      projectId: 'project-1',
+      isLatest: false,
+      qLabel: null,
       visualWeight: 'normal' as const,
     }
     const wrapper = mount(WorkspaceInspector, { props: { nodeData } })
@@ -174,6 +180,9 @@ describe('workspace inspector', () => {
       canAnswer: false,
       isExpanded: false,
       isShared: true,
+      projectId: 'project-1',
+      isLatest: false,
+      qLabel: null,
       visualWeight: 'focus' as const,
     }
     const wrapper = mount(WorkspaceInspector, { props: { nodeData } })
@@ -197,6 +206,9 @@ describe('workspace inspector', () => {
       canAnswer: true,
       isExpanded: false,
       isShared: false,
+      projectId: 'project-1',
+      isLatest: false,
+      qLabel: null,
       visualWeight: 'active' as const,
     }
     const wrapper = mount(WorkspaceInspector, { props: { nodeData } })
@@ -225,6 +237,9 @@ describe('workspace inspector', () => {
       canAnswer: false,
       isExpanded: false,
       isShared: false,
+      projectId: 'project-1',
+      isLatest: false,
+      qLabel: null,
       visualWeight: 'normal' as const,
     }
     const wrapper = mount(WorkspaceInspector, { props: { nodeData } })

@@ -121,6 +121,12 @@ public final class AgentBrainResponseValidator {
         } catch (IllegalArgumentException ex) {
             throw new AgentContractException(ex.getMessage());
         }
+        if (proposal.proposalId() == null) {
+            throw new AgentContractException("Proposal must carry a proposalId");
+        }
+        if (proposal.idempotencyKey() == null || proposal.idempotencyKey().isBlank()) {
+            throw new AgentContractException("Proposal must carry a non-blank idempotencyKey");
+        }
         AgentInputSnapshot snapshot = request.snapshot();
         UUID snapshotId = UUID.fromString(snapshot.snapshotId());
         if (!snapshotId.equals(proposal.baseContextSnapshotId())) {
@@ -132,23 +138,116 @@ public final class AgentBrainResponseValidator {
                     "Proposal baseContextHash is stale or does not match the request snapshot");
         }
         validateSourceRefs(proposal.sourceRefs(), snapshot);
-        validatePayload(family, proposal.payload());
+        validateSourceRefs(proposal.anchorRefs(), snapshot);
+        validatePayload(family, proposal.payload(), snapshot);
+    }
+
+    private static final java.util.List<String> REF_PREFIXES =
+            java.util.List.of("node:", "answer:", "patch:", "context:", "route:");
+
+    /**
+     * INVOKE_CAPABILITY payload: a non-blank capabilityId plus an optional
+     * arguments object. Any argument value shaped like a runtime ref must be
+     * inside the snapshot's allowed refs — a generic anti-smuggling rule,
+     * not tied to any particular argument name. Unknown capability ids are
+     * denied by policy (fail-closed at execution); the validator checks wire
+     * shape only.
+     */
+    private static void validateInvokeCapability(Map<String, Object> payload,
+                                                 AgentInputSnapshot snapshot) {
+        requireNonBlank("capabilityId", asString(payload.get("capabilityId"), "capabilityId"));
+        Object arguments = payload.get("arguments");
+        if (arguments == null) {
+            return;
+        }
+        if (!(arguments instanceof Map<?, ?> argumentMap)) {
+            throw new AgentContractException("INVOKE_CAPABILITY arguments must be an object");
+        }
+        for (Object value : argumentMap.values()) {
+            if (value instanceof String candidate
+                    && REF_PREFIXES.stream().anyMatch(candidate::startsWith)
+                    && !snapshot.allowedSourceRefs().contains(candidate)) {
+                throw new AgentContractException(
+                        "INVOKE_CAPABILITY argument ref outside the allowed snapshot refs: "
+                                + candidate);
+            }
+        }
     }
 
     /**
      * Family-specific payload shape checks. Payloads are generic maps on the
      * wire; anything that smuggles runtime-owned identity fields is rejected
-     * regardless of family.
+     * regardless of family. Shape is validated here; kind/subtype whitelists
+     * are enforced by the runtime at execution time.
      */
-    private static void validatePayload(ActionFamily family, Map<String, Object> payload) {
+    private static void validatePayload(ActionFamily family, Map<String, Object> payload,
+                                         AgentInputSnapshot snapshot) {
         rejectRuntimeOwnedKeys("payload", payload);
         switch (family) {
             case REQUEST_USER_INPUT -> validateRequestUserInput(payload);
-            case CREATE_NODE, UPDATE_NODE, CONNECT_NODE, CREATE_ROUTE, RESPOND_TO_USER,
-                 INVOKE_CAPABILITY, GENERATE_ARTIFACT, WAIT -> {
-                // Stage A records these proposals but executes none of them;
-                // only the generic identity rules apply.
+            case CREATE_NODE -> validateCreateNode(payload);
+            case CONNECT_NODE -> validateConnectNode(payload, snapshot);
+            case INVOKE_CAPABILITY -> validateInvokeCapability(payload, snapshot);
+            case UPDATE_NODE, CREATE_ROUTE, RESPOND_TO_USER,
+                 GENERATE_ARTIFACT, WAIT -> {
+                // Shape-free families: only the generic identity rules apply.
+                // RESPOND_TO_USER message presence is checked by the executor.
             }
+        }
+    }
+
+    private static final Set<String> NODE_KINDS = Set.of(
+            "KNOWLEDGE", "INTERACTION", "RESOURCE", "ARTIFACT");
+
+    /**
+     * CREATE_NODE payload: either an interaction question (questionText +
+     * options + allowFreeAnswer, kind defaults to INTERACTION/QUESTION) or a
+     * non-interaction workspace unit (kind + subtype + content.text).
+     */
+    @SuppressWarnings("unchecked")
+    private static void validateCreateNode(Map<String, Object> payload) {
+        Object kindValue = payload.get("kind");
+        String kind = kindValue == null ? "INTERACTION" : asString(kindValue, "kind");
+        requireEnum("node kind", kind, NODE_KINDS);
+        if ("INTERACTION".equals(kind)) {
+            validateRequestUserInput(payload);
+            return;
+        }
+        requireNonBlank("subtype", asString(payload.get("subtype"), "subtype"));
+        Object content = payload.get("content");
+        if (!(content instanceof Map<?, ?> contentMap)) {
+            throw new AgentContractException("CREATE_NODE payload requires a content object");
+        }
+        rejectRuntimeOwnedKeys("content", (Map<String, Object>) contentMap);
+        requireNonBlank("content.text",
+                asString(contentMap.get("text"), "content.text"));
+    }
+
+    private static final Set<String> RELATION_CLASSES = Set.of("CONTINUATION", "SEMANTIC");
+    private static final Set<String> SEMANTIC_RELATION_TYPES = Set.of(
+            "RELATED_TO", "DEPENDS_ON", "DERIVED_FROM", "CONFLICTS_WITH", "SUPPORTS");
+
+    /**
+     * CONNECT_NODE payload: relation class is explicit. Semantic relations
+     * name their endpoints as allowed {@code node:} refs; the runtime owns
+     * all node identity.
+     */
+    private static void validateConnectNode(Map<String, Object> payload,
+                                            AgentInputSnapshot snapshot) {
+        requireEnum("relationClass",
+                asString(payload.get("relationClass"), "relationClass"), RELATION_CLASSES);
+        requireEnum("relationType",
+                asString(payload.get("relationType"), "relationType"), SEMANTIC_RELATION_TYPES);
+        String sourceRef = asString(payload.get("sourceRef"), "sourceRef");
+        String targetRef = asString(payload.get("targetRef"), "targetRef");
+        if (!sourceRef.startsWith("node:") || !targetRef.startsWith("node:")) {
+            throw new AgentContractException(
+                    "CONNECT_NODE endpoints must be node: refs from the snapshot");
+        }
+        if (!snapshot.allowedSourceRefs().contains(sourceRef)
+                || !snapshot.allowedSourceRefs().contains(targetRef)) {
+            throw new AgentContractException(
+                    "CONNECT_NODE endpoint refs outside the allowed snapshot refs");
         }
     }
 

@@ -52,6 +52,17 @@ public class Json {
         }
     }
 
+    public <T> T read(String json, TypeReference<T> type) {
+        if (json == null || json.isBlank() || "null".equals(json)) {
+            return null;
+        }
+        try {
+            return mapper.readValue(json, type);
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to parse JSON content", e);
+        }
+    }
+
     public <T> List<T> readList(String json, TypeReference<List<T>> type) {
         if (json == null || json.isBlank() || "null".equals(json)) {
             return Collections.emptyList();

@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { defineComponent, h } from 'vue'
 import { mount } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 import GraphQuestionNode from '@/components/graph/GraphQuestionNode.vue'
 import type { SpecAgentGraphNodeData, GraphAnswerPresentation } from '@/graph/graphProjection'
 import type { GraphWorkspaceNodeView, GraphWorkspaceOptionView } from '@/api/types'
@@ -24,9 +25,11 @@ const HandleStub = defineComponent({
 
 /** Mounts the node with the Handle stub so jsdom-safe assertions can run. */
 function mountNode(data: SpecAgentGraphNodeData, extra: Record<string, unknown> = {}) {
+  const pinia = createPinia()
+  setActivePinia(pinia)
   return mount(GraphQuestionNode, {
     props: { data, submitting: false, pending: false, ...extra },
-    global: { stubs: { Handle: HandleStub } },
+    global: { stubs: { Handle: HandleStub }, plugins: [pinia] },
   })
 }
 
@@ -48,6 +51,12 @@ function nodeData(overrides: Partial<GraphWorkspaceNodeView> = {}): GraphWorkspa
     ],
     allowFreeAnswer: true,
     createdAt: '2026-08-18T00:00:00Z',
+    kind: 'INTERACTION',
+    subtype: 'QUESTION',
+    content: {},
+    authorKind: 'AGENT',
+    knowledgeStatus: null,
+    userEditableDraft: false,
     ...overrides,
   }
 }
@@ -66,6 +75,7 @@ function answer(routeId: string, overrides: Partial<GraphAnswerPresentation> = {
 function currentData(overrides: Partial<SpecAgentGraphNodeData> = {}): SpecAgentGraphNodeData {
   return {
     node: nodeData(),
+    projectId: 'p1',
     routeIds: ['r1'],
     visibleRouteIds: ['r1'],
     answers: [],
@@ -76,6 +86,8 @@ function currentData(overrides: Partial<SpecAgentGraphNodeData> = {}): SpecAgent
     canAnswer: true,
     isExpanded: false,
     isShared: false,
+    isLatest: false,
+    qLabel: null,
     visualWeight: 'active',
     ...overrides,
   }
@@ -84,6 +96,7 @@ function currentData(overrides: Partial<SpecAgentGraphNodeData> = {}): SpecAgent
 function historicalData(overrides: Partial<SpecAgentGraphNodeData> = {}): SpecAgentGraphNodeData {
   return {
     node: nodeData({ parentNodeId: 'n0' }),
+    projectId: 'p1',
     routeIds: ['r1', 'r2'],
     visibleRouteIds: ['r1', 'r2'],
     answers: [
@@ -124,6 +137,8 @@ function historicalData(overrides: Partial<SpecAgentGraphNodeData> = {}): SpecAg
     canAnswer: false,
     isExpanded: false,
     isShared: true,
+    isLatest: false,
+    qLabel: null,
     visualWeight: 'normal',
     ...overrides,
   }
@@ -262,6 +277,7 @@ describe('shared node route-specific waiting state', () => {
   function waitingData(overrides: Partial<SpecAgentGraphNodeData> = {}): SpecAgentGraphNodeData {
     return {
       node: nodeData({ parentNodeId: 'n0' }),
+      projectId: 'p1',
       routeIds: ['r1', 'r2'],
       visibleRouteIds: ['r1', 'r2'],
       answers: [
@@ -286,6 +302,8 @@ describe('shared node route-specific waiting state', () => {
       canAnswer: false,
       isExpanded: false,
       isShared: true,
+      isLatest: false,
+      qLabel: null,
       visualWeight: 'focus',
       ...overrides,
     }

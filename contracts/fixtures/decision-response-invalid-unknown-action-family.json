@@ -27,7 +27,10 @@
     "baseContextHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "sourceRefs": [
       "answer:99999999-9999-9999-9999-999999999999"
-    ]
+    ],
+    "proposalId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+    "idempotencyKey": "22222222-2222-2222-2222-222222222222",
+    "anchorRefs": []
   },
   "usage": {
     "modelCalls": 1,

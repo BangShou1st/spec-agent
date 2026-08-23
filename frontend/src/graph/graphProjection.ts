@@ -52,6 +52,7 @@ export interface SpecAgentGraphNodeData {
   node: GraphWorkspaceNodeView
   canonicalNodeId?: string
   visualNodeKey?: string
+  projectId: string
   routeIds: string[]
   visibleRouteIds: string[]
   answers: GraphAnswerPresentation[]
@@ -62,6 +63,8 @@ export interface SpecAgentGraphNodeData {
   canAnswer: boolean
   isExpanded: boolean
   isShared: boolean
+  isLatest: boolean
+  qLabel: string | null
   routeMembership?: GraphRouteMembershipPresentation[]
   visualWeight: GraphVisualWeight
 }
@@ -201,7 +204,17 @@ function fallbackRouteLabel(route: Pick<GraphWorkspaceRouteView, 'branchType' | 
   if (route.branchType === 'fork') return '分支路线'
   if (route.branchType === 'reanswer') return '重新回答路线'
   if (route.branchType === 'regenerate') return '换题路线'
+  if (route.branchType === 'continuation') return '探索分支'
   return route.isActive ? '主路线' : '路线'
+}
+
+/**
+ * Registry-style node type resolution: the stable node kind maps to a
+ * registered card component (see GraphCanvas nodeTypes). New subtypes reuse
+ * an existing kind's card; they never add per-business card classes.
+ */
+export function nodeTypeForKind(kind: GraphWorkspaceNodeView['kind']): 'question' | 'knowledge' {
+  return kind === 'INTERACTION' ? 'question' : 'knowledge'
 }
 
 function routeLabel(route: GraphWorkspaceRouteView | undefined): string {
@@ -257,6 +270,27 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
   const positions = computePositions(visibleInstances, savedPositions)
   const answersByCanonicalNode = buildAnswerPresentations(view)
 
+  // Compute Q labels: topological order across all visible nodes.
+  const nodeOrder = new Map<string, number>()
+  let qCounter = 1
+  for (const route of view.routes) {
+    if (!visibleRouteIds.has(route.id)) continue
+    for (const nodeId of route.lineageNodeIds ?? []) {
+      const inst = visibleInstances.find(
+        (i) => i.canonicalNodeId === nodeId && i.routeIds.includes(route.id),
+      )
+      if (inst && !nodeOrder.has(inst.visualNodeKey)) {
+        nodeOrder.set(inst.visualNodeKey, qCounter++)
+      }
+    }
+  }
+
+  // Compute latest marker: active route tip with no answer.
+  const activeRoute = view.routes.find((r) => r.id === activeRouteId)
+  const activeTipNodeId = activeRoute?.tipNodeId ?? null
+  const activeTipHasAnswer = activeTipNodeId != null
+    && view.answers.some((a) => a.nodeId === activeTipNodeId && a.routeId === activeRouteId)
+
   const nodes: Node<SpecAgentGraphNodeData>[] = visibleInstances.map((instance) => {
     const routeIds = instance.routeIds
     const answers = (answersByCanonicalNode.get(instance.canonicalNodeId) ?? [])
@@ -295,12 +329,13 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
       })
     return {
       id: instance.visualNodeKey,
-      type: 'question' as const,
+      type: nodeTypeForKind(instance.node.kind),
       position: positions[instance.visualNodeKey] ?? { x: 0, y: 0 },
       data: {
         node: instance.node,
         canonicalNodeId: instance.canonicalNodeId,
         visualNodeKey: instance.visualNodeKey,
+        projectId: view.projectId,
         routeIds,
         visibleRouteIds: routeIds.filter((id) => visibleRouteIds.has(id)),
         answers: answers.map((answer) => ({ ...answer, isPrimary: answer === primary })),
@@ -312,6 +347,11 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
         isExpanded: uiState.expandedNodeIds.includes(instance.visualNodeKey)
           || uiState.expandedNodeIds.includes(instance.canonicalNodeId),
         isShared: routeIds.length > 1,
+        isLatest: instance.canonicalNodeId === activeTipNodeId
+          && !activeTipHasAnswer
+          && routeIds.includes(activeRouteId ?? ''),
+        qLabel: nodeOrder.has(instance.visualNodeKey)
+          ? 'Q' + nodeOrder.get(instance.visualNodeKey) : null,
         routeMembership,
         visualWeight,
       },

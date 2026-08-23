@@ -4,6 +4,7 @@ import { routerKey } from 'vue-router'
 import ApiErrorBanner from '@/components/ApiErrorBanner.vue'
 import ConfirmRouteActionDialog from '@/components/ConfirmRouteActionDialog.vue'
 import ForkRouteDialog from '@/components/ForkRouteDialog.vue'
+import ResourceDialog from '@/components/ResourceDialog.vue'
 import ReanswerRouteDialog from '@/components/ReanswerRouteDialog.vue'
 import RegenerateNodeDialog from '@/components/RegenerateNodeDialog.vue'
 import GraphCanvas from '@/components/graph/GraphCanvas.vue'
@@ -33,6 +34,7 @@ const router = inject(routerKey, null)
 const canvasRef = ref<InstanceType<typeof GraphCanvas> | null>(null)
 
 const forkDialogOpen = ref(false)
+const resourceDialogOpen = ref(false)
 const reanswerDialogOpen = ref(false)
 const regenerateDialogOpen = ref(false)
 const confirmAction = ref<'archive' | 'delete' | null>(null)
@@ -43,7 +45,9 @@ const reanswerNodeId = ref<string | null>(null)
 
 onMounted(() => {
   graphUi.initProject(props.projectId)
-  void store.loadWorkspace(props.projectId)
+  void store.loadWorkspace(props.projectId).then(() => {
+    void store.refreshUndoRedoAvailability()
+  })
 })
 
 // 每次 canonical 刷新后，浏览器视图状态与后端 graph 对齐。
@@ -175,6 +179,14 @@ async function focusAfterMutation(): Promise<void> {
 
 async function handleDraft(): Promise<void> {
   await store.draftQuestion()
+}
+
+async function handleAttachResource(
+  subtype: 'TEXT' | 'URL' | 'FILE',
+  content: Record<string, unknown>,
+): Promise<void> {
+  const ok = await store.attachResource(subtype, content)
+  if (ok) resourceDialogOpen.value = false
 }
 
 async function handleAnswer(payload: SubmitAnswerRequest): Promise<void> {
@@ -327,6 +339,10 @@ async function confirmDestructive(): Promise<void> {
         @fork="handleFork"
         @reanswer="handleReanswer"
         @regenerate="handleRegenerate"
+        @add-idea="store.createRootIdea"
+        @add-resource="resourceDialogOpen = true"
+        @undo="store.undoGraph"
+        @redo="store.redoGraph"
         @routes="openWindow('routes')"
         @inspector="openWindow('inspector')"
         @reset-windows="graphUi.resetWindows"
@@ -390,6 +406,14 @@ async function confirmDestructive(): Promise<void> {
       <p v-if="store.feedback" class="feedback-line" data-test="feedback">{{ store.feedback }}</p>
       <button v-if="store.forkDraftRetryRouteId" class="btn btn-primary workspace-shell__retry-draft" data-test="retry-fork-draft" :disabled="workspaceRetrying" @click="retryForkDraft">重试起草</button>
     </div>
+
+    <ResourceDialog
+      :open="resourceDialogOpen"
+      :pending="store.graphCommandPending"
+      :route-empty="(store.activeRoute?.tipNodeId ?? null) === null"
+      @close="resourceDialogOpen = false"
+      @submit="handleAttachResource"
+    />
 
     <ForkRouteDialog
       :open="forkDialogOpen"

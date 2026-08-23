@@ -51,6 +51,65 @@ public class LocalDeterministicDecisionEngine implements AgentDecisionEngine {
     @Override
     public AgentResponseEnvelope runDecision(AgentRequestEnvelope request) {
         UUID snapshotId = UUID.fromString(request.snapshot().snapshotId());
+        // Deterministic capability path: when the runtime exposed any
+        // capability descriptors, the fake engine invokes the first visible
+        // one against the first non-interaction lineage node. Fully generic
+        // — no capability id or node kind is hardcoded here.
+        if (!request.snapshot().availableCapabilities().isEmpty()) {
+            String capabilityId = request.snapshot().availableCapabilities().get(0).id();
+            String nodeRef = request.snapshot().lineage().stream()
+                    .filter(entry -> !"INTERACTION".equals(entry.node().kind()))
+                    .map(entry -> "node:" + entry.node().id())
+                    .findFirst()
+                    .orElse(null);
+            if (nodeRef != null) {
+                AgentResponseEnvelope invoke = new AgentResponseEnvelope(
+                        AgentProtocol.DECISION_PROTOCOL_VERSION,
+                        request.runId(),
+                        null,
+                        new ObservationView(
+                                List.of("A resource is available in the lineage."),
+                                List.of(), List.of(), List.of()),
+                        new ActionProposal(
+                                "INVOKE_CAPABILITY",
+                                Map.of("capabilityId", capabilityId,
+                                       "arguments", Map.of("nodeRef", nodeRef)),
+                                snapshotId,
+                                request.snapshot().contextHash(),
+                                List.of(),
+                                UUID.randomUUID(),
+                                request.runId().toString(),
+                                List.of()),
+                        new UsageView(1, List.of()),
+                        Map.of());
+                AgentBrainResponseValidator.validateDecision(request, invoke);
+                return invoke;
+            }
+        }
+        if ("NODE_QUERY".equals(request.event().kind())) {
+            // Deterministic contextual answer: the query path expects a
+            // read-only response and must never mutate the graph.
+            AgentResponseEnvelope respond = new AgentResponseEnvelope(
+                    AgentProtocol.DECISION_PROTOCOL_VERSION,
+                    request.runId(),
+                    null,
+                    new ObservationView(
+                            List.of("The node context grounds the answer."),
+                            List.of(), List.of(), List.of()),
+                    new ActionProposal(
+                            "RESPOND_TO_USER",
+                            Map.of("message", "关于该节点：" + request.event().freeText()),
+                            snapshotId,
+                            request.snapshot().contextHash(),
+                            List.of(),
+                            UUID.randomUUID(),
+                            request.runId().toString(),
+                            List.of()),
+                    new UsageView(1, List.of()),
+                    Map.of());
+            AgentBrainResponseValidator.validateDecision(request, respond);
+            return respond;
+        }
         AgentResponseEnvelope response = new AgentResponseEnvelope(
                 AgentProtocol.DECISION_PROTOCOL_VERSION,
                 request.runId(),
@@ -68,6 +127,9 @@ public class LocalDeterministicDecisionEngine implements AgentDecisionEngine {
                                 "allowFreeAnswer", true),
                         snapshotId,
                         request.snapshot().contextHash(),
+                        List.of(),
+                        UUID.randomUUID(),
+                        request.runId().toString(),
                         List.of()),
                 new UsageView(1, List.of()),
                 Map.of());

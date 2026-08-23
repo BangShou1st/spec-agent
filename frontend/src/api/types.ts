@@ -67,7 +67,7 @@ export interface RouteResponse {
   createdFromNodeId: string | null
   supersedesRouteId: string | null
   replacementOfNodeId: string | null
-  branchType?: 'fork' | 'reanswer' | 'regenerate' | null
+  branchType?: 'fork' | 'reanswer' | 'regenerate' | 'continuation' | null
   sourceRouteId?: string | null
   branchAtNodeId?: string | null
   createdAt: string
@@ -290,6 +290,9 @@ export interface GraphWorkspaceOptionView {
   impact: string | null
 }
 
+/** Stable outer node kind; subtypes refine it (no per-business node types). */
+export type GraphNodeKind = 'KNOWLEDGE' | 'INTERACTION' | 'RESOURCE' | 'ARTIFACT'
+
 /** Read-only node view on the canonical project graph (deduplicated). */
 export interface GraphWorkspaceNodeView {
   id: string
@@ -301,6 +304,12 @@ export interface GraphWorkspaceNodeView {
   options: GraphWorkspaceOptionView[]
   allowFreeAnswer: boolean
   createdAt: string
+  kind: GraphNodeKind
+  subtype: string
+  content: Record<string, unknown>
+  authorKind: 'USER' | 'AGENT' | 'RUNTIME'
+  knowledgeStatus: 'PROPOSED' | 'CONFIRMED' | 'CHALLENGED' | 'SUPERSEDED' | null
+  userEditableDraft: boolean
 }
 
 /** Read-only answer presentation view; identity stays routeId + nodeId. */
@@ -326,10 +335,21 @@ export interface GraphWorkspaceRouteView {
   createdFromNodeId: string | null
   supersedesRouteId: string | null
   replacementOfNodeId: string | null
-  branchType?: 'fork' | 'reanswer' | 'regenerate' | null
+  branchType?: 'fork' | 'reanswer' | 'regenerate' | 'continuation' | null
   sourceRouteId?: string | null
   branchAtNodeId?: string | null
   lineageNodeIds: string[]
+}
+
+/** Active semantic relation (Inspector data; never a default Canvas edge). */
+export interface GraphWorkspaceRelationView {
+  id: string
+  sourceNodeId: string
+  targetNodeId: string
+  relationType: 'RELATED_TO' | 'DEPENDS_ON' | 'DERIVED_FROM' | 'CONFLICTS_WITH' | 'SUPPORTS'
+  origin: 'USER' | 'AGENT' | 'RUNTIME'
+  createdByProposalId: string | null
+  createdAt: string
 }
 
 /** Canonical read-only project graph for the workspace. */
@@ -339,4 +359,5 @@ export interface GraphWorkspaceView {
   routes: GraphWorkspaceRouteView[]
   nodes: GraphWorkspaceNodeView[]
   answers: GraphWorkspaceAnswerView[]
+  relations: GraphWorkspaceRelationView[]
 }

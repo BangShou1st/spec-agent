@@ -2,9 +2,13 @@ package com.specagent.agent.contract;
 
 /**
  * A capability descriptor the brain may reference. Filtered by permission
- * Java-side before exposure; Stage A always sends an empty list.
+ * and context relevance Java-side before exposure; descriptors carry only
+ * bounded metadata — never implementation classes, endpoints, or
+ * credentials.
  */
 public record CapabilityDescriptor(String id,
                                    String version,
-                                   boolean readOnly) {
+                                   String description,
+                                   boolean readOnly,
+                                   String sideEffectClass) {
 }

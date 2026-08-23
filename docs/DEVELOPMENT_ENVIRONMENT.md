@@ -191,3 +191,32 @@ cross-language integration test
 (`PythonBrainCrossLanguageIntegrationTest`) requires a running brain on port
 8100 and binds Spring to port 18080; it skips automatically when the brain is
 not running so the default suite stays green offline.
+
+## 11. Internal Broker Network Isolation
+
+The internal model inference broker (`POST /internal/v1/model-inference`) is
+**not a product API**. It exists solely so the Python agent brain can route
+model calls through the frozen Java OpenCode transport without receiving
+provider credentials.
+
+### Production deployment requirements
+
+- **Network isolation**: the `/internal/**` path must only be reachable from
+  the Python agent brain process. In Kubernetes this means the internal
+  broker service should be exposed only on a cluster-internal address or
+  behind a NetworkPolicy that limits ingress to the brain pod. It must
+  never be exposed to the public internet or to browser clients.
+- **Shared internal secret**: every request must carry the
+  `X-Spec-Agent-Internal-Token` header matching the Spring-side
+  `spec.agent.brain.internal-secret` value. The token is validated in
+  constant time. Rotate it when any brain instance is compromised.
+- **No external traffic**: the broker accepts only pre-validated
+  `ModelInferenceHttpRequest` payloads. It does not accept arbitrary
+  user-supplied URLs, headers, or prompt content.
+
+### Local development
+
+In local development, both Spring and the Python brain run on
+`localhost` and share the default `dev-internal-secret`. This is
+acceptable because the machine is single-tenant. The same shared secret
+must never be used in production.

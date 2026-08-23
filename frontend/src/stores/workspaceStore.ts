@@ -1,6 +1,18 @@
 import { defineStore } from 'pinia'
 import { ApiError, GENERIC_ERROR_MESSAGE } from '@/api/client'
 import { classifyModelFailure } from '@/api/errorCopy'
+import {
+  appendContinuation,
+  attachResource as attachResourceCommand,
+  createNodeQuery,
+  createRootDraftNode,
+  getNodeQueryResult,
+  getUndoRedoAvailability,
+  redoGraphOperation,
+  reviseDraftNode,
+  setKnowledgeStatus,
+  undoGraphOperation,
+} from '@/api/graphCommands'
 import { getProjectGraph } from '@/api/graph'
 import { getProject } from '@/api/projects'
 import { getRequirementState, getRouteRequirementState } from '@/api/requirementState'
@@ -140,6 +152,19 @@ export const useWorkspaceStore = defineStore('workspace', {
     generatingSpec: false,
     loadingSpecs: false,
     specsByRoute: {} as Record<string, SpecSnapshotResponse[]>,
+
+    // Graph workspace commands: one mutation in flight at a time.
+    graphCommandPending: false,
+    undoRedo: { canUndo: false, canRedo: false } as { canUndo: boolean; canRedo: boolean },
+    // In-flight / finished contextual node query ("ask AI about this node").
+    nodeQuery: null as {
+      nodeId: string
+      routeId: string
+      question: string
+      runId: string
+      status: 'RUNNING' | 'COMPLETED' | 'FAILED'
+      message: string | null
+    } | null,
   }),
   getters: {
     activeRoute(state): RouteResponse | null {
@@ -965,6 +990,240 @@ export const useWorkspaceStore = defineStore('workspace', {
       } finally {
         this.generatingSpec = false
       }
+    },
+
+    // ----------------------------------------------------------------
+    // Graph workspace commands (zero model calls on this path)
+    // ----------------------------------------------------------------
+
+    /** Refreshes Undo/Redo availability from the operation log. */
+    async refreshUndoRedoAvailability(): Promise<void> {
+      if (!this.projectId) return
+      try {
+        this.undoRedo = await getUndoRedoAvailability(this.projectId)
+      } catch {
+        // Availability is a UI affordance; failures keep the last state.
+      }
+    },
+
+    /**
+     * Creates the first draft idea on the empty active route. The user
+     * authors content before any agent involvement — zero model calls.
+     */
+    async createRootIdea(): Promise<boolean> {
+      if (!this.projectId || this.graphCommandPending) return false
+      const activeRouteId = this.activeState?.activeRoute?.id ?? null
+      if (!activeRouteId) {
+        this.error = { code: 'NO_ACTIVE_ROUTE', message: '当前项目没有活动路线。' }
+        return false
+      }
+      this.graphCommandPending = true
+      try {
+        await createRootDraftNode(this.projectId, activeRouteId, {
+          subtype: 'NOTE',
+          content: {},
+        })
+        this.feedback = '已创建草稿节点，直接在卡片上编辑内容。'
+        await this.refreshWorkspace()
+        await this.refreshUndoRedoAvailability()
+        return true
+      } catch (err) {
+        this.error = toDisplayError(err)
+        return false
+      } finally {
+        this.graphCommandPending = false
+      }
+    },
+
+    /**
+     * Continues from a node on an explicit route. The backend appends at the
+     * tip or creates an explicit branch from a historical node — the UI never
+     * pretends history was rewritten.
+     */
+    async continueFromNode(nodeId: string, routeId: string): Promise<boolean> {
+      if (!this.projectId || this.graphCommandPending) return false
+      this.graphCommandPending = true
+      this.error = null
+      try {
+        const created = await appendContinuation(this.projectId, nodeId, routeId, {
+          subtype: 'NOTE',
+          content: {},
+        })
+        this.feedback = created.branched ? '已从该节点创建探索分支。' : '已在当前路线继续。'
+        await this.refreshWorkspace()
+        await this.refreshUndoRedoAvailability()
+        return true
+      } catch (err) {
+        this.error = toDisplayError(err)
+        return false
+      } finally {
+        this.graphCommandPending = false
+      }
+    },
+
+    /**
+     * Attaches a resource node (root of an empty route, or appended at the
+     * current tip). Resources are capability context sources, not claims.
+     */
+    async attachResource(
+      subtype: 'TEXT' | 'URL' | 'FILE' | 'IMAGE' | 'REPOSITORY' | 'API_DOCUMENTATION',
+      content: Record<string, unknown>,
+    ): Promise<boolean> {
+      if (!this.projectId || this.graphCommandPending) return false
+      const route = this.activeRoute
+      if (!route) {
+        this.error = { code: 'NO_ACTIVE_ROUTE', message: '当前项目没有活动路线。' }
+        return false
+      }
+      const tipNodeId = route.tipNodeId ?? null
+      this.graphCommandPending = true
+      this.error = null
+      try {
+        await attachResourceCommand(this.projectId, route.id, tipNodeId, subtype, content)
+        this.feedback = '已添加资源节点。'
+        await this.refreshWorkspace()
+        await this.refreshUndoRedoAvailability()
+        return true
+      } catch (err) {
+        this.error = toDisplayError(err)
+        return false
+      } finally {
+        this.graphCommandPending = false
+      }
+    },
+
+    /** Saves an in-place edit of a still-editable user draft. */
+    async reviseDraft(nodeId: string, subtype: string, text: string): Promise<boolean> {
+      if (!this.projectId || this.graphCommandPending) return false
+      this.graphCommandPending = true
+      this.error = null
+      try {
+        await reviseDraftNode(this.projectId, nodeId, {
+          subtype,
+          content: text.trim() ? { text: text.trim() } : {},
+        })
+        this.feedback = '草稿已保存。'
+        await this.refreshWorkspace()
+        await this.refreshUndoRedoAvailability()
+        return true
+      } catch (err) {
+        this.error = toDisplayError(err)
+        return false
+      } finally {
+        this.graphCommandPending = false
+      }
+    },
+
+    /** Confirms claim-like knowledge content (PROPOSED -> CONFIRMED). */
+    async confirmKnowledge(nodeId: string): Promise<boolean> {
+      if (!this.projectId || this.graphCommandPending) return false
+      this.graphCommandPending = true
+      this.error = null
+      try {
+        await setKnowledgeStatus(this.projectId, nodeId, 'CONFIRMED')
+        this.feedback = '已确认该内容。'
+        await this.refreshWorkspace()
+        await this.refreshUndoRedoAvailability()
+        return true
+      } catch (err) {
+        this.error = toDisplayError(err)
+        return false
+      } finally {
+        this.graphCommandPending = false
+      }
+    },
+
+    /** Undo via operation-specific compensation; never destructive. */
+    async undoGraph(): Promise<boolean> {
+      if (!this.projectId || this.graphCommandPending) return false
+      this.graphCommandPending = true
+      this.error = null
+      try {
+        const result = await undoGraphOperation(this.projectId)
+        this.feedback = result.description
+        await this.refreshWorkspace()
+        await this.refreshUndoRedoAvailability()
+        return true
+      } catch (err) {
+        this.error = toDisplayError(err)
+        await this.refreshUndoRedoAvailability()
+        return false
+      } finally {
+        this.graphCommandPending = false
+      }
+    },
+
+    /** Redo only while preconditions still hold. */
+    async redoGraph(): Promise<boolean> {
+      if (!this.projectId || this.graphCommandPending) return false
+      this.graphCommandPending = true
+      this.error = null
+      try {
+        const result = await redoGraphOperation(this.projectId)
+        this.feedback = result.description
+        await this.refreshWorkspace()
+        await this.refreshUndoRedoAvailability()
+        return true
+      } catch (err) {
+        this.error = toDisplayError(err)
+        await this.refreshUndoRedoAvailability()
+        return false
+      } finally {
+        this.graphCommandPending = false
+      }
+    },
+
+    /**
+     * Asks AI about a node: enqueues an async query run and polls until the
+     * single DECISION call finishes. The query has no graph side effects.
+     */
+    async askNodeAI(nodeId: string, routeId: string, question: string): Promise<boolean> {
+      if (!this.projectId || !question.trim()) return false
+      this.error = null
+      try {
+        const created = await createNodeQuery(this.projectId, nodeId, routeId, question.trim())
+        this.nodeQuery = {
+          nodeId,
+          routeId,
+          question: question.trim(),
+          runId: created.runId,
+          status: 'RUNNING',
+          message: null,
+        }
+        await this.pollNodeQuery(created.runId, nodeId)
+        return true
+      } catch (err) {
+        this.error = toDisplayError(err)
+        if (this.nodeQuery) this.nodeQuery = { ...this.nodeQuery, status: 'FAILED' }
+        return false
+      }
+    },
+
+    async pollNodeQuery(runId: string, nodeId: string): Promise<void> {
+      if (!this.projectId) return
+      const maxAttempts = 40
+      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 1500))
+        try {
+          const result = await getNodeQueryResult(this.projectId, nodeId, runId)
+          if (result.status === 'RUNNING' || result.status === 'CREATED') continue
+          this.nodeQuery = {
+            nodeId,
+            routeId: this.nodeQuery?.routeId ?? '',
+            question: this.nodeQuery?.question ?? '',
+            runId,
+            status: result.status === 'FAILED' ? 'FAILED' : 'COMPLETED',
+            message: result.message,
+          }
+          return
+        } catch {
+          // Transient poll failures fall through to the next attempt.
+        }
+      }
+      this.nodeQuery = this.nodeQuery
+        ? { ...this.nodeQuery, status: 'FAILED' }
+        : null
+      this.error = { code: 'QUERY_TIMEOUT', message: 'AI 查询超时，请稍后重试。' }
     },
   },
 })

@@ -2,6 +2,7 @@ package com.specagent.readmodel.graph;
 
 import com.specagent.answer.Answer;
 import com.specagent.answer.AnswerService;
+import com.specagent.graph.NodeRelationRepository;
 import com.specagent.node.Node;
 import com.specagent.node.NodeOption;
 import com.specagent.node.NodeService;
@@ -10,6 +11,7 @@ import com.specagent.project.ProjectService;
 import com.specagent.route.Route;
 import com.specagent.route.RouteLifecycleStatus;
 import com.specagent.route.RouteService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -22,6 +24,8 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -44,8 +48,16 @@ class GraphWorkspaceQueryServiceTest {
     private NodeService nodeService;
     @Mock
     private AnswerService answerService;
+    @Mock
+    private NodeRelationRepository relationRepository;
     @InjectMocks
     private GraphWorkspaceQueryService service;
+
+    @BeforeEach
+    void stubRelations() {
+        lenient().when(relationRepository.findActiveByProject(any()))
+                .thenReturn(List.of());
+    }
 
     private static final Instant NOW = Instant.parse("2026-08-18T00:00:00Z");
 

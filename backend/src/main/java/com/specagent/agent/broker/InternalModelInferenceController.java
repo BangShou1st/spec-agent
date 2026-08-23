@@ -52,13 +52,16 @@ public class InternalModelInferenceController {
     private final ModelInferenceGateway gateway;
     private final AgentRunEventService eventService;
     private final AgentBrainProperties properties;
+    private final RunExistenceCheck runExistenceCheck;
 
     public InternalModelInferenceController(ModelInferenceGateway gateway,
                                             AgentRunEventService eventService,
-                                            AgentBrainProperties properties) {
+                                            AgentBrainProperties properties,
+                                            RunExistenceCheck runExistenceCheck) {
         this.gateway = gateway;
         this.eventService = eventService;
         this.properties = properties;
+        this.runExistenceCheck = runExistenceCheck;
     }
 
     @PostMapping
@@ -143,6 +146,9 @@ public class InternalModelInferenceController {
         }
         if (request.runId() == null) {
             throw new AgentContractException("runId is required");
+        }
+        if (!runExistenceCheck.exists(request.runId())) {
+            throw new AgentContractException("runId does not correspond to a persisted run");
         }
         if (!AgentProtocol.CALL_TYPES.contains(request.callType())) {
             throw new AgentContractException("Unknown call type: " + request.callType());

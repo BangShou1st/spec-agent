@@ -31,7 +31,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest
 @ActiveProfiles("test")
 @Transactional
-class V2AgentRunWorkerIntegrationTest {
+class RunWorkerIntegrationTest {
 
     @Autowired
     private ProjectService projectService;

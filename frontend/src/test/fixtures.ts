@@ -7,6 +7,7 @@ import type {
   NodeResponse,
   ProjectResponse,
   ProjectSummaryResponse,
+  GraphWorkspaceNodeView,
   GraphWorkspaceView,
   RegenerateResponse,
   RequirementClaimView,
@@ -71,7 +72,14 @@ export function makeRoute(overrides: Partial<RouteResponse> = {}): RouteResponse
   }
 }
 
-export function makeNode(overrides: Partial<NodeResponse> = {}): NodeResponse {
+/** Node fixture usable both as NodeResponse and GraphWorkspaceNodeView. */
+export type NodeFixture = NodeResponse &
+  Pick<
+    GraphWorkspaceNodeView,
+    'kind' | 'subtype' | 'content' | 'authorKind' | 'knowledgeStatus' | 'userEditableDraft'
+  >
+
+export function makeNode(overrides: Partial<NodeFixture> = {}): NodeFixture {
   return {
     id: nextId('node'),
     projectId: 'project-1',
@@ -82,6 +90,12 @@ export function makeNode(overrides: Partial<NodeResponse> = {}): NodeResponse {
     options: [],
     allowFreeAnswer: true,
     createdAt: '2026-01-01T00:00:00Z',
+    kind: 'INTERACTION',
+    subtype: 'QUESTION',
+    content: {},
+    authorKind: 'AGENT',
+    knowledgeStatus: null,
+    userEditableDraft: false,
     ...overrides,
   }
 }
@@ -311,6 +325,7 @@ export function makeGraphWorkspaceView(
     routes: [],
     nodes: [],
     answers: [],
+    relations: [],
     ...overrides,
   }
 }

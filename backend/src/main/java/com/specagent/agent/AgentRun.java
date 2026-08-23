@@ -24,6 +24,7 @@ public class AgentRun {
     private final UUID producedSpecSnapshotId;
     private final AgentRunStatus status;
     private final String trace;
+    private final String operation;
     private final Instant createdAt;
     private final Instant completedAt;
 
@@ -39,6 +40,7 @@ public class AgentRun {
                     UUID producedSpecSnapshotId,
                     AgentRunStatus status,
                     String trace,
+                    String operation,
                     Instant createdAt,
                     Instant completedAt) {
         this.id = id;
@@ -53,6 +55,7 @@ public class AgentRun {
         this.producedSpecSnapshotId = producedSpecSnapshotId;
         this.status = status;
         this.trace = trace;
+        this.operation = operation;
         this.createdAt = createdAt;
         this.completedAt = completedAt;
     }
@@ -103,6 +106,10 @@ public class AgentRun {
 
     public String trace() {
         return trace;
+    }
+
+    public String operation() {
+        return operation;
     }
 
     public Instant createdAt() {

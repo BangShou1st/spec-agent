@@ -75,7 +75,10 @@ class AgentBrainResponseValidatorTest {
                         "MARK_RISK", response.actionProposal().payload(),
                         response.actionProposal().baseContextSnapshotId(),
                         response.actionProposal().baseContextHash(),
-                        response.actionProposal().sourceRefs()),
+                        response.actionProposal().sourceRefs(),
+                        response.actionProposal().proposalId(),
+                        response.actionProposal().idempotencyKey(),
+                        response.actionProposal().anchorRefs()),
                 response.usage(), response.diagnostics());
         assertThatThrownBy(() -> AgentBrainResponseValidator.validateDecision(request, mutated))
                 .isInstanceOf(AgentContractException.class);
@@ -108,7 +111,10 @@ class AgentBrainResponseValidatorTest {
                         "REQUEST_USER_INPUT", payload,
                         response.actionProposal().baseContextSnapshotId(),
                         response.actionProposal().baseContextHash(),
-                        response.actionProposal().sourceRefs()),
+                        response.actionProposal().sourceRefs(),
+                        response.actionProposal().proposalId(),
+                        response.actionProposal().idempotencyKey(),
+                        response.actionProposal().anchorRefs()),
                 response.usage(), response.diagnostics());
         assertThatThrownBy(() -> AgentBrainResponseValidator.validateDecision(request, mutated))
                 .isInstanceOf(AgentContractException.class)
@@ -131,7 +137,10 @@ class AgentBrainResponseValidatorTest {
                         new com.specagent.agent.contract.ActionProposal(
                                 "REQUEST_USER_INPUT", response.actionProposal().payload(),
                                 UUID.randomUUID(), response.actionProposal().baseContextHash(),
-                                response.actionProposal().sourceRefs()),
+                                response.actionProposal().sourceRefs(),
+                                response.actionProposal().proposalId(),
+                                response.actionProposal().idempotencyKey(),
+                                response.actionProposal().anchorRefs()),
                         response.usage(), response.diagnostics())))
                 .isInstanceOf(AgentContractException.class);
     }

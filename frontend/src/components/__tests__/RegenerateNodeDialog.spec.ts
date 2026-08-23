@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import RegenerateNodeDialog from '@/components/RegenerateNodeDialog.vue'
-import { makeRouteLineageNode } from '@/test/fixtures'
+import { makeNode } from '@/test/fixtures'
 
 function mountDialog(sourceRouteId: string | null = 'route-1') {
   return mount(RegenerateNodeDialog, {
     props: {
       open: true,
-      node: makeRouteLineageNode({ id: 'lnode-2', parentNodeId: 'lnode-1', question: 'What scope is required?' }),
+      node: makeNode({ id: 'lnode-2', parentNodeId: 'lnode-1', question: 'What scope is required?' }),
       sourceRouteId,
       pending: false,
     },

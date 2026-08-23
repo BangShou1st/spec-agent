@@ -44,7 +44,15 @@ class ApiClient {
   }
 
   async put<T>(path: string, body?: unknown): Promise<T> {
-    const init: RequestInit = { method: 'PUT' }
+    return this.requestWithBody<T>('PUT', path, body)
+  }
+
+  async patch<T>(path: string, body?: unknown): Promise<T> {
+    return this.requestWithBody<T>('PATCH', path, body)
+  }
+
+  private async requestWithBody<T>(method: string, path: string, body?: unknown): Promise<T> {
+    const init: RequestInit = { method }
     if (body !== undefined) {
       init.headers = { 'Content-Type': 'application/json' }
       init.body = JSON.stringify(body)

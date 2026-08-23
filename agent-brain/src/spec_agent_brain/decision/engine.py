@@ -7,6 +7,7 @@ refs; Java re-validates everything fail-closed anyway.
 """
 
 import json
+import uuid
 
 from ..contracts.decisions import (
     ActionProposal,
@@ -52,6 +53,11 @@ def handle_decision(request: AgentV2RequestEnvelope, client: ModelClient) -> Age
             base_context_snapshot_id=request.snapshot.snapshot_id,
             base_context_hash=request.snapshot.context_hash,
             source_refs=output.action.source_refs,
+            # proposalId is runtime-owned UUID; idempotencyKey derived from
+            # the trusted run identity (one proposal per decision cycle).
+            proposal_id=uuid.uuid4(),
+            idempotency_key=str(request.run_id),
+            anchor_refs=output.action.anchor_refs,
         ),
         usage=UsageView(model_calls=1, prompt_hashes=[]),
     )

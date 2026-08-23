@@ -91,6 +91,23 @@ public class RouteRepository {
                 "updatedAt", Timestamp.from(updatedAt)));
     }
 
+    /**
+     * Clears both tip and root. Used only by undo compensation of root-node
+     * creation; unlike {@link #updateTipAndRoot} this may null the root.
+     */
+    public void clearTipAndRoot(UUID routeId, Instant updatedAt) {
+        String sql = """
+                UPDATE routes SET tip_node_id = NULL, root_node_id = NULL, updated_at = :updatedAt
+                WHERE id = :routeId
+                """;
+        jdbcTemplate.update(sql, Maps.of("routeId", routeId, "updatedAt", Timestamp.from(updatedAt)));
+    }
+
+    public List<UUID> findRouteIdsByTipNodeId(UUID tipNodeId) {
+        String sql = "SELECT id FROM routes WHERE tip_node_id = :tipNodeId";
+        return jdbcTemplate.queryForList(sql, Maps.of("tipNodeId", tipNodeId), UUID.class);
+    }
+
     public Optional<Route> findById(UUID id) {
         String sql = "SELECT * FROM routes WHERE id = :id";
         return jdbcTemplate.query(sql, Maps.of("id", id), rowMapper).stream().findFirst();

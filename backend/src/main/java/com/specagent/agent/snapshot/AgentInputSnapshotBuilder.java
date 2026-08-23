@@ -6,6 +6,8 @@ import com.specagent.agent.contract.AgentProtocol;
 import com.specagent.agent.contract.AgentRequestEnvelope;
 import com.specagent.agent.contract.AnswerView;
 import com.specagent.agent.contract.AutonomyInputs;
+import com.specagent.agent.contract.CapabilityDescriptor;
+import com.specagent.agent.contract.CapabilityResultView;
 import com.specagent.agent.contract.ClaimView;
 import com.specagent.agent.contract.DecisionBudget;
 import com.specagent.agent.contract.LineageEntry;
@@ -17,6 +19,9 @@ import com.specagent.agent.contract.RouteContextView;
 import com.specagent.agent.contract.SnapshotMetadata;
 import com.specagent.answer.Answer;
 import com.specagent.answer.AnswerRepository;
+import com.specagent.capability.CapabilityInvocationRecord;
+import com.specagent.capability.CapabilityInvocationRepository;
+import com.specagent.capability.CapabilityRegistry;
 import com.specagent.common.Json;
 import com.specagent.context.ContextSnapshot;
 import com.specagent.context.RequirementState;
@@ -51,11 +56,16 @@ import java.util.UUID;
 @Service
 public class AgentInputSnapshotBuilder {
 
+    /** Bounded observation count: prompts never receive an unbounded catalog. */
+    private static final int RECENT_CAPABILITY_RESULTS_LIMIT = 5;
+
     private final NodeRepository nodeRepository;
     private final AnswerRepository answerRepository;
     private final AnswerPatchRepository answerPatchRepository;
     private final RouteRepository routeRepository;
     private final RequirementStateBuilder requirementStateBuilder;
+    private final CapabilityRegistry capabilityRegistry;
+    private final CapabilityInvocationRepository capabilityInvocationRepository;
     private final Json json;
 
     public AgentInputSnapshotBuilder(NodeRepository nodeRepository,
@@ -63,12 +73,16 @@ public class AgentInputSnapshotBuilder {
                                      AnswerPatchRepository answerPatchRepository,
                                      RouteRepository routeRepository,
                                      RequirementStateBuilder requirementStateBuilder,
+                                     CapabilityRegistry capabilityRegistry,
+                                     CapabilityInvocationRepository capabilityInvocationRepository,
                                      Json json) {
         this.nodeRepository = nodeRepository;
         this.answerRepository = answerRepository;
         this.answerPatchRepository = answerPatchRepository;
         this.routeRepository = routeRepository;
         this.requirementStateBuilder = requirementStateBuilder;
+        this.capabilityRegistry = capabilityRegistry;
+        this.capabilityInvocationRepository = capabilityInvocationRepository;
         this.json = json;
     }
 
@@ -92,6 +106,11 @@ public class AgentInputSnapshotBuilder {
      * Projects one frozen snapshot into the model-facing input snapshot.
      */
     public AgentInputSnapshot build(ContextSnapshot snapshot) {
+        List<Node> lineageNodes = snapshot.includedNodeIds().stream()
+                .map(nodeRepository::findById)
+                .map(optional -> optional.orElseThrow(() -> new IllegalStateException(
+                        "Context snapshot included missing node")))
+                .toList();
         return new AgentInputSnapshot(
                 snapshot.id().toString(),
                 snapshot.contextHash(),
@@ -99,12 +118,82 @@ public class AgentInputSnapshotBuilder {
                 snapshot.routeId(),
                 snapshot.tipNodeId(),
                 routeContext(snapshot),
-                lineage(snapshot),
+                lineage(snapshot, lineageNodes),
                 effectiveClaims(snapshot),
                 metadata(snapshot),
                 allowedSourceRefs(snapshot),
-                List.of(),
+                visibleCapabilityDescriptors(lineageNodes),
+                capabilityResults(snapshot),
                 new AutonomyInputs("ADVISOR"));
+    }
+
+    /**
+     * Permission- and relevance-filtered capability descriptors. Relevance is
+     * driven by each descriptor's {@code supports} declarations ("KIND" or
+     * "KIND:SUBTYPE") against the lineage's node kinds — a generic rule, so
+     * new capabilities become visible by declaring supports, without edits
+     * to the builder or planner. Context-free capabilities (empty supports)
+     * stay visible everywhere.
+     */
+    private List<CapabilityDescriptor> visibleCapabilityDescriptors(List<Node> lineageNodes) {
+        return capabilityRegistry.descriptorsFor(java.util.Set.of()).stream()
+                .filter(descriptor -> supportsAnyLineageNode(descriptor, lineageNodes))
+                .map(descriptor -> new CapabilityDescriptor(
+                        descriptor.capabilityId(),
+                        descriptor.version(),
+                        descriptor.description(),
+                        descriptor.readOnly(),
+                        descriptor.sideEffectClass().code()))
+                .toList();
+    }
+
+    private boolean supportsAnyLineageNode(com.specagent.capability.CapabilityDescriptor descriptor,
+                                           List<Node> lineageNodes) {
+        if (descriptor.supports().isEmpty()) {
+            return true;
+        }
+        return descriptor.supports().stream().anyMatch(support -> lineageNodes.stream()
+                .anyMatch(node -> supportMatches(support, node)));
+    }
+
+    private boolean supportMatches(String support, Node node) {
+        int separator = support.indexOf(':');
+        if (separator < 0) {
+            return support.equalsIgnoreCase(node.kind().code());
+        }
+        String kind = support.substring(0, separator);
+        String subtype = support.substring(separator + 1);
+        return kind.equalsIgnoreCase(node.kind().code())
+                && subtype.equalsIgnoreCase(node.subtype());
+    }
+
+    /**
+     * Recent completed capability invocations as bounded observations. They
+     * are evidence for later cycles, never auto-confirmed truth; the count
+     * stays small so prompts never receive an unbounded catalog.
+     */
+    private List<CapabilityResultView> capabilityResults(ContextSnapshot snapshot) {
+        return capabilityInvocationRepository
+                .findRecentCompleted(snapshot.projectId(), RECENT_CAPABILITY_RESULTS_LIMIT)
+                .stream()
+                .map(this::capabilityResultView)
+                .toList();
+    }
+
+    @SuppressWarnings("unchecked")
+    private CapabilityResultView capabilityResultView(CapabilityInvocationRecord record) {
+        Map<String, Object> stored = record.result() == null ? Map.of() : record.result();
+        Object content = stored.get("content");
+        Object provenance = stored.get("provenance");
+        Object refs = stored.get("sourceRefs");
+        return new CapabilityResultView(
+                record.id().toString(),
+                record.capabilityId(),
+                record.status().name(),
+                content instanceof Map<?, ?> map ? (Map<String, Object>) map : Map.of(),
+                refs instanceof List<?> list
+                        ? list.stream().map(String::valueOf).toList() : List.of(),
+                provenance instanceof Map<?, ?> map ? (Map<String, Object>) map : Map.of());
     }
 
     private RouteContextView routeContext(ContextSnapshot snapshot) {
@@ -114,7 +203,7 @@ public class AgentInputSnapshotBuilder {
         return new RouteContextView(snapshot.routeId(), snapshot.tipNodeId(), label);
     }
 
-    private List<LineageEntry> lineage(ContextSnapshot snapshot) {
+    private List<LineageEntry> lineage(ContextSnapshot snapshot, List<Node> lineageNodes) {
         Map<UUID, Answer> answersByNodeId = new HashMap<>();
         for (Answer answer : loadAnswers(snapshot)) {
             answersByNodeId.put(answer.nodeId(), answer);
@@ -122,11 +211,8 @@ public class AgentInputSnapshotBuilder {
         Map<UUID, List<AnswerPatch>> patchesByAnswerId = groupPatchesByAnswer(snapshot);
 
         List<LineageEntry> lineage = new ArrayList<>();
-        for (UUID nodeId : snapshot.includedNodeIds()) {
-            Node node = nodeRepository.findById(nodeId)
-                    .orElseThrow(() -> new IllegalStateException(
-                            "Context snapshot included missing node: " + nodeId));
-            Answer answer = answersByNodeId.get(nodeId);
+        for (Node node : lineageNodes) {
+            Answer answer = answersByNodeId.get(node.id());
             List<PatchView> patches = answer == null
                     ? List.of()
                     : patchesByAnswerId.getOrDefault(answer.id(), List.of()).stream()
@@ -190,8 +276,12 @@ public class AgentInputSnapshotBuilder {
         List<OptionView> options = node.options().stream()
                 .map(option -> new OptionView(option.id(), option.label()))
                 .toList();
+        // Interaction nodes keep their question text; other kinds expose the
+        // primary content payload as text so the body stays one shape.
+        String text = node.question() != null ? node.question() : node.contentText();
         return new NodeView(node.id(),
-                new NodeBodyView(node.question(), options, node.allowFreeAnswer()));
+                new NodeBodyView(text, options, node.allowFreeAnswer()),
+                node.kind().code());
     }
 
     private AnswerView answerView(Answer answer) {
