@@ -446,7 +446,7 @@ V2 should add a new asynchronous command surface rather than breaking all legacy
 Example:
 
 ```text
-POST /api/v2/projects/{projectId}/agent-runs
+POST /api/v1/projects/{projectId}/agent-runs
 -> 202
 {
   "runId": "...",
@@ -454,8 +454,8 @@ POST /api/v2/projects/{projectId}/agent-runs
   "phase": "CREATED"
 }
 
-GET /api/v2/projects/{projectId}/agent-runs/{runId}
-GET /api/v2/projects/{projectId}/graph
+GET /api/v1/projects/{projectId}/agent-runs/{runId}
+GET /api/v1/projects/{projectId}/graph
 ```
 
 First UI version may poll run/graph status. Do **not** require WebSocket/SSE in the first V2 slice. Polling is simpler, deterministic, and sufficient to validate the lifecycle. Streaming transport can be added later without changing Agent/Graph contracts.

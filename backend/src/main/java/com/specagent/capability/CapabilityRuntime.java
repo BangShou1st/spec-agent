@@ -4,17 +4,29 @@ import com.specagent.common.Ids;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 
 /**
  * Executes capability invocations behind the host runtime contract.
  *
- * <p>Idempotency/retry metadata is runtime-owned: an invocation key that was
- * already executed replays the recorded result instead of re-executing side
- * effects. Unexpected adapter failures are recorded as typed FAILED results;
- * the runtime never silently retries.
+ * <p>Idempotency/retry metadata is runtime-owned: for one invocation key the
+ * database grants execution ownership to exactly one caller (atomic claim on
+ * the unique index); losers and later retries read back the recorded result
+ * instead of re-executing the adapter. SUCCEEDED invocations replay their
+ * recorded result, FAILED invocations replay the recorded failure without a
+ * new external attempt.
+ *
+ * <p>Honest crash-window semantics: if the process dies after the adapter's
+ * external work happened but before {@code complete} persisted the outcome,
+ * the invocation stays RUNNING and later callers receive a typed
+ * {@link CapabilityResult.Status#IN_PROGRESS IN_PROGRESS} state — never a
+ * fabricated replay and never a silent re-execution. Exactly-once external
+ * side effects cannot be guaranteed from local transactions alone; adapters
+ * that touch external systems must therefore use the runtime-owned identity
+ * carried by {@link CapabilityInvocation} as their downstream idempotency
+ * key. Current built-in capabilities are read-only/internal and unaffected.
  */
 @Service
 public class CapabilityRuntime {
@@ -39,25 +51,29 @@ public class CapabilityRuntime {
                                    UUID projectId,
                                    UUID runId,
                                    Map<String, Object> arguments) {
-        Optional<CapabilityInvocationRecord> recorded =
-                invocationRepository.findByInvocationKey(invocationKey);
-        if (recorded.isPresent()) {
-            return replayResult(recorded.orElseThrow());
+        CapabilityInvocation invocation = new CapabilityInvocation(
+                Ids.random(), invocationKey, capabilityId, projectId, runId, arguments);
+
+        if (!invocationRepository.claim(invocation)) {
+            // Lost the claim race or retried a known key: the recorded row —
+            // not another adapter execution — is the single source of truth.
+            CapabilityInvocationRecord existing = invocationRepository
+                    .findByInvocationKey(invocationKey)
+                    .orElseThrow(() -> new IllegalStateException(
+                            "Invocation record vanished after losing its claim race: "
+                                    + invocationKey));
+            return replayResult(existing);
         }
 
         CapabilityAdapter adapter = registry.findAdapter(capabilityId).orElse(null);
-        CapabilityInvocation invocation = new CapabilityInvocation(
-                Ids.random(), invocationKey, capabilityId, projectId, runId, arguments);
         if (adapter == null) {
             CapabilityResult failed = CapabilityResult.failed(
                     invocation.invocationId(), invocationKey, capabilityId,
                     "Unknown capability id: " + capabilityId);
-            invocationRepository.insertRunning(invocation);
             invocationRepository.complete(invocation.invocationId(), failed);
             return failed;
         }
 
-        invocationRepository.insertRunning(invocation);
         CapabilityResult result;
         try {
             result = adapter.invoke(invocation);
@@ -71,6 +87,20 @@ public class CapabilityRuntime {
     }
 
     private CapabilityResult replayResult(CapabilityInvocationRecord record) {
+        // A claimed-but-unfinished invocation (concurrent owner or crashed
+        // process) surfaces as a real in-progress state: it must neither be
+        // presented as a successful replay nor re-executed here.
+        if (record.status() == CapabilityResult.Status.RUNNING) {
+            return new CapabilityResult(
+                    record.id(),
+                    record.invocationKey(),
+                    record.capabilityId(),
+                    CapabilityResult.Status.IN_PROGRESS,
+                    Map.of("reason",
+                            "invocation is still running (or was interrupted before completion); "
+                                    + "no result has been recorded yet"),
+                    List.of(), Map.of(), List.of());
+        }
         Map<String, Object> stored = record.result() == null ? Map.of() : record.result();
         return new CapabilityResult(
                 record.id(),

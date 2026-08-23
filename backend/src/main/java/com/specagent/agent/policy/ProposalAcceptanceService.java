@@ -77,15 +77,25 @@ public class ProposalAcceptanceService {
         AcceptedProposalResult result = switch (stored.actionFamily()) {
             case "CREATE_NODE", "REQUEST_USER_INPUT" -> executeNodeAction(proposal, stored);
             case "CONNECT_NODE" -> executeConnectNode(proposal, stored);
+            case "INVOKE_CAPABILITY" -> executeCapabilityInvocation(proposal, stored);
+            // UPDATE_NODE / CREATE_ROUTE / GENERATE_ARTIFACT / CONTINUATION
+            // connections never reach here as PROPOSED proposals: policy denies
+            // them before creation because no command layer executes them in
+            // this stage. The defensive failure below stays fail-closed.
             default -> throw new UnsupportedOperationException(
                     "Action family " + stored.actionFamily()
                             + " cannot be executed on acceptance in this stage");
         };
 
         proposalService.acceptProposal(proposalId, decidedBy);
+        // Capability invocations produce no graph entity; node/relation
+        // families always produce exactly one.
+        List<UUID> producedRefs = result.producedNodeId() != null
+                ? List.of(result.producedNodeId())
+                : result.relationId() != null ? List.of(result.relationId()) : List.of();
         operationRepository.append(stored.projectId(), GraphOperation.Actor.AGENT,
                 GraphOperation.Type.ACCEPT_AGENT_PROPOSAL,
-                List.of(result.producedNodeId() != null ? result.producedNodeId() : result.relationId()),
+                producedRefs,
                 Map.of(), Map.of("actionFamily", stored.actionFamily()),
                 "proposal:" + proposalId);
         return result;
@@ -133,6 +143,18 @@ public class ProposalAcceptanceService {
                 requireLiveNode(sourceId);
                 requireLiveNode(targetId);
             }
+            case "INVOKE_CAPABILITY" -> {
+                // Capability arguments may reference graph nodes; those refs
+                // must still be live at acceptance time, mirroring the wire
+                // validation the proposal passed when it was created.
+                if (stored.payload().get("arguments") instanceof Map<?, ?> arguments) {
+                    for (Object value : arguments.values()) {
+                        if (value instanceof String ref && ref.startsWith("node:")) {
+                            requireLiveNode(UUID.fromString(ref.substring(5)));
+                        }
+                    }
+                }
+            }
             default -> {
                 // No freshness rule for other families in this stage.
             }
@@ -164,6 +186,24 @@ public class ProposalAcceptanceService {
                 stored.id(),
                 stored.runId());
         return new AcceptedProposalResult(stored.actionFamily(), null, relation.id());
+    }
+
+    /**
+     * Local-durable capability invocations execute through the same action
+     * executor used by the auto-execute path (which routes into the
+     * capability runtime with its runtime-owned idempotency key) — acceptance
+     * never duplicates execution logic. Read-only capabilities never become
+     * proposals (policy auto-executes them); external side-effect classes are
+     * denied before creation.
+     */
+    private AcceptedProposalResult executeCapabilityInvocation(ActionProposal proposal,
+                                                               AgentProposal stored) {
+        UUID anchorNodeId = firstNodeRef(proposal);
+        ActionExecutionContext context = new ActionExecutionContext(
+                stored.runId(), stored.projectId(), stored.routeId(),
+                stored.baseContextSnapshotId(), anchorNodeId, null, null);
+        ActionResult result = actionExecutor.execute(proposal, context);
+        return new AcceptedProposalResult(stored.actionFamily(), result.producedNodeId(), null);
     }
 
     private UUID firstNodeRef(ActionProposal proposal) {

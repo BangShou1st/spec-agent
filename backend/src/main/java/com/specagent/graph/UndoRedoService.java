@@ -33,6 +33,14 @@ import java.util.UUID;
  * redo targets the most recent UNDONE operation, provided no newer ACTIVE
  * operation was created after it was undone (new work cuts off the redo
  * branch, exactly like a familiar editor undo history).
+ *
+ * <p>Non-reversible barrier: an ACTIVE non-reversible operation (accepted
+ * agent proposals) is an undo-history barrier. Undo never reaches past it —
+ * earlier reversible operations stay out of reach while the barrier is the
+ * latest ACTIVE operation, because compensating them underneath accepted
+ * agent work could silently break the graph invariants the proposal relied
+ * on. {@link #canUndo} reports false at a barrier so the UI never offers an
+ * undo that would be rejected.
  */
 @Service
 public class UndoRedoService {
@@ -64,7 +72,13 @@ public class UndoRedoService {
     public record UndoRedoResult(GraphOperation operation, String description) {
     }
 
-    /** True when at least one ACTIVE reversible operation exists. */
+    /**
+     * True when the most recent ACTIVE operation is reversible. A
+     * non-reversible operation at the top of the stack is an undo barrier:
+     * older ACTIVE operations are NOT reachable for undo while it stands, so
+     * this returns false even though reversible operations still exist
+     * further down the log.
+     */
     public boolean canUndo(UUID projectId) {
         return latestByStatus(projectId, GraphOperation.Status.ACTIVE)
                 .map(op -> op.reversible())
@@ -384,6 +398,8 @@ public class UndoRedoService {
             case CREATE_BRANCH_AND_APPEND -> "已恢复：新建分支";
             case CREATE_SEMANTIC_RELATION -> "已恢复：添加语义关系";
             case SET_KNOWLEDGE_STATUS -> "已恢复：知识状态变更";
+            // Unreachable: an ACCEPT_AGENT_PROPOSAL can never be in UNDONE
+            // state because undo rejects it; kept for switch exhaustiveness.
             case ACCEPT_AGENT_PROPOSAL -> "已恢复：接受提案";
         };
     }

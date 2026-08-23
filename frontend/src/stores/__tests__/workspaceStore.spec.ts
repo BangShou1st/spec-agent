@@ -970,4 +970,102 @@ describe('workspaceStore', () => {
     })
     expect(mockedGetProjectGraph.mock.calls.length).toBeGreaterThan(1)
   })
+
+  it('scopes the pending answer to the answering node and refreshes canonical reads after completion', async () => {
+    mockBackendViews(makeActiveState(), makeRequirementState())
+    let resolveSubmit: (v: ReturnType<typeof makeAnswerExecution>) => void = () => undefined
+    mockedSubmitAnswer.mockReturnValue(
+      new Promise((resolve) => {
+        resolveSubmit = resolve
+      }),
+    )
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+    const answeringNodeId = store.activeState?.activeNode?.id ?? null
+    const graphReadsBeforeSubmit = mockedGetProjectGraph.mock.calls.length
+
+    const pending = store.submitAnswer({ freeText: 'async answer' })
+
+    // While the request is in flight the UI is not globally frozen: a
+    // node-scoped pending marker names exactly the node being answered.
+    expect(store.submitting).toBe(true)
+    expect(store.pendingAnswerNodeId).toBe(answeringNodeId)
+
+    resolveSubmit(makeAnswerExecution())
+    expect(await pending).toBe(true)
+
+    expect(store.submitting).toBe(false)
+    // The canonical graph is re-read from the backend after the run
+    // completes — never patched locally from optimistic state.
+    expect(mockedGetProjectGraph.mock.calls.length).toBeGreaterThan(graphReadsBeforeSubmit)
+  })
+
+  it('keeps the forked route and the source route visible immediately when the first draft fails', async () => {
+    mockBackendViews(makeActiveState({
+      project: makeProject({ id: 'p1', activeRouteId: 'r1' }),
+      activeRoute: makeRoute({ id: 'r1', projectId: 'p1', isActive: true }),
+    }), makeRequirementState())
+    mockedForkNode.mockResolvedValue({
+      projectId: 'p1',
+      route: makeRoute({ id: 'forked', projectId: 'p1', isActive: true }),
+      activeRouteId: 'forked',
+    })
+    mockedDraftNextQuestion.mockRejectedValue(new ApiError('draft failed', 'DRAFT_FAILED', 500))
+    const forkedRoute = makeRoute({ id: 'forked', projectId: 'p1', isActive: true })
+    // Canonical reads after the fork list both routes; the failed draft has
+    // produced nothing yet (the forked route tip is still the branch point).
+    mockedGetActiveState.mockResolvedValue(makeActiveState({
+      project: makeProject({ id: 'p1', activeRouteId: 'forked' }),
+      activeRoute: forkedRoute,
+    }))
+    mockedListRoutes.mockResolvedValue([
+      makeRoute({ id: 'r1', projectId: 'p1', isActive: false }),
+      forkedRoute,
+    ])
+    mockedGetProjectGraph.mockResolvedValue(makeGraphWorkspaceView({
+      projectId: 'p1',
+      activeRouteId: 'forked',
+      routes: [
+        {
+          id: 'r1',
+          label: 'Source',
+          lifecycleStatus: 'open',
+          isActive: false,
+          rootNodeId: 'node-1',
+          tipNodeId: 'node-1',
+          createdFromNodeId: null,
+          supersedesRouteId: null,
+          replacementOfNodeId: null,
+          lineageNodeIds: ['node-1'],
+        },
+        {
+          id: 'forked',
+          label: 'Branch',
+          lifecycleStatus: 'open',
+          isActive: true,
+          rootNodeId: 'node-1',
+          tipNodeId: 'node-1',
+          createdFromNodeId: 'node-1',
+          supersedesRouteId: null,
+          replacementOfNodeId: null,
+          lineageNodeIds: ['node-1'],
+        },
+      ],
+    }))
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+
+    await store.forkNode('node-1', 'r1', 'future branch')
+
+    // The new route is immediately visible without waiting for any AI
+    // draft, and the other routes stay visible too.
+    const visibleIds = store.routes.map((route) => route.id)
+    expect(visibleIds).toContain('forked')
+    expect(visibleIds).toContain('r1')
+    expect(store.graphView?.routes.map((route) => route.id)).toEqual(['r1', 'forked'])
+    // The failed draft leaves an explicit retry affordance for the forked
+    // route instead of dropping it.
+    expect(store.forkDraftRetryRouteId).toBe('forked')
+    expect(store.feedback).toContain('分支已创建')
+  })
 })

@@ -63,9 +63,11 @@ public class ProposalActionExecutor implements ActionExecutor {
 
     /**
      * Invokes a capability through the runtime with a runtime-owned
-     * idempotency key (retry of the same proposal replays the recorded
-     * result; side effects never duplicate). Typed failures come back as a
-     * message so the run can surface them instead of crashing.
+     * idempotency key: retrying the same proposal replays the recorded
+     * outcome (or surfaces a typed IN_PROGRESS state while an invocation is
+     * still unfinished) instead of re-executing the adapter. Typed failures
+     * come back as a message so the run can surface them instead of
+     * crashing.
      */
     @SuppressWarnings("unchecked")
     private ActionResult executeInvokeCapability(ActionProposal proposal,

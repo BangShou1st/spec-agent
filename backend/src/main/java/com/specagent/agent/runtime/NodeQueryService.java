@@ -119,12 +119,25 @@ public class NodeQueryService {
             }
 
             // A query never mutates the graph: read-only families execute,
-            // every mutation family is downgraded to a pending proposal.
+            // every confirmable mutation family is downgraded to a pending
+            // proposal. Families that could never be executed after
+            // acceptance (no command path, non-tip anchor, dead endpoints)
+            // are reported as not confirmable instead of creating a
+            // clickable-but-unexecutable proposal.
             boolean readOnly = switch (proposal.actionFamily()) {
                 case "RESPOND_TO_USER", "WAIT" -> true;
                 default -> false;
             };
             if (!readOnly) {
+                ActionExecutionContext downgradeContext = new ActionExecutionContext(
+                        runId, run.projectId(), routeId, snapshot.id(), anchorNodeId, null, question);
+                if (!policyEngine.canProduceAcceptableProposal(proposal, downgradeContext)) {
+                    trace = trace + "\nnot_confirmable:" + proposal.actionFamily();
+                    agentRunService.complete(runId, AgentRunStatus.COMPLETED, trace);
+                    eventService.append(runId, AgentRunPhase.COMPLETED, "MUTATION_NOT_CONFIRMABLE",
+                            Map.of("actionFamily", proposal.actionFamily()));
+                    return new NodeQueryResult(runId, "not_confirmable", null, null);
+                }
                 AgentProposal agentProposal = proposalService.createProposal(
                         proposal, runId, run.projectId(), routeId);
                 agentRunService.complete(runId, AgentRunStatus.COMPLETED,

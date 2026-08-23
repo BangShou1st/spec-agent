@@ -45,15 +45,22 @@ public class CapabilityInvocationRepository {
                         ? null : rs.getTimestamp("completed_at").toInstant());
     }
 
-    public void insertRunning(CapabilityInvocation invocation) {
+    /**
+     * Atomically claims execution ownership for the invocation key: the row
+     * is inserted only when no row with that key exists (the unique index is
+     * the final arbiter, no check-then-insert window). Returns true exactly
+     * when this call won the claim and may execute the adapter.
+     */
+    public boolean claim(CapabilityInvocation invocation) {
         String sql = """
                 INSERT INTO capability_invocations
                     (id, invocation_key, project_id, run_id, capability_id, arguments, status, created_at)
                 VALUES
                     (:id, :invocationKey, :projectId, :runId, :capabilityId,
                      CAST(:arguments AS jsonb), :status, :createdAt)
+                ON CONFLICT (invocation_key) DO NOTHING
                 """;
-        jdbcTemplate.update(sql, Maps.of(
+        return jdbcTemplate.update(sql, Maps.of(
                 "id", invocation.invocationId(),
                 "invocationKey", invocation.invocationKey(),
                 "projectId", invocation.projectId(),
@@ -61,7 +68,7 @@ public class CapabilityInvocationRepository {
                 "capabilityId", invocation.capabilityId(),
                 "arguments", json.write(invocation.arguments()),
                 "status", "RUNNING",
-                "createdAt", Timestamp.from(Instant.now())));
+                "createdAt", Timestamp.from(Instant.now()))) == 1;
     }
 
     public void complete(UUID id, CapabilityResult result) {

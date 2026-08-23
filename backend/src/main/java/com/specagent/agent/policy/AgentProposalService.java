@@ -25,19 +25,14 @@ public class AgentProposalService {
     }
 
     /**
-     * Creates a new proposal in PROPOSED status. Returns the persisted
-     * proposal for downstream tracking.
+     * Creates a new proposal in PROPOSED status. Idempotent by the
+     * database-backed unique index: when a proposal with the same key already
+     * exists — including one inserted concurrently by another worker — it is
+     * returned unchanged and only one row ever persists.
      */
     @Transactional
     public AgentProposal createProposal(ActionProposal actionProposal,
                                         UUID runId, UUID projectId, UUID routeId) {
-        // Idempotency: if a proposal with the same key already exists, return it.
-        Optional<AgentProposal> existing = repository.findByIdempotencyKey(
-                actionProposal.idempotencyKey());
-        if (existing.isPresent()) {
-            return existing.get();
-        }
-
         AgentProposal proposal = new AgentProposal(
                 actionProposal.proposalId(),
                 runId, projectId, routeId,
@@ -49,7 +44,13 @@ public class AgentProposalService {
                 actionProposal.baseContextHash(),
                 actionProposal.idempotencyKey(),
                 Instant.now(), null, null);
-        repository.save(proposal);
+        if (!repository.insertIfAbsent(proposal)) {
+            // Lost the insert race: the persisted winner is the shared truth.
+            return repository.findByIdempotencyKey(actionProposal.idempotencyKey())
+                    .orElseThrow(() -> new IllegalStateException(
+                            "Idempotent proposal row missing after losing its insert race: "
+                                    + actionProposal.idempotencyKey()));
+        }
         return proposal;
     }
 

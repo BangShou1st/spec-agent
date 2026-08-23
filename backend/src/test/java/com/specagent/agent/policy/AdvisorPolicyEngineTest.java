@@ -33,11 +33,15 @@ class AdvisorPolicyEngineTest {
     @BeforeEach
     void setUp() {
         routeRepository = mock(RouteRepository.class);
+        com.specagent.node.NodeRepository nodeRepository =
+                mock(com.specagent.node.NodeRepository.class);
+        when(nodeRepository.findById(org.mockito.ArgumentMatchers.any(UUID.class)))
+                .thenReturn(Optional.empty());
         CapabilityRegistry registry = new CapabilityRegistry(List.of(
                 adapter("cap.read_only", SideEffectClass.NONE),
                 adapter("cap.local_durable", SideEffectClass.LOCAL_DURABLE),
                 adapter("cap.external", SideEffectClass.EXTERNAL_IRREVERSIBLE)));
-        engine = new AdvisorPolicyEngine(routeRepository, registry);
+        engine = new AdvisorPolicyEngine(routeRepository, registry, nodeRepository);
         routeId = UUID.randomUUID();
         tipNodeId = UUID.randomUUID();
 
@@ -86,14 +90,62 @@ class AdvisorPolicyEngineTest {
         assertThat(decision.requiresConfirmation()).isTrue();
     }
 
+    /**
+     * Contract closure: a family with no executable runtime command path must
+     * be denied outright — never classified as requiring confirmation, which
+     * would produce a PROPOSED proposal that fails on acceptance.
+     */
     @Test
-    void updateNodeRequiresConfirmation() {
+    void updateNodeWithoutCommandPathIsDeniedNotConfirmed() {
         PolicyDecision decision = engine.evaluate(
                 proposal("UPDATE_NODE", Map.of()),
                 context(tipNodeId));
 
+        assertThat(decision.requiresConfirmation()).isFalse();
+        assertThat(decision.autoExecute()).isFalse();
+        assertThat(decision.denyReason()).isNotBlank();
+    }
+
+    @Test
+    void createRouteWithoutCommandPathIsDeniedNotConfirmed() {
+        PolicyDecision decision = engine.evaluate(
+                proposal("CREATE_ROUTE", Map.of()),
+                context(tipNodeId));
+
+        assertThat(decision.requiresConfirmation()).isFalse();
+        assertThat(decision.denyReason()).isNotBlank();
+    }
+
+    @Test
+    void generateArtifactWithoutRuntimeIsDeniedNotConfirmed() {
+        PolicyDecision decision = engine.evaluate(
+                proposal("GENERATE_ARTIFACT", Map.of("type", "spec")),
+                context(tipNodeId));
+
+        assertThat(decision.requiresConfirmation()).isFalse();
+        assertThat(decision.denyReason()).isNotBlank();
+    }
+
+    @Test
+    void semanticConnectRequiresConfirmationAndIsExecutableOnAcceptance() {
+        PolicyDecision decision = engine.evaluate(
+                proposal("CONNECT_NODE", Map.of("relationClass", "SEMANTIC")),
+                context(tipNodeId));
+
+        // SEMANTIC relations have a real execution path (the graph command
+        // layer), so confirmation produces an acceptable proposal.
         assertThat(decision.requiresConfirmation()).isTrue();
-        assertThat(decision.classification()).isEqualTo(MutationClass.CONFIRMED_INTENT_CHANGE);
+        assertThat(decision.denyReason()).isNull();
+    }
+
+    @Test
+    void continuationConnectIsDeniedBecauseOnlyCommandsMayCreateContinuations() {
+        PolicyDecision decision = engine.evaluate(
+                proposal("CONNECT_NODE", Map.of("relationClass", "CONTINUATION")),
+                context(tipNodeId));
+
+        assertThat(decision.requiresConfirmation()).isFalse();
+        assertThat(decision.denyReason()).isNotBlank();
     }
 
     @Test
@@ -150,26 +202,28 @@ class AdvisorPolicyEngineTest {
     }
 
     @Test
-    void generateArtifactRequiresConfirmationAsLocalGeneration() {
+    void generateArtifactIsDeniedWhileNoArtifactRuntimeExists() {
         PolicyDecision decision = engine.evaluate(
                 proposal("GENERATE_ARTIFACT", Map.of("type", "spec")),
                 context(tipNodeId));
 
         assertThat(decision.autoExecute()).isFalse();
-        assertThat(decision.requiresConfirmation()).isTrue();
-        assertThat(decision.classification()).isEqualTo(MutationClass.CONFIRMED_INTENT_CHANGE);
+        assertThat(decision.requiresConfirmation()).isFalse();
+        assertThat(decision.denyReason()).isNotBlank();
     }
 
     @Test
-    void confidenceDoesNotAuthorizeAutoExecution() {
-        // Even with high confidence, a destructive mutation still requires
-        // confirmation — confidence is never an authorization signal.
-        PolicyDecision decision = engine.evaluate(
+    void confidenceDoesNotAuthorizeExecution() {
+        // Even with high confidence, a family without an execution path stays
+        // denied and a destructive mutation still requires confirmation —
+        // confidence is never an authorization signal.
+        PolicyDecision unsupported = engine.evaluate(
                 proposal("UPDATE_NODE", Map.of("confidence", 0.95)),
                 context(tipNodeId));
 
-        assertThat(decision.autoExecute()).isFalse();
-        assertThat(decision.requiresConfirmation()).isTrue();
+        assertThat(unsupported.autoExecute()).isFalse();
+        assertThat(unsupported.requiresConfirmation()).isFalse();
+        assertThat(unsupported.denyReason()).isNotBlank();
     }
 
     private CapabilityAdapter adapter(String id, SideEffectClass sideEffectClass) {

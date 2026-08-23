@@ -14,6 +14,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -35,6 +36,8 @@ class UndoRedoIntegrationTest {
     @Autowired private NodeRepository nodeRepository;
     @Autowired private RouteRepository routeRepository;
     @Autowired private NodeRelationRepository relationRepository;
+    @Autowired private com.specagent.agent.policy.AgentProposalService proposalService;
+    @Autowired private com.specagent.agent.policy.ProposalAcceptanceService acceptanceService;
 
     private Project project;
     private Route route;
@@ -174,5 +177,60 @@ class UndoRedoIntegrationTest {
 
         undoRedoService.redo(project.id());
         assertThat(relationRepository.findActiveByProject(project.id())).hasSize(1);
+    }
+
+    /**
+     * Strict-barrier contract: an accepted agent proposal is recorded as a
+     * non-reversible ACTIVE operation and acts as an undo-history barrier.
+     * Earlier reversible work becomes unreachable for undo — the service
+     * never skips over the barrier to compensate an older operation, because
+     * the accepted proposal's effects may depend on that older state.
+     */
+    @Test
+    void acceptedAgentProposalIsAnUndoHistoryBarrier() {
+        // Reversible user work first.
+        Node root = commandService.createRootDraftNode(
+                project.id(), route.id(), "NOTE", Map.of("text", "root"));
+        assertThat(undoRedoService.canUndo(project.id())).isTrue();
+
+        // Then a non-reversible agent mutation via real proposal acceptance.
+        com.specagent.agent.contract.ActionProposal proposal =
+                new com.specagent.agent.contract.ActionProposal(
+                        "CREATE_NODE",
+                        Map.of("kind", "KNOWLEDGE", "subtype", "RISK",
+                                "content", Map.of("text", "agent 结论")),
+                        java.util.UUID.randomUUID(), "hash-" + java.util.UUID.randomUUID(),
+                        List.of(), java.util.UUID.randomUUID(), "idem-" + java.util.UUID.randomUUID(),
+                        List.of());
+        var pending = proposalService.createProposal(proposal,
+                java.util.UUID.randomUUID(), project.id(), route.id());
+        acceptanceService.acceptAndExecute(pending.id(), "user");
+
+        // The ACCEPT_AGENT_PROPOSAL entry is ACTIVE and non-reversible.
+        var acceptOperation = commandService.listOperations(project.id()).stream()
+                .filter(op -> op.type() == GraphOperation.Type.ACCEPT_AGENT_PROPOSAL)
+                .findFirst().orElseThrow();
+        assertThat(acceptOperation.reversible()).isFalse();
+        assertThat(acceptOperation.status()).isEqualTo(GraphOperation.Status.ACTIVE);
+
+        // Barrier semantics: the earlier reversible creation is NOT offered
+        // as undoable, and a direct undo attempt is rejected fail-closed.
+        assertThat(undoRedoService.canUndo(project.id())).isFalse();
+        assertThatThrownBy(() -> undoRedoService.undo(project.id()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("不可撤销");
+        // Nothing was undone by the rejected attempt.
+        assertThat(nodeRepository.findById(root.id()).orElseThrow().isRetracted()).isFalse();
+        assertThat(undoRedoService.canRedo(project.id())).isFalse();
+
+        // New reversible work on top of the barrier is undoable again — but
+        // only down TO the barrier, never across it.
+        Node child = commandService.appendContinuation(
+                project.id(), route.id(), root.id(), "NOTE", Map.of("text", "child")).node();
+        assertThat(undoRedoService.canUndo(project.id())).isTrue();
+        UndoRedoService.UndoRedoResult undo = undoRedoService.undo(project.id());
+        assertThat(nodeRepository.findById(child.id()).orElseThrow().isRetracted()).isTrue();
+        // After that undo the barrier blocks further undos again.
+        assertThat(undoRedoService.canUndo(project.id())).isFalse();
     }
 }

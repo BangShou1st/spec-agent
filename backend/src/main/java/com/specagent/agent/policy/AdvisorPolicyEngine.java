@@ -29,17 +29,28 @@ import java.util.UUID;
  *   <li>EXTERNAL_SIDE_EFFECT — deny unless an explicitly authorized external
  *       capability policy exists</li>
  * </ol>
+ *
+ * <p>Contract closure invariant: every family the response validator accepts
+ * gets a deterministic decision here, and every family classified as
+ * requiring confirmation must be executable by
+ * {@code ProposalAcceptanceService} after acceptance. Families with no
+ * runtime execution path in the current stage (UPDATE_NODE, CREATE_ROUTE,
+ * GENERATE_ARTIFACT, CONTINUATION connections) are denied outright so a
+ * clickable-but-unexecutable proposal can never exist.
  */
 @Component
 public class AdvisorPolicyEngine {
 
     private final RouteRepository routeRepository;
     private final CapabilityRegistry capabilityRegistry;
+    private final com.specagent.node.NodeRepository nodeRepository;
 
     public AdvisorPolicyEngine(RouteRepository routeRepository,
-                               CapabilityRegistry capabilityRegistry) {
+                               CapabilityRegistry capabilityRegistry,
+                               com.specagent.node.NodeRepository nodeRepository) {
         this.routeRepository = routeRepository;
         this.capabilityRegistry = capabilityRegistry;
+        this.nodeRepository = nodeRepository;
     }
 
     /**
@@ -50,6 +61,15 @@ public class AdvisorPolicyEngine {
                                    ActionExecutionContext context) {
         if ("INVOKE_CAPABILITY".equals(proposal.actionFamily())) {
             return evaluateCapabilityInvocation(proposal);
+        }
+        String unsupportedReason = unsupportedFamilyReason(proposal);
+        if (unsupportedReason != null) {
+            // Contract closure: a family without an executable runtime command
+            // path must never become a PROPOSED proposal — accepting it would
+            // fail unconditionally. Deny is the single consistent answer from
+            // policy, so proposal creation never happens for these families.
+            return PolicyDecision.deny(MutationClass.CONFIRMED_INTENT_CHANGE,
+                    unsupportedReason);
         }
         MutationClass classification = classify(proposal, context);
         return switch (classification) {
@@ -62,6 +82,87 @@ public class AdvisorPolicyEngine {
             case EXTERNAL_SIDE_EFFECT -> PolicyDecision.deny(classification,
                     "外部能力副作用需要显式授权配置，当前不可自动执行");
         };
+    }
+
+    /**
+     * Non-null when the action family has no execution path behind user
+     * acceptance in the current stage: no runtime command layer implements
+     * it yet, so requiring confirmation would produce a proposal that is
+     * clickable but guaranteed to fail. Keep this in lockstep with
+     * {@code ProposalAcceptanceService}: every family NOT listed here and
+     * classified as requiring confirmation must be executable on acceptance.
+     */
+    private String unsupportedFamilyReason(ActionProposal proposal) {
+        return switch (proposal.actionFamily()) {
+            case "UPDATE_NODE" -> "节点更新在本阶段没有可执行的运行时命令，提案被拒绝";
+            case "CREATE_ROUTE" -> "路线创建在本阶段没有可执行的运行时命令，提案被拒绝";
+            case "GENERATE_ARTIFACT" -> "制品生成运行时尚未接入，提案被拒绝";
+            // CONTINUATION topology is owned by the continuation commands
+            // (append-only lineage invariants); acceptance only executes
+            // SEMANTIC relations, so a CONTINUATION proposal would be
+            // unexecutable.
+            case "CONNECT_NODE" -> "CONTINUATION".equals(proposal.payload().get("relationClass"))
+                    ? "CONTINUATION 连接必须通过 continuation 命令执行，提案被拒绝"
+                    : null;
+            default -> null;
+        };
+    }
+
+    /**
+     * True when confirming this proposal now would produce a PROPOSED
+     * proposal that {@code ProposalAcceptanceService} can actually execute
+     * later. This mirrors the acceptance-time staleness rules: node-creating
+     * families execute only while their anchor is still the route tip, so a
+     * non-tip anchor would create an acceptable-looking proposal whose every
+     * acceptance attempt fails as stale — those must not be created.
+     *
+     * <p>Proposal-creating call sites (the answer cycle's confirmation branch
+     * and the node-query mutation downgrade) must consult this before
+     * persisting a pending proposal.
+     */
+    public boolean canProduceAcceptableProposal(ActionProposal proposal,
+                                                ActionExecutionContext context) {
+        switch (proposal.actionFamily()) {
+            case "WAIT", "RESPOND_TO_USER":
+                // Read-only families are auto-executed; they never become
+                // proposals in the first place.
+                return false;
+            case "UPDATE_NODE", "CREATE_ROUTE", "GENERATE_ARTIFACT":
+                // No execution path in this stage — policy denies them.
+                return false;
+            case "CONNECT_NODE":
+                // Only SEMANTIC relations are executable on acceptance.
+                return "SEMANTIC".equals(proposal.payload().get("relationClass"))
+                        && endpointsLive(proposal);
+            case "CREATE_NODE", "REQUEST_USER_INPUT":
+                // Executable on acceptance only while the anchor is the live
+                // route tip (mirrors ProposalAcceptanceService staleness).
+                return isAppendOnlyContinuation(proposal, context);
+            case "INVOKE_CAPABILITY":
+                // Only local-durable capabilities confirm into proposals;
+                // unknown ids and external side-effect classes are denied.
+                return evaluateCapabilityInvocation(proposal).requiresConfirmation();
+            default:
+                return false;
+        }
+    }
+
+    private boolean endpointsLive(ActionProposal proposal) {
+        Object source = proposal.payload().get("sourceRef");
+        Object target = proposal.payload().get("targetRef");
+        return source instanceof String sourceRef && sourceRef.startsWith("node:")
+                && target instanceof String targetRef && targetRef.startsWith("node:")
+                && isLiveNodeRef(sourceRef) && isLiveNodeRef(targetRef);
+    }
+
+    private boolean isLiveNodeRef(String ref) {
+        try {
+            com.specagent.node.Node node = nodeRepository.findById(
+                    UUID.fromString(ref.substring(5))).orElse(null);
+            return node != null && !node.isRetracted();
+        } catch (IllegalArgumentException ex) {
+            return false;
+        }
     }
 
     /**

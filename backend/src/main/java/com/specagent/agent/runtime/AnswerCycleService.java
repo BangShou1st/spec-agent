@@ -154,6 +154,13 @@ public class AnswerCycleService {
     /**
      * Resumes an existing answer whose processing failed. The answer is
      * already persisted, so it is never finalized again.
+     *
+     * <p>Semantic replay guarantee: the resumed DECISION envelope is rebuilt
+     * from the immutable persisted Answer, so the original user input — the
+     * ANSWER_SUBMITTED event kind, selected option, free text and source
+     * node — is identical to the first attempt. Resume never degrades into a
+     * context-free CONTINUE, and the persisted patch checkpoint (if any) is
+     * reused without re-running STATE_UPDATE.
      */
     public AnswerCycleResult resumeAnswer(AgentRun run, UUID projectId, UUID answerId) {
         Answer answer = answerService.getAnswer(answerId)
@@ -179,12 +186,19 @@ public class AnswerCycleService {
             trace = appendTrace(trace, "persisted_answer");
             agentRunService.markPersistedAnswer(run.id(), answer.id(), trace);
 
-            AgentEvent event = new AgentEvent("CONTINUE", route.tipNodeId(), null, null);
+            // Rebuild the original submission semantics from the persisted
+            // Answer — not from caller-supplied input and never as a bare
+            // CONTINUE.
+            UUID selectedOptionId = answer.selectedOptionId() == null
+                    ? null : UUID.fromString(answer.selectedOptionId());
+            String freeText = answer.freeText();
+            AgentEvent event = new AgentEvent(
+                    "ANSWER_SUBMITTED", answer.nodeId(), selectedOptionId, freeText);
             AgentRequestEnvelope envelope = snapshotBuilder.buildEnvelope(
                     run.id(), snapshot, event, new DecisionBudget(2));
 
             return completeCycle(run, projectId, route, snapshot, envelope,
-                    answer, null, null, trace);
+                    answer, selectedOptionId, freeText, trace);
 
         } catch (RuntimeException ex) {
             failIfNotTerminal(run.id(), trace, ex);
@@ -237,6 +251,15 @@ public class AnswerCycleService {
                 route.tipNodeId(), selectedOptionId, freeText);
 
         PolicyDecision policyDecision = policyEngine.evaluate(proposal, execContext);
+
+        // Contract closure: a confirmation verdict for a proposal that could
+        // never be executed after acceptance is downgraded to a deny, so no
+        // clickable-but-unexecutable proposal is ever persisted.
+        if (policyDecision.requiresConfirmation()
+                && !policyEngine.canProduceAcceptableProposal(proposal, execContext)) {
+            policyDecision = PolicyDecision.deny(policyDecision.classification(),
+                    "提案在本阶段无法在确认后执行: " + proposal.actionFamily());
+        }
 
         if (policyDecision.denyReason() != null) {
             AgentProposal agentProposal = proposalService.createProposal(

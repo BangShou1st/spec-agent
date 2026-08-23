@@ -51,7 +51,35 @@ public class AgentProposalRepository {
                      :baseContextHash, :idempotencyKey, :createdAt,
                      :decidedAt, :decidedBy)
                 """;
-        MapSqlParameterSource params = new MapSqlParameterSource()
+        jdbc.update(sql, paramSource(proposal));
+    }
+
+    /**
+     * Atomically inserts the proposal only when no row with the same
+     * idempotency key exists yet — the partial unique index is the final
+     * arbiter, so concurrent creators cannot both insert and neither caller
+     * sees a constraint failure. Returns true exactly when this call
+     * inserted the row.
+     */
+    public boolean insertIfAbsent(AgentProposal proposal) {
+        String sql = """
+                INSERT INTO agent_proposals
+                    (id, run_id, project_id, route_id, action_family,
+                     payload_json, anchor_refs, status, base_context_snapshot_id,
+                     base_context_hash, idempotency_key, created_at,
+                     decided_at, decided_by)
+                VALUES
+                    (:id, :runId, :projectId, :routeId, :actionFamily,
+                     CAST(:payloadJson AS jsonb), CAST(:anchorRefs AS jsonb), :status, :baseContextSnapshotId,
+                     :baseContextHash, :idempotencyKey, :createdAt,
+                     :decidedAt, :decidedBy)
+                ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
+                """;
+        return jdbc.update(sql, paramSource(proposal)) == 1;
+    }
+
+    private MapSqlParameterSource paramSource(AgentProposal proposal) {
+        return new MapSqlParameterSource()
                 .addValue("id", proposal.id())
                 .addValue("runId", proposal.runId())
                 .addValue("projectId", proposal.projectId())
@@ -67,7 +95,6 @@ public class AgentProposalRepository {
                 .addValue("decidedAt", proposal.decidedAt() == null
                         ? null : java.sql.Timestamp.from(proposal.decidedAt()))
                 .addValue("decidedBy", proposal.decidedBy());
-        jdbc.update(sql, params);
     }
 
     public Optional<AgentProposal> findById(UUID id) {

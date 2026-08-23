@@ -19,7 +19,13 @@ public record CapabilityResult(
         Map<String, Object> provenance,
         List<String> warnings) {
 
-    public enum Status { SUCCEEDED, FAILED, REPLAYED }
+    /**
+     * Lifecycle of one invocation. {@code RUNNING} is the persisted claimed-
+     * but-unfinished state; {@code IN_PROGRESS} is the typed runtime answer
+     * given to callers who arrive while an invocation is still running — it
+     * is deliberately not a replay and never carries fabricated content.
+     */
+    public enum Status { SUCCEEDED, FAILED, REPLAYED, RUNNING, IN_PROGRESS }
 
     public CapabilityResult {
         content = content == null ? Map.of() : Map.copyOf(content);

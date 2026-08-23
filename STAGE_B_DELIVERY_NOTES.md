@@ -38,7 +38,7 @@
   - idempotencyKey 唯一约束防重复
   - 接受/拒绝可追溯（decidedAt/decidedBy）
 - **DB migration V8**: agent_proposals 表
-- **API**: GET/POST `/api/v2/proposals/{id}/accept|reject`
+- **API**: GET/POST `/api/v1/projects/{pid}/proposals/{id}/accept|reject`
 
 ### D. 异步命令面 + 非阻塞 UI
 - **后端 `AnswerCycleRunController`**: POST 202 + runId / GET run 状态
@@ -150,7 +150,7 @@
 ### 链路图
 
 ```text
-POST /api/v2/projects/{pid}/agent-runs
+POST /api/v1/projects/{pid}/agent-runs
   ↓ 检测 answer 已存在？→ RESUME_ANSWER / ANSWER_TIP
   ↓ RunService.createQueuedRunWithInput (持久化输入到 RUN_CREATED event)
   ↓ 202 {runId}

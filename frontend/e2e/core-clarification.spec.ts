@@ -17,7 +17,7 @@ test('empty start drafts the first real node and answers inside the graph node',
   // 空项目：居中纯 UI placeholder，没有任何假节点。
   await expect(page.getByTestId('graph-start-placeholder')).toBeVisible()
   await expect(page.getByText('开始需求澄清')).toBeVisible()
-  await expect(page.getByText('还没有生成任何问题。')).toBeVisible()
+  await expect(page.getByText('还没有任何内容。')).toBeVisible()
   await expect(page.locator('.graph-question-node')).toHaveCount(0)
 
   // 起草第一个问题（显式操作）：placeholder 消失，出现一个真实的当前根节点。
