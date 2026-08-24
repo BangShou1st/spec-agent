@@ -26,7 +26,7 @@ test('generate and inspect a derived spec snapshot', async ({ page }) => {
 
   await expect(page.getByTestId('spec-snapshot-detail')).toBeVisible()
   await expect(page.getByTestId('derived-label')).toContainText('派生产物')
-  await expect(page.getByText('The clarified requirement outcome.')).toBeVisible()
+  await expect(page.getByText('用户澄清了主要目标：明确最重要的成果。')).toBeVisible()
   await expect(page.getByTestId('spec-snapshot-item')).toHaveCount(1)
   await expect(page.locator('.error-banner')).toHaveCount(0)
 })

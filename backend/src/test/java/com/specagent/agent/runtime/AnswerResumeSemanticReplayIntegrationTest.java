@@ -79,6 +79,12 @@ class AnswerResumeSemanticReplayIntegrationTest {
         int failDecisionAt = -1;
 
         @Override
+        public com.specagent.agent.contract.AgentArtifactResponse runArtifactGeneration(
+                com.specagent.agent.contract.AgentRequestEnvelope request) {
+            throw new UnsupportedOperationException("not scripted for artifact generation");
+        }
+
+        @Override
         public AgentResponseEnvelope runStateUpdate(AgentRequestEnvelope request) {
             stateUpdates.add(request);
             if (stateUpdates.size() == failStateUpdateAt) {

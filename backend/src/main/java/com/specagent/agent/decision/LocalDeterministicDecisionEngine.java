@@ -1,6 +1,7 @@
 package com.specagent.agent.decision;
 
 import com.specagent.agent.contract.ActionProposal;
+import com.specagent.agent.contract.AgentArtifactResponse;
 import com.specagent.agent.contract.AgentProtocol;
 import com.specagent.agent.contract.AgentRequestEnvelope;
 import com.specagent.agent.contract.AgentResponseEnvelope;
@@ -110,6 +111,17 @@ public class LocalDeterministicDecisionEngine implements AgentDecisionEngine {
             AgentBrainResponseValidator.validateDecision(request, respond);
             return respond;
         }
+        // A CONTINUE event carrying free text is a directed revision (e.g.
+        // replacement): the deterministic proposal reflects the direction with
+        // a distinct question instead of the canonical draft question.
+        String questionText = "What is the most important outcome?";
+        String purpose = "This clarifies the primary requirement goal.";
+        if ("CONTINUE".equals(request.event().kind())
+                && request.event().freeText() != null
+                && !request.event().freeText().isBlank()) {
+            questionText = "A sharper version of the rejected question.";
+            purpose = "This follows the user's direction.";
+        }
         AgentResponseEnvelope response = new AgentResponseEnvelope(
                 AgentProtocol.DECISION_PROTOCOL_VERSION,
                 request.runId(),
@@ -122,8 +134,8 @@ public class LocalDeterministicDecisionEngine implements AgentDecisionEngine {
                 new ActionProposal(
                         "REQUEST_USER_INPUT",
                         Map.of(
-                                "questionText", "What is the most important outcome?",
-                                "purpose", "This clarifies the primary requirement goal.",
+                                "questionText", questionText,
+                                "purpose", purpose,
                                 "options", List.of(Map.of("label", "Clarify the primary goal")),
                                 "allowFreeAnswer", true),
                         snapshotId,
@@ -135,6 +147,36 @@ public class LocalDeterministicDecisionEngine implements AgentDecisionEngine {
                 new UsageView(1, List.of()),
                 Map.of());
         AgentBrainResponseValidator.validateDecision(request, response);
+        return response;
+    }
+
+    @Override
+    public AgentArtifactResponse runArtifactGeneration(AgentRequestEnvelope request) {
+        String contextRef = request.snapshot().allowedSourceRefs().stream()
+                .filter(ref -> ref.startsWith("context:"))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException(
+                        "Artifact generation requires a context ref in the snapshot"));
+        // Deterministic fake output shared with the Python brain's fake model
+        // client (contracts/fixtures/fake-model-artifact-output.json); every
+        // section cites the trusted snapshot's own context ref.
+        AgentArtifactResponse response = new AgentArtifactResponse(
+                AgentProtocol.ARTIFACT_PROTOCOL_VERSION,
+                request.runId(),
+                new AgentArtifactResponse.ArtifactGenerationResult(
+                        "spec_snapshot",
+                        List.of(
+                                new AgentArtifactResponse.ArtifactSection(
+                                        "Overview",
+                                        "用户澄清了主要目标：明确最重要的成果。",
+                                        List.of(contextRef)),
+                                new AgentArtifactResponse.ArtifactSection(
+                                        "Open Questions",
+                                        "范围边界尚未确认，需要用户进一步澄清。",
+                                        List.of(contextRef))),
+                        List.of("范围边界尚未确认。")),
+                new UsageView(1, List.of()));
+        AgentBrainResponseValidator.validateArtifact(request, response);
         return response;
     }
 }

@@ -8,6 +8,7 @@ import {
   getAgentRun,
   isTerminalRunStatus,
 } from '@/api/agentRuns'
+import type { AgentRunView } from '@/api/agentRuns'
 import {
   appendContinuation,
   attachResource as attachResourceCommand,
@@ -29,10 +30,9 @@ import {
   deleteRoute,
   forkNode,
   reanswerNode,
-  regenerateNode as regenerateNodeCommand,
   restoreRoute,
 } from '@/api/routes'
-import { generateSpec, listRouteSpecs } from '@/api/spec'
+import { listRouteSpecs } from '@/api/spec'
 import type {
   ActiveProjectStateResponse,
   GraphWorkspaceView,
@@ -40,7 +40,6 @@ import type {
   RegenerateNodeRequest,
   RequirementStateView,
   RouteResponse,
-  SpecGenerationResponse,
   SpecSnapshotResponse,
   SubmitAnswerRequest,
 } from '@/api/types'
@@ -353,12 +352,14 @@ export const useWorkspaceStore = defineStore('workspace', {
     },
 
     /**
-     * Polls one question-draft run to a terminal status. Drafting has no
-     * immutable-input concerns: 'completed' refreshes canonical state in the
-     * caller, anything else reconciles. Stops observing when the project
-     * switches.
+     * Polls one run to its terminal state and returns the final read view
+     * (with the produced record ids), 'failed' for a FAILED terminal status,
+     * or 'unknown' when no terminal read happened within the budget. Stops
+     * observing when the project switches.
      */
-    async pollDraftRun(runId: string): Promise<'completed' | 'failed' | 'unknown'> {
+    async pollRunToTerminal(
+      runId: string,
+    ): Promise<AgentRunView | 'failed' | 'unknown'> {
       const projectId = this.projectId
       if (!projectId) return 'unknown'
       for (let attempt = 0; attempt < AGENT_RUN_MAX_POLLS; attempt += 1) {
@@ -371,12 +372,23 @@ export const useWorkspaceStore = defineStore('workspace', {
         try {
           const view = await getAgentRun(projectId, runId)
           if (!isTerminalRunStatus(view.status)) continue
-          return view.status === 'completed' ? 'completed' : 'failed'
+          return view.status === 'completed' ? view : 'failed'
         } catch {
           // Transient poll failure: keep polling within budget.
         }
       }
       return 'unknown'
+    },
+
+    /**
+     * Polls one question-draft run to a terminal status. Drafting has no
+     * immutable-input concerns: 'completed' refreshes canonical state in the
+     * caller, anything else reconciles.
+     */
+    async pollDraftRun(runId: string): Promise<'completed' | 'failed' | 'unknown'> {
+      const outcome = await this.pollRunToTerminal(runId)
+      if (outcome === 'unknown' || outcome === 'failed') return outcome
+      return 'completed'
     },
 
     /**
@@ -782,10 +794,7 @@ export const useWorkspaceStore = defineStore('workspace', {
       }
       if (intent.kind === 'draft') return this.draftQuestion()
       if (intent.kind === 'spec') {
-        const result = await this.generateSpec()
-        return result !== null || (
-          this.manualModelRetry === null && this.feedback === '已生成规格快照。'
-        )
+        return await this.generateSpec()
       }
       return this.regenerateNode(intent.nodeId, intent.payload)
     },
@@ -1081,16 +1090,55 @@ export const useWorkspaceStore = defineStore('workspace', {
       // The integrated dialog supplies the explicit sourceRouteId required by
       // the Runtime contract; no compatibility payload is synthesized here.
       try {
-        const result = await regenerateNodeCommand(this.projectId, nodeId, payload)
-        await this.refreshWorkspace()
-        this.feedback = '已创建换一个问题路线。'
-        this.manualModelRetry = null
-        this.setFocusAfterMutation({
-          routeId: result.replacementRoute.id,
-          nodeId: result.replacementNode.id,
+        const run = await createAgentRun(this.projectId, {
+          operation: 'REGENERATE_NODE',
+          nodeId,
+          sourceRouteId: payload.sourceRouteId,
+          freeText: payload.instruction ?? null,
         })
-        return true
+        const outcome = await this.pollRunToTerminal(run.runId)
+        if (outcome !== 'unknown' && outcome !== 'failed') {
+          // COMPLETED: the replacement route is now the active route; the
+          // canonical refresh owns every id — never reconstructed locally.
+          const replacementNodeId = outcome.producedNodeId
+          await this.refreshWorkspace()
+          this.feedback = '已创建换一个问题路线。'
+          this.manualModelRetry = null
+          const focusRouteId = this.activeState?.activeRoute?.id
+          if (focusRouteId) {
+            this.setFocusAfterMutation({
+              routeId: focusRouteId,
+              nodeId: replacementNodeId ?? null,
+            })
+          }
+          return true
+        }
+        // FAILED or unknown: reconcile canonical reads through the shared
+        // fail-closed reconciliation (a completed-after-poll transition shows
+        // up as a brand-new active replacement route).
+        const intent: Extract<ManualModelRetryIntent, { kind: 'regenerate' }> = {
+          kind: 'regenerate',
+          nodeId,
+          payload: { ...payload },
+          beforeRouteIds,
+          beforeActiveRouteId,
+          state: outcome === 'failed' ? 'ready' : 'needs_reconcile',
+        }
+        if (outcome === 'unknown') {
+          this.manualModelRetry = intent
+          const recovered = await this.reconcileRegenerateRetry(intent)
+          if (recovered) return true
+          return false
+        }
+        this.error = {
+          code: 'AGENT_RUN_FAILED',
+          message: '换一个问法的运行失败，请重试。',
+        }
+        this.manualModelRetry = intent
+        return false
       } catch (err) {
+        // Create-run request itself failed; reconcile canonical reads before
+        // any retry affordance.
         const safeError = toDisplayError(err)
         this.error = safeError
         const disposition = classifyModelFailure(safeError.code, safeError.status)
@@ -1178,12 +1226,12 @@ export const useWorkspaceStore = defineStore('workspace', {
      * Generates a spec snapshot for the ACTIVE route through the backend.
      * After success the canonical snapshot list is reloaded and the new
      * snapshot is selected in that route's cache; the frontend never
-     * synthesizes a spec locally and never sets Focus here. Returns the
-     * backend artifact so the shell can follow the returned route.
+     * synthesizes a spec locally and never sets Focus here. Returns whether
+     * a new snapshot landed on this route.
      */
-    async generateSpec(): Promise<SpecGenerationResponse | null> {
+    async generateSpec(): Promise<boolean> {
       if (!this.projectId || this.generatingSpec || this.routeCommandPending) {
-        return null
+        return false
       }
       const activeRoute = this.activeState?.activeRoute
       if (!activeRoute || !activeRoute.tipNodeId) {
@@ -1191,7 +1239,7 @@ export const useWorkspaceStore = defineStore('workspace', {
           code: 'NO_ACTIVE_TIP_NODE',
           message: 'The active route has no tip node to generate a spec from.',
         }
-        return null
+        return false
       }
       this.generatingSpec = true
       this.error = null
@@ -1205,38 +1253,65 @@ export const useWorkspaceStore = defineStore('workspace', {
       } catch (err) {
         this.error = toDisplayError(err)
         this.manualModelRetry = null
-        return null
+        return false
       }
       const beforeSpecIds = baselineSpecs.map((snapshot) => snapshot.id)
       try {
-        const result = await generateSpec(this.projectId)
-        const resultRouteId = result.specSnapshot.routeId
-        let specs: SpecSnapshotResponse[]
-        try {
-          specs = await listRouteSpecs(this.projectId, resultRouteId)
-        } catch {
-          // The command already returned a durable artifact. Preserve it in
-          // the local read cache without issuing another generation request.
-          specs = [
-            ...baselineSpecs.filter((snapshot) => snapshot.id !== result.specSnapshot.id),
-            result.specSnapshot,
-          ]
+        const created = await createAgentRun(this.projectId, {
+          operation: 'GENERATE_ARTIFACT',
+        })
+        const outcome = await this.pollRunToTerminal(created.runId)
+        if (outcome === 'unknown' || outcome === 'failed') {
+          // FAILED or outcome unknown: reconcile canonical reads through the
+          // shared fail-closed reconciliation (exactly-one-new-snapshot rule).
+          const intent: Extract<ManualModelRetryIntent, { kind: 'spec' }> = {
+            kind: 'spec',
+            routeId,
+            beforeSpecIds,
+            state: outcome === 'failed' ? 'ready' : 'needs_reconcile',
+          }
+          if (outcome === 'unknown') {
+            this.manualModelRetry = intent
+            const recovered = await this.reconcileSpecRetry(intent)
+            if (recovered) return true
+            return false
+          }
+          this.error = {
+            code: 'AGENT_RUN_FAILED',
+            message: '生成规格快照的运行失败，请重试。',
+          }
+          this.manualModelRetry = intent
+          return false
         }
-        this.specsByRoute = { ...this.specsByRoute, [resultRouteId]: specs }
+        // COMPLETED: select the produced snapshot from the canonical backend
+        // list — never built up locally.
+        const producedId = outcome.producedSpecSnapshotId
+        const specs = await listRouteSpecs(this.projectId, routeId)
+        this.specsByRoute = { ...this.specsByRoute, [routeId]: specs }
+        const produced = specs.find((snapshot) => snapshot.id === producedId)
+        if (!produced) {
+          this.error = {
+            code: 'SPEC_SNAPSHOT_NOT_FOUND',
+            message: '生成的规格快照无法读取。',
+          }
+          return false
+        }
         this.selectedSpecIdByRoute = {
           ...this.selectedSpecIdByRoute,
-          [resultRouteId]: result.specSnapshot.id,
+          [routeId]: produced.id,
         }
         this.feedback = '已生成规格快照。'
         this.manualModelRetry = null
-        return result
+        return true
       } catch (err) {
+        // The create-run request itself failed or its outcome is unknown;
+        // reconcile canonical reads before any retry affordance.
         const safeError = toDisplayError(err)
         this.error = safeError
         const disposition = classifyModelFailure(safeError.code, safeError.status)
         if (disposition === 'none') {
           this.manualModelRetry = null
-          return null
+          return false
         }
         const intent: Extract<ManualModelRetryIntent, { kind: 'spec' }> = {
           kind: 'spec',
@@ -1246,9 +1321,10 @@ export const useWorkspaceStore = defineStore('workspace', {
         }
         this.manualModelRetry = intent
         if (intent.state === 'needs_reconcile') {
-          await this.reconcileSpecRetry(intent)
+          const recovered = await this.reconcileSpecRetry(intent)
+          if (recovered) return true
         }
-        return null
+        return false
       } finally {
         this.generatingSpec = false
       }

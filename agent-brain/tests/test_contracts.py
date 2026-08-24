@@ -12,7 +12,11 @@ from pydantic import ValidationError
 
 from spec_agent_brain.contracts.decisions import AgentV2ResponseEnvelope
 from spec_agent_brain.contracts.inputs import parse_request_envelope
-from spec_agent_brain.model_client.fake import DECISION_OUTPUT, STATE_UPDATE_OUTPUT
+from spec_agent_brain.model_client.fake import (
+    ARTIFACT_GENERATION_OUTPUT,
+    DECISION_OUTPUT,
+    STATE_UPDATE_OUTPUT,
+)
 
 FIXTURES_DIR = Path(__file__).resolve().parents[2] / "contracts" / "fixtures"
 
@@ -90,3 +94,5 @@ def test_runtime_owned_claim_id_is_rejected():
 def test_fake_model_constants_match_golden_fixtures():
     assert json.loads(STATE_UPDATE_OUTPUT) == _load("fake-model-state-update-output.json")
     assert json.loads(DECISION_OUTPUT) == _load("fake-model-decision-output.json")
+    assert json.loads(ARTIFACT_GENERATION_OUTPUT) == _load(
+        "fake-model-artifact-output.json")

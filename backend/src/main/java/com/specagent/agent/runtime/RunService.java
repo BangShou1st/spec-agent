@@ -144,6 +144,62 @@ public class RunService {
     }
 
     /**
+     * Enqueues one artifact generation run (initially only spec snapshots)
+     * against the project's active route. The caller pre-validates readable
+     * state for precise API errors; the service re-checks at execution time.
+     */
+    public AgentRun createQueuedArtifactGeneration(UUID projectId) {
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new IllegalArgumentException("Project not found: " + projectId));
+        if (project.activeRouteId() == null) {
+            throw new IllegalStateException("Project has no active route: " + projectId);
+        }
+        Route route = routeRepository.findById(project.activeRouteId())
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Active route not found: " + project.activeRouteId()));
+
+        AgentRun run = agentRunService.create(
+                projectId, route.id(), AgentRunTriggerType.GENERATE_SPEC,
+                route.tipNodeId(), null, "GENERATE_ARTIFACT");
+        eventService.append(run.id(), AgentRunPhase.CREATED, "RUN_CREATED", Map.of(
+                "triggerType", AgentRunTriggerType.GENERATE_SPEC.code(),
+                "operation", "GENERATE_ARTIFACT",
+                "routeId", route.id().toString()));
+        return run;
+    }
+
+    /**
+     * Enqueues one replacement run against an explicit source route and
+     * target node. The route is never resolved from an active/first/latest
+     * fallback; the user instruction rides in the RUN_CREATED payload.
+     */
+    public AgentRun createQueuedRegenerate(UUID projectId, UUID sourceRouteId,
+                                           UUID targetNodeId, String instruction) {
+        Route route = routeRepository.findById(sourceRouteId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Route not found: " + sourceRouteId));
+        if (!route.projectId().equals(projectId)) {
+            throw new IllegalArgumentException(
+                    "Route does not belong to project: " + sourceRouteId);
+        }
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("triggerType", AgentRunTriggerType.REGENERATE_NODE.code());
+        payload.put("operation", "REGENERATE_NODE");
+        payload.put("routeId", sourceRouteId.toString());
+        payload.put("nodeId", targetNodeId.toString());
+        if (instruction != null && !instruction.isBlank()) {
+            payload.put("freeText", instruction);
+        }
+
+        AgentRun run = agentRunService.create(
+                projectId, sourceRouteId, AgentRunTriggerType.REGENERATE_NODE,
+                targetNodeId, null, "REGENERATE_NODE");
+        eventService.append(run.id(), AgentRunPhase.CREATED, "RUN_CREATED", payload);
+        return run;
+    }
+
+    /**
      * Returns the project's active route ID. Used by the controller to
      * check answer existence before enqueuing.
      */
@@ -159,6 +215,16 @@ public class RunService {
     /** Atomically claims the next queued run, if any. */
     public Optional<AgentRun> claimNext() {
         return agentRunRepository.claimNextDecisionCycleRun();
+    }
+
+    /** Atomically claims the next queued artifact-generation run. */
+    public Optional<AgentRun> claimNextArtifact() {
+        return agentRunRepository.claimNextArtifactRun();
+    }
+
+    /** Atomically claims the next queued replacement run. */
+    public Optional<AgentRun> claimNextRegenerate() {
+        return agentRunRepository.claimNextRegenerateRun();
     }
 
     /**

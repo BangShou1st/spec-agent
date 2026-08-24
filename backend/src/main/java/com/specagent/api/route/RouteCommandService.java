@@ -2,7 +2,6 @@ package com.specagent.api.route;
 
 import com.specagent.api.common.ApiException;
 import com.specagent.api.common.CommandExecution;
-import com.specagent.agent.AgentOrchestrator;
 import com.specagent.agent.ReplacementRunResult;
 import com.specagent.api.node.NodeResponse;
 import com.specagent.node.Node;
@@ -33,16 +32,13 @@ public class RouteCommandService {
     private final ProjectService projectService;
     private final RouteService routeService;
     private final NodeService nodeService;
-    private final AgentOrchestrator orchestrator;
 
     public RouteCommandService(ProjectService projectService,
                                RouteService routeService,
-                               NodeService nodeService,
-                               AgentOrchestrator orchestrator) {
+                               NodeService nodeService) {
         this.projectService = projectService;
         this.routeService = routeService;
         this.nodeService = nodeService;
-        this.orchestrator = orchestrator;
     }
 
     public RouteMutationResponse activate(UUID projectId, UUID routeId) {
@@ -104,57 +100,6 @@ public class RouteCommandService {
             Route route = routeService.reanswerFromNode(projectId, sourceRouteId, nodeId, label);
             return refresh(projectId, route.id());
         });
-    }
-
-    public RegenerateResponse regenerate(UUID projectId, UUID nodeId, RegenerateNodeRequest request) {
-        return CommandExecution.execute(() -> {
-            CommandExecution.requireProject(projectService, projectId);
-            Node target = CommandExecution.requireNodeInProject(
-                    projectService, nodeService, projectId, nodeId);
-            if (target.parentNodeId() == null) {
-                throw ApiException.conflict("REGENERATE_ROOT_NOT_SUPPORTED",
-                        "Root node regeneration is not supported");
-            }
-            RegenerateResult result;
-            if (request.replacementQuestion() != null) {
-                // Compatibility for pre-convergence clients only. The normal
-                // product contract omits authored replacement content and
-                // always uses the model-powered branch below.
-                if (request.replacementQuestion().isBlank()) {
-                    throw ApiException.badRequest("INVALID_REPLACEMENT_QUESTION",
-                            "Replacement question must not be blank");
-                }
-                validateReplacementOptions(request);
-                List<NodeOption> replacementOptions = request.replacementOptions() == null ? List.of()
-                        : request.replacementOptions().stream()
-                                .map(option -> NodeOption.of(option.label(), option.impact()))
-                                .toList();
-                result = routeService.regenerateFromNode(
-                        projectId, request.sourceRouteId(), nodeId, request.instruction(),
-                        request.replacementQuestion(), request.replacementPurpose(), replacementOptions);
-            } else {
-                ReplacementRunResult run = orchestrator.replaceQuestion(
-                        projectId, request.sourceRouteId(), nodeId, request.instruction());
-                result = run.replacement();
-            }
-            return new RegenerateResponse(
-                    projectId,
-                    RouteResponse.from(result.oldRoute(), false),
-                    RouteResponse.from(result.replacementRoute(), true),
-                    NodeResponse.from(result.replacementNode()));
-        });
-    }
-
-    private void validateReplacementOptions(RegenerateNodeRequest request) {
-        if (request.replacementOptions() == null) {
-            return;
-        }
-        for (ReplacementOptionRequest option : request.replacementOptions()) {
-            if (option == null || option.label() == null || option.label().isBlank()) {
-                throw ApiException.badRequest("INVALID_REPLACEMENT_OPTION",
-                        "Replacement option label must not be blank");
-            }
-        }
     }
 
     private RouteMutationResponse refresh(UUID projectId, UUID routeId) {

@@ -100,7 +100,8 @@ public class UndoRedoService {
             throw new IllegalStateException("该操作不可撤销: " + operation.type());
         }
         compensate(operation);
-        operationRepository.updateStatus(operation.id(), GraphOperation.Status.UNDONE, Instant.now());
+        operationRepository.updateStatus(operation.id(), GraphOperation.Status.UNDONE,
+                com.specagent.graph.GraphOperationRepository.nextTimestamp());
         return new UndoRedoResult(operation, describeUndo(operation));
     }
 
@@ -112,7 +113,8 @@ public class UndoRedoService {
             throw new IllegalStateException("撤销后产生了新操作，无法恢复该历史状态");
         }
         replay(operation);
-        operationRepository.updateStatus(operation.id(), GraphOperation.Status.ACTIVE, Instant.now());
+        operationRepository.updateStatus(operation.id(), GraphOperation.Status.ACTIVE,
+                com.specagent.graph.GraphOperationRepository.nextTimestamp());
         return new UndoRedoResult(operation, describeRedo(operation));
     }
 

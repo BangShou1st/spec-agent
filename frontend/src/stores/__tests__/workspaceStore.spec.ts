@@ -7,11 +7,9 @@ import {
   makeGraphWorkspaceView,
   makeNode,
   makeProject,
-  makeRegenerateResponse,
   makeRequirementState,
   makeRoute,
   makeRouteLineage,
-  makeSpecGeneration,
   makeSpecSnapshot,
 } from '@/test/fixtures'
 import type {
@@ -78,9 +76,8 @@ import {
   forkNode as apiForkNode,
   getRouteLineage,
   reanswerNode as apiReanswerNode,
-  regenerateNode as apiRegenerateNode,
 } from '@/api/routes'
-import { generateSpec as apiGenerateSpec, listRouteSpecs } from '@/api/spec'
+import { listRouteSpecs } from '@/api/spec'
 
 const mockedGetProject = vi.mocked(getProject)
 const mockedGetActiveState = vi.mocked(getActiveState)
@@ -94,8 +91,6 @@ const mockedGetRouteLineage = vi.mocked(getRouteLineage)
 const mockedActivateRoute = vi.mocked(apiActivateRoute)
 const mockedForkNode = vi.mocked(apiForkNode)
 const mockedReanswerNode = vi.mocked(apiReanswerNode)
-const mockedRegenerateNode = vi.mocked(apiRegenerateNode)
-const mockedApiGenerateSpec = vi.mocked(apiGenerateSpec)
 const mockedListRouteSpecs = vi.mocked(listRouteSpecs)
 
 describe('workspaceStore', () => {
@@ -139,6 +134,27 @@ describe('workspaceStore', () => {
       producedPatchId: null,
       ...overrides,
     })
+  }
+
+  /** Completed REGENERATE_NODE run view for happy regenerate paths. */
+  function regenerateRunView(overrides: Partial<AgentRunView> = {}): AgentRunView {
+    return completedRunView({
+      operation: 'REGENERATE_NODE',
+      producedNodeId: 'n2',
+      producedAnswerId: null,
+      producedPatchId: null,
+      ...overrides,
+    })
+  }
+
+  /** Wires the run mocks so one regenerate run reaches 'completed'. */
+  function mockRegenerateRunSuccess(): void {
+    mockedCreateAgentRun.mockResolvedValue({
+      runId: 'run-regen',
+      operation: 'REGENERATE_NODE',
+      phase: 'CREATED',
+    })
+    mockedGetAgentRun.mockResolvedValue(regenerateRunView())
   }
 
   /** Wires the run mocks so one draft run reaches 'completed'. */
@@ -941,13 +957,13 @@ describe('workspaceStore', () => {
     mockBackendViews(initial, makeRequirementState())
     mockedGetActiveState.mockResolvedValueOnce(initial).mockResolvedValueOnce(after)
     mockedGetProjectGraph.mockResolvedValueOnce(initialGraph).mockResolvedValueOnce(afterGraph)
-    mockedRegenerateNode.mockRejectedValue(new ApiError('network lost', 'NETWORK_ERROR', 0))
+    mockedCreateAgentRun.mockRejectedValue(new ApiError('network lost', 'NETWORK_ERROR', 0))
     const store = useWorkspaceStore()
     await store.loadWorkspace('p1')
 
     expect(await store.regenerateNode('n1', { sourceRouteId: 'r-old', instruction: 'new angle' })).toBe(true)
 
-    expect(mockedRegenerateNode).toHaveBeenCalledTimes(1)
+    expect(mockedCreateAgentRun).toHaveBeenCalledTimes(1)
     expect(store.manualModelRetry).toBeNull()
     expect(store.consumeFocusAfterMutation()).toEqual({ routeId: 'r-new', nodeId: 'n2' })
   })
@@ -964,20 +980,15 @@ describe('workspaceStore', () => {
     })
     mockBackendViews(active, makeRequirementState())
     mockedGetProjectGraph.mockResolvedValue(graph)
-    mockedRegenerateNode.mockRejectedValueOnce(new ApiError('network lost', 'NETWORK_ERROR', 0))
-    const regenerated = makeRegenerateResponse({
-      oldRoute: makeRoute({ id: 'r-old', lifecycleStatus: 'superseded', isActive: false }),
-      replacementRoute: makeRoute({ id: 'r-new', isActive: true, tipNodeId: 'n2' }),
-      replacementNode: makeNode({ id: 'n2' }),
-    })
-    mockedRegenerateNode.mockResolvedValueOnce(regenerated)
+    mockedCreateAgentRun.mockRejectedValueOnce(new ApiError('network lost', 'NETWORK_ERROR', 0))
+    mockRegenerateRunSuccess()
     const store = useWorkspaceStore()
     await store.loadWorkspace('p1')
 
     expect(await store.regenerateNode('n1', { sourceRouteId: 'r-old' })).toBe(false)
     expect(store.manualModelRetry?.state).toBe('ready')
     expect(await store.retryManualModelOperation()).toBe(true)
-    expect(mockedRegenerateNode).toHaveBeenCalledTimes(2)
+    expect(mockedCreateAgentRun).toHaveBeenCalledTimes(2)
   })
 
   it('fails closed on an incompatible regenerate active transition without mutation', async () => {
@@ -1005,14 +1016,14 @@ describe('workspaceStore', () => {
         { ...replacementRoute, rootNodeId: 'n2', lineageNodeIds: ['n2'] },
       ],
     }))
-    mockedRegenerateNode.mockRejectedValue(new ApiError('network lost', 'NETWORK_ERROR', 0))
+    mockedCreateAgentRun.mockRejectedValue(new ApiError('network lost', 'NETWORK_ERROR', 0))
     const store = useWorkspaceStore()
     await store.loadWorkspace('p1')
 
     expect(await store.regenerateNode('n1', { sourceRouteId: 'r-old' })).toBe(false)
     expect(store.manualModelRetry?.state).toBe('ambiguous')
     expect(await store.retryManualModelOperation()).toBe(false)
-    expect(mockedRegenerateNode).toHaveBeenCalledTimes(1)
+    expect(mockedCreateAgentRun).toHaveBeenCalledTimes(1)
   })
 
   it('reconciles a persisted spec snapshot after a lost response without a second POST', async () => {
@@ -1024,12 +1035,12 @@ describe('workspaceStore', () => {
     })
     mockBackendViews(active, makeRequirementState())
     mockedListRouteSpecs.mockResolvedValueOnce([oldSnapshot]).mockResolvedValueOnce([oldSnapshot, newSnapshot])
-    mockedApiGenerateSpec.mockRejectedValue(new ApiError('network lost', 'NETWORK_ERROR', 0))
+    mockedCreateAgentRun.mockRejectedValue(new ApiError('network lost', 'NETWORK_ERROR', 0))
     const store = useWorkspaceStore()
     await store.loadWorkspace('p1')
 
-    expect(await store.generateSpec()).toBeNull()
-    expect(mockedApiGenerateSpec).toHaveBeenCalledTimes(1)
+    expect(await store.generateSpec()).toBe(true)
+    expect(mockedCreateAgentRun).toHaveBeenCalledTimes(1)
     expect(store.manualModelRetry).toBeNull()
     expect(store.selectedSpecIdByRoute['r1']).toBe('spec-new')
   })
@@ -1046,15 +1057,31 @@ describe('workspaceStore', () => {
       .mockResolvedValueOnce([oldSnapshot])
       .mockResolvedValueOnce([oldSnapshot])
       .mockResolvedValueOnce([oldSnapshot, newSnapshot])
-    mockedApiGenerateSpec.mockRejectedValueOnce(new ApiError('network lost', 'NETWORK_ERROR', 0))
-      .mockResolvedValueOnce(makeSpecGeneration({ specSnapshot: newSnapshot }))
+    mockedCreateAgentRun.mockRejectedValueOnce(new ApiError('network lost', 'NETWORK_ERROR', 0))
+      .mockResolvedValueOnce({
+        runId: 'run-spec',
+        operation: 'GENERATE_ARTIFACT',
+        phase: 'CREATED',
+      })
+    mockedGetAgentRun.mockResolvedValue({
+      runId: 'run-spec',
+      projectId: 'p1',
+      routeId: 'route-1',
+      operation: 'GENERATE_ARTIFACT',
+      status: 'completed',
+      phase: 'COMPLETED',
+      producedNodeId: null,
+      producedAnswerId: null,
+      producedPatchId: null,
+      producedSpecSnapshotId: 'spec-new',
+    })
     const store = useWorkspaceStore()
     await store.loadWorkspace('p1')
 
-    expect(await store.generateSpec()).toBeNull()
+    expect(await store.generateSpec()).toBe(false)
     expect(store.manualModelRetry?.state).toBe('ready')
     expect(await store.retryManualModelOperation()).toBe(true)
-    expect(mockedApiGenerateSpec).toHaveBeenCalledTimes(2)
+    expect(mockedCreateAgentRun).toHaveBeenCalledTimes(2)
   })
 
   it('fails closed when more than one new spec snapshot appears during reconciliation', async () => {
@@ -1068,14 +1095,14 @@ describe('workspaceStore', () => {
     mockedListRouteSpecs.mockResolvedValueOnce([oldSnapshot]).mockResolvedValueOnce([
       oldSnapshot, newSnapshotA, newSnapshotB,
     ])
-    mockedApiGenerateSpec.mockRejectedValue(new ApiError('network lost', 'NETWORK_ERROR', 0))
+    mockedCreateAgentRun.mockRejectedValue(new ApiError('network lost', 'NETWORK_ERROR', 0))
     const store = useWorkspaceStore()
     await store.loadWorkspace('p1')
 
-    expect(await store.generateSpec()).toBeNull()
+    expect(await store.generateSpec()).toBe(false)
     expect(store.manualModelRetry?.state).toBe('ambiguous')
     expect(await store.retryManualModelOperation()).toBe(false)
-    expect(mockedApiGenerateSpec).toHaveBeenCalledTimes(1)
+    expect(mockedCreateAgentRun).toHaveBeenCalledTimes(1)
   })
 
   it('does not discard a failed answer payload while a mutation guard is active', async () => {
@@ -1100,8 +1127,8 @@ describe('workspaceStore', () => {
     const store = useWorkspaceStore()
     await store.loadWorkspace('p1')
 
-    expect(await store.generateSpec()).toBeNull()
-    expect(mockedApiGenerateSpec).not.toHaveBeenCalled()
+    expect(await store.generateSpec()).toBe(false)
+    expect(mockedCreateAgentRun).not.toHaveBeenCalled()
     expect(store.manualModelRetry).toBeNull()
   })
 

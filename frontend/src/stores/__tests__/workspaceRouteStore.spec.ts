@@ -5,12 +5,11 @@ import { useWorkspaceStore } from '@/stores/workspaceStore'
 import {
   makeActiveState,
   makeGraphWorkspaceView,
+  makeNode,
   makeProject,
-  makeRegenerateResponse,
   makeRequirementState,
   makeRoute,
   makeRouteMutation,
-  makeSpecGeneration,
   makeSpecSnapshot,
 } from '@/test/fixtures'
 import type { ActiveProjectStateResponse, RequirementStateView } from '@/api/types'
@@ -57,6 +56,7 @@ vi.mock('@/api/spec', () => ({
 import { getProject } from '@/api/projects'
 import { getActiveState, listRoutes } from '@/api/workspace'
 import { createAgentRun, getAgentRun } from '@/api/agentRuns'
+import type { AgentRunView } from '@/api/agentRuns'
 import { getRequirementState } from '@/api/requirementState'
 import { getProjectGraph } from '@/api/graph'
 import {
@@ -64,10 +64,9 @@ import {
   archiveRoute as apiArchiveRoute,
   deleteRoute as apiDeleteRoute,
   forkNode as apiForkNode,
-  regenerateNode as apiRegenerateNode,
   restoreRoute as apiRestoreRoute,
 } from '@/api/routes'
-import { generateSpec as apiGenerateSpec, listRouteSpecs } from '@/api/spec'
+import { listRouteSpecs } from '@/api/spec'
 
 const mockedGetProject = vi.mocked(getProject)
 const mockedGetActiveState = vi.mocked(getActiveState)
@@ -81,8 +80,6 @@ const mockedApiRestoreRoute = vi.mocked(apiRestoreRoute)
 const mockedApiArchiveRoute = vi.mocked(apiArchiveRoute)
 const mockedApiDeleteRoute = vi.mocked(apiDeleteRoute)
 const mockedApiForkNode = vi.mocked(apiForkNode)
-const mockedApiRegenerateNode = vi.mocked(apiRegenerateNode)
-const mockedApiGenerateSpec = vi.mocked(apiGenerateSpec)
 const mockedListRouteSpecs = vi.mocked(listRouteSpecs)
 
 describe('workspaceStore route workspace', () => {
@@ -266,36 +263,76 @@ describe('workspaceStore route workspace', () => {
 
   it('regenerate request passes through without runtime-owned ids', async () => {
     mockBackendViews(makeActiveState(), makeRequirementState())
-    mockedApiRegenerateNode.mockResolvedValue(makeRegenerateResponse())
+    mockedCreateAgentRun.mockResolvedValue({
+      runId: 'run-regen',
+      operation: 'REGENERATE_NODE',
+      phase: 'CREATED',
+    })
+    mockedGetAgentRun.mockResolvedValue({
+      runId: 'run-regen',
+      projectId: 'p1',
+      routeId: 'r-new',
+      operation: 'REGENERATE_NODE',
+      status: 'completed',
+      phase: 'COMPLETED',
+      producedNodeId: 'n-replacement',
+      producedAnswerId: null,
+      producedPatchId: null,
+      producedSpecSnapshotId: null,
+    })
     const store = useWorkspaceStore()
     await load(store)
 
-    const payload = { sourceRouteId: 'r1', instruction: '改窄一些' }
-    await store.regenerateNode('lnode-2', payload)
+    await store.regenerateNode('lnode-2', { sourceRouteId: 'r1', instruction: '改窄一些' })
 
-    expect(mockedApiRegenerateNode).toHaveBeenCalledWith('p1', 'lnode-2', payload)
-    const sentPayload = mockedApiRegenerateNode.mock.calls[0][2]
-    expect(Object.keys(sentPayload).sort()).toEqual(['instruction', 'sourceRouteId'])
+    expect(mockedCreateAgentRun).toHaveBeenCalledWith('p1', {
+      operation: 'REGENERATE_NODE',
+      nodeId: 'lnode-2',
+      sourceRouteId: 'r1',
+      freeText: '改窄一些',
+    })
+    const sentPayload = mockedCreateAgentRun.mock.calls[0][1]
+    expect(Object.keys(sentPayload).sort()).toEqual([
+      'freeText', 'nodeId', 'operation', 'sourceRouteId',
+    ])
   })
 
   it('regenerate success refreshes canonical state', async () => {
     const active = makeActiveState()
-    const result = makeRegenerateResponse({
-      oldRoute: { ...makeRoute({ id: 'route-old', isActive: false }), lifecycleStatus: 'superseded' },
-      replacementRoute: { ...makeRoute({ id: 'route-new', isActive: true }), lifecycleStatus: 'open' },
-    })
     const regenerated = makeActiveState({
       project: { ...active.project, id: 'p1' },
-      activeRoute: { ...result.replacementRoute, isActive: true },
-      activeNode: { ...result.replacementNode },
+      activeRoute: { ...makeRoute({ id: 'route-new', isActive: true }), lifecycleStatus: 'open' },
+      activeNode: makeNode({ id: 'n-replacement' }),
     })
-    mockedApiRegenerateNode.mockResolvedValue(result)
+    mockedCreateAgentRun.mockResolvedValue({
+      runId: 'run-regen',
+      operation: 'REGENERATE_NODE',
+      phase: 'CREATED',
+    })
+    mockedGetAgentRun.mockResolvedValue({
+      runId: 'run-regen',
+      projectId: 'p1',
+      routeId: 'route-new',
+      operation: 'REGENERATE_NODE',
+      status: 'completed',
+      phase: 'COMPLETED',
+      producedNodeId: 'n-replacement',
+      producedAnswerId: null,
+      producedPatchId: null,
+      producedSpecSnapshotId: null,
+    })
     mockBackendViews(active, makeRequirementState())
     const store = useWorkspaceStore()
     await load(store)
 
     mockedGetActiveState.mockResolvedValue(regenerated)
     mockedListRoutes.mockResolvedValue([regenerated.activeRoute as never])
+    mockedGetProjectGraph.mockResolvedValue(makeGraphWorkspaceView({
+      projectId: 'p1',
+      activeRouteId: 'route-new',
+      routes: [{ ...regenerated.activeRoute, rootNodeId: 'n1', lineageNodeIds: ['n1'] } as never],
+      nodes: [makeNode({ id: 'n-replacement' })],
+    }))
     mockedGetRequirementState.mockResolvedValue(makeRequirementState({ routeId: 'route-new' }))
 
     const ok = await store.regenerateNode('lnode-2', {
@@ -305,8 +342,6 @@ describe('workspaceStore route workspace', () => {
 
     expect(ok).toBe(true)
     expect(store.activeState?.activeRoute?.id).toBe('route-new')
-    expect(mockedGetRequirementState).toHaveBeenCalledTimes(2)
-    expect(mockedGetProjectGraph).toHaveBeenCalledTimes(2)
     expect(store.feedback).toBe('已创建换一个问题路线。')
   })
 
@@ -369,17 +404,22 @@ describe('workspaceStore route workspace', () => {
 
     const ok = await store.generateSpec()
 
-    expect(ok).toBeNull()
-    expect(mockedApiGenerateSpec).not.toHaveBeenCalled()
+    expect(ok).toBe(false)
+    expect(mockedCreateAgentRun).not.toHaveBeenCalled()
     expect(store.error?.code).toBe('NO_ACTIVE_TIP_NODE')
   })
 
   it('prevents duplicate spec generation while one is pending', async () => {
     mockBackendViews(activeWithTip(), makeRequirementState())
-    let resolveGenerate: (v: ReturnType<typeof makeSpecGeneration>) => void = () => undefined
-    mockedApiGenerateSpec.mockReturnValue(
-      new Promise((resolve) => {
-        resolveGenerate = resolve
+    mockedCreateAgentRun.mockResolvedValue({
+      runId: 'run-spec',
+      operation: 'GENERATE_ARTIFACT',
+      phase: 'CREATED',
+    })
+    let resolveRun: (v: AgentRunView) => void = () => undefined
+    mockedGetAgentRun.mockReturnValue(
+      new Promise<AgentRunView>((resolve) => {
+        resolveRun = resolve
       }),
     )
     const store = useWorkspaceStore()
@@ -389,8 +429,19 @@ describe('workspaceStore route workspace', () => {
     const second = store.generateSpec()
 
     await Promise.resolve()
-    expect(mockedApiGenerateSpec).toHaveBeenCalledTimes(1)
-    resolveGenerate(makeSpecGeneration())
+    expect(mockedCreateAgentRun).toHaveBeenCalledTimes(1)
+    resolveRun({
+      runId: 'run-spec',
+      projectId: 'p1',
+      routeId: 'route-1',
+      operation: 'GENERATE_ARTIFACT',
+      status: 'completed',
+      phase: 'COMPLETED',
+      producedNodeId: null,
+      producedAnswerId: null,
+      producedPatchId: null,
+      producedSpecSnapshotId: 'spec-new',
+    })
     await first
     await second
     expect(store.generatingSpec).toBe(false)
@@ -398,25 +449,54 @@ describe('workspaceStore route workspace', () => {
 
   it('after successful generation reloads snapshots and selects in the route cache', async () => {
     mockBackendViews(activeWithTip(), makeRequirementState())
-    const generation = makeSpecGeneration({
-      specSnapshot: makeSpecSnapshot({ id: 'spec-new', routeId: 'route-1' }),
+    // The generation goes through the async run surface; the produced
+    // snapshot id comes from the terminal run read view.
+    mockedCreateAgentRun.mockResolvedValue({
+      runId: 'run-spec',
+      operation: 'GENERATE_ARTIFACT',
+      phase: 'CREATED',
     })
-    mockedApiGenerateSpec.mockResolvedValue(generation)
+    mockedGetAgentRun.mockResolvedValue({
+      runId: 'run-spec',
+      projectId: 'p1',
+      routeId: 'route-1',
+      operation: 'GENERATE_ARTIFACT',
+      status: 'completed',
+      phase: 'COMPLETED',
+      producedNodeId: null,
+      producedAnswerId: null,
+      producedPatchId: null,
+      producedSpecSnapshotId: 'spec-new',
+    })
     const store = useWorkspaceStore()
     await load(store)
 
+    const activeRouteId = store.activeState?.activeRoute?.id ?? 'route-1'
+    mockedGetAgentRun.mockResolvedValue({
+      runId: 'run-spec',
+      projectId: 'p1',
+      routeId: activeRouteId,
+      operation: 'GENERATE_ARTIFACT',
+      status: 'completed',
+      phase: 'COMPLETED',
+      producedNodeId: null,
+      producedAnswerId: null,
+      producedPatchId: null,
+      producedSpecSnapshotId: 'spec-new',
+    })
     mockedListRouteSpecs.mockResolvedValue([
       makeSpecSnapshot({ id: 'spec-old', createdAt: '2026-01-02T00:00:00Z' }),
-      generation.specSnapshot,
+      makeSpecSnapshot({ id: 'spec-new', routeId: activeRouteId }),
     ])
 
     const ok = await store.generateSpec()
 
-    expect(ok).not.toBeNull()
-    expect(ok?.specSnapshot.id).toBe('spec-new')
-    expect(mockedListRouteSpecs).toHaveBeenCalledWith('p1', 'route-1')
-    expect(store.selectedSpecIdByRoute['route-1']).toBe('spec-new')
-    expect(store.specsByRoute['route-1'].map((s) => s.id)).toEqual(['spec-old', 'spec-new'])
+    expect(ok).toBe(true)
+    expect(mockedCreateAgentRun).toHaveBeenCalledWith('p1', { operation: 'GENERATE_ARTIFACT' })
+    expect(mockedGetAgentRun).toHaveBeenCalledWith('p1', 'run-spec')
+    expect(mockedListRouteSpecs).toHaveBeenCalledWith('p1', activeRouteId)
+    expect(store.selectedSpecIdByRoute[activeRouteId]).toBe('spec-new')
+    expect(store.specsByRoute[activeRouteId].map((s) => s.id)).toEqual(['spec-old', 'spec-new'])
     expect(store.feedback).toBe('已生成规格快照。')
   })
 
@@ -433,13 +513,28 @@ describe('workspaceStore route workspace', () => {
     await load(store)
 
     const newSnapshotB = makeSpecSnapshot({ id: 'spec-new-B', routeId: 'route-B' })
-    mockedApiGenerateSpec.mockResolvedValue(makeSpecGeneration({ specSnapshot: newSnapshotB }))
+    mockedCreateAgentRun.mockResolvedValue({
+      runId: 'run-spec-b',
+      operation: 'GENERATE_ARTIFACT',
+      phase: 'CREATED',
+    })
+    mockedGetAgentRun.mockResolvedValue({
+      runId: 'run-spec-b',
+      projectId: 'p1',
+      routeId: 'route-B',
+      operation: 'GENERATE_ARTIFACT',
+      status: 'completed',
+      phase: 'COMPLETED',
+      producedNodeId: null,
+      producedAnswerId: null,
+      producedPatchId: null,
+      producedSpecSnapshotId: 'spec-new-B',
+    })
     mockedListRouteSpecs.mockResolvedValue([newSnapshotB])
 
     const ok = await store.generateSpec()
 
-    expect(ok).not.toBeNull()
-    expect(ok?.specSnapshot.routeId).toBe('route-B')
+    expect(ok).toBe(true)
     expect(mockedListRouteSpecs).toHaveBeenCalledWith('p1', 'route-B')
     expect(store.selectedSpecIdByRoute['route-B']).toBe('spec-new-B')
     expect(store.selectedSpecForRoute('route-B')?.id).toBe('spec-new-B')

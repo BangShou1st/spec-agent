@@ -1,6 +1,7 @@
 package com.specagent.agent.decision;
 
 import com.specagent.agent.contract.ActionFamily;
+import com.specagent.agent.contract.AgentArtifactResponse;
 import com.specagent.agent.contract.AgentInputSnapshot;
 import com.specagent.agent.contract.AgentContractException;
 import com.specagent.agent.contract.AgentRequestEnvelope;
@@ -51,6 +52,69 @@ public final class AgentBrainResponseValidator {
         }
         for (ProposedClaim claim : claims) {
             validateClaim(claim, request);
+        }
+    }
+
+    /**
+     * Validates an artifact generation response against its request: the
+     * artifact must be a supported type, every section must be non-blank and
+     * cite at least one allowed source ref, and no runtime-owned identity may
+     * appear anywhere in the derived content.
+     */
+    public static void validateArtifact(AgentRequestEnvelope request,
+                                        AgentArtifactResponse response) {
+        if (!request.runId().equals(response.runId())) {
+            throw new AgentContractException(
+                    "Response runId does not match the request: " + response.runId());
+        }
+        if (response.usage() != null && request.decisionBudget() != null) {
+            int calls = response.usage().modelCalls();
+            if (calls < 0 || calls > request.decisionBudget().maxModelCalls()) {
+                throw new AgentContractException(
+                        "Response model call count outside the decision budget: " + calls);
+            }
+        }
+        if (response.artifact() == null) {
+            throw new AgentContractException("Artifact response requires an artifact");
+        }
+        var result = response.artifact();
+        if (!"spec_snapshot".equals(result.artifactType())) {
+            throw new AgentContractException(
+                    "Unsupported artifact type: " + result.artifactType());
+        }
+        if (result.sections().isEmpty()) {
+            throw new AgentContractException("Artifact requires at least one section");
+        }
+        Set<String> allowed = Set.copyOf(request.snapshot().allowedSourceRefs());
+        for (var section : result.sections()) {
+            requireNonBlank("section title", section.title());
+            requireNonBlank("section content", section.content());
+            List<String> refs = section.sourceRefs() == null
+                    ? List.of() : section.sourceRefs();
+            if (refs.isEmpty()) {
+                throw new AgentContractException(
+                        "Artifact section requires source references: " + section.title());
+            }
+            if (refs.size() > MAX_SOURCE_REFS) {
+                throw new AgentContractException("Too many source references in section");
+            }
+            for (String ref : refs) {
+                if (!allowed.contains(ref)) {
+                    throw new AgentContractException(
+                            "Section referenced a source outside the allowed snapshot refs: "
+                                    + ref);
+                }
+            }
+        }
+        if (result.unresolvedItems().size() > MAX_OBSERVATION_ENTRIES) {
+            throw new AgentContractException("Too many unresolved items");
+        }
+        for (String item : result.unresolvedItems()) {
+            requireNonBlank("unresolved item", item);
+            if (item.length() > MAX_ENTRY_LENGTH) {
+                throw new AgentContractException(
+                        "Unresolved item exceeds the length limit");
+            }
         }
     }
 

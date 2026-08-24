@@ -64,11 +64,4 @@ public class RouteCommandController {
         return routeCommandService.reanswer(projectId, nodeId,
                 request.sourceRouteId(), request.label());
     }
-
-    @PostMapping("/nodes/{nodeId}/regenerate")
-    public RegenerateResponse regenerate(@PathVariable UUID projectId,
-                                         @PathVariable UUID nodeId,
-                                         @Valid @RequestBody RegenerateNodeRequest request) {
-        return routeCommandService.regenerate(projectId, nodeId, request);
-    }
 }

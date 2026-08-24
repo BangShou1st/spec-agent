@@ -1,5 +1,6 @@
 package com.specagent.agent.decision;
 
+import com.specagent.agent.contract.AgentArtifactResponse;
 import com.specagent.agent.contract.AgentRequestEnvelope;
 import com.specagent.agent.contract.AgentResponseEnvelope;
 
@@ -19,4 +20,10 @@ public interface AgentDecisionEngine {
 
     /** Runs one DECISION cycle: reflection + planning + primary action proposal. */
     AgentResponseEnvelope runDecision(AgentRequestEnvelope request);
+
+    /**
+     * Runs one ARTIFACT_GENERATION cycle: grounded context to a derived,
+     * read-only artifact (initially only spec snapshots).
+     */
+    AgentArtifactResponse runArtifactGeneration(AgentRequestEnvelope request);
 }

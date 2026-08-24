@@ -38,17 +38,23 @@ public class AnswerCycleRunController {
     private final AgentRunEventService eventService;
     private final AnswerService answerService;
     private final RouteService routeService;
+    private final com.specagent.project.ProjectService projectService;
+    private final com.specagent.node.NodeService nodeService;
 
     public AnswerCycleRunController(RunService runService,
                                     AgentRunService agentRunService,
                                     AgentRunEventService eventService,
                                     AnswerService answerService,
-                                    RouteService routeService) {
+                                    RouteService routeService,
+                                    com.specagent.project.ProjectService projectService,
+                                    com.specagent.node.NodeService nodeService) {
         this.runService = runService;
         this.agentRunService = agentRunService;
         this.eventService = eventService;
         this.answerService = answerService;
         this.routeService = routeService;
+        this.projectService = projectService;
+        this.nodeService = nodeService;
     }
 
     @PostMapping
@@ -64,6 +70,56 @@ public class AnswerCycleRunController {
             UUID draftRunId = runService.createQueuedDraftQuestion(projectId).id();
             return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of(
                     "runId", draftRunId.toString(),
+                    "operation", operation,
+                    "phase", "CREATED"));
+        }
+
+        // Spec snapshot generation: a derived, read-only artifact run against
+        // the active route tip. A route without a tip can never ground an
+        // artifact — reject synchronously instead of enqueueing a doomed run.
+        if ("GENERATE_ARTIFACT".equals(operation)) {
+            UUID activeRouteId = runService.getActiveRouteId(projectId);
+            var route = routeService.getRoute(activeRouteId)
+                    .orElseThrow(() -> new IllegalStateException(
+                            "Active route not found: " + activeRouteId));
+            if (route.tipNodeId() == null) {
+                throw com.specagent.api.common.ApiException.conflict(
+                        "NO_ACTIVE_TIP_NODE",
+                        "The active route has no tip node to generate a spec from");
+            }
+            UUID artifactRunId = runService.createQueuedArtifactGeneration(projectId).id();
+            return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of(
+                    "runId", artifactRunId.toString(),
+                    "operation", operation,
+                    "phase", "CREATED"));
+        }
+
+        // Replacement: one DECISION for the content, deterministic topology.
+        // The source route is explicit and never resolved by fallback; the
+        // same readable-state guards as before the cutover apply at enqueue
+        // time so doomed runs never enter the queue.
+        if ("REGENERATE_NODE".equals(operation)) {
+            if (request.nodeId() == null || request.sourceRouteId() == null) {
+                throw com.specagent.api.common.ApiException.badRequest(
+                        "REGENERATE_TARGET_REQUIRED",
+                        "Replacement requires an explicit source route and node");
+            }
+            com.specagent.api.common.CommandExecution.requireProject(
+                    projectService, projectId);
+            var target = com.specagent.api.common.CommandExecution.requireNodeInProject(
+                    projectService, nodeService, projectId, request.nodeId());
+            com.specagent.api.common.CommandExecution.requireRouteInProject(
+                    projectService, routeService, projectId, request.sourceRouteId());
+            if (target.parentNodeId() == null) {
+                throw com.specagent.api.common.ApiException.conflict(
+                        "REGENERATE_ROOT_NOT_SUPPORTED",
+                        "Root node regeneration is not supported");
+            }
+            UUID regenerateRunId = runService.createQueuedRegenerate(
+                    projectId, request.sourceRouteId(), request.nodeId(),
+                    request.freeText()).id();
+            return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of(
+                    "runId", regenerateRunId.toString(),
                     "operation", operation,
                     "phase", "CREATED"));
         }
@@ -145,6 +201,7 @@ public class AnswerCycleRunController {
 
     public record CreateRunRequest(String operation,
                                    UUID nodeId,
+                                   UUID sourceRouteId,
                                    UUID selectedOptionId,
                                    String freeText,
                                    UUID answerId) {

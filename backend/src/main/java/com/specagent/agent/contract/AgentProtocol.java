@@ -17,6 +17,9 @@ public final class AgentProtocol {
     /** Response envelope version returned by the Python brain to Spring. */
     public static final String DECISION_PROTOCOL_VERSION = "agent-decision.v2";
 
+    /** Response envelope version for derived artifact generation. */
+    public static final String ARTIFACT_PROTOCOL_VERSION = "agent-artifact.v1";
+
     /** Internal model inference broker contract version (Python to Spring). */
     public static final String INFERENCE_PROTOCOL_VERSION = "model-inference.v1";
 
@@ -24,7 +27,8 @@ public final class AgentProtocol {
     public static final String INTERNAL_TOKEN_HEADER = "X-Spec-Agent-Internal-Token";
 
     /** Closed set of brain call types; the endpoint determines the call type. */
-    public static final Set<String> CALL_TYPES = Set.of("STATE_UPDATE", "DECISION");
+    public static final Set<String> CALL_TYPES = Set.of(
+            "STATE_UPDATE", "DECISION", "ARTIFACT_GENERATION");
 
     /** Closed set of event kinds the runtime may send to the brain. */
     public static final Set<String> EVENT_KINDS = Set.of(

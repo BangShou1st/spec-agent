@@ -28,8 +28,8 @@ State at branch point `0e5aa36` (verified against source, not delivery notes):
 | submit answer | `workspaceStore.submitAnswer()` → POST `/answers` (sync) | `AgentCommandController.submitAnswer` → `AgentCommandService.submitAnswer` | `AgentOrchestrator.answerActiveNodeAndDraftNext` (`INTERPRET_ANSWER` + `DRAFT_ANSWER_PATCH` + `DRAFT_NODE`) | ANSWER_CYCLE run (`ANSWER_TIP`) via POST `/agent-runs` + polling | slice 1 |
 | repair answer | `workspaceStore.repairAnswerForActiveFlow()` → POST `/answers/{id}/repair` (sync) | `AgentCommandController.repairAnswer` → `AgentCommandService.repairAnswer` | `AgentOrchestrator.repairAnswerProcessingAndDraftNext` | ANSWER_CYCLE run (`RESUME_ANSWER`, persisted Answer replayed server-side) | slice 1 |
 | contextual node query | `askNodeAI()` → POST `/nodes/{id}/query` + poll | `NodeQueryRunController` | 1 DECISION via `NodeQueryService` (read-only) | existing | already |
-| generate spec | `workspaceStore.generateSpec()` → POST `/specs/generate` (sync) | `AgentCommandController.generateSpec` → `AgentCommandService.generateSpec` | `AgentOrchestrator.generateSpec` (`DRAFT_SPEC`) | ARTIFACT_GENERATION run (Python `POST /v1/artifacts`) via POST `/agent-runs` | slice 3 |
-| regenerate/replace | `workspaceStore.regenerateNode()` → POST `/nodes/{id}/regenerate` (sync) | `RouteCommandController.regenerate` → `RouteCommandService.regenerate` | `AgentOrchestrator.replaceQuestion` (`DRAFT_NODE` redirect); deprecated authored-replacement deterministic branch | REGENERATE_NODE run → 1 DECISION (`REQUEST_USER_INPUT` content) → deterministic `RouteService.commitReplacementFromNode` | slice 3 |
+| generate spec | `workspaceStore.generateSpec()` → POST `/agent-runs` + poll | `AnswerCycleRunController` (`GENERATE_ARTIFACT`) | 1 ARTIFACT_GENERATION call, grounding gates preserved | ARTIFACT_GENERATION run (Python `POST /v1/artifacts`) via POST `/agent-runs` | slice 3 ✅ |
+| regenerate/replace | `workspaceStore.regenerateNode()` → POST `/agent-runs` + poll | `AnswerCycleRunController` (`REGENERATE_NODE`) | `AgentOrchestrator.replaceQuestion` (`DRAFT_NODE` redirect) | REGENERATE_NODE run → 1 DECISION (`REQUEST_USER_INPUT` content) → deterministic `RouteService.commitReplacementFromNode` | slice 3 ✅ |
 | graph commands (draft/continuation/relations/undo/redo/resources) | `api/graphCommands.ts` | `GraphCommandService` command layer | none (0 model calls) | existing | already |
 | capabilities | resource attach + planner-visible descriptors | `CapabilityRuntime` + registry | INVOKE_CAPABILITY through descriptor side-effect policy | existing | already |
 
@@ -120,7 +120,47 @@ After:
 
 ### Slice 3 — Artifact/spec + replacement
 
-(filled in when the slice lands)
+Before: spec generation was the synchronous `POST /api/v1/projects/{id}/specs/generate`
+(`AgentOrchestrator.generateSpec`, DRAFT_SPEC over the legacy ModelGateway);
+regeneration was the synchronous `POST /api/v1/projects/{id}/nodes/{id}/regenerate`
+with an authored-replacement compatibility branch and a model-powered branch
+(`AgentOrchestrator.replaceQuestion`, redirected DRAFT_NODE).
+
+After:
+
+- artifact path: `POST /agent-runs` with `operation=GENERATE_ARTIFACT` → 202 +
+  `{runId}` → the worker executes ONE `ARTIFACT_GENERATION` call against a new
+  versioned Python contract (`POST /v1/artifacts`, protocol
+  `agent-artifact.v1`, strict Pydantic with unknown-field rejection, no
+  runtime-owned ids, per-section source grounding). The legacy grounding
+  semantics are preserved verbatim: every section must cite an allowed source
+  ref (`SpecGroundingGate`), all refs are re-validated against the frozen
+  snapshot (`SpecSourceReferenceGuard`), and unresolved items stay derived-only.
+  A route without a tip node is still rejected synchronously with
+  `409 NO_ACTIVE_TIP_NODE`.
+- replacement path: `POST /agent-runs` with `operation=REGENERATE_NODE`
+  (explicit `nodeId`, `sourceRouteId`, optional instruction) → ONE DECISION
+  returns only the replacement question CONTENT; topology stays deterministic
+  in `RouteService.commitReplacementFromNode` (old route SUPERSEDED, new OPEN
+  route with a fresh identity and source-route provenance — unchanged),
+  followed by the durable regenerate context snapshot on the replacement
+  route. Enqueue-time guards keep the readable API errors (unknown/foreign
+  node → 404 NODE_NOT_FOUND, root replacement → 409 REGENERATE_ROOT_NOT_SUPPORTED).
+- retired paths: sync `specs/generate` and `nodes/{id}/regenerate` endpoints,
+  the authored-replacement DTO fields, and — production references now at
+  zero — the whole legacy reasoning chain: `AgentOrchestrator`,
+  `FakeAgentOrchestrator`, `TaskPromptCatalog` (DRAFT_SPEC/DRAFT_NODE),
+  `AgentPromptRenderer`, `StructuredOutputMapper`,
+  `StructuredModelOutputParser`, `NodeReflectionGate`,
+  `ModelContextProjectionBuilder`, the legacy
+  `ModelGateway`/`OpenCodeZenModelGateway`/`FakeModelAdapter` chain, and their
+  dedicated tests. The frozen OpenCode transport survives untouched inside the
+  inference broker (`ModelInferenceGateway` →
+  `OpenCodeModelInferenceGateway`); grounding validators still used by the
+  runtime are kept.
+- frontend: `generateSpec()` and `regenerateNode()` create runs and poll them;
+  FAILED/unknown outcomes reconcile through the shared fail-closed
+  reconciliation helpers before any retry affordance appears.
 
 ## 3. Legacy retirement ledger
 

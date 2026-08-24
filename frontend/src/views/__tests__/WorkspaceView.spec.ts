@@ -10,10 +10,8 @@ import {
   makeGraphWorkspaceView,
   makeNode,
   makeProject,
-  makeRegenerateResponse,
   makeRequirementState,
   makeRoute,
-  makeSpecGeneration,
   makeSpecSnapshot,
 } from '@/test/fixtures'
 import type { GraphWorkspaceView } from '@/api/types'
@@ -52,9 +50,8 @@ import { getProjectGraph } from '@/api/graph'
 import {
   activateRoute as apiActivateRoute,
   forkNode as apiForkNode,
-  regenerateNode as apiRegenerateNode,
 } from '@/api/routes'
-import { generateSpec as apiGenerateSpec, listRouteSpecs } from '@/api/spec'
+import { listRouteSpecs } from '@/api/spec'
 
 const mockedGetProject = vi.mocked(getProject)
 const mockedGetActiveState = vi.mocked(getActiveState)
@@ -320,9 +317,25 @@ describe('WorkspaceView graph shell', () => {
     expect(vi.mocked(apiForkNode)).toHaveBeenCalledWith('p1', 'n1', { sourceRouteId: 'r1', label: '替代路线' })
   })
 
-  it('regenerate dialog submits only the user direction and source route', async () => {
+  it('regenerate dialog submits only the user direction and source route as a run', async () => {
     mockViews()
-    vi.mocked(apiRegenerateNode).mockResolvedValue(makeRegenerateResponse())
+    mockedCreateAgentRun.mockResolvedValue({
+      runId: 'run-regen',
+      operation: 'REGENERATE_NODE',
+      phase: 'CREATED',
+    })
+    mockedGetAgentRun.mockResolvedValue({
+      runId: 'run-regen',
+      projectId: 'p1',
+      routeId: 'r1',
+      operation: 'REGENERATE_NODE',
+      status: 'completed',
+      phase: 'COMPLETED',
+      producedNodeId: 'n-new',
+      producedAnswerId: null,
+      producedPatchId: null,
+      producedSpecSnapshotId: null,
+    })
     const { wrapper, graphUi } = await mountWorkspace()
     graphUi.setFocusRoute('r1')
     await wrapper.findComponent(GraphCanvasStub).vm.$emit('regenerate', 'n2')
@@ -330,25 +343,43 @@ describe('WorkspaceView graph shell', () => {
     await wrapper.find('[data-test="regenerate-instruction"]').setValue('换个更可执行的切入点')
     await wrapper.find('[data-test="regenerate-submit"]').trigger('click')
     await flushPromises()
-    const payload = vi.mocked(apiRegenerateNode).mock.calls[0][2]
-    expect(payload).toEqual({ sourceRouteId: 'r1', instruction: '换个更可执行的切入点' })
+    expect(mockedCreateAgentRun).toHaveBeenCalledWith('p1', {
+      operation: 'REGENERATE_NODE',
+      nodeId: 'n2',
+      sourceRouteId: 'r1',
+      freeText: '换个更可执行的切入点',
+    })
   })
 
   it('spec tab reads the reading route and generates for the active route', async () => {
     mockViews()
     vi.mocked(listRouteSpecs).mockResolvedValue([])
-    vi.mocked(apiGenerateSpec).mockResolvedValue(
-      makeSpecGeneration({ specSnapshot: makeSpecSnapshot({ id: 'spec-1', routeId: 'r1' }) }),
-    )
+    mockedCreateAgentRun.mockResolvedValue({
+      runId: 'run-spec',
+      operation: 'GENERATE_ARTIFACT',
+      phase: 'CREATED',
+    })
+    mockedGetAgentRun.mockResolvedValue({
+      runId: 'run-spec',
+      projectId: 'p1',
+      routeId: 'r-active',
+      operation: 'GENERATE_ARTIFACT',
+      status: 'completed',
+      phase: 'COMPLETED',
+      producedNodeId: null,
+      producedAnswerId: null,
+      producedPatchId: null,
+      producedSpecSnapshotId: 'spec-1',
+    })
     const { wrapper, graphUi } = await mountWorkspace()
     graphUi.setFocusRoute('r1')
     await wrapper.find('[data-test="tab-spec"]').trigger('click')
     await flushPromises()
     expect(wrapper.find('[data-test="generate-spec"]').exists()).toBe(true)
-    vi.mocked(listRouteSpecs).mockResolvedValue([makeSpecSnapshot({ id: 'spec-1', routeId: 'r1' })])
+    vi.mocked(listRouteSpecs).mockResolvedValue([makeSpecSnapshot({ id: 'spec-1', routeId: 'r-active' })])
     await wrapper.find('[data-test="generate-spec"]').trigger('click')
     await flushPromises()
-    expect(vi.mocked(apiGenerateSpec)).toHaveBeenCalledWith('p1')
+    expect(mockedCreateAgentRun).toHaveBeenCalledWith('p1', { operation: 'GENERATE_ARTIFACT' })
     expect(wrapper.find('[data-test="spec-snapshot-detail"]').exists()).toBe(true)
   })
 

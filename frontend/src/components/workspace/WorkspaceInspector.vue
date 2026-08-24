@@ -102,8 +102,8 @@ watch(
 )
 
 async function handleGenerateSpec(): Promise<void> {
-  const result = await workspace.generateSpec()
-  if (result) {
+  const generated = await workspace.generateSpec()
+  if (generated) {
     // The user explicitly asked for the Active route's artifact; focus that
     // returned route so the newly generated snapshot is immediately visible.
     graphUi.setFocusRoute(workspace.activeRoute?.id ?? null)

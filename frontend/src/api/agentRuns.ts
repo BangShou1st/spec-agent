@@ -9,7 +9,12 @@
  */
 import { apiClient } from './client'
 
-export type AgentRunOperation = 'ANSWER_TIP' | 'RESUME_ANSWER' | 'DRAFT_QUESTION'
+export type AgentRunOperation =
+  | 'ANSWER_TIP'
+  | 'RESUME_ANSWER'
+  | 'DRAFT_QUESTION'
+  | 'GENERATE_ARTIFACT'
+  | 'REGENERATE_NODE'
 
 /** Coarse lifecycle statuses returned by GET /agent-runs/{runId}. */
 export type AgentRunStatus =
@@ -65,8 +70,10 @@ export interface AgentRunView {
 
 export interface CreateAgentRunPayload {
   operation: AgentRunOperation
-  /** Node being answered; backend falls back to the active route tip when omitted. */
+  /** Node being answered/regenerated; backend falls back to the active route tip when omitted. */
   nodeId?: string | null
+  /** Required for REGENERATE_NODE: the explicit source route of the replacement. */
+  sourceRouteId?: string | null
   selectedOptionId?: string | null
   freeText?: string | null
   /** Required for RESUME_ANSWER: the persisted Answer id being resumed. */
@@ -80,6 +87,7 @@ export function createAgentRun(
   return apiClient.post<AgentRunCreated>(`/projects/${projectId}/agent-runs`, {
     operation: payload.operation,
     nodeId: payload.nodeId ?? null,
+    sourceRouteId: payload.sourceRouteId ?? null,
     selectedOptionId: payload.selectedOptionId ?? null,
     freeText: payload.freeText ?? null,
     answerId: payload.answerId ?? null,

@@ -1,0 +1,22 @@
+{
+  "artifactType": "spec_snapshot",
+  "sections": [
+    {
+      "title": "Overview",
+      "content": "用户澄清了主要目标：明确最重要的成果。",
+      "sourceRefs": [
+        "{{CONTEXT_REF}}"
+      ]
+    },
+    {
+      "title": "Open Questions",
+      "content": "范围边界尚未确认，需要用户进一步澄清。",
+      "sourceRefs": [
+        "{{CONTEXT_REF}}"
+      ]
+    }
+  ],
+  "unresolvedItems": [
+    "范围边界尚未确认。"
+  ]
+}

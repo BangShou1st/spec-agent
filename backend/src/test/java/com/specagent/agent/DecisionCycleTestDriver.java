@@ -8,8 +8,8 @@ import java.util.UUID;
 
 /**
  * Test-only driver for the async question draft: enqueues a DRAFT_QUESTION
- * run and executes it synchronously through the worker. Replaces the retired
- * synchronous {@code AgentOrchestrator.draftNextQuestion} in test fixtures so
+ * run and executes it synchronously through the worker. Drives exactly the
+ * production draft path in test fixtures so
  * isolation/recovery suites exercise exactly the production draft path.
  */
 @Component
@@ -33,6 +33,40 @@ public class DecisionCycleTestDriver {
         var claimed = runService.claimDecisionCycleRun(enqueued.id())
                 .orElseThrow(() -> new IllegalStateException(
                         "Expected queued decision-cycle run " + enqueued.id()));
+        worker.executeRun(claimed);
+        return runService.getRun(enqueued.id())
+                .orElseThrow(() -> new IllegalStateException(
+                        "Run disappeared: " + enqueued.id()));
+    }
+
+    /**
+     * Generates a spec snapshot on the project's active route through the
+     * production artifact path.
+     */
+    public AgentRun generateSpec(UUID projectId) {
+        AgentRun enqueued = runService.createQueuedArtifactGeneration(projectId);
+        var claimed = runService.claimNextArtifact()
+                .filter(run -> run.id().equals(enqueued.id()))
+                .orElseThrow(() -> new IllegalStateException(
+                        "Expected queued artifact run " + enqueued.id()));
+        worker.executeRun(claimed);
+        return runService.getRun(enqueued.id())
+                .orElseThrow(() -> new IllegalStateException(
+                        "Run disappeared: " + enqueued.id()));
+    }
+
+    /**
+     * Regenerates the given node on its explicit source route through the
+     * production replacement path.
+     */
+    public AgentRun regenerateNode(UUID projectId, UUID sourceRouteId,
+                                   UUID nodeId, String instruction) {
+        AgentRun enqueued = runService.createQueuedRegenerate(
+                projectId, sourceRouteId, nodeId, instruction);
+        var claimed = runService.claimNextRegenerate()
+                .filter(run -> run.id().equals(enqueued.id()))
+                .orElseThrow(() -> new IllegalStateException(
+                        "Expected queued regenerate run " + enqueued.id()));
         worker.executeRun(claimed);
         return runService.getRun(enqueued.id())
                 .orElseThrow(() -> new IllegalStateException(

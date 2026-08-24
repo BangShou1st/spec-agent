@@ -1,6 +1,7 @@
 package com.specagent.agent.decision;
 
 import com.specagent.agent.runtime.AgentBrainProperties;
+import com.specagent.agent.contract.AgentArtifactResponse;
 import com.specagent.agent.contract.AgentContracts;
 import com.specagent.agent.contract.AgentProtocol;
 import com.specagent.agent.contract.AgentRequestEnvelope;
@@ -46,6 +47,30 @@ public class RemotePythonDecisionEngine implements AgentDecisionEngine {
     @Override
     public AgentResponseEnvelope runDecision(AgentRequestEnvelope request) {
         return call(request, "/v1/decisions", false);
+    }
+
+    @Override
+    public AgentArtifactResponse runArtifactGeneration(AgentRequestEnvelope request) {
+        String responseJson;
+        try {
+            responseJson = restClient.post()
+                    .uri("/v1/artifacts")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(AgentContracts.write(request))
+                    .retrieve()
+                    .body(String.class);
+        } catch (RestClientException ex) {
+            throw new AgentBrainUnavailableException(
+                    "Agent brain call failed: /v1/artifacts", ex);
+        }
+        if (responseJson == null || responseJson.isBlank()) {
+            throw new AgentBrainUnavailableException(
+                    "Agent brain returned an empty response: /v1/artifacts", null);
+        }
+        AgentArtifactResponse response =
+                AgentContracts.read(responseJson, AgentArtifactResponse.class);
+        AgentBrainResponseValidator.validateArtifact(request, response);
+        return response;
     }
 
     private AgentResponseEnvelope call(AgentRequestEnvelope request,

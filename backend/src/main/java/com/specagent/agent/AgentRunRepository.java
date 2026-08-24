@@ -273,6 +273,35 @@ public class AgentRunRepository {
                 rowMapper).stream().findFirst();
     }
 
+    /** Atomically claims the oldest queued artifact-generation run. */
+    public Optional<AgentRun> claimNextArtifactRun() {
+        return claimNextByTrigger(AgentRunTriggerType.GENERATE_SPEC);
+    }
+
+    /** Atomically claims the oldest queued replacement run. */
+    public Optional<AgentRun> claimNextRegenerateRun() {
+        return claimNextByTrigger(AgentRunTriggerType.REGENERATE_NODE);
+    }
+
+    private Optional<AgentRun> claimNextByTrigger(AgentRunTriggerType trigger) {
+        String sql = """
+                UPDATE agent_runs SET status = :running
+                WHERE id = (
+                    SELECT id FROM agent_runs
+                    WHERE trigger_type = :trigger AND status = :created
+                    ORDER BY created_at
+                    LIMIT 1
+                    FOR UPDATE SKIP LOCKED
+                )
+                RETURNING *
+                """;
+        return jdbcTemplate.query(sql, Maps.of(
+                        "running", AgentRunStatus.RUNNING.code(),
+                        "trigger", trigger.code(),
+                        "created", AgentRunStatus.CREATED.code()),
+                rowMapper).stream().findFirst();
+    }
+
     /**
      * Atomically claims one specific queued decision-cycle run by id. The
      * claim stays conditional on the CREATED status, so a run already claimed
@@ -281,12 +310,13 @@ public class AgentRunRepository {
     public Optional<AgentRun> claimDecisionCycleRun(UUID runId) {
         String sql = """
                 UPDATE agent_runs SET status = :running
-                WHERE id = :id AND trigger_type = :trigger AND status = :created
+                WHERE id = CAST(:id AS uuid)
+                  AND trigger_type = :trigger AND status = :created
                 RETURNING *
                 """;
         return jdbcTemplate.query(sql, Maps.of(
                         "running", AgentRunStatus.RUNNING.code(),
-                        "id", runId,
+                        "id", runId.toString(),
                         "trigger", AgentRunTriggerType.DECISION_CYCLE.code(),
                         "created", AgentRunStatus.CREATED.code()),
                 rowMapper).stream().findFirst();

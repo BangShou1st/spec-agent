@@ -25,6 +25,10 @@ import java.util.UUID;
  *       with policy + execution.</li>
  *   <li>ANSWER_CYCLE → AnswerCycleService: 2-call convergence with policy +
  *       execution.</li>
+ *   <li>GENERATE_SPEC → ArtifactCycleService: single ARTIFACT_GENERATION call
+ *       with preserved grounding gates.</li>
+ *   <li>REGENERATE_NODE → ReplacementCycleService: single DECISION content +
+ *       deterministic topology commit.</li>
  * </ul>
  */
 @Component
@@ -38,6 +42,8 @@ public class RunWorker {
     private final AgentRunEventService eventService;
     private final AnswerCycleService answerCycleService;
     private final DecisionCycleService decisionCycleService;
+    private final ArtifactCycleService artifactCycleService;
+    private final ReplacementCycleService replacementCycleService;
     private final NodeQueryService nodeQueryService;
 
     public RunWorker(RunService runService,
@@ -46,6 +52,8 @@ public class RunWorker {
                             AgentRunEventService eventService,
                             AnswerCycleService answerCycleService,
                             DecisionCycleService decisionCycleService,
+                            ArtifactCycleService artifactCycleService,
+                            ReplacementCycleService replacementCycleService,
                             NodeQueryService nodeQueryService) {
         this.runService = runService;
         this.agentRunService = agentRunService;
@@ -53,6 +61,8 @@ public class RunWorker {
         this.eventService = eventService;
         this.answerCycleService = answerCycleService;
         this.decisionCycleService = decisionCycleService;
+        this.artifactCycleService = artifactCycleService;
+        this.replacementCycleService = replacementCycleService;
         this.nodeQueryService = nodeQueryService;
     }
 
@@ -61,6 +71,8 @@ public class RunWorker {
         // Try DECISION_CYCLE first, then ANSWER_CYCLE, then NODE_QUERY.
         runService.claimNext().ifPresent(this::executeRun);
         runService.claimNextAnswerCycle().ifPresent(this::executeRun);
+        runService.claimNextArtifact().ifPresent(this::executeRun);
+        runService.claimNextRegenerate().ifPresent(this::executeRun);
         runService.claimNextNodeQuery().ifPresent(this::executeRun);
     }
 
@@ -68,12 +80,51 @@ public class RunWorker {
      * Dispatches a claimed run to the appropriate handler based on trigger type.
      */
     public void executeRun(AgentRun run) {
-        if (run.triggerType() == AgentRunTriggerType.ANSWER_CYCLE) {
-            executeAnswerCycle(run);
-        } else if (run.triggerType() == AgentRunTriggerType.NODE_QUERY) {
-            executeNodeQuery(run);
-        } else {
-            executeDecisionCycle(run);
+        switch (run.triggerType()) {
+            case ANSWER_CYCLE -> executeAnswerCycle(run);
+            case NODE_QUERY -> executeNodeQuery(run);
+            case GENERATE_SPEC -> executeArtifactGeneration(run);
+            case REGENERATE_NODE -> executeRegenerate(run);
+            default -> executeDecisionCycle(run);
+        }
+    }
+
+    /**
+     * Spec snapshot generation: one ARTIFACT_GENERATION call plus the
+     * preserved grounding gates in {@link ArtifactCycleService}.
+     */
+    private void executeArtifactGeneration(AgentRun run) {
+        UUID runId = run.id();
+        try {
+            artifactCycleService.generateSpec(run);
+        } catch (RuntimeException ex) {
+            failIfNotTerminal(runId, ex);
+            throw ex;
+        }
+    }
+
+    /**
+     * Replacement: one DECISION for the content, deterministic topology
+     * commit in {@link ReplacementCycleService}.
+     */
+    private void executeRegenerate(AgentRun run) {
+        UUID runId = run.id();
+        try {
+            Map<String, Object> input = readRunInput(runId);
+            UUID sourceRouteId = input.containsKey("routeId")
+                    ? UUID.fromString((String) input.get("routeId")) : run.routeId();
+            UUID targetNodeId = input.containsKey("nodeId")
+                    ? UUID.fromString((String) input.get("nodeId")) : run.inputNodeId();
+            String instruction = (String) input.get("freeText");
+            if (sourceRouteId == null || targetNodeId == null) {
+                throw new IllegalStateException(
+                        "Replacement run is missing input parameters");
+            }
+            replacementCycleService.regenerate(
+                    run, run.projectId(), sourceRouteId, targetNodeId, instruction);
+        } catch (RuntimeException ex) {
+            failIfNotTerminal(runId, ex);
+            throw ex;
         }
     }
 

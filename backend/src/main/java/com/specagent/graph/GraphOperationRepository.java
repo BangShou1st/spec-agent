@@ -115,8 +115,32 @@ public class GraphOperationRepository {
                                  String causedBy) {
         GraphOperation operation = new GraphOperation(
                 Ids.random(), projectId, actor, type, targets, beforeRefs, afterRefs,
-                causedBy, type.reversibleByDefault(), GraphOperation.Status.ACTIVE, Instant.now(), null);
+                causedBy, type.reversibleByDefault(), GraphOperation.Status.ACTIVE,
+                nextTimestamp(), null);
         save(operation);
         return operation;
     }
+
+    /**
+     * Strictly increasing wall-clock timestamps for operation lifecycle
+     * stamps. Undo/redo cutoff compares createdAt against undoneAt with a
+     * strict "after", so two operations stamped with the same Instant would
+     * make new work invisible to the cutoff check; this tick guarantees a
+     * total order within one node.
+     */
+    public static Instant nextTimestamp() {
+        while (true) {
+            Instant candidate = Instant.now();
+            Instant last = LAST_TICK.get();
+            if (!candidate.isAfter(last)) {
+                candidate = last.plusNanos(1_000);
+            }
+            if (LAST_TICK.compareAndSet(last, candidate)) {
+                return candidate;
+            }
+        }
+    }
+
+    private static final java.util.concurrent.atomic.AtomicReference<Instant> LAST_TICK =
+            new java.util.concurrent.atomic.AtomicReference<>(Instant.EPOCH);
 }
