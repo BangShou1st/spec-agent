@@ -100,6 +100,8 @@ jobs:
         env:
           SPRING_PROFILES_ACTIVE: test
           SPEC_AGENT_MODEL_GATEWAY: fake
+          SPEC_AGENT_BRAIN_ENABLED: true
+          SPEC_AGENT_BRAIN_WORKER_ENABLED: true
           SERVER_PORT: 8080
           SPEC_AGENT_DB_PORT: 5434
         run: |
