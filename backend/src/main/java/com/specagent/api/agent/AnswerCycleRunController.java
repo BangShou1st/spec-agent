@@ -70,21 +70,14 @@ public class AnswerCycleRunController {
             return acceptedRun(replay.get());
         }
 
-        // Active-route operations are allowed to fail as a stable 409 when a
-        // concurrent archive/restore changed the project between UI refreshes.
-        // Idempotent replays above intentionally bypass this state check.
-        if (!"REGENERATE_NODE".equals(operation)) {
-            com.specagent.api.common.CommandExecution.requireActiveRoute(
-                    com.specagent.api.common.CommandExecution.requireProject(projectService, projectId),
-                    routeService);
-        }
-
         if ("DRAFT_QUESTION".equals(operation)) {
+            requireActiveRoute(projectId);
             return acceptedRun(runService.createQueuedDraftQuestion(
                     projectId, idempotencyKey, requestFingerprint));
         }
 
         if ("GENERATE_ARTIFACT".equals(operation)) {
+            requireActiveRoute(projectId);
             UUID activeRouteId = runService.getActiveRouteId(projectId);
             var route = routeService.getRoute(activeRouteId)
                     .orElseThrow(() -> new IllegalStateException(
@@ -119,6 +112,10 @@ public class AnswerCycleRunController {
                     request.freeText(), idempotencyKey, requestFingerprint));
         }
 
+        if ("ANSWER_TIP".equals(operation) || "RESUME_ANSWER".equals(operation)) {
+            requireActiveRoute(projectId);
+        }
+
         UUID answerId = request.answerId();
         if ("ANSWER_TIP".equals(operation) && request.nodeId() != null && answerId == null) {
             UUID activeRouteId = runService.getActiveRouteId(projectId);
@@ -144,6 +141,12 @@ public class AnswerCycleRunController {
                 request.selectedOptionId(), request.freeText(), answerId,
                 idempotencyKey, requestFingerprint);
         return acceptedRun(run);
+    }
+
+    private void requireActiveRoute(UUID projectId) {
+        com.specagent.api.common.CommandExecution.requireActiveRoute(
+                com.specagent.api.common.CommandExecution.requireProject(projectService, projectId),
+                routeService);
     }
 
     private ResponseEntity<Map<String, Object>> acceptedRun(AgentRun run) {

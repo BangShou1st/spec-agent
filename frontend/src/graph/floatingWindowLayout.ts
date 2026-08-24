@@ -74,12 +74,14 @@ export function computeAutoFloatingWindowLayout({
   }
 
   // On a small viewport, a preferred window can be wider than the free space
-  // beside a node. Try the available side widths before accepting overlap.
+  // beside a node. Try a constrained responsive width before accepting
+  // overlap; manual resizing still enforces the normal minimum width.
+  const responsiveMinWidth = Math.max(200, range.minWidth - 80)
   for (const obstacle of obstacles) {
     const leftSpace = obstacle.x - margin - gap
     const rightSpace = viewportWidth - obstacle.x - obstacle.width - margin - gap
     for (const available of [leftSpace, rightSpace]) {
-      if (available >= range.minWidth) {
+      if (available >= responsiveMinWidth) {
         addDimension(Math.min(preferredWidth, available), preferredHeight)
       }
     }

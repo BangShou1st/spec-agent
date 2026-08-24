@@ -310,6 +310,18 @@ class AnswerCycleRunApiIntegrationTest {
                 .andExpect(jsonPath("$.code").value("NO_ACTIVE_ROUTE"));
     }
 
+    @Test
+    void invalidRegenerateRequestWithoutActiveRouteReturnsBadRequestBeforeRouteConflict() throws Exception {
+        Project project = projectService.createProject("Invalid regenerate without active route project");
+        routeService.archiveRoute(project.id(), project.activeRouteId());
+
+        mockMvc.perform(post("/api/v1/projects/{projectId}/agent-runs", project.id())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"operation\":\"REGENERATE_NODE\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("REGENERATE_TARGET_REQUIRED"));
+    }
+
     private String extractString(String json, String field) {
         try {
             JsonNode node = objectMapper.readTree(json);

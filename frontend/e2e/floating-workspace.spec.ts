@@ -70,9 +70,18 @@ test('auto layout remains usable on a small viewport and keeps float windows apa
   await page.getByTestId('draft-question').click()
   const current = page.locator('.graph-question-node--current')
   await expect(current).toBeVisible()
-  // The small viewport may leave less than the preferred inspector width, so
-  // assert the product requirement at the interaction boundary: the input is
-  // still directly actionable without force-clicking through the overlay.
-  await page.getByTestId('free-text').fill('small viewport input')
-  await expect(page.getByTestId('free-text')).toHaveValue('small viewport input')
+  await expect.poll(() => boxesDoNotOverlap(
+    page.getByTestId('floating-window-inspector'),
+    current,
+  )).toBe(true)
+
+  // Exercise the graph node itself after generation; this catches an overlay
+  // that looks separated in screenshots but still intercepts pointer input.
+  await current.hover()
+  const nodeInput = current.getByTestId('free-text')
+  await nodeInput.click()
+  await expect(nodeInput).toBeFocused()
+
+  await nodeInput.fill('small viewport input')
+  await expect(nodeInput).toHaveValue('small viewport input')
 })

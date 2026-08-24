@@ -32,4 +32,21 @@ describe('floating window auto layout', () => {
     expect(result.y + result.height).toBeLessThanOrEqual(600 - 16)
     expect(floatingRectsOverlap(result, { x: 600, y: 170, width: 150, height: 220 }, 16)).toBe(false)
   })
+
+  it('uses a constrained side width to keep both windows off the current node', () => {
+    const currentNode = { x: 290, y: 227, width: 320, height: 281 }
+    const routes = { x: 626, y: 88, width: 258, height: 560 }
+    const result = computeAutoFloatingWindowLayout({
+      viewportWidth: 900,
+      viewportHeight: 664,
+      state: { x: 16, y: 16, width: 420, height: 632, open: true, positionMode: 'auto' },
+      range,
+      obstacles: [currentNode, routes],
+      protectedObstacles: [currentNode, routes],
+    })
+
+    expect(result.width).toBeLessThan(range.minWidth)
+    expect(floatingRectsOverlap(result, currentNode, 16)).toBe(false)
+    expect(floatingRectsOverlap(result, routes, 16)).toBe(false)
+  })
 })
