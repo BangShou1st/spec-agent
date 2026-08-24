@@ -9,14 +9,13 @@ import com.specagent.project.ProjectService;
 import com.specagent.route.Route;
 import com.specagent.route.RouteHistoryResolver;
 import com.specagent.route.RouteService;
+import com.specagent.readmodel.lineage.ReadModelLineageWalker;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -45,9 +44,6 @@ import java.util.UUID;
  */
 @Service
 public class GraphWorkspaceQueryService {
-
-    /** Same defensive depth bound used by the runtime lineage walk. */
-    private static final int MAX_LINEAGE_DEPTH = 10_000;
 
     private final ProjectService projectService;
     private final RouteService routeService;
@@ -113,25 +109,15 @@ public class GraphWorkspaceQueryService {
             return List.of();
         }
 
-        List<Node> fromTipToRoot = new ArrayList<>();
-        Set<UUID> visited = new HashSet<>();
-        UUID current = route.tipNodeId();
+        List<Node> rootToTip;
+        try {
+            rootToTip = ReadModelLineageWalker.walk(route.tipNodeId(), nodeService::getNode);
+        } catch (ReadModelLineageWalker.LineageTraversalException ex) {
+            throw GraphWorkspaceQueryException.of(
+                    GraphWorkspaceQueryException.Reason.INVARIANT_VIOLATION, ex.getMessage());
+        }
 
-        while (current != null) {
-            if (!visited.add(current)) {
-                throw GraphWorkspaceQueryException.of(
-                        GraphWorkspaceQueryException.Reason.INVARIANT_VIOLATION,
-                        "Route lineage contains a cycle");
-            }
-            if (fromTipToRoot.size() >= MAX_LINEAGE_DEPTH) {
-                throw GraphWorkspaceQueryException.of(
-                        GraphWorkspaceQueryException.Reason.INVARIANT_VIOLATION,
-                        "Route lineage exceeds maximum depth");
-            }
-            Node node = nodeService.getNode(current)
-                    .orElseThrow(() -> GraphWorkspaceQueryException.of(
-                            GraphWorkspaceQueryException.Reason.INVARIANT_VIOLATION,
-                            "A node in the route lineage does not resolve"));
+        for (Node node : rootToTip) {
             if (!node.projectId().equals(projectId)) {
                 // Fail closed: neither the foreign node nor any node beyond it
                 // may be exposed in the response.
@@ -139,13 +125,6 @@ public class GraphWorkspaceQueryService {
                         GraphWorkspaceQueryException.Reason.INVARIANT_VIOLATION,
                         "A node in the route lineage belongs to another project");
             }
-            fromTipToRoot.add(node);
-            current = node.parentNodeId();
-        }
-
-        List<Node> rootToTip = new ArrayList<>();
-        for (int i = fromTipToRoot.size() - 1; i >= 0; i--) {
-            rootToTip.add(fromTipToRoot.get(i));
         }
 
         if (route.rootNodeId() == null) {

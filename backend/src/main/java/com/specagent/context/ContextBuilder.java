@@ -17,11 +17,9 @@ import org.springframework.stereotype.Service;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
 import java.util.Objects;
@@ -328,24 +326,7 @@ public class ContextBuilder {
      * appear in it.
      */
     private List<UUID> resolveLineage(UUID tipNodeId) {
-        List<UUID> chain = new ArrayList<>();
-        UUID current = tipNodeId;
-        int guard = 0;
-        Set<UUID> seen = new HashSet<>();
-        while (current != null && !seen.contains(current)) {
-            seen.add(current);
-            chain.add(current);
-            UUID parent = nodeRepository.findById(current)
-                    .map(Node::parentNodeId)
-                    .orElse(null);
-            current = parent;
-            if (++guard > 10_000) {
-                throw new IllegalStateException("Node lineage exceeds maximum depth");
-            }
-        }
-        List<UUID> rootToTip = new ArrayList<>(chain);
-        java.util.Collections.reverse(rootToTip);
-        return rootToTip;
+        return routeHistoryResolver.resolveLineage(tipNodeId);
     }
 
     private String computeHash(ContextOperationType operationType,

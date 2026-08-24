@@ -4,14 +4,12 @@ import com.specagent.node.Node;
 import com.specagent.node.NodeService;
 import com.specagent.project.Project;
 import com.specagent.project.ProjectService;
+import com.specagent.readmodel.lineage.ReadModelLineageWalker;
 import com.specagent.route.Route;
 import com.specagent.route.RouteService;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -39,9 +37,6 @@ import java.util.UUID;
  */
 @Service
 public class RouteLineageQueryService {
-
-    /** Same defensive depth bound used by the runtime lineage walk. */
-    private static final int MAX_LINEAGE_DEPTH = 10_000;
 
     private final ProjectService projectService;
     private final RouteService routeService;
@@ -80,25 +75,15 @@ public class RouteLineageQueryService {
     }
 
     private List<RouteLineageNodeView> resolveLineage(UUID projectId, Route route) {
-        List<Node> fromTipToRoot = new ArrayList<>();
-        Set<UUID> visited = new HashSet<>();
-        UUID current = route.tipNodeId();
+        List<Node> rootToTip;
+        try {
+            rootToTip = ReadModelLineageWalker.walk(route.tipNodeId(), nodeService::getNode);
+        } catch (ReadModelLineageWalker.LineageTraversalException ex) {
+            throw RouteLineageQueryException.of(
+                    RouteLineageQueryException.Reason.INVARIANT_VIOLATION, ex.getMessage());
+        }
 
-        while (current != null) {
-            if (!visited.add(current)) {
-                throw RouteLineageQueryException.of(
-                        RouteLineageQueryException.Reason.INVARIANT_VIOLATION,
-                        "Route lineage contains a cycle");
-            }
-            if (fromTipToRoot.size() >= MAX_LINEAGE_DEPTH) {
-                throw RouteLineageQueryException.of(
-                        RouteLineageQueryException.Reason.INVARIANT_VIOLATION,
-                        "Route lineage exceeds maximum depth");
-            }
-            Node node = nodeService.getNode(current)
-                    .orElseThrow(() -> RouteLineageQueryException.of(
-                            RouteLineageQueryException.Reason.INVARIANT_VIOLATION,
-                            "A node in the route lineage does not resolve"));
+        for (Node node : rootToTip) {
             if (!node.projectId().equals(projectId)) {
                 // Fail closed: neither the foreign node nor any node beyond it
                 // may be exposed in the response.
@@ -106,25 +91,22 @@ public class RouteLineageQueryService {
                         RouteLineageQueryException.Reason.INVARIANT_VIOLATION,
                         "A node in the route lineage belongs to another project");
             }
-            fromTipToRoot.add(node);
-            current = node.parentNodeId();
         }
 
-        List<RouteLineageNodeView> rootToTip = new ArrayList<>();
-        for (int i = fromTipToRoot.size() - 1; i >= 0; i--) {
-            rootToTip.add(RouteLineageNodeView.from(fromTipToRoot.get(i)));
-        }
+        List<RouteLineageNodeView> views = rootToTip.stream()
+                .map(RouteLineageNodeView::from)
+                .toList();
 
         if (route.rootNodeId() == null) {
             throw RouteLineageQueryException.of(
                     RouteLineageQueryException.Reason.INVARIANT_VIOLATION,
                     "Route has a tip node but no root node");
         }
-        if (!route.rootNodeId().equals(rootToTip.get(0).id())) {
+        if (!route.rootNodeId().equals(views.get(0).id())) {
             throw RouteLineageQueryException.of(
                     RouteLineageQueryException.Reason.INVARIANT_VIOLATION,
                     "Route root node does not match the resolved lineage");
         }
-        return List.copyOf(rootToTip);
+        return List.copyOf(views);
     }
 }
