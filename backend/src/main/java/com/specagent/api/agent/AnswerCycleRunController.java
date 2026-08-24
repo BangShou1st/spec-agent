@@ -1,6 +1,7 @@
 package com.specagent.api.agent;
 
 import com.specagent.agent.AgentRun;
+import com.specagent.agent.AgentRunRequestFingerprint;
 import com.specagent.agent.AgentRunService;
 import com.specagent.agent.runevent.AgentRunEvent;
 import com.specagent.agent.runevent.AgentRunEventService;
@@ -17,18 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-/**
- * Async agent-run command + run read surface.
- *
- * <p>POST enqueues a run (202 + runId) with an explicit operation:
- * {@code ANSWER_TIP} for a fresh answer, {@code RESUME_ANSWER} to resume the
- * persisted Answer of a failed cycle (never a second Answer), and
- * {@code DRAFT_QUESTION} for the pure-continuation question draft. The
- * background worker executes the cycle; clients poll
- * {@code GET .../agent-runs/{runId}} until a terminal status. The read view
- * exposes the real persisted phase (latest run event) and the produced record
- * ids so callers can reconcile without guessing outcomes.
- */
+/** Async agent-run command + polling API. */
 @RestController
 @RequestMapping("/api/v1/projects/{projectId}/agent-runs")
 public class AnswerCycleRunController {
@@ -64,18 +54,21 @@ public class AnswerCycleRunController {
 
         String operation = request.operation();
         String idempotencyKey = request.idempotencyKey();
+        String requestFingerprint = AgentRunRequestFingerprint.forClientRequest(
+                projectId, operation, request.nodeId(), request.sourceRouteId(),
+                request.answerId(), request.selectedOptionId(), request.freeText());
 
-        // Question draft: a pure-continuation DECISION_CYCLE run against the
-        // active route. No node/answer inputs — the runtime owns the target.
-        if ("DRAFT_QUESTION".equals(operation)) {
-            AgentRun draftRun = runService.createQueuedDraftQuestion(
-                    projectId, idempotencyKey);
-            return acceptedRun(draftRun);
+        var replay = agentRunService.findIdempotentReplay(
+                projectId, idempotencyKey, requestFingerprint);
+        if (replay.isPresent()) {
+            return acceptedRun(replay.get());
         }
 
-        // Spec snapshot generation: a derived, read-only artifact run against
-        // the active route tip. A route without a tip can never ground an
-        // artifact — reject synchronously instead of enqueueing a doomed run.
+        if ("DRAFT_QUESTION".equals(operation)) {
+            return acceptedRun(runService.createQueuedDraftQuestion(
+                    projectId, idempotencyKey, requestFingerprint));
+        }
+
         if ("GENERATE_ARTIFACT".equals(operation)) {
             UUID activeRouteId = runService.getActiveRouteId(projectId);
             var route = routeService.getRoute(activeRouteId)
@@ -86,23 +79,17 @@ public class AnswerCycleRunController {
                         "NO_ACTIVE_TIP_NODE",
                         "The active route has no tip node to generate a spec from");
             }
-            AgentRun artifactRun = runService.createQueuedArtifactGeneration(
-                    projectId, idempotencyKey);
-            return acceptedRun(artifactRun);
+            return acceptedRun(runService.createQueuedArtifactGeneration(
+                    projectId, idempotencyKey, requestFingerprint));
         }
 
-        // Replacement: one DECISION for the content, deterministic topology.
-        // The source route is explicit and never resolved by fallback; the
-        // same readable-state guards as before the cutover apply at enqueue
-        // time so doomed runs never enter the queue.
         if ("REGENERATE_NODE".equals(operation)) {
             if (request.nodeId() == null || request.sourceRouteId() == null) {
                 throw com.specagent.api.common.ApiException.badRequest(
                         "REGENERATE_TARGET_REQUIRED",
                         "Replacement requires an explicit source route and node");
             }
-            com.specagent.api.common.CommandExecution.requireProject(
-                    projectService, projectId);
+            com.specagent.api.common.CommandExecution.requireProject(projectService, projectId);
             var target = com.specagent.api.common.CommandExecution.requireNodeInProject(
                     projectService, nodeService, projectId, request.nodeId());
             com.specagent.api.common.CommandExecution.requireRouteInProject(
@@ -112,19 +99,12 @@ public class AnswerCycleRunController {
                         "REGENERATE_ROOT_NOT_SUPPORTED",
                         "Root node regeneration is not supported");
             }
-            AgentRun regenerateRun = runService.createQueuedRegenerate(
+            return acceptedRun(runService.createQueuedRegenerate(
                     projectId, request.sourceRouteId(), request.nodeId(),
-                    request.freeText(), idempotencyKey);
-            return acceptedRun(regenerateRun);
+                    request.freeText(), idempotencyKey, requestFingerprint));
         }
 
-        // Determine operation: if answer already exists for this node+route,
-        // route to RESUME_ANSWER when the answer's cycle is still unfinished
-        // (the node is still the active tip). When the tip has already moved
-        // past the answered node, the original cycle completed — reject the
-        // duplicate synchronously instead of enqueueing a doomed run.
         UUID answerId = request.answerId();
-
         if ("ANSWER_TIP".equals(operation) && request.nodeId() != null && answerId == null) {
             UUID activeRouteId = runService.getActiveRouteId(projectId);
             boolean answerExists = answerService.existsAnswerFor(activeRouteId, request.nodeId());
@@ -147,7 +127,7 @@ public class AnswerCycleRunController {
         AgentRun run = runService.createQueuedRunWithInputResult(
                 projectId, operation, request.nodeId(),
                 request.selectedOptionId(), request.freeText(), answerId,
-                idempotencyKey);
+                idempotencyKey, requestFingerprint);
         return acceptedRun(run);
     }
 
@@ -161,9 +141,8 @@ public class AnswerCycleRunController {
     }
 
     @GetMapping("/{runId}")
-    public ResponseEntity<?> getRun(
-            @PathVariable UUID projectId,
-            @PathVariable UUID runId) {
+    public ResponseEntity<?> getRun(@PathVariable UUID projectId,
+                                    @PathVariable UUID runId) {
         return agentRunService.getRun(runId)
                 .filter(run -> run.projectId().equals(projectId))
                 .<ResponseEntity<?>>map(run -> ResponseEntity.ok(runView(run)))
@@ -176,8 +155,6 @@ public class AnswerCycleRunController {
         view.put("projectId", run.projectId().toString());
         view.put("routeId", run.routeId().toString());
         view.put("operation", run.operation() != null ? run.operation() : "");
-        // status is the coarse lifecycle state; phase is the latest persisted
-        // run event so progress copy always derives from real runtime phases.
         view.put("status", run.status().code());
         view.put("phase", latestPhaseCode(run.id()));
         view.put("producedNodeId", toStringOrNull(run.producedNodeId()));
@@ -187,7 +164,6 @@ public class AnswerCycleRunController {
         return view;
     }
 
-    /** Latest persisted event phase; CREATED before any event exists. */
     private String latestPhaseCode(UUID runId) {
         List<AgentRunEvent> events = eventService.findByRunId(runId);
         return events.stream()
@@ -196,9 +172,7 @@ public class AnswerCycleRunController {
                 .orElse(AgentRunPhase.CREATED.code());
     }
 
-    private String toStringOrNull(UUID value) {
-        return value == null ? null : value.toString();
-    }
+    private String toStringOrNull(UUID value) { return value == null ? null : value.toString(); }
 
     public record CreateRunRequest(String operation,
                                    UUID nodeId,
@@ -206,11 +180,6 @@ public class AnswerCycleRunController {
                                    UUID selectedOptionId,
                                    String freeText,
                                    UUID answerId,
-                                   /**
-                                    * Stable identity of one user action attempt.
-                                    * Unknown-outcome retries must reuse the same key;
-                                    * a genuinely new action generates a new one.
-                                    */
                                    String idempotencyKey) {
     }
 }
