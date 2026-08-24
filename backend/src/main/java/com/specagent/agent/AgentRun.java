@@ -26,6 +26,7 @@ public class AgentRun {
     private final String trace;
     private final String operation;
     private final String idempotencyKey;
+    private final String requestFingerprint;
     private final Instant createdAt;
     private final Instant completedAt;
 
@@ -43,6 +44,7 @@ public class AgentRun {
                     String trace,
                     String operation,
                     String idempotencyKey,
+                    String requestFingerprint,
                     Instant createdAt,
                     Instant completedAt) {
         this.id = id;
@@ -59,6 +61,7 @@ public class AgentRun {
         this.trace = trace;
         this.operation = operation;
         this.idempotencyKey = idempotencyKey;
+        this.requestFingerprint = requestFingerprint;
         this.createdAt = createdAt;
         this.completedAt = completedAt;
     }
@@ -122,6 +125,14 @@ public class AgentRun {
      */
     public String idempotencyKey() {
         return idempotencyKey;
+    }
+
+    /**
+     * SHA-256 of the canonical logical request for client-idempotent runs.
+     * Historical rows may legitimately have no fingerprint.
+     */
+    public String requestFingerprint() {
+        return requestFingerprint;
     }
 
     public Instant createdAt() {

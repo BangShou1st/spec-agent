@@ -1,6 +1,7 @@
 package com.specagent.api.common;
 
 import com.specagent.agent.ModelContractException;
+import com.specagent.agent.IdempotencyKeyReusedException;
 import com.specagent.agent.runtime.StaleRunTargetException;
 import com.specagent.agent.policy.ProposalAlreadyDecidedException;
 import com.specagent.readmodel.graph.GraphWorkspaceQueryException;
@@ -117,6 +118,14 @@ public class ApiExceptionHandler {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(ApiErrorResponse.of("PROPOSAL_ALREADY_DECIDED",
                         "Proposal has already been decided"));
+    }
+
+    @ExceptionHandler(IdempotencyKeyReusedException.class)
+    public ResponseEntity<ApiErrorResponse> handleIdempotencyKeyReused(
+            IdempotencyKeyReusedException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiErrorResponse.of("IDEMPOTENCY_KEY_REUSED",
+                        "The idempotency key was already used for a different request."));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

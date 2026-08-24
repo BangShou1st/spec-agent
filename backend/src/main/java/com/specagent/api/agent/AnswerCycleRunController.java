@@ -68,12 +68,9 @@ public class AnswerCycleRunController {
         // Question draft: a pure-continuation DECISION_CYCLE run against the
         // active route. No node/answer inputs — the runtime owns the target.
         if ("DRAFT_QUESTION".equals(operation)) {
-            UUID draftRunId = runService.createQueuedDraftQuestion(
-                    projectId, idempotencyKey).id();
-            return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of(
-                    "runId", draftRunId.toString(),
-                    "operation", operation,
-                    "phase", "CREATED"));
+            AgentRun draftRun = runService.createQueuedDraftQuestion(
+                    projectId, idempotencyKey);
+            return acceptedRun(draftRun);
         }
 
         // Spec snapshot generation: a derived, read-only artifact run against
@@ -89,12 +86,9 @@ public class AnswerCycleRunController {
                         "NO_ACTIVE_TIP_NODE",
                         "The active route has no tip node to generate a spec from");
             }
-            UUID artifactRunId = runService.createQueuedArtifactGeneration(
-                    projectId, idempotencyKey).id();
-            return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of(
-                    "runId", artifactRunId.toString(),
-                    "operation", operation,
-                    "phase", "CREATED"));
+            AgentRun artifactRun = runService.createQueuedArtifactGeneration(
+                    projectId, idempotencyKey);
+            return acceptedRun(artifactRun);
         }
 
         // Replacement: one DECISION for the content, deterministic topology.
@@ -118,13 +112,10 @@ public class AnswerCycleRunController {
                         "REGENERATE_ROOT_NOT_SUPPORTED",
                         "Root node regeneration is not supported");
             }
-            UUID regenerateRunId = runService.createQueuedRegenerate(
+            AgentRun regenerateRun = runService.createQueuedRegenerate(
                     projectId, request.sourceRouteId(), request.nodeId(),
-                    request.freeText(), idempotencyKey).id();
-            return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of(
-                    "runId", regenerateRunId.toString(),
-                    "operation", operation,
-                    "phase", "CREATED"));
+                    request.freeText(), idempotencyKey);
+            return acceptedRun(regenerateRun);
         }
 
         // Determine operation: if answer already exists for this node+route,
@@ -153,14 +144,20 @@ public class AnswerCycleRunController {
             }
         }
 
-        UUID runId = runService.createQueuedRunWithInput(
+        AgentRun run = runService.createQueuedRunWithInputResult(
                 projectId, operation, request.nodeId(),
                 request.selectedOptionId(), request.freeText(), answerId,
                 idempotencyKey);
-        return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of(
-                "runId", runId.toString(),
-                "operation", operation,
-                "phase", "CREATED"));
+        return acceptedRun(run);
+    }
+
+    private ResponseEntity<Map<String, Object>> acceptedRun(AgentRun run) {
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("runId", run.id().toString());
+        response.put("operation", run.operation() == null ? "" : run.operation());
+        response.put("status", run.status().code());
+        response.put("phase", latestPhaseCode(run.id()));
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(response);
     }
 
     @GetMapping("/{runId}")

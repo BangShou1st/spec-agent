@@ -41,11 +41,9 @@ public class AgentRunService {
     }
 
     /**
-     * Creates an agent run with an optional client idempotency key. When the
-     * key is non-blank the insert is atomic and idempotent: if another
-     * request already persisted a run with this key — including a concurrent
-     * one that won the insert race — that existing run is returned unchanged
-     * and only one row ever persists.
+     * Legacy non-idempotent run creation entry point. Client-idempotent
+     * mutation paths must call {@link #createWithIdempotency} with their
+     * canonical request fingerprint.
      */
     public AgentRun create(UUID projectId,
                            UUID routeId,
@@ -54,23 +52,51 @@ public class AgentRunService {
                            UUID createdByRunId,
                            String operation,
                            String idempotencyKey) {
+        return createWithIdempotency(projectId, routeId, triggerType, inputNodeId,
+                createdByRunId, operation, idempotencyKey, null).run();
+    }
+
+    /**
+     * Creates a run and returns whether this caller inserted it. For a
+     * client-idempotent request the database arbitrates the project/key race;
+     * a matching fingerprint returns the persisted winner and a mismatch is a
+     * deterministic key-reuse conflict.
+     */
+    public CreateResult createWithIdempotency(UUID projectId,
+                                              UUID routeId,
+                                              AgentRunTriggerType triggerType,
+                                              UUID inputNodeId,
+                                              UUID createdByRunId,
+                                              String operation,
+                                              String idempotencyKey,
+                                              String requestFingerprint) {
         UUID runId = Ids.random();
         Instant now = Instant.now();
+        String normalizedKey = normalizeKey(idempotencyKey);
+        if (normalizedKey != null && (requestFingerprint == null || requestFingerprint.isBlank())) {
+            throw new IllegalArgumentException(
+                    "Client-idempotent agent runs require a request fingerprint");
+        }
         AgentRun run = new AgentRun(runId, projectId, routeId, triggerType, inputNodeId, null,
                 null, null, null, null, AgentRunStatus.CREATED, null, operation,
-                normalizeKey(idempotencyKey), now, null);
-        if (run.idempotencyKey() != null) {
-            // Insert-if-absent is atomic; whether this caller won or lost the
-            // race, re-read and return the persisted winner so every replayed
-            // key resolves to exactly ONE run.
-            agentRunRepository.insertIfAbsent(run);
-            return agentRunRepository.findByIdempotencyKey(run.idempotencyKey())
-                    .orElseThrow(() -> new IllegalStateException(
-                            "Idempotent agent-run row missing after insert: "
-                                    + run.idempotencyKey()));
+                normalizedKey, normalizedKey == null ? null : requestFingerprint, now, null);
+        if (normalizedKey == null) {
+            agentRunRepository.save(run);
+            return new CreateResult(run, true);
         }
-        agentRunRepository.save(run);
-        return run;
+
+        if (agentRunRepository.insertIfAbsent(run)) {
+            return new CreateResult(run, true);
+        }
+
+        AgentRun existing = agentRunRepository
+                .findByProjectIdAndIdempotencyKey(projectId, normalizedKey)
+                .orElseThrow(() -> new IllegalStateException(
+                        "Idempotent agent-run row missing after insert race"));
+        if (requestFingerprint.equals(existing.requestFingerprint())) {
+            return new CreateResult(existing, false);
+        }
+        throw new IdempotencyKeyReusedException();
     }
 
     private String normalizeKey(String idempotencyKey) {
@@ -146,5 +172,8 @@ public class AgentRunService {
 
     public java.util.List<AgentRun> listByProject(UUID projectId) {
         return agentRunRepository.findByProject(projectId);
+    }
+
+    public record CreateResult(AgentRun run, boolean inserted) {
     }
 }
