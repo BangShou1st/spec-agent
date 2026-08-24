@@ -1,8 +1,6 @@
 package com.specagent.route;
 
 import com.specagent.common.Ids;
-import com.specagent.context.ContextBuilder;
-import com.specagent.context.ContextSnapshot;
 import com.specagent.node.Node;
 import com.specagent.node.NodeOption;
 import com.specagent.node.NodeRepository;
@@ -35,20 +33,17 @@ public class RouteService {
     private final ProjectRepository projectRepository;
     private final NodeRepository nodeRepository;
     private final NodeService nodeService;
-    private final ContextBuilder contextBuilder;
     private final RouteHistoryResolver routeHistoryResolver;
 
     public RouteService(RouteRepository routeRepository,
                         ProjectRepository projectRepository,
                         NodeRepository nodeRepository,
                         NodeService nodeService,
-                        ContextBuilder contextBuilder,
                         RouteHistoryResolver routeHistoryResolver) {
         this.routeRepository = routeRepository;
         this.projectRepository = projectRepository;
         this.nodeRepository = nodeRepository;
         this.nodeService = nodeService;
-        this.contextBuilder = contextBuilder;
         this.routeHistoryResolver = routeHistoryResolver;
     }
 
@@ -264,102 +259,6 @@ public class RouteService {
         Route updatedReplacement = routeRepository.findById(replacementRouteId)
                 .orElseThrow(() -> new IllegalStateException("Replacement route not found after commit"));
         return new RegenerateResult(updatedSource, updatedReplacement, replacementNode, null);
-    }
-
-    /**
-     * Deterministically regenerates a historical node without calling a model.
-     *
-     * <p>The old route is marked {@code SUPERSEDED}; a replacement node and a new
-     * open route are created; the new route becomes active. A regenerate context
-     * snapshot is built from the parent lineage only, excluding the target node,
-     * its answers, patches, child subtree, and sibling conclusions.
-     */
-    public RegenerateResult regenerateFromNode(UUID projectId,
-                                                UUID sourceRouteId,
-                                                UUID targetNodeId,
-                                                String userInstruction,
-                                                String replacementQuestion,
-                                                String replacementPurpose,
-                                                List<NodeOption> replacementOptions) {
-        Node targetNode = nodeRepository.findById(targetNodeId)
-                .orElseThrow(() -> new IllegalArgumentException("Target node not found: " + targetNodeId));
-        if (!targetNode.projectId().equals(projectId)) {
-            throw new IllegalArgumentException(
-                    "Target node " + targetNodeId + " does not belong to project " + projectId);
-        }
-
-        // Phase 3.5: Root node regeneration is not supported yet
-        if (targetNode.parentNodeId() == null) {
-            throw new IllegalStateException("Root node regeneration is not supported yet");
-        }
-
-        // The source route is explicit; no active/latest/first-route fallback is
-        // permitted when a canonical node is shared.
-        Route sourceRoute = requireOpenRouteInProject(projectId, sourceRouteId);
-        requireLineageContains(routeHistoryResolver.resolveLineage(sourceRoute.tipNodeId()), targetNodeId);
-        UUID oldRouteId = sourceRoute.id();
-
-        // Mark the old route as SUPERSEDED
-        markRouteSuperseded(oldRouteId);
-
-        // Create the replacement route first; its root inherits the old route's
-        // root and its tip is assigned once the replacement node exists. The old
-        // route's root and tip are never modified.
-        UUID replacementRouteId = Ids.random();
-        Instant now = Instant.now();
-        Route replacementRoute = new Route(
-                replacementRouteId,
-                projectId,
-                sourceRoute.rootNodeId(),
-                null,
-                RouteLifecycleStatus.OPEN,
-                "换题路线",
-                null,
-                oldRouteId,
-                targetNodeId,
-                null,
-                RouteBranchType.REGENERATE,
-                sourceRouteId,
-                targetNodeId,
-                now,
-                now
-        );
-        routeRepository.save(replacementRoute);
-
-        routeHistoryResolver.snapshotInheritedPrefix(
-                replacementRouteId, sourceRouteId, targetNode.parentNodeId(), true);
-
-        // Create the replacement node as part of the replacement route, which
-        // advances only that route's tip to the new node.
-        Node replacementNode = nodeService.createReplacementNode(
-                projectId, replacementRouteId, targetNode.parentNodeId(),
-                targetNodeId, replacementQuestion, replacementPurpose,
-                replacementOptions, true);
-
-        // Build regenerate context snapshot
-        ContextSnapshot contextSnapshot = contextBuilder.buildForRegenerate(
-                projectId,
-                oldRouteId,
-                targetNodeId,
-                replacementRouteId,
-                replacementNode.id(),
-                userInstruction
-        );
-
-        // Update project active route
-        projectRepository.updateActiveRoute(projectId, replacementRouteId, now);
-
-        // Re-read both routes to ensure we have the latest state
-        Route updatedOldRoute = routeRepository.findById(oldRouteId)
-                .orElseThrow(() -> new IllegalStateException("Old route not found after update"));
-        Route updatedReplacementRoute = routeRepository.findById(replacementRouteId)
-                .orElseThrow(() -> new IllegalStateException("Replacement route not found after save"));
-
-        return new RegenerateResult(
-                updatedOldRoute,
-                updatedReplacementRoute,
-                replacementNode,
-                contextSnapshot);
     }
 
     /**

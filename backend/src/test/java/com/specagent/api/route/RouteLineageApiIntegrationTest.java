@@ -162,8 +162,8 @@ class RouteLineageApiIntegrationTest {
     @Test
     void supersededRouteRemainsInspectable() throws Exception {
         Chain chain = createRootChildGrandchild();
-        routeService.regenerateFromNode(chain.project().id(), chain.routeId(), chain.child().id(),
-                "Regenerate", "Replacement question", "Replacement purpose", List.of());
+        routeService.commitReplacementFromNode(chain.project().id(), chain.routeId(), chain.child().id(),
+                null, "Replacement question", "Replacement purpose", List.of(), true);
         Route oldRoute = routeService.getRoute(chain.routeId()).orElseThrow();
         assertThat(oldRoute.lifecycleStatus()).isEqualTo(RouteLifecycleStatus.SUPERSEDED);
 
@@ -246,9 +246,9 @@ class RouteLineageApiIntegrationTest {
     void replacementRouteContainsParentLineagePlusReplacementNodeOnly() throws Exception {
         Chain chain = createRootChildGrandchild();
 
-        routeService.regenerateFromNode(chain.project().id(), chain.routeId(), chain.child().id(),
-                "Regenerate the scope question", "Replacement scope question",
-                "Replacement purpose", List.of(NodeOption.of("Replacement option", "Impact")));
+        routeService.commitReplacementFromNode(chain.project().id(), chain.routeId(), chain.child().id(),
+                null, "Replacement scope question", "Replacement purpose",
+                List.of(NodeOption.of("Replacement option", "Impact")), true);
 
         UUID replacementRouteId = projectService.getProject(chain.project().id())
                 .orElseThrow().activeRouteId();

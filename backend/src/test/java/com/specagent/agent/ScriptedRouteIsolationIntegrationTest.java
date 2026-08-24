@@ -3,6 +3,8 @@ package com.specagent.agent;
 import com.specagent.agent.decision.AgentDecisionEngine;
 import com.specagent.agent.contract.AgentRequestEnvelope;
 import com.specagent.common.Json;
+import com.specagent.context.ContextBuilder;
+import com.specagent.context.ContextSnapshot;
 import com.specagent.node.Node;
 import com.specagent.node.NodeOption;
 import com.specagent.node.NodeService;
@@ -59,6 +61,8 @@ class ScriptedRouteIsolationIntegrationTest {
     private AnswerCycleTestDriver answerDriver;
     @Autowired
     private Json json;
+    @Autowired
+    private ContextBuilder contextBuilder;
 
     @SpyBean
     private AgentDecisionEngine decisionEngine;
@@ -188,10 +192,17 @@ class ScriptedRouteIsolationIntegrationTest {
         Node target = nodeService.getNode(targetRun.run().inputNodeId()).orElseThrow();
         Node child = nodeService.getNode(targetRun.producedNodeId()).orElseThrow();
 
-        RegenerateResult regen = routeService.regenerateFromNode(
-                project.id(), targetRun.run().routeId(), target.id(), REGEN_INSTRUCTION,
+        RegenerateResult committed = routeService.commitReplacementFromNode(
+                project.id(), targetRun.run().routeId(), target.id(), null,
                 "A sharper replacement question", "A sharper purpose",
-                List.of(NodeOption.of("Option label", "Option impact")));
+                List.of(NodeOption.of("Option label", "Option impact")), true);
+        ContextSnapshot context = contextBuilder.buildForRegenerate(
+                project.id(), targetRun.run().routeId(), target.id(),
+                committed.replacementRoute().id(), committed.replacementNode().id(),
+                REGEN_INSTRUCTION);
+        RegenerateResult regen = new RegenerateResult(
+                committed.oldRoute(), committed.replacementRoute(),
+                committed.replacementNode(), context);
 
         // The frozen regenerate context carries only the shared parent lineage,
         // old question text and the user instruction.
