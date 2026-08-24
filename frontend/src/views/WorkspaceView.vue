@@ -91,8 +91,8 @@ function graphObstacles(): FloatingRect[] {
   if (!body) return []
   const bodyBox = body.getBoundingClientRect()
   return Array.from(body.querySelectorAll<HTMLElement>(
-    '[data-test="graph-question-node"], [data-test="graph-knowledge-node"], '
-      + '[data-test="graph-start-placeholder"], [data-test="graph-toolbar"]',
+    '[data-layout-role="graph-node"], [data-layout-role="start-placeholder"], '
+      + '[data-layout-role="toolbar"]',
   ))
     .map((element) => {
       const box = element.getBoundingClientRect()
@@ -111,9 +111,9 @@ function interactiveObstacles(): FloatingRect[] {
   if (!body) return []
   const bodyBox = body.getBoundingClientRect()
   const selectors = [
-    '[data-test="graph-question-node"].graph-question-node--current',
-    '[data-test="graph-start-placeholder"]',
-    '[data-test="graph-toolbar"]',
+    '[data-layout-role="graph-node"].graph-question-node--current',
+    '[data-layout-role="start-placeholder"]',
+    '[data-layout-role="toolbar"]',
   ]
   const activeNodeId = store.activeState?.activeNode?.id
   if (activeNodeId) selectors.push(`[data-node-id="${activeNodeId}"]`)

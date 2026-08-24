@@ -110,6 +110,7 @@ async function confirmContent(): Promise<void> {
     class="graph-question-node graph-knowledge-node"
     :class="{ 'graph-question-node--shared': data.isShared }"
     data-test="graph-knowledge-node"
+    data-layout-role="graph-node"
     :data-node-id="data.node.id"
   >
     <Handle

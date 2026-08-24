@@ -25,7 +25,7 @@ defineEmits<{
 </script>
 
 <template>
-  <div class="graph-toolbar" data-test="graph-toolbar">
+  <div class="graph-toolbar" data-test="graph-toolbar" data-layout-role="toolbar">
     <button class="btn graph-toolbar__btn" data-test="add-idea" title="在当前路线添加一个草稿想法（不调用模型）" @click="$emit('add-idea')">+ 想法</button>
     <button class="btn graph-toolbar__btn" data-test="add-resource" title="添加资源节点（文本/链接/文件），AI 可读取有界摘录" @click="$emit('add-resource')">+ 资源</button>
     <button

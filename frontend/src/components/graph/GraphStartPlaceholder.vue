@@ -4,7 +4,7 @@ defineEmits<{ draft: []; 'add-idea': [] }>()
 </script>
 
 <template>
-  <div class="graph-start-placeholder" data-test="graph-start-placeholder">
+  <div class="graph-start-placeholder" data-test="graph-start-placeholder" data-layout-role="start-placeholder">
     <h2 class="graph-start-placeholder__title">开始需求澄清</h2>
     <p class="graph-start-placeholder__hint">还没有任何内容。可以先起草问题，也可以先写下自己的想法。</p>
     <div class="graph-start-placeholder__actions">

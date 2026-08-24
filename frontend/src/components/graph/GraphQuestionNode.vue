@@ -175,6 +175,7 @@ function setReadingRoute(event: Event): void {
       },
     ]"
     data-test="graph-question-node"
+    data-layout-role="graph-node"
     :data-node-id="data.node.id"
   >
 
