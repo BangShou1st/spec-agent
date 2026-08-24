@@ -11,6 +11,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(HealthController.class)
 @ActiveProfiles("test")
+@org.springframework.test.context.TestPropertySource(
+        properties = "spec.agent.brain.worker.enabled=true")
 class HealthControllerTest {
 
     @Autowired

@@ -136,6 +136,13 @@ export const useWorkspaceStore = defineStore('workspace', {
     answerOutcomeUnknown: false,
     /** In-flight answer run (async Runtime); null when no run is being polled. */
     answerRunId: null as string | null,
+    /**
+     * Submission identity captured when the answer action started: the route
+     * the answered node belonged to at submission time. Success cleanup clears
+     * the draft under THIS route identity even if the runtime created or
+     * switched routes before completion.
+     */
+    submittedRouteIdForCleanup: null as string | null,
     /** Latest observed phase of the in-flight answer run. */
     answerRunPhase: null as string | null,
     /** Last payload handed to submitAnswer; used only for proven-safe resubmit. */
@@ -409,6 +416,15 @@ export const useWorkspaceStore = defineStore('workspace', {
       const answeringNodeId = this.activeState?.activeNode?.id
         ?? this.activeState?.activeRoute?.tipNodeId
         ?? null
+      // Submission identity is fixed when the user action starts: the node
+      // being answered and its route at that moment. Success cleanup uses
+      // exactly these — never produced ids or post-refresh route pointers.
+      const submittedNodeId = answeringNodeId
+      const submittedRouteId = this.activeState?.activeRoute?.id ?? null
+      // One stable idempotency identity per user action attempt: unknown-
+      // outcome retries (create request lost, response lost) reuse the same
+      // key so the backend returns the already-created run.
+      const clientRequestId = crypto.randomUUID()
 
       this.submitting = true
       this.error = null
@@ -419,6 +435,7 @@ export const useWorkspaceStore = defineStore('workspace', {
       this.answerRunPhase = null
       this.answerOutcomeUnknown = false
       this.lastSubmittedAnswerPayload = { ...payload }
+      this.submittedRouteIdForCleanup = submittedRouteId
 
       let created = false
       try {
@@ -427,9 +444,10 @@ export const useWorkspaceStore = defineStore('workspace', {
         // guesses which one applies.
         const run = await createAgentRun(this.projectId, {
           operation: 'ANSWER_TIP',
-          nodeId: answeringNodeId,
+          nodeId: submittedNodeId,
           selectedOptionId: payload.selectedOptionId ?? null,
           freeText: payload.freeText ?? null,
+          idempotencyKey: clientRequestId,
         })
         created = true
         this.answerRunId = run.runId
@@ -541,9 +559,14 @@ export const useWorkspaceStore = defineStore('workspace', {
 
     /** COMPLETED run: refresh canonical state and clear pending affordances. */
     async finishSuccessfulAnswerRun(
-      view: Awaited<ReturnType<typeof getAgentRun>>,
+      _view: Awaited<ReturnType<typeof getAgentRun>>,
     ): Promise<void> {
-      const answeredNodeId = view.producedNodeId ?? this.pendingAnswerNodeId
+      // Cleanup identity is the SUBMITTED answer target captured when the
+      // user action started — never producedNodeId, which names the NEXT node
+      // the runtime generated, and never a route id re-read after refresh.
+      const answeredNodeId = this.pendingAnswerNodeId
+      const submittedRouteId = this.submittedRouteIdForCleanup ?? null
+      console.log('CLEANUP', answeredNodeId, submittedRouteId)
       this.feedback = '回答已记录。'
       await this.refreshWorkspace()
       this.manualModelRetry = null
@@ -555,7 +578,7 @@ export const useWorkspaceStore = defineStore('workspace', {
         useInputDraftStore().clearDraft(
           this.projectId ?? '',
           answeredNodeId,
-          this.activeState?.activeRoute?.id ?? null,
+          submittedRouteId,
         )
       }
     },

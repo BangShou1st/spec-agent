@@ -78,10 +78,15 @@ the new cycle had not yet enforced):
   reconcile without guessing.
 
 Deployment note: the answer flow now requires the background run worker.
-Real-stack deployments (including E2E `bootRun`) must set
-`SPEC_AGENT_BRAIN_WORKER_ENABLED=true` — without it, answer runs queue but
-nothing executes them. `./gradlew test` stays deterministic because tests
-drive `RunWorker` synchronously through `AnswerCycleTestDriver`.
+Updated post-cutover hardening: the async AgentRun path is the ONLY
+production mutation path, so `application.yml` now defaults BOTH
+`SPEC_AGENT_BRAIN_ENABLED=true` and `SPEC_AGENT_BRAIN_WORKER_ENABLED=true`
+in the default profile — real-stack deployments (including E2E `bootRun`) get
+a working worker out of the box. A process that explicitly disables its
+worker can never hide it: `/api/health` reports
+`503 AGENT_WORKER_UNAVAILABLE`. The test profile keeps the worker off and
+stays deterministic because tests drive `RunWorker` synchronously through
+the test drivers.
 
 ### Slice 2 — Question / continuation
 

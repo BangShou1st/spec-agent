@@ -66,6 +66,7 @@ public class ArtifactCycleService {
     private final SpecSnapshotService specSnapshotService;
     private final AgentRunEventService eventService;
     private final RouteRepository routeRepository;
+    private final com.specagent.project.ProjectRepository projectRepository;
 
     public ArtifactCycleService(AgentRunService agentRunService,
                                 AgentRunFailureService agentRunFailureService,
@@ -77,7 +78,8 @@ public class ArtifactCycleService {
                                 SpecSourceReferenceGuard specSourceReferenceGuard,
                                 SpecSnapshotService specSnapshotService,
                                 AgentRunEventService eventService,
-                                RouteRepository routeRepository) {
+                                RouteRepository routeRepository,
+                                com.specagent.project.ProjectRepository projectRepository) {
         this.agentRunService = agentRunService;
         this.agentRunFailureService = agentRunFailureService;
         this.contextBuilder = contextBuilder;
@@ -89,24 +91,61 @@ public class ArtifactCycleService {
         this.specSnapshotService = specSnapshotService;
         this.eventService = eventService;
         this.routeRepository = routeRepository;
+        this.projectRepository = projectRepository;
     }
 
     /**
-     * Executes one spec-snapshot generation run against the active route tip.
+     * Executes one spec-snapshot generation run against the run's own frozen
+     * target (route + input node). The context snapshot is built for exactly
+     * {@code run.routeId} / {@code run.inputNodeId}; the project's active
+     * route pointer is never consulted to choose a context or persistence
+     * target, so a queued run cannot contaminate its snapshot with another
+     * route.
+     *
+     * <p>Live-state validation before any model call: the run's route must
+     * still exist, belong to the run's project, be OPEN, and still be the
+     * project's ACTIVE route with {@code run.inputNodeId} as its tip. If the
+     * user switched the active route while this run was queued, the run fails
+     * closed (STALE) instead of generating a mixed or outdated spec.
      */
     public SpecGenerationOutcome generateSpec(AgentRun run) {
         Route route = routeRepository.findById(run.routeId())
                 .orElseThrow(() -> new IllegalStateException(
                         "Route not found: " + run.routeId()));
+        if (!route.projectId().equals(run.projectId())) {
+            throw new StaleRunTargetException(
+                    "Run route does not belong to the run's project: " + run.routeId());
+        }
         if (route.tipNodeId() == null) {
-            throw new IllegalStateException("Active route has no tip node: " + route.id());
+            throw new StaleRunTargetException(
+                    "Run target route has no tip node: " + route.id());
+        }
+        if (!route.lifecycleStatus().equals(com.specagent.route.RouteLifecycleStatus.OPEN)) {
+            throw new StaleRunTargetException(
+                    "Run target route is no longer OPEN: " + route.id());
+        }
+
+        com.specagent.project.Project project = projectRepository.findById(run.projectId())
+                .orElseThrow(() -> new IllegalStateException(
+                        "Project not found: " + run.projectId()));
+        if (!java.util.Objects.equals(project.activeRouteId(), run.routeId())) {
+            throw new StaleRunTargetException(
+                    "Active route changed while artifact run was queued: run route "
+                            + run.routeId() + ", active route " + project.activeRouteId());
+        }
+        if (!java.util.Objects.equals(run.inputNodeId(), route.tipNodeId())) {
+            throw new StaleRunTargetException(
+                    "Run input node is no longer the target route tip: " + run.inputNodeId()
+                            + " (current tip: " + route.tipNodeId() + ")");
         }
 
         String trace = "created";
         try {
             trace = appendTrace(trace, "context_built");
-            ContextSnapshot snapshot = contextBuilder.buildFromActiveRoute(
-                    run.projectId(), run.id(), ContextOperationType.NORMAL);
+            // Route-bound build: never re-reads the active route pointer.
+            ContextSnapshot snapshot = contextBuilder.buildForRoute(
+                    run.projectId(), run.routeId(), run.inputNodeId(),
+                    run.id(), ContextOperationType.NORMAL);
             agentRunService.attachContext(run.id(), snapshot.id(), trace);
             eventService.append(run.id(), AgentRunPhase.SNAPSHOT_BUILT, "SNAPSHOT_BUILT", Map.of(
                     "snapshotId", snapshot.id().toString(),
@@ -159,6 +198,16 @@ public class ArtifactCycleService {
                     .map(text -> UnresolvedItem.of(text, "unresolved"))
                     .toList();
 
+            // Persistence invariant guard: run target == context == spec
+            // identity must hold right before anything is written.
+            if (!snapshot.projectId().equals(run.projectId())
+                    || !snapshot.routeId().equals(route.id())
+                    || !snapshot.tipNodeId().equals(route.tipNodeId())
+                    || !snapshot.routeId().equals(run.routeId())
+                    || !snapshot.tipNodeId().equals(run.inputNodeId())) {
+                throw new ModelContractException(
+                        "Artifact persistence invariant violated: run/context/spec targets diverged");
+            }
             SpecSnapshot persisted = specSnapshotService.createSnapshot(
                     run.projectId(), route.id(), route.tipNodeId(), snapshot.id(),
                     "markdown", sections, unresolvedItems, sourceRefs, run.id());

@@ -478,7 +478,16 @@ Rules:
    provider payloads, credentials, or hidden chain-of-thought.
 3. UI progress text must derive from these real phases.
 4. the background worker (`agent.runtime.RunWorker`) executes queued
-   `DECISION_CYCLE`-triggered runs through the `AgentDecisionEngine` port. In Stage A
-   it records proposals only and never mutates the Graph; the worker is off by
-   default (`SPEC_AGENT_BRAIN_WORKER_ENABLED`).
-5. The legacy synchronous orchestrator paths are unchanged.
+   run of every trigger type through the `AgentDecisionEngine` port.
+5. Post-cutover deployment requirement: the async AgentRun path is the ONLY
+   production mutation path, so the default profile enables both the brain
+   boundary (`spec.agent.brain.enabled=true`) and the worker
+   (`spec.agent.brain.worker.enabled=true`). A process that accepts
+   `POST /agent-runs` must either run its own worker or belong to a
+   deployment where another node does; when this process's worker is
+   disabled, `GET /api/health` reports `AGENT_WORKER_UNAVAILABLE` (503)
+   instead of silently accepting runs that no one will claim.
+6. Create-run requests accept a stable `idempotencyKey`: an unknown-outcome
+   retry with the same key returns the already-created run (unique index on
+   `agent_runs.idempotency_key`), so a lost response can never produce a
+   second mutation run.

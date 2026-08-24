@@ -78,6 +78,13 @@ export interface CreateAgentRunPayload {
   freeText?: string | null
   /** Required for RESUME_ANSWER: the persisted Answer id being resumed. */
   answerId?: string | null
+  /**
+   * Stable identity of ONE user action attempt. Retries after an unknown
+   * outcome (network loss, timeout, lost response) MUST reuse the same key so
+   * the backend returns the already-created run instead of creating a second
+   * one. A genuinely new user action generates a new key.
+   */
+  idempotencyKey?: string | null
 }
 
 export function createAgentRun(
@@ -91,6 +98,7 @@ export function createAgentRun(
     selectedOptionId: payload.selectedOptionId ?? null,
     freeText: payload.freeText ?? null,
     answerId: payload.answerId ?? null,
+    idempotencyKey: payload.idempotencyKey ?? null,
   })
 }
 

@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
+import java.util.Objects;
 
 /**
  * Builds a deterministic, lineage-based context snapshot for one agent run.
@@ -101,6 +102,72 @@ public class ContextBuilder {
 
         ContextSnapshot snapshot = new ContextSnapshot(Ids.random(), projectId, activeRouteId,
                 activeRoute.tipNodeId(), operationType, includedNodeIds, includedAnswerIds,
+                includedPatchIds, excludedRouteIds, json.write(specialInputsMap), contextHash, Instant.now());
+
+        contextSnapshotRepository.save(snapshot);
+        return snapshot;
+    }
+
+    /**
+     * Builds a route-bound context snapshot for one explicit run target. The
+     * caller supplies the exact {@code routeId} and {@code inputNodeId} frozen
+     * onto the run at enqueue time; this builder never reads the project's
+     * active route pointer to choose a target, so a run that was queued
+     * against route A keeps building context for route A even if the active
+     * pointer moved to route B in the meantime.
+     *
+     * <p>The resulting snapshot always satisfies
+     * {@code snapshot.routeId == routeId} and
+     * {@code snapshot.tipNodeId == route.tipNodeId}; callers that require the
+     * enqueue-time tip identity additionally verify
+     * {@code inputNodeId == route.tipNodeId} (enforced here fail-closed).
+     */
+    public ContextSnapshot buildForRoute(UUID projectId,
+                                         UUID routeId,
+                                         UUID inputNodeId,
+                                         UUID agentRunId,
+                                         ContextOperationType operationType) {
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new IllegalArgumentException("Project not found: " + projectId));
+        Route route = routeRepository.findById(routeId)
+                .orElseThrow(() -> new IllegalArgumentException("Route not found: " + routeId));
+        if (!route.projectId().equals(projectId)) {
+            throw new IllegalArgumentException("Route " + routeId + " does not belong to project " + projectId);
+        }
+        if (route.lifecycleStatus() != RouteLifecycleStatus.OPEN) {
+            throw new IllegalStateException(
+                    "Run target route is not OPEN: " + routeId
+                            + " is " + route.lifecycleStatus().code());
+        }
+        if (!Objects.equals(inputNodeId, route.tipNodeId())) {
+            throw new IllegalStateException(
+                    "Run input node is no longer the route tip: " + inputNodeId
+                            + " (current tip: " + route.tipNodeId() + ")");
+        }
+
+        // Build lineage from tip to root along parent pointers. A route's
+        // context is exactly its root-to-tip lineage; replacement nodes belong
+        // to the replacement route's lineage and never enter this chain.
+        List<UUID> lineage = resolveLineage(route.tipNodeId());
+        List<UUID> includedNodeIds = new ArrayList<>(lineage);
+
+        List<UUID> includedAnswerIds = routeHistoryResolver
+                .resolveEffectiveAnswers(routeId, includedNodeIds)
+                .stream().map(a -> a.id()).toList();
+        List<UUID> includedPatchIds = answerPatchRepository.findBySourceAnswerIds(includedAnswerIds)
+                .stream().map(p -> p.id()).toList();
+
+        List<UUID> excludedRouteIds = routeRepository.findByProject(projectId).stream()
+                .map(r -> r.id())
+                .filter(id -> !id.equals(routeId))
+                .toList();
+
+        Map<String, Object> specialInputsMap = withProjectTitle(project, Map.of());
+        String contextHash = computeHash(operationType, includedNodeIds, includedAnswerIds,
+                includedPatchIds, excludedRouteIds, specialInputsMap);
+
+        ContextSnapshot snapshot = new ContextSnapshot(Ids.random(), projectId, routeId,
+                route.tipNodeId(), operationType, includedNodeIds, includedAnswerIds,
                 includedPatchIds, excludedRouteIds, json.write(specialInputsMap), contextHash, Instant.now());
 
         contextSnapshotRepository.save(snapshot);

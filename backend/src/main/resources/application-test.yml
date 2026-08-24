@@ -36,4 +36,9 @@ spec:
       gateway: fake
       inference: fake
     brain:
+      # Tests drive RunWorker synchronously through test drivers; the
+      # background poller stays off to keep runs deterministic.
+      enabled: false
       engine: ${SPEC_AGENT_BRAIN_ENGINE:fake}
+      worker:
+        enabled: false

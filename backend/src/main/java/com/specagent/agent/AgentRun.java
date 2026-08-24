@@ -25,6 +25,7 @@ public class AgentRun {
     private final AgentRunStatus status;
     private final String trace;
     private final String operation;
+    private final String idempotencyKey;
     private final Instant createdAt;
     private final Instant completedAt;
 
@@ -41,6 +42,7 @@ public class AgentRun {
                     AgentRunStatus status,
                     String trace,
                     String operation,
+                    String idempotencyKey,
                     Instant createdAt,
                     Instant completedAt) {
         this.id = id;
@@ -56,6 +58,7 @@ public class AgentRun {
         this.status = status;
         this.trace = trace;
         this.operation = operation;
+        this.idempotencyKey = idempotencyKey;
         this.createdAt = createdAt;
         this.completedAt = completedAt;
     }
@@ -110,6 +113,15 @@ public class AgentRun {
 
     public String operation() {
         return operation;
+    }
+
+    /**
+     * Stable client-supplied idempotency identity for create-run retries
+     * (null for internally generated runs). Two creates with the same key in
+     * the same project resolve to exactly one persisted run.
+     */
+    public String idempotencyKey() {
+        return idempotencyKey;
     }
 
     public Instant createdAt() {

@@ -244,6 +244,7 @@ describe('WorkspaceView graph shell', () => {
       nodeId: 'n2',
       selectedOptionId: null,
       freeText: 'answer',
+      idempotencyKey: expect.any(String),
     })
     expect(useWorkspaceStore().feedback).toBe('回答已记录。')
   })

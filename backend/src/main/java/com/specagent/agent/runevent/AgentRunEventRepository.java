@@ -38,7 +38,9 @@ public class AgentRunEventRepository {
 
     /**
      * Appends one event with the next per-run sequence number in a single
-     * atomic statement.
+     * atomic statement. A duplicate (run_id, sequence) insert — possible when
+     * concurrent creators of the same idempotent run race this append — is
+     * silently ignored so the loser never fails the request.
      */
     public void append(AgentRunEvent event) {
         String sql = """
@@ -46,6 +48,7 @@ public class AgentRunEventRepository {
                 SELECT :id, :runId, COALESCE(MAX(sequence), 0) + 1, :phase, :eventType,
                        CAST(:payload AS jsonb), :createdAt
                 FROM agent_run_events WHERE run_id = :runId
+                ON CONFLICT DO NOTHING
                 """;
         jdbcTemplate.update(sql, Maps.of(
                 "id", event.id(),

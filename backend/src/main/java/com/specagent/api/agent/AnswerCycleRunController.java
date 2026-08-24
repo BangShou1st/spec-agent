@@ -63,11 +63,13 @@ public class AnswerCycleRunController {
             @RequestBody CreateRunRequest request) {
 
         String operation = request.operation();
+        String idempotencyKey = request.idempotencyKey();
 
         // Question draft: a pure-continuation DECISION_CYCLE run against the
         // active route. No node/answer inputs — the runtime owns the target.
         if ("DRAFT_QUESTION".equals(operation)) {
-            UUID draftRunId = runService.createQueuedDraftQuestion(projectId).id();
+            UUID draftRunId = runService.createQueuedDraftQuestion(
+                    projectId, idempotencyKey).id();
             return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of(
                     "runId", draftRunId.toString(),
                     "operation", operation,
@@ -87,7 +89,8 @@ public class AnswerCycleRunController {
                         "NO_ACTIVE_TIP_NODE",
                         "The active route has no tip node to generate a spec from");
             }
-            UUID artifactRunId = runService.createQueuedArtifactGeneration(projectId).id();
+            UUID artifactRunId = runService.createQueuedArtifactGeneration(
+                    projectId, idempotencyKey).id();
             return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of(
                     "runId", artifactRunId.toString(),
                     "operation", operation,
@@ -117,7 +120,7 @@ public class AnswerCycleRunController {
             }
             UUID regenerateRunId = runService.createQueuedRegenerate(
                     projectId, request.sourceRouteId(), request.nodeId(),
-                    request.freeText()).id();
+                    request.freeText(), idempotencyKey).id();
             return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of(
                     "runId", regenerateRunId.toString(),
                     "operation", operation,
@@ -152,7 +155,8 @@ public class AnswerCycleRunController {
 
         UUID runId = runService.createQueuedRunWithInput(
                 projectId, operation, request.nodeId(),
-                request.selectedOptionId(), request.freeText(), answerId);
+                request.selectedOptionId(), request.freeText(), answerId,
+                idempotencyKey);
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of(
                 "runId", runId.toString(),
                 "operation", operation,
@@ -204,6 +208,12 @@ public class AnswerCycleRunController {
                                    UUID sourceRouteId,
                                    UUID selectedOptionId,
                                    String freeText,
-                                   UUID answerId) {
+                                   UUID answerId,
+                                   /**
+                                    * Stable identity of one user action attempt.
+                                    * Unknown-outcome retries must reuse the same key;
+                                    * a genuinely new action generates a new one.
+                                    */
+                                   String idempotencyKey) {
     }
 }

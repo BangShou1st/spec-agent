@@ -1,6 +1,8 @@
 package com.specagent.agent.action;
 
 import com.specagent.agent.contract.ActionProposal;
+import com.specagent.node.Node;
+import com.specagent.node.NodeRepository;
 import com.specagent.context.ContextSnapshot;
 import com.specagent.route.Route;
 import com.specagent.route.RouteRepository;
@@ -10,19 +12,27 @@ import java.util.UUID;
 
 /**
  * Verifies that an action proposal's base context still matches the current
- * authoritative graph state before execution. This prevents stale model
- * proposals from silently mutating a graph that has moved on.
+ * frozen run snapshot before execution, plus deterministic live execution
+ * preconditions for cycles that commit topology.
  *
- * <p>Checks: context hash still matches, anchor node is still the route tip
- * (when applicable), and anchor refs still resolve to valid records.
+ * <p>The {@code currentSnapshot} parameter of {@link #check} is the FROZEN
+ * run snapshot the proposal was built against — not a rebuilt live snapshot —
+ * so its hash/snapshot-id checks prove proposal↔snapshot identity only.
+ * Live liveness is covered by {@link #verifyLiveExecutionPreconditions}
+ * (expected source-route tip identity and target lineage membership), which
+ * replacement commits must call before mutating anything.
  */
 @Component
 public class StaleContextChecker {
 
     private final RouteRepository routeRepository;
 
-    public StaleContextChecker(RouteRepository routeRepository) {
+    private final NodeRepository nodeRepository;
+
+    public StaleContextChecker(RouteRepository routeRepository,
+                               NodeRepository nodeRepository) {
         this.routeRepository = routeRepository;
+        this.nodeRepository = nodeRepository;
     }
 
     /**
@@ -52,6 +62,47 @@ public class StaleContextChecker {
                     }
                 }
             }
+        }
+    }
+
+    /**
+     * Deterministic live preconditions for a replacement commit, evaluated
+     * AFTER the model returned but BEFORE any topology mutation. The model
+     * decided on the frozen snapshot; if the source route changed since
+     * (a new tip node was appended), lost its tip, or the target left the
+     * source-route lineage, the decision is stale and must fail closed — even
+     * though the target may still sit on some historical lineage.
+     */
+    public void verifyLiveExecutionPreconditions(UUID expectedSourceRouteId,
+                                                 UUID expectedSourceRouteTip,
+                                                 UUID targetNodeId) {
+        Route route = routeRepository.findById(expectedSourceRouteId)
+                .orElseThrow(() -> new StaleProposalException(
+                        "Source route no longer exists: " + expectedSourceRouteId));
+        if (route.tipNodeId() == null) {
+            throw new StaleProposalException(
+                    "Source route lost its tip before the replacement commit");
+        }
+        if (!java.util.Objects.equals(route.tipNodeId(), expectedSourceRouteTip)) {
+            throw new StaleProposalException(
+                    "Source route changed after the replacement snapshot: expected tip "
+                            + expectedSourceRouteTip + ", current tip " + route.tipNodeId());
+        }
+        java.util.Set<UUID> seen = new java.util.HashSet<>();
+        UUID current = route.tipNodeId();
+        boolean containsTarget = false;
+        while (current != null && seen.add(current)) {
+            if (current.equals(targetNodeId)) {
+                containsTarget = true;
+                break;
+            }
+            Node node = nodeRepository.findById(current).orElse(null);
+            current = node != null ? node.parentNodeId() : null;
+        }
+        if (!containsTarget) {
+            throw new StaleProposalException(
+                    "Replacement target is no longer on the source route lineage: "
+                            + targetNodeId);
         }
     }
 }

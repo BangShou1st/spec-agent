@@ -268,6 +268,7 @@ describe('workspaceStore', () => {
       nodeId: store.pendingAnswerNodeId,
       selectedOptionId: null,
       freeText: 'async answer',
+      idempotencyKey: expect.any(String),
     })
     expect(store.submitting).toBe(true)
     expect(store.answerRunId).toBe('run-1')
@@ -297,6 +298,7 @@ describe('workspaceStore', () => {
       nodeId: expect.any(String),
       selectedOptionId: 'opt-a',
       freeText: null,
+      idempotencyKey: expect.any(String),
     })
   })
 
@@ -318,6 +320,7 @@ describe('workspaceStore', () => {
       nodeId: expect.any(String),
       selectedOptionId: null,
       freeText: 'We need a single-user tool',
+      idempotencyKey: expect.any(String),
     })
   })
 
@@ -339,6 +342,7 @@ describe('workspaceStore', () => {
       nodeId: expect.any(String),
       selectedOptionId: 'opt-a',
       freeText: 'explanation text',
+      idempotencyKey: expect.any(String),
     })
   })
 

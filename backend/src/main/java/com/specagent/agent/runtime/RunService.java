@@ -49,6 +49,17 @@ public class RunService {
      * is now the explicit question draft ({@code DRAFT_QUESTION}).
      */
     public AgentRun createQueuedDraftQuestion(UUID projectId) {
+        return createQueuedDraftQuestion(projectId, null);
+    }
+
+    /** Idempotent variant: retries with the same key return the same run. */
+    public AgentRun createQueuedDraftQuestion(UUID projectId, String idempotencyKey) {
+        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+            var replay = agentRunRepository.findByIdempotencyKey(idempotencyKey.trim());
+            if (replay.isPresent()) {
+                return replay.get();
+            }
+        }
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new IllegalArgumentException("Project not found: " + projectId));
         if (project.activeRouteId() == null) {
@@ -60,8 +71,8 @@ public class RunService {
 
         AgentRun run = agentRunService.create(
                 projectId, route.id(), AgentRunTriggerType.DECISION_CYCLE,
-                route.tipNodeId(), null, "DRAFT_QUESTION");
-        eventService.append(run.id(), AgentRunPhase.CREATED, "RUN_CREATED", Map.of(
+                route.tipNodeId(), null, "DRAFT_QUESTION", idempotencyKey);
+        appendRunCreatedIfFirst(run.id(), Map.of(
                 "triggerType", AgentRunTriggerType.DECISION_CYCLE.code(),
                 "operation", "DRAFT_QUESTION",
                 "routeId", route.id().toString()));
@@ -79,6 +90,24 @@ public class RunService {
                                          UUID selectedOptionId,
                                          String freeText,
                                          UUID answerId) {
+        return createQueuedRunWithInput(projectId, operation, nodeId,
+                selectedOptionId, freeText, answerId, null);
+    }
+
+    /** Idempotent variant: retries with the same key return the same run. */
+    public UUID createQueuedRunWithInput(UUID projectId,
+                                         String operation,
+                                         UUID nodeId,
+                                         UUID selectedOptionId,
+                                         String freeText,
+                                         UUID answerId,
+                                         String idempotencyKey) {
+        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+            var replay = agentRunRepository.findByIdempotencyKey(idempotencyKey.trim());
+            if (replay.isPresent()) {
+                return replay.get().id();
+            }
+        }
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new IllegalArgumentException("Project not found: " + projectId));
         if (project.activeRouteId() == null) {
@@ -91,7 +120,7 @@ public class RunService {
         UUID inputNodeId = nodeId != null ? nodeId : route.tipNodeId();
         AgentRun run = agentRunService.create(
                 projectId, route.id(), AgentRunTriggerType.ANSWER_CYCLE,
-                inputNodeId, null, operation);
+                inputNodeId, null, operation, idempotencyKey);
 
         // Persist input parameters in the run event payload for the worker
         // to reconstruct when executing the answer cycle.
@@ -108,7 +137,7 @@ public class RunService {
         if (answerId != null) {
             payload.put("answerId", answerId.toString());
         }
-        eventService.append(run.id(), AgentRunPhase.CREATED, "RUN_CREATED", payload);
+        appendRunCreatedIfFirst(run.id(), payload);
         return run.id();
     }
 
@@ -149,6 +178,17 @@ public class RunService {
      * state for precise API errors; the service re-checks at execution time.
      */
     public AgentRun createQueuedArtifactGeneration(UUID projectId) {
+        return createQueuedArtifactGeneration(projectId, null);
+    }
+
+    /** Idempotent variant: retries with the same key return the same run. */
+    public AgentRun createQueuedArtifactGeneration(UUID projectId, String idempotencyKey) {
+        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+            var replay = agentRunRepository.findByIdempotencyKey(idempotencyKey.trim());
+            if (replay.isPresent()) {
+                return replay.get();
+            }
+        }
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new IllegalArgumentException("Project not found: " + projectId));
         if (project.activeRouteId() == null) {
@@ -160,8 +200,8 @@ public class RunService {
 
         AgentRun run = agentRunService.create(
                 projectId, route.id(), AgentRunTriggerType.GENERATE_SPEC,
-                route.tipNodeId(), null, "GENERATE_ARTIFACT");
-        eventService.append(run.id(), AgentRunPhase.CREATED, "RUN_CREATED", Map.of(
+                route.tipNodeId(), null, "GENERATE_ARTIFACT", idempotencyKey);
+        appendRunCreatedIfFirst(run.id(), Map.of(
                 "triggerType", AgentRunTriggerType.GENERATE_SPEC.code(),
                 "operation", "GENERATE_ARTIFACT",
                 "routeId", route.id().toString()));
@@ -175,6 +215,19 @@ public class RunService {
      */
     public AgentRun createQueuedRegenerate(UUID projectId, UUID sourceRouteId,
                                            UUID targetNodeId, String instruction) {
+        return createQueuedRegenerate(projectId, sourceRouteId, targetNodeId, instruction, null);
+    }
+
+    /** Idempotent variant: retries with the same key return the same run. */
+    public AgentRun createQueuedRegenerate(UUID projectId, UUID sourceRouteId,
+                                           UUID targetNodeId, String instruction,
+                                           String idempotencyKey) {
+        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+            var replay = agentRunRepository.findByIdempotencyKey(idempotencyKey.trim());
+            if (replay.isPresent()) {
+                return replay.get();
+            }
+        }
         Route route = routeRepository.findById(sourceRouteId)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Route not found: " + sourceRouteId));
@@ -194,9 +247,25 @@ public class RunService {
 
         AgentRun run = agentRunService.create(
                 projectId, sourceRouteId, AgentRunTriggerType.REGENERATE_NODE,
-                targetNodeId, null, "REGENERATE_NODE");
-        eventService.append(run.id(), AgentRunPhase.CREATED, "RUN_CREATED", payload);
+                targetNodeId, null, "REGENERATE_NODE", idempotencyKey);
+        appendRunCreatedIfFirst(run.id(), payload);
         return run;
+    }
+
+    /**
+     * Appends RUN_CREATED only for a freshly inserted run. An idempotent
+     * replay returns the already-persisted winner, which carries its own
+     * original event — never write a second one.
+     */
+    private void appendRunCreatedIfFirst(UUID runId, Map<String, Object> payload) {
+        boolean alreadyCreated = eventService.findByRunId(runId).stream()
+                .anyMatch(event -> "RUN_CREATED".equals(event.eventType()));
+        // Concurrent same-key creates may both pass the check; the (run_id,
+        // sequence) unique constraint arbitrates and the loser's duplicate
+        // append is ignored instead of failing the request.
+        if (!alreadyCreated) {
+            eventService.append(runId, AgentRunPhase.CREATED, "RUN_CREATED", payload);
+        }
     }
 
     /**

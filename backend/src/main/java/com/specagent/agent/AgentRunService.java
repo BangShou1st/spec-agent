@@ -37,12 +37,47 @@ public class AgentRunService {
                            UUID inputNodeId,
                            UUID createdByRunId,
                            String operation) {
+        return create(projectId, routeId, triggerType, inputNodeId, createdByRunId, operation, null);
+    }
+
+    /**
+     * Creates an agent run with an optional client idempotency key. When the
+     * key is non-blank the insert is atomic and idempotent: if another
+     * request already persisted a run with this key — including a concurrent
+     * one that won the insert race — that existing run is returned unchanged
+     * and only one row ever persists.
+     */
+    public AgentRun create(UUID projectId,
+                           UUID routeId,
+                           AgentRunTriggerType triggerType,
+                           UUID inputNodeId,
+                           UUID createdByRunId,
+                           String operation,
+                           String idempotencyKey) {
         UUID runId = Ids.random();
         Instant now = Instant.now();
         AgentRun run = new AgentRun(runId, projectId, routeId, triggerType, inputNodeId, null,
-                null, null, null, null, AgentRunStatus.CREATED, null, operation, now, null);
+                null, null, null, null, AgentRunStatus.CREATED, null, operation,
+                normalizeKey(idempotencyKey), now, null);
+        if (run.idempotencyKey() != null) {
+            // Insert-if-absent is atomic; whether this caller won or lost the
+            // race, re-read and return the persisted winner so every replayed
+            // key resolves to exactly ONE run.
+            agentRunRepository.insertIfAbsent(run);
+            return agentRunRepository.findByIdempotencyKey(run.idempotencyKey())
+                    .orElseThrow(() -> new IllegalStateException(
+                            "Idempotent agent-run row missing after insert: "
+                                    + run.idempotencyKey()));
+        }
         agentRunRepository.save(run);
         return run;
+    }
+
+    private String normalizeKey(String idempotencyKey) {
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            return null;
+        }
+        return idempotencyKey.trim();
     }
 
     public void complete(UUID runId, AgentRunStatus status, String trace) {

@@ -54,8 +54,13 @@ public class AgentBrainProperties {
     }
 
     public static class Worker {
-        /** Background polling is opt-in; tests drive the worker directly. */
-        private boolean enabled = false;
+        /**
+         * Post-cutover default is ON in the default profile via
+         * application.yml: a process that accepts POST /agent-runs must also
+         * execute queued runs. Tests and API-only deployments may still turn
+         * it off explicitly; readiness then reports the missing executor.
+         */
+        private boolean enabled = true;
         private long pollIntervalMs = 2000;
 
         public boolean isEnabled() {

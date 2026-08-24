@@ -7,7 +7,10 @@ spring:
     password: spec_agent_dev
     driver-class-name: org.postgresql.Driver
     hikari:
-      maximum-pool-size: 2
+      # Idempotency-concurrency tests race several real HTTP threads; a pool
+      # of 2 starves them behind connection waits. 8 keeps the suite
+      # deterministic while staying small.
+      maximum-pool-size: 8
       minimum-idle: 0
   flyway:
     enabled: true
@@ -39,4 +42,9 @@ spec:
       gateway: fake
       inference: fake
     brain:
+      # Tests drive RunWorker synchronously through test drivers; the
+      # background poller stays off to keep runs deterministic.
+      enabled: false
       engine: ${SPEC_AGENT_BRAIN_ENGINE:fake}
+      worker:
+        enabled: false

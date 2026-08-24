@@ -6,8 +6,11 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
  * Enables background polling only when the worker is explicitly switched
- * on. Stage A defaults to off so no product behavior changes; dev/docker
- * environments opt in via {@code SPEC_AGENT_BRAIN_WORKER_ENABLED=true}.
+ * on. Post-cutover the default profile enables it via application.yml so a
+ * process accepting agent runs always has an executor. Tests and API-only
+ * deployments may still disable it via
+ * {@code SPEC_AGENT_BRAIN_WORKER_ENABLED=false}; the health endpoint then
+ * reports the missing executor instead of silently leaving runs queued.
  */
 @Configuration(proxyBeanMethods = false)
 @EnableScheduling

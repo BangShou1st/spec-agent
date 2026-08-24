@@ -44,14 +44,21 @@ spec:
       opencode:
         settings-timeout-seconds: ${SPEC_AGENT_OPENCODE_SETTINGS_TIMEOUT_SECONDS:45}
     brain:
-      # V2 agent-brain boundary (Stage A). Off by default: no product path
-      # enqueues V2 runs until Stage B cuts over.
-      enabled: ${SPEC_AGENT_BRAIN_ENABLED:false}
+      # Post-cutover production runtime. The async AgentRun path (Answer /
+      # Draft / Spec / Regenerate / NodeQuery) is the ONLY production mutation
+      # path, so both the remote Python brain boundary and the background
+      # worker are ON by default in the default profile. Every queued run must
+      # have a live executor; disable these only for tests or special
+      # deployments that intentionally run API-only pods.
+      enabled: ${SPEC_AGENT_BRAIN_ENABLED:true}
       base-url: ${SPEC_AGENT_BRAIN_BASE_URL:http://localhost:8100}
       internal-secret: ${SPEC_AGENT_BRAIN_INTERNAL_SECRET:dev-internal-secret}
       engine: ${SPEC_AGENT_BRAIN_ENGINE:remote-python}
       worker:
-        enabled: ${SPEC_AGENT_BRAIN_WORKER_ENABLED:false}
+        # Must stay enabled in any deployment whose API accepts
+        # POST /agent-runs; the health endpoint reports AGENT_WORKER_UNAVAILABLE
+        # when this process accepts runs without its own executor.
+        enabled: ${SPEC_AGENT_BRAIN_WORKER_ENABLED:true}
         poll-interval-ms: ${SPEC_AGENT_BRAIN_WORKER_POLL_INTERVAL_MS:2000}
       broker:
         max-prompt-chars: ${SPEC_AGENT_BROKER_MAX_PROMPT_CHARS:200000}

@@ -184,7 +184,10 @@ Environment defaults:
 - `SPEC_AGENT_BRAIN_MODEL_MODE=fake|broker` — fake runs fully offline;
   broker routes model calls through Spring at
   `SPEC_AGENT_INTERNAL_BROKER_URL`.
-- `SPEC_AGENT_BRAIN_WORKER_ENABLED=true` — opt-in background V2 run worker.
+- `SPEC_AGENT_BRAIN_WORKER_ENABLED=true` — background run worker (post-cutover
+  default is ON in the default profile; a process that accepts
+  `POST /agent-runs` must also execute queued runs. `/api/health` reports
+  `AGENT_WORKER_UNAVAILABLE` (503) when the worker is disabled).
 
 The brain has no database driver and no provider SDK by design. The
 cross-language integration test

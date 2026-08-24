@@ -1,6 +1,7 @@
 package com.specagent.api.common;
 
 import com.specagent.agent.ModelContractException;
+import com.specagent.agent.runtime.StaleRunTargetException;
 import com.specagent.agent.policy.ProposalAlreadyDecidedException;
 import com.specagent.readmodel.graph.GraphWorkspaceQueryException;
 import com.specagent.readmodel.requirement.RequirementStateQueryException;
@@ -91,6 +92,18 @@ public class ApiExceptionHandler {
         return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
                 .body(ApiErrorResponse.of("MODEL_CONTRACT_REJECTED",
                         "The model output did not satisfy the runtime contract"));
+    }
+
+    /**
+     * A queued run's recorded target no longer matches live state at claim
+     * time (for example the active route changed). Expected business outcome:
+     * deterministic conflict, never a 500.
+     */
+    @ExceptionHandler(StaleRunTargetException.class)
+    public ResponseEntity<ApiErrorResponse> handleStaleRunTarget(StaleRunTargetException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiErrorResponse.of("AGENT_RUN_TARGET_STALE",
+                        "The queued agent run's target is no longer current"));
     }
 
     /**

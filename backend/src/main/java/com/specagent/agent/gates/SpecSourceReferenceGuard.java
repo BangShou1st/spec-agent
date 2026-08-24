@@ -56,6 +56,20 @@ public class SpecSourceReferenceGuard {
             return ReflectionResult.rejectedResult("Spec source references are required");
         }
 
+        // Whole-context invariant first: even when every individual ref is
+        // real and in-context, a caller that pairs route A with a snapshot of
+        // route B must be rejected before per-ref validation can pass.
+        if (contextSnapshot == null) {
+            errors.add("Context snapshot is required");
+        } else {
+            if (!contextSnapshot.projectId().equals(projectId)) {
+                errors.add("Context snapshot does not belong to project " + projectId);
+            }
+            if (!contextSnapshot.routeId().equals(routeId)) {
+                errors.add("Context snapshot does not belong to route " + routeId);
+            }
+        }
+
         for (SourceReference ref : sourceRefs) {
             validateRef(projectId, routeId, contextSnapshot, ref, errors);
         }
@@ -71,6 +85,9 @@ public class SpecSourceReferenceGuard {
                              ContextSnapshot contextSnapshot,
                              SourceReference ref,
                              List<String> errors) {
+        if (contextSnapshot == null) {
+            return;
+        }
         switch (ref.kind()) {
             case CONTEXT -> {
                 if (!ref.refId().equals(contextSnapshot.id())) {

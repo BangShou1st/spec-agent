@@ -167,6 +167,16 @@ public class ReplacementCycleService {
                     targetNodeId, null, userInstruction);
             staleContextChecker.check(proposal, execContext, snapshot);
 
+            // Live-state regression guard: the frozen snapshot proves what the
+            // model saw; this re-checks that the source route itself has not
+            // moved since (new tip appended, route deleted, target removed).
+            // Route lifecycle validity is re-verified inside commit via
+            // requireExplorationSource; here we pin tip identity and lineage.
+            // A decision made on an outdated route state must never commit.
+            staleContextChecker.verifyLiveExecutionPreconditions(
+                    sourceRouteId, sourceRoute.tipNodeId(),
+                    targetNodeId);
+
             trace = appendTrace(trace, "committing_replacement");
             eventService.append(run.id(), AgentRunPhase.EXECUTING, "EXECUTING",
                     Map.of("actionFamily", "COMMIT_REPLACEMENT"));

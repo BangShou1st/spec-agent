@@ -37,6 +37,7 @@ public class AgentRunRepository {
                 AgentRunStatus.fromCode(rs.getString("status")),
                 rs.getString("trace"),
                 rs.getString("operation"),
+                rs.getString("idempotency_key"),
                 rs.getTimestamp("created_at").toInstant(),
                 rs.getTimestamp("completed_at") == null ? null : rs.getTimestamp("completed_at").toInstant());
     }
@@ -46,10 +47,10 @@ public class AgentRunRepository {
                 INSERT INTO agent_runs (id, project_id, route_id, trigger_type, input_node_id,
                                         context_snapshot_id, produced_node_id, produced_answer_id,
                                         produced_patch_id, produced_spec_snapshot_id, status, trace,
-                                        operation, created_at, completed_at)
+                                        operation, idempotency_key, created_at, completed_at)
                 VALUES (:id, :projectId, :routeId, :triggerType, :inputNodeId, :contextSnapshotId,
                         :producedNodeId, :producedAnswerId, :producedPatchId, :producedSpecSnapshotId,
-                        :status, CAST(:trace AS jsonb), :operation, :createdAt, :completedAt)
+                        :status, CAST(:trace AS jsonb), :operation, :idempotencyKey, :createdAt, :completedAt)
                 """;
         jdbcTemplate.update(sql, Maps.of(
                 "id", run.id(),
@@ -65,8 +66,53 @@ public class AgentRunRepository {
                 "status", run.status().code(),
                 "trace", json.write(run.trace()),
                 "operation", run.operation(),
+                "idempotencyKey", run.idempotencyKey(),
                 "createdAt", Timestamp.from(run.createdAt()),
                 "completedAt", run.completedAt() == null ? null : Timestamp.from(run.completedAt())));
+    }
+
+    /**
+     * Atomic idempotent insert: when no run with this idempotency key exists
+     * yet it inserts the new row and returns true; otherwise nothing is
+     * written and false is returned. The partial unique index arbitrates
+     * concurrent creators — neither caller ever sees a constraint failure and
+     * only one row persists.
+     */
+    public boolean insertIfAbsent(AgentRun run) {
+        String sql = """
+                INSERT INTO agent_runs (id, project_id, route_id, trigger_type, input_node_id,
+                                        context_snapshot_id, produced_node_id, produced_answer_id,
+                                        produced_patch_id, produced_spec_snapshot_id, status, trace,
+                                        operation, idempotency_key, created_at, completed_at)
+                VALUES (:id, :projectId, :routeId, :triggerType, :inputNodeId, :contextSnapshotId,
+                        :producedNodeId, :producedAnswerId, :producedPatchId, :producedSpecSnapshotId,
+                        :status, CAST(:trace AS jsonb), :operation, :idempotencyKey, :createdAt, :completedAt)
+                ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
+                """;
+        return jdbcTemplate.update(sql, Maps.of(
+                "id", run.id(),
+                "projectId", run.projectId(),
+                "routeId", run.routeId(),
+                "triggerType", run.triggerType().code(),
+                "inputNodeId", run.inputNodeId(),
+                "contextSnapshotId", run.contextSnapshotId(),
+                "producedNodeId", run.producedNodeId(),
+                "producedAnswerId", run.producedAnswerId(),
+                "producedPatchId", run.producedPatchId(),
+                "producedSpecSnapshotId", run.producedSpecSnapshotId(),
+                "status", run.status().code(),
+                "trace", json.write(run.trace()),
+                "operation", run.operation(),
+                "idempotencyKey", run.idempotencyKey(),
+                "createdAt", Timestamp.from(run.createdAt()),
+                "completedAt", run.completedAt() == null ? null : Timestamp.from(run.completedAt()))) == 1;
+    }
+
+    /** Loads the persisted winner of an idempotent create race. */
+    public Optional<AgentRun> findByIdempotencyKey(String idempotencyKey) {
+        String sql = "SELECT * FROM agent_runs WHERE idempotency_key = :key";
+        return jdbcTemplate.query(sql, Maps.of("key", idempotencyKey), rowMapper)
+                .stream().findFirst();
     }
 
     public void updateStatus(UUID runId, AgentRunStatus status, Instant completedAt, String trace) {
