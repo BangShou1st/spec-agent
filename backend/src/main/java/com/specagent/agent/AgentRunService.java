@@ -57,6 +57,33 @@ public class AgentRunService {
     }
 
     /**
+     * Resolves an already-persisted idempotent request before callers inspect
+     * mutable graph state. A matching client fingerprint replays the existing
+     * run; a mismatched request using the same project/key is rejected.
+     */
+    public Optional<AgentRun> findIdempotentReplay(UUID projectId,
+                                                    String idempotencyKey,
+                                                    String requestFingerprint) {
+        String normalizedKey = normalizeKey(idempotencyKey);
+        if (normalizedKey == null) {
+            return Optional.empty();
+        }
+        if (requestFingerprint == null || requestFingerprint.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Client-idempotent agent runs require a request fingerprint");
+        }
+        Optional<AgentRun> existing = agentRunRepository
+                .findByProjectIdAndIdempotencyKey(projectId, normalizedKey);
+        if (existing.isEmpty()) {
+            return Optional.empty();
+        }
+        if (requestFingerprint.equals(existing.get().requestFingerprint())) {
+            return existing;
+        }
+        throw new IdempotencyKeyReusedException();
+    }
+
+    /**
      * Creates a run and returns whether this caller inserted it. For a
      * client-idempotent request the database arbitrates the project/key race;
      * a matching fingerprint returns the persisted winner and a mismatch is a
@@ -110,58 +137,34 @@ public class AgentRunService {
         agentRunRepository.updateStatus(runId, status, Instant.now(), trace);
     }
 
-    /**
-     * Records that the run's context snapshot was built and frozen.
-     */
     public void attachContext(UUID runId, UUID contextSnapshotId, String trace) {
         agentRunRepository.attachContext(runId, contextSnapshotId, trace);
     }
 
-    /**
-     * Records that the model adapter was called for this run.
-     */
     public void markModelCalled(UUID runId, String trace) {
         agentRunRepository.markModelCalled(runId, trace);
     }
 
-    /**
-     * Records that reflection gates ran over the model's proposal.
-     */
     public void markReflected(UUID runId, String trace) {
         agentRunRepository.markReflected(runId, trace);
     }
 
-    /**
-     * Records the node persisted by this run.
-     */
     public void markPersistedNode(UUID runId, UUID producedNodeId, String trace) {
         agentRunRepository.markPersistedNode(runId, producedNodeId, trace);
     }
 
-    /**
-     * Records the answer persisted by this run.
-     */
     public void markPersistedAnswer(UUID runId, UUID producedAnswerId, String trace) {
         agentRunRepository.markPersistedAnswer(runId, producedAnswerId, trace);
     }
 
-    /**
-     * Records the answer patch persisted by this run.
-     */
     public void markPersistedAnswerPatch(UUID runId, UUID producedPatchId, String trace) {
         agentRunRepository.markPersistedAnswerPatch(runId, producedPatchId, trace);
     }
 
-    /**
-     * Records the spec snapshot persisted by this run.
-     */
     public void markPersistedSpecSnapshot(UUID runId, UUID producedSpecSnapshotId, String trace) {
         agentRunRepository.markPersistedSpecSnapshot(runId, producedSpecSnapshotId, trace);
     }
 
-    /**
-     * Marks a run failed. Failure is terminal.
-     */
     public void fail(UUID runId, String trace) {
         agentRunRepository.fail(runId, trace);
     }
