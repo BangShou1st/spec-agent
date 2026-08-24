@@ -41,8 +41,6 @@ class FakeFullLoopFailureIntegrationTest {
     @Autowired
     private ProjectService projectService;
     @Autowired
-    private FakeAgentOrchestrator fakeAgentOrchestrator;
-    @Autowired
     private AnswerCycleTestDriver answerDriver;
     @Autowired
     private RunService runService;
@@ -61,9 +59,6 @@ class FakeFullLoopFailureIntegrationTest {
     @Autowired
     private Json json;
 
-    @MockBean
-    private com.specagent.testing.FakeModelAdapter fakeModelAdapter;
-
     /**
      * A STATE_UPDATE whose output violates the strict brain contract fails the
      * run after the immutable Answer persisted. The FAILED run stays queryable,
@@ -75,15 +70,8 @@ class FakeFullLoopFailureIntegrationTest {
         Node tip = nodeService.createRootNode(project.id(), project.activeRouteId(),
                 "What is the primary outcome?", null, List.of(), true);
 
-        // The scripted STATE_UPDATE emits a claim with a blank text, which the
-        // strict contract parser rejects fail-closed before any patch may be
-        // reflected or persisted.
-        org.mockito.Mockito.when(fakeModelAdapter.run(
-                        org.mockito.ArgumentMatchers.any(ModelRequest.class)))
-                .thenAnswer(invocation -> invocation.callRealMethod());
-        // The FakeModelAdapter is deterministic; to force a contract failure we
-        // drive the stale-target failure scenario instead of mocking provider
-        // payloads (the brain contract itself is covered by validator tests).
+        // The stale-target scenario drives the same fail-closed path a
+        // provider failure takes: nothing persists after the failure point.
         UUID runId = runService.createQueuedRunWithInput(
                 project.id(), "ANSWER_TIP", tip.id(), null, "clarified", null);
         nodeService.createWorkspaceNode(project.id(), project.activeRouteId(), tip.id(),
@@ -111,74 +99,5 @@ class FakeFullLoopFailureIntegrationTest {
         assertThat(route.tipNodeId()).isNotEqualTo(tip.id());
     }
 
-    @Test
-    void fakeSpecRunRejectsUngroundedSpecDraft() {
-        Project project = projectService.createProject("Spec rejection project");
-        nodeService.createRootNode(project.id(), project.activeRouteId(),
-                "What matters most?", null, List.of(), true);
 
-        org.mockito.Mockito.when(fakeModelAdapter.run(
-                        org.mockito.ArgumentMatchers.any(ModelRequest.class)))
-                .thenAnswer(invocation -> {
-                    ModelRequest request = invocation.getArgument(0);
-                    return new ModelResponse(
-                            request.agentRunId(), request.contextSnapshotId(), request.taskType(),
-                            AgentAction.GENERATE_SPEC,
-                            json.write(new com.specagent.agent.contracts.SpecDraft(
-                                    Map.of("Overview", "content without source references"),
-                                    List.of(),
-                                    Map.of())),
-                            Map.of("adapter", "mock"));
-                });
-
-        assertThatThrownBy(() -> fakeAgentOrchestrator.generateSpec(project.id()))
-                .isInstanceOf(ModelContractException.class)
-                .hasMessageContaining("Spec grounding rejected");
-
-        assertThat(agentRunService.listByProject(project.id())).isNotEmpty();
-        AgentRun run = agentRunService.listByProject(project.id())
-                .get(agentRunService.listByProject(project.id()).size() - 1);
-        assertThat(run.status()).isEqualTo(AgentRunStatus.FAILED);
-        assertThat(run.completedAt()).isNotNull();
-        assertThat(run.producedSpecSnapshotId()).isNull();
-
-        // No spec snapshot was persisted.
-        assertThat(specSnapshotService.listByRoute(project.activeRouteId())).isEmpty();
-    }
-
-    @Test
-    void fakeSpecRunRejectsNonexistentSourceReference() {
-        Project project = projectService.createProject("Source ref rejection project");
-        nodeService.createRootNode(project.id(), project.activeRouteId(),
-                "What matters most?", null, List.of(), true);
-        UUID nonexistentAnswerId = UUID.randomUUID();
-
-        org.mockito.Mockito.when(fakeModelAdapter.run(
-                        org.mockito.ArgumentMatchers.any(ModelRequest.class)))
-                .thenAnswer(invocation -> {
-                    ModelRequest request = invocation.getArgument(0);
-                    return new ModelResponse(
-                            request.agentRunId(), request.contextSnapshotId(), request.taskType(),
-                            AgentAction.GENERATE_SPEC,
-                            json.write(new com.specagent.agent.contracts.SpecDraft(
-                                    Map.of("Overview", "grounded looking content"),
-                                    List.of(),
-                                    Map.of("Overview", List.of("answer:" + nonexistentAnswerId)))),
-                            Map.of("adapter", "mock"));
-                });
-
-        assertThatThrownBy(() -> fakeAgentOrchestrator.generateSpec(project.id()))
-                .isInstanceOf(ModelContractException.class)
-                .hasMessageContaining("Spec source reference guard");
-
-        assertThat(agentRunService.listByProject(project.id())).isNotEmpty();
-        AgentRun run = agentRunService.listByProject(project.id())
-                .get(agentRunService.listByProject(project.id()).size() - 1);
-        assertThat(run.status()).isEqualTo(AgentRunStatus.FAILED);
-        assertThat(run.completedAt()).isNotNull();
-        assertThat(run.producedSpecSnapshotId()).isNull();
-
-        // No spec snapshot entered the route.
-        assertThat(specSnapshotService.listByRoute(project.activeRouteId())).isEmpty();
-    }
 }

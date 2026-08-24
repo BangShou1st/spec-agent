@@ -42,8 +42,6 @@ class FakeFullLoopContextIsolationIntegrationTest {
     @Autowired
     private ProjectService projectService;
     @Autowired
-    private FakeAgentOrchestrator fakeAgentOrchestrator;
-    @Autowired
     private DecisionCycleTestDriver draftDriver;
     @Autowired
     private AnswerCycleTestDriver answerDriver;
@@ -92,38 +90,4 @@ class FakeFullLoopContextIsolationIntegrationTest {
         assertThat(context.includedPatchIds()).doesNotContain(siblingPatch.id());
     }
 
-    @Test
-    void fakeSpecContextExcludesSupersededRouteContent() {
-        Project project = projectService.createProject("Superseded isolation project");
-        AgentRun first = draftDriver.draftQuestion(project.id());
-        AgentRun second = draftDriver.draftQuestion(project.id());
-        UUID node1 = first.producedNodeId();
-        UUID node2 = second.producedNodeId();
-
-        // Answer node2, patch it, and extend with a next node.
-        var answered = answerDriver.submitFreeText(project.id(), "clarified");
-        UUID node3 = answered.producedNodeId();
-        UUID answeredAnswerId = answered.answerId();
-
-        // Regenerate node2: old route SUPERSEDED, replacement route active.
-        RegenerateResult regenerated = routeService.regenerateFromNode(
-                project.id(), first.routeId(), node2, "make it clearer",
-                "What is the clarified outcome?", "clarifies", List.of());
-        UUID replacementRouteId = regenerated.replacementRoute().id();
-        UUID replacementNodeId = regenerated.replacementNode().id();
-
-        assertThat(regenerated.oldRoute().lifecycleStatus()).isEqualTo(RouteLifecycleStatus.SUPERSEDED);
-        assertThat(projectService.getProject(project.id()).orElseThrow().activeRouteId())
-                .isEqualTo(replacementRouteId);
-
-        // Spec run context must only cover the active OPEN route's lineage.
-        FakeSpecRunResult specResult = fakeAgentOrchestrator.generateSpec(project.id());
-
-        assertThat(specResult.contextSnapshot().routeId()).isEqualTo(replacementRouteId);
-        assertThat(specResult.contextSnapshot().tipNodeId()).isEqualTo(replacementNodeId);
-        assertThat(specResult.contextSnapshot().includedNodeIds()).contains(node1, replacementNodeId);
-        assertThat(specResult.contextSnapshot().includedNodeIds()).doesNotContain(node2, node3);
-        assertThat(specResult.contextSnapshot().includedAnswerIds()).doesNotContain(answeredAnswerId);
-        assertThat(specResult.specSnapshot().routeId()).isEqualTo(replacementRouteId);
-    }
 }

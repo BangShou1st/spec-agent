@@ -65,8 +65,6 @@ class ArchitectureTests {
                             .as("Fake test doubles must not be placed in the production agent package: %s", path)
                             .doesNotStartWith("Fake"));
         }
-        org.assertj.core.api.Assertions.assertThat(Path.of(
-                "src/main/java/com/specagent/testing/FakeModelAdapter.java")).exists();
     }
 
     @Test
@@ -100,14 +98,6 @@ class ArchitectureTests {
         }
     }
 
-    @Test
-    void fakeAdapterRequiresTheTestProfile() throws IOException {
-        String source = Files.readString(Path.of("src/main/java/com/specagent/testing/FakeModelAdapter.java"));
-        org.assertj.core.api.Assertions.assertThat(source)
-                .contains("@Profile(\"test\")")
-                .contains("havingValue = \"fake\"")
-                .doesNotContain("matchIfMissing = true");
-    }
 
     @Test
     void productionSourceContainsNoKnownTestOnlyIdentifiers() throws IOException {

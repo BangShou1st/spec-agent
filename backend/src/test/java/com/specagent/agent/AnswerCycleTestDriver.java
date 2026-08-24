@@ -9,7 +9,7 @@ import java.util.UUID;
 /**
  * Test-only driver for the async ANSWER_CYCLE: enqueues a run and executes it
  * synchronously through the worker. Replaces the retired synchronous
- * {@code AgentOrchestrator.answerActiveNodeAndDraftNext} in test fixtures so
+ * the synchronous answer commands in test fixtures so
  * recovery/isolation suites exercise exactly the production answer path.
  */
 @Component

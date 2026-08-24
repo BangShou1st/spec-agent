@@ -42,8 +42,6 @@ class FakeFullLoopIntegrationTest {
     @Autowired
     private ProjectService projectService;
     @Autowired
-    private FakeAgentOrchestrator fakeAgentOrchestrator;
-    @Autowired
     private DecisionCycleTestDriver draftDriver;
     @Autowired
     private AnswerCycleTestDriver answerDriver;
@@ -129,26 +127,4 @@ class FakeFullLoopIntegrationTest {
         assertThat(nodeService.getNode(result.run().producedNodeId())).isPresent();
     }
 
-    @Test
-    void fakeSpecRunCreatesGroundedSpecSnapshot() {
-        Project project = projectService.createProject("Spec run project");
-        draftDriver.draftQuestion(project.id());
-        answerDriver.submitFreeText(project.id(), "I need to clarify the main outcome");
-
-        FakeSpecRunResult result = fakeAgentOrchestrator.generateSpec(project.id());
-
-        assertThat(result.specSnapshot()).isNotNull();
-        assertThat(result.specSnapshot().routeId()).isEqualTo(project.activeRouteId());
-        assertThat(result.specSnapshot().contextSnapshotId()).isEqualTo(result.contextSnapshot().id());
-        assertThat(result.specSnapshot().sections()).isNotEmpty();
-        assertThat(result.specSnapshot().sourceRefs()).isNotEmpty();
-        assertThat(result.specSnapshot().sourceRefs())
-                .anyMatch(ref -> ref.kind() == SourceKind.CONTEXT
-                        && ref.refId().equals(result.contextSnapshot().id()));
-        assertThat(result.specSnapshot().createdByRunId()).isEqualTo(result.run().id());
-
-        assertThat(specSnapshotService.getSnapshot(result.specSnapshot().id())).isPresent();
-        assertThat(result.run().status()).isEqualTo(AgentRunStatus.COMPLETED);
-        assertThat(result.run().producedSpecSnapshotId()).isEqualTo(result.specSnapshot().id());
-    }
 }
