@@ -4,6 +4,7 @@ import com.specagent.agent.action.ActionExecutionContext;
 import com.specagent.agent.action.ActionExecutor;
 import com.specagent.agent.action.ActionResult;
 import com.specagent.agent.action.StaleProposalException;
+import com.specagent.agent.contract.ActionFamily;
 import com.specagent.agent.contract.ActionProposal;
 import com.specagent.graph.GraphCommandService;
 import com.specagent.graph.GraphOperation;
@@ -77,17 +78,19 @@ public class ProposalAcceptanceService {
         ActionProposal proposal = rebuildActionProposal(stored);
         validateStillFresh(proposal, stored);
 
-        AcceptedProposalResult result = switch (stored.actionFamily()) {
-            case "CREATE_NODE", "REQUEST_USER_INPUT" -> executeNodeAction(proposal, stored);
-            case "CONNECT_NODE" -> executeConnectNode(proposal, stored);
-            case "INVOKE_CAPABILITY" -> executeCapabilityInvocation(proposal, stored);
+        ActionFamily family = ActionFamily.fromCode(stored.actionFamily());
+        AcceptedProposalResult result = switch (family) {
+            case CREATE_NODE, REQUEST_USER_INPUT -> executeNodeAction(proposal, stored);
+            case CONNECT_NODE -> executeConnectNode(proposal, stored);
+            case INVOKE_CAPABILITY -> executeCapabilityInvocation(proposal, stored);
             // UPDATE_NODE / CREATE_ROUTE / GENERATE_ARTIFACT / CONTINUATION
             // connections never reach here as PROPOSED proposals: policy denies
             // them before creation because no command layer executes them in
             // this stage. The defensive failure below stays fail-closed.
-            default -> throw new UnsupportedOperationException(
-                    "Action family " + stored.actionFamily()
-                            + " cannot be executed on acceptance in this stage");
+            case UPDATE_NODE, CREATE_ROUTE, RESPOND_TO_USER, GENERATE_ARTIFACT, WAIT ->
+                    throw new UnsupportedOperationException(
+                            "Action family " + stored.actionFamily()
+                                    + " cannot be executed on acceptance in this stage");
         };
 
         proposalService.acceptProposal(proposalId, decidedBy);
@@ -127,8 +130,8 @@ public class ProposalAcceptanceService {
      * require both endpoints to still exist unretracted.
      */
     private void validateStillFresh(ActionProposal proposal, AgentProposal stored) {
-        switch (stored.actionFamily()) {
-            case "CREATE_NODE", "REQUEST_USER_INPUT" -> {
+        switch (ActionFamily.fromCode(stored.actionFamily())) {
+            case CREATE_NODE, REQUEST_USER_INPUT -> {
                 Route route = routeRepository.findById(stored.routeId())
                         .orElseThrow(() -> new StaleProposalException(
                                 "Proposal route no longer exists: " + stored.routeId()));
@@ -140,13 +143,13 @@ public class ProposalAcceptanceService {
                                     + "Trigger a new decision instead of accepting this proposal.");
                 }
             }
-            case "CONNECT_NODE" -> {
+            case CONNECT_NODE -> {
                 UUID sourceId = nodeRefFrom(stored.payload().get("sourceRef"));
                 UUID targetId = nodeRefFrom(stored.payload().get("targetRef"));
                 requireLiveNode(sourceId);
                 requireLiveNode(targetId);
             }
-            case "INVOKE_CAPABILITY" -> {
+            case INVOKE_CAPABILITY -> {
                 // Capability arguments may reference graph nodes; those refs
                 // must still be live at acceptance time, mirroring the wire
                 // validation the proposal passed when it was created.
@@ -158,7 +161,7 @@ public class ProposalAcceptanceService {
                     }
                 }
             }
-            default -> {
+            case UPDATE_NODE, CREATE_ROUTE, RESPOND_TO_USER, GENERATE_ARTIFACT, WAIT -> {
                 // No freshness rule for other families in this stage.
             }
         }

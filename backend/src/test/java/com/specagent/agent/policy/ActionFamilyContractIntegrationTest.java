@@ -1,6 +1,7 @@
 package com.specagent.agent.policy;
 
 import com.specagent.agent.action.ActionExecutionContext;
+import com.specagent.agent.contract.ActionFamily;
 import com.specagent.agent.contract.ActionProposal;
 import com.specagent.capability.CapabilityAdapter;
 import com.specagent.capability.CapabilityDescriptor;
@@ -104,30 +105,21 @@ class ActionFamilyContractIntegrationTest {
 
     @Test
     void everyValidatorAcceptedFamilyHasADeterministicVerdict() {
-        // Read-only families: auto-executed.
-        assertThat(verdict("WAIT", Map.of(), tip.id()).autoExecute()).isTrue();
-        assertThat(verdict("RESPOND_TO_USER", Map.of("message", "hi"), tip.id())
-                .autoExecute()).isTrue();
-
-        // Append-only graph mutations at the live tip: auto-executed.
-        assertThat(verdict("REQUEST_USER_INPUT", interactionPayload(), tip.id())
-                .autoExecute()).isTrue();
-        assertThat(verdict("CREATE_NODE", knowledgePayload(), tip.id()).autoExecute()).isTrue();
-
-        // Confirmed families WITH a real execution path behind acceptance.
-        assertThat(verdict("CONNECT_NODE", semanticPayload(), tip.id())
-                .requiresConfirmation()).isTrue();
-        assertThat(verdict("INVOKE_CAPABILITY",
-                Map.of("capabilityId", "test.local_durable"), tip.id())
-                .requiresConfirmation()).isTrue();
-
-        // Families without any execution path in this stage are denied
-        // outright — never confirmed into clickable-but-unexecutable proposals.
-        for (String family : List.of("UPDATE_NODE", "CREATE_ROUTE", "GENERATE_ARTIFACT")) {
-            PolicyDecision decision = verdict(family, Map.of(), tip.id());
-            assertThat(decision.autoExecute()).as(family).isFalse();
-            assertThat(decision.requiresConfirmation()).as(family).isFalse();
-            assertThat(decision.denyReason()).as(family).isNotBlank();
+        // Keep this loop closed over the Java enum so adding a validator family
+        // cannot silently bypass the runtime policy matrix.
+        for (ActionFamily family : ActionFamily.values()) {
+            PolicyDecision decision = verdict(family.code(), payloadFor(family), tip.id());
+            switch (family) {
+                case WAIT, RESPOND_TO_USER, REQUEST_USER_INPUT, CREATE_NODE ->
+                        assertThat(decision.autoExecute()).as(family.code()).isTrue();
+                case CONNECT_NODE, INVOKE_CAPABILITY ->
+                        assertThat(decision.requiresConfirmation()).as(family.code()).isTrue();
+                case UPDATE_NODE, CREATE_ROUTE, GENERATE_ARTIFACT -> {
+                    assertThat(decision.autoExecute()).as(family.code()).isFalse();
+                    assertThat(decision.requiresConfirmation()).as(family.code()).isFalse();
+                    assertThat(decision.denyReason()).as(family.code()).isNotBlank();
+                }
+            }
         }
 
         // CONTINUATION topology belongs to the continuation commands.
@@ -237,5 +229,17 @@ class ActionFamilyContractIntegrationTest {
     private Map<String, Object> semanticPayload() {
         return Map.of("relationClass", "SEMANTIC", "relationType", "RELATED_TO",
                 "sourceRef", "node:" + tip.id(), "targetRef", "node:" + root.id());
+    }
+
+    private Map<String, Object> payloadFor(ActionFamily family) {
+        return switch (family) {
+            case WAIT -> Map.of();
+            case RESPOND_TO_USER -> Map.of("message", "hi");
+            case REQUEST_USER_INPUT -> interactionPayload();
+            case CREATE_NODE -> knowledgePayload();
+            case CONNECT_NODE -> semanticPayload();
+            case INVOKE_CAPABILITY -> Map.of("capabilityId", "test.local_durable");
+            case UPDATE_NODE, CREATE_ROUTE, GENERATE_ARTIFACT -> Map.of();
+        };
     }
 }

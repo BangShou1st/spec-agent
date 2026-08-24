@@ -7,6 +7,7 @@ import com.specagent.agent.AgentRunStatus;
 import com.specagent.agent.action.ActionExecutionContext;
 import com.specagent.agent.action.ActionExecutor;
 import com.specagent.agent.action.ActionResult;
+import com.specagent.agent.contract.ActionFamily;
 import com.specagent.agent.contract.ActionProposal;
 import com.specagent.agent.contract.AgentEvent;
 import com.specagent.agent.contract.AgentRequestEnvelope;
@@ -124,9 +125,10 @@ public class NodeQueryService {
             // acceptance (no command path, non-tip anchor, dead endpoints)
             // are reported as not confirmable instead of creating a
             // clickable-but-unexecutable proposal.
-            boolean readOnly = switch (proposal.actionFamily()) {
-                case "RESPOND_TO_USER", "WAIT" -> true;
-                default -> false;
+            boolean readOnly = switch (ActionFamily.fromCode(proposal.actionFamily())) {
+                case RESPOND_TO_USER, WAIT -> true;
+                case CREATE_NODE, UPDATE_NODE, CONNECT_NODE, CREATE_ROUTE,
+                     REQUEST_USER_INPUT, INVOKE_CAPABILITY, GENERATE_ARTIFACT -> false;
             };
             if (!readOnly) {
                 ActionExecutionContext downgradeContext = new ActionExecutionContext(

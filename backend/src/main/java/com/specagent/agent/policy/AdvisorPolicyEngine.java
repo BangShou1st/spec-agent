@@ -1,6 +1,7 @@
 package com.specagent.agent.policy;
 
 import com.specagent.agent.action.ActionExecutionContext;
+import com.specagent.agent.contract.ActionFamily;
 import com.specagent.agent.contract.ActionProposal;
 import com.specagent.capability.CapabilityDescriptor;
 import com.specagent.capability.CapabilityRegistry;
@@ -59,10 +60,11 @@ public class AdvisorPolicyEngine {
      */
     public PolicyDecision evaluate(ActionProposal proposal,
                                    ActionExecutionContext context) {
-        if ("INVOKE_CAPABILITY".equals(proposal.actionFamily())) {
+        ActionFamily family = ActionFamily.fromCode(proposal.actionFamily());
+        if (family == ActionFamily.INVOKE_CAPABILITY) {
             return evaluateCapabilityInvocation(proposal);
         }
-        String unsupportedReason = unsupportedFamilyReason(proposal);
+        String unsupportedReason = unsupportedFamilyReason(proposal, family);
         if (unsupportedReason != null) {
             // Contract closure: a family without an executable runtime command
             // path must never become a PROPOSED proposal — accepting it would
@@ -92,19 +94,19 @@ public class AdvisorPolicyEngine {
      * {@code ProposalAcceptanceService}: every family NOT listed here and
      * classified as requiring confirmation must be executable on acceptance.
      */
-    private String unsupportedFamilyReason(ActionProposal proposal) {
-        return switch (proposal.actionFamily()) {
-            case "UPDATE_NODE" -> "节点更新在本阶段没有可执行的运行时命令，提案被拒绝";
-            case "CREATE_ROUTE" -> "路线创建在本阶段没有可执行的运行时命令，提案被拒绝";
-            case "GENERATE_ARTIFACT" -> "制品生成运行时尚未接入，提案被拒绝";
+    private String unsupportedFamilyReason(ActionProposal proposal, ActionFamily family) {
+        return switch (family) {
+            case UPDATE_NODE -> "节点更新在本阶段没有可执行的运行时命令，提案被拒绝";
+            case CREATE_ROUTE -> "路线创建在本阶段没有可执行的运行时命令，提案被拒绝";
+            case GENERATE_ARTIFACT -> "制品生成运行时尚未接入，提案被拒绝";
             // CONTINUATION topology is owned by the continuation commands
             // (append-only lineage invariants); acceptance only executes
             // SEMANTIC relations, so a CONTINUATION proposal would be
             // unexecutable.
-            case "CONNECT_NODE" -> "CONTINUATION".equals(proposal.payload().get("relationClass"))
+            case CONNECT_NODE -> "CONTINUATION".equals(proposal.payload().get("relationClass"))
                     ? "CONTINUATION 连接必须通过 continuation 命令执行，提案被拒绝"
                     : null;
-            default -> null;
+            case CREATE_NODE, REQUEST_USER_INPUT, RESPOND_TO_USER, INVOKE_CAPABILITY, WAIT -> null;
         };
     }
 
@@ -122,29 +124,27 @@ public class AdvisorPolicyEngine {
      */
     public boolean canProduceAcceptableProposal(ActionProposal proposal,
                                                 ActionExecutionContext context) {
-        switch (proposal.actionFamily()) {
-            case "WAIT", "RESPOND_TO_USER":
+        return switch (ActionFamily.fromCode(proposal.actionFamily())) {
+            case WAIT, RESPOND_TO_USER:
                 // Read-only families are auto-executed; they never become
                 // proposals in the first place.
-                return false;
-            case "UPDATE_NODE", "CREATE_ROUTE", "GENERATE_ARTIFACT":
+                yield false;
+            case UPDATE_NODE, CREATE_ROUTE, GENERATE_ARTIFACT:
                 // No execution path in this stage — policy denies them.
-                return false;
-            case "CONNECT_NODE":
+                yield false;
+            case CONNECT_NODE:
                 // Only SEMANTIC relations are executable on acceptance.
-                return "SEMANTIC".equals(proposal.payload().get("relationClass"))
+                yield "SEMANTIC".equals(proposal.payload().get("relationClass"))
                         && endpointsLive(proposal);
-            case "CREATE_NODE", "REQUEST_USER_INPUT":
+            case CREATE_NODE, REQUEST_USER_INPUT:
                 // Executable on acceptance only while the anchor is the live
                 // route tip (mirrors ProposalAcceptanceService staleness).
-                return isAppendOnlyContinuation(proposal, context);
-            case "INVOKE_CAPABILITY":
+                yield isAppendOnlyContinuation(proposal, context);
+            case INVOKE_CAPABILITY:
                 // Only local-durable capabilities confirm into proposals;
                 // unknown ids and external side-effect classes are denied.
-                return evaluateCapabilityInvocation(proposal).requiresConfirmation();
-            default:
-                return false;
-        }
+                yield evaluateCapabilityInvocation(proposal).requiresConfirmation();
+        };
     }
 
     private boolean endpointsLive(ActionProposal proposal) {
@@ -193,22 +193,20 @@ public class AdvisorPolicyEngine {
 
     private MutationClass classify(ActionProposal proposal,
                                    ActionExecutionContext context) {
-        return switch (proposal.actionFamily()) {
-            case "WAIT", "RESPOND_TO_USER" -> MutationClass.READ_ONLY_INTERNAL;
-            case "REQUEST_USER_INPUT", "CREATE_NODE" -> classifyGraphMutation(proposal, context);
-            case "UPDATE_NODE", "CONNECT_NODE", "CREATE_ROUTE" ->
+        return switch (ActionFamily.fromCode(proposal.actionFamily())) {
+            case WAIT, RESPOND_TO_USER -> MutationClass.READ_ONLY_INTERNAL;
+            case REQUEST_USER_INPUT, CREATE_NODE -> classifyGraphMutation(proposal, context);
+            case UPDATE_NODE, CONNECT_NODE, CREATE_ROUTE ->
                     MutationClass.CONFIRMED_INTENT_CHANGE;
             // Artifact generation is local durable output (not an external
             // side effect): it needs confirmation while no artifact runtime
             // is wired for execution.
-            case "GENERATE_ARTIFACT" ->
+            case GENERATE_ARTIFACT ->
                     MutationClass.CONFIRMED_INTENT_CHANGE;
             // INVOKE_CAPABILITY never reaches classify(): it is dispatched to
             // evaluateCapabilityInvocation by descriptor side-effect class.
-            // Unknown families never reach the policy engine either (the
-            // response validator rejects them first); if one does, fail toward
-            // the strictest non-denying class: explicit confirmation.
-            default -> MutationClass.CONFIRMED_INTENT_CHANGE;
+            case INVOKE_CAPABILITY -> throw new IllegalStateException(
+                    "Capability invocation must be classified by its descriptor");
         };
     }
 

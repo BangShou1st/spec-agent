@@ -7,6 +7,7 @@ import com.specagent.agent.AgentRunStatus;
 import com.specagent.agent.ModelContractException;
 import com.specagent.agent.action.ActionExecutionContext;
 import com.specagent.agent.action.StaleContextChecker;
+import com.specagent.agent.contract.ActionFamily;
 import com.specagent.agent.contract.ActionProposal;
 import com.specagent.agent.contract.AgentEvent;
 import com.specagent.agent.contract.AgentRequestEnvelope;
@@ -137,7 +138,7 @@ public class ReplacementCycleService {
                     Map.of("actionFamily", proposal.actionFamily(),
                            "proposalId", proposal.proposalId().toString()));
 
-            if (!"REQUEST_USER_INPUT".equals(proposal.actionFamily())) {
+            if (ActionFamily.fromCode(proposal.actionFamily()) != ActionFamily.REQUEST_USER_INPUT) {
                 agentRunService.fail(run.id(),
                         appendTrace(trace, "failed:unexpected_action"));
                 throw new ModelContractException(

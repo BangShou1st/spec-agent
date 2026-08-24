@@ -1,5 +1,6 @@
 package com.specagent.agent.action;
 
+import com.specagent.agent.contract.ActionFamily;
 import com.specagent.agent.contract.ActionProposal;
 import com.specagent.capability.CapabilityResult;
 import com.specagent.capability.CapabilityRuntime;
@@ -46,18 +47,17 @@ public class ProposalActionExecutor implements ActionExecutor {
     @Override
     @SuppressWarnings("unchecked")
     public ActionResult execute(ActionProposal proposal, ActionExecutionContext context) {
-        return switch (proposal.actionFamily()) {
-            case "REQUEST_USER_INPUT" -> executeRequestUserInput(proposal, context);
-            case "CREATE_NODE" -> executeCreateNode(proposal, context);
-            case "RESPOND_TO_USER" -> executeRespondToUser(proposal);
-            case "WAIT" -> executeWait();
-            case "INVOKE_CAPABILITY" -> executeInvokeCapability(proposal, context);
-            case "UPDATE_NODE", "CONNECT_NODE", "CREATE_ROUTE" ->
+        ActionFamily family = ActionFamily.fromCode(proposal.actionFamily());
+        return switch (family) {
+            case REQUEST_USER_INPUT -> executeRequestUserInput(proposal, context);
+            case CREATE_NODE -> executeCreateNode(proposal, context);
+            case RESPOND_TO_USER -> executeRespondToUser(proposal);
+            case WAIT -> executeWait();
+            case INVOKE_CAPABILITY -> executeInvokeCapability(proposal, context);
+            case UPDATE_NODE, CONNECT_NODE, CREATE_ROUTE ->
                     executeDeferredMutation(proposal);
-            case "GENERATE_ARTIFACT" ->
+            case GENERATE_ARTIFACT ->
                     executeUnsupported(proposal);
-            default -> throw new IllegalArgumentException(
-                    "Unknown action family: " + proposal.actionFamily());
         };
     }
 
