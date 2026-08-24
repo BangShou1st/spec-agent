@@ -15,18 +15,19 @@ export async function createProject(page: Page, title: string): Promise<void> {
   await page.getByRole('button', { name: '创建项目' }).click()
   await page.waitForURL(/\/projects\/[0-9a-f-]+/)
   await expect(page.getByTestId('graph-canvas')).toBeVisible()
-  await expect(page.getByTestId('route-navigator')).toBeVisible()
 }
 
 /** Fits the whole graph into the viewport (viewport-only; never moves nodes). */
 export async function fitGraph(page: Page): Promise<void> {
   await page.getByTestId('fit-view').click()
-  await page.waitForTimeout(500)
+  await expect(page.locator('.vue-flow__node').first()).toBeVisible()
 }
 
 /** Closes product overlays before a test performs direct canvas pointer input. */
 export async function closeFloatingWorkspaceWindows(page: Page): Promise<void> {
-  for (const testId of ['floating-window-routes', 'floating-window-inspector']) {
+  // Close the topmost window first; the inspector can temporarily cover the
+  // route window while the responsive layout settles.
+  for (const testId of ['floating-window-inspector', 'floating-window-routes']) {
     const window = page.getByTestId(testId)
     if (await window.isVisible()) {
       await window.getByTestId('floating-window-close').click()
@@ -67,6 +68,15 @@ export async function buildThreeNodeLineage(page: Page): Promise<void> {
   await fitGraph(page)
   await page.getByTestId('open-inspector').click()
   await expect(page.getByTestId('floating-window-inspector')).toBeVisible()
+  await expect.poll(async () => {
+    const routesBox = await page.getByTestId('floating-window-routes').boundingBox()
+    const inspectorBox = await page.getByTestId('floating-window-inspector').boundingBox()
+    if (!routesBox || !inspectorBox) return false
+    return routesBox.x + routesBox.width <= inspectorBox.x
+      || inspectorBox.x + inspectorBox.width <= routesBox.x
+      || routesBox.y + routesBox.height <= inspectorBox.y
+      || inspectorBox.y + inspectorBox.height <= routesBox.y
+  }).toBe(true)
 }
 
 /**
@@ -74,7 +84,14 @@ export async function buildThreeNodeLineage(page: Page): Promise<void> {
  * context. The operation dialog never asks the user to pick a route.
  */
 export async function forkFromNode(page: Page, index: number, label: string): Promise<void> {
-  await page.locator('[data-test="graph-question-node"]').nth(index).getByTestId('fork-node').click()
+  const inspector = page.getByTestId('floating-window-inspector')
+  if (await inspector.isVisible()) {
+    await inspector.getByTestId('floating-window-close').click()
+  }
+  const node = page.locator('[data-test="graph-question-node"]').nth(index)
+  await node.hover()
+  await expect(node.getByTestId('fork-node')).toBeVisible()
+  await node.getByTestId('fork-node').click()
   await expect(page.getByTestId('fork-dialog')).toBeVisible()
   if (label) {
     await page.getByTestId('fork-label').fill(label)

@@ -5,6 +5,10 @@ test('re-answer keeps the canonical question and creates a distinct answer visua
   await createProject(page, 'E2E Re-answer Graph Flow')
   await buildThreeNodeLineage(page)
   await fitGraph(page)
+  const inspector = page.getByTestId('floating-window-inspector')
+  if (await inspector.isVisible()) {
+    await inspector.getByTestId('floating-window-close').click()
+  }
 
   const target = page.locator('[data-test="graph-question-node"]').nth(1)
   const canonicalId = await target.getAttribute('data-node-id')

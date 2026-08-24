@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { routerKey } from 'vue-router'
 import ApiErrorBanner from '@/components/ApiErrorBanner.vue'
 import ConfirmRouteActionDialog from '@/components/ConfirmRouteActionDialog.vue'
@@ -13,6 +13,7 @@ import RouteNavigator from '@/components/workspace/RouteNavigator.vue'
 import WorkspaceInspector from '@/components/workspace/WorkspaceInspector.vue'
 import { projectGraph, type SpecAgentGraphNodeData } from '@/graph/graphProjection'
 import { FLOATING_WINDOW_RANGES } from '@/graph/graphLayoutStorage'
+import { computeAutoFloatingWindowLayout, type FloatingRect } from '@/graph/floatingWindowLayout'
 import { productErrorMessage, requiresModelSettings } from '@/api/errorCopy'
 import { useGraphUiStore } from '@/stores/graphUiStore'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
@@ -32,6 +33,9 @@ const store = useWorkspaceStore()
 const graphUi = useGraphUiStore()
 const router = inject(routerKey, null)
 const canvasRef = ref<InstanceType<typeof GraphCanvas> | null>(null)
+const workspaceBodyRef = ref<HTMLElement | null>(null)
+let floatingLayoutFrame: number | null = null
+let workspaceResizeObserver: ResizeObserver | null = null
 
 const forkDialogOpen = ref(false)
 const resourceDialogOpen = ref(false)
@@ -45,9 +49,26 @@ const reanswerNodeId = ref<string | null>(null)
 
 onMounted(() => {
   graphUi.initProject(props.projectId)
+  window.addEventListener('resize', scheduleFloatingLayout)
+  if (workspaceBodyRef.value && 'ResizeObserver' in window) {
+    workspaceResizeObserver = new ResizeObserver(scheduleFloatingLayout)
+    workspaceResizeObserver.observe(workspaceBodyRef.value)
+  }
+  scheduleFloatingLayout()
   void store.loadWorkspace(props.projectId).then(() => {
     void store.refreshUndoRedoAvailability()
+    scheduleFloatingLayout()
   })
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', scheduleFloatingLayout)
+  workspaceResizeObserver?.disconnect()
+  workspaceResizeObserver = null
+  if (floatingLayoutFrame !== null) {
+    window.cancelAnimationFrame(floatingLayoutFrame)
+    floatingLayoutFrame = null
+  }
 })
 
 // 每次 canonical 刷新后，浏览器视图状态与后端 graph 对齐。
@@ -55,8 +76,130 @@ watch(
   () => store.graphView,
   (view) => {
     graphUi.reconcile(view)
+    scheduleFloatingLayout()
   },
 )
+
+watch(
+  () => [graphUi.nodePositions, graphUi.routeDisplayStates, graphUi.floatingWindows],
+  () => scheduleFloatingLayout(),
+  { deep: true, flush: 'post' },
+)
+
+function graphObstacles(): FloatingRect[] {
+  const body = workspaceBodyRef.value
+  if (!body) return []
+  const bodyBox = body.getBoundingClientRect()
+  return Array.from(body.querySelectorAll<HTMLElement>(
+    '[data-test="graph-question-node"], [data-test="graph-knowledge-node"], '
+      + '[data-test="graph-start-placeholder"], [data-test="graph-toolbar"]',
+  ))
+    .map((element) => {
+      const box = element.getBoundingClientRect()
+      return {
+        x: box.left - bodyBox.left,
+        y: box.top - bodyBox.top,
+        width: box.width,
+        height: box.height,
+      }
+    })
+    .filter((box) => box.width > 0 && box.height > 0)
+}
+
+function interactiveObstacles(): FloatingRect[] {
+  const body = workspaceBodyRef.value
+  if (!body) return []
+  const bodyBox = body.getBoundingClientRect()
+  const selectors = [
+    '[data-test="graph-question-node"].graph-question-node--current',
+    '[data-test="graph-start-placeholder"]',
+    '[data-test="graph-toolbar"]',
+  ]
+  const activeNodeId = store.activeState?.activeNode?.id
+  if (activeNodeId) selectors.push(`[data-node-id="${activeNodeId}"]`)
+  return Array.from(body.querySelectorAll<HTMLElement>(selectors.join(', ')))
+    .map((element) => {
+      const box = element.getBoundingClientRect()
+      return {
+        x: box.left - bodyBox.left,
+        y: box.top - bodyBox.top,
+        width: box.width,
+        height: box.height,
+      }
+    })
+    .filter((box) => box.width > 0 && box.height > 0)
+}
+
+function floatingRect(name: 'routes' | 'inspector'): FloatingRect {
+  const state = graphUi.floatingWindows[name]
+  return { x: state.x, y: state.y, width: state.width, height: state.height }
+}
+
+function changedGeometry(
+  current: { x: number; y: number; width: number; height: number },
+  next: { x: number; y: number; width: number; height: number },
+): boolean {
+  return Math.abs(current.x - next.x) > 0.5
+    || Math.abs(current.y - next.y) > 0.5
+    || Math.abs(current.width - next.width) > 0.5
+    || Math.abs(current.height - next.height) > 0.5
+}
+
+function reflowFloatingWindows(): void {
+  const body = workspaceBodyRef.value
+  if (!body) return
+  const bodyBox = body.getBoundingClientRect()
+  if (bodyBox.width <= 0 || bodyBox.height <= 0) return
+
+  const obstacles = graphObstacles()
+  const routes = graphUi.floatingWindows.routes
+  const inspector = graphUi.floatingWindows.inspector
+  const routeObstacles = [
+    ...obstacles,
+    ...(inspector.open && inspector.positionMode === 'manual' ? [floatingRect('inspector')] : []),
+  ]
+  if (routes.open && routes.positionMode === 'auto') {
+    const nextRoutes = computeAutoFloatingWindowLayout({
+      viewportWidth: bodyBox.width,
+      viewportHeight: bodyBox.height,
+      state: routes,
+      range: FLOATING_WINDOW_RANGES.routes,
+      obstacles: routeObstacles,
+    })
+    if (changedGeometry(routes, nextRoutes)) {
+      graphUi.setFloatingWindow('routes', nextRoutes)
+    }
+  }
+
+  const refreshedRoutes = graphUi.floatingWindows.routes
+  const inspectorObstacles = [
+    ...interactiveObstacles(),
+    ...(refreshedRoutes.open ? [floatingRect('routes')] : []),
+  ]
+  if (inspector.open && inspector.positionMode === 'auto') {
+    const nextInspector = computeAutoFloatingWindowLayout({
+      viewportWidth: bodyBox.width,
+      viewportHeight: bodyBox.height,
+      state: inspector,
+      range: FLOATING_WINDOW_RANGES.inspector,
+      obstacles: inspectorObstacles,
+      // Window-to-window overlap blocks the close/titlebar controls just as
+      // much as overlap with the current graph interaction does.
+      protectedObstacles: inspectorObstacles,
+    })
+    if (changedGeometry(inspector, nextInspector)) {
+      graphUi.setFloatingWindow('inspector', nextInspector)
+    }
+  }
+}
+
+function scheduleFloatingLayout(): void {
+  if (typeof window === 'undefined' || floatingLayoutFrame !== null) return
+  floatingLayoutFrame = window.requestAnimationFrame(() => {
+    floatingLayoutFrame = null
+    reflowFloatingWindows()
+  })
+}
 
 const selectedNodeData = computed<SpecAgentGraphNodeData | null>(() => {
   if (!store.graphView || !graphUi.primarySelectedNodeId) {
@@ -325,7 +468,7 @@ async function confirmDestructive(): Promise<void> {
 
     <p v-if="store.loading" class="muted workspace-shell__loading">正在加载工作区…</p>
 
-    <div v-else class="workspace-shell__body">
+    <div v-else ref="workspaceBodyRef" class="workspace-shell__body">
       <GraphCanvas
         ref="canvasRef"
         class="workspace-shell__canvas"

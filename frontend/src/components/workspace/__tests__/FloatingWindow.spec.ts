@@ -9,6 +9,7 @@ const initial: FloatingWindowPreference = {
   width: 320,
   height: 360,
   open: true,
+  positionMode: 'auto',
 }
 
 function mountWindow(state: FloatingWindowPreference = initial) {
@@ -46,6 +47,7 @@ describe('FloatingWindow', () => {
     const update = wrapper.emitted('update:state')?.at(-1)?.[0] as Partial<FloatingWindowPreference>
     expect(update.x).toBe(100)
     expect(update.y).toBe(100)
+    expect(update.positionMode).toBe('manual')
     expect(wrapper.find('[data-test="body-button"]').exists()).toBe(true)
   })
 
@@ -58,6 +60,7 @@ describe('FloatingWindow', () => {
     window.dispatchEvent(pointer('pointermove', -500, 100))
     const update = wrapper.emitted('update:state')?.at(-1)?.[0] as Partial<FloatingWindowPreference>
     expect(update.width).toBe(240)
+    expect(update.positionMode).toBe('manual')
   })
 
   it('snaps near an edge, brings itself to front, and emits close/reset intents', async () => {

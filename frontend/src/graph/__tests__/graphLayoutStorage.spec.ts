@@ -5,6 +5,9 @@ import {
   saveProjectGraphPreferences,
   saveWorkspaceUiPreferences,
   DEFAULT_WORKSPACE_UI,
+  DEFAULT_WORKSPACE_UI_V2,
+  loadWorkspaceUiPreferencesV2,
+  saveWorkspaceUiPreferencesV2,
 } from '@/graph/graphLayoutStorage'
 import type { ProjectGraphPreferencesV1, WorkspaceUiPreferencesV1 } from '@/graph/graphTypes'
 
@@ -118,5 +121,50 @@ describe('graph layout storage', () => {
     }
     saveWorkspaceUiPreferences(value)
     expect(loadWorkspaceUiPreferences()).toEqual(value)
+  })
+
+  it('loads the dynamic floating-window defaults in auto mode', () => {
+    const prefs = loadWorkspaceUiPreferencesV2()
+    expect(prefs).toEqual(DEFAULT_WORKSPACE_UI_V2)
+    expect(prefs.windows.routes.positionMode).toBe('auto')
+    expect(prefs.windows.inspector.positionMode).toBe('auto')
+  })
+
+  it('repairs the legacy inspector default but preserves a legacy manual move', () => {
+    localStorage.setItem(
+      'spec-agent.workspace-ui.v2',
+      JSON.stringify({
+        version: 2,
+        windows: {
+          routes: { x: 24, y: 72, width: 320, height: 560, open: true },
+          inspector: { x: 836, y: 72, width: 420, height: 640, open: true },
+        },
+      }),
+    )
+    expect(loadWorkspaceUiPreferencesV2().windows.inspector.positionMode).toBe('auto')
+
+    localStorage.setItem(
+      'spec-agent.workspace-ui.v2',
+      JSON.stringify({
+        version: 2,
+        windows: {
+          routes: { x: 24, y: 72, width: 320, height: 560, open: true },
+          inspector: { x: 510, y: 120, width: 420, height: 640, open: true },
+        },
+      }),
+    )
+    expect(loadWorkspaceUiPreferencesV2().windows.inspector.positionMode).toBe('manual')
+  })
+
+  it('round-trips an explicit floating-window interaction mode', () => {
+    const value = {
+      ...DEFAULT_WORKSPACE_UI_V2,
+      windows: {
+        ...DEFAULT_WORKSPACE_UI_V2.windows,
+        inspector: { ...DEFAULT_WORKSPACE_UI_V2.windows.inspector, x: 300, positionMode: 'manual' as const },
+      },
+    }
+    saveWorkspaceUiPreferencesV2(value)
+    expect(loadWorkspaceUiPreferencesV2()).toEqual(value)
   })
 })

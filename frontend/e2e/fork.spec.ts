@@ -19,6 +19,22 @@ test('fork from a focused visual node has no route picker and preserves history'
     .toBe(rootPosition)
 })
 
+test('fork is available only for eligible historical interaction nodes', async ({ page }) => {
+  await createProject(page, 'E2E Fork Eligibility Draft')
+  await page.getByTestId('graph-toolbar').getByTestId('add-idea').click()
+  const draft = page.getByTestId('graph-knowledge-node')
+  await expect(draft).toBeVisible()
+  await draft.hover()
+  await expect(draft.getByTestId('fork-node')).toHaveCount(0)
+
+  await createProject(page, 'E2E Fork Eligibility Interaction')
+  await buildThreeNodeLineage(page)
+  await closeFloatingWorkspaceWindows(page)
+  const eligible = page.locator('[data-test="graph-question-node"]').nth(1)
+  await eligible.hover()
+  await expect(eligible.getByTestId('fork-node')).toBeVisible()
+})
+
 test('shared-node fork requires Focus and never renders a source picker', async ({ page }) => {
   await createProject(page, 'E2E Fork Focus Context')
   await buildThreeNodeLineage(page)
@@ -31,7 +47,10 @@ test('shared-node fork requires Focus and never renders a source picker', async 
   await closeFloatingWorkspaceWindows(page)
   await fitGraph(page)
 
-  await page.locator('[data-test="graph-question-node"]').first().getByTestId('fork-node').click()
+  const firstNode = page.locator('[data-test="graph-question-node"]').first()
+  await firstNode.hover()
+  await expect(firstNode.getByTestId('fork-node')).toBeVisible()
+  await firstNode.getByTestId('fork-node').click()
   await expect(page.getByTestId('fork-dialog')).toBeVisible()
   await expect(page.getByTestId('fork-submit')).toBeEnabled()
   await expect(page.locator('[data-test="fork-base-route"]')).toHaveCount(0)
@@ -53,7 +72,10 @@ test('ambiguous shared-node fork is blocked until Current View is selected', asy
   await nonActive.getByTestId('focus-route').click()
   await closeFloatingWorkspaceWindows(page)
   await fitGraph(page)
-  await page.locator('[data-test="graph-question-node"]').first().getByTestId('fork-node').click()
+  const firstNode = page.locator('[data-test="graph-question-node"]').first()
+  await firstNode.hover()
+  await expect(firstNode.getByTestId('fork-node')).toBeVisible()
+  await firstNode.getByTestId('fork-node').click()
   await expect(page.getByTestId('fork-dialog')).toBeVisible()
   await expect(page.getByTestId('choose-reading-route')).toContainText('“当前查看”控件')
   await expect(page.getByTestId('reading-route-select').first()).toHaveValue('')

@@ -96,7 +96,7 @@ function move(event: PointerEvent): void {
       next.y = startState.y + dy
     }
   }
-  emit('update:state', clampFloatingWindow(next))
+  emit('update:state', clampFloatingWindow({ ...next, positionMode: 'manual' }))
 }
 
 function end(): void {

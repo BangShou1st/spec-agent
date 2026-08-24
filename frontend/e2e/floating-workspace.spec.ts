@@ -1,5 +1,11 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Locator } from '@playwright/test'
 import { buildThreeNodeLineage, createProject } from './helpers'
+
+async function boxesDoNotOverlap(first: Locator, second: Locator): Promise<boolean> {
+  const [a, b] = await Promise.all([first.boundingBox(), second.boundingBox()])
+  if (!a || !b) return false
+  return a.x + a.width <= b.x || b.x + b.width <= a.x || a.y + a.height <= b.y || b.y + b.height <= a.y
+}
 
 test('floating windows persist geometry and never change the graph canvas dimensions', async ({ page }) => {
   await createProject(page, 'E2E Floating Workspace')
@@ -11,6 +17,8 @@ test('floating windows persist geometry and never change the graph canvas dimens
   const inspector = page.getByTestId('floating-window-inspector')
   await expect(routes).toBeVisible()
   await expect(inspector).toBeVisible()
+  const currentNode = page.locator('.graph-question-node--current')
+  await expect.poll(() => boxesDoNotOverlap(inspector, currentNode)).toBe(true)
 
   await inspector.getByTestId('floating-window-titlebar').click()
   await expect(inspector).toHaveCSS('z-index', '21')
@@ -35,17 +43,36 @@ test('floating windows persist geometry and never change the graph canvas dimens
 
   const saved = await page.evaluate(() => localStorage.getItem('spec-agent.workspace-ui.v2'))
   expect(saved).not.toBeNull()
+  expect(JSON.parse(saved ?? '{}').windows.routes.positionMode).toBe('manual')
   await page.reload()
   await expect(page.getByTestId('floating-window-routes')).toBeVisible()
   await expect(page.getByTestId('floating-window-inspector')).toBeVisible()
-  await page.getByTestId('reset-windows').click()
-  await expect(page.getByTestId('floating-window-routes')).toBeVisible()
-  await expect(page.getByTestId('floating-window-routes')).toHaveCSS('left', '24px')
-  await expect(page.getByTestId('floating-window-routes')).toHaveCSS('top', '72px')
-  await expect(page.getByTestId('floating-window-routes')).toHaveCSS('width', '320px')
-  await expect(page.getByTestId('floating-window-routes')).toHaveCSS('height', '560px')
-  await expect(page.getByTestId('floating-window-inspector')).toHaveCSS('left', '836px')
-  await expect(page.getByTestId('floating-window-inspector')).toHaveCSS('top', '72px')
-  await expect(page.getByTestId('floating-window-inspector')).toHaveCSS('width', '420px')
-  await expect(page.getByTestId('floating-window-inspector')).toHaveCSS('height', '640px')
+  await page.getByTestId('floating-window-inspector').getByTestId('floating-window-reset').click()
+  await expect.poll(async () => {
+    const raw = await page.evaluate(() => localStorage.getItem('spec-agent.workspace-ui.v2'))
+    return JSON.parse(raw ?? '{}').windows.inspector.positionMode
+  }).toBe('auto')
+  await expect.poll(() => boxesDoNotOverlap(
+    page.getByTestId('floating-window-inspector'),
+    page.locator('.graph-question-node--current'),
+  )).toBe(true)
+})
+
+test('auto layout remains usable on a small viewport and keeps float windows apart', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 700 })
+  await createProject(page, 'E2E Small Floating Workspace')
+  await page.getByTestId('floating-window-inspector').getByTestId('floating-window-reset').click()
+  await expect.poll(() => boxesDoNotOverlap(
+    page.getByTestId('floating-window-routes'),
+    page.getByTestId('floating-window-inspector'),
+  )).toBe(true)
+
+  await page.getByTestId('draft-question').click()
+  const current = page.locator('.graph-question-node--current')
+  await expect(current).toBeVisible()
+  // The small viewport may leave less than the preferred inspector width, so
+  // assert the product requirement at the interaction boundary: the input is
+  // still directly actionable without force-clicking through the overlay.
+  await page.getByTestId('free-text').fill('small viewport input')
+  await expect(page.getByTestId('free-text')).toHaveValue('small viewport input')
 })

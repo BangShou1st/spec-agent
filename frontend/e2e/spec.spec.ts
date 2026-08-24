@@ -61,6 +61,7 @@ test('Active=A Focus=B separates reading context from work context', async ({ pa
   await expect(page.getByTestId('active-route')).toHaveCount(1)
 
   // 需求状态与规格历史跟随读取路线 B。
+  await page.getByTestId('open-inspector').click()
   await expect(page.getByTestId('requirement-state-panel')).toBeVisible()
   await expect(page.getByText('路线：Route-B').first()).toBeVisible()
 

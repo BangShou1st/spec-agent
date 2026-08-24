@@ -60,3 +60,21 @@ test('whats-kept-verbatim: purpose renders inside the node without translation',
   const node = page.locator('.graph-question-node--current')
   await expect(node.getByText('This clarifies the primary requirement goal.')).toBeVisible()
 })
+
+test('draft idea uses the hover-edit-textarea flow', async ({ page }) => {
+  await createProject(page, 'E2E Draft Idea Editing')
+
+  await page.getByTestId('graph-toolbar').getByTestId('add-idea').click()
+  const draft = page.getByTestId('graph-knowledge-node')
+  await expect(draft).toBeVisible()
+  await draft.hover()
+  await expect(draft.getByTestId('edit-draft')).toBeVisible()
+  await draft.getByTestId('edit-draft').click()
+  const input = draft.getByTestId('draft-text')
+  await expect(input).toBeVisible()
+  await input.fill('A requirement captured directly in the graph.')
+  await draft.getByTestId('save-draft').click()
+  await expect(draft.getByTestId('knowledge-text')).toContainText(
+    'A requirement captured directly in the graph.',
+  )
+})

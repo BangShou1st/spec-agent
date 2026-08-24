@@ -29,6 +29,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -202,6 +203,20 @@ class GraphWorkspaceApiIntegrationTest {
                 .andExpect(jsonPath("$.routes[0].lifecycleStatus").value("archived"))
                 .andExpect(jsonPath("$.routes[0].isActive").value(false))
                 .andExpect(jsonPath("$.nodes[0].question").value("Archived question"));
+    }
+
+    @Test
+    void staleRootDraftAgainstArchivedRouteReturnsConflictInsteadOf500() throws Exception {
+        Project project = projectService.createProject("Stale graph command project");
+        UUID routeId = project.activeRouteId();
+        routeService.archiveRoute(project.id(), routeId);
+
+        mockMvc.perform(post("/api/v1/projects/{projectId}/nodes", project.id())
+                        .contentType("application/json")
+                        .content("{\"routeId\":\"" + routeId
+                                + "\",\"subtype\":\"NOTE\",\"content\":{}}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("RUNTIME_CONFLICT"));
     }
 
     @Test

@@ -41,6 +41,8 @@ export interface FloatingWindowPreference {
   width: number
   height: number
   open: boolean
+  /** Auto layout avoids current graph/window obstacles; manual preserves user placement. */
+  positionMode: 'auto' | 'manual'
 }
 
 export interface WorkspaceUiPreferencesV2 {

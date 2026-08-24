@@ -298,6 +298,18 @@ class AnswerCycleRunApiIntegrationTest {
                 .andExpect(status().isNotFound());
     }
 
+    @Test
+    void answerCommandWithoutActiveRouteReturnsConflictInsteadOf500() throws Exception {
+        Project project = projectService.createProject("No active route answer project");
+        routeService.archiveRoute(project.id(), project.activeRouteId());
+
+        mockMvc.perform(post("/api/v1/projects/{projectId}/agent-runs", project.id())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"operation\":\"ANSWER_TIP\",\"freeText\":\"stale answer\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("NO_ACTIVE_ROUTE"));
+    }
+
     private String extractString(String json, String field) {
         try {
             JsonNode node = objectMapper.readTree(json);

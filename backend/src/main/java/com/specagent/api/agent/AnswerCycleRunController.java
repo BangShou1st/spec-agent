@@ -51,6 +51,12 @@ public class AnswerCycleRunController {
     public ResponseEntity<Map<String, Object>> createRun(
             @PathVariable UUID projectId,
             @RequestBody CreateRunRequest request) {
+        return com.specagent.api.common.CommandExecution.execute(
+                () -> createRunInternal(projectId, request));
+    }
+
+    private ResponseEntity<Map<String, Object>> createRunInternal(
+            UUID projectId, CreateRunRequest request) {
 
         String operation = request.operation();
         String idempotencyKey = request.idempotencyKey();
@@ -62,6 +68,15 @@ public class AnswerCycleRunController {
                 projectId, idempotencyKey, requestFingerprint);
         if (replay.isPresent()) {
             return acceptedRun(replay.get());
+        }
+
+        // Active-route operations are allowed to fail as a stable 409 when a
+        // concurrent archive/restore changed the project between UI refreshes.
+        // Idempotent replays above intentionally bypass this state check.
+        if (!"REGENERATE_NODE".equals(operation)) {
+            com.specagent.api.common.CommandExecution.requireActiveRoute(
+                    com.specagent.api.common.CommandExecution.requireProject(projectService, projectId),
+                    routeService);
         }
 
         if ("DRAFT_QUESTION".equals(operation)) {

@@ -577,7 +577,6 @@ const isEmptyProject = computed(() =>
         :nodes-connectable="false"
         :edges-updatable="false"
         :multi-selection-key-code="['Meta', 'Control']"
-        :selection-key-code="'Shift'"
         :pan-on-drag="true"
         :min-zoom="0.15"
         :max-zoom="2.5"

@@ -47,9 +47,9 @@ public class GraphCommandController {
     /** Creates the first (root) draft node on an empty route. Zero model calls. */
     @PostMapping("/nodes")
     public ResponseEntity<NodeResponse> createRootDraftNode(@PathVariable UUID projectId,
-                                                            @RequestBody CreateDraftNodeRequest request) {
-        Node node = commandService.createRootDraftNode(
-                projectId, request.routeId(), request.subtype(), request.content());
+                                                             @RequestBody CreateDraftNodeRequest request) {
+        Node node = com.specagent.api.common.CommandExecution.execute(() -> commandService.createRootDraftNode(
+                projectId, request.routeId(), request.subtype(), request.content()));
         return ResponseEntity.status(HttpStatus.CREATED).body(NodeResponse.from(node, request.routeId(), false));
     }
 

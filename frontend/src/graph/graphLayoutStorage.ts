@@ -39,8 +39,16 @@ export const FLOATING_WINDOW_RANGES = {
 export const DEFAULT_WORKSPACE_UI_V2: WorkspaceUiPreferencesV2 = {
   version: 2,
   windows: {
-    routes: { x: 24, y: 72, width: 320, height: 560, open: true },
-    inspector: { x: 836, y: 72, width: 420, height: 640, open: true },
+    routes: { x: 0, y: 72, width: 320, height: 560, open: true, positionMode: 'auto' },
+    inspector: { x: 0, y: 72, width: 420, height: 640, open: true, positionMode: 'auto' },
+  },
+}
+
+const LEGACY_DEFAULT_WORKSPACE_UI_V2: WorkspaceUiPreferencesV2 = {
+  version: 2,
+  windows: {
+    routes: { x: 24, y: 72, width: 320, height: 560, open: true, positionMode: 'auto' },
+    inspector: { x: 836, y: 72, width: 420, height: 640, open: true, positionMode: 'auto' },
   },
 }
 
@@ -203,13 +211,26 @@ function clampFloatingWindow(
   value: Partial<FloatingWindowPreference> | undefined,
   fallback: FloatingWindowPreference,
   range: { minWidth: number; maxWidth: number; minHeight: number; maxHeight: number },
+  legacyFallback: FloatingWindowPreference,
 ): FloatingWindowPreference {
+  const hasPositionMode = value?.positionMode === 'auto' || value?.positionMode === 'manual'
+  const matchesLegacyDefault =
+    Number(value?.x) === legacyFallback.x &&
+    Number(value?.y) === legacyFallback.y &&
+    Number(value?.width) === legacyFallback.width &&
+    Number(value?.height) === legacyFallback.height &&
+    value?.open === legacyFallback.open
   return {
     x: Number.isFinite(Number(value?.x)) ? Number(value?.x) : fallback.x,
     y: Number.isFinite(Number(value?.y)) ? Number(value?.y) : fallback.y,
     width: clamp(Number(value?.width), range.minWidth, range.maxWidth, fallback.width),
     height: clamp(Number(value?.height), range.minHeight, range.maxHeight, fallback.height),
     open: typeof value?.open === 'boolean' ? value.open : fallback.open,
+    // v2 did not persist an interaction mode. Repair its known defaults, but
+    // preserve a non-default legacy placement as an intentional manual move.
+    positionMode: hasPositionMode
+      ? value.positionMode as 'auto' | 'manual'
+      : matchesLegacyDefault ? 'auto' : 'manual',
   }
 }
 
@@ -228,11 +249,13 @@ export function loadWorkspaceUiPreferencesV2(): WorkspaceUiPreferencesV2 {
           candidate.windows?.routes,
           DEFAULT_WORKSPACE_UI_V2.windows.routes,
           FLOATING_WINDOW_RANGES.routes,
+          LEGACY_DEFAULT_WORKSPACE_UI_V2.windows.routes,
         ),
         inspector: clampFloatingWindow(
           candidate.windows?.inspector,
           DEFAULT_WORKSPACE_UI_V2.windows.inspector,
           FLOATING_WINDOW_RANGES.inspector,
+          LEGACY_DEFAULT_WORKSPACE_UI_V2.windows.inspector,
         ),
       },
     }
