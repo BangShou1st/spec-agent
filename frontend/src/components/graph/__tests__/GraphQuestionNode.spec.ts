@@ -258,6 +258,28 @@ describe('graph question node', () => {
     expect(wrapper.text()).not.toContain('Second route answer.')
     expect(wrapper.emitted('fork')).toBeUndefined()
     expect(wrapper.emitted('submit-answer')).toBeUndefined()
+    expect(wrapper.text()).toContain('Initial')
+    expect(wrapper.text()).toContain('Route-B')
+    expect(wrapper.text()).not.toContain('共享 · 2 条路线')
+  })
+
+  it('renders runtime status separately on a pending projection and exposes retry', async () => {
+    const wrapper = mountNode(historicalData({
+      node: nodeData({ id: 'pending:run-1', question: '下一步问题生成失败' }),
+      routeIds: ['r2'],
+      visibleRouteIds: ['r2'],
+      routeMembership: [{ routeId: 'r2', label: '分支路线', lifecycleStatus: 'open', isActive: true }],
+      isShared: false,
+      runtimeStatus: 'FAILED',
+      runtimePhase: 'FAILED',
+      runtimeMessage: '模型服务不可用',
+    }))
+    expect(wrapper.find('[data-test="pending-card"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="runtime-status"]').text()).toContain('运行失败')
+    expect(wrapper.text()).toContain('模型服务不可用')
+    expect(wrapper.find('[data-test="contextual-ai"]').exists()).toBe(false)
+    await wrapper.find('[data-test="retry-pending"]').trigger('click')
+    expect(wrapper.emitted('retry-pending')).toHaveLength(1)
   })
 
   it('renders a shared node as neutral when Focus is absent', () => {

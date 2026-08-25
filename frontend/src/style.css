@@ -220,6 +220,12 @@ textarea {
   border-color: var(--color-warn);
 }
 
+.badge-danger {
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
 .badge-active {
   background: var(--color-accent-soft);
   color: var(--color-accent);
@@ -445,11 +451,16 @@ textarea {
 .graph-start-placeholder {
   flex: 1;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 10px;
   min-height: 260px;
+}
+
+.graph-start-placeholder__content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
   text-align: center;
 }
 
@@ -510,6 +521,22 @@ textarea {
   border-radius: var(--radius) var(--radius) 0 0;
   cursor: grab;
   user-select: none;
+}
+
+.graph-question-node__identity {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  flex: 0 0 auto;
+}
+
+.graph-question-node__routes {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 3px;
+  min-width: 0;
 }
 
 .graph-question-node__header:active {
@@ -638,8 +665,9 @@ textarea {
 }
 
 .graph-option {
-  display: flex;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
   gap: 8px;
   padding: 8px 10px;
   border: 1px solid var(--color-border);
@@ -655,14 +683,20 @@ textarea {
 
 .graph-option input[type='radio'] {
   margin-top: 2px;
+  grid-column: 1;
+  grid-row: 1;
 }
 
 .graph-option-label {
+  grid-column: 2;
+  grid-row: 1;
   font-weight: 500;
 }
 
 .graph-option-impact {
   display: block;
+  grid-column: 2;
+  grid-row: 2;
   color: var(--color-text-secondary);
   font-size: 12px;
 }
@@ -781,6 +815,28 @@ textarea {
 .graph-action {
   font-size: 12px;
   padding: 4px 8px;
+}
+
+.graph-runtime-badge {
+  flex: 0 0 auto;
+}
+
+.graph-runtime-state {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 90px;
+  justify-content: center;
+}
+
+.graph-runtime-copy,
+.graph-runtime-error {
+  margin: 0;
+  color: var(--color-text-secondary);
+}
+
+.graph-runtime-error {
+  color: var(--color-danger);
 }
 
 /* ---- visual weight (Focus/Dim semantics) ---- */

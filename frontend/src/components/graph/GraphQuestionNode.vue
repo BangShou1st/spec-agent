@@ -12,6 +12,7 @@ import { Position } from '@vue-flow/core'
 import type { SubmitAnswerRequest } from '@/api/types'
 import type { SpecAgentGraphNodeData } from '@/graph/graphProjection'
 import { useInputDraftStore } from '@/stores/inputDraftStore'
+import { phaseToCopy } from '@/graph/phaseCopy'
 
 /**
  * Four-side edge anchors for adaptive routing. Every side carries one
@@ -50,6 +51,8 @@ const emit = defineEmits<{
   fork: [nodeId: string]
   reanswer: [nodeId: string]
   regenerate: [nodeId: string]
+  'contextual-ai': [nodeId: string]
+  'retry-pending': []
 }>()
 
 /**
@@ -108,6 +111,27 @@ watch([selectedOptionId, freeText], () => {
 
 const node = computed(() => props.data.node)
 const primary = computed(() => props.data.primaryAnswer)
+const isPendingCard = computed(() =>
+  !props.data.canAnswer
+  && props.data.node.id.startsWith('pending:')
+  && props.data.runtimeStatus != null,
+)
+const runtimeStatusLabel = computed(() => {
+  switch (props.data.runtimeStatus) {
+    case 'PENDING': return '等待运行'
+    case 'RUNNING': return '运行中'
+    case 'FAILED': return '运行失败'
+    case 'SUCCEEDED': return '已完成'
+    default: return null
+  }
+})
+const runtimeStatusClass = computed(() => {
+  switch (props.data.runtimeStatus) {
+    case 'FAILED': return 'badge-danger'
+    case 'RUNNING': return 'badge-open'
+    default: return 'badge-warn'
+  }
+})
 
 /** 显式阅读路线在该节点上没有回答时，摘要区域显式显示等待。 */
 const readingWaiting = computed(() => {
@@ -206,15 +230,31 @@ function setReadingRoute(event: Event): void {
       aria-hidden="true"
     />
     <header class="graph-question-node__header" data-test="node-drag-handle" title="拖动标题栏移动节点">
-      <span v-if="data.qLabel" class="graph-question-node__q-label">
-        {{ data.qLabel }}
+      <span class="graph-question-node__identity">
+        <span v-if="data.qLabel" class="graph-question-node__q-label">
+          {{ data.qLabel }}
+        </span>
+        <span v-if="data.isLatest" class="graph-question-node__latest" data-test="latest-marker">
+          最新
+        </span>
       </span>
-      <span v-if="data.isLatest" class="graph-question-node__latest" data-test="latest-marker">
-        最新
+      <span
+        v-if="data.routeMembership?.length"
+        class="graph-question-node__routes"
+        :title="data.routeMembership.map((membership) => membership.label).join(' · ')"
+        data-test="route-membership"
+      >
+        <span
+          v-for="membership in data.routeMembership"
+          :key="membership.routeId"
+          class="graph-route-chip"
+          :class="{ 'graph-route-chip--active': membership.isActive }"
+        >
+          {{ membership.label }}
+        </span>
       </span>
-      <span class="graph-question-node__meta">
-        <template v-if="data.isShared">共享 · {{ data.routeIds.length }} 条路线</template>
-        <template v-else>{{ data.routeIds.length }} 条路线</template>
+      <span v-if="runtimeStatusLabel" class="badge graph-runtime-badge" :class="runtimeStatusClass" data-test="runtime-status">
+        {{ runtimeStatusLabel }}
       </span>
     </header>
 
@@ -247,8 +287,26 @@ function setReadingRoute(event: Event): void {
         </select>
       </div>
 
+      <!-- Virtual AgentRun projection; it is replaced by a real node after the
+           Runtime persists the validated result. -->
+      <template v-if="isPendingCard">
+        <div class="graph-runtime-state" data-test="pending-card">
+          <p class="graph-node-question">{{ node.question }}</p>
+          <p class="graph-runtime-copy">{{ phaseToCopy(data.runtimePhase) }}</p>
+          <p v-if="data.runtimeMessage" class="graph-runtime-error">{{ data.runtimeMessage }}</p>
+          <button
+            v-if="data.runtimeStatus === 'FAILED'"
+            class="btn btn-primary graph-action nodrag"
+            data-test="retry-pending"
+            @click.stop="emit('retry-pending')"
+          >
+            重试
+          </button>
+        </div>
+      </template>
+
       <!-- Current answerable node: direct answer interaction -->
-      <template v-if="data.canAnswer">
+      <template v-else-if="data.canAnswer">
         <h3 class="graph-node-question" data-test="question">{{ node.question }}</h3>
         <p v-if="node.purpose" class="graph-node-purpose">{{ node.purpose }}</p>
 
@@ -343,6 +401,14 @@ function setReadingRoute(event: Event): void {
             @click.stop="regenerateNode"
           >
             换一个问题
+          </button>
+          <button
+            class="btn graph-action nodrag"
+            data-test="contextual-ai"
+            title="在检查器中询问 AI"
+            @click.stop="emit('contextual-ai', data.node.id)"
+          >
+            问 AI
           </button>
         </div>
       </template>

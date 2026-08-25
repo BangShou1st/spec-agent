@@ -31,6 +31,11 @@ import {
   type ViewportTransform,
 } from '@/graph/graphViewport'
 import type { GraphPosition } from '@/graph/graphTypes'
+import type {
+  ContextualAiTarget,
+  GraphPendingProjection,
+  GraphRuntimeStatus,
+} from '@/graph/graphProjection'
 import { useGraphUiStore } from '@/stores/graphUiStore'
 import type { GraphWorkspaceView, SubmitAnswerRequest } from '@/api/types'
 import { resolveRouteFocusIntent } from '@/graph/graphInteraction'
@@ -56,6 +61,10 @@ const props = defineProps<{
   submitting: boolean
   drafting: boolean
   pending: boolean
+  runtimeNodeId?: string | null
+  runtimeStatus?: GraphRuntimeStatus | null
+  runtimePhase?: string | null
+  pendingProjection?: GraphPendingProjection | null
 }>()
 
 const emit = defineEmits<{
@@ -66,6 +75,9 @@ const emit = defineEmits<{
   regenerate: [nodeId: string]
   'add-idea': []
   'add-resource': []
+  'contextual-ai': [target: ContextualAiTarget]
+  'retry-pending': []
+  'viewport-settled': []
   undo: []
   redo: []
   routes: []
@@ -100,6 +112,12 @@ const projection = computed(() => {
       expandedNodeIds: graphUi.expandedNodeIds,
     },
     savedPositions: graphUi.nodePositions,
+    runtime: {
+      nodeId: props.runtimeNodeId ?? null,
+      status: props.runtimeStatus ?? null,
+      phase: props.runtimePhase ?? null,
+    },
+    pending: props.pendingProjection ?? null,
   })
 })
 
@@ -242,7 +260,10 @@ function applyViewport(transform: ViewportTransform | null, duration: number): v
   if (!transform) {
     return
   }
-  void vf.setViewport(transform, { duration })
+  // A floating window placed during the animation saw mid-flight node
+  // geometry. Emit settled exactly when the transform has finished so the
+  // workspace re-runs the layout against the final on-screen positions.
+  void Promise.resolve(vf.setViewport(transform, { duration })).then(() => emit('viewport-settled'))
 }
 
 /** 初始套用一次适应视图（只改 viewport 变换，不动节点坐标）。 */
@@ -442,6 +463,13 @@ function onPaneClick(event?: MouseEvent): void {
   graphUi.clearFocusRoute()
 }
 
+function emitContextualAi(nodeId: string, visualNodeKey?: string): void {
+  emit('contextual-ai', {
+    canonicalNodeId: nodeId,
+    visualNodeKey: visualNodeKey ?? nodeId,
+  })
+}
+
 /** Brings one node into view without changing Focus or Active. */
 async function locateNode(nodeId: string): Promise<void> {
   clearActiveNodeFitTimer()
@@ -549,7 +577,7 @@ function showAll(): void {
 }
 
 const isEmptyProject = computed(() =>
-  props.view !== null && props.view.nodes.length === 0,
+  props.view !== null && props.view.nodes.length === 0 && !props.pendingProjection,
 )
 </script>
 
@@ -588,8 +616,9 @@ const isEmptyProject = computed(() =>
          @node-drag="onNodeDrag"
         @node-drag-stop="onNodeDragStop"
         @pane-click="onPaneClick"
-        @selection-start="shiftSelecting = true"
-        @selection-end="shiftSelecting = false"
+         @selection-start="shiftSelecting = true"
+         @selection-end="shiftSelecting = false"
+         @viewport-change-end="emit('viewport-settled')"
       >
         <template #edge-adaptive="edgeProps">
           <AdaptiveGraphEdge v-bind="edgeProps" />
@@ -605,12 +634,15 @@ const isEmptyProject = computed(() =>
             @fork="(id) => emit('fork', id)"
             @reanswer="(id) => emit('reanswer', id)"
             @regenerate="(id) => emit('regenerate', id)"
+            @contextual-ai="(id) => emitContextualAi(id, nodeProps.data.visualNodeKey)"
+            @retry-pending="emit('retry-pending')"
           />
         </template>
         <template #node-knowledge="nodeProps: NodeProps<SpecAgentGraphNodeData>">
           <GraphKnowledgeNode
             :data="nodeProps.data"
             :selected="nodeProps.selected"
+            @contextual-ai="(id) => emitContextualAi(id, nodeProps.data.visualNodeKey)"
           />
         </template>
       </VueFlow>
@@ -620,6 +652,7 @@ const isEmptyProject = computed(() =>
       v-else-if="isEmptyProject"
       :drafting="drafting"
       @draft="emit('draft')"
+      @add-idea="emit('add-idea')"
     />
 
     <p v-if="!view" class="muted graph-canvas__loading">正在加载工作区…</p>

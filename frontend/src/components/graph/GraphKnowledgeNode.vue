@@ -32,6 +32,10 @@ const props = defineProps<{
 
 const workspace = useWorkspaceStore()
 
+const emit = defineEmits<{
+  'contextual-ai': [nodeId: string]
+}>()
+
 const node = computed(() => props.data.node)
 const isDraft = computed(() => node.value.userEditableDraft)
 const contentText = computed(() => {
@@ -144,8 +148,20 @@ async function confirmContent(): Promise<void> {
         {{ knowledgeStatusLabel }}
       </span>
       <span v-if="data.isLatest" class="graph-question-node__latest" data-test="latest-marker">最新</span>
-      <span class="graph-question-node__meta">
-        <template v-if="data.isShared">共享 · {{ data.routeIds.length }} 条路线</template>
+      <span
+        v-if="data.routeMembership?.length"
+        class="graph-question-node__routes"
+        :title="data.routeMembership.map((membership) => membership.label).join(' · ')"
+        data-test="route-membership"
+      >
+        <span
+          v-for="membership in data.routeMembership"
+          :key="membership.routeId"
+          class="graph-route-chip"
+          :class="{ 'graph-route-chip--active': membership.isActive }"
+        >
+          {{ membership.label }}
+        </span>
       </span>
     </header>
 
@@ -213,6 +229,14 @@ async function confirmContent(): Promise<void> {
             @click.stop="continueFromHere"
           >
             从这里继续
+          </button>
+          <button
+            class="btn graph-action nodrag"
+            data-test="contextual-ai"
+            title="在检查器中询问 AI"
+            @click.stop="emit('contextual-ai', data.node.id)"
+          >
+            问 AI
           </button>
         </div>
       </template>

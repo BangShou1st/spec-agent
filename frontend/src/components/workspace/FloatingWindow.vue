@@ -37,13 +37,44 @@ function clampFloatingWindow(
   const width = Math.min(props.maxWidth, Math.max(props.minWidth, state.width))
   const height = Math.min(props.maxHeight, Math.max(props.minHeight, state.height))
   const titleBarHeight = 36
-  return {
+  const next = {
     ...state,
     width,
     height,
     x: Math.min(Math.max(0, viewportWidth - 48), Math.max(0, Math.min(state.x, viewportWidth - 48))),
     y: Math.min(Math.max(0, viewportHeight - titleBarHeight), Math.max(0, Math.min(state.y, viewportHeight - titleBarHeight))),
   }
+  const body = document.querySelector<HTMLElement>('.workspace-shell__body')
+  const toolbar = document.querySelector<HTMLElement>('[data-layout-role="toolbar"]')
+  if (!body || !toolbar) return next
+
+  const bodyBox = body.getBoundingClientRect()
+  const toolbarBox = toolbar.getBoundingClientRect()
+  const gap = 16
+  const rectAt = (y: number) => ({
+    left: bodyBox.left + next.x,
+    top: bodyBox.top + y,
+    right: bodyBox.left + next.x + width,
+    bottom: bodyBox.top + y + height,
+  })
+  const overlapsToolbar = (y: number): boolean => {
+    const rect = rectAt(y)
+    return rect.left < toolbarBox.right
+      && rect.right > toolbarBox.left
+      && rect.top < toolbarBox.bottom
+      && rect.bottom > toolbarBox.top
+  }
+  if (overlapsToolbar(next.y)) {
+    const below = toolbarBox.bottom - bodyBox.top + gap
+    const above = toolbarBox.top - bodyBox.top - height - gap
+    const maxY = Math.max(0, viewportHeight - titleBarHeight)
+    const candidates = [below, above]
+      .map((y) => Math.min(maxY, Math.max(0, y)))
+      .filter((y, index, values) => values.indexOf(y) === index)
+    const safe = candidates.find((y) => !overlapsToolbar(y))
+    if (safe !== undefined) next.y = safe
+  }
+  return next
 }
 
 function snap(value: number, limit: number): number {
@@ -107,6 +138,10 @@ function end(): void {
 }
 
 function recoverViewport(): void {
+  // Auto-placed windows are owned by the workspace reflow, which re-runs on
+  // viewport changes with full obstacle knowledge. Clamping here would apply
+  // a second, obstacle-blind geometry authority on top of it.
+  if (props.state.positionMode === 'auto') return
   emit('update:state', clampFloatingWindow(props.state))
 }
 

@@ -9,6 +9,7 @@ const PHASE_COPY: Record<string, string> = {
   STATE_UPDATED: '需求状态已更新',
   DECIDING: '正在规划下一步…',
   PROPOSAL_CREATED: '正在执行操作…',
+  ARTIFACT_GENERATING: '正在生成产物…',
   EXECUTING: '正在生成…',
   WAITING_USER: '等待用户输入',
   AWAITING_APPROVAL: '等待确认',

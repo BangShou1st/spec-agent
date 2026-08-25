@@ -242,6 +242,55 @@ describe('workspaceStore', () => {
     expect(store.feedback).toBe('问题已起草。')
   })
 
+  it('keeps an in-flight draft projection bound to a real active route', async () => {
+    const active = makeActiveState({
+      project: makeProject({ id: 'p1', activeRouteId: 'r1' }),
+      activeRoute: makeRoute({ id: 'r1', isActive: true }),
+    })
+    mockBackendViews(active, makeRequirementState())
+    mockedCreateAgentRun.mockResolvedValue({
+      runId: 'run-draft',
+      operation: 'DRAFT_QUESTION',
+      phase: 'CREATED',
+    })
+    let resolveRun: (view: AgentRunView) => void = () => undefined
+    mockedGetAgentRun.mockReturnValue(new Promise((resolve) => {
+      resolveRun = resolve
+    }))
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+
+    const drafting = store.draftQuestion()
+    await vi.waitFor(() => expect(mockedCreateAgentRun).toHaveBeenCalledTimes(1))
+
+    expect(store.pendingRouteProjection).toMatchObject({
+      routeId: 'r1',
+      runId: 'run-draft',
+    })
+    expect(store.pendingRouteProjection?.routeId).not.toBe('')
+
+    resolveRun(draftRunView({ runId: 'run-draft', routeId: 'r1' }))
+    expect(await drafting).toBe(true)
+    expect(store.pendingRouteProjection).toBeNull()
+  })
+
+  it('fails explicitly before drafting when canonical active route identity is missing', async () => {
+    const active = makeActiveState({
+      project: makeProject({ id: 'p1', activeRouteId: null }),
+      activeRoute: null,
+      activeNode: null,
+    })
+    mockBackendViews(active, makeRequirementState())
+    mockedGetProjectGraph.mockResolvedValue(makeGraphWorkspaceView({ activeRouteId: null }))
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+
+    expect(await store.draftQuestion()).toBe(false)
+    expect(mockedCreateAgentRun).not.toHaveBeenCalled()
+    expect(store.pendingRouteProjection).toBeNull()
+    expect(store.error).toMatchObject({ code: 'ACTIVE_ROUTE_REQUIRED' })
+  })
+
   it('creates an ANSWER_TIP run and returns pending immediately', async () => {
     mockBackendViews(makeActiveState(), makeRequirementState())
     let resolveRun: (v: ReturnType<typeof completedRunView>) => void = () => undefined

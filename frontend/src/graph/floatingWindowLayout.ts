@@ -77,13 +77,32 @@ export function computeAutoFloatingWindowLayout({
   // beside a node. Try a constrained responsive width before accepting
   // overlap; manual resizing still enforces the normal minimum width.
   const responsiveMinWidth = Math.max(200, range.minWidth - 80)
+  const responsiveMinHeight = Math.max(220, range.minHeight - 80)
+  const responsiveWidths: number[] = []
+  const responsiveHeights: number[] = []
   for (const obstacle of obstacles) {
     const leftSpace = obstacle.x - margin - gap
     const rightSpace = viewportWidth - obstacle.x - obstacle.width - margin - gap
     for (const available of [leftSpace, rightSpace]) {
       if (available >= responsiveMinWidth) {
-        addDimension(Math.min(preferredWidth, available), preferredHeight)
+        const width = Math.min(preferredWidth, available)
+        addDimension(width, preferredHeight)
+        responsiveWidths.push(width)
       }
+    }
+    const topSpace = obstacle.y - margin - gap
+    const bottomSpace = viewportHeight - obstacle.y - obstacle.height - margin - gap
+    for (const available of [topSpace, bottomSpace]) {
+      if (available >= responsiveMinHeight) {
+        const height = Math.min(preferredHeight, available)
+        addDimension(preferredWidth, height)
+        responsiveHeights.push(height)
+      }
+    }
+  }
+  for (const width of responsiveWidths) {
+    for (const height of responsiveHeights) {
+      addDimension(width, height)
     }
   }
 

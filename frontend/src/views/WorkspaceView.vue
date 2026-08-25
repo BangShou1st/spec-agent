@@ -11,7 +11,12 @@ import GraphCanvas from '@/components/graph/GraphCanvas.vue'
 import FloatingWindow from '@/components/workspace/FloatingWindow.vue'
 import RouteNavigator from '@/components/workspace/RouteNavigator.vue'
 import WorkspaceInspector from '@/components/workspace/WorkspaceInspector.vue'
-import { projectGraph, type SpecAgentGraphNodeData } from '@/graph/graphProjection'
+import {
+  projectGraph,
+  type ContextualAiTarget,
+  type SpecAgentGraphNodeData,
+} from '@/graph/graphProjection'
+import { phaseToCopy } from '@/graph/phaseCopy'
 import { FLOATING_WINDOW_RANGES } from '@/graph/graphLayoutStorage'
 import { computeAutoFloatingWindowLayout, type FloatingRect } from '@/graph/floatingWindowLayout'
 import { productErrorMessage, requiresModelSettings } from '@/api/errorCopy'
@@ -35,6 +40,7 @@ const router = inject(routerKey, null)
 const canvasRef = ref<InstanceType<typeof GraphCanvas> | null>(null)
 const workspaceBodyRef = ref<HTMLElement | null>(null)
 let floatingLayoutFrame: number | null = null
+let floatingLayoutSettledTimer: number | null = null
 let workspaceResizeObserver: ResizeObserver | null = null
 
 const forkDialogOpen = ref(false)
@@ -69,6 +75,10 @@ onBeforeUnmount(() => {
     window.cancelAnimationFrame(floatingLayoutFrame)
     floatingLayoutFrame = null
   }
+  if (floatingLayoutSettledTimer !== null) {
+    window.clearTimeout(floatingLayoutSettledTimer)
+    floatingLayoutSettledTimer = null
+  }
 })
 
 // 每次 canonical 刷新后，浏览器视图状态与后端 graph 对齐。
@@ -94,30 +104,6 @@ function graphObstacles(): FloatingRect[] {
     '[data-layout-role="graph-node"], [data-layout-role="start-placeholder"], '
       + '[data-layout-role="toolbar"]',
   ))
-    .map((element) => {
-      const box = element.getBoundingClientRect()
-      return {
-        x: box.left - bodyBox.left,
-        y: box.top - bodyBox.top,
-        width: box.width,
-        height: box.height,
-      }
-    })
-    .filter((box) => box.width > 0 && box.height > 0)
-}
-
-function interactiveObstacles(): FloatingRect[] {
-  const body = workspaceBodyRef.value
-  if (!body) return []
-  const bodyBox = body.getBoundingClientRect()
-  const selectors = [
-    '[data-layout-role="graph-node"].graph-question-node--current',
-    '[data-layout-role="start-placeholder"]',
-    '[data-layout-role="toolbar"]',
-  ]
-  const activeNodeId = store.activeState?.activeNode?.id
-  if (activeNodeId) selectors.push(`[data-node-id="${activeNodeId}"]`)
-  return Array.from(body.querySelectorAll<HTMLElement>(selectors.join(', ')))
     .map((element) => {
       const box = element.getBoundingClientRect()
       return {
@@ -172,8 +158,11 @@ function reflowFloatingWindows(): void {
   }
 
   const refreshedRoutes = graphUi.floatingWindows.routes
+  // Both windows respect the same graph obstacle set: every interactive graph
+  // node, the start placeholder's content, and the toolbar. A knowledge draft
+  // or historical node is never acceptable cover for an auto window.
   const inspectorObstacles = [
-    ...interactiveObstacles(),
+    ...obstacles,
     ...(refreshedRoutes.open ? [floatingRect('routes')] : []),
   ]
   if (inspector.open && inspector.positionMode === 'auto') {
@@ -277,6 +266,16 @@ const workspaceRetrying = computed(() => store.loading || store.refreshing
   || store.submitting || store.repairingAnswer || store.drafting
   || store.routeCommandPending || store.generatingSpec)
 
+const runtimePhaseCopy = computed(() => {
+  if (store.pendingRouteProjection) {
+    return phaseToCopy(store.pendingRouteProjection.phase)
+  }
+  if (store.answerRunId || store.answerRunStatus) {
+    return phaseToCopy(store.answerRunPhase)
+  }
+  return null
+})
+
 const forkFinalizedRouteIds = computed(() => {
   if (!forkNodeId.value || !store.graphView) return []
   return store.graphView.answers
@@ -351,6 +350,33 @@ function handleRegenerate(nodeId: string): void {
   regenerateDialogOpen.value = true
 }
 
+function resolveContextualAiTarget(target: ContextualAiTarget): string | null {
+  if (!store.graphView || !target.canonicalNodeId || !target.visualNodeKey) return null
+  const projection = projectGraph({
+    view: store.graphView,
+    activeNodeId: store.activeState?.activeNode?.id ?? null,
+    uiState: {
+      focusRouteId: graphUi.focusRouteId,
+      lifecycleFilters: graphUi.lifecycleFilters,
+      routeDisplayStates: graphUi.routeDisplayStates,
+      expandedNodeIds: graphUi.expandedNodeIds,
+    },
+    savedPositions: graphUi.nodePositions,
+  })
+  const targetNode = projection.nodes.find((node) =>
+    node.id === target.visualNodeKey
+      && node.data?.canonicalNodeId === target.canonicalNodeId,
+  )
+  return targetNode?.id ?? null
+}
+
+function handleContextualAi(target: ContextualAiTarget): void {
+  const visualNodeKey = resolveContextualAiTarget(target)
+  if (!visualNodeKey) return
+  graphUi.selectNode(visualNodeKey)
+  openWindow('inspector')
+}
+
 async function handleForkSubmit(label: string | null): Promise<void> {
   if (!forkNodeId.value) {
     return
@@ -410,6 +436,15 @@ function handleLocateRoute(routeId: string): void {
 function openWindow(name: 'routes' | 'inspector'): void {
   graphUi.setFloatingWindow(name, { open: true })
   graphUi.bringWindowToFront(name)
+  // fit/locate operations animate the Vue Flow viewport. Reflow once more
+  // after that animation so an auto window never settles over the node that
+  // became visible at the end of the transition.
+  scheduleFloatingLayout()
+  if (floatingLayoutSettledTimer !== null) window.clearTimeout(floatingLayoutSettledTimer)
+  floatingLayoutSettledTimer = window.setTimeout(() => {
+    floatingLayoutSettledTimer = null
+    scheduleFloatingLayout()
+  }, 420)
 }
 
 function openConfirm(kind: 'archive' | 'delete', routeId: string): void {
@@ -477,11 +512,18 @@ async function confirmDestructive(): Promise<void> {
         :submitting="store.submitting"
         :drafting="store.drafting"
         :pending="store.routeCommandPending"
+        :runtime-node-id="store.pendingAnswerNodeId"
+        :runtime-status="store.answerRunStatus"
+        :runtime-phase="store.answerRunPhase"
+        :pending-projection="store.pendingRouteProjection"
         @draft="handleDraft"
         @submit-answer="handleAnswer"
         @fork="handleFork"
         @reanswer="handleReanswer"
         @regenerate="handleRegenerate"
+        @contextual-ai="handleContextualAi"
+        @retry-pending="store.retryPendingAgentRun"
+        @viewport-settled="scheduleFloatingLayout"
         @add-idea="store.createRootIdea"
         @add-resource="resourceDialogOpen = true"
         @undo="store.undoGraph"
@@ -543,6 +585,9 @@ async function confirmDestructive(): Promise<void> {
     </div>
 
     <div class="workspace-shell__toast-layer">
+      <p v-if="runtimePhaseCopy" class="muted workspace-shell__runtime-phase" data-test="runtime-phase">
+        {{ runtimePhaseCopy }}
+      </p>
       <p v-if="store.refreshing" class="muted workspace-shell__refreshing" data-test="refreshing">
         正在刷新工作区…
       </p>

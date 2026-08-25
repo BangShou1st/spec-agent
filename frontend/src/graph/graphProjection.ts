@@ -7,7 +7,7 @@ import type {
   RouteLifecycleStatus,
 } from '@/api/types'
 import type { GraphPosition, GraphRouteDisplayState } from './graphTypes'
-import { resolvePositions, VERTICAL_GAP } from './graphLayout'
+import { placeNewNode, resolvePositions, VERTICAL_GAP } from './graphLayout'
 import {
   selectEdgeHandles,
   FALLBACK_NODE_WIDTH,
@@ -20,6 +20,29 @@ import {
 } from './graphVisualIdentity'
 
 export type GraphVisualWeight = 'active' | 'focus' | 'normal' | 'dimmed'
+
+/** Runtime progress is projected separately from knowledge status. */
+export type GraphRuntimeStatus = 'PENDING' | 'RUNNING' | 'SUCCEEDED' | 'FAILED'
+
+/** A browser-only card projected from an in-flight AgentRun. */
+export interface GraphPendingProjection {
+  routeId: string
+  sourceNodeId: string | null
+  runId: string
+  status: GraphRuntimeStatus
+  phase: string | null
+  message: string | null
+}
+
+/**
+ * Contextual AI actions identify the canonical node and the visual instance
+ * that the user actually acted on. The former anchors the query; the latter
+ * preserves the clicked branch when one canonical node has multiple visuals.
+ */
+export interface ContextualAiTarget {
+  canonicalNodeId: string
+  visualNodeKey: string
+}
 
 export interface GraphAnswerPresentation {
   routeId: string
@@ -67,6 +90,10 @@ export interface SpecAgentGraphNodeData {
   qLabel: string | null
   routeMembership?: GraphRouteMembershipPresentation[]
   visualWeight: GraphVisualWeight
+  /** Runtime facts are intentionally optional and never replace knowledgeStatus. */
+  runtimeStatus?: GraphRuntimeStatus | null
+  runtimePhase?: string | null
+  runtimeMessage?: string | null
 }
 
 export interface SpecAgentGraphEdgeData {
@@ -86,6 +113,12 @@ export interface GraphProjectionInput {
     expandedNodeIds: string[]
   }
   savedPositions: Record<string, GraphPosition>
+  runtime?: {
+    nodeId: string | null
+    status: GraphRuntimeStatus | null
+    phase: string | null
+  }
+  pending?: GraphPendingProjection | null
 }
 
 export interface GraphProjectionResult {
@@ -354,6 +387,13 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
           ? 'Q' + nodeOrder.get(instance.visualNodeKey) : null,
         routeMembership,
         visualWeight,
+        runtimeStatus: input.runtime?.nodeId === instance.canonicalNodeId
+          ? input.runtime.status
+          : null,
+        runtimePhase: input.runtime?.nodeId === instance.canonicalNodeId
+          ? input.runtime.phase
+          : null,
+        runtimeMessage: null,
       },
       dragHandle: '.graph-question-node__header',
       class: [
@@ -363,8 +403,114 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
       ],
     }
   })
-
   const edges: Edge<SpecAgentGraphEdgeData>[] = []
+
+  // A pending card is a presentation projection of an AgentRun. It is never
+  // added to the canonical GraphWorkspaceView and is replaced by the real
+  // persisted node after the run completes.
+  const pending = input.pending
+  const pendingRoute = pending
+    ? view.routes.find((route) => route.id === pending.routeId)
+    : undefined
+  if (pending && pendingRoute && visibleRouteIds.has(pending.routeId)) {
+    const pendingId = `pending:${pending.runId}`
+    const parentInstance = visibleInstances.find((instance) =>
+      instance.canonicalNodeId === pending.sourceNodeId
+      && instance.routeIds.includes(pending.routeId),
+    )
+    const parentKey = parentInstance?.visualNodeKey ?? null
+    const pendingPosition = savedPositions[pendingId]
+      ?? placeNewNode(parentKey ? positions[parentKey] ?? null : null, Object.values(positions))
+    const pendingLabel = routeLabel(pendingRoute)
+    const pendingNode: GraphWorkspaceNodeView = {
+      id: pendingId,
+      projectId: view.projectId,
+      parentNodeId: pending.sourceNodeId,
+      supersedesNodeId: null,
+      question: pending.status === 'FAILED' ? '下一步问题生成失败' : '正在生成下一步问题…',
+      purpose: null,
+      options: [],
+      allowFreeAnswer: false,
+      createdAt: '1970-01-01T00:00:00.000Z',
+      kind: 'INTERACTION',
+      subtype: 'QUESTION',
+      content: {},
+      authorKind: 'RUNTIME',
+      knowledgeStatus: null,
+      userEditableDraft: false,
+    }
+    nodes.push({
+      id: pendingId,
+      type: 'question',
+      position: pendingPosition,
+      data: {
+        node: pendingNode,
+        canonicalNodeId: pendingId,
+        visualNodeKey: pendingId,
+        projectId: view.projectId,
+        routeIds: [pending.routeId],
+        visibleRouteIds: [pending.routeId],
+        answers: [],
+        routeStates: [{ routeId: pending.routeId, routeLabel: pendingLabel, answer: null }],
+        primaryAnswer: null,
+        readingRouteId: pending.routeId,
+        isCurrent: false,
+        canAnswer: false,
+        isExpanded: true,
+        isShared: false,
+        isLatest: true,
+        qLabel: null,
+        routeMembership: [{
+          routeId: pending.routeId,
+          label: pendingLabel,
+          lifecycleStatus: pendingRoute.lifecycleStatus,
+          isActive: pendingRoute.isActive,
+          branchType: pendingRoute.branchType,
+          sourceRouteId: pendingRoute.sourceRouteId,
+          branchAtNodeId: pendingRoute.branchAtNodeId,
+        }],
+        visualWeight: routeVisualWeight(
+          [pending.routeId], activeRouteId, uiState.focusRouteId, uiState.routeDisplayStates,
+        ),
+        runtimeStatus: pending.status,
+        runtimePhase: pending.phase,
+        runtimeMessage: pending.message,
+      },
+      dragHandle: '.graph-question-node__header',
+      class: [
+        'graph-node',
+        'graph-node--' + routeVisualWeight(
+          [pending.routeId], activeRouteId, uiState.focusRouteId, uiState.routeDisplayStates,
+        ),
+      ],
+    })
+    if (parentKey && visibleKeys.has(parentKey)) {
+      const handles = selectHandlesFor(parentKey, pendingId, {
+        ...positions,
+        [pendingId]: pendingPosition,
+      })
+      const weight = routeVisualWeight(
+        [pending.routeId], activeRouteId, uiState.focusRouteId, uiState.routeDisplayStates,
+      )
+      edges.push({
+        id: `${parentKey}->${pendingId}`,
+        source: parentKey,
+        target: pendingId,
+        type: 'adaptive',
+        sourceHandle: handles.sourceHandle,
+        targetHandle: handles.targetHandle,
+        markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12 },
+        data: {
+          kind: 'lineage',
+          routeIds: [pending.routeId],
+          visibleRouteIds: [pending.routeId],
+          visualWeight: weight,
+        },
+        class: ['graph-edge--lineage', 'graph-edge--' + weight],
+      })
+    }
+  }
+
   for (const [key, edge] of getVisualLineageEdgeMembership(view)) {
     if (!visibleKeys.has(edge.source) || !visibleKeys.has(edge.target)) continue
     const handles = selectHandlesFor(edge.source, edge.target, positions)

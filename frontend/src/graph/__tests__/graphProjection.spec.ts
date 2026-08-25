@@ -135,6 +135,28 @@ describe('graph projection', () => {
     expect(ids).toEqual(expect.arrayContaining(['a', 'b', 'c', 'd', 'bprime', 'e']))
   })
 
+  it('projects an in-flight run as a virtual pending card and continuation edge', () => {
+    const result = projectGraph({
+      view: fixture(),
+      activeNodeId: 'c',
+      uiState: uiState(),
+      savedPositions: {},
+      pending: {
+        routeId: ACTIVE_ROUTE_ID,
+        sourceNodeId: 'c',
+        runId: 'run-pending',
+        status: 'RUNNING',
+        phase: 'DECIDING',
+        message: null,
+      },
+    })
+    const pending = result.nodes.find((candidate) => candidate.id === 'pending:run-pending')
+    expect(pending).toBeDefined()
+    expect((pending?.data as SpecAgentGraphNodeData).runtimeStatus).toBe('RUNNING')
+    expect((pending?.data as SpecAgentGraphNodeData).isLatest).toBe(true)
+    expect(result.edges.find((edge) => edge.id === 'c->pending:run-pending')).toBeDefined()
+  })
+
   it('renders the a->b lineage edge once with route memberships A/B/C', () => {
     const result = project()
     const edge = result.edges.find((e) => e.id === 'a->b')

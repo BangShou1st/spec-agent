@@ -77,7 +77,7 @@ const GraphCanvasStub = defineComponent({
     drafting: Boolean,
     pending: Boolean,
   },
-  emits: ['draft', 'submit-answer', 'fork', 'regenerate'],
+  emits: ['draft', 'submit-answer', 'fork', 'regenerate', 'contextual-ai'],
   setup(_props, { expose }) {
     expose({ locateRoute: locateSpy, locateNode: vi.fn() })
     return () => h('div', { 'data-test': 'graph-canvas-stub' })
@@ -247,6 +247,46 @@ describe('WorkspaceView graph shell', () => {
       idempotencyKey: expect.any(String),
     })
     expect(useWorkspaceStore().feedback).toBe('回答已记录。')
+  })
+
+  it('selects the canonical visual target explicitly before opening contextual AI', async () => {
+    mockViews()
+    const { wrapper, graphUi } = await mountWorkspace()
+
+    await wrapper.findComponent(GraphCanvasStub).vm.$emit('contextual-ai', {
+      canonicalNodeId: 'n2',
+      visualNodeKey: 'n2',
+    })
+
+    expect(graphUi.primarySelectedNodeId).toBe('n2')
+    expect(graphUi.floatingWindows.inspector.open).toBe(true)
+  })
+
+  it('preserves a clicked shared visual instance while the query target stays canonical', async () => {
+    const view = graphView()
+    const sharedBranchView: GraphWorkspaceView = {
+      ...view,
+      routes: view.routes.map((route) => route.id === 'r2'
+        ? {
+            ...route,
+            branchType: 'regenerate',
+            sourceRouteId: 'r1',
+            branchAtNodeId: 'n1',
+            lineageNodeIds: ['n1', 'n2'],
+          }
+        : route),
+    }
+    mockViews()
+    mockedGetProjectGraph.mockResolvedValue(sharedBranchView)
+    const { wrapper, graphUi } = await mountWorkspace()
+
+    await wrapper.findComponent(GraphCanvasStub).vm.$emit('contextual-ai', {
+      canonicalNodeId: 'n2',
+      visualNodeKey: 'route:r2:n2',
+    })
+
+    expect(graphUi.primarySelectedNodeId).toBe('route:r2:n2')
+    expect(graphUi.floatingWindows.inspector.open).toBe(true)
   })
 
   it('route sidebar activates a sibling route through the runtime command', async () => {

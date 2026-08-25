@@ -12,6 +12,8 @@ const ERROR_COPY: Record<string, string> = {
   INVALID_RESPONSE: '模型返回了无法识别的结果，请重新请求。',
   EMPTY_CONTENT: '模型没有返回可用内容，请重新请求。',
   MODEL_CONTRACT_REJECTED: '模型输出未通过校验，请重新请求。',
+  ACTIVE_ROUTE_REQUIRED: '当前没有可用路线，无法起草问题。请刷新状态后重试。',
+  PENDING_NODE_QUERY_NOT_ALLOWED: '临时运行卡片不是可查询的节点，请选择真实节点。',
   UNKNOWN_ERROR: '操作失败，请稍后重试。',
   INTERNAL_ERROR: '操作失败，请稍后重试。',
   INTERNAL_INVARIANT_VIOLATION: '工作区状态出现异常，请刷新状态。',

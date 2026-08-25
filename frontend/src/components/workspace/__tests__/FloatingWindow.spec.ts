@@ -79,11 +79,17 @@ describe('FloatingWindow', () => {
     expect(wrapper.emitted('close')).toBeTruthy()
   })
 
-  it('recovers a moved window when the viewport changes', async () => {
-    const wrapper = mountWindow({ ...initial, x: 2000, y: 2000 })
+  it('recovers a manual window when the viewport changes', async () => {
+    const wrapper = mountWindow({ ...initial, x: 2000, y: 2000, positionMode: 'manual' })
     window.dispatchEvent(new Event('resize'))
     const update = wrapper.emitted('update:state')?.at(-1)?.[0] as FloatingWindowPreference
     expect(update.x).toBeLessThan(window.innerWidth)
     expect(update.y).toBeLessThan(window.innerHeight)
+  })
+
+  it('leaves auto-placed windows to the reflow authority on viewport changes', async () => {
+    const wrapper = mountWindow({ ...initial, x: 2000, y: 2000, positionMode: 'auto' })
+    window.dispatchEvent(new Event('resize'))
+    expect(wrapper.emitted('update:state')).toBeUndefined()
   })
 })

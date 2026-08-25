@@ -64,6 +64,7 @@ function orderedStates(data: SpecAgentGraphNodeData) {
 // ---- Contextual AI query -------------------------------------------------
 
 const askInput = ref('')
+const isVirtualPendingNode = computed(() => props.data?.node.id.startsWith('pending:') ?? false)
 const askRouteId = computed(() => {
   if (!props.data) return null
   if (props.data.readingRouteId) return props.data.readingRouteId
@@ -71,6 +72,7 @@ const askRouteId = computed(() => {
 })
 const askBlockedReason = computed(() => {
   if (!props.data) return null
+  if (isVirtualPendingNode.value) return '运行中的临时卡片不能作为 AI 查询锚点'
   if (props.data.node.kind !== 'INTERACTION' && !contentText.value) return '先写下内容再询问 AI'
   if (!askRouteId.value) return '共享节点请先选择一条查看路线'
   return null
@@ -78,7 +80,8 @@ const askBlockedReason = computed(() => {
 
 const queryResult = computed(() => {
   if (!props.data || !workspace.nodeQuery) return null
-  return workspace.nodeQuery.nodeId === props.data.node.id ? workspace.nodeQuery : null
+  const canonicalNodeId = props.data.canonicalNodeId ?? props.data.node.id
+  return workspace.nodeQuery.nodeId === canonicalNodeId ? workspace.nodeQuery : null
 })
 
 watch(
@@ -90,7 +93,9 @@ watch(
 
 async function ask(): Promise<void> {
   if (!props.data || !askRouteId.value || !askInput.value.trim()) return
-  await workspace.askNodeAI(props.data.node.id, askRouteId.value, askInput.value)
+  if (isVirtualPendingNode.value) return
+  const canonicalNodeId = props.data.canonicalNodeId ?? props.data.node.id
+  await workspace.askNodeAI(canonicalNodeId, askRouteId.value, askInput.value)
 }
 
 // ---- Semantic relations --------------------------------------------------
@@ -108,6 +113,32 @@ const relationTypeLabels: Record<string, string> = {
   DERIVED_FROM: '派生自',
   CONFLICTS_WITH: '冲突',
   SUPPORTS: '支持',
+}
+
+type SemanticRelationType = 'RELATED_TO' | 'DEPENDS_ON' | 'DERIVED_FROM' | 'CONFLICTS_WITH' | 'SUPPORTS'
+const relationTargetId = ref('')
+const relationType = ref<SemanticRelationType>('RELATED_TO')
+const relationCandidates = computed(() => {
+  if (!props.data) return []
+  return (workspace.graphView?.nodes ?? []).filter((node) => node.id !== props.data?.node.id)
+})
+
+watch(
+  () => props.data?.node.id,
+  () => {
+    relationTargetId.value = ''
+    relationType.value = 'RELATED_TO'
+  },
+)
+
+async function addRelation(): Promise<void> {
+  if (!props.data || !relationTargetId.value) return
+  const created = await workspace.createSemanticRelation(
+    props.data.node.id,
+    relationTargetId.value,
+    relationType.value,
+  )
+  if (created) relationTargetId.value = ''
 }
 
 function relationNodeLabel(nodeId: string): string {
@@ -230,6 +261,27 @@ function relationNodeLabel(nodeId: string): string {
           <span v-if="relation.origin === 'AGENT'" class="meta-text">（AI 建议）</span>
         </li>
       </ul>
+      <div v-if="relationCandidates.length > 0" class="node-inspector__relation-create" data-test="relation-create">
+        <label class="meta-text" for="relation-target">连接到节点</label>
+        <select id="relation-target" v-model="relationTargetId" class="graph-reading-route__select">
+          <option value="">选择节点…</option>
+          <option v-for="candidate in relationCandidates" :key="candidate.id" :value="candidate.id">
+            {{ relationNodeLabel(candidate.id) }}
+          </option>
+        </select>
+        <label class="meta-text" for="relation-type">关系类型</label>
+        <select id="relation-type" v-model="relationType" class="graph-reading-route__select">
+          <option v-for="(label, value) in relationTypeLabels" :key="value" :value="value">{{ label }}</option>
+        </select>
+        <button
+          class="btn btn-small"
+          data-test="create-relation"
+          :disabled="!relationTargetId || workspace.graphCommandPending"
+          @click="addRelation"
+        >
+          添加关系
+        </button>
+      </div>
 
       <!-- 历史节点才提供 Fork / Regenerate；当前待回答节点保持只读详情，
            回答只发生在 Graph 节点内部。 -->
@@ -321,5 +373,15 @@ function relationNodeLabel(nodeId: string): string {
   display: flex;
   gap: 6px;
   margin-top: 14px;
+}
+
+.node-inspector__relation-create {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
 }
 </style>

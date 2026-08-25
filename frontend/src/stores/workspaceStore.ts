@@ -12,6 +12,7 @@ import type { AgentRunView } from '@/api/agentRuns'
 import {
   appendContinuation,
   attachResource as attachResourceCommand,
+  createRelation,
   createNodeQuery,
   createRootDraftNode,
   getNodeQueryResult,
@@ -43,6 +44,7 @@ import type {
   SpecSnapshotResponse,
   SubmitAnswerRequest,
 } from '@/api/types'
+import type { GraphPendingProjection, GraphRuntimeStatus } from '@/graph/graphProjection'
 import {
   getActiveState,
   listRoutes,
@@ -145,6 +147,8 @@ export const useWorkspaceStore = defineStore('workspace', {
     submittedRouteIdForCleanup: null as string | null,
     /** Latest observed phase of the in-flight answer run. */
     answerRunPhase: null as string | null,
+    /** Runtime status is kept separate from immutable answer/knowledge state. */
+    answerRunStatus: null as GraphRuntimeStatus | null,
     /** Last payload handed to submitAnswer; used only for proven-safe resubmit. */
     lastSubmittedAnswerPayload: null as SubmitAnswerRequest | null,
     manualModelRetry: null as ManualModelRetryIntent | null,
@@ -162,6 +166,8 @@ export const useWorkspaceStore = defineStore('workspace', {
     // Route command lockout: one precise command at a time.
     routeCommandPending: false,
     pendingRouteCommand: null as PendingRouteCommand,
+    /** Browser-only virtual card for a queued/failed AgentRun. */
+    pendingRouteProjection: null as GraphPendingProjection | null,
     /** Fork is durable even when its follow-up Draft command fails. */
     forkDraftRetryRouteId: null as string | null,
 
@@ -210,9 +216,11 @@ export const useWorkspaceStore = defineStore('workspace', {
       this.answerOutcomeUnknown = false
       this.answerRunId = null
       this.answerRunPhase = null
+      this.answerRunStatus = null
       this.lastSubmittedAnswerPayload = null
       this.manualModelRetry = null
       this.forkDraftRetryRouteId = null
+      this.pendingRouteProjection = null
       this.focusAfterMutation = null
       try {
         const [project, activeState, routes, requirementState, graphView] = await Promise.all([
@@ -278,6 +286,40 @@ export const useWorkspaceStore = defineStore('workspace', {
       this.forkDraftRetryRouteId = this.findForkDraftRetryRouteId()
     },
 
+    updatePendingRouteProjection(view: AgentRunView): void {
+      const current = this.pendingRouteProjection
+      if (!current || current.runId !== view.runId) return
+      const routeId = typeof view.routeId === 'string' ? view.routeId.trim() : ''
+      if (!routeId) {
+        this.markPendingRouteFailed('运行结果缺少路线标识，已停止显示临时卡片。', true)
+        return
+      }
+      const status: GraphPendingProjection['status'] = view.status === 'failed'
+        ? 'FAILED'
+        : view.status === 'completed'
+          ? 'SUCCEEDED'
+          : view.status === 'created'
+            ? 'PENDING'
+            : 'RUNNING'
+      this.pendingRouteProjection = {
+        ...current,
+        routeId,
+        status,
+        phase: view.phase || current.phase,
+      }
+    },
+
+    markPendingRouteFailed(message: string, terminal: boolean): void {
+      const current = this.pendingRouteProjection
+      if (!current) return
+      this.pendingRouteProjection = {
+        ...current,
+        status: terminal ? 'FAILED' : current.status,
+        phase: terminal ? 'FAILED' : current.phase,
+        message,
+      }
+    },
+
     /**
      * Drafts the next question through the async Agent Runtime. Explicit user
      * action only; a fresh project enqueues no run until this fires.
@@ -288,14 +330,35 @@ export const useWorkspaceStore = defineStore('workspace', {
       }
       this.drafting = true
       this.error = null
-      const beforeRouteId = this.activeState?.activeRoute?.id ?? null
+      const beforeRouteId = this.activeState?.activeRoute?.id
+        ?? this.project?.activeRouteId
+        ?? null
       const beforeTipNodeId = this.activeState?.activeRoute?.tipNodeId ?? null
+      if (!beforeRouteId) {
+        this.error = {
+          code: 'ACTIVE_ROUTE_REQUIRED',
+          message: '当前没有可用路线，无法起草问题。',
+        }
+        this.manualModelRetry = null
+        this.pendingRouteProjection = null
+        this.drafting = false
+        return false
+      }
       try {
         const run = await createAgentRun(this.projectId, { operation: 'DRAFT_QUESTION' })
+        this.pendingRouteProjection = {
+          routeId: beforeRouteId,
+          sourceNodeId: beforeTipNodeId,
+          runId: run.runId,
+          status: run.phase === 'CREATED' ? 'PENDING' : 'RUNNING',
+          phase: run.phase || 'CREATED',
+          message: null,
+        }
         const outcome = await this.pollDraftRun(run.runId)
         if (outcome === 'completed') {
           this.feedback = '问题已起草。'
-          await this.refreshWorkspace()
+          const refreshed = await this.refreshWorkspace()
+          if (refreshed) this.pendingRouteProjection = null
           this.manualModelRetry = null
           return true
         }
@@ -306,11 +369,12 @@ export const useWorkspaceStore = defineStore('workspace', {
         const afterTipNodeId = this.activeState?.activeRoute?.tipNodeId ?? null
         if (
           reconciled
-          && (afterRouteId !== beforeRouteId || afterTipNodeId !== beforeTipNodeId)
+            && (afterRouteId !== beforeRouteId || afterTipNodeId !== beforeTipNodeId)
         ) {
           // The draft actually landed (e.g. the run finished after the last
           // poll); never offer a retry that would double-draft.
           this.manualModelRetry = null
+          this.pendingRouteProjection = null
           this.error = null
           this.feedback = '问题已起草。'
           return true
@@ -327,6 +391,7 @@ export const useWorkspaceStore = defineStore('workspace', {
           beforeTipNodeId,
           state: outcome === 'failed' ? 'ready' : 'needs_reconcile',
         } as ManualModelRetryIntent
+        this.markPendingRouteFailed('起草问题的运行失败，请重试。', outcome === 'failed')
         return false
       } catch (err) {
         // The create-run request itself failed; the run may or may not exist.
@@ -341,6 +406,7 @@ export const useWorkspaceStore = defineStore('workspace', {
           && (afterRouteId !== beforeRouteId || afterTipNodeId !== beforeTipNodeId)
         ) {
           this.manualModelRetry = null
+          this.pendingRouteProjection = null
           this.error = null
           this.feedback = '问题已起草。'
           return true
@@ -352,6 +418,9 @@ export const useWorkspaceStore = defineStore('workspace', {
           beforeTipNodeId,
           state: disposition === 'unknown' ? 'needs_reconcile' : 'ready',
         } as ManualModelRetryIntent
+        if (disposition !== 'none') {
+          this.markPendingRouteFailed(safeError.message, disposition === 'retryable')
+        }
         return false
       } finally {
         this.drafting = false
@@ -366,6 +435,7 @@ export const useWorkspaceStore = defineStore('workspace', {
      */
     async pollRunToTerminal(
       runId: string,
+      onView?: (view: AgentRunView) => void,
     ): Promise<AgentRunView | 'failed' | 'unknown'> {
       const projectId = this.projectId
       if (!projectId) return 'unknown'
@@ -378,6 +448,7 @@ export const useWorkspaceStore = defineStore('workspace', {
         }
         try {
           const view = await getAgentRun(projectId, runId)
+          onView?.(view)
           if (!isTerminalRunStatus(view.status)) continue
           return view.status === 'completed' ? view : 'failed'
         } catch {
@@ -393,7 +464,10 @@ export const useWorkspaceStore = defineStore('workspace', {
      * caller, anything else reconciles.
      */
     async pollDraftRun(runId: string): Promise<'completed' | 'failed' | 'unknown'> {
-      const outcome = await this.pollRunToTerminal(runId)
+      const outcome = await this.pollRunToTerminal(
+        runId,
+        (view) => this.updatePendingRouteProjection(view),
+      )
       if (outcome === 'unknown' || outcome === 'failed') return outcome
       return 'completed'
     },
@@ -433,6 +507,7 @@ export const useWorkspaceStore = defineStore('workspace', {
       this.pendingAnswerNodeId = answeringNodeId
       this.answerRunId = null
       this.answerRunPhase = null
+      this.answerRunStatus = null
       this.answerOutcomeUnknown = false
       this.lastSubmittedAnswerPayload = { ...payload }
       this.submittedRouteIdForCleanup = submittedRouteId
@@ -451,6 +526,7 @@ export const useWorkspaceStore = defineStore('workspace', {
         })
         created = true
         this.answerRunId = run.runId
+        this.answerRunStatus = 'RUNNING'
         await this.pollAnswerRun(run.runId)
         if (this.answerOutcomeUnknown) {
           // Polling ended without a terminal read (network loss beyond the
@@ -540,6 +616,13 @@ export const useWorkspaceStore = defineStore('workspace', {
         try {
           const view = await getAgentRun(projectId, runId)
           this.answerRunPhase = view.phase
+          this.answerRunStatus = view.status === 'failed'
+            ? 'FAILED'
+            : view.status === 'completed'
+              ? 'SUCCEEDED'
+              : view.status === 'created'
+                ? 'PENDING'
+                : 'RUNNING'
           if (!isTerminalRunStatus(view.status)) continue
           if (view.status === 'failed') {
             // FAILED run: the Answer may or may not be persisted. Canonical
@@ -566,7 +649,6 @@ export const useWorkspaceStore = defineStore('workspace', {
       // the runtime generated, and never a route id re-read after refresh.
       const answeredNodeId = this.pendingAnswerNodeId
       const submittedRouteId = this.submittedRouteIdForCleanup ?? null
-      console.log('CLEANUP', answeredNodeId, submittedRouteId)
       this.feedback = '回答已记录。'
       await this.refreshWorkspace()
       this.manualModelRetry = null
@@ -574,6 +656,7 @@ export const useWorkspaceStore = defineStore('workspace', {
       this.resubmitAnswerPayload = null
       this.pendingAnswerNodeId = null
       this.answerOutcomeUnknown = false
+      this.answerRunStatus = null
       if (answeredNodeId) {
         useInputDraftStore().clearDraft(
           this.projectId ?? '',
@@ -1074,6 +1157,16 @@ export const useWorkspaceStore = defineStore('workspace', {
       return drafted
     },
 
+    /** Retry the visible pending projection without inventing a provider or
+     * issuing a second mutation unless Runtime recovery has proven it safe. */
+    async retryPendingAgentRun(): Promise<boolean> {
+      if (this.forkDraftRetryRouteId) return this.retryForkDraft()
+      if (this.manualModelRetry?.kind === 'draft') {
+        return this.retryManualModelOperation()
+      }
+      return this.draftQuestion()
+    },
+
     async reanswerNode(nodeId: string, sourceRouteId: string, label?: string | null): Promise<boolean> {
       if (!this.projectId || this.routeCommandPending || this.submitting || this.drafting) {
         return false
@@ -1494,6 +1587,29 @@ export const useWorkspaceStore = defineStore('workspace', {
       }
     },
 
+    /** Creates an explicit user semantic relation through the Runtime command. */
+    async createSemanticRelation(
+      sourceNodeId: string,
+      targetNodeId: string,
+      relationType: 'RELATED_TO' | 'DEPENDS_ON' | 'DERIVED_FROM' | 'CONFLICTS_WITH' | 'SUPPORTS',
+    ): Promise<boolean> {
+      if (!this.projectId || this.graphCommandPending || sourceNodeId === targetNodeId) return false
+      this.graphCommandPending = true
+      this.error = null
+      try {
+        await createRelation(this.projectId, sourceNodeId, targetNodeId, relationType)
+        this.feedback = '已添加语义关系。'
+        await this.refreshWorkspace()
+        await this.refreshUndoRedoAvailability()
+        return true
+      } catch (err) {
+        this.error = toDisplayError(err)
+        return false
+      } finally {
+        this.graphCommandPending = false
+      }
+    },
+
     /** Undo via operation-specific compensation; never destructive. */
     async undoGraph(): Promise<boolean> {
       if (!this.projectId || this.graphCommandPending) return false
@@ -1540,6 +1656,13 @@ export const useWorkspaceStore = defineStore('workspace', {
      */
     async askNodeAI(nodeId: string, routeId: string, question: string): Promise<boolean> {
       if (!this.projectId || !question.trim()) return false
+      if (nodeId.startsWith('pending:')) {
+        this.error = {
+          code: 'PENDING_NODE_QUERY_NOT_ALLOWED',
+          message: '临时运行卡片不是可查询的 canonical Node。',
+        }
+        return false
+      }
       this.error = null
       try {
         const created = await createNodeQuery(this.projectId, nodeId, routeId, question.trim())
