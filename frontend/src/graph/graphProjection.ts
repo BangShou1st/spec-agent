@@ -7,7 +7,7 @@ import type {
   RouteLifecycleStatus,
 } from '@/api/types'
 import type { GraphPosition, GraphRouteDisplayState } from './graphTypes'
-import { placeNewNode, resolvePositions, VERTICAL_GAP } from './graphLayout'
+import { placeNewNode, resolvePositions, HORIZONTAL_GAP, VERTICAL_GAP } from './graphLayout'
 import {
   selectEdgeHandles,
   FALLBACK_NODE_WIDTH,
@@ -97,7 +97,8 @@ export interface SpecAgentGraphNodeData {
 }
 
 export interface SpecAgentGraphEdgeData {
-  kind: 'lineage' | 'replacement'
+  kind: 'lineage' | 'replacement' | 'relation'
+  relationType?: string
   routeIds: string[]
   visibleRouteIds: string[]
   visualWeight: GraphVisualWeight
@@ -222,15 +223,23 @@ export function selectPrimaryAnswer(
   nodeId: string,
   answers: GraphAnswerPresentation[],
   focusRouteId: string | null,
-  _activeRouteId: string | null,
+  activeRouteId: string | null,
   _options: GraphWorkspaceOptionView[],
 ): GraphAnswerPresentation | null {
   const nodeAnswers = answers.filter((answer) => {
     const withNodeId = answer as GraphAnswerPresentation & { nodeId?: string }
     return withNodeId.nodeId === undefined || withNodeId.nodeId === nodeId
   })
+  // 显式阅读路线优先；该路线还没有回答时返回 null（卡片显示等待），绝不拿
+  // 其他路线的 answer 冒充明确的阅读上下文。
   if (focusRouteId) return nodeAnswers.find((answer) => answer.routeId === focusRouteId) ?? null
-  return null
+  // 未选择阅读路线时回退到默认答案：活动路线的回答优先，否则取最新一条。
+  // 共享节点从此始终显示答案（答案下方标注来源路线），不再留空白。
+  if (activeRouteId) {
+    const activeAnswer = nodeAnswers.find((answer) => answer.routeId === activeRouteId)
+    if (activeAnswer) return activeAnswer
+  }
+  return nodeAnswers[nodeAnswers.length - 1] ?? null
 }
 
 function fallbackRouteLabel(route: Pick<GraphWorkspaceRouteView, 'branchType' | 'isActive'>): string {
@@ -298,9 +307,23 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
   const visibleRouteIds = getVisibleRouteIds(view, uiState)
   const instances = buildVisualInstances(view)
   const activeRouteId = view.activeRouteId
-  const visibleInstances = instances.filter((instance) => instance.routeIds.some((id) => visibleRouteIds.has(id)))
+  const visibleInstances = instances.filter((instance) =>
+    instance.routeIds.length === 0 || instance.routeIds.some((id) => visibleRouteIds.has(id)))
   const visibleKeys = new Set(visibleInstances.map((instance) => instance.visualNodeKey))
   const positions = computePositions(visibleInstances, savedPositions)
+
+  // Floating drafts (route-less ideas) start at a free slot to the right of
+  // the current layout instead of the root column, which the on-canvas
+  // toolbar overlays — a new idea must be immediately visible and reachable.
+  for (const instance of visibleInstances) {
+    if (instance.routeIds.length !== 0) continue
+    if (savedPositions[instance.visualNodeKey]) continue
+    const maxX = Object.values(positions).reduce((acc, p) => Math.max(acc, p.x), 0)
+    positions[instance.visualNodeKey] = placeNewNode(
+      { x: maxX + HORIZONTAL_GAP, y: 0 },
+      Object.values(positions),
+    )
+  }
   const answersByCanonicalNode = buildAnswerPresentations(view)
 
   // Compute Q labels: topological order across all visible nodes.
@@ -335,12 +358,16 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
       instance.canonicalNodeId,
       answers,
       readingRouteId,
-      null,
+      activeRouteId,
       instance.node.options,
     )
     const isCurrent = activeNodeId === instance.canonicalNodeId && activeRouteId !== null && routeIds.includes(activeRouteId)
     const canAnswer = isCurrent && !answers.some((answer) => answer.routeId === activeRouteId)
-    const visualWeight = routeVisualWeight(routeIds, activeRouteId, uiState.focusRouteId, uiState.routeDisplayStates)
+    // 浮动想法不属于任何路线：聚焦/弱化语义都不适用，保持常规视觉权重，
+    // 保证新建后立即可读可编辑。
+    const visualWeight = routeIds.length === 0
+      ? 'normal'
+      : routeVisualWeight(routeIds, activeRouteId, uiState.focusRouteId, uiState.routeDisplayStates)
     const routeStates = routeIds.map((routeId) => ({
       routeId,
       routeLabel: routeLabel(view.routes.find((route) => route.id === routeId)),
@@ -533,7 +560,54 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
     })
   }
 
+  // 用户手动创建的语义关系：连接两个可见节点，与 lineage 边在样式上区分。
+  // 关系不属于任何路线，聚焦/弱化不改变其视觉权重。
+  for (const relation of view.relations) {
+    const source = relationEndpointKey(visibleInstances, relation.sourceNodeId, activeRouteId, visibleKeys)
+    const target = relationEndpointKey(visibleInstances, relation.targetNodeId, activeRouteId, visibleKeys)
+    if (!source || !target || source === target) continue
+    const handles = selectHandlesFor(source, target, positions)
+    edges.push({
+      id: `relation:${relation.id}`,
+      source,
+      target,
+      type: 'adaptive',
+      sourceHandle: handles.sourceHandle,
+      targetHandle: handles.targetHandle,
+      markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12 },
+      data: {
+        kind: 'relation',
+        relationType: relation.relationType,
+        routeIds: [],
+        visibleRouteIds: [],
+        visualWeight: 'normal',
+      },
+      class: ['graph-edge--relation'],
+    })
+  }
+
   return { nodes, edges }
+}
+
+/**
+ * Resolves the visual instance a relation endpoint attaches to: the active
+ * route's instance when the canonical node is shared, otherwise the first
+ * visible instance.
+ */
+function relationEndpointKey(
+  instances: GraphVisualInstance[],
+  canonicalNodeId: string,
+  activeRouteId: string | null,
+  visibleKeys: Set<string>,
+): string | null {
+  let fallback: string | null = null
+  for (const instance of instances) {
+    if (instance.canonicalNodeId !== canonicalNodeId) continue
+    if (!visibleKeys.has(instance.visualNodeKey)) continue
+    if (activeRouteId && instance.routeIds.includes(activeRouteId)) return instance.visualNodeKey
+    fallback ??= instance.visualNodeKey
+  }
+  return fallback
 }
 
 export function freeSlotDistance(): number {

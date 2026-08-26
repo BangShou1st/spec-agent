@@ -102,7 +102,10 @@ public class UndoRedoService {
         compensate(operation);
         operationRepository.updateStatus(operation.id(), GraphOperation.Status.UNDONE,
                 com.specagent.graph.GraphOperationRepository.nextTimestamp());
-        return new UndoRedoResult(operation, describeUndo(operation));
+        // Re-read so the response reflects the persisted UNDONE status instead
+        // of the in-memory ACTIVE object that was just compensated.
+        return new UndoRedoResult(operationRepository.findById(operation.id()).orElse(operation),
+                describeUndo(operation));
     }
 
     @Transactional
@@ -115,7 +118,8 @@ public class UndoRedoService {
         replay(operation);
         operationRepository.updateStatus(operation.id(), GraphOperation.Status.ACTIVE,
                 com.specagent.graph.GraphOperationRepository.nextTimestamp());
-        return new UndoRedoResult(operation, describeRedo(operation));
+        return new UndoRedoResult(operationRepository.findById(operation.id()).orElse(operation),
+                describeRedo(operation));
     }
 
     // ------------------------------------------------------------------
@@ -141,6 +145,11 @@ public class UndoRedoService {
         requireRetractable(operation.projectId(), node, routeId);
 
         nodeService.setRetracted(nodeId, true);
+        if (isFloatingCreation(operation)) {
+            // A floating draft never touched the route tip/root; retraction
+            // alone fully compensates its creation.
+            return;
+        }
         UUID parentId = node.parentNodeId();
         if (parentId == null) {
             routeRepository.clearTipAndRoot(routeId, Instant.now());
@@ -228,6 +237,13 @@ public class UndoRedoService {
         requireRetractable(operation.projectId(), node, routeId);
         Route route = routeRepository.findById(routeId)
                 .orElseThrow(() -> new IllegalStateException("Route missing during redo: " + routeId));
+
+        if (isFloatingCreation(operation)) {
+            // Floating drafts stay disconnected: restoring them must not
+            // touch the route tip/root or require a specific tip state.
+            nodeService.setRetracted(nodeId, false);
+            return;
+        }
         UUID expectedTip = parentId != null ? parentId : null;
         if (!java.util.Objects.equals(route.tipNodeId(), expectedTip)) {
             throw new IllegalStateException("路线末端已变化，无法恢复该节点");
@@ -239,6 +255,11 @@ public class UndoRedoService {
         } else {
             routeRepository.updateTipAndRoot(routeId, nodeId, route.rootNodeId(), Instant.now());
         }
+    }
+
+    /** True when the recorded creation was a standalone (floating) draft. */
+    private boolean isFloatingCreation(GraphOperation operation) {
+        return Boolean.TRUE.equals(operation.afterRefs().get("floating"));
     }
 
     private void replayBranchCreation(GraphOperation operation) {

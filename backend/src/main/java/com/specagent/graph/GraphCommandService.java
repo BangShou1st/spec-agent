@@ -93,6 +93,32 @@ public class GraphCommandService {
         return node;
     }
 
+    /**
+     * Creates a standalone (floating) user draft on an explicit route. The
+     * node starts disconnected from every lineage — the route tip is never
+     * advanced — so "+ idea" never silently rewires the graph. The route id
+     * is kept in the operation log only as creation context. Undo/redo treat
+     * the {@code floating} ref as "no tip/root side effects".
+     */
+    @Transactional
+    public Node createFloatingDraftNode(UUID projectId,
+                                        UUID routeId,
+                                        String subtype,
+                                        Map<String, Object> content) {
+        requireOpenRouteInProject(projectId, routeId);
+        Node node = nodeService.createFloatingWorkspaceNode(
+                projectId, routeId, NodeKind.KNOWLEDGE, subtype, content,
+                NodeAuthorKind.USER, KnowledgeStatus.PROPOSED);
+        operationRepository.append(projectId, GraphOperation.Actor.USER,
+                GraphOperation.Type.CREATE_DRAFT_NODE, List.of(node.id()),
+                Map.of("routeId", routeId.toString()),
+                Map.of("routeId", routeId.toString(),
+                       "nodeId", node.id().toString(),
+                       "subtype", node.subtype(),
+                       "floating", true));
+        return node;
+    }
+
     /** Result of a continuation command: the new node plus the route it landed on. */
     public record ContinuationResult(Node node, Route route, boolean branched) {
     }

@@ -16,12 +16,11 @@ import { phaseToCopy } from '@/graph/phaseCopy'
 
 /**
  * Four-side edge anchors for adaptive routing. Every side carries one
- * invisible source handle and one invisible target handle at its midpoint;
+ * source handle and one invisible-until-hover target handle at its midpoint;
  * lineage/replacement edges pick one pair per connection through the pure
- * selectEdgeHandles geometry rule (see graph/graphEdgeRouting.ts). The
- * handles are never visible (style.css), never receive pointer events and
- * can never start/end a connection: the flow is nodes-connectable=false
- * and every handle is explicitly non-connectable on both ends.
+ * selectEdgeHandles geometry rule (see graph/graphEdgeRouting.ts). Source
+ * handles accept manual drag-connections (semantic relations between nodes);
+ * the flow still forbids connecting anything to question-option slots.
  */
 const ANCHOR_SIDES: Position[] = [
   Position.Left,
@@ -203,18 +202,19 @@ function setReadingRoute(event: Event): void {
     :data-node-id="data.node.id"
   >
 
-    <!-- Adaptive edge anchors: one source + one target handle per side,
-         all invisible and non-interactive (style.css + connectable flags). -->
+    <!-- Adaptive edge anchors: one source + one target handle per side.
+         Source handles accept manual drag-connections; target handles accept
+         incoming ones. Invisible until node hover (style.css). -->
     <Handle
       v-for="anchor in SOURCE_ANCHORS"
       :key="anchor.id"
       :id="anchor.id"
       type="source"
       :position="anchor.position"
-      class="graph-question-node__handle"
-      :connectable="false"
-      :connectable-start="false"
-      :connectable-end="false"
+      class="graph-question-node__handle graph-question-node__handle--source"
+      :connectable="true"
+      :connectable-start="true"
+      :connectable-end="true"
       aria-hidden="true"
     />
     <Handle
@@ -223,10 +223,10 @@ function setReadingRoute(event: Event): void {
       :id="anchor.id"
       type="target"
       :position="anchor.position"
-      class="graph-question-node__handle"
-      :connectable="false"
+      class="graph-question-node__handle graph-question-node__handle--target"
+      :connectable="true"
       :connectable-start="false"
-      :connectable-end="false"
+      :connectable-end="true"
       aria-hidden="true"
     />
     <header class="graph-question-node__header" data-test="node-drag-handle" title="拖动标题栏移动节点">
@@ -357,7 +357,7 @@ function setReadingRoute(event: Event): void {
 
         <div
           v-if="primary"
-          class="graph-answer-summary graph-answer-summary--clamped"
+          class="graph-answer-summary"
           data-test="answer-summary"
         >
           <span v-if="primary.selectedOptionLabel" class="graph-answer-option badge badge-open">
@@ -367,51 +367,64 @@ function setReadingRoute(event: Event): void {
           <span class="graph-answer-route meta-text">{{ primary.routeLabel || '当前查看路线' }}</span>
         </div>
 
-        <!-- 阅读路线没有回答时：明确显示等待，绝不拿其他路线的 answer 冒充。 -->
+        <!-- 阅读路线没有回答时：明确显示等待 + 节点问题本身，绝不拿其他路线的
+             answer 冒充。想要换答案：统一走侧栏的「重新选择答案」（也会建显式分支）。 -->
         <div
           v-else-if="readingWaiting"
           class="graph-answer-summary"
           data-test="waiting-summary"
         >
           <span class="badge badge-warn">{{ readingWaitingLabel }} · 等待回答</span>
-        </div>
-
-        <div class="graph-node-actions graph-node-actions--toolbar" tabindex="0" role="toolbar" aria-label="节点操作">
-          <button
-            class="btn graph-action nodrag"
-            data-test="fork-node"
-            title="我接受现在，换未来。"
-            @click.stop="forkNode"
-          >
-            从这里开新路线
-          </button>
-          <button
-            class="btn graph-action nodrag"
-            data-test="reanswer-node"
-            title="问题没错，答案换一个。"
-            @click.stop="reanswerNode"
-          >
-            重新选择答案
-          </button>
-          <button
-            class="btn graph-action nodrag"
-            data-test="regenerate-node"
-            :disabled="isRootNode || pending"
-            title="问题本身换掉。"
-            @click.stop="regenerateNode"
-          >
-            换一个问题
-          </button>
-          <button
-            class="btn graph-action nodrag"
-            data-test="contextual-ai"
-            title="在检查器中询问 AI"
-            @click.stop="emit('contextual-ai', data.node.id)"
-          >
-            问 AI
-          </button>
+          <h4 class="graph-node-question graph-node-question--compact" data-test="waiting-question">
+            {{ node.question }}
+          </h4>
+          <p v-if="node.purpose" class="graph-node-purpose">{{ node.purpose }}</p>
         </div>
       </template>
+    </div>
+
+    <!-- 操作轨道：悬浮在节点左侧外缘竖排（不在卡片内占位），悬停或键盘
+         聚焦节点时出现。仅历史节点提供；当前节点直接在卡片内作答。 -->
+    <div
+      v-if="!isPendingCard && !data.canAnswer"
+      class="graph-node-actions graph-node-actions--toolbar"
+      tabindex="0"
+      role="toolbar"
+      aria-label="节点操作"
+    >
+      <button
+        class="btn graph-action nodrag"
+        data-test="fork-node"
+        title="我接受现在，换未来。"
+        @click.stop="forkNode"
+      >
+        从这里开新路线
+      </button>
+      <button
+        class="btn graph-action nodrag"
+        data-test="reanswer-node"
+        title="问题没错，答案换一个。"
+        @click.stop="reanswerNode"
+      >
+        重新选择答案
+      </button>
+      <button
+        class="btn graph-action nodrag"
+        data-test="regenerate-node"
+        :disabled="isRootNode || pending"
+        title="问题本身换掉。"
+        @click.stop="regenerateNode"
+      >
+        换一个问题
+      </button>
+      <button
+        class="btn graph-action nodrag"
+        data-test="contextual-ai"
+        title="在检查器中询问 AI"
+        @click.stop="emit('contextual-ai', data.node.id)"
+      >
+        问 AI
+      </button>
     </div>
   </article>
 </template>

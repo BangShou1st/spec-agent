@@ -199,19 +199,36 @@ describe('graph question node', () => {
     expect((wrapper.find('[data-test="free-text"]').element as HTMLTextAreaElement).value).toBe('')
   })
 
-  it('historical node has no answer inputs and shows option label + clamped summary', () => {
+  it('historical node has no answer inputs and shows the full answer summary', () => {
     const wrapper = mountNode(historicalData())
     expect(wrapper.find('[data-test="free-text"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="submit-answer"]').exists()).toBe(false)
     expect(wrapper.text()).toContain('Product team')
     expect(wrapper.text()).toContain('Keep this exact user answer.')
-    expect(wrapper.find('.graph-answer-summary--clamped').exists()).toBe(true)
+    expect(wrapper.find('[data-test="answer-summary"]').exists()).toBe(true)
+  })
+
+  it('action rail renders outside the node body as a left-side vertical stack', () => {
+    const wrapper = mountNode(historicalData())
+    const rail = wrapper.find('.graph-node-actions--toolbar')
+    expect(rail.exists()).toBe(true)
+    // 轨道是 article 的直接子元素，绝不在卡片主体内占位。
+    expect(rail.element.parentElement).toBe(wrapper.element)
+    expect(wrapper.find('[data-test="node-body"] .graph-node-actions--toolbar').exists()).toBe(false)
+    for (const id of ['fork-node', 'reanswer-node', 'regenerate-node', 'contextual-ai']) {
+      expect(rail.find(`[data-test="${id}"]`).exists()).toBe(true)
+    }
+  })
+
+  it('current answerable node renders no action rail (answering stays in the card)', () => {
+    const wrapper = mountNode(currentData())
+    expect(wrapper.find('.graph-node-actions--toolbar').exists()).toBe(false)
   })
 
   it('historical node never expands verbose route history inside the graph card', async () => {
     const expanded = historicalData({ isExpanded: true })
     const wrapper = mountNode(expanded)
-    expect(wrapper.find('.graph-answer-summary--clamped').exists()).toBe(true)
+    expect(wrapper.find('[data-test="answer-summary"]').exists()).toBe(true)
     expect(wrapper.find('.graph-node-details').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('Second route answer.')
   })
@@ -331,10 +348,15 @@ describe('shared node route-specific waiting state', () => {
     }
   }
 
-  it('Focus=B without an answer shows B waiting and never A answer as the summary', () => {
+  it('Focus=B without an answer shows B waiting + the question itself, never A answer as the summary', () => {
     const wrapper = mountNode(waitingData())
-    // 摘要显式等待；A 的回答不作为 primary 展示。
-    expect(wrapper.find('[data-test="waiting-summary"]').text()).toContain('当前查看路线 · 等待回答')
+    // 摘要显式等待并直接显示问题；A 的回答不作为 primary 展示，也不再暴露
+    // 任何能在非 tip 上触发新分支的"唤醒"按钮（防历史节点被无限增殖路线）。
+    const waiting = wrapper.find('[data-test="waiting-summary"]')
+    expect(waiting.exists()).toBe(true)
+    expect(waiting.text()).toContain('当前查看路线 · 等待回答')
+    expect(waiting.find('[data-test="waiting-question"]').text()).toBe('What outcome matters most?')
+    expect(waiting.find('[data-test="answer-here"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="answer-summary"]').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('A answer on shared node.')
   })
@@ -440,21 +462,33 @@ describe('graph node edge anchors (adaptive four-side handles)', () => {
     }
   })
 
-  it('anchors are never connectable: users can not drag edges from/to them', () => {
+  it('exposes draggable connection anchors: source starts and completes edges', () => {
     const wrapper = mountNode(currentData())
     for (const id of handleIds) {
       const handle = wrapper.find(`[id="${id}"]`)
-      expect(handle.attributes('connectable'), id).toBe('false')
+      expect(handle.attributes('connectable'), id).toBe('true')
+    }
+    // source 锚点既可发起也可完成连接（target 锚点不参与指针命中，见样式）。
+    for (const id of ['source-left', 'source-right', 'source-top', 'source-bottom']) {
+      const handle = wrapper.find(`[id="${id}"]`)
+      expect(handle.attributes('connectable-start'), id).toBe('true')
+      expect(handle.attributes('connectable-end'), id).toBe('true')
+      expect(handle.classes()).toContain('graph-question-node__handle--source')
+    }
+    for (const id of ['target-left', 'target-right', 'target-top', 'target-bottom']) {
+      const handle = wrapper.find(`[id="${id}"]`)
       expect(handle.attributes('connectable-start'), id).toBe('false')
-      expect(handle.attributes('connectable-end'), id).toBe('false')
+      expect(handle.attributes('connectable-end'), id).toBe('true')
+      expect(handle.classes()).toContain('graph-question-node__handle--target')
     }
   })
 
-  it('style.css keeps the anchors invisible and click-transparent (never visible dots)', () => {
+  it('style.css keeps anchors hidden by default and reveals them on node hover for manual connection', () => {
     // Vitest runs with the frontend directory as cwd.
     const css = readFileSync(resolve(process.cwd(), 'src/style.css'), 'utf8')
-    expect(css).toMatch(/.graph-question-node__handle\s*{[^}]*pointer-events:\s*none/)
-    expect(css).toMatch(/.graph-question-node__handle\s*{[^}]*opacity:\s*0/)
+    expect(css).toMatch(/\.graph-question-node__handle\s*{[^}]*pointer-events:\s*none/)
+    expect(css).toMatch(/\.graph-question-node__handle\s*{[^}]*opacity:\s*0/)
+    expect(css).toMatch(/\.graph-question-node:hover \.graph-question-node__handle--source\s*{[^}]*pointer-events:\s*all/)
   })
 
   it('handles stay present on the historical read-only node too', () => {

@@ -12,9 +12,9 @@ import type { AgentRunView } from '@/api/agentRuns'
 import {
   appendContinuation,
   attachResource as attachResourceCommand,
+  createFloatingDraftNode,
   createRelation,
   createNodeQuery,
-  createRootDraftNode,
   getNodeQueryResult,
   getUndoRedoAvailability,
   redoGraphOperation,
@@ -1461,29 +1461,31 @@ export const useWorkspaceStore = defineStore('workspace', {
     },
 
     /**
-     * Creates the first draft idea on the empty active route. The user
-     * authors content before any agent involvement — zero model calls.
+     * Adds a user-authored idea as a standalone (floating) draft — zero
+     * model calls, never connected to any node. The user connects it
+     * manually on the canvas. Returns the created node id, or null on
+     * failure.
      */
-    async createRootIdea(): Promise<boolean> {
-      if (!this.projectId || this.graphCommandPending) return false
+    async createIdea(): Promise<string | null> {
+      if (!this.projectId || this.graphCommandPending) return null
       const activeRouteId = this.activeState?.activeRoute?.id ?? null
       if (!activeRouteId) {
         this.error = { code: 'NO_ACTIVE_ROUTE', message: '当前项目没有活动路线。' }
-        return false
+        return null
       }
       this.graphCommandPending = true
       try {
-        await createRootDraftNode(this.projectId, activeRouteId, {
-          subtype: 'NOTE',
+        const created = await createFloatingDraftNode(this.projectId, activeRouteId, {
+          subtype: 'IDEA',
           content: {},
         })
-        this.feedback = '已创建草稿节点，直接在卡片上编辑内容。'
+        this.feedback = '已创建想法，双击卡片直接编辑。'
         await this.refreshWorkspace()
         await this.refreshUndoRedoAvailability()
-        return true
+        return created.id
       } catch (err) {
         this.error = toDisplayError(err)
-        return false
+        return null
       } finally {
         this.graphCommandPending = false
       }

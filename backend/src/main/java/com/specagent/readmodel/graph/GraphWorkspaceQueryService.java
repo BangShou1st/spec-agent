@@ -89,6 +89,12 @@ public class GraphWorkspaceQueryService {
             routeViews.add(GraphWorkspaceRouteView.from(route, project.activeRouteId(), lineageNodeIds));
         }
 
+        // Floating drafts belong to no route lineage; they are still visible
+        // standalone graph content and must reach the workspace view.
+        nodeService.listProject(project.id()).stream()
+                .filter(node -> !node.isRetracted())
+                .forEach(node -> nodesById.putIfAbsent(node.id(), node));
+
         return new GraphWorkspaceView(
                 project.id(), project.activeRouteId(), List.copyOf(routeViews),
                 nodesById.values().stream()

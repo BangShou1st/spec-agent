@@ -3,6 +3,8 @@ import { computed, nextTick, ref, shallowRef, watch } from 'vue'
 import {
   VueFlow,
   useVueFlow,
+  ConnectionMode,
+  type Connection,
   type Dimensions,
   type Node,
   type Edge,
@@ -78,6 +80,7 @@ const emit = defineEmits<{
   'contextual-ai': [target: ContextualAiTarget]
   'retry-pending': []
   'viewport-settled': []
+  'create-relation': [payload: { sourceNodeId: string; targetNodeId: string }]
   undo: []
   redo: []
   routes: []
@@ -463,6 +466,28 @@ function onPaneClick(event?: MouseEvent): void {
   graphUi.clearFocusRoute()
 }
 
+/**
+ * Manual node-to-node connection (drag from a source handle to a target
+ * handle). The drop only ever creates a semantic relation through the
+ * Runtime command — lineage is never rewritten by hand. Pending projection
+ * cards and self-connections are ignored.
+ */
+function onConnect(connection: Connection): void {
+  const canonicalOf = (flowNodeId: string | null | undefined): string | null => {
+    if (!flowNodeId) return null
+    const node = flowNodes.value.find((candidate) => candidate.id === flowNodeId)
+    const canonical = (node?.data as { canonicalNodeId?: string } | undefined)?.canonicalNodeId
+    if (!canonical || canonical.startsWith('pending:')) return null
+    return canonical
+  }
+  const sourceNodeId = canonicalOf(connection.source)
+  const targetNodeId = canonicalOf(connection.target)
+  if (!sourceNodeId || !targetNodeId || sourceNodeId === targetNodeId) {
+    return
+  }
+  emit('create-relation', { sourceNodeId, targetNodeId })
+}
+
 function emitContextualAi(nodeId: string, visualNodeKey?: string): void {
   emit('contextual-ai', {
     canonicalNodeId: nodeId,
@@ -602,7 +627,8 @@ const isEmptyProject = computed(() =>
       <VueFlow
         v-model:nodes="flowNodes"
         v-model:edges="flowEdges"
-        :nodes-connectable="false"
+        :nodes-connectable="true"
+        :connection-mode="ConnectionMode.Loose"
         :edges-updatable="false"
         :multi-selection-key-code="['Meta', 'Control']"
         :pan-on-drag="true"
@@ -616,6 +642,7 @@ const isEmptyProject = computed(() =>
          @node-drag="onNodeDrag"
         @node-drag-stop="onNodeDragStop"
         @pane-click="onPaneClick"
+        @connect="onConnect"
          @selection-start="shiftSelecting = true"
          @selection-end="shiftSelecting = false"
          @viewport-change-end="emit('viewport-settled')"

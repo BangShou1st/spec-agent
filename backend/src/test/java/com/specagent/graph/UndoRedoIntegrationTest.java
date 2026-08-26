@@ -85,6 +85,32 @@ class UndoRedoIntegrationTest {
     }
 
     @Test
+    void floatingDraftNeverTouchesRouteAnchorAndUndoRedoKeepsItDisconnected() {
+        // The route already has content; a floating idea must not rewire it.
+        Node root = commandService.createRootDraftNode(
+                project.id(), route.id(), "NOTE", Map.of("text", "root"));
+        Node floating = commandService.createFloatingDraftNode(
+                project.id(), route.id(), "IDEA", Map.of("text", "灵感"));
+
+        Route afterCreate = routeRepository.findById(route.id()).orElseThrow();
+        assertThat(afterCreate.tipNodeId()).isEqualTo(root.id());
+        assertThat(floating.parentNodeId()).isNull();
+        assertThat(nodeRepository.findById(floating.id()).orElseThrow().isRetracted()).isFalse();
+
+        assertThat(undoRedoService.canUndo(project.id())).isTrue();
+        undoRedoService.undo(project.id());
+        Route afterUndo = routeRepository.findById(route.id()).orElseThrow();
+        assertThat(afterUndo.tipNodeId()).isEqualTo(root.id());
+        assertThat(nodeRepository.findById(floating.id()).orElseThrow().isRetracted()).isTrue();
+
+        assertThat(undoRedoService.canRedo(project.id())).isTrue();
+        undoRedoService.redo(project.id());
+        Route afterRedo = routeRepository.findById(route.id()).orElseThrow();
+        assertThat(afterRedo.tipNodeId()).isEqualTo(root.id());
+        assertThat(nodeRepository.findById(floating.id()).orElseThrow().isRetracted()).isFalse();
+    }
+
+    @Test
     void undoCreateIsRejectedWhenDownstreamHistoryExists() {
         Node root = commandService.createRootDraftNode(
                 project.id(), route.id(), "NOTE", Map.of("text", "root"));

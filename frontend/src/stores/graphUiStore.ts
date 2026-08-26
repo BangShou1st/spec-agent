@@ -54,6 +54,9 @@ export const useGraphUiStore = defineStore('graphUi', {
       activeRouteId: null as string | null,
       selectedNodeIds: [] as string[],
       primarySelectedNodeId: null as string | null,
+      // One-shot "open this node's editor" request (e.g. right after creating
+      // an idea). The matching card consumes and clears it.
+      pendingEditNodeKey: null as string | null,
       selectedEdgeId: null as string | null,
       selectedSharedEdgeRouteIds: [] as string[],
       focusRouteId: null as string | null,
@@ -103,6 +106,17 @@ export const useGraphUiStore = defineStore('graphUi', {
       this.selectedNodeIds = [nodeId]
       this.primarySelectedNodeId = nodeId
       this.clearEdgeSelection()
+    },
+
+    /** Asks the matching node card to open its editor, then clears itself. */
+    requestNodeEdit(nodeKey: string): void {
+      this.pendingEditNodeKey = nodeKey
+    },
+
+    consumeNodeEditRequest(nodeKey: string): boolean {
+      if (this.pendingEditNodeKey !== nodeKey) return false
+      this.pendingEditNodeKey = null
+      return true
     },
 
     /** Ctrl/Cmd + click: add/remove from multi-selection. */

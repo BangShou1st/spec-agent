@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -49,6 +50,18 @@ public class GraphCommandController {
     public ResponseEntity<NodeResponse> createRootDraftNode(@PathVariable UUID projectId,
                                                              @RequestBody CreateDraftNodeRequest request) {
         Node node = com.specagent.api.common.CommandExecution.execute(() -> commandService.createRootDraftNode(
+                projectId, request.routeId(), request.subtype(), request.content()));
+        return ResponseEntity.status(HttpStatus.CREATED).body(NodeResponse.from(node, request.routeId(), false));
+    }
+
+    /**
+     * Creates a standalone (floating) draft that starts disconnected from
+     * every lineage; the user connects it manually on the canvas.
+     */
+    @PostMapping("/floating-nodes")
+    public ResponseEntity<NodeResponse> createFloatingDraftNode(@PathVariable UUID projectId,
+                                                                 @RequestBody CreateDraftNodeRequest request) {
+        Node node = com.specagent.api.common.CommandExecution.execute(() -> commandService.createFloatingDraftNode(
                 projectId, request.routeId(), request.subtype(), request.content()));
         return ResponseEntity.status(HttpStatus.CREATED).body(NodeResponse.from(node, request.routeId(), false));
     }
@@ -127,8 +140,10 @@ public class GraphCommandController {
 
     /** Typed operation log for audits and undo/redo affordances. */
     @GetMapping("/graph-operations")
-    public List<GraphOperation> listOperations(@PathVariable UUID projectId) {
-        return commandService.listOperations(projectId);
+    public List<GraphOperationResponse> listOperations(@PathVariable UUID projectId) {
+        return commandService.listOperations(projectId).stream()
+                .map(GraphOperationResponse::from)
+                .toList();
     }
 
     @GetMapping("/graph-operations/availability")
@@ -139,18 +154,61 @@ public class GraphCommandController {
     }
 
     @PostMapping("/graph-operations/undo")
-    public UndoRedoService.UndoRedoResult undo(@PathVariable UUID projectId) {
-        return undoRedoService.undo(projectId);
+    public Map<String, Object> undo(@PathVariable UUID projectId) {
+        UndoRedoService.UndoRedoResult result = undoRedoService.undo(projectId);
+        return Map.of(
+                "operation", GraphOperationResponse.from(result.operation()),
+                "description", result.description());
     }
 
     @PostMapping("/graph-operations/redo")
-    public UndoRedoService.UndoRedoResult redo(@PathVariable UUID projectId) {
-        return undoRedoService.redo(projectId);
+    public Map<String, Object> redo(@PathVariable UUID projectId) {
+        UndoRedoService.UndoRedoResult result = undoRedoService.redo(projectId);
+        return Map.of(
+                "operation", GraphOperationResponse.from(result.operation()),
+                "description", result.description());
     }
 
     // ------------------------------------------------------------------
     // Request/response records
     // ------------------------------------------------------------------
+
+    /**
+     * JSON-safe projection of a {@link GraphOperation}. The domain class
+     * exposes record-style accessors ({@code id()}, {@code type()}, ...),
+     * which Jackson's default bean detection cannot see, so serializing the
+     * domain object directly failed with "no properties discovered" — the
+     * undo/redo transaction committed and only then the response 500-ed.
+     */
+    public record GraphOperationResponse(UUID id,
+                                         UUID projectId,
+                                         String actor,
+                                         String type,
+                                         List<UUID> targets,
+                                         Map<String, Object> beforeRefs,
+                                         Map<String, Object> afterRefs,
+                                         String causedBy,
+                                         boolean reversible,
+                                         String status,
+                                         Instant createdAt,
+                                         Instant undoneAt) {
+
+        static GraphOperationResponse from(GraphOperation operation) {
+            return new GraphOperationResponse(
+                    operation.id(),
+                    operation.projectId(),
+                    operation.actor().name(),
+                    operation.type().name(),
+                    operation.targets(),
+                    operation.beforeRefs(),
+                    operation.afterRefs(),
+                    operation.causedBy(),
+                    operation.reversible(),
+                    operation.status().name(),
+                    operation.createdAt(),
+                    operation.undoneAt());
+        }
+    }
 
     public record CreateDraftNodeRequest(UUID routeId, String subtype, Map<String, Object> content) {
     }

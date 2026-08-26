@@ -86,6 +86,24 @@ export function buildVisualInstances(view: GraphWorkspaceView): GraphVisualInsta
       }
     }
   }
+
+  // Floating drafts (user ideas) belong to no route lineage: they are
+  // standalone graph content until manually connected. They project as
+  // route-less instances keyed by their canonical id so they stay visible
+  // and editable on the canvas.
+  const lineagedNodeIds = new Set(
+    view.routes.flatMap((route) => route.lineageNodeIds ?? []),
+  )
+  for (const node of view.nodes) {
+    if (lineagedNodeIds.has(node.id) || byKey.has(node.id)) continue
+    byKey.set(node.id, {
+      visualNodeKey: node.id,
+      canonicalNodeId: node.id,
+      node,
+      routeIds: [],
+      parentVisualNodeKey: null,
+    })
+  }
   return [...byKey.values()]
 }
 

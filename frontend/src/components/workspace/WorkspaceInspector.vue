@@ -16,7 +16,8 @@ import { useWorkspaceStore } from '@/stores/workspaceStore'
  */
 interface SelectedEdge {
   id: string
-  kind: 'lineage' | 'replacement'
+  kind: 'lineage' | 'replacement' | 'relation'
+  relationType?: string | null
   routeIds: string[]
 }
 
@@ -160,16 +161,27 @@ function selectSpec(snapshotId: string): void {
       />
 
       <div v-else-if="selectedEdge" class="edge-inspector" data-test="edge-inspector">
-        <h3 class="node-inspector__title">{{ selectedEdge.kind === 'replacement' ? '替代关系' : '共享路线边' }}</h3>
-        <p class="meta-text">该物理边不会自动猜测或切换聚焦路线。</p>
+        <h3 class="node-inspector__title">
+          {{ selectedEdge.kind === 'replacement' ? '替代关系'
+            : selectedEdge.kind === 'relation' ? '语义关系' : '共享路线边' }}
+        </h3>
+        <p v-if="selectedEdge.kind === 'relation'" class="meta-text">
+          手动创建的节点连接（可在图上拖线新增，撤销可移除）。
+        </p>
+        <p v-else class="meta-text">该物理边不会自动猜测或切换聚焦路线。</p>
         <p class="meta-text">边：{{ selectedEdge.id }}</p>
-        <h4 class="node-inspector__heading">路线成员</h4>
-        <ul class="node-inspector__options">
-          <li v-for="routeId in selectedEdge.routeIds" :key="routeId" class="node-inspector__option">
-            {{ workspace.graphView?.routes.find((route) => route.id === routeId)?.label || '路线' }}
-          </li>
-          <li v-if="selectedEdge.routeIds.length === 0" class="muted">暂无路线成员。</li>
-        </ul>
+        <p v-if="selectedEdge.kind === 'relation'" class="meta-text">
+          类型：{{ selectedEdge.relationType ?? 'RELATED_TO' }}
+        </p>
+        <template v-if="selectedEdge.kind !== 'relation'">
+          <h4 class="node-inspector__heading">路线成员</h4>
+          <ul class="node-inspector__options">
+            <li v-for="routeId in selectedEdge.routeIds" :key="routeId" class="node-inspector__option">
+              {{ workspace.graphView?.routes.find((route) => route.id === routeId)?.label || '路线' }}
+            </li>
+            <li v-if="selectedEdge.routeIds.length === 0" class="muted">暂无路线成员。</li>
+          </ul>
+        </template>
       </div>
 
       <RequirementStatePanel

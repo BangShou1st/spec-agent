@@ -210,9 +210,20 @@ const selectedNodeData = computed<SpecAgentGraphNodeData | null>(() => {
 
 const selectedEdgeData = computed(() => {
   if (!graphUi.selectedEdgeId) return null
+  if (graphUi.selectedEdgeId.startsWith('relation:')) {
+    const relationId = graphUi.selectedEdgeId.slice('relation:'.length)
+    const relation = store.graphView?.relations.find((entry) => entry.id === relationId) ?? null
+    return {
+      id: graphUi.selectedEdgeId,
+      kind: 'relation' as const,
+      relationType: relation?.relationType ?? null,
+      routeIds: [] as string[],
+    }
+  }
   return {
     id: graphUi.selectedEdgeId,
     kind: graphUi.selectedEdgeId.startsWith('replacement:') ? 'replacement' as const : 'lineage' as const,
+    relationType: null,
     routeIds: [...graphUi.selectedSharedEdgeRouteIds],
   }
 })
@@ -321,6 +332,33 @@ async function focusAfterMutation(): Promise<void> {
 
 async function handleDraft(): Promise<void> {
   await store.draftQuestion()
+}
+
+/** "+ 想法"：创建独立想法（不与任何节点连接），聚焦并直接进入编辑。 */
+async function handleAddIdea(): Promise<void> {
+  const nodeId = await store.createIdea()
+  if (!nodeId) return
+  await nextTick()
+  graphUi.selectNode(nodeId)
+  graphUi.requestNodeEdit(nodeId)
+  await canvasRef.value?.locateNode(nodeId)
+}
+
+/** 图上拖线 = 创建语义关系；重复连接直接提示，不发请求。 */
+async function handleCreateRelation(payload: {
+  sourceNodeId: string
+  targetNodeId: string
+}): Promise<void> {
+  const relations = store.graphView?.relations ?? []
+  const duplicate = relations.some((relation) =>
+    (relation.sourceNodeId === payload.sourceNodeId && relation.targetNodeId === payload.targetNodeId)
+    || (relation.sourceNodeId === payload.targetNodeId && relation.targetNodeId === payload.sourceNodeId),
+  )
+  if (duplicate) {
+    store.feedback = '这两个节点之间已有连接。'
+    return
+  }
+  await store.createSemanticRelation(payload.sourceNodeId, payload.targetNodeId, 'RELATED_TO')
 }
 
 async function handleAttachResource(
@@ -524,8 +562,9 @@ async function confirmDestructive(): Promise<void> {
         @contextual-ai="handleContextualAi"
         @retry-pending="store.retryPendingAgentRun"
         @viewport-settled="scheduleFloatingLayout"
-        @add-idea="store.createRootIdea"
+        @add-idea="handleAddIdea"
         @add-resource="resourceDialogOpen = true"
+        @create-relation="handleCreateRelation"
         @undo="store.undoGraph"
         @redo="store.redoGraph"
         @routes="openWindow('routes')"

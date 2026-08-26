@@ -62,6 +62,18 @@ export function createRootDraftNode(
   )
 }
 
+/** Creates a standalone (floating) draft that starts disconnected from every lineage. */
+export function createFloatingDraftNode(
+  projectId: string,
+  routeId: string,
+  payload: DraftNodePayload,
+): Promise<CreatedNodeResponse> {
+  return apiClient.post<CreatedNodeResponse>(
+    `/projects/${projectId}/floating-nodes`,
+    { routeId, ...payload },
+  )
+}
+
 export function appendContinuation(
   projectId: string,
   nodeId: string,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { projectGraph, getNodeRouteMembership, getLineageEdgeMembership, selectPrimaryAnswer, getVisibleRouteIds } from '@/graph/graphProjection'
-import type { RouteLifecycleStatus } from '@/api/types'
+import type { GraphWorkspaceNodeView, GraphWorkspaceRelationView, GraphWorkspaceView, RouteLifecycleStatus } from '@/api/types'
 import { HORIZONTAL_GAP, VERTICAL_GAP } from '@/graph/graphLayout'
 import type { GraphPosition } from '@/graph/graphTypes'
 import type { SpecAgentGraphNodeData } from '@/graph/graphProjection'
@@ -63,7 +63,7 @@ function answer(routeId: string, nodeId: string, freeText = 'answer ' + routeId 
  * Route C: A -> B -> E (archived fork)
  * Route D: A -> B' (open replacement: B' supersedes B)
  */
-function fixture() {
+function fixture(): GraphWorkspaceView {
   return {
     projectId: PROJECT_ID,
     activeRouteId: ACTIVE_ROUTE_ID,
@@ -175,12 +175,13 @@ describe('graph projection', () => {
     expect(data.answers.find((a) => a.routeId === ROUTE_B_ID)?.isPrimary).toBe(true)
   })
 
-  it('without focus a shared node has no primary route answer', () => {
+  it('without focus a shared node falls back to the active route answer (never blank)', () => {
     const result = project()
     const bNode = result.nodes.find((n) => n.id === 'b')!
     const data = bNode.data as SpecAgentGraphNodeData
-    expect(data.primaryAnswer).toBeNull()
-    expect(data.answers.every((answer) => !answer.isPrimary)).toBe(true)
+    // 共享节点应始终显示答案：未选择阅读路线时回退到活动路线的回答。
+    expect(data.primaryAnswer?.routeId).toBe(ACTIVE_ROUTE_ID)
+    expect(data.answers.find((answer) => answer.routeId === ACTIVE_ROUTE_ID)?.isPrimary).toBe(true)
     expect(bNode.class).toContain('graph-node--neutral')
   })
 
@@ -304,17 +305,95 @@ describe('graph projection', () => {
     })
   })
 
-  it('selectPrimaryAnswer prefers focus over active and returns null when absent', () => {
+  it('selectPrimaryAnswer prefers focus, falls back to active route, then latest', () => {
     const answers = [
       { nodeId: 'x', routeId: ACTIVE_ROUTE_ID, selectedOptionId: null, selectedOptionLabel: null, freeText: 'a', isPrimary: false },
       { nodeId: 'x', routeId: ROUTE_B_ID, selectedOptionId: null, selectedOptionLabel: null, freeText: 'b', isPrimary: false },
     ]
     const focused = selectPrimaryAnswer('x', answers, ROUTE_B_ID, ACTIVE_ROUTE_ID, [])
     expect(focused?.freeText).toBe('b')
+    // 显式聚焦的路线没有回答时仍返回 null（卡片显示等待，不冒充）。
+    const focusedMissing = selectPrimaryAnswer('x', [answers[0]], ROUTE_B_ID, ACTIVE_ROUTE_ID, [])
+    expect(focusedMissing).toBeNull()
+    // 未选择阅读路线时回退：活动路线的回答，否则最新一条——共享节点不再留空白。
     const active = selectPrimaryAnswer('x', answers, null, ACTIVE_ROUTE_ID, [])
-    expect(active).toBeNull()
+    expect(active?.freeText).toBe('a')
+    const latest = selectPrimaryAnswer('x', answers, null, null, [])
+    expect(latest?.freeText).toBe('b')
     const none = selectPrimaryAnswer('y', answers, null, ACTIVE_ROUTE_ID, [])
     expect(none).toBeNull()
+  })
+
+  it('projects floating route-less nodes as always-visible standalone instances', () => {
+    const view = fixture()
+    const floatingNode: GraphWorkspaceNodeView = {
+      id: 'float-1',
+      projectId: view.projectId,
+      parentNodeId: null,
+      supersedesNodeId: null,
+      question: '',
+      purpose: null,
+      options: [],
+      allowFreeAnswer: false,
+      createdAt: '2026-01-01T00:00:00Z',
+      kind: 'KNOWLEDGE',
+      subtype: 'IDEA',
+      content: {},
+      authorKind: 'USER',
+      knowledgeStatus: 'PROPOSED',
+      userEditableDraft: true,
+    }
+    view.nodes.push(floatingNode)
+    const result = projectGraph({
+      view,
+      activeNodeId: 'b',
+      uiState: {
+        focusRouteId: null,
+        lifecycleFilters: { open: true, superseded: true, archived: true, deleted: false },
+        routeDisplayStates: {},
+        expandedNodeIds: [],
+      },
+      savedPositions: {},
+    })
+    const floating = result.nodes.find((node) => node.id === 'float-1')
+    expect(floating).toBeDefined()
+    const data = floating!.data as SpecAgentGraphNodeData
+    expect(data.routeIds).toEqual([])
+    expect(data.isShared).toBe(false)
+    expect(data.canAnswer).toBe(false)
+    expect(data.visualWeight).toBe('normal')
+    // 浮动节点没有任何 lineage 边。
+    expect(result.edges.some((edge) => edge.source === 'float-1' || edge.target === 'float-1')).toBe(false)
+  })
+
+  it('renders manual semantic relations as distinct relation edges', () => {
+    const view = fixture()
+    const relation: GraphWorkspaceRelationView = {
+      id: 'rel-1',
+      sourceNodeId: 'b',
+      targetNodeId: 'bprime',
+      relationType: 'RELATED_TO',
+      origin: 'USER',
+      createdByProposalId: null,
+      createdAt: '2026-01-01T00:00:00Z',
+    }
+    view.relations = [relation]
+    const result = projectGraph({
+      view,
+      activeNodeId: 'b',
+      uiState: {
+        focusRouteId: null,
+        lifecycleFilters: { open: true, superseded: true, archived: true, deleted: false },
+        routeDisplayStates: {},
+        expandedNodeIds: [],
+      },
+      savedPositions: {},
+    })
+    const relationEdge = result.edges.find((edge) => edge.id === 'relation:rel-1')
+    expect(relationEdge).toBeDefined()
+    expect(relationEdge?.data?.kind).toBe('relation')
+    expect(relationEdge?.data?.relationType).toBe('RELATED_TO')
+    expect(relationEdge?.class).toContain('graph-edge--relation')
   })
 
   it('getVisibleRouteIds honors lifecycle filters and manual hide', () => {
@@ -471,7 +550,7 @@ describe('shared node route-specific waiting state', () => {
     expect(data.answers.map((a) => a.routeId)).toEqual([ACTIVE_ROUTE_ID])
   })
 
-  it('forked active route without an answer on a shared node shows waiting, old answer stays inspectable', () => {
+  it('forked active route without a focused reading shows the inherited answer as fallback', () => {
     const view = {
       projectId: PROJECT_ID,
       activeRouteId: ROUTE_B_ID,
@@ -488,7 +567,10 @@ describe('shared node route-specific waiting state', () => {
     })
     const b = result.nodes.find((n) => n.id === 'b')!
     const data = b.data as SpecAgentGraphNodeData
-    expect(data.primaryAnswer).toBeNull()
+    // 无焦点时回退到活动路线（分支）可用的回答——分支继承来源路线的回答，
+    // 卡片始终显示答案并以路线标注来源；routeStates 保持逐路线事实。
+    expect(data.primaryAnswer?.routeId).toBe(ACTIVE_ROUTE_ID)
+    expect(data.primaryAnswer?.freeText).toBe('old route answer')
     expect(data.routeStates.find((s) => s.routeId === ROUTE_B_ID)?.answer).toBeNull()
     expect(data.routeStates.find((s) => s.routeId === ACTIVE_ROUTE_ID)?.answer?.freeText).toBe('old route answer')
   })

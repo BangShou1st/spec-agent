@@ -58,6 +58,21 @@ vi.mock('@/api/spec', () => ({
   listRouteSpecs: vi.fn(),
 }))
 
+vi.mock('@/api/graphCommands', () => ({
+  appendContinuation: vi.fn(),
+  attachResource: vi.fn(),
+  createFloatingDraftNode: vi.fn(),
+  createRelation: vi.fn(),
+  createNodeQuery: vi.fn(),
+  createRootDraftNode: vi.fn(),
+  getNodeQueryResult: vi.fn(),
+  getUndoRedoAvailability: vi.fn(),
+  redoGraphOperation: vi.fn(),
+  reviseDraftNode: vi.fn(),
+  setKnowledgeStatus: vi.fn(),
+  undoGraphOperation: vi.fn(),
+}))
+
 import { getProject } from '@/api/projects'
 import {
   createAgentRun,
@@ -78,6 +93,12 @@ import {
   reanswerNode as apiReanswerNode,
 } from '@/api/routes'
 import { listRouteSpecs } from '@/api/spec'
+import {
+  appendContinuation as apiAppendContinuation,
+  createFloatingDraftNode,
+  createRootDraftNode,
+  getUndoRedoAvailability,
+} from '@/api/graphCommands'
 
 const mockedGetProject = vi.mocked(getProject)
 const mockedGetActiveState = vi.mocked(getActiveState)
@@ -92,11 +113,16 @@ const mockedActivateRoute = vi.mocked(apiActivateRoute)
 const mockedForkNode = vi.mocked(apiForkNode)
 const mockedReanswerNode = vi.mocked(apiReanswerNode)
 const mockedListRouteSpecs = vi.mocked(listRouteSpecs)
+const mockedAppendContinuation = vi.mocked(apiAppendContinuation)
+const mockedCreateRootDraftNode = vi.mocked(createRootDraftNode)
+const mockedCreateFloatingDraftNode = vi.mocked(createFloatingDraftNode)
+const mockedGetUndoRedoAvailability = vi.mocked(getUndoRedoAvailability)
 
 describe('workspaceStore', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
+    mockedGetUndoRedoAvailability.mockResolvedValue({ canUndo: false, canRedo: false })
   })
 
   function mockBackendViews(active: ActiveProjectStateResponse, state: RequirementStateView): void {
@@ -1434,5 +1460,70 @@ describe('workspaceStore', () => {
     // route instead of dropping it.
     expect(store.forkDraftRetryRouteId).toBe('forked')
     expect(store.feedback).toContain('分支已创建')
+  })
+})
+
+describe('workspaceStore createIdea', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    mockedGetUndoRedoAvailability.mockResolvedValue({ canUndo: false, canRedo: false })
+  })
+
+  function createdNodeResponse(id: string): Awaited<ReturnType<typeof createFloatingDraftNode>> {
+    return {
+      id,
+      routeId: 'r1',
+      branched: false,
+      kind: 'KNOWLEDGE',
+      subtype: 'IDEA',
+      content: {},
+      authorKind: 'USER',
+      knowledgeStatus: 'PROPOSED',
+    }
+  }
+
+  function mockBackendViewsFor(active: ActiveProjectStateResponse): void {
+    mockedGetProject.mockResolvedValue(makeProject({ id: active.project.id, title: active.project.title }))
+    mockedGetActiveState.mockResolvedValue(active)
+    mockedListRoutes.mockResolvedValue(active.activeRoute ? [active.activeRoute] : [])
+    mockedGetRequirementState.mockResolvedValue(makeRequirementState())
+    mockedGetRouteLineage.mockResolvedValue(makeRouteLineage())
+    mockedGetProjectGraph.mockResolvedValue(makeGraphWorkspaceView())
+  }
+
+  it('creates a standalone floating idea and returns its node id', async () => {
+    const route = makeRoute({ isActive: true, rootNodeId: 'node-root', tipNodeId: 'node-tip' })
+    const active = makeActiveState({ activeRoute: route })
+    mockBackendViewsFor(active)
+    mockedCreateFloatingDraftNode.mockResolvedValue(createdNodeResponse('idea-1'))
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+
+    const nodeId = await store.createIdea()
+
+    // 回归：想法曾经追加到 tip（与路线连线）或在非空路线上误调 root 接口
+    // （后端 409 RUNTIME_CONFLICT）。现在始终创建独立浮动节点。
+    expect(nodeId).toBe('idea-1')
+    expect(mockedCreateFloatingDraftNode).toHaveBeenCalledWith('p1', route.id, {
+      subtype: 'IDEA',
+      content: {},
+    })
+    expect(mockedAppendContinuation).not.toHaveBeenCalled()
+    expect(mockedCreateRootDraftNode).not.toHaveBeenCalled()
+    expect(store.error).toBeNull()
+  })
+
+  it('returns null without calling the API when no active route exists', async () => {
+    const active = makeActiveState({ activeRoute: null, activeNode: null })
+    mockBackendViewsFor(active)
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+
+    const nodeId = await store.createIdea()
+
+    expect(nodeId).toBeNull()
+    expect(mockedCreateFloatingDraftNode).not.toHaveBeenCalled()
+    expect(store.error?.code).toBe('NO_ACTIVE_ROUTE')
   })
 })
