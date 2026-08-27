@@ -7,6 +7,7 @@ import com.specagent.node.NodeAuthorKind;
 import com.specagent.node.NodeKind;
 import com.specagent.node.NodeRepository;
 import com.specagent.node.NodeService;
+import com.specagent.project.ProjectRepository;
 import com.specagent.route.Route;
 import com.specagent.route.RouteBranchType;
 import com.specagent.route.RouteHistoryResolver;
@@ -48,6 +49,7 @@ public class GraphCommandService {
     private final GraphOperationRepository operationRepository;
     private final AnswerRepository answerRepository;
     private final GraphInvariantValidator invariantValidator;
+    private final ProjectRepository projectRepository;
 
     public GraphCommandService(NodeService nodeService,
                                NodeRepository nodeRepository,
@@ -57,7 +59,8 @@ public class GraphCommandService {
                                NodeRelationRepository relationRepository,
                                GraphOperationRepository operationRepository,
                                AnswerRepository answerRepository,
-                               GraphInvariantValidator invariantValidator) {
+                               GraphInvariantValidator invariantValidator,
+                               ProjectRepository projectRepository) {
         this.nodeService = nodeService;
         this.nodeRepository = nodeRepository;
         this.routeService = routeService;
@@ -67,6 +70,7 @@ public class GraphCommandService {
         this.operationRepository = operationRepository;
         this.answerRepository = answerRepository;
         this.invariantValidator = invariantValidator;
+        this.projectRepository = projectRepository;
     }
 
     /**
@@ -277,6 +281,12 @@ public class GraphCommandService {
                                                NodeRelation.Origin origin,
                                                UUID createdByProposalId,
                                                UUID createdByRunId) {
+        // Serialize semantic-relation creation within this project: the cycle
+        // validation reads the project-wide active relation graph, so two
+        // concurrent transactions must not both decide against the same old
+        // graph (e.g. A DEPENDS_ON B racing B DEPENDS_ON A). Locking only the
+        // project row keeps concurrent unrelated projects independent.
+        projectRepository.lockById(projectId);
         invariantValidator.validateRelationCreation(projectId, sourceNodeId, targetNodeId, type);
         GraphInvariantValidator.CanonicalEndpoints endpoints =
                 GraphInvariantValidator.endpointsCanonicalized(sourceNodeId, targetNodeId, type);

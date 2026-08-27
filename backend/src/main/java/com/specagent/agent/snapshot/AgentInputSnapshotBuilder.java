@@ -197,6 +197,12 @@ public class AgentInputSnapshotBuilder {
     }
 
     private RouteContextView routeContext(ContextSnapshot snapshot) {
+        if (snapshot.routeId() == null) {
+            // Routeless NODE_QUERY context (floating node): the read context
+            // is the anchor node itself. Build the explicit route-less view
+            // without any repository lookup against a null route id.
+            return new RouteContextView(null, snapshot.tipNodeId(), null);
+        }
         String label = routeRepository.findById(snapshot.routeId())
                 .map(Route::label)
                 .orElse(null);
@@ -246,7 +252,9 @@ public class AgentInputSnapshotBuilder {
         snapshot.includedAnswerIds().forEach(id -> refs.add("answer:" + id));
         snapshot.includedPatchIds().forEach(id -> refs.add("patch:" + id));
         refs.add("context:" + snapshot.id());
-        refs.add("route:" + snapshot.routeId());
+        if (snapshot.routeId() != null) {
+            refs.add("route:" + snapshot.routeId());
+        }
         return refs;
     }
 

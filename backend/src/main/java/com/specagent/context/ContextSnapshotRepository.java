@@ -62,7 +62,11 @@ public class ContextSnapshotRepository {
                 "includedAnswerIds", json.writeList(snapshot.includedAnswerIds()),
                 "includedPatchIds", json.writeList(snapshot.includedPatchIds()),
                 "excludedRouteIds", json.writeList(snapshot.excludedRouteIds()),
-                "specialInputs", json.write(snapshot.specialInputs()),
+                // specialInputs is already a serialized JSON object text; it
+                // must be stored as-is into the jsonb column, never
+                // re-serialized (re-serializing would double-encode the JSON
+                // string and break the read-back projection).
+                "specialInputs", snapshot.specialInputs(),
                 "contextHash", snapshot.contextHash(),
                 "createdAt", Timestamp.from(snapshot.createdAt())));
     }

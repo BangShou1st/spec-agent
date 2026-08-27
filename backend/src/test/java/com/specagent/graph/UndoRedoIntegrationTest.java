@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -38,6 +39,8 @@ class UndoRedoIntegrationTest {
     @Autowired private NodeRelationRepository relationRepository;
     @Autowired private com.specagent.agent.policy.AgentProposalService proposalService;
     @Autowired private com.specagent.agent.policy.ProposalAcceptanceService acceptanceService;
+    @Autowired private com.specagent.route.RouteService routeService;
+    @Autowired private com.specagent.project.ProjectRepository projectRepository;
 
     private Project project;
     private Route route;
@@ -108,6 +111,58 @@ class UndoRedoIntegrationTest {
         Route afterRedo = routeRepository.findById(route.id()).orElseThrow();
         assertThat(afterRedo.tipNodeId()).isEqualTo(root.id());
         assertThat(nodeRepository.findById(floating.id()).orElseThrow().isRetracted()).isFalse();
+    }
+
+    /**
+     * Blocked regressions: a floating draft created with NO route at all
+     * (project active route archived/removed, routeId=null) must undo and
+     * redo without ever consulting a route — replayNodeCreation previously
+     * resolved the route before the isFloatingCreation branch, so redo failed
+     * at the missing-route lookup.
+     */
+    @Test
+    void floatingNoRouteCreationUndoRedoWorksWithoutAnyRoute() {
+        // 1. Project with an active route, then remove that route (archived)
+        //    so the project has NO active route at all.
+        UUID firstActiveRouteId = project.activeRouteId();
+        routeService.archiveRoute(project.id(), firstActiveRouteId);
+        assertThat(projectRepository.findById(project.id()).orElseThrow().activeRouteId()).isNull();
+
+        // 2. Create a floating node with routeId=null (no creation context
+        //    route either).
+        Node floating = commandService.createFloatingDraftNode(
+                project.id(), null, "IDEA", Map.of("text", "无路线灵感"));
+
+        // 4. The node is fully disconnected and the project still has no
+        //    active route.
+        assertThat(floating.parentNodeId()).isNull();
+        assertThat(projectRepository.findById(project.id()).orElseThrow().activeRouteId()).isNull();
+
+        Route archived = routeRepository.findById(firstActiveRouteId).orElseThrow();
+        UUID archivedTip = archived.tipNodeId();
+        UUID archivedRoot = archived.rootNodeId();
+
+        // 5. Undo: the floating node is retracted; active stays null; the
+        //    archived route is untouched.
+        assertThat(undoRedoService.canUndo(project.id())).isTrue();
+        undoRedoService.undo(project.id());
+        assertThat(nodeRepository.findById(floating.id()).orElseThrow().isRetracted()).isTrue();
+        assertThat(projectRepository.findById(project.id()).orElseThrow().activeRouteId()).isNull();
+        assertThat(routeRepository.findById(firstActiveRouteId).orElseThrow().tipNodeId())
+                .isEqualTo(archivedTip);
+        assertThat(routeRepository.findById(firstActiveRouteId).orElseThrow().rootNodeId())
+                .isEqualTo(archivedRoot);
+
+        // 6-10. Redo: the node is restored; active stays null; the archived
+        //    route is still untouched.
+        assertThat(undoRedoService.canRedo(project.id())).isTrue();
+        undoRedoService.redo(project.id());
+        assertThat(nodeRepository.findById(floating.id()).orElseThrow().isRetracted()).isFalse();
+        assertThat(projectRepository.findById(project.id()).orElseThrow().activeRouteId()).isNull();
+        assertThat(routeRepository.findById(firstActiveRouteId).orElseThrow().tipNodeId())
+                .isEqualTo(archivedTip);
+        assertThat(routeRepository.findById(firstActiveRouteId).orElseThrow().rootNodeId())
+                .isEqualTo(archivedRoot);
     }
 
     @Test

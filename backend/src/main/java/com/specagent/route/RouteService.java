@@ -151,6 +151,7 @@ public class RouteService {
      * Explicit-source Fork. The accepted answer at the branch point is frozen
      * as an immutable reference in the new route prefix.
      */
+    @Transactional
     public Route forkFromNode(UUID projectId, UUID sourceRouteId, UUID sourceNodeId, String label) {
         Node sourceNode = nodeRepository.findById(sourceNodeId)
                 .orElseThrow(() -> new IllegalArgumentException("Node not found: " + sourceNodeId));
@@ -187,6 +188,7 @@ public class RouteService {
      * ancestors only (the old Answer stays on the source route), and the
      * source route and its Answers are left untouched.
      */
+    @Transactional
     public Route reanswerFromNode(UUID projectId,
                                   UUID sourceRouteId,
                                   UUID targetNodeId,

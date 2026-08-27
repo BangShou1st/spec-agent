@@ -242,16 +242,18 @@ public class UndoRedoService {
         if (!node.isRetracted()) {
             throw new IllegalStateException("节点已恢复，无法重复恢复");
         }
-        requireRetractable(operation.projectId(), node, routeId);
-        Route route = routeRepository.findById(routeId)
-                .orElseThrow(() -> new IllegalStateException("Route missing during redo: " + routeId));
 
         if (isFloatingCreation(operation)) {
             // Floating drafts stay disconnected: restoring them must not
-            // touch the route tip/root or require a specific tip state.
+            // touch the route tip/root or require a specific tip state, and
+            // must never consult a route that the creation never referenced.
+            requireRetractable(operation.projectId(), node, routeId);
             nodeService.setRetracted(nodeId, false);
             return;
         }
+        requireRetractable(operation.projectId(), node, routeId);
+        Route route = routeRepository.findById(routeId)
+                .orElseThrow(() -> new IllegalStateException("Route missing during redo: " + routeId));
         UUID expectedTip = parentId != null ? parentId : null;
         if (!java.util.Objects.equals(route.tipNodeId(), expectedTip)) {
             throw new IllegalStateException("路线末端已变化，无法恢复该节点");

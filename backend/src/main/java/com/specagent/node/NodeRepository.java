@@ -71,6 +71,21 @@ public class NodeRepository {
         return jdbcTemplate.query(sql, Maps.of("id", id), rowMapper).stream().findFirst();
     }
 
+    /**
+     * Locks the node row for the current transaction, or fails fast when the
+     * node does not exist. Used to serialize concurrent mutations that must
+     * decide against the node-wide state (e.g. the single-Answer invariant) —
+     * the lock makes the later existence re-check authoritative instead of
+     * race-prone.
+     */
+    public void lockById(UUID id) {
+        String sql = "SELECT id FROM nodes WHERE id = :id FOR UPDATE";
+        List<UUID> locked = jdbcTemplate.queryForList(sql, Maps.of("id", id), UUID.class);
+        if (locked.isEmpty()) {
+            throw new IllegalArgumentException("Node not found: " + id);
+        }
+    }
+
     public List<Node> findByProject(UUID projectId) {
         String sql = "SELECT * FROM nodes WHERE project_id = :projectId ORDER BY created_at";
         return jdbcTemplate.query(sql, Maps.of("projectId", projectId), rowMapper);

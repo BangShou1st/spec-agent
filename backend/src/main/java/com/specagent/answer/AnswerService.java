@@ -2,7 +2,9 @@ package com.specagent.answer;
 
 import com.specagent.common.Ids;
 import com.specagent.graph.GraphInvariantValidator;
+import com.specagent.node.NodeRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
@@ -27,14 +29,29 @@ import java.util.UUID;
 public class AnswerService {
 
     private final AnswerRepository answerRepository;
+    private final NodeRepository nodeRepository;
     private final GraphInvariantValidator invariantValidator;
 
     public AnswerService(AnswerRepository answerRepository,
+                         NodeRepository nodeRepository,
                          GraphInvariantValidator invariantValidator) {
         this.answerRepository = answerRepository;
+        this.nodeRepository = nodeRepository;
         this.invariantValidator = invariantValidator;
     }
 
+    /**
+     * Finalizes the immutable answer for one route flow on a node.
+     *
+     * <p>The whole finalization is one transaction. Concurrent routes sharing
+     * the same canonical Question must never both persist an Answer: the
+     * canonical node row is locked ({@code SELECT ... FOR UPDATE}) before the
+     * node-wide existence re-check, so exactly one concurrent transaction wins
+     * and every later one observes the persisted Answer through the
+     * {@link GraphInvariantValidator#validateSharedQuestionState} conflict
+     * path instead of inserting a second Answer identity.
+     */
+    @Transactional
     public Answer finalizeAnswer(UUID projectId,
                                  UUID routeId,
                                  UUID nodeId,
@@ -45,6 +62,9 @@ public class AnswerService {
             throw new IllegalStateException(
                     "Answer already finalized for node " + nodeId + " in route " + routeId);
         }
+        // Serialize concurrent finalization of the same canonical node: after
+        // this lock the node-wide existence check below is authoritative.
+        nodeRepository.lockById(nodeId);
         invariantValidator.validateSharedQuestionState(projectId, nodeId);
         UUID answerId = Ids.random();
         Instant now = Instant.now();
