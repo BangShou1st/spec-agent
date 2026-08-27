@@ -649,6 +649,17 @@ textarea {
   opacity: 0.85;
 }
 
+/* Higher-specificity overrides for vue-flow's `.vue-flow__handle.connectable`
+   default of `pointer-events: all`. The anchors stay un-clickable until the
+   user actually hovers the node, so the canvas never receives phantom
+   handle hits while dragging or selecting a card. */
+.graph-question-node:not(:hover) .graph-question-node__handle--source {
+  pointer-events: none;
+}
+.graph-question-node:not(:hover) .graph-question-node__handle--target {
+  pointer-events: none;
+}
+
 .graph-question-node__handle--source {
   width: 9px;
   height: 9px;
@@ -755,6 +766,16 @@ textarea {
   white-space: pre-wrap;
   word-break: break-word;
 }
+.graph-answer-text--clamped {
+  /* Historical answer summary must stay bounded so a very long free text
+     never produces a thousand-pixel-tall graph card. The Inspector
+     remains the place to read the full content. */
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 .graph-answer-route {
   display: block;
@@ -804,35 +825,41 @@ textarea {
   margin-top: 10px;
 }
 
-/* Hover/focus action rail: floats outside the node's LEFT edge as a vertical
-   stack so it never takes space inside the card. Revealed on node hover or
-   keyboard focus. The right padding extends the hover area up to the card
-   border, so moving the pointer onto a button never drops :hover. Buttons
-   right-align toward the node edge. Absolute positioning keeps the rail out
-   of Vue Flow's node measurement. */
+/* Hover/focus action rail: floats outside the node's RIGHT edge as a vertical
+   stack so it never takes space inside the card. Revealed on node hover,
+   selection, or keyboard focus. The left padding extends the hover area
+   up to the card border, so moving the pointer onto a button never drops
+   :hover. Absolute positioning keeps the rail out of Vue Flow's node
+   measurement. */
 .graph-node-actions--toolbar {
   position: absolute;
   top: 0;
-  right: 100%;
+  left: 100%;
   margin-top: 0;
-  padding-right: 10px;
+  padding-left: 10px;
   flex-direction: column;
-  align-items: flex-end;
-  /* right:100% gives the rail zero available width; nowrap keeps each
-     button at its natural width so labels never wrap into vertical text. */
+  align-items: flex-start;
+  /* nowrap keeps each button at its natural width so labels never wrap
+     into vertical text. */
   white-space: nowrap;
   opacity: 0;
   /* Hidden rail must never block the canvas: its padding area would
-     otherwise cover the node's left connection handles. */
+     otherwise cover the node's right connection handles or the next
+     card. The :hover/.--selected/:focus-within rules below turn it on
+     with pointer-events: auto so the bridge area accepts the crossing
+     mouse. */
   visibility: hidden;
   pointer-events: none;
   transition: opacity 0.15s ease, visibility 0.15s ease;
   outline: none;
+  z-index: 2;
 }
 .graph-question-node:hover .graph-node-actions--toolbar,
+.graph-question-node--selected .graph-node-actions--toolbar,
 .graph-node-actions--toolbar:focus-within {
   opacity: 1;
   visibility: visible;
+  pointer-events: auto;
 }
 .graph-node-actions--toolbar .btn {
   pointer-events: auto;

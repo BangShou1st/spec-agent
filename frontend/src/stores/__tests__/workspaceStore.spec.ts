@@ -96,6 +96,7 @@ import { listRouteSpecs } from '@/api/spec'
 import {
   appendContinuation as apiAppendContinuation,
   createFloatingDraftNode,
+  createRelation as apiCreateRelation,
   createRootDraftNode,
   getUndoRedoAvailability,
 } from '@/api/graphCommands'
@@ -117,6 +118,7 @@ const mockedAppendContinuation = vi.mocked(apiAppendContinuation)
 const mockedCreateRootDraftNode = vi.mocked(createRootDraftNode)
 const mockedCreateFloatingDraftNode = vi.mocked(createFloatingDraftNode)
 const mockedGetUndoRedoAvailability = vi.mocked(getUndoRedoAvailability)
+const mockedCreateRelation = vi.mocked(apiCreateRelation)
 
 describe('workspaceStore', () => {
   beforeEach(() => {
@@ -1496,7 +1498,13 @@ describe('workspaceStore createIdea', () => {
     const route = makeRoute({ isActive: true, rootNodeId: 'node-root', tipNodeId: 'node-tip' })
     const active = makeActiveState({ activeRoute: route })
     mockBackendViewsFor(active)
-    mockedCreateFloatingDraftNode.mockResolvedValue(createdNodeResponse('idea-1'))
+    // Backend response for a floating node carries routeId = null to signal
+    // the canonical node is route-less. The frontend must NOT claim a
+    // route membership based on the response.
+    mockedCreateFloatingDraftNode.mockResolvedValue({
+      ...createdNodeResponse('idea-1'),
+      routeId: null,
+    })
     const store = useWorkspaceStore()
     await store.loadWorkspace('p1')
 
@@ -1525,5 +1533,85 @@ describe('workspaceStore createIdea', () => {
     expect(nodeId).toBeNull()
     expect(mockedCreateFloatingDraftNode).not.toHaveBeenCalled()
     expect(store.error?.code).toBe('NO_ACTIVE_ROUTE')
+  })
+})
+
+describe('workspaceStore.createSemanticRelation (identity contract)', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    mockedGetUndoRedoAvailability.mockResolvedValue({ canUndo: false, canRedo: false })
+  })
+
+  function mockGraphWithRelations(
+    relations: Array<{
+      id: string
+      sourceNodeId: string
+      targetNodeId: string
+      relationType: 'RELATED_TO' | 'DEPENDS_ON' | 'DERIVED_FROM' | 'CONFLICTS_WITH' | 'SUPPORTS'
+    }>,
+  ): void {
+    mockedGetProject.mockResolvedValue(makeProject({ id: 'p1', title: 'proj' }))
+    mockedGetActiveState.mockResolvedValue(
+      makeActiveState({ project: { id: 'p1', title: 'proj' } as any }),
+    )
+    mockedListRoutes.mockResolvedValue([])
+    mockedGetRequirementState.mockResolvedValue(makeRequirementState())
+    mockedGetRouteLineage.mockResolvedValue(makeRouteLineage())
+    mockedGetProjectGraph.mockResolvedValue(makeGraphWorkspaceView({
+      relations: relations.map((rel) => ({
+        ...rel,
+        origin: 'USER' as const,
+        createdByProposalId: null,
+        createdAt: '2026-01-01T00:00:00Z',
+      })),
+    }))
+  }
+
+  it('reverse direction is NOT a duplicate (directional relations are allowed)', async () => {
+    mockGraphWithRelations([{
+      id: 'rel-1', sourceNodeId: 'n1', targetNodeId: 'n2', relationType: 'RELATED_TO',
+    }])
+    mockedCreateRelation.mockResolvedValue({
+      id: 'rel-2', sourceNodeId: 'n2', targetNodeId: 'n1',
+      relationType: 'RELATED_TO', origin: 'USER', createdByProposalId: null,
+      createdAt: '2026-01-01T00:00:00Z',
+    })
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+    // The reverse direction n2→n1 must be accepted at the API layer
+    // (backend identity is (source, target, type)).
+    const ok = await store.createSemanticRelation('n2', 'n1', 'RELATED_TO')
+    expect(ok).toBe(true)
+    expect(mockedCreateRelation).toHaveBeenCalledWith('p1', 'n2', 'n1', 'RELATED_TO')
+  })
+
+  it('same (source, target, type) is the only dedup identity', async () => {
+    mockGraphWithRelations([{
+      id: 'rel-1', sourceNodeId: 'n1', targetNodeId: 'n2', relationType: 'RELATED_TO',
+    }])
+    mockedCreateRelation.mockRejectedValue(new ApiError('duplicate', 'DUPLICATE', 409))
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+    const ok = await store.createSemanticRelation('n1', 'n2', 'RELATED_TO')
+    // API call still goes through; the backend, not the frontend, is the
+    // authority for identity dedup (via insertActiveOrThrowDuplicate).
+    expect(ok).toBe(false)
+    expect(mockedCreateRelation).toHaveBeenCalledWith('p1', 'n1', 'n2', 'RELATED_TO')
+  })
+
+  it('different relation type on the same (source, target) is allowed', async () => {
+    mockGraphWithRelations([{
+      id: 'rel-1', sourceNodeId: 'n1', targetNodeId: 'n2', relationType: 'RELATED_TO',
+    }])
+    mockedCreateRelation.mockResolvedValue({
+      id: 'rel-2', sourceNodeId: 'n1', targetNodeId: 'n2',
+      relationType: 'DEPENDS_ON', origin: 'USER', createdByProposalId: null,
+      createdAt: '2026-01-01T00:00:00Z',
+    })
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+    const ok = await store.createSemanticRelation('n1', 'n2', 'DEPENDS_ON')
+    expect(ok).toBe(true)
   })
 })

@@ -132,7 +132,10 @@ async function confirmContent(): Promise<void> {
 <template>
   <article
     class="graph-question-node graph-knowledge-node"
-    :class="{ 'graph-question-node--shared': data.isShared }"
+    :class="{
+      'graph-question-node--shared': data.isShared,
+      'graph-question-node--selected': selected === true,
+    }"
     data-test="graph-knowledge-node"
     data-layout-role="graph-node"
     :data-node-id="data.node.id"

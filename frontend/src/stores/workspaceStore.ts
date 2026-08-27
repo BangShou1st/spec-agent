@@ -31,6 +31,7 @@ import {
   deleteRoute,
   forkNode,
   reanswerNode,
+  resumeQuestion as apiResumeQuestion,
   restoreRoute,
 } from '@/api/routes'
 import { listRouteSpecs } from '@/api/spec'
@@ -1178,6 +1179,46 @@ export const useWorkspaceStore = defineStore('workspace', {
         await reanswerNode(this.projectId, nodeId, { sourceRouteId, label: label ?? null })
         await this.refreshWorkspace()
         this.feedback = '已创建重新回答路线。'
+        return true
+      } catch (err) {
+        this.error = toDisplayError(err)
+        return false
+      } finally {
+        this.routeCommandPending = false
+        this.pendingRouteCommand = null
+      }
+    },
+
+    /**
+     * Reactivates a historical unanswered Question on an explicit source
+     * route. The backend decides whether to create a new branch route
+     * (target is non-tip on the source lineage) or merely reactivate the
+     * existing source route (target IS the source tip). Either way, the
+     * canonical Question is reused, never copied, and the source route's
+     * lineage is preserved.
+     */
+    async resumeQuestion(nodeId: string, sourceRouteId: string, label?: string | null): Promise<boolean> {
+      if (!this.projectId || this.routeCommandPending || this.submitting || this.drafting) {
+        return false
+      }
+      if (!sourceRouteId) {
+        this.error = { code: 'SOURCE_ROUTE_REQUIRED', message: '请选择明确的来源路线。' }
+        return false
+      }
+      this.routeCommandPending = true
+      this.pendingRouteCommand = null
+      this.error = null
+      try {
+        const result = await apiResumeQuestion(this.projectId, nodeId, {
+          sourceRouteId,
+          label: label ?? null,
+        })
+        await this.refreshWorkspace()
+        const route = result.route
+        this.setFocusAfterMutation({ routeId: route.id, nodeId: route.tipNodeId })
+        this.feedback = result.resumedNewRoute
+          ? '已创建恢复历史未答问题路线。'
+          : '已重新激活该路线。'
         return true
       } catch (err) {
         this.error = toDisplayError(err)

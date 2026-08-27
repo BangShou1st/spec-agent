@@ -56,14 +56,17 @@ public class GraphCommandController {
 
     /**
      * Creates a standalone (floating) draft that starts disconnected from
-     * every lineage; the user connects it manually on the canvas.
+     * every lineage; the user connects it manually on the canvas. The
+     * response shape uses {@code routeId = null} so the client never sees
+     * the floating node as belonging to any route. The creation context
+     * route id is recorded in the operation log by the command service.
      */
     @PostMapping("/floating-nodes")
     public ResponseEntity<NodeResponse> createFloatingDraftNode(@PathVariable UUID projectId,
                                                                  @RequestBody CreateDraftNodeRequest request) {
         Node node = com.specagent.api.common.CommandExecution.execute(() -> commandService.createFloatingDraftNode(
                 projectId, request.routeId(), request.subtype(), request.content()));
-        return ResponseEntity.status(HttpStatus.CREATED).body(NodeResponse.from(node, request.routeId(), false));
+        return ResponseEntity.status(HttpStatus.CREATED).body(NodeResponse.fromFloating(node));
     }
 
     /**
@@ -127,14 +130,14 @@ public class GraphCommandController {
     @PostMapping("/relations")
     public ResponseEntity<GraphWorkspaceRelationView> createRelation(@PathVariable UUID projectId,
                                                                      @RequestBody CreateRelationRequest request) {
-        NodeRelation relation = commandService.createSemanticRelation(
+        NodeRelation relation = com.specagent.api.common.CommandExecution.execute(() -> commandService.createSemanticRelation(
                 projectId,
                 request.sourceNodeId(),
                 request.targetNodeId(),
                 NodeRelationType.fromCode(request.relationType()),
                 NodeRelation.Origin.USER,
                 null,
-                null);
+                null));
         return ResponseEntity.status(HttpStatus.CREATED).body(GraphWorkspaceRelationView.from(relation));
     }
 
@@ -155,7 +158,8 @@ public class GraphCommandController {
 
     @PostMapping("/graph-operations/undo")
     public Map<String, Object> undo(@PathVariable UUID projectId) {
-        UndoRedoService.UndoRedoResult result = undoRedoService.undo(projectId);
+        UndoRedoService.UndoRedoResult result = com.specagent.api.common.CommandExecution.execute(
+                () -> undoRedoService.undo(projectId));
         return Map.of(
                 "operation", GraphOperationResponse.from(result.operation()),
                 "description", result.description());
@@ -163,7 +167,8 @@ public class GraphCommandController {
 
     @PostMapping("/graph-operations/redo")
     public Map<String, Object> redo(@PathVariable UUID projectId) {
-        UndoRedoService.UndoRedoResult result = undoRedoService.redo(projectId);
+        UndoRedoService.UndoRedoResult result = com.specagent.api.common.CommandExecution.execute(
+                () -> undoRedoService.redo(projectId));
         return Map.of(
                 "operation", GraphOperationResponse.from(result.operation()),
                 "description", result.description());
@@ -240,6 +245,19 @@ public class GraphCommandController {
         static NodeResponse from(Node node, UUID routeId, boolean branched) {
             return new NodeResponse(
                     node.id(), routeId, branched,
+                    node.kind().code(), node.subtype(), node.content(),
+                    node.authorKind().code(),
+                    node.knowledgeStatus() == null ? null : node.knowledgeStatus().code());
+        }
+
+        /**
+         * Floating (route-less) response: routeId is always null. The creation
+         * context route id is recorded in the operation log; the response
+         * shape itself never claims route membership.
+         */
+        static NodeResponse fromFloating(Node node) {
+            return new NodeResponse(
+                    node.id(), null, false,
                     node.kind().code(), node.subtype(), node.content(),
                     node.authorKind().code(),
                     node.knowledgeStatus() == null ? null : node.knowledgeStatus().code());

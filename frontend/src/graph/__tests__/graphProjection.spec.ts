@@ -103,12 +103,14 @@ function uiState(overrides: Partial<{
   lifecycleFilters: Record<RouteLifecycleStatus, boolean>
   routeDisplayStates: Record<string, 'normal' | 'dimmed' | 'hidden'>
   expandedNodeIds: string[]
+  showRelationLayer: boolean
 }> = {}) {
   return {
     focusRouteId: null,
     lifecycleFilters: { ...DEFAULT_FILTERS },
     routeDisplayStates: {},
     expandedNodeIds: [],
+    showRelationLayer: false,
     ...overrides,
   }
 }
@@ -175,13 +177,16 @@ describe('graph projection', () => {
     expect(data.answers.find((a) => a.routeId === ROUTE_B_ID)?.isPrimary).toBe(true)
   })
 
-  it('without focus a shared node falls back to the active route answer (never blank)', () => {
+  it('without focus a shared node stays neutral and never falls back to active route answer', () => {
+    // shared + no focus：禁止 Active/first/last 冒充 primary。
+    // 该 fixture 中 b 被三条 route 共享 (A/B/C)；A 有 answer，B/C 没有。
+    // 因此 primaryAnswer 必须为 null，presentationMode='shared-divergent'。
     const result = project()
     const bNode = result.nodes.find((n) => n.id === 'b')!
     const data = bNode.data as SpecAgentGraphNodeData
-    // 共享节点应始终显示答案：未选择阅读路线时回退到活动路线的回答。
-    expect(data.primaryAnswer?.routeId).toBe(ACTIVE_ROUTE_ID)
-    expect(data.answers.find((answer) => answer.routeId === ACTIVE_ROUTE_ID)?.isPrimary).toBe(true)
+    expect(data.primaryAnswer).toBeNull()
+    expect(data.answerPresentationMode).toBe('shared-divergent')
+    expect(data.commonAnswer).toBeNull()
     expect(bNode.class).toContain('graph-node--neutral')
   })
 
@@ -305,23 +310,76 @@ describe('graph projection', () => {
     })
   })
 
-  it('selectPrimaryAnswer prefers focus, falls back to active route, then latest', () => {
+  it('selectPrimaryAnswer: focused route missing answer returns null and never borrows from other routes', () => {
+    const answers = [
+      { nodeId: 'x', routeId: ACTIVE_ROUTE_ID, selectedOptionId: null, selectedOptionLabel: null, freeText: 'a', isPrimary: false },
+    ]
+    const focusedMissing = selectPrimaryAnswer('x', answers, ROUTE_B_ID, ACTIVE_ROUTE_ID, [])
+    expect(focusedMissing).toBeNull()
+  })
+
+  it('selectPrimaryAnswer: focused route with answer returns exactly that answer', () => {
     const answers = [
       { nodeId: 'x', routeId: ACTIVE_ROUTE_ID, selectedOptionId: null, selectedOptionLabel: null, freeText: 'a', isPrimary: false },
       { nodeId: 'x', routeId: ROUTE_B_ID, selectedOptionId: null, selectedOptionLabel: null, freeText: 'b', isPrimary: false },
     ]
     const focused = selectPrimaryAnswer('x', answers, ROUTE_B_ID, ACTIVE_ROUTE_ID, [])
+    expect(focused?.routeId).toBe(ROUTE_B_ID)
     expect(focused?.freeText).toBe('b')
-    // 显式聚焦的路线没有回答时仍返回 null（卡片显示等待，不冒充）。
-    const focusedMissing = selectPrimaryAnswer('x', [answers[0]], ROUTE_B_ID, ACTIVE_ROUTE_ID, [])
-    expect(focusedMissing).toBeNull()
-    // 未选择阅读路线时回退：活动路线的回答，否则最新一条——共享节点不再留空白。
-    const active = selectPrimaryAnswer('x', answers, null, ACTIVE_ROUTE_ID, [])
-    expect(active?.freeText).toBe('a')
-    const latest = selectPrimaryAnswer('x', answers, null, null, [])
-    expect(latest?.freeText).toBe('b')
-    const none = selectPrimaryAnswer('y', answers, null, ACTIVE_ROUTE_ID, [])
-    expect(none).toBeNull()
+  })
+
+  it('selectPrimaryAnswer: single-route (non-shared) returns the route answer even without focus', () => {
+    const answers = [
+      { nodeId: 'x', routeId: ACTIVE_ROUTE_ID, selectedOptionId: 'opt-a', selectedOptionLabel: 'A', freeText: null, isPrimary: false },
+    ]
+    // 唯一 route，no focus → primary 来自该 route，不借用 active fallback。
+    const primary = selectPrimaryAnswer('x', answers, null, ACTIVE_ROUTE_ID, [])
+    expect(primary?.routeId).toBe(ACTIVE_ROUTE_ID)
+  })
+
+  it('selectPrimaryAnswer: multi-route + no focus + equivalent answers returns null primary; UI uses commonAnswer for shared-common mode', () => {
+    const answers = [
+      { nodeId: 'x', routeId: ACTIVE_ROUTE_ID, selectedOptionId: 'opt-a', selectedOptionLabel: 'A', freeText: 'same', isPrimary: false },
+      { nodeId: 'x', routeId: ROUTE_B_ID, selectedOptionId: 'opt-a', selectedOptionLabel: 'A', freeText: 'same', isPrimary: false },
+    ]
+    // shared + no focus：primary 必须为 null；projectGraph 同步写 commonAnswer 字段。
+    const primary = selectPrimaryAnswer('x', answers, null, ACTIVE_ROUTE_ID, [])
+    expect(primary).toBeNull()
+  })
+
+  it('selectPrimaryAnswer: multi-route + no focus + divergent answers returns null primary (UI must render per-route)', () => {
+    const answers = [
+      { nodeId: 'x', routeId: ACTIVE_ROUTE_ID, selectedOptionId: 'opt-a', selectedOptionLabel: 'A', freeText: 'A says', isPrimary: false },
+      { nodeId: 'x', routeId: ROUTE_B_ID, selectedOptionId: 'opt-b', selectedOptionLabel: 'B', freeText: 'B says', isPrimary: false },
+    ]
+    // 多路线不等价 + 无 focus：禁止 Active/first/last fallback。
+    const primary = selectPrimaryAnswer('x', answers, null, ACTIVE_ROUTE_ID, [])
+    expect(primary).toBeNull()
+  })
+
+  it('selectPrimaryAnswer: multi-route + partial waiting returns null primary', () => {
+    // 该测试通过 projectGraph 验证 presentation：shared 节点上某 route 尚未回答。
+    // selectPrimaryAnswer 自身只看 answers，无法判断 shared 上下文；因此这里用
+    // routeStates 完整结构验证 divergent 模式。
+    const view = {
+      projectId: PROJECT_ID,
+      activeRouteId: ACTIVE_ROUTE_ID,
+      routes: [route(ACTIVE_ROUTE_ID, 'open', ['a', 'b']), route(ROUTE_B_ID, 'open', ['a', 'b'])],
+      nodes: [node('a', null), node('b', 'a')],
+      answers: [answer(ACTIVE_ROUTE_ID, 'b', 'only A')],
+      relations: [],
+    }
+    const result = projectGraph({
+      view,
+      activeNodeId: 'b',
+      uiState: uiState(),
+      savedPositions: {},
+    })
+    const b = result.nodes.find((n) => n.id === 'b')!
+    const data = b.data as SpecAgentGraphNodeData
+    expect(data.primaryAnswer).toBeNull()
+    expect(data.answerPresentationMode).toBe('shared-divergent')
+    expect(data.commonAnswer).toBeNull()
   })
 
   it('projects floating route-less nodes as always-visible standalone instances', () => {
@@ -366,7 +424,7 @@ describe('graph projection', () => {
     expect(result.edges.some((edge) => edge.source === 'float-1' || edge.target === 'float-1')).toBe(false)
   })
 
-  it('renders manual semantic relations as distinct relation edges', () => {
+  it('renders manual semantic relations as distinct relation edges when relation layer is ON', () => {
     const view = fixture()
     const relation: GraphWorkspaceRelationView = {
       id: 'rel-1',
@@ -386,6 +444,7 @@ describe('graph projection', () => {
         lifecycleFilters: { open: true, superseded: true, archived: true, deleted: false },
         routeDisplayStates: {},
         expandedNodeIds: [],
+        showRelationLayer: true,
       },
       savedPositions: {},
     })
@@ -394,6 +453,70 @@ describe('graph projection', () => {
     expect(relationEdge?.data?.kind).toBe('relation')
     expect(relationEdge?.data?.relationType).toBe('RELATED_TO')
     expect(relationEdge?.class).toContain('graph-edge--relation')
+  })
+
+  it('relation endpoint uses focus visual instance when focused route has a unique visible instance', () => {
+    // Shared node b belongs to routes A, B, C and to replacement D's parent a.
+    // With focusRouteId = B, the relation edge should anchor on b's instance
+    // (B-visible), and that instance has its own visualNodeKey.
+    const view = fixture()
+    view.relations = [{
+      id: 'rel-1', sourceNodeId: 'a', targetNodeId: 'b', relationType: 'RELATED_TO',
+      origin: 'USER', createdByProposalId: null, createdAt: '2026-01-01T00:00:00Z',
+    }]
+    const result = projectGraph({
+      view,
+      activeNodeId: 'c',
+      uiState: uiState({ focusRouteId: ROUTE_B_ID, showRelationLayer: true }),
+      savedPositions: {},
+    })
+    const rel = result.edges.find((edge) => edge.id === 'relation:rel-1')
+    expect(rel).toBeDefined()
+    // visual instance for shared node on B is "b" (same canonical id in this
+    // simple case). The relation edge endpoint must anchor on a visible
+    // instance: the projection must NOT silently pick Active (A) just
+    // because A has the active route membership.
+    expect(rel?.source).toBe('a')
+    expect(rel?.target).toBe('b')
+  })
+
+  it('default relation layer is OFF: no relation edges on canvas even with focus + visible instance', () => {
+    // Canvas must never be cluttered with semantic relations unless the user
+    // explicitly opens the relation layer. The canonical fact still lives in
+    // view.relations and is reachable from the Inspector.
+    const view = fixture()
+    view.relations = [{
+      id: 'rel-1', sourceNodeId: 'a', targetNodeId: 'b', relationType: 'RELATED_TO',
+      origin: 'USER', createdByProposalId: null, createdAt: '2026-01-01T00:00:00Z',
+    }]
+    const result = projectGraph({
+      view,
+      activeNodeId: 'c',
+      uiState: uiState({ focusRouteId: ROUTE_B_ID }),
+      savedPositions: {},
+    })
+    expect(result.edges.find((edge) => edge.id === 'relation:rel-1')).toBeUndefined()
+    expect(view.relations).toHaveLength(1)
+  })
+
+  it('relation edge endpoint is suppressed when no focus and the endpoint has no visible instance', () => {
+    // Force a relation whose target lives only on an archived route; with
+    // the archived filter OFF the target has zero visible instances, so the
+    // edge must NOT be drawn presentationally.
+    const view = fixture()
+    const filters = { ...DEFAULT_FILTERS, archived: false }
+    view.relations = [{
+      id: 'rel-1', sourceNodeId: 'a', targetNodeId: 'e', relationType: 'RELATED_TO',
+      origin: 'USER', createdByProposalId: null, createdAt: '2026-01-01T00:00:00Z',
+    }]
+    const result = projectGraph({
+      view,
+      activeNodeId: 'c',
+      uiState: uiState({ lifecycleFilters: filters }),
+      savedPositions: {},
+    })
+    const rel = result.edges.find((edge) => edge.id === 'relation:rel-1')
+    expect(rel).toBeUndefined()
   })
 
   it('getVisibleRouteIds honors lifecycle filters and manual hide', () => {
@@ -550,7 +673,7 @@ describe('shared node route-specific waiting state', () => {
     expect(data.answers.map((a) => a.routeId)).toEqual([ACTIVE_ROUTE_ID])
   })
 
-  it('forked active route without a focused reading shows the inherited answer as fallback', () => {
+  it('shared node with inherited answer on a non-active route still surfaces the real per-route state', () => {
     const view = {
       projectId: PROJECT_ID,
       activeRouteId: ROUTE_B_ID,
@@ -567,10 +690,11 @@ describe('shared node route-specific waiting state', () => {
     })
     const b = result.nodes.find((n) => n.id === 'b')!
     const data = b.data as SpecAgentGraphNodeData
-    // 无焦点时回退到活动路线（分支）可用的回答——分支继承来源路线的回答，
-    // 卡片始终显示答案并以路线标注来源；routeStates 保持逐路线事实。
-    expect(data.primaryAnswer?.routeId).toBe(ACTIVE_ROUTE_ID)
-    expect(data.primaryAnswer?.freeText).toBe('old route answer')
+    // shared + no focus：primary 强制为 null；routeStates 严格 per-route 真实。
+    // 旧实现下"借 active / inherited"作为 primary 的语义已删除，避免借 Active/first/last 冒充。
+    expect(data.primaryAnswer).toBeNull()
+    expect(data.answerPresentationMode).toBe('shared-divergent')
+    expect(data.commonAnswer).toBeNull()
     expect(data.routeStates.find((s) => s.routeId === ROUTE_B_ID)?.answer).toBeNull()
     expect(data.routeStates.find((s) => s.routeId === ACTIVE_ROUTE_ID)?.answer?.freeText).toBe('old route answer')
   })

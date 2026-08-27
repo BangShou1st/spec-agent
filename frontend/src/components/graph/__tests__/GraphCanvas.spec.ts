@@ -21,7 +21,7 @@ const VueFlowStub = defineComponent({
     nodes: { type: Array, default: () => [] },
     edges: { type: Array, default: () => [] },
   },
-  emits: ['init', 'node-click', 'edge-click', 'node-drag', 'node-drag-stop', 'nodes-change', 'pane-click'],
+  emits: ['init', 'node-click', 'edge-click', 'node-drag', 'node-drag-stop', 'nodes-change', 'pane-click', 'connect'],
   setup() {
     return () => h('div', { class: 'vf-stub' })
   },
@@ -575,5 +575,45 @@ describe('graph canvas', () => {
     expect(ui.nodePositions.n2).toEqual({ x: -500, y: 0 })
     const saved = JSON.parse(localStorage.getItem('spec-agent.graph-layout.v1.p1') ?? '{}')
     expect(saved.nodePositions.n2).toEqual({ x: -500, y: 0 })
+  })
+})
+
+describe('GraphCanvas onConnect (connection affordance)', () => {
+  it('self-connection emits nothing (no create-relation event)', async () => {
+    const wrapper = mountCanvas(viewWithNodes())
+    // Trigger the canvas-level @connect handler directly. The Vue Flow stub
+    // never emits `connect` on its own; the test exercises the same code path
+    // the real canvas would.
+    await wrapper.vm.$emit('connect', {
+      source: 'n1',
+      target: 'n1',
+      sourceHandle: 'source-right',
+      targetHandle: 'target-left',
+    })
+    await wrapper.vm.$nextTick()
+    expect(wrapper.emitted('create-relation')).toBeUndefined()
+  })
+
+  it('connection originating from a pending projection card is ignored', async () => {
+    const wrapper = mountCanvas(viewWithNodes(), {
+      pendingProjection: {
+        routeId: ACTIVE_ROUTE,
+        sourceNodeId: 'n1',
+        runId: 'run-x',
+        status: 'PENDING',
+        phase: 'DECIDING',
+        message: null,
+      },
+    })
+    await wrapper.vm.$emit('connect', {
+      source: 'pending:run-x',
+      target: 'n1',
+      sourceHandle: 'source-right',
+      targetHandle: 'target-left',
+    })
+    await wrapper.vm.$nextTick()
+    // pending:run-x is not a canonical Node; the frontend refuses to even
+    // emit create-relation, regardless of relation layer.
+    expect(wrapper.emitted('create-relation')).toBeUndefined()
   })
 })

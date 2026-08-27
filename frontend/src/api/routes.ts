@@ -4,6 +4,7 @@ import type {
   ReanswerRouteRequest,
   RegenerateNodeRequest,
   RegenerateResponse,
+  ResumeRouteRequest,
   RouteLineageView,
   RouteMutationResponse,
 } from './types'
@@ -60,6 +61,17 @@ export function reanswerNode(
 ): Promise<RouteMutationResponse> {
   return apiClient.post<RouteMutationResponse>(
     `/projects/${projectId}/nodes/${nodeId}/reanswer`,
+    payload,
+  )
+}
+
+export function resumeQuestion(
+  projectId: string,
+  nodeId: string,
+  payload: ResumeRouteRequest,
+): Promise<RouteMutationResponse> {
+  return apiClient.post<RouteMutationResponse>(
+    `/projects/${projectId}/nodes/${nodeId}/resume`,
     payload,
   )
 }

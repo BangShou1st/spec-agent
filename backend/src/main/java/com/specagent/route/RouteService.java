@@ -14,6 +14,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -34,17 +35,20 @@ public class RouteService {
     private final NodeRepository nodeRepository;
     private final NodeService nodeService;
     private final RouteHistoryResolver routeHistoryResolver;
+    private final com.specagent.graph.GraphOperationRepository graphOperationRepository;
 
     public RouteService(RouteRepository routeRepository,
                         ProjectRepository projectRepository,
                         NodeRepository nodeRepository,
                         NodeService nodeService,
-                        RouteHistoryResolver routeHistoryResolver) {
+                        RouteHistoryResolver routeHistoryResolver,
+                        com.specagent.graph.GraphOperationRepository graphOperationRepository) {
         this.routeRepository = routeRepository;
         this.projectRepository = projectRepository;
         this.nodeRepository = nodeRepository;
         this.nodeService = nodeService;
         this.routeHistoryResolver = routeHistoryResolver;
+        this.graphOperationRepository = graphOperationRepository;
     }
 
     public Route createRoute(UUID projectId, RouteLifecycleStatus status, String label) {
@@ -195,6 +199,120 @@ public class RouteService {
         projectRepository.updateActiveRoute(projectId, routeId, now);
         return route;
     }
+
+    /**
+     * Reactivates a historical unanswered Question on an explicit source route
+     * without rewriting the source route's lineage and without copying or
+     * retracting the canonical Question.
+     *
+     * <p>Decision table:
+     * <ul>
+     *   <li>Source route OPEN, source tip == target, target has no effective
+     *       answer on the source route → activate the existing source route
+     *       in place, no new route is created, no GraphOperation is appended.</li>
+     *   <li>Source route OPEN, target is on the lineage but not the source
+     *       tip, target has no effective answer on the source route → create
+     *       a new RESUME_QUESTION branch route with inherited prefix that
+     *       excludes the target itself.</li>
+     *   <li>Otherwise → fail closed (IllegalStateException).</li>
+     * </ul>
+     */
+    @Transactional
+    public ResumeQuestionResult resumeAnsweringFromNode(UUID projectId,
+                                                       UUID sourceRouteId,
+                                                       UUID targetNodeId,
+                                                       String label) {
+        Node targetNode = requireNodeInProject(projectId, targetNodeId);
+        Route sourceRoute = requireExplorationSource(projectId, sourceRouteId);
+        if (targetNode.kind() != com.specagent.node.NodeKind.INTERACTION
+                || !"QUESTION".equals(targetNode.subtype())) {
+            throw new IllegalArgumentException(
+                    "Resume target must be an INTERACTION/QUESTION node: " + targetNodeId);
+        }
+        if (targetNode.isRetracted()) {
+            throw new IllegalStateException("Target Question has been retracted: " + targetNodeId);
+        }
+        List<UUID> sourceLineage = routeHistoryResolver.resolveLineage(sourceRoute.tipNodeId());
+        requireLineageContains(sourceLineage, targetNodeId);
+
+        // Effective answer presence check: route-local + inherited on the source route.
+        boolean alreadyAnsweredOnSource = routeHistoryResolver
+                .resolveEffectiveAnswers(sourceRouteId, sourceLineage).stream()
+                .anyMatch(answer -> answer.nodeId().equals(targetNodeId));
+        if (alreadyAnsweredOnSource) {
+            throw new IllegalStateException(
+                    "Target Question already has a finalized effective answer on the source route: "
+                            + targetNodeId);
+        }
+
+        // Capture previous Active BEFORE flipping, so Undo can restore it.
+        UUID previousActive = projectRepository.findById(projectId)
+                .orElseThrow(() -> new IllegalStateException("Project missing: " + projectId))
+                .activeRouteId();
+
+        boolean sourceTipIsTarget = targetNodeId.equals(sourceRoute.tipNodeId());
+        if (sourceRoute.lifecycleStatus() == RouteLifecycleStatus.OPEN && sourceTipIsTarget) {
+            if (!sourceRouteId.equals(previousActive)) {
+                projectRepository.updateActiveRoute(projectId, sourceRouteId, Instant.now());
+            }
+            return new ResumeQuestionResult(sourceRoute, false, previousActive);
+        }
+
+        // Create a new RESUME_QUESTION branch route. The tip is the existing
+        // canonical Question, the inherited prefix freezes effective answers
+        // strictly before the target, and the new route becomes Active.
+        UUID routeId = Ids.random();
+        Instant now = Instant.now();
+        Route resumeRoute = new Route(
+                routeId, projectId, sourceRoute.rootNodeId(), targetNodeId,
+                RouteLifecycleStatus.OPEN, effectiveLabel(projectId, RouteBranchType.RESUME_QUESTION, label),
+                null, null, null, null,
+                RouteBranchType.RESUME_QUESTION, sourceRouteId, targetNodeId, now, now);
+        routeRepository.save(resumeRoute);
+        projectRepository.updateActiveRoute(projectId, routeId, now);
+
+        // Atomic append of the typed operation in the same transaction
+        // boundary as the new route, the inherited prefix, and the Active
+        // switch. Undo/Redo will treat this as a route-only operation and
+        // never touch the canonical Question.
+        // The frozen inherited prefix is also recorded in afterRefs so the
+        // compensation can verify provenance against the actual refs row by
+        // row (the list may be empty when the target Question is the very
+        // first node being asked on the source route — that is legal).
+        List<com.specagent.route.RouteInheritedAnswer> inheritedRefs = routeHistoryResolver
+                .snapshotInheritedPrefix(routeId, sourceRouteId, targetNodeId, false);
+        Map<String, Object> beforeRefs = previousActive == null
+                ? Map.of()
+                : Map.of("previousActiveRouteId", previousActive.toString());
+        List<Map<String, Object>> serializedRefs = inheritedRefs.stream()
+                .map(ref -> Map.<String, Object>of(
+                        "nodeId", ref.nodeId().toString(),
+                        "answerId", ref.answerId().toString(),
+                        "ownerRouteId", ref.ownerRouteId().toString(),
+                        "ordinal", ref.ordinal()))
+                .toList();
+        Map<String, Object> afterRefs = new java.util.LinkedHashMap<>();
+        afterRefs.put("routeId", routeId.toString());
+        afterRefs.put("sourceRouteId", sourceRouteId.toString());
+        afterRefs.put("targetNodeId", targetNodeId.toString());
+        afterRefs.put("branchType", RouteBranchType.RESUME_QUESTION.code());
+        afterRefs.put("expectedInheritedRefs", serializedRefs);
+        graphOperationRepository.append(projectId,
+                com.specagent.graph.GraphOperation.Actor.USER,
+                com.specagent.graph.GraphOperation.Type.RESUME_QUESTION_FROM_HISTORY,
+                List.of(targetNodeId),
+                beforeRefs,
+                afterRefs);
+        return new ResumeQuestionResult(resumeRoute, true, previousActive);
+    }
+
+    /**
+     * Lightweight DTO for the resume command: the resulting route plus a
+     * boolean telling the caller whether a new branch route was actually
+     * created (true) or whether the existing source route was merely
+     * reactivated (false).
+     */
+    public record ResumeQuestionResult(Route route, boolean createdNewRoute, UUID previousActiveRouteId) { }
 
     /**
      * Commits an already accepted replacement proposal. The method is the only
@@ -350,6 +468,7 @@ public class RouteService {
             case REANSWER -> "重新回答路线";
             case REGENERATE -> "换题路线";
             case CONTINUATION -> "探索分支";
+            case RESUME_QUESTION -> "恢复回答路线";
         };
         return prefix + " " + (count + 1);
     }

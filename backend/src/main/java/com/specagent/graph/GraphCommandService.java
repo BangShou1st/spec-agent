@@ -107,8 +107,11 @@ public class GraphCommandService {
                                         Map<String, Object> content) {
         requireOpenRouteInProject(projectId, routeId);
         Node node = nodeService.createFloatingWorkspaceNode(
-                projectId, routeId, NodeKind.KNOWLEDGE, subtype, content,
+                projectId, NodeKind.KNOWLEDGE, subtype, content,
                 NodeAuthorKind.USER, KnowledgeStatus.PROPOSED);
+        // The Node itself carries no routeId (it is route-less). The creation
+        // context route id is recorded only in the operation log, not in the
+        // persisted node row.
         operationRepository.append(projectId, GraphOperation.Actor.USER,
                 GraphOperation.Type.CREATE_DRAFT_NODE, List.of(node.id()),
                 Map.of("routeId", routeId.toString()),

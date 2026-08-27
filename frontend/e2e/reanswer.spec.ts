@@ -13,6 +13,9 @@ test('re-answer keeps the canonical question and creates a distinct answer visua
   const target = page.locator('[data-test="graph-question-node"]').nth(1)
   const canonicalId = await target.getAttribute('data-node-id')
   expect(canonicalId).not.toBeNull()
+  // Action rail is hover/selection/keyboard-only. The test simulates the
+  // real user behavior of crossing into the card before clicking.
+  await target.hover()
   await target.getByTestId('reanswer-node').click()
   await expect(page.getByTestId('reanswer-dialog')).toBeVisible()
   await expect(page.locator('[data-test="reanswer-source-route"]')).toHaveCount(0)

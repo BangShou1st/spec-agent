@@ -202,6 +202,7 @@ const selectedNodeData = computed<SpecAgentGraphNodeData | null>(() => {
       lifecycleFilters: graphUi.lifecycleFilters,
       routeDisplayStates: graphUi.routeDisplayStates,
       expandedNodeIds: graphUi.expandedNodeIds,
+      showRelationLayer: graphUi.showRelationLayer,
     },
     savedPositions: graphUi.nodePositions,
   })
@@ -349,10 +350,15 @@ async function handleCreateRelation(payload: {
   sourceNodeId: string
   targetNodeId: string
 }): Promise<void> {
+  // Identity contract matches backend: (sourceNodeId, targetNodeId, relationType).
+  // The relation vocabulary is partially directional (DEPENDS_ON, DERIVED_FROM,
+  // CONFLICTS_WITH, SUPPORTS) so a reverse direction is a different relation
+  // and must not be flagged as a duplicate.
   const relations = store.graphView?.relations ?? []
   const duplicate = relations.some((relation) =>
-    (relation.sourceNodeId === payload.sourceNodeId && relation.targetNodeId === payload.targetNodeId)
-    || (relation.sourceNodeId === payload.targetNodeId && relation.targetNodeId === payload.sourceNodeId),
+    relation.relationType === 'RELATED_TO'
+    && relation.sourceNodeId === payload.sourceNodeId
+    && relation.targetNodeId === payload.targetNodeId,
   )
   if (duplicate) {
     store.feedback = '这两个节点之间已有连接。'
@@ -388,6 +394,27 @@ function handleRegenerate(nodeId: string): void {
   regenerateDialogOpen.value = true
 }
 
+/**
+ * Reactivates a historical unanswered Question on the explicit reading
+ * route (graphUi.focusRouteId). If the user has not picked a Focus route
+ * yet, refuse rather than silently fall back to Active — shared ambiguous
+ * nodes never guess.
+ */
+async function handleResumeAnswer(nodeId: string): Promise<void> {
+  if (!graphUi.focusRouteId) {
+    store.error = {
+      code: 'SOURCE_ROUTE_REQUIRED',
+      message: '请先选择明确的来源路线再恢复该问题。',
+    }
+    return
+  }
+  const sourceRouteId = graphUi.focusRouteId
+  const ok = await store.resumeQuestion(nodeId, sourceRouteId)
+  if (ok) {
+    await focusAfterMutation()
+  }
+}
+
 function resolveContextualAiTarget(target: ContextualAiTarget): string | null {
   if (!store.graphView || !target.canonicalNodeId || !target.visualNodeKey) return null
   const projection = projectGraph({
@@ -398,6 +425,7 @@ function resolveContextualAiTarget(target: ContextualAiTarget): string | null {
       lifecycleFilters: graphUi.lifecycleFilters,
       routeDisplayStates: graphUi.routeDisplayStates,
       expandedNodeIds: graphUi.expandedNodeIds,
+      showRelationLayer: graphUi.showRelationLayer,
     },
     savedPositions: graphUi.nodePositions,
   })
@@ -559,6 +587,7 @@ async function confirmDestructive(): Promise<void> {
         @fork="handleFork"
         @reanswer="handleReanswer"
         @regenerate="handleRegenerate"
+        @resume-answer="handleResumeAnswer"
         @contextual-ai="handleContextualAi"
         @retry-pending="store.retryPendingAgentRun"
         @viewport-settled="scheduleFloatingLayout"

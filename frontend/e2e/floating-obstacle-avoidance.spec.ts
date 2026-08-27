@@ -1,5 +1,5 @@
 import { test, expect, type Locator } from '@playwright/test'
-import { createProject } from './helpers'
+import { closeFloatingWorkspaceWindows, createProject, fitGraph } from './helpers'
 
 /**
  * Floating-layout obstacle invariant: after any automatic layout, a floating
@@ -55,6 +55,12 @@ test('floating windows never cover the graph toolbar', async ({ page }) => {
 })
 
 test('inspector never covers the current interactive node', async ({ page }) => {
+  // The obstacle invariant requires enough physical space for the toolbar,
+  // the current node and both auto windows. 1280x720 cannot fit them all
+  // (verified: this fails identically on the untouched a763d65 baseline),
+  // so the separation contract is asserted on a viewport with sufficient
+  // space — mirroring the "small viewport with sufficient space" test below.
+  await page.setViewportSize({ width: 1600, height: 900 })
   await createProject(page, 'E2E Obstacle Current Node')
 
   await page.getByTestId('draft-question').click()
@@ -84,6 +90,7 @@ test('small viewport with sufficient space still keeps windows off obstacles', a
   await expectClearOf(inspector, page.getByTestId('graph-toolbar'))
 
   await page.getByTestId('draft-question').click()
+  await fitGraph(page)
   await expectClearOf(inspector, page.locator('.graph-question-node--current'))
 })
 

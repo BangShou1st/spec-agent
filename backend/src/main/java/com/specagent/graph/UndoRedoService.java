@@ -5,7 +5,11 @@ import com.specagent.node.KnowledgeStatus;
 import com.specagent.node.Node;
 import com.specagent.node.NodeRepository;
 import com.specagent.node.NodeService;
+import com.specagent.project.ProjectRepository;
 import com.specagent.route.Route;
+import com.specagent.route.RouteHistoryResolver;
+import com.specagent.route.RouteInheritedAnswer;
+import com.specagent.route.RouteInheritedAnswerRepository;
 import com.specagent.route.RouteLifecycleStatus;
 import com.specagent.route.RouteRepository;
 import com.specagent.route.RouteService;
@@ -52,6 +56,9 @@ public class UndoRedoService {
     private final RouteService routeService;
     private final NodeRelationRepository relationRepository;
     private final AnswerRepository answerRepository;
+    private final ProjectRepository projectRepository;
+    private final RouteHistoryResolver routeHistoryResolver;
+    private final RouteInheritedAnswerRepository routeInheritedAnswerRepository;
 
     public UndoRedoService(GraphOperationRepository operationRepository,
                            NodeService nodeService,
@@ -59,7 +66,10 @@ public class UndoRedoService {
                            RouteRepository routeRepository,
                            RouteService routeService,
                            NodeRelationRepository relationRepository,
-                           AnswerRepository answerRepository) {
+                           AnswerRepository answerRepository,
+                           ProjectRepository projectRepository,
+                           RouteHistoryResolver routeHistoryResolver,
+                           RouteInheritedAnswerRepository routeInheritedAnswerRepository) {
         this.operationRepository = operationRepository;
         this.nodeService = nodeService;
         this.nodeRepository = nodeRepository;
@@ -67,6 +77,9 @@ public class UndoRedoService {
         this.routeService = routeService;
         this.relationRepository = relationRepository;
         this.answerRepository = answerRepository;
+        this.projectRepository = projectRepository;
+        this.routeHistoryResolver = routeHistoryResolver;
+        this.routeInheritedAnswerRepository = routeInheritedAnswerRepository;
     }
 
     public record UndoRedoResult(GraphOperation operation, String description) {
@@ -130,6 +143,7 @@ public class UndoRedoService {
         switch (operation.type()) {
             case CREATE_DRAFT_NODE, APPEND_CONTINUATION, ATTACH_RESOURCE -> compensateNodeCreation(operation);
             case CREATE_BRANCH_AND_APPEND -> compensateBranchCreation(operation);
+            case RESUME_QUESTION_FROM_HISTORY -> compensateResumeRoute(operation);
             case EDIT_DRAFT_NODE -> compensateDraftEdit(operation);
             case CREATE_SEMANTIC_RELATION -> compensateRelation(operation);
             case SET_KNOWLEDGE_STATUS -> compensateKnowledgeStatus(operation);
@@ -176,6 +190,156 @@ public class UndoRedoService {
         routeService.softDeleteRoute(operation.projectId(), routeId);
     }
 
+    /**
+     * Route-only compensation for {@code RESUME_QUESTION_FROM_HISTORY}:
+     * soft-delete the resume route and restore the previous Active pointer,
+     * but NEVER retract the canonical Question and NEVER delete any answer
+     * or any inherited answer reference. Preconditions enforce:
+     * <ul>
+     *   <li>project.activeRouteId == resumedRouteId (the resume must still
+     *       be the active branch — a later user-side activate would mean the
+     *       user has moved on, and Undo must not steal that choice);</li>
+     *   <li>the resumed route lifecycle is still OPEN;</li>
+     *   <li>resumed route tip is still the target (no continuation was
+     *       appended after RESUME);</li>
+     *   <li>no effective answer exists for the target on the resume route
+     *       (immutable Answer is durable history, RESUME cannot be revoked
+     *       once it anchors a real answer);</li>
+     *   <li>the canonical target Question is not retracted (defense in
+     *       depth — no code path here retracts it, but we fail closed if
+     *       any other path already did);</li>
+     *   <li>the current inherited prefix exactly matches the
+     *       {@code expectedInheritedRefs} recorded in the operation's
+     *       afterRefs. The expected list MAY be empty when the target was
+     *       the first Question ever asked on the source route; an empty
+     *       current list is then a match, not a failure.</li>
+     *   <li>{@code previousActiveRouteId} (when non-null) still resolves to
+     *       a route in {@code OPEN} lifecycle, so the restore is sound.
+     *       This is checked BEFORE any mutation: if the previously-active
+     *       route has since been archived/superseded/deleted, the
+     *       compensation fails closed and refuses to flip Active.</li>
+     * </ul>
+     * The Active pointer is restored only on exact equality with the
+     * recorded {@code previousActiveRouteId} — "X or null" fallbacks are
+     * not allowed, because that would silently override a deliberate user
+     * activation that happened after the RESUME.
+     */
+    private void compensateResumeRoute(GraphOperation operation) {
+        UUID resumedRouteId = requireUuid(operation.afterRefs(), "routeId");
+        UUID targetNodeId = requireUuid(operation.afterRefs(), "targetNodeId");
+        UUID previousActiveRouteId = optionalUuid(operation.beforeRefs(), "previousActiveRouteId");
+        UUID currentActive = projectRepository.findById(operation.projectId())
+                .map(com.specagent.project.Project::activeRouteId)
+                .orElse(null);
+        if (!resumedRouteId.equals(currentActive)) {
+            throw new IllegalStateException(
+                    "恢复历史问题操作撤销失败：当前活动路线已不在该 RESUME 路线上");
+        }
+        Route resumed = routeRepository.findById(resumedRouteId)
+                .orElseThrow(() -> new IllegalStateException("Resume route missing during undo: " + resumedRouteId));
+        if (resumed.lifecycleStatus() != RouteLifecycleStatus.OPEN) {
+            throw new IllegalStateException("Resume route lifecycle no longer OPEN: " + resumedRouteId);
+        }
+        if (resumed.tipNodeId() == null || !resumed.tipNodeId().equals(targetNodeId)) {
+            throw new IllegalStateException("RESUME 路线已继续推进，无法撤销其创建");
+        }
+        Node target = nodeRepository.findById(targetNodeId)
+                .orElseThrow(() -> new IllegalStateException("Target Question missing: " + targetNodeId));
+        if (target.isRetracted()) {
+            throw new IllegalStateException("Target Question must not be retracted by RESUME undo: " + targetNodeId);
+        }
+        List<UUID> lineage = routeHistoryResolver.resolveLineage(targetNodeId);
+        boolean alreadyAnswered = routeHistoryResolver
+                .resolveEffectiveAnswers(resumedRouteId, lineage).stream()
+                .anyMatch(answer -> answer.nodeId().equals(targetNodeId));
+        if (alreadyAnswered) {
+            throw new IllegalStateException("RESUME 路线上该问题已产生回答，无法撤销 RESUME 创建");
+        }
+        // Provenance consistency: every ref recorded in afterRefs must still
+        // be present in the route_inherited_answers row, and the actual
+        // refs must contain nothing extra. Empty expected list is legal
+        // (target was the first Question asked on the source route).
+        List<RouteInheritedAnswer> actualRefs = routeInheritedAnswerRepository
+                .findByBranchRouteId(resumedRouteId);
+        verifyInheritedRefProvenance(operation, actualRefs);
+
+        // previousActiveRouteId lifecycle check happens BEFORE mutation.
+        // If the previously-active route is no longer OPEN we cannot soundly
+        // restore Active, so we fail closed and leave state untouched.
+        if (previousActiveRouteId != null) {
+            Route previous = routeRepository.findById(previousActiveRouteId).orElse(null);
+            if (previous == null
+                    || previous.lifecycleStatus() != RouteLifecycleStatus.OPEN) {
+                throw new IllegalStateException(
+                        "RESUME 撤销失败：先前活动路线已不再 OPEN，无法安全恢复 Active");
+            }
+        }
+
+        // All preconditions hold. Soft-delete the resume route first; this
+        // also handles active-clear when previousActiveRouteId is null.
+        routeService.softDeleteRoute(operation.projectId(), resumedRouteId);
+
+        // Restore previous Active pointer only when it was non-null. Exact
+        // equality with the recorded previousActiveRouteId is required; an
+        // "X or null" fallback would silently override a deliberate user
+        // activation.
+        if (previousActiveRouteId != null) {
+            routeService.setActiveRoute(operation.projectId(), previousActiveRouteId);
+        }
+    }
+
+    /**
+     * Validates that the inherited answer refs currently persisted for a
+     * resume route exactly match the snapshot recorded in the operation
+     * log. The expected list may be empty. Any drift (missing ref, extra
+     * ref, or different identity) is an invariant violation and the
+     * compensation fails closed.
+     */
+    @SuppressWarnings("unchecked")
+    private void verifyInheritedRefProvenance(GraphOperation operation,
+                                              List<RouteInheritedAnswer> actualRefs) {
+        Object expectedRaw = operation.afterRefs().get("expectedInheritedRefs");
+        List<Map<String, Object>> expected;
+        if (expectedRaw == null) {
+            // Older operations recorded before the provenance snapshot was
+            // added: fall back to the legacy "refs must be present" check so
+            // we do not silently pass compensation on un-tracked data.
+            if (actualRefs.isEmpty()) {
+                return;
+            }
+            throw new IllegalStateException(
+                    "RESUME 撤销失败：operation 未记录 expectedInheritedRefs，无法验证 provenance");
+        }
+        if (!(expectedRaw instanceof List<?> expectedList)) {
+            throw new IllegalStateException(
+                    "RESUME 撤销失败：expectedInheritedRefs 字段类型非法");
+        }
+        expected = new java.util.ArrayList<>();
+        for (Object item : expectedList) {
+            if (!(item instanceof Map<?, ?> map)) {
+                throw new IllegalStateException(
+                        "RESUME 撤销失败：expectedInheritedRefs 子项类型非法");
+            }
+            expected.add((Map<String, Object>) map);
+        }
+        if (expected.size() != actualRefs.size()) {
+            throw new IllegalStateException(
+                    "RESUME 撤销失败：expected inherited refs count="
+                            + expected.size() + ", actual=" + actualRefs.size());
+        }
+        for (int i = 0; i < expected.size(); i += 1) {
+            Map<String, Object> want = expected.get(i);
+            RouteInheritedAnswer got = actualRefs.get(i);
+            if (!String.valueOf(want.get("nodeId")).equals(got.nodeId().toString())
+                    || !String.valueOf(want.get("answerId")).equals(got.answerId().toString())
+                    || !String.valueOf(want.get("ownerRouteId")).equals(got.ownerRouteId().toString())
+                    || !Integer.valueOf(String.valueOf(want.get("ordinal"))).equals(got.ordinal())) {
+                throw new IllegalStateException(
+                        "RESUME 撤销失败：ordinal " + i + " provenance drift");
+            }
+        }
+    }
+
     private void compensateDraftEdit(GraphOperation operation) {
         UUID nodeId = operation.targetNodeId();
         Node node = requireActiveNode(operation.projectId(), nodeId);
@@ -217,6 +381,7 @@ public class UndoRedoService {
         switch (operation.type()) {
             case CREATE_DRAFT_NODE, APPEND_CONTINUATION, ATTACH_RESOURCE -> replayNodeCreation(operation);
             case CREATE_BRANCH_AND_APPEND -> replayBranchCreation(operation);
+            case RESUME_QUESTION_FROM_HISTORY -> replayResumeRoute(operation);
             case EDIT_DRAFT_NODE -> replayDraftEdit(operation);
             case CREATE_SEMANTIC_RELATION -> replayRelation(operation);
             case SET_KNOWLEDGE_STATUS -> replayKnowledgeStatus(operation);
@@ -283,6 +448,58 @@ public class UndoRedoService {
         routeService.restoreRoute(operation.projectId(), routeId);
         nodeService.setRetracted(nodeId, false);
         routeRepository.updateTipAndRoot(routeId, nodeId, route.rootNodeId(), Instant.now());
+    }
+
+    /**
+     * Route-only replay for {@code RESUME_QUESTION_FROM_HISTORY}: restore
+     * the soft-deleted resume route, then re-activate it. No node mutation
+     * is performed. The canonical Question has never been touched in either
+     * direction. Active pointer preconditions: the current Active must
+     * match the recorded {@code previousActiveRouteId} (or null), so we
+     * never steal a user-side activate the user took after Undo.
+     */
+    private void replayResumeRoute(GraphOperation operation) {
+        UUID resumedRouteId = requireUuid(operation.afterRefs(), "routeId");
+        UUID sourceRouteId = requireUuid(operation.afterRefs(), "sourceRouteId");
+        UUID targetNodeId = requireUuid(operation.afterRefs(), "targetNodeId");
+        UUID previousActiveRouteId = optionalUuid(operation.beforeRefs(), "previousActiveRouteId");
+        UUID currentActive = projectRepository.findById(operation.projectId())
+                .map(com.specagent.project.Project::activeRouteId)
+                .orElse(null);
+        if (!java.util.Objects.equals(currentActive, previousActiveRouteId)) {
+            throw new IllegalStateException(
+                    "撤销后产生了新的活动路线选择，无法恢复该 RESUME 路线");
+        }
+        Route resumed = routeRepository.findById(resumedRouteId)
+                .orElseThrow(() -> new IllegalStateException("Resume route missing during redo: " + resumedRouteId));
+        if (resumed.lifecycleStatus() != RouteLifecycleStatus.DELETED) {
+            throw new IllegalStateException("RESUME 路线状态已变化，无法恢复");
+        }
+        Node target = nodeRepository.findById(targetNodeId)
+                .orElseThrow(() -> new IllegalStateException("Target Question missing during redo: " + targetNodeId));
+        if (target.isRetracted()) {
+            throw new IllegalStateException("Target Question must not be retracted: " + targetNodeId);
+        }
+        // Source route must still be present (it is read-only here).
+        routeRepository.findById(sourceRouteId)
+                .orElseThrow(() -> new IllegalStateException("Source route missing during redo: " + sourceRouteId));
+        // Inherited prefix provenance: refs must still be there (we never
+        // deleted them in compensate, but defend against external mutations).
+        if (routeInheritedAnswerRepository.findByBranchRouteId(resumedRouteId).isEmpty()) {
+            // Empty prefix is also a legal state; nothing to restore.
+        }
+        // No local answer on the resume route (compensate already enforced it,
+        // but defend).
+        List<UUID> lineage = routeHistoryResolver.resolveLineage(targetNodeId);
+        boolean alreadyAnswered = routeHistoryResolver
+                .resolveEffectiveAnswers(resumedRouteId, lineage).stream()
+                .anyMatch(answer -> answer.nodeId().equals(targetNodeId));
+        if (alreadyAnswered) {
+            throw new IllegalStateException("RESUME 路线上该问题已产生回答，无法 Redo RESUME 创建");
+        }
+
+        routeService.restoreRoute(operation.projectId(), resumedRouteId);
+        routeService.setActiveRoute(operation.projectId(), resumedRouteId);
     }
 
     private void replayDraftEdit(GraphOperation operation) {
@@ -406,6 +623,7 @@ public class UndoRedoService {
             case APPEND_CONTINUATION -> "已撤销：继续探索";
             case ATTACH_RESOURCE -> "已撤销：添加资源";
             case CREATE_BRANCH_AND_APPEND -> "已撤销：新建分支";
+            case RESUME_QUESTION_FROM_HISTORY -> "已撤销：恢复历史未答问题";
             case CREATE_SEMANTIC_RELATION -> "已撤销：添加语义关系";
             case SET_KNOWLEDGE_STATUS -> "已撤销：知识状态变更";
             case ACCEPT_AGENT_PROPOSAL -> "已撤销：接受提案";
@@ -419,6 +637,7 @@ public class UndoRedoService {
             case APPEND_CONTINUATION -> "已恢复：继续探索";
             case ATTACH_RESOURCE -> "已恢复：添加资源";
             case CREATE_BRANCH_AND_APPEND -> "已恢复：新建分支";
+            case RESUME_QUESTION_FROM_HISTORY -> "已恢复：恢复历史未答问题";
             case CREATE_SEMANTIC_RELATION -> "已恢复：添加语义关系";
             case SET_KNOWLEDGE_STATUS -> "已恢复：知识状态变更";
             // Unreachable: an ACCEPT_AGENT_PROPOSAL can never be in UNDONE

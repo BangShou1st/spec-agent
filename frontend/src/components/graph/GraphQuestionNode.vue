@@ -52,6 +52,7 @@ const emit = defineEmits<{
   regenerate: [nodeId: string]
   'contextual-ai': [nodeId: string]
   'retry-pending': []
+  'resume-answer': [nodeId: string]
 }>()
 
 /**
@@ -195,6 +196,7 @@ function setReadingRoute(event: Event): void {
         'graph-question-node--current': data.canAnswer,
         'graph-question-node--historical': !data.canAnswer,
         'graph-question-node--shared': data.isShared,
+        'graph-question-node--selected': selected === true,
       },
     ]"
     data-test="graph-question-node"
@@ -355,6 +357,7 @@ function setReadingRoute(event: Event): void {
           {{ node.question }}
         </h4>
 
+        <!-- focused / single-route: primary 来自某条真实 route 的 answer。 -->
         <div
           v-if="primary"
           class="graph-answer-summary"
@@ -363,12 +366,63 @@ function setReadingRoute(event: Event): void {
           <span v-if="primary.selectedOptionLabel" class="graph-answer-option badge badge-open">
             {{ primary.selectedOptionLabel }}
           </span>
-          <p v-if="primary.freeText" class="graph-answer-text">{{ primary.freeText }}</p>
+          <p
+            v-if="primary.freeText"
+            class="graph-answer-text graph-answer-text--clamped"
+            data-test="clamped-free-text"
+          >{{ primary.freeText }}</p>
           <span class="graph-answer-route meta-text">{{ primary.routeLabel || '当前查看路线' }}</span>
         </div>
 
+        <!-- shared-common: 多路线等价时显示共同答案，routeId 永远来自真实 route。 -->
+        <div
+          v-else-if="data.answerPresentationMode === 'shared-common' && data.commonAnswer"
+          class="graph-answer-summary"
+          data-test="common-answer"
+        >
+          <span class="badge badge-open" data-test="common-answer-label">共同答案 · 多路线一致</span>
+          <span v-if="data.commonAnswer.selectedOptionLabel" class="graph-answer-option badge badge-open">
+            {{ data.commonAnswer.selectedOptionLabel }}
+          </span>
+          <p
+            v-if="data.commonAnswer.freeText"
+            class="graph-answer-text graph-answer-text--clamped"
+            data-test="clamped-free-text"
+          >{{ data.commonAnswer.freeText }}</p>
+        </div>
+
+        <!-- shared-divergent: 列出每条 route 摘要 + 等待 route 显式标注。
+             绝不借 Active/first/latest 冒充 primary。 -->
+        <div
+          v-else-if="data.answerPresentationMode === 'shared-divergent'"
+          class="graph-route-summaries"
+          data-test="route-summaries"
+        >
+          <p class="meta-text graph-route-summaries__hint">多路线答案不同，请选择查看路线：</p>
+          <ul>
+            <li
+              v-for="state in data.routeStates"
+              :key="state.routeId"
+              class="graph-route-summaries__item"
+              :data-test="state.answer ? 'route-summary-answered' : 'route-summary-waiting'"
+            >
+              <span class="graph-route-summaries__label">{{ state.routeLabel || '路线' }}</span>
+              <span v-if="state.answer" class="graph-route-summaries__content">
+                <span v-if="state.answer.selectedOptionLabel" class="graph-answer-option badge badge-open">
+                  {{ state.answer.selectedOptionLabel }}
+                </span>
+                <span v-if="state.answer.freeText" class="graph-answer-text graph-answer-text--clamped">
+                  {{ state.answer.freeText }}
+                </span>
+              </span>
+              <span v-else class="badge badge-warn" data-test="route-waiting-badge">等待回答</span>
+            </li>
+          </ul>
+        </div>
+
         <!-- 阅读路线没有回答时：明确显示等待 + 节点问题本身，绝不拿其他路线的
-             answer 冒充。想要换答案：统一走侧栏的「重新选择答案」（也会建显式分支）。 -->
+             answer 冒充。想要回答：必须先选定明确的 source route（readingRouteId），
+             然后点"回答这个问题"→ 上抛 resume-answer 让 Workspace 调 backend RESUME。 -->
         <div
           v-else-if="readingWaiting"
           class="graph-answer-summary"
@@ -379,6 +433,15 @@ function setReadingRoute(event: Event): void {
             {{ node.question }}
           </h4>
           <p v-if="node.purpose" class="graph-node-purpose">{{ node.purpose }}</p>
+          <button
+            v-if="data.readingRouteId"
+            class="btn btn-primary graph-wake-answer nodrag"
+            type="button"
+            data-test="answer-this-question"
+            @click.stop="emit('resume-answer', data.node.id)"
+          >
+            回答这个问题
+          </button>
         </div>
       </template>
     </div>

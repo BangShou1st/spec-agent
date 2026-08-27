@@ -60,6 +60,10 @@ export const useGraphUiStore = defineStore('graphUi', {
       selectedEdgeId: null as string | null,
       selectedSharedEdgeRouteIds: [] as string[],
       focusRouteId: null as string | null,
+      // Optional semantic-relation layer visibility. Browser-only ephemeral:
+      // never persisted, always defaults to false. The Inspector remains
+      // the canonical place to inspect relations.
+      showRelationLayer: false,
       lifecycleFilters: { ...DEFAULT_FILTERS } as Record<RouteLifecycleStatus, boolean>,
       routeDisplayStates: {} as Record<string, GraphRouteDisplayState>,
       expandedNodeIds: [] as string[],
@@ -165,6 +169,11 @@ export const useGraphUiStore = defineStore('graphUi', {
         return
       }
       this.focusRouteId = routeId
+    },
+
+    /** Toggles the optional semantic-relation layer on the canvas. */
+    setShowRelationLayer(visible: boolean): void {
+      this.showRelationLayer = visible
     },
 
     clearFocusRoute(): void {

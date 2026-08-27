@@ -81,6 +81,10 @@ const emit = defineEmits<{
   'retry-pending': []
   'viewport-settled': []
   'create-relation': [payload: { sourceNodeId: string; targetNodeId: string }]
+  // Vue Flow forwards the raw 'connect' event through <VueFlow @connect>;
+  // declaring it here silences the Vue "neither declared in the emits option
+  // nor as an onConnect prop" warning and documents the bridge.
+  connect: [connection: Connection]
   undo: []
   redo: []
   routes: []
@@ -113,6 +117,7 @@ const projection = computed(() => {
       lifecycleFilters: graphUi.lifecycleFilters,
       routeDisplayStates: graphUi.routeDisplayStates,
       expandedNodeIds: graphUi.expandedNodeIds,
+      showRelationLayer: graphUi.showRelationLayer,
     },
     savedPositions: graphUi.nodePositions,
     runtime: {

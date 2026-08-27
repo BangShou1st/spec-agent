@@ -61,15 +61,14 @@ test('whats-kept-verbatim: purpose renders inside the node without translation',
   await expect(node.getByText('This clarifies the primary requirement goal.')).toBeVisible()
 })
 
-test('draft idea uses the hover-edit-textarea flow', async ({ page }) => {
+test('draft idea enters edit mode immediately and saves content through the editor', async ({ page }) => {
   await createProject(page, 'E2E Draft Idea Editing')
 
   await page.getByTestId('graph-toolbar').getByTestId('add-idea').click()
   const draft = page.getByTestId('graph-knowledge-node')
   await expect(draft).toBeVisible()
-  await draft.hover()
-  await expect(draft.getByTestId('edit-draft')).toBeVisible()
-  await draft.getByTestId('edit-draft').click()
+  // + 想法 automatically opens the editor (one-shot edit request) — the
+  // toolbar (including edit-draft) is intentionally hidden while editing.
   const input = draft.getByTestId('draft-text')
   await expect(input).toBeVisible()
   await input.fill('A requirement captured directly in the graph.')

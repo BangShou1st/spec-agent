@@ -112,7 +112,6 @@ public class NodeService {
      * lineage until the user explicitly connects it.
      */
     public Node createFloatingWorkspaceNode(UUID projectId,
-                                            UUID routeId,
                                             NodeKind kind,
                                             String subtype,
                                             Map<String, Object> content,

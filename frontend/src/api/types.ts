@@ -188,6 +188,8 @@ export interface RouteMutationResponse {
   projectId: string
   route: RouteResponse
   activeRouteId: string | null
+  /** Present only on the resume command. */
+  resumedNewRoute?: boolean
 }
 
 /** Explicit-source Fork request; runtime owns every generated route id. */
@@ -197,6 +199,11 @@ export interface ForkRouteRequest {
 }
 
 export interface ReanswerRouteRequest {
+  sourceRouteId: string
+  label?: string | null
+}
+
+export interface ResumeRouteRequest {
   sourceRouteId: string
   label?: string | null
 }
