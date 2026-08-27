@@ -283,10 +283,15 @@ public class ContextBuilder {
                                              String userQuestion) {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new IllegalArgumentException("Project not found: " + projectId));
-        Route route = routeRepository.findById(routeId)
-                .orElseThrow(() -> new IllegalArgumentException("Route not found: " + routeId));
-        if (!route.projectId().equals(projectId)) {
-            throw new IllegalArgumentException("Route does not belong to project: " + routeId);
+        // The route is OPTIONAL reading context for a node query. A floating
+        // node belongs to no route (routeIds=[]); its query context is the
+        // anchor node itself. routeId must never be a hard eligibility gate.
+        if (routeId != null) {
+            Route route = routeRepository.findById(routeId)
+                    .orElseThrow(() -> new IllegalArgumentException("Route not found: " + routeId));
+            if (!route.projectId().equals(projectId)) {
+                throw new IllegalArgumentException("Route does not belong to project: " + routeId);
+            }
         }
         Node anchor = nodeRepository.findById(anchorNodeId)
                 .orElseThrow(() -> new IllegalArgumentException("Anchor node not found: " + anchorNodeId));
@@ -295,15 +300,23 @@ public class ContextBuilder {
         }
 
         List<UUID> lineage = resolveLineage(anchorNodeId);
-        List<UUID> includedAnswerIds = routeHistoryResolver
-                .resolveEffectiveAnswers(routeId, lineage)
-                .stream().map(answer -> answer.id()).toList();
+        List<UUID> includedAnswerIds = routeId == null
+                ? List.of()
+                : routeHistoryResolver
+                        .resolveEffectiveAnswers(routeId, lineage)
+                        .stream().map(answer -> answer.id()).toList();
         List<UUID> includedPatchIds = answerPatchRepository.findBySourceAnswerIds(includedAnswerIds)
                 .stream().map(patch -> patch.id()).toList();
-        List<UUID> excludedRouteIds = routeRepository.findByProject(projectId).stream()
-                .map(Route::id)
-                .filter(id -> !id.equals(routeId))
-                .toList();
+        // Without an explicit route there is no route to read from: exclude
+        // every route so the context stays the anchor itself, never the whole
+        // workspace.
+        List<UUID> excludedRouteIds = routeId == null
+                ? routeRepository.findByProject(projectId).stream()
+                        .map(Route::id).toList()
+                : routeRepository.findByProject(projectId).stream()
+                        .map(Route::id)
+                        .filter(id -> !id.equals(routeId))
+                        .toList();
 
         Map<String, Object> specialInputsMap = withProjectTitle(project, Map.of(
                 "userQuestion", userQuestion == null ? "" : userQuestion));

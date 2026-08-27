@@ -66,13 +66,18 @@ class SemanticRelationApiIntegrationTest {
                 "targetNodeId", target.id().toString(),
                 "relationType", "RELATED_TO"));
 
+        // RELATED_TO is symmetric: the stored endpoints are canonicalized to
+        // (minId, maxId) so both drag directions are the same fact.
+        var canonical = com.specagent.graph.GraphInvariantValidator
+                .endpointsCanonicalized(root.id(), target.id(),
+                        com.specagent.graph.NodeRelationType.RELATED_TO);
         mockMvc.perform(post("/api/v1/projects/{pid}/relations", project.id())
                         .contentType("application/json")
                         .content(body))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").exists())
-                .andExpect(jsonPath("$.sourceNodeId").value(root.id().toString()))
-                .andExpect(jsonPath("$.targetNodeId").value(target.id().toString()))
+                .andExpect(jsonPath("$.sourceNodeId").value(canonical.sourceNodeId().toString()))
+                .andExpect(jsonPath("$.targetNodeId").value(canonical.targetNodeId().toString()))
                 .andExpect(jsonPath("$.relationType").value("RELATED_TO"))
                 .andExpect(jsonPath("$.origin").value("USER"));
     }
@@ -103,7 +108,7 @@ class SemanticRelationApiIntegrationTest {
     }
 
     @Test
-    void duplicateDragToConnectIsRejectedAsConflict() throws Exception {
+    void duplicateRelatedToIsRejectedInBothDirections() throws Exception {
         Project project = projectService.createProject("Duplicate relation regression");
         Route route = routeRepository.findById(project.activeRouteId()).orElseThrow();
         Node root = nodeService.createRootNode(project.id(), route.id(),
@@ -121,12 +126,52 @@ class SemanticRelationApiIntegrationTest {
                         .content(body))
                 .andExpect(status().isCreated());
 
-        // Second drag on the same pair must be rejected. Reverse direction is
-        // NOT considered a duplicate (per V2 product rule: identity is
-        // (source, target, type), reverse is a distinct fact).
+        // Second drag on the same pair must be rejected.
         mockMvc.perform(post("/api/v1/projects/{pid}/relations", project.id())
                         .contentType("application/json")
                         .content(body))
+                .andExpect(status().isConflict());
+
+        // RELATED_TO is symmetric: the REVERSE direction is the SAME fact and
+        // must also be rejected (canonicalized endpoints deduplicate it).
+        String reverseBody = objectMapper.writeValueAsString(Map.of(
+                "sourceNodeId", target.id().toString(),
+                "targetNodeId", root.id().toString(),
+                "relationType", "RELATED_TO"));
+        mockMvc.perform(post("/api/v1/projects/{pid}/relations", project.id())
+                        .contentType("application/json")
+                        .content(reverseBody))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void directionalRelationsHonorAuthorDirection() throws Exception {
+        Project project = projectService.createProject("Directional relation regression");
+        Route route = routeRepository.findById(project.activeRouteId()).orElseThrow();
+        Node root = nodeService.createRootNode(project.id(), route.id(),
+                "Source", null, List.of(), true);
+        Node target = nodeService.createChildNode(project.id(), route.id(), root.id(),
+                "Target", null, List.of(), true);
+
+        // DEPENDS_ON is directional: A -> B and B -> A are DIFFERENT facts.
+        mockMvc.perform(post("/api/v1/projects/{pid}/relations", project.id())
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "sourceNodeId", root.id().toString(),
+                                "targetNodeId", target.id().toString(),
+                                "relationType", "DEPENDS_ON"))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.sourceNodeId").value(root.id().toString()))
+                .andExpect(jsonPath("$.targetNodeId").value(target.id().toString()));
+
+        // B -> A DEPENDS_ON would be a direct 2-cycle: rejected specifically as
+        // a dependency cycle, not silently stored.
+        mockMvc.perform(post("/api/v1/projects/{pid}/relations", project.id())
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "sourceNodeId", target.id().toString(),
+                                "targetNodeId", root.id().toString(),
+                                "relationType", "DEPENDS_ON"))))
                 .andExpect(status().isConflict());
     }
 }

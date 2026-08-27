@@ -203,11 +203,6 @@ export interface ReanswerRouteRequest {
   label?: string | null
 }
 
-export interface ResumeRouteRequest {
-  sourceRouteId: string
-  label?: string | null
-}
-
 /** Model-powered replacement request; model content is never browser-authored. */
 export interface RegenerateNodeRequest {
   sourceRouteId: string

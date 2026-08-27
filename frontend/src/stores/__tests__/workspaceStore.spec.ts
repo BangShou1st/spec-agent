@@ -1522,17 +1522,26 @@ describe('workspaceStore createIdea', () => {
     expect(store.error).toBeNull()
   })
 
-  it('returns null without calling the API when no active route exists', async () => {
+  it('creates a floating idea with routeId=null when no active route exists', async () => {
     const active = makeActiveState({ activeRoute: null, activeNode: null })
     mockBackendViewsFor(active)
+    mockedCreateFloatingDraftNode.mockResolvedValue({
+      ...createdNodeResponse('idea-1'),
+      routeId: null,
+    })
     const store = useWorkspaceStore()
     await store.loadWorkspace('p1')
 
     const nodeId = await store.createIdea()
 
-    expect(nodeId).toBeNull()
-    expect(mockedCreateFloatingDraftNode).not.toHaveBeenCalled()
-    expect(store.error?.code).toBe('NO_ACTIVE_ROUTE')
+    // 回归：Floating 创建不再硬依赖 Active Route —— 无 Active 时以
+    // routeId=null 作为 creation context 调用后端,仍然成功。
+    expect(nodeId).toBe('idea-1')
+    expect(mockedCreateFloatingDraftNode).toHaveBeenCalledWith('p1', null, {
+      subtype: 'IDEA',
+      content: {},
+    })
+    expect(store.error).toBeNull()
   })
 })
 

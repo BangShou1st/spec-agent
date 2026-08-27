@@ -56,6 +56,25 @@ public class NodeService {
     }
 
     /**
+     * Creates an alternative Question Node for a re-answer branch. The new
+     * node copies the old Question's immutable semantics (question, purpose,
+     * options, allowFreeAnswer) onto a fresh canonical id sharing the old
+     * parent; it never reuses the old canonical node and never marks itself
+     * as its replace/supersede. The owning route tip advances to the new
+     * node, so the shared old Question keeps its single immutable Answer.
+     */
+    public Node createReanswerNode(UUID projectId,
+                                   UUID routeId,
+                                   UUID parentNodeId,
+                                   String question,
+                                   String purpose,
+                                   List<NodeOption> options,
+                                   boolean allowFreeAnswer) {
+        return createNode(projectId, routeId, parentNodeId, null,
+                question, purpose, options, allowFreeAnswer);
+    }
+
+    /**
      * Creates an immutable replacement node that supersedes a historical node
      * during a regenerate operation. The replacement node shares the target
      * node's parent and carries {@code supersedesNodeId} pointing at the old

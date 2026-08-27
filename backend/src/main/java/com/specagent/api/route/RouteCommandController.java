@@ -64,21 +64,4 @@ public class RouteCommandController {
         return routeCommandService.reanswer(projectId, nodeId,
                 request.sourceRouteId(), request.label());
     }
-
-    /**
-     * Reactivates a historical unanswered Question on the explicit source
-     * route. If the source route is OPEN and its tip IS the target, the
-     * existing source route is reactivated in place (no new route, no
-     * GraphOperation). Otherwise a new RESUME_QUESTION branch route is
-     * created in one transactional boundary together with the inherited
-     * prefix snapshot, the Active pointer switch, and the
-     * {@code RESUME_QUESTION_FROM_HISTORY} GraphOperation append.
-     */
-    @PostMapping("/nodes/{nodeId}/resume")
-    public RouteMutationResponse resume(@PathVariable UUID projectId,
-                                        @PathVariable UUID nodeId,
-                                        @Valid @RequestBody ResumeRouteRequest request) {
-        return routeCommandService.resume(projectId, nodeId,
-                request.sourceRouteId(), request.label());
-    }
 }

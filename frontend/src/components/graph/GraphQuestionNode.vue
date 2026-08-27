@@ -52,7 +52,7 @@ const emit = defineEmits<{
   regenerate: [nodeId: string]
   'contextual-ai': [nodeId: string]
   'retry-pending': []
-  'resume-answer': [nodeId: string]
+  'activate-route': [routeId: string]
 }>()
 
 /**
@@ -357,7 +357,8 @@ function setReadingRoute(event: Event): void {
           {{ node.question }}
         </h4>
 
-        <!-- focused / single-route: primary 来自某条真实 route 的 answer。 -->
+        <!-- 历史答案：canonical Question 只有一个 immutable Answer identity，
+             primary 即该答案；Focus 只改变阅读上下文，不改变内容。 -->
         <div
           v-if="primary"
           class="graph-answer-summary"
@@ -374,55 +375,10 @@ function setReadingRoute(event: Event): void {
           <span class="graph-answer-route meta-text">{{ primary.routeLabel || '当前查看路线' }}</span>
         </div>
 
-        <!-- shared-common: 多路线等价时显示共同答案，routeId 永远来自真实 route。 -->
-        <div
-          v-else-if="data.answerPresentationMode === 'shared-common' && data.commonAnswer"
-          class="graph-answer-summary"
-          data-test="common-answer"
-        >
-          <span class="badge badge-open" data-test="common-answer-label">共同答案 · 多路线一致</span>
-          <span v-if="data.commonAnswer.selectedOptionLabel" class="graph-answer-option badge badge-open">
-            {{ data.commonAnswer.selectedOptionLabel }}
-          </span>
-          <p
-            v-if="data.commonAnswer.freeText"
-            class="graph-answer-text graph-answer-text--clamped"
-            data-test="clamped-free-text"
-          >{{ data.commonAnswer.freeText }}</p>
-        </div>
-
-        <!-- shared-divergent: 列出每条 route 摘要 + 等待 route 显式标注。
-             绝不借 Active/first/latest 冒充 primary。 -->
-        <div
-          v-else-if="data.answerPresentationMode === 'shared-divergent'"
-          class="graph-route-summaries"
-          data-test="route-summaries"
-        >
-          <p class="meta-text graph-route-summaries__hint">多路线答案不同，请选择查看路线：</p>
-          <ul>
-            <li
-              v-for="state in data.routeStates"
-              :key="state.routeId"
-              class="graph-route-summaries__item"
-              :data-test="state.answer ? 'route-summary-answered' : 'route-summary-waiting'"
-            >
-              <span class="graph-route-summaries__label">{{ state.routeLabel || '路线' }}</span>
-              <span v-if="state.answer" class="graph-route-summaries__content">
-                <span v-if="state.answer.selectedOptionLabel" class="graph-answer-option badge badge-open">
-                  {{ state.answer.selectedOptionLabel }}
-                </span>
-                <span v-if="state.answer.freeText" class="graph-answer-text graph-answer-text--clamped">
-                  {{ state.answer.freeText }}
-                </span>
-              </span>
-              <span v-else class="badge badge-warn" data-test="route-waiting-badge">等待回答</span>
-            </li>
-          </ul>
-        </div>
-
         <!-- 阅读路线没有回答时：明确显示等待 + 节点问题本身，绝不拿其他路线的
-             answer 冒充。想要回答：必须先选定明确的 source route（readingRouteId），
-             然后点"回答这个问题"→ 上抛 resume-answer 让 Workspace 调 backend RESUME。 -->
+             answer 冒充。回答历史未答问题 = 激活其显式所属路线（Route A 本身仍
+             是 tip）；不会创建 RESUME 分支。共享/多归属节点必须由用户在查看
+             路线选择器中先选定一条路线。 -->
         <div
           v-else-if="readingWaiting"
           class="graph-answer-summary"
@@ -438,16 +394,22 @@ function setReadingRoute(event: Event): void {
             class="btn btn-primary graph-wake-answer nodrag"
             type="button"
             data-test="answer-this-question"
-            @click.stop="emit('resume-answer', data.node.id)"
+            @click.stop="emit('activate-route', data.readingRouteId)"
           >
             回答这个问题
           </button>
         </div>
+
+        <p
+          v-else
+          class="meta-text graph-node-question--compact"
+          data-test="waiting-plain"
+        >等待回答</p>
       </template>
     </div>
 
-    <!-- 操作轨道：悬浮在节点左侧外缘竖排（不在卡片内占位），悬停或键盘
-         聚焦节点时出现。仅历史节点提供；当前节点直接在卡片内作答。 -->
+    <!-- 操作轨道：悬浮在节点右侧外缘竖排（不在卡片内占位，left:100%），
+         悬停或键盘聚焦节点时出现。仅历史节点提供；当前节点直接在卡片内作答。 -->
     <div
       v-if="!isPendingCard && !data.canAnswer"
       class="graph-node-actions graph-node-actions--toolbar"

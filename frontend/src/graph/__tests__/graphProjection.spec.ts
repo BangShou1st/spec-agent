@@ -177,17 +177,17 @@ describe('graph projection', () => {
     expect(data.answers.find((a) => a.routeId === ROUTE_B_ID)?.isPrimary).toBe(true)
   })
 
-  it('without focus a shared node stays neutral and never falls back to active route answer', () => {
-    // shared + no focus：禁止 Active/first/last 冒充 primary。
+  it('without focus a shared node shows its single Answer identity, never an active-route fallback', () => {
     // 该 fixture 中 b 被三条 route 共享 (A/B/C)；A 有 answer，B/C 没有。
-    // 因此 primaryAnswer 必须为 null，presentationMode='shared-divergent'。
+    // 最终模型下 canonical Question 只有一个 immutable Answer identity：
+    // 无 focus 时直接展示该答案，而不是 null + shared-divergent 模式。
     const result = project()
     const bNode = result.nodes.find((n) => n.id === 'b')!
     const data = bNode.data as SpecAgentGraphNodeData
-    expect(data.primaryAnswer).toBeNull()
-    expect(data.answerPresentationMode).toBe('shared-divergent')
-    expect(data.commonAnswer).toBeNull()
-    expect(bNode.class).toContain('graph-node--neutral')
+    expect(data.primaryAnswer?.routeId).toBe(ACTIVE_ROUTE_ID)
+    expect(data.answerPresentationMode).toBe('single-route')
+    // "neutral" 只是无 focus 的 shared 节点视觉样式，不代表答案呈现分叉。
+    expect(data.routeStates.some((s) => s.answer !== null)).toBe(true)
   })
 
   it('hiding route B removes only its exclusive node d', () => {
@@ -337,36 +337,26 @@ describe('graph projection', () => {
     expect(primary?.routeId).toBe(ACTIVE_ROUTE_ID)
   })
 
-  it('selectPrimaryAnswer: multi-route + no focus + equivalent answers returns null primary; UI uses commonAnswer for shared-common mode', () => {
+  it('selectPrimaryAnswer: multi-route + no focus returns the first referenced Answer (single identity)', () => {
+    // 最终模型：一个 canonical Question 全局只有一个 immutable Answer，
+    // 多条 route 的引用享有同一内容。无 focus 时直接展示首个引用。
     const answers = [
       { nodeId: 'x', routeId: ACTIVE_ROUTE_ID, selectedOptionId: 'opt-a', selectedOptionLabel: 'A', freeText: 'same', isPrimary: false },
       { nodeId: 'x', routeId: ROUTE_B_ID, selectedOptionId: 'opt-a', selectedOptionLabel: 'A', freeText: 'same', isPrimary: false },
     ]
-    // shared + no focus：primary 必须为 null；projectGraph 同步写 commonAnswer 字段。
     const primary = selectPrimaryAnswer('x', answers, null, ACTIVE_ROUTE_ID, [])
-    expect(primary).toBeNull()
+    expect(primary?.routeId).toBe(ACTIVE_ROUTE_ID)
+    expect(primary?.freeText).toBe('same')
   })
 
-  it('selectPrimaryAnswer: multi-route + no focus + divergent answers returns null primary (UI must render per-route)', () => {
-    const answers = [
-      { nodeId: 'x', routeId: ACTIVE_ROUTE_ID, selectedOptionId: 'opt-a', selectedOptionLabel: 'A', freeText: 'A says', isPrimary: false },
-      { nodeId: 'x', routeId: ROUTE_B_ID, selectedOptionId: 'opt-b', selectedOptionLabel: 'B', freeText: 'B says', isPrimary: false },
-    ]
-    // 多路线不等价 + 无 focus：禁止 Active/first/last fallback。
-    const primary = selectPrimaryAnswer('x', answers, null, ACTIVE_ROUTE_ID, [])
-    expect(primary).toBeNull()
-  })
-
-  it('selectPrimaryAnswer: multi-route + partial waiting returns null primary', () => {
-    // 该测试通过 projectGraph 验证 presentation：shared 节点上某 route 尚未回答。
-    // selectPrimaryAnswer 自身只看 answers，无法判断 shared 上下文；因此这里用
-    // routeStates 完整结构验证 divergent 模式。
+  it('selectPrimaryAnswer: multi-route waiting node returns null primary (nothing to show)', () => {
+    // 共享节点任何 route 都还没回答时,primary 保持 null,卡片显示等待。
     const view = {
       projectId: PROJECT_ID,
       activeRouteId: ACTIVE_ROUTE_ID,
       routes: [route(ACTIVE_ROUTE_ID, 'open', ['a', 'b']), route(ROUTE_B_ID, 'open', ['a', 'b'])],
       nodes: [node('a', null), node('b', 'a')],
-      answers: [answer(ACTIVE_ROUTE_ID, 'b', 'only A')],
+      answers: [],
       relations: [],
     }
     const result = projectGraph({
@@ -378,8 +368,7 @@ describe('graph projection', () => {
     const b = result.nodes.find((n) => n.id === 'b')!
     const data = b.data as SpecAgentGraphNodeData
     expect(data.primaryAnswer).toBeNull()
-    expect(data.answerPresentationMode).toBe('shared-divergent')
-    expect(data.commonAnswer).toBeNull()
+    expect(data.answerPresentationMode).toBe('single-route')
   })
 
   it('projects floating route-less nodes as always-visible standalone instances', () => {
@@ -690,11 +679,10 @@ describe('shared node route-specific waiting state', () => {
     })
     const b = result.nodes.find((n) => n.id === 'b')!
     const data = b.data as SpecAgentGraphNodeData
-    // shared + no focus：primary 强制为 null；routeStates 严格 per-route 真实。
-    // 旧实现下"借 active / inherited"作为 primary 的语义已删除，避免借 Active/first/last 冒充。
-    expect(data.primaryAnswer).toBeNull()
-    expect(data.answerPresentationMode).toBe('shared-divergent')
-    expect(data.commonAnswer).toBeNull()
+    // 最终模型：canonical Question 只有一个 immutable Answer identity，无 focus
+    // 时直接展示该答案（不借 Active/first/last 冒充 —— 它就是同一个答案）。
+    expect(data.primaryAnswer?.routeId).toBe(ACTIVE_ROUTE_ID)
+    expect(data.answerPresentationMode).toBe('single-route')
     expect(data.routeStates.find((s) => s.routeId === ROUTE_B_ID)?.answer).toBeNull()
     expect(data.routeStates.find((s) => s.routeId === ACTIVE_ROUTE_ID)?.answer?.freeText).toBe('old route answer')
   })

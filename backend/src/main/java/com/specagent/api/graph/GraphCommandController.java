@@ -78,8 +78,9 @@ public class GraphCommandController {
     public ResponseEntity<NodeResponse> appendContinuation(@PathVariable UUID projectId,
                                                            @PathVariable UUID nodeId,
                                                            @RequestBody CreateDraftNodeRequest request) {
-        GraphCommandService.ContinuationResult result = commandService.appendContinuation(
-                projectId, request.routeId(), nodeId, request.subtype(), request.content());
+        GraphCommandService.ContinuationResult result = com.specagent.api.common.CommandExecution.execute(
+                () -> commandService.appendContinuation(
+                        projectId, request.routeId(), nodeId, request.subtype(), request.content()));
         return ResponseEntity.status(HttpStatus.CREATED).body(
                 NodeResponse.from(result.node(), result.route().id(), result.branched()));
     }
@@ -111,9 +112,9 @@ public class GraphCommandController {
     @PostMapping("/resources")
     public ResponseEntity<NodeResponse> attachResource(@PathVariable UUID projectId,
                                                        @RequestBody AttachResourceRequest request) {
-        Node node = commandService.attachResource(
+        Node node = com.specagent.api.common.CommandExecution.execute(() -> commandService.attachResource(
                 projectId, request.routeId(), request.parentNodeId(),
-                request.subtype(), request.content());
+                request.subtype(), request.content()));
         return ResponseEntity.status(HttpStatus.CREATED).body(
                 NodeResponse.from(node, request.routeId(), false));
     }

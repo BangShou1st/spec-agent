@@ -50,7 +50,7 @@ public class RouteCommandService {
                         "Only an OPEN route can be activated");
             }
             routeService.setActiveRoute(projectId, routeId);
-            return refresh(projectId, routeId, null);
+            return refresh(projectId, routeId);
         });
     }
 
@@ -58,7 +58,7 @@ public class RouteCommandService {
         return CommandExecution.execute(() -> {
             CommandExecution.requireRouteInProject(projectService, routeService, projectId, routeId);
             routeService.archiveRoute(projectId, routeId);
-            return refresh(projectId, routeId, null);
+            return refresh(projectId, routeId);
         });
     }
 
@@ -66,7 +66,7 @@ public class RouteCommandService {
         return CommandExecution.execute(() -> {
             CommandExecution.requireRouteInProject(projectService, routeService, projectId, routeId);
             routeService.restoreRoute(projectId, routeId);
-            return refresh(projectId, routeId, null);
+            return refresh(projectId, routeId);
         });
     }
 
@@ -74,7 +74,7 @@ public class RouteCommandService {
         return CommandExecution.execute(() -> {
             CommandExecution.requireRouteInProject(projectService, routeService, projectId, routeId);
             routeService.softDeleteRoute(projectId, routeId);
-            return refresh(projectId, routeId, null);
+            return refresh(projectId, routeId);
         });
     }
 
@@ -84,7 +84,7 @@ public class RouteCommandService {
             CommandExecution.requireNodeInProject(projectService, nodeService, projectId, nodeId);
             CommandExecution.requireRouteInProject(projectService, routeService, projectId, sourceRouteId);
             Route fork = routeService.forkFromNode(projectId, sourceRouteId, nodeId, label);
-            return refresh(projectId, fork.id(), null);
+            return refresh(projectId, fork.id());
         });
     }
 
@@ -97,38 +97,11 @@ public class RouteCommandService {
             CommandExecution.requireNodeInProject(projectService, nodeService, projectId, nodeId);
             CommandExecution.requireRouteInProject(projectService, routeService, projectId, sourceRouteId);
             Route route = routeService.reanswerFromNode(projectId, sourceRouteId, nodeId, label);
-            return refresh(projectId, route.id(), null);
+            return refresh(projectId, route.id());
         });
     }
 
-    /**
-     * Reactivates a historical unanswered Question on an explicit source
-     * route. If the source route is OPEN and its tip IS the target, only the
-     * Active pointer is updated in place — no new route, no GraphOperation.
-     * Otherwise a new RESUME_QUESTION branch route is created in a single
-     * transactional boundary together with its inherited prefix snapshot and
-     * the GraphOperation append.
-     */
-    public RouteMutationResponse resume(UUID projectId,
-                                        UUID nodeId,
-                                        UUID sourceRouteId,
-                                        String label) {
-        return CommandExecution.execute(() -> {
-            CommandExecution.requireProject(projectService, projectId);
-            CommandExecution.requireNodeInProject(projectService, nodeService, projectId, nodeId);
-            CommandExecution.requireRouteInProject(projectService, routeService, projectId, sourceRouteId);
-
-            // Atomic: new route + inherited prefix + Active switch + GraphOperation
-            // append all happen inside RouteService.resumeAnsweringFromNode in one
-            // @Transactional boundary. Undo/Redo is route-only and must never
-            // retract the canonical Question.
-            RouteService.ResumeQuestionResult result = routeService.resumeAnsweringFromNode(
-                    projectId, sourceRouteId, nodeId, label);
-            return refresh(projectId, result.route().id(), result.createdNewRoute());
-        });
-    }
-
-    private RouteMutationResponse refresh(UUID projectId, UUID routeId, Boolean resumedNewRoute) {
+    private RouteMutationResponse refresh(UUID projectId, UUID routeId) {
         Project project = projectService.getProject(projectId)
                 .orElseThrow(() -> ApiException.notFound("PROJECT_NOT_FOUND", "Project not found"));
         Route route = routeService.getRoute(routeId)
@@ -136,7 +109,6 @@ public class RouteCommandService {
         return new RouteMutationResponse(
                 projectId,
                 RouteResponse.from(route, route.isActive(project.activeRouteId())),
-                project.activeRouteId(),
-                resumedNewRoute);
+                project.activeRouteId());
     }
 }

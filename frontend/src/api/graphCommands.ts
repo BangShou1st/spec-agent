@@ -62,10 +62,12 @@ export function createRootDraftNode(
   )
 }
 
-/** Creates a standalone (floating) draft that starts disconnected from every lineage. */
+/** Creates a standalone (floating) draft that starts disconnected from every
+ * lineage. The creation-context route id is optional — a floating node may be
+ * created with no Active route (routeId=null is legal). */
 export function createFloatingDraftNode(
   projectId: string,
-  routeId: string,
+  routeId: string | null,
   payload: DraftNodePayload,
 ): Promise<CreatedNodeResponse> {
   return apiClient.post<CreatedNodeResponse>(
@@ -160,7 +162,7 @@ export function redoGraphOperation(projectId: string): Promise<UndoRedoResult> {
 export function createNodeQuery(
   projectId: string,
   nodeId: string,
-  routeId: string,
+  routeId: string | null,
   question: string,
 ): Promise<NodeQueryRunCreated> {
   return apiClient.post<NodeQueryRunCreated>(

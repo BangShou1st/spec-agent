@@ -74,6 +74,11 @@ public class GraphWorkspaceQueryService {
         Map<UUID, Node> nodesById = new LinkedHashMap<>();
         List<GraphWorkspaceRouteView> routeViews = new ArrayList<>();
         List<GraphWorkspaceAnswerView> answerViews = new ArrayList<>();
+        // Shared-state divergence detector: one canonical Question Node may
+        // carry only ONE immutable Answer identity project-wide. If the read
+        // model ever sees two distinct effective Answer ids for the same node,
+        // that is an invariant violation, not a normal UI presentation mode.
+        java.util.Map<UUID, UUID> answerIdentityByNode = new java.util.HashMap<>();
 
         for (Route route : routeService.listRoutes(projectId)) {
             List<Node> lineage = resolveLineage(project.id(), route);
@@ -82,10 +87,17 @@ public class GraphWorkspaceQueryService {
             List<com.specagent.answer.Answer> answers = routeHistoryResolver == null
                     ? answerService.findAnswersForRouteAndNodeIds(route.id(), lineageNodeIds)
                     : routeHistoryResolver.resolveEffectiveAnswers(route.id(), lineageNodeIds);
-            answers.stream()
-                    .map(answer -> GraphWorkspaceAnswerView.from(
-                            answer, route.id(), !route.id().equals(answer.routeId())))
-                    .forEach(answerViews::add);
+            for (com.specagent.answer.Answer answer : answers) {
+                UUID existing = answerIdentityByNode.putIfAbsent(answer.nodeId(), answer.id());
+                if (existing != null && !existing.equals(answer.id())) {
+                    throw GraphWorkspaceQueryException.of(
+                            GraphWorkspaceQueryException.Reason.INVARIANT_VIOLATION,
+                            "SHARED_STATE_DIVERGENCE: canonical Question " + answer.nodeId()
+                                    + " resolves to multiple effective Answer identities");
+                }
+                answerViews.add(GraphWorkspaceAnswerView.from(
+                        answer, route.id(), !route.id().equals(answer.routeId())));
+            }
             routeViews.add(GraphWorkspaceRouteView.from(route, project.activeRouteId(), lineageNodeIds));
         }
 

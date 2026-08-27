@@ -8,6 +8,7 @@ import ResourceDialog from '@/components/ResourceDialog.vue'
 import ReanswerRouteDialog from '@/components/ReanswerRouteDialog.vue'
 import RegenerateNodeDialog from '@/components/RegenerateNodeDialog.vue'
 import GraphCanvas from '@/components/graph/GraphCanvas.vue'
+import RelationProposalDialog from '@/components/graph/RelationProposalDialog.vue'
 import FloatingWindow from '@/components/workspace/FloatingWindow.vue'
 import RouteNavigator from '@/components/workspace/RouteNavigator.vue'
 import WorkspaceInspector from '@/components/workspace/WorkspaceInspector.vue'
@@ -345,26 +346,43 @@ async function handleAddIdea(): Promise<void> {
   await canvasRef.value?.locateNode(nodeId)
 }
 
-/** 图上拖线 = 创建语义关系；重复连接直接提示，不发请求。 */
-async function handleCreateRelation(payload: {
+/**
+ * 图上拖线 = Pending Relation Proposal。只打开确认器，不调用 backend；
+ * 用户选择类型/方向并确认后才持久化。Cancel/Esc/click-away 保持 0 关系。
+ */
+function handleRelationProposal(payload: {
   sourceNodeId: string
   targetNodeId: string
+}): void {
+  graphUi.setPendingRelation(payload)
+}
+
+function relationNodeLabel(nodeId: string | null | undefined): string {
+  if (!nodeId) return ''
+  const node = store.graphView?.nodes.find((candidate) => candidate.id === nodeId)
+  if (!node) return nodeId.slice(0, 8)
+  if (node.question) return node.question.slice(0, 24)
+  const text = node.content?.text
+  return typeof text === 'string' && text ? text.slice(0, 24) : nodeId.slice(0, 8)
+}
+
+async function handleRelationConfirm(payload: {
+  sourceNodeId: string
+  targetNodeId: string
+  relationType: string
 }): Promise<void> {
-  // Identity contract matches backend: (sourceNodeId, targetNodeId, relationType).
-  // The relation vocabulary is partially directional (DEPENDS_ON, DERIVED_FROM,
-  // CONFLICTS_WITH, SUPPORTS) so a reverse direction is a different relation
-  // and must not be flagged as a duplicate.
-  const relations = store.graphView?.relations ?? []
-  const duplicate = relations.some((relation) =>
-    relation.relationType === 'RELATED_TO'
-    && relation.sourceNodeId === payload.sourceNodeId
-    && relation.targetNodeId === payload.targetNodeId,
+  // 先关 proposal(用户已确认方向/类型),再持久化;失败由 store.error 呈现。
+  graphUi.clearPendingRelation()
+  const ok = await store.createSemanticRelation(
+    payload.sourceNodeId,
+    payload.targetNodeId,
+    payload.relationType as 'RELATED_TO' | 'DEPENDS_ON' | 'DERIVED_FROM' | 'CONFLICTS_WITH' | 'SUPPORTS',
   )
-  if (duplicate) {
-    store.feedback = '这两个节点之间已有连接。'
-    return
+  if (ok) {
+    // Endpoints stay selected so the just-created relation is immediately
+    // visible without the global Show All toggle.
+    graphUi.selectNode(payload.sourceNodeId)
   }
-  await store.createSemanticRelation(payload.sourceNodeId, payload.targetNodeId, 'RELATED_TO')
 }
 
 async function handleAttachResource(
@@ -395,21 +413,19 @@ function handleRegenerate(nodeId: string): void {
 }
 
 /**
- * Reactivates a historical unanswered Question on the explicit reading
- * route (graphUi.focusRouteId). If the user has not picked a Focus route
- * yet, refuse rather than silently fall back to Active — shared ambiguous
- * nodes never guess.
+ * 回答历史未答问题 = 激活其显式所属路线。用户必须先通过查看路线选择器
+ * 选定一条明确的路线（graphUi.focusRouteId）；共享/多归属节点绝不回退到
+ * Active/first/latest。激活是纯 route activation，不创建 RESUME 分支。
  */
-async function handleResumeAnswer(nodeId: string): Promise<void> {
-  if (!graphUi.focusRouteId) {
+async function handleActivateRouteForAnswer(routeId: string): Promise<void> {
+  if (!routeId) {
     store.error = {
       code: 'SOURCE_ROUTE_REQUIRED',
-      message: '请先选择明确的来源路线再恢复该问题。',
+      message: '请先选择明确的来源路线。',
     }
     return
   }
-  const sourceRouteId = graphUi.focusRouteId
-  const ok = await store.resumeQuestion(nodeId, sourceRouteId)
+  const ok = await store.activateRoute(routeId)
   if (ok) {
     await focusAfterMutation()
   }
@@ -587,13 +603,13 @@ async function confirmDestructive(): Promise<void> {
         @fork="handleFork"
         @reanswer="handleReanswer"
         @regenerate="handleRegenerate"
-        @resume-answer="handleResumeAnswer"
+        @activate-route="handleActivateRouteForAnswer"
         @contextual-ai="handleContextualAi"
         @retry-pending="store.retryPendingAgentRun"
         @viewport-settled="scheduleFloatingLayout"
         @add-idea="handleAddIdea"
         @add-resource="resourceDialogOpen = true"
-        @create-relation="handleCreateRelation"
+        @relation-proposal="handleRelationProposal"
         @undo="store.undoGraph"
         @redo="store.redoGraph"
         @routes="openWindow('routes')"
@@ -709,6 +725,17 @@ async function confirmDestructive(): Promise<void> {
       :pending="store.routeCommandPending"
       @cancel="confirmAction = null; confirmRouteId = null"
       @confirm="confirmDestructive"
+    />
+
+    <RelationProposalDialog
+      :open="graphUi.pendingRelation !== null"
+      :source-node-id="graphUi.pendingRelation?.sourceNodeId ?? null"
+      :target-node-id="graphUi.pendingRelation?.targetNodeId ?? null"
+      :source-label="relationNodeLabel(graphUi.pendingRelation?.sourceNodeId)"
+      :target-label="relationNodeLabel(graphUi.pendingRelation?.targetNodeId)"
+      :pending="store.graphCommandPending"
+      @confirm="handleRelationConfirm"
+      @cancel="graphUi.clearPendingRelation()"
     />
 
   </div>

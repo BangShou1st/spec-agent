@@ -1,6 +1,7 @@
 package com.specagent.answer;
 
 import com.specagent.common.Ids;
+import com.specagent.graph.GraphInvariantValidator;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -14,14 +15,24 @@ import java.util.UUID;
  * <p>An answer is immutable. Within the current route flow, a node may be
  * finalized exactly once; re-answering must create a new route, replacement
  * node, or answer revision, never overwrite the existing answer.
+ *
+ * <p>Shared-state invariant: a canonical Question Node carries exactly one
+ * immutable semantic Answer identity project-wide. Once any route has a
+ * finalized Answer for the node, no other route may finalize a second Answer
+ * on the same canonical node — branches reference the same Answer through
+ * inherited refs, and re-answering creates a new Question Node (see
+ * {@link GraphInvariantValidator#validateSharedQuestionState}).
  */
 @Service
 public class AnswerService {
 
     private final AnswerRepository answerRepository;
+    private final GraphInvariantValidator invariantValidator;
 
-    public AnswerService(AnswerRepository answerRepository) {
+    public AnswerService(AnswerRepository answerRepository,
+                         GraphInvariantValidator invariantValidator) {
         this.answerRepository = answerRepository;
+        this.invariantValidator = invariantValidator;
     }
 
     public Answer finalizeAnswer(UUID projectId,
@@ -34,6 +45,7 @@ public class AnswerService {
             throw new IllegalStateException(
                     "Answer already finalized for node " + nodeId + " in route " + routeId);
         }
+        invariantValidator.validateSharedQuestionState(projectId, nodeId);
         UUID answerId = Ids.random();
         Instant now = Instant.now();
         Answer answer = new Answer(answerId, projectId, routeId, nodeId,

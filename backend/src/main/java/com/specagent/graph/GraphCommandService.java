@@ -47,6 +47,7 @@ public class GraphCommandService {
     private final NodeRelationRepository relationRepository;
     private final GraphOperationRepository operationRepository;
     private final AnswerRepository answerRepository;
+    private final GraphInvariantValidator invariantValidator;
 
     public GraphCommandService(NodeService nodeService,
                                NodeRepository nodeRepository,
@@ -55,7 +56,8 @@ public class GraphCommandService {
                                RouteHistoryResolver routeHistoryResolver,
                                NodeRelationRepository relationRepository,
                                GraphOperationRepository operationRepository,
-                               AnswerRepository answerRepository) {
+                               AnswerRepository answerRepository,
+                               GraphInvariantValidator invariantValidator) {
         this.nodeService = nodeService;
         this.nodeRepository = nodeRepository;
         this.routeService = routeService;
@@ -64,6 +66,7 @@ public class GraphCommandService {
         this.relationRepository = relationRepository;
         this.operationRepository = operationRepository;
         this.answerRepository = answerRepository;
+        this.invariantValidator = invariantValidator;
     }
 
     /**
@@ -94,31 +97,41 @@ public class GraphCommandService {
     }
 
     /**
-     * Creates a standalone (floating) user draft on an explicit route. The
-     * node starts disconnected from every lineage — the route tip is never
-     * advanced — so "+ idea" never silently rewires the graph. The route id
-     * is kept in the operation log only as creation context. Undo/redo treat
-     * the {@code floating} ref as "no tip/root side effects".
+     * Creates a standalone (floating) user draft. The node starts
+     * disconnected from every lineage — the route tip is never advanced — so
+     * "+ idea" never silently rewires the graph. The creation context route
+     * id is OPTIONAL: a floating node can be created with no Active route at
+     * all. The route id is recorded in the operation log only as creation
+     * context, never as membership. Undo/redo treat the {@code floating} ref
+     * as "no tip/root side effects".
      */
     @Transactional
     public Node createFloatingDraftNode(UUID projectId,
                                         UUID routeId,
                                         String subtype,
                                         Map<String, Object> content) {
-        requireOpenRouteInProject(projectId, routeId);
+        if (routeId != null) {
+            requireOpenRouteInProject(projectId, routeId);
+        }
         Node node = nodeService.createFloatingWorkspaceNode(
                 projectId, NodeKind.KNOWLEDGE, subtype, content,
                 NodeAuthorKind.USER, KnowledgeStatus.PROPOSED);
         // The Node itself carries no routeId (it is route-less). The creation
         // context route id is recorded only in the operation log, not in the
-        // persisted node row.
+        // persisted node row; null context is legal.
+        Map<String, Object> beforeRefs = routeId == null
+                ? Map.of()
+                : Map.of("routeId", routeId.toString());
+        Map<String, Object> afterRefs = new java.util.LinkedHashMap<>();
+        if (routeId != null) {
+            afterRefs.put("routeId", routeId.toString());
+        }
+        afterRefs.put("nodeId", node.id().toString());
+        afterRefs.put("subtype", node.subtype());
+        afterRefs.put("floating", true);
         operationRepository.append(projectId, GraphOperation.Actor.USER,
                 GraphOperation.Type.CREATE_DRAFT_NODE, List.of(node.id()),
-                Map.of("routeId", routeId.toString()),
-                Map.of("routeId", routeId.toString(),
-                       "nodeId", node.id().toString(),
-                       "subtype", node.subtype(),
-                       "floating", true));
+                beforeRefs, afterRefs);
         return node;
     }
 
@@ -145,6 +158,7 @@ public class GraphCommandService {
         Route route = requireOpenRouteInProject(projectId, routeId);
         Node sourceNode = requireNodeInProject(projectId, sourceNodeId);
         requireLineageContains(route, sourceNodeId);
+        invariantValidator.validateQuestionCanHaveChild(projectId, routeId, sourceNodeId);
 
         if (route.tipNodeId().equals(sourceNodeId)) {
             Node node = nodeService.createWorkspaceNode(
@@ -163,6 +177,7 @@ public class GraphCommandService {
         // Non-tip source: create an explicit branch route; never insert into history.
         Instant now = Instant.now();
         UUID branchRouteId = com.specagent.common.Ids.random();
+        invariantValidator.validateRouteProvenance(routeId);
         Route branchRoute = new Route(branchRouteId, projectId, route.rootNodeId(), sourceNodeId,
                 RouteLifecycleStatus.OPEN, nextBranchLabel(projectId, "探索分支"),
                 sourceNodeId, null, null, null,
@@ -213,6 +228,7 @@ public class GraphCommandService {
                 throw new IllegalStateException(
                         "Resources may only be attached at the current tip, never as a historical branch");
             }
+            invariantValidator.validateQuestionCanHaveChild(projectId, routeId, parentNodeId);
         }
         Node node = nodeService.createWorkspaceNode(
                 projectId, routeId, parentNodeId, NodeKind.RESOURCE, subtype, content,
@@ -247,6 +263,11 @@ public class GraphCommandService {
      * Creates a semantic relation. Origin records provenance: USER relations
      * are explicit user operations; AGENT relations arrive here only after an
      * accepted Advisor proposal ({@code createdByProposalId}).
+     *
+     * <p>Invariants: endpoints must be persisted non-retracted same-project
+     * nodes; symmetric types (RELATED_TO, CONFLICTS_WITH) canonicalize their
+     * endpoint order so both directions are the same fact; DEPENDS_ON and
+     * DERIVED_FROM jointly form an acyclic dependency DAG.
      */
     @Transactional
     public NodeRelation createSemanticRelation(UUID projectId,
@@ -256,17 +277,19 @@ public class GraphCommandService {
                                                NodeRelation.Origin origin,
                                                UUID createdByProposalId,
                                                UUID createdByRunId) {
-        requireNodeInProject(projectId, sourceNodeId);
-        requireNodeInProject(projectId, targetNodeId);
+        invariantValidator.validateRelationCreation(projectId, sourceNodeId, targetNodeId, type);
+        GraphInvariantValidator.CanonicalEndpoints endpoints =
+                GraphInvariantValidator.endpointsCanonicalized(sourceNodeId, targetNodeId, type);
         NodeRelation relation = relationRepository.insertActiveOrThrowDuplicate(
-                projectId, sourceNodeId, targetNodeId, type, origin, createdByProposalId, createdByRunId);
+                projectId, endpoints.sourceNodeId(), endpoints.targetNodeId(), type, origin,
+                createdByProposalId, createdByRunId);
         operationRepository.append(projectId,
                 origin == NodeRelation.Origin.USER ? GraphOperation.Actor.USER : GraphOperation.Actor.AGENT,
                 GraphOperation.Type.CREATE_SEMANTIC_RELATION, List.of(relation.id()),
                 Map.of(),
                 Map.of("relationId", relation.id().toString(),
-                       "sourceNodeId", sourceNodeId.toString(),
-                       "targetNodeId", targetNodeId.toString(),
+                       "sourceNodeId", endpoints.sourceNodeId().toString(),
+                       "targetNodeId", endpoints.targetNodeId().toString(),
                        "relationType", type.code()));
         return relation;
     }

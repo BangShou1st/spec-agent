@@ -638,6 +638,9 @@ textarea {
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.15s ease;
+  /* Above the hover action rail (z-index 2): the rail's hover bridge must
+     never swallow the connection handles. */
+  z-index: 5;
 }
 
 .graph-question-node:hover .graph-question-node__handle--source {

@@ -80,7 +80,11 @@ const emit = defineEmits<{
   'contextual-ai': [target: ContextualAiTarget]
   'retry-pending': []
   'viewport-settled': []
-  'create-relation': [payload: { sourceNodeId: string; targetNodeId: string }]
+  'activate-route': [routeId: string]
+  // A canvas drag (source handle → target handle) only raises a PENDING
+  // relation proposal; nothing is persisted until the user confirms a type
+  // and direction. This replaced the old "drag => immediate RELATED_TO".
+  'relation-proposal': [payload: { sourceNodeId: string; targetNodeId: string }]
   // Vue Flow forwards the raw 'connect' event through <VueFlow @connect>;
   // declaring it here silences the Vue "neither declared in the emits option
   // nor as an onConnect prop" warning and documents the bridge.
@@ -118,6 +122,7 @@ const projection = computed(() => {
       routeDisplayStates: graphUi.routeDisplayStates,
       expandedNodeIds: graphUi.expandedNodeIds,
       showRelationLayer: graphUi.showRelationLayer,
+      selectedNodeIds: graphUi.selectedNodeIds,
     },
     savedPositions: graphUi.nodePositions,
     runtime: {
@@ -473,9 +478,11 @@ function onPaneClick(event?: MouseEvent): void {
 
 /**
  * Manual node-to-node connection (drag from a source handle to a target
- * handle). The drop only ever creates a semantic relation through the
- * Runtime command — lineage is never rewritten by hand. Pending projection
- * cards and self-connections are ignored.
+ * handle). The drop ONLY creates a pending relation proposal: the backend is
+ * not called, no GraphOperation is appended, and no relation is persisted
+ * until the user confirms a specific type and direction in the proposal
+ * chooser. Lineage is never rewritten by hand. Pending projection cards and
+ * self-connections are ignored.
  */
 function onConnect(connection: Connection): void {
   const canonicalOf = (flowNodeId: string | null | undefined): string | null => {
@@ -490,7 +497,7 @@ function onConnect(connection: Connection): void {
   if (!sourceNodeId || !targetNodeId || sourceNodeId === targetNodeId) {
     return
   }
-  emit('create-relation', { sourceNodeId, targetNodeId })
+  emit('relation-proposal', { sourceNodeId, targetNodeId })
 }
 
 function emitContextualAi(nodeId: string, visualNodeKey?: string): void {
@@ -668,6 +675,7 @@ const isEmptyProject = computed(() =>
             @regenerate="(id) => emit('regenerate', id)"
             @contextual-ai="(id) => emitContextualAi(id, nodeProps.data.visualNodeKey)"
             @retry-pending="emit('retry-pending')"
+            @activate-route="(routeId) => emit('activate-route', routeId)"
           />
         </template>
         <template #node-knowledge="nodeProps: NodeProps<SpecAgentGraphNodeData>">

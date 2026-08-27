@@ -2,6 +2,7 @@ import { MarkerType, type Edge, type Node } from '@vue-flow/core'
 import type {
   GraphWorkspaceNodeView,
   GraphWorkspaceOptionView,
+  GraphWorkspaceRelationView,
   GraphWorkspaceRouteView,
   GraphWorkspaceView,
   RouteLifecycleStatus,
@@ -61,17 +62,16 @@ export interface GraphRouteAnswerState {
   answer: GraphAnswerPresentation | null
 }
 
+/**
+ * A canonical Question Node carries exactly one immutable Answer identity
+ * project-wide (SHARED_STATE_DIVERGENCE is an invariant violation, not a
+ * presentation mode). Presentation is therefore either focused (reading a
+ * specific route) or single-route; the answer content never changes with
+ * Focus, only the reading context does.
+ */
 export type AnswerPresentationMode =
   | 'focused'
   | 'single-route'
-  | 'shared-common'
-  | 'shared-divergent'
-
-export interface CommonAnswerSummary {
-  selectedOptionId: string | null
-  selectedOptionLabel: string | null
-  freeText: string | null
-}
 
 export interface GraphRouteMembershipPresentation {
   routeId: string
@@ -94,7 +94,6 @@ export interface SpecAgentGraphNodeData {
   routeStates: GraphRouteAnswerState[]
   primaryAnswer: GraphAnswerPresentation | null
   answerPresentationMode: AnswerPresentationMode
-  commonAnswer: CommonAnswerSummary | null
   readingRouteId: string | null
   isCurrent: boolean
   canAnswer: boolean
@@ -128,6 +127,9 @@ export interface GraphProjectionInput {
     expandedNodeIds: string[]
     /** Default false. Inspector remains the canonical relations viewer. */
     showRelationLayer?: boolean
+    /** Selected node ids (visual keys): their direct 1-hop relations project
+     * onto the canvas even when the global relation layer is off. */
+    selectedNodeIds?: string[]
   }
   savedPositions: Record<string, GraphPosition>
   runtime?: {
@@ -246,18 +248,15 @@ export function selectPrimaryAnswer(
     const withNodeId = answer as GraphAnswerPresentation & { nodeId?: string }
     return withNodeId.nodeId === undefined || withNodeId.nodeId === nodeId
   })
-  // 1. 显式阅读路线优先：返回该 route 的 answer（缺失时 null，卡片显示 waiting）。
+  // 1. 显式阅读路线优先：返回该 route 的 answer（缺失时 null，卡片显示等待）。
+  //    Shared canonical nodes reference ONE immutable Answer identity, so the
+  //    content is route-independent; Focus only changes the reading context.
   if (focusRouteId) {
     return nodeAnswers.find((answer) => answer.routeId === focusRouteId) ?? null
   }
-  // 2. 无 focus：只允许在"非 shared 单一 route"下直接返回该 route answer；
-  //    shared + 无 focus 一律 null primary —— UI 通过 answerPresentationMode
-  //    ('shared-common' | 'shared-divergent') 渲染 commonAnswer 或 routeStates。
-  const distinctRoutes = new Set(nodeAnswers.map((a) => a.routeId))
-  if (distinctRoutes.size === 1) {
-    return nodeAnswers[0] ?? null
-  }
-  return null
+  // 2. 无 focus：直接返回第一条真实引用。由于 SHARED_STATE_DIVERGENCE 被后端
+  //    拒绝，多条 route 的引用共享同一 Answer ID，内容必然一致。
+  return nodeAnswers[0] ?? null
 }
 
 function fallbackRouteLabel(route: Pick<GraphWorkspaceRouteView, 'branchType' | 'isActive'>): string {
@@ -302,49 +301,15 @@ function buildAnswerPresentations(view: GraphWorkspaceView): Map<string, GraphAn
   return byNode
 }
 
-/** True when two effective answers represent the same user semantic content. */
-function answersEquivalent(a: GraphAnswerPresentation, b: GraphAnswerPresentation): boolean {
-  return a.selectedOptionId === b.selectedOptionId
-    && (a.freeText ?? null) === (b.freeText ?? null)
-}
-
-/** Compute the AnswerPresentationMode and (when applicable) a CommonAnswerSummary. */
+/** Compute the AnswerPresentationMode. Shared canonical nodes carry one
+ * immutable Answer identity, so a "divergent summaries" mode cannot occur in
+ * a healthy graph; the mode stays a pure reading-context signal. */
 function computeAnswerPresentation(
-  routeIds: string[],
-  routeStates: GraphRouteAnswerState[],
+  _routeIds: string[],
+  _routeStates: GraphRouteAnswerState[],
   focusRouteId: string | null,
-): { mode: AnswerPresentationMode; common: CommonAnswerSummary | null } {
-  if (focusRouteId) {
-    return { mode: 'focused', common: null }
-  }
-  if (routeIds.length <= 1) {
-    return { mode: 'single-route', common: null }
-  }
-  // Shared + no focus. Compare only answers that actually have content
-  // (selectedOptionId OR freeText); routes with null answer count as waiting
-  // and disqualify the "common" case.
-  const answeredStates = routeStates.filter((s) => s.answer !== null)
-  if (answeredStates.length !== routeStates.length) {
-    // 部分 waiting → divergent
-    return { mode: 'shared-divergent', common: null }
-  }
-  const answered = answeredStates.map((s) => s.answer as GraphAnswerPresentation)
-  if (answered.length < 2) {
-    return { mode: 'shared-divergent', common: null }
-  }
-  const first = answered[0]
-  const allSame = answered.every((a) => answersEquivalent(first, a))
-  if (!allSame) {
-    return { mode: 'shared-divergent', common: null }
-  }
-  return {
-    mode: 'shared-common',
-    common: {
-      selectedOptionId: first.selectedOptionId,
-      selectedOptionLabel: first.selectedOptionLabel ?? null,
-      freeText: first.freeText ?? null,
-    },
-  }
+): { mode: AnswerPresentationMode } {
+  return { mode: focusRouteId ? 'focused' : 'single-route' }
 }
 
 function computePositions(
@@ -424,9 +389,7 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
       activeRouteId,
       instance.node.options,
     )
-    // shared + no focus 时 primary 强制为 null，UI 用 answerPresentationMode
-    // + commonAnswer / routeStates 渲染；single-route 时直接走 rawPrimary。
-    const primary = (routeIds.length > 1 && !readingRouteId) ? null : rawPrimary
+    const primary = rawPrimary
     const isCurrent = activeNodeId === instance.canonicalNodeId && activeRouteId !== null && routeIds.includes(activeRouteId)
     const canAnswer = isCurrent && !answers.some((answer) => answer.routeId === activeRouteId)
     // 浮动想法不属于任何路线：聚焦/弱化语义都不适用，保持常规视觉权重，
@@ -471,7 +434,6 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
         routeStates,
         primaryAnswer: primary,
         answerPresentationMode: answerPresentation.mode,
-        commonAnswer: answerPresentation.common,
         readingRouteId,
         isCurrent,
         canAnswer,
@@ -552,7 +514,6 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
         routeStates: [{ routeId: pending.routeId, routeLabel: pendingLabel, answer: null }],
         primaryAnswer: null,
         answerPresentationMode: 'single-route',
-        commonAnswer: null,
         readingRouteId: pending.routeId,
         isCurrent: false,
         canAnswer: false,
@@ -638,32 +599,48 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
   // 锚定 shared visual instance；无法稳定锚定时 relation 边不画，事实仍
   // 通过 view.relations 供 Inspector 读取。relation layer 默认关闭：
   // 默认 canvas 不被语义关系铺满，Inspector 永远可读。
-  if (uiState.showRelationLayer) {
-    for (const relation of view.relations) {
-      const source = relationEndpointKey(
-        visibleInstances, relation.sourceNodeId, uiState.focusRouteId, visibleKeys)
-      const target = relationEndpointKey(
-        visibleInstances, relation.targetNodeId, uiState.focusRouteId, visibleKeys)
-      if (!source || !target || source === target) continue
-      const handles = selectHandlesFor(source, target, positions)
-      edges.push({
-        id: `relation:${relation.id}`,
-        source,
-        target,
-        type: 'adaptive',
-        sourceHandle: handles.sourceHandle,
-        targetHandle: handles.targetHandle,
-        markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12 },
-        data: {
-          kind: 'relation',
-          relationType: relation.relationType,
-          routeIds: [],
-          visibleRouteIds: [],
-          visualWeight: 'normal',
-        },
-        class: ['graph-edge--relation'],
-      })
-    }
+  // 语义关系：与 lineage 边在样式上区分（次级虚线）。关系不属于任何路线；
+  // relationEndpointKey 用 focus（绝不借 Active）来稳定锚定 shared visual
+  // instance；无法稳定锚定时 relation 边不画，事实仍通过 view.relations 供
+  // Inspector 读取。全局 relation layer 默认关闭；选中节点的 direct 1-hop
+  // 关系在任何情况下都可见（刚创建时 endpoints 保持选中 → 立即可见），
+  // 取消选择后收起。
+  const selectedNodeIds = uiState.selectedNodeIds ?? []
+  const relationLayerOn = uiState.showRelationLayer === true
+  const relationVisible = (relation: GraphWorkspaceRelationView): boolean => {
+    if (relationLayerOn) return true
+    const source = relationEndpointKey(
+      visibleInstances, relation.sourceNodeId, uiState.focusRouteId, visibleKeys)
+    const target = relationEndpointKey(
+      visibleInstances, relation.targetNodeId, uiState.focusRouteId, visibleKeys)
+    if (!source || !target) return false
+    return selectedNodeIds.includes(source) || selectedNodeIds.includes(target)
+  }
+  for (const relation of view.relations) {
+    if (!relationVisible(relation)) continue
+    const source = relationEndpointKey(
+      visibleInstances, relation.sourceNodeId, uiState.focusRouteId, visibleKeys)
+    const target = relationEndpointKey(
+      visibleInstances, relation.targetNodeId, uiState.focusRouteId, visibleKeys)
+    if (!source || !target || source === target) continue
+    const handles = selectHandlesFor(source, target, positions)
+    edges.push({
+      id: `relation:${relation.id}`,
+      source,
+      target,
+      type: 'adaptive',
+      sourceHandle: handles.sourceHandle,
+      targetHandle: handles.targetHandle,
+      markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12 },
+      data: {
+        kind: 'relation',
+        relationType: relation.relationType,
+        routeIds: [],
+        visibleRouteIds: [],
+        visualWeight: 'normal',
+      },
+      class: ['graph-edge--relation'],
+    })
   }
 
   return { nodes, edges }

@@ -228,8 +228,8 @@ async function confirmContent(): Promise<void> {
       </template>
     </div>
 
-    <!-- 操作轨道：与问题节点一致，悬浮在节点左侧外缘竖排，悬停或键盘
-         聚焦节点时出现；编辑态使用卡片内的保存/取消表单按钮。 -->
+    <!-- 操作轨道：与问题节点一致，悬浮在节点右侧外缘竖排（left:100%），
+         悬停或键盘聚焦节点时出现；编辑态使用卡片内的保存/取消表单按钮。 -->
     <div
       v-if="!editing"
       class="graph-node-actions graph-node-actions--toolbar"

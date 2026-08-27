@@ -37,6 +37,7 @@ class FloatingNodeResponseRouteIdTest {
     @Autowired private WebApplicationContext context;
     @Autowired private ProjectService projectService;
     @Autowired private GraphCommandService commandService;
+    @Autowired private com.specagent.route.RouteService routeService;
     @Autowired private RouteRepository routeRepository;
     @Autowired private ObjectMapper objectMapper;
 
@@ -68,5 +69,24 @@ class FloatingNodeResponseRouteIdTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").exists())
                 .andExpect(jsonPath("$.routeId").doesNotExist());
+    }
+
+    @Test
+    void floatingNodeCanBeCreatedWithoutAnyActiveRoute() throws Exception {
+        // Archive the project's only route so activeRouteId becomes null:
+        // floating creation must not hard-depend on an Active route.
+        routeService.archiveRoute(project.id(), route.id());
+        org.junit.jupiter.api.Assertions.assertNull(
+                projectService.getProject(project.id()).orElseThrow().activeRouteId());
+
+        mockMvc.perform(post("/api/v1/projects/{pid}/floating-nodes", project.id())
+                        .contentType("application/json")
+                        .content("{\"subtype\":\"IDEA\",\"content\":{\"text\":\"idea without any route\"}}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").exists())
+                .andExpect(jsonPath("$.routeId").doesNotExist());
+        // No route tip / root / active pointer changed.
+        org.junit.jupiter.api.Assertions.assertNull(
+                projectService.getProject(project.id()).orElseThrow().activeRouteId());
     }
 }

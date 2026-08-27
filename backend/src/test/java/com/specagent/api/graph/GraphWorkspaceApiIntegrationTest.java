@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -95,7 +96,7 @@ class GraphWorkspaceApiIntegrationTest {
     }
 
     @Test
-    void forkSharesNodesWithoutAnswerCopiesAndAnswersStayRouteSpecific() throws Exception {
+    void forkSharesNodesAndReferencesTheSameAnswerIdentity() throws Exception {
         Project project = projectService.createProject("Fork graph project");
         UUID originalRouteId = project.activeRouteId();
         Node root = nodeService.createRootNode(project.id(), originalRouteId, "Root question",
@@ -114,9 +115,12 @@ class GraphWorkspaceApiIntegrationTest {
         UUID forkRouteId = fork.id();
         assertThat(fork.tipNodeId()).isEqualTo(child.id());
         assertThat(nodeRepository.findByProject(project.id())).hasSize(3);
-        // The fork route answers the same shared child node with its own answer.
-        com.specagent.answer.Answer forkAnswer = answerService.finalizeAnswer(project.id(),
-                forkRouteId, child.id(), null, "fork route child answer", "user");
+        // The fork route references the SAME immutable Answer identity for the
+        // shared node; a second distinct Answer is an invariant violation.
+        assertThatThrownBy(() -> answerService.finalizeAnswer(project.id(),
+                forkRouteId, child.id(), null, "fork route child answer", "user"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("SHARED_STATE_DIVERGENCE");
 
         MvcResult result = mockMvc.perform(get("/api/v1/projects/{projectId}/graph", project.id()))
                 .andExpect(status().isOk())
@@ -135,14 +139,19 @@ class GraphWorkspaceApiIntegrationTest {
                 .containsExactly(root.id(), child.id(), grandchild.id());
         assertThat(view.routes().get(1).lineageNodeIds())
                 .containsExactly(root.id(), child.id());
-        // Both route-specific answers for the shared node stay separate.
-        assertThat(view.answers()).hasSize(2);
+        // Fork inherits the shared answer (owner route + inherited route view)
+        // with the SAME Answer id — never a second identity for one node.
+        assertThat(view.answers()).extracting(a -> a.id())
+                .containsOnly(oldAnswer.id());
         assertThat(view.answers()).filteredOn(a -> a.nodeId().equals(child.id()))
                 .extracting(a -> a.routeId())
                 .containsExactlyInAnyOrder(originalRouteId, forkRouteId);
-        assertThat(view.answers()).extracting(a -> a.freeText())
-                .containsExactlyInAnyOrder("old route child answer", "fork route child answer");
-        assertThat(oldAnswer.routeId()).isNotEqualTo(forkAnswer.routeId());
+        assertThat(view.answers()).filteredOn(a -> a.nodeId().equals(child.id()))
+                .extracting(a -> a.freeText())
+                .containsOnly("old route child answer");
+        assertThat(view.answers()).filteredOn(a -> a.nodeId().equals(child.id()))
+                .extracting(a -> a.inherited())
+                .containsExactlyInAnyOrder(false, true);
     }
 
     @Test

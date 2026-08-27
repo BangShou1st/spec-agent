@@ -60,6 +60,14 @@ export const useGraphUiStore = defineStore('graphUi', {
       selectedEdgeId: null as string | null,
       selectedSharedEdgeRouteIds: [] as string[],
       focusRouteId: null as string | null,
+      // Pending relation proposal from a canvas drag (source handle → target
+      // handle). No relation is persisted until the user confirms a type and
+      // direction in the proposal chooser; Cancel/Esc/click-away clears it
+      // with zero backend calls.
+      pendingRelation: null as {
+        sourceNodeId: string
+        targetNodeId: string
+      } | null,
       // Optional semantic-relation layer visibility. Browser-only ephemeral:
       // never persisted, always defaults to false. The Inspector remains
       // the canonical place to inspect relations.
@@ -174,6 +182,15 @@ export const useGraphUiStore = defineStore('graphUi', {
     /** Toggles the optional semantic-relation layer on the canvas. */
     setShowRelationLayer(visible: boolean): void {
       this.showRelationLayer = visible
+    },
+
+    /** Registers a canvas drag as a pending relation proposal (no backend call). */
+    setPendingRelation(payload: { sourceNodeId: string; targetNodeId: string } | null): void {
+      this.pendingRelation = payload
+    },
+
+    clearPendingRelation(): void {
+      this.pendingRelation = null
     },
 
     clearFocusRoute(): void {

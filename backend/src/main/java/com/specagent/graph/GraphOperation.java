@@ -28,7 +28,6 @@ public class GraphOperation {
         ATTACH_RESOURCE(true),
         CREATE_SEMANTIC_RELATION(true),
         SET_KNOWLEDGE_STATUS(true),
-        RESUME_QUESTION_FROM_HISTORY(true),
         ACCEPT_AGENT_PROPOSAL(false);
 
         private final boolean reversibleByDefault;

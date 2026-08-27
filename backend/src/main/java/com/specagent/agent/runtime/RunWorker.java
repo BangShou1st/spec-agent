@@ -177,12 +177,15 @@ public class RunWorker {
         UUID runId = run.id();
         try {
             Map<String, Object> input = readRunInput(runId);
-            UUID routeId = input.containsKey("routeId")
-                    ? UUID.fromString((String) input.get("routeId")) : run.routeId();
+            // routeId is OPTIONAL: floating nodes query with a null route and
+            // the anchor node as the sole context.
+            Object routeRaw = input.get("routeId");
+            UUID routeId = routeRaw == null || String.valueOf(routeRaw).isBlank()
+                    ? run.routeId() : UUID.fromString((String) routeRaw);
             UUID nodeId = input.containsKey("nodeId")
                     ? UUID.fromString((String) input.get("nodeId")) : run.inputNodeId();
             String question = (String) input.get("question");
-            if (routeId == null || nodeId == null || question == null) {
+            if (nodeId == null || question == null) {
                 throw new IllegalStateException("Node query run is missing input parameters");
             }
             nodeQueryService.executeNodeQuery(run, routeId, nodeId, question);

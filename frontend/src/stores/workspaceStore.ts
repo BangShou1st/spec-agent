@@ -31,7 +31,6 @@ import {
   deleteRoute,
   forkNode,
   reanswerNode,
-  resumeQuestion as apiResumeQuestion,
   restoreRoute,
 } from '@/api/routes'
 import { listRouteSpecs } from '@/api/spec'
@@ -183,7 +182,7 @@ export const useWorkspaceStore = defineStore('workspace', {
     // In-flight / finished contextual node query ("ask AI about this node").
     nodeQuery: null as {
       nodeId: string
-      routeId: string
+      routeId: string | null
       question: string
       runId: string
       status: 'RUNNING' | 'COMPLETED' | 'FAILED'
@@ -1190,46 +1189,6 @@ export const useWorkspaceStore = defineStore('workspace', {
     },
 
     /**
-     * Reactivates a historical unanswered Question on an explicit source
-     * route. The backend decides whether to create a new branch route
-     * (target is non-tip on the source lineage) or merely reactivate the
-     * existing source route (target IS the source tip). Either way, the
-     * canonical Question is reused, never copied, and the source route's
-     * lineage is preserved.
-     */
-    async resumeQuestion(nodeId: string, sourceRouteId: string, label?: string | null): Promise<boolean> {
-      if (!this.projectId || this.routeCommandPending || this.submitting || this.drafting) {
-        return false
-      }
-      if (!sourceRouteId) {
-        this.error = { code: 'SOURCE_ROUTE_REQUIRED', message: '请选择明确的来源路线。' }
-        return false
-      }
-      this.routeCommandPending = true
-      this.pendingRouteCommand = null
-      this.error = null
-      try {
-        const result = await apiResumeQuestion(this.projectId, nodeId, {
-          sourceRouteId,
-          label: label ?? null,
-        })
-        await this.refreshWorkspace()
-        const route = result.route
-        this.setFocusAfterMutation({ routeId: route.id, nodeId: route.tipNodeId })
-        this.feedback = result.resumedNewRoute
-          ? '已创建恢复历史未答问题路线。'
-          : '已重新激活该路线。'
-        return true
-      } catch (err) {
-        this.error = toDisplayError(err)
-        return false
-      } finally {
-        this.routeCommandPending = false
-        this.pendingRouteCommand = null
-      }
-    },
-
-    /**
      * Deterministically regenerates a historical node. Old route becomes
      * SUPERSEDED and the replacement route becomes OPEN + active via the
      * runtime; the frontend refreshes canonical reads instead of
@@ -1504,17 +1463,15 @@ export const useWorkspaceStore = defineStore('workspace', {
     /**
      * Adds a user-authored idea as a standalone (floating) draft — zero
      * model calls, never connected to any node. The user connects it
-     * manually on the canvas. Returns the created node id, or null on
-     * failure.
+     * manually on the canvas. No Active Route is required: the creation
+     * context route id is optional (null context is legal). Returns the
+     * created node id, or null on failure.
      */
     async createIdea(): Promise<string | null> {
       if (!this.projectId || this.graphCommandPending) return null
       const activeRouteId = this.activeState?.activeRoute?.id ?? null
-      if (!activeRouteId) {
-        this.error = { code: 'NO_ACTIVE_ROUTE', message: '当前项目没有活动路线。' }
-        return null
-      }
       this.graphCommandPending = true
+      this.error = null
       try {
         const created = await createFloatingDraftNode(this.projectId, activeRouteId, {
           subtype: 'IDEA',
@@ -1697,7 +1654,7 @@ export const useWorkspaceStore = defineStore('workspace', {
      * Asks AI about a node: enqueues an async query run and polls until the
      * single DECISION call finishes. The query has no graph side effects.
      */
-    async askNodeAI(nodeId: string, routeId: string, question: string): Promise<boolean> {
+    async askNodeAI(nodeId: string, routeId: string | null, question: string): Promise<boolean> {
       if (!this.projectId || !question.trim()) return false
       if (nodeId.startsWith('pending:')) {
         this.error = {
@@ -1736,7 +1693,7 @@ export const useWorkspaceStore = defineStore('workspace', {
           if (result.status === 'RUNNING' || result.status === 'CREATED') continue
           this.nodeQuery = {
             nodeId,
-            routeId: this.nodeQuery?.routeId ?? '',
+            routeId: this.nodeQuery?.routeId ?? null,
             question: this.nodeQuery?.question ?? '',
             runId,
             status: result.status === 'FAILED' ? 'FAILED' : 'COMPLETED',

@@ -82,7 +82,6 @@ function currentData(overrides: Partial<SpecAgentGraphNodeData> = {}): SpecAgent
     routeStates: [],
     primaryAnswer: null,
     answerPresentationMode: 'single-route',
-    commonAnswer: null,
     readingRouteId: 'r1',
     isCurrent: true,
     canAnswer: true,
@@ -135,7 +134,6 @@ function historicalData(overrides: Partial<SpecAgentGraphNodeData> = {}): SpecAg
       isPrimary: true,
     },
     answerPresentationMode: 'focused',
-    commonAnswer: null,
     readingRouteId: 'r1',
     isCurrent: false,
     canAnswer: false,
@@ -370,7 +368,6 @@ describe('shared node route-specific waiting state', () => {
       ],
       primaryAnswer: null,
       answerPresentationMode: 'focused',
-      commonAnswer: null,
       readingRouteId: 'r2',
       isCurrent: false,
       canAnswer: false,
@@ -395,7 +392,7 @@ describe('shared node route-specific waiting state', () => {
     expect(button.exists()).toBe(true)
     expect(button.text()).toContain('回答这个问题')
     await button.trigger('click')
-    expect(wrapper.emitted('resume-answer')?.[0]).toEqual(['n1'])
+    expect(wrapper.emitted('activate-route')?.[0]).toEqual(['r2'])
   })
 
   it('Focus=B without an answer: when readingRouteId is null, no resume affordance is exposed (avoids source route ambiguity)', () => {
@@ -406,130 +403,6 @@ describe('shared node route-specific waiting state', () => {
     // readingRouteId = null 时仍走 focused 模式但无明确 source route，唤醒按钮
     // 必须隐藏（避免拿 Active/first/latest 冒充 source route）。
     expect(wrapper.find('[data-test="answer-this-question"]').exists()).toBe(false)
-  })
-
-  it('shared-divergent: lists per-route summaries, never invents a primary', () => {
-    const wrapper = mountNode(waitingData({
-      readingRouteId: null,
-      answerPresentationMode: 'shared-divergent',
-      routeStates: [
-        {
-          routeId: 'r1',
-          routeLabel: 'Initial',
-          answer: {
-            routeId: 'r1',
-            selectedOptionId: null,
-            selectedOptionLabel: null,
-            freeText: 'A answer on shared node.',
-            isPrimary: false,
-          },
-        },
-        { routeId: 'r2', routeLabel: 'Route-B', answer: null },
-      ],
-    }))
-    expect(wrapper.find('[data-test="route-summaries"]').exists()).toBe(true)
-    const summaries = wrapper.find('[data-test="route-summaries"]')
-    expect(summaries.text()).toContain('Initial')
-    expect(summaries.text()).toContain('Route-B')
-    expect(wrapper.find('[data-test="route-summary-waiting"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="answer-summary"]').exists()).toBe(false)
-    expect(wrapper.find('[data-test="common-answer"]').exists()).toBe(false)
-    expect(wrapper.find('[data-test="waiting-summary"]').exists()).toBe(false)
-  })
-
-  it('shared node does not expose per-route answer history in the graph card', async () => {
-    const expanded = waitingData({ isExpanded: true })
-    const wrapper = mountNode(expanded)
-    expect(wrapper.find('.graph-node-details').exists()).toBe(false)
-    expect(wrapper.text()).not.toContain('A answer on shared node.')
-  })
-
-  it('a shared current node keeps answer controls and exposes the old route answer via expand', async () => {
-    const data = waitingData({
-      isCurrent: true,
-      canAnswer: true,
-      routeIds: ['r1', 'r2'],
-    })
-    const wrapper = mountNode(data)
-    // 当前节点继续直接显示回答 controls。
-    expect(wrapper.find('[data-test="question"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="free-text"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="submit-answer"]').exists()).toBe(true)
-    // 旧路线回答只在 Inspector 中查看。
-    expect(wrapper.find('.graph-node-details').exists()).toBe(false)
-  })
-
-  it('shared-divergent: lists per-route summaries, never invents a primary', () => {
-    const wrapper = mountNode(waitingData({
-      readingRouteId: null,
-      answerPresentationMode: 'shared-divergent',
-      routeStates: [
-        {
-          routeId: 'r1',
-          routeLabel: 'Initial',
-          answer: {
-            routeId: 'r1',
-            selectedOptionId: null,
-            selectedOptionLabel: null,
-            freeText: 'A answer on shared node.',
-            isPrimary: false,
-          },
-        },
-        { routeId: 'r2', routeLabel: 'Route-B', answer: null },
-      ],
-    }))
-    // shared + no focus + 部分 waiting → divergent 模式 → 展示 per-route 摘要
-    expect(wrapper.find('[data-test="route-summaries"]').exists()).toBe(true)
-    const summaries = wrapper.find('[data-test="route-summaries"]')
-    expect(summaries.text()).toContain('Initial')
-    expect(summaries.text()).toContain('Route-B')
-    // 等待回答的 route 在摘要中显式标记。
-    expect(wrapper.find('[data-test="route-summary-waiting"]').exists()).toBe(true)
-    // 不允许 primary 摘要 + 不允许 common 标签。
-    expect(wrapper.find('[data-test="answer-summary"]').exists()).toBe(false)
-    expect(wrapper.find('[data-test="common-answer"]').exists()).toBe(false)
-    expect(wrapper.find('[data-test="waiting-summary"]').exists()).toBe(false)
-  })
-
-  it('shared-common: shows commonAnswer block with the multi-route label, no fake routeId', () => {
-    const wrapper = mountNode(waitingData({
-      readingRouteId: null,
-      primaryAnswer: null,
-      answerPresentationMode: 'shared-common',
-      commonAnswer: {
-        selectedOptionId: 'opt-a',
-        selectedOptionLabel: 'Product team',
-        freeText: 'shared text',
-      },
-      routeStates: [
-        {
-          routeId: 'r1',
-          routeLabel: 'Initial',
-          answer: {
-            routeId: 'r1',
-            selectedOptionId: 'opt-a',
-            selectedOptionLabel: 'Product team',
-            freeText: 'shared text',
-            isPrimary: false,
-          },
-        },
-        {
-          routeId: 'r2',
-          routeLabel: 'Route-B',
-          answer: {
-            routeId: 'r2',
-            selectedOptionId: 'opt-a',
-            selectedOptionLabel: 'Product team',
-            freeText: 'shared text',
-            isPrimary: false,
-          },
-        },
-      ],
-    }))
-    expect(wrapper.find('[data-test="common-answer"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="common-answer"]').text()).toContain('共同答案')
-    expect(wrapper.find('[data-test="common-answer"]').text()).toContain('多路线一致')
-    expect(wrapper.find('[data-test="answer-summary"]').exists()).toBe(false)
   })
 })
 

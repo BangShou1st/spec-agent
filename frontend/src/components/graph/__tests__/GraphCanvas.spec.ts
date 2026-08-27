@@ -579,19 +579,17 @@ describe('graph canvas', () => {
 })
 
 describe('GraphCanvas onConnect (connection affordance)', () => {
-  it('self-connection emits nothing (no create-relation event)', async () => {
+  it('self-connection emits nothing (no relation proposal)', async () => {
     const wrapper = mountCanvas(viewWithNodes())
-    // Trigger the canvas-level @connect handler directly. The Vue Flow stub
-    // never emits `connect` on its own; the test exercises the same code path
-    // the real canvas would.
-    await wrapper.vm.$emit('connect', {
+    const flow = wrapper.findComponent(VueFlowStub)
+    await flow.vm.$emit('connect', {
       source: 'n1',
       target: 'n1',
       sourceHandle: 'source-right',
       targetHandle: 'target-left',
     })
     await wrapper.vm.$nextTick()
-    expect(wrapper.emitted('create-relation')).toBeUndefined()
+    expect(wrapper.emitted('relation-proposal')).toBeUndefined()
   })
 
   it('connection originating from a pending projection card is ignored', async () => {
@@ -605,7 +603,8 @@ describe('GraphCanvas onConnect (connection affordance)', () => {
         message: null,
       },
     })
-    await wrapper.vm.$emit('connect', {
+    const flow = wrapper.findComponent(VueFlowStub)
+    await flow.vm.$emit('connect', {
       source: 'pending:run-x',
       target: 'n1',
       sourceHandle: 'source-right',
@@ -613,7 +612,26 @@ describe('GraphCanvas onConnect (connection affordance)', () => {
     })
     await wrapper.vm.$nextTick()
     // pending:run-x is not a canonical Node; the frontend refuses to even
-    // emit create-relation, regardless of relation layer.
+    // raise a relation proposal.
+    expect(wrapper.emitted('relation-proposal')).toBeUndefined()
+  })
+
+  it('connection between two canonical nodes opens a pending proposal without calling the backend', async () => {
+    const wrapper = mountCanvas(viewWithNodes())
+    const flow = wrapper.findComponent(VueFlowStub)
+    await flow.vm.$emit('connect', {
+      source: 'n1',
+      target: 'n2',
+      sourceHandle: 'source-right',
+      targetHandle: 'target-left',
+    })
+    await wrapper.vm.$nextTick()
+    // 真实 mouse drag → ONLY a relation proposal; nothing is persisted and no
+    // create-relation event is raised until the user confirms type/direction.
+    expect(wrapper.emitted('relation-proposal')?.[0]?.[0]).toEqual({
+      sourceNodeId: 'n1',
+      targetNodeId: 'n2',
+    })
     expect(wrapper.emitted('create-relation')).toBeUndefined()
   })
 })

@@ -1,141 +1,53 @@
 import { test, expect, type Page } from '@playwright/test'
 import { buildThreeNodeLineage, closeFloatingWorkspaceWindows, createProject, fitGraph } from './helpers'
 
-interface DiagBox {
-  x: number
-  y: number
-  width: number
-  height: number
-}
-
-interface DragDiag {
-  sourceHandleBox: DiagBox | null
-  targetHandleBox: DiagBox | null
-  sourceHandleAtPoint: string | null
-  targetHandleAtPoint: string | null
-  toolbarBox: DiagBox | null
-  inspectorBox: DiagBox | null
-  routeBox: DiagBox | null
-  sourceNodeBox: DiagBox | null
-  targetNodeBox: DiagBox | null
-  mousedownOnHandle: boolean
-  mouseupNearTargetHandle: boolean
-  postDragCursor: { x: number; y: number } | null
-}
-
 /**
- * Capture every diagnostic the spec checklist requires: handle
- * boundingBoxes, elementFromPoint at the handle centers, floating
- * window boundingBoxes, and a flag for whether the source handle
- * actually received the mousedown. Throws with a full report if the
- * connection drag is blocked by floating chrome.
+ * 真实 Chromium mouse drag: source handle → target handle 只产生 Pending
+ * Relation Proposal。此时 backend 没有任何变化(relations = 0)；用户选择
+ * 类型/方向并 Confirm 后才持久化；Cancel / Escape / click-away 保持 0 关系。
+ *
+ * 全程使用 page.mouse.move / down / move / up 真实指针事件,不使用
+ * synthetic PointerEvent 冒充真实交互。
  */
-async function collectDragDiag(page: Page, sourceIdx: number, targetIdx: number): Promise<DragDiag> {
-  return page.evaluate(([src, tgt]: [number, number]) => {
-    const handles = Array.from(document.querySelectorAll('.vue-flow__handle'))
-    const nodes = Array.from(document.querySelectorAll('[data-test="graph-question-node"]'))
-    const srcNode = nodes[src] as HTMLElement | undefined
-    const tgtNode = nodes[tgt] as HTMLElement | undefined
-    const srcHandle = srcNode
-      ? srcNode.querySelector('.vue-flow__handle[data-handleid="source-right"]') as HTMLElement | null
-      : null
-    const tgtHandle = tgtNode
-      ? tgtNode.querySelector('.vue-flow__handle[data-handleid="target-left"]') as HTMLElement | null
-      : null
-    const elFromPt = (x: number, y: number): string | null => {
-      const el = document.elementFromPoint(x, y)
-      if (!el) return null
-      return el.outerHTML.slice(0, 120)
-    }
-    const box = (el: Element | null): DiagBox | null => {
-      if (!el) return null
-      const r = el.getBoundingClientRect()
-      return { x: r.x, y: r.y, width: r.width, height: r.height }
-    }
-    const srcBox = srcHandle ? srcHandle.getBoundingClientRect() : null
-    const tgtBox = tgtHandle ? tgtHandle.getBoundingClientRect() : null
-    return {
-      sourceHandleBox: box(srcHandle),
-      targetHandleBox: box(tgtHandle),
-      sourceHandleAtPoint: srcBox ? elFromPt(srcBox.x + srcBox.width / 2, srcBox.y + srcBox.height / 2) : null,
-      targetHandleAtPoint: tgtBox ? elFromPt(tgtBox.x + tgtBox.width / 2, tgtBox.y + tgtBox.height / 2) : null,
-      toolbarBox: box(document.querySelector('.graph-canvas__toolbar')),
-      inspectorBox: box(document.querySelector('[data-test="floating-window-inspector"]')),
-      routeBox: box(document.querySelector('[data-test="floating-window-routes"]')),
-      sourceNodeBox: box(srcNode),
-      targetNodeBox: box(tgtNode),
-      mousedownOnHandle: false,
-      mouseupNearTargetHandle: false,
-      postDragCursor: null,
-    } as DragDiag
-  }, [sourceIdx, targetIdx])
+
+interface GraphJson {
+  relations: Array<{ id: string; sourceNodeId: string; targetNodeId: string; relationType: string }>
+  routes: Array<{
+    id: string
+    lineageNodeIds: string[]
+    tipNodeId: string
+    branchType: string | null
+    sourceRouteId: string | null
+    branchAtNodeId: string | null
+  }>
+  activeRouteId: string | null
 }
 
-/**
- * P1-6 E2E: real Chromium mouse drag from a source handle onto another
- * node's target handle. The semantic relation must be recorded by the
- * backend, the default canvas must NOT show the relation edge (relation
- * layer default OFF), and the lineage must be unchanged.
- *
- * Diagnostic checks required by the spec checklist:
- *  - source handle boundingBox
- *  - target handle boundingBox
- *  - elementFromPoint(source center)
- *  - elementFromPoint(target center)
- *  - floating toolbar / inspector / route window boundingBoxes
- *  - whether mousedown actually hit the source handle
- *  - whether mouseup landed near the target handle
- *
- * If floating chrome covers the source handle, the test surfaces the
- * diagnostic and uses a different source node (a Q that is not behind
- * any floating window) — the drag is still a real mouse drag, never a
- * synthetic event.
- */
-test('drag connection: relation recorded, default layer hides edge, lineage unchanged', async ({ page }) => {
-  page.on('pageerror', e => console.log('PAGE-ERR', e.message))
-  page.on('console', m => { if (m.type() === 'error' || m.type() === 'warning') console.log('CON-' + m.type(), m.text().slice(0, 200)) })
-  await createProject(page, 'E2E Connection Drag')
-  await buildThreeNodeLineage(page)
-  await fitGraph(page)
-  // Wait for the fit-view transform to settle before
-  // measuring handle bounding boxes. Vue Flow applies the viewport
-  // transform on a CSS transition; using the bbox mid-transition gives
-  // a stale coordinate.
-  await page.waitForTimeout(700)
-  await closeFloatingWorkspaceWindows(page)
+async function graphOf(page: Page, projectId: string): Promise<GraphJson> {
+  return (await (await page.request.get(`/api/v1/projects/${projectId}/graph`)).json()) as GraphJson
+}
 
-  const projectId = (await page.url()).split('/projects/')[1].split(/[?#]/)[0]
-  const graphBefore = await (await page.request.get(`/api/v1/projects/${projectId}/graph`)).json()
-  const lineageEdgesBefore = graphBefore.routes.flatMap((r: { lineageNodeIds: string[] }) =>
-    r.lineageNodeIds.slice(1).map((n: string, i: number) => `${r.lineageNodeIds[i]}->${n}`))
-
-  const nodes = page.locator('[data-test="graph-question-node"]')
-  await expect(nodes).toHaveCount(3)
-
-  // Choose source/target by inspecting the canvas: the on-canvas toolbar
-  // (always at the left, fixed position) covers the first node's left
-  // half on a 1280x720 viewport. We pick a source that is not occluded.
-  // The middle node (Q2) is never under the toolbar.
-  const sourceIdx = 1
-  const targetIdx = 2
-  let diag = await collectDragDiag(page, sourceIdx, targetIdx)
-  // If the toolbar or any floating window still occludes the source
-  // handle, retry with a different source.
-  if (diag.sourceHandleAtPoint
-      && !diag.sourceHandleAtPoint.includes('vue-flow__handle')
-      && !diag.sourceHandleAtPoint.includes('source-right')) {
-    // Fall back to the last node (Q3) which is also unoccluded.
-    diag = await collectDragDiag(page, 2, 1)
+async function nodeCounts(page: Page, projectId: string): Promise<{ nodes: string[]; tips: string[]; active: string | null }> {
+  const g = await graphOf(page, projectId)
+  return {
+    nodes: [...g.routes.flatMap((r) => r.lineageNodeIds)],
+    tips: g.routes.map((r) => r.tipNodeId),
+    active: g.activeRouteId,
   }
+}
 
-  // We have to read the data-node-id of the chosen source/target
-  // BEFORE the drag, so the locator matches.
-  const sourceNode = nodes.nth(sourceIdx)
-  const targetNode = nodes.nth(targetIdx)
-  const sourceNodeId = await sourceNode.getAttribute('data-node-id')
-  const targetNodeId = await targetNode.getAttribute('data-node-id')
-  expect(sourceNodeId).not.toBeNull()
-  expect(targetNodeId).not.toBeNull()
+/** 真实鼠标:从 source node 的 source-right handle 拖到 target node 的 target-left handle。 */
+async function realDragConnect(page: Page, sourceNodeId: string, targetNodeId: string): Promise<void> {
+  const sourceNode = page.locator(`[data-node-id="${sourceNodeId}"]`)
+  const targetNode = page.locator(`[data-node-id="${targetNodeId}"]`)
+  await sourceNode.scrollIntoViewIfNeeded()
+  await targetNode.scrollIntoViewIfNeeded()
+  // 清空上次拖拽的鼠标状态,并从画布空白处开始。
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(120)
+  // hover 使 source handle 进入可命中状态。
+  await sourceNode.hover()
+  await page.waitForTimeout(250)
   const sourceHandle = page.locator(
     `.vue-flow__handle[data-handleid="source-right"][data-nodeid="${sourceNodeId}"]`,
   )
@@ -144,111 +56,175 @@ test('drag connection: relation recorded, default layer hides edge, lineage unch
   )
   await expect(sourceHandle).toBeAttached()
   await expect(targetHandle).toBeAttached()
-
-  // Hover the source node so CSS :hover enables the source handle's
-  // pointer-events.
+  const sBox = await sourceHandle.boundingBox()
+  const tBox = await targetHandle.boundingBox()
+  expect(sBox).not.toBeNull()
+  expect(tBox).not.toBeNull()
+  const sx = sBox!.x + sBox!.width / 2
+  const sy = sBox!.y + sBox!.height / 2
+  const tx = tBox!.x + tBox!.width / 2
+  const ty = tBox!.y + tBox!.height / 2
+  // 重新 hover 保证 handle 可点后,再移动到 handle 中心并按下。
   await sourceNode.hover()
-  await page.waitForTimeout(300)
-  const hBox = await sourceHandle.boundingBox()
-  const tHandleBox = await targetHandle.boundingBox()
-  expect(hBox).not.toBeNull()
-  expect(tHandleBox).not.toBeNull()
+  await page.mouse.move(sx, sy)
+  await page.mouse.down()
+  await page.mouse.move(tx, ty, { steps: 24 })
+  await page.mouse.up()
+}
 
-  // The mousedown must land on the source handle. We force the mouse
-  // path through the handle so the hit-test is exact, and we also check
-  // elementFromPoint at that center.
-  // The source handle is intentionally only hit-testable while the
-  // parent node is in :hover state; under Playwright the cursor
-  // moves the moment the test presses down, so the :hover state can
-  // be lost before the press lands. We dispatch the pointerdown
-  // directly on the source handle element — this is a real
-  // PointerEvent identical to one a user mouse press produces.
-  const sx = hBox!.x + hBox!.width / 2
-  const sy = hBox!.y + hBox!.height / 2
-  const tx = tHandleBox!.x + tHandleBox!.width / 2
-  const ty = tHandleBox!.y + tHandleBox!.height / 2
+test('real mouse drag opens proposal without persisting; Confirm persists exactly the chosen relation', async ({ page }) => {
+  await createProject(page, 'E2E Connection Proposal')
+  await buildThreeNodeLineage(page)
+  await closeFloatingWorkspaceWindows(page)
+  await fitGraph(page)
+  await page.waitForTimeout(700)
 
-  // Instrument the source handle to record the real pointerdown the
-  // browser receives after we dispatch the event on it.
-  await page.evaluate((sid) => {
-    const handle = document.querySelector(
-      `.vue-flow__handle[data-handleid="source-right"][data-nodeid="${sid}"]`,
-    )
-    if (!handle) return
-    window.__md = false
-    window.__mup = false
-    handle.addEventListener('pointerdown', () => { window.__md = true }, { capture: true })
-    const tHandle = document.querySelector(
-      `.vue-flow__handle[data-handleid="target-left"]`,
-    )
-    if (tHandle) {
-      tHandle.addEventListener('pointerup', () => { window.__mup = true }, { capture: true })
-    }
-  }, sourceNodeId)
+  const projectId = page.url().split('/projects/')[1].split(/[?#]/)[0] || ''
+  const g = await graphOf(page, projectId)
+  const sourceNodeId = g.routes[0].lineageNodeIds[1]
+  const targetNodeId = g.routes[0].lineageNodeIds[2]
+  const before = await nodeCounts(page, projectId)
 
-  // Dispatch pointerdown on the source handle.
-  await page.evaluate(({ sid, x, y }) => {
-    const handle = document.querySelector(
-      `.vue-flow__handle[data-handleid="source-right"][data-nodeid="${sid}"]`,
-    )
-    if (!handle) return
-    const pd = new PointerEvent('pointerdown', {
-      bubbles: true, cancelable: true, button: 0, buttons: 1,
-      clientX: x, clientY: y, pointerType: 'mouse', pointerId: 1,
-    })
-    handle.dispatchEvent(pd)
-  }, { sid: sourceNodeId, x: sx, y: sy })
-  // Drive the real cursor through the target handle so Vue Flow's
-  // drop detector resolves the connect.
-  await page.mouse.move(sx + 20, sy, { steps: 8 })
-  await page.mouse.move(tx, ty, { steps: 30 })
-  await page.waitForTimeout(120)
-  // Dispatch pointerup on the target handle to complete the connect.
-  await page.evaluate(({ x, y }) => {
-    const tHandle = document.querySelector(
-      `.vue-flow__handle[data-handleid="target-left"]`,
-    )
-    if (!tHandle) return
-    const pu = new PointerEvent('pointerup', {
-      bubbles: true, cancelable: true, button: 0, buttons: 0,
-      clientX: x, clientY: y, pointerType: 'mouse', pointerId: 1,
-    })
-    tHandle.dispatchEvent(pu)
-  }, { x: tx, y: ty })
-  await page.mouse.move(0, 0)
+  // 1-3. 真实 drag source -> target → Proposal chooser 出现。
+  await realDragConnect(page, sourceNodeId, targetNodeId)
+  await expect(page.getByTestId('relation-proposal')).toBeVisible()
+  await expect(page.getByTestId('relation-endpoints')).toBeVisible()
 
-  // Read the diagnostic flags we recorded.
-  diag = await page.evaluate((d) => {
-    return {
-      ...(d as unknown as DragDiag),
-      mousedownOnHandle: (window as unknown as { __md?: boolean }).__md === true,
-      mouseupNearTargetHandle: (window as unknown as { __mup?: boolean }).__mup === true,
-      postDragCursor: { x: 0, y: 0 },
-    } as DragDiag
-  }, diag as unknown as DragDiag)
+  // 4. 此时 backend 零变化。
+  const during = await graphOf(page, projectId)
+  expect(during.relations.length).toBe(0)
 
-  // If the mousedown did not actually land on the source handle, we
-  // fail with a complete diagnostic so the failure is debuggable, not
-  // a silent 0-relation timeout.
-  // The dispatched pointerdown must land on the source handle. The
-  // elementFromPoint check is environment-side: the source handle sits
-  // 4px outside the node bbox and the test environment's hit-test
-  // depends on the parent node's :hover state being continuous across
-  // the press. We assert it via the explicit pointerdown listener.
-  expect.soft(diag.mousedownOnHandle, 'mousedown must reach source handle').toBe(true)
-
-  // The backend records exactly one semantic relation (RELATED_TO is the
-  // drag default). The canonical fact exists regardless of layer toggle.
+  // 5-7. 选择 SUPPORTS 并 Confirm → backend 恰好一条 SUPPORTS。
+  await page.getByTestId('relation-type-supports').click()
+  await page.getByTestId('relation-confirm').click()
+  await expect(page.getByTestId('relation-proposal')).toHaveCount(0)
   await expect.poll(async () => {
-    const graph = await (await page.request.get(`/api/v1/projects/${projectId}/graph`)).json()
-    return graph.relations.length
-  }, { timeout: 10_000 }).toBeGreaterThanOrEqual(1)
-  const graphAfter = await (await page.request.get(`/api/v1/projects/${projectId}/graph`)).json()
-  const lineageEdgesAfter = graphAfter.routes.flatMap((r: { lineageNodeIds: string[] }) =>
-    r.lineageNodeIds.slice(1).map((n: string, i: number) => `${r.lineageNodeIds[i]}->${n}`))
-  // Drag-to-connect must never rewrite the continuation lineage.
-  expect(lineageEdgesAfter).toEqual(lineageEdgesBefore)
-  // Default relation layer OFF: canvas shows no relation edges.
-  const relationEdges = await page.locator('.graph-edge--relation').count()
-  expect(relationEdges).toBe(0)
+    const g2 = await graphOf(page, projectId)
+    return g2.relations.length
+  }, { timeout: 15_000 }).toBe(1)
+  const after = await graphOf(page, projectId)
+  expect(after.relations[0].relationType).toBe('SUPPORTS')
+
+  // 8. lineage / route tip / Active 全不变。
+  const afterCounts = await nodeCounts(page, projectId)
+  expect(afterCounts.nodes).toEqual(before.nodes)
+  expect(afterCounts.tips).toEqual(before.tips)
+  expect(afterCounts.active).toEqual(before.active)
+
+  // 9. Cancel path: drag → proposal → Escape → relations 仍为 0。
+  //    用一对新节点(root → 中间),避开已连接 pair 的重复交互。
+  const g3 = await graphOf(page, projectId)
+  const cancelSource = g3.routes[0].lineageNodeIds[0]
+  const cancelTarget = g3.routes[0].lineageNodeIds[1]
+  await realDragConnect(page, cancelSource, cancelTarget)
+  await expect(page.getByTestId('relation-proposal')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('relation-proposal')).toHaveCount(0)
+  const afterCancel = await graphOf(page, projectId)
+  expect(afterCancel.relations.length).toBe(1)
+})
+
+test('confirm shows the created relation on the selected node; clearing selection hides it (layer off)', async ({ page }) => {
+  await createProject(page, 'E2E Relation Visibility')
+  await buildThreeNodeLineage(page)
+  await closeFloatingWorkspaceWindows(page)
+  await fitGraph(page)
+  await page.waitForTimeout(700)
+
+  const projectId = page.url().split('/projects/')[1].split(/[?#]/)[0] || ''
+  const g = await graphOf(page, projectId)
+  const sourceNodeId = g.routes[0].lineageNodeIds[1]
+  const targetNodeId = g.routes[0].lineageNodeIds[2]
+
+  await realDragConnect(page, sourceNodeId, targetNodeId)
+  await expect(page.getByTestId('relation-proposal')).toBeVisible()
+  await page.getByTestId('relation-type-related_to').click()
+  await page.getByTestId('relation-confirm').click()
+  await expect(page.getByTestId('relation-proposal')).toHaveCount(0)
+  await expect.poll(async () => {
+    const g2 = await graphOf(page, projectId)
+    return g2.relations.length
+  }, { timeout: 15_000 }).toBe(1)
+
+  // Confirm 后 source 保持选中 → direct relation 立即可见(全局层默认关)。
+  const vg = await graphOf(page, projectId)
+  // Vue Flow 会把 edge class 传播到 wrapper 与内部元素;用 wrapper 精确计数。
+  await expect(page.locator('.vue-flow__edge.graph-edge--relation')).toHaveCount(1)
+
+  // 取消选择 → global 层 OFF → relation 收起。
+  await page.mouse.click(10, 400)
+  await page.waitForTimeout(400)
+  await expect(page.locator('.vue-flow__edge.graph-edge--relation')).toHaveCount(0)
+
+  // Inspector 始终能看到 canonical 关系。
+  await page.getByTestId('open-inspector').click()
+  await expect(page.getByTestId('floating-window-inspector')).toBeVisible()
+  const sourceNode = page.locator(`[data-node-id="${sourceNodeId}"]`)
+  await sourceNode.click()
+  await expect(page.getByTestId('node-relations')).toBeVisible()
+  await expect(page.getByTestId('node-relations').first()).toContainText('相关')
+})
+
+test('symmetric duplicate is rejected: A RELATED_TO B then B RELATED_TO A', async ({ page }) => {
+  await createProject(page, 'E2E Symmetric Duplicate')
+  await buildThreeNodeLineage(page)
+  await closeFloatingWorkspaceWindows(page)
+  await fitGraph(page)
+  await page.waitForTimeout(700)
+
+  const projectId = page.url().split('/projects/')[1].split(/[?#]/)[0] || ''
+  const g = await graphOf(page, projectId)
+  const nodeA = g.routes[0].lineageNodeIds[1]
+  const nodeB = g.routes[0].lineageNodeIds[2]
+
+  await realDragConnect(page, nodeA, nodeB)
+  await page.getByTestId('relation-type-related_to').click()
+  await page.getByTestId('relation-confirm').click()
+  await expect(page.getByTestId('relation-proposal')).toHaveCount(0)
+  await expect.poll(async () => {
+    const g2 = await graphOf(page, projectId)
+    return g2.relations.length
+  }, { timeout: 15_000 }).toBe(1)
+
+  // 反向 drag:RELATED_TO 对称 → UI/backend reject duplicate,关系数不变。
+  await realDragConnect(page, nodeB, nodeA)
+  await expect(page.getByTestId('relation-proposal')).toBeVisible()
+  await page.getByTestId('relation-type-related_to').click()
+  await page.getByTestId('relation-confirm').click()
+  await expect(page.getByTestId('relation-proposal')).toHaveCount(0)
+  await page.waitForTimeout(600)
+  const after = await graphOf(page, projectId)
+  expect(after.relations.length).toBe(1)
+})
+
+test('directional SUPPORTS both directions are distinct facts', async ({ page }) => {
+  await createProject(page, 'E2E Directional Supports')
+  await buildThreeNodeLineage(page)
+  await closeFloatingWorkspaceWindows(page)
+  await fitGraph(page)
+  await page.waitForTimeout(700)
+
+  const projectId = page.url().split('/projects/')[1].split(/[?#]/)[0] || ''
+  const g = await graphOf(page, projectId)
+  const nodeA = g.routes[0].lineageNodeIds[1]
+  const nodeB = g.routes[0].lineageNodeIds[2]
+
+  await realDragConnect(page, nodeA, nodeB)
+  await page.getByTestId('relation-type-supports').click()
+  await page.getByTestId('relation-confirm').click()
+  await expect(page.getByTestId('relation-proposal')).toHaveCount(0)
+  await expect.poll(async () => {
+    const g2 = await graphOf(page, projectId)
+    return g2.relations.length
+  }, { timeout: 15_000 }).toBe(1)
+
+  // 反向 SUPPORTS 是不同事实,允许。
+  await realDragConnect(page, nodeB, nodeA)
+  await page.getByTestId('relation-type-supports').click()
+  await page.getByTestId('relation-confirm').click()
+  await expect(page.getByTestId('relation-proposal')).toHaveCount(0)
+  await expect.poll(async () => {
+    const g2 = await graphOf(page, projectId)
+    return g2.relations.length
+  }, { timeout: 15_000 }).toBe(2)
 })

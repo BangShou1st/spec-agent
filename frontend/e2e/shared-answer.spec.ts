@@ -1,172 +1,98 @@
 import { test, expect } from '@playwright/test'
-import { buildThreeNodeLineage, closeFloatingWorkspaceWindows, createProject, fitGraph, forkFromNode } from './helpers'
+import { answerActiveNode, buildThreeNodeLineage, closeFloatingWorkspaceWindows, createProject, draftFirstQuestion, fitGraph, forkFromNode } from './helpers'
 
 /**
- * The shared-answer presentation must obey the V2 contract:
- *  - no Focus + divergent answers: each route's answer is shown
- *    independently; the UI NEVER falls back to "Active answer", "first
- *    answer", or "last answer" to fake a primary.
- *  - Focus A: the focused route's answer is shown verbatim.
- *  - Focus B: the focused route's answer is shown verbatim.
- *  - Focus route unanswered: the card shows "waiting", not a borrowed
- *    answer from another route.
- *  - Setting/clearing Focus must not change the runtime Active pointer.
+ * 最终产品模型：一个 canonical Question Node 只有一个 immutable Answer
+ * identity。共享节点(被多条 route 引用)：
+ *  - 只渲染一个 visual card
+ *  - route chips 显示全部 memberships
+ *  - Answer 只显示一份，绝不出现 route-divergent 多答案
+ *  - Focus 切换不改变 Answer 内容
+ *  - Active 不随 Focus 变化
  */
-test('shared divergent answers render per-route; no Active/first/latest fallback', async ({ page }) => {
-  await createProject(page, 'E2E Shared Answer Presentation')
+test('shared Question renders once with route memberships and a single Answer identity', async ({ page, request }) => {
+  await createProject(page, 'E2E Shared Node Single Answer')
   await buildThreeNodeLineage(page)
+  await closeFloatingWorkspaceWindows(page)
   await fitGraph(page)
 
-  // Fork the source route from a historical node. The fork becomes the
-  // second route and shares the same canonical Questions.
+  const projectId = page.url().split('/projects/')[1].split(/[?#]/)[0] || ''
+  const graphBefore = await (await request.get(`/api/v1/projects/${projectId}/graph`)).json()
+  const routeA = graphBefore.routes[0]
+  const q2Id = routeA.lineageNodeIds[1]
+  const answerOnA = graphBefore.answers.find((a: { nodeId: string }) => a.nodeId === q2Id)
+
+  // Fork from Q2: Route B 共享 [Q1, Q2]。fork 后 Route B 成为 Active。
   await forkFromNode(page, 1, 'Route-B')
-  const cards = page.locator('[data-route-id]')
-  await expect(cards).toHaveCount(2)
-
-  // Capture the route ids.
-  const activeCard = cards.filter({ has: page.getByTestId('active-route') }).first()
-  const activeRouteId = await activeCard.getAttribute('data-route-id')
-  expect(activeRouteId).not.toBeNull()
-  const otherCard = cards.filter({ hasNot: page.getByTestId('active-route') }).first()
-  const otherRouteId = await otherCard.getAttribute('data-route-id')
-  expect(otherRouteId).not.toBeNull()
-  // Capture the active route id; we verify content directly via API and
-  // the on-card text. We do not depend on a private class name.
-  const activeRouteLabel = await activeCard.textContent()
-  const otherRouteLabel = await otherCard.textContent()
-
-  // Answer the SHARED historical node differently on each route. We do
-  // this by activating the second route and answering again with a
-  // different free text on the shared node.
-  await otherCard.getByTestId('open-routes').click().catch(() => undefined)
-  // Activate otherRoute so the new answer lands on the OTHER route.
-  await otherCard.getByTestId('focus-route').click().catch(() => undefined)
-  // Locate Route-B's card by its data-route-id and click activate.
-  const otherCardById = page.locator(`[data-route-id="${otherRouteId}"]`)
-  await otherCardById.getByTestId('open-routes').click().catch(() => undefined)
-  // The card exposes an Activate action directly.
-  await otherCardById.locator('button', { hasText: '激活' }).first().click().catch(() => undefined)
-  // Fall back to the standard API activation if the button isn't visible.
-  await page.evaluate(async (rid) => {
-    const projectId = location.pathname.split('/projects/')[1].split(/[?#]/)[0]
-    await fetch(`/api/v1/projects/${projectId}/routes/${rid}/activate`, { method: 'POST' })
-  }, otherRouteId)
-  await page.waitForTimeout(800)
-  // Confirm the new active route is the OTHER one.
-  const apiActive = await (await page.request.get(`/api/v1/projects/${page.url().split('/projects/')[1].split(/[?#]/)[0]}/active`)).json()
-  expect(apiActive.activeRoute.id).toBe(otherRouteId)
-
-  // Now answer the shared node differently on the other route. We use the
-  // node card to do this; the freeText path is the route's local Answer.
-  // First, find the shared historical node currently answerable on the
-  // active route (Route-B). buildThreeNodeLineage left the tip of Route-A
-  // (Q3) historical; the fork's tip is the shared node, so Route-B is
-  // rooted at Q2 and has Q2 as the new tip-pending. We type a different
-  // freeText into Route-B's Q2.
-  await page.locator('[data-test="free-text"]').fill('B different answer')
-  await page.getByTestId('submit-answer').click()
-  await expect(page.getByText('回答已记录。')).toBeVisible()
-  await page.waitForTimeout(600)
-
-  // Switch back to Route-A so we observe shared divergent answers from
-  // the original side.
-  await otherCardById.getByTestId('open-routes').click().catch(() => undefined)
-  await page.evaluate(async (rid) => {
-    const projectId = location.pathname.split('/projects/')[1].split(/[?#]/)[0]
-    await fetch(`/api/v1/projects/${projectId}/routes/${rid}/activate`, { method: 'POST' })
-  }, activeRouteId)
-  await page.waitForTimeout(800)
-
-  // Clear any Focus.
-  const currentActiveCard = page.locator(`[data-route-id="${activeRouteId}"]`)
-  await currentActiveCard.getByTestId('open-routes').click().catch(() => undefined)
-  // If the active card has a "Unfocus" button (because we left a Focus
-  // earlier), click it to clear Focus.
-  const unfocusBtn = currentActiveCard.locator('button', { hasText: '取消聚焦' }).first()
-  if (await unfocusBtn.isVisible().catch(() => false)) {
-    await unfocusBtn.click()
-  }
   await closeFloatingWorkspaceWindows(page)
   await fitGraph(page)
 
-  // The shared node must show both answers distinctly (routeStates, NOT a
-  // single primary borrowed from Active). We assert the DOM contains
-  // both route labels and both free-text values, in any order, AND that
-  // no single "primary" copy is fabricated.
-  const graph = page.locator('[data-test="graph-question-node"]')
-  await expect(graph).toHaveCount(3)
-  const sharedNode = graph.filter({ has: page.getByTestId('reading-route-select') }).first()
-  await expect(sharedNode).toBeVisible()
-  // Both route labels must be present on the shared node.
-  await expect(sharedNode).toContainText(activeRouteLabel || '主路线')
-  await expect(sharedNode).toContainText(otherRouteLabel || '分支路线')
-  // Neither answer is the only "primary" copy: the original
-  // "First answer content" + "B different answer" are both listed as
-  // routeStates, not collapsed into one.
-  await expect(sharedNode).toContainText('First answer content')
-  await expect(sharedNode).toContainText('B different answer')
+  const graphAfterFork = await (await request.get(`/api/v1/projects/${projectId}/graph`)).json()
+  const q2Answers = graphAfterFork.answers.filter((a: { nodeId: string }) => a.nodeId === q2Id)
+  // 共享节点只有一份 Answer identity(owner + inherited 同 ID),内容一致。
+  expect(q2Answers.length).toBeGreaterThanOrEqual(1)
+  const distinctIds = new Set(q2Answers.map((a: { id: string }) => a.id))
+  expect(distinctIds.size).toBe(1)
+  expect(q2Answers[0].freeText).toBe(answerOnA.freeText)
 
-  // Setting Focus to a route must NOT change Active. We pick the OTHER
-  // route's focus and verify Active is still the same as before.
-  const beforeActiveId = apiActive.activeRoute.id === activeRouteId ? activeRouteId : otherRouteId
-  const otherRouteCard = page.locator(`[data-route-id="${otherRouteId}"]`)
-  await otherRouteCard.getByTestId('open-routes').click().catch(() => undefined)
-  await otherRouteCard.getByTestId('focus-route').click().catch(() => undefined)
-  await page.waitForTimeout(300)
-  const activeAfterFocus = await (await page.request.get(`/api/v1/projects/${page.url().split('/projects/')[1].split(/[?#]/)[0]}/active`)).json()
-  expect(activeAfterFocus.activeRoute.id).toBe(beforeActiveId)
-  // Close the route window again.
-  await closeFloatingWorkspaceWindows(page)
-  await fitGraph(page)
+  // 共享节点只渲染一个 visual card,并显示两条 route memberships。
+  const q2Cards = page.locator(`[data-node-id="${q2Id}"]`)
+  await expect(q2Cards).toHaveCount(1)
+  const chip = q2Cards.getByTestId('route-membership')
+  await expect(chip).toBeVisible()
+  await expect(q2Cards.locator('.graph-route-chip')).toHaveCount(2)
 
-  // Focus on otherRoute: the shared node's primary copy must now read
-  // "B different answer", not the other route's "First answer content".
-  const sharedAfterFocus = graph.filter({ has: page.getByTestId('reading-route-select') }).first()
-  const focusReadingValue = await sharedAfterFocus.getByTestId('reading-route-select').inputValue()
-  expect(focusReadingValue).toBe(otherRouteId)
-  // The primary preview shows the focused route's answer.
-  await expect(sharedAfterFocus).toContainText('B different answer')
-  // And it must NOT silently show the OTHER route's answer.
-  await expect(sharedAfterFocus).not.toContainText('First answer content')
+  // 卡片上只显示一份 Answer 内容。
+  await expect(q2Cards).toContainText(answerOnA.freeText as string)
 })
 
-/**
- * When the focused route has NOT answered the shared Question, the card
- * shows "waiting" — it does NOT borrow an answer from Active or any
- * other route. This is the core V2 invariant: shared + no Focus on the
- * answered route is honest divergence, never a hallucinated primary.
- */
-test('Focus on unanswered route shows waiting, never a borrowed answer', async ({ page }) => {
-  await createProject(page, 'E2E Shared Answer Focus Waiting')
-  await buildThreeNodeLineage(page)
-  await fitGraph(page)
-
-  // Fork from a historical node. The fork's lineage is rooted at the
-  // shared node; the new tip on the fork is the shared node itself.
-  await forkFromNode(page, 1, 'Route-B')
-  const cards = page.locator('[data-route-id]')
-  await expect(cards).toHaveCount(2)
-
-  const otherCard = cards.filter({ hasNot: page.getByTestId('active-route') }).first()
-  const otherRouteId = await otherCard.getAttribute('data-route-id')
-  expect(otherRouteId).not.toBeNull()
-
-  // Open route navigation and click Focus on the OTHER route.
-  await otherCard.getByTestId('open-routes').click().catch(() => undefined)
-  await otherCard.getByTestId('focus-route').click().catch(() => undefined)
+test('Focus switching does not change the Answer content and Active never follows Focus', async ({ page, request }) => {
+  await createProject(page, 'E2E Shared Focus Stability')
+  await draftFirstQuestion(page)
+  await answerActiveNode(page, 'root answer')
+  await answerActiveNode(page, 'second answer')
   await closeFloatingWorkspaceWindows(page)
   await fitGraph(page)
 
-  // The shared node's reading selector reflects the new Focus.
-  const sharedNode = page.locator('[data-test="graph-question-node"]')
-    .filter({ has: page.getByTestId('reading-route-select') })
-    .first()
-  await expect(sharedNode).toBeVisible()
-  const reading = await sharedNode.getByTestId('reading-route-select').inputValue()
-  expect(reading).toBe(otherRouteId)
-  // Focused route has not answered the shared node; the card must show
-  // "等待回答" / "waiting", not the other route's "First answer content".
-  const cardText = await sharedNode.textContent()
-  expect(cardText).toMatch(/等待|waiting|未回答/)
-  expect(cardText).not.toContain('First answer content')
+  const projectId = page.url().split('/projects/')[1].split(/[?#]/)[0] || ''
+  const graphBefore = await (await request.get(`/api/v1/projects/${projectId}/graph`)).json()
+  const routeA = graphBefore.routes[0]
+  // Fork 从 Q1:共享节点是 Q1(Route A 与 Route B 都引用它)。
+  const sharedNodeId = routeA.lineageNodeIds[0]
+  const answerText = graphBefore.answers.find((a: { nodeId: string }) => a.nodeId === sharedNodeId).freeText
+
+  // Fork 使 Route B active。
+  const forkRes = await request.post(
+    `/api/v1/projects/${projectId}/nodes/${sharedNodeId}/fork`,
+    { data: { sourceRouteId: routeA.id, label: 'Route-B' } },
+  )
+  expect(forkRes.status()).toBe(200)
+  const forkBody = await forkRes.json()
+  const routeBId = forkBody.route.id
+  const activeBeforeFocus = forkBody.activeRouteId
+  expect(activeBeforeFocus).toBe(routeBId)
+
+  await page.reload()
+  await page.waitForSelector(`[data-node-id="${sharedNodeId}"]`)
+  await closeFloatingWorkspaceWindows(page)
+  await fitGraph(page)
+
+  const sharedCard = page.locator(`[data-node-id="${sharedNodeId}"]`)
+  // 卡片始终只显示这一份 Answer。
+  await expect(sharedCard).toContainText(answerText)
+
+  // 通过 reading-route select 切换 Focus 到 Route A。
+  const select = sharedCard.getByTestId('reading-route-select')
+  await select.selectOption(routeA.id)
+  await page.waitForTimeout(300)
+  await expect(sharedCard).toContainText(answerText)
+  const activeAfterFocusA = (await (await request.get(`/api/v1/projects/${projectId}/graph`)).json()).activeRouteId
+  expect(activeAfterFocusA).toBe(routeBId) // Active 不随 Focus 变化
+
+  // 切回 Route B,Answer 内容仍然不变。
+  await select.selectOption(routeBId)
+  await page.waitForTimeout(300)
+  await expect(sharedCard).toContainText(answerText)
+  const activeAfterFocusB = (await (await request.get(`/api/v1/projects/${projectId}/graph`)).json()).activeRouteId
+  expect(activeAfterFocusB).toBe(routeBId)
 })
