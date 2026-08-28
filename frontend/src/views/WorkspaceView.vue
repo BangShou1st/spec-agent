@@ -185,9 +185,24 @@ function reflowFloatingWindows(): void {
 
 function scheduleFloatingLayout(): void {
   if (typeof window === 'undefined' || floatingLayoutFrame !== null) return
+  // Use a double requestAnimationFrame so the layout pass observes the
+  // post-transform graph geometry. Vue Flow's setViewport Promise resolves
+  // on the d3 transition `end` event, which fires when the transform style
+  // is written, but the affected article / floating-window bounding boxes
+  // are not necessarily flushed in the same microtask. Reading them on the
+  // very next frame would still return mid-animation values, and the
+  // auto-layout algorithm would then choose a position that overlaps the
+  // final node rect once the browser commits the layout. Two consecutive
+  // RAFs guarantee the layout has been recalculated against the settled
+  // transform before we read any geometry. ``floatingLayoutFrame`` is held
+  // non-null across both RAF waits so the early-return on re-entry still
+  // coalesces repeat calls, and ``onBeforeUnmount`` can still cancel the
+  // pending wait by cancelling the second (still-stored) id.
   floatingLayoutFrame = window.requestAnimationFrame(() => {
-    floatingLayoutFrame = null
-    reflowFloatingWindows()
+    floatingLayoutFrame = window.requestAnimationFrame(() => {
+      floatingLayoutFrame = null
+      reflowFloatingWindows()
+    })
   })
 }
 
