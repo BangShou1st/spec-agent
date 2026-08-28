@@ -9,7 +9,7 @@ snake_case.
 from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from . import protocol
 
@@ -97,7 +97,10 @@ class LineageEntry(StrictModel):
 
 
 class RouteContextView(StrictModel):
-    route_id: UUID
+    # ``route_id`` is null only for a routeless Floating Node NODE_QUERY
+    # (Stage C). Route-bound flows (STATE_UPDATE, normal DECISION, ANSWER,
+    # SPEC, REGENERATE) continue to carry a UUID here.
+    route_id: Optional[UUID] = None
     tip_node_id: Optional[UUID] = None
     label: Optional[str] = None
 
@@ -137,7 +140,10 @@ class AgentInputSnapshot(StrictModel):
     snapshot_id: UUID
     context_hash: str
     project_id: UUID
-    route_id: UUID
+    # ``route_id`` is null only for a routeless Floating Node NODE_QUERY
+    # (Stage C). Required (UUID) for every other flow. The mirror field on
+    # ``RouteContextView.route_id`` must agree.
+    route_id: Optional[UUID] = None
     anchor_node_id: Optional[UUID] = None
     route_context: RouteContextView
     lineage: List[LineageEntry] = Field(default_factory=list)
@@ -174,6 +180,54 @@ class AgentV2RequestEnvelope(StrictModel):
     snapshot: AgentInputSnapshot
     capabilities: List[CapabilityDescriptor] = Field(default_factory=list)
     decision_budget: DecisionBudget
+
+    @model_validator(mode="after")
+    def _route_id_contract(self) -> "AgentV2RequestEnvelope":
+        """Authoritative cross-field rule for routeless NODE_QUERY.
+
+        The ``route_id`` field is intentionally Optional on the model layer so
+        the strict wire shape can carry a Floating-node NODE_QUERY. This
+        validator is the only place where that nullability is admitted, and
+        it is deliberately narrow:
+
+        - A non-``NODE_QUERY`` event MUST carry a route UUID in BOTH
+          ``snapshot.routeId`` and ``snapshot.routeContext.routeId``.
+        - A ``NODE_QUERY`` event admits exactly two valid modes:
+            (a) route-bound: both fields are non-null UUIDs and equal;
+            (b) routeless:   both fields are null.
+        - Mixed state (one null, one UUID) or unequal UUIDs is rejected.
+        """
+        snapshot = self.snapshot
+        snapshot_route = snapshot.route_id
+        context_route = snapshot.route_context.route_id
+        event_kind = self.event.kind
+
+        if event_kind != "NODE_QUERY":
+            if snapshot_route is None:
+                raise ValueError(
+                    f"{event_kind} requires snapshot.routeId; only NODE_QUERY "
+                    "may carry a routeless (null) route id")
+            if context_route is None:
+                raise ValueError(
+                    f"{event_kind} requires snapshot.routeContext.routeId; "
+                    "only NODE_QUERY may carry a routeless (null) route id")
+            if snapshot_route != context_route:
+                raise ValueError(
+                    f"{event_kind} requires snapshot.routeId and "
+                    "snapshot.routeContext.routeId to be equal")
+            return self
+
+        # NODE_QUERY: null/null or UUID/UUID-and-equal.
+        if (snapshot_route is None) != (context_route is None):
+            raise ValueError(
+                "NODE_QUERY must be either fully route-bound "
+                "(both route ids are equal UUIDs) or fully routeless "
+                "(both route ids are null); mixed state is rejected")
+        if snapshot_route is not None and snapshot_route != context_route:
+            raise ValueError(
+                "NODE_QUERY route-bound mode requires snapshot.routeId and "
+                "snapshot.routeContext.routeId to be equal")
+        return self
 
 
 def parse_request_envelope(payload: Dict[str, Any]) -> AgentV2RequestEnvelope:

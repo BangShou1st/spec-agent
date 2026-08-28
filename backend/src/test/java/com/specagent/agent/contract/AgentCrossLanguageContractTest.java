@@ -10,6 +10,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -93,5 +94,27 @@ class AgentV2ContractTest {
                         AgentResponseEnvelope.class);
         assertThat(response.stateUpdate().claims()).hasSize(1);
         assertThat(response.actionProposal()).isNull();
+    }
+
+    @Test
+    void routelessNodeQueryFixtureParsesWithNullRouteIds() throws Exception {
+        // Stage C NODE_QUERY routeless nullability: a Floating-node NODE_QUERY
+        // is the only semantic flow that may carry null route ids. The
+        // contract is the single cross-language authority: the same fixture
+        // is parsed by both the Java strict mapper and the Python Pydantic
+        // envelope.
+        AgentRequestEnvelope envelope = AgentContracts.read(
+                fixture("agent-input-routeless-node-query-valid.json"),
+                AgentRequestEnvelope.class);
+        assertThat(envelope.snapshot().routeId()).isNull();
+        assertThat(envelope.snapshot().routeContext().routeId()).isNull();
+        assertThat(envelope.event().kind()).isEqualTo("NODE_QUERY");
+        assertThat(envelope.snapshot().anchorNodeId())
+                .isEqualTo(UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"));
+        // The route-bound baseline must keep its route ids.
+        AgentRequestEnvelope baseline = AgentContracts.read(
+                fixture("agent-input-valid.json"), AgentRequestEnvelope.class);
+        assertThat(baseline.snapshot().routeId()).isNotNull();
+        assertThat(baseline.snapshot().routeContext().routeId()).isNotNull();
     }
 }

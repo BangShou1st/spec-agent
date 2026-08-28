@@ -4,6 +4,7 @@ The fixtures under ``contracts/fixtures`` are the single cross-language
 authority: valid ones must parse, ``invalid`` ones must be rejected.
 """
 
+import copy
 import json
 from pathlib import Path
 
@@ -30,6 +31,25 @@ def test_valid_request_fixture_parses():
     assert str(envelope.run_id) == "22222222-2222-2222-2222-222222222222"
     assert envelope.snapshot.metadata.project_title == "内部工单系统探索"
     assert len(envelope.snapshot.lineage) == 2
+
+
+def test_routeless_node_query_fixture_parses_with_null_route_ids():
+    # A NODE_QUERY against a Floating (routeless) Graph node is the one
+    # semantic flow allowed to carry null route ids; see Stage C NODE_QUERY
+    # routeless nullability in contracts/README.md.
+    envelope = parse_request_envelope(
+        _load("agent-input-routeless-node-query-valid.json"))
+    assert envelope.event.kind == "NODE_QUERY"
+    assert envelope.snapshot.route_id is None
+    assert envelope.snapshot.route_context.route_id is None
+    # The route-bound mirror must still be required for normal flows: the
+    # baseline fixture's route ids stay present and parseable.
+    baseline = parse_request_envelope(_load("agent-input-valid.json"))
+    assert baseline.snapshot.route_id is not None
+    assert baseline.snapshot.route_context.route_id is not None
+    # Routeless shape must never invent a ``route:`` source ref.
+    for ref in envelope.snapshot.allowed_source_refs:
+        assert not ref.startswith("route:")
 
 
 def test_request_with_unknown_field_is_rejected():
@@ -96,3 +116,85 @@ def test_fake_model_constants_match_golden_fixtures():
     assert json.loads(DECISION_OUTPUT) == _load("fake-model-decision-output.json")
     assert json.loads(ARTIFACT_GENERATION_OUTPUT) == _load(
         "fake-model-artifact-output.json")
+
+
+# ---------------------------------------------------------------------------
+# Routeless NODE_QUERY contract: only NODE_QUERY may use null route ids, and
+# snapshot.routeId / snapshot.routeContext.routeId must always agree. These
+# tests are derived programmatically from the existing valid fixtures; the
+# golden fixtures themselves stay untouched.
+# ---------------------------------------------------------------------------
+
+_ANSWER_BOUND = _load("agent-input-valid.json")
+_ROUTELESS = _load("agent-input-routeless-node-query-valid.json")
+
+
+def _swap_event_kind(payload: dict, kind: str) -> None:
+    payload["event"] = dict(payload["event"])
+    payload["event"]["kind"] = kind
+
+
+def _set_route_ids(payload: dict, snapshot_route, context_route) -> None:
+    payload["snapshot"] = copy.deepcopy(payload["snapshot"])
+    payload["snapshot"]["routeId"] = snapshot_route
+    payload["snapshot"]["routeContext"] = dict(payload["snapshot"]["routeContext"])
+    payload["snapshot"]["routeContext"]["routeId"] = context_route
+
+
+def test_answer_submitted_with_null_route_id_is_rejected():
+    payload = copy.deepcopy(_ANSWER_BOUND)
+    _set_route_ids(payload, None, None)
+    with pytest.raises(ValidationError):
+        parse_request_envelope(payload)
+
+
+def test_continue_with_null_route_id_is_rejected():
+    payload = copy.deepcopy(_ANSWER_BOUND)
+    _swap_event_kind(payload, "CONTINUE")
+    _set_route_ids(payload, None, None)
+    with pytest.raises(ValidationError):
+        parse_request_envelope(payload)
+
+
+def test_initial_with_null_route_id_is_rejected():
+    payload = copy.deepcopy(_ANSWER_BOUND)
+    _swap_event_kind(payload, "INITIAL")
+    _set_route_ids(payload, None, None)
+    with pytest.raises(ValidationError):
+        parse_request_envelope(payload)
+
+
+def test_node_query_with_only_snapshot_route_id_null_is_rejected():
+    # Mixed state: snapshot null, routeContext has a UUID.
+    payload = copy.deepcopy(_ROUTELESS)
+    _set_route_ids(
+        payload,
+        None,
+        "99999999-9999-9999-9999-999999999999",
+    )
+    with pytest.raises(ValidationError):
+        parse_request_envelope(payload)
+
+
+def test_node_query_with_only_route_context_route_id_null_is_rejected():
+    # Mixed state: snapshot has a UUID, routeContext null.
+    payload = copy.deepcopy(_ROUTELESS)
+    _set_route_ids(
+        payload,
+        "99999999-9999-9999-9999-999999999999",
+        None,
+    )
+    with pytest.raises(ValidationError):
+        parse_request_envelope(payload)
+
+
+def test_route_bound_node_query_with_mismatched_route_ids_is_rejected():
+    # NODE_QUERY with two non-null but unequal route ids must be rejected.
+    payload = copy.deepcopy(_ROUTELESS)
+    _set_route_ids(
+        payload,
+        "99999999-9999-9999-9999-999999999999",
+        "88888888-8888-8888-8888-888888888888",
+    )
+    with pytest.raises(ValidationError):
+        parse_request_envelope(payload)

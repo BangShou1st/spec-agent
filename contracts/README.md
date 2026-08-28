@@ -77,6 +77,28 @@ Rules:
   carries the stable outer classification. `NODE_QUERY` events carry the user's
   contextual question in `freeText`; the expected primary action is
   `RESPOND_TO_USER` and the runtime refuses graph mutations from a query.
+- Stage C NODE_QUERY routeless nullability: a `NODE_QUERY` against a
+  Floating (routeless) Graph node is the **only** semantic flow that may
+  carry `snapshot.routeId = null` and `snapshot.routeContext.routeId = null`.
+  The invariant is exact and applies at the envelope level on both sides of
+  the wire (Java strict mapper + Python `_route_id_contract` validator):
+
+  - Route IDs are **required and equal** for all route-bound snapshots
+    (`STATE_UPDATE`, normal `DECISION`, `ANSWER`, `SPEC`, `REGENERATE`).
+  - **Only** `NODE_QUERY` may use the routeless mode.
+  - Routeless mode requires **both** `snapshot.routeId` and
+    `snapshot.routeContext.routeId` to be null simultaneously; mixed state
+    (one null, one UUID) is rejected.
+  - A `NODE_QUERY` that carries route UUIDs must keep the two fields equal;
+    mismatched route-bound NODE_QUERY is rejected.
+  - The anchor node itself is still a real Graph node, the snapshot still
+    carries `projectId` / `snapshotId` / `contextHash`, and
+    `allowedSourceRefs` must not invent a `route:` reference to substitute
+    for the missing route identity.
+  - See `fixtures/agent-input-routeless-node-query-valid.json` for the only
+    valid routeless shape; the negative cases are exercised by
+    `agent-brain/tests/test_contracts.py` and
+    `backend/.../AgentCrossLanguageContractTest.java`.
 - Stage D: `availableCapabilities` are runtime-owned descriptors filtered by
   permission and context relevance (`supports` declarations against lineage
   node kinds) — the planner never sees implementation classes, and irrelevant
