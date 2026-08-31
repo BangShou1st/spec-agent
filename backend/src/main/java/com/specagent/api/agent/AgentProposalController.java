@@ -59,18 +59,22 @@ public class AgentProposalController {
     public ResponseEntity<Map<String, Object>> rejectProposal(
             @PathVariable UUID proposalId) {
         proposalService.rejectProposal(proposalId, "user");
-        return ResponseEntity.ok(Map.of(
-                "proposalId", proposalId.toString(),
-                "status", "REJECTED"));
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("proposalId", proposalId.toString());
+        body.put("status", "REJECTED");
+        return ResponseEntity.ok(body);
     }
 
     private Map<String, Object> toSummary(AgentProposal proposal) {
-        return Map.of(
-                "proposalId", proposal.id().toString(),
-                "actionFamily", proposal.actionFamily(),
-                "status", proposal.status().code(),
-                "createdAt", proposal.createdAt().toString(),
-                "decidedAt", proposal.decidedAt() != null ? proposal.decidedAt().toString() : null,
-                "decidedBy", proposal.decidedBy() != null ? proposal.decidedBy() : null);
+        // LinkedHashMap (not Map.of) so null decidedAt/decidedBy for PROPOSED
+        // proposals do not throw NullPointerException.
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("proposalId", proposal.id().toString());
+        summary.put("actionFamily", proposal.actionFamily());
+        summary.put("status", proposal.status().code());
+        summary.put("createdAt", proposal.createdAt().toString());
+        summary.put("decidedAt", proposal.decidedAt() != null ? proposal.decidedAt().toString() : null);
+        summary.put("decidedBy", proposal.decidedBy() != null ? proposal.decidedBy() : null);
+        return summary;
     }
 }

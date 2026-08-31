@@ -53,14 +53,6 @@ function membershipLabel(data: SpecAgentGraphNodeData, routeId: string): string 
     || '路线'
 }
 
-function orderedStates(data: SpecAgentGraphNodeData) {
-  return [...data.routeStates].sort((left, right) => {
-    if (left.routeId === data.readingRouteId) return -1
-    if (right.routeId === data.readingRouteId) return 1
-    return 0
-  })
-}
-
 // ---- Contextual AI query -------------------------------------------------
 
 const askInput = ref('')
@@ -76,9 +68,20 @@ const askRouteId = computed(() => {
   if (props.data.readingRouteId) return props.data.readingRouteId
   return props.data.routeIds.length === 1 ? props.data.routeIds[0] : null
 })
+/**
+ * A shared route node (more than one route membership) MUST supply an explicit
+ * read route as the AI query context: we must not silently fall back to
+ * routeId=null. A floating node (routeIds=[]) is allowed to query with
+ * routeId=null — the node itself is the only context.
+ */
+const askNeedsExplicitRoute = computed(() => {
+  if (!props.data) return false
+  return props.data.routeIds.length > 1 && !props.data.readingRouteId
+})
 const askBlockedReason = computed(() => {
   if (!props.data) return null
   if (isVirtualPendingNode.value) return '运行中的临时卡片不能作为 AI 查询锚点'
+  if (askNeedsExplicitRoute.value) return '共享节点请先选择一条查看路线，再询问 AI'
   if (props.data.node.kind !== 'INTERACTION' && !contentText.value) return '先写下内容再询问 AI'
   return null
 })
@@ -89,6 +92,9 @@ const queryResult = computed(() => {
   return workspace.nodeQuery.nodeId === canonicalNodeId ? workspace.nodeQuery : null
 })
 
+const acceptingProposal = ref(false)
+const rejectingProposal = ref(false)
+
 watch(
   () => props.data?.node.id,
   () => {
@@ -98,9 +104,32 @@ watch(
 
 async function ask(): Promise<void> {
   if (!props.data || !askInput.value.trim()) return
+  if (askBlockedReason.value) return
   if (isVirtualPendingNode.value) return
   const canonicalNodeId = props.data.canonicalNodeId ?? props.data.node.id
   await workspace.askNodeAI(canonicalNodeId, askRouteId.value, askInput.value)
+}
+
+async function acceptProposal(): Promise<void> {
+  const proposalId = queryResult.value?.proposalId
+  if (!proposalId || acceptingProposal.value) return
+  acceptingProposal.value = true
+  try {
+    await workspace.acceptNodeQueryProposal(proposalId)
+  } finally {
+    acceptingProposal.value = false
+  }
+}
+
+async function rejectProposal(): Promise<void> {
+  const proposalId = queryResult.value?.proposalId
+  if (!proposalId || rejectingProposal.value) return
+  rejectingProposal.value = true
+  try {
+    await workspace.rejectNodeQueryProposal(proposalId)
+  } finally {
+    rejectingProposal.value = false
+  }
 }
 
 // ---- Semantic relations (view-only) ---------------------------------------
@@ -174,7 +203,7 @@ function relationDirectionLabel(relation: {
         <button
           class="btn btn-small btn-primary"
           data-test="ask-submit"
-          :disabled="askBlockedReason !== null || !askInput.trim() || queryResult?.status === 'RUNNING'"
+          :disabled="askBlockedReason !== null || askNeedsExplicitRoute || !askInput.trim() || (queryResult?.status === 'RUNNING' || queryResult?.status === 'AWAITING_APPROVAL')"
           @click="ask"
         >
           {{ queryResult?.status === 'RUNNING' ? '正在查询…' : '提问' }}
@@ -184,11 +213,40 @@ function relationDirectionLabel(relation: {
           <template v-if="queryResult.status === 'RUNNING'">
             <span class="badge badge-open">AI 正在基于该节点上下文回答…</span>
           </template>
+          <template v-else-if="queryResult.status === 'AWAITING_APPROVAL'">
+            <p class="graph-answer-text">{{ queryResult.message || 'AI 提出了一个候选动作，等待你确认。' }}</p>
+            <p class="meta-text">
+              候选动作：<strong>{{ queryResult.actionFamily || '未知' }}</strong>
+            </p>
+            <div class="node-inspector__proposal-actions">
+              <button
+                class="btn btn-small btn-primary"
+                data-test="accept-proposal"
+                :disabled="acceptingProposal || !queryResult.proposalId"
+                @click="acceptProposal"
+              >接受</button>
+              <button
+                class="btn btn-small"
+                data-test="reject-proposal"
+                :disabled="rejectingProposal || !queryResult.proposalId"
+                @click="rejectProposal"
+              >拒绝</button>
+            </div>
+          </template>
+          <template v-else-if="queryResult.status === 'ACCEPTED'">
+            <span class="badge badge-open">提案已接受，Graph 已更新。</span>
+          </template>
+          <template v-else-if="queryResult.status === 'REJECTED'">
+            <span class="badge badge-warn">提案已拒绝，Graph 保持不变。</span>
+          </template>
           <template v-else-if="queryResult.status === 'COMPLETED' && queryResult.message">
             <p class="graph-answer-text">{{ queryResult.message }}</p>
           </template>
           <template v-else-if="queryResult.status === 'COMPLETED'">
             <span class="badge badge-warn">AI 未返回文字回答（可查看待确认提案）。</span>
+          </template>
+          <template v-else-if="queryResult.status === 'POLICY_DENIED' || queryResult.status === 'NOT_CONFIRMABLE'">
+            <span class="badge badge-warn">{{ queryResult.message || 'AI 查询无法生成可确认提案。' }}</span>
           </template>
           <template v-else>
             <span class="badge badge-warn">查询失败，请稍后重试。</span>
@@ -224,24 +282,12 @@ function relationDirectionLabel(relation: {
       </div>
 
       <template v-if="data.node.kind === 'INTERACTION'">
-        <h4 class="node-inspector__heading">各路线回答</h4>
-        <div v-if="data.routeStates.length > 0" class="node-inspector__answers">
-          <div
-            v-for="state in orderedStates(data)"
-            :key="state.routeId"
-            class="graph-route-answer"
-            :class="{ 'graph-route-answer--primary': state.answer?.isPrimary }"
-            :data-test="`route-answer-${state.routeId}`"
-          >
-            <span class="meta-text">{{ state.routeLabel || membershipLabel(data, state.routeId) }}</span>
-            <template v-if="state.answer">
-              <span v-if="state.answer.selectedOptionLabel" class="badge badge-open">{{ state.answer.selectedOptionLabel }}</span>
-              <p v-if="state.answer.freeText" class="graph-answer-text">{{ state.answer.freeText }}</p>
-            </template>
-            <span v-else class="badge badge-warn" data-test="route-waiting">等待回答</span>
-          </div>
+        <h4 class="node-inspector__heading">回答</h4>
+        <div v-if="data.primaryAnswer" class="node-inspector__answer" data-test="canonical-answer">
+          <span v-if="data.primaryAnswer.selectedOptionLabel" class="badge badge-open">{{ data.primaryAnswer.selectedOptionLabel }}</span>
+          <p v-if="data.primaryAnswer.freeText" class="graph-answer-text">{{ data.primaryAnswer.freeText }}</p>
         </div>
-        <p v-else class="muted" data-test="node-detail-no-answers">该节点所属路线都还没有回答。</p>
+        <p v-else class="muted" data-test="node-detail-no-answer">该节点还没有回答。</p>
       </template>
 
       <h4 class="node-inspector__heading">语义关系</h4>
@@ -310,6 +356,12 @@ function relationDirectionLabel(relation: {
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   background: var(--color-bg-inset, rgba(127, 127, 127, 0.06));
+}
+
+.node-inspector__proposal-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
 }
 
 .node-inspector__options {

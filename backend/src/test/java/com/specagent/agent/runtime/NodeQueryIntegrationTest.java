@@ -4,7 +4,17 @@ import com.specagent.agent.AgentRun;
 import com.specagent.agent.AgentRunService;
 import com.specagent.agent.AgentRunStatus;
 import com.specagent.agent.runevent.AgentRunEventService;
+import com.specagent.agent.contract.AgentInputSnapshot;
+import com.specagent.agent.contract.RelationView;
+import com.specagent.agent.snapshot.AgentInputSnapshotBuilder;
+import com.specagent.common.Ids;
+import com.specagent.context.ContextBuilder;
+import com.specagent.context.ContextRelation;
+import com.specagent.context.ContextSnapshot;
 import com.specagent.graph.GraphCommandService;
+import com.specagent.graph.NodeRelation;
+import com.specagent.graph.NodeRelationRepository;
+import com.specagent.graph.NodeRelationType;
 import com.specagent.node.Node;
 import com.specagent.project.Project;
 import com.specagent.project.ProjectService;
@@ -16,6 +26,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 
@@ -37,6 +48,9 @@ class NodeQueryIntegrationTest {
     @Autowired private AgentRunService agentRunService;
     @Autowired private AgentRunEventService eventService;
     @Autowired private RouteRepository routeRepository;
+    @Autowired private NodeRelationRepository nodeRelationRepository;
+    @Autowired private ContextBuilder contextBuilder;
+    @Autowired private AgentInputSnapshotBuilder snapshotBuilder;
 
     private Project project;
     private Node knowledgeNode;
@@ -82,5 +96,42 @@ class NodeQueryIntegrationTest {
         // No graph mutation happened: the node's content is untouched and no
         // new nodes/routes were created.
         assertThat(commandService.listOperations(project.id())).hasSize(1); // the draft creation only
+    }
+
+    /**
+     * Blocker 7 — a node query captures the anchor's 1-hop ACTIVE semantic
+     * relations (direction preserved) but never recurses into the neighbours of
+     * the related nodes, and never adds the related nodes to the lineage.
+     */
+    @Test
+    void nodeQueryProjectsBoundedOneHopSemanticContext() {
+        UUID routeId = routeRepository.findById(project.activeRouteId()).orElseThrow().id();
+        Node a = knowledgeNode; // already on the active route's lineage
+        Node b = commandService.createFloatingDraftNode(project.id(), null, "NOTE",
+                Map.of("text", "依赖项 B"));
+        Node c = commandService.createFloatingDraftNode(project.id(), null, "NOTE",
+                Map.of("text", "B 的下游 C"));
+
+        // A DEPENDS_ON B (anchor is source); B DEPENDS_ON C must NOT be pulled in.
+        nodeRelationRepository.save(new NodeRelation(Ids.random(), project.id(), a.id(), b.id(),
+                NodeRelationType.DEPENDS_ON, NodeRelation.Origin.USER, NodeRelation.Status.ACTIVE,
+                null, null, Instant.now(), null));
+        nodeRelationRepository.save(new NodeRelation(Ids.random(), project.id(), b.id(), c.id(),
+                NodeRelationType.DEPENDS_ON, NodeRelation.Origin.USER, NodeRelation.Status.ACTIVE,
+                null, null, Instant.now(), null));
+
+        ContextSnapshot snapshot = contextBuilder.buildForNodeQuery(
+                project.id(), routeId, a.id(), "这个需求依赖哪些部分？");
+
+        assertThat(snapshot.relations()).contains(
+                new ContextRelation(a.id(), b.id(), "DEPENDS_ON"));
+        assertThat(snapshot.relatedNodeIds()).contains(b.id()).doesNotContain(c.id());
+        // The lineage stays pure: the related node is never in it.
+        assertThat(snapshot.includedNodeIds()).doesNotContain(b.id(), c.id());
+
+        AgentInputSnapshot input = snapshotBuilder.build(snapshot);
+        assertThat(input.relations()).contains(new RelationView(a.id(), b.id(), "DEPENDS_ON"));
+        assertThat(input.relatedNodes()).anyMatch(ref ->
+                ref.nodeId().equals(b.id()) && "OUTGOING".equals(ref.direction()));
     }
 }

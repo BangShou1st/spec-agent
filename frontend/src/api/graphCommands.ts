@@ -49,6 +49,25 @@ export interface NodeQueryRunResult {
   status: string
   producedNodeId: string | null
   message: string | null
+  /** Present when status === 'AWAITING_APPROVAL'. */
+  proposalId?: string | null
+  proposalStatus?: string | null
+  actionFamily?: string | null
+}
+
+/** Result of accepting a pending NodeQuery proposal. */
+export interface ProposalAcceptResult {
+  proposalId: string
+  status: string
+  actionFamily: string | null
+  producedNodeId: string | null
+  relationId: string | null
+}
+
+/** Result of rejecting a pending NodeQuery proposal. */
+export interface ProposalRejectResult {
+  proposalId: string
+  status: string
 }
 
 export function createRootDraftNode(
@@ -179,4 +198,19 @@ export function getNodeQueryResult(
   return apiClient.get<NodeQueryRunResult>(
     `/projects/${projectId}/nodes/${nodeId}/query/${runId}`,
   )
+}
+
+/**
+ * Accepts a pending NodeQuery proposal. The backend currently takes only the
+ * path-bound proposal id, so an empty body is sent. On success the caller is
+ * expected to refresh the canonical graph because accepting a proposal may
+ * produce new nodes/relations.
+ */
+export function acceptProposal(id: string): Promise<ProposalAcceptResult> {
+  return apiClient.post<ProposalAcceptResult>(`/proposals/${id}/accept`, {})
+}
+
+/** Rejects a pending NodeQuery proposal; the graph is left unchanged. */
+export function rejectProposal(id: string): Promise<ProposalRejectResult> {
+  return apiClient.post<ProposalRejectResult>(`/proposals/${id}/reject`, {})
 }

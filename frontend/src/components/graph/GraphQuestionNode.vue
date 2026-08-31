@@ -133,9 +133,16 @@ const runtimeStatusClass = computed(() => {
   }
 })
 
-/** 显式阅读路线在该节点上没有回答时，摘要区域显式显示等待。 */
-const readingWaiting = computed(() => {
-  if (props.data.primaryAnswer || !props.data.readingRouteId) {
+/** 显式阅读路线只作 read context 标识，不参与 Answer 内容选择。Shared
+ * canonical Question 只有唯一不可变 Answer 身份，Focus 切换不改变内容。 */
+
+/** 阅读路线 tip 上的真正 canonical 未答 Question：激活其显式所属路线后即可
+ * 回答。已答节点（canonical Answer 存在）绝不出现；未选查看路线的 shared
+ * 未答节点也不出现（绝不 Active/first/latest 回退，绝不制造 route-specific
+ * 等待）。 */
+const unansweredReadingTip = computed(() => {
+  if (props.data.primaryAnswer || !props.data.readingRouteId
+      || props.data.isTipOfReadingRoute !== true) {
     return null
   }
   const state = props.data.routeStates.find(
@@ -143,8 +150,8 @@ const readingWaiting = computed(() => {
   )
   return state && !state.answer ? state : null
 })
-const readingWaitingLabel = computed(() => {
-  const waiting = readingWaiting.value
+const unansweredReadingTipLabel = computed(() => {
+  const waiting = unansweredReadingTip.value
   if (!waiting) return '当前查看路线'
   return props.data.routeStates.find((state) => state.routeId === waiting.routeId)?.routeLabel || '当前查看路线'
 })
@@ -358,7 +365,8 @@ function setReadingRoute(event: Event): void {
         </h4>
 
         <!-- 历史答案：canonical Question 只有一个 immutable Answer identity，
-             primary 即该答案；Focus 只改变阅读上下文，不改变内容。 -->
+             primary 即该答案；Focus 只改变阅读上下文，不改变内容。Shared
+             answered Question 在任意 Focus/路线归属下展示同一答案。 -->
         <div
           v-if="primary"
           class="graph-answer-summary"
@@ -375,16 +383,15 @@ function setReadingRoute(event: Event): void {
           <span class="graph-answer-route meta-text">{{ primary.routeLabel || '当前查看路线' }}</span>
         </div>
 
-        <!-- 阅读路线没有回答时：明确显示等待 + 节点问题本身，绝不拿其他路线的
-             answer 冒充。回答历史未答问题 = 激活其显式所属路线（Route A 本身仍
-             是 tip）；不会创建 RESUME 分支。共享/多归属节点必须由用户在查看
-             路线选择器中先选定一条路线。 -->
+        <!-- 阅读路线 tip 的 canonical 未答 Question：显示等待 + 激活所属路线
+             即可回答（route count 不变，不创建 RESUME 分支）。已答节点与未选
+             查看路线的 shared 节点绝不出现此入口。 -->
         <div
-          v-else-if="readingWaiting"
+          v-else-if="unansweredReadingTip"
           class="graph-answer-summary"
           data-test="waiting-summary"
         >
-          <span class="badge badge-warn">{{ readingWaitingLabel }} · 等待回答</span>
+          <span class="badge badge-warn">{{ unansweredReadingTipLabel }} · 等待回答</span>
           <h4 class="graph-node-question graph-node-question--compact" data-test="waiting-question">
             {{ node.question }}
           </h4>
@@ -400,6 +407,8 @@ function setReadingRoute(event: Event): void {
           </button>
         </div>
 
+        <!-- 其余历史未答节点：明确显示等待即可，绝不按路线拆分出 route-specific
+             的"回答这个问题"入口（那会人为制造 Shared 分叉）。 -->
         <p
           v-else
           class="meta-text graph-node-question--compact"

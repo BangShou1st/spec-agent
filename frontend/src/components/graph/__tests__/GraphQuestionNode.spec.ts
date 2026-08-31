@@ -343,66 +343,76 @@ describe('graph question node', () => {
     expect(wrapper.find('[data-test="reading-route-select"]').text()).toContain('未选择')
   })
 })
-describe('shared node route-specific waiting state', () => {
-  function waitingData(overrides: Partial<SpecAgentGraphNodeData> = {}): SpecAgentGraphNodeData {
-    return {
-      node: nodeData({ parentNodeId: 'n0' }),
-      projectId: 'p1',
+describe('shared node canonical answer (no route-specific waiting)', () => {
+  it('shared answered node shows the canonical answer once and never offers a route-specific "answer this question"', async () => {
+    const wrapper = mountNode(historicalData({
       routeIds: ['r1', 'r2'],
-      visibleRouteIds: ['r1', 'r2'],
-      answers: [
-        answer('r1', { freeText: 'A answer on shared node.', isPrimary: false }),
+      answers: [answer('r1', { freeText: 'Shared canonical answer.', isPrimary: true })],
+      primaryAnswer: answer('r1', { freeText: 'Shared canonical answer.', isPrimary: true }),
+      routeMembership: [
+        { routeId: 'r1', label: 'Initial', lifecycleStatus: 'open', isActive: true },
+        { routeId: 'r2', label: 'Route-B', lifecycleStatus: 'archived', isActive: false },
       ],
-      routeStates: [
-        {
-          routeId: 'r1',
-          answer: {
-            routeId: 'r1',
-            selectedOptionId: null,
-            selectedOptionLabel: null,
-            freeText: 'A answer on shared node.',
-            isPrimary: false,
-          },
-        },
-        { routeId: 'r2', answer: null },
-      ],
-      primaryAnswer: null,
-      answerPresentationMode: 'focused',
-      readingRouteId: 'r2',
-      isCurrent: false,
-      canAnswer: false,
-      isExpanded: false,
-      isShared: true,
-      isLatest: false,
-      qLabel: null,
-      visualWeight: 'focus',
-      ...overrides,
-    }
-  }
-
-  it('Focus=B without an answer shows B waiting + the question itself, and offers a resume affordance when B is an explicit reading route', async () => {
-    const wrapper = mountNode(waitingData())
-    // 摘要显式等待并直接显示问题；A 的回答不作为 primary 展示。
-    const waiting = wrapper.find('[data-test="waiting-summary"]')
-    expect(waiting.exists()).toBe(true)
-    expect(waiting.text()).toContain('当前查看路线 · 等待回答')
-    expect(waiting.find('[data-test="waiting-question"]').text()).toBe('What outcome matters most?')
-    // readingRouteId='r2'，显式唤醒入口可见。
-    const button = waiting.find('[data-test="answer-this-question"]')
-    expect(button.exists()).toBe(true)
-    expect(button.text()).toContain('回答这个问题')
-    await button.trigger('click')
-    expect(wrapper.emitted('activate-route')?.[0]).toEqual(['r2'])
+    }))
+    // canonical Answer 只展示一次。
+    expect(wrapper.find('[data-test="answer-summary"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('Shared canonical answer.')
+    // 绝不出现 route-specific 的"回答这个问题"入口。
+    expect(wrapper.find('[data-test="answer-this-question"]').exists()).toBe(false)
   })
 
-  it('Focus=B without an answer: when readingRouteId is null, no resume affordance is exposed (avoids source route ambiguity)', () => {
-    const wrapper = mountNode(waitingData({
-      readingRouteId: null,
-      answerPresentationMode: 'focused',
+  it('shared node membership chips render both routes', async () => {
+    const wrapper = mountNode(historicalData({
+      routeIds: ['r1', 'r2'],
+      routeMembership: [
+        { routeId: 'r1', label: 'Initial', lifecycleStatus: 'open', isActive: true },
+        { routeId: 'r2', label: 'Route-B', lifecycleStatus: 'archived', isActive: false },
+      ],
     }))
-    // readingRouteId = null 时仍走 focused 模式但无明确 source route，唤醒按钮
-    // 必须隐藏（避免拿 Active/first/latest 冒充 source route）。
+    expect(wrapper.text()).toContain('Initial')
+    expect(wrapper.text()).toContain('Route-B')
+  })
+
+  it('shared unanswered node shows only plain waiting, never a route-specific resume affordance', async () => {
+    const wrapper = mountNode(historicalData({
+      routeIds: ['r1', 'r2'],
+      answers: [],
+      primaryAnswer: null,
+      routeStates: [
+        { routeId: 'r1', answer: null },
+        { routeId: 'r2', answer: null },
+      ],
+      readingRouteId: 'r2',
+      routeMembership: [
+        { routeId: 'r1', label: 'Initial', lifecycleStatus: 'open', isActive: true },
+        { routeId: 'r2', label: 'Route-B', lifecycleStatus: 'open', isActive: false },
+      ],
+    }))
+    expect(wrapper.find('[data-test="waiting-plain"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('等待回答')
+    // 没有任何 route-specific 的"回答这个问题"入口。
     expect(wrapper.find('[data-test="answer-this-question"]').exists()).toBe(false)
+  })
+
+  it('single-route canonical unanswered TIP keeps the legal activate-to-answer affordance', async () => {
+    const wrapper = mountNode(historicalData({
+      routeIds: ['r1'],
+      visibleRouteIds: ['r1'],
+      answers: [],
+      primaryAnswer: null,
+      routeStates: [{ routeId: 'r1', answer: null }],
+      readingRouteId: 'r1',
+      isTipOfReadingRoute: true,
+      isShared: false,
+      routeMembership: [
+        { routeId: 'r1', label: 'Initial', lifecycleStatus: 'open', isActive: false },
+      ],
+    }))
+    // 真正 canonical 未答 Question 且是阅读路线 tip：出现"回答这个问题"。
+    const button = wrapper.find('[data-test="answer-this-question"]')
+    expect(button.exists()).toBe(true)
+    await button.trigger('click')
+    expect(wrapper.emitted('activate-route')?.[0]).toEqual(['r1'])
   })
 })
 

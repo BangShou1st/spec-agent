@@ -1,6 +1,7 @@
 package com.specagent.context;
 
 import com.specagent.common.Json;
+import com.specagent.graph.NodeRelationRepository;
 import com.specagent.node.NodeRepository;
 import com.specagent.patch.AnswerPatchRepository;
 import com.specagent.project.Project;
@@ -43,6 +44,8 @@ class ContextBuilderLineageTest {
     private RouteHistoryResolver routeHistoryResolver;
     @Mock
     private ContextSnapshotRepository contextSnapshotRepository;
+    @Mock
+    private NodeRelationRepository nodeRelationRepository;
     @Mock
     private Json json;
     @InjectMocks

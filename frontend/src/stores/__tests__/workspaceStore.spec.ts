@@ -14,6 +14,7 @@ import {
 } from '@/test/fixtures'
 import type {
   ActiveProjectStateResponse,
+  GraphWorkspaceRouteView,
   RequirementStateView,
   RouteResponse,
 } from '@/api/types'
@@ -59,6 +60,7 @@ vi.mock('@/api/spec', () => ({
 }))
 
 vi.mock('@/api/graphCommands', () => ({
+  acceptProposal: vi.fn(),
   appendContinuation: vi.fn(),
   attachResource: vi.fn(),
   createFloatingDraftNode: vi.fn(),
@@ -68,6 +70,7 @@ vi.mock('@/api/graphCommands', () => ({
   getNodeQueryResult: vi.fn(),
   getUndoRedoAvailability: vi.fn(),
   redoGraphOperation: vi.fn(),
+  rejectProposal: vi.fn(),
   reviseDraftNode: vi.fn(),
   setKnowledgeStatus: vi.fn(),
   undoGraphOperation: vi.fn(),
@@ -94,11 +97,15 @@ import {
 } from '@/api/routes'
 import { listRouteSpecs } from '@/api/spec'
 import {
+  acceptProposal as apiAcceptProposal,
   appendContinuation as apiAppendContinuation,
   createFloatingDraftNode,
+  createNodeQuery as apiCreateNodeQuery,
   createRelation as apiCreateRelation,
   createRootDraftNode,
+  getNodeQueryResult as apiGetNodeQueryResult,
   getUndoRedoAvailability,
+  rejectProposal as apiRejectProposal,
 } from '@/api/graphCommands'
 
 const mockedGetProject = vi.mocked(getProject)
@@ -119,6 +126,10 @@ const mockedCreateRootDraftNode = vi.mocked(createRootDraftNode)
 const mockedCreateFloatingDraftNode = vi.mocked(createFloatingDraftNode)
 const mockedGetUndoRedoAvailability = vi.mocked(getUndoRedoAvailability)
 const mockedCreateRelation = vi.mocked(apiCreateRelation)
+const mockedCreateNodeQuery = vi.mocked(apiCreateNodeQuery)
+const mockedGetNodeQueryResult = vi.mocked(apiGetNodeQueryResult)
+const mockedAcceptProposal = vi.mocked(apiAcceptProposal)
+const mockedRejectProposal = vi.mocked(apiRejectProposal)
 
 describe('workspaceStore', () => {
   beforeEach(() => {
@@ -1622,5 +1633,145 @@ describe('workspaceStore.createSemanticRelation (identity contract)', () => {
     await store.loadWorkspace('p1')
     const ok = await store.createSemanticRelation('n1', 'n2', 'DEPENDS_ON')
     expect(ok).toBe(true)
+  })
+})
+
+describe('node query (ask AI) semantics and polling', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    mockedGetUndoRedoAvailability.mockResolvedValue({ canUndo: false, canRedo: false })
+  })
+
+  function sharedGraphView(): ReturnType<typeof makeGraphWorkspaceView> {
+    // Put the node into BOTH routes so nodeRouteIds reports a shared node.
+    const routeA: GraphWorkspaceRouteView = {
+      id: 'rA', label: 'A', lifecycleStatus: 'open', isActive: true,
+      rootNodeId: 'shared-1', tipNodeId: 'shared-1', createdFromNodeId: null,
+      supersedesRouteId: null, replacementOfNodeId: null, branchType: null,
+      sourceRouteId: null, branchAtNodeId: null, lineageNodeIds: ['shared-1'],
+    }
+    const routeB: GraphWorkspaceRouteView = {
+      ...routeA, id: 'rB', label: 'B', isActive: false,
+    }
+    return makeGraphWorkspaceView({
+      routes: [routeA, routeB],
+      nodes: [makeNode({ id: 'shared-1' })],
+    })
+  }
+
+  it('shared route node Ask AI requires an explicit read route (routeId=null rejected)', async () => {
+    const store = useWorkspaceStore()
+    store.projectId = 'p1'
+    store.graphView = sharedGraphView()
+    const ok = await store.askNodeAI('shared-1', null, '这个需求会影响哪些部分？')
+    expect(ok).toBe(false)
+    expect(store.error?.code).toBe('SHARED_NODE_REQUIRES_ROUTE')
+    // 静默 routeId=null 不被允许：查询根本没有被创建。
+    expect(mockedCreateNodeQuery).not.toHaveBeenCalled()
+  })
+
+  it('shared route node Ask AI succeeds when an explicit read route is supplied', async () => {
+    vi.useFakeTimers()
+    try {
+      const store = useWorkspaceStore()
+      store.projectId = 'p1'
+      store.graphView = sharedGraphView()
+      mockedCreateNodeQuery.mockResolvedValue({ runId: 'run-shared', phase: 'CREATED' })
+      mockedGetNodeQueryResult.mockResolvedValue({
+        runId: 'run-shared', status: 'COMPLETED', producedNodeId: null, message: 'ok',
+      })
+      const askPromise = store.askNodeAI('shared-1', 'rA', '这个需求会影响哪些部分？')
+      await vi.advanceTimersByTimeAsync(1500)
+      const ok = await askPromise
+      expect(ok).toBe(true)
+      expect(mockedCreateNodeQuery).toHaveBeenCalledWith('p1', 'shared-1', 'rA', '这个需求会影响哪些部分？')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('floating node Ask AI may query with routeId=null', async () => {
+    vi.useFakeTimers()
+    try {
+      const store = useWorkspaceStore()
+      store.projectId = 'p1'
+      // 浮动节点不属于任何路线 → nodeRouteIds 为空 → routeId=null 合法。
+      store.graphView = makeGraphWorkspaceView({ routes: [], nodes: [makeNode({ id: 'float-1' })] })
+      mockedCreateNodeQuery.mockResolvedValue({ runId: 'run-float', phase: 'CREATED' })
+      mockedGetNodeQueryResult.mockResolvedValue({
+        runId: 'run-float', status: 'COMPLETED', producedNodeId: null, message: 'float answer',
+      })
+      const askPromise = store.askNodeAI('float-1', null, '从任意节点提问？')
+      await vi.advanceTimersByTimeAsync(1500)
+      const ok = await askPromise
+      expect(ok).toBe(true)
+      expect(mockedCreateNodeQuery).toHaveBeenCalledWith('p1', 'float-1', null, '从任意节点提问？')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('stale NodeQuery poll result cannot overwrite the latest query', async () => {
+    vi.useFakeTimers()
+    try {
+      const store = useWorkspaceStore()
+      store.projectId = 'p1'
+      // 最新查询已占 nodeQuery。
+      store.nodeQuery = {
+        nodeId: 'nLatest', routeId: 'r1', question: 'latest', runId: 'run-latest',
+        status: 'RUNNING', message: null,
+      }
+      // 一个较慢的旧 run 返回结果：必须被 stale guard 丢弃。
+      mockedGetNodeQueryResult.mockResolvedValue({
+        runId: 'run-stale', status: 'COMPLETED', producedNodeId: null, message: 'stale answer',
+      })
+      const pollPromise = store.pollNodeQuery({
+        runId: 'run-stale', nodeId: 'nStale', routeId: null, question: 'stale',
+      })
+      await vi.advanceTimersByTimeAsync(1500)
+      await pollPromise
+      expect(store.nodeQuery?.runId).toBe('run-latest')
+      expect(store.nodeQuery?.message).not.toBe('stale answer')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('acceptNodeQueryProposal refreshes the graph and marks the query ACCEPTED', async () => {
+    const store = useWorkspaceStore()
+    store.projectId = 'p1'
+    store.nodeQuery = {
+      nodeId: 'n1', routeId: 'r1', question: 'q', runId: 'run-1',
+      status: 'AWAITING_APPROVAL', message: 'm', proposalId: 'prop-1',
+      proposalStatus: null, actionFamily: 'CREATE_NODE',
+    }
+    mockedAcceptProposal.mockResolvedValue({
+      proposalId: 'prop-1', status: 'ACCEPTED', actionFamily: 'CREATE_NODE',
+      producedNodeId: 'n2', relationId: null,
+    })
+    const ok = await store.acceptNodeQueryProposal('prop-1')
+    expect(ok).toBe(true)
+    expect(mockedAcceptProposal).toHaveBeenCalledWith('prop-1')
+    // Accept 成功后刷新 canonical Graph（后端可能已产生节点/关系）。
+    expect(mockedGetProjectGraph).toHaveBeenCalled()
+    expect(store.nodeQuery?.status).toBe('ACCEPTED')
+  })
+
+  it('rejectNodeQueryProposal leaves the graph unchanged and marks the query REJECTED', async () => {
+    const store = useWorkspaceStore()
+    store.projectId = 'p1'
+    store.nodeQuery = {
+      nodeId: 'n1', routeId: 'r1', question: 'q', runId: 'run-1',
+      status: 'AWAITING_APPROVAL', message: 'm', proposalId: 'prop-1',
+      proposalStatus: null, actionFamily: 'CREATE_NODE',
+    }
+    mockedRejectProposal.mockResolvedValue({ proposalId: 'prop-1', status: 'REJECTED' })
+    const ok = await store.rejectNodeQueryProposal('prop-1')
+    expect(ok).toBe(true)
+    expect(mockedRejectProposal).toHaveBeenCalledWith('prop-1')
+    // Reject 不改变 Graph：不应刷新 canonical Graph。
+    expect(mockedGetProjectGraph).not.toHaveBeenCalled()
+    expect(store.nodeQuery?.status).toBe('REJECTED')
   })
 })

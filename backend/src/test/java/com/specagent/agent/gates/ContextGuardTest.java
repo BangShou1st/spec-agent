@@ -115,7 +115,7 @@ class ContextGuardTest {
 
         ContextSnapshot snapshot = new ContextSnapshot(
                 UUID.randomUUID(), projectId, routeId, null, ContextOperationType.NORMAL,
-                List.of(), List.of(), List.of(), List.of(), null, null, Instant.now());
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), null, null, Instant.now());
 
         ReflectionResult result = contextGuard.validate(snapshot);
 
@@ -141,7 +141,7 @@ class ContextGuardTest {
     private ContextSnapshot snapshot(UUID projectId, UUID routeId, ContextOperationType operationType) {
         return new ContextSnapshot(
                 UUID.randomUUID(), projectId, routeId, null, operationType,
-                List.of(), List.of(), List.of(), List.of(), null, "hash-1", Instant.now());
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), null, "hash-1", Instant.now());
     }
 
     private Project project(UUID projectId, UUID activeRouteId) {

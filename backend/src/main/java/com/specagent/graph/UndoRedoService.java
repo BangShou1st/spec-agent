@@ -54,6 +54,7 @@ public class UndoRedoService {
     private final NodeRelationRepository relationRepository;
     private final AnswerRepository answerRepository;
     private final ProjectRepository projectRepository;
+    private final GraphInvariantValidator invariantValidator;
 
     public UndoRedoService(GraphOperationRepository operationRepository,
                            NodeService nodeService,
@@ -62,7 +63,8 @@ public class UndoRedoService {
                            RouteService routeService,
                            NodeRelationRepository relationRepository,
                            AnswerRepository answerRepository,
-                           ProjectRepository projectRepository) {
+                           ProjectRepository projectRepository,
+                           GraphInvariantValidator invariantValidator) {
         this.operationRepository = operationRepository;
         this.nodeService = nodeService;
         this.nodeRepository = nodeRepository;
@@ -71,6 +73,7 @@ public class UndoRedoService {
         this.relationRepository = relationRepository;
         this.answerRepository = answerRepository;
         this.projectRepository = projectRepository;
+        this.invariantValidator = invariantValidator;
     }
 
     public record UndoRedoResult(GraphOperation operation, String description) {
@@ -89,15 +92,22 @@ public class UndoRedoService {
                 .orElse(false);
     }
 
-    /** True when the most recent UNDONE operation can still be replayed. */
+    /** True when the most-recently-undone operation can still be replayed. */
     public boolean canRedo(UUID projectId) {
-        return latestByStatus(projectId, GraphOperation.Status.UNDONE)
+        return latestUndoneForRedo(projectId)
                 .map(op -> redoNotCutOff(projectId, op))
                 .orElse(false);
     }
 
     @Transactional
     public UndoRedoResult undo(UUID projectId) {
+        // Serialize stack mutations for this project: undo/redo and live graph
+        // mutations (e.g. createSemanticRelation) all take the same project-row
+        // lock, so two concurrent undos can never act on the same operation and
+        // an undo can never interleave with a new mutation into a half-applied
+        // stack. The node-specific lock for the retraction target is taken
+        // later, inside the compensation path, before any retraction decision.
+        projectRepository.lockById(projectId);
         GraphOperation operation = latestByStatus(projectId, GraphOperation.Status.ACTIVE)
                 .orElseThrow(() -> new IllegalStateException("没有可撤销的操作"));
         if (!operation.reversible()) {
@@ -114,7 +124,11 @@ public class UndoRedoService {
 
     @Transactional
     public UndoRedoResult redo(UUID projectId) {
-        GraphOperation operation = latestByStatus(projectId, GraphOperation.Status.UNDONE)
+        projectRepository.lockById(projectId);
+        // Redo targets the most-recently-undone operation (largest undoneAt):
+        // exactly like a familiar editor, the last thing you undid is the first
+        // thing you redo. createdAt would not order multi-undo correctly.
+        GraphOperation operation = latestUndoneForRedo(projectId)
                 .orElseThrow(() -> new IllegalStateException("没有可恢复的操作"));
         if (!redoNotCutOff(projectId, operation)) {
             throw new IllegalStateException("撤销后产生了新操作，无法恢复该历史状态");
@@ -148,6 +162,13 @@ public class UndoRedoService {
         // a floating draft never touched the route tip/root.
         UUID routeId = optionalUuid(operation.afterRefs(), "routeId");
         Node node = requireActiveNode(operation.projectId(), nodeId);
+        // Lock the node row before deciding retraction, mirroring
+        // AnswerService.finalizeAnswer's lock-first pattern: the retractability
+        // checks below then observe an authoritative, race-free node state, so
+        // an in-flight answer finalization or graph mutation on the same node
+        // cannot be lost (or win a lost-update race) once we commit the
+        // retraction.
+        nodeRepository.lockById(nodeId);
         requireRetractable(operation.projectId(), node, routeId);
 
         nodeService.setRetracted(nodeId, true);
@@ -170,6 +191,8 @@ public class UndoRedoService {
         UUID nodeId = requireUuid(operation.afterRefs(), "nodeId");
         UUID routeId = requireUuid(operation.afterRefs(), "routeId");
         Node node = requireActiveNode(operation.projectId(), nodeId);
+        // Lock the node row before deciding retraction (see compensateNodeCreation).
+        nodeRepository.lockById(nodeId);
         Route route = routeRepository.findById(routeId)
                 .orElseThrow(() -> new IllegalStateException("Branch route missing during undo: " + routeId));
         if (route.tipNodeId() == null || !route.tipNodeId().equals(nodeId)) {
@@ -306,12 +329,41 @@ public class UndoRedoService {
                 castContent(operation.afterRefs().get("content")));
     }
 
+    /**
+     * Re-activates the SAME relation row that undo retracted, but only after
+     * re-running the identical invariant boundary the live creation path uses
+     * ({@code GraphCommandService.createSemanticRelation} →
+     * {@link GraphInvariantValidator#validateRelationCreation}). Redo must never
+     * bypass validation or mint a new relation identity: if intervening work
+     * (a conflicting active relation, a dependency cycle, a retracted endpoint,
+     * or a cross-project/self reference) would now invalidate the replay, it
+     * fails closed rather than silently rebasing the graph.
+     */
     private void replayRelation(GraphOperation operation) {
         UUID relationId = requireUuid(operation.afterRefs(), "relationId");
         NodeRelation relation = relationRepository.findById(relationId)
                 .orElseThrow(() -> new IllegalStateException("Relation missing during redo: " + relationId));
         if (relation.isActive()) {
             throw new IllegalStateException("关系已恢复，无法重复恢复");
+        }
+        UUID sourceNodeId = requireUuid(operation.afterRefs(), "sourceNodeId");
+        UUID targetNodeId = requireUuid(operation.afterRefs(), "targetNodeId");
+        NodeRelationType type = NodeRelationType.fromCode(
+                String.valueOf(operation.afterRefs().get("relationType")));
+        // Serialize against concurrent relation mutations within the project,
+        // exactly like the live creation path.
+        projectRepository.lockById(operation.projectId());
+        // Endpoints exist / not retracted / same project / not self, plus the
+        // DEPENDS_ON + DERIVED_FROM DAG cycle check against the CURRENT graph.
+        invariantValidator.validateRelationCreation(operation.projectId(), sourceNodeId, targetNodeId, type);
+        // No active duplicate of this canonical relation may already exist: if
+        // intervening work created one, replaying would violate the unique
+        // backstop, so fail closed instead of rebasing. The canonical-pair
+        // lookup mirrors the live de-duplication (symmetric types normalized).
+        if (relationRepository.findActiveByCanonicalPair(operation.projectId(), sourceNodeId, targetNodeId, type)
+                .map(r -> !r.id().equals(relationId))
+                .orElse(false)) {
+            throw new IllegalStateException("关系重做被拒：当前图已存在相同语义关系，不能重复恢复");
         }
         relationRepository.updateStatus(relationId, NodeRelation.Status.ACTIVE, Instant.now());
     }
@@ -338,7 +390,11 @@ public class UndoRedoService {
      * downstream history would be silently orphaned.
      */
     private void requireRetractable(UUID projectId, Node node, UUID owningRouteId) {
-        if (nodeRepository.existsByParentNodeId(node.id())) {
+        // Only live (non-retracted) descendants block retraction. A child that
+        // was itself already undone (soft-retracted) does NOT block undoing its
+        // parent — otherwise the second undo would be permanently rejected and
+        // the linear stack would never unwind past it.
+        if (nodeRepository.existsActiveByParentNodeId(node.id())) {
             throw new IllegalStateException("节点已有后续内容，请先处理其下游节点");
         }
         if (answerRepository.existsByNodeId(node.id())) {
@@ -363,6 +419,21 @@ public class UndoRedoService {
         return operationRepository.findByProject(projectId).stream()
                 .filter(op -> op.status() == status)
                 .max(Comparator.comparing(GraphOperation::createdAt)
+                        .thenComparing(op -> op.id().toString()));
+    }
+
+    /**
+     * Redo target: the most-recently-undone operation — the UNDONE operation
+     * with the greatest {@code undoneAt} (ties broken by id for determinism).
+     * {@code undoneAt} is populated only when an operation transitions to
+     * UNDONE, so it captures the true undo order; {@code createdAt} would not
+     * distinguish a third undo from an earlier one. UNDONE ops without an
+     * {@code undoneAt} (none are produced today) are ignored.
+     */
+    private java.util.Optional<GraphOperation> latestUndoneForRedo(UUID projectId) {
+        return operationRepository.findByProject(projectId).stream()
+                .filter(op -> op.status() == GraphOperation.Status.UNDONE && op.undoneAt() != null)
+                .max(Comparator.comparing(GraphOperation::undoneAt)
                         .thenComparing(op -> op.id().toString()));
     }
 

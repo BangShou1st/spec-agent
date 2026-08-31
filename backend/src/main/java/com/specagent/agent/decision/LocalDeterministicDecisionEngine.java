@@ -88,6 +88,44 @@ public class LocalDeterministicDecisionEngine implements AgentDecisionEngine {
             }
         }
         if ("NODE_QUERY".equals(request.event().kind())) {
+            // Deterministic E2E mutation path: an explicit "建立语义关联"
+            // instruction yields a confirmable CONNECT_NODE proposal between
+            // the first two lineage nodes. Every other query input keeps the
+            // read-only response below — the query contract otherwise stays
+            // side-effect free.
+            String queryText = request.event().freeText() == null ? "" : request.event().freeText();
+            if (queryText.contains("语义关联")) {
+                List<String> lineageNodeRefs = request.snapshot().lineage().stream()
+                        .limit(2)
+                        .map(entry -> "node:" + entry.node().id())
+                        .toList();
+                if (lineageNodeRefs.size() >= 2) {
+                    AgentResponseEnvelope connect = new AgentResponseEnvelope(
+                            AgentProtocol.DECISION_PROTOCOL_VERSION,
+                            request.runId(),
+                            null,
+                            new ObservationView(
+                                    List.of("Two nodes suggest a semantic relation."),
+                                    List.of(), List.of(), List.of()),
+                            new ActionProposal(
+                                    "CONNECT_NODE",
+                                    Map.of(
+                                            "relationClass", "SEMANTIC",
+                                            "relationType", "RELATED_TO",
+                                            "sourceRef", lineageNodeRefs.get(0),
+                                            "targetRef", lineageNodeRefs.get(1)),
+                                    snapshotId,
+                                    request.snapshot().contextHash(),
+                                    List.of(),
+                                    UUID.randomUUID(),
+                                    request.runId().toString(),
+                                    List.of()),
+                            new UsageView(1, List.of()),
+                            Map.of());
+                    AgentBrainResponseValidator.validateDecision(request, connect);
+                    return connect;
+                }
+            }
             // Deterministic contextual answer: the query path expects a
             // read-only response and must never mutate the graph.
             AgentResponseEnvelope respond = new AgentResponseEnvelope(

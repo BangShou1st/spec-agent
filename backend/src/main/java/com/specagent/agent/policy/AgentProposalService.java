@@ -138,6 +138,15 @@ public class AgentProposalService {
         return repository.findById(id);
     }
 
+    /**
+     * Finds the proposal created by a specific agent run, if any. Node-query
+     * runs that downgrade a mutation action to an approval produce exactly one
+     * proposal linked by {@code runId}; read-only runs never create one.
+     */
+    public Optional<AgentProposal> findByRunId(UUID runId) {
+        return repository.findByRunId(runId);
+    }
+
     public List<AgentProposal> getPendingProposals(UUID projectId) {
         return repository.findByProjectAndStatus(projectId, ProposalStatus.PROPOSED);
     }

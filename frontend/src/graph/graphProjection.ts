@@ -95,6 +95,10 @@ export interface SpecAgentGraphNodeData {
   primaryAnswer: GraphAnswerPresentation | null
   answerPresentationMode: AnswerPresentationMode
   readingRouteId: string | null
+  /** True when this visual node is the canonical tip of its current reading
+   * route — the only case where "activate its owning route and answer" is a
+   * legal affordance for a genuinely unanswered Question. */
+  isTipOfReadingRoute?: boolean
   isCurrent: boolean
   canAnswer: boolean
   isExpanded: boolean
@@ -240,7 +244,7 @@ function routeVisualWeight(
 export function selectPrimaryAnswer(
   nodeId: string,
   answers: GraphAnswerPresentation[],
-  focusRouteId: string | null,
+  _focusRouteId: string | null,
   _activeRouteId: string | null,
   _options: GraphWorkspaceOptionView[],
 ): GraphAnswerPresentation | null {
@@ -248,14 +252,11 @@ export function selectPrimaryAnswer(
     const withNodeId = answer as GraphAnswerPresentation & { nodeId?: string }
     return withNodeId.nodeId === undefined || withNodeId.nodeId === nodeId
   })
-  // 1. 显式阅读路线优先：返回该 route 的 answer（缺失时 null，卡片显示等待）。
-  //    Shared canonical nodes reference ONE immutable Answer identity, so the
-  //    content is route-independent; Focus only changes the reading context.
-  if (focusRouteId) {
-    return nodeAnswers.find((answer) => answer.routeId === focusRouteId) ?? null
-  }
-  // 2. 无 focus：直接返回第一条真实引用。由于 SHARED_STATE_DIVERGENCE 被后端
-  //    拒绝，多条 route 的引用共享同一 Answer ID，内容必然一致。
+  // A canonical Question Node carries at most ONE immutable Answer identity
+  // project-wide (SHARED_STATE_DIVERGENCE is an invariant violation). The
+  // answer CONTENT never depends on Focus/reading route — Focus only changes
+  // the reading context. Always return the single canonical Answer, so a
+  // Shared answered Question shows the same answer under Main/Branch/null.
   return nodeAnswers[0] ?? null
 }
 
@@ -435,6 +436,9 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
         primaryAnswer: primary,
         answerPresentationMode: answerPresentation.mode,
         readingRouteId,
+        isTipOfReadingRoute: readingRouteId != null
+          && view.routes.some((route) => route.id === readingRouteId
+            && route.tipNodeId === instance.canonicalNodeId),
         isCurrent,
         canAnswer,
         isExpanded: uiState.expandedNodeIds.includes(instance.visualNodeKey)

@@ -97,6 +97,14 @@ public class AgentProposalRepository {
                 .addValue("decidedBy", proposal.decidedBy());
     }
 
+    public Optional<AgentProposal> findByRunId(UUID runId) {
+        List<AgentProposal> results = jdbc.query(
+                "SELECT * FROM agent_proposals WHERE run_id = :runId",
+                Map.of("runId", runId),
+                MAPPER);
+        return results.isEmpty() ? Optional.empty() : Optional.of(results.getFirst());
+    }
+
     public Optional<AgentProposal> findById(UUID id) {
         List<AgentProposal> results = jdbc.query(
                 "SELECT * FROM agent_proposals WHERE id = :id",

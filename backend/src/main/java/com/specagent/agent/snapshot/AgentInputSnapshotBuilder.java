@@ -14,9 +14,12 @@ import com.specagent.agent.contract.LineageEntry;
 import com.specagent.agent.contract.NodeBodyView;
 import com.specagent.agent.contract.NodeView;
 import com.specagent.agent.contract.OptionView;
+import com.specagent.agent.contract.RelatedNodeRef;
+import com.specagent.agent.contract.RelationView;
 import com.specagent.agent.contract.PatchView;
 import com.specagent.agent.contract.RouteContextView;
 import com.specagent.agent.contract.SnapshotMetadata;
+import com.specagent.context.ContextRelation;
 import com.specagent.answer.Answer;
 import com.specagent.answer.AnswerRepository;
 import com.specagent.capability.CapabilityInvocationRecord;
@@ -124,7 +127,37 @@ public class AgentInputSnapshotBuilder {
                 allowedSourceRefs(snapshot),
                 visibleCapabilityDescriptors(lineageNodes),
                 capabilityResults(snapshot),
+                relations(snapshot),
+                relatedNodes(snapshot),
                 new AutonomyInputs("ADVISOR"));
+    }
+
+    /**
+     * Bounded 1-hop semantic context projected onto the wire, direction
+     * preserved exactly as stored in the durable snapshot.
+     */
+    private List<RelationView> relations(ContextSnapshot snapshot) {
+        return snapshot.relations().stream()
+                .map(r -> new RelationView(r.sourceNodeId(), r.targetNodeId(), r.relationType()))
+                .toList();
+    }
+
+    /**
+     * The other-end canonical nodes of the 1-hop semantic context, each with
+     * explicit provenance (relation type + direction relative to the anchor).
+     * The anchor is the snapshot tip for a node query; for other operations the
+     * relation list is empty so this yields nothing.
+     */
+    private List<RelatedNodeRef> relatedNodes(ContextSnapshot snapshot) {
+        UUID anchor = snapshot.tipNodeId();
+        List<RelatedNodeRef> refs = new ArrayList<>();
+        for (ContextRelation relation : snapshot.relations()) {
+            boolean outgoing = anchor != null && anchor.equals(relation.sourceNodeId());
+            UUID otherEnd = outgoing ? relation.targetNodeId() : relation.sourceNodeId();
+            String direction = outgoing ? "OUTGOING" : "INCOMING";
+            refs.add(new RelatedNodeRef(otherEnd, relation.relationType(), direction));
+        }
+        return List.copyOf(refs);
     }
 
     /**

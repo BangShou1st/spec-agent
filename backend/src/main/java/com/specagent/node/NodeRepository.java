@@ -133,6 +133,19 @@ public class NodeRepository {
         return Boolean.TRUE.equals(jdbcTemplate.queryForObject(sql, Maps.of("parentNodeId", parentNodeId), Boolean.class));
     }
 
+    /**
+     * Mirrors {@link #existsByParentNodeId} but ignores soft-retracted children.
+     * Undo/Redo must treat a node with only retracted descendants as a leaf:
+     * otherwise undoing the parent after the child was already undone would be
+     * permanently rejected, breaking the linear stack (the second undo would
+     * never succeed). "Live" children are those whose {@code retracted_at} is
+     * still null.
+     */
+    public boolean existsActiveByParentNodeId(UUID parentNodeId) {
+        String sql = "SELECT EXISTS(SELECT 1 FROM nodes WHERE parent_node_id = :parentNodeId AND retracted_at IS NULL)";
+        return Boolean.TRUE.equals(jdbcTemplate.queryForObject(sql, Maps.of("parentNodeId", parentNodeId), Boolean.class));
+    }
+
     private Map<String, Object> baseParams(Node node) {
         Map<String, Object> params = new HashMap<>();
         params.put("id", node.id());

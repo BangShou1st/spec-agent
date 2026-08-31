@@ -10,6 +10,7 @@ import {
 } from '@/api/agentRuns'
 import type { AgentRunView } from '@/api/agentRuns'
 import {
+  acceptProposal,
   appendContinuation,
   attachResource as attachResourceCommand,
   createFloatingDraftNode,
@@ -18,6 +19,7 @@ import {
   getNodeQueryResult,
   getUndoRedoAvailability,
   redoGraphOperation,
+  rejectProposal,
   reviseDraftNode,
   setKnowledgeStatus,
   undoGraphOperation,
@@ -185,8 +187,11 @@ export const useWorkspaceStore = defineStore('workspace', {
       routeId: string | null
       question: string
       runId: string
-      status: 'RUNNING' | 'COMPLETED' | 'FAILED'
+      status: 'RUNNING' | 'COMPLETED' | 'FAILED' | 'AWAITING_APPROVAL' | 'ACCEPTED' | 'REJECTED' | 'POLICY_DENIED' | 'NOT_CONFIRMABLE'
       message: string | null
+      proposalId?: string | null
+      proposalStatus?: string | null
+      actionFamily?: string | null
     } | null,
   }),
   getters: {
@@ -1663,18 +1668,38 @@ export const useWorkspaceStore = defineStore('workspace', {
         }
         return false
       }
+      // Route semantics: a shared route node (referenced by more than one
+      // route) MUST supply an explicit read route as the query context; we
+      // must not silently fall back to routeId=null. A floating node (no
+      // route membership) is allowed to query with routeId=null.
+      if (routeId == null) {
+        const membership = this.nodeRouteIds(nodeId)
+        if (membership.length > 1) {
+          this.error = {
+            code: 'SHARED_NODE_REQUIRES_ROUTE',
+            message: '共享节点请先选择一条查看路线，再询问 AI。',
+          }
+          return false
+        }
+      }
       this.error = null
       try {
         const created = await createNodeQuery(this.projectId, nodeId, routeId, question.trim())
-        this.nodeQuery = {
+        // Capture the immutable query identity once. The poll loop carries
+        // this snapshot and must never borrow the routeId/question of a newer
+        // query that replaced nodeQuery.
+        const querySnapshot = {
           nodeId,
           routeId,
           question: question.trim(),
           runId: created.runId,
+        }
+        this.nodeQuery = {
+          ...querySnapshot,
           status: 'RUNNING',
           message: null,
         }
-        await this.pollNodeQuery(created.runId, nodeId)
+        await this.pollNodeQuery(querySnapshot)
         return true
       } catch (err) {
         this.error = toDisplayError(err)
@@ -1683,31 +1708,100 @@ export const useWorkspaceStore = defineStore('workspace', {
       }
     },
 
-    async pollNodeQuery(runId: string, nodeId: string): Promise<void> {
+    /** Resolves the route memberships of a canonical node from the graph read. */
+    nodeRouteIds(nodeId: string): string[] {
+      const routes = this.graphView?.routes ?? []
+      const ids = new Set<string>()
+      for (const route of routes) {
+        if (route.lineageNodeIds.includes(nodeId)) ids.add(route.id)
+      }
+      return [...ids]
+    },
+
+    async pollNodeQuery(query: {
+      runId: string
+      nodeId: string
+      routeId: string | null
+      question: string
+    }): Promise<void> {
       if (!this.projectId) return
+      const { runId, nodeId, routeId, question } = query
       const maxAttempts = 40
       for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
         await new Promise((resolve) => setTimeout(resolve, 1500))
+        // Stale poll guard: a newer query may have replaced nodeQuery. If the
+        // global nodeQuery no longer belongs to THIS poll run, abandon it so a
+        // slow response can never overwrite the latest query's state.
+        if (this.nodeQuery && this.nodeQuery.runId !== runId) return
         try {
           const result = await getNodeQueryResult(this.projectId, nodeId, runId)
           if (result.status === 'RUNNING' || result.status === 'CREATED') continue
+          if (this.nodeQuery && this.nodeQuery.runId !== runId) return
           this.nodeQuery = {
             nodeId,
-            routeId: this.nodeQuery?.routeId ?? null,
-            question: this.nodeQuery?.question ?? '',
+            routeId,
+            question,
             runId,
-            status: result.status === 'FAILED' ? 'FAILED' : 'COMPLETED',
+            status: result.status === 'FAILED' ? 'FAILED'
+              : (result.status as 'RUNNING' | 'COMPLETED' | 'FAILED' | 'AWAITING_APPROVAL' | 'ACCEPTED' | 'REJECTED' | 'POLICY_DENIED' | 'NOT_CONFIRMABLE'),
             message: result.message,
+            proposalId: result.proposalId ?? null,
+            proposalStatus: result.proposalStatus ?? null,
+            actionFamily: result.actionFamily ?? null,
           }
           return
         } catch {
-          // Transient poll failures fall through to the next attempt.
+          // Transient poll failures fall through to the next attempt, but a
+          // stale poll must still bail out instead of clobbering the latest.
+          if (this.nodeQuery && this.nodeQuery.runId !== runId) return
         }
       }
-      this.nodeQuery = this.nodeQuery
-        ? { ...this.nodeQuery, status: 'FAILED' }
-        : null
-      this.error = { code: 'QUERY_TIMEOUT', message: 'AI 查询超时，请稍后重试。' }
+      if (this.nodeQuery && this.nodeQuery.runId === runId) {
+        this.nodeQuery = { ...this.nodeQuery, status: 'FAILED' }
+        this.error = { code: 'QUERY_TIMEOUT', message: 'AI 查询超时，请稍后重试。' }
+      }
+    },
+
+    /**
+     * Accepts a pending NodeQuery proposal. The backend returns the confirmed
+     * proposal; the canonical graph is refreshed so any produced node/relation
+     * becomes visible. The query is then marked ACCEPTED.
+     */
+    async acceptNodeQueryProposal(proposalId: string): Promise<boolean> {
+      if (!this.projectId) return false
+      this.error = null
+      try {
+        await acceptProposal(proposalId)
+        await this.refreshWorkspace()
+        if (this.nodeQuery) {
+          this.nodeQuery = { ...this.nodeQuery, status: 'ACCEPTED', proposalStatus: 'ACCEPTED' }
+        }
+        this.feedback = '已接受提案，Graph 已更新。'
+        return true
+      } catch (err) {
+        this.error = toDisplayError(err)
+        return false
+      }
+    },
+
+    /**
+     * Rejects a pending NodeQuery proposal. The graph is left unchanged; the
+     * query is marked REJECTED so the UI stops offering accept/reject.
+     */
+    async rejectNodeQueryProposal(proposalId: string): Promise<boolean> {
+      if (!this.projectId) return false
+      this.error = null
+      try {
+        await rejectProposal(proposalId)
+        if (this.nodeQuery) {
+          this.nodeQuery = { ...this.nodeQuery, status: 'REJECTED', proposalStatus: 'REJECTED' }
+        }
+        this.feedback = '已拒绝提案，Graph 保持不变。'
+        return true
+      } catch (err) {
+        this.error = toDisplayError(err)
+        return false
+      }
     },
   },
 })

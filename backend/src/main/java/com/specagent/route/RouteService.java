@@ -95,7 +95,9 @@ public class RouteService {
      * {@code Project.activeRouteId}; the route lifecycle status is never changed
      * to {@code active}.
      */
+    @Transactional
     public void setActiveRoute(UUID projectId, UUID routeId) {
+        projectRepository.lockById(projectId);
         Route route = requireRouteInProject(projectId, routeId);
         if (route.lifecycleStatus() != RouteLifecycleStatus.OPEN) {
             throw new IllegalStateException(
@@ -103,6 +105,7 @@ public class RouteService {
                             + " is " + route.lifecycleStatus().code());
         }
         projectRepository.updateActiveRoute(projectId, routeId, Instant.now());
+        assertActiveRouteInvariant(projectId);
     }
 
     /**
@@ -110,11 +113,14 @@ public class RouteService {
      * route, the active route is cleared. No nodes, answers, patches, or shared
      * ancestors are deleted, and no other route is implicitly activated.
      */
+    @Transactional
     public void archiveRoute(UUID projectId, UUID routeId) {
+        projectRepository.lockById(projectId);
         Route route = requireRouteInProject(projectId, routeId);
         requireTransition(route, RouteLifecycleStatus.ARCHIVED);
         routeRepository.updateLifecycle(routeId, RouteLifecycleStatus.ARCHIVED, Instant.now());
         clearActiveRouteIfMatches(projectId, routeId);
+        assertActiveRouteInvariant(projectId);
     }
 
     /**
@@ -122,22 +128,28 @@ public class RouteService {
      * preserved. If the deleted route is the project's active route, the active
      * route is cleared.
      */
+    @Transactional
     public void softDeleteRoute(UUID projectId, UUID routeId) {
+        projectRepository.lockById(projectId);
         Route route = requireRouteInProject(projectId, routeId);
         requireTransition(route, RouteLifecycleStatus.DELETED);
         routeRepository.updateLifecycle(routeId, RouteLifecycleStatus.DELETED, Instant.now());
         clearActiveRouteIfMatches(projectId, routeId);
+        assertActiveRouteInvariant(projectId);
     }
 
     /**
      * Explicitly restores an archived, deleted, or superseded route back to
      * {@code OPEN} and makes it the project's active route.
      */
+    @Transactional
     public void restoreRoute(UUID projectId, UUID routeId) {
+        projectRepository.lockById(projectId);
         Route route = requireRouteInProject(projectId, routeId);
         requireTransition(route, RouteLifecycleStatus.OPEN);
         routeRepository.updateLifecycle(routeId, RouteLifecycleStatus.OPEN, Instant.now());
         projectRepository.updateActiveRoute(projectId, routeId, Instant.now());
+        assertActiveRouteInvariant(projectId);
     }
 
     /**
@@ -392,6 +404,41 @@ public class RouteService {
                 .orElseThrow(() -> new IllegalArgumentException("Project not found: " + projectId));
         if (project.activeRouteId() != null && project.activeRouteId().equals(routeId)) {
             projectRepository.updateActiveRoute(projectId, null, Instant.now());
+        }
+    }
+
+    /**
+     * Fail-closed enforcement of the active-route pointer invariant, checked
+     * after every lifecycle / active-route change while the project row is still
+     * locked: {@code activeRouteId} is either null, or points to a route that
+     * exists, belongs to this project, and has lifecycle status {@code OPEN}.
+     *
+     * <p>This is a safety net on top of the explicit maintenance above — it never
+     * auto-selects another route when the active pointer would otherwise dangle.
+     * A violation indicates either a regression in this service or pre-existing
+     * corruption, and is surfaced as a stable {@code IllegalStateException}.
+     */
+    private void assertActiveRouteInvariant(UUID projectId) {
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new IllegalArgumentException("Project not found: " + projectId));
+        UUID activeRouteId = project.activeRouteId();
+        if (activeRouteId == null) {
+            return;
+        }
+        Route active = routeRepository.findById(activeRouteId)
+                .orElseThrow(() -> new IllegalStateException(
+                        "ACTIVE_ROUTE_DANGLING: project " + projectId
+                                + " activeRouteId " + activeRouteId + " references a missing route"));
+        if (!active.projectId().equals(projectId)) {
+            throw new IllegalStateException(
+                    "ACTIVE_ROUTE_CROSS_PROJECT: project " + projectId
+                            + " activeRouteId " + activeRouteId + " belongs to another project");
+        }
+        if (active.lifecycleStatus() != RouteLifecycleStatus.OPEN) {
+            throw new IllegalStateException(
+                    "ACTIVE_ROUTE_NOT_OPEN: project " + projectId
+                            + " activeRouteId " + activeRouteId + " is not OPEN: "
+                            + active.lifecycleStatus().code());
         }
     }
 

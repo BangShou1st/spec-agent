@@ -2,7 +2,9 @@ package com.specagent.answer;
 
 import com.specagent.common.Ids;
 import com.specagent.graph.GraphInvariantValidator;
+import com.specagent.node.Node;
 import com.specagent.node.NodeRepository;
+import com.specagent.project.ProjectRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,13 +33,16 @@ public class AnswerService {
     private final AnswerRepository answerRepository;
     private final NodeRepository nodeRepository;
     private final GraphInvariantValidator invariantValidator;
+    private final ProjectRepository projectRepository;
 
     public AnswerService(AnswerRepository answerRepository,
                          NodeRepository nodeRepository,
-                         GraphInvariantValidator invariantValidator) {
+                         GraphInvariantValidator invariantValidator,
+                         ProjectRepository projectRepository) {
         this.answerRepository = answerRepository;
         this.nodeRepository = nodeRepository;
         this.invariantValidator = invariantValidator;
+        this.projectRepository = projectRepository;
     }
 
     /**
@@ -62,9 +67,27 @@ public class AnswerService {
             throw new IllegalStateException(
                     "Answer already finalized for node " + nodeId + " in route " + routeId);
         }
+        // Serialize finalization with Undo/Redo and other project-level
+        // mutations: the project row is locked first (matching the Undo path's
+        // project -> node order) so the answer INSERT's foreign-key key-share
+        // on the project row can never deadlock against an Undo that holds the
+        // project lock while waiting for this node.
+        projectRepository.lockById(projectId);
         // Serialize concurrent finalization of the same canonical node: after
         // this lock the node-wide existence check below is authoritative.
         nodeRepository.lockById(nodeId);
+        // A node retracted by a winning Undo/Redo must never gain an immutable
+        // Answer. Without this check an Undo that committed its retraction
+        // first would lose the race to a later finalization, leaving a
+        // retracted node carrying an immutable Answer (the exact invariant
+        // Undo/Redo must uphold). The re-read happens under the node lock, so
+        // it observes the authoritative retraction state.
+        Node lockedNode = nodeRepository.findById(nodeId)
+                .orElseThrow(() -> new IllegalArgumentException("Node not found: " + nodeId));
+        if (lockedNode.isRetracted()) {
+            throw new IllegalStateException(
+                    "RETRACTED_NODE_REFERENCE: cannot finalize an immutable Answer on a retracted node " + nodeId);
+        }
         invariantValidator.validateSharedQuestionState(projectId, nodeId);
         UUID answerId = Ids.random();
         Instant now = Instant.now();

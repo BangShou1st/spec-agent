@@ -23,6 +23,18 @@ public class ContextSnapshot {
     private final List<UUID> includedAnswerIds;
     private final List<UUID> includedPatchIds;
     private final List<UUID> excludedRouteIds;
+    /**
+     * Bounded 1-hop semantic context for a node query: the canonical node ids at
+     * the other end of every ACTIVE relation touching the anchor. These are NOT
+     * part of the lineage and never pollute it.
+     */
+    private final List<UUID> relatedNodeIds;
+    /**
+     * The ACTIVE semantic relations (direction preserved) touching the anchor,
+     * used as bounded 1-hop semantic context for a node query. Empty for every
+     * other operation type.
+     */
+    private final List<ContextRelation> relations;
     private final String specialInputs;
     private final String contextHash;
     private final Instant createdAt;
@@ -36,6 +48,8 @@ public class ContextSnapshot {
                            List<UUID> includedAnswerIds,
                            List<UUID> includedPatchIds,
                            List<UUID> excludedRouteIds,
+                           List<UUID> relatedNodeIds,
+                           List<ContextRelation> relations,
                            String specialInputs,
                            String contextHash,
                            Instant createdAt) {
@@ -46,8 +60,10 @@ public class ContextSnapshot {
         this.operationType = operationType;
         this.includedNodeIds = includedNodeIds == null ? List.of() : List.copyOf(includedNodeIds);
         this.includedAnswerIds = includedAnswerIds == null ? List.of() : List.copyOf(includedAnswerIds);
-        this.includedPatchIds = includedPatchIds == null ? List.of() : List.copyOf(includedPatchIds);
+        this.includedPatchIds = includedPatchIds == null ? List.copyOf(includedPatchIds) : List.copyOf(includedPatchIds);
         this.excludedRouteIds = excludedRouteIds == null ? List.of() : List.copyOf(excludedRouteIds);
+        this.relatedNodeIds = relatedNodeIds == null ? List.of() : List.copyOf(relatedNodeIds);
+        this.relations = relations == null ? List.of() : List.copyOf(relations);
         this.specialInputs = specialInputs;
         this.contextHash = contextHash;
         this.createdAt = createdAt;
@@ -87,6 +103,14 @@ public class ContextSnapshot {
 
     public List<UUID> excludedRouteIds() {
         return excludedRouteIds;
+    }
+
+    public List<UUID> relatedNodeIds() {
+        return relatedNodeIds;
+    }
+
+    public List<ContextRelation> relations() {
+        return relations;
     }
 
     public String specialInputs() {

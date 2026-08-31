@@ -136,6 +136,32 @@ class CapabilityResultView(StrictModel):
     provenance: Dict[str, Any] = Field(default_factory=dict)
 
 
+class RelationView(StrictModel):
+    """One direction-preserving semantic relation on the wire.
+
+    Mirrors the durable ``ContextRelation``: source, target and the relation
+    type code. Direction is preserved exactly as stored.
+    """
+
+    source_node_id: UUID
+    target_node_id: UUID
+    relation_type: str
+
+
+class RelatedNodeRef(StrictModel):
+    """A related canonical node in the bounded 1-hop semantic context.
+
+    ``direction`` is relative to the anchor: ``OUTGOING`` when the anchor is the
+    relation source, ``INCOMING`` when it is the target. Symmetric relations are
+    canonicalized at write time, so an ``INCOMING`` direction simply means the
+    stored endpoints place the anchor on the target side.
+    """
+
+    node_id: UUID
+    relation_type: str
+    direction: str
+
+
 class AgentInputSnapshot(StrictModel):
     snapshot_id: UUID
     context_hash: str
@@ -152,6 +178,9 @@ class AgentInputSnapshot(StrictModel):
     allowed_source_refs: List[str] = Field(default_factory=list)
     available_capabilities: List[CapabilityDescriptor] = Field(default_factory=list)
     capability_results: List[CapabilityResultView] = Field(default_factory=list)
+    # Bounded 1-hop semantic context (NODE_QUERY only; empty for other ops).
+    relations: List[RelationView] = Field(default_factory=list)
+    related_nodes: List[RelatedNodeRef] = Field(default_factory=list)
     autonomy: AutonomyInputs
 
 

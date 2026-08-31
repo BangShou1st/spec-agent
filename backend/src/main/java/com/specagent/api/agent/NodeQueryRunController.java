@@ -6,6 +6,7 @@ import com.specagent.agent.runtime.NodeQueryService;
 import com.specagent.agent.runtime.RunService;
 import com.specagent.agent.runevent.AgentRunEvent;
 import com.specagent.agent.runevent.AgentRunEventService;
+import com.specagent.agent.policy.AgentProposalService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -34,13 +35,16 @@ public class NodeQueryRunController {
     private final RunService runService;
     private final AgentRunService agentRunService;
     private final AgentRunEventService eventService;
+    private final AgentProposalService proposalService;
 
     public NodeQueryRunController(RunService runService,
                                   AgentRunService agentRunService,
-                                  AgentRunEventService eventService) {
+                                  AgentRunEventService eventService,
+                                  AgentProposalService proposalService) {
         this.runService = runService;
         this.agentRunService = agentRunService;
         this.eventService = eventService;
+        this.proposalService = proposalService;
     }
 
     @PostMapping
@@ -65,6 +69,10 @@ public class NodeQueryRunController {
         return agentRunService.getRun(runId)
                 .filter(run -> run.projectId().equals(projectId))
                 .filter(run -> run.triggerType().code().equals("node_query"))
+                // The run must target the requested node. A node_query run whose
+                // inputNodeId does not match (or is null) must not be served for
+                // a different node — fail closed with 404.
+                .filter(run -> nodeId.equals(run.inputNodeId()))
                 .<ResponseEntity<?>>map(run -> ResponseEntity.ok(queryResultView(run)))
                 .orElse(ResponseEntity.notFound().build());
     }
@@ -72,10 +80,35 @@ public class NodeQueryRunController {
     private Map<String, Object> queryResultView(AgentRun run) {
         Map<String, Object> view = new LinkedHashMap<>();
         view.put("runId", run.id().toString());
-        view.put("status", run.status().code());
         view.put("producedNodeId", run.producedNodeId() == null
                 ? null : run.producedNodeId().toString());
         view.put("message", respondMessage(run.id()));
+
+        // Surface the advisory proposal produced by this run, if the query was
+        // downgraded to an awaiting-approval action. Read-only runs have none.
+        // The semantic status reflects the proposal lifecycle so the frontend can
+        // render the awaiting/accepted/rejected UI (B3 closure).
+        var proposal = proposalService.findByRunId(run.id());
+        if (proposal.isPresent()) {
+            var p = proposal.get();
+            view.put("proposalId", p.id().toString());
+            view.put("proposalStatus", p.status().code());
+            view.put("actionFamily", p.actionFamily());
+            view.put("status", switch (p.status()) {
+                case PROPOSED -> "AWAITING_APPROVAL";
+                case ACCEPTED, MODIFIED -> "ACCEPTED";
+                case REJECTED -> "REJECTED";
+                default -> p.status().code();
+            });
+        } else {
+            view.put("proposalId", null);
+            view.put("proposalStatus", null);
+            view.put("actionFamily", null);
+            // Run status codes are lowercase in the domain model; the query
+            // result contract uses the uppercase frontend casing for terminal
+            // run states (the semantic statuses above are already uppercase).
+            view.put("status", run.status().code().toUpperCase());
+        }
         return view;
     }
 

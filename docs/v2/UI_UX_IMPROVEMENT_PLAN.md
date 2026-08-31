@@ -13,7 +13,7 @@
 3. 运行状态必须可见，但 UI 不展示或伪造模型的私有 chain-of-thought。
 4. 默认界面减少常驻操作按钮；重要状态常驻，次要操作 hover/focus 时出现。
 5. Route Focus 只高亮，不独占、不隐藏其他路线。
-6. Shared Node 共享身份，不复制；答案按 route scope 正确展示。
+6. Shared Node = Shared State：共享节点共享同一个不可变身份，不复制；答案更不按 route 拆分展示。
 7. Canvas 可见线条保持简单箭头，只表达 exploration continuation。
 8. 用户可以创建空 Node 并从任意历史 Node 开启新的 continuation，但不能改写既有历史链路。
 9. 所有输入状态应按 Node 持久在前端 store/view model 中，拖动 Canvas 或提交请求不能把选项/自由输入清空。
@@ -43,12 +43,20 @@ Node 可紧凑显示 Route 名称。Shared Node 显示多个所属路线标签�
 
 ### 3.4 Answers
 
-已回答 Question Node 应能看到答案摘要。Shared Question Node：
+已回答 Question Node 应能看到答案摘要。
 
-- 多路线答案等价时，可显示 common answer；
-- 多路线答案不同，按路线名称显示各自摘要；
-- Focus Route 的答案默认展开；
-- 其他答案仍可查看。
+> **Shared Node = Shared State.** A canonical Question Node has at most one
+> immutable Answer identity project-wide. All routes referencing an answered
+> shared Question reference the same Answer ID. Focus changes visual/read
+> context only and never selects a different Answer. 因此前端**不**按路线展示
+> 不同 Answer、**不**存在"多路线答案不同"的 shared divergence、**不**存在
+> "Focus Route 默认展开对应 Answer" 的拆分逻辑。
+
+Shared Question Node 的展示规则：
+
+- 同一 Question 全局只有一个不可变 Answer 身份；Focus（Main / Branch / null）下展示的内容完全一致。
+- Inspector 的"回答"区块只展示该 canonical Answer 一次；"路线归属"区块只列 route memberships（路线、生命周期、active/focus/provenance），不重复 Answer payload。
+- Graph 节点上 shared answered Question 直接展示该 Answer；未答 shared Question 只显示"等待回答"，绝不按路线制造 route-specific 的"等待回答/回答这个问题"入口。
 
 ## 4. Question Options Layout
 
