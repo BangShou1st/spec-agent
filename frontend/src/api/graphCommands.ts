@@ -70,6 +70,33 @@ export interface ProposalRejectResult {
   status: string
 }
 
+/**
+ * Safe summary of one durable AgentProposal, with enough runtime identity to
+ * reconnect a pending proposal to its NodeQuery anchor after a page reload
+ * (inputNodeId = the canonical anchor node of the run that produced it).
+ */
+export interface ProjectProposalSummary {
+  proposalId: string
+  runId: string | null
+  inputNodeId: string | null
+  routeId: string | null
+  actionFamily: string
+  status: string
+  createdAt: string
+  decidedAt: string | null
+  decidedBy: string | null
+}
+
+/** Lists durable proposals of a project, defaulting to the pending ones. */
+export function listProposals(
+  projectId: string,
+  status = 'PROPOSED',
+): Promise<ProjectProposalSummary[]> {
+  return apiClient.get<ProjectProposalSummary[]>(
+    `/projects/${projectId}/proposals?status=${encodeURIComponent(status)}`,
+  )
+}
+
 export function createRootDraftNode(
   projectId: string,
   routeId: string,

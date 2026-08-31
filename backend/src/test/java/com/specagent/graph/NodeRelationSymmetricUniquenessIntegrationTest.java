@@ -283,6 +283,76 @@ class NodeRelationSymmetricUniquenessIntegrationTest {
                 null, null, Instant.now(), null);
     }
 
+    /**
+     * Regression: PostgreSQL's uuid ordering (byte-wise RFC 4122, unsigned) is
+     * NOT guaranteed to match Java's {@code UUID.compareTo} (two signed 64-bit
+     * halves). A row canonicalized by the V18 migration stores the pair in the
+     * database's own order; the application duplicate pre-check must therefore
+     * use the order-independent canonical-pair lookup, or it would miss the
+     * migrated row and surface a raw {@link DuplicateKeyException} from the
+     * unique index instead of the controlled "already exists" conflict.
+     */
+    @Test
+    void javaAndPostgresOrderingDivergenceIsRejectedAsControlledConflict() {
+        // Deliberately divergent pair: the high bit of A's first 64-bit half is
+        // set, so Java sees A < B (signed) while PostgreSQL compares A's first
+        // byte 0x80 > B's first byte 0x00, so the DB sees A > B.
+        UUID a = UUID.fromString("80000000-0000-0000-0000-000000000000");
+        UUID b = UUID.fromString("00000000-0000-0000-0000-000000000001");
+        assertThat(a.compareTo(b))
+                .as("sanity: Java orders A < B for the chosen pair")
+                .isNegative();
+        Map<String, Object> pair = jdbcTemplate.queryForMap(
+                "SELECT LEAST(CAST(? AS uuid), CAST(? AS uuid)) AS lo, "
+                        + "GREATEST(CAST(? AS uuid), CAST(? AS uuid)) AS hi",
+                a, b, a, b);
+        assertThat(pair.get("lo"))
+                .as("sanity: PostgreSQL orders B < A for the chosen pair")
+                .isEqualTo(b);
+        assertThat(pair.get("hi")).isEqualTo(a);
+
+        // Seed the pair as the migrated row already canonicalized to the
+        // database's own order (source = DB LEAST, target = DB GREATEST) —
+        // exactly what V18 Step 2 leaves behind for such a divergent pair.
+        seedNodeRow(a, "KNOWLEDGE");
+        seedNodeRow(b, "KNOWLEDGE");
+        jdbcTemplate.update(
+                "INSERT INTO node_relations (id, project_id, source_node_id, target_node_id, "
+                        + "relation_type, origin, status, created_at) "
+                        + "VALUES (?, ?, ?, ?, 'RELATED_TO', 'USER', 'ACTIVE', NOW())",
+                UUID.randomUUID(), project.id(), b, a);
+
+        // Normal application creation in EITHER direction must be a controlled
+        // domain conflict, never a raw DuplicateKeyException.
+        assertThatThrownBy(() -> relationRepository.insertActiveOrThrowDuplicate(
+                project.id(), a, b, NodeRelationType.RELATED_TO,
+                NodeRelation.Origin.USER, null, null))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("already exists")
+                .isNotInstanceOf(DuplicateKeyException.class);
+        assertThatThrownBy(() -> relationRepository.insertActiveOrThrowDuplicate(
+                project.id(), b, a, NodeRelationType.RELATED_TO,
+                NodeRelation.Origin.USER, null, null))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("already exists")
+                .isNotInstanceOf(DuplicateKeyException.class);
+
+        // Exactly one ACTIVE relation remains, unchanged in the DB-canonical
+        // direction the migration established.
+        List<NodeRelation> active = relationRepository.findActiveByProject(project.id());
+        assertThat(active).hasSize(1);
+        assertThat(active.get(0).sourceNodeId()).isEqualTo(b);
+        assertThat(active.get(0).targetNodeId()).isEqualTo(a);
+    }
+
+    private void seedNodeRow(UUID id, String subtype) {
+        jdbcTemplate.update(
+                "INSERT INTO nodes (id, project_id, question, kind, subtype, author_kind, "
+                        + "knowledge_status, created_at, updated_at) "
+                        + "VALUES (?, ?, ?, 'KNOWLEDGE', ?, 'USER', 'PROPOSED', NOW(), NOW())",
+                id, project.id(), "seed-" + id, subtype);
+    }
+
     private static UUID min(UUID a, UUID b) {
         return a.compareTo(b) <= 0 ? a : b;
     }

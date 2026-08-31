@@ -87,9 +87,30 @@ const askBlockedReason = computed(() => {
 })
 
 const queryResult = computed(() => {
-  if (!props.data || !workspace.nodeQuery) return null
+  if (!props.data) return null
   const canonicalNodeId = props.data.canonicalNodeId ?? props.data.node.id
-  return workspace.nodeQuery.nodeId === canonicalNodeId ? workspace.nodeQuery : null
+  // The live in-memory query wins when it targets this node.
+  if (workspace.nodeQuery && workspace.nodeQuery.nodeId === canonicalNodeId) {
+    return workspace.nodeQuery
+  }
+  // A durable pending proposal is reconnected to its anchor node: even after
+  // a page reload (or after a NEWER query replaced nodeQuery), the proposal
+  // stays visible on the node whose query produced it.
+  const pending = workspace.nodeQueryProposals.find(
+    (proposal) => proposal.inputNodeId === canonicalNodeId,
+  )
+  if (!pending) return null
+  return {
+    nodeId: canonicalNodeId,
+    routeId: pending.routeId,
+    question: '',
+    runId: pending.runId ?? '',
+    status: 'AWAITING_APPROVAL',
+    message: 'AI 提出了一个候选动作，等待你确认。',
+    proposalId: pending.proposalId,
+    proposalStatus: pending.status,
+    actionFamily: pending.actionFamily,
+  } as typeof workspace.nodeQuery
 })
 
 const acceptingProposal = ref(false)

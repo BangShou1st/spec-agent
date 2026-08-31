@@ -1,5 +1,11 @@
 package com.specagent.graph;
 
+import com.specagent.agent.action.StaleProposalException;
+import com.specagent.agent.contract.ActionProposal;
+import com.specagent.agent.policy.AgentProposal;
+import com.specagent.agent.policy.AgentProposalService;
+import com.specagent.agent.policy.ProposalAcceptanceService;
+import com.specagent.agent.policy.ProposalStatus;
 import com.specagent.answer.AnswerService;
 import com.specagent.node.Node;
 import com.specagent.node.NodeRepository;
@@ -17,6 +23,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.Callable;
@@ -53,6 +60,8 @@ class UndoRedoConcurrencyIntegrationTest {
     @Autowired private RouteService routeService;
     @Autowired private NodeRelationRepository relationRepository;
     @Autowired private GraphOperationRepository operationRepository;
+    @Autowired private AgentProposalService proposalService;
+    @Autowired private ProposalAcceptanceService acceptanceService;
     @Autowired private JdbcTemplate jdbcTemplate;
 
     private Project project;
@@ -234,6 +243,208 @@ class UndoRedoConcurrencyIntegrationTest {
             }
         } finally {
             pool.shutdownNow();
+        }
+    }
+
+    /**
+     * Item 3 (deep review) — Undo racing appendContinuation. Both writers take
+     * the same project-row lock first, so the final materialized graph and the
+     * GraphOperation stack are always linear: no ACTIVE creation op can point
+     * at a retracted node, and no UNDONE creation op can point at a live one.
+     */
+    @Test
+    void undoAndAppendContinuationLeaveLinearStackAndGraph() throws Exception {
+        project = projectService.createProject("撤销与续写并发 " + UUID.randomUUID());
+        UUID routeId = project.activeRouteId();
+        Node root = commandService.createRootDraftNode(
+                project.id(), routeId, "NOTE", Map.of("text", "root"));
+        Node child = commandService.appendContinuation(
+                project.id(), routeId, root.id(), "NOTE", Map.of("text", "child")).node();
+
+        CyclicBarrier startLine = new CyclicBarrier(2);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<Attempt> undoFuture = pool.submit(() -> {
+                startLine.await(10, TimeUnit.SECONDS);
+                return Attempt.run(() -> undoRedoService.undo(project.id()));
+            });
+            Future<Attempt> appendFuture = pool.submit(() -> {
+                startLine.await(10, TimeUnit.SECONDS);
+                return Attempt.run(() -> commandService.appendContinuation(
+                        project.id(), routeId, child.id(), "NOTE", Map.of("text", "new")));
+            });
+
+            Attempt undoAttempt = undoFuture.get(60, TimeUnit.SECONDS);
+            Attempt appendAttempt = appendFuture.get(60, TimeUnit.SECONDS);
+
+            // The undo always succeeds (there is always a valid ACTIVE op it
+            // targets); the continuation either succeeds before the undo (then
+            // the undo rolls it back) or fails after it (child no longer on
+            // the tip lineage). Never a half-applied intermediate.
+            assertThat(undoAttempt.success).isTrue();
+            assertLinearOperationStack(project.id());
+            assertThat(nodeRepository.findById(root.id()).orElseThrow().isRetracted()).isFalse();
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    /**
+     * Item 3 (deep review) — Undo racing reviseDraftNode. The project row lock
+     * serializes the two transactions: either the revision lands first and the
+     * undo restores the prior content, or the undo lands first and the
+     * revision applies on the restored state. The final node content must be
+     * exactly one of the two serial orders and the operation log must stay a
+     * consistent linear stack.
+     */
+    @Test
+    void undoAndReviseDraftNodeNeverLoseOrDoubleApplyARevision() throws Exception {
+        project = projectService.createProject("撤销与编辑并发 " + UUID.randomUUID());
+        UUID routeId = project.activeRouteId();
+        Node draft = commandService.createRootDraftNode(
+                project.id(), routeId, "NOTE", Map.of("text", "v0"));
+        commandService.reviseDraftNode(project.id(), draft.id(), "NOTE", Map.of("text", "v1"));
+
+        CyclicBarrier startLine = new CyclicBarrier(2);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<Attempt> undoFuture = pool.submit(() -> {
+                startLine.await(10, TimeUnit.SECONDS);
+                return Attempt.run(() -> undoRedoService.undo(project.id()));
+            });
+            Future<Attempt> reviseFuture = pool.submit(() -> {
+                startLine.await(10, TimeUnit.SECONDS);
+                return Attempt.run(() -> commandService.reviseDraftNode(
+                        project.id(), draft.id(), "NOTE", Map.of("text", "v2")));
+            });
+
+            Attempt undoAttempt = undoFuture.get(60, TimeUnit.SECONDS);
+            Attempt reviseAttempt = reviseFuture.get(60, TimeUnit.SECONDS);
+
+            assertThat(undoAttempt.success).isTrue();
+            assertLinearOperationStack(project.id());
+
+            // The draft itself must never be retracted by these two operations.
+            assertThat(nodeRepository.findById(draft.id()).orElseThrow().isRetracted()).isFalse();
+            // Final content is one of the serial outcomes: v1 (undo after
+            // revise) or v2 (revise after undo). "v0" would mean the revision
+            // was silently lost.
+            String finalText = (String) nodeRepository.findById(draft.id())
+                    .orElseThrow().content().get("text");
+            assertThat(finalText).isIn("v1", "v2");
+            // The last ACTIVE EDIT op must describe the content that is live.
+            var activeEdit = operationRepository.findByProject(project.id()).stream()
+                    .filter(op -> op.type() == GraphOperation.Type.EDIT_DRAFT_NODE)
+                    .filter(op -> op.status() == GraphOperation.Status.ACTIVE)
+                    .reduce((first, second) -> second);
+            if (activeEdit.isPresent()) {
+                assertThat(activeEdit.get().afterRefs().get("content"))
+                        .isEqualTo(Map.of("text", finalText));
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    /**
+     * Item 3 (deep review) — Undo racing an accepted CREATE_NODE proposal.
+     * Acceptance now takes the project lock (project → proposal → graph) just
+     * like every other user-visible graph writer, so a stale accept can never
+     * resurrect a retracted anchor: either the acceptance lands first and the
+     * later undo hits the non-reversible ACCEPT barrier, or the undo lands
+     * first and the acceptance fails stale. The proposal bar is never crossed.
+     */
+    @Test
+    void undoAndAcceptedCreateNodeNeverResurrectRetractedAnchor() throws Exception {
+        project = projectService.createProject("撤销与接受提案并发 " + UUID.randomUUID());
+        UUID routeId = project.activeRouteId();
+        Node root = commandService.createRootDraftNode(
+                project.id(), routeId, "NOTE", Map.of("text", "root"));
+
+        ActionProposal proposal = new ActionProposal(
+                "CREATE_NODE",
+                Map.of("kind", "KNOWLEDGE", "subtype", "RISK",
+                        "content", Map.of("text", "agent 结论")),
+                UUID.randomUUID(), "hash-" + UUID.randomUUID(),
+                List.of(), UUID.randomUUID(), "idem-" + UUID.randomUUID(),
+                List.of());
+        AgentProposal pending = proposalService.createProposal(
+                proposal, UUID.randomUUID(), project.id(), routeId);
+
+        CyclicBarrier startLine = new CyclicBarrier(2);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<Attempt> undoFuture = pool.submit(() -> {
+                startLine.await(10, TimeUnit.SECONDS);
+                return Attempt.run(() -> undoRedoService.undo(project.id()));
+            });
+            Future<Attempt> acceptFuture = pool.submit(() -> {
+                startLine.await(10, TimeUnit.SECONDS);
+                return Attempt.run(() -> acceptanceService.acceptAndExecute(pending.id(), "user"));
+            });
+
+            Attempt undoAttempt = undoFuture.get(60, TimeUnit.SECONDS);
+            Attempt acceptAttempt = acceptFuture.get(60, TimeUnit.SECONDS);
+
+            assertLinearOperationStack(project.id());
+            // The proposal was decided exactly once, never resurrected.
+            ProposalStatus finalStatus = proposalService.getProposal(pending.id())
+                    .orElseThrow().status();
+
+            if (acceptAttempt.success) {
+                // Acceptance won the lock: the produced node is live and the
+                // undo then hit the non-reversible ACCEPT barrier.
+                assertThat(finalStatus).isEqualTo(ProposalStatus.ACCEPTED);
+                assertThat(undoAttempt.error).isInstanceOf(IllegalStateException.class)
+                        .hasMessageContaining("不可撤销");
+                assertThat(nodeRepository.findById(root.id()).orElseThrow().isRetracted()).isFalse();
+                assertThat(operationRepository.findByProject(project.id()).stream()
+                        .anyMatch(op -> op.type() == GraphOperation.Type.ACCEPT_AGENT_PROPOSAL
+                                && op.status() == GraphOperation.Status.ACTIVE)).isTrue();
+            } else {
+                // Undo won the lock: the anchor was retracted before the
+                // acceptance re-validated, so acceptance failed stale.
+                assertThat(finalStatus).isEqualTo(ProposalStatus.PROPOSED);
+                assertThat(acceptAttempt.error).isInstanceOf(StaleProposalException.class);
+                assertThat(nodeRepository.findById(root.id()).orElseThrow().isRetracted()).isTrue();
+                assertThat(operationRepository.findByProject(project.id()).stream()
+                        .noneMatch(op -> op.type() == GraphOperation.Type.ACCEPT_AGENT_PROPOSAL)).isTrue();
+            }
+            // The anchor's route tip is never a retracted node.
+            Route route = routeRepository.findById(routeId).orElseThrow();
+            if (route.tipNodeId() != null) {
+                assertThat(nodeRepository.findById(route.tipNodeId())
+                        .orElseThrow().isRetracted()).isFalse();
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    /**
+     * Linear-stack invariant after any race: a node-creation operation that is
+     * ACTIVE must reference a live (non-retracted) node, and one that is
+     * UNDONE must reference a retracted node. Any violation would mean a
+     * half-applied undo/mutation interleave.
+     */
+    private void assertLinearOperationStack(UUID projectId) {
+        for (GraphOperation op : operationRepository.findByProject(projectId)) {
+            boolean creationOp = switch (op.type()) {
+                case CREATE_DRAFT_NODE, APPEND_CONTINUATION, ATTACH_RESOURCE,
+                     CREATE_BRANCH_AND_APPEND -> true;
+                default -> false;
+            };
+            if (!creationOp || !(op.afterRefs().get("nodeId") instanceof String nodeId)) {
+                continue;
+            }
+            Node node = nodeRepository.findById(UUID.fromString(nodeId)).orElse(null);
+            if (node == null) {
+                continue;
+            }
+            boolean active = op.status() == GraphOperation.Status.ACTIVE;
+            assertThat(node.isRetracted())
+                    .as("linear stack: op %s on node %s status %s", op.type(), nodeId, op.status())
+                    .isEqualTo(!active);
         }
     }
 

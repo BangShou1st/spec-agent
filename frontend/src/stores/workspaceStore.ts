@@ -18,12 +18,14 @@ import {
   createNodeQuery,
   getNodeQueryResult,
   getUndoRedoAvailability,
+  listProposals,
   redoGraphOperation,
   rejectProposal,
   reviseDraftNode,
   setKnowledgeStatus,
   undoGraphOperation,
 } from '@/api/graphCommands'
+import type { ProjectProposalSummary } from '@/api/graphCommands'
 import { getProjectGraph } from '@/api/graph'
 import { getProject } from '@/api/projects'
 import { getRequirementState, getRouteRequirementState } from '@/api/requirementState'
@@ -104,6 +106,18 @@ function toDisplayError(err: unknown): DisplayError {
     return { code: err.code, message: err.message, status: err.status }
   }
   return { code: 'UNKNOWN_ERROR', message: GENERIC_ERROR_MESSAGE }
+}
+
+/**
+ * Reads the durable PROPOSED NodeQuery proposals for one project, fail-soft:
+ * a failed proposal-list read must never fail the workspace load or refresh
+ * (pending proposals remain discoverable on the next successful load). The
+ * pure-function shape lets loadWorkspace/refreshWorkspace fetch it in the same
+ * Promise.all as the canonical reads, so the workspace critical path and its
+ * load/layout timing are unchanged.
+ */
+function loadNodeQueryProposalsSafely(projectId: string): Promise<ProjectProposalSummary[]> {
+  return listProposals(projectId, 'PROPOSED').catch(() => [])
 }
 
 /**
@@ -193,6 +207,14 @@ export const useWorkspaceStore = defineStore('workspace', {
       proposalStatus?: string | null
       actionFamily?: string | null
     } | null,
+    /**
+     * Durable pending NodeQuery proposals discovered from the backend proposal
+     * list API. A PROPOSED AgentProposal must survive a page reload and a
+     * newer query (which replaces `nodeQuery`): this list is reloaded on every
+     * workspace load/refresh and keyed by the canonical anchor node id so the
+     * Inspector on that node still exposes the pending proposal.
+     */
+    nodeQueryProposals: [] as ProjectProposalSummary[],
   }),
   getters: {
     activeRoute(state): RouteResponse | null {
@@ -228,18 +250,20 @@ export const useWorkspaceStore = defineStore('workspace', {
       this.pendingRouteProjection = null
       this.focusAfterMutation = null
       try {
-        const [project, activeState, routes, requirementState, graphView] = await Promise.all([
+        const [project, activeState, routes, requirementState, graphView, proposals] = await Promise.all([
           getProject(projectId),
           getActiveState(projectId),
           listRoutes(projectId),
           getRequirementState(projectId),
           getProjectGraph(projectId),
+          loadNodeQueryProposalsSafely(projectId),
         ])
         this.project = project
         this.activeState = activeState
         this.routes = routes
         this.requirementState = requirementState
         this.graphView = graphView
+        this.nodeQueryProposals = proposals ?? []
         this.restoreCanonicalRecoveryCheckpoints()
         this.requirementStatesByRoute = {}
         this.specsByRoute = {}
@@ -259,18 +283,20 @@ export const useWorkspaceStore = defineStore('workspace', {
       this.refreshing = true
       this.error = null
       try {
-        const [project, activeState, routes, requirementState, graphView] = await Promise.all([
+        const [project, activeState, routes, requirementState, graphView, proposals] = await Promise.all([
           getProject(this.projectId),
           getActiveState(this.projectId),
           listRoutes(this.projectId),
           getRequirementState(this.projectId),
           getProjectGraph(this.projectId),
+          loadNodeQueryProposalsSafely(this.projectId),
         ])
         this.project = project
         this.activeState = activeState
         this.routes = routes
         this.requirementState = requirementState
         this.graphView = graphView
+        this.nodeQueryProposals = proposals ?? []
         this.restoreCanonicalRecoveryCheckpoints()
         // RequirementState is derived and answers/patches change it: drop the
         // route-scoped cache on every canonical refresh so the reading UI
@@ -1763,6 +1789,28 @@ export const useWorkspaceStore = defineStore('workspace', {
     },
 
     /**
+     * Reloads the durable PROPOSED NodeQuery proposals from the backend
+     * proposal list API. This is what makes a pending proposal survive a page
+     * reload: the list is keyed to each proposal's canonical anchor node
+     * (inputNodeId) so the Inspector on that node exposes it even when the
+     * in-memory `nodeQuery` was reset or replaced by a newer query.
+     */
+    async loadNodeQueryProposals(): Promise<void> {
+      if (!this.projectId) {
+        this.nodeQueryProposals = []
+        return
+      }
+      try {
+        this.nodeQueryProposals = await listProposals(this.projectId, 'PROPOSED')
+      } catch {
+        // A failed proposal-list read must not fail the whole workspace load;
+        // keep the last known list and let the UI surface loading errors as
+        // usual. Pending proposals remain discoverable on the next refresh.
+        this.nodeQueryProposals = this.nodeQueryProposals ?? []
+      }
+    },
+
+    /**
      * Accepts a pending NodeQuery proposal. The backend returns the confirmed
      * proposal; the canonical graph is refreshed so any produced node/relation
      * becomes visible. The query is then marked ACCEPTED.
@@ -1773,6 +1821,7 @@ export const useWorkspaceStore = defineStore('workspace', {
       try {
         await acceptProposal(proposalId)
         await this.refreshWorkspace()
+        await this.loadNodeQueryProposals()
         if (this.nodeQuery) {
           this.nodeQuery = { ...this.nodeQuery, status: 'ACCEPTED', proposalStatus: 'ACCEPTED' }
         }
@@ -1793,6 +1842,7 @@ export const useWorkspaceStore = defineStore('workspace', {
       this.error = null
       try {
         await rejectProposal(proposalId)
+        await this.loadNodeQueryProposals()
         if (this.nodeQuery) {
           this.nodeQuery = { ...this.nodeQuery, status: 'REJECTED', proposalStatus: 'REJECTED' }
         }

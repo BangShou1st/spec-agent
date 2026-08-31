@@ -144,5 +144,29 @@ def test_non_node_query_with_null_route_id_is_422(settings):
     assert response.json()["detail"] == "contract_violation"
 
 
+def test_decisions_endpoint_accepts_semantic_node_query_fixture(settings):
+    """The real HTTP boundary must accept the semantic NODE_QUERY fixture.
+
+    The fixture carries bounded 1-hop relations + relatedNodes with body
+    content; a contract_violation at the FastAPI edge would break the
+    production Java -> Python request path, not just a unit test.
+    """
+    payload = _load_fixture("agent-input-node-query-semantic-context-valid.json")
+    response = _client(settings).post(
+        "/v1/decisions", json=payload,
+        headers={"X-Spec-Agent-Internal-Token": "test-secret"})
+
+    assert response.status_code != 422, response.text
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["protocolVersion"] == "agent-decision.v2"
+    assert body["actionProposal"] is not None
+    # The response must echo the semantic query's base context exactly.
+    assert body["actionProposal"]["baseContextSnapshotId"] == \
+        payload["snapshot"]["snapshotId"]
+    assert body["actionProposal"]["baseContextHash"] == payload["snapshot"]["contextHash"]
+    assert body["runId"] == payload["runId"]
+
+
 def _load_fixture(name: str) -> dict:
     return json.loads((FIXTURES_DIR / name).read_text(encoding="utf-8"))

@@ -16,6 +16,9 @@ import com.specagent.graph.NodeRelation;
 import com.specagent.graph.NodeRelationRepository;
 import com.specagent.graph.NodeRelationType;
 import com.specagent.node.Node;
+import com.specagent.node.NodeAuthorKind;
+import com.specagent.node.NodeKind;
+import com.specagent.node.NodeService;
 import com.specagent.project.Project;
 import com.specagent.project.ProjectService;
 import com.specagent.route.RouteRepository;
@@ -51,6 +54,7 @@ class NodeQueryIntegrationTest {
     @Autowired private NodeRelationRepository nodeRelationRepository;
     @Autowired private ContextBuilder contextBuilder;
     @Autowired private AgentInputSnapshotBuilder snapshotBuilder;
+    @Autowired private NodeService nodeService;
 
     private Project project;
     private Node knowledgeNode;
@@ -133,5 +137,55 @@ class NodeQueryIntegrationTest {
         assertThat(input.relations()).contains(new RelationView(a.id(), b.id(), "DEPENDS_ON"));
         assertThat(input.relatedNodes()).anyMatch(ref ->
                 ref.nodeId().equals(b.id()) && "OUTGOING".equals(ref.direction()));
+        // The related node's real body content reaches the wire, not only ids.
+        assertThat(input.relatedNodes())
+                .filteredOn(ref -> ref.nodeId().equals(b.id()))
+                .singleElement()
+                .satisfies(ref -> {
+                    assertThat(ref.node().body().text()).isEqualTo("依赖项 B");
+                    assertThat(ref.node().kind()).isEqualTo("KNOWLEDGE");
+                });
+        // The related node is a first-class allowed source ref.
+        assertThat(input.allowedSourceRefs()).contains("node:" + b.id());
+        // The wire lineage carries exactly the ancestor chain, never the related node.
+        assertThat(input.lineage()).extracting(entry -> entry.node().id())
+                .contains(a.id()).doesNotContain(b.id(), c.id());
+    }
+
+    /**
+     * Item 1 (deep review) — a directly-related RESOURCE node must expose an
+     * allowed capability for the query's snapshot without any workspace scan:
+     * capability relevance considers the bounded 1-hop related nodes alongside
+     * the lineage.
+     */
+    @Test
+    void relatedResourceNodeExposesCapabilityWithoutWorkspaceScan() {
+        UUID routeId = routeRepository.findById(project.activeRouteId()).orElseThrow().id();
+        Node a = knowledgeNode; // KNOWLEDGE lineage node, no RESOURCE in lineage
+        // A floating RESOURCE node is directly related to the anchor.
+        Node resource = nodeService.createFloatingWorkspaceNode(
+                project.id(), NodeKind.RESOURCE, "TEXT",
+                Map.of("text", "离线模式外部评审:队列上限 2048"),
+                NodeAuthorKind.USER, null);
+        nodeRelationRepository.save(new NodeRelation(Ids.random(), project.id(), a.id(), resource.id(),
+                NodeRelationType.SUPPORTS, NodeRelation.Origin.USER, NodeRelation.Status.ACTIVE,
+                null, null, Instant.now(), null));
+
+        ContextSnapshot snapshot = contextBuilder.buildForNodeQuery(
+                project.id(), routeId, a.id(), "受哪个外部资源约束？");
+        assertThat(snapshot.relatedNodeIds()).containsExactly(resource.id());
+        // The lineage has NO resource node — relevance must come from the
+        // related node, otherwise this capability would be invisible.
+        assertThat(snapshot.includedNodeIds()).doesNotContain(resource.id());
+
+        AgentInputSnapshot input = snapshotBuilder.build(snapshot);
+        assertThat(input.availableCapabilities())
+                .extracting(com.specagent.agent.contract.CapabilityDescriptor::id)
+                .contains(com.specagent.capability.ResourceExtractTextCapability.CAPABILITY_ID);
+        assertThat(input.relatedNodes()).singleElement().satisfies(ref -> {
+            assertThat(ref.nodeId()).isEqualTo(resource.id());
+            assertThat(ref.node().kind()).isEqualTo("RESOURCE");
+            assertThat(ref.node().body().text()).contains("离线模式外部评审");
+        });
     }
 }

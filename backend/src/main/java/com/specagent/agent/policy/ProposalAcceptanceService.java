@@ -13,6 +13,7 @@ import com.specagent.graph.NodeRelation;
 import com.specagent.graph.NodeRelationType;
 import com.specagent.node.Node;
 import com.specagent.node.NodeRepository;
+import com.specagent.project.ProjectRepository;
 import com.specagent.route.Route;
 import com.specagent.route.RouteRepository;
 import org.springframework.stereotype.Service;
@@ -40,19 +41,22 @@ public class ProposalAcceptanceService {
     private final GraphOperationRepository operationRepository;
     private final NodeRepository nodeRepository;
     private final RouteRepository routeRepository;
+    private final ProjectRepository projectRepository;
 
     public ProposalAcceptanceService(AgentProposalService proposalService,
                                      ActionExecutor actionExecutor,
                                      GraphCommandService graphCommandService,
                                      GraphOperationRepository operationRepository,
                                      NodeRepository nodeRepository,
-                                     RouteRepository routeRepository) {
+                                     RouteRepository routeRepository,
+                                     ProjectRepository projectRepository) {
         this.proposalService = proposalService;
         this.actionExecutor = actionExecutor;
         this.graphCommandService = graphCommandService;
         this.operationRepository = operationRepository;
         this.nodeRepository = nodeRepository;
         this.routeRepository = routeRepository;
+        this.projectRepository = projectRepository;
     }
 
     public record AcceptedProposalResult(String actionFamily, UUID producedNodeId, UUID relationId) {
@@ -62,17 +66,36 @@ public class ProposalAcceptanceService {
      * Accepts and executes a pending proposal in one transaction. Execution
      * failures leave the proposal PROPOSED so the user can retry after the
      * underlying problem is resolved.
+     *
+     * <p>Lock order is project → proposal → graph: the project row lock is
+     * taken first (after resolving the project from immutable proposal
+     * metadata), then the proposal row is locked and re-read, then the graph
+     * mutation. This mirrors the project-first order of every other graph
+     * writer ({@link GraphCommandService}, {@code UndoRedoService}), so
+     * acceptance can never hold a proposal lock while waiting for the project
+     * lock in the reverse order (no proposal→project deadlock path).
      */
     @Transactional
     public AcceptedProposalResult acceptAndExecute(UUID proposalId, String decidedBy) {
-        // Single-winner arbitration starts here: the proposal row lock is
-        // taken before any validation or graph mutation and is held until
-        // this transaction commits or rolls back, so a racing accept/reject/
-        // expire waits behind it and then observes the committed outcome.
+        // 1. Resolve the project from immutable proposal metadata (no lock).
+        AgentProposal metadata = proposalService.getProposal(proposalId)
+                .orElseThrow(() -> new IllegalArgumentException("Proposal not found: " + proposalId));
+        UUID projectId = metadata.projectId();
+        // 2. Serialize against every other project-wide graph writer.
+        projectRepository.lockById(projectId);
+        // 3. Lock and re-read the proposal row after the project lock. The
+        //    single-winner arbitration happens here: the row lock is held
+        //    until this transaction commits or rolls back, so a racing
+        //    accept/reject/expire waits behind it and then observes the
+        //    committed outcome.
         AgentProposal stored = proposalService.getProposalForUpdate(proposalId)
                 .orElseThrow(() -> new IllegalArgumentException("Proposal not found: " + proposalId));
         if (stored.status() != ProposalStatus.PROPOSED) {
             throw new ProposalAlreadyDecidedException(stored.status().code());
+        }
+        if (!stored.projectId().equals(projectId)) {
+            throw new IllegalArgumentException(
+                    "Proposal project changed between reads: " + proposalId);
         }
 
         ActionProposal proposal = rebuildActionProposal(stored);

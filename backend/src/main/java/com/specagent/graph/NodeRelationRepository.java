@@ -115,17 +115,20 @@ public class NodeRelationRepository {
         if (type == NodeRelationType.RELATED_TO || type == NodeRelationType.CONFLICTS_WITH) {
             // Symmetric fact: match regardless of the stored direction. A
             // canonicalized legacy row may have been stored under the
-            // database's own uuid ordering (LEAST/GREATEST), which differs
-            // from Java's UUID.compareTo for some ids, so a Java-canonical
-            // query would miss it.
+            // database's own uuid ordering (LEAST/GREATEST, byte-wise RFC 4122
+            // order), which differs from Java's UUID.compareTo (signed 64-bit
+            // halves) for some ids, so a Java-canonical query would miss it.
+            // The pair is scoped to the project like the unique-index identity.
             String sql = """
                     SELECT * FROM node_relations
-                    WHERE relation_type = :relationType AND status = 'ACTIVE'
+                    WHERE project_id = :projectId
+                      AND relation_type = :relationType AND status = 'ACTIVE'
                       AND ((source_node_id = :nodeIdA AND target_node_id = :nodeIdB)
                            OR (source_node_id = :nodeIdB AND target_node_id = :nodeIdA))
                     LIMIT 1
                     """;
             return jdbcTemplate.query(sql, Maps.of(
+                            "projectId", projectId,
                             "relationType", type.code(),
                             "nodeIdA", nodeIdA,
                             "nodeIdB", nodeIdB),
@@ -178,12 +181,17 @@ public class NodeRelationRepository {
                                                      NodeRelation.Origin origin,
                                                      UUID createdByProposalId,
                                                      UUID createdByRunId) {
-        // Canonicalize symmetric endpoints so the duplicate pre-check and the
-        // stored row both use the canonical (minId, maxId) identity that the
-        // database unique backstop enforces. Directional types keep their
-        // authored direction.
+        // Canonicalize symmetric endpoints so the stored row uses the
+        // canonical (LEAST, GREATEST) identity the database unique backstop
+        // enforces. Directional types keep their authored direction. The
+        // duplicate pre-check is deliberately ORDER-INDEPENDENT for symmetric
+        // types: a row canonicalized by the V18 migration was stored under the
+        // database's byte-wise uuid ordering, which is not guaranteed to match
+        // Java's UUID.compareTo, so a Java-canonical directed lookup could
+        // miss the existing row and let the insert hit the unique index as a
+        // DuplicateKeyException instead of the controlled domain conflict.
         CanonicalEndpoints endpoints = canonicalEndpoints(sourceNodeId, targetNodeId, type);
-        if (findActive(endpoints.sourceNodeId(), endpoints.targetNodeId(), type).isPresent()) {
+        if (findActiveByCanonicalPair(projectId, sourceNodeId, targetNodeId, type).isPresent()) {
             throw new IllegalStateException(
                     "An active relation of type " + type.code() + " already exists between the two nodes");
         }

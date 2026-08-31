@@ -52,6 +52,38 @@ def test_routeless_node_query_fixture_parses_with_null_route_ids():
         assert not ref.startswith("route:")
 
 
+def test_node_query_semantic_context_fixture_parses_with_bounded_one_hop():
+    # Stage C bounded 1-hop semantic context: relations preserve direction,
+    # relatedNodes carry the actual projected node body, node:<relatedId> is a
+    # first-class allowedSourceRef, and the related node never enters lineage.
+    envelope = parse_request_envelope(
+        _load("agent-input-node-query-semantic-context-valid.json"))
+    assert envelope.event.kind == "NODE_QUERY"
+    assert envelope.snapshot.route_id is not None
+    assert envelope.snapshot.route_id == envelope.snapshot.route_context.route_id
+
+    assert len(envelope.snapshot.relations) == 1
+    relation = envelope.snapshot.relations[0]
+    assert str(relation.source_node_id) == "05000000-0000-0000-0000-000000000005"
+    assert str(relation.target_node_id) == "06000000-0000-0000-0000-000000000006"
+    assert relation.relation_type == "SUPPORTS"
+
+    assert len(envelope.snapshot.related_nodes) == 1
+    ref = envelope.snapshot.related_nodes[0]
+    assert str(ref.node_id) == "06000000-0000-0000-0000-000000000006"
+    assert ref.relation_type == "SUPPORTS"
+    assert ref.direction == "OUTGOING"
+    # The related node's real body content travels on the wire.
+    assert "离线队列容量上限 2048 条" in ref.node.body.text
+    assert ref.node.kind == "RESOURCE"
+
+    # Related node is a source ref and stays out of the lineage.
+    assert "node:06000000-0000-0000-0000-000000000006" in envelope.snapshot.allowed_source_refs
+    assert len(envelope.snapshot.lineage) == 1
+    assert envelope.snapshot.lineage[0].node.id != ref.node_id
+    assert str(envelope.snapshot.lineage[0].node.id) == "05000000-0000-0000-0000-000000000005"
+
+
 def test_request_with_unknown_field_is_rejected():
     payload = _load("agent-input-invalid-unknown-field.json")
     with pytest.raises(ValidationError):

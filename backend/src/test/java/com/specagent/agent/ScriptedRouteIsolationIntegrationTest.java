@@ -198,7 +198,7 @@ class ScriptedRouteIsolationIntegrationTest {
         Node child = nodeService.getNode(targetRun.producedNodeId()).orElseThrow();
 
         RegenerateResult committed = routeService.commitReplacementFromNode(
-                project.id(), targetRun.run().routeId(), target.id(), null,
+                project.id(), targetRun.run().routeId(), target.id(), child.id(), null,
                 "A sharper replacement question", "A sharper purpose",
                 List.of(NodeOption.of("Option label", "Option impact")), true);
         ContextSnapshot context = contextBuilder.buildForRegenerate(

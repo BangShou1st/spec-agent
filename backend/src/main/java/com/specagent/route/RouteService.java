@@ -165,6 +165,11 @@ public class RouteService {
      */
     @Transactional
     public Route forkFromNode(UUID projectId, UUID sourceRouteId, UUID sourceNodeId, String label) {
+        // Serialize with archive/restore/activate and graph mutations: the fork
+        // reads the source route lifecycle and creates a new Active route, so
+        // it must hold the project-row lock before any state read (order:
+        // project → node/route → mutation).
+        projectRepository.lockById(projectId);
         Node sourceNode = nodeRepository.findById(sourceNodeId)
                 .orElseThrow(() -> new IllegalArgumentException("Node not found: " + sourceNodeId));
         if (!sourceNode.projectId().equals(projectId)) {
@@ -205,6 +210,7 @@ public class RouteService {
                                   UUID sourceRouteId,
                                   UUID targetNodeId,
                                   String label) {
+        projectRepository.lockById(projectId);
         Node targetNode = requireNodeInProject(projectId, targetNodeId);
         Route sourceRoute = requireExplorationSource(projectId, sourceRouteId);
         List<UUID> sourceLineage = routeHistoryResolver.resolveLineage(sourceRoute.tipNodeId());
@@ -244,23 +250,45 @@ public class RouteService {
      * Commits an already accepted replacement proposal. The method is the only
      * place that creates canonical replacement history: proposal parsing,
      * reflection, and validation happen before entering this transaction.
+     *
+     * <p>{@code expectedSourceRouteTip} freezes the source tip the decision was
+     * made against. The caller captures it BEFORE this transaction; inside the
+     * transaction, after the project lock is held, the source route is re-read
+     * and the expected tip is re-verified, closing the check-then-act window
+     * against a concurrent continuation that advanced the source tip.
      */
     @Transactional
     public RegenerateResult commitReplacementFromNode(UUID projectId,
                                                       UUID sourceRouteId,
                                                       UUID targetNodeId,
+                                                      UUID expectedSourceRouteTip,
                                                       String label,
                                                       String question,
                                                       String purpose,
                                                       List<NodeOption> options,
                                                       boolean allowFreeAnswer) {
+        // Serialize with archive/restore/activate and graph mutations: the
+        // replacement supersedes the source route and changes Active, so the
+        // project-row lock is taken before any state read. The stale-tip check
+        // happens under this lock, so a concurrent continuation can never
+        // advance the source tip between the decision and the commit.
+        projectRepository.lockById(projectId);
         Node targetNode = requireNodeInProject(projectId, targetNodeId);
         if (targetNode.parentNodeId() == null) {
             throw new IllegalStateException("Root node replacement is not supported");
         }
         Route sourceRoute = requireExplorationSource(projectId, sourceRouteId);
         graphInvariantValidator.validateRouteProvenance(sourceRouteId);
-        requireLineageContains(routeHistoryResolver.resolveLineage(sourceRoute.tipNodeId()), targetNodeId);
+        // Re-verify under the project lock that the source has not moved since
+        // the frozen decision: the tip must still be exactly the expected one,
+        // and the target must still sit on that exact source lineage.
+        if (!java.util.Objects.equals(sourceRoute.tipNodeId(), expectedSourceRouteTip)) {
+            throw new IllegalStateException(
+                    "Source route tip moved after the replacement snapshot: expected "
+                            + expectedSourceRouteTip + ", current " + sourceRoute.tipNodeId());
+        }
+        List<UUID> sourceLineage = routeHistoryResolver.resolveLineage(sourceRoute.tipNodeId());
+        requireLineageContains(sourceLineage, targetNodeId);
         if (question == null || question.isBlank()) {
             throw new IllegalArgumentException("Replacement question must not be blank");
         }

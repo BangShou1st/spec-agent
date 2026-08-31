@@ -83,6 +83,11 @@ public class GraphCommandService {
                                     UUID routeId,
                                     String subtype,
                                     Map<String, Object> content) {
+        // Serialize every project-wide graph mutation writer under the same
+        // project-row lock (order: project → node/route → mutation →
+        // operation log) so a concurrent undo/redo or relation creation never
+        // interleaves into a half-applied graph or operation stack.
+        projectRepository.lockById(projectId);
         Route route = requireOpenRouteInProject(projectId, routeId);
         if (route.tipNodeId() != null) {
             throw new IllegalStateException(
@@ -114,6 +119,7 @@ public class GraphCommandService {
                                         UUID routeId,
                                         String subtype,
                                         Map<String, Object> content) {
+        projectRepository.lockById(projectId);
         if (routeId != null) {
             requireOpenRouteInProject(projectId, routeId);
         }
@@ -159,6 +165,7 @@ public class GraphCommandService {
                                                  UUID sourceNodeId,
                                                  String subtype,
                                                  Map<String, Object> content) {
+        projectRepository.lockById(projectId);
         Route route = requireOpenRouteInProject(projectId, routeId);
         Node sourceNode = requireNodeInProject(projectId, sourceNodeId);
         requireLineageContains(route, sourceNodeId);
@@ -220,6 +227,7 @@ public class GraphCommandService {
                                UUID parentNodeId,
                                String subtype,
                                Map<String, Object> content) {
+        projectRepository.lockById(projectId);
         Route route = requireOpenRouteInProject(projectId, routeId);
         if (parentNodeId == null) {
             if (route.tipNodeId() != null) {
@@ -251,6 +259,7 @@ public class GraphCommandService {
     /** Edits a still-editable user draft in place, logging the prior state. */
     @Transactional
     public Node reviseDraftNode(UUID projectId, UUID nodeId, String subtype, Map<String, Object> content) {
+        projectRepository.lockById(projectId);
         Node before = requireNodeInProject(projectId, nodeId);
         if (!before.isUserEditableDraft()) {
             throw new IllegalStateException("Node is not an editable user draft: " + nodeId);
@@ -307,6 +316,7 @@ public class GraphCommandService {
     /** Applies an explicit knowledge-state transition (e.g. PROPOSED -> CONFIRMED). */
     @Transactional
     public Node setKnowledgeStatus(UUID projectId, UUID nodeId, KnowledgeStatus status) {
+        projectRepository.lockById(projectId);
         Node before = requireNodeInProject(projectId, nodeId);
         Node after = nodeService.setKnowledgeStatus(projectId, nodeId, status);
         operationRepository.append(projectId, GraphOperation.Actor.USER,

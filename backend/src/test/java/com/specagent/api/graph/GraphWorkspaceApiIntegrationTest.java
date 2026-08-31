@@ -165,7 +165,7 @@ class GraphWorkspaceApiIntegrationTest {
         Node grandchild = nodeService.createChildNode(project.id(), oldRouteId, child.id(),
                 "Grandchild question", null, List.of(), true);
 
-        routeService.commitReplacementFromNode(project.id(), oldRouteId, child.id(), null,
+        routeService.commitReplacementFromNode(project.id(), oldRouteId, child.id(), grandchild.id(), null,
                 "Replacement question", "Replacement purpose", List.of(NodeOption.of("R", "r")), true);
 
         UUID replacementRouteId = projectService.getProject(project.id())

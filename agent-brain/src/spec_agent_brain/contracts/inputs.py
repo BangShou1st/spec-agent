@@ -154,12 +154,16 @@ class RelatedNodeRef(StrictModel):
     ``direction`` is relative to the anchor: ``OUTGOING`` when the anchor is the
     relation source, ``INCOMING`` when it is the target. Symmetric relations are
     canonicalized at write time, so an ``INCOMING`` direction simply means the
-    stored endpoints place the anchor on the target side.
+    stored endpoints place the anchor on the target side. ``node`` carries the
+    full projected NodeView/body of the related node so the model reads real
+    body content, not only an opaque id. Related nodes are never part of the
+    lineage.
     """
 
     node_id: UUID
     relation_type: str
     direction: str
+    node: NodeView
 
 
 class AgentInputSnapshot(StrictModel):

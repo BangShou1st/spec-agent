@@ -182,9 +182,13 @@ public class ReplacementCycleService {
             eventService.append(run.id(), AgentRunPhase.EXECUTING, "EXECUTING",
                     Map.of("actionFamily", "COMMIT_REPLACEMENT"));
 
+            // The frozen expected tip is passed into the commit boundary so the
+            // same stale-tip check is re-applied under the project lock, inside
+            // the commit transaction (no TOCTOU window between this service's
+            // read and the topology mutation).
             RegenerateResult result = routeService.commitReplacementFromNode(
-                    projectId, sourceRouteId, targetNodeId, null,
-                    question, purpose, options, allowFreeAnswer);
+                    projectId, sourceRouteId, targetNodeId, sourceRoute.tipNodeId(),
+                    null, question, purpose, options, allowFreeAnswer);
 
             // Freeze the durable regenerate context onto the replacement
             // route (parent lineage only, target excluded) — the same record

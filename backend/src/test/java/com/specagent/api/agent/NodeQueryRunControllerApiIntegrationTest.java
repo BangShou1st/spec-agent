@@ -8,6 +8,9 @@ import com.specagent.agent.AgentRunStatus;
 import com.specagent.agent.contract.ActionProposal;
 import com.specagent.agent.policy.AgentProposalService;
 import com.specagent.agent.policy.ProposalStatus;
+import com.specagent.agent.runevent.AgentRunEventService;
+import com.specagent.agent.runevent.AgentRunPhase;
+import com.specagent.agent.runtime.NodeQueryService;
 import com.specagent.agent.runtime.RunService;
 import com.specagent.agent.runtime.RunWorker;
 import com.specagent.graph.GraphCommandService;
@@ -53,6 +56,7 @@ class NodeQueryRunControllerApiIntegrationTest {
     @Autowired private RunWorker worker;
     @Autowired private AgentRunService agentRunService;
     @Autowired private AgentProposalService proposalService;
+    @Autowired private AgentRunEventService eventService;
     @Autowired private RouteRepository routeRepository;
 
     private Project project;
@@ -131,5 +135,66 @@ class NodeQueryRunControllerApiIntegrationTest {
         assertThat(proposalId == null || proposalId.isNull()).isTrue();
         assertThat(proposalStatus == null || proposalStatus.isNull()).isTrue();
         assertThat(actionFamily == null || actionFamily.isNull()).isTrue();
+    }
+
+    @Test
+    void policyDeniedOutcomeIsRealizedFromDurableEvent() throws Exception {
+        // A query whose proposal was denied by policy completes its run but must
+        // surface POLICY_DENIED, not collapse into COMPLETED. The outcome is
+        // derived from the durable POLICY_DENIED runtime event.
+        UUID runId = runService.createQueuedNodeQuery(
+                project.id(), routeId, nodeA.id(), "A 的问题？");
+        AgentRun claimed = runService.claimNextNodeQuery().orElseThrow();
+        worker.executeRun(claimed);
+        assertThat(agentRunService.getRun(runId).orElseThrow().status())
+                .isEqualTo(AgentRunStatus.COMPLETED);
+        eventService.append(runId, AgentRunPhase.COMPLETED,
+                NodeQueryService.POLICY_DENIED_EVENT,
+                Map.of("denyReason", "mutation-not-allowed", "actionFamily", "CREATE_NODE"));
+
+        mockMvc.perform(get("/api/v1/projects/{projectId}/nodes/{nodeId}/query/{runId}",
+                        project.id(), nodeA.id(), runId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("POLICY_DENIED"))
+                .andExpect(jsonPath("$.proposalId").doesNotExist());
+    }
+
+    @Test
+    void notConfirmableOutcomeIsRealizedFromDurableEvent() throws Exception {
+        // A query whose mutation action cannot produce an acceptable proposal
+        // must surface NOT_CONFIRMABLE, again from the durable runtime event,
+        // never from a parse of the trace string.
+        UUID runId = runService.createQueuedNodeQuery(
+                project.id(), routeId, nodeA.id(), "A 的问题？");
+        AgentRun claimed = runService.claimNextNodeQuery().orElseThrow();
+        worker.executeRun(claimed);
+        assertThat(agentRunService.getRun(runId).orElseThrow().status())
+                .isEqualTo(AgentRunStatus.COMPLETED);
+        eventService.append(runId, AgentRunPhase.COMPLETED,
+                NodeQueryService.MUTATION_NOT_CONFIRMABLE_EVENT,
+                Map.of("actionFamily", "CREATE_NODE"));
+
+        mockMvc.perform(get("/api/v1/projects/{projectId}/nodes/{nodeId}/query/{runId}",
+                        project.id(), nodeA.id(), runId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("NOT_CONFIRMABLE"))
+                .andExpect(jsonPath("$.proposalId").doesNotExist());
+    }
+
+    @Test
+    void plainCompletedRunStillReportsCompleted() throws Exception {
+        // The normal read-only completion keeps COMPLETED: only explicit
+        // durable event evidence changes the semantic status.
+        UUID runId = runService.createQueuedNodeQuery(
+                project.id(), routeId, nodeA.id(), "A 的问题？");
+        AgentRun claimed = runService.claimNextNodeQuery().orElseThrow();
+        worker.executeRun(claimed);
+        assertThat(agentRunService.getRun(runId).orElseThrow().status())
+                .isEqualTo(AgentRunStatus.COMPLETED);
+
+        mockMvc.perform(get("/api/v1/projects/{projectId}/nodes/{nodeId}/query/{runId}",
+                        project.id(), nodeA.id(), runId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("COMPLETED"));
     }
 }

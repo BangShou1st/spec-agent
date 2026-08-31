@@ -2,6 +2,7 @@ package com.specagent.api.agent;
 
 import com.specagent.agent.AgentRun;
 import com.specagent.agent.AgentRunService;
+import com.specagent.agent.AgentRunStatus;
 import com.specagent.agent.runtime.NodeQueryService;
 import com.specagent.agent.runtime.RunService;
 import com.specagent.agent.runevent.AgentRunEvent;
@@ -100,10 +101,29 @@ public class NodeQueryRunController {
                 case REJECTED -> "REJECTED";
                 default -> p.status().code();
             });
+            return view;
+        }
+
+        // No proposal: the terminal outcome is derived from DURABLE runtime
+        // event evidence, never from a human-readable trace string. A query
+        // run whose proposal was denied by policy, or whose mutation action
+        // was not confirmable, keeps its semantic outcome instead of
+        // collapsing into COMPLETED.
+        List<AgentRunEvent> events = eventService.findByRunId(run.id());
+        boolean policyDenied = events.stream()
+                .anyMatch(e -> NodeQueryService.POLICY_DENIED_EVENT.equals(e.eventType()));
+        boolean notConfirmable = events.stream()
+                .anyMatch(e -> NodeQueryService.MUTATION_NOT_CONFIRMABLE_EVENT.equals(e.eventType()));
+        view.put("proposalId", null);
+        view.put("proposalStatus", null);
+        view.put("actionFamily", null);
+        if (policyDenied) {
+            view.put("status", "POLICY_DENIED");
+        } else if (notConfirmable) {
+            view.put("status", "NOT_CONFIRMABLE");
+        } else if (run.status() == AgentRunStatus.FAILED) {
+            view.put("status", "FAILED");
         } else {
-            view.put("proposalId", null);
-            view.put("proposalStatus", null);
-            view.put("actionFamily", null);
             // Run status codes are lowercase in the domain model; the query
             // result contract uses the uppercase frontend casing for terminal
             // run states (the semantic statuses above are already uppercase).

@@ -117,4 +117,47 @@ class AgentV2ContractTest {
         assertThat(baseline.snapshot().routeId()).isNotNull();
         assertThat(baseline.snapshot().routeContext().routeId()).isNotNull();
     }
+
+    @Test
+    void nodeQuerySemanticContextFixtureCarriesBoundedOneHopBodyAndDirection()
+            throws Exception {
+        // Stage C bounded 1-hop semantic context: relations preserve direction
+        // and relatedNodes carry the actual projected node body (not only
+        // opaque ids), with node:<relatedId> present in allowedSourceRefs and
+        // no second-hop node anywhere on the wire.
+        AgentRequestEnvelope envelope = AgentContracts.read(
+                fixture("agent-input-node-query-semantic-context-valid.json"),
+                AgentRequestEnvelope.class);
+        assertThat(envelope.event().kind()).isEqualTo("NODE_QUERY");
+        assertThat(envelope.snapshot().routeId())
+                .isEqualTo(UUID.fromString("04000000-0000-0000-0000-000000000004"));
+
+        assertThat(envelope.snapshot().relations()).hasSize(1);
+        RelationView relation = envelope.snapshot().relations().get(0);
+        assertThat(relation.sourceNodeId())
+                .isEqualTo(UUID.fromString("05000000-0000-0000-0000-000000000005"));
+        assertThat(relation.targetNodeId())
+                .isEqualTo(UUID.fromString("06000000-0000-0000-0000-000000000006"));
+        assertThat(relation.relationType()).isEqualTo("SUPPORTS");
+
+        assertThat(envelope.snapshot().relatedNodes()).hasSize(1);
+        RelatedNodeRef ref = envelope.snapshot().relatedNodes().get(0);
+        assertThat(ref.nodeId())
+                .isEqualTo(UUID.fromString("06000000-0000-0000-0000-000000000006"));
+        assertThat(ref.relationType()).isEqualTo("SUPPORTS");
+        assertThat(ref.direction()).isEqualTo("OUTGOING");
+        // The related node body content really travels on the wire.
+        assertThat(ref.node().body().text())
+                .contains("离线队列容量上限 2048 条");
+        assertThat(ref.node().kind()).isEqualTo("RESOURCE");
+
+        // The related node is a first-class source ref and stays out of lineage.
+        assertThat(envelope.snapshot().allowedSourceRefs())
+                .contains("node:06000000-0000-0000-0000-000000000006");
+        assertThat(envelope.snapshot().lineage()).hasSize(1);
+        assertThat(envelope.snapshot().lineage().get(0).node().id())
+                .isEqualTo(UUID.fromString("05000000-0000-0000-0000-000000000005"));
+        assertThat(envelope.snapshot().lineage()).noneMatch(entry ->
+                entry.node().id().equals(ref.nodeId()));
+    }
 }

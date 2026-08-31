@@ -1,5 +1,7 @@
 package com.specagent.api.agent;
 
+import com.specagent.agent.AgentRun;
+import com.specagent.agent.AgentRunService;
 import com.specagent.agent.policy.AgentProposal;
 import com.specagent.agent.policy.AgentProposalService;
 import com.specagent.agent.policy.ProposalAcceptanceService;
@@ -23,11 +25,14 @@ public class AgentProposalController {
 
     private final AgentProposalService proposalService;
     private final ProposalAcceptanceService acceptanceService;
+    private final AgentRunService agentRunService;
 
     public AgentProposalController(AgentProposalService proposalService,
-                                   ProposalAcceptanceService acceptanceService) {
+                                   ProposalAcceptanceService acceptanceService,
+                                   AgentRunService agentRunService) {
         this.proposalService = proposalService;
         this.acceptanceService = acceptanceService;
+        this.agentRunService = agentRunService;
     }
 
     @GetMapping("/projects/{projectId}/proposals")
@@ -70,11 +75,29 @@ public class AgentProposalController {
         // proposals do not throw NullPointerException.
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("proposalId", proposal.id().toString());
+        summary.put("runId", proposal.runId() == null ? null : proposal.runId().toString());
+        summary.put("inputNodeId", resolveInputNodeId(proposal.runId()));
+        summary.put("routeId", proposal.routeId() == null ? null : proposal.routeId().toString());
         summary.put("actionFamily", proposal.actionFamily());
         summary.put("status", proposal.status().code());
         summary.put("createdAt", proposal.createdAt().toString());
         summary.put("decidedAt", proposal.decidedAt() != null ? proposal.decidedAt().toString() : null);
         summary.put("decidedBy", proposal.decidedBy() != null ? proposal.decidedBy() : null);
         return summary;
+    }
+
+    /**
+     * The canonical anchor node of the NodeQuery run that produced this
+     * proposal, so the frontend can reconnect a pending proposal to its
+     * Inspector anchor even after a page reload. Null when the run is gone.
+     */
+    private String resolveInputNodeId(UUID runId) {
+        if (runId == null) {
+            return null;
+        }
+        return agentRunService.getRun(runId)
+                .map(AgentRun::inputNodeId)
+                .map(UUID::toString)
+                .orElse(null);
     }
 }

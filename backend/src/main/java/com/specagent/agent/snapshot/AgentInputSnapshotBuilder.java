@@ -42,6 +42,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -114,6 +115,8 @@ public class AgentInputSnapshotBuilder {
                 .map(optional -> optional.orElseThrow(() -> new IllegalStateException(
                         "Context snapshot included missing node")))
                 .toList();
+        List<Node> relatedNodes = loadRelatedNodes(snapshot, lineageNodes);
+        List<RelatedNodeRef> relatedRefs = relatedNodeRefs(snapshot, relatedNodes);
         return new AgentInputSnapshot(
                 snapshot.id().toString(),
                 snapshot.contextHash(),
@@ -124,11 +127,11 @@ public class AgentInputSnapshotBuilder {
                 lineage(snapshot, lineageNodes),
                 effectiveClaims(snapshot),
                 metadata(snapshot),
-                allowedSourceRefs(snapshot),
-                visibleCapabilityDescriptors(lineageNodes),
+                allowedSourceRefs(snapshot, relatedRefs),
+                visibleCapabilityDescriptors(lineageNodes, relatedNodes),
                 capabilityResults(snapshot),
                 relations(snapshot),
-                relatedNodes(snapshot),
+                relatedRefs,
                 new AutonomyInputs("ADVISOR"));
     }
 
@@ -143,19 +146,67 @@ public class AgentInputSnapshotBuilder {
     }
 
     /**
-     * The other-end canonical nodes of the 1-hop semantic context, each with
-     * explicit provenance (relation type + direction relative to the anchor).
-     * The anchor is the snapshot tip for a node query; for other operations the
-     * relation list is empty so this yields nothing.
+     * The live {@link Node} domain objects at the other end of the 1-hop
+     * semantic context. Every {@code snapshot.relatedNodeId()} is loaded and
+     * verified: the node must still exist, belong to the snapshot's project,
+     * and not be retracted. Verification failures fail the projection loudly
+     * (a frozen snapshot listed a node that is no longer part of its project's
+     * live graph), never silently dropping context. A related node that is
+     * already part of the lineage is skipped — it is fully present in the
+     * lineage already, so duplicating it as a "related" node would add no
+     * context. Related nodes never enter the lineage and never pollute it.
      */
-    private List<RelatedNodeRef> relatedNodes(ContextSnapshot snapshot) {
+    private List<Node> loadRelatedNodes(ContextSnapshot snapshot, List<Node> lineageNodes) {
+        Set<UUID> lineageIds = lineageNodes.stream().map(Node::id)
+                .collect(java.util.stream.Collectors.toSet());
+        List<Node> related = new ArrayList<>();
+        for (UUID relatedId : snapshot.relatedNodeIds()) {
+            if (lineageIds.contains(relatedId)) {
+                continue;
+            }
+            Node node = nodeRepository.findById(relatedId)
+                    .orElseThrow(() -> new IllegalStateException(
+                            "Context snapshot listed missing related node: " + relatedId));
+            verifyRelatedNode(snapshot, node);
+            related.add(node);
+        }
+        return List.copyOf(related);
+    }
+
+    private void verifyRelatedNode(ContextSnapshot snapshot, Node node) {
+        if (!node.projectId().equals(snapshot.projectId())) {
+            throw new IllegalStateException(
+                    "Context snapshot listed related node from another project: " + node.id());
+        }
+        if (node.isRetracted()) {
+            throw new IllegalStateException(
+                    "Context snapshot listed retracted related node: " + node.id());
+        }
+    }
+
+    /**
+     * The related canonical nodes of the 1-hop semantic context, each with
+     * explicit provenance (relation type + direction relative to the anchor)
+     * plus the projected NodeView/body of the related node itself — the model
+     * reads real body content, never only opaque ids.
+     */
+    private List<RelatedNodeRef> relatedNodeRefs(ContextSnapshot snapshot, List<Node> relatedNodes) {
         UUID anchor = snapshot.tipNodeId();
         List<RelatedNodeRef> refs = new ArrayList<>();
-        for (ContextRelation relation : snapshot.relations()) {
+        for (Node related : relatedNodes) {
+            // Provenance is taken from the stored relation that touches the
+            // related node on one end; the snapshot guarantees at least one
+            // such relation exists for every listed related id.
+            ContextRelation relation = snapshot.relations().stream()
+                    .filter(r -> r.sourceNodeId().equals(related.id())
+                            || r.targetNodeId().equals(related.id()))
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalStateException(
+                            "Related node has no relation in snapshot context: " + related.id()));
             boolean outgoing = anchor != null && anchor.equals(relation.sourceNodeId());
-            UUID otherEnd = outgoing ? relation.targetNodeId() : relation.sourceNodeId();
             String direction = outgoing ? "OUTGOING" : "INCOMING";
-            refs.add(new RelatedNodeRef(otherEnd, relation.relationType(), direction));
+            refs.add(new RelatedNodeRef(related.id(), relation.relationType(), direction,
+                    nodeView(related)));
         }
         return List.copyOf(refs);
     }
@@ -163,14 +214,19 @@ public class AgentInputSnapshotBuilder {
     /**
      * Permission- and relevance-filtered capability descriptors. Relevance is
      * driven by each descriptor's {@code supports} declarations ("KIND" or
-     * "KIND:SUBTYPE") against the lineage's node kinds — a generic rule, so
-     * new capabilities become visible by declaring supports, without edits
-     * to the builder or planner. Context-free capabilities (empty supports)
-     * stay visible everywhere.
+     * "KIND:SUBTYPE") against the context node kinds — the lineage nodes plus
+     * the bounded 1-hop related nodes — a generic rule, so new capabilities
+     * become visible by declaring supports, without edits to the builder or
+     * planner. A directly-related RESOURCE node therefore exposes an allowed
+     * capability without any workspace-wide scan. Context-free capabilities
+     * (empty supports) stay visible everywhere.
      */
-    private List<CapabilityDescriptor> visibleCapabilityDescriptors(List<Node> lineageNodes) {
+    private List<CapabilityDescriptor> visibleCapabilityDescriptors(List<Node> lineageNodes,
+                                                                    List<Node> relatedNodes) {
+        List<Node> contextNodes = new ArrayList<>(lineageNodes);
+        contextNodes.addAll(relatedNodes);
         return capabilityRegistry.descriptorsFor(java.util.Set.of()).stream()
-                .filter(descriptor -> supportsAnyLineageNode(descriptor, lineageNodes))
+                .filter(descriptor -> supportsAnyLineageNode(descriptor, contextNodes))
                 .map(descriptor -> new CapabilityDescriptor(
                         descriptor.capabilityId(),
                         descriptor.version(),
@@ -279,11 +335,16 @@ public class AgentInputSnapshotBuilder {
         return new SnapshotMetadata(title instanceof String text && !text.isBlank() ? text : null);
     }
 
-    private List<String> allowedSourceRefs(ContextSnapshot snapshot) {
+    private List<String> allowedSourceRefs(ContextSnapshot snapshot, List<RelatedNodeRef> relatedRefs) {
         List<String> refs = new ArrayList<>();
         snapshot.includedNodeIds().forEach(id -> refs.add("node:" + id));
         snapshot.includedAnswerIds().forEach(id -> refs.add("answer:" + id));
         snapshot.includedPatchIds().forEach(id -> refs.add("patch:" + id));
+        // Related nodes are first-class source refs too: a model may ground on
+        // their body content or reference them in a CONNECT_NODE proposal
+        // (e.g. relating the anchor to a directly-visible related node).
+        relatedRefs.stream().map(RelatedNodeRef::nodeId).distinct()
+                .forEach(id -> refs.add("node:" + id));
         refs.add("context:" + snapshot.id());
         if (snapshot.routeId() != null) {
             refs.add("route:" + snapshot.routeId());

@@ -60,7 +60,7 @@ public class ContextSnapshot {
         this.operationType = operationType;
         this.includedNodeIds = includedNodeIds == null ? List.of() : List.copyOf(includedNodeIds);
         this.includedAnswerIds = includedAnswerIds == null ? List.of() : List.copyOf(includedAnswerIds);
-        this.includedPatchIds = includedPatchIds == null ? List.copyOf(includedPatchIds) : List.copyOf(includedPatchIds);
+        this.includedPatchIds = includedPatchIds == null ? List.of() : List.copyOf(includedPatchIds);
         this.excludedRouteIds = excludedRouteIds == null ? List.of() : List.copyOf(excludedRouteIds);
         this.relatedNodeIds = relatedNodeIds == null ? List.of() : List.copyOf(relatedNodeIds);
         this.relations = relations == null ? List.of() : List.copyOf(relations);

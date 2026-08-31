@@ -46,6 +46,8 @@ import java.util.UUID;
 public class NodeQueryService {
 
     public static final String RESPOND_MESSAGE_EVENT = "RESPOND_MESSAGE";
+    public static final String POLICY_DENIED_EVENT = "POLICY_DENIED";
+    public static final String MUTATION_NOT_CONFIRMABLE_EVENT = "MUTATION_NOT_CONFIRMABLE";
 
     private static final Logger LOG = LoggerFactory.getLogger(NodeQueryService.class);
 
@@ -116,6 +118,12 @@ public class NodeQueryService {
             if (policyDecision.denyReason() != null) {
                 trace = trace + "\npolicy_denied:" + policyDecision.denyReason();
                 agentRunService.complete(runId, AgentRunStatus.COMPLETED, trace);
+                // Durable terminal-outcome evidence: the result view derives
+                // POLICY_DENIED from this event, never from the trace string.
+                eventService.append(runId, AgentRunPhase.COMPLETED,
+                        NodeQueryService.POLICY_DENIED_EVENT,
+                        Map.of("denyReason", policyDecision.denyReason(),
+                                "actionFamily", proposal.actionFamily()));
                 return new NodeQueryResult(runId, "policy_denied", null, null);
             }
 
@@ -136,7 +144,7 @@ public class NodeQueryService {
                 if (!policyEngine.canProduceAcceptableProposal(proposal, downgradeContext)) {
                     trace = trace + "\nnot_confirmable:" + proposal.actionFamily();
                     agentRunService.complete(runId, AgentRunStatus.COMPLETED, trace);
-                    eventService.append(runId, AgentRunPhase.COMPLETED, "MUTATION_NOT_CONFIRMABLE",
+                    eventService.append(runId, AgentRunPhase.COMPLETED, MUTATION_NOT_CONFIRMABLE_EVENT,
                             Map.of("actionFamily", proposal.actionFamily()));
                     return new NodeQueryResult(runId, "not_confirmable", null, null);
                 }

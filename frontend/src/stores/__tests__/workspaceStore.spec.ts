@@ -69,6 +69,7 @@ vi.mock('@/api/graphCommands', () => ({
   createRootDraftNode: vi.fn(),
   getNodeQueryResult: vi.fn(),
   getUndoRedoAvailability: vi.fn(),
+  listProposals: vi.fn(),
   redoGraphOperation: vi.fn(),
   rejectProposal: vi.fn(),
   reviseDraftNode: vi.fn(),
@@ -105,6 +106,7 @@ import {
   createRootDraftNode,
   getNodeQueryResult as apiGetNodeQueryResult,
   getUndoRedoAvailability,
+  listProposals as apiListProposals,
   rejectProposal as apiRejectProposal,
 } from '@/api/graphCommands'
 
@@ -130,6 +132,7 @@ const mockedCreateNodeQuery = vi.mocked(apiCreateNodeQuery)
 const mockedGetNodeQueryResult = vi.mocked(apiGetNodeQueryResult)
 const mockedAcceptProposal = vi.mocked(apiAcceptProposal)
 const mockedRejectProposal = vi.mocked(apiRejectProposal)
+const mockedListProposals = vi.mocked(apiListProposals)
 
 describe('workspaceStore', () => {
   beforeEach(() => {
@@ -145,6 +148,8 @@ describe('workspaceStore', () => {
     mockedGetRequirementState.mockResolvedValue(state)
     mockedGetRouteLineage.mockResolvedValue(makeRouteLineage())
     mockedGetProjectGraph.mockResolvedValue(makeGraphWorkspaceView())
+    // A fresh project has no pending proposals by default.
+    mockedListProposals.mockResolvedValue([])
   }
 
   /** Completed-run view factory for the happy answer path. */
@@ -1641,6 +1646,7 @@ describe('node query (ask AI) semantics and polling', () => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
     mockedGetUndoRedoAvailability.mockResolvedValue({ canUndo: false, canRedo: false })
+    mockedListProposals.mockResolvedValue([])
   })
 
   function sharedGraphView(): ReturnType<typeof makeGraphWorkspaceView> {
@@ -1773,5 +1779,88 @@ describe('node query (ask AI) semantics and polling', () => {
     // Reject 不改变 Graph：不应刷新 canonical Graph。
     expect(mockedGetProjectGraph).not.toHaveBeenCalled()
     expect(store.nodeQuery?.status).toBe('REJECTED')
+  })
+
+  it('loadWorkspace reloads durable pending proposals (reload survival)', async () => {
+    const store = useWorkspaceStore()
+    store.projectId = 'p1'
+    const pending = [{
+      proposalId: 'prop-a', runId: 'run-a', inputNodeId: 'n1', routeId: 'r1',
+      actionFamily: 'CREATE_NODE', status: 'PROPOSED', createdAt: 'now',
+      decidedAt: null, decidedBy: null,
+    }]
+    mockedListProposals.mockResolvedValue(pending)
+    await store.loadNodeQueryProposals()
+    expect(mockedListProposals).toHaveBeenCalledWith('p1', 'PROPOSED')
+    // The pending proposal is discoverable by its canonical anchor node.
+    expect(store.nodeQueryProposals).toHaveLength(1)
+    expect(store.nodeQueryProposals[0].inputNodeId).toBe('n1')
+  })
+
+  it('page reload keeps a pending proposal discoverable by its anchor node', async () => {
+    const store = useWorkspaceStore()
+    store.projectId = 'p1'
+    // Simulates a reload: nodeQuery was reset to null, only the durable
+    // proposal list remains — the proposal must be re-exposed on its anchor.
+    store.nodeQuery = null
+    store.nodeQueryProposals = [{
+      proposalId: 'prop-a', runId: 'run-a', inputNodeId: 'n1', routeId: 'r1',
+      actionFamily: 'CREATE_NODE', status: 'PROPOSED', createdAt: 'now',
+      decidedAt: null, decidedBy: null,
+    }]
+    const anchorA = store.nodeQueryProposals.find((p) => p.inputNodeId === 'n1')
+    expect(anchorA?.proposalId).toBe('prop-a')
+  })
+
+  it('starting query B does not orphan A pending proposal', async () => {
+    vi.useFakeTimers()
+    try {
+      const store = useWorkspaceStore()
+      store.projectId = 'p1'
+      store.graphView = makeGraphWorkspaceView({ routes: [], nodes: [makeNode({ id: 'float-b' })] })
+      // A's durable proposal survives independently of the in-memory nodeQuery.
+      store.nodeQueryProposals = [{
+        proposalId: 'prop-a', runId: 'run-a', inputNodeId: 'n1', routeId: null,
+        actionFamily: 'CREATE_NODE', status: 'PROPOSED', createdAt: 'now',
+        decidedAt: null, decidedBy: null,
+      }]
+      mockedCreateNodeQuery.mockResolvedValue({ runId: 'run-b', phase: 'CREATED' })
+      mockedGetNodeQueryResult.mockResolvedValue({
+        runId: 'run-b', status: 'COMPLETED', producedNodeId: null, message: 'ok',
+      })
+      const askPromise = store.askNodeAI('float-b', null, 'B 的问题？')
+      await vi.advanceTimersByTimeAsync(1500)
+      const ok = await askPromise
+      expect(ok).toBe(true)
+      // nodeQuery now belongs to B...
+      expect(store.nodeQuery?.runId).toBe('run-b')
+      // ...but A's pending proposal is still discoverable via the durable list.
+      expect(store.nodeQueryProposals.find((p) => p.inputNodeId === 'n1')?.proposalId)
+        .toBe('prop-a')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('acceptNodeQueryProposal on a reloaded proposal refreshes the pending list', async () => {
+    const store = useWorkspaceStore()
+    store.projectId = 'p1'
+    store.nodeQuery = null
+    store.nodeQueryProposals = [{
+      proposalId: 'prop-rel', runId: 'run-rel', inputNodeId: 'n1', routeId: 'r1',
+      actionFamily: 'CREATE_NODE', status: 'PROPOSED', createdAt: 'now',
+      decidedAt: null, decidedBy: null,
+    }]
+    mockedAcceptProposal.mockResolvedValue({
+      proposalId: 'prop-rel', status: 'ACCEPTED', actionFamily: 'CREATE_NODE',
+      producedNodeId: 'n2', relationId: null,
+    })
+    mockedListProposals.mockResolvedValue([])
+    // The Inspector's Accept is keyed by proposalId, not by nodeQuery.
+    const ok = await store.acceptNodeQueryProposal('prop-rel')
+    expect(ok).toBe(true)
+    expect(mockedAcceptProposal).toHaveBeenCalledWith('prop-rel')
+    // After acceptance the durable pending list no longer contains it.
+    expect(store.nodeQueryProposals).toHaveLength(0)
   })
 })
