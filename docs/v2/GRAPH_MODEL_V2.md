@@ -74,6 +74,46 @@ Dragging a connection `A → B` on the Canvas is **only** a client-side pending 
 
 The Inspector may list relations, but Canvas drag → proposal chooser → confirm is the primary creation surface. The global relation layer is OFF by default; a selected node may reveal its 1-hop relations.
 
+### 2.5 Relation state machine
+
+A persisted semantic relation has a status:
+
+```text
+PROPOSED → ACCEPTED | RETRACTED
+ACCEPTED → RETRACTED
+RETRACTED → ACCEPTED (undo)
+```
+
+- `PROPOSED`: created by drag or Agent proposal; visually yellow dashed + semi-transparent; Inspector shows "N pending".
+- `ACCEPTED`: user confirmed; enters the normal relation layer.
+- `RETRACTED`: soft-deleted; not shown on Canvas; recoverable by undo.
+
+Agent-inferred relations (`origin = AGENT`) also start as `PROPOSED` and require explicit user confirmation before becoming `ACCEPTED`.
+
+### 2.6 Hard constraints (fail-closed)
+
+The Runtime rejects relation creation with stable domain error codes:
+
+| Rule | Error code |
+|---|---|
+| source = target | `RELATION_SELF_LOOP` |
+| source or target is pending (unpersisted) | `RELATION_PENDING_TARGET` |
+| source or target is retracted | `RELATION_TARGET_RETRACTED` |
+| duplicate active relation (same direction + type) | `RELATION_DUPLICATE` |
+| proposed relation exists and not retracted/deleted | `RELATION_DUPLICATE` |
+| type not in allowed set | `RELATION_TYPE_NOT_ALLOWED` |
+| project not found / node cross-project | `PROJECT_NOT_FOUND` / `NODE_NOT_FOUND` |
+
+### 2.7 User-facing relation type subset
+
+Canvas drag → proposal chooser exposes three user-facing relation types:
+
+- `RELATED_TO` (bidirectional)
+- `SUPPORTS` (directional)
+- `CONFLICTS_WITH` (directional)
+
+`DEPENDS_ON` and `DERIVED_FROM` are reserved for Agent-inferred relations only, as they require reasoning context to use correctly.
+
 ## 3. Append-Preserving Connection Rule
 
 Users and Agent may connect/continue from any existing Node, but they may not retroactively insert a new Node between two already-established historical continuation nodes.

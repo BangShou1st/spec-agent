@@ -115,33 +115,21 @@ Read these before implementation:
 - [`docs/AGENT_RUNTIME.md`](docs/AGENT_RUNTIME.md)
 - [`docs/CONTEXT_RULES.md`](docs/CONTEXT_RULES.md)
 - [`docs/MODEL_GATEWAY.md`](docs/MODEL_GATEWAY.md)
-- [`docs/ANTI_OVERFITTING.md`](docs/ANTI_OVERFITTING.md)
-- [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md)
 - [`docs/DEVELOPMENT_ENVIRONMENT.md`](docs/DEVELOPMENT_ENVIRONMENT.md)
-- [`docs/DEVELOPMENT_WORKFLOW.md`](docs/DEVELOPMENT_WORKFLOW.md)
 - [`AGENT.md`](AGENT.md)
-- [`CLAUDE.md`](CLAUDE.md)
+- For V2 work: [`docs/v2/README.md`](docs/v2/README.md) and the canonical documents it lists.
 
 ## Current Status
 
-Phase 7.3 is closed. The graph-first workspace is now the frontend workspace:
-an interactive graph canvas (Vue Flow) renders the canonical route lineage
-graph with per-route answers, the active question is answered directly inside
-its graph node, and a resizable route sidebar + inspector provide route
-navigation (locate / focus / dim / hide / show-all, lifecycle filters),
+The graph-first workspace is the current frontend workspace: an interactive
+graph canvas (Vue Flow) renders the canonical route lineage graph with
+per-route answers, the active question is answered directly inside its graph
+node, and a resizable route sidebar + inspector provide route navigation,
 historical node inspection, backend-derived requirement state, and derived
-spec snapshot history. Closed invariants: the Focus route is always a visible
-route (Focus auto-clears when the focused route is hidden or filtered out),
-and Fork / Regenerate act only on historical nodes, never on the current
-pending question.
+spec snapshot history.
 
 The frontend remains a client of the Runtime — history, route lifecycle,
 active-route selection, provenance, and persistence stay owned and
-authoritative on the backend. Phase 8 (CI/hardening) has not begun. See
-`docs/PHASE_7_3_EXIT_CRITERIA.md` for the Phase 7.3 closure documentation.
-
-Post-acceptance frontend UX corrective patch: the Phase 7.3 graph workspace
-now treats the graph as the primary full-bleed workspace, with floating route
-and inspector overlays, graph-native reading Focus, explicit local Fork
-remediation, stable node geometry, and adaptive directed curves. Phase 7.3
-remains closed; Phase 8 is NOT STARTED.
+authoritative on the backend. The V2 Agent Runtime (Stages A–D) is
+implemented on `main`. See `docs/v2/README.md` for the canonical V2 design
+index.

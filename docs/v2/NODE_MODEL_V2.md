@@ -148,7 +148,51 @@ Every durable Node must preserve provenance sufficient to answer:
 
 Runtime owns IDs and provenance. The model cannot invent runtime IDs.
 
-## 7. Extension Rule
+## 7. UX Contract
+
+These are frozen product-level UX invariants for Node rendering and interaction.
+
+### 7.1 Q Label Convention
+
+Question Nodes use concise sequential labels (`Q1`, `Q2`, `Q3`) instead of state titles like "当前问题/历史问题". The question body text is always displayed alongside the label.
+
+A `最新` (Latest) marker identifies the most recently produced or currently generating exploration position. At most one Latest marker exists per workspace visual context.
+
+### 7.2 Option Layout
+
+Options use a vertical structure: label on its own line, impact/explanation below. This layout must remain readable at varying Node widths and must not compress label and impact into side-by-side columns.
+
+### 7.3 Non-Blocking Submission
+
+When the user submits an answer:
+
+- Only the controls that would cause duplicate submission are disabled.
+- Canvas dragging, zooming, viewing other Nodes, and Fork/Focus operations that do not conflict with the current mutation remain available.
+- The user's selected option or free text remains visible until the run succeeds or the user actively modifies it.
+- Dragging the current question, switching focus, or rearranging the view must not clear the option/input state.
+- On failure, the original answer input and retry affordance are preserved.
+
+### 7.4 Input State Preservation
+
+All input state is modeled per `nodeId + route/read context` in the frontend store, not by component mount lifecycle. This ensures that option selections and free-text input survive Canvas interactions, focus switches, and view rearrangements.
+
+### 7.5 Hover / Focus Actions
+
+Default cards stay low-noise. Secondary actions (continue, Fork, connect, regenerate, re-answer) appear on hover, keyboard focus, or Node selection. High-risk operations (delete, archive) go in a `More` menu. Important states (running, failed, awaiting confirmation) are always visible without hover.
+
+### 7.6 Layout Stability
+
+When a new Node completes:
+
+- Reveal the new Node without triggering a full-graph relayout.
+- Preserve the user's current viewport and existing Node positions.
+- Auto-focus should be a lightweight reveal/pan, not a disruptive rearrangement that hides other routes.
+
+### 7.7 Dynamic Progress
+
+The UI may display verifiable Runtime phases (e.g., "正在保存回答…", "正在规划下一步…"). These are real Runtime status, not fabricated chain-of-thought. The UI must never display unrecorded internal model reasoning.
+
+## 8. Extension Rule
 
 Adding a new product ability should first ask:
 

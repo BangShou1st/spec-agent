@@ -27,7 +27,6 @@
 - `AGENT_V2_OVERVIEW.md` — 产品定位、当前系统到 V2 的变化。
 - `NODE_MODEL_V2.md` — Node 作为 Workspace Unit 的边界、分类、状态与扩展规则。
 - `GRAPH_MODEL_V2.md` — Route、可见箭头、语义关系、共享 Node、Answer scope、连接规则。
-- `UI_UX_IMPROVEMENT_PLAN.md` — Graph/Node/Route 的前端产品要求与非阻塞体验。
 - `AGENT_RUNTIME_ARCHITECTURE.md` — Agent Runtime、Decision Cycle、调用预算和终止条件。
 - `AGENT_STATE_MODEL.md` — AgentInputSnapshot、AgentState、Observation、Focus 与持久化边界。
 - `AGENT_MEMORY_AND_CONTEXT.md` — Context 选择、局部节点询问、资源上下文和防漂移。
@@ -37,21 +36,8 @@
 - `GRAPH_OPERATION_HISTORY.md` — Undo / Redo、补偿操作、不可逆副作用。
 - `AGENT_EVALUATION_MODEL.md` — Agent 质量、延迟、调用次数、groundedness 和防过拟合评估。
 - `PYTHON_AGENT_RUNTIME_BOUNDARY.md` — Java Graph Runtime 与未来 Python Brain Adapter 的稳定边界。
-- `AGENT_RUNTIME_IMPLEMENTATION_PLAN.md` — 分阶段实施顺序、兼容策略与验收门槛。
-- `REQUIREMENTS_TRACEABILITY.md` — 昨天讨论要求到 Canonical 文档的逐项映射，用于防漏需求。
 
-## 3. 兼容/重复文档
-
-以下文件仅保留兼容入口，不再作为独立权威设计：
-
-- `AGENT_ACTION_PROTOCOL.md` → `AGENT_ACTION_PROTOCOL_V2.md`
-- `AGENT_STATE_SCHEMA.md` → `AGENT_STATE_MODEL.md`
-- `AGENT_POLICY_ENGINE.md` → `AGENT_AUTONOMY_MODEL.md`
-- `AGENT_RUNTIME_MIGRATION_GUIDE.md` → `AGENT_RUNTIME_IMPLEMENTATION_PLAN.md`
-
-若重复文档与 Canonical 文档冲突，以本 README 指向的 Canonical 文档为准。
-
-## 4. 当前代码必须保留的基础能力
+## 3. 当前代码必须保留的基础能力
 
 V2 迁移不得无理由重写：
 
@@ -83,8 +69,7 @@ V2 第一阶段不做：
 任何后续实现若要改变已冻结决策：
 
 1. 先更新对应 Canonical 文档；
-2. 同步更新 `REQUIREMENTS_TRACEABILITY.md`；
-3. 说明为何不是针对单一例子的过拟合修补；
-4. 再进入实现/测试。
+2. 说明为何不是针对单一例子的过拟合修补；
+3. 再进入实现/测试。
 
 不要为了方便编码，静默选择一个与产品语义不同的解释。

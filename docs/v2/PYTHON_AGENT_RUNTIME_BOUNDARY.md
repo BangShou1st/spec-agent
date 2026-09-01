@@ -1,6 +1,6 @@
 # Python Agent Runtime Boundary V2
 
-> Status: **Frozen 2026-08-21** after owner approval of `CODE_ARCHITECTURE_REVIEW_2026-08-21.md`.
+> Status: **Frozen 2026-08-21** after owner approval.
 > Python is bootstrapped in Stage A, before any new V2 reasoning logic is written.
 
 ## 1. Principle

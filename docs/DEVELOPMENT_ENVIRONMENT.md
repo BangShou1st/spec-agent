@@ -223,3 +223,53 @@ In local development, both Spring and the Python brain run on
 `localhost` and share the default `dev-internal-secret`. This is
 acceptable because the machine is single-tenant. The same shared secret
 must never be used in production.
+
+## 12. Provider Troubleshooting
+
+### Environment Variables
+
+| Variable | Purpose | Required for regression | Required for live smoke |
+|---|---|---|---|
+| `SPEC_AGENT_MODEL_GATEWAY` | Gateway selector: `fake` (default) or `opencode` | No (default fake) | **Must be `opencode`** |
+| `SPEC_AGENT_OPENCODE_KEY` | OpenCode Zen API key | No | **Required** |
+| `SPEC_AGENT_OPENCODE_MODEL` | Selected model id (must end with `-free`) | No | No (default `mimo-v2.5-free`) |
+| `SPEC_AGENT_CREDENTIAL_MASTER_KEY` | Credential encryption master key (test profile uses fixed test-only key) | No | No (test profile) |
+
+### Provider Failure Categories
+
+| Category | Trigger | Meaning |
+|---|---|---|
+| `AUTHENTICATION` | HTTP 401/403 | Invalid key / no permission |
+| `RATE_LIMITED` | HTTP 429 | Rate limited; retry later |
+| `SERVER_ERROR` | HTTP 5xx | Provider temporarily unavailable |
+| `TIMEOUT` | Request timeout | Network or provider slow |
+| `CONNECTION` | Connection failed | Network issue |
+| `INVALID_RESPONSE` | Non-JSON / missing action | Provider or model behavior anomaly |
+| `EMPTY_CONTENT` | Success but empty | Model returned empty |
+| `NOT_CONFIGURED` | Missing credential/model | Configuration error |
+
+### AgentRun Trace Format
+
+`agent_runs.trace` is newline-delimited step markers:
+
+```text
+created
+context_built
+model_called:DRAFT_NODE
+reflected:PATCH
+persisted_answer
+persisted_patch
+persisted_node
+completed
+```
+
+On failure, the trace ends with `failed:<category>`:
+
+```text
+created
+context_built
+model_called:DRAFT_NODE
+failed:provider:RATE_LIMITED
+```
+
+Key markers: `model_called:<TASK>`, `reflected:<GATE>`, `persisted_<artifact>`, `failed:provider:<CATEGORY>`. Related IDs (project_id, route_id, context_snapshot_id, produced_*_id) are UUIDs in the same run record.

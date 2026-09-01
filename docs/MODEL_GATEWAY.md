@@ -307,8 +307,7 @@ Model output is validated before persistence.
 
 ## 15. Stage A: Lower-Level Inference Seam and Internal Broker (V2)
 
-Stage A of the V2 migration (`docs/v2/AGENT_RUNTIME_IMPLEMENTATION_PLAN.md`)
-adds a provider-neutral seam below `ModelGateway` without changing the frozen
+Stage A of the V2 migration adds a provider-neutral seam below `ModelGateway` without changing the frozen
 OpenCode transport:
 
 ```text

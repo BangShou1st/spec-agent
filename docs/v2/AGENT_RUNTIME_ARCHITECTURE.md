@@ -267,3 +267,17 @@ Trace records operational decisions and references, not hidden chain-of-thought 
 - Action types remain generic; risk/requirement/summary are payload/subtype semantics where possible.
 - New resource/tool types register capabilities rather than modify Planner core `if/else` chains.
 - Agent quality is validated across varied domains, vague starts, manual graph edits, route conflicts and capability scenarios.
+
+## 11. Architecture Invariants (from Hardening Investigation)
+
+### 11.1 Closed-Set Dispatch Exhaustiveness
+
+Action family dispatch must use compile-time exhaustive switch (Java enum switch expression, Python exhaustive match/if-elif). String-literal switches with silent `default` branches are forbidden in production dispatch code — they allow new families to compile and run while being silently misrouted. The `ActionFamily` enum is the single declared source of truth; all policy, validation, and execution layers must consume it directly.
+
+### 11.2 Lineage Single Source of Truth
+
+`RouteHistoryResolver.resolveLineage` is the canonical lineage walker for the runtime kernel. Read-model layers may add project-scoping, root/tip invariant checks, and retracted-node filtering on top, but the core tip→parent traversal must not be reimplemented. Silent truncation on cycles or missing nodes (e.g., `orElse(null)`) is a correctness bug — lineage walk must fail closed with a typed error on structural violations.
+
+### 11.3 Mutation Ownership Clarity
+
+Route topology (lifecycle, fork, re-answer, replacement), graph commands (node creation, relation), and node-level operations (subtype, content) have distinct ownership boundaries. Crossing these boundaries without explicit delegation creates implicit coupling. Legacy methods with zero production callers should be migrated and removed to shrink the mutation surface.

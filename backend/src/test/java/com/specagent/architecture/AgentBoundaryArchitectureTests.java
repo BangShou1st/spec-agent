@@ -10,7 +10,7 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
 /**
  * Stage A boundary rules for the new agent runtime packages
- * ({@code docs/v2/CODE_ARCHITECTURE_REVIEW_2026-08-21.md}, section 10):
+ * ({@code docs/v2/PYTHON_AGENT_RUNTIME_BOUNDARY.md}):
  * contracts stay pure, the decision layer never touches persistence, the
  * run worker never touches model/provider code, the inference broker never
  * reaches into repositories or credentials, and provider packages never

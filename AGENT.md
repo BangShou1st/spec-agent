@@ -12,11 +12,8 @@ Before implementing or modifying behavior, read:
 4. `docs/AGENT_RUNTIME.md`
 5. `docs/CONTEXT_RULES.md`
 6. `docs/MODEL_GATEWAY.md`
-7. `docs/ANTI_OVERFITTING.md`
-8. `docs/IMPLEMENTATION_PLAN.md`
-9. `docs/DEVELOPMENT_ENVIRONMENT.md`
-10. `docs/DEVELOPMENT_WORKFLOW.md`
-11. For V2 work: `docs/v2/README.md` and the canonical documents it lists.
+7. `docs/DEVELOPMENT_ENVIRONMENT.md`
+8. For V2 work: `docs/v2/README.md` and the canonical documents it lists.
 
 Do not infer product scope from a single user example. The system is generic requirement clarification, not a domain-specific requirement generator.
 
