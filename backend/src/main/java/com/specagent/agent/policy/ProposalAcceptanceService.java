@@ -7,6 +7,8 @@ import com.specagent.agent.action.StaleProposalException;
 import com.specagent.agent.contract.ActionFamily;
 import com.specagent.agent.contract.ActionProposal;
 import com.specagent.graph.GraphCommandService;
+import com.specagent.agent.action.StaleContextChecker;
+import com.specagent.context.ContextSnapshotRepository;
 import com.specagent.graph.GraphOperation;
 import com.specagent.graph.GraphOperationRepository;
 import com.specagent.graph.NodeRelation;
@@ -42,6 +44,8 @@ public class ProposalAcceptanceService {
     private final NodeRepository nodeRepository;
     private final RouteRepository routeRepository;
     private final ProjectRepository projectRepository;
+    private final StaleContextChecker staleContextChecker;
+    private final ContextSnapshotRepository contextSnapshotRepository;
 
     public ProposalAcceptanceService(AgentProposalService proposalService,
                                      ActionExecutor actionExecutor,
@@ -49,7 +53,9 @@ public class ProposalAcceptanceService {
                                      GraphOperationRepository operationRepository,
                                      NodeRepository nodeRepository,
                                      RouteRepository routeRepository,
-                                     ProjectRepository projectRepository) {
+                                     ProjectRepository projectRepository,
+                                     StaleContextChecker staleContextChecker,
+                                     ContextSnapshotRepository contextSnapshotRepository) {
         this.proposalService = proposalService;
         this.actionExecutor = actionExecutor;
         this.graphCommandService = graphCommandService;
@@ -57,6 +63,8 @@ public class ProposalAcceptanceService {
         this.nodeRepository = nodeRepository;
         this.routeRepository = routeRepository;
         this.projectRepository = projectRepository;
+        this.staleContextChecker = staleContextChecker;
+        this.contextSnapshotRepository = contextSnapshotRepository;
     }
 
     public record AcceptedProposalResult(String actionFamily, UUID producedNodeId, UUID relationId) {
@@ -99,6 +107,14 @@ public class ProposalAcceptanceService {
         }
 
         ActionProposal proposal = rebuildActionProposal(stored);
+        // Frozen mutable-source staleness: if the model-visible body that
+        // produced this proposal has since changed, acceptance is stale.
+        contextSnapshotRepository.findById(stored.baseContextSnapshotId())
+                .ifPresent(snapshot -> {
+                    if (!isReadOnlyFamily(proposal)) {
+                        staleContextChecker.verifyMutableSourcesStillFresh(snapshot);
+                    }
+                });
         validateStillFresh(proposal, stored);
 
         ActionFamily family = ActionFamily.fromCode(stored.actionFamily());
@@ -244,6 +260,17 @@ public class ProposalAcceptanceService {
                 stored.baseContextSnapshotId(), anchorNodeId, null, null);
         ActionResult result = actionExecutor.execute(proposal, context);
         return new AcceptedProposalResult(stored.actionFamily(), result.producedNodeId(), null);
+    }
+
+    private boolean isReadOnlyFamily(ActionProposal proposal) {
+        try {
+            com.specagent.agent.contract.ActionFamily family =
+                    com.specagent.agent.contract.ActionFamily.fromCode(proposal.actionFamily());
+            return family == com.specagent.agent.contract.ActionFamily.RESPOND_TO_USER
+                    || family == com.specagent.agent.contract.ActionFamily.WAIT;
+        } catch (Exception ex) {
+            return false;
+        }
     }
 
     private UUID firstNodeRef(ActionProposal proposal) {

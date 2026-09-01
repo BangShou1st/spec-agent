@@ -60,6 +60,7 @@
 | Canvas 拖拽连接 = pending proposal（Scheme C） | `GRAPH_MODEL_V2.md`, `UI_UX_IMPROVEMENT_PLAN.md` | Confirm 才持久化 relation + GraphOperation；Cancel/Esc/click-away 无持久化变更；`DEPENDS_ON`+`DERIVED_FROM` 合并 DAG 环检测 |
 | unresolved conflict 必须直接进入冲突解决 | `AGENT_RUNTIME_ARCHITECTURE.md`, `AGENT_AUTONOMY_MODEL.md` | 只允许 `REQUEST_USER_INPUT` 或 confirmable `CREATE_NODE (KNOWLEDGE/DECISION)`；禁止 WAIT/无关 continuation/silent assumption；`NODE_QUERY` 保持 read-only 豁免 |
 | Agent-authored DECISION 必须确认 | `AGENT_AUTONOMY_MODEL.md`, `NODE_MODEL_V2.md` | 属于 `CONFIRMED_INTENT_CHANGE`；高 confidence 不能自授权 |
+| retry/resume 的模型输入可复现 | `AGENT_MEMORY_AND_CONTEXT.md`, `AGENT_STATE_MODEL.md` | 同一 ContextSnapshot 的模型投影 first-freeze 后 durable 不可变重放（payload + durable版本`agent-input-projection.v1` + hash + mutable-source指纹集，insert-if-absent）；冻结后新增 capability observation/编辑不回溯进入旧快照；frozen input identity 与 live stale 校验职责分离（可变源指纹活检查，只阻断变动提案，read-only不阻断）；legacy语义重放间隙`LEGACY_FROZEN_INPUT_UNAVAILABLE` fail closed |
 
 ## Rule
 

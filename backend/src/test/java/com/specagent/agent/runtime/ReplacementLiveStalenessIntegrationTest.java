@@ -79,7 +79,7 @@ class ReplacementLiveStalenessIntegrationTest {
     @Test
     void replacementRejectsTargetOutsideCurrentLineage() {
         // Nonexistent source route: the checker fails closed immediately.
-        assertThatThrownBy(() -> new StaleContextChecker(routeRepository, null)
+        assertThatThrownBy(() -> staleContextChecker
                 .verifyLiveExecutionPreconditions(
                         UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID()))
                 .isInstanceOf(com.specagent.agent.action.StaleProposalException.class);

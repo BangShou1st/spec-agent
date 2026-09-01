@@ -14,6 +14,8 @@ import com.specagent.agent.policy.AgentProposal;
 import com.specagent.agent.policy.AgentProposalService;
 import com.specagent.agent.policy.PolicyDecision;
 import com.specagent.agent.policy.ProposalStatus;
+import com.specagent.agent.snapshot.LegacyFrozenInputUnavailableException;
+import com.specagent.agent.runevent.AgentRunEvent;
 import com.specagent.agent.runevent.AgentRunEventService;
 import com.specagent.agent.runevent.AgentRunPhase;
 import com.specagent.agent.snapshot.AgentInputSnapshotBuilder;
@@ -22,6 +24,7 @@ import com.specagent.answer.AnswerService;
 import com.specagent.context.ContextBuilder;
 import com.specagent.context.ContextOperationType;
 import com.specagent.context.ContextSnapshot;
+import com.specagent.context.ContextSnapshotRepository;
 import com.specagent.node.Node;
 import com.specagent.node.NodeService;
 import com.specagent.patch.AnswerPatch;
@@ -79,6 +82,8 @@ public class AnswerCycleService {
     private final RouteRepository routeRepository;
     private final com.specagent.agent.action.StaleContextChecker staleContextChecker;
     private final com.specagent.project.ProjectRepository projectRepository;
+    private final ContextSnapshotRepository contextSnapshotRepository;
+    private final com.specagent.agent.snapshot.AgentInputProjectionRepository projectionRepository;
 
     public AnswerCycleService(AgentRunService agentRunService,
                               AgentRunFailureService agentRunFailureService,
@@ -95,7 +100,9 @@ public class AnswerCycleService {
                               NodeService nodeService,
                               RouteRepository routeRepository,
                               com.specagent.agent.action.StaleContextChecker staleContextChecker,
-                              com.specagent.project.ProjectRepository projectRepository) {
+                              com.specagent.project.ProjectRepository projectRepository,
+                              ContextSnapshotRepository contextSnapshotRepository,
+                              com.specagent.agent.snapshot.AgentInputProjectionRepository projectionRepository) {
         this.agentRunService = agentRunService;
         this.agentRunFailureService = agentRunFailureService;
         this.contextBuilder = contextBuilder;
@@ -112,6 +119,8 @@ public class AnswerCycleService {
         this.routeRepository = routeRepository;
         this.staleContextChecker = staleContextChecker;
         this.projectRepository = projectRepository;
+        this.contextSnapshotRepository = contextSnapshotRepository;
+        this.projectionRepository = projectionRepository;
     }
 
     /**
@@ -200,10 +209,19 @@ public class AnswerCycleService {
             throw new IllegalStateException("Answer node is not the active route tip");
         }
 
+        failIfLegacyReplay(answer.id());
+
         String trace = "created";
         try {
             trace = appendTrace(trace, "context_built");
-            ContextSnapshot snapshot = buildAndValidateContext(run, projectId, trace);
+            final String traceAfterBuild = trace;
+            // Frozen-input replay: when repair reruns STATE_UPDATE, reuse the
+            // ORIGINAL attempt's pre-answer snapshot so the model input cannot
+            // drift with live workspace changes. Only an attempt whose
+            // original snapshot is undiscoverable builds a fresh context.
+            ContextSnapshot snapshot = resolveOriginalPreAnswerSnapshot(projectId, answer)
+                    .map(original -> attachSnapshot(run, original, traceAfterBuild))
+                    .orElseGet(() -> buildAndValidateContext(run, projectId, traceAfterBuild));
 
             trace = appendTrace(trace, "persisted_answer");
             agentRunService.markPersistedAnswer(run.id(), answer.id(), trace);
@@ -241,6 +259,7 @@ public class AnswerCycleService {
                                             String trace) {
         // Check for existing patch (repair gate).
         AnswerPatch patch = answerPatchService.findBySourceAnswerId(answer.id()).orElse(null);
+        boolean resumeWithCheckpoint = patch != null;
 
         // Call 1: STATE_UPDATE (unless patch already exists).
         if (patch == null) {
@@ -255,18 +274,27 @@ public class AnswerCycleService {
 
         // STATE_UPDATE is a durable checkpoint. DECISION must read the state
         // AFTER that checkpoint, not the pre-answer snapshot used for the
-        // first model call. Rebuild against the exact route (never whatever
-        // route happens to be active now) so the new Answer/Patch/effective
-        // claims are causally visible while route isolation remains fail-closed.
-        ContextSnapshot decisionSnapshot = contextBuilder.buildForRoute(
-                projectId, route.id(), route.tipNodeId(), run.id(), ContextOperationType.NORMAL);
+        // first model call. On a repair resume, the ORIGINAL attempt's
+        // post-state snapshot (and therefore its frozen model input) is
+        // reused; only a first attempt — or a repair whose predecessor never
+        // reached its DECISION call — builds a fresh post-state snapshot.
+        // Rebuild against the exact route (never whatever route happens to be
+        // active now) so the new Answer/Patch/effective claims are causally
+        // visible while route isolation remains fail-closed.
+        ContextSnapshot decisionSnapshot = resolvePostStateSnapshot(
+                        projectId, route, answer.id(), run.id(), resumeWithCheckpoint)
+                .orElseGet(() -> contextBuilder.buildForRoute(
+                        projectId, route.id(), route.tipNodeId(), run.id(),
+                        ContextOperationType.NORMAL));
         AgentRequestEnvelope decisionEnvelope = snapshotBuilder.buildEnvelope(
                 run.id(), decisionSnapshot, envelope.event(), envelope.decisionBudget());
 
         // Call 2: DECISION.
         trace = appendTrace(trace, "deciding");
         eventService.append(run.id(), AgentRunPhase.DECIDING,
-                "DECISION_STARTED", Map.of());
+                "DECISION_STARTED", Map.of(
+                        "snapshotId", decisionSnapshot.id().toString(),
+                        "contextHash", decisionSnapshot.contextHash()));
 
         AgentResponseEnvelope decisionResponse = decisionEngine.runDecision(decisionEnvelope);
         AgentBrainResponseValidator.validateDecision(decisionEnvelope, decisionResponse);
@@ -454,12 +482,141 @@ public class AnswerCycleService {
     private ContextSnapshot buildAndValidateContext(AgentRun run, UUID projectId, String trace) {
         ContextSnapshot snapshot = contextBuilder.buildFromActiveRoute(
                 projectId, run.id(), ContextOperationType.NORMAL);
+        return attachSnapshot(run, snapshot, trace);
+    }
+
+    private ContextSnapshot attachSnapshot(AgentRun run, ContextSnapshot snapshot, String trace) {
         agentRunService.attachContext(run.id(), snapshot.id(), trace);
         eventService.append(run.id(), AgentRunPhase.SNAPSHOT_BUILT,
                 "SNAPSHOT_BUILT", Map.of(
                         "snapshotId", snapshot.id().toString(),
                         "contextHash", snapshot.contextHash()));
         return snapshot;
+    }
+
+    /**
+     * Frozen-input replay for a STATE_UPDATE rerun: the ORIGINAL attempt's
+     * pre-answer snapshot, discovered through the persisted answer's first
+     * producing run. Undiscoverable (no prior run recorded one) resolves to
+     * empty and the caller builds a fresh context; an inconsistent discovered
+     * snapshot fails closed instead of silently rebuilding.
+     */
+    private java.util.Optional<ContextSnapshot> resolveOriginalPreAnswerSnapshot(
+            UUID projectId, Answer answer) {
+        java.util.Optional<AgentRun> originalRun = agentRunService.findByProducedAnswerId(answer.id()).stream()
+                .filter(r -> r.contextSnapshotId() != null)
+                .findFirst();
+        if (originalRun.isPresent()) {
+            UUID preId = originalRun.get().contextSnapshotId();
+            boolean modelCalled = eventService.findByRunId(originalRun.get().id()).stream()
+                    .anyMatch(e -> e.eventType().startsWith("STATE_"));
+            if (modelCalled && projectionRepository.findBySnapshotId(preId).isEmpty()) {
+                throw new LegacyFrozenInputUnavailableException(
+                        "LEGACY_FROZEN_INPUT_UNAVAILABLE: pre-answer frozen projection absent for snapshot "
+                                + preId + " -- legacy STATE_UPDATE for answer " + answer.id() + " cannot be replayed");
+            }
+        }
+        return agentRunService.findByProducedAnswerId(answer.id()).stream()
+                .map(AgentRun::contextSnapshotId)
+                .filter(java.util.Objects::nonNull)
+                .findFirst()
+                .flatMap(contextSnapshotRepository::findById)
+                .map(snapshot -> {
+                    if (!snapshot.projectId().equals(projectId)
+                            || !snapshot.routeId().equals(answer.routeId())
+                            || snapshot.operationType() != ContextOperationType.NORMAL
+                            || !answer.nodeId().equals(snapshot.tipNodeId())) {
+                        throw new IllegalStateException(
+                                "Original pre-answer snapshot does not match the answer context: "
+                                        + snapshot.id());
+                    }
+                    return snapshot;
+                });
+    }
+
+    /**
+     * Frozen-input replay for repair: the most recent post-state DECISION
+     * snapshot frozen by an earlier attempt of this answer. Every DECISION
+     * envelope carries its snapshot identity in the DECISION_STARTED event,
+     * so the latest one across previous runs is the continuity anchor.
+     * Missing (the previous attempt died before its DECISION call started)
+     * resolves to empty; an inconsistent discovered snapshot fails closed.
+     */
+    private void failIfLegacyReplay(UUID answerId) {
+        boolean hasPatch = answerPatchService.findBySourceAnswerId(answerId).isPresent();
+        if (!hasPatch) {
+            return;
+        }
+        java.util.List<AgentRun> attempts = agentRunService.findByProducedAnswerId(answerId);
+        boolean hasDecisionStarted = false;
+        java.util.List<UUID> snapshotIds = new java.util.ArrayList<>();
+        for (AgentRun attempt : attempts) {
+            for (com.specagent.agent.runevent.AgentRunEvent event : eventService.findByRunId(attempt.id())) {
+                if ("DECISION_STARTED".equals(event.eventType())) {
+                    hasDecisionStarted = true;
+                    Object sid = event.payload().get("snapshotId");
+                    if (sid != null) {
+                        try {
+                            snapshotIds.add(UUID.fromString(String.valueOf(sid)));
+                        } catch (Exception ignored) {}
+                    }
+                }
+            }
+        }
+        if (!hasDecisionStarted) {
+            return;
+        }
+        if (snapshotIds.isEmpty()) {
+            throw new LegacyFrozenInputUnavailableException(
+                    "LEGACY_FROZEN_INPUT_UNAVAILABLE: legacy DECISION for answer "
+                            + answerId + " has no frozen projection and carries no snapshot identity -- "
+                            + "semantic replay is unavailable; retry from a fresh snapshot instead");
+        }
+        for (UUID sid : snapshotIds) {
+            var frozen = projectionRepository.findBySnapshotId(sid);
+            if (frozen.isEmpty()) {
+                throw new LegacyFrozenInputUnavailableException(
+                        "LEGACY_FROZEN_INPUT_UNAVAILABLE: post-state frozen projection absent for snapshot "
+                                + sid + " -- legacy replay for answer " + answerId + " cannot be reproduced");
+            }
+        }
+    }
+
+    private java.util.Optional<ContextSnapshot> resolvePostStateSnapshot(
+            UUID projectId, Route route, UUID answerId, UUID currentRunId,
+            boolean resumeWithCheckpoint) {
+        if (!resumeWithCheckpoint) {
+            // First attempt: no earlier DECISION input exists to preserve.
+            return java.util.Optional.empty();
+        }
+        java.util.List<UUID> decisionSnapshotIds = new java.util.ArrayList<>();
+        for (AgentRun attempt : agentRunService.findByProducedAnswerId(answerId)) {
+            if (attempt.id().equals(currentRunId)) {
+                continue;
+            }
+            for (AgentRunEvent event : eventService.findByRunId(attempt.id())) {
+                Object snapshotId = event.payload().get("snapshotId");
+                if ("DECISION_STARTED".equals(event.eventType()) && snapshotId != null) {
+                    decisionSnapshotIds.add(UUID.fromString(String.valueOf(snapshotId)));
+                }
+            }
+        }
+        if (decisionSnapshotIds.isEmpty()) {
+            return java.util.Optional.empty();
+        }
+        UUID latest = decisionSnapshotIds.get(decisionSnapshotIds.size() - 1);
+        ContextSnapshot snapshot = contextSnapshotRepository.findById(latest)
+                .orElseThrow(() -> new IllegalStateException(
+                        "Repaired DECISION snapshot is missing: " + latest));
+        if (!snapshot.projectId().equals(projectId)
+                || !snapshot.routeId().equals(route.id())
+                || snapshot.operationType() != ContextOperationType.NORMAL
+                || !snapshot.tipNodeId().equals(route.tipNodeId())) {
+            throw new IllegalStateException(
+                    "Repaired DECISION snapshot does not match the answer route context: "
+                            + latest);
+        }
+        return java.util.Optional.of(snapshot);
     }
 
     private void failIfNotTerminal(UUID runId, String trace, RuntimeException ex) {

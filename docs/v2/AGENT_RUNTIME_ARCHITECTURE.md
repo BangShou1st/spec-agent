@@ -156,6 +156,8 @@ Lives with the authoritative Graph Runtime. Deterministically projects:
 
 It does not call a model.
 
+The builder's projection is **freeze-once, replay-always**: the first projection of a `ContextSnapshot` is persisted as an immutable frozen input projection (payload hash + durable projection schema version `agent-input-projection.v1` + mutable-source fingerprint set), and every later projection of the same snapshot — retry, resume, repair — replays that stored payload instead of re-reading live mutable records. Graph-mutating proposals run a live fingerprint staleness gate before any mutation; read-only proposals stay ungated. Pre-contract `DECISION_STARTED` evidence with no frozen row fails closed as `LEGACY_FROZEN_INPUT_UNAVAILABLE`. See `AGENT_MEMORY_AND_CONTEXT.md` §11.
+
 ### 6.2 Decision Engine
 
 Consumes `AgentInputSnapshot` and returns `AgentDecision`:

@@ -1,9 +1,13 @@
 package com.specagent.agent.action;
 
+import com.specagent.agent.contract.ActionFamily;
 import com.specagent.agent.contract.ActionProposal;
+import com.specagent.agent.snapshot.AgentInputProjectionRepository;
+import com.specagent.agent.snapshot.MutableSourceFingerprint;
+import com.specagent.agent.snapshot.MutableSourceFingerprinter;
+import com.specagent.context.ContextSnapshot;
 import com.specagent.node.Node;
 import com.specagent.node.NodeRepository;
-import com.specagent.context.ContextSnapshot;
 import com.specagent.route.Route;
 import com.specagent.route.RouteRepository;
 import org.springframework.stereotype.Component;
@@ -28,19 +32,37 @@ public class StaleContextChecker {
     private final RouteRepository routeRepository;
 
     private final NodeRepository nodeRepository;
+    private final AgentInputProjectionRepository projectionRepository;
+    private final MutableSourceFingerprinter fingerprinter;
 
     public StaleContextChecker(RouteRepository routeRepository,
-                               NodeRepository nodeRepository) {
+                               NodeRepository nodeRepository,
+                               AgentInputProjectionRepository projectionRepository,
+                               MutableSourceFingerprinter fingerprinter) {
         this.routeRepository = routeRepository;
         this.nodeRepository = nodeRepository;
+        this.projectionRepository = projectionRepository;
+        this.fingerprinter = fingerprinter;
     }
 
     /**
      * Validates that the proposal's base context is still live. Throws
      * {@link StaleProposalException} when any check fails.
+     *
+     * <p>Read-only families (RESPOND_TO_USER, WAIT) are not a live mutation
+     * and are never gated by mutable-source staleness — they stay replayable
+     * even when the workspace drifted. Graph-mutating families compare the
+     * frozen mutable-source fingerprints (lineage + related node bodies) with
+     * the current authoritative rows and reject any mismatch, so a stale
+     * execution can never silently apply a decision taken on outdated body
+     * content. Unrelated workspace changes that were not model-visible never
+     * affect the gate.
      */
     public void check(ActionProposal proposal, ActionExecutionContext context,
                       ContextSnapshot currentSnapshot) {
+        if (isReadOnlyFamily(proposal)) {
+            return;
+        }
         if (!currentSnapshot.id().equals(proposal.baseContextSnapshotId())) {
             throw new StaleProposalException(
                     "Proposal baseContextSnapshotId does not match current snapshot");
@@ -61,6 +83,64 @@ public class StaleContextChecker {
                         }
                     }
                 }
+            }
+        }
+        verifyMutableSourcesStillFresh(currentSnapshot);
+    }
+
+    private boolean isReadOnlyFamily(ActionProposal proposal) {
+        try {
+            ActionFamily family = ActionFamily.fromCode(proposal.actionFamily());
+            return family == ActionFamily.RESPOND_TO_USER || family == ActionFamily.WAIT;
+        } catch (Exception ex) {
+            return false;
+        }
+    }
+
+    /**
+     * Compares frozen fingerprints captured at freeze time with live node
+     * bodies for exactly the same source identities. Any relevant mutation
+     * yields STALE_CONTEXT and zero mutations.
+     */
+    public void verifyMutableSourcesStillFresh(ContextSnapshot snapshot) {
+        AgentInputProjectionRepository.FrozenInputProjection frozen =
+                projectionRepository.findBySnapshotId(snapshot.id()).orElse(null);
+        if (frozen == null || frozen.sourceFingerprints().isEmpty()) {
+            return;
+        }
+        java.util.Map<java.util.UUID, String> frozenById = new java.util.HashMap<>();
+        java.util.Map<java.util.UUID, String> frozenType = new java.util.HashMap<>();
+        for (MutableSourceFingerprint f : frozen.sourceFingerprints()) {
+            frozenById.put(f.sourceId(), f.contentHash());
+            frozenType.put(f.sourceId(), f.sourceType());
+        }
+        // Live fingerprints for the same snapshot identities.
+        java.util.List<Node> lineageNodes = snapshot.includedNodeIds().stream()
+                .map(nodeRepository::findById)
+                .map(opt -> opt.orElse(null))
+                .filter(java.util.Objects::nonNull)
+                .toList();
+        java.util.Set<java.util.UUID> lineageIds = lineageNodes.stream().map(Node::id)
+                .collect(java.util.stream.Collectors.toSet());
+        java.util.List<Node> relatedNodes = new java.util.ArrayList<>();
+        for (java.util.UUID relatedId : snapshot.relatedNodeIds()) {
+            if (lineageIds.contains(relatedId)) {
+                continue;
+            }
+            nodeRepository.findById(relatedId).ifPresent(relatedNodes::add);
+        }
+        java.util.List<MutableSourceFingerprint> live = fingerprinter.fingerprintsFor(lineageNodes, relatedNodes);
+        java.util.Map<java.util.UUID, String> liveById = new java.util.HashMap<>();
+        for (MutableSourceFingerprint f : live) {
+            liveById.put(f.sourceId(), f.contentHash());
+        }
+        for (java.util.UUID id : frozenById.keySet()) {
+            String frozenHash = frozenById.get(id);
+            String liveHash = liveById.get(id);
+            if (liveHash == null || !liveHash.equals(frozenHash)) {
+                throw new StaleProposalException(
+                        "Proposal base context is stale: mutable source " + frozenType.get(id)
+                                + " " + id + " has changed since the model input was frozen");
             }
         }
     }

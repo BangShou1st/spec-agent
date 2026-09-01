@@ -3,6 +3,12 @@ package com.specagent.agent.runtime;
 import com.specagent.agent.AgentRun;
 import com.specagent.agent.AgentRunService;
 import com.specagent.agent.runevent.AgentRunEventService;
+import com.specagent.capability.CapabilityAdapter;
+import com.specagent.capability.CapabilityDescriptor;
+import com.specagent.capability.CapabilityInvocation;
+import com.specagent.capability.CapabilityResult;
+import com.specagent.capability.CapabilityRuntime;
+import com.specagent.capability.SideEffectClass;
 import com.specagent.agent.contract.ActionProposal;
 import com.specagent.agent.contract.AgentProtocol;
 import com.specagent.agent.contract.AgentRequestEnvelope;
@@ -64,6 +70,27 @@ class AnswerResumeSemanticReplayIntegrationTest {
         @org.springframework.context.annotation.Primary
         AgentDecisionEngine scriptedDecisionEngine() {
             return new ScriptedDecisionEngine();
+        }
+
+        @Bean
+        CapabilityAdapter resumeDriftCapability() {
+            return new CapabilityAdapter() {
+                @Override
+                public CapabilityDescriptor descriptor() {
+                    return new CapabilityDescriptor("test.resume-drift", "1",
+                            "resume drift probe", Map.of(), Map.of(),
+                            false, SideEffectClass.LOCAL_DURABLE, List.of(), List.of());
+                }
+
+                @Override
+                public CapabilityResult invoke(CapabilityInvocation invocation) {
+                    return new CapabilityResult(invocation.invocationId(),
+                            invocation.invocationKey(), invocation.capabilityId(),
+                            CapabilityResult.Status.SUCCEEDED,
+                            Map.of("marker", invocation.invocationKey()),
+                            List.of(), Map.of(), List.of());
+                }
+            };
         }
     }
 
@@ -142,6 +169,7 @@ class AnswerResumeSemanticReplayIntegrationTest {
     @Autowired private AnswerPatchService answerPatchService;
     @Autowired private RouteRepository routeRepository;
     @Autowired private ScriptedDecisionEngine scriptedEngine;
+    @Autowired private CapabilityRuntime capabilityRuntime;
 
     private Project project;
     private Route route;
@@ -261,6 +289,62 @@ class AnswerResumeSemanticReplayIntegrationTest {
         assertThat(answerService.findAnswersForRouteAndNodeIds(
                 route.id(), List.of(rootNode.id()))).hasSize(1);
         assertThat(allPatches()).hasSize(1);
+    }
+
+    /**
+     * T5 — repair with a live-workspace drift: after the first attempt's
+     * DECISION failed (post-state snapshot + frozen projection already
+     * durable), a capability result lands in the project. The RESUME_ANSWER
+     * retry must skip STATE_UPDATE, create no second Answer, and give DECISION
+     * the ORIGINAL frozen post-state model context — same snapshot id, same
+     * capability observations — not a live rebuild over the drifted workspace.
+     */
+    @Test
+    void resumeReplaysOriginalFrozenPostStateDecisionInputDespiteLiveDrift() {
+        // 1. First attempt: STATE_UPDATE persists the patch, DECISION fails.
+        scriptedEngine.failDecisionAt = 1;
+        runService.createQueuedRunWithInput(
+                project.id(), "ANSWER_TIP", rootNode.id(),
+                selectedOptionId, freeText, null);
+        AgentRun firstClaimed = runService.claimNextAnswerCycle().orElseThrow();
+        assertThatThrownBy(() -> worker.executeRun(firstClaimed))
+                .isInstanceOf(RuntimeException.class);
+
+        assertThat(scriptedEngine.decisions).hasSize(1);
+        var originalDecisionEnvelope = scriptedEngine.decisions.get(0);
+        UUID answerId = answerService.findAnswersForRouteAndNodeIds(
+                route.id(), List.of(rootNode.id())).get(0).id();
+
+        // 2. Live drift after the failed attempt: a new capability result
+        //    becomes visible to any live rebuild.
+        capabilityRuntime.invoke("resume-drift-" + UUID.randomUUID(),
+                "test.resume-drift", project.id(), null, Map.of());
+
+        // 3. Repair through RESUME_ANSWER.
+        runService.createQueuedRunWithInput(
+                project.id(), "RESUME_ANSWER", rootNode.id(),
+                null, null, answerId);
+        AgentRun secondClaimed = runService.claimNextAnswerCycle().orElseThrow();
+        worker.executeRun(secondClaimed);
+
+        // 4. STATE_UPDATE was not rerun; DECISION ran again.
+        assertThat(scriptedEngine.stateUpdates).as("no STATE_UPDATE rerun").hasSize(1);
+        assertThat(scriptedEngine.decisions).hasSize(2);
+
+        // 5. The resumed DECISION received the ORIGINAL frozen post-state
+        //    model context: identical snapshot identity AND identical payload
+        //    — the drifted capability observation is absent, exactly as in the
+        //    first attempt.
+        var resumedEnvelope = scriptedEngine.decisions.get(1);
+        assertThat(resumedEnvelope.snapshot()).isEqualTo(originalDecisionEnvelope.snapshot());
+        assertThat(resumedEnvelope.snapshot().capabilityResults())
+                .as("post-freeze capability drift must not enter the replayed input")
+                .isEqualTo(originalDecisionEnvelope.snapshot().capabilityResults());
+
+        // 6. No second Answer, no second patch.
+        assertThat(answerService.findAnswersForRouteAndNodeIds(
+                route.id(), List.of(rootNode.id()))).hasSize(1);
+        assertThat(answerPatchService.findBySourceAnswerId(answerId)).isPresent();
     }
 
     private List<AnswerPatch> allPatches() {

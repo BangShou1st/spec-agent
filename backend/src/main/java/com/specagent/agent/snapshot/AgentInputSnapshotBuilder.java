@@ -1,5 +1,7 @@
 package com.specagent.agent.snapshot;
 
+import com.specagent.agent.contract.AgentContractException;
+import com.specagent.agent.contract.AgentContracts;
 import com.specagent.agent.contract.AgentInputSnapshot;
 import com.specagent.agent.contract.AgentEvent;
 import com.specagent.agent.contract.AgentProtocol;
@@ -25,6 +27,7 @@ import com.specagent.answer.AnswerRepository;
 import com.specagent.capability.CapabilityInvocationRecord;
 import com.specagent.capability.CapabilityInvocationRepository;
 import com.specagent.capability.CapabilityRegistry;
+import com.specagent.common.Hashes;
 import com.specagent.common.Json;
 import com.specagent.context.ContextSnapshot;
 import com.specagent.context.RequirementState;
@@ -38,6 +41,8 @@ import com.specagent.route.Route;
 import com.specagent.route.RouteRepository;
 import org.springframework.stereotype.Service;
 
+
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -54,6 +59,16 @@ import java.util.UUID;
  * manifest lists, in the manifest's own order, into generic Graph language.
  * Python never reconstructs this state from database access.
  *
+ * <p><strong>Frozen input integrity:</strong> the first projection of a
+ * ContextSnapshot is persisted once as an immutable {@link
+ * com.specagent.agent.snapshot.FrozenInputProjection} row (payload hash +
+ * contract version, insert-if-absent). Every later projection of the SAME
+ * snapshot replays that stored payload, so retry/resume/repair can never
+ * silently rebuild model input from live mutable records (editable node
+ * bodies, related-node bodies, route labels, capability results). Corrupted,
+ * tampered, or foreign-identity frozen rows fail closed — never a live
+ * rebuild.
+ *
  * <p>{@code projectTitle} is carried only as low-authority display metadata
  * and must never be promoted to an objective by any consumer of the snapshot.
  */
@@ -63,6 +78,14 @@ public class AgentInputSnapshotBuilder {
     /** Bounded observation count: prompts never receive an unbounded catalog. */
     private static final int RECENT_CAPABILITY_RESULTS_LIMIT = 5;
 
+    /**
+     * Hard upper bound for a canonical frozen payload. The projection is
+     * already bounded by construction (bounded lineage, 1-hop relations,
+     * bounded resource excerpts, bounded capability observations); exceeding
+     * this bound is a typed fail-closed failure, never a silent truncation.
+     */
+    private static final int MAX_FROZEN_PAYLOAD_CHARS = 1_000_000;
+
     private final NodeRepository nodeRepository;
     private final AnswerRepository answerRepository;
     private final AnswerPatchRepository answerPatchRepository;
@@ -70,6 +93,8 @@ public class AgentInputSnapshotBuilder {
     private final RequirementStateBuilder requirementStateBuilder;
     private final CapabilityRegistry capabilityRegistry;
     private final CapabilityInvocationRepository capabilityInvocationRepository;
+    private final AgentInputProjectionRepository projectionRepository;
+    private final MutableSourceFingerprinter fingerprinter;
     private final Json json;
 
     public AgentInputSnapshotBuilder(NodeRepository nodeRepository,
@@ -79,6 +104,8 @@ public class AgentInputSnapshotBuilder {
                                      RequirementStateBuilder requirementStateBuilder,
                                      CapabilityRegistry capabilityRegistry,
                                      CapabilityInvocationRepository capabilityInvocationRepository,
+                                     AgentInputProjectionRepository projectionRepository,
+                                     MutableSourceFingerprinter fingerprinter,
                                      Json json) {
         this.nodeRepository = nodeRepository;
         this.answerRepository = answerRepository;
@@ -87,6 +114,8 @@ public class AgentInputSnapshotBuilder {
         this.requirementStateBuilder = requirementStateBuilder;
         this.capabilityRegistry = capabilityRegistry;
         this.capabilityInvocationRepository = capabilityInvocationRepository;
+        this.projectionRepository = projectionRepository;
+        this.fingerprinter = fingerprinter;
         this.json = json;
     }
 
@@ -108,8 +137,122 @@ public class AgentInputSnapshotBuilder {
 
     /**
      * Projects one frozen snapshot into the model-facing input snapshot.
+     *
+     * <p>Load-or-freeze: the first projection builds from the authoritative
+     * records, freezes the canonical payload durably, and returns it; every
+     * later projection of the same snapshot replays the stored payload
+     * verbatim. Concurrent first freezes resolve through the unique snapshot
+     * index (first-writer-wins); a loser returns the winner's frozen payload.
      */
     public AgentInputSnapshot build(ContextSnapshot snapshot) {
+        return projectionRepository.findBySnapshotId(snapshot.id())
+                .<AgentInputSnapshot>map(frozen -> loadFrozen(snapshot, frozen))
+                .orElseGet(() -> {
+                    AgentInputSnapshot projection = buildFromLiveRecords(snapshot);
+                    return freezeOrAdopt(snapshot, projection);
+                });
+    }
+
+    /**
+     * Verifies and replays a durable frozen projection. Every check fails
+     * closed with a typed corruption failure — never a live rebuild — because
+     * the frozen payload is the audit/reproducibility evidence of what the
+     * model saw.
+     */
+    private AgentInputSnapshot loadFrozen(ContextSnapshot snapshot,
+                                          AgentInputProjectionRepository.FrozenInputProjection frozen) {
+        boolean versionOk = AgentInputProjectionRepository.SUPPORTED_PROJECTION_VERSION.equals(frozen.projectionVersion())
+                || "agent-input.v2".equals(frozen.projectionVersion());
+        if (!versionOk) {
+            throw new FrozenProjectionCorruptedException(
+                    "Frozen input projection carries unsupported version '"
+                            + frozen.projectionVersion() + "' for snapshot " + snapshot.id());
+        }
+        if (!Hashes.sha256Hex(frozen.payload()).equals(frozen.payloadHash())) {
+            throw new FrozenProjectionCorruptedException(
+                    "Frozen input projection payload hash mismatch for snapshot "
+                            + snapshot.id() + " — payload was tampered with or corrupted");
+        }
+        AgentInputSnapshot projection;
+        try {
+            projection = AgentContracts.read(frozen.payload(), AgentInputSnapshot.class);
+        } catch (AgentContractException ex) {
+            throw new FrozenProjectionCorruptedException(
+                    "Frozen input projection payload does not parse for snapshot "
+                            + snapshot.id() + ": " + ex.getMessage());
+        }
+        if (!snapshot.id().toString().equals(projection.snapshotId())
+                || !snapshot.contextHash().equals(projection.contextHash())) {
+            throw new FrozenProjectionCorruptedException(
+                    "Frozen input projection identity mismatch for snapshot "
+                            + snapshot.id() + " — payload belongs to another snapshot context");
+        }
+        return projection;
+    }
+
+    /**
+     * Persists the first freeze of a snapshot. When a concurrent racer won
+     * (insert-if-absent lost), this build is discarded and the winner's frozen
+     * payload is loaded and returned instead — concurrent first freezes never
+     * diverge and never last-writer-win.
+     */
+    private AgentInputSnapshot freezeOrAdopt(ContextSnapshot snapshot,
+                                             AgentInputSnapshot projection) {
+        String payload = AgentContracts.write(projection);
+        if (payload.length() > MAX_FROZEN_PAYLOAD_CHARS) {
+            throw new FrozenProjectionSizeExceededException(
+                    "Frozen input projection exceeds the "
+                            + MAX_FROZEN_PAYLOAD_CHARS + " char bound for snapshot "
+                            + snapshot.id() + ": " + payload.length());
+        }
+        List<MutableSourceFingerprint> fingerprints = fingerprintsForSnapshot(snapshot);
+        boolean won = projectionRepository.insertIfAbsent(
+                new AgentInputProjectionRepository.FrozenInputProjection(
+                        UUID.randomUUID(), snapshot.id(),
+                        AgentInputProjectionRepository.SUPPORTED_PROJECTION_VERSION,
+                        payload, Hashes.sha256Hex(payload), fingerprints, Instant.now()));
+        if (!won) {
+            AgentInputProjectionRepository.FrozenInputProjection winner =
+                    projectionRepository.findBySnapshotId(snapshot.id())
+                            .orElseThrow(() -> new FrozenProjectionCorruptedException(
+                                    "Lost the freeze race but no frozen projection row exists for snapshot "
+                                            + snapshot.id()));
+            return loadFrozen(snapshot, winner);
+        }
+        return projection;
+    }
+
+    /**
+     * Fingerprints the mutable sources that are model-visible for this
+     * snapshot. Delegates to the live Node rows for the same lineage/related
+     * ids that the projection itself reads; disjoint from wire payload but
+     * hashed identically.
+     */
+    private List<MutableSourceFingerprint> fingerprintsForSnapshot(ContextSnapshot snapshot) {
+        List<Node> lineageNodes = snapshot.includedNodeIds().stream()
+                .map(nodeRepository::findById)
+                .map(optional -> optional.orElse(null))
+                .filter(java.util.Objects::nonNull)
+                .toList();
+        // Related nodes that are already in lineage are not double-counted.
+        java.util.Set<UUID> lineageIds = lineageNodes.stream().map(Node::id)
+                .collect(java.util.stream.Collectors.toSet());
+        List<Node> relatedNodes = new ArrayList<>();
+        for (UUID relatedId : snapshot.relatedNodeIds()) {
+            if (lineageIds.contains(relatedId)) {
+                continue;
+            }
+            nodeRepository.findById(relatedId).ifPresent(relatedNodes::add);
+        }
+        return fingerprinter.fingerprintsFor(lineageNodes, relatedNodes);
+    }
+
+    /**
+     * Projects exactly the manifest-listed records from the live
+     * authoritative stores. Called at most once per snapshot identity — the
+     * first freeze — and never again for that snapshot.
+     */
+    private AgentInputSnapshot buildFromLiveRecords(ContextSnapshot snapshot) {
         List<Node> lineageNodes = snapshot.includedNodeIds().stream()
                 .map(nodeRepository::findById)
                 .map(optional -> optional.orElseThrow(() -> new IllegalStateException(

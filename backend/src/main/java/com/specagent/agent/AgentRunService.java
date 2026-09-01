@@ -177,6 +177,11 @@ public class AgentRunService {
         return agentRunRepository.findByProject(projectId);
     }
 
+    /** All runs that persisted the given Answer, in creation order. */
+    public java.util.List<AgentRun> findByProducedAnswerId(UUID answerId) {
+        return agentRunRepository.findByProducedAnswerId(answerId);
+    }
+
     public record CreateResult(AgentRun run, boolean inserted) {
     }
 }

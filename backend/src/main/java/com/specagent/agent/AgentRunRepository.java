@@ -281,6 +281,17 @@ public class AgentRunRepository {
     }
 
     /**
+     * All runs that persisted the given Answer, in creation order. Used by
+     * answer repair/resume to discover the ORIGINAL attempt's frozen context
+     * snapshots (pre-answer via {@code context_snapshot_id}, post-state via
+     * the DECISION_STARTED event payload).
+     */
+    public List<AgentRun> findByProducedAnswerId(UUID producedAnswerId) {
+        String sql = "SELECT * FROM agent_runs WHERE produced_answer_id = :answerId ORDER BY created_at";
+        return jdbcTemplate.query(sql, Map.of("answerId", producedAnswerId), rowMapper);
+    }
+
+    /**
      * Atomically claims the oldest queued decision-cycle run by moving it
      * from CREATED to RUNNING. Returns empty when no run is claimable. The
      * single-statement claim keeps concurrent workers from double-executing.
