@@ -1,8 +1,9 @@
 package com.specagent.agent.action;
 
 import com.specagent.agent.contract.ActionProposal;
+import com.specagent.agent.snapshot.AgentInputSnapshotBuilder;
+import com.specagent.context.ContextBuilder;
 import com.specagent.context.ContextSnapshot;
-import com.specagent.context.ContextOperationType;
 import com.specagent.node.Node;
 import com.specagent.node.NodeService;
 import com.specagent.project.Project;
@@ -15,7 +16,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -28,32 +28,28 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @Transactional
 class StaleContextCheckerTest {
 
-    @Autowired
-    private StaleContextChecker checker;
-    @Autowired
-    private ProjectService projectService;
-    @Autowired
-    private NodeService nodeService;
-    @Autowired
-    private RouteRepository routeRepository;
+    @Autowired private StaleContextChecker checker;
+    @Autowired private ProjectService projectService;
+    @Autowired private NodeService nodeService;
+    @Autowired private RouteRepository routeRepository;
+    @Autowired private ContextBuilder contextBuilder;
+    @Autowired private AgentInputSnapshotBuilder snapshotBuilder;
 
     @Test
     void validContextPasses() {
         TestContext tc = setupWithTipNode();
-        ActionProposal proposal = proposal(tc.snapshotId, tc.hash, tc.tipNodeId);
-        ActionExecutionContext context = context(tc);
+        ActionProposal proposal = proposal(tc.snapshot.id(), tc.snapshot.contextHash(), tc.tipNodeId);
 
-        assertThatCode(() -> checker.check(proposal, context, tc.snapshot))
+        assertThatCode(() -> checker.check(proposal, context(tc), tc.snapshot))
                 .doesNotThrowAnyException();
     }
 
     @Test
     void staleHashIsRejected() {
         TestContext tc = setupWithTipNode();
-        ActionProposal proposal = proposal(tc.snapshotId, "old_hash", tc.tipNodeId);
-        ActionExecutionContext context = context(tc);
+        ActionProposal proposal = proposal(tc.snapshot.id(), "old_hash", tc.tipNodeId);
 
-        assertThatThrownBy(() -> checker.check(proposal, context, tc.snapshot))
+        assertThatThrownBy(() -> checker.check(proposal, context(tc), tc.snapshot))
                 .isInstanceOf(StaleProposalException.class)
                 .hasMessageContaining("stale");
     }
@@ -61,10 +57,9 @@ class StaleContextCheckerTest {
     @Test
     void staleSnapshotIdIsRejected() {
         TestContext tc = setupWithTipNode();
-        ActionProposal proposal = proposal(UUID.randomUUID(), tc.hash, tc.tipNodeId);
-        ActionExecutionContext context = context(tc);
+        ActionProposal proposal = proposal(UUID.randomUUID(), tc.snapshot.contextHash(), tc.tipNodeId);
 
-        assertThatThrownBy(() -> checker.check(proposal, context, tc.snapshot))
+        assertThatThrownBy(() -> checker.check(proposal, context(tc), tc.snapshot))
                 .isInstanceOf(StaleProposalException.class)
                 .hasMessageContaining("snapshot");
     }
@@ -72,11 +67,9 @@ class StaleContextCheckerTest {
     @Test
     void staleAnchorIsRejected() {
         TestContext tc = setupWithTipNode();
-        UUID staleAnchor = UUID.randomUUID();
-        ActionProposal proposal = proposal(tc.snapshotId, tc.hash, staleAnchor);
-        ActionExecutionContext context = context(tc);
+        ActionProposal proposal = proposal(tc.snapshot.id(), tc.snapshot.contextHash(), UUID.randomUUID());
 
-        assertThatThrownBy(() -> checker.check(proposal, context, tc.snapshot))
+        assertThatThrownBy(() -> checker.check(proposal, context(tc), tc.snapshot))
                 .isInstanceOf(StaleProposalException.class)
                 .hasMessageContaining("anchor");
     }
@@ -86,16 +79,11 @@ class StaleContextCheckerTest {
         Route route = routeRepository.findById(project.activeRouteId()).orElseThrow();
         Node root = nodeService.createRootNode(project.id(), route.id(),
                 "根节点", null, List.of(), true);
-        // Re-read route after node creation to get the updated tipNodeId.
         Route updatedRoute = routeRepository.findById(route.id()).orElseThrow();
-        UUID snapshotId = UUID.randomUUID();
-        String hash = "hash";
-        ContextSnapshot snapshot = new ContextSnapshot(
-                snapshotId, project.id(), updatedRoute.id(), updatedRoute.tipNodeId(),
-                ContextOperationType.NORMAL, List.of(), List.of(), List.of(),
-                List.of(), List.of(), List.of(), null, hash, Instant.now());
-        return new TestContext(project.id(), updatedRoute.id(),
-                updatedRoute.tipNodeId(), snapshotId, hash, snapshot);
+        ContextSnapshot snapshot = contextBuilder.buildForNodeQuery(
+                project.id(), updatedRoute.id(), root.id(), "stale-check");
+        snapshotBuilder.build(snapshot);
+        return new TestContext(project.id(), updatedRoute.id(), updatedRoute.tipNodeId(), snapshot);
     }
 
     private ActionProposal proposal(UUID snapshotId, String hash, UUID anchorNodeId) {
@@ -109,10 +97,10 @@ class StaleContextCheckerTest {
     private ActionExecutionContext context(TestContext tc) {
         return new ActionExecutionContext(
                 UUID.randomUUID(), tc.projectId, tc.routeId,
-                UUID.randomUUID(), tc.tipNodeId, null, null);
+                tc.snapshot.id(), tc.tipNodeId, null, null);
     }
 
     private record TestContext(UUID projectId, UUID routeId, UUID tipNodeId,
-                               UUID snapshotId, String hash, ContextSnapshot snapshot) {
+                               ContextSnapshot snapshot) {
     }
 }
