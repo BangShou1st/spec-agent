@@ -40,6 +40,7 @@ def handle_decision(request: AgentV2RequestEnvelope, client: ModelClient) -> Age
     )
     output = _parse_model_output(completion.content)
     _check_source_refs(output, request)
+    _check_conflict_action(output, request)
 
     return AgentV2ResponseEnvelope(
         protocol_version=DECISION_PROTOCOL_VERSION,
@@ -80,3 +81,45 @@ def _check_source_refs(output: ModelDecisionOutput, request: AgentV2RequestEnvel
         if ref not in allowed:
             raise BrainContractError(
                 f"model referenced a source outside the allowed snapshot refs: {ref}")
+
+
+def _check_conflict_action(output: ModelDecisionOutput,
+                           request: AgentV2RequestEnvelope) -> None:
+    """Fail closed when unresolved requirement conflicts would be bypassed.
+
+    NODE_QUERY is a read-only contextual conversation and must stay usable even
+    when the workspace has unresolved conflicts. For normal planning cycles,
+    however, an unresolved conflict is a control-flow boundary: the model must
+    surface it and either ask the user to resolve the trade-off or record an
+    explicit DECISION node. The latter remains subject to Java policy/Advisor
+    confirmation; this guard only prevents silent continuation/WAIT.
+    """
+    if request.event.kind == "NODE_QUERY":
+        return
+
+    unresolved = [
+        claim for claim in request.snapshot.effective_claims
+        if claim.kind == "conflict" and claim.status == "unresolved"
+    ]
+    if not unresolved:
+        return
+
+    if not output.observation.conflicts:
+        raise BrainContractError(
+            "unresolved conflict requires a non-empty observation.conflicts")
+
+    family = output.action.action_family
+    if family == "REQUEST_USER_INPUT":
+        return
+
+    if family == "CREATE_NODE":
+        payload = output.action.payload
+        if (payload.get("kind") == "KNOWLEDGE"
+                and payload.get("subtype") == "DECISION"
+                and isinstance(payload.get("content"), dict)
+                and isinstance(payload["content"].get("text"), str)
+                and payload["content"]["text"].strip()):
+            return
+
+    raise BrainContractError(
+        "unresolved conflict requires REQUEST_USER_INPUT or CREATE_NODE/DECISION")
