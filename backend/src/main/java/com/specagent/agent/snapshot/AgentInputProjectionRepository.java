@@ -1,12 +1,11 @@
 package com.specagent.agent.snapshot;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.specagent.common.Json;
 import com.specagent.common.Maps;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
-
-import com.fasterxml.jackson.core.type.TypeReference;
 
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -21,34 +20,29 @@ import java.util.UUID;
  *
  * <p>Identity is {@code snapshot_id} with a unique index — one frozen
  * projection per ContextSnapshot, forever. Rows are written once via
- * insert-if-absent (the unique index is the final arbiter of a concurrent
- * first freeze; losers read back the winner's row) and are never updated,
- * deleted, or rebuilt from live records by this repository.
+ * insert-if-absent and are never updated, deleted, or rebuilt from live
+ * records by this repository.
+ *
+ * <p>{@code source_fingerprints} is a TEXT column containing canonical JSON.
+ * Keeping that representation explicit avoids coupling Flyway storage type to
+ * PostgreSQL jsonb while still using the strict application JSON codec.
  */
 @Repository
 public class AgentInputProjectionRepository {
 
     /**
-     * Durable projection schema version. This is the persistence-layer
-     * contract for {@code agent_input_projections.payload} — it is
-     * intentionally independent of the wire envelope version
-     * ({@link com.specagent.agent.contract.AgentProtocol#INPUT_PROTOCOL_VERSION}).
-     * The payload happens to be the canonical serialization of the
-     * {@code snapshot} field of an {@code agent-input.v2} envelope, so the
-     * first persisted value is {@code agent-input-projection.v1}; the wire
-     * version may evolve separately. Loading a row whose version does not
-     * match this constant fails closed. See
-     * {@code docs/v2/AGENT_MEMORY_AND_CONTEXT.md} §11.
+     * Durable projection schema version, intentionally independent of the
+     * cross-language wire envelope version.
      */
     public static final String SUPPORTED_PROJECTION_VERSION = "agent-input-projection.v1";
     /** Legacy value shipped in V20 before the review fix. Accepted for reading old rows. */
     private static final String LEGACY_PROJECTION_VERSION = "agent-input.v2";
 
-    private final NamedParameterJdbcTemplate jdbcTemplate;
-    private final Json json;
     private static final TypeReference<List<MutableSourceFingerprint>> FINGERPRINT_LIST =
             new TypeReference<>() {};
 
+    private final NamedParameterJdbcTemplate jdbcTemplate;
+    private final Json json;
     private final RowMapper<FrozenInputProjection> rowMapper;
 
     public AgentInputProjectionRepository(NamedParameterJdbcTemplate jdbcTemplate, Json json) {
@@ -92,7 +86,7 @@ public class AgentInputProjectionRepository {
                 INSERT INTO agent_input_projections
                     (id, snapshot_id, projection_version, payload, payload_hash, source_fingerprints, created_at)
                 VALUES
-                    (:id, :snapshotId, :projectionVersion, :payload, :payloadHash, CAST(:sourceFingerprints AS jsonb), :createdAt)
+                    (:id, :snapshotId, :projectionVersion, :payload, :payloadHash, :sourceFingerprints, :createdAt)
                 ON CONFLICT (snapshot_id) DO NOTHING
                 """;
         return jdbcTemplate.update(sql, Maps.of(
@@ -105,9 +99,7 @@ public class AgentInputProjectionRepository {
                 "createdAt", Timestamp.from(projection.createdAt()))) == 1;
     }
 
-    /**
-     * Immutable frozen evidence of one model-facing input projection.
-     */
+    /** Immutable frozen evidence of one model-facing input projection. */
     public record FrozenInputProjection(UUID id,
                                         UUID snapshotId,
                                         String projectionVersion,
