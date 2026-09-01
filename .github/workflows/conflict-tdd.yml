@@ -19,6 +19,6 @@ jobs:
       - name: Install agent brain test dependencies
         working-directory: agent-brain
         run: pip install -e '.[dev]'
-      - name: Run conflict intelligence brain tests
+      - name: Run full agent brain suite
         working-directory: agent-brain
-        run: pytest -q tests/test_conflict_intelligence.py
+        run: pytest -q
