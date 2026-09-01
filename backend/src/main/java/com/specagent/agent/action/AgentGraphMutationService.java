@@ -114,15 +114,8 @@ public class AgentGraphMutationService {
             };
         }
 
-        // Append at the verified current tip. The anchor must still be a live
-        // project node. Workspace-node continuation mirrors the user
-        // continuation invariant (an unanswered Question stays a route tip);
-        // the agent question-draft chain is intentionally exempt — drafting a
-        // follow-up question is the approved question-chain behavior.
         requireNodeInProject(projectId, expectedTipNodeId);
-        if (creation instanceof WorkspaceNode) {
-            invariantValidator.validateQuestionCanHaveChild(projectId, routeId, expectedTipNodeId);
-        }
+        invariantValidator.validateQuestionCanHaveChild(projectId, routeId, expectedTipNodeId);
         return switch (creation) {
             case InteractionNode node -> nodeService.createChildNode(
                     projectId, routeId, expectedTipNodeId, node.questionText(),

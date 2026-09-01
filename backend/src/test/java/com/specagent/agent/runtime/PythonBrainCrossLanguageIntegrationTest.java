@@ -85,8 +85,6 @@ class PythonBrainCrossLanguageIntegrationTest {
     @Test
     void pythonCompletesDeterministicDecisionThroughJavaBroker() {
         Project project = projectService.createProject("跨语言决策项目");
-        nodeService.createRootNode(project.id(), project.activeRouteId(),
-                "最重要的目标是什么？", null, List.of(), true);
 
         AgentRun run = runService.createQueuedDraftQuestion(project.id());
         worker.executeRun(run);

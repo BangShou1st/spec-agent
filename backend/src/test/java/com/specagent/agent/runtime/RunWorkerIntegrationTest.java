@@ -2,6 +2,7 @@ package com.specagent.agent.runtime;
 
 import com.specagent.agent.AgentRun;
 import com.specagent.agent.AgentRunStatus;
+import com.specagent.answer.AnswerService;
 import com.specagent.node.Node;
 import com.specagent.node.NodeService;
 import com.specagent.project.Project;
@@ -33,6 +34,8 @@ class RunWorkerIntegrationTest {
     private ProjectService projectService;
     @Autowired
     private NodeService nodeService;
+    @Autowired
+    private AnswerService answerService;
     @Autowired
     private com.specagent.route.RouteService routeService;
     @Autowired
@@ -79,6 +82,10 @@ class RunWorkerIntegrationTest {
         Project project = projectService.createProject("认领执行项目");
         Node root = nodeService.createRootNode(project.id(), project.activeRouteId(),
                 "谁是最主要的用户？", null, List.of(), true);
+        // An unanswered Question must remain the route tip; answer it before
+        // the next draft can append a child.
+        answerService.finalizeAnswer(project.id(), project.activeRouteId(),
+                root.id(), null, "answered root", "test-user");
 
         AgentRun run = runService.createQueuedDraftQuestion(project.id());
         worker.executeRun(run);

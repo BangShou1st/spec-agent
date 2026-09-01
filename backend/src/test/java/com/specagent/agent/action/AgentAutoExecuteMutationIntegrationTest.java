@@ -1,9 +1,11 @@
 package com.specagent.agent.action;
 
 import com.specagent.agent.contract.ActionProposal;
+import com.specagent.answer.AnswerService;
 import com.specagent.graph.GraphCommandService;
 import com.specagent.graph.UndoRedoService;
 import com.specagent.node.Node;
+import com.specagent.node.NodeOption;
 import com.specagent.node.NodeService;
 import com.specagent.project.Project;
 import com.specagent.project.ProjectService;
@@ -54,6 +56,7 @@ class AgentAutoExecuteMutationIntegrationTest {
     @Autowired private RouteRepository routeRepository;
     @Autowired private RouteService routeService;
     @Autowired private NodeService nodeService;
+    @Autowired private AnswerService answerService;
     @Autowired private JdbcTemplate jdbcTemplate;
     @Autowired private TransactionTemplate transactionTemplate;
 
@@ -306,5 +309,118 @@ class AgentAutoExecuteMutationIntegrationTest {
         assertThat(routeRepository.findById(route.id()).orElseThrow().tipNodeId())
                 .isEqualTo(tipBefore);
         assertThat(agentAutoNodes()).isZero();
+    }
+
+    // ------------------------------------------------------------------
+    // E. unanswered INTERACTION Question invariant (no child before answer)
+    // ------------------------------------------------------------------
+
+    private Project newQuestionProject(String title, Node[] questionOut) {
+        Project p = projectService.createProject(title + "-" + UUID.randomUUID());
+        Route r = routeRepository.findById(p.activeRouteId()).orElseThrow();
+        Node q1 = nodeService.createRootNode(p.id(), r.id(),
+                "未回答的澄清问题 Q1?", "purpose",
+                List.of(new NodeOption(UUID.randomUUID(), "选项A", null)), true);
+        questionOut[0] = q1;
+        return p;
+    }
+
+    @Test
+    void unansweredInteractionQuestionRejectsAgentChildAndKeepsTip() {
+        // Real integration: create project/route, create an INTERACTION Question
+        // Q1 as route root, do NOT finalize an Answer for Q1, then attempt a
+        // real ProposalActionExecutor REQUEST_USER_INPUT anchored at Q1.
+        Node[] q1Box = new Node[1];
+        Project p = newQuestionProject("未回答问题拒绝追加", q1Box);
+        Node q1 = q1Box[0];
+        Route r = routeRepository.findById(p.activeRouteId()).orElseThrow();
+        int childrenBefore = childrenOf(q1.id());
+        long autoBefore = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM nodes WHERE project_id = ? AND parent_node_id = ?",
+                Long.class, p.id(), q1.id());
+        UUID tipBefore = r.tipNodeId();
+
+        ActionProposal proposal = new ActionProposal(
+                "REQUEST_USER_INPUT",
+                Map.of("questionText", "跟进问题 Q2?",
+                        "purpose", "follow-up",
+                        "options", List.of(Map.of("label", "选项B")),
+                        "allowFreeAnswer", true),
+                UUID.randomUUID(), "hash-" + UUID.randomUUID(),
+                List.of(), UUID.randomUUID(), "idem-" + UUID.randomUUID(),
+                List.of("node:" + q1.id()));
+        ActionExecutionContext context = new ActionExecutionContext(
+                UUID.randomUUID(), p.id(), r.id(), UUID.randomUUID(), q1.id(), null, null);
+
+        assertThatThrownBy(() -> executor.execute(proposal, context))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("UNANSWERED_QUESTION_HAS_CHILD");
+
+        Route routeNow = routeRepository.findById(r.id()).orElseThrow();
+        assertThat(routeNow.tipNodeId()).isEqualTo(q1.id()).isEqualTo(tipBefore);
+        assertThat(childrenOf(q1.id())).isEqualTo(childrenBefore);
+        long autoAfter = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM nodes WHERE project_id = ? AND parent_node_id = ?",
+                Long.class, p.id(), q1.id());
+        assertThat(autoAfter).isEqualTo(autoBefore);
+        assertThat(agentAutoNodesIn(p.id())).isZero();
+
+        // Cleanup isolated project
+        jdbcTemplate.update("DELETE FROM agent_proposals WHERE project_id = ?", p.id());
+        jdbcTemplate.update("DELETE FROM agent_run_events WHERE run_id IN (SELECT id FROM agent_runs WHERE project_id = ?)", p.id());
+        jdbcTemplate.update("DELETE FROM agent_runs WHERE project_id = ?", p.id());
+        jdbcTemplate.update("DELETE FROM graph_operations WHERE project_id = ?", p.id());
+        jdbcTemplate.update("DELETE FROM node_relations WHERE project_id = ?", p.id());
+        jdbcTemplate.update("DELETE FROM answers WHERE project_id = ?", p.id());
+        jdbcTemplate.update("DELETE FROM route_inherited_answers WHERE branch_route_id IN (SELECT id FROM routes WHERE project_id = ?)", p.id());
+        jdbcTemplate.update("DELETE FROM routes WHERE project_id = ?", p.id());
+        jdbcTemplate.update("DELETE FROM nodes WHERE project_id = ?", p.id());
+    }
+
+    @Test
+    void finalizedAnswerAllowsAgentQuestionProgression() {
+        Node[] q1Box = new Node[1];
+        Project p = newQuestionProject("已回答后允许追问", q1Box);
+        Node q1 = q1Box[0];
+        Route r = routeRepository.findById(p.activeRouteId()).orElseThrow();
+
+        answerService.finalizeAnswer(p.id(), r.id(), q1.id(), null, "已回答 Q1", "test-user");
+
+        ActionProposal proposal = new ActionProposal(
+                "REQUEST_USER_INPUT",
+                Map.of("questionText", "跟进问题 Q2?",
+                        "purpose", "follow-up",
+                        "options", List.of(Map.of("label", "选项B")),
+                        "allowFreeAnswer", true),
+                UUID.randomUUID(), "hash-" + UUID.randomUUID(),
+                List.of(), UUID.randomUUID(), "idem-" + UUID.randomUUID(),
+                List.of("node:" + q1.id()));
+        ActionExecutionContext context = new ActionExecutionContext(
+                UUID.randomUUID(), p.id(), r.id(), UUID.randomUUID(), q1.id(), null, null);
+
+        ActionResult result = executor.execute(proposal, context);
+        Node q2 = nodeService.getNode(result.producedNodeId()).orElseThrow();
+
+        assertThat(q2.parentNodeId()).isEqualTo(q1.id());
+        Route routeNow = routeRepository.findById(r.id()).orElseThrow();
+        assertThat(routeNow.tipNodeId()).isEqualTo(q2.id());
+        assertThat(childrenOf(q1.id())).isEqualTo(1);
+
+        // Cleanup isolated project
+        jdbcTemplate.update("DELETE FROM agent_proposals WHERE project_id = ?", p.id());
+        jdbcTemplate.update("DELETE FROM agent_run_events WHERE run_id IN (SELECT id FROM agent_runs WHERE project_id = ?)", p.id());
+        jdbcTemplate.update("DELETE FROM agent_runs WHERE project_id = ?", p.id());
+        jdbcTemplate.update("DELETE FROM graph_operations WHERE project_id = ?", p.id());
+        jdbcTemplate.update("DELETE FROM node_relations WHERE project_id = ?", p.id());
+        jdbcTemplate.update("DELETE FROM answers WHERE project_id = ?", p.id());
+        jdbcTemplate.update("DELETE FROM route_inherited_answers WHERE branch_route_id IN (SELECT id FROM routes WHERE project_id = ?)", p.id());
+        jdbcTemplate.update("DELETE FROM routes WHERE project_id = ?", p.id());
+        jdbcTemplate.update("DELETE FROM nodes WHERE project_id = ?", p.id());
+    }
+
+    private long agentAutoNodesIn(UUID projectId) {
+        return nodeService.listProject(projectId).stream()
+                .filter(node -> "跟进问题 Q2?".equals(node.question()))
+                .count();
     }
 }

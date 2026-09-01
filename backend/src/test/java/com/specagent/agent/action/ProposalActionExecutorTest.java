@@ -1,6 +1,7 @@
 package com.specagent.agent.action;
 
 import com.specagent.agent.contract.ActionProposal;
+import com.specagent.answer.AnswerService;
 import com.specagent.node.Node;
 import com.specagent.node.NodeOption;
 import com.specagent.node.NodeService;
@@ -34,6 +35,8 @@ class ProposalActionExecutorTest {
     @Autowired
     private NodeService nodeService;
     @Autowired
+    private AnswerService answerService;
+    @Autowired
     private RouteRepository routeRepository;
 
     private Project project;
@@ -50,6 +53,11 @@ class ProposalActionExecutorTest {
 
     @Test
     void requestUserInputCreatesChildNode() {
+        // An unanswered INTERACTION Question must remain the route tip; answer
+        // it before an agent REQUEST_USER_INPUT child can be appended.
+        answerService.finalizeAnswer(project.id(), route.id(), rootNode.id(),
+                null, "answered root", "test-user");
+
         ActionProposal proposal = proposal("REQUEST_USER_INPUT", Map.of(
                 "questionText", "你的首要目标是什么？",
                 "options", List.of(Map.of("label", "明确目标")),
@@ -70,6 +78,9 @@ class ProposalActionExecutorTest {
 
     @Test
     void createNodeCreatesChildNode() {
+        answerService.finalizeAnswer(project.id(), route.id(), rootNode.id(),
+                null, "answered root", "test-user");
+
         ActionProposal proposal = proposal("CREATE_NODE", Map.of(
                 "question", "风险评估节点",
                 "purpose", "识别项目风险"));
