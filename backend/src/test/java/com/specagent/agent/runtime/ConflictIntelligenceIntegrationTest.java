@@ -13,8 +13,14 @@ import com.specagent.agent.contract.ProposedClaim;
 import com.specagent.agent.contract.StateUpdateResult;
 import com.specagent.agent.contract.UsageView;
 import com.specagent.agent.decision.AgentDecisionEngine;
+import com.specagent.answer.Answer;
+import com.specagent.answer.AnswerService;
 import com.specagent.node.Node;
 import com.specagent.node.NodeService;
+import com.specagent.patch.AnswerPatchService;
+import com.specagent.patch.Claim;
+import com.specagent.patch.ClaimKind;
+import com.specagent.patch.ClaimStatus;
 import com.specagent.project.Project;
 import com.specagent.project.ProjectService;
 import com.specagent.route.Route;
@@ -34,14 +40,16 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
  * Conflict-intelligence closure: STATE_UPDATE persists the new patch first,
  * and the immediately-following DECISION must read a post-state snapshot that
- * includes that patch/effective conflict claim. This keeps the answer cycle at
- * exactly two model calls while making STATE_UPDATE causally visible to
- * DECISION.
+ * includes that patch/effective conflict claim. Repair/resume must reuse an
+ * existing patch without another STATE_UPDATE while preserving the same
+ * post-state DECISION semantics.
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -54,6 +62,8 @@ class ConflictIntelligenceIntegrationTest {
     @Autowired private RunService runService;
     @Autowired private RunWorker worker;
     @Autowired private AgentRunService agentRunService;
+    @Autowired private AnswerService answerService;
+    @Autowired private AnswerPatchService answerPatchService;
 
     @MockBean
     private AgentDecisionEngine decisionEngine;
@@ -92,6 +102,52 @@ class ConflictIntelligenceIntegrationTest {
                             Map.of());
                 });
 
+        stubConflictResolutionDecision(decisionRequest);
+
+        UUID runId = runService.createQueuedRunWithInput(
+                project.id(), "ANSWER_TIP", rootQuestion.id(),
+                null, "全部功能都要首版上线，但目前只有一名兼职开发者。", null);
+        AgentRun claimed = runService.claimNextAnswerCycle().orElseThrow();
+        worker.executeRun(claimed);
+
+        AgentRun completed = agentRunService.getRun(runId).orElseThrow();
+        assertThat(completed.status()).isEqualTo(AgentRunStatus.COMPLETED);
+
+        assertConflictVisibleToDecision(decisionRequest.get());
+    }
+
+    @Test
+    void resumeReusesPersistedConflictPatchWithoutStateUpdateAndDecisionStillSeesConflict() {
+        Answer answer = answerService.finalizeAnswer(
+                project.id(), route.id(), rootQuestion.id(), null,
+                "全部功能都要首版上线，但目前只有一名兼职开发者。", "user");
+        answerPatchService.save(
+                project.id(), route.id(), rootQuestion.id(), answer.id(),
+                List.of(Claim.of(
+                        ClaimKind.CONFLICT,
+                        "一次性交付全部功能与仅有一名兼职开发者的资源约束互斥。",
+                        ClaimStatus.UNRESOLVED,
+                        null,
+                        null)),
+                null);
+
+        AtomicReference<AgentRequestEnvelope> decisionRequest = new AtomicReference<>();
+        stubConflictResolutionDecision(decisionRequest);
+
+        UUID runId = runService.createQueuedRunWithInput(
+                project.id(), "RESUME_ANSWER", rootQuestion.id(),
+                null, null, answer.id());
+        AgentRun claimed = runService.claimNextAnswerCycle().orElseThrow();
+        worker.executeRun(claimed);
+
+        AgentRun completed = agentRunService.getRun(runId).orElseThrow();
+        assertThat(completed.status()).isEqualTo(AgentRunStatus.COMPLETED);
+        verify(decisionEngine, never()).runStateUpdate(any(AgentRequestEnvelope.class));
+        assertConflictVisibleToDecision(decisionRequest.get());
+    }
+
+    private void stubConflictResolutionDecision(
+            AtomicReference<AgentRequestEnvelope> decisionRequest) {
         when(decisionEngine.runDecision(any(AgentRequestEnvelope.class)))
                 .thenAnswer(invocation -> {
                     AgentRequestEnvelope request = invocation.getArgument(0);
@@ -124,17 +180,9 @@ class ConflictIntelligenceIntegrationTest {
                             new UsageView(1, List.of()),
                             Map.of());
                 });
+    }
 
-        UUID runId = runService.createQueuedRunWithInput(
-                project.id(), "ANSWER_TIP", rootQuestion.id(),
-                null, "全部功能都要首版上线，但目前只有一名兼职开发者。", null);
-        AgentRun claimed = runService.claimNextAnswerCycle().orElseThrow();
-        worker.executeRun(claimed);
-
-        AgentRun completed = agentRunService.getRun(runId).orElseThrow();
-        assertThat(completed.status()).isEqualTo(AgentRunStatus.COMPLETED);
-
-        AgentRequestEnvelope captured = decisionRequest.get();
+    private void assertConflictVisibleToDecision(AgentRequestEnvelope captured) {
         assertThat(captured).isNotNull();
         assertThat(captured.snapshot().effectiveClaims())
                 .anySatisfy(claim -> {
