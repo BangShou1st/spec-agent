@@ -1593,25 +1593,41 @@ describe('workspaceStore.createSemanticRelation (identity contract)', () => {
     }))
   }
 
-  it('reverse direction is NOT a duplicate (directional relations are allowed)', async () => {
+  it('reverse direction is a distinct relation for directional types (SUPPORTS)', async () => {
     mockGraphWithRelations([{
-      id: 'rel-1', sourceNodeId: 'n1', targetNodeId: 'n2', relationType: 'RELATED_TO',
+      id: 'rel-1', sourceNodeId: 'n1', targetNodeId: 'n2', relationType: 'SUPPORTS',
     }])
     mockedCreateRelation.mockResolvedValue({
       id: 'rel-2', sourceNodeId: 'n2', targetNodeId: 'n1',
-      relationType: 'RELATED_TO', origin: 'USER', createdByProposalId: null,
+      relationType: 'SUPPORTS', origin: 'USER', createdByProposalId: null,
       createdAt: '2026-01-01T00:00:00Z',
     })
     const store = useWorkspaceStore()
     await store.loadWorkspace('p1')
-    // The reverse direction n2→n1 must be accepted at the API layer
-    // (backend identity is (source, target, type)).
-    const ok = await store.createSemanticRelation('n2', 'n1', 'RELATED_TO')
+    // SUPPORTS is directional: n2→n1 is a distinct fact, never a duplicate of
+    // the existing n1→n2 edge.
+    const ok = await store.createSemanticRelation('n2', 'n1', 'SUPPORTS')
     expect(ok).toBe(true)
+    expect(mockedCreateRelation).toHaveBeenCalledWith('p1', 'n2', 'n1', 'SUPPORTS')
+  })
+
+  it('reverse direction of RELATED_TO is the same fact: backend 409 duplicate fails safely', async () => {
+    mockGraphWithRelations([{
+      id: 'rel-1', sourceNodeId: 'n1', targetNodeId: 'n2', relationType: 'RELATED_TO',
+    }])
+    mockedCreateRelation.mockRejectedValue(new ApiError('duplicate', 'DUPLICATE', 409))
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+    // RELATED_TO is symmetric: A RELATED_TO B == B RELATED_TO A. The backend
+    // canonicalizes the unordered pair, so n2→n1 IS the already-existing fact
+    // and comes back as a controlled 409 duplicate. The store command must
+    // fail safely instead of minting a second symmetric fact.
+    const ok = await store.createSemanticRelation('n2', 'n1', 'RELATED_TO')
+    expect(ok).toBe(false)
     expect(mockedCreateRelation).toHaveBeenCalledWith('p1', 'n2', 'n1', 'RELATED_TO')
   })
 
-  it('same (source, target, type) is the only dedup identity', async () => {
+  it('an identical symmetric relation is rejected as a duplicate', async () => {
     mockGraphWithRelations([{
       id: 'rel-1', sourceNodeId: 'n1', targetNodeId: 'n2', relationType: 'RELATED_TO',
     }])
@@ -1692,6 +1708,35 @@ describe('node query (ask AI) semantics and polling', () => {
       const ok = await askPromise
       expect(ok).toBe(true)
       expect(mockedCreateNodeQuery).toHaveBeenCalledWith('p1', 'shared-1', 'rA', '这个需求会影响哪些部分？')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('intermediate run lifecycle statuses (CONTEXT_BUILT) never end the query as failed', async () => {
+    vi.useFakeTimers()
+    try {
+      const store = useWorkspaceStore()
+      store.projectId = 'p1'
+      store.graphView = makeGraphWorkspaceView({ routes: [], nodes: [makeNode({ id: 'n1' })] })
+      mockedCreateNodeQuery.mockResolvedValue({ runId: 'run-cb', phase: 'CREATED' })
+      // The result API reports the intermediate CONTEXT_BUILT phase verbatim
+      // while the worker builds the snapshot; it is NOT a terminal outcome.
+      mockedGetNodeQueryResult
+        .mockResolvedValueOnce({
+          runId: 'run-cb', status: 'CONTEXT_BUILT', producedNodeId: null, message: null,
+        })
+        .mockResolvedValue({
+          runId: 'run-cb', status: 'COMPLETED', producedNodeId: null, message: '结论',
+        })
+      const askPromise = store.askNodeAI('n1', null, '这个节点说明了什么？')
+      await vi.advanceTimersByTimeAsync(1500)
+      expect(store.nodeQuery?.status).toBe('RUNNING')
+      await vi.advanceTimersByTimeAsync(1500)
+      const ok = await askPromise
+      expect(ok).toBe(true)
+      expect(store.nodeQuery?.status).toBe('COMPLETED')
+      expect(store.nodeQuery?.message).toBe('结论')
     } finally {
       vi.useRealTimers()
     }
@@ -1785,7 +1830,8 @@ describe('node query (ask AI) semantics and polling', () => {
     const store = useWorkspaceStore()
     store.projectId = 'p1'
     const pending = [{
-      proposalId: 'prop-a', runId: 'run-a', inputNodeId: 'n1', routeId: 'r1',
+      proposalId: 'prop-a', runId: 'run-a', triggerType: 'node_query',
+      inputNodeId: 'n1', routeId: 'r1',
       actionFamily: 'CREATE_NODE', status: 'PROPOSED', createdAt: 'now',
       decidedAt: null, decidedBy: null,
     }]
@@ -1797,6 +1843,34 @@ describe('node query (ask AI) semantics and polling', () => {
     expect(store.nodeQueryProposals[0].inputNodeId).toBe('n1')
   })
 
+  it('proposal recovery keeps only NODE_QUERY proposals, never Answer/Decision ones', async () => {
+    const store = useWorkspaceStore()
+    store.projectId = 'p1'
+    mockedListProposals.mockResolvedValue([
+      {
+        proposalId: 'prop-query', runId: 'run-query', triggerType: 'node_query',
+        inputNodeId: 'n1', routeId: 'r1', actionFamily: 'CREATE_NODE',
+        status: 'PROPOSED', createdAt: 'now', decidedAt: null, decidedBy: null,
+      },
+      {
+        proposalId: 'prop-answer', runId: 'run-answer', triggerType: 'answer_cycle',
+        inputNodeId: 'n1', routeId: 'r1', actionFamily: 'CREATE_NODE',
+        status: 'PROPOSED', createdAt: 'now', decidedAt: null, decidedBy: null,
+      },
+      {
+        proposalId: 'prop-decision', runId: 'run-decision', triggerType: 'decision_cycle',
+        inputNodeId: 'n2', routeId: 'r1', actionFamily: 'REQUEST_USER_INPUT',
+        status: 'PROPOSED', createdAt: 'now', decidedAt: null, decidedBy: null,
+      },
+    ])
+    await store.loadNodeQueryProposals()
+    // Only the NODE_QUERY proposal survives; Answer/Decision proposals share
+    // the anchor-node shape (inputNodeId) but must never surface as
+    // contextual Ask-AI proposals in the NodeInspector.
+    expect(store.nodeQueryProposals).toHaveLength(1)
+    expect(store.nodeQueryProposals[0].proposalId).toBe('prop-query')
+  })
+
   it('page reload keeps a pending proposal discoverable by its anchor node', async () => {
     const store = useWorkspaceStore()
     store.projectId = 'p1'
@@ -1804,7 +1878,8 @@ describe('node query (ask AI) semantics and polling', () => {
     // proposal list remains — the proposal must be re-exposed on its anchor.
     store.nodeQuery = null
     store.nodeQueryProposals = [{
-      proposalId: 'prop-a', runId: 'run-a', inputNodeId: 'n1', routeId: 'r1',
+      proposalId: 'prop-a', runId: 'run-a', triggerType: 'node_query',
+      inputNodeId: 'n1', routeId: 'r1',
       actionFamily: 'CREATE_NODE', status: 'PROPOSED', createdAt: 'now',
       decidedAt: null, decidedBy: null,
     }]
@@ -1820,7 +1895,8 @@ describe('node query (ask AI) semantics and polling', () => {
       store.graphView = makeGraphWorkspaceView({ routes: [], nodes: [makeNode({ id: 'float-b' })] })
       // A's durable proposal survives independently of the in-memory nodeQuery.
       store.nodeQueryProposals = [{
-        proposalId: 'prop-a', runId: 'run-a', inputNodeId: 'n1', routeId: null,
+        proposalId: 'prop-a', runId: 'run-a', triggerType: 'node_query',
+        inputNodeId: 'n1', routeId: null,
         actionFamily: 'CREATE_NODE', status: 'PROPOSED', createdAt: 'now',
         decidedAt: null, decidedBy: null,
       }]
@@ -1847,7 +1923,8 @@ describe('node query (ask AI) semantics and polling', () => {
     store.projectId = 'p1'
     store.nodeQuery = null
     store.nodeQueryProposals = [{
-      proposalId: 'prop-rel', runId: 'run-rel', inputNodeId: 'n1', routeId: 'r1',
+      proposalId: 'prop-rel', runId: 'run-rel', triggerType: 'node_query',
+      inputNodeId: 'n1', routeId: 'r1',
       actionFamily: 'CREATE_NODE', status: 'PROPOSED', createdAt: 'now',
       decidedAt: null, decidedBy: null,
     }]
@@ -1862,5 +1939,52 @@ describe('node query (ask AI) semantics and polling', () => {
     expect(mockedAcceptProposal).toHaveBeenCalledWith('prop-rel')
     // After acceptance the durable pending list no longer contains it.
     expect(store.nodeQueryProposals).toHaveLength(0)
+  })
+
+  it('accepting durable proposal A never mutates an unrelated current query B', async () => {
+    const store = useWorkspaceStore()
+    store.projectId = 'p1'
+    // B is the current in-memory query (in-flight, no proposal of its own);
+    // A is a durable awaiting proposal being handled.
+    store.nodeQuery = {
+      nodeId: 'n2', routeId: 'r1', question: 'B', runId: 'run-b',
+      status: 'RUNNING', message: null, proposalId: null,
+      proposalStatus: null, actionFamily: null,
+    }
+    mockedAcceptProposal.mockResolvedValue({
+      proposalId: 'prop-a', status: 'ACCEPTED', actionFamily: 'CREATE_NODE',
+      producedNodeId: 'n3', relationId: null,
+    })
+    mockedListProposals.mockResolvedValue([])
+    const ok = await store.acceptNodeQueryProposal('prop-a')
+    expect(ok).toBe(true)
+    expect(mockedAcceptProposal).toHaveBeenCalledWith('prop-a')
+    // B stays completely unchanged: accepting A never marks an unrelated
+    // current query as accepted.
+    expect(store.nodeQuery?.runId).toBe('run-b')
+    expect(store.nodeQuery?.status).toBe('RUNNING')
+    expect(store.nodeQuery?.proposalStatus ?? null).toBeNull()
+  })
+
+  it('rejecting durable proposal A never mutates an unrelated current query B', async () => {
+    const store = useWorkspaceStore()
+    store.projectId = 'p1'
+    // B is the current completed read-only query; A is a durable awaiting
+    // proposal being rejected.
+    store.nodeQuery = {
+      nodeId: 'n2', routeId: 'r1', question: 'B', runId: 'run-b',
+      status: 'COMPLETED', message: 'ok', proposalId: null,
+      proposalStatus: null, actionFamily: null,
+    }
+    mockedRejectProposal.mockResolvedValue({ proposalId: 'prop-a', status: 'REJECTED' })
+    mockedListProposals.mockResolvedValue([])
+    const ok = await store.rejectNodeQueryProposal('prop-a')
+    expect(ok).toBe(true)
+    expect(mockedRejectProposal).toHaveBeenCalledWith('prop-a')
+    // B stays completely unchanged: rejecting A never marks an unrelated
+    // current query as rejected.
+    expect(store.nodeQuery?.runId).toBe('run-b')
+    expect(store.nodeQuery?.status).toBe('COMPLETED')
+    expect(store.nodeQuery?.proposalStatus ?? null).toBeNull()
   })
 })

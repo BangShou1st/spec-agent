@@ -159,8 +159,19 @@ public class ProposalAcceptanceService {
                         .orElseThrow(() -> new StaleProposalException(
                                 "Proposal route no longer exists: " + stored.routeId()));
                 UUID anchorNodeId = firstNodeRef(proposal);
-                UUID requiredTip = anchorNodeId != null ? anchorNodeId : route.tipNodeId();
-                if (requiredTip == null || !requiredTip.equals(route.tipNodeId())) {
+                // The anchor semantics mirror the transactional graph-action
+                // boundary: a null anchor is only valid on a still-empty route
+                // (bootstrap root), a non-null anchor must still be the live
+                // route tip. Never fall back to "append at whatever the tip is
+                // now" — that would silently rebase the decision.
+                if (anchorNodeId == null) {
+                    if (route.tipNodeId() != null) {
+                        throw new StaleProposalException(
+                                "Proposal carries no anchor but the route already has a tip; "
+                                        + "the graph has moved on. Trigger a new decision instead "
+                                        + "of accepting this proposal.");
+                    }
+                } else if (!anchorNodeId.equals(route.tipNodeId())) {
                     throw new StaleProposalException(
                             "Proposal anchor is no longer the route tip; the graph has moved on. "
                                     + "Trigger a new decision instead of accepting this proposal.");

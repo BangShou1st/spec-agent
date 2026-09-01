@@ -72,12 +72,17 @@ export interface ProposalRejectResult {
 
 /**
  * Safe summary of one durable AgentProposal, with enough runtime identity to
- * reconnect a pending proposal to its NodeQuery anchor after a page reload
- * (inputNodeId = the canonical anchor node of the run that produced it).
+ * reconnect a pending proposal to its NodeQuery anchor after a page reload.
+ * triggerType is derived from the proposal's AgentRun and is the ONLY reliable
+ * way to tell a NodeQuery proposal apart from an Answer/Decision one — every
+ * run type carries an inputNodeId, so inputNodeId must never be used to infer
+ * the query origin.
  */
 export interface ProjectProposalSummary {
   proposalId: string
   runId: string | null
+  /** AgentRunTriggerType code of the producing run (e.g. "node_query"). */
+  triggerType: string | null
   inputNodeId: string | null
   routeId: string | null
   actionFamily: string

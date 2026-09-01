@@ -109,6 +109,18 @@ function toDisplayError(err: unknown): DisplayError {
 }
 
 /**
+ * Keeps only the NodeQuery proposals of a durable proposal list. The proposal
+ * list API is shared by every run type; recovery must never infer the query
+ * origin from inputNodeId (every run type carries one). The explicit
+ * triggerType (derived from the proposal's AgentRun) is the only safe filter:
+ * Answer/Decision PROPOSED proposals must never surface in the NodeInspector
+ * as contextual Ask-AI proposals.
+ */
+function keepNodeQueryProposals(proposals: ProjectProposalSummary[]): ProjectProposalSummary[] {
+  return proposals.filter((proposal) => proposal.triggerType === 'node_query')
+}
+
+/**
  * Reads the durable PROPOSED NodeQuery proposals for one project, fail-soft:
  * a failed proposal-list read must never fail the workspace load or refresh
  * (pending proposals remain discoverable on the next successful load). The
@@ -117,7 +129,9 @@ function toDisplayError(err: unknown): DisplayError {
  * load/layout timing are unchanged.
  */
 function loadNodeQueryProposalsSafely(projectId: string): Promise<ProjectProposalSummary[]> {
-  return listProposals(projectId, 'PROPOSED').catch(() => [])
+  return listProposals(projectId, 'PROPOSED')
+    .then(keepNodeQueryProposals)
+    .catch(() => [])
 }
 
 /**
@@ -1761,7 +1775,18 @@ export const useWorkspaceStore = defineStore('workspace', {
         if (this.nodeQuery && this.nodeQuery.runId !== runId) return
         try {
           const result = await getNodeQueryResult(this.projectId, nodeId, runId)
-          if (result.status === 'RUNNING' || result.status === 'CREATED') continue
+          // Only the real terminal outcome statuses stop the poll. The result
+          // API reports intermediate run lifecycle phases (CONTEXT_BUILT,
+          // MODEL_CALLED, ...) verbatim — treating them as terminal would
+          // show a spurious query failure whenever a tick lands mid-run.
+          const terminal = result.status === 'COMPLETED'
+            || result.status === 'FAILED'
+            || result.status === 'AWAITING_APPROVAL'
+            || result.status === 'ACCEPTED'
+            || result.status === 'REJECTED'
+            || result.status === 'POLICY_DENIED'
+            || result.status === 'NOT_CONFIRMABLE'
+          if (!terminal) continue
           if (this.nodeQuery && this.nodeQuery.runId !== runId) return
           this.nodeQuery = {
             nodeId,
@@ -1801,7 +1826,9 @@ export const useWorkspaceStore = defineStore('workspace', {
         return
       }
       try {
-        this.nodeQueryProposals = await listProposals(this.projectId, 'PROPOSED')
+        this.nodeQueryProposals = keepNodeQueryProposals(
+          await listProposals(this.projectId, 'PROPOSED'),
+        )
       } catch {
         // A failed proposal-list read must not fail the whole workspace load;
         // keep the last known list and let the UI surface loading errors as
@@ -1813,7 +1840,10 @@ export const useWorkspaceStore = defineStore('workspace', {
     /**
      * Accepts a pending NodeQuery proposal. The backend returns the confirmed
      * proposal; the canonical graph is refreshed so any produced node/relation
-     * becomes visible. The query is then marked ACCEPTED.
+     * becomes visible. The in-memory nodeQuery lifecycle is only mutated when
+     * the proposal being accepted IS the current query's own proposal —
+     * handling a durable proposal must never mark an unrelated in-memory query
+     * as accepted.
      */
     async acceptNodeQueryProposal(proposalId: string): Promise<boolean> {
       if (!this.projectId) return false
@@ -1822,7 +1852,7 @@ export const useWorkspaceStore = defineStore('workspace', {
         await acceptProposal(proposalId)
         await this.refreshWorkspace()
         await this.loadNodeQueryProposals()
-        if (this.nodeQuery) {
+        if (this.nodeQuery && this.nodeQuery.proposalId === proposalId) {
           this.nodeQuery = { ...this.nodeQuery, status: 'ACCEPTED', proposalStatus: 'ACCEPTED' }
         }
         this.feedback = '已接受提案，Graph 已更新。'
@@ -1834,8 +1864,10 @@ export const useWorkspaceStore = defineStore('workspace', {
     },
 
     /**
-     * Rejects a pending NodeQuery proposal. The graph is left unchanged; the
-     * query is marked REJECTED so the UI stops offering accept/reject.
+     * Rejects a pending NodeQuery proposal. The graph is left unchanged; only
+     * the matching in-memory query (same proposal identity) is marked REJECTED
+     * — an unrelated current query B is never touched when rejecting a durable
+     * proposal A.
      */
     async rejectNodeQueryProposal(proposalId: string): Promise<boolean> {
       if (!this.projectId) return false
@@ -1843,7 +1875,7 @@ export const useWorkspaceStore = defineStore('workspace', {
       try {
         await rejectProposal(proposalId)
         await this.loadNodeQueryProposals()
-        if (this.nodeQuery) {
+        if (this.nodeQuery && this.nodeQuery.proposalId === proposalId) {
           this.nodeQuery = { ...this.nodeQuery, status: 'REJECTED', proposalStatus: 'REJECTED' }
         }
         this.feedback = '已拒绝提案，Graph 保持不变。'

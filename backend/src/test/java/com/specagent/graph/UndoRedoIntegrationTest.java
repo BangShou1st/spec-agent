@@ -323,6 +323,9 @@ class UndoRedoIntegrationTest {
         assertThat(undoRedoService.canUndo(project.id())).isTrue();
 
         // Then a non-reversible agent mutation via real proposal acceptance.
+        // The proposal anchors at the route tip (root), as every runtime-
+        // produced node-creating proposal does; a node-creating proposal
+        // without an anchor is only valid on a still-empty route.
         com.specagent.agent.contract.ActionProposal proposal =
                 new com.specagent.agent.contract.ActionProposal(
                         "CREATE_NODE",
@@ -330,7 +333,7 @@ class UndoRedoIntegrationTest {
                                 "content", Map.of("text", "agent 结论")),
                         java.util.UUID.randomUUID(), "hash-" + java.util.UUID.randomUUID(),
                         List.of(), java.util.UUID.randomUUID(), "idem-" + java.util.UUID.randomUUID(),
-                        List.of());
+                        List.of("node:" + root.id()));
         var pending = proposalService.createProposal(proposal,
                 java.util.UUID.randomUUID(), project.id(), route.id());
         acceptanceService.acceptAndExecute(pending.id(), "user");

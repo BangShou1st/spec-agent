@@ -76,6 +76,7 @@ public class AgentProposalController {
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("proposalId", proposal.id().toString());
         summary.put("runId", proposal.runId() == null ? null : proposal.runId().toString());
+        summary.put("triggerType", resolveTriggerType(proposal.runId()));
         summary.put("inputNodeId", resolveInputNodeId(proposal.runId()));
         summary.put("routeId", proposal.routeId() == null ? null : proposal.routeId().toString());
         summary.put("actionFamily", proposal.actionFamily());
@@ -84,6 +85,22 @@ public class AgentProposalController {
         summary.put("decidedAt", proposal.decidedAt() != null ? proposal.decidedAt().toString() : null);
         summary.put("decidedBy", proposal.decidedBy() != null ? proposal.decidedBy() : null);
         return summary;
+    }
+
+    /**
+     * The run trigger type that produced this proposal, derived from the
+     * proposal's AgentRun. The frontend must NOT infer the query origin from
+     * {@code inputNodeId} — every run type carries one — so the trigger type is
+     * the explicit filter that keeps NodeQuery recovery to node_query proposals
+     * only. Null when the run is gone.
+     */
+    private String resolveTriggerType(UUID runId) {
+        if (runId == null) {
+            return null;
+        }
+        return agentRunService.getRun(runId)
+                .map(run -> run.triggerType().code())
+                .orElse(null);
     }
 
     /**

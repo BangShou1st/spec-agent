@@ -367,7 +367,10 @@ class UndoRedoConcurrencyIntegrationTest {
                         "content", Map.of("text", "agent 结论")),
                 UUID.randomUUID(), "hash-" + UUID.randomUUID(),
                 List.of(), UUID.randomUUID(), "idem-" + UUID.randomUUID(),
-                List.of());
+                // Node-creating proposals anchor at the route tip; the anchor
+                // is what the acceptance stale-revalidation and the
+                // transactional boundary re-verify against the CURRENT tip.
+                List.of("node:" + root.id()));
         AgentProposal pending = proposalService.createProposal(
                 proposal, UUID.randomUUID(), project.id(), routeId);
 

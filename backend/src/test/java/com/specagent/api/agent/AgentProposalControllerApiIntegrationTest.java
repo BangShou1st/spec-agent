@@ -2,6 +2,7 @@ package com.specagent.api.agent;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.specagent.agent.AgentRun;
 import com.specagent.agent.AgentRunService;
 import com.specagent.agent.runtime.RunService;
 import com.specagent.agent.contract.ActionProposal;
@@ -122,5 +123,60 @@ class AgentProposalControllerApiIntegrationTest {
         assertThat(summary.get("routeId").asText()).isEqualTo(routeId.toString());
         assertThat(summary.get("actionFamily").asText()).isEqualTo("CREATE_NODE");
         assertThat(summary.get("status").asText()).isEqualTo("PROPOSED");
+    }
+
+    /**
+     * Item 3 (final review) — the pending proposal list exposes triggerType
+     * derived from each proposal's AgentRun. Every run type carries an
+     * inputNodeId, so the frontend must filter NodeQuery proposals by the
+     * explicit triggerType, never by inputNodeId inference.
+     */
+    @Test
+    void proposalSummaryExposesTriggerTypeDerivedFromEachRun() throws Exception {
+        UUID nodeQueryRunId = runService.createQueuedNodeQuery(
+                project.id(), routeId, anchor.id(), "锚点问题？");
+        AgentRun answerRun = runService.createQueuedRunWithInputResult(
+                project.id(), "ANSWER_TIP", anchor.id(), null, "补充说明", null, null);
+
+        var queryProposal = proposalService.createProposal(
+                new ActionProposal("CREATE_NODE", Map.of(
+                        "kind", "KNOWLEDGE", "subtype", "RISK",
+                        "content", Map.of("text", "结论")),
+                        UUID.randomUUID(), "hash-" + UUID.randomUUID(),
+                        List.of(), UUID.randomUUID(), "idem-q-" + UUID.randomUUID(),
+                        List.of()),
+                nodeQueryRunId, project.id(), routeId);
+        var answerProposal = proposalService.createProposal(
+                new ActionProposal("REQUEST_USER_INPUT",
+                        Map.of("questionText", "下一个问题"),
+                        UUID.randomUUID(), "hash-" + UUID.randomUUID(),
+                        List.of(), UUID.randomUUID(), "idem-a-" + UUID.randomUUID(),
+                        List.of()),
+                answerRun.id(), project.id(), routeId);
+
+        MvcResult result = mockMvc.perform(get("/api/v1/projects/{projectId}/proposals",
+                        project.id()))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode body = new ObjectMapper().readTree(result.getResponse().getContentAsString());
+        assertThat(body).hasSize(2);
+        JsonNode querySummary = findSummary(body, queryProposal.id().toString());
+        JsonNode answerSummary = findSummary(body, answerProposal.id().toString());
+        assertThat(querySummary.get("triggerType").asText()).isEqualTo("node_query");
+        assertThat(answerSummary.get("triggerType").asText()).isEqualTo("answer_cycle");
+        // Both proposals share the same anchor node: triggerType is the only
+        // safe discriminator for NodeQuery recovery.
+        assertThat(querySummary.get("inputNodeId").asText())
+                .isEqualTo(answerSummary.get("inputNodeId").asText())
+                .isEqualTo(anchor.id().toString());
+    }
+
+    private JsonNode findSummary(JsonNode list, String proposalId) {
+        for (JsonNode node : list) {
+            if (proposalId.equals(node.get("proposalId").asText())) {
+                return node;
+            }
+        }
+        throw new AssertionError("Proposal summary not found: " + proposalId);
     }
 }

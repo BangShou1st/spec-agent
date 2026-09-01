@@ -398,4 +398,24 @@ public class AgentRunRepository {
                         "created", AgentRunStatus.CREATED.code()),
                 rowMapper).stream().findFirst();
     }
+
+    /**
+     * Atomically claims one specific queued node-query run by id. The claim
+     * stays conditional on the CREATED status, so a run already claimed (or
+     * executed) by anyone else is never claimed twice.
+     */
+    public Optional<AgentRun> claimNodeQueryRun(UUID runId) {
+        String sql = """
+                UPDATE agent_runs SET status = :running
+                WHERE id = CAST(:id AS uuid)
+                  AND trigger_type = :trigger AND status = :created
+                RETURNING *
+                """;
+        return jdbcTemplate.query(sql, Maps.of(
+                        "running", AgentRunStatus.RUNNING.code(),
+                        "id", runId.toString(),
+                        "trigger", AgentRunTriggerType.NODE_QUERY.code(),
+                        "created", AgentRunStatus.CREATED.code()),
+                rowMapper).stream().findFirst();
+    }
 }
