@@ -144,7 +144,7 @@ class ProposalMutationStalenessIntegrationTest {
         ContextSnapshot snapshot = contextBuilder.buildForNodeQuery(project.id(), route.id(), draft.id(), "q13");
         freeze(snapshot);
         jdbcTemplate.update(
-                "UPDATE agent_input_projections SET source_fingerprints = '[]'::jsonb, projection_version = 'agent-input.v2' WHERE snapshot_id = ?",
+                "UPDATE agent_input_projections SET source_fingerprints = '[]', projection_version = 'agent-input.v2' WHERE snapshot_id = ?",
                 snapshot.id());
         graphCommandService.reviseDraftNode(project.id(), draft.id(), "NOTE", Map.of("text", "legacy-B"));
         staleContextChecker.check(readOnlyProposal(snapshot), executionContext(snapshot), snapshot);
