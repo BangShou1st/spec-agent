@@ -18,8 +18,8 @@ import java.util.UUID;
  * Fail-closed validation of every brain response before any persistence or
  * execution. The brain is untrusted input: a response that invents runtime
  * identity, references sources outside the frozen snapshot, echoes a stale
- * base context, exceeds its call budget, or carries an unknown action family
- * is rejected as a whole.
+ * base context, bypasses an unresolved requirement conflict, exceeds its call
+ * budget, or carries an unknown action family is rejected as a whole.
  *
  * <p>Pure contract logic: no repositories, no gateway, no persistence.
  */
@@ -130,6 +130,7 @@ public final class AgentBrainResponseValidator {
         }
         validateObservation(response.observation());
         validateProposal(request, response.actionProposal());
+        validateConflictAction(request, response);
     }
 
     private static void validateCommon(AgentRequestEnvelope request,
@@ -204,6 +205,59 @@ public final class AgentBrainResponseValidator {
         validateSourceRefs(proposal.sourceRefs(), snapshot);
         validateSourceRefs(proposal.anchorRefs(), snapshot);
         validatePayload(family, proposal.payload(), snapshot);
+    }
+
+    /**
+     * An unresolved conflict is a planning control-flow boundary, not merely
+     * display metadata. Mirror the Python brain guard here because the Java
+     * runtime never trusts the remote brain as an authorization boundary.
+     * NODE_QUERY remains exempt: it is a contextual read flow and must stay
+     * usable while the workspace still contains unresolved planning conflicts.
+     */
+    private static void validateConflictAction(AgentRequestEnvelope request,
+                                               AgentResponseEnvelope response) {
+        if (request.event() != null && "NODE_QUERY".equals(request.event().kind())) {
+            return;
+        }
+        boolean unresolvedConflict = request.snapshot().effectiveClaims().stream()
+                .anyMatch(claim -> "conflict".equals(claim.kind())
+                        && "unresolved".equals(claim.status()));
+        if (!unresolvedConflict) {
+            return;
+        }
+        if (response.observation().conflicts().isEmpty()) {
+            throw new AgentContractException(
+                    "unresolved conflict requires a non-empty observation.conflicts");
+        }
+
+        ActionFamily family;
+        try {
+            family = ActionFamily.fromCode(response.actionProposal().actionFamily());
+        } catch (IllegalArgumentException ex) {
+            throw new AgentContractException(ex.getMessage());
+        }
+        if (family == ActionFamily.REQUEST_USER_INPUT) {
+            return;
+        }
+        if (family == ActionFamily.CREATE_NODE
+                && isExplicitDecisionNode(response.actionProposal().payload())) {
+            return;
+        }
+        throw new AgentContractException(
+                "unresolved conflict requires REQUEST_USER_INPUT or CREATE_NODE/DECISION");
+    }
+
+    private static boolean isExplicitDecisionNode(Map<String, Object> payload) {
+        if (!"KNOWLEDGE".equals(payload.get("kind"))
+                || !"DECISION".equals(payload.get("subtype"))) {
+            return false;
+        }
+        Object content = payload.get("content");
+        if (!(content instanceof Map<?, ?> contentMap)) {
+            return false;
+        }
+        Object text = contentMap.get("text");
+        return text instanceof String value && !value.isBlank();
     }
 
     private static final java.util.List<String> REF_PREFIXES =

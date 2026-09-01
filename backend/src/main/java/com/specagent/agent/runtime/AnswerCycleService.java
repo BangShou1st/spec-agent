@@ -50,7 +50,8 @@ import java.util.UUID;
  *   <li>Persist immutable Answer (before any model call).</li>
  *   <li>Check for existing AnswerPatch (repair gate).</li>
  *   <li>If no patch: Call 1 STATE_UPDATE → grounded claims → persist patch checkpoint.</li>
- *   <li>Call 2 DECISION → observation + action proposal.</li>
+ *   <li>Rebuild a post-state snapshot containing that Answer/Patch.</li>
+ *   <li>Call 2 DECISION from the post-state snapshot → observation + action proposal.</li>
  *   <li>Policy evaluation → auto-execute or propose for confirmation.</li>
  * </ol>
  *
@@ -229,8 +230,8 @@ public class AnswerCycleService {
 
     /**
      * Shared post-answer processing: STATE_UPDATE → patch checkpoint →
-     * DECISION → policy → execute. Eliminates duplication between
-     * submitAnswer and resumeAnswer.
+     * post-state DECISION snapshot → DECISION → policy → execute. Eliminates
+     * duplication between submitAnswer and resumeAnswer.
      */
     private AnswerCycleResult completeCycle(AgentRun run, UUID projectId,
                                             Route route, ContextSnapshot snapshot,
@@ -252,13 +253,23 @@ public class AnswerCycleService {
                     "STATE_UPDATE_SKIPPED", Map.of("reason", "patch_exists"));
         }
 
+        // STATE_UPDATE is a durable checkpoint. DECISION must read the state
+        // AFTER that checkpoint, not the pre-answer snapshot used for the
+        // first model call. Rebuild against the exact route (never whatever
+        // route happens to be active now) so the new Answer/Patch/effective
+        // claims are causally visible while route isolation remains fail-closed.
+        ContextSnapshot decisionSnapshot = contextBuilder.buildForRoute(
+                projectId, route.id(), route.tipNodeId(), run.id(), ContextOperationType.NORMAL);
+        AgentRequestEnvelope decisionEnvelope = snapshotBuilder.buildEnvelope(
+                run.id(), decisionSnapshot, envelope.event(), envelope.decisionBudget());
+
         // Call 2: DECISION.
         trace = appendTrace(trace, "deciding");
         eventService.append(run.id(), AgentRunPhase.DECIDING,
                 "DECISION_STARTED", Map.of());
 
-        AgentResponseEnvelope decisionResponse = decisionEngine.runDecision(envelope);
-        AgentBrainResponseValidator.validateDecision(envelope, decisionResponse);
+        AgentResponseEnvelope decisionResponse = decisionEngine.runDecision(decisionEnvelope);
+        AgentBrainResponseValidator.validateDecision(decisionEnvelope, decisionResponse);
 
         ActionProposal proposal = decisionResponse.actionProposal();
         eventService.append(run.id(), AgentRunPhase.PROPOSAL_CREATED,
@@ -268,7 +279,7 @@ public class AnswerCycleService {
 
         // Policy evaluation.
         ActionExecutionContext execContext = new ActionExecutionContext(
-                run.id(), projectId, route.id(), snapshot.id(),
+                run.id(), projectId, route.id(), decisionSnapshot.id(),
                 route.tipNodeId(), selectedOptionId, freeText);
 
         PolicyDecision policyDecision = policyEngine.evaluate(proposal, execContext);
@@ -310,9 +321,9 @@ public class AnswerCycleService {
         }
 
         // Auto-execute: verify the proposal's base context is still the live
-        // snapshot before any mutation (stale proposals are rejected, never
-        // silently rebased onto newer graph state).
-        staleContextChecker.check(proposal, execContext, snapshot);
+        // post-state snapshot before any mutation (stale proposals are
+        // rejected, never silently rebased onto newer graph state).
+        staleContextChecker.check(proposal, execContext, decisionSnapshot);
         trace = appendTrace(trace, "executing");
         eventService.append(run.id(), AgentRunPhase.EXECUTING,
                 "EXECUTING", Map.of("actionFamily", proposal.actionFamily()));

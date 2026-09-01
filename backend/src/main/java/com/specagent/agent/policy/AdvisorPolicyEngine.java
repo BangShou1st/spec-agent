@@ -24,8 +24,9 @@ import java.util.UUID;
  *       capability invocations)</li>
  *   <li>VISIBLE_GRAPH_MUTATION — auto-execute for append-only continuation;
  *       confirm for branch/history-adjacent mutations</li>
- *   <li>CONFIRMED_INTENT_CHANGE — always confirm (includes local-durable
- *       capabilities and artifact generation)</li>
+ *   <li>CONFIRMED_INTENT_CHANGE — always confirm (includes agent-authored
+ *       KNOWLEDGE/DECISION nodes, local-durable capabilities and artifact
+ *       generation)</li>
  *   <li>DESTRUCTIVE_OR_HISTORY — always confirm</li>
  *   <li>EXTERNAL_SIDE_EFFECT — deny unless an explicitly authorized external
  *       capability policy exists</li>
@@ -212,10 +213,24 @@ public class AdvisorPolicyEngine {
 
     private MutationClass classifyGraphMutation(ActionProposal proposal,
                                                 ActionExecutionContext context) {
+        // A model-authored DECISION is confirmed product intent, not merely an
+        // append-only UI addition. Even at the live route tip it must remain a
+        // proposal until the user explicitly accepts it. This is the runtime
+        // backstop for conflict-resolution delegation; natural-language model
+        // confidence can never silently authorize the decision.
+        if (isDecisionNode(proposal)) {
+            return MutationClass.CONFIRMED_INTENT_CHANGE;
+        }
         if (isAppendOnlyContinuation(proposal, context)) {
             return MutationClass.VISIBLE_GRAPH_MUTATION;
         }
         return MutationClass.CONFIRMED_INTENT_CHANGE;
+    }
+
+    private boolean isDecisionNode(ActionProposal proposal) {
+        return ActionFamily.fromCode(proposal.actionFamily()) == ActionFamily.CREATE_NODE
+                && "KNOWLEDGE".equals(proposal.payload().get("kind"))
+                && "DECISION".equals(proposal.payload().get("subtype"));
     }
 
     private PolicyDecision evaluateVisibleMutation(ActionProposal proposal,

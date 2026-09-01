@@ -2,14 +2,18 @@ package com.specagent.agent.decision;
 
 import com.specagent.agent.contract.AgentContracts;
 import com.specagent.agent.contract.AgentContractException;
+import com.specagent.agent.contract.AgentInputSnapshot;
 import com.specagent.agent.contract.AgentRequestEnvelope;
 import com.specagent.agent.contract.AgentResponseEnvelope;
-import com.specagent.agent.decision.AgentBrainResponseValidator;
+import com.specagent.agent.contract.ClaimView;
+import com.specagent.agent.contract.ObservationView;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -19,7 +23,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * Fail-closed validation of brain responses: the brain is untrusted input, so
  * invented source refs, stale base context, unknown action families, runtime
- * identity smuggling, and budget violations must all be rejected.
+ * identity smuggling, unresolved-conflict bypasses, and budget violations must
+ * all be rejected.
  */
 class AgentBrainResponseValidatorTest {
 
@@ -31,6 +36,28 @@ class AgentBrainResponseValidatorTest {
 
     private AgentRequestEnvelope request() throws Exception {
         return AgentContracts.read(fixture("agent-input-valid.json"), AgentRequestEnvelope.class);
+    }
+
+    private AgentRequestEnvelope requestWithUnresolvedConflict() throws Exception {
+        AgentRequestEnvelope base = request();
+        AgentInputSnapshot snapshot = base.snapshot();
+        List<ClaimView> claims = new ArrayList<>(snapshot.effectiveClaims());
+        claims.add(new ClaimView(
+                "conflict",
+                "一次性交付全部功能与仅有一名兼职开发者的资源约束互斥。",
+                "unresolved",
+                0.95,
+                null,
+                null));
+        AgentInputSnapshot conflicted = new AgentInputSnapshot(
+                snapshot.snapshotId(), snapshot.contextHash(), snapshot.projectId(),
+                snapshot.routeId(), snapshot.anchorNodeId(), snapshot.routeContext(),
+                snapshot.lineage(), claims, snapshot.metadata(), snapshot.allowedSourceRefs(),
+                snapshot.availableCapabilities(), snapshot.capabilityResults(),
+                snapshot.relations(), snapshot.relatedNodes(), snapshot.autonomy());
+        return new AgentRequestEnvelope(
+                base.protocolVersion(), base.runId(), base.event(), conflicted,
+                base.capabilities(), base.decisionBudget());
     }
 
     @Test
@@ -82,6 +109,43 @@ class AgentBrainResponseValidatorTest {
                 response.usage(), response.diagnostics());
         assertThatThrownBy(() -> AgentBrainResponseValidator.validateDecision(request, mutated))
                 .isInstanceOf(AgentContractException.class);
+    }
+
+    @Test
+    void unresolvedConflictRejectsWaitEvenWhenBrainReportsTheConflict() throws Exception {
+        AgentRequestEnvelope request = requestWithUnresolvedConflict();
+        AgentResponseEnvelope response = AgentContracts.read(
+                fixture("decision-response-valid.json"), AgentResponseEnvelope.class);
+        AgentResponseEnvelope mutated = new AgentResponseEnvelope(
+                response.protocolVersion(), response.runId(), null,
+                new ObservationView(List.of(), List.of(),
+                        List.of("交付范围与开发资源约束互斥。"), List.of()),
+                new com.specagent.agent.contract.ActionProposal(
+                        "WAIT", Map.of(),
+                        response.actionProposal().baseContextSnapshotId(),
+                        response.actionProposal().baseContextHash(),
+                        List.of(), response.actionProposal().proposalId(),
+                        response.actionProposal().idempotencyKey(), List.of()),
+                response.usage(), response.diagnostics());
+
+        assertThatThrownBy(() -> AgentBrainResponseValidator.validateDecision(request, mutated))
+                .isInstanceOf(AgentContractException.class)
+                .hasMessageContaining("unresolved conflict");
+    }
+
+    @Test
+    void unresolvedConflictRequiresObservationConflict() throws Exception {
+        AgentRequestEnvelope request = requestWithUnresolvedConflict();
+        AgentResponseEnvelope response = AgentContracts.read(
+                fixture("decision-response-valid.json"), AgentResponseEnvelope.class);
+        AgentResponseEnvelope mutated = new AgentResponseEnvelope(
+                response.protocolVersion(), response.runId(), null,
+                new ObservationView(List.of(), List.of(), List.of(), List.of()),
+                response.actionProposal(), response.usage(), response.diagnostics());
+
+        assertThatThrownBy(() -> AgentBrainResponseValidator.validateDecision(request, mutated))
+                .isInstanceOf(AgentContractException.class)
+                .hasMessageContaining("observation.conflicts");
     }
 
     @Test
