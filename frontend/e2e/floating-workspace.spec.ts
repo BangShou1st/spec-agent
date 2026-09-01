@@ -1,5 +1,5 @@
 import { test, expect, type Locator } from '@playwright/test'
-import { buildThreeNodeLineage, createProject } from './helpers'
+import { buildThreeNodeLineage, createProject, fitGraph } from './helpers'
 
 async function boxesDoNotOverlap(first: Locator, second: Locator): Promise<boolean> {
   const [a, b] = await Promise.all([first.boundingBox(), second.boundingBox()])
@@ -70,6 +70,7 @@ test('auto layout remains usable on a small viewport and keeps float windows apa
   await page.getByTestId('draft-question').click()
   const current = page.locator('.graph-question-node--current')
   await expect(current).toBeVisible()
+  await fitGraph(page)
   await expect.poll(() => boxesDoNotOverlap(
     page.getByTestId('floating-window-inspector'),
     current,

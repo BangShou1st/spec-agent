@@ -3,6 +3,8 @@ import { computed, nextTick, ref, shallowRef, watch } from 'vue'
 import {
   VueFlow,
   useVueFlow,
+  ConnectionMode,
+  type Connection,
   type Dimensions,
   type Node,
   type Edge,
@@ -78,6 +80,15 @@ const emit = defineEmits<{
   'contextual-ai': [target: ContextualAiTarget]
   'retry-pending': []
   'viewport-settled': []
+  'activate-route': [routeId: string]
+  // A canvas drag (source handle → target handle) only raises a PENDING
+  // relation proposal; nothing is persisted until the user confirms a type
+  // and direction. This replaced the old "drag => immediate RELATED_TO".
+  'relation-proposal': [payload: { sourceNodeId: string; targetNodeId: string }]
+  // Vue Flow forwards the raw 'connect' event through <VueFlow @connect>;
+  // declaring it here silences the Vue "neither declared in the emits option
+  // nor as an onConnect prop" warning and documents the bridge.
+  connect: [connection: Connection]
   undo: []
   redo: []
   routes: []
@@ -110,6 +121,8 @@ const projection = computed(() => {
       lifecycleFilters: graphUi.lifecycleFilters,
       routeDisplayStates: graphUi.routeDisplayStates,
       expandedNodeIds: graphUi.expandedNodeIds,
+      showRelationLayer: graphUi.showRelationLayer,
+      selectedNodeIds: graphUi.selectedNodeIds,
     },
     savedPositions: graphUi.nodePositions,
     runtime: {
@@ -463,6 +476,30 @@ function onPaneClick(event?: MouseEvent): void {
   graphUi.clearFocusRoute()
 }
 
+/**
+ * Manual node-to-node connection (drag from a source handle to a target
+ * handle). The drop ONLY creates a pending relation proposal: the backend is
+ * not called, no GraphOperation is appended, and no relation is persisted
+ * until the user confirms a specific type and direction in the proposal
+ * chooser. Lineage is never rewritten by hand. Pending projection cards and
+ * self-connections are ignored.
+ */
+function onConnect(connection: Connection): void {
+  const canonicalOf = (flowNodeId: string | null | undefined): string | null => {
+    if (!flowNodeId) return null
+    const node = flowNodes.value.find((candidate) => candidate.id === flowNodeId)
+    const canonical = (node?.data as { canonicalNodeId?: string } | undefined)?.canonicalNodeId
+    if (!canonical || canonical.startsWith('pending:')) return null
+    return canonical
+  }
+  const sourceNodeId = canonicalOf(connection.source)
+  const targetNodeId = canonicalOf(connection.target)
+  if (!sourceNodeId || !targetNodeId || sourceNodeId === targetNodeId) {
+    return
+  }
+  emit('relation-proposal', { sourceNodeId, targetNodeId })
+}
+
 function emitContextualAi(nodeId: string, visualNodeKey?: string): void {
   emit('contextual-ai', {
     canonicalNodeId: nodeId,
@@ -602,7 +639,8 @@ const isEmptyProject = computed(() =>
       <VueFlow
         v-model:nodes="flowNodes"
         v-model:edges="flowEdges"
-        :nodes-connectable="false"
+        :nodes-connectable="true"
+        :connection-mode="ConnectionMode.Loose"
         :edges-updatable="false"
         :multi-selection-key-code="['Meta', 'Control']"
         :pan-on-drag="true"
@@ -616,6 +654,7 @@ const isEmptyProject = computed(() =>
          @node-drag="onNodeDrag"
         @node-drag-stop="onNodeDragStop"
         @pane-click="onPaneClick"
+        @connect="onConnect"
          @selection-start="shiftSelecting = true"
          @selection-end="shiftSelecting = false"
          @viewport-change-end="emit('viewport-settled')"
@@ -636,6 +675,7 @@ const isEmptyProject = computed(() =>
             @regenerate="(id) => emit('regenerate', id)"
             @contextual-ai="(id) => emitContextualAi(id, nodeProps.data.visualNodeKey)"
             @retry-pending="emit('retry-pending')"
+            @activate-route="(routeId) => emit('activate-route', routeId)"
           />
         </template>
         <template #node-knowledge="nodeProps: NodeProps<SpecAgentGraphNodeData>">

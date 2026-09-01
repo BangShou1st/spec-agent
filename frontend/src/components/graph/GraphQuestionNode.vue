@@ -16,12 +16,11 @@ import { phaseToCopy } from '@/graph/phaseCopy'
 
 /**
  * Four-side edge anchors for adaptive routing. Every side carries one
- * invisible source handle and one invisible target handle at its midpoint;
+ * source handle and one invisible-until-hover target handle at its midpoint;
  * lineage/replacement edges pick one pair per connection through the pure
- * selectEdgeHandles geometry rule (see graph/graphEdgeRouting.ts). The
- * handles are never visible (style.css), never receive pointer events and
- * can never start/end a connection: the flow is nodes-connectable=false
- * and every handle is explicitly non-connectable on both ends.
+ * selectEdgeHandles geometry rule (see graph/graphEdgeRouting.ts). Source
+ * handles accept manual drag-connections (semantic relations between nodes);
+ * the flow still forbids connecting anything to question-option slots.
  */
 const ANCHOR_SIDES: Position[] = [
   Position.Left,
@@ -53,6 +52,7 @@ const emit = defineEmits<{
   regenerate: [nodeId: string]
   'contextual-ai': [nodeId: string]
   'retry-pending': []
+  'activate-route': [routeId: string]
 }>()
 
 /**
@@ -133,9 +133,16 @@ const runtimeStatusClass = computed(() => {
   }
 })
 
-/** 显式阅读路线在该节点上没有回答时，摘要区域显式显示等待。 */
-const readingWaiting = computed(() => {
-  if (props.data.primaryAnswer || !props.data.readingRouteId) {
+/** 显式阅读路线只作 read context 标识，不参与 Answer 内容选择。Shared
+ * canonical Question 只有唯一不可变 Answer 身份，Focus 切换不改变内容。 */
+
+/** 阅读路线 tip 上的真正 canonical 未答 Question：激活其显式所属路线后即可
+ * 回答。已答节点（canonical Answer 存在）绝不出现；未选查看路线的 shared
+ * 未答节点也不出现（绝不 Active/first/latest 回退，绝不制造 route-specific
+ * 等待）。 */
+const unansweredReadingTip = computed(() => {
+  if (props.data.primaryAnswer || !props.data.readingRouteId
+      || props.data.isTipOfReadingRoute !== true) {
     return null
   }
   const state = props.data.routeStates.find(
@@ -143,8 +150,8 @@ const readingWaiting = computed(() => {
   )
   return state && !state.answer ? state : null
 })
-const readingWaitingLabel = computed(() => {
-  const waiting = readingWaiting.value
+const unansweredReadingTipLabel = computed(() => {
+  const waiting = unansweredReadingTip.value
   if (!waiting) return '当前查看路线'
   return props.data.routeStates.find((state) => state.routeId === waiting.routeId)?.routeLabel || '当前查看路线'
 })
@@ -196,6 +203,7 @@ function setReadingRoute(event: Event): void {
         'graph-question-node--current': data.canAnswer,
         'graph-question-node--historical': !data.canAnswer,
         'graph-question-node--shared': data.isShared,
+        'graph-question-node--selected': selected === true,
       },
     ]"
     data-test="graph-question-node"
@@ -203,18 +211,19 @@ function setReadingRoute(event: Event): void {
     :data-node-id="data.node.id"
   >
 
-    <!-- Adaptive edge anchors: one source + one target handle per side,
-         all invisible and non-interactive (style.css + connectable flags). -->
+    <!-- Adaptive edge anchors: one source + one target handle per side.
+         Source handles accept manual drag-connections; target handles accept
+         incoming ones. Invisible until node hover (style.css). -->
     <Handle
       v-for="anchor in SOURCE_ANCHORS"
       :key="anchor.id"
       :id="anchor.id"
       type="source"
       :position="anchor.position"
-      class="graph-question-node__handle"
-      :connectable="false"
-      :connectable-start="false"
-      :connectable-end="false"
+      class="graph-question-node__handle graph-question-node__handle--source"
+      :connectable="true"
+      :connectable-start="true"
+      :connectable-end="true"
       aria-hidden="true"
     />
     <Handle
@@ -223,10 +232,10 @@ function setReadingRoute(event: Event): void {
       :id="anchor.id"
       type="target"
       :position="anchor.position"
-      class="graph-question-node__handle"
-      :connectable="false"
+      class="graph-question-node__handle graph-question-node__handle--target"
+      :connectable="true"
       :connectable-start="false"
-      :connectable-end="false"
+      :connectable-end="true"
       aria-hidden="true"
     />
     <header class="graph-question-node__header" data-test="node-drag-handle" title="拖动标题栏移动节点">
@@ -355,63 +364,101 @@ function setReadingRoute(event: Event): void {
           {{ node.question }}
         </h4>
 
+        <!-- 历史答案：canonical Question 只有一个 immutable Answer identity，
+             primary 即该答案；Focus 只改变阅读上下文，不改变内容。Shared
+             answered Question 在任意 Focus/路线归属下展示同一答案。 -->
         <div
           v-if="primary"
-          class="graph-answer-summary graph-answer-summary--clamped"
+          class="graph-answer-summary"
           data-test="answer-summary"
         >
           <span v-if="primary.selectedOptionLabel" class="graph-answer-option badge badge-open">
             {{ primary.selectedOptionLabel }}
           </span>
-          <p v-if="primary.freeText" class="graph-answer-text">{{ primary.freeText }}</p>
+          <p
+            v-if="primary.freeText"
+            class="graph-answer-text graph-answer-text--clamped"
+            data-test="clamped-free-text"
+          >{{ primary.freeText }}</p>
           <span class="graph-answer-route meta-text">{{ primary.routeLabel || '当前查看路线' }}</span>
         </div>
 
-        <!-- 阅读路线没有回答时：明确显示等待，绝不拿其他路线的 answer 冒充。 -->
+        <!-- 阅读路线 tip 的 canonical 未答 Question：显示等待 + 激活所属路线
+             即可回答（route count 不变，不创建 RESUME 分支）。已答节点与未选
+             查看路线的 shared 节点绝不出现此入口。 -->
         <div
-          v-else-if="readingWaiting"
+          v-else-if="unansweredReadingTip"
           class="graph-answer-summary"
           data-test="waiting-summary"
         >
-          <span class="badge badge-warn">{{ readingWaitingLabel }} · 等待回答</span>
+          <span class="badge badge-warn">{{ unansweredReadingTipLabel }} · 等待回答</span>
+          <h4 class="graph-node-question graph-node-question--compact" data-test="waiting-question">
+            {{ node.question }}
+          </h4>
+          <p v-if="node.purpose" class="graph-node-purpose">{{ node.purpose }}</p>
+          <button
+            v-if="data.readingRouteId"
+            class="btn btn-primary graph-wake-answer nodrag"
+            type="button"
+            data-test="answer-this-question"
+            @click.stop="emit('activate-route', data.readingRouteId)"
+          >
+            回答这个问题
+          </button>
         </div>
 
-        <div class="graph-node-actions graph-node-actions--toolbar" tabindex="0" role="toolbar" aria-label="节点操作">
-          <button
-            class="btn graph-action nodrag"
-            data-test="fork-node"
-            title="我接受现在，换未来。"
-            @click.stop="forkNode"
-          >
-            从这里开新路线
-          </button>
-          <button
-            class="btn graph-action nodrag"
-            data-test="reanswer-node"
-            title="问题没错，答案换一个。"
-            @click.stop="reanswerNode"
-          >
-            重新选择答案
-          </button>
-          <button
-            class="btn graph-action nodrag"
-            data-test="regenerate-node"
-            :disabled="isRootNode || pending"
-            title="问题本身换掉。"
-            @click.stop="regenerateNode"
-          >
-            换一个问题
-          </button>
-          <button
-            class="btn graph-action nodrag"
-            data-test="contextual-ai"
-            title="在检查器中询问 AI"
-            @click.stop="emit('contextual-ai', data.node.id)"
-          >
-            问 AI
-          </button>
-        </div>
+        <!-- 其余历史未答节点：明确显示等待即可，绝不按路线拆分出 route-specific
+             的"回答这个问题"入口（那会人为制造 Shared 分叉）。 -->
+        <p
+          v-else
+          class="meta-text graph-node-question--compact"
+          data-test="waiting-plain"
+        >等待回答</p>
       </template>
+    </div>
+
+    <!-- 操作轨道：悬浮在节点右侧外缘竖排（不在卡片内占位，left:100%），
+         悬停或键盘聚焦节点时出现。仅历史节点提供；当前节点直接在卡片内作答。 -->
+    <div
+      v-if="!isPendingCard && !data.canAnswer"
+      class="graph-node-actions graph-node-actions--toolbar"
+      tabindex="0"
+      role="toolbar"
+      aria-label="节点操作"
+    >
+      <button
+        class="btn graph-action nodrag"
+        data-test="fork-node"
+        title="我接受现在，换未来。"
+        @click.stop="forkNode"
+      >
+        从这里开新路线
+      </button>
+      <button
+        class="btn graph-action nodrag"
+        data-test="reanswer-node"
+        title="问题没错，答案换一个。"
+        @click.stop="reanswerNode"
+      >
+        重新选择答案
+      </button>
+      <button
+        class="btn graph-action nodrag"
+        data-test="regenerate-node"
+        :disabled="isRootNode || pending"
+        title="问题本身换掉。"
+        @click.stop="regenerateNode"
+      >
+        换一个问题
+      </button>
+      <button
+        class="btn graph-action nodrag"
+        data-test="contextual-ai"
+        title="在检查器中询问 AI"
+        @click.stop="emit('contextual-ai', data.node.id)"
+      >
+        问 AI
+      </button>
     </div>
   </article>
 </template>

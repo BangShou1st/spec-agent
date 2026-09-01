@@ -139,4 +139,31 @@ describe('floating window auto layout', () => {
     expect(first.y + first.height).toBeLessThanOrEqual(400 - 16)
     expect(second).toEqual(first)
   })
+
+  // Regression for the 900x700 floating-workspace.spec.ts failure: the
+  // workspace body is 900x664, the routes window anchors the right side at
+  // (626,88) 258x560, and after fit-view the current question node settles
+  // at (290,225) 320x286. The inspector (preferred 420x640) must avoid the
+  // current node AND the routes window without baking in a single viewport
+  // coordinate. The persisted state used here is the transient pre-reflow
+  // value captured from the running app.
+  it('keeps the inspector off the current node on 900x664 with routes anchored at the right', () => {
+    const currentNode = { x: 290, y: 225, width: 320, height: 286 }
+    const routes = { x: 626, y: 88, width: 258, height: 560 }
+    const result = computeAutoFloatingWindowLayout({
+      viewportWidth: 900,
+      viewportHeight: 664,
+      state: { x: 290, y: 16, width: 320, height: 225, open: true, positionMode: 'auto' },
+      range,
+      obstacles: [currentNode, routes],
+      protectedObstacles: [currentNode, routes],
+    })
+
+    expect(result.x).toBeGreaterThanOrEqual(16)
+    expect(result.y).toBeGreaterThanOrEqual(16)
+    expect(result.x + result.width).toBeLessThanOrEqual(900 - 16)
+    expect(result.y + result.height).toBeLessThanOrEqual(664 - 16)
+    expect(floatingRectsOverlap(result, currentNode, 16)).toBe(false)
+    expect(floatingRectsOverlap(result, routes, 16)).toBe(false)
+  })
 })

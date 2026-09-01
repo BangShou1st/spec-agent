@@ -24,6 +24,10 @@ public class ContextSnapshotRepository {
     private static final TypeReference<List<UUID>> UUID_LIST = new TypeReference<>() {
     };
 
+    private static final TypeReference<List<ContextRelation>> RELATION_LIST =
+            new TypeReference<>() {
+            };
+
     public ContextSnapshotRepository(NamedParameterJdbcTemplate jdbcTemplate, Json json) {
         this.jdbcTemplate = jdbcTemplate;
         this.json = json;
@@ -37,6 +41,8 @@ public class ContextSnapshotRepository {
                 json.readList(rs.getString("included_answer_ids"), UUID_LIST),
                 json.readList(rs.getString("included_patch_ids"), UUID_LIST),
                 json.readList(rs.getString("excluded_route_ids"), UUID_LIST),
+                json.readList(rs.getString("related_node_ids"), UUID_LIST),
+                json.readList(rs.getString("relations_json"), RELATION_LIST),
                 rs.getString("special_inputs"),
                 rs.getString("context_hash"),
                 rs.getTimestamp("created_at").toInstant());
@@ -46,10 +52,12 @@ public class ContextSnapshotRepository {
         String sql = """
                 INSERT INTO context_snapshots (id, project_id, route_id, tip_node_id, operation_type,
                                                included_node_ids, included_answer_ids, included_patch_ids,
-                                               excluded_route_ids, special_inputs, context_hash, created_at)
+                                               excluded_route_ids, related_node_ids, relations_json,
+                                               special_inputs, context_hash, created_at)
                 VALUES (:id, :projectId, :routeId, :tipNodeId, :operationType,
                         CAST(:includedNodeIds AS jsonb), CAST(:includedAnswerIds AS jsonb),
                         CAST(:includedPatchIds AS jsonb), CAST(:excludedRouteIds AS jsonb),
+                        CAST(:relatedNodeIds AS jsonb), CAST(:relationsJson AS jsonb),
                         CAST(:specialInputs AS jsonb), :contextHash, :createdAt)
                 """;
         jdbcTemplate.update(sql, Maps.of(
@@ -62,7 +70,13 @@ public class ContextSnapshotRepository {
                 "includedAnswerIds", json.writeList(snapshot.includedAnswerIds()),
                 "includedPatchIds", json.writeList(snapshot.includedPatchIds()),
                 "excludedRouteIds", json.writeList(snapshot.excludedRouteIds()),
-                "specialInputs", json.write(snapshot.specialInputs()),
+                "relatedNodeIds", json.writeList(snapshot.relatedNodeIds()),
+                "relationsJson", json.writeList(snapshot.relations()),
+                // specialInputs is already a serialized JSON object text; it
+                // must be stored as-is into the jsonb column, never
+                // re-serialized (re-serializing would double-encode the JSON
+                // string and break the read-back projection).
+                "specialInputs", snapshot.specialInputs(),
                 "contextHash", snapshot.contextHash(),
                 "createdAt", Timestamp.from(snapshot.createdAt())));
     }

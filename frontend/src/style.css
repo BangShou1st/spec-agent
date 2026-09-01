@@ -421,29 +421,32 @@ textarea {
   justify-content: center;
 }
 
+/* Canvas toolbar: fixed to the LEFT edge of the workspace, vertical stack,
+   so it never covers the centered status/error layer at the top. */
 .graph-toolbar {
   position: absolute;
-  top: 52px;
-  left: 50%;
+  top: 50%;
+  left: 12px;
   z-index: 40;
   pointer-events: none;
-  transform: translateX(-50%);
+  transform: translateY(-50%);
   display: flex;
+  flex-direction: column;
+  align-items: stretch;
   gap: 6px;
-  padding: 8px 10px;
+  padding: 10px 8px;
   border: 1px solid var(--color-border);
-  border-radius: 999px;
+  border-radius: 14px;
   background: rgb(255 255 255 / 88%);
   box-shadow: 0 6px 18px rgb(31 36 48 / 12%);
   backdrop-filter: blur(8px);
-  align-items: center;
-  flex-wrap: wrap;
 }
 
 .graph-toolbar__btn {
-  padding: 4px 10px;
+  padding: 6px 10px;
   font-size: 13px;
   pointer-events: auto;
+  white-space: nowrap;
 }
 
 /* ---- start placeholder ---- */
@@ -476,9 +479,12 @@ textarea {
 
 /* ---- question node ---- */
 
+/* Nodes size to their content: height grows with the body so every line of
+   the question/answer stays visible — no whole-node scrollbar, no max-height
+   clipping (the free-text input may still scroll internally while typing). */
 .graph-question-node {
+  position: relative;
   width: var(--graph-node-width);
-  height: var(--graph-node-height);
   display: flex;
   flex-direction: column;
   background: var(--color-surface);
@@ -486,15 +492,6 @@ textarea {
   border-radius: var(--radius);
   box-shadow: 0 1px 3px rgb(0 0 0 / 8%);
   font-size: 13px;
-}
-
-/* The pending node is allowed to grow within a bounded canvas footprint so
-   answering does not depend on a whole-node scrollbar. Only the free-text
-   control may scroll when its content is unusually long. */
-.graph-question-node--current {
-  height: auto;
-  min-height: var(--graph-node-height);
-  max-height: 620px;
 }
 
 .graph-question-node--current {
@@ -557,11 +554,6 @@ textarea {
   flex: 1;
   min-height: 0;
   padding: 10px;
-  overflow-y: auto;
-}
-
-.graph-question-node--current .graph-question-node__body {
-  overflow-y: visible;
 }
 
 .graph-route-chooser {
@@ -638,12 +630,61 @@ textarea {
   font-size: 10px;
 }
 
-/* Adaptive edge anchors: invisible, click-transparent handle dots. The
-   handles exist only so lineage/replacement edges can attach to the four
-   side midpoints; they are never visible and never intercept pointer
-   events (connection creation is disabled by design). */
+/* Adaptive edge anchors: source handles become small connection dots on node
+   hover — drag one onto another node to create a manual semantic relation.
+   They stay hidden otherwise and never intercept plain clicks (connection
+   creation is the only interaction). */
 .graph-question-node__handle {
   opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+  /* Above the hover action rail (z-index 2): the rail's hover bridge must
+     never swallow the connection handles. */
+  z-index: 5;
+}
+
+.graph-question-node:hover .graph-question-node__handle--source {
+  opacity: 0.85;
+  pointer-events: all;
+}
+
+.graph-question-node:hover .graph-question-node__handle--target {
+  opacity: 0.85;
+}
+
+/* Higher-specificity overrides for vue-flow's `.vue-flow__handle.connectable`
+   default of `pointer-events: all`. The anchors stay un-clickable until the
+   user actually hovers the node, so the canvas never receives phantom
+   handle hits while dragging or selecting a card. */
+.graph-question-node:not(:hover) .graph-question-node__handle--source {
+  pointer-events: none;
+}
+.graph-question-node:not(:hover) .graph-question-node__handle--target {
+  pointer-events: none;
+}
+
+.graph-question-node__handle--source {
+  width: 9px;
+  height: 9px;
+  background: var(--color-accent);
+  border: 1px solid #ffffff;
+  border-radius: 50%;
+}
+
+.graph-question-node__handle--target {
+  width: 9px;
+  height: 9px;
+  background: #ffffff;
+  border: 1px solid var(--color-accent);
+  border-radius: 50%;
+}
+
+/* Source and target handles overlap at every side midpoint; the later-in-DOM
+   target handle would swallow the mousedown that starts a connection
+   (connectableStart=false). Target handles are pure geometric drop targets —
+   Vue Flow resolves drops by handle bounds, not hit-testing — so they never
+   receive pointer events. */
+.graph-question-node .graph-question-node__handle--target {
   pointer-events: none;
 }
 
@@ -723,18 +764,20 @@ textarea {
   font-size: 13px;
 }
 
-.graph-answer-summary--clamped {
-  display: -webkit-box;
-  -webkit-line-clamp: 4;
-  line-clamp: 4;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
 .graph-answer-text {
   margin: 4px 0;
   white-space: pre-wrap;
   word-break: break-word;
+}
+.graph-answer-text--clamped {
+  /* Historical answer summary must stay bounded so a very long free text
+     never produces a thousand-pixel-tall graph card. The Inspector
+     remains the place to read the full content. */
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .graph-answer-route {
@@ -785,15 +828,44 @@ textarea {
   margin-top: 10px;
 }
 
-/* Hover/focus toolbar: hidden by default, visible on hover or keyboard focus. */
+/* Hover/focus action rail: floats outside the node's RIGHT edge as a vertical
+   stack so it never takes space inside the card. Revealed on node hover,
+   selection, or keyboard focus. The left padding extends the hover area
+   up to the card border, so moving the pointer onto a button never drops
+   :hover. Absolute positioning keeps the rail out of Vue Flow's node
+   measurement. */
 .graph-node-actions--toolbar {
+  position: absolute;
+  top: 0;
+  left: 100%;
+  margin-top: 0;
+  padding-left: 10px;
+  flex-direction: column;
+  align-items: flex-start;
+  /* nowrap keeps each button at its natural width so labels never wrap
+     into vertical text. */
+  white-space: nowrap;
   opacity: 0;
-  transition: opacity 0.15s ease;
+  /* Hidden rail must never block the canvas: its padding area would
+     otherwise cover the node's right connection handles or the next
+     card. The :hover/.--selected/:focus-within rules below turn it on
+     with pointer-events: auto so the bridge area accepts the crossing
+     mouse. */
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.15s ease, visibility 0.15s ease;
   outline: none;
+  z-index: 2;
 }
 .graph-question-node:hover .graph-node-actions--toolbar,
+.graph-question-node--selected .graph-node-actions--toolbar,
 .graph-node-actions--toolbar:focus-within {
   opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+.graph-node-actions--toolbar .btn {
+  pointer-events: auto;
 }
 
 /* Q label and Latest marker */
@@ -815,6 +887,20 @@ textarea {
 .graph-action {
   font-size: 12px;
   padding: 4px 8px;
+}
+
+/* 唤醒入口：等待回答摘要里的主行动按钮。 */
+.graph-wake-answer {
+  margin-top: 8px;
+  width: 100%;
+}
+
+/* 手动连接的语义关系边：紫色点线，与 lineage/replacement 明确区分。 */
+.graph-edge--relation .vue-flow__edge-path,
+.vue-flow__edge-path.graph-edge--relation {
+  stroke: #8b5cf6;
+  stroke-dasharray: 2 5;
+  stroke-width: 2;
 }
 
 .graph-runtime-badge {
@@ -954,7 +1040,9 @@ textarea {
 .workspace-shell__toast-layer {
   position: absolute;
   left: 50%;
-  z-index: 18;
+  /* Above the toolbar (40) and floating windows (20+): an error or feedback
+     toast must never be hidden behind any other overlay again. */
+  z-index: 45;
   transform: translateX(-50%);
   pointer-events: none;
 }

@@ -115,6 +115,7 @@ describe('workspace inspector', () => {
       answers: [],
       routeStates: [{ routeId: 'rA', answer: null }],
       primaryAnswer: null,
+      answerPresentationMode: 'single-route' as const,
       readingRouteId: 'rA',
       isCurrent: false,
       canAnswer: false,
@@ -138,6 +139,7 @@ describe('workspace inspector', () => {
       answers: [],
       routeStates: [{ routeId: 'rA', answer: null }],
       primaryAnswer: null,
+      answerPresentationMode: 'single-route' as const,
       readingRouteId: 'rA',
       isCurrent: false,
       canAnswer: false,
@@ -161,20 +163,23 @@ describe('workspace inspector', () => {
     expect(wrapper.find('[data-test="spec-snapshot-panel"]').exists()).toBe(false)
   })
 
-  it('inspector shows route-specific answered and waiting states for a shared node', async () => {
+  it('inspector shows the canonical Answer once and route membership without per-route answer lists', async () => {
     await loadStore()
     const nodeData = {
       node: makeNode({ id: 'n1', question: 'Shared node question' }),
       routeIds: ['rA', 'rB'],
       visibleRouteIds: ['rA', 'rB'],
       answers: [
-        { routeId: 'rA', selectedOptionId: null, selectedOptionLabel: null, freeText: 'A answer', isPrimary: false },
+        { routeId: 'rA', selectedOptionId: null, selectedOptionLabel: null, freeText: 'A answer', isPrimary: true },
       ],
       routeStates: [
-        { routeId: 'rA', answer: { routeId: 'rA', selectedOptionId: null, selectedOptionLabel: null, freeText: 'A answer', isPrimary: false } },
+        { routeId: 'rA', answer: { routeId: 'rA', selectedOptionId: null, selectedOptionLabel: null, freeText: 'A answer', isPrimary: true } },
         { routeId: 'rB', answer: null },
       ],
-      primaryAnswer: null,
+      primaryAnswer: {
+        routeId: 'rA', selectedOptionId: null, selectedOptionLabel: null, freeText: 'A answer', isPrimary: true,
+      },
+      answerPresentationMode: 'focused' as const,
       readingRouteId: 'rB',
       isCurrent: false,
       canAnswer: false,
@@ -186,10 +191,14 @@ describe('workspace inspector', () => {
       visualWeight: 'focus' as const,
     }
     const wrapper = mount(WorkspaceInspector, { props: { nodeData } })
-    expect(wrapper.find('[data-test="route-answer-rA"]').text()).toContain('A answer')
-    // rB 没有回答 → 显式等待，绝不使用 A 的 answer。
-    expect(wrapper.find('[data-test="route-answer-rB"]').text()).toContain('等待回答')
-    expect(wrapper.find('[data-test="route-answer-rB"]').text()).not.toContain('A answer')
+    // canonical Answer 只展示一次，不按路线拆分。
+    expect(wrapper.find('[data-test="canonical-answer"]').text()).toContain('A answer')
+    // 不再有逐路线 answer 列表 / 逐路线等待标记。
+    expect(wrapper.find('[data-test="route-answer-rA"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="route-answer-rB"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="route-waiting"]').exists()).toBe(false)
+    // 路线归属区块仍展示共享路线成员。
+    expect(wrapper.text()).toContain('路线归属')
   })
 
   it('current pending node keeps details but offers no fork or regenerate', async () => {
@@ -201,6 +210,7 @@ describe('workspace inspector', () => {
       answers: [],
       routeStates: [{ routeId: 'rA', answer: null }],
       primaryAnswer: null,
+      answerPresentationMode: 'single-route' as const,
       readingRouteId: 'rA',
       isCurrent: true,
       canAnswer: true,
@@ -215,7 +225,8 @@ describe('workspace inspector', () => {
     // 详情照常展示：问题、等待状态都在。
     expect(wrapper.find('[data-test="node-inspector"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="node-detail-question"]').text()).toContain('Current pending question')
-    expect(wrapper.find('[data-test="route-waiting"]').text()).toContain('等待回答')
+    // 当前待回答节点：检查器展示"还没有回答"，不再按路线拆分等待。
+    expect(wrapper.find('[data-test="node-detail-no-answer"]').text()).toContain('还没有回答')
     // 当前待回答节点不提供历史动作：无“从此分支”、无“重新生成这个问题”。
     expect(wrapper.find('[data-test="inspector-fork"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="inspector-regenerate"]').exists()).toBe(false)
@@ -232,6 +243,7 @@ describe('workspace inspector', () => {
       answers: [],
       routeStates: [{ routeId: 'rA', answer: null }],
       primaryAnswer: null,
+      answerPresentationMode: 'single-route' as const,
       readingRouteId: 'rA',
       isCurrent: false,
       canAnswer: false,

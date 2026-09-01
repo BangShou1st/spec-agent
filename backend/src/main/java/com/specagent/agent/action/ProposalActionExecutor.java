@@ -6,9 +6,6 @@ import com.specagent.capability.CapabilityResult;
 import com.specagent.capability.CapabilityRuntime;
 import com.specagent.node.Node;
 import com.specagent.node.NodeOption;
-import com.specagent.node.NodeService;
-import com.specagent.route.Route;
-import com.specagent.route.RouteRepository;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -20,10 +17,13 @@ import java.util.UUID;
  * Concrete executor that dispatches validated action proposals by family.
  *
  * <p>Families that produce graph mutations (REQUEST_USER_INPUT, CREATE_NODE)
- * and capability invocations are fully implemented; INVOKE_CAPABILITY goes
- * through the capability runtime with a runtime-owned idempotency key.
- * Families reserved for later stages (GENERATE_ARTIFACT) return explicit
- * unsupported results rather than silently succeeding.
+ * delegate to {@link AgentGraphMutationService}, the narrow transactional
+ * graph-action boundary: the node insert and route tip advancement commit
+ * together under the project-row lock, and the expected anchor is re-verified
+ * against the CURRENT route tip inside that transaction. Auto-execute enters
+ * it after the model and policy have completed; accepted proposals join the
+ * same boundary through the acceptance transaction. Read-only actuator
+ * families and INVOKE_CAPABILITY stay outside the graph lock.
  *
  * <p>Every execution is preceded by a stale-context liveness check. The
  * executor never invents IDs; all identity assignment is delegated to
@@ -32,16 +32,13 @@ import java.util.UUID;
 @Component
 public class ProposalActionExecutor implements ActionExecutor {
 
-    private final NodeService nodeService;
-    private final RouteRepository routeRepository;
     private final CapabilityRuntime capabilityRuntime;
+    private final AgentGraphMutationService agentGraphMutationService;
 
-    public ProposalActionExecutor(NodeService nodeService,
-                                  RouteRepository routeRepository,
-                                  CapabilityRuntime capabilityRuntime) {
-        this.nodeService = nodeService;
-        this.routeRepository = routeRepository;
+    public ProposalActionExecutor(CapabilityRuntime capabilityRuntime,
+                                  AgentGraphMutationService agentGraphMutationService) {
         this.capabilityRuntime = capabilityRuntime;
+        this.agentGraphMutationService = agentGraphMutationService;
     }
 
     @Override
@@ -96,17 +93,14 @@ public class ProposalActionExecutor implements ActionExecutor {
         boolean allowFreeAnswer = payload.get("allowFreeAnswer") instanceof Boolean b && b;
         List<NodeOption> options = parseOptions(payload.get("options"));
 
-        // Null parent means the route is empty: the question becomes the
-        // route's root node.
-        UUID parentNodeId = resolveParentNodeId(context);
-
-        Node node = parentNodeId == null
-                ? nodeService.createRootNode(
-                        context.projectId(), context.routeId(),
-                        questionText, purpose, options, allowFreeAnswer)
-                : nodeService.createChildNode(
-                        context.projectId(), context.routeId(), parentNodeId,
-                        questionText, purpose, options, allowFreeAnswer);
+        // The anchor is the route tip the model decided against (null on an
+        // empty route). The transactional boundary re-verifies it against the
+        // CURRENT tip before inserting; an anchor-less decision over a route
+        // that has since gained a tip fails closed instead of mis-anchoring.
+        Node node = agentGraphMutationService.executeNodeCreation(
+                context.projectId(), context.routeId(), context.anchorNodeId(),
+                new AgentGraphMutationService.InteractionNode(
+                        questionText, purpose, options, allowFreeAnswer));
 
         return new ActionResult("REQUEST_USER_INPUT", node.id(), null, null);
     }
@@ -117,19 +111,17 @@ public class ProposalActionExecutor implements ActionExecutor {
         Map<String, Object> payload = proposal.payload();
         String kind = payload.get("kind") instanceof String s ? s : "INTERACTION";
 
-        UUID parentNodeId = resolveParentNodeId(context);
-
         if (!"INTERACTION".equals(kind)) {
             // Generic workspace unit: payload lives in content; the runtime
             // validates the subtype whitelist at creation.
             String subtype = asString(payload.get("subtype"), "subtype");
             Map<String, Object> content = payload.get("content") instanceof Map<?, ?> map
                     ? (Map<String, Object>) map : Map.of();
-            Node node = nodeService.createWorkspaceNode(
-                    context.projectId(), context.routeId(), parentNodeId,
-                    com.specagent.node.NodeKind.fromCode(kind), subtype, content,
-                    com.specagent.node.NodeAuthorKind.AGENT,
-                    com.specagent.node.KnowledgeStatus.PROPOSED);
+            Node node = agentGraphMutationService.executeNodeCreation(
+                    context.projectId(), context.routeId(), context.anchorNodeId(),
+                    new AgentGraphMutationService.WorkspaceNode(
+                            com.specagent.node.NodeKind.fromCode(kind),
+                            subtype, content));
             return new ActionResult("CREATE_NODE", node.id(), null, null);
         }
 
@@ -141,29 +133,12 @@ public class ProposalActionExecutor implements ActionExecutor {
         boolean allowFreeAnswer = payload.get("allowFreeAnswer") instanceof Boolean b && b;
         List<NodeOption> options = parseOptions(payload.get("options"));
 
-        Node node = parentNodeId == null
-                ? nodeService.createRootNode(
-                        context.projectId(), context.routeId(),
-                        questionText, purpose, options, allowFreeAnswer)
-                : nodeService.createChildNode(
-                        context.projectId(), context.routeId(), parentNodeId,
-                        questionText, purpose, options, allowFreeAnswer);
+        Node node = agentGraphMutationService.executeNodeCreation(
+                context.projectId(), context.routeId(), context.anchorNodeId(),
+                new AgentGraphMutationService.InteractionNode(
+                        questionText, purpose, options, allowFreeAnswer));
 
         return new ActionResult("CREATE_NODE", node.id(), null, null);
-    }
-
-    /**
-     * Resolves the parent for an anchored-append action: the explicit anchor
-     * when present, else the route tip. A null result means the route is
-     * empty and the action appends the route's root node.
-     */
-    private UUID resolveParentNodeId(ActionExecutionContext context) {
-        if (context.anchorNodeId() != null) {
-            return context.anchorNodeId();
-        }
-        return routeRepository.findById(context.routeId())
-                .map(Route::tipNodeId)
-                .orElse(null);
     }
 
     private ActionResult executeRespondToUser(ActionProposal proposal) {

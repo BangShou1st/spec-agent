@@ -3,6 +3,9 @@ package com.specagent.context;
 import com.specagent.common.Hashes;
 import com.specagent.common.Ids;
 import com.specagent.common.Json;
+import com.specagent.graph.NodeRelation;
+import com.specagent.graph.NodeRelationRepository;
+import com.specagent.graph.NodeRelationType;
 import com.specagent.node.Node;
 import com.specagent.node.NodeRepository;
 import com.specagent.patch.AnswerPatchRepository;
@@ -43,6 +46,7 @@ public class ContextBuilder {
     private final AnswerPatchRepository answerPatchRepository;
     private final RouteHistoryResolver routeHistoryResolver;
     private final ContextSnapshotRepository contextSnapshotRepository;
+    private final NodeRelationRepository nodeRelationRepository;
     private final Json json;
 
     public ContextBuilder(ProjectRepository projectRepository,
@@ -51,7 +55,8 @@ public class ContextBuilder {
                          AnswerPatchRepository answerPatchRepository,
                          ContextSnapshotRepository contextSnapshotRepository,
                          Json json,
-                         RouteHistoryResolver routeHistoryResolver) {
+                         RouteHistoryResolver routeHistoryResolver,
+                         NodeRelationRepository nodeRelationRepository) {
         this.projectRepository = projectRepository;
         this.routeRepository = routeRepository;
         this.nodeRepository = nodeRepository;
@@ -59,7 +64,18 @@ public class ContextBuilder {
         this.contextSnapshotRepository = contextSnapshotRepository;
         this.json = json;
         this.routeHistoryResolver = routeHistoryResolver;
+        this.nodeRelationRepository = nodeRelationRepository;
     }
+
+    /**
+     * Relation types admitted into the bounded 1-hop semantic context. Direction
+     * is preserved exactly as stored; symmetric types are already canonicalized
+     * at write time by {@code GraphInvariantValidator.endpointsCanonicalized}.
+     */
+    private static final java.util.Set<NodeRelationType> SEMANTIC_RELATION_TYPES =
+            java.util.Set.of(NodeRelationType.RELATED_TO, NodeRelationType.DEPENDS_ON,
+                    NodeRelationType.DERIVED_FROM, NodeRelationType.CONFLICTS_WITH,
+                    NodeRelationType.SUPPORTS);
 
     public ContextSnapshot buildFromActiveRoute(UUID projectId, UUID agentRunId, ContextOperationType operationType) {
         Project project = projectRepository.findById(projectId)
@@ -96,11 +112,12 @@ public class ContextBuilder {
 
         Map<String, Object> specialInputsMap = withProjectTitle(project, Map.of());
         String contextHash = computeHash(operationType, includedNodeIds, includedAnswerIds,
-                includedPatchIds, excludedRouteIds, specialInputsMap);
+                includedPatchIds, excludedRouteIds, List.of(), specialInputsMap);
 
         ContextSnapshot snapshot = new ContextSnapshot(Ids.random(), projectId, activeRouteId,
                 activeRoute.tipNodeId(), operationType, includedNodeIds, includedAnswerIds,
-                includedPatchIds, excludedRouteIds, json.write(specialInputsMap), contextHash, Instant.now());
+                includedPatchIds, excludedRouteIds, List.of(), List.of(),
+                json.write(specialInputsMap), contextHash, Instant.now());
 
         contextSnapshotRepository.save(snapshot);
         return snapshot;
@@ -162,11 +179,12 @@ public class ContextBuilder {
 
         Map<String, Object> specialInputsMap = withProjectTitle(project, Map.of());
         String contextHash = computeHash(operationType, includedNodeIds, includedAnswerIds,
-                includedPatchIds, excludedRouteIds, specialInputsMap);
+                includedPatchIds, excludedRouteIds, List.of(), specialInputsMap);
 
         ContextSnapshot snapshot = new ContextSnapshot(Ids.random(), projectId, routeId,
                 route.tipNodeId(), operationType, includedNodeIds, includedAnswerIds,
-                includedPatchIds, excludedRouteIds, json.write(specialInputsMap), contextHash, Instant.now());
+                includedPatchIds, excludedRouteIds, List.of(), List.of(),
+                json.write(specialInputsMap), contextHash, Instant.now());
 
         contextSnapshotRepository.save(snapshot);
         return snapshot;
@@ -205,12 +223,12 @@ public class ContextBuilder {
                 "userInstruction", userInstruction == null ? "" : userInstruction));
         String specialInputs = json.write(specialInputsMap);
         String contextHash = computeHash(ContextOperationType.REGENERATE, parentLineage,
-                includedAnswerIds, includedPatchIds, excludedRouteIds, specialInputsMap);
+                includedAnswerIds, includedPatchIds, excludedRouteIds, List.of(), specialInputsMap);
 
         ContextSnapshot snapshot = new ContextSnapshot(Ids.random(), projectId, replacementRouteId,
                 replacementNodeId, ContextOperationType.REGENERATE, parentLineage,
-                includedAnswerIds, includedPatchIds, excludedRouteIds, specialInputs,
-                contextHash, Instant.now());
+                includedAnswerIds, includedPatchIds, excludedRouteIds, List.of(), List.of(),
+                specialInputs, contextHash, Instant.now());
 
         contextSnapshotRepository.save(snapshot);
         return snapshot;
@@ -258,12 +276,13 @@ public class ContextBuilder {
                 "oldPurpose", targetNode.purpose() == null ? "" : targetNode.purpose()));
         String specialInputs = json.write(specialInputsMap);
         String contextHash = computeHash(ContextOperationType.REGENERATE, parentLineage,
-                includedAnswerIds, includedPatchIds, excludedRouteIds, specialInputsMap);
+                includedAnswerIds, includedPatchIds, excludedRouteIds, List.of(), specialInputsMap);
 
         ContextSnapshot snapshot = new ContextSnapshot(
                 Ids.random(), projectId, sourceRouteId, targetNode.parentNodeId(),
                 ContextOperationType.REGENERATE, parentLineage, includedAnswerIds,
-                includedPatchIds, excludedRouteIds, specialInputs, contextHash, Instant.now());
+                includedPatchIds, excludedRouteIds, List.of(), List.of(),
+                specialInputs, contextHash, Instant.now());
         contextSnapshotRepository.save(snapshot);
         return snapshot;
     }
@@ -283,10 +302,16 @@ public class ContextBuilder {
                                              String userQuestion) {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new IllegalArgumentException("Project not found: " + projectId));
-        Route route = routeRepository.findById(routeId)
-                .orElseThrow(() -> new IllegalArgumentException("Route not found: " + routeId));
-        if (!route.projectId().equals(projectId)) {
-            throw new IllegalArgumentException("Route does not belong to project: " + routeId);
+        // The route is OPTIONAL reading context for a node query. A floating
+        // node belongs to no route (routeIds=[]); its query context is the
+        // anchor node itself. routeId must never be a hard eligibility gate.
+        Route route = null;
+        if (routeId != null) {
+            route = routeRepository.findById(routeId)
+                    .orElseThrow(() -> new IllegalArgumentException("Route not found: " + routeId));
+            if (!route.projectId().equals(projectId)) {
+                throw new IllegalArgumentException("Route does not belong to project: " + routeId);
+            }
         }
         Node anchor = nodeRepository.findById(anchorNodeId)
                 .orElseThrow(() -> new IllegalArgumentException("Anchor node not found: " + anchorNodeId));
@@ -294,29 +319,100 @@ public class ContextBuilder {
             throw new IllegalArgumentException("Anchor node does not belong to project: " + anchorNodeId);
         }
 
+        // B4.3 — anchor eligibility, fail closed:
+        // - a retracted anchor can never be the subject of a query;
+        // - a route-bound query requires the anchor to sit on that route's
+        //   canonical lineage (shared/cross-route anchors are rejected);
+        // - a routeless (routeId == null) query requires the anchor to be a
+        //   genuine floating node: if it actually belongs to any route we must
+        //   not silently treat it as routeless.
+        if (anchor.isRetracted()) {
+            throw new IllegalArgumentException("Anchor node is retracted: " + anchorNodeId);
+        }
+        if (routeId != null) {
+            if (!resolveLineage(route.tipNodeId()).contains(anchorNodeId)) {
+                throw new IllegalArgumentException(
+                        "Anchor node is not on the explicit route lineage: " + anchorNodeId);
+            }
+        } else if (isAnchorMemberOfAnyRoute(projectId, anchorNodeId)) {
+            throw new IllegalArgumentException(
+                    "Anchor node belongs to a route and requires an explicit routeId: " + anchorNodeId);
+        }
+
         List<UUID> lineage = resolveLineage(anchorNodeId);
-        List<UUID> includedAnswerIds = routeHistoryResolver
-                .resolveEffectiveAnswers(routeId, lineage)
-                .stream().map(answer -> answer.id()).toList();
+        List<UUID> includedAnswerIds = routeId == null
+                ? List.of()
+                : routeHistoryResolver
+                        .resolveEffectiveAnswers(routeId, lineage)
+                        .stream().map(answer -> answer.id()).toList();
         List<UUID> includedPatchIds = answerPatchRepository.findBySourceAnswerIds(includedAnswerIds)
                 .stream().map(patch -> patch.id()).toList();
-        List<UUID> excludedRouteIds = routeRepository.findByProject(projectId).stream()
-                .map(Route::id)
-                .filter(id -> !id.equals(routeId))
+        // Without an explicit route there is no route to read from: exclude
+        // every route so the context stays the anchor itself, never the whole
+        // workspace.
+        List<UUID> excludedRouteIds = routeId == null
+                ? routeRepository.findByProject(projectId).stream()
+                        .map(Route::id).toList()
+                : routeRepository.findByProject(projectId).stream()
+                        .map(Route::id)
+                        .filter(id -> !id.equals(routeId))
+                        .toList();
+
+        // B7 — bounded 1-hop semantic context. Only ACTIVE relations of the
+        // configured types that touch the anchor enter the context; the related
+        // canonical node ids are recorded separately and never pollute the
+        // lineage. No recursion: neighbours of the related nodes are excluded.
+        List<ContextRelation> relations = resolveSemanticRelations(projectId, anchorNodeId);
+        List<UUID> relatedNodeIds = relations.stream()
+                .map(r -> r.sourceNodeId().equals(anchorNodeId) ? r.targetNodeId() : r.sourceNodeId())
+                .distinct()
                 .toList();
 
         Map<String, Object> specialInputsMap = withProjectTitle(project, Map.of(
                 "userQuestion", userQuestion == null ? "" : userQuestion));
         String specialInputs = json.write(specialInputsMap);
         String contextHash = computeHash(ContextOperationType.NODE_QUERY, lineage,
-                includedAnswerIds, includedPatchIds, excludedRouteIds, specialInputsMap);
+                includedAnswerIds, includedPatchIds, excludedRouteIds, relations, specialInputsMap);
 
         ContextSnapshot snapshot = new ContextSnapshot(
                 Ids.random(), projectId, routeId, anchorNodeId,
                 ContextOperationType.NODE_QUERY, lineage, includedAnswerIds,
-                includedPatchIds, excludedRouteIds, specialInputs, contextHash, Instant.now());
+                includedPatchIds, excludedRouteIds, relatedNodeIds, relations,
+                specialInputs, contextHash, Instant.now());
         contextSnapshotRepository.save(snapshot);
         return snapshot;
+    }
+
+    /**
+     * B4.3 helper: true when the anchor node sits on the canonical lineage of any
+     * route in the project. Bounded to the project's routes (never a full
+     * workspace scan); used to reject a routeless query whose anchor really
+     * belongs to a route.
+     */
+    private boolean isAnchorMemberOfAnyRoute(UUID projectId, UUID anchorNodeId) {
+        for (Route candidate : routeRepository.findByProject(projectId)) {
+            if (resolveLineage(candidate.tipNodeId()).contains(anchorNodeId)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * B7 helper: the bounded 1-hop semantic context for an anchor. Returns the
+     * ACTIVE relations of the configured types that touch the anchor, in
+     * canonical stored direction, with no recursion.
+     */
+    private List<ContextRelation> resolveSemanticRelations(UUID projectId, UUID anchorNodeId) {
+        List<ContextRelation> result = new ArrayList<>();
+        for (NodeRelation relation : nodeRelationRepository.findActiveTouchingNode(projectId, anchorNodeId)) {
+            if (!SEMANTIC_RELATION_TYPES.contains(relation.relationType())) {
+                continue;
+            }
+            result.add(new ContextRelation(
+                    relation.sourceNodeId(), relation.targetNodeId(), relation.relationType().code()));
+        }
+        return List.copyOf(result);
     }
 
     /**
@@ -334,6 +430,7 @@ public class ContextBuilder {
                                List<UUID> answerIds,
                                List<UUID> patchIds,
                                List<UUID> excludedRouteIds,
+                               List<ContextRelation> relations,
                                Map<String, Object> specialInputs) {
         List<UUID> sortedNodes = new ArrayList<>(nodeIds);
         List<UUID> sortedAnswers = new ArrayList<>(answerIds);
@@ -343,6 +440,10 @@ public class ContextBuilder {
         sortedAnswers.sort(Comparator.naturalOrder());
         sortedPatches.sort(Comparator.naturalOrder());
         sortedExcluded.sort(Comparator.naturalOrder());
+        List<ContextRelation> sortedRelations = new ArrayList<>(relations == null ? List.of() : relations);
+        sortedRelations.sort(Comparator.comparing(ContextRelation::sourceNodeId)
+                .thenComparing(ContextRelation::targetNodeId)
+                .thenComparing(ContextRelation::relationType));
         Map<String, Object> sortedSpecialInputs = specialInputs == null
                 ? Map.of()
                 : new TreeMap<>(specialInputs);
@@ -351,6 +452,7 @@ public class ContextBuilder {
                 + "|A:" + sortedAnswers
                 + "|P:" + sortedPatches
                 + "|X:" + sortedExcluded
+                + "|R:" + sortedRelations
                 + "|S:" + sortedSpecialInputs;
         return Hashes.sha256Hex(canonical);
     }

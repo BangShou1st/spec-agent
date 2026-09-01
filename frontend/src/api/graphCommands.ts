@@ -49,6 +49,57 @@ export interface NodeQueryRunResult {
   status: string
   producedNodeId: string | null
   message: string | null
+  /** Present when status === 'AWAITING_APPROVAL'. */
+  proposalId?: string | null
+  proposalStatus?: string | null
+  actionFamily?: string | null
+}
+
+/** Result of accepting a pending NodeQuery proposal. */
+export interface ProposalAcceptResult {
+  proposalId: string
+  status: string
+  actionFamily: string | null
+  producedNodeId: string | null
+  relationId: string | null
+}
+
+/** Result of rejecting a pending NodeQuery proposal. */
+export interface ProposalRejectResult {
+  proposalId: string
+  status: string
+}
+
+/**
+ * Safe summary of one durable AgentProposal, with enough runtime identity to
+ * reconnect a pending proposal to its NodeQuery anchor after a page reload.
+ * triggerType is derived from the proposal's AgentRun and is the ONLY reliable
+ * way to tell a NodeQuery proposal apart from an Answer/Decision one — every
+ * run type carries an inputNodeId, so inputNodeId must never be used to infer
+ * the query origin.
+ */
+export interface ProjectProposalSummary {
+  proposalId: string
+  runId: string | null
+  /** AgentRunTriggerType code of the producing run (e.g. "node_query"). */
+  triggerType: string | null
+  inputNodeId: string | null
+  routeId: string | null
+  actionFamily: string
+  status: string
+  createdAt: string
+  decidedAt: string | null
+  decidedBy: string | null
+}
+
+/** Lists durable proposals of a project, defaulting to the pending ones. */
+export function listProposals(
+  projectId: string,
+  status = 'PROPOSED',
+): Promise<ProjectProposalSummary[]> {
+  return apiClient.get<ProjectProposalSummary[]>(
+    `/projects/${projectId}/proposals?status=${encodeURIComponent(status)}`,
+  )
 }
 
 export function createRootDraftNode(
@@ -58,6 +109,20 @@ export function createRootDraftNode(
 ): Promise<CreatedNodeResponse> {
   return apiClient.post<CreatedNodeResponse>(
     `/projects/${projectId}/nodes`,
+    { routeId, ...payload },
+  )
+}
+
+/** Creates a standalone (floating) draft that starts disconnected from every
+ * lineage. The creation-context route id is optional — a floating node may be
+ * created with no Active route (routeId=null is legal). */
+export function createFloatingDraftNode(
+  projectId: string,
+  routeId: string | null,
+  payload: DraftNodePayload,
+): Promise<CreatedNodeResponse> {
+  return apiClient.post<CreatedNodeResponse>(
+    `/projects/${projectId}/floating-nodes`,
     { routeId, ...payload },
   )
 }
@@ -148,7 +213,7 @@ export function redoGraphOperation(projectId: string): Promise<UndoRedoResult> {
 export function createNodeQuery(
   projectId: string,
   nodeId: string,
-  routeId: string,
+  routeId: string | null,
   question: string,
 ): Promise<NodeQueryRunCreated> {
   return apiClient.post<NodeQueryRunCreated>(
@@ -165,4 +230,19 @@ export function getNodeQueryResult(
   return apiClient.get<NodeQueryRunResult>(
     `/projects/${projectId}/nodes/${nodeId}/query/${runId}`,
   )
+}
+
+/**
+ * Accepts a pending NodeQuery proposal. The backend currently takes only the
+ * path-bound proposal id, so an empty body is sent. On success the caller is
+ * expected to refresh the canonical graph because accepting a proposal may
+ * produce new nodes/relations.
+ */
+export function acceptProposal(id: string): Promise<ProposalAcceptResult> {
+  return apiClient.post<ProposalAcceptResult>(`/proposals/${id}/accept`, {})
+}
+
+/** Rejects a pending NodeQuery proposal; the graph is left unchanged. */
+export function rejectProposal(id: string): Promise<ProposalRejectResult> {
+  return apiClient.post<ProposalRejectResult>(`/proposals/${id}/reject`, {})
 }

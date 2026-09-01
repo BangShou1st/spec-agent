@@ -25,8 +25,8 @@ const edgeClasses = computed(() => [
 ])
 
 const edgeStyle = computed(() => ({
-  ...(props.data.kind === 'replacement' ? { stroke: 'var(--color-warn)' } : {}),
-  ...(props.data.kind === 'replacement' ? { strokeDasharray: '6 4' } : {}),
+  ...(props.data.kind === 'replacement' ? { stroke: 'var(--color-warn)', strokeDasharray: '6 4' } : {}),
+  ...(props.data.kind === 'relation' ? { stroke: '#8b5cf6', strokeDasharray: '2 5', strokeWidth: 2 } : {}),
   ...(props.data.visualWeight === 'dimmed' ? { opacity: 0.3 } : {}),
   ...(props.data.visualWeight === 'focus' ? { stroke: 'var(--color-accent)', strokeWidth: 2 } : {}),
 }))

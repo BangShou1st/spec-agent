@@ -2,12 +2,13 @@ import { MarkerType, type Edge, type Node } from '@vue-flow/core'
 import type {
   GraphWorkspaceNodeView,
   GraphWorkspaceOptionView,
+  GraphWorkspaceRelationView,
   GraphWorkspaceRouteView,
   GraphWorkspaceView,
   RouteLifecycleStatus,
 } from '@/api/types'
 import type { GraphPosition, GraphRouteDisplayState } from './graphTypes'
-import { placeNewNode, resolvePositions, VERTICAL_GAP } from './graphLayout'
+import { placeNewNode, resolvePositions, HORIZONTAL_GAP, VERTICAL_GAP } from './graphLayout'
 import {
   selectEdgeHandles,
   FALLBACK_NODE_WIDTH,
@@ -61,6 +62,17 @@ export interface GraphRouteAnswerState {
   answer: GraphAnswerPresentation | null
 }
 
+/**
+ * A canonical Question Node carries exactly one immutable Answer identity
+ * project-wide (SHARED_STATE_DIVERGENCE is an invariant violation, not a
+ * presentation mode). Presentation is therefore either focused (reading a
+ * specific route) or single-route; the answer content never changes with
+ * Focus, only the reading context does.
+ */
+export type AnswerPresentationMode =
+  | 'focused'
+  | 'single-route'
+
 export interface GraphRouteMembershipPresentation {
   routeId: string
   label: string
@@ -81,7 +93,12 @@ export interface SpecAgentGraphNodeData {
   answers: GraphAnswerPresentation[]
   routeStates: GraphRouteAnswerState[]
   primaryAnswer: GraphAnswerPresentation | null
+  answerPresentationMode: AnswerPresentationMode
   readingRouteId: string | null
+  /** True when this visual node is the canonical tip of its current reading
+   * route — the only case where "activate its owning route and answer" is a
+   * legal affordance for a genuinely unanswered Question. */
+  isTipOfReadingRoute?: boolean
   isCurrent: boolean
   canAnswer: boolean
   isExpanded: boolean
@@ -97,7 +114,8 @@ export interface SpecAgentGraphNodeData {
 }
 
 export interface SpecAgentGraphEdgeData {
-  kind: 'lineage' | 'replacement'
+  kind: 'lineage' | 'replacement' | 'relation'
+  relationType?: string
   routeIds: string[]
   visibleRouteIds: string[]
   visualWeight: GraphVisualWeight
@@ -111,6 +129,11 @@ export interface GraphProjectionInput {
     lifecycleFilters: Record<RouteLifecycleStatus, boolean>
     routeDisplayStates: Record<string, GraphRouteDisplayState>
     expandedNodeIds: string[]
+    /** Default false. Inspector remains the canonical relations viewer. */
+    showRelationLayer?: boolean
+    /** Selected node ids (visual keys): their direct 1-hop relations project
+     * onto the canvas even when the global relation layer is off. */
+    selectedNodeIds?: string[]
   }
   savedPositions: Record<string, GraphPosition>
   runtime?: {
@@ -221,7 +244,7 @@ function routeVisualWeight(
 export function selectPrimaryAnswer(
   nodeId: string,
   answers: GraphAnswerPresentation[],
-  focusRouteId: string | null,
+  _focusRouteId: string | null,
   _activeRouteId: string | null,
   _options: GraphWorkspaceOptionView[],
 ): GraphAnswerPresentation | null {
@@ -229,8 +252,12 @@ export function selectPrimaryAnswer(
     const withNodeId = answer as GraphAnswerPresentation & { nodeId?: string }
     return withNodeId.nodeId === undefined || withNodeId.nodeId === nodeId
   })
-  if (focusRouteId) return nodeAnswers.find((answer) => answer.routeId === focusRouteId) ?? null
-  return null
+  // A canonical Question Node carries at most ONE immutable Answer identity
+  // project-wide (SHARED_STATE_DIVERGENCE is an invariant violation). The
+  // answer CONTENT never depends on Focus/reading route — Focus only changes
+  // the reading context. Always return the single canonical Answer, so a
+  // Shared answered Question shows the same answer under Main/Branch/null.
+  return nodeAnswers[0] ?? null
 }
 
 function fallbackRouteLabel(route: Pick<GraphWorkspaceRouteView, 'branchType' | 'isActive'>): string {
@@ -275,6 +302,17 @@ function buildAnswerPresentations(view: GraphWorkspaceView): Map<string, GraphAn
   return byNode
 }
 
+/** Compute the AnswerPresentationMode. Shared canonical nodes carry one
+ * immutable Answer identity, so a "divergent summaries" mode cannot occur in
+ * a healthy graph; the mode stays a pure reading-context signal. */
+function computeAnswerPresentation(
+  _routeIds: string[],
+  _routeStates: GraphRouteAnswerState[],
+  focusRouteId: string | null,
+): { mode: AnswerPresentationMode } {
+  return { mode: focusRouteId ? 'focused' : 'single-route' }
+}
+
 function computePositions(
   instances: GraphVisualInstance[],
   savedPositions: Record<string, GraphPosition>,
@@ -298,9 +336,23 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
   const visibleRouteIds = getVisibleRouteIds(view, uiState)
   const instances = buildVisualInstances(view)
   const activeRouteId = view.activeRouteId
-  const visibleInstances = instances.filter((instance) => instance.routeIds.some((id) => visibleRouteIds.has(id)))
+  const visibleInstances = instances.filter((instance) =>
+    instance.routeIds.length === 0 || instance.routeIds.some((id) => visibleRouteIds.has(id)))
   const visibleKeys = new Set(visibleInstances.map((instance) => instance.visualNodeKey))
   const positions = computePositions(visibleInstances, savedPositions)
+
+  // Floating drafts (route-less ideas) start at a free slot to the right of
+  // the current layout instead of the root column, which the on-canvas
+  // toolbar overlays — a new idea must be immediately visible and reachable.
+  for (const instance of visibleInstances) {
+    if (instance.routeIds.length !== 0) continue
+    if (savedPositions[instance.visualNodeKey]) continue
+    const maxX = Object.values(positions).reduce((acc, p) => Math.max(acc, p.x), 0)
+    positions[instance.visualNodeKey] = placeNewNode(
+      { x: maxX + HORIZONTAL_GAP, y: 0 },
+      Object.values(positions),
+    )
+  }
   const answersByCanonicalNode = buildAnswerPresentations(view)
 
   // Compute Q labels: topological order across all visible nodes.
@@ -331,21 +383,29 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
     const readingRouteId = uiState.focusRouteId && routeIds.includes(uiState.focusRouteId)
       ? uiState.focusRouteId
       : routeIds.length === 1 ? routeIds[0] : null
-    const primary = selectPrimaryAnswer(
+    const rawPrimary = selectPrimaryAnswer(
       instance.canonicalNodeId,
       answers,
       readingRouteId,
-      null,
+      activeRouteId,
       instance.node.options,
     )
+    const primary = rawPrimary
     const isCurrent = activeNodeId === instance.canonicalNodeId && activeRouteId !== null && routeIds.includes(activeRouteId)
     const canAnswer = isCurrent && !answers.some((answer) => answer.routeId === activeRouteId)
-    const visualWeight = routeVisualWeight(routeIds, activeRouteId, uiState.focusRouteId, uiState.routeDisplayStates)
+    // 浮动想法不属于任何路线：聚焦/弱化语义都不适用，保持常规视觉权重，
+    // 保证新建后立即可读可编辑。
+    const visualWeight = routeIds.length === 0
+      ? 'normal'
+      : routeVisualWeight(routeIds, activeRouteId, uiState.focusRouteId, uiState.routeDisplayStates)
     const routeStates = routeIds.map((routeId) => ({
       routeId,
       routeLabel: routeLabel(view.routes.find((route) => route.id === routeId)),
       answer: answers.find((answer) => answer.routeId === routeId) ?? null,
     }))
+    const answerPresentation = computeAnswerPresentation(
+      routeIds, routeStates, uiState.focusRouteId,
+    )
     const routeMembership = routeIds
       .filter((routeId) => visibleRouteIds.has(routeId))
       .map((routeId) => {
@@ -374,7 +434,11 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
         answers: answers.map((answer) => ({ ...answer, isPrimary: answer === primary })),
         routeStates,
         primaryAnswer: primary,
+        answerPresentationMode: answerPresentation.mode,
         readingRouteId,
+        isTipOfReadingRoute: readingRouteId != null
+          && view.routes.some((route) => route.id === readingRouteId
+            && route.tipNodeId === instance.canonicalNodeId),
         isCurrent,
         canAnswer,
         isExpanded: uiState.expandedNodeIds.includes(instance.visualNodeKey)
@@ -453,6 +517,7 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
         answers: [],
         routeStates: [{ routeId: pending.routeId, routeLabel: pendingLabel, answer: null }],
         primaryAnswer: null,
+        answerPresentationMode: 'single-route',
         readingRouteId: pending.routeId,
         isCurrent: false,
         canAnswer: false,
@@ -533,7 +598,94 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
     })
   }
 
+  // 用户手动创建的语义关系：连接两个可见节点，与 lineage 边在样式上区分。
+  // 关系不属于任何路线；relationEndpointKey 用 focus（绝不借 Active）来稳定
+  // 锚定 shared visual instance；无法稳定锚定时 relation 边不画，事实仍
+  // 通过 view.relations 供 Inspector 读取。relation layer 默认关闭：
+  // 默认 canvas 不被语义关系铺满，Inspector 永远可读。
+  // 语义关系：与 lineage 边在样式上区分（次级虚线）。关系不属于任何路线；
+  // relationEndpointKey 用 focus（绝不借 Active）来稳定锚定 shared visual
+  // instance；无法稳定锚定时 relation 边不画，事实仍通过 view.relations 供
+  // Inspector 读取。全局 relation layer 默认关闭；选中节点的 direct 1-hop
+  // 关系在任何情况下都可见（刚创建时 endpoints 保持选中 → 立即可见），
+  // 取消选择后收起。
+  const selectedNodeIds = uiState.selectedNodeIds ?? []
+  const relationLayerOn = uiState.showRelationLayer === true
+  const relationVisible = (relation: GraphWorkspaceRelationView): boolean => {
+    if (relationLayerOn) return true
+    const source = relationEndpointKey(
+      visibleInstances, relation.sourceNodeId, uiState.focusRouteId, visibleKeys)
+    const target = relationEndpointKey(
+      visibleInstances, relation.targetNodeId, uiState.focusRouteId, visibleKeys)
+    if (!source || !target) return false
+    return selectedNodeIds.includes(source) || selectedNodeIds.includes(target)
+  }
+  for (const relation of view.relations) {
+    if (!relationVisible(relation)) continue
+    const source = relationEndpointKey(
+      visibleInstances, relation.sourceNodeId, uiState.focusRouteId, visibleKeys)
+    const target = relationEndpointKey(
+      visibleInstances, relation.targetNodeId, uiState.focusRouteId, visibleKeys)
+    if (!source || !target || source === target) continue
+    const handles = selectHandlesFor(source, target, positions)
+    edges.push({
+      id: `relation:${relation.id}`,
+      source,
+      target,
+      type: 'adaptive',
+      sourceHandle: handles.sourceHandle,
+      targetHandle: handles.targetHandle,
+      markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12 },
+      data: {
+        kind: 'relation',
+        relationType: relation.relationType,
+        routeIds: [],
+        visibleRouteIds: [],
+        visualWeight: 'normal',
+      },
+      class: ['graph-edge--relation'],
+    })
+  }
+
   return { nodes, edges }
+}
+
+/**
+ * Resolves the visual instance a relation endpoint attaches to. Three-state
+ * rule, NEVER falling back to Active/first/latest on shared ambiguity:
+ *
+ *  1. If a focus route is set and the canonical node has exactly one visible
+ *     instance that includes the focus route → use that instance.
+ *  2. Else if the canonical node has exactly one visible instance → use it.
+ *  3. Else → return null (relation edge must NOT be drawn presentationally
+ *     because we cannot deterministically pick a visual instance; the
+ *     canonical fact remains in the read model and the Inspector).
+ */
+function relationEndpointKey(
+  instances: GraphVisualInstance[],
+  canonicalNodeId: string,
+  focusRouteId: string | null,
+  visibleKeys: Set<string>,
+): string | null {
+  const visible = instances.filter(
+    (instance) => instance.canonicalNodeId === canonicalNodeId
+      && visibleKeys.has(instance.visualNodeKey),
+  )
+  if (visible.length === 0) {
+    return null
+  }
+  if (visible.length === 1) {
+    return visible[0].visualNodeKey
+  }
+  if (focusRouteId) {
+    const focusInstance = visible.find(
+      (instance) => instance.routeIds.includes(focusRouteId),
+    )
+    if (focusInstance) {
+      return focusInstance.visualNodeKey
+    }
+  }
+  return null
 }
 
 export function freeSlotDistance(): number {

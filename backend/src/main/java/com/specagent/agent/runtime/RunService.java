@@ -144,10 +144,14 @@ public class RunService {
     public UUID createQueuedNodeQuery(UUID projectId, UUID routeId, UUID nodeId, String question) {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new IllegalArgumentException("Project not found: " + projectId));
-        Route route = routeRepository.findById(routeId)
-                .orElseThrow(() -> new IllegalArgumentException("Route not found: " + routeId));
-        if (!route.projectId().equals(projectId)) {
-            throw new IllegalArgumentException("Route does not belong to project: " + routeId);
+        // The route is OPTIONAL reading context: floating nodes (routeIds=[])
+        // query with routeId=null and the anchor node as the sole context.
+        if (routeId != null) {
+            Route route = routeRepository.findById(routeId)
+                    .orElseThrow(() -> new IllegalArgumentException("Route not found: " + routeId));
+            if (!route.projectId().equals(projectId)) {
+                throw new IllegalArgumentException("Route does not belong to project: " + routeId);
+            }
         }
         if (question == null || question.isBlank()) {
             throw new IllegalArgumentException("Node query question must not be blank");
@@ -158,7 +162,7 @@ public class RunService {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("triggerType", AgentRunTriggerType.NODE_QUERY.code());
         payload.put("operation", "NODE_QUERY");
-        payload.put("routeId", routeId.toString());
+        payload.put("routeId", routeId == null ? null : routeId.toString());
         payload.put("nodeId", nodeId.toString());
         payload.put("question", question);
         eventService.append(run.id(), AgentRunPhase.CREATED, "RUN_CREATED", payload);
@@ -265,5 +269,6 @@ public class RunService {
     public Optional<AgentRun> claimDecisionCycleRun(UUID runId) { return agentRunRepository.claimDecisionCycleRun(runId); }
     public Optional<AgentRun> claimNextAnswerCycle() { return agentRunRepository.claimNextAnswerCycleRun(); }
     public Optional<AgentRun> claimNextNodeQuery() { return agentRunRepository.claimNextNodeQueryRun(); }
+    public Optional<AgentRun> claimNodeQueryRun(UUID runId) { return agentRunRepository.claimNodeQueryRun(runId); }
     public Optional<AgentRun> getRun(UUID runId) { return agentRunService.getRun(runId); }
 }

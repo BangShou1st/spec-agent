@@ -133,10 +133,15 @@ class ScriptedRouteIsolationIntegrationTest {
         UUID r2RouteId = fork.id();
 
         int forkPoint = captured.size();
+        // The shared root is already answered on R1 and carries ONE immutable
+        // Answer identity, so R2 cannot re-answer it. The first branch action
+        // drafts the next Question on R2 (parent = shared root), then the
+        // user answers that new Question.
+        var forkDraft = draftDriver.draftQuestion(project.id());
+        Node b = nodeService.getNode(forkDraft.producedNodeId()).orElseThrow();
+        assertThat(b.parentNodeId()).isEqualTo(root.id());
         var forkRun = answerDriver.submitFreeText(project.id(),
                 "Fork branch answer that stays local to R2");
-        Node b = nodeService.getNode(forkRun.producedNodeId()).orElseThrow();
-        assertThat(b.parentNodeId()).isEqualTo(root.id());
 
         // Envelope-level isolation: fork envelopes may see the frozen R1 root
         // prefix, but never the sibling-only nodes or sentinel.
@@ -193,7 +198,7 @@ class ScriptedRouteIsolationIntegrationTest {
         Node child = nodeService.getNode(targetRun.producedNodeId()).orElseThrow();
 
         RegenerateResult committed = routeService.commitReplacementFromNode(
-                project.id(), targetRun.run().routeId(), target.id(), null,
+                project.id(), targetRun.run().routeId(), target.id(), child.id(), null,
                 "A sharper replacement question", "A sharper purpose",
                 List.of(NodeOption.of("Option label", "Option impact")), true);
         ContextSnapshot context = contextBuilder.buildForRegenerate(
@@ -235,10 +240,14 @@ class ScriptedRouteIsolationIntegrationTest {
         routeService.archiveRoute(project.id(), r1RouteId);
 
         int forkPoint = captured.size();
+        // The shared root cannot be re-answered on the fork route (single
+        // immutable Answer identity); draft the next Question on the active
+        // fork route first, then answer it.
+        var forkDraft = draftDriver.draftQuestion(project.id());
+        Node b = nodeService.getNode(forkDraft.producedNodeId()).orElseThrow();
+        assertThat(b.parentNodeId()).isEqualTo(root.id());
         var activeRun = answerDriver.submitFreeText(project.id(),
                 "Active branch keeps working after archiving sibling");
-        Node b = nodeService.getNode(activeRun.producedNodeId()).orElseThrow();
-        assertThat(b.parentNodeId()).isEqualTo(root.id());
 
         for (AgentRequestEnvelope envelope : captured.subList(forkPoint, captured.size())) {
             assertThat(envelope.snapshot().routeId()).isEqualTo(fork.id());

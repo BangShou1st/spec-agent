@@ -76,7 +76,34 @@ Rules:
   `body.text` (the `question` column stays interaction-only), and `node.kind`
   carries the stable outer classification. `NODE_QUERY` events carry the user's
   contextual question in `freeText`; the expected primary action is
-  `RESPOND_TO_USER` and the runtime refuses graph mutations from a query.
+  `RESPOND_TO_USER`. A NODE_QUERY **never auto-applies** a confirmable Graph
+  mutation: if the user explicitly requests a Graph mutation the Brain may
+  return a mutation proposal, and the Java runtime persists it as an
+  `AgentProposal` awaiting explicit user Accept/Reject (`AWAITING_APPROVAL`).
+  AdvisorPolicy denies an unacceptable proposal (`POLICY_DENIED`) or marks an
+  unexecutable one not-confirmable (`NOT_CONFIRMABLE`); it never auto-applies.
+- Stage C NODE_QUERY routeless nullability: a `NODE_QUERY` against a
+  Floating (routeless) Graph node is the **only** semantic flow that may
+  carry `snapshot.routeId = null` and `snapshot.routeContext.routeId = null`.
+  The invariant is exact and applies at the envelope level on both sides of
+  the wire (Java strict mapper + Python `_route_id_contract` validator):
+
+  - Route IDs are **required and equal** for all route-bound snapshots
+    (`STATE_UPDATE`, normal `DECISION`, `ANSWER`, `SPEC`, `REGENERATE`).
+  - **Only** `NODE_QUERY` may use the routeless mode.
+  - Routeless mode requires **both** `snapshot.routeId` and
+    `snapshot.routeContext.routeId` to be null simultaneously; mixed state
+    (one null, one UUID) is rejected.
+  - A `NODE_QUERY` that carries route UUIDs must keep the two fields equal;
+    mismatched route-bound NODE_QUERY is rejected.
+  - The anchor node itself is still a real Graph node, the snapshot still
+    carries `projectId` / `snapshotId` / `contextHash`, and
+    `allowedSourceRefs` must not invent a `route:` reference to substitute
+    for the missing route identity.
+  - See `fixtures/agent-input-routeless-node-query-valid.json` for the only
+    valid routeless shape; the negative cases are exercised by
+    `agent-brain/tests/test_contracts.py` and
+    `backend/.../AgentCrossLanguageContractTest.java`.
 - Stage D: `availableCapabilities` are runtime-owned descriptors filtered by
   permission and context relevance (`supports` declarations against lineage
   node kinds) — the planner never sees implementation classes, and irrelevant
@@ -86,6 +113,29 @@ Rules:
   observations from earlier invocations (external evidence / generated
   summaries with `sourceRefs` + `provenance`) — they are never auto-confirmed
   graph truth.
+- Stage C bounded 1-hop semantic context (`NODE_QUERY` only; empty lists for
+  every other operation): `snapshot.relations` is the ACTIVE SEMANTIC
+  relations touching the anchor, direction preserved exactly as stored
+  (`sourceNodeId` → `targetNodeId` → `relationType`). `snapshot.relatedNodes`
+  is the distinct other-end canonical nodes, each with `nodeId`,
+  `relationType`, `direction` (`OUTGOING` when the anchor is the relation
+  source, `INCOMING` when it is the target), plus the projected `node` body of
+  the related node itself — the model reads real body content, never only
+  opaque ids. Semantics:
+
+  - Related nodes are direct 1-hop context only; the runtime never infers a
+    second hop and never scans the whole workspace.
+  - `DEPENDS_ON` / `DERIVED_FROM` / `SUPPORTS` preserve source → target
+    direction; `RELATED_TO` / `CONFLICTS_WITH` are symmetric facts
+    (canonicalized at write time).
+  - A model may only reference a related node through its
+    `node:<relatedId>` entry in `allowedSourceRefs`.
+  - Related nodes are never part of `lineage`; the lineage stays the pure
+    ancestor chain of the anchor.
+
+  See `fixtures/agent-input-node-query-semantic-context-valid.json` for the
+  golden shape, parsed identically by the Python contract test and the Java
+  `AgentCrossLanguageContractTest`.
 
 ### Claim view
 

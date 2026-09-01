@@ -54,9 +54,24 @@ export const useGraphUiStore = defineStore('graphUi', {
       activeRouteId: null as string | null,
       selectedNodeIds: [] as string[],
       primarySelectedNodeId: null as string | null,
+      // One-shot "open this node's editor" request (e.g. right after creating
+      // an idea). The matching card consumes and clears it.
+      pendingEditNodeKey: null as string | null,
       selectedEdgeId: null as string | null,
       selectedSharedEdgeRouteIds: [] as string[],
       focusRouteId: null as string | null,
+      // Pending relation proposal from a canvas drag (source handle → target
+      // handle). No relation is persisted until the user confirms a type and
+      // direction in the proposal chooser; Cancel/Esc/click-away clears it
+      // with zero backend calls.
+      pendingRelation: null as {
+        sourceNodeId: string
+        targetNodeId: string
+      } | null,
+      // Optional semantic-relation layer visibility. Browser-only ephemeral:
+      // never persisted, always defaults to false. The Inspector remains
+      // the canonical place to inspect relations.
+      showRelationLayer: false,
       lifecycleFilters: { ...DEFAULT_FILTERS } as Record<RouteLifecycleStatus, boolean>,
       routeDisplayStates: {} as Record<string, GraphRouteDisplayState>,
       expandedNodeIds: [] as string[],
@@ -105,6 +120,17 @@ export const useGraphUiStore = defineStore('graphUi', {
       this.clearEdgeSelection()
     },
 
+    /** Asks the matching node card to open its editor, then clears itself. */
+    requestNodeEdit(nodeKey: string): void {
+      this.pendingEditNodeKey = nodeKey
+    },
+
+    consumeNodeEditRequest(nodeKey: string): boolean {
+      if (this.pendingEditNodeKey !== nodeKey) return false
+      this.pendingEditNodeKey = null
+      return true
+    },
+
     /** Ctrl/Cmd + click: add/remove from multi-selection. */
     toggleSelectNode(nodeId: string): void {
       this.clearEdgeSelection()
@@ -151,6 +177,20 @@ export const useGraphUiStore = defineStore('graphUi', {
         return
       }
       this.focusRouteId = routeId
+    },
+
+    /** Toggles the optional semantic-relation layer on the canvas. */
+    setShowRelationLayer(visible: boolean): void {
+      this.showRelationLayer = visible
+    },
+
+    /** Registers a canvas drag as a pending relation proposal (no backend call). */
+    setPendingRelation(payload: { sourceNodeId: string; targetNodeId: string } | null): void {
+      this.pendingRelation = payload
+    },
+
+    clearPendingRelation(): void {
+      this.pendingRelation = null
     },
 
     clearFocusRoute(): void {

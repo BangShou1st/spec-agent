@@ -1,5 +1,6 @@
 package com.specagent.agent;
 
+import com.specagent.answer.AnswerService;
 import com.specagent.common.Ids;
 import com.specagent.node.Node;
 import com.specagent.node.NodeService;
@@ -41,6 +42,8 @@ class QuestionDraftIntegrationTest {
     private RouteService routeService;
     @Autowired
     private NodeService nodeService;
+    @Autowired
+    private AnswerService answerService;
 
     @Test
     void draftCreatesAgentRunAndNode() {
@@ -122,6 +125,11 @@ class QuestionDraftIntegrationTest {
         Node firstNode = nodeService.getNode(first.producedNodeId()).orElseThrow();
         assertThat(firstNode.parentNodeId()).isNull();
 
+        // An unanswered Question must remain the route tip; drafting a follow-up
+        // requires the tip Question to be answered first.
+        answerService.finalizeAnswer(project.id(), project.activeRouteId(),
+                firstNode.id(), null, "answered first question", "test-user");
+
         // Second run must create a child of the route tip, not a new root.
         AgentRun second = draftDriver.draftQuestion(project.id());
         Node secondNode = nodeService.getNode(second.producedNodeId()).orElseThrow();
@@ -135,6 +143,10 @@ class QuestionDraftIntegrationTest {
 
         Node draft1 = nodeService.getNode(
                 draftDriver.draftQuestion(project.id()).producedNodeId()).orElseThrow();
+        // The second draft chains off the first tip. An unanswered Question must
+        // stay the tip, so answer the first node before drafting the next one.
+        answerService.finalizeAnswer(project.id(), project.activeRouteId(),
+                draft1.id(), null, "answered for determinism check", "test-user");
         Node draft2 = nodeService.getNode(
                 draftDriver.draftQuestion(project.id()).producedNodeId()).orElseThrow();
 

@@ -56,6 +56,25 @@ public class NodeService {
     }
 
     /**
+     * Creates an alternative Question Node for a re-answer branch. The new
+     * node copies the old Question's immutable semantics (question, purpose,
+     * options, allowFreeAnswer) onto a fresh canonical id sharing the old
+     * parent; it never reuses the old canonical node and never marks itself
+     * as its replace/supersede. The owning route tip advances to the new
+     * node, so the shared old Question keeps its single immutable Answer.
+     */
+    public Node createReanswerNode(UUID projectId,
+                                   UUID routeId,
+                                   UUID parentNodeId,
+                                   String question,
+                                   String purpose,
+                                   List<NodeOption> options,
+                                   boolean allowFreeAnswer) {
+        return createNode(projectId, routeId, parentNodeId, null,
+                question, purpose, options, allowFreeAnswer);
+    }
+
+    /**
      * Creates an immutable replacement node that supersedes a historical node
      * during a regenerate operation. The replacement node shares the target
      * node's parent and carries {@code supersedesNodeId} pointing at the old
@@ -105,8 +124,37 @@ public class NodeService {
         return node;
     }
 
+    /**
+     * Creates a standalone (floating) workspace draft: same validation as
+     * {@link #createWorkspaceNode} but the route tip is never advanced and
+     * the node carries no parent, so it starts disconnected from every
+     * lineage until the user explicitly connects it.
+     */
+    public Node createFloatingWorkspaceNode(UUID projectId,
+                                            NodeKind kind,
+                                            String subtype,
+                                            Map<String, Object> content,
+                                            NodeAuthorKind authorKind,
+                                            KnowledgeStatus knowledgeStatus) {
+        if (kind == NodeKind.INTERACTION) {
+            throw new IllegalArgumentException(
+                    "Interaction nodes must be created through question-specific methods");
+        }
+        String normalizedSubtype = NodeSubtypes.requireAllowed(kind, subtype);
+        Node node = new Node(Ids.random(), projectId, null, null, null,
+                null, null, List.of(), false, Instant.now(),
+                kind, normalizedSubtype, content, authorKind, knowledgeStatus, null, Instant.now());
+        nodeRepository.save(node);
+        return node;
+    }
+
     public Optional<Node> getNode(UUID nodeId) {
         return nodeRepository.findById(nodeId);
+    }
+
+    /** Every project node including retracted ones (callers filter). */
+    public List<Node> listProject(UUID projectId) {
+        return nodeRepository.findByProject(projectId);
     }
 
     /**

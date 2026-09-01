@@ -93,7 +93,7 @@ class StaleContextCheckerTest {
         ContextSnapshot snapshot = new ContextSnapshot(
                 snapshotId, project.id(), updatedRoute.id(), updatedRoute.tipNodeId(),
                 ContextOperationType.NORMAL, List.of(), List.of(), List.of(),
-                List.of(), null, hash, Instant.now());
+                List.of(), List.of(), List.of(), null, hash, Instant.now());
         return new TestContext(project.id(), updatedRoute.id(),
                 updatedRoute.tipNodeId(), snapshotId, hash, snapshot);
     }

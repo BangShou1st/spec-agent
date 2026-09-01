@@ -1,0 +1,79 @@
+{
+  "protocolVersion": "agent-input.v2",
+  "runId": "01000000-0000-0000-0000-000000000001",
+  "event": {
+    "kind": "NODE_QUERY",
+    "anchorNodeId": "05000000-0000-0000-0000-000000000005",
+    "selectedOptionId": null,
+    "freeText": "这个需求受哪个外部资源约束？"
+  },
+  "snapshot": {
+    "snapshotId": "02000000-0000-0000-0000-000000000002",
+    "contextHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "projectId": "03000000-0000-0000-0000-000000000003",
+    "routeId": "04000000-0000-0000-0000-000000000004",
+    "anchorNodeId": "05000000-0000-0000-0000-000000000005",
+    "routeContext": {
+      "routeId": "04000000-0000-0000-0000-000000000004",
+      "tipNodeId": "05000000-0000-0000-0000-000000000005",
+      "label": "主线需求探索"
+    },
+    "lineage": [
+      {
+        "node": {
+          "id": "05000000-0000-0000-0000-000000000005",
+          "body": {
+            "text": "系统必须支持离线模式",
+            "options": [],
+            "acceptsFreeText": false
+          },
+          "kind": "KNOWLEDGE"
+        },
+        "answer": null,
+        "patches": []
+      }
+    ],
+    "effectiveClaims": [],
+    "metadata": {
+      "projectTitle": "内部工单系统探索"
+    },
+    "allowedSourceRefs": [
+      "node:05000000-0000-0000-0000-000000000005",
+      "node:06000000-0000-0000-0000-000000000006",
+      "context:02000000-0000-0000-0000-000000000002",
+      "route:04000000-0000-0000-0000-000000000004"
+    ],
+    "availableCapabilities": [],
+    "capabilityResults": [],
+    "relations": [
+      {
+        "sourceNodeId": "05000000-0000-0000-0000-000000000005",
+        "targetNodeId": "06000000-0000-0000-0000-000000000006",
+        "relationType": "SUPPORTS"
+      }
+    ],
+    "relatedNodes": [
+      {
+        "nodeId": "06000000-0000-0000-0000-000000000006",
+        "relationType": "SUPPORTS",
+        "direction": "OUTGOING",
+        "node": {
+          "id": "06000000-0000-0000-0000-000000000006",
+          "body": {
+            "text": "同步方案外部评审记录:离线队列容量上限 2048 条",
+            "options": [],
+            "acceptsFreeText": false
+          },
+          "kind": "RESOURCE"
+        }
+      }
+    ],
+    "autonomy": {
+      "mode": "ADVISOR"
+    }
+  },
+  "capabilities": [],
+  "decisionBudget": {
+    "maxModelCalls": 2
+  }
+}

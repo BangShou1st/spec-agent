@@ -14,6 +14,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -34,17 +35,23 @@ public class RouteService {
     private final NodeRepository nodeRepository;
     private final NodeService nodeService;
     private final RouteHistoryResolver routeHistoryResolver;
+    private final com.specagent.graph.GraphOperationRepository graphOperationRepository;
+    private final com.specagent.graph.GraphInvariantValidator graphInvariantValidator;
 
     public RouteService(RouteRepository routeRepository,
                         ProjectRepository projectRepository,
                         NodeRepository nodeRepository,
                         NodeService nodeService,
-                        RouteHistoryResolver routeHistoryResolver) {
+                        RouteHistoryResolver routeHistoryResolver,
+                        com.specagent.graph.GraphOperationRepository graphOperationRepository,
+                        com.specagent.graph.GraphInvariantValidator graphInvariantValidator) {
         this.routeRepository = routeRepository;
         this.projectRepository = projectRepository;
         this.nodeRepository = nodeRepository;
         this.nodeService = nodeService;
         this.routeHistoryResolver = routeHistoryResolver;
+        this.graphOperationRepository = graphOperationRepository;
+        this.graphInvariantValidator = graphInvariantValidator;
     }
 
     public Route createRoute(UUID projectId, RouteLifecycleStatus status, String label) {
@@ -88,7 +95,9 @@ public class RouteService {
      * {@code Project.activeRouteId}; the route lifecycle status is never changed
      * to {@code active}.
      */
+    @Transactional
     public void setActiveRoute(UUID projectId, UUID routeId) {
+        projectRepository.lockById(projectId);
         Route route = requireRouteInProject(projectId, routeId);
         if (route.lifecycleStatus() != RouteLifecycleStatus.OPEN) {
             throw new IllegalStateException(
@@ -96,6 +105,7 @@ public class RouteService {
                             + " is " + route.lifecycleStatus().code());
         }
         projectRepository.updateActiveRoute(projectId, routeId, Instant.now());
+        assertActiveRouteInvariant(projectId);
     }
 
     /**
@@ -103,11 +113,14 @@ public class RouteService {
      * route, the active route is cleared. No nodes, answers, patches, or shared
      * ancestors are deleted, and no other route is implicitly activated.
      */
+    @Transactional
     public void archiveRoute(UUID projectId, UUID routeId) {
+        projectRepository.lockById(projectId);
         Route route = requireRouteInProject(projectId, routeId);
         requireTransition(route, RouteLifecycleStatus.ARCHIVED);
         routeRepository.updateLifecycle(routeId, RouteLifecycleStatus.ARCHIVED, Instant.now());
         clearActiveRouteIfMatches(projectId, routeId);
+        assertActiveRouteInvariant(projectId);
     }
 
     /**
@@ -115,22 +128,28 @@ public class RouteService {
      * preserved. If the deleted route is the project's active route, the active
      * route is cleared.
      */
+    @Transactional
     public void softDeleteRoute(UUID projectId, UUID routeId) {
+        projectRepository.lockById(projectId);
         Route route = requireRouteInProject(projectId, routeId);
         requireTransition(route, RouteLifecycleStatus.DELETED);
         routeRepository.updateLifecycle(routeId, RouteLifecycleStatus.DELETED, Instant.now());
         clearActiveRouteIfMatches(projectId, routeId);
+        assertActiveRouteInvariant(projectId);
     }
 
     /**
      * Explicitly restores an archived, deleted, or superseded route back to
      * {@code OPEN} and makes it the project's active route.
      */
+    @Transactional
     public void restoreRoute(UUID projectId, UUID routeId) {
+        projectRepository.lockById(projectId);
         Route route = requireRouteInProject(projectId, routeId);
         requireTransition(route, RouteLifecycleStatus.OPEN);
         routeRepository.updateLifecycle(routeId, RouteLifecycleStatus.OPEN, Instant.now());
         projectRepository.updateActiveRoute(projectId, routeId, Instant.now());
+        assertActiveRouteInvariant(projectId);
     }
 
     /**
@@ -144,7 +163,13 @@ public class RouteService {
      * Explicit-source Fork. The accepted answer at the branch point is frozen
      * as an immutable reference in the new route prefix.
      */
+    @Transactional
     public Route forkFromNode(UUID projectId, UUID sourceRouteId, UUID sourceNodeId, String label) {
+        // Serialize with archive/restore/activate and graph mutations: the fork
+        // reads the source route lifecycle and creates a new Active route, so
+        // it must hold the project-row lock before any state read (order:
+        // project → node/route → mutation).
+        projectRepository.lockById(projectId);
         Node sourceNode = nodeRepository.findById(sourceNodeId)
                 .orElseThrow(() -> new IllegalArgumentException("Node not found: " + sourceNodeId));
         if (!sourceNode.projectId().equals(projectId)) {
@@ -153,6 +178,7 @@ public class RouteService {
         }
 
         Route sourceRoute = requireExplorationSource(projectId, sourceRouteId);
+        graphInvariantValidator.validateRouteProvenance(sourceRouteId);
         List<UUID> sourceLineage = routeHistoryResolver.resolveLineage(sourceRoute.tipNodeId());
         requireLineageContains(sourceLineage, sourceNodeId);
         if (routeHistoryResolver.resolveEffectiveAnswers(sourceRouteId, sourceLineage).stream()
@@ -171,11 +197,20 @@ public class RouteService {
         return forkRoute;
     }
 
-    /** Creates a Re-answer route with the target Question waiting again. */
+    /**
+     * Creates a Re-answer route whose tip is a NEW Question Node. The old
+     * Question is never reused: its immutable semantics (question, purpose,
+     * options, allowFreeAnswer) are copied onto a fresh canonical id sharing
+     * the old parent, the inherited prefix freezes the old Question's
+     * ancestors only (the old Answer stays on the source route), and the
+     * source route and its Answers are left untouched.
+     */
+    @Transactional
     public Route reanswerFromNode(UUID projectId,
                                   UUID sourceRouteId,
                                   UUID targetNodeId,
                                   String label) {
+        projectRepository.lockById(projectId);
         Node targetNode = requireNodeInProject(projectId, targetNodeId);
         Route sourceRoute = requireExplorationSource(projectId, sourceRouteId);
         List<UUID> sourceLineage = routeHistoryResolver.resolveLineage(sourceRoute.tipNodeId());
@@ -184,38 +219,76 @@ public class RouteService {
                 .noneMatch(answer -> answer.nodeId().equals(targetNodeId))) {
             throw new IllegalStateException("Re-answer target has no finalized answer: " + targetNodeId);
         }
+        graphInvariantValidator.validateRouteProvenance(sourceRouteId);
 
         UUID routeId = Ids.random();
         Instant now = Instant.now();
-        Route route = new Route(routeId, projectId, sourceRoute.rootNodeId(), targetNodeId,
-                RouteLifecycleStatus.OPEN, effectiveLabel(projectId, RouteBranchType.REANSWER, label), targetNodeId, null, null, null,
+        // The new route's history starts at the old target's position: root
+        // stays the source root, tip is temporarily the old target so the
+        // frozen inherited prefix is anchored, then the cloned Question
+        // advances the tip onto its own canonical identity.
+        Route route = new Route(routeId, projectId,
+                targetNode.parentNodeId() == null ? null : sourceRoute.rootNodeId(),
+                targetNodeId,
+                RouteLifecycleStatus.OPEN, effectiveLabel(projectId, RouteBranchType.REANSWER, label),
+                targetNodeId, null, null, null,
                 RouteBranchType.REANSWER, sourceRouteId, targetNodeId, now, now);
         routeRepository.save(route);
+        // Inherited prefix excludes the old target's answer: the re-answered
+        // Question starts waiting again.
         routeHistoryResolver.snapshotInheritedPrefix(routeId, sourceRouteId, targetNodeId, false);
+        nodeService.createReanswerNode(
+                projectId, routeId, targetNode.parentNodeId(),
+                targetNode.question(), targetNode.purpose(), targetNode.options(),
+                targetNode.allowFreeAnswer());
         projectRepository.updateActiveRoute(projectId, routeId, now);
-        return route;
+        return routeRepository.findById(routeId)
+                .orElseThrow(() -> new IllegalStateException("Re-answer route missing after creation: " + routeId));
     }
 
     /**
      * Commits an already accepted replacement proposal. The method is the only
      * place that creates canonical replacement history: proposal parsing,
      * reflection, and validation happen before entering this transaction.
+     *
+     * <p>{@code expectedSourceRouteTip} freezes the source tip the decision was
+     * made against. The caller captures it BEFORE this transaction; inside the
+     * transaction, after the project lock is held, the source route is re-read
+     * and the expected tip is re-verified, closing the check-then-act window
+     * against a concurrent continuation that advanced the source tip.
      */
     @Transactional
     public RegenerateResult commitReplacementFromNode(UUID projectId,
                                                       UUID sourceRouteId,
                                                       UUID targetNodeId,
+                                                      UUID expectedSourceRouteTip,
                                                       String label,
                                                       String question,
                                                       String purpose,
                                                       List<NodeOption> options,
                                                       boolean allowFreeAnswer) {
+        // Serialize with archive/restore/activate and graph mutations: the
+        // replacement supersedes the source route and changes Active, so the
+        // project-row lock is taken before any state read. The stale-tip check
+        // happens under this lock, so a concurrent continuation can never
+        // advance the source tip between the decision and the commit.
+        projectRepository.lockById(projectId);
         Node targetNode = requireNodeInProject(projectId, targetNodeId);
         if (targetNode.parentNodeId() == null) {
             throw new IllegalStateException("Root node replacement is not supported");
         }
         Route sourceRoute = requireExplorationSource(projectId, sourceRouteId);
-        requireLineageContains(routeHistoryResolver.resolveLineage(sourceRoute.tipNodeId()), targetNodeId);
+        graphInvariantValidator.validateRouteProvenance(sourceRouteId);
+        // Re-verify under the project lock that the source has not moved since
+        // the frozen decision: the tip must still be exactly the expected one,
+        // and the target must still sit on that exact source lineage.
+        if (!java.util.Objects.equals(sourceRoute.tipNodeId(), expectedSourceRouteTip)) {
+            throw new IllegalStateException(
+                    "Source route tip moved after the replacement snapshot: expected "
+                            + expectedSourceRouteTip + ", current " + sourceRoute.tipNodeId());
+        }
+        List<UUID> sourceLineage = routeHistoryResolver.resolveLineage(sourceRoute.tipNodeId());
+        requireLineageContains(sourceLineage, targetNodeId);
         if (question == null || question.isBlank()) {
             throw new IllegalArgumentException("Replacement question must not be blank");
         }
@@ -359,6 +432,41 @@ public class RouteService {
                 .orElseThrow(() -> new IllegalArgumentException("Project not found: " + projectId));
         if (project.activeRouteId() != null && project.activeRouteId().equals(routeId)) {
             projectRepository.updateActiveRoute(projectId, null, Instant.now());
+        }
+    }
+
+    /**
+     * Fail-closed enforcement of the active-route pointer invariant, checked
+     * after every lifecycle / active-route change while the project row is still
+     * locked: {@code activeRouteId} is either null, or points to a route that
+     * exists, belongs to this project, and has lifecycle status {@code OPEN}.
+     *
+     * <p>This is a safety net on top of the explicit maintenance above — it never
+     * auto-selects another route when the active pointer would otherwise dangle.
+     * A violation indicates either a regression in this service or pre-existing
+     * corruption, and is surfaced as a stable {@code IllegalStateException}.
+     */
+    private void assertActiveRouteInvariant(UUID projectId) {
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new IllegalArgumentException("Project not found: " + projectId));
+        UUID activeRouteId = project.activeRouteId();
+        if (activeRouteId == null) {
+            return;
+        }
+        Route active = routeRepository.findById(activeRouteId)
+                .orElseThrow(() -> new IllegalStateException(
+                        "ACTIVE_ROUTE_DANGLING: project " + projectId
+                                + " activeRouteId " + activeRouteId + " references a missing route"));
+        if (!active.projectId().equals(projectId)) {
+            throw new IllegalStateException(
+                    "ACTIVE_ROUTE_CROSS_PROJECT: project " + projectId
+                            + " activeRouteId " + activeRouteId + " belongs to another project");
+        }
+        if (active.lifecycleStatus() != RouteLifecycleStatus.OPEN) {
+            throw new IllegalStateException(
+                    "ACTIVE_ROUTE_NOT_OPEN: project " + projectId
+                            + " activeRouteId " + activeRouteId + " is not OPEN: "
+                            + active.lifecycleStatus().code());
         }
     }
 

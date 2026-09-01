@@ -60,6 +60,22 @@ public class ProjectRepository {
     }
 
     /**
+     * Locks the project row for the current transaction, or fails fast when
+     * the project does not exist. Used to serialize write commands whose
+     * decision depends on project-wide graph state — e.g. semantic-relation
+     * creation, where the cycle validation and duplicate check must observe a
+     * stable relation graph. The lock is per project row; it never locks
+     * other projects.
+     */
+    public void lockById(UUID id) {
+        String sql = "SELECT id FROM projects WHERE id = :id FOR UPDATE";
+        List<UUID> locked = jdbcTemplate.queryForList(sql, Maps.of("id", id), UUID.class);
+        if (locked.isEmpty()) {
+            throw new IllegalArgumentException("Project not found: " + id);
+        }
+    }
+
+    /**
      * Lists all projects in deterministic order ({@code created_at} ascending,
      * then {@code id} ascending as a stable tiebreak).
      */

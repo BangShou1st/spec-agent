@@ -21,6 +21,13 @@ import java.util.List;
  * Normal (non-regenerate) context must also match the
  * project's active route; regenerate context is a special operation context and
  * therefore exempt from the active-route match.
+ *
+ * <p>Routeless NODE_QUERY context is first-class: a floating canonical Node
+ * (routeIds=[]) carries {@code routeId == null}, and its snapshot is the
+ * anchor node's own lineage. Such a snapshot must be validated against the
+ * project and its context hash, but must never require a route, an active
+ * route, or route-to-active matching. Every other operation type retains the
+ * strict route requirements below.
  */
 @Component
 public class ContextGuard {
@@ -43,6 +50,21 @@ public class ContextGuard {
         Project project = projectRepository.findById(snapshot.projectId()).orElse(null);
         if (project == null) {
             errors.add("Context project does not exist: " + snapshot.projectId());
+        }
+
+        boolean routelessNodeQuery = snapshot.operationType() == ContextOperationType.NODE_QUERY
+                && snapshot.routeId() == null;
+        if (routelessNodeQuery) {
+            // Floating node query: the context is the anchor node itself and
+            // references no route. Only project existence and the context hash
+            // are required; route/active-route requirements never apply.
+            if (snapshot.contextHash() == null || snapshot.contextHash().isBlank()) {
+                errors.add("Context hash is required");
+            }
+            if (errors.isEmpty()) {
+                return ReflectionResult.acceptedResult();
+            }
+            return new ReflectionResult(false, errors, List.of());
         }
 
         Route route = routeRepository.findById(snapshot.routeId()).orElse(null);

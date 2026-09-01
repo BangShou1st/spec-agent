@@ -118,7 +118,7 @@ class GraphWorkspaceQueryServiceTest {
     }
 
     @Test
-    void sharedNodesAreDeduplicatedAndRouteSpecificAnswersStaySeparate() {
+    void sharedNodesAreDeduplicatedAndSingleAnswerIdentityStaysShared() {
         UUID projectId = UUID.randomUUID();
         UUID routeAId = UUID.randomUUID();
         UUID routeBId = UUID.randomUUID();
@@ -134,10 +134,13 @@ class GraphWorkspaceQueryServiceTest {
         Node d = node(dId, projectId, bId, "D");
         Route routeA = route(routeAId, projectId, aId, cId, RouteLifecycleStatus.OPEN, null);
         Route routeB = route(routeBId, projectId, aId, dId, RouteLifecycleStatus.OPEN, null);
-        Answer answerBOnA = new Answer(UUID.randomUUID(), projectId, routeAId, bId,
-                "opt", "B answer on A", "user", NOW);
-        Answer answerBOnB = new Answer(UUID.randomUUID(), projectId, routeBId, bId,
-                "opt", "B answer on B", "user", NOW);
+        // One canonical Question carries ONE immutable Answer identity; both
+        // routes resolve the shared node to the SAME answer id (route B via an
+        // inherited reference), so the read model exposes per-route views that
+        // never diverge by content.
+        UUID sharedAnswerId = UUID.randomUUID();
+        Answer answerB = new Answer(sharedAnswerId, projectId, routeAId, bId,
+                "opt", "B answer", "user", NOW);
 
         when(projectService.getProject(projectId)).thenReturn(java.util.Optional.of(project));
         when(routeService.listRoutes(projectId)).thenReturn(List.of(routeA, routeB));
@@ -146,9 +149,9 @@ class GraphWorkspaceQueryServiceTest {
         when(nodeService.getNode(cId)).thenReturn(java.util.Optional.of(c));
         when(nodeService.getNode(dId)).thenReturn(java.util.Optional.of(d));
         when(answerService.findAnswersForRouteAndNodeIds(routeAId, List.of(aId, bId, cId)))
-                .thenReturn(List.of(answerBOnA));
+                .thenReturn(List.of(answerB));
         when(answerService.findAnswersForRouteAndNodeIds(routeBId, List.of(aId, bId, dId)))
-                .thenReturn(List.of(answerBOnB));
+                .thenReturn(List.of(answerB));
 
         GraphWorkspaceView view = service.getForProject(projectId);
 
@@ -157,10 +160,136 @@ class GraphWorkspaceQueryServiceTest {
         assertThat(view.routes()).hasSize(2);
         assertThat(view.routes().get(0).lineageNodeIds()).containsExactly(aId, bId, cId);
         assertThat(view.routes().get(1).lineageNodeIds()).containsExactly(aId, bId, dId);
+        // Per-route answer views exist (owner + inherited), all carrying the
+        // SAME Answer identity, never two competing answers for one node.
         assertThat(view.answers()).hasSize(2);
+        assertThat(view.answers()).extracting(GraphWorkspaceAnswerView::id)
+                .containsOnly(sharedAnswerId);
         assertThat(view.answers()).filteredOn(ans -> ans.nodeId().equals(bId))
                 .extracting(GraphWorkspaceAnswerView::routeId)
                 .containsExactlyInAnyOrder(routeAId, routeBId);
+    }
+
+    @Test
+    void sharedQuestionAnsweredWithSameIdentityAcrossRoutesSucceeds() {
+        UUID projectId = UUID.randomUUID();
+        UUID routeAId = UUID.randomUUID();
+        UUID routeBId = UUID.randomUUID();
+        UUID aId = UUID.randomUUID();
+        UUID bId = UUID.randomUUID();
+        UUID cId = UUID.randomUUID();
+        UUID dId = UUID.randomUUID();
+
+        Project project = new Project(projectId, "p", routeAId, null, NOW, NOW);
+        Node a = node(aId, projectId, null, "A");
+        Node b = node(bId, projectId, aId, "B");
+        Node c = node(cId, projectId, bId, "C");
+        Node d = node(dId, projectId, bId, "D");
+        Route routeA = route(routeAId, projectId, aId, cId, RouteLifecycleStatus.OPEN, null);
+        Route routeB = route(routeBId, projectId, aId, dId, RouteLifecycleStatus.OPEN, null);
+        // The shared node carries the SAME effective Answer identity on both
+        // routes (route B via an inherited reference); the read model must not
+        // treat this as a divergence.
+        UUID sharedAnswerId = UUID.randomUUID();
+        Answer answer = new Answer(sharedAnswerId, projectId, routeAId, bId,
+                "opt", "B answer", "user", NOW);
+
+        when(projectService.getProject(projectId)).thenReturn(java.util.Optional.of(project));
+        when(routeService.listRoutes(projectId)).thenReturn(List.of(routeA, routeB));
+        when(nodeService.getNode(aId)).thenReturn(java.util.Optional.of(a));
+        when(nodeService.getNode(bId)).thenReturn(java.util.Optional.of(b));
+        when(nodeService.getNode(cId)).thenReturn(java.util.Optional.of(c));
+        when(nodeService.getNode(dId)).thenReturn(java.util.Optional.of(d));
+        when(answerService.findAnswersForRouteAndNodeIds(routeAId, List.of(aId, bId, cId)))
+                .thenReturn(List.of(answer));
+        when(answerService.findAnswersForRouteAndNodeIds(routeBId, List.of(aId, bId, dId)))
+                .thenReturn(List.of(answer));
+
+        GraphWorkspaceView view = service.getForProject(projectId);
+
+        assertThat(view.answers()).hasSize(2);
+        assertThat(view.answers()).extracting(GraphWorkspaceAnswerView::id)
+                .containsOnly(sharedAnswerId);
+    }
+
+    @Test
+    void sharedQuestionAnsweredInOneRouteAndUnansweredInAnotherFailsClosed() {
+        UUID projectId = UUID.randomUUID();
+        UUID routeAId = UUID.randomUUID();
+        UUID routeBId = UUID.randomUUID();
+        UUID aId = UUID.randomUUID();
+        UUID bId = UUID.randomUUID();
+        UUID cId = UUID.randomUUID();
+        UUID dId = UUID.randomUUID();
+
+        Project project = new Project(projectId, "p", routeAId, null, NOW, NOW);
+        Node a = node(aId, projectId, null, "A");
+        Node b = node(bId, projectId, aId, "B");
+        Node c = node(cId, projectId, bId, "C");
+        Node d = node(dId, projectId, bId, "D");
+        Route routeA = route(routeAId, projectId, aId, cId, RouteLifecycleStatus.OPEN, null);
+        Route routeB = route(routeBId, projectId, aId, dId, RouteLifecycleStatus.OPEN, null);
+        // The shared canonical Question node b is answered on route A but left
+        // unanswered on route B (no effective answer resolves for it there) —
+        // an answered/unanswered divergence, not a normal UI mode.
+        Answer answerB = new Answer(UUID.randomUUID(), projectId, routeAId, bId,
+                "opt", "B answer", "user", NOW);
+
+        when(projectService.getProject(projectId)).thenReturn(java.util.Optional.of(project));
+        when(routeService.listRoutes(projectId)).thenReturn(List.of(routeA, routeB));
+        when(nodeService.getNode(aId)).thenReturn(java.util.Optional.of(a));
+        when(nodeService.getNode(bId)).thenReturn(java.util.Optional.of(b));
+        when(nodeService.getNode(cId)).thenReturn(java.util.Optional.of(c));
+        when(nodeService.getNode(dId)).thenReturn(java.util.Optional.of(d));
+        when(answerService.findAnswersForRouteAndNodeIds(routeAId, List.of(aId, bId, cId)))
+                .thenReturn(List.of(answerB));
+        when(answerService.findAnswersForRouteAndNodeIds(routeBId, List.of(aId, bId, dId)))
+                .thenReturn(List.of());
+
+        assertThatThrownBy(() -> service.getForProject(projectId))
+                .isInstanceOfSatisfying(GraphWorkspaceQueryException.class, e -> {
+                    assertThat(e.reason())
+                            .isEqualTo(GraphWorkspaceQueryException.Reason.INVARIANT_VIOLATION);
+                    assertThat(e.getMessage()).contains("SHARED_STATE_DIVERGENCE");
+                });
+    }
+
+    @Test
+    void distinctAnswerIdsOnSameCanonicalNodeFailClosedAsDivergence() {
+        UUID projectId = UUID.randomUUID();
+        UUID routeAId = UUID.randomUUID();
+        UUID routeBId = UUID.randomUUID();
+        UUID aId = UUID.randomUUID();
+        UUID bId = UUID.randomUUID();
+        UUID cId = UUID.randomUUID();
+        UUID dId = UUID.randomUUID();
+
+        Project project = new Project(projectId, "p", routeAId, null, NOW, NOW);
+        Node a = node(aId, projectId, null, "A");
+        Node b = node(bId, projectId, aId, "B");
+        Node c = node(cId, projectId, bId, "C");
+        Node d = node(dId, projectId, bId, "D");
+        Route routeA = route(routeAId, projectId, aId, cId, RouteLifecycleStatus.OPEN, null);
+        Route routeB = route(routeBId, projectId, aId, dId, RouteLifecycleStatus.OPEN, null);
+        Answer answer1 = new Answer(UUID.randomUUID(), projectId, routeAId, bId,
+                "opt", "first answer", "user", NOW);
+        Answer answer2 = new Answer(UUID.randomUUID(), projectId, routeBId, bId,
+                "opt", "second answer", "user", NOW);
+
+        when(projectService.getProject(projectId)).thenReturn(java.util.Optional.of(project));
+        when(routeService.listRoutes(projectId)).thenReturn(List.of(routeA, routeB));
+        when(nodeService.getNode(aId)).thenReturn(java.util.Optional.of(a));
+        when(nodeService.getNode(bId)).thenReturn(java.util.Optional.of(b));
+        when(nodeService.getNode(cId)).thenReturn(java.util.Optional.of(c));
+        when(nodeService.getNode(dId)).thenReturn(java.util.Optional.of(d));
+        when(answerService.findAnswersForRouteAndNodeIds(routeAId, List.of(aId, bId, cId)))
+                .thenReturn(List.of(answer1));
+        when(answerService.findAnswersForRouteAndNodeIds(routeBId, List.of(aId, bId, dId)))
+                .thenReturn(List.of(answer2));
+
+        assertThatThrownBy(() -> service.getForProject(projectId))
+                .isInstanceOf(GraphWorkspaceQueryException.class)
+                .hasMessageContaining("SHARED_STATE_DIVERGENCE");
     }
 
     @Test

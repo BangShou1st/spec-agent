@@ -2,6 +2,7 @@ package com.specagent.api.agent;
 
 import com.specagent.agent.AgentRunService;
 import com.specagent.agent.AgentRunStatus;
+import com.specagent.answer.AnswerService;
 import com.specagent.node.Node;
 import com.specagent.node.NodeService;
 import com.specagent.project.Project;
@@ -44,6 +45,8 @@ class AgentCommandApiIntegrationTest {
     private ProjectService projectService;
     @Autowired
     private NodeService nodeService;
+    @Autowired
+    private AnswerService answerService;
     @Autowired
     private AgentRunService agentRunService;
     @Autowired
@@ -107,6 +110,10 @@ class AgentCommandApiIntegrationTest {
         Project project = projectService.createProject("Draft child project");
         Node root = nodeService.createRootNode(project.id(), project.activeRouteId(),
                 "Root question", null, List.of(), true);
+        // An unanswered Question must remain the route tip; answer it before
+        // the next draft can append a child.
+        answerService.finalizeAnswer(project.id(), project.activeRouteId(),
+                root.id(), null, "answered root", "test-user");
 
         String runId = enqueueDraft(project);
         var claimed = runService.claimNext().orElseThrow();

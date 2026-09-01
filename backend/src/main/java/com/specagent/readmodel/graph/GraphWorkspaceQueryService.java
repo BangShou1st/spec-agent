@@ -74,20 +74,68 @@ public class GraphWorkspaceQueryService {
         Map<UUID, Node> nodesById = new LinkedHashMap<>();
         List<GraphWorkspaceRouteView> routeViews = new ArrayList<>();
         List<GraphWorkspaceAnswerView> answerViews = new ArrayList<>();
+        // Shared-state divergence detector: one canonical Question Node may
+        // carry only ONE immutable Answer identity project-wide. If the read
+        // model ever sees two distinct effective Answer ids for the same node,
+        // that is an invariant violation, not a normal UI presentation mode.
+        java.util.Map<UUID, UUID> answerIdentityByNode = new java.util.HashMap<>();
+        // Membership for the answered/unanswered divergence check below: for a
+        // canonical Question node, which routes carry it in their lineage, and
+        // of those, which routes resolved an effective Answer for it. Only the
+        // immutable Answer id is compared — never the answer text.
+        java.util.Map<UUID, java.util.Set<UUID>> routesByNode = new java.util.HashMap<>();
+        java.util.Map<UUID, java.util.Set<UUID>> answeredRoutesByNode = new java.util.HashMap<>();
 
         for (Route route : routeService.listRoutes(projectId)) {
             List<Node> lineage = resolveLineage(project.id(), route);
             List<UUID> lineageNodeIds = lineage.stream().map(Node::id).toList();
             lineage.forEach(node -> nodesById.putIfAbsent(node.id(), node));
+            for (UUID lineageNodeId : lineageNodeIds) {
+                routesByNode.computeIfAbsent(lineageNodeId, k -> new java.util.HashSet<>())
+                        .add(route.id());
+            }
             List<com.specagent.answer.Answer> answers = routeHistoryResolver == null
                     ? answerService.findAnswersForRouteAndNodeIds(route.id(), lineageNodeIds)
                     : routeHistoryResolver.resolveEffectiveAnswers(route.id(), lineageNodeIds);
-            answers.stream()
-                    .map(answer -> GraphWorkspaceAnswerView.from(
-                            answer, route.id(), !route.id().equals(answer.routeId())))
-                    .forEach(answerViews::add);
+            for (com.specagent.answer.Answer answer : answers) {
+                UUID existing = answerIdentityByNode.putIfAbsent(answer.nodeId(), answer.id());
+                if (existing != null && !existing.equals(answer.id())) {
+                    throw GraphWorkspaceQueryException.of(
+                            GraphWorkspaceQueryException.Reason.INVARIANT_VIOLATION,
+                            "SHARED_STATE_DIVERGENCE: canonical Question " + answer.nodeId()
+                                    + " resolves to multiple effective Answer identities");
+                }
+                answeredRoutesByNode
+                        .computeIfAbsent(answer.nodeId(), k -> new java.util.HashSet<>())
+                        .add(route.id());
+                answerViews.add(GraphWorkspaceAnswerView.from(
+                        answer, route.id(), !route.id().equals(answer.routeId())));
+            }
             routeViews.add(GraphWorkspaceRouteView.from(route, project.activeRouteId(), lineageNodeIds));
         }
+
+        // Fail closed: a canonical Question node must be answered consistently
+        // across every route membership. If it is answered in at least one
+        // route but left unanswered in another (a partial, divergent lineage
+        // state), that is a shared-state divergence, not a UI mode.
+        for (java.util.Map.Entry<UUID, java.util.Set<UUID>> entry : answeredRoutesByNode.entrySet()) {
+            UUID nodeId = entry.getKey();
+            java.util.Set<UUID> unansweredRoutes = new java.util.HashSet<>(
+                    routesByNode.getOrDefault(nodeId, java.util.Set.of()));
+            unansweredRoutes.removeAll(entry.getValue());
+            if (!unansweredRoutes.isEmpty()) {
+                throw GraphWorkspaceQueryException.of(
+                        GraphWorkspaceQueryException.Reason.INVARIANT_VIOLATION,
+                        "SHARED_STATE_DIVERGENCE: canonical Question " + nodeId
+                                + " is answered in some routes but unanswered in others");
+            }
+        }
+
+        // Floating drafts belong to no route lineage; they are still visible
+        // standalone graph content and must reach the workspace view.
+        nodeService.listProject(project.id()).stream()
+                .filter(node -> !node.isRetracted())
+                .forEach(node -> nodesById.putIfAbsent(node.id(), node));
 
         return new GraphWorkspaceView(
                 project.id(), project.activeRouteId(), List.copyOf(routeViews),

@@ -19,7 +19,11 @@ function routeById(view: GraphWorkspaceView): Map<string, GraphWorkspaceRouteVie
 /**
  * Shared history inherits the source route's key through the branch point;
  * explicit Re-answer/Replace branches qualify the key from the first
- * divergent node. Runtime provenance is the only input to this identity.
+ * divergent node. Fork and free continuation share THROUGH the branch point
+ * (the branch point itself is one canonical visual instance); Re-answer and
+ * Regenerate diverge BEFORE the old target (the old Question stays on the
+ * source route, the new Question/Replacement starts a route-specific card).
+ * Runtime provenance is the only input to this identity.
  */
 export function visualNodeKeyFor(
   view: GraphWorkspaceView,
@@ -42,7 +46,8 @@ export function visualNodeKeyFor(
   const sourceBranchIndex = sourceRoute?.lineageNodeIds.indexOf(route.branchAtNodeId) ?? -1
   const nodeIndex = route.lineageNodeIds.indexOf(canonicalNodeId)
   const effectiveBranchIndex = branchIndex >= 0 ? branchIndex : sourceBranchIndex
-  const sharesPrefix = route.branchType === 'fork'
+  const sharesThroughBranchPoint = route.branchType === 'fork' || route.branchType === 'continuation'
+  const sharesPrefix = sharesThroughBranchPoint
     ? nodeIndex >= 0 && effectiveBranchIndex >= 0 && nodeIndex <= effectiveBranchIndex
     : nodeIndex >= 0 && effectiveBranchIndex >= 0 && nodeIndex < effectiveBranchIndex
 
@@ -85,6 +90,24 @@ export function buildVisualInstances(view: GraphWorkspaceView): GraphVisualInsta
         })
       }
     }
+  }
+
+  // Floating drafts (user ideas) belong to no route lineage: they are
+  // standalone graph content until manually connected. They project as
+  // route-less instances keyed by their canonical id so they stay visible
+  // and editable on the canvas.
+  const lineagedNodeIds = new Set(
+    view.routes.flatMap((route) => route.lineageNodeIds ?? []),
+  )
+  for (const node of view.nodes) {
+    if (lineagedNodeIds.has(node.id) || byKey.has(node.id)) continue
+    byKey.set(node.id, {
+      visualNodeKey: node.id,
+      canonicalNodeId: node.id,
+      node,
+      routeIds: [],
+      parentVisualNodeKey: null,
+    })
   }
   return [...byKey.values()]
 }

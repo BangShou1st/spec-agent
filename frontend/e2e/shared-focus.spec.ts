@@ -52,6 +52,10 @@ test('shared node current-reading selector changes Focus without activating a ro
       forkBody = request.postDataJSON() as { sourceRouteId?: string }
     }
   })
+  // The action rail is hidden until the node is hovered (or selected /
+  // keyboard-focused). Real users must cross the gap to keep the rail
+  // visible; the test mirrors that interaction explicitly.
+  await sharedNode.hover()
   await sharedNode.getByTestId('fork-node').click()
   await expect(page.getByTestId('fork-dialog')).toBeVisible()
   await expect(page.locator('[data-test="fork-source-route"]')).toHaveCount(0)

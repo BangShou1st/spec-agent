@@ -160,6 +160,8 @@ class RuntimeKernelIntegrationTest {
                 List.of(s.a1().id(), s.a2().id()),
                 List.of(s.p2().id(), s.p1().id()),
                 List.of(),
+                List.of(),
+                List.of(),
                 null,
                 null,
                 Instant.now());

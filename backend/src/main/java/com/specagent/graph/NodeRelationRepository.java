@@ -73,6 +73,21 @@ public class NodeRelationRepository {
         return jdbcTemplate.query(sql, Maps.of("projectId", projectId), rowMapper);
     }
 
+    /**
+     * All ACTIVE relations that touch {@code nodeId} (as source OR target) within
+     * the project. Used by the bounded 1-hop semantic context of a node query —
+     * the caller keeps only the configured relation types and never recurses.
+     */
+    public List<NodeRelation> findActiveTouchingNode(UUID projectId, UUID nodeId) {
+        String sql = """
+                SELECT * FROM node_relations
+                WHERE project_id = :projectId AND status = 'ACTIVE'
+                  AND (source_node_id = :nodeId OR target_node_id = :nodeId)
+                ORDER BY created_at
+                """;
+        return jdbcTemplate.query(sql, Maps.of("projectId", projectId, "nodeId", nodeId), rowMapper);
+    }
+
     public Optional<NodeRelation> findActive(UUID sourceNodeId, UUID targetNodeId, NodeRelationType type) {
         String sql = """
                 SELECT * FROM node_relations
@@ -84,6 +99,61 @@ public class NodeRelationRepository {
                         "targetNodeId", targetNodeId,
                         "relationType", type.code()),
                 rowMapper).stream().findFirst();
+    }
+
+    /**
+     * Canonical, order-independent lookup for an ACTIVE relation between two
+     * nodes. For symmetric types ({@code RELATED_TO}, {@code CONFLICTS_WITH}) the
+     * match ignores endpoint order, mirroring the database unique backstop
+     * ({@code idx_node_relations_symmetric_active_unique}); for directional
+     * types the authored direction is preserved.
+     */
+    public Optional<NodeRelation> findActiveByCanonicalPair(UUID projectId,
+                                                            UUID nodeIdA,
+                                                            UUID nodeIdB,
+                                                            NodeRelationType type) {
+        if (type == NodeRelationType.RELATED_TO || type == NodeRelationType.CONFLICTS_WITH) {
+            // Symmetric fact: match regardless of the stored direction. A
+            // canonicalized legacy row may have been stored under the
+            // database's own uuid ordering (LEAST/GREATEST, byte-wise RFC 4122
+            // order), which differs from Java's UUID.compareTo (signed 64-bit
+            // halves) for some ids, so a Java-canonical query would miss it.
+            // The pair is scoped to the project like the unique-index identity.
+            String sql = """
+                    SELECT * FROM node_relations
+                    WHERE project_id = :projectId
+                      AND relation_type = :relationType AND status = 'ACTIVE'
+                      AND ((source_node_id = :nodeIdA AND target_node_id = :nodeIdB)
+                           OR (source_node_id = :nodeIdB AND target_node_id = :nodeIdA))
+                    LIMIT 1
+                    """;
+            return jdbcTemplate.query(sql, Maps.of(
+                            "projectId", projectId,
+                            "relationType", type.code(),
+                            "nodeIdA", nodeIdA,
+                            "nodeIdB", nodeIdB),
+                    rowMapper).stream().findFirst();
+        }
+        CanonicalEndpoints endpoints = canonicalEndpoints(nodeIdA, nodeIdB, type);
+        return findActive(endpoints.sourceNodeId(), endpoints.targetNodeId(), type);
+    }
+
+    /**
+     * Canonical endpoint order for a relation type. Symmetric types normalize to
+     * {@code (minId, maxId)} so {@code A -> B} and {@code B -> A} map to the same
+     * identity, matching the database backstop; directional types keep the
+     * authored direction. Mirrors
+     * {@link com.specagent.graph.GraphInvariantValidator#endpointsCanonicalized}.
+     */
+    public static CanonicalEndpoints canonicalEndpoints(UUID sourceNodeId, UUID targetNodeId, NodeRelationType type) {
+        boolean symmetric = type == NodeRelationType.RELATED_TO || type == NodeRelationType.CONFLICTS_WITH;
+        if (!symmetric || sourceNodeId.compareTo(targetNodeId) <= 0) {
+            return new CanonicalEndpoints(sourceNodeId, targetNodeId);
+        }
+        return new CanonicalEndpoints(targetNodeId, sourceNodeId);
+    }
+
+    public record CanonicalEndpoints(UUID sourceNodeId, UUID targetNodeId) {
     }
 
     public void updateStatus(UUID id, NodeRelation.Status status, Instant changedAt) {
@@ -111,12 +181,22 @@ public class NodeRelationRepository {
                                                      NodeRelation.Origin origin,
                                                      UUID createdByProposalId,
                                                      UUID createdByRunId) {
-        if (findActive(sourceNodeId, targetNodeId, type).isPresent()) {
+        // Canonicalize symmetric endpoints so the stored row uses the
+        // canonical (LEAST, GREATEST) identity the database unique backstop
+        // enforces. Directional types keep their authored direction. The
+        // duplicate pre-check is deliberately ORDER-INDEPENDENT for symmetric
+        // types: a row canonicalized by the V18 migration was stored under the
+        // database's byte-wise uuid ordering, which is not guaranteed to match
+        // Java's UUID.compareTo, so a Java-canonical directed lookup could
+        // miss the existing row and let the insert hit the unique index as a
+        // DuplicateKeyException instead of the controlled domain conflict.
+        CanonicalEndpoints endpoints = canonicalEndpoints(sourceNodeId, targetNodeId, type);
+        if (findActiveByCanonicalPair(projectId, sourceNodeId, targetNodeId, type).isPresent()) {
             throw new IllegalStateException(
                     "An active relation of type " + type.code() + " already exists between the two nodes");
         }
         NodeRelation relation = new NodeRelation(
-                Ids.random(), projectId, sourceNodeId, targetNodeId, type, origin,
+                Ids.random(), projectId, endpoints.sourceNodeId(), endpoints.targetNodeId(), type, origin,
                 NodeRelation.Status.ACTIVE, createdByProposalId, createdByRunId, Instant.now(), null);
         save(relation);
         return relation;

@@ -53,36 +53,68 @@ function membershipLabel(data: SpecAgentGraphNodeData, routeId: string): string 
     || '路线'
 }
 
-function orderedStates(data: SpecAgentGraphNodeData) {
-  return [...data.routeStates].sort((left, right) => {
-    if (left.routeId === data.readingRouteId) return -1
-    if (right.routeId === data.readingRouteId) return 1
-    return 0
-  })
-}
-
 // ---- Contextual AI query -------------------------------------------------
 
 const askInput = ref('')
 const isVirtualPendingNode = computed(() => props.data?.node.id.startsWith('pending:') ?? false)
+/**
+ * The reading context is OPTIONAL for an AI query: a Floating node belongs to
+ * no route (routeIds=[]) and still queries with routeId=null — the anchor
+ * node itself is the minimum context. A route is a reading-context hint,
+ * never an eligibility gate.
+ */
 const askRouteId = computed(() => {
   if (!props.data) return null
   if (props.data.readingRouteId) return props.data.readingRouteId
   return props.data.routeIds.length === 1 ? props.data.routeIds[0] : null
 })
+/**
+ * A shared route node (more than one route membership) MUST supply an explicit
+ * read route as the AI query context: we must not silently fall back to
+ * routeId=null. A floating node (routeIds=[]) is allowed to query with
+ * routeId=null — the node itself is the only context.
+ */
+const askNeedsExplicitRoute = computed(() => {
+  if (!props.data) return false
+  return props.data.routeIds.length > 1 && !props.data.readingRouteId
+})
 const askBlockedReason = computed(() => {
   if (!props.data) return null
   if (isVirtualPendingNode.value) return '运行中的临时卡片不能作为 AI 查询锚点'
+  if (askNeedsExplicitRoute.value) return '共享节点请先选择一条查看路线，再询问 AI'
   if (props.data.node.kind !== 'INTERACTION' && !contentText.value) return '先写下内容再询问 AI'
-  if (!askRouteId.value) return '共享节点请先选择一条查看路线'
   return null
 })
 
 const queryResult = computed(() => {
-  if (!props.data || !workspace.nodeQuery) return null
+  if (!props.data) return null
   const canonicalNodeId = props.data.canonicalNodeId ?? props.data.node.id
-  return workspace.nodeQuery.nodeId === canonicalNodeId ? workspace.nodeQuery : null
+  // The live in-memory query wins when it targets this node.
+  if (workspace.nodeQuery && workspace.nodeQuery.nodeId === canonicalNodeId) {
+    return workspace.nodeQuery
+  }
+  // A durable pending proposal is reconnected to its anchor node: even after
+  // a page reload (or after a NEWER query replaced nodeQuery), the proposal
+  // stays visible on the node whose query produced it.
+  const pending = workspace.nodeQueryProposals.find(
+    (proposal) => proposal.inputNodeId === canonicalNodeId,
+  )
+  if (!pending) return null
+  return {
+    nodeId: canonicalNodeId,
+    routeId: pending.routeId,
+    question: '',
+    runId: pending.runId ?? '',
+    status: 'AWAITING_APPROVAL',
+    message: 'AI 提出了一个候选动作，等待你确认。',
+    proposalId: pending.proposalId,
+    proposalStatus: pending.status,
+    actionFamily: pending.actionFamily,
+  } as typeof workspace.nodeQuery
 })
+
+const acceptingProposal = ref(false)
+const rejectingProposal = ref(false)
 
 watch(
   () => props.data?.node.id,
@@ -92,13 +124,38 @@ watch(
 )
 
 async function ask(): Promise<void> {
-  if (!props.data || !askRouteId.value || !askInput.value.trim()) return
+  if (!props.data || !askInput.value.trim()) return
+  if (askBlockedReason.value) return
   if (isVirtualPendingNode.value) return
   const canonicalNodeId = props.data.canonicalNodeId ?? props.data.node.id
   await workspace.askNodeAI(canonicalNodeId, askRouteId.value, askInput.value)
 }
 
-// ---- Semantic relations --------------------------------------------------
+async function acceptProposal(): Promise<void> {
+  const proposalId = queryResult.value?.proposalId
+  if (!proposalId || acceptingProposal.value) return
+  acceptingProposal.value = true
+  try {
+    await workspace.acceptNodeQueryProposal(proposalId)
+  } finally {
+    acceptingProposal.value = false
+  }
+}
+
+async function rejectProposal(): Promise<void> {
+  const proposalId = queryResult.value?.proposalId
+  if (!proposalId || rejectingProposal.value) return
+  rejectingProposal.value = true
+  try {
+    await workspace.rejectNodeQueryProposal(proposalId)
+  } finally {
+    rejectingProposal.value = false
+  }
+}
+
+// ---- Semantic relations (view-only) ---------------------------------------
+// 关系创建统一走 Canvas drag → Proposal → Confirm；Inspector 只负责查看
+// canonical semantic relations（方向/类型）。这里不再提供第二套下拉创建器。
 
 const relations = computed(() => {
   if (!props.data) return []
@@ -115,38 +172,28 @@ const relationTypeLabels: Record<string, string> = {
   SUPPORTS: '支持',
 }
 
-type SemanticRelationType = 'RELATED_TO' | 'DEPENDS_ON' | 'DERIVED_FROM' | 'CONFLICTS_WITH' | 'SUPPORTS'
-const relationTargetId = ref('')
-const relationType = ref<SemanticRelationType>('RELATED_TO')
-const relationCandidates = computed(() => {
-  if (!props.data) return []
-  return (workspace.graphView?.nodes ?? []).filter((node) => node.id !== props.data?.node.id)
-})
-
-watch(
-  () => props.data?.node.id,
-  () => {
-    relationTargetId.value = ''
-    relationType.value = 'RELATED_TO'
-  },
-)
-
-async function addRelation(): Promise<void> {
-  if (!props.data || !relationTargetId.value) return
-  const created = await workspace.createSemanticRelation(
-    props.data.node.id,
-    relationTargetId.value,
-    relationType.value,
-  )
-  if (created) relationTargetId.value = ''
-}
-
 function relationNodeLabel(nodeId: string): string {
   const node = workspace.graphView?.nodes.find((candidate) => candidate.id === nodeId)
   if (!node) return nodeId.slice(0, 8)
   if (node.question) return node.question.slice(0, 24)
   const text = node.content?.text
   return typeof text === 'string' && text ? text.slice(0, 24) : nodeId.slice(0, 8)
+}
+
+/** 对称关系（RELATED_TO/CONFLICTS_WITH）展示为无方向事实。 */
+function relationDirectionLabel(relation: {
+  relationType: string
+  sourceNodeId: string
+  targetNodeId: string
+}): string {
+  const nodeId = props.data?.node.id
+  if (relation.relationType === 'RELATED_TO' || relation.relationType === 'CONFLICTS_WITH') {
+    return `${relationNodeLabel(relation.sourceNodeId)} ↔ ${relationNodeLabel(relation.targetNodeId)}`
+  }
+  if (relation.sourceNodeId === nodeId) {
+    return `→ ${relationNodeLabel(relation.targetNodeId)}`
+  }
+  return `← ${relationNodeLabel(relation.sourceNodeId)}`
 }
 </script>
 
@@ -177,7 +224,7 @@ function relationNodeLabel(nodeId: string): string {
         <button
           class="btn btn-small btn-primary"
           data-test="ask-submit"
-          :disabled="askBlockedReason !== null || !askInput.trim() || queryResult?.status === 'RUNNING'"
+          :disabled="askBlockedReason !== null || askNeedsExplicitRoute || !askInput.trim() || (queryResult?.status === 'RUNNING' || queryResult?.status === 'AWAITING_APPROVAL')"
           @click="ask"
         >
           {{ queryResult?.status === 'RUNNING' ? '正在查询…' : '提问' }}
@@ -187,11 +234,40 @@ function relationNodeLabel(nodeId: string): string {
           <template v-if="queryResult.status === 'RUNNING'">
             <span class="badge badge-open">AI 正在基于该节点上下文回答…</span>
           </template>
+          <template v-else-if="queryResult.status === 'AWAITING_APPROVAL'">
+            <p class="graph-answer-text">{{ queryResult.message || 'AI 提出了一个候选动作，等待你确认。' }}</p>
+            <p class="meta-text">
+              候选动作：<strong>{{ queryResult.actionFamily || '未知' }}</strong>
+            </p>
+            <div class="node-inspector__proposal-actions">
+              <button
+                class="btn btn-small btn-primary"
+                data-test="accept-proposal"
+                :disabled="acceptingProposal || !queryResult.proposalId"
+                @click="acceptProposal"
+              >接受</button>
+              <button
+                class="btn btn-small"
+                data-test="reject-proposal"
+                :disabled="rejectingProposal || !queryResult.proposalId"
+                @click="rejectProposal"
+              >拒绝</button>
+            </div>
+          </template>
+          <template v-else-if="queryResult.status === 'ACCEPTED'">
+            <span class="badge badge-open">提案已接受，Graph 已更新。</span>
+          </template>
+          <template v-else-if="queryResult.status === 'REJECTED'">
+            <span class="badge badge-warn">提案已拒绝，Graph 保持不变。</span>
+          </template>
           <template v-else-if="queryResult.status === 'COMPLETED' && queryResult.message">
             <p class="graph-answer-text">{{ queryResult.message }}</p>
           </template>
           <template v-else-if="queryResult.status === 'COMPLETED'">
             <span class="badge badge-warn">AI 未返回文字回答（可查看待确认提案）。</span>
+          </template>
+          <template v-else-if="queryResult.status === 'POLICY_DENIED' || queryResult.status === 'NOT_CONFIRMABLE'">
+            <span class="badge badge-warn">{{ queryResult.message || 'AI 查询无法生成可确认提案。' }}</span>
           </template>
           <template v-else>
             <span class="badge badge-warn">查询失败，请稍后重试。</span>
@@ -227,24 +303,12 @@ function relationNodeLabel(nodeId: string): string {
       </div>
 
       <template v-if="data.node.kind === 'INTERACTION'">
-        <h4 class="node-inspector__heading">各路线回答</h4>
-        <div v-if="data.routeStates.length > 0" class="node-inspector__answers">
-          <div
-            v-for="state in orderedStates(data)"
-            :key="state.routeId"
-            class="graph-route-answer"
-            :class="{ 'graph-route-answer--primary': state.answer?.isPrimary }"
-            :data-test="`route-answer-${state.routeId}`"
-          >
-            <span class="meta-text">{{ state.routeLabel || membershipLabel(data, state.routeId) }}</span>
-            <template v-if="state.answer">
-              <span v-if="state.answer.selectedOptionLabel" class="badge badge-open">{{ state.answer.selectedOptionLabel }}</span>
-              <p v-if="state.answer.freeText" class="graph-answer-text">{{ state.answer.freeText }}</p>
-            </template>
-            <span v-else class="badge badge-warn" data-test="route-waiting">等待回答</span>
-          </div>
+        <h4 class="node-inspector__heading">回答</h4>
+        <div v-if="data.primaryAnswer" class="node-inspector__answer" data-test="canonical-answer">
+          <span v-if="data.primaryAnswer.selectedOptionLabel" class="badge badge-open">{{ data.primaryAnswer.selectedOptionLabel }}</span>
+          <p v-if="data.primaryAnswer.freeText" class="graph-answer-text">{{ data.primaryAnswer.freeText }}</p>
         </div>
-        <p v-else class="muted" data-test="node-detail-no-answers">该节点所属路线都还没有回答。</p>
+        <p v-else class="muted" data-test="node-detail-no-answer">该节点还没有回答。</p>
       </template>
 
       <h4 class="node-inspector__heading">语义关系</h4>
@@ -252,36 +316,10 @@ function relationNodeLabel(nodeId: string): string {
       <ul v-else class="node-inspector__relations" data-test="node-relations">
         <li v-for="relation in relations" :key="relation.id" class="meta-text">
           <span class="badge badge-open">{{ relationTypeLabels[relation.relationType] ?? relation.relationType }}</span>
-          <template v-if="relation.sourceNodeId === data.node.id">
-            → {{ relationNodeLabel(relation.targetNodeId) }}
-          </template>
-          <template v-else>
-            ← {{ relationNodeLabel(relation.sourceNodeId) }}
-          </template>
+          {{ relationDirectionLabel(relation) }}
           <span v-if="relation.origin === 'AGENT'" class="meta-text">（AI 建议）</span>
         </li>
       </ul>
-      <div v-if="relationCandidates.length > 0" class="node-inspector__relation-create" data-test="relation-create">
-        <label class="meta-text" for="relation-target">连接到节点</label>
-        <select id="relation-target" v-model="relationTargetId" class="graph-reading-route__select">
-          <option value="">选择节点…</option>
-          <option v-for="candidate in relationCandidates" :key="candidate.id" :value="candidate.id">
-            {{ relationNodeLabel(candidate.id) }}
-          </option>
-        </select>
-        <label class="meta-text" for="relation-type">关系类型</label>
-        <select id="relation-type" v-model="relationType" class="graph-reading-route__select">
-          <option v-for="(label, value) in relationTypeLabels" :key="value" :value="value">{{ label }}</option>
-        </select>
-        <button
-          class="btn btn-small"
-          data-test="create-relation"
-          :disabled="!relationTargetId || workspace.graphCommandPending"
-          @click="addRelation"
-        >
-          添加关系
-        </button>
-      </div>
 
       <!-- 历史节点才提供 Fork / Regenerate；当前待回答节点保持只读详情，
            回答只发生在 Graph 节点内部。 -->
@@ -339,6 +377,12 @@ function relationNodeLabel(nodeId: string): string {
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   background: var(--color-bg-inset, rgba(127, 127, 127, 0.06));
+}
+
+.node-inspector__proposal-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
 }
 
 .node-inspector__options {

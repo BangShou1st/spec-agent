@@ -43,7 +43,7 @@ class SpecSourceReferenceGuardTest {
     private ContextSnapshot contextSnapshot(List<UUID> answerIds, List<UUID> patchIds) {
         return new ContextSnapshot(UUID.randomUUID(), projectId, routeId, nodeId,
                 ContextOperationType.NORMAL, List.of(nodeId), answerIds, patchIds,
-                List.of(), null, "hash", now);
+                List.of(), List.of(), List.of(), null, "hash", now);
     }
 
     @Test

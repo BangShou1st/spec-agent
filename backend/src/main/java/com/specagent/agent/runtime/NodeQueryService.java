@@ -4,6 +4,7 @@ import com.specagent.agent.AgentRun;
 import com.specagent.agent.AgentRunFailureService;
 import com.specagent.agent.AgentRunService;
 import com.specagent.agent.AgentRunStatus;
+import com.specagent.agent.AgentRunTerminalizationService;
 import com.specagent.agent.action.ActionExecutionContext;
 import com.specagent.agent.action.ActionExecutor;
 import com.specagent.agent.action.ActionResult;
@@ -46,6 +47,8 @@ import java.util.UUID;
 public class NodeQueryService {
 
     public static final String RESPOND_MESSAGE_EVENT = "RESPOND_MESSAGE";
+    public static final String POLICY_DENIED_EVENT = "POLICY_DENIED";
+    public static final String MUTATION_NOT_CONFIRMABLE_EVENT = "MUTATION_NOT_CONFIRMABLE";
 
     private static final Logger LOG = LoggerFactory.getLogger(NodeQueryService.class);
 
@@ -58,6 +61,7 @@ public class NodeQueryService {
     private final ActionExecutor actionExecutor;
     private final AgentProposalService proposalService;
     private final AgentRunEventService eventService;
+    private final AgentRunTerminalizationService terminalizationService;
 
     public NodeQueryService(AgentRunService agentRunService,
                             AgentRunFailureService agentRunFailureService,
@@ -67,7 +71,8 @@ public class NodeQueryService {
                             AdvisorPolicyEngine policyEngine,
                             ActionExecutor actionExecutor,
                             AgentProposalService proposalService,
-                            AgentRunEventService eventService) {
+                            AgentRunEventService eventService,
+                            AgentRunTerminalizationService terminalizationService) {
         this.agentRunService = agentRunService;
         this.agentRunFailureService = agentRunFailureService;
         this.contextBuilder = contextBuilder;
@@ -77,6 +82,7 @@ public class NodeQueryService {
         this.actionExecutor = actionExecutor;
         this.proposalService = proposalService;
         this.eventService = eventService;
+        this.terminalizationService = terminalizationService;
     }
 
     public record NodeQueryResult(UUID runId, String status, String message, UUID proposalId) {
@@ -115,7 +121,15 @@ public class NodeQueryService {
                     runId, run.projectId(), routeId, snapshot.id(), anchorNodeId, null, question));
             if (policyDecision.denyReason() != null) {
                 trace = trace + "\npolicy_denied:" + policyDecision.denyReason();
-                agentRunService.complete(runId, AgentRunStatus.COMPLETED, trace);
+                // Durable terminal-outcome evidence: the result view derives
+                // POLICY_DENIED from this event, never from the trace string.
+                // The COMPLETED transition and the semantic event commit
+                // atomically, so a poll can never observe COMPLETED while the
+                // POLICY_DENIED event is absent.
+                terminalizationService.completeWithEvent(runId, AgentRunStatus.COMPLETED, trace,
+                        AgentRunPhase.COMPLETED, POLICY_DENIED_EVENT,
+                        Map.of("denyReason", policyDecision.denyReason(),
+                                "actionFamily", proposal.actionFamily()));
                 return new NodeQueryResult(runId, "policy_denied", null, null);
             }
 
@@ -135,8 +149,12 @@ public class NodeQueryService {
                         runId, run.projectId(), routeId, snapshot.id(), anchorNodeId, null, question);
                 if (!policyEngine.canProduceAcceptableProposal(proposal, downgradeContext)) {
                     trace = trace + "\nnot_confirmable:" + proposal.actionFamily();
-                    agentRunService.complete(runId, AgentRunStatus.COMPLETED, trace);
-                    eventService.append(runId, AgentRunPhase.COMPLETED, "MUTATION_NOT_CONFIRMABLE",
+                    // Same atomic terminalization as the deny path: COMPLETED
+                    // and MUTATION_NOT_CONFIRMABLE commit together, so a poll
+                    // can never transiently observe COMPLETED without the
+                    // semantic event.
+                    terminalizationService.completeWithEvent(runId, AgentRunStatus.COMPLETED, trace,
+                            AgentRunPhase.COMPLETED, MUTATION_NOT_CONFIRMABLE_EVENT,
                             Map.of("actionFamily", proposal.actionFamily()));
                     return new NodeQueryResult(runId, "not_confirmable", null, null);
                 }

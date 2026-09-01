@@ -31,7 +31,29 @@ SYSTEM_PROMPT = """你是需求工作区的决策引擎。你在一次响应中�
 13. anchorRefs 用于声明操作锚点（如当前路由 tip 节点的 node: 引用），也必须是 allowedSourceRefs 的子集。
 14. projectTitle 只是低权重的显示元数据，绝不是目标或需求；如果还没有可靠目标，就在 unknowns 中表达不确定，而不是编造一个目标。
 15. 不要建议绕过用户确认的破坏性操作；默认处于顾问（ADVISOR）模式。
-16. 除该 JSON 对象外不要输出任何其他文字。"""
+16. relations 与 relatedNodes 是受控的 1-hop 语义上下文（仅 NODE_QUERY）：relatedNodes 只包含直接关联的节点及其真实内容，绝不臆测未提供的第二跳关系；DEPENDS_ON / DERIVED_FROM / SUPPORTS 保留 source → target 方向语义，RELATED_TO / CONFLICTS_WITH 是对称事实；引用 relatedNode 时必须使用其 allowedSourceRefs 中的 node:<id> 引用。
+17. 除该 JSON 对象外不要输出任何其他文字。"""
+
+
+def _related_node_view(ref) -> Dict[str, Any]:
+    """Projection of one related node: provenance plus the full node body."""
+    return {
+        "nodeId": str(ref.node_id),
+        "relationType": ref.relation_type,
+        "direction": ref.direction,
+        "node": {
+            "id": str(ref.node.id),
+            "kind": ref.node.kind,
+            "body": {
+                "text": ref.node.body.text,
+                "options": [
+                    {"id": str(o.id), "label": o.label}
+                    for o in ref.node.body.options
+                ],
+                "acceptsFreeText": ref.node.body.accepts_free_text,
+            },
+        },
+    }
 
 
 def render_user_prompt(envelope: AgentV2RequestEnvelope) -> str:
@@ -54,6 +76,15 @@ def render_user_prompt(envelope: AgentV2RequestEnvelope) -> str:
             "effectiveClaims": [c.model_dump(mode="json", by_alias=True) for c in snapshot.effective_claims],
             "availableCapabilities": [c.model_dump(mode="json", by_alias=True) for c in snapshot.available_capabilities],
             "capabilityResults": [r.model_dump(mode="json", by_alias=True) for r in snapshot.capability_results],
+            "relations": [
+                {
+                    "sourceNodeId": str(rel.source_node_id),
+                    "targetNodeId": str(rel.target_node_id),
+                    "relationType": rel.relation_type,
+                }
+                for rel in snapshot.relations
+            ],
+            "relatedNodes": [_related_node_view(ref) for ref in snapshot.related_nodes],
             "metadata": snapshot.metadata.model_dump(mode="json", by_alias=True),
         },
         "decisionBudget": envelope.decision_budget.model_dump(mode="json", by_alias=True),

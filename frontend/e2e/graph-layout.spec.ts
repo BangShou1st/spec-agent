@@ -183,6 +183,7 @@ test('fork preserves existing visual positions while adding only a new visual ch
   const child = page.locator('[data-test="graph-question-node"]').nth(1)
   const rootBefore = await root.evaluate((el) => (el.parentElement as HTMLElement).style.transform)
   const childBefore = await child.evaluate((el) => (el.parentElement as HTMLElement).style.transform)
+  await page.locator('[data-test="graph-question-node"]').nth(1).hover()
   await page.locator('[data-test="graph-question-node"]').nth(1).getByTestId('fork-node').click()
   await expect(page.getByTestId('fork-dialog')).toBeVisible()
   await page.getByTestId('fork-submit').click()

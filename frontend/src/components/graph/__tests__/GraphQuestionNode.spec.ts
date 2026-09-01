@@ -81,6 +81,7 @@ function currentData(overrides: Partial<SpecAgentGraphNodeData> = {}): SpecAgent
     answers: [],
     routeStates: [],
     primaryAnswer: null,
+    answerPresentationMode: 'single-route',
     readingRouteId: 'r1',
     isCurrent: true,
     canAnswer: true,
@@ -132,6 +133,7 @@ function historicalData(overrides: Partial<SpecAgentGraphNodeData> = {}): SpecAg
       freeText: 'Keep this exact user answer.',
       isPrimary: true,
     },
+    answerPresentationMode: 'focused',
     readingRouteId: 'r1',
     isCurrent: false,
     canAnswer: false,
@@ -199,19 +201,65 @@ describe('graph question node', () => {
     expect((wrapper.find('[data-test="free-text"]').element as HTMLTextAreaElement).value).toBe('')
   })
 
-  it('historical node has no answer inputs and shows option label + clamped summary', () => {
+  it('historical node has no answer inputs and shows the full answer summary', () => {
     const wrapper = mountNode(historicalData())
     expect(wrapper.find('[data-test="free-text"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="submit-answer"]').exists()).toBe(false)
     expect(wrapper.text()).toContain('Product team')
     expect(wrapper.text()).toContain('Keep this exact user answer.')
-    expect(wrapper.find('.graph-answer-summary--clamped').exists()).toBe(true)
+    expect(wrapper.find('[data-test="answer-summary"]').exists()).toBe(true)
+  })
+
+  it('historical freeText carries the bounded-summary class so a long answer never overflows the graph card', () => {
+    const wrapper = mountNode(historicalData({
+      answers: [
+        { routeId: 'r1', selectedOptionId: null, selectedOptionLabel: null,
+          freeText: 'A'.repeat(5000), isPrimary: true },
+      ],
+    }))
+    const clamped = wrapper.find('[data-test="clamped-free-text"]')
+    expect(clamped.exists()).toBe(true)
+    expect(clamped.classes()).toContain('graph-answer-text--clamped')
+    // current answerable node must NOT carry the clamp class.
+    const current = mountNode(currentData())
+    expect(current.find('[data-test="clamped-free-text"]').exists()).toBe(false)
+  })
+
+  it('action rail renders outside the node body as a right-side vertical stack', () => {
+    const wrapper = mountNode(historicalData())
+    const rail = wrapper.find('.graph-node-actions--toolbar')
+    expect(rail.exists()).toBe(true)
+    // 轨道是 article 的直接子元素，绝不在卡片主体内占位。
+    expect(rail.element.parentElement).toBe(wrapper.element)
+    expect(wrapper.find('[data-test="node-body"] .graph-node-actions--toolbar').exists()).toBe(false)
+    for (const id of ['fork-node', 'reanswer-node', 'regenerate-node', 'contextual-ai']) {
+      expect(rail.find(`[data-test="${id}"]`).exists()).toBe(true)
+    }
+  })
+
+  it('action rail stays visible on selected node (selection adds the --selected class)', async () => {
+    const wrapper = mountNode(historicalData(), { selected: true })
+    const article = wrapper.find('[data-test="graph-question-node"]')
+    expect(article.classes()).toContain('graph-question-node--selected')
+  })
+
+  it('action rail is keyboard focusable: tabindex is 0 and role=toolbar', () => {
+    const wrapper = mountNode(historicalData())
+    const rail = wrapper.find('.graph-node-actions--toolbar')
+    expect(rail.attributes('tabindex')).toBe('0')
+    expect(rail.attributes('role')).toBe('toolbar')
+    expect(rail.attributes('aria-label')).toBe('节点操作')
+  })
+
+  it('current answerable node renders no action rail (answering stays in the card)', () => {
+    const wrapper = mountNode(currentData())
+    expect(wrapper.find('.graph-node-actions--toolbar').exists()).toBe(false)
   })
 
   it('historical node never expands verbose route history inside the graph card', async () => {
     const expanded = historicalData({ isExpanded: true })
     const wrapper = mountNode(expanded)
-    expect(wrapper.find('.graph-answer-summary--clamped').exists()).toBe(true)
+    expect(wrapper.find('[data-test="answer-summary"]').exists()).toBe(true)
     expect(wrapper.find('.graph-node-details').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('Second route answer.')
   })
@@ -295,70 +343,76 @@ describe('graph question node', () => {
     expect(wrapper.find('[data-test="reading-route-select"]').text()).toContain('未选择')
   })
 })
-describe('shared node route-specific waiting state', () => {
-  function waitingData(overrides: Partial<SpecAgentGraphNodeData> = {}): SpecAgentGraphNodeData {
-    return {
-      node: nodeData({ parentNodeId: 'n0' }),
-      projectId: 'p1',
+describe('shared node canonical answer (no route-specific waiting)', () => {
+  it('shared answered node shows the canonical answer once and never offers a route-specific "answer this question"', async () => {
+    const wrapper = mountNode(historicalData({
       routeIds: ['r1', 'r2'],
-      visibleRouteIds: ['r1', 'r2'],
-      answers: [
-        answer('r1', { freeText: 'A answer on shared node.', isPrimary: false }),
+      answers: [answer('r1', { freeText: 'Shared canonical answer.', isPrimary: true })],
+      primaryAnswer: answer('r1', { freeText: 'Shared canonical answer.', isPrimary: true }),
+      routeMembership: [
+        { routeId: 'r1', label: 'Initial', lifecycleStatus: 'open', isActive: true },
+        { routeId: 'r2', label: 'Route-B', lifecycleStatus: 'archived', isActive: false },
       ],
+    }))
+    // canonical Answer 只展示一次。
+    expect(wrapper.find('[data-test="answer-summary"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('Shared canonical answer.')
+    // 绝不出现 route-specific 的"回答这个问题"入口。
+    expect(wrapper.find('[data-test="answer-this-question"]').exists()).toBe(false)
+  })
+
+  it('shared node membership chips render both routes', async () => {
+    const wrapper = mountNode(historicalData({
+      routeIds: ['r1', 'r2'],
+      routeMembership: [
+        { routeId: 'r1', label: 'Initial', lifecycleStatus: 'open', isActive: true },
+        { routeId: 'r2', label: 'Route-B', lifecycleStatus: 'archived', isActive: false },
+      ],
+    }))
+    expect(wrapper.text()).toContain('Initial')
+    expect(wrapper.text()).toContain('Route-B')
+  })
+
+  it('shared unanswered node shows only plain waiting, never a route-specific resume affordance', async () => {
+    const wrapper = mountNode(historicalData({
+      routeIds: ['r1', 'r2'],
+      answers: [],
+      primaryAnswer: null,
       routeStates: [
-        {
-          routeId: 'r1',
-          answer: {
-            routeId: 'r1',
-            selectedOptionId: null,
-            selectedOptionLabel: null,
-            freeText: 'A answer on shared node.',
-            isPrimary: false,
-          },
-        },
+        { routeId: 'r1', answer: null },
         { routeId: 'r2', answer: null },
       ],
-      primaryAnswer: null,
       readingRouteId: 'r2',
-      isCurrent: false,
-      canAnswer: false,
-      isExpanded: false,
-      isShared: true,
-      isLatest: false,
-      qLabel: null,
-      visualWeight: 'focus',
-      ...overrides,
-    }
-  }
-
-  it('Focus=B without an answer shows B waiting and never A answer as the summary', () => {
-    const wrapper = mountNode(waitingData())
-    // 摘要显式等待；A 的回答不作为 primary 展示。
-    expect(wrapper.find('[data-test="waiting-summary"]').text()).toContain('当前查看路线 · 等待回答')
-    expect(wrapper.find('[data-test="answer-summary"]').exists()).toBe(false)
-    expect(wrapper.text()).not.toContain('A answer on shared node.')
+      routeMembership: [
+        { routeId: 'r1', label: 'Initial', lifecycleStatus: 'open', isActive: true },
+        { routeId: 'r2', label: 'Route-B', lifecycleStatus: 'open', isActive: false },
+      ],
+    }))
+    expect(wrapper.find('[data-test="waiting-plain"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('等待回答')
+    // 没有任何 route-specific 的"回答这个问题"入口。
+    expect(wrapper.find('[data-test="answer-this-question"]').exists()).toBe(false)
   })
 
-  it('shared node does not expose per-route answer history in the graph card', async () => {
-    const expanded = waitingData({ isExpanded: true })
-    const wrapper = mountNode(expanded)
-    expect(wrapper.find('.graph-node-details').exists()).toBe(false)
-    expect(wrapper.text()).not.toContain('A answer on shared node.')
-  })
-
-  it('a shared current node keeps answer controls and exposes the old route answer via expand', async () => {
-    const data = waitingData({
-      isCurrent: true,
-      canAnswer: true,
-      routeIds: ['r1', 'r2'],
-    })
-    const wrapper = mountNode(data)
-    // 当前节点继续直接显示回答 controls。
-    expect(wrapper.find('[data-test="question"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="free-text"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="submit-answer"]').exists()).toBe(true)
-    // 旧路线回答只在 Inspector 中查看。
-    expect(wrapper.find('.graph-node-details').exists()).toBe(false)
+  it('single-route canonical unanswered TIP keeps the legal activate-to-answer affordance', async () => {
+    const wrapper = mountNode(historicalData({
+      routeIds: ['r1'],
+      visibleRouteIds: ['r1'],
+      answers: [],
+      primaryAnswer: null,
+      routeStates: [{ routeId: 'r1', answer: null }],
+      readingRouteId: 'r1',
+      isTipOfReadingRoute: true,
+      isShared: false,
+      routeMembership: [
+        { routeId: 'r1', label: 'Initial', lifecycleStatus: 'open', isActive: false },
+      ],
+    }))
+    // 真正 canonical 未答 Question 且是阅读路线 tip：出现"回答这个问题"。
+    const button = wrapper.find('[data-test="answer-this-question"]')
+    expect(button.exists()).toBe(true)
+    await button.trigger('click')
+    expect(wrapper.emitted('activate-route')?.[0]).toEqual(['r1'])
   })
 })
 
@@ -440,21 +494,33 @@ describe('graph node edge anchors (adaptive four-side handles)', () => {
     }
   })
 
-  it('anchors are never connectable: users can not drag edges from/to them', () => {
+  it('exposes draggable connection anchors: source starts and completes edges', () => {
     const wrapper = mountNode(currentData())
     for (const id of handleIds) {
       const handle = wrapper.find(`[id="${id}"]`)
-      expect(handle.attributes('connectable'), id).toBe('false')
+      expect(handle.attributes('connectable'), id).toBe('true')
+    }
+    // source 锚点既可发起也可完成连接（target 锚点不参与指针命中，见样式）。
+    for (const id of ['source-left', 'source-right', 'source-top', 'source-bottom']) {
+      const handle = wrapper.find(`[id="${id}"]`)
+      expect(handle.attributes('connectable-start'), id).toBe('true')
+      expect(handle.attributes('connectable-end'), id).toBe('true')
+      expect(handle.classes()).toContain('graph-question-node__handle--source')
+    }
+    for (const id of ['target-left', 'target-right', 'target-top', 'target-bottom']) {
+      const handle = wrapper.find(`[id="${id}"]`)
       expect(handle.attributes('connectable-start'), id).toBe('false')
-      expect(handle.attributes('connectable-end'), id).toBe('false')
+      expect(handle.attributes('connectable-end'), id).toBe('true')
+      expect(handle.classes()).toContain('graph-question-node__handle--target')
     }
   })
 
-  it('style.css keeps the anchors invisible and click-transparent (never visible dots)', () => {
+  it('style.css keeps anchors hidden by default and reveals them on node hover for manual connection', () => {
     // Vitest runs with the frontend directory as cwd.
     const css = readFileSync(resolve(process.cwd(), 'src/style.css'), 'utf8')
-    expect(css).toMatch(/.graph-question-node__handle\s*{[^}]*pointer-events:\s*none/)
-    expect(css).toMatch(/.graph-question-node__handle\s*{[^}]*opacity:\s*0/)
+    expect(css).toMatch(/\.graph-question-node__handle\s*{[^}]*pointer-events:\s*none/)
+    expect(css).toMatch(/\.graph-question-node__handle\s*{[^}]*opacity:\s*0/)
+    expect(css).toMatch(/\.graph-question-node:hover \.graph-question-node__handle--source\s*{[^}]*pointer-events:\s*all/)
   })
 
   it('handles stay present on the historical read-only node too', () => {

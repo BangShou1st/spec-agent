@@ -24,6 +24,8 @@ public record AgentInputSnapshot(String snapshotId,
                                  List<String> allowedSourceRefs,
                                  List<CapabilityDescriptor> availableCapabilities,
                                  List<CapabilityResultView> capabilityResults,
+                                 List<RelationView> relations,
+                                 List<RelatedNodeRef> relatedNodes,
                                  AutonomyInputs autonomy) {
 
     public AgentInputSnapshot {
@@ -34,5 +36,7 @@ public record AgentInputSnapshot(String snapshotId,
                 ? List.of() : List.copyOf(availableCapabilities);
         capabilityResults = capabilityResults == null
                 ? List.of() : List.copyOf(capabilityResults);
+        relations = relations == null ? List.of() : List.copyOf(relations);
+        relatedNodes = relatedNodes == null ? List.of() : List.copyOf(relatedNodes);
     }
 }

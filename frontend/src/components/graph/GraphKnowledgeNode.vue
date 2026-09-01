@@ -10,6 +10,7 @@ export default { components: { Handle } }
 import { computed, ref, watch } from 'vue'
 import { Position } from '@vue-flow/core'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
+import { useGraphUiStore } from '@/stores/graphUiStore'
 import type { SpecAgentGraphNodeData } from '@/graph/graphProjection'
 
 /**
@@ -19,7 +20,8 @@ import type { SpecAgentGraphNodeData } from '@/graph/graphProjection'
  *
  * A user-authored draft stays editable in place while PROPOSED; confirmed
  * or agent-authored content is read-only and evolves through knowledge-state
- * transitions, revision, and branches — never silent rewrites.
+ * transitions, revision, and branches — never silent rewrites. Double-click
+ * (or a pending edit request right after creation) opens the editor.
  */
 const ANCHOR_SIDES: Position[] = [Position.Left, Position.Right, Position.Top, Position.Bottom]
 const SOURCE_ANCHORS = ANCHOR_SIDES.map((side) => ({ id: 'source-' + side, position: side }))
@@ -31,6 +33,7 @@ const props = defineProps<{
 }>()
 
 const workspace = useWorkspaceStore()
+const graphUi = useGraphUiStore()
 
 const emit = defineEmits<{
   'contextual-ai': [nodeId: string]
@@ -85,6 +88,23 @@ function startEditing(): void {
   editText.value = contentText.value
 }
 
+/** 双击卡片直接进入编辑（仅限用户可编辑草稿）。 */
+function onCardDblClick(): void {
+  if (isDraft.value && !editing.value) startEditing()
+}
+
+// 创建后自动进入编辑：workspace 请求编辑该视觉节点时消费一次请求。
+watch(
+  () => graphUi.pendingEditNodeKey,
+  () => {
+    const key = props.data.visualNodeKey
+    if (key && graphUi.consumeNodeEditRequest(key)) {
+      startEditing()
+    }
+  },
+  { immediate: true },
+)
+
 function cancelEditing(): void {
   editing.value = false
   editSubtype.value = node.value.subtype
@@ -112,10 +132,14 @@ async function confirmContent(): Promise<void> {
 <template>
   <article
     class="graph-question-node graph-knowledge-node"
-    :class="{ 'graph-question-node--shared': data.isShared }"
+    :class="{
+      'graph-question-node--shared': data.isShared,
+      'graph-question-node--selected': selected === true,
+    }"
     data-test="graph-knowledge-node"
     data-layout-role="graph-node"
     :data-node-id="data.node.id"
+    @dblclick="onCardDblClick"
   >
     <Handle
       v-for="anchor in SOURCE_ANCHORS"
@@ -123,10 +147,10 @@ async function confirmContent(): Promise<void> {
       :id="anchor.id"
       type="source"
       :position="anchor.position"
-      class="graph-question-node__handle"
-      :connectable="false"
-      :connectable-start="false"
-      :connectable-end="false"
+      class="graph-question-node__handle graph-question-node__handle--source"
+      :connectable="true"
+      :connectable-start="true"
+      :connectable-end="true"
       aria-hidden="true"
     />
     <Handle
@@ -135,10 +159,10 @@ async function confirmContent(): Promise<void> {
       :id="anchor.id"
       type="target"
       :position="anchor.position"
-      class="graph-question-node__handle"
-      :connectable="false"
+      class="graph-question-node__handle graph-question-node__handle--target"
+      :connectable="true"
       :connectable-start="false"
-      :connectable-end="false"
+      :connectable-end="true"
       aria-hidden="true"
     />
 
@@ -181,7 +205,7 @@ async function confirmContent(): Promise<void> {
         ></textarea>
         <div class="graph-node-actions">
           <button
-            class="btn btn-primary graph-action nodrag"
+            class="btn graph-action nodrag"
             data-test="save-draft"
             :disabled="workspace.graphCommandPending"
             @click.stop="saveDraft"
@@ -201,45 +225,53 @@ async function confirmContent(): Promise<void> {
         <p v-else class="graph-knowledge-node__empty meta-text" data-test="knowledge-empty">
           空草稿
         </p>
-
-        <div class="graph-node-actions graph-node-actions--toolbar" tabindex="0" role="toolbar" aria-label="节点操作">
-          <button
-            v-if="isDraft"
-            class="btn graph-action nodrag"
-            data-test="edit-draft"
-            :disabled="workspace.graphCommandPending"
-            @click.stop="startEditing"
-          >
-            编辑
-          </button>
-          <button
-            v-if="isDraft && node.knowledgeStatus === 'PROPOSED' && contentText"
-            class="btn graph-action nodrag"
-            data-test="confirm-knowledge"
-            :disabled="workspace.graphCommandPending"
-            @click.stop="confirmContent"
-          >
-            确认内容
-          </button>
-          <button
-            class="btn graph-action nodrag"
-            data-test="continue-node"
-            :disabled="!data.readingRouteId || workspace.graphCommandPending"
-            :title="data.readingRouteId ? '从该节点继续探索（历史节点将创建探索分支）' : '共享节点请先在上方选择查看路线'"
-            @click.stop="continueFromHere"
-          >
-            从这里继续
-          </button>
-          <button
-            class="btn graph-action nodrag"
-            data-test="contextual-ai"
-            title="在检查器中询问 AI"
-            @click.stop="emit('contextual-ai', data.node.id)"
-          >
-            问 AI
-          </button>
-        </div>
       </template>
+    </div>
+
+    <!-- 操作轨道：与问题节点一致，悬浮在节点右侧外缘竖排（left:100%），
+         悬停或键盘聚焦节点时出现；编辑态使用卡片内的保存/取消表单按钮。 -->
+    <div
+      v-if="!editing"
+      class="graph-node-actions graph-node-actions--toolbar"
+      tabindex="0"
+      role="toolbar"
+      aria-label="节点操作"
+    >
+      <button
+        v-if="isDraft"
+        class="btn graph-action nodrag"
+        data-test="edit-draft"
+        :disabled="workspace.graphCommandPending"
+        @click.stop="startEditing"
+      >
+        编辑
+      </button>
+      <button
+        v-if="isDraft && node.knowledgeStatus === 'PROPOSED' && contentText"
+        class="btn graph-action nodrag"
+        data-test="confirm-knowledge"
+        :disabled="workspace.graphCommandPending"
+        @click.stop="confirmContent"
+      >
+        确认内容
+      </button>
+      <button
+        class="btn graph-action nodrag"
+        data-test="continue-node"
+        :disabled="!data.readingRouteId || workspace.graphCommandPending"
+        :title="data.readingRouteId ? '从该节点继续探索（历史节点将创建探索分支）' : '共享节点请先在上方选择查看路线'"
+        @click.stop="continueFromHere"
+      >
+        从这里继续
+      </button>
+      <button
+        class="btn graph-action nodrag"
+        data-test="contextual-ai"
+        title="在检查器中询问 AI"
+        @click.stop="emit('contextual-ai', data.node.id)"
+      >
+        问 AI
+      </button>
     </div>
   </article>
 </template>

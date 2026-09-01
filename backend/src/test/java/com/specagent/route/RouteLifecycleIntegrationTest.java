@@ -112,6 +112,29 @@ class RouteLifecycleIntegrationTest {
         assertThat(route.lifecycleStatus()).isEqualTo(RouteLifecycleStatus.ARCHIVED);
     }
 
+    /**
+     * Archiving the active route clears the active pointer even when another OPEN
+     * route exists. RouteService must NOT auto-select the other OPEN route — the
+     * caller decides the next active route explicitly. This locks the no-implicit-
+     * selection contract and the active-route invariant.
+     */
+    @Test
+    void archiveActiveRouteClearsPointerAndDoesNotAutoSelectAnotherOpenRoute() {
+        Fixture f = createProjectWithData();
+        Route other = routeService.createRoute(f.project().id(), RouteLifecycleStatus.OPEN, "另一条 OPEN 路线");
+
+        routeService.archiveRoute(f.project().id(), f.routeId());
+
+        Project project = projectService.getProject(f.project().id()).orElseThrow();
+        assertThat(project.activeRouteId())
+                .as("archiving the active route must clear the pointer, not auto-pick another OPEN route")
+                .isNull();
+        Route archived = routeService.getRoute(f.routeId()).orElseThrow();
+        assertThat(archived.lifecycleStatus()).isEqualTo(RouteLifecycleStatus.ARCHIVED);
+        Route stillOpen = routeService.getRoute(other.id()).orElseThrow();
+        assertThat(stillOpen.lifecycleStatus()).isEqualTo(RouteLifecycleStatus.OPEN);
+    }
+
     @Test
     void softDeleteActiveRouteClearsActiveRoute() {
         Fixture f = createProjectWithData();
@@ -181,7 +204,7 @@ class RouteLifecycleIntegrationTest {
                 "Child question", null, List.of(), true);
         // Regenerate to make the original route SUPERSEDED.
         RegenerateResult result = routeService.commitReplacementFromNode(
-                f.project().id(), f.routeId(), child.id(), null,
+                f.project().id(), f.routeId(), child.id(), child.id(), null,
                 "New question", "New purpose", List.of(), true);
 
         // The old route is now SUPERSEDED.

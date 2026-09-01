@@ -1,0 +1,54 @@
+{
+  "protocolVersion": "agent-input.v2",
+  "runId": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+  "event": {
+    "kind": "NODE_QUERY",
+    "anchorNodeId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+    "selectedOptionId": null,
+    "freeText": "这个节点到底是什么意思？"
+  },
+  "snapshot": {
+    "snapshotId": "dddddddd-dddd-dddd-dddd-dddddddddddd",
+    "contextHash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "projectId": "55555555-5555-5555-5555-555555555555",
+    "routeId": null,
+    "anchorNodeId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+    "routeContext": {
+      "routeId": null,
+      "tipNodeId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+      "label": null
+    },
+    "lineage": [
+      {
+        "node": {
+          "id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+          "body": {
+            "text": "Floating anchor node used for a routeless NODE_QUERY.",
+            "options": [],
+            "acceptsFreeText": false
+          },
+          "kind": "KNOWLEDGE"
+        },
+        "answer": null,
+        "patches": []
+      }
+    ],
+    "effectiveClaims": [],
+    "metadata": {
+      "projectTitle": "内部工单系统探索"
+    },
+    "allowedSourceRefs": [
+      "node:bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+      "context:dddddddd-dddd-dddd-dddd-dddddddddddd"
+    ],
+    "availableCapabilities": [],
+    "capabilityResults": [],
+    "autonomy": {
+      "mode": "ADVISOR"
+    }
+  },
+  "capabilities": [],
+  "decisionBudget": {
+    "maxModelCalls": 2
+  }
+}

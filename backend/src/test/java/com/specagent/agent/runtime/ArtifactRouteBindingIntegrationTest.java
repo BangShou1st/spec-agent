@@ -139,7 +139,7 @@ class ArtifactRouteBindingIntegrationTest {
         var snapshotOfB = new com.specagent.context.ContextSnapshot(
                 UUID.randomUUID(), projectId, routeB, UUID.randomUUID(),
                 com.specagent.context.ContextOperationType.NORMAL,
-                List.of(), List.of(), List.of(), List.of(), null, "hash",
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), null, "hash",
                 java.time.Instant.now());
 
         // The ref itself is even a real NODE ref that would pass per-ref

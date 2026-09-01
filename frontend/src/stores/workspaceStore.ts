@@ -10,18 +10,22 @@ import {
 } from '@/api/agentRuns'
 import type { AgentRunView } from '@/api/agentRuns'
 import {
+  acceptProposal,
   appendContinuation,
   attachResource as attachResourceCommand,
+  createFloatingDraftNode,
   createRelation,
   createNodeQuery,
-  createRootDraftNode,
   getNodeQueryResult,
   getUndoRedoAvailability,
+  listProposals,
   redoGraphOperation,
+  rejectProposal,
   reviseDraftNode,
   setKnowledgeStatus,
   undoGraphOperation,
 } from '@/api/graphCommands'
+import type { ProjectProposalSummary } from '@/api/graphCommands'
 import { getProjectGraph } from '@/api/graph'
 import { getProject } from '@/api/projects'
 import { getRequirementState, getRouteRequirementState } from '@/api/requirementState'
@@ -105,6 +109,32 @@ function toDisplayError(err: unknown): DisplayError {
 }
 
 /**
+ * Keeps only the NodeQuery proposals of a durable proposal list. The proposal
+ * list API is shared by every run type; recovery must never infer the query
+ * origin from inputNodeId (every run type carries one). The explicit
+ * triggerType (derived from the proposal's AgentRun) is the only safe filter:
+ * Answer/Decision PROPOSED proposals must never surface in the NodeInspector
+ * as contextual Ask-AI proposals.
+ */
+function keepNodeQueryProposals(proposals: ProjectProposalSummary[]): ProjectProposalSummary[] {
+  return proposals.filter((proposal) => proposal.triggerType === 'node_query')
+}
+
+/**
+ * Reads the durable PROPOSED NodeQuery proposals for one project, fail-soft:
+ * a failed proposal-list read must never fail the workspace load or refresh
+ * (pending proposals remain discoverable on the next successful load). The
+ * pure-function shape lets loadWorkspace/refreshWorkspace fetch it in the same
+ * Promise.all as the canonical reads, so the workspace critical path and its
+ * load/layout timing are unchanged.
+ */
+function loadNodeQueryProposalsSafely(projectId: string): Promise<ProjectProposalSummary[]> {
+  return listProposals(projectId, 'PROPOSED')
+    .then(keepNodeQueryProposals)
+    .catch(() => [])
+}
+
+/**
  * Workspace application state (canonical server state + Runtime commands).
  *
  * The frontend never reconstructs Runtime history: after every command the
@@ -182,12 +212,23 @@ export const useWorkspaceStore = defineStore('workspace', {
     // In-flight / finished contextual node query ("ask AI about this node").
     nodeQuery: null as {
       nodeId: string
-      routeId: string
+      routeId: string | null
       question: string
       runId: string
-      status: 'RUNNING' | 'COMPLETED' | 'FAILED'
+      status: 'RUNNING' | 'COMPLETED' | 'FAILED' | 'AWAITING_APPROVAL' | 'ACCEPTED' | 'REJECTED' | 'POLICY_DENIED' | 'NOT_CONFIRMABLE'
       message: string | null
+      proposalId?: string | null
+      proposalStatus?: string | null
+      actionFamily?: string | null
     } | null,
+    /**
+     * Durable pending NodeQuery proposals discovered from the backend proposal
+     * list API. A PROPOSED AgentProposal must survive a page reload and a
+     * newer query (which replaces `nodeQuery`): this list is reloaded on every
+     * workspace load/refresh and keyed by the canonical anchor node id so the
+     * Inspector on that node still exposes the pending proposal.
+     */
+    nodeQueryProposals: [] as ProjectProposalSummary[],
   }),
   getters: {
     activeRoute(state): RouteResponse | null {
@@ -223,18 +264,20 @@ export const useWorkspaceStore = defineStore('workspace', {
       this.pendingRouteProjection = null
       this.focusAfterMutation = null
       try {
-        const [project, activeState, routes, requirementState, graphView] = await Promise.all([
+        const [project, activeState, routes, requirementState, graphView, proposals] = await Promise.all([
           getProject(projectId),
           getActiveState(projectId),
           listRoutes(projectId),
           getRequirementState(projectId),
           getProjectGraph(projectId),
+          loadNodeQueryProposalsSafely(projectId),
         ])
         this.project = project
         this.activeState = activeState
         this.routes = routes
         this.requirementState = requirementState
         this.graphView = graphView
+        this.nodeQueryProposals = proposals ?? []
         this.restoreCanonicalRecoveryCheckpoints()
         this.requirementStatesByRoute = {}
         this.specsByRoute = {}
@@ -254,18 +297,20 @@ export const useWorkspaceStore = defineStore('workspace', {
       this.refreshing = true
       this.error = null
       try {
-        const [project, activeState, routes, requirementState, graphView] = await Promise.all([
+        const [project, activeState, routes, requirementState, graphView, proposals] = await Promise.all([
           getProject(this.projectId),
           getActiveState(this.projectId),
           listRoutes(this.projectId),
           getRequirementState(this.projectId),
           getProjectGraph(this.projectId),
+          loadNodeQueryProposalsSafely(this.projectId),
         ])
         this.project = project
         this.activeState = activeState
         this.routes = routes
         this.requirementState = requirementState
         this.graphView = graphView
+        this.nodeQueryProposals = proposals ?? []
         this.restoreCanonicalRecoveryCheckpoints()
         // RequirementState is derived and answers/patches change it: drop the
         // route-scoped cache on every canonical refresh so the reading UI
@@ -1461,29 +1506,29 @@ export const useWorkspaceStore = defineStore('workspace', {
     },
 
     /**
-     * Creates the first draft idea on the empty active route. The user
-     * authors content before any agent involvement — zero model calls.
+     * Adds a user-authored idea as a standalone (floating) draft — zero
+     * model calls, never connected to any node. The user connects it
+     * manually on the canvas. No Active Route is required: the creation
+     * context route id is optional (null context is legal). Returns the
+     * created node id, or null on failure.
      */
-    async createRootIdea(): Promise<boolean> {
-      if (!this.projectId || this.graphCommandPending) return false
+    async createIdea(): Promise<string | null> {
+      if (!this.projectId || this.graphCommandPending) return null
       const activeRouteId = this.activeState?.activeRoute?.id ?? null
-      if (!activeRouteId) {
-        this.error = { code: 'NO_ACTIVE_ROUTE', message: '当前项目没有活动路线。' }
-        return false
-      }
       this.graphCommandPending = true
+      this.error = null
       try {
-        await createRootDraftNode(this.projectId, activeRouteId, {
-          subtype: 'NOTE',
+        const created = await createFloatingDraftNode(this.projectId, activeRouteId, {
+          subtype: 'IDEA',
           content: {},
         })
-        this.feedback = '已创建草稿节点，直接在卡片上编辑内容。'
+        this.feedback = '已创建想法，双击卡片直接编辑。'
         await this.refreshWorkspace()
         await this.refreshUndoRedoAvailability()
-        return true
+        return created.id
       } catch (err) {
         this.error = toDisplayError(err)
-        return false
+        return null
       } finally {
         this.graphCommandPending = false
       }
@@ -1654,7 +1699,7 @@ export const useWorkspaceStore = defineStore('workspace', {
      * Asks AI about a node: enqueues an async query run and polls until the
      * single DECISION call finishes. The query has no graph side effects.
      */
-    async askNodeAI(nodeId: string, routeId: string, question: string): Promise<boolean> {
+    async askNodeAI(nodeId: string, routeId: string | null, question: string): Promise<boolean> {
       if (!this.projectId || !question.trim()) return false
       if (nodeId.startsWith('pending:')) {
         this.error = {
@@ -1663,18 +1708,38 @@ export const useWorkspaceStore = defineStore('workspace', {
         }
         return false
       }
+      // Route semantics: a shared route node (referenced by more than one
+      // route) MUST supply an explicit read route as the query context; we
+      // must not silently fall back to routeId=null. A floating node (no
+      // route membership) is allowed to query with routeId=null.
+      if (routeId == null) {
+        const membership = this.nodeRouteIds(nodeId)
+        if (membership.length > 1) {
+          this.error = {
+            code: 'SHARED_NODE_REQUIRES_ROUTE',
+            message: '共享节点请先选择一条查看路线，再询问 AI。',
+          }
+          return false
+        }
+      }
       this.error = null
       try {
         const created = await createNodeQuery(this.projectId, nodeId, routeId, question.trim())
-        this.nodeQuery = {
+        // Capture the immutable query identity once. The poll loop carries
+        // this snapshot and must never borrow the routeId/question of a newer
+        // query that replaced nodeQuery.
+        const querySnapshot = {
           nodeId,
           routeId,
           question: question.trim(),
           runId: created.runId,
+        }
+        this.nodeQuery = {
+          ...querySnapshot,
           status: 'RUNNING',
           message: null,
         }
-        await this.pollNodeQuery(created.runId, nodeId)
+        await this.pollNodeQuery(querySnapshot)
         return true
       } catch (err) {
         this.error = toDisplayError(err)
@@ -1683,31 +1748,142 @@ export const useWorkspaceStore = defineStore('workspace', {
       }
     },
 
-    async pollNodeQuery(runId: string, nodeId: string): Promise<void> {
+    /** Resolves the route memberships of a canonical node from the graph read. */
+    nodeRouteIds(nodeId: string): string[] {
+      const routes = this.graphView?.routes ?? []
+      const ids = new Set<string>()
+      for (const route of routes) {
+        if (route.lineageNodeIds.includes(nodeId)) ids.add(route.id)
+      }
+      return [...ids]
+    },
+
+    async pollNodeQuery(query: {
+      runId: string
+      nodeId: string
+      routeId: string | null
+      question: string
+    }): Promise<void> {
       if (!this.projectId) return
+      const { runId, nodeId, routeId, question } = query
       const maxAttempts = 40
       for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
         await new Promise((resolve) => setTimeout(resolve, 1500))
+        // Stale poll guard: a newer query may have replaced nodeQuery. If the
+        // global nodeQuery no longer belongs to THIS poll run, abandon it so a
+        // slow response can never overwrite the latest query's state.
+        if (this.nodeQuery && this.nodeQuery.runId !== runId) return
         try {
           const result = await getNodeQueryResult(this.projectId, nodeId, runId)
-          if (result.status === 'RUNNING' || result.status === 'CREATED') continue
+          // Only the real terminal outcome statuses stop the poll. The result
+          // API reports intermediate run lifecycle phases (CONTEXT_BUILT,
+          // MODEL_CALLED, ...) verbatim — treating them as terminal would
+          // show a spurious query failure whenever a tick lands mid-run.
+          const terminal = result.status === 'COMPLETED'
+            || result.status === 'FAILED'
+            || result.status === 'AWAITING_APPROVAL'
+            || result.status === 'ACCEPTED'
+            || result.status === 'REJECTED'
+            || result.status === 'POLICY_DENIED'
+            || result.status === 'NOT_CONFIRMABLE'
+          if (!terminal) continue
+          if (this.nodeQuery && this.nodeQuery.runId !== runId) return
           this.nodeQuery = {
             nodeId,
-            routeId: this.nodeQuery?.routeId ?? '',
-            question: this.nodeQuery?.question ?? '',
+            routeId,
+            question,
             runId,
-            status: result.status === 'FAILED' ? 'FAILED' : 'COMPLETED',
+            status: result.status === 'FAILED' ? 'FAILED'
+              : (result.status as 'RUNNING' | 'COMPLETED' | 'FAILED' | 'AWAITING_APPROVAL' | 'ACCEPTED' | 'REJECTED' | 'POLICY_DENIED' | 'NOT_CONFIRMABLE'),
             message: result.message,
+            proposalId: result.proposalId ?? null,
+            proposalStatus: result.proposalStatus ?? null,
+            actionFamily: result.actionFamily ?? null,
           }
           return
         } catch {
-          // Transient poll failures fall through to the next attempt.
+          // Transient poll failures fall through to the next attempt, but a
+          // stale poll must still bail out instead of clobbering the latest.
+          if (this.nodeQuery && this.nodeQuery.runId !== runId) return
         }
       }
-      this.nodeQuery = this.nodeQuery
-        ? { ...this.nodeQuery, status: 'FAILED' }
-        : null
-      this.error = { code: 'QUERY_TIMEOUT', message: 'AI 查询超时，请稍后重试。' }
+      if (this.nodeQuery && this.nodeQuery.runId === runId) {
+        this.nodeQuery = { ...this.nodeQuery, status: 'FAILED' }
+        this.error = { code: 'QUERY_TIMEOUT', message: 'AI 查询超时，请稍后重试。' }
+      }
+    },
+
+    /**
+     * Reloads the durable PROPOSED NodeQuery proposals from the backend
+     * proposal list API. This is what makes a pending proposal survive a page
+     * reload: the list is keyed to each proposal's canonical anchor node
+     * (inputNodeId) so the Inspector on that node exposes it even when the
+     * in-memory `nodeQuery` was reset or replaced by a newer query.
+     */
+    async loadNodeQueryProposals(): Promise<void> {
+      if (!this.projectId) {
+        this.nodeQueryProposals = []
+        return
+      }
+      try {
+        this.nodeQueryProposals = keepNodeQueryProposals(
+          await listProposals(this.projectId, 'PROPOSED'),
+        )
+      } catch {
+        // A failed proposal-list read must not fail the whole workspace load;
+        // keep the last known list and let the UI surface loading errors as
+        // usual. Pending proposals remain discoverable on the next refresh.
+        this.nodeQueryProposals = this.nodeQueryProposals ?? []
+      }
+    },
+
+    /**
+     * Accepts a pending NodeQuery proposal. The backend returns the confirmed
+     * proposal; the canonical graph is refreshed so any produced node/relation
+     * becomes visible. The in-memory nodeQuery lifecycle is only mutated when
+     * the proposal being accepted IS the current query's own proposal —
+     * handling a durable proposal must never mark an unrelated in-memory query
+     * as accepted.
+     */
+    async acceptNodeQueryProposal(proposalId: string): Promise<boolean> {
+      if (!this.projectId) return false
+      this.error = null
+      try {
+        await acceptProposal(proposalId)
+        await this.refreshWorkspace()
+        await this.loadNodeQueryProposals()
+        if (this.nodeQuery && this.nodeQuery.proposalId === proposalId) {
+          this.nodeQuery = { ...this.nodeQuery, status: 'ACCEPTED', proposalStatus: 'ACCEPTED' }
+        }
+        this.feedback = '已接受提案，Graph 已更新。'
+        return true
+      } catch (err) {
+        this.error = toDisplayError(err)
+        return false
+      }
+    },
+
+    /**
+     * Rejects a pending NodeQuery proposal. The graph is left unchanged; only
+     * the matching in-memory query (same proposal identity) is marked REJECTED
+     * — an unrelated current query B is never touched when rejecting a durable
+     * proposal A.
+     */
+    async rejectNodeQueryProposal(proposalId: string): Promise<boolean> {
+      if (!this.projectId) return false
+      this.error = null
+      try {
+        await rejectProposal(proposalId)
+        await this.loadNodeQueryProposals()
+        if (this.nodeQuery && this.nodeQuery.proposalId === proposalId) {
+          this.nodeQuery = { ...this.nodeQuery, status: 'REJECTED', proposalStatus: 'REJECTED' }
+        }
+        this.feedback = '已拒绝提案，Graph 保持不变。'
+        return true
+      } catch (err) {
+        this.error = toDisplayError(err)
+        return false
+      }
     },
   },
 })

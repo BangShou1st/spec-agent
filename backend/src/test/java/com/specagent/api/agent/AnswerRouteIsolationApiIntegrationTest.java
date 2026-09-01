@@ -134,6 +134,11 @@ class AnswerRouteIsolationApiIntegrationTest {
         UUID r2RouteId = fork.route().id();
 
         int forkPoint = captured.size();
+        // The shared root is already answered on R1 (single immutable Answer
+        // identity), so R2 cannot re-answer it — the first fork action drafts
+        // the next Question on R2 (parent = shared root), then the user
+        // answers that new Question.
+        NodeResponse forkChild = draftNext(project.id());
         AnswerRunView forkAnswer = submitAnswer(
                 project.id(), "Fork branch answer local to R2");
 
@@ -153,12 +158,14 @@ class AnswerRouteIsolationApiIntegrationTest {
             assertThat(envelope.snapshot().routeId())
                     .as("fork envelopes target the active fork route")
                     .isEqualTo(r2RouteId);
-            // Active lineage stays present: the shared root node and the
-            // run-local answer text.
-            assertThat(text)
-                    .contains("node:" + root.id())
-                    .contains("Fork branch answer local to R2");
         }
+        // Active lineage stays present in at least one fork envelope: the
+        // shared root node and the run-local answer text.
+        assertThat(forkEnvelopes).anySatisfy(envelope -> {
+            String text = envelopeText(envelope);
+            assertThat(text).contains("node:" + root.id())
+                    .contains("Fork branch answer local to R2");
+        });
 
         // No sibling-route lineage entry leaked into any fork envelope.
         assertThat(forkEnvelopes)

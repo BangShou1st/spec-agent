@@ -8,6 +8,7 @@ import ResourceDialog from '@/components/ResourceDialog.vue'
 import ReanswerRouteDialog from '@/components/ReanswerRouteDialog.vue'
 import RegenerateNodeDialog from '@/components/RegenerateNodeDialog.vue'
 import GraphCanvas from '@/components/graph/GraphCanvas.vue'
+import RelationProposalDialog from '@/components/graph/RelationProposalDialog.vue'
 import FloatingWindow from '@/components/workspace/FloatingWindow.vue'
 import RouteNavigator from '@/components/workspace/RouteNavigator.vue'
 import WorkspaceInspector from '@/components/workspace/WorkspaceInspector.vue'
@@ -184,9 +185,24 @@ function reflowFloatingWindows(): void {
 
 function scheduleFloatingLayout(): void {
   if (typeof window === 'undefined' || floatingLayoutFrame !== null) return
+  // Use a double requestAnimationFrame so the layout pass observes the
+  // post-transform graph geometry. Vue Flow's setViewport Promise resolves
+  // on the d3 transition `end` event, which fires when the transform style
+  // is written, but the affected article / floating-window bounding boxes
+  // are not necessarily flushed in the same microtask. Reading them on the
+  // very next frame would still return mid-animation values, and the
+  // auto-layout algorithm would then choose a position that overlaps the
+  // final node rect once the browser commits the layout. Two consecutive
+  // RAFs guarantee the layout has been recalculated against the settled
+  // transform before we read any geometry. ``floatingLayoutFrame`` is held
+  // non-null across both RAF waits so the early-return on re-entry still
+  // coalesces repeat calls, and ``onBeforeUnmount`` can still cancel the
+  // pending wait by cancelling the second (still-stored) id.
   floatingLayoutFrame = window.requestAnimationFrame(() => {
-    floatingLayoutFrame = null
-    reflowFloatingWindows()
+    floatingLayoutFrame = window.requestAnimationFrame(() => {
+      floatingLayoutFrame = null
+      reflowFloatingWindows()
+    })
   })
 }
 
@@ -202,6 +218,7 @@ const selectedNodeData = computed<SpecAgentGraphNodeData | null>(() => {
       lifecycleFilters: graphUi.lifecycleFilters,
       routeDisplayStates: graphUi.routeDisplayStates,
       expandedNodeIds: graphUi.expandedNodeIds,
+      showRelationLayer: graphUi.showRelationLayer,
     },
     savedPositions: graphUi.nodePositions,
   })
@@ -210,9 +227,20 @@ const selectedNodeData = computed<SpecAgentGraphNodeData | null>(() => {
 
 const selectedEdgeData = computed(() => {
   if (!graphUi.selectedEdgeId) return null
+  if (graphUi.selectedEdgeId.startsWith('relation:')) {
+    const relationId = graphUi.selectedEdgeId.slice('relation:'.length)
+    const relation = store.graphView?.relations.find((entry) => entry.id === relationId) ?? null
+    return {
+      id: graphUi.selectedEdgeId,
+      kind: 'relation' as const,
+      relationType: relation?.relationType ?? null,
+      routeIds: [] as string[],
+    }
+  }
   return {
     id: graphUi.selectedEdgeId,
     kind: graphUi.selectedEdgeId.startsWith('replacement:') ? 'replacement' as const : 'lineage' as const,
+    relationType: null,
     routeIds: [...graphUi.selectedSharedEdgeRouteIds],
   }
 })
@@ -323,6 +351,55 @@ async function handleDraft(): Promise<void> {
   await store.draftQuestion()
 }
 
+/** "+ 想法"：创建独立想法（不与任何节点连接），聚焦并直接进入编辑。 */
+async function handleAddIdea(): Promise<void> {
+  const nodeId = await store.createIdea()
+  if (!nodeId) return
+  await nextTick()
+  graphUi.selectNode(nodeId)
+  graphUi.requestNodeEdit(nodeId)
+  await canvasRef.value?.locateNode(nodeId)
+}
+
+/**
+ * 图上拖线 = Pending Relation Proposal。只打开确认器，不调用 backend；
+ * 用户选择类型/方向并确认后才持久化。Cancel/Esc/click-away 保持 0 关系。
+ */
+function handleRelationProposal(payload: {
+  sourceNodeId: string
+  targetNodeId: string
+}): void {
+  graphUi.setPendingRelation(payload)
+}
+
+function relationNodeLabel(nodeId: string | null | undefined): string {
+  if (!nodeId) return ''
+  const node = store.graphView?.nodes.find((candidate) => candidate.id === nodeId)
+  if (!node) return nodeId.slice(0, 8)
+  if (node.question) return node.question.slice(0, 24)
+  const text = node.content?.text
+  return typeof text === 'string' && text ? text.slice(0, 24) : nodeId.slice(0, 8)
+}
+
+async function handleRelationConfirm(payload: {
+  sourceNodeId: string
+  targetNodeId: string
+  relationType: string
+}): Promise<void> {
+  // 先关 proposal(用户已确认方向/类型),再持久化;失败由 store.error 呈现。
+  graphUi.clearPendingRelation()
+  const ok = await store.createSemanticRelation(
+    payload.sourceNodeId,
+    payload.targetNodeId,
+    payload.relationType as 'RELATED_TO' | 'DEPENDS_ON' | 'DERIVED_FROM' | 'CONFLICTS_WITH' | 'SUPPORTS',
+  )
+  if (ok) {
+    // Endpoints stay selected so the just-created relation is immediately
+    // visible without the global Show All toggle.
+    graphUi.selectNode(payload.sourceNodeId)
+  }
+}
+
 async function handleAttachResource(
   subtype: 'TEXT' | 'URL' | 'FILE',
   content: Record<string, unknown>,
@@ -350,6 +427,25 @@ function handleRegenerate(nodeId: string): void {
   regenerateDialogOpen.value = true
 }
 
+/**
+ * 回答历史未答问题 = 激活其显式所属路线。用户必须先通过查看路线选择器
+ * 选定一条明确的路线（graphUi.focusRouteId）；共享/多归属节点绝不回退到
+ * Active/first/latest。激活是纯 route activation，不创建 RESUME 分支。
+ */
+async function handleActivateRouteForAnswer(routeId: string): Promise<void> {
+  if (!routeId) {
+    store.error = {
+      code: 'SOURCE_ROUTE_REQUIRED',
+      message: '请先选择明确的来源路线。',
+    }
+    return
+  }
+  const ok = await store.activateRoute(routeId)
+  if (ok) {
+    await focusAfterMutation()
+  }
+}
+
 function resolveContextualAiTarget(target: ContextualAiTarget): string | null {
   if (!store.graphView || !target.canonicalNodeId || !target.visualNodeKey) return null
   const projection = projectGraph({
@@ -360,6 +456,7 @@ function resolveContextualAiTarget(target: ContextualAiTarget): string | null {
       lifecycleFilters: graphUi.lifecycleFilters,
       routeDisplayStates: graphUi.routeDisplayStates,
       expandedNodeIds: graphUi.expandedNodeIds,
+      showRelationLayer: graphUi.showRelationLayer,
     },
     savedPositions: graphUi.nodePositions,
   })
@@ -521,11 +618,13 @@ async function confirmDestructive(): Promise<void> {
         @fork="handleFork"
         @reanswer="handleReanswer"
         @regenerate="handleRegenerate"
+        @activate-route="handleActivateRouteForAnswer"
         @contextual-ai="handleContextualAi"
         @retry-pending="store.retryPendingAgentRun"
         @viewport-settled="scheduleFloatingLayout"
-        @add-idea="store.createRootIdea"
+        @add-idea="handleAddIdea"
         @add-resource="resourceDialogOpen = true"
+        @relation-proposal="handleRelationProposal"
         @undo="store.undoGraph"
         @redo="store.redoGraph"
         @routes="openWindow('routes')"
@@ -641,6 +740,17 @@ async function confirmDestructive(): Promise<void> {
       :pending="store.routeCommandPending"
       @cancel="confirmAction = null; confirmRouteId = null"
       @confirm="confirmDestructive"
+    />
+
+    <RelationProposalDialog
+      :open="graphUi.pendingRelation !== null"
+      :source-node-id="graphUi.pendingRelation?.sourceNodeId ?? null"
+      :target-node-id="graphUi.pendingRelation?.targetNodeId ?? null"
+      :source-label="relationNodeLabel(graphUi.pendingRelation?.sourceNodeId)"
+      :target-label="relationNodeLabel(graphUi.pendingRelation?.targetNodeId)"
+      :pending="store.graphCommandPending"
+      @confirm="handleRelationConfirm"
+      @cancel="graphUi.clearPendingRelation()"
     />
 
   </div>
