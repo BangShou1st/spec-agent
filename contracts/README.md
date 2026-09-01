@@ -150,6 +150,39 @@ Rules:
 }
 ```
 
+### Conflict-intelligence control flow
+
+Conflict intelligence uses the existing wire fields; it does **not** introduce
+another protocol version or model call.
+
+- `STATE_UPDATE` receives the pre-answer snapshot plus the current
+  `ANSWER_SUBMITTED` event. Its model prompt includes `snapshot.effectiveClaims`
+  and must compare the new answer/evidence with the prior effective state. A
+  pair of requirements that cannot both hold under the same scope/time/resource
+  conditions is emitted as an additional `kind=conflict`, `status=unresolved`
+  claim. Mere uncertainty, preference tension, or ordinary prioritization is
+  not a conflict.
+- The runtime persists the immutable Answer and the STATE_UPDATE AnswerPatch as
+  a durable checkpoint. Before the second model call it rebuilds a new
+  route-bound ContextSnapshot from the **same explicit route**. Therefore the
+  DECISION request sees the just-persisted Answer/Patch and its resulting
+  `effectiveClaims`. The answer cycle remains exactly two provider calls:
+  `STATE_UPDATE` → durable checkpoint → post-state `DECISION`.
+- Repair/resume with an existing AnswerPatch skips STATE_UPDATE, rebuilds the
+  same post-state route snapshot, and sends DECISION the persisted conflict
+  state. It never creates a second Answer or reruns the completed checkpoint.
+- For non-`NODE_QUERY` decisions, any effective claim with
+  `kind=conflict,status=unresolved` is a fail-closed planning boundary:
+  `observation.conflicts` must be non-empty and the primary action must be
+  `REQUEST_USER_INPUT`, or `CREATE_NODE` with `kind=KNOWLEDGE` and
+  `subtype=DECISION` plus non-blank decision rationale. WAIT and unrelated
+  actions are rejected. The Python brain checks this before returning a
+  response, and `AgentBrainResponseValidator` independently mirrors the rule at
+  the Java trust boundary.
+- `NODE_QUERY` is intentionally exempt from the conflict action guard. It is a
+  contextual read flow and must remain usable while planning conflicts exist;
+  its existing mutation-confirmation rules remain unchanged.
+
 ## 3. Response envelope — state update
 
 ```json
