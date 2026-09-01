@@ -34,6 +34,8 @@ Typical subtypes:
 - RISK
 - ASSUMPTION
 
+An Agent-authored `DECISION` (or any other Agent-created content that changes confirmed user intent) is a `CONFIRMED_INTENT_CHANGE`: it always requires explicit user confirmation before becoming durable Graph state, regardless of model confidence (see `AGENT_AUTONOMY_MODEL.md`).
+
 ### INTERACTION
 
 Content that expects or records an interaction pattern.
@@ -131,7 +133,7 @@ Different Node content has different mutability rules:
 - Agent-generated accepted Question content should remain immutable after creation; replacement creates a new Node/route history rather than silently rewriting the old question.
 - User-created draft content may be edited while it remains a draft.
 - Once a user action has created durable downstream history, later semantic changes should use revision/replacement/compensating operations instead of rewriting history.
-- Answers remain immutable and route-scoped.
+- Answers stay immutable and unique per canonical Question: at most one Answer identity project-wide (Shared Node = Shared State, see `GRAPH_MODEL_V2.md` §5); re-answer creates a fresh canonical Question identity rather than a second Answer.
 
 The exact persistence representation may evolve, but the product invariant is append-preserving history.
 

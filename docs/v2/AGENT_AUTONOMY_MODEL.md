@@ -97,6 +97,10 @@ Examples:
 
 Agent may detect that an old requirement conflicts with a new statement, but it must not silently decide which user intent wins.
 
+Agent-authored `KNOWLEDGE` with subtype `DECISION` — and any other Agent-created content that would change confirmed intent — is classified `CONFIRMED_INTENT_CHANGE` by policy. It always requires explicit user confirmation; high model confidence never self-authorizes it.
+
+While an unresolved conflict exists, the Decision Cycle must go directly into conflict resolution: `REQUEST_USER_INPUT`, or a confirmable `CREATE_NODE (KNOWLEDGE/DECISION)` proposal. `WAIT`, unrelated continuation, and silently assuming a resolution are not allowed (`AGENT_RUNTIME_ARCHITECTURE.md` §6.7).
+
 Correct pattern:
 
 ```text

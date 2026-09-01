@@ -68,7 +68,7 @@ Deliverables:
 - root `AGENT.md` / `CLAUDE.md` aligned with canonical V2 authority (done at approval time);
 - baseline map of current `AgentOrchestrator`, `ContextBuilder`, `ModelContextProjectionBuilder`, `TaskPromptCatalog`, gates, `AnswerPatchService`, `NodeService`, `RouteService`, `AgentRun` and frontend workspace store; retain deterministic Fake scenarios for answer, repair, fork/re-answer/replacement/spec; record current call-count/latency instrumentation. No production model behavior change from this item alone;
 - shared/versioned AgentInput/Decision wire contract + golden fixtures; contracts use generic Graph/action language (no question-workflow names); runtime-owned IDs and allowed source refs explicit; unknown fields and unknown protocol versions rejected;
-- Java `AgentInputSnapshotBuilder` over current ContextSnapshot/graph facts, keeping `ContextSnapshot` compatibility; explicit fields for anchor, focus/read context, lineage, effective route-scoped answers/patches, selected relations, decisions/constraints, allowed source refs, resource context, capability descriptors, autonomy inputs; project title carried only as low-authority metadata and never promoted to objective;
+- Java `AgentInputSnapshotBuilder` over current ContextSnapshot/graph facts, keeping `ContextSnapshot` compatibility; explicit fields for anchor, focus/read context, lineage, effective canonical answers plus their lineage-resolved accepted patches, selected relations, decisions/constraints, allowed source refs, resource context, capability descriptors, autonomy inputs; project title carried only as low-authority metadata and never promoted to objective;
 - new Python `agent-brain/` service (`GET /health`, `POST /v1/state-updates`, `POST /v1/decisions`) with strict Pydantic contracts (`extra = forbid`) and explicit `protocolVersion`;
 - Python prompt/orchestration modules for STATE_UPDATE and DECISION;
 - Java lower-level `ModelInferenceGateway` preserving the frozen OpenCode transport, plus the internal authenticated inference broker for Python: no API key in Python, no arbitrary URL/header forwarding, no provider fallback, no hidden retry;
@@ -122,7 +122,7 @@ Asynchronous command surface and non-blocking UI:
 
 - `POST /api/v1/projects/{projectId}/agent-runs` -> 202 + runId; background worker executes; frontend polls run/graph status (no WebSocket/SSE required in this stage);
 - Fork/new-route appears immediately; virtual pending card projected from in-flight run state; atomically replaced by the validated Node; never persist a half-generated Node for animation;
-- implement the `UI_UX_IMPROVEMENT_PLAN.md` checklist: vertical option layout, Q1/Q2 labels preserving question text, single Latest marker, friendly route labels and multi-route Shared Node badges, route-scoped answer display, Focus highlight without isolation, hover/focus action toolbar, answer input persistence across drag/navigation/submission (dedicated input draft store keyed by node + route/read context), truthful dynamic phase copy, reveal without whole-graph relayout;
+- implement the `UI_UX_IMPROVEMENT_PLAN.md` checklist: vertical option layout, Q1/Q2 labels preserving question text, single Latest marker, friendly route labels and multi-route Shared Node badges, shared-state single-Answer display for shared Questions, Focus highlight without isolation, hover/focus action toolbar, answer input persistence across drag/navigation/submission (dedicated input draft store keyed by node + route/read context), truthful dynamic phase copy, reveal without whole-graph relayout;
 - scoped lockouts instead of whole-workspace blocking.
 
 Exit gate:
@@ -140,11 +140,11 @@ Generic Workspace Unit model, introduced incrementally without breaking existing
 
 1. additive node persistence migration: existing identity/history columns + `kind`, `subtype`, `content jsonb`, `author_kind`, nullable `knowledge_status`; existing rows interpreted as INTERACTION/QUESTION; relax obsolete `question NOT NULL` only in a later migration after compatibility tests; no physical table per subtype;
 2. user-created blank/draft Nodes and user-authored Knowledge content; project creation remains 0 model calls;
-3. Question Nodes remain answerable with immutable route-scoped Answers;
+3. Question Nodes remain answerable with immutable canonical Answers — at most one Answer identity per canonical Question project-wide;
 4. continuation from any Node; continuation from a non-tip source creates a branch/Route, never historical insertion;
 5. explicit transactional graph mutation commands (CreateNode, AppendContinuation, CreateBranchAndAppend, CreateSemanticRelation, ReviseNode) owned by Runtime command handlers; external protocol action names stay generic;
 6. semantic relations stored separately from visible continuation arrows; model-inferred relations are Advisor proposals;
-7. shared Node remains one identity across routes; route-scoped answers stay explicit with neutral no-Focus ambiguity handling;
+7. shared Node remains one canonical identity across routes; when the shared node is a canonical Question, it has at most one shared-state Answer identity project-wide, divergence fails closed (`SHARED_STATE_DIVERGENCE`), and no route-specific Answer selector exists;
 8. any Node can anchor a contextual AI query returning `RESPOND_TO_USER` without forcing mutation;
 9. frontend: generic `GraphNodeCard` shell (header/body-renderer registry/action toolbar) instead of per-type card classes.
 

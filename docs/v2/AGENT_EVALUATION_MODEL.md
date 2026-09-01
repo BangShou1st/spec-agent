@@ -40,6 +40,7 @@ Measure:
 
 - conflict detection recall/precision;
 - route-aware conflict handling;
+- whether unresolved conflicts enter direct resolution (`REQUEST_USER_INPUT` or a confirmable `CREATE_NODE (KNOWLEDGE/DECISION)` proposal) instead of `WAIT`, unrelated continuation, or silent assumption;
 - whether the Agent asks the user rather than choosing between incompatible user intents;
 - risk usefulness and duplication rate;
 - distinction between evidence and inference.
@@ -79,7 +80,7 @@ Measure:
 - user correction rate;
 - whether Agent direction is relevant;
 - whether questions are answerable and high value;
-- whether generated Spec reflects route-specific confirmed state.
+- whether generated Spec reflects the confirmed state effective for its frozen route/context, using canonical shared Answers without sibling-route contamination.
 
 Rejection feedback is evaluation data, not an instruction to hard-code that exact example into prompts.
 
@@ -146,7 +147,7 @@ Evaluation corpus must span multiple domains and interaction patterns:
 3. clear requirement start;
 4. user-created blank Node;
 5. continue from a non-tip Node -> new route;
-6. multiple routes with shared Node and differing answers;
+6. multiple routes containing the same shared canonical Question (single shared-state Answer; divergence must fail closed);
 7. conflicting user statements;
 8. re-answer / replacement history;
 9. uploaded Resource Node;
@@ -186,8 +187,8 @@ Deterministically prove:
 - action cannot bypass Policy/Validator;
 - historical insertion is rejected;
 - immutable Answer cannot be overwritten;
-- Shared Node route answers remain scoped;
-- Focus does not silently Activate;
+- a shared canonical Question resolves to a single Answer identity; divergence fails closed with `SHARED_STATE_DIVERGENCE`;
+- Focus does not silently Activate or select another Answer;
 - external side effects need correct approval policy;
 - step budget terminates loops;
 - failed capability/model run cannot duplicate prior user mutation.

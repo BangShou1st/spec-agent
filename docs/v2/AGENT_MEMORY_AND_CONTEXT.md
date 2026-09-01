@@ -39,7 +39,7 @@ Recommended priority:
 1. operation anchor Node / user event;
 2. explicit Focus Route/read context;
 3. route lineage relevant to the anchor;
-4. route-scoped effective Answers and accepted AnswerPatches;
+4. effective canonical Answers plus the accepted AnswerPatches replayed along the anchor lineage;
 5. direct semantic relations relevant to the current task;
 6. confirmed decisions/constraints that affect the current scope;
 7. recent relevant Graph operations;
@@ -57,7 +57,7 @@ For a query on Node `N`, Runtime should prefer:
 ```text
 N
 + Focus Route lineage containing N (when resolvable)
-+ effective route-scoped answers/patches
++ effective canonical answers/patches resolved along that lineage
 + directly related semantic nodes
 + confirmed constraints/decisions relevant to N
 + explicitly attached Resource context
@@ -69,14 +69,15 @@ This avoids turning “ask AI about this Node” into global project chat.
 
 ## 5. Shared Node Context
 
-A shared Node may have multiple route-scoped answers. Context selection must not collapse them into one answer.
+Shared Node = Shared State: a canonical Question resolves to at most one immutable Answer identity project-wide. Context selection therefore never chooses between “route answers” — there is only one effective Answer per shared Question.
 
 Rules:
 
-- if Focus Route is explicit, use its effective answer as primary context;
-- include other route answers only when the operation asks for cross-route comparison or when detecting a relevant conflict;
-- preserve route labels/provenance for every included answer;
-- no Active/first/latest fallback should silently resolve ambiguous shared-node read context.
+- a shared answered Question contributes its single canonical Answer to every route context that contains it;
+- Answer identity is canonical/shared project-wide, but a route/context still derives its own effective Answer/AnswerPatch sequence from the canonical Answers reachable through its lineage; accepted AnswerPatches remain immutable checkpoint/provenance artifacts bound to their source Answer and to route/context provenance — there is no project-global patch sequence shared by all routes;
+- if the read model ever finds different effective Answer IDs for one canonical Question — or some route memberships answered while others are unanswered — it fails closed with `SHARED_STATE_DIVERGENCE`; context selection must never paper over such divergence by picking Active/first/latest;
+- Focus changes read emphasis only; it cannot select a different Answer, because no route-specific Answer exists;
+- cross-route comparison means comparing different lineage contexts (each branch's own claims/conclusions), never different Answers of one Question.
 
 ## 6. Project Metadata
 
@@ -118,8 +119,8 @@ When context exceeds budget, selection should degrade by relevance/authority, no
 The Agent must not assume:
 
 - project title equals goal;
-- old answer remains authoritative on every route;
-- sibling route facts apply to the focused route;
+- a pre-re-answer Answer still applies to the fresh re-answer Question identity (the new identity's context prefix never contains the old Answer);
+- sibling branch conclusions apply to the focused route;
 - Agent-generated assumption is confirmed;
 - semantic relation means causal fact;
 - resource/tool output is user-approved truth.

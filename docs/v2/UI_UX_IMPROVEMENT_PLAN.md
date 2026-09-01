@@ -13,7 +13,7 @@
 3. 运行状态必须可见，但 UI 不展示或伪造模型的私有 chain-of-thought。
 4. 默认界面减少常驻操作按钮；重要状态常驻，次要操作 hover/focus 时出现。
 5. Route Focus 只高亮，不独占、不隐藏其他路线。
-6. Shared Node = Shared State：共享节点共享同一个不可变身份，不复制；答案更不按 route 拆分展示。
+6. Shared Node = Shared State：共享节点共享同一个不可变身份，不复制；若共享节点是 canonical Question，则它 project-wide 至多一个 immutable Answer identity，答案不按 route 拆分展示。
 7. Canvas 可见线条保持简单箭头，只表达 exploration continuation。
 8. 用户可以创建空 Node 并从任意历史 Node 开启新的 continuation，但不能改写既有历史链路。
 9. 所有输入状态应按 Node 持久在前端 store/view model 中，拖动 Canvas 或提交请求不能把选项/自由输入清空。
@@ -49,14 +49,15 @@ Node 可紧凑显示 Route 名称。Shared Node 显示多个所属路线标签�
 > immutable Answer identity project-wide. All routes referencing an answered
 > shared Question reference the same Answer ID. Focus changes visual/read
 > context only and never selects a different Answer. 因此前端**不**按路线展示
-> 不同 Answer、**不**存在"多路线答案不同"的 shared divergence、**不**存在
-> "Focus Route 默认展开对应 Answer" 的拆分逻辑。
+> 不同 Answer、**不**存在“多路线答案不同”的 shared divergence UI、**不**存在
+> “Focus Route 默认展开对应 Answer” 的拆分逻辑。
 
 Shared Question Node 的展示规则：
 
-- 同一 Question 全局只有一个不可变 Answer 身份；Focus（Main / Branch / null）下展示的内容完全一致。
-- Inspector 的"回答"区块只展示该 canonical Answer 一次；"路线归属"区块只列 route memberships（路线、生命周期、active/focus/provenance），不重复 Answer payload。
-- Graph 节点上 shared answered Question 直接展示该 Answer；未答 shared Question 只显示"等待回答"，绝不按路线制造 route-specific 的"等待回答/回答这个问题"入口。
+- 同一 canonical Question 全局至多一个不可变 Answer 身份；Focus（Main / Branch / null）下展示的 Answer 内容完全一致。
+- Inspector 的“回答”区块只展示该 canonical Answer 一次；“路线归属”区块只列 route memberships（路线、生命周期、active/focus/provenance），不重复 Answer payload。
+- Graph 节点上 shared answered Question 直接展示该 Answer；未答 shared Question 只显示“等待回答”，绝不按路线制造 route-specific 的“等待回答/回答这个问题”入口。
+- 如果 read model 检测到不同 effective Answer IDs，或某些 membership answered 而另一些 unanswered，必须 fail closed 为 `SHARED_STATE_DIVERGENCE`，不能把 divergence 当成 UI 的多答案模式。
 
 ## 4. Question Options Layout
 
@@ -148,6 +149,8 @@ pending card replaced by real Node
 
 Pending card 来自 Route/AgentRun/operation projection，不要求数据库先保存一个半生成 Node。
 
+Fork 的 branch point 保持 shared canonical Node identity；不能为了新路线复制 branch-point Node。
+
 失败时：
 
 - 路线仍可见；
@@ -164,7 +167,8 @@ Pending card 来自 Route/AgentRun/operation projection，不要求数据库先�
 - 其他路线降低透明度/视觉权重；
 - 不隐藏、不卸载其他路线；
 - Shared Node 不复制；
-- Focus 改变只改变 read/visual context，不能隐式改变 Active Route。
+- Focus 改变只改变 browser read/visual context，不能隐式改变作为 backend/runtime mutation target 的 Active Route；
+- 对 Shared Question，Focus 不能选择不同 Answer。
 
 应保留显式“聚焦此路线”能力，但它是视觉/阅读操作，不是独占过滤。
 
@@ -180,15 +184,46 @@ Pending card 来自 Route/AgentRun/operation projection，不要求数据库先�
 用户写想法/需求/问题
 ```
 
+Floating persisted Node 可以暂时保持：
+
+```text
+routeIds = []
+parentNodeId = null
+```
+
+它仍可以成为 contextual AI anchor；针对 floating Node 的 `NODE_QUERY` 可以使用 `routeId = null`。
+
 用户可以从任意 Node 发起 continuation：
 
 ```text
 已有 Q2 ─────→ new draft / generated node
 ```
 
-若该 Node 已经有历史后继，则新的 continuation 形成新分支/Route；禁止通过 UI 把新 Node 插入既有 `Q1 -> Q2` 中间并假装历史被重写。
+若该 Node 已经有历史后继，则新的 continuation 形成新分支/Route；禁止通过 UI 把新 Node 插入既有 `Q1 -> Q2` 中间并假装历史被重写，也禁止把分支重新接回一个既有 canonical current-version Node。
 
-用户也可以建立 semantic relation，但默认 Canvas 不把所有 semantic relation 都渲染成线；这些关系优先在 Inspector/可选 relation layer 中查看。
+### 9.1 Semantic relation proposal (Scheme C)
+
+Canvas 拖拽 `A → B` **只**创建 client-side pending relation proposal，不立即持久化，也不改变 lineage、Route membership、Active 或 Focus。
+
+用户在 proposal chooser 中选择：
+
+```text
+RELATED_TO
+DEPENDS_ON
+DERIVED_FROM
+CONFLICTS_WITH
+SUPPORTS
+```
+
+然后：
+
+- Confirm → Runtime 持久化 semantic relation，并记录 GraphOperation；
+- Cancel / Esc / click-away → 不产生任何 durable mutation；
+- `RELATED_TO` / `CONFLICTS_WITH` 是 symmetric；
+- `DEPENDS_ON` / `DERIVED_FROM` / `SUPPORTS` 保留 source → target 方向；
+- `DEPENDS_ON` + `DERIVED_FROM` 共用 combined DAG cycle check。
+
+Inspector 用于查看 relation；主创建入口是 Canvas drag → proposal chooser → confirm。Global relation layer 默认 OFF，选中 Node 时可显示 1-hop relations。
 
 ## 10. Contextual AI on Any Node
 
@@ -202,7 +237,7 @@ Question Node 是可回答的交互节点。
 “从这里再问我一个最关键的问题。”
 ```
 
-Agent 的上下文必须来自该 Node、当前 Focus/Route lineage、直接相关节点、route-scoped answers/patches 和允许的 Resource context，而不是全局聊天历史。
+Agent 的上下文必须来自该 Node、当前 Focus/Route lineage、直接相关节点、沿 lineage 解析的 effective canonical Answers/AnswerPatches 和允许的 Resource context，而不是全局聊天历史。Answer identity 可以是 project-wide canonical shared state，但 branch-specific conclusions / effective claims / Spec context 仍由具体 lineage/context 决定。
 
 AI 回答可提供候选动作，例如：
 
@@ -212,7 +247,7 @@ AI 回答可提供候选动作，例如：
 - 继续路线；
 - 仅回答，不修改 Graph。
 
-Advisor Mode 下重要 Graph 修改先给用户确认。
+Advisor Mode 下重要 Graph 修改先给用户确认。Agent-authored `KNOWLEDGE/DECISION` 属于 `CONFIRMED_INTENT_CHANGE`，不能因为高 confidence 自动执行。
 
 ## 11. Undo / Redo
 
@@ -264,13 +299,16 @@ Proposed / Confirmed / Challenged / Superseded
 3. Fork 后路线立即出现，模型未完成时显示 pending card。
 4. Fork 失败时路线/pending 状态可理解且可恢复。
 5. Focus Route 高亮但其他路线仍可见。
-6. Shared Node 显示全部路线名和正确的 route-scoped answers。
+6. Shared Question Node 显示全部路线名和唯一 canonical Answer；切换 Focus 不改变 Answer 内容；divergence fail closed。
 7. Node 选项上下排版，在窄/宽卡片中都可读。
 8. Hover 才显示次要按钮，keyboard focus 同样可操作。
 9. 用户可创建空 Node，从非 tip Node continuation 时形成 branch，而非插入历史。
-10. 任意 Node 可发起 contextual AI query。
+10. 任意 Node 可发起 contextual AI query，包括 floating Node 的 routeless NodeQuery。
 11. 新节点 reveal 不触发全图 relayout。
 12. Undo/Redo 不破坏 immutable answer/history invariants。
+13. Canvas 拖拽 A → B 只产生 pending relation proposal：Confirm 后才持久化 relation（GraphOperation 记录），Cancel / Esc / click-away 不产生任何持久化变更。
+14. 回答 inactive/open Route 上的未答 tip Question 时，系统激活该既有 Route 并回答原 Question，不创建新 Route（不存在 Resume Route / `RESUME_QUESTION`）。
+15. unanswered Question 下不能追加 child；Runtime 对非法路径返回 `UNANSWERED_QUESTION_HAS_CHILD`。
 
 ## Final Goal
 

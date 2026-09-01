@@ -146,7 +146,7 @@ Lives with the authoritative Graph Runtime. Deterministically projects:
 
 - anchor Node;
 - current route/read context;
-- lineage and route-scoped effective answers/patches;
+- lineage plus the effective canonical Answer/AnswerPatch sequence resolved along that lineage;
 - selected semantic relations;
 - confirmed decisions/constraints;
 - allowed source refs;
@@ -200,6 +200,19 @@ Applies validated Graph mutations through domain services and transactions. It i
 ### 6.6 Capability Runtime
 
 Resolves `INVOKE_CAPABILITY` into Skill, MCP adapter, internal service or other provider. Tool/capability output is treated as an observation/resource with provenance, not automatically as confirmed Graph truth.
+
+### 6.7 Conflict Intelligence boundary (frozen)
+
+Conflict intelligence reuses the existing two-call answer cycle; it adds no protocol version and no extra model call. `STATE_UPDATE` may emit `kind=conflict, status=unresolved` claims when a new answer cannot coexist with the prior effective state under the same scope/time/resource conditions. Mere uncertainty, preference tension or ordinary prioritization is not a conflict.
+
+For every decision other than `NODE_QUERY`, an effective unresolved conflict is a fail-closed planning boundary:
+
+- `observation.conflicts` must be non-empty; and
+- the primary action must be `REQUEST_USER_INPUT`, or `CREATE_NODE` with `kind=KNOWLEDGE`, `subtype=DECISION` and a non-blank decision rationale (a confirmable conflict-resolution proposal).
+
+`WAIT`, unrelated continuations and silent assumptions are rejected. The Python brain enforces this before returning, and the Java `AgentBrainResponseValidator` independently mirrors the rule at the trust boundary. `NODE_QUERY` is intentionally exempt: it is a read-only contextual flow and must remain usable while unresolved conflicts exist; its mutation-confirmation rules are unchanged.
+
+Agent-authored `KNOWLEDGE/DECISION` content is a `CONFIRMED_INTENT_CHANGE` (see `AGENT_AUTONOMY_MODEL.md`): it always lands as a user-confirmable proposal, never auto-executed on confidence.
 
 ## 7. Bounded Loop and Stop Conditions
 
