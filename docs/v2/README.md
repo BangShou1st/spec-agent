@@ -1,7 +1,7 @@
 # Spec Agent V2 设计索引
 
-> Status: **Target architecture / product contract**  
-> Current production code is still the Phase 8 workflow-oriented runtime until the migration plan is implemented.
+> Status: **Frozen product contract / core runtime implemented on `main`**\
+> The V2 Graph Runtime + Agent Runtime (Stages A–D), the Graph V2 workspace convergence, and the Conflict Intelligence loop are implemented on `main`. This document set is the canonical semantics the code must satisfy; changing them requires the change discipline in §6.
 
 本文档是 `docs/v2` 的入口和权威关系说明。V2 的目标不是推翻现有 Graph Runtime，而是在其上演进出一个高内聚、低耦合、可验证、可扩展的 Graph Reasoning Agent。
 
@@ -17,6 +17,8 @@
 8. **Agent loops are bounded.** 每次用户/工具事件必须有 step budget、stop condition、等待用户和失败边界，禁止自主无限循环。
 9. **Latency is a product constraint.** Reflection 与 Planning 默认属于同一次 Decision Cycle，不机械拆成多个串行模型请求。
 10. **History is append-preserving.** 已确认事实、不可变 Answer 和既有路线不通过原地改写来“修复”；使用新状态、补偿操作、replacement/revision/route 等机制演进。
+
+**Frozen Graph V2 core contract（速览；权威定义见 `GRAPH_MODEL_V2.md`）：** Shared Node = Shared State（对 canonical Question：project-wide 至多一个 immutable Answer identity；divergence fail closed `SHARED_STATE_DIVERGENCE`；不存在 route-specific Answer selector，Focus 不选择 Answer）；unanswered Interaction Question 必须保持 Route tip（`UNANSWERED_QUESTION_HAS_CHILD`）；re-answer 创建 fresh canonical Question identity；`RESUME_QUESTION` 产品功能不存在（inactive/open Route 的未答 tip 通过激活原 Route 回答；`RESUME_ANSWER` 是独立的 runtime repair）；Focus ≠ Active；semantic relation 与 lineage 严格分离，禁止 rejoin / historical insertion；Canvas 拖拽只产生 pending relation proposal（Scheme C）；unresolved conflict 必须直接进入冲突解决（`REQUEST_USER_INPUT` 或 confirmable `CREATE_NODE (KNOWLEDGE/DECISION)`），Agent-authored DECISION 属于 `CONFIRMED_INTENT_CHANGE` 必须用户确认。
 
 ## 2. Canonical 文档
 
