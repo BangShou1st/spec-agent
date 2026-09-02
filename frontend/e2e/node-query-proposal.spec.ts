@@ -65,13 +65,24 @@ async function askOnNode(page: Page, request: APIRequestContext, question: strin
   for (let i = 0; i < 40 && !queryRunId; i += 1) {
     await page.waitForTimeout(500)
   }
+  // 明确的终态列表：只有这些状态才停止轮询。
+  // 中间态 (CONTEXT_BUILT / MODEL_CALLED / REFLECTED / PERSISTED / CREATED / RUNNING)
+  // 必须继续轮询。
+  const terminalStatuses = new Set([
+    'AWAITING_APPROVAL',
+    'ACCEPTED',
+    'REJECTED',
+    'EXPIRED',
+    'POLICY_DENIED',
+    'NOT_CONFIRMABLE',
+    'COMPLETED',
+    'FAILED',
+  ])
   for (let i = 0; i < 60; i += 1) {
     const res = await request.get(`/api/v1/projects/${projectId}/nodes/${canonicalNodeId}/query/${queryRunId}`)
     const body = (await res.json()) as { status: string; proposalId?: string | null }
     status = body.status
-    // 终态判定对大小写都健壮;终态为语义状态
-    // (AWAITING_APPROVAL / COMPLETED / FAILED ...)。
-    if (status.toLowerCase() !== 'running' && status.toLowerCase() !== 'created') break
+    if (terminalStatuses.has(status)) break
     await page.waitForTimeout(1000)
   }
   return { projectId, canonicalNodeId, queryRunId, status }
