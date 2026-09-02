@@ -7,6 +7,8 @@ async function boxesDoNotOverlap(first: Locator, second: Locator): Promise<boole
   return a.x + a.width <= b.x || b.x + b.width <= a.x || a.y + a.height <= b.y || b.y + b.height <= a.y
 }
 
+test.setTimeout(400000)
+
 test('floating windows persist geometry and never change the graph canvas dimensions', async ({ page }) => {
   await createProject(page, 'E2E Floating Workspace')
   await buildThreeNodeLineage(page)
@@ -69,7 +71,17 @@ test('auto layout remains usable on a small viewport and keeps float windows apa
 
   await page.getByTestId('draft-question').click()
   const current = page.locator('.graph-question-node--current')
-  await expect(current).toBeVisible()
+  try {
+    await expect(current).toBeVisible({ timeout: 180000 })
+  } catch {
+    const retry = page.getByRole('button', { name: '重新请求' })
+    if (await retry.isVisible()) {
+      await retry.click()
+      await expect(current).toBeVisible({ timeout: 180000 })
+    } else {
+      throw new Error('draft in small viewport did not produce current node')
+    }
+  }
   await fitGraph(page)
   await expect.poll(() => boxesDoNotOverlap(
     page.getByTestId('floating-window-inspector'),

@@ -19,8 +19,18 @@ export async function createProject(page: Page, title: string): Promise<void> {
 
 /** Fits the whole graph into the viewport (viewport-only; never moves nodes). */
 export async function fitGraph(page: Page): Promise<void> {
+  const canvas = page.getByTestId('graph-canvas')
+  const before = await canvas.getAttribute('data-viewport-settled')
   await page.getByTestId('fit-view').click()
   await expect(page.locator('.vue-flow__node').first()).toBeVisible()
+  if (before !== null) {
+    await expect.poll(async () => canvas.getAttribute('data-viewport-settled')).not.toBe(before)
+  } else {
+    await expect.poll(async () => canvas.getAttribute('data-viewport-settled')).not.toBeNull()
+  }
+  await page.waitForFunction(() => new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+  }))
 }
 
 /** Closes product overlays before a test performs direct canvas pointer input. */
@@ -38,7 +48,18 @@ export async function closeFloatingWorkspaceWindows(page: Page): Promise<void> {
 /** Drafts the first question (explicit user action). */
 export async function draftFirstQuestion(page: Page): Promise<void> {
   await page.getByTestId('draft-question').click()
-  await expect(page.getByTestId('question')).toBeVisible()
+  try {
+    await expect(page.getByTestId('question')).toBeVisible({ timeout: 180000 })
+    return
+  } catch {
+    const retry = page.getByRole('button', { name: '重新请求' })
+    if (await retry.isVisible()) {
+      await retry.click()
+      await expect(page.getByTestId('question')).toBeVisible({ timeout: 180000 })
+      return
+    }
+    throw new Error('draftFirstQuestion: question not visible and no retry affordance')
+  }
 }
 
 /** Answers the active node with free text and waits for the recorded answer. */

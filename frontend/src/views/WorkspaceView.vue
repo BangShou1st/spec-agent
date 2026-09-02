@@ -20,6 +20,7 @@ import {
 import { phaseToCopy } from '@/graph/phaseCopy'
 import { FLOATING_WINDOW_RANGES } from '@/graph/graphLayoutStorage'
 import { computeAutoFloatingWindowLayout, type FloatingRect } from '@/graph/floatingWindowLayout'
+import { resolveSafeFitRegion, type FitViewportRegion } from '@/graph/graphViewport'
 import { productErrorMessage, requiresModelSettings } from '@/api/errorCopy'
 import { useGraphUiStore } from '@/stores/graphUiStore'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
@@ -43,6 +44,31 @@ const workspaceBodyRef = ref<HTMLElement | null>(null)
 let floatingLayoutFrame: number | null = null
 let floatingLayoutSettledTimer: number | null = null
 let workspaceResizeObserver: ResizeObserver | null = null
+
+const safeFitRegion = computed<FitViewportRegion | null>(() => {
+  const body = workspaceBodyRef.value
+  if (!body) return null
+  const bodyBox = body.getBoundingClientRect()
+  if (bodyBox.width <= 0 || bodyBox.height <= 0) return null
+  const obstacles: FloatingRect[] = []
+  for (const name of ['routes', 'inspector'] as const) {
+    const state = graphUi.floatingWindows[name]
+    if (!state.open) continue
+    if (state.positionMode === 'auto' && state.x === 0 && state.y === 72) continue
+    obstacles.push({ x: state.x, y: state.y, width: state.width, height: state.height })
+  }
+  if (obstacles.length === 0) return null
+  const region = resolveSafeFitRegion({
+    canvasWidth: bodyBox.width,
+    canvasHeight: bodyBox.height,
+    obstacles,
+    gap: 16,
+  })
+  if (region.x === 0 && region.y === 0 && region.width === bodyBox.width && region.height === bodyBox.height) {
+    return null
+  }
+  return region
+})
 
 const forkDialogOpen = ref(false)
 const resourceDialogOpen = ref(false)
@@ -613,6 +639,7 @@ async function confirmDestructive(): Promise<void> {
         :runtime-status="store.answerRunStatus"
         :runtime-phase="store.answerRunPhase"
         :pending-projection="store.pendingRouteProjection"
+        :safe-region="safeFitRegion"
         @draft="handleDraft"
         @submit-answer="handleAnswer"
         @fork="handleFork"

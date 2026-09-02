@@ -67,6 +67,7 @@ const props = defineProps<{
   runtimeStatus?: GraphRuntimeStatus | null
   runtimePhase?: string | null
   pendingProjection?: GraphPendingProjection | null
+  safeRegion?: import('@/graph/graphViewport').FitViewportRegion | null
 }>()
 
 const emit = defineEmits<{
@@ -269,17 +270,33 @@ function collectViewportNodes(ids?: Set<string> | null): ViewportNode[] {
 }
 
 /** Applies a deterministic transform through setViewport only. */
+let viewportSettledRevision = 0
+
 function applyViewport(transform: ViewportTransform | null, duration: number): void {
   if (!transform) {
     return
   }
+  const revision = ++viewportSettledRevision
+  const root = document.querySelector<HTMLElement>('[data-test="graph-canvas"]')
+  if (root) root.setAttribute('data-viewport-settled', String(revision))
   // A floating window placed during the animation saw mid-flight node
   // geometry. Emit settled exactly when the transform has finished so the
   // workspace re-runs the layout against the final on-screen positions.
-  void Promise.resolve(vf.setViewport(transform, { duration })).then(() => emit('viewport-settled'))
+  void Promise.resolve(vf.setViewport(transform, { duration })).then(() => {
+    emit('viewport-settled')
+    const settledRoot = document.querySelector<HTMLElement>('[data-test="graph-canvas"]')
+    if (settledRoot) settledRoot.setAttribute('data-viewport-settled', String(revision))
+  })
 }
 
 /** 初始套用一次适应视图（只改 viewport 变换，不动节点坐标）。 */
+function onViewportChangeEnd(): void {
+  const revision = ++viewportSettledRevision
+  const root = document.querySelector<HTMLElement>('[data-test="graph-canvas"]')
+  if (root) root.setAttribute('data-viewport-settled', String(revision))
+  emit('viewport-settled')
+}
+
 function onInit(): void {
   void nextTick(() => {
     // 初始 fit 必须是瞬时的：任何动画残留都会在后续交互测量期间悄悄改变
@@ -291,7 +308,7 @@ function onInit(): void {
       return
     }
     applyViewport(
-      computeFitViewport(collectViewportNodes(), canvasWidth, canvasHeight, { padding: 48 }),
+      computeFitViewport(collectViewportNodes(), canvasWidth, canvasHeight, { padding: 48, region: props.safeRegion ?? undefined }),
       0,
     )
   })
@@ -302,13 +319,14 @@ function onInit(): void {
  * 视口、绝不移动节点坐标。绝不依赖 Vue Flow 的节点测量。
  */
 function manualFitView(): void {
+  clearActiveNodeFitTimer()
   const canvasWidth = vf.dimensions.value.width
   const canvasHeight = vf.dimensions.value.height
   if (!canvasWidth || !canvasHeight) {
     return
   }
   applyViewport(
-    computeFitViewport(collectViewportNodes(), canvasWidth, canvasHeight, { padding: 48 }),
+    computeFitViewport(collectViewportNodes(), canvasWidth, canvasHeight, { padding: 48, region: props.safeRegion ?? undefined }),
     300,
   )
 }
@@ -657,7 +675,7 @@ const isEmptyProject = computed(() =>
         @connect="onConnect"
          @selection-start="shiftSelecting = true"
          @selection-end="shiftSelecting = false"
-         @viewport-change-end="emit('viewport-settled')"
+         @viewport-change-end="onViewportChangeEnd"
       >
         <template #edge-adaptive="edgeProps">
           <AdaptiveGraphEdge v-bind="edgeProps" />
