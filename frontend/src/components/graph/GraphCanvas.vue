@@ -332,8 +332,10 @@ function onInit(): void {
     if (!canvasWidth || !canvasHeight) {
       return
     }
+    // 初始 fit 使用全画布语义：safeRegion 只属于显式适应视图。初始视口
+    // 决定浮窗自动布局的输入几何，若在此消费 safeRegion 会形成双向耦合。
     applyViewport(
-      computeFitViewport(collectViewportNodes(), canvasWidth, canvasHeight, { padding: 48, region: props.safeRegion ?? undefined }),
+      computeFitViewport(collectViewportNodes(), canvasWidth, canvasHeight, { padding: 48 }),
       0,
     )
   })
