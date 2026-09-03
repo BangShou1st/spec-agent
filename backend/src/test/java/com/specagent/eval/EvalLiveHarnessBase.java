@@ -1,5 +1,10 @@
 package com.specagent.eval;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.specagent.model.gateway.ModelGatewayException;
+import com.specagent.settings.opencode.OpenCodeSettingsService;
+import com.specagent.settings.opencode.RuntimeOpenCodeSettings;
 import org.junit.jupiter.api.AfterEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -42,6 +47,12 @@ public abstract class EvalLiveHarnessBase {
     @Autowired
     protected JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    protected ObjectMapper objectMapper;
+
+    @Autowired
+    protected OpenCodeSettingsService openCodeSettingsService;
+
     private final List<UUID> liveProjectIds = new ArrayList<>();
 
     /**
@@ -68,25 +79,101 @@ public abstract class EvalLiveHarnessBase {
         return observations;
     }
 
-    /** Skips the live suite unless the brain health endpoint is reachable. */
-    protected void requireLiveBrain(String brainHealthUrl) {
-        assumeTrue(brainReachable(brainHealthUrl),
-                "agent-brain not reachable at " + brainHealthUrl
-                        + " — start it in broker mode to run the live baseline");
+    /**
+     * Requires a real live chain and returns safe evidence stamped into the
+     * baseline artifact. A reachable health endpoint in fake model mode is not
+     * sufficient: the suite is skipped before any observation is labelled
+     * B-live unless Python reports broker mode and the Java bean guard passes.
+     */
+    protected LiveChainEvidence requireLiveBrain(String brainHealthUrl) {
+        LiveBrainHealth health = readLiveBrainHealth(brainHealthUrl);
+        LiveExecutionGuard.Evidence javaWiring = scenarioRunner.requireLiveWiring();
+
+        RuntimeOpenCodeSettings settings;
+        try {
+            settings = openCodeSettingsService.requireRuntimeSettings();
+        } catch (ModelGatewayException ex) {
+            assumeTrue(false, "live provider is not configured: " + ex.gatewayCategory());
+            return null;
+        }
+        return new LiveChainEvidence(javaWiring, health, settings.selectedModel());
     }
 
-    private boolean brainReachable(String brainHealthUrl) {
+    /** Reads safe Python-side invocation evidence; no prompt or completion data. */
+    protected LiveBrainHealth readLiveBrainHealth(String brainHealthUrl) {
+        java.net.http.HttpResponse<String> response;
         try {
             java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
                     .connectTimeout(java.time.Duration.ofMillis(1000)).build();
-            java.net.http.HttpResponse<String> response = client.send(
+            response = client.send(
                     java.net.http.HttpRequest.newBuilder(
                                     java.net.URI.create(brainHealthUrl))
                             .timeout(java.time.Duration.ofSeconds(3)).GET().build(),
                     java.net.http.HttpResponse.BodyHandlers.ofString());
-            return response.statusCode() == 200;
         } catch (Exception ex) {
-            return false;
+            assumeTrue(false, "agent-brain not reachable at " + brainHealthUrl
+                    + " — start it in broker mode to run the live baseline");
+            return null;
+        }
+
+        assumeTrue(response.statusCode() == 200,
+                "agent-brain health returned HTTP " + response.statusCode()
+                        + " at " + brainHealthUrl);
+
+        JsonNode body;
+        try {
+            body = objectMapper.readTree(response.body());
+        } catch (Exception ex) {
+            assumeTrue(false, "agent-brain health was not valid JSON at " + brainHealthUrl);
+            return null;
+        }
+        String protocol = body.path("protocolVersion").asText("");
+        String modelMode = body.path("modelMode").asText("");
+        assumeTrue("agent-input.v2".equals(protocol),
+                "agent-brain protocol is " + protocol + ", expected agent-input.v2");
+        assumeTrue("broker".equals(modelMode),
+                "agent-brain reports modelMode=" + modelMode
+                        + "; fake model mode is not B-live");
+        JsonNode invocations = body.path("invocations");
+        assumeTrue(invocations.isObject()
+                        && invocations.has("stateUpdates")
+                        && invocations.has("decisions"),
+                "agent-brain health lacks invocation evidence; refusing to label B-live");
+        return new LiveBrainHealth(
+                protocol,
+                modelMode,
+                invocations.path("stateUpdates").asInt(),
+                invocations.path("decisions").asInt(),
+                nullableText(invocations.path("lastStateUpdateRunId")),
+                nullableText(invocations.path("lastDecisionRunId")));
+    }
+
+    private static String nullableText(JsonNode node) {
+        return node.isTextual() ? node.asText() : null;
+    }
+
+    protected record LiveBrainHealth(String protocolVersion,
+                                     String modelMode,
+                                     int stateUpdates,
+                                     int decisions,
+                                     String lastStateUpdateRunId,
+                                     String lastDecisionRunId) {
+    }
+
+    protected record LiveChainEvidence(LiveExecutionGuard.Evidence javaWiring,
+                                       LiveBrainHealth pythonBefore,
+                                       String selectedModel) {
+
+        LiveChainEvidence withPythonAfter(LiveBrainHealth pythonAfter) {
+            return new LiveChainEvidence(javaWiring,
+                    new LiveBrainHealth(
+                            pythonBefore.protocolVersion(),
+                            pythonBefore.modelMode(),
+                            pythonAfter.stateUpdates() - pythonBefore.stateUpdates(),
+                            pythonAfter.decisions() - pythonBefore.decisions(),
+                            pythonAfter.lastStateUpdateRunId(),
+                            pythonAfter.lastDecisionRunId()),
+                    selectedModel);
         }
     }
 

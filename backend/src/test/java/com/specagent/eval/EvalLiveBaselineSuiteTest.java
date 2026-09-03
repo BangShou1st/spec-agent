@@ -11,6 +11,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
+
 /**
  * P2 Phase 2 — Live agent behavioral baseline (non-blocking).
  *
@@ -36,15 +38,18 @@ import java.util.UUID;
         properties = {
                 "server.port=18082",
                 "spec.agent.brain.engine=remote-python",
-                "spec.agent.brain.base-url=http://localhost:8100"
+                "spec.agent.brain.base-url=${SPEC_AGENT_EVAL_BRAIN_BASE_URL:http://localhost:8100}",
+                "spec.agent.brain.internal-secret=${SPEC_AGENT_BRAIN_INTERNAL_SECRET:dev-internal-secret}",
+                "spec.agent.model.inference=opencode"
         })
 class EvalLiveBaselineSuiteTest extends EvalLiveHarnessBase {
 
-    private static final String BRAIN_HEALTH = "http://localhost:8100/health";
+    private static final String BRAIN_HEALTH = System.getenv().getOrDefault(
+            "SPEC_AGENT_EVAL_BRAIN_BASE_URL", "http://localhost:8100") + "/health";
 
     @Test
     void recordLiveBehavioralBaseline() throws Exception {
-        requireLiveBrain(BRAIN_HEALTH);
+        LiveChainEvidence before = requireLiveBrain(BRAIN_HEALTH);
 
         List<ObservationEnvelope> observations = new ArrayList<>();
         for (ScenarioDefinition scenario : liveCorpus()) {
@@ -58,7 +63,7 @@ class EvalLiveBaselineSuiteTest extends EvalLiveHarnessBase {
         List<ObservationEnvelope> stamped = new ArrayList<>();
         for (ObservationEnvelope observation : observations) {
             stamped.add(observation.withRunMetadata(
-                    runId, gitSha, liveProvider(), liveModel(), liveModelConfigDigest()));
+                    runId, gitSha, liveProvider(), before.selectedModel(), liveModelConfigDigest()));
         }
 
         Path outputDir = Path.of(System.getProperty("user.dir"), "build", "eval-live");
@@ -71,11 +76,19 @@ class EvalLiveBaselineSuiteTest extends EvalLiveHarnessBase {
                 StandardCharsets.UTF_8);
 
         LiveStabilitySummary stability = LiveStabilitySummary.from(stamped, LIVE_REPETITIONS);
+        LiveBrainHealth after = readLiveBrainHealth(BRAIN_HEALTH);
+        assumeTrue(after.stateUpdates() >= before.pythonBefore().stateUpdates()
+                        && after.decisions() >= before.pythonBefore().decisions(),
+                "agent-brain invocation counters reset during the live baseline");
+        LiveChainEvidence evidence = before.withPythonAfter(after);
+        java.util.Map<String, Object> stabilityReport = stabilityToMap(stability);
+        stabilityReport.put("live_chain_evidence", evidenceToMap(evidence));
         Files.writeString(outputDir.resolve("stability.json"),
-                EvalArtifactWriter.toJson(stabilityToMap(stability)), StandardCharsets.UTF_8);
+                EvalArtifactWriter.toJson(stabilityReport), StandardCharsets.UTF_8);
         String header = "# eval live baseline " + Instant.now() + " run=" + runId
                 + " git=" + gitSha + " provider=" + liveProvider()
-                + " model=" + liveModel() + "\n";
+                + " model=" + before.selectedModel() + "\n"
+                + liveEvidenceText(evidence);
         Files.writeString(outputDir.resolve("stability.txt"), header + stability.toText(),
                 StandardCharsets.UTF_8);
 
@@ -110,11 +123,6 @@ class EvalLiveBaselineSuiteTest extends EvalLiveHarnessBase {
         return "opencode-zen";
     }
 
-    /** Model identity if the runtime exposes it, else unknown — never guessed. */
-    private static String liveModel() {
-        return "unknown";
-    }
-
     private static String liveModelConfigDigest() {
         return "unknown";
     }
@@ -140,6 +148,29 @@ class EvalLiveBaselineSuiteTest extends EvalLiveHarnessBase {
         map.put("scenario_results", stability.scenarioResults());
         map.put("notes", stability.notes());
         return map;
+    }
+
+    private static java.util.Map<String, Object> evidenceToMap(LiveChainEvidence evidence) {
+        java.util.Map<String, Object> map = new java.util.LinkedHashMap<>();
+        map.put("java_decision_engine", evidence.javaWiring().decisionEngine());
+        map.put("java_inference_gateway", evidence.javaWiring().inferenceGateway());
+        map.put("python_protocol", evidence.pythonBefore().protocolVersion());
+        map.put("python_model_mode", evidence.pythonBefore().modelMode());
+        map.put("observed_state_update_requests", evidence.pythonBefore().stateUpdates());
+        map.put("observed_decision_requests", evidence.pythonBefore().decisions());
+        map.put("last_state_update_run_id", evidence.pythonBefore().lastStateUpdateRunId());
+        map.put("last_decision_run_id", evidence.pythonBefore().lastDecisionRunId());
+        map.put("selected_model", evidence.selectedModel());
+        return map;
+    }
+
+    private static String liveEvidenceText(LiveChainEvidence evidence) {
+        return "live_chain: java_engine=" + evidence.javaWiring().decisionEngine()
+                + " java_inference_gateway=" + evidence.javaWiring().inferenceGateway()
+                + " python_mode=" + evidence.pythonBefore().modelMode()
+                + " state_update_requests=" + evidence.pythonBefore().stateUpdates()
+                + " decision_requests=" + evidence.pythonBefore().decisions()
+                + " selected_model=" + evidence.selectedModel() + "\n";
     }
 
     private static String readGitSha() {

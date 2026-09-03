@@ -16,10 +16,13 @@ const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? `http://localhost:${frontendP
  *   terminal 3: cd E:\spec-agent\frontend && npm run test:e2e
  *
  * The backend must already be running on the configured backend port with the
- * `SPRING_PROFILES_ACTIVE=test SPEC_AGENT_MODEL_GATEWAY=fake`. Playwright only starts the Vite dev
- * server (default port 5174) through webServer; it never starts the backend, and no
- * OpenCode key is required. Port 5174 is used instead of the default 5173 so
- * an unrelated local dev server can never be mistaken for this app.
+ * `SPRING_PROFILES_ACTIVE=test SPEC_AGENT_MODEL_GATEWAY=fake
+ * SPEC_AGENT_MODEL_INFERENCE=fake SPEC_AGENT_BRAIN_WORKER_ENABLED=true`
+ * settings (or the equivalent `--spec.agent.brain.worker.enabled=true` CLI
+ * property). Playwright only starts the Vite dev server (default port 5174)
+ * through webServer; it never starts the backend, and no OpenCode key is
+ * required. Port 5174 is used instead of the default 5173 so an unrelated
+ * local dev server can never be mistaken for this app.
  */
 export default defineConfig({
   testDir: './e2e',

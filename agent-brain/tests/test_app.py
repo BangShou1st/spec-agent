@@ -28,6 +28,31 @@ def test_health_reports_protocol_and_mode(settings):
     assert body["status"] == "ok"
     assert body["protocolVersion"] == "agent-input.v2"
     assert body["modelMode"] == "fake"
+    assert body["invocations"] == {
+        "stateUpdates": 0,
+        "decisions": 0,
+        "lastStateUpdateRunId": None,
+        "lastDecisionRunId": None,
+    }
+
+
+def test_health_reports_safe_python_invocation_evidence(settings):
+    client = _client(settings)
+    payload = _request_payload()
+    headers = {"X-Spec-Agent-Internal-Token": "test-secret"}
+
+    before = client.get("/health").json()["invocations"]
+    assert before["stateUpdates"] == 0
+    assert before["decisions"] == 0
+
+    assert client.post("/v1/state-updates", json=payload, headers=headers).status_code == 200
+    assert client.post("/v1/decisions", json=payload, headers=headers).status_code == 200
+
+    after = client.get("/health").json()["invocations"]
+    assert after["stateUpdates"] == 1
+    assert after["decisions"] == 1
+    assert after["lastStateUpdateRunId"] == payload["runId"]
+    assert after["lastDecisionRunId"] == payload["runId"]
 
 
 def test_decisions_endpoint_returns_valid_envelope_with_fake_model(settings):

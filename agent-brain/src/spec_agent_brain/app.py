@@ -14,6 +14,7 @@ Java validates fail-closed before any persistence.
 """
 
 import hmac
+from threading import Lock
 from typing import Annotated, Any, Dict
 
 from fastapi import Depends, FastAPI, Header, HTTPException
@@ -38,6 +39,22 @@ from .state_update import handle_state_update
 def create_app(settings: Settings | None = None) -> FastAPI:
     resolved = settings or load_settings()
     app = FastAPI(title="spec-agent-brain", version=__version__)
+    invocation_lock = Lock()
+    invocation_counts = {
+        "STATE_UPDATE": 0,
+        "DECISION": 0,
+    }
+    last_run_ids: dict[str, str | None] = {
+        "STATE_UPDATE": None,
+        "DECISION": None,
+    }
+
+    def record_invocation(call_type: str, run_id: str) -> None:
+        # Safe operational evidence only: counts and run ids. Prompts,
+        # completions, reasoning, and credentials never enter this probe.
+        with invocation_lock:
+            invocation_counts[call_type] += 1
+            last_run_ids[call_type] = run_id
 
     def model_client() -> ModelClient:
         if resolved.model_mode == "broker":
@@ -62,15 +79,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/health")
     def health() -> Dict[str, Any]:
+        with invocation_lock:
+            counts = dict(invocation_counts)
+            runs = dict(last_run_ids)
         return {
             "status": "ok",
             "protocolVersion": INPUT_PROTOCOL_VERSION,
             "modelMode": resolved.model_mode,
+            "invocations": {
+                "stateUpdates": counts["STATE_UPDATE"],
+                "decisions": counts["DECISION"],
+                "lastStateUpdateRunId": runs["STATE_UPDATE"],
+                "lastDecisionRunId": runs["DECISION"],
+            },
         }
 
     @app.post("/v1/state-updates", dependencies=[Depends(require_internal_token)])
     def state_updates(request: Dict[str, Any]) -> Dict[str, Any]:
         envelope = _parse(request)
+        record_invocation("STATE_UPDATE", str(envelope.run_id))
         try:
             response = handle_state_update(envelope, model_client())
         except (StateUpdateBrainContractError, ModelClientError) as exc:
@@ -80,6 +107,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/v1/decisions", dependencies=[Depends(require_internal_token)])
     def decisions(request: Dict[str, Any]) -> Dict[str, Any]:
         envelope = _parse(request)
+        record_invocation("DECISION", str(envelope.run_id))
         try:
             response = handle_decision(envelope, model_client())
         except (DecisionBrainContractError, ModelClientError) as exc:

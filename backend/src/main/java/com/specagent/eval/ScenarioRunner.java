@@ -3,6 +3,7 @@ package com.specagent.eval;
 import com.specagent.agent.AgentRun;
 import com.specagent.agent.AgentRunService;
 import com.specagent.agent.AgentRunStatus;
+import com.specagent.agent.decision.AgentDecisionEngine;
 import com.specagent.agent.policy.AgentProposal;
 import com.specagent.agent.policy.AgentProposalService;
 import com.specagent.agent.policy.ProposalStatus;
@@ -14,6 +15,7 @@ import com.specagent.answer.AnswerRepository;
 import com.specagent.context.ContextSnapshot;
 import com.specagent.context.ContextSnapshotRepository;
 import com.specagent.graph.GraphCommandService;
+import com.specagent.model.inference.ModelInferenceGateway;
 import com.specagent.node.KnowledgeStatus;
 import com.specagent.node.Node;
 import com.specagent.node.NodeService;
@@ -72,6 +74,8 @@ public class ScenarioRunner {
     private final ContextSnapshotRepository contextSnapshotRepository;
     private final AgentProposalService proposalService;
     private final ObjectProvider<BrainScriptInstaller> brainScripts;
+    private final ObjectProvider<AgentDecisionEngine> decisionEngines;
+    private final ObjectProvider<ModelInferenceGateway> inferenceGateways;
 
     private volatile UUID lastProjectId;
 
@@ -89,7 +93,9 @@ public class ScenarioRunner {
                           AnswerPatchService answerPatchService,
                           ContextSnapshotRepository contextSnapshotRepository,
                           AgentProposalService proposalService,
-                          ObjectProvider<BrainScriptInstaller> brainScripts) {
+                          ObjectProvider<BrainScriptInstaller> brainScripts,
+                          ObjectProvider<AgentDecisionEngine> decisionEngines,
+                          ObjectProvider<ModelInferenceGateway> inferenceGateways) {
         this.projectService = projectService;
         this.nodeService = nodeService;
         this.routeService = routeService;
@@ -105,6 +111,8 @@ public class ScenarioRunner {
         this.contextSnapshotRepository = contextSnapshotRepository;
         this.proposalService = proposalService;
         this.brainScripts = brainScripts;
+        this.decisionEngines = decisionEngines;
+        this.inferenceGateways = inferenceGateways;
     }
 
     public UUID lastProjectId() {
@@ -136,12 +144,16 @@ public class ScenarioRunner {
      */
     public ObservationEnvelope runLive(ScenarioDefinition scenario, VariantSpec variant,
                                        long repetitionSeed) {
-        if (brainScripts.getIfAvailable() != null) {
-            throw new IllegalStateException(
-                    "runLive requires the production Brain wiring: a BrainScriptInstaller "
-                            + "is active, refusing to mix scripted outputs into live observations");
-        }
+        requireLiveWiring();
         return run(scenario, variant, EvaluationProfile.LIVE_PROVIDER, repetitionSeed);
+    }
+
+    /** Validates the concrete Spring beans before a B-live attempt is started. */
+    LiveExecutionGuard.Evidence requireLiveWiring() {
+        return LiveExecutionGuard.requireRemoteProvider(
+                decisionEngines.getIfAvailable(),
+                inferenceGateways.getIfAvailable(),
+                brainScripts.getIfAvailable());
     }
 
     private ObservationEnvelope run(ScenarioDefinition scenario, VariantSpec variant,

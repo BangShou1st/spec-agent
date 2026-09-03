@@ -114,4 +114,13 @@ class RemotePythonDecisionEngineFailClosedTest {
         assertThatThrownBy(() -> isolated.runDecision(request()))
                 .isInstanceOf(AgentBrainUnavailableException.class);
     }
+
+    @Test
+    void providerUnavailableResponseBecomesExplicitRemoteFailure() throws Exception {
+        status.set(502);
+        responseBody.set("{\"error\":\"provider unavailable\"}");
+
+        assertThatThrownBy(() -> engine.runDecision(request()))
+                .isInstanceOf(AgentBrainUnavailableException.class);
+    }
 }
