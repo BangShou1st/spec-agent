@@ -635,3 +635,140 @@ describe('GraphCanvas onConnect (connection affordance)', () => {
     expect(wrapper.emitted('create-relation')).toBeUndefined()
   })
 })
+
+describe('GraphCanvas viewport settlement contract', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    setActivePinia(createPinia())
+    useGraphUiStore().initProject(PROJECT_ID)
+    vi.restoreAllMocks()
+  })
+
+  /**
+   * Contract:
+   * - data-viewport-settled MUST NOT advance when applyViewport starts
+   * - while setViewport Promise unresolved it MUST remain unchanged
+   * - after Promise resolves it advances exactly once
+   * - viewport-change-end is a separate path; it advances once per user/pan
+   *   interaction and must not double-count the same programmatic transition
+   * - overlapping requests: stale Promise resolution must not mark newer request as settled
+   */
+  function deferred<T = boolean>(): { promise: Promise<T>; resolve: (v: T) => void } {
+    let resolve!: (v: T) => void
+    const promise = new Promise<T>((res) => { resolve = res })
+    return { promise, resolve }
+  }
+
+  function settled(wrapper: ReturnType<typeof mountCanvas>): string | undefined {
+    return wrapper.find('[data-test="graph-canvas"]').attributes('data-viewport-settled')
+  }
+
+  it('does not advance settled revision at applyViewport start — only after Promise resolves', async () => {
+    const wrapper = mountCanvas(viewWithNodes())
+    const vf = useVueFlow('spec-agent-graph-canvas')
+    setCanvasSize(vf)
+    const first = deferred<boolean>()
+    const setViewport = vi.spyOn(vf, 'setViewport').mockReturnValue(first.promise as unknown as ReturnType<typeof vf.setViewport>)
+
+    // Trigger one programmatic viewport transition (toolbar fit-view uses duration 300)
+    await wrapper.find('[data-test="fit-view"]').trigger('click')
+    // While the transition Promise is still pending, settled must NOT have advanced
+    const during = settled(wrapper)
+    expect(setViewport).toHaveBeenCalledTimes(1)
+    // The bug was: revision incremented immediately at start, so `during` already changed.
+    // Correct: during is still undefined (no settled write yet).
+    expect(during).toBeUndefined()
+    expect(wrapper.emitted('viewport-settled')).toBeUndefined()
+
+    first.resolve(true)
+    await first.promise
+    // Vue's next microtask chain after .then() must have written exactly once
+    await nextTick()
+    await nextTick()
+    const after = settled(wrapper)
+    expect(after).toBe('1')
+    expect(wrapper.emitted('viewport-settled')).toHaveLength(1)
+  })
+
+  it('while setViewport is pending, settled remains unchanged (no premature write)', async () => {
+    const wrapper = mountCanvas(viewWithNodes())
+    const vf = useVueFlow('spec-agent-graph-canvas')
+    setCanvasSize(vf)
+    // Prime with an already-settled transition so baseline is 1
+    const d1 = deferred<boolean>()
+    const setViewport = vi.spyOn(vf, 'setViewport').mockReturnValue(d1.promise as unknown as ReturnType<typeof vf.setViewport>)
+    await wrapper.find('[data-test="fit-view"]').trigger('click')
+    d1.resolve(true)
+    await d1.promise
+    await nextTick()
+    await nextTick()
+    expect(settled(wrapper)).toBe('1')
+
+    // Second request: keep it pending indefinitely
+    const d2 = deferred<boolean>()
+    setViewport.mockReturnValue(d2.promise as unknown as ReturnType<typeof vf.setViewport>)
+    await wrapper.find('[data-test="fit-view"]').trigger('click')
+    expect(settled(wrapper)).toBe('1')
+    // Still 1 even after a few ticks while d2 is unresolved
+    await nextTick()
+    await nextTick()
+    expect(settled(wrapper)).toBe('1')
+    expect(wrapper.emitted('viewport-settled')).toHaveLength(1)
+  })
+
+  it('after Promise resolves, settled advances exactly once', async () => {
+    const wrapper = mountCanvas(viewWithNodes())
+    const vf = useVueFlow('spec-agent-graph-canvas')
+    setCanvasSize(vf)
+    const d = deferred<boolean>()
+    vi.spyOn(vf, 'setViewport').mockReturnValue(d.promise as unknown as ReturnType<typeof vf.setViewport>)
+    await wrapper.find('[data-test="fit-view"]').trigger('click')
+    expect(settled(wrapper)).toBeUndefined()
+    d.resolve(true)
+    await d.promise
+    await nextTick()
+    await nextTick()
+    expect(settled(wrapper)).toBe('1')
+    expect(wrapper.emitted('viewport-settled')).toHaveLength(1)
+    // No second increment from the same transition
+    await nextTick()
+    expect(settled(wrapper)).toBe('1')
+    expect(wrapper.emitted('viewport-settled')).toHaveLength(1)
+  })
+
+  it('overlapping requests: stale resolve must not mark newer request as settled', async () => {
+    const wrapper = mountCanvas(viewWithNodes())
+    const vf = useVueFlow('spec-agent-graph-canvas')
+    setCanvasSize(vf)
+    const dA = deferred<boolean>()
+    const dB = deferred<boolean>()
+    const setViewport = vi.spyOn(vf, 'setViewport').mockReturnValue(dA.promise as unknown as ReturnType<typeof vf.setViewport>)
+
+    // Request A
+    await wrapper.find('[data-test="fit-view"]').trigger('click')
+    expect(setViewport).toHaveBeenCalledTimes(1)
+    expect(settled(wrapper)).toBeUndefined()
+
+    // Request B starts before A resolves
+    setViewport.mockReturnValue(dB.promise as unknown as ReturnType<typeof vf.setViewport>)
+    await wrapper.find('[data-test="fit-view"]').trigger('click')
+    expect(setViewport).toHaveBeenCalledTimes(2)
+    expect(settled(wrapper)).toBeUndefined()
+
+    // A resolves late — must be ignored
+    dA.resolve(true)
+    await dA.promise
+    await nextTick()
+    await nextTick()
+    expect(settled(wrapper)).toBeUndefined()
+    expect(wrapper.emitted('viewport-settled')).toBeUndefined()
+
+    // B resolves — now exactly one settlement for the latest request
+    dB.resolve(true)
+    await dB.promise
+    await nextTick()
+    await nextTick()
+    expect(settled(wrapper)).toBe('2')
+    expect(wrapper.emitted('viewport-settled')).toHaveLength(1)
+  })
+})

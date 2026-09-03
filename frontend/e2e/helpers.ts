@@ -20,6 +20,10 @@ export async function createProject(page: Page, title: string): Promise<void> {
 /** Fits the whole graph into the viewport (viewport-only; never moves nodes). */
 export async function fitGraph(page: Page): Promise<void> {
   const canvas = page.getByTestId('graph-canvas')
+  // True settlement: data-viewport-settled only advances after the
+  // requested setViewport Promise resolves (the 300ms transition has
+  // completed), not at request start. Capture before click, then wait
+  // for a genuine advance.
   const before = await canvas.getAttribute('data-viewport-settled')
   await page.getByTestId('fit-view').click()
   await expect(page.locator('.vue-flow__node').first()).toBeVisible()
@@ -28,6 +32,9 @@ export async function fitGraph(page: Page): Promise<void> {
   } else {
     await expect.poll(async () => canvas.getAttribute('data-viewport-settled')).not.toBeNull()
   }
+  // The settled write already implies the viewport transition completed.
+  // Keep a DOM flush via double RAF for floating-window reflow visibility,
+  // but it is AFTER real settlement — never a substitute for it.
   await page.waitForFunction(() => new Promise<void>((resolve) => {
     requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
   }))

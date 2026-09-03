@@ -269,31 +269,56 @@ function collectViewportNodes(ids?: Set<string> | null): ViewportNode[] {
   return result
 }
 
-/** Applies a deterministic transform through setViewport only. */
-let viewportSettledRevision = 0
+/**
+ * True viewport settlement contract.
+ *
+ * - data-viewport-settled means the latest requested viewport transition
+ *   has COMPLETED (not started).
+ * - applyViewport increments a monotonic request id immediately but only
+ *   exposes/advances the settled revision after setViewport's Promise
+ *   resolves. While the Promise is pending, settled remains unchanged.
+ * - A stale Promise (overlapping request) never marks a newer request as
+ *   settled — checked via monotonic request ids.
+ * - User-driven viewport-change-end (pan/zoom) is orthogonal and advances
+ *   settled independently; programmatic setViewport transitions never
+ *   double-count via that event for the same request id.
+ */
+const viewportSettledRevision = ref(0)
+const viewportRequestRevision = ref(0)
+const latestSettledRequestId = ref(0)
+
+function writeSettledRevision(revision: number): void {
+  viewportSettledRevision.value = revision
+}
+
+function markSettledForRequest(requestId: number): void {
+  if (requestId < viewportRequestRevision.value) return
+  if (requestId < latestSettledRequestId.value) {
+    return
+  }
+  if (requestId === latestSettledRequestId.value && viewportSettledRevision.value > 0) {
+    return
+  }
+  latestSettledRequestId.value = requestId
+  writeSettledRevision(requestId)
+  emit('viewport-settled')
+}
 
 function applyViewport(transform: ViewportTransform | null, duration: number): void {
   if (!transform) {
     return
   }
-  const revision = ++viewportSettledRevision
-  const root = document.querySelector<HTMLElement>('[data-test="graph-canvas"]')
-  if (root) root.setAttribute('data-viewport-settled', String(revision))
-  // A floating window placed during the animation saw mid-flight node
-  // geometry. Emit settled exactly when the transform has finished so the
-  // workspace re-runs the layout against the final on-screen positions.
-  void Promise.resolve(vf.setViewport(transform, { duration })).then(() => {
-    emit('viewport-settled')
-    const settledRoot = document.querySelector<HTMLElement>('[data-test="graph-canvas"]')
-    if (settledRoot) settledRoot.setAttribute('data-viewport-settled', String(revision))
-  })
+  const requestId = ++viewportRequestRevision.value
+  void Promise.resolve(vf.setViewport(transform, { duration })).then(
+    () => markSettledForRequest(requestId),
+    () => markSettledForRequest(requestId),
+  )
 }
 
-/** 初始套用一次适应视图（只改 viewport 变换，不动节点坐标）。 */
 function onViewportChangeEnd(): void {
-  const revision = ++viewportSettledRevision
-  const root = document.querySelector<HTMLElement>('[data-test="graph-canvas"]')
-  if (root) root.setAttribute('data-viewport-settled', String(revision))
+  const requestId = ++viewportRequestRevision.value
+  latestSettledRequestId.value = requestId
+  writeSettledRevision(requestId)
   emit('viewport-settled')
 }
 
@@ -637,7 +662,7 @@ const isEmptyProject = computed(() =>
 </script>
 
 <template>
-  <div class="graph-canvas" data-test="graph-canvas">
+  <div class="graph-canvas" data-test="graph-canvas" :data-viewport-settled="viewportSettledRevision > 0 ? String(viewportSettledRevision) : undefined">
     <GraphToolbar
       @zoom-in="zoomIn"
       @zoom-out="zoomOut"
