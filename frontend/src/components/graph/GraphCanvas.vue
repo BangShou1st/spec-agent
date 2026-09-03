@@ -110,6 +110,23 @@ const flowNodes = shallowRef<FlowCanvasNode[]>([])
 const flowEdges = shallowRef<Edge[]>([])
 const shiftSelecting = ref(false)
 
+/**
+ * One-shot explicit Fit revalidation intent (ephemeral, per-component).
+ *
+ * Declared before the projection watcher below: the watcher's immediate run
+ * may call maybeRevalidatePendingFit, which reads this binding.
+ */
+interface PendingFitIntent {
+  runId: string
+  activeNodeIdAtFit: string | null
+}
+
+let pendingFitIntent: PendingFitIntent | null = null
+
+function clearPendingFitIntent(): void {
+  pendingFitIntent = null
+}
+
 const projection = computed(() => {
   if (!props.view) {
     return { nodes: [], edges: [] }
@@ -150,9 +167,61 @@ watch(
     flowNodes.value = flowNodes.value.filter((n) => ids.has(n.id))
     flowEdges.value = next.edges.map((edge) => ({ ...edge }))
     adoptProjectedPositions()
+    // A pending → real replacement lands through the canonical projection;
+    // revalidate the explicit Fit once the real geometry is measurable.
+    maybeRevalidatePendingFit()
   },
   { immediate: true },
 )
+
+// Real node measurement arrives through Vue Flow after the projection swap
+// (no fixed timeout): re-check the armed intent when dimensions change.
+// The watch covers v-model sync; the update-node-internals handler covers
+// the explicit Vue Flow measurement event (jsdom-safe: both are no-ops
+// without an armed intent).
+watch(
+  () => flowNodes.value.map((node) => {
+    const measured = (node as FlowCanvasNode & { dimensions?: Dimensions }).dimensions
+    return `${node.id}:${measured?.width ?? 0}x${measured?.height ?? 0}`
+  }),
+  () => {
+    maybeRevalidatePendingFit()
+  },
+)
+
+/**
+ * Vue Flow reports measured node geometry through update-node-internals
+ * after rendering/measuring. Merge the reported dimensions into the local
+ * flow nodes (positions stay canonical) and re-check an armed intent.
+ */
+function onUpdateNodeInternals(ids?: string[]): void {
+  if (!ids || ids.length === 0) {
+    maybeRevalidatePendingFit()
+    return
+  }
+  const measuredById = new Map<string, Dimensions>()
+  for (const node of vf.nodes.value) {
+    const id = (node as { id?: unknown }).id
+    const dimensions = (node as { dimensions?: unknown }).dimensions
+    if (typeof id === 'string'
+      && typeof dimensions === 'object' && dimensions !== null
+      && Number((dimensions as { width?: unknown }).width) > 0
+      && Number((dimensions as { height?: unknown }).height) > 0) {
+      measuredById.set(id, dimensions as Dimensions)
+    }
+  }
+  if (measuredById.size > 0) {
+    for (const node of flowNodes.value) {
+      if (ids.includes(node.id)) {
+        const measured = measuredById.get(node.id)
+        if (measured) {
+          ;(node as FlowCanvasNode & { dimensions?: Dimensions }).dimensions = { ...measured }
+        }
+      }
+    }
+  }
+  maybeRevalidatePendingFit()
+}
 
 /**
  * Stores browser-locally any position the projection just assigned for the
@@ -316,6 +385,12 @@ function applyViewport(transform: ViewportTransform | null, duration: number): v
 }
 
 function onViewportChangeEnd(): void {
+  // Programmatic setViewport runs through a d3 transition without a
+  // sourceEvent, which never reaches this handler (verified against the
+  // bundled Vue Flow: `if (!event.sourceEvent) return null`). Reaching here
+  // therefore means a genuine user pan/zoom gesture — a new viewport intent
+  // that invalidates an armed pending-fit revalidation.
+  clearPendingFitIntent()
   const requestId = ++viewportRequestRevision.value
   latestSettledRequestId.value = requestId
   writeSettledRevision(requestId)
@@ -345,8 +420,7 @@ function onInit(): void {
  * 自研适应视图：直接基于投影坐标计算 viewport 变换（setViewport），只改
  * 视口、绝不移动节点坐标。绝不依赖 Vue Flow 的节点测量。
  */
-function manualFitView(): void {
-  clearActiveNodeFitTimer()
+function performFitView(): void {
   const canvasWidth = vf.dimensions.value.width
   const canvasHeight = vf.dimensions.value.height
   if (!canvasWidth || !canvasHeight) {
@@ -356,6 +430,73 @@ function manualFitView(): void {
     computeFitViewport(collectViewportNodes(), canvasWidth, canvasHeight, { padding: 48, region: props.safeRegion ?? undefined }),
     300,
   )
+}
+
+/** Measured (not fallback, not pending) flow node ids currently on canvas. */
+function measuredRealNodeIds(): Set<string> {
+  const ids = new Set<string>()
+  for (const node of flowNodes.value) {
+    if (node.id.startsWith('pending:')) {
+      continue
+    }
+    const measured = (node as FlowCanvasNode & { dimensions?: Dimensions }).dimensions
+    if (measured && measured.width > 0 && measured.height > 0) {
+      ids.add(node.id)
+    }
+  }
+  return ids
+}
+
+/**
+ * Consumes the armed intent when its pending run has been replaced by a
+ * measured real node. Called after projection refreshes and after node
+ * measurement updates; no-ops unless every gate holds.
+ */
+function maybeRevalidatePendingFit(): void {
+  const intent = pendingFitIntent
+  if (!intent) {
+    return
+  }
+  const current = props.pendingProjection
+  // The fitted pending run is still in flight: keep the intent armed.
+  if (current && current.runId === intent.runId && current.status !== 'FAILED') {
+    return
+  }
+  // Any live pending (a different run, or the same run re-polled) means the
+  // replacement has not completed: expire only if it can never match again.
+  // A FAILED run without replacement expires the intent with no revalidation.
+  if (current && current.status !== 'FAILED') {
+    if (current.runId !== intent.runId) {
+      pendingFitIntent = null
+    }
+    return
+  }
+  if (current) {
+    pendingFitIntent = null
+    return
+  }
+  const stillPending = flowNodes.value.some((node) => node.id === `pending:${intent.runId}`)
+  if (stillPending) {
+    return
+  }
+  const measured = measuredRealNodeIds()
+  if (measured.size === 0) {
+    return
+  }
+  pendingFitIntent = null
+  clearActiveNodeFitTimer()
+  performFitView()
+}
+
+function manualFitView(): void {
+  clearActiveNodeFitTimer()
+  performFitView()
+  const pending = props.pendingProjection
+  if (pending && pending.status !== 'FAILED') {
+    pendingFitIntent = { runId: pending.runId, activeNodeIdAtFit: props.activeNodeId }
+  } else {
+    clearPendingFitIntent()
+  }
 }
 
 /** 把单个节点平滑带进视口（只改 viewport，不动节点坐标）。 */
@@ -555,6 +696,7 @@ function emitContextualAi(nodeId: string, visualNodeKey?: string): void {
 /** Brings one node into view without changing Focus or Active. */
 async function locateNode(nodeId: string): Promise<void> {
   clearActiveNodeFitTimer()
+  clearPendingFitIntent()
   manualFitNode(nodeId)
 }
 
@@ -564,6 +706,7 @@ async function locateNode(nodeId: string): Promise<void> {
  */
 async function locateRoute(routeId: string): Promise<void> {
   clearActiveNodeFitTimer()
+  clearPendingFitIntent()
   const route = props.view?.routes.find((r) => r.id === routeId)
   if (!route) {
     return
@@ -592,11 +735,13 @@ defineExpose({ locateNode, locateRoute })
 
 async function zoomIn(): Promise<void> {
   clearActiveNodeFitTimer()
+  clearPendingFitIntent()
   await vf.zoomIn()
 }
 
 async function zoomOut(): Promise<void> {
   clearActiveNodeFitTimer()
+  clearPendingFitIntent()
   await vf.zoomOut()
 }
 
@@ -614,6 +759,7 @@ async function fitView(): Promise<void> {
  */
 async function autoLayout(): Promise<void> {
   clearActiveNodeFitTimer()
+  clearPendingFitIntent()
   if (!props.view) {
     return
   }
@@ -700,6 +846,7 @@ const isEmptyProject = computed(() =>
         @node-drag-stop="onNodeDragStop"
         @pane-click="onPaneClick"
         @connect="onConnect"
+        @update-node-internals="onUpdateNodeInternals"
          @selection-start="shiftSelecting = true"
          @selection-end="shiftSelecting = false"
          @viewport-change-end="onViewportChangeEnd"

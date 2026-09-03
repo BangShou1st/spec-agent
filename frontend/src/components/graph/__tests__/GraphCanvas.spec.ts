@@ -21,7 +21,7 @@ const VueFlowStub = defineComponent({
     nodes: { type: Array, default: () => [] },
     edges: { type: Array, default: () => [] },
   },
-  emits: ['init', 'node-click', 'edge-click', 'node-drag', 'node-drag-stop', 'nodes-change', 'pane-click', 'connect'],
+  emits: ['init', 'node-click', 'edge-click', 'node-drag', 'node-drag-stop', 'nodes-change', 'pane-click', 'connect', 'viewport-change-end', 'update-node-internals'],
   setup() {
     return () => h('div', { class: 'vf-stub' })
   },
@@ -770,5 +770,319 @@ describe('GraphCanvas viewport settlement contract', () => {
     await nextTick()
     expect(settled(wrapper)).toBe('2')
     expect(wrapper.emitted('viewport-settled')).toHaveLength(1)
+  })
+})
+
+describe('GraphCanvas one-shot explicit fit revalidation', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    setActivePinia(createPinia())
+    useGraphUiStore().initProject(PROJECT_ID)
+    vi.restoreAllMocks()
+  })
+
+  function deferred<T = boolean>(): { promise: Promise<T>; resolve: (v: T) => void } {
+    let resolve!: (v: T) => void
+    const promise = new Promise<T>((res) => { resolve = res })
+    return { promise, resolve }
+  }
+
+  function emptyViewWithRoute(): GraphWorkspaceView {
+    return makeGraphWorkspaceView({
+      projectId: PROJECT_ID,
+      activeRouteId: ACTIVE_ROUTE,
+      routes: [
+        {
+          id: ACTIVE_ROUTE,
+          label: 'Initial route',
+          lifecycleStatus: 'open',
+          isActive: true,
+          rootNodeId: 'n1',
+          tipNodeId: 'n1',
+          createdFromNodeId: null,
+          supersedesRouteId: null,
+          replacementOfNodeId: null,
+          lineageNodeIds: ['n1'],
+        },
+      ],
+      nodes: [],
+      answers: [],
+    })
+  }
+
+  function viewWithRealNode(): GraphWorkspaceView {
+    return makeGraphWorkspaceView({
+      projectId: PROJECT_ID,
+      activeRouteId: ACTIVE_ROUTE,
+      routes: [
+        {
+          id: ACTIVE_ROUTE,
+          label: 'Initial route',
+          lifecycleStatus: 'open',
+          isActive: true,
+          rootNodeId: 'n1',
+          tipNodeId: 'n1',
+          createdFromNodeId: null,
+          supersedesRouteId: null,
+          replacementOfNodeId: null,
+          lineageNodeIds: ['n1'],
+        },
+      ],
+      nodes: [makeNode({ id: 'n1', projectId: PROJECT_ID })],
+      answers: [],
+    })
+  }
+
+  function pendingOf(runId: string) {
+    return {
+      routeId: ACTIVE_ROUTE,
+      sourceNodeId: null,
+      runId,
+      status: 'PENDING' as const,
+      phase: null,
+      message: null,
+    }
+  }
+
+  function mountPendingCanvas(runId: string) {
+    return mount(GraphCanvas, {
+      props: {
+        view: emptyViewWithRoute(),
+        activeNodeId: null,
+        submitting: false,
+        drafting: false,
+        pending: false,
+        pendingProjection: pendingOf(runId),
+      },
+      global: {
+        stubs: { VueFlow: VueFlowStub },
+      },
+    })
+  }
+
+  /** Simulates Vue Flow reporting measured dimensions for one flow node. */
+  async function reportMeasured(
+    wrapper: ReturnType<typeof mountPendingCanvas>,
+    nodeId: string,
+    width: number,
+    height: number,
+  ): Promise<void> {
+    const vf = useVueFlow('spec-agent-graph-canvas')
+    const storeNodes = vf.nodes.value as Array<{ id: string; dimensions?: { width: number; height: number } }>
+    let target = storeNodes.find((node) => node.id === nodeId)
+    if (!target) {
+      target = { id: nodeId }
+      storeNodes.push(target)
+    }
+    target.dimensions = { width, height }
+    const flow = wrapper.findComponent(VueFlowStub)
+    flow.vm.$emit('update-node-internals', [nodeId])
+    await nextTick()
+  }
+
+  it('RED1: explicit fit on pending, then measured real replacement revalidates exactly once', async () => {
+    const wrapper = mountPendingCanvas('run-1')
+    const vf = useVueFlow('spec-agent-graph-canvas')
+    setCanvasSize(vf)
+    const d1 = deferred<boolean>()
+    const setViewport = vi.spyOn(vf, 'setViewport').mockReturnValue(d1.promise as unknown as ReturnType<typeof vf.setViewport>)
+
+    // Explicit Fit View while only the pending card exists (measured 320x150
+    // via fallback-aware collect; the write must use pending geometry).
+    await reportMeasured(wrapper, 'pending:run-1', 320, 150)
+    await nextTick()
+    await wrapper.find('[data-test="fit-view"]').trigger('click')
+    expect(setViewport).toHaveBeenCalledTimes(1)
+    d1.resolve(true)
+    await d1.promise
+    await nextTick()
+    await nextTick()
+
+    // Pending disappears; the real canonical node appears with measured size.
+    const d2 = deferred<boolean>()
+    setViewport.mockReturnValue(d2.promise as unknown as ReturnType<typeof vf.setViewport>)
+    await wrapper.setProps({ view: viewWithRealNode(), pendingProjection: null, activeNodeId: 'n1' })
+    await nextTick()
+    await reportMeasured(wrapper, 'n1', 320, 286)
+    await nextTick()
+    await nextTick()
+
+    // The one-shot revalidation must issue exactly one second write using
+    // the real node geometry — not the stale pending fit.
+    expect(setViewport).toHaveBeenCalledTimes(2)
+    d2.resolve(true)
+    await d2.promise
+    await nextTick()
+    await nextTick()
+    expect(setViewport).toHaveBeenCalledTimes(2)
+  })
+
+  it('RED2: replacement with unknown dimensions keeps intent armed until measured', async () => {
+    const wrapper = mountPendingCanvas('run-2')
+    const vf = useVueFlow('spec-agent-graph-canvas')
+    setCanvasSize(vf)
+    const d1 = deferred<boolean>()
+    const setViewport = vi.spyOn(vf, 'setViewport').mockReturnValue(d1.promise as unknown as ReturnType<typeof vf.setViewport>)
+
+    await reportMeasured(wrapper, 'pending:run-2', 320, 150)
+    await nextTick()
+    await wrapper.find('[data-test="fit-view"]').trigger('click')
+    expect(setViewport).toHaveBeenCalledTimes(1)
+    d1.resolve(true)
+    await d1.promise
+    await nextTick()
+    await nextTick()
+
+    // Real node arrives but Vue Flow has not measured it yet: NO revalidation,
+    // intent stays armed.
+    const dLater = deferred<boolean>()
+    setViewport.mockReturnValue(dLater.promise as unknown as ReturnType<typeof vf.setViewport>)
+    await wrapper.setProps({ view: viewWithRealNode(), pendingProjection: null, activeNodeId: 'n1' })
+    await nextTick()
+    await nextTick()
+    expect(setViewport).toHaveBeenCalledTimes(1)
+
+    // Measurement arrives later: exactly one revalidation fires.
+    await reportMeasured(wrapper, 'n1', 320, 286)
+    await nextTick()
+    await nextTick()
+    expect(setViewport).toHaveBeenCalledTimes(2)
+    dLater.resolve(true)
+  })
+
+  it('RED3: user zoom after pending fit cancels revalidation; programmatic settle does not', async () => {
+    const wrapper = mountPendingCanvas('run-3')
+    const vf = useVueFlow('spec-agent-graph-canvas')
+    setCanvasSize(vf)
+    const d1 = deferred<boolean>()
+    const zoomIn = vi.spyOn(vf, 'zoomIn').mockResolvedValue(true)
+    const setViewport = vi.spyOn(vf, 'setViewport').mockReturnValue(d1.promise as unknown as ReturnType<typeof vf.setViewport>)
+
+    await reportMeasured(wrapper, 'pending:run-3', 320, 150)
+    await nextTick()
+    await wrapper.find('[data-test="fit-view"]').trigger('click')
+    expect(setViewport).toHaveBeenCalledTimes(1)
+    // Programmatic settlement of the explicit fit itself must NOT cancel.
+    d1.resolve(true)
+    await d1.promise
+    await nextTick()
+    await nextTick()
+    expect(setViewport).toHaveBeenCalledTimes(1)
+
+    // User zoom is a new viewport intent: cancels the pending-fit intent.
+    await wrapper.find('[data-test="zoom-in"]').trigger('click')
+    expect(zoomIn).toHaveBeenCalledTimes(1)
+
+    await wrapper.setProps({ view: viewWithRealNode(), pendingProjection: null, activeNodeId: 'n1' })
+    await nextTick()
+    await reportMeasured(wrapper, 'n1', 320, 286)
+    await nextTick()
+    await nextTick()
+    expect(setViewport).toHaveBeenCalledTimes(1)
+  })
+
+  it('RED3b: user pan/zoom gesture (viewport-change-end) after pending fit cancels revalidation', async () => {
+    const wrapper = mountPendingCanvas('run-3b')
+    const vf = useVueFlow('spec-agent-graph-canvas')
+    setCanvasSize(vf)
+    const d1 = deferred<boolean>()
+    const setViewport = vi.spyOn(vf, 'setViewport').mockReturnValue(d1.promise as unknown as ReturnType<typeof vf.setViewport>)
+
+    await reportMeasured(wrapper, 'pending:run-3b', 320, 150)
+    await nextTick()
+    await wrapper.find('[data-test="fit-view"]').trigger('click')
+    expect(setViewport).toHaveBeenCalledTimes(1)
+    d1.resolve(true)
+    await d1.promise
+    await nextTick()
+    await nextTick()
+
+    // A genuine user pan/zoom gesture ends: cancels the pending-fit intent.
+    const flow = wrapper.findComponent(VueFlowStub)
+    flow.vm.$emit('viewport-change-end')
+    await nextTick()
+
+    await wrapper.setProps({ view: viewWithRealNode(), pendingProjection: null, activeNodeId: 'n1' })
+    await nextTick()
+    await reportMeasured(wrapper, 'n1', 320, 286)
+    await nextTick()
+    await nextTick()
+    expect(setViewport).toHaveBeenCalledTimes(1)
+  })
+
+  it('RED4: revalidation fires exactly once across later unrelated refreshes', async () => {
+    const wrapper = mountPendingCanvas('run-4')
+    const vf = useVueFlow('spec-agent-graph-canvas')
+    setCanvasSize(vf)
+    const d1 = deferred<boolean>()
+    const setViewport = vi.spyOn(vf, 'setViewport').mockReturnValue(d1.promise as unknown as ReturnType<typeof vf.setViewport>)
+
+    await reportMeasured(wrapper, 'pending:run-4', 320, 150)
+    await nextTick()
+    await wrapper.find('[data-test="fit-view"]').trigger('click')
+    expect(setViewport).toHaveBeenCalledTimes(1)
+    d1.resolve(true)
+    await d1.promise
+    await nextTick()
+    await nextTick()
+
+    const d2 = deferred<boolean>()
+    setViewport.mockReturnValue(d2.promise as unknown as ReturnType<typeof vf.setViewport>)
+    await wrapper.setProps({ view: viewWithRealNode(), pendingProjection: null, activeNodeId: 'n1' })
+    await nextTick()
+    await reportMeasured(wrapper, 'n1', 320, 286)
+    await nextTick()
+    await nextTick()
+    expect(setViewport).toHaveBeenCalledTimes(2)
+    d2.resolve(true)
+    await d2.promise
+    await nextTick()
+    await nextTick()
+
+    // Later unrelated refreshes (same view object shape, safeRegion-only
+    // prop updates) must NOT trigger a third fit.
+    await wrapper.setProps({ view: viewWithRealNode() })
+    await nextTick()
+    await nextTick()
+    await wrapper.setProps({ submitting: true })
+    await nextTick()
+    await wrapper.setProps({ submitting: false })
+    await nextTick()
+    await nextTick()
+    expect(setViewport).toHaveBeenCalledTimes(2)
+  })
+
+  it('fit without pending leaves no revalidation intent', async () => {
+    const wrapper = mount(GraphCanvas, {
+      props: {
+        view: viewWithRealNode(),
+        activeNodeId: 'n1',
+        submitting: false,
+        drafting: false,
+        pending: false,
+      },
+      global: {
+        stubs: { VueFlow: VueFlowStub },
+      },
+    })
+    const vf = useVueFlow('spec-agent-graph-canvas')
+    setCanvasSize(vf)
+    const d1 = deferred<boolean>()
+    const setViewport = vi.spyOn(vf, 'setViewport').mockReturnValue(d1.promise as unknown as ReturnType<typeof vf.setViewport>)
+
+    await reportMeasured(wrapper, 'n1', 320, 286)
+    await nextTick()
+    await wrapper.find('[data-test="fit-view"]').trigger('click')
+    expect(setViewport).toHaveBeenCalledTimes(1)
+    d1.resolve(true)
+    await d1.promise
+    await nextTick()
+    await nextTick()
+
+    // An unrelated refresh afterwards must not produce any automatic fit.
+    await wrapper.setProps({ view: viewWithRealNode() })
+    await nextTick()
+    await nextTick()
+    expect(setViewport).toHaveBeenCalledTimes(1)
   })
 })
