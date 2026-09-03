@@ -36,16 +36,37 @@ tasks.withType<Test> {
 // P2 evaluation harness (deterministic B-fast profile, CI-blocking).
 // Runs the scenario contract tests, corpus validation, Layer A / B-fast
 // corpus scenarios, and the baseline artifact suite — no live provider,
-// no judge model, no secrets required.
+// no judge model, no secrets required. Live baseline suites
+// (EvalLive*) are excluded: live-provider flakiness must never block PRs.
 tasks.register<Test>("evalBFast") {
     group = "verification"
     description = "Runs the deterministic P2 agent evaluation harness (B-fast) only."
     useJUnitPlatform()
     filter {
         includeTestsMatching("com.specagent.eval.*")
+        excludeTestsMatching("com.specagent.eval.EvalLive*")
     }
     testLogging {
         events("failed")
+        showStandardStreams = true
+    }
+}
+
+// P2 Phase 2 — Live agent behavioral baseline (explicit, non-blocking).
+// Same Scenario Contract through Python Brain + live provider, N=3
+// repetitions per variant. Requires a running agent-brain in broker mode
+// plus a configured provider; skips cleanly when either is missing.
+// Never wire this into PR-blocking CI: it records the baseline, it does
+// not gate on it.
+tasks.register<Test>("evalLive") {
+    group = "verification"
+    description = "Records the P2 live agent behavioral baseline (non-blocking, requires live brain + provider)."
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching("com.specagent.eval.EvalLive*")
+    }
+    testLogging {
+        events("failed", "skipped")
         showStandardStreams = true
     }
 }

@@ -113,6 +113,39 @@ public class ScenarioRunner {
 
     /** Runs one scenario variant end to end and returns its observation. */
     public ObservationEnvelope run(ScenarioDefinition scenario, VariantSpec variant) {
+        return run(scenario, variant, EvaluationProfile.B_FAST);
+    }
+
+    /**
+     * P2 Phase 2 — Live behavioral baseline entry.
+     *
+     * <p>Runs the identical Scenario Contract (same canonical Java runtime
+     * setup, same Layer A invariants, same Layer B expectations, same call
+     * budget) but lets the production Brain wiring answer STATE_UPDATE +
+     * DECISION instead of installing a scripted Brain output. The scenario's
+     * {@code given.brainScript} is ignored — never copied as an expectation —
+     * so a live Brain that genuinely converges on an acceptable action still
+     * passes, and one that diverges fails through the unchanged contract.
+     *
+     * <p>Requires that no {@code BrainScriptInstaller} bean is active: when a
+     * scripted brain is installed the runner refuses to run live, so live
+     * observations can never silently come from scripted outputs.
+     *
+     * @param repetitionSeed recorded seed for this repetition (N=3 runs of
+     *     the same variant differ only by this seed, never by semantics)
+     */
+    public ObservationEnvelope runLive(ScenarioDefinition scenario, VariantSpec variant,
+                                       long repetitionSeed) {
+        if (brainScripts.getIfAvailable() != null) {
+            throw new IllegalStateException(
+                    "runLive requires the production Brain wiring: a BrainScriptInstaller "
+                            + "is active, refusing to mix scripted outputs into live observations");
+        }
+        return run(scenario, variant, EvaluationProfile.LIVE_PROVIDER, repetitionSeed);
+    }
+
+    private ObservationEnvelope run(ScenarioDefinition scenario, VariantSpec variant,
+                                    EvaluationProfile profile) {
         scenario.validate();
         BrainScriptInstaller brain = brainScripts.getIfAvailable();
         if (brain == null) {
@@ -121,9 +154,32 @@ public class ScenarioRunner {
         }
         long startNanos = System.nanoTime();
         resetProbeCapabilities();
+        installCapabilitySuccessFlags(scenario);
         brain.resetScripts();
         brain.installScript(scenario.given().brainScript(),
                 scenario.scenarioId(), variant.seed(), variant.paraphraseIndex());
+        return runAfterSetup(scenario, variant, profile, variant.seed(), brain, startNanos);
+    }
+
+    private ObservationEnvelope run(ScenarioDefinition scenario, VariantSpec variant,
+                                    EvaluationProfile profile, long repetitionSeed) {
+        scenario.validate();
+        long startNanos = System.nanoTime();
+        resetProbeCapabilities();
+        installCapabilitySuccessFlags(scenario);
+        return runAfterSetup(scenario, variant, profile, repetitionSeed, null, startNanos);
+    }
+
+    /**
+     * Shared attempt body after Brain setup: canonical Java runtime setup,
+     * production answer cycle, canonical-state observation, contract assembly.
+     * The only difference between profiles is what answers STATE_UPDATE +
+     * DECISION at the boundary (scripted vs production wiring) — setup,
+     * observation, Layer A, Layer B and the call budget are shared.
+     */
+    private ObservationEnvelope runAfterSetup(ScenarioDefinition scenario, VariantSpec variant,
+                                              EvaluationProfile profile, long observationSeed,
+                                              BrainScriptInstaller brain, long startNanos) {
 
         Project project = projectService.createProject(renderTitle(scenario, variant));
         lastProjectId = project.id();
@@ -145,10 +201,17 @@ public class ScenarioRunner {
 
         // Post-observe even on failure: fail-closed means canonical state
         // must show no unintended mutation.
+        long latencyMs = (System.nanoTime() - startNanos) / 1_000_000L;
+        if (brain == null) {
+            AttemptContext context = observeLive(
+                    scenario, variant, project, runId, preState, preRelations, preAnswerIds,
+                    failureDetail, latencyMs);
+            return assemble(scenario, variant, context, profile, observationSeed);
+        }
         AttemptContext context = observe(
                 scenario, variant, project, runId, preState, preRelations, preAnswerIds,
-                brain, failureDetail, (System.nanoTime() - startNanos) / 1_000_000L);
-        return assemble(scenario, variant, context);
+                brain, failureDetail, latencyMs);
+        return assemble(scenario, variant, context, profile, observationSeed);
     }
 
     // -- setup -----------------------------------------------------------------
@@ -244,6 +307,14 @@ public class ScenarioRunner {
                 && setup.forkRoute != null) {
             routeService.setActiveRoute(project.id(), setup.forkRoute.id());
             setup.activeRoute = routeRepository.findById(setup.forkRoute.id()).orElseThrow();
+        } else if (scenario.given().routeContext().kind() == RouteContextSpec.Kind.ACTIVE_TIP
+                && setup.forkRoute != null) {
+            // forkFromNode moves the workspace active route onto the fork.
+            // An ACTIVE_TIP declaration means the answer cycle runs on the
+            // pre-fork route, so restore it (idempotent when focus handling
+            // already returned there).
+            routeService.setActiveRoute(project.id(), setup.activeRoute.id());
+            setup.activeRoute = routeRepository.findById(setup.activeRoute.id()).orElseThrow();
         }
         return setup;
     }
@@ -380,6 +451,109 @@ public class ScenarioRunner {
     }
 
     // -- observe -------------------------------------------------------------------
+
+    /**
+     * P2 Phase 2 — live observation.
+     *
+     * <p>Reads the same canonical Java runtime facts as {@link #observe}, but
+     * derives production-call accounting from the persisted run events instead
+     * of a scripted brain: {@code STATE_UPDATE_STARTED} / {@code DECISION_STARTED}
+     * mark the two production calls, {@code MODEL_INFERENCE_FAILED} marks
+     * provider retries (never new production steps), and per-call latency
+     * comes from the broker's {@code MODEL_INFERENCE} {@code elapsedMillis}.
+     * Tokens stay null (the runtime persists only hashes + category + timing,
+     * never token counts into run events) and cost stays {@code unknown} —
+     * the harness never guesses either. Capability invocations still come
+     * from the probe adapters.
+     */
+    private AttemptContext observeLive(ScenarioDefinition scenario, VariantSpec variant,
+                                       Project project, UUID runId,
+                                       StateSummary preState, int preRelations,
+                                       List<UUID> preAnswerIds,
+                                       String failureDetail,
+                                       long latencyMs) {
+        AgentRun run = runId == null ? null : agentRunService.getRun(runId).orElse(null);
+        List<AttemptContext.AgentRunEventView> events = new ArrayList<>();
+        if (run != null) {
+            for (var event : eventService.findByRunId(run.id())) {
+                events.add(new AttemptContext.AgentRunEventView(
+                        event.eventType(), Map.copyOf(event.payload())));
+            }
+        }
+        LiveCallAccounting accounting = deriveLiveCallAccounting(events);
+        StateSummary postState = summarize(project.id());
+        Map<String, Integer> delta = new LinkedHashMap<>();
+        delta.put("routes", postState.routes() - preState.routes());
+        delta.put("nodes", postState.nodes() - preState.nodes());
+        delta.put("answers", postState.answers() - preState.answers());
+        delta.put("patches", postState.patches() - preState.patches());
+        delta.put("proposals", postState.proposals() - preState.proposals());
+        delta.put("relations", countRelations(project.id()) - preRelations);
+        delta.put("capabilityInvocations",
+                postState.capabilityInvocations() - preState.capabilityInvocations());
+
+        List<AgentProposal> proposals = run == null ? List.of()
+                : proposalService.findByRunId(run.id()).map(List::of).orElse(List.of());
+        String action = primaryAction(events);
+        String executionResult = executionResult(events, proposals, failureDetail);
+        Map<String, Integer> capabilityInvocations = readProbeInvocations();
+        List<UUID> postAnswerIds = answerIds(project.id());
+        ContextSnapshot decisionSnapshot = decisionSnapshot(events);
+        Map<String, Long> stageLatency = new LinkedHashMap<>();
+        stageLatency.put("total", latencyMs);
+        stageLatency.putAll(accounting.stageLatencyMs());
+
+        return new AttemptContext(
+                project.id(), runId, run, events, preState, postState, delta,
+                action, executionResult, proposals, capabilityInvocations,
+                preAnswerIds, postAnswerIds, decisionSnapshot,
+                accounting.stages(), accounting.providerRetries(),
+                latencyMs, stageLatency, failureDetail);
+    }
+
+    /**
+     * Derives live call accounting from persisted run events (canonical truth).
+     * Production calls are the brain-operation boundaries the AnswerCycle owns
+     * (STATE_UPDATE then DECISION); provider retries are broker-side inference
+     * failures that never become new production steps. Both counts come from
+     * events the runtime already persists — the harness adds no second model
+     * of the flow.
+     */
+    private static LiveCallAccounting deriveLiveCallAccounting(
+            List<AttemptContext.AgentRunEventView> events) {
+        List<String> stages = new ArrayList<>();
+        int retries = 0;
+        Map<String, Long> stageLatencyMs = new LinkedHashMap<>();
+        int inferenceIndex = 0;
+        for (AttemptContext.AgentRunEventView event : events) {
+            switch (event.eventType()) {
+                case "STATE_UPDATE_STARTED" -> stages.add("STATE_UPDATE");
+                case "DECISION_STARTED" -> stages.add("DECISION");
+                case "MODEL_INFERENCE_FAILED" -> retries++;
+                case "MODEL_INFERENCE" -> {
+                    Object elapsed = event.payload().get("elapsedMillis");
+                    if (elapsed instanceof Number number) {
+                        Object callType = event.payload().get("callType");
+                        String key = "inference."
+                                + (callType == null ? indexSuffix(inferenceIndex) : callType);
+                        stageLatencyMs.put(key, number.longValue());
+                        inferenceIndex++;
+                    }
+                }
+                default -> {
+                }
+            }
+        }
+        return new LiveCallAccounting(stages, retries, stageLatencyMs);
+    }
+
+    private static String indexSuffix(int index) {
+        return "call-" + index;
+    }
+
+    private record LiveCallAccounting(List<String> stages, int providerRetries,
+                                      Map<String, Long> stageLatencyMs) {
+    }
 
     private AttemptContext observe(ScenarioDefinition scenario, VariantSpec variant,
                                    Project project, UUID runId,
@@ -527,6 +701,20 @@ public class ScenarioRunner {
 
     private ObservationEnvelope assemble(ScenarioDefinition scenario, VariantSpec variant,
                                          AttemptContext context) {
+        return assemble(scenario, variant, context, EvaluationProfile.B_FAST, variant.seed());
+    }
+
+    /**
+     * Shared contract assembly for both profiles: Layer A invariants, Layer B
+     * expectations, call budget — then the envelope stamped with the profile
+     * that actually produced the observation. Expectations are never copied
+     * from the scenario's scripted brain output; B-live reuses the same
+     * acceptable/forbidden actions, properties and deltas the contract
+     * declares.
+     */
+    private ObservationEnvelope assemble(ScenarioDefinition scenario, VariantSpec variant,
+                                         AttemptContext context, EvaluationProfile profile,
+                                         long observationSeed) {
         List<Violation> violations = new ArrayList<>();
         List<CheckResult> invariantResults = LayerA.check(scenario, context);
         for (CheckResult check : invariantResults) {
@@ -563,7 +751,7 @@ public class ScenarioRunner {
         StateSummary post = context.postState();
         return ObservationEnvelope.builder(
                         scenario.scenarioId(), variant.variantId(),
-                        scenario.scenarioHash(), EvaluationProfile.B_FAST)
+                        scenario.scenarioHash(), profile)
                 .preState(new StateSummary(
                         pre.routes(), pre.nodes(), pre.answers(), pre.patches(),
                         pre.proposals(), pre.capabilityInvocations()))
@@ -583,7 +771,7 @@ public class ScenarioRunner {
                                 ? null : context.decisionSnapshot().contextHash())
                 .latencyMs(context.latencyMs())
                 .stageLatencyMs(context.stageLatencyMs())
-                .seed(variant.seed())
+                .seed(observationSeed)
                 .build();
     }
 
@@ -596,6 +784,36 @@ public class ScenarioRunner {
 
     private void resetProbeCapabilities() {
         invokeProbe("reset");
+    }
+
+    /**
+     * Installs the per-scenario capability success flags for live attempts.
+     * Probe adapters default to success; scenarios that declare a capability
+     * with {@code succeed=false} need the flag written through the same
+     * reflective bridge (main scope never depends on test types).
+     */
+    private void installCapabilitySuccessFlags(ScenarioDefinition scenario) {
+        for (CapabilitySpec capability : scenario.given().capabilities()) {
+            if (!capability.succeed()) {
+                setProbeSuccess(capability.capabilityId(), false);
+            }
+        }
+    }
+
+    private void setProbeSuccess(String capabilityId, boolean succeed) {
+        try {
+            Class<?> probe = Class.forName("com.specagent.eval.EvalProbeCapabilities");
+            Object succeedMap = probe.getField("SUCCEED").get(null);
+            if (succeedMap instanceof Map<?, ?> map) {
+                @SuppressWarnings("unchecked")
+                Map<String, Boolean> flags = (Map<String, Boolean>) map;
+                flags.put(capabilityId, succeed);
+                return;
+            }
+            throw new IllegalStateException("Eval probe SUCCEED map unavailable");
+        } catch (ReflectiveOperationException ex) {
+            throw new IllegalStateException("Eval probes unavailable", ex);
+        }
     }
 
     private void invokeProbe(String method) {
