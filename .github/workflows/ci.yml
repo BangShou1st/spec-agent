@@ -39,6 +39,45 @@ jobs:
           SPEC_AGENT_MODEL_GATEWAY: fake
         run: bash gradlew cleanTest test
 
+  eval-baseline:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: spec_agent_test
+          POSTGRES_USER: spec_agent
+          POSTGRES_PASSWORD: spec_agent_dev
+        ports:
+          - 5434:5432
+        options: >-
+          --health-cmd "pg_isready -U spec_agent -d spec_agent_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      # Blocking: scenario schema/corpus validation, Layer A, B-fast,
+      # production call-budget checks. No live provider, no judge model,
+      # no token/cost/latency thresholds.
+      - name: Run deterministic P2 evaluation harness (B-fast)
+        working-directory: backend
+        env:
+          SPRING_PROFILES_ACTIVE: test
+          SPEC_AGENT_MODEL_GATEWAY: fake
+        run: bash gradlew evalBFast
+      - name: Upload baseline artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-baseline
+          path: backend/build/eval-baseline/
+          if-no-files-found: error
+
   frontend:
     runs-on: ubuntu-latest
     steps:

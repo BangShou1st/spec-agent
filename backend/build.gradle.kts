@@ -33,6 +33,43 @@ tasks.withType<Test> {
     useJUnitPlatform()
 }
 
+// P2 evaluation harness (deterministic B-fast profile, CI-blocking).
+// Runs the scenario contract tests, corpus validation, Layer A / B-fast
+// corpus scenarios, and the baseline artifact suite — no live provider,
+// no judge model, no secrets required.
+tasks.register<Test>("evalBFast") {
+    group = "verification"
+    description = "Runs the deterministic P2 agent evaluation harness (B-fast) only."
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching("com.specagent.eval.*")
+    }
+    testLogging {
+        events("failed")
+        showStandardStreams = true
+    }
+}
+
+// Single-scenario entry: -PevalTest=E01SimpleAnswerTest
+// (omit to run the whole eval package via evalBFast).
+tasks.register<Test>("evalScenario") {
+    group = "verification"
+    description = "Runs one P2 evaluation test class (e.g. -PevalTest=E01SimpleAnswerTest)."
+    useJUnitPlatform()
+    val evalTest = project.findProperty("evalTest")?.toString()?.takeIf { it.isNotBlank() }
+    filter {
+        if (evalTest != null) {
+            includeTestsMatching("com.specagent.eval.$evalTest")
+        } else {
+            includeTestsMatching("com.specagent.eval.*")
+        }
+    }
+    testLogging {
+        events("failed")
+        showStandardStreams = true
+    }
+}
+
 tasks.withType<JavaCompile> {
     options.compilerArgs.add("-parameters")
 }

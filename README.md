@@ -106,6 +106,18 @@ local main ↔ remote main
 
 Do not create feature branches unless the project owner explicitly changes this rule. Keep `main` healthy with small commits, tests, and documentation updates.
 
+## Agent Evaluation Harness (P2, deterministic B-fast)
+
+```bash
+cd backend
+./gradlew evalBFast                        # all deterministic evals (CI-blocking)
+./gradlew evalScenario -PevalTest=E01SimpleAnswerTest   # one scenario class
+```
+
+Artifacts land in `backend/build/eval-baseline/` (`results.jsonl`,
+`summary.json`, `summary.txt`) and are never committed. Live-provider
+evaluation stays opt-in and non-blocking.
+
 ## Documentation
 
 Read these before implementation:
