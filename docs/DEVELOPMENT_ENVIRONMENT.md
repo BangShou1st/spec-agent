@@ -235,6 +235,25 @@ must never be used in production.
 | `SPEC_AGENT_OPENCODE_MODEL` | Selected model id (must end with `-free`) | No | No (default `mimo-v2.5-free`) |
 | `SPEC_AGENT_CREDENTIAL_MASTER_KEY` | Credential encryption master key (test profile uses fixed test-only key) | No | No (test profile) |
 
+### B-live evaluation configuration
+
+`evalLive` uses a deliberately separate, explicit source for provider runtime
+settings. It sets `spec.agent.model.runtime-settings-source=external-environment`
+and reads only these process environment variables:
+
+| Variable | Purpose | Required |
+|---|---|---|
+| `SPEC_AGENT_EVAL_OPENCODE_KEY` | OpenCode Zen API key for the live evaluation process | **Yes** |
+| `SPEC_AGENT_EVAL_OPENCODE_MODEL` | Current OpenCode free model id | **Yes** |
+
+The endpoint is pinned to `https://opencode.ai/zen/v1` by the live suite. No
+default model is applied in this mode. Missing or invalid values fail before
+the first behavioral scenario; the suite never reads or mutates the
+`spec_agent_test` database's `opencode_settings` row. The credential value is
+held only in process configuration and is never printed, persisted, or sent to
+the Python Brain. Safe provenance reports include gateway type, endpoint,
+selected model, and the external-environment source label only.
+
 ### Provider Failure Categories
 
 | Category | Trigger | Meaning |

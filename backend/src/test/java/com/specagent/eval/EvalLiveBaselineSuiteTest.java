@@ -1,5 +1,6 @@
 package com.specagent.eval;
 
+import com.specagent.common.Hashes;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
@@ -28,10 +29,11 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * {@code stability.txt} under {@code build/eval-live}) captures the raw
  * behavioral baseline. The suite records reality and never asserts pass —
  * a red baseline must not trigger prompt tuning by itself, and live-provider
- * flakiness must never block PR CI.
+ * behavioral results must never block PR CI.
  *
- * <p>Requires a running agent-brain in broker mode plus a configured OpenCode
- * provider behind the Java broker; otherwise the suite is skipped.
+ * <p>Requires a running agent-brain in broker mode plus explicit external
+ * OpenCode configuration. Missing/invalid provider settings fail before the
+ * first scenario; an unavailable brain is skipped.
  */
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.DEFINED_PORT,
@@ -40,7 +42,11 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
                 "spec.agent.brain.engine=remote-python",
                 "spec.agent.brain.base-url=${SPEC_AGENT_EVAL_BRAIN_BASE_URL:http://localhost:8100}",
                 "spec.agent.brain.internal-secret=${SPEC_AGENT_BRAIN_INTERNAL_SECRET:dev-internal-secret}",
-                "spec.agent.model.inference=opencode"
+                "spec.agent.model.inference=opencode",
+                "spec.agent.model.runtime-settings-source=external-environment",
+                "spec.agent.model.external.api-key=${SPEC_AGENT_EVAL_OPENCODE_KEY:}",
+                "spec.agent.model.external.selected-model=${SPEC_AGENT_EVAL_OPENCODE_MODEL:}",
+                "spec.agent.model.opencode.base-url=https://opencode.ai/zen/v1"
         })
 class EvalLiveBaselineSuiteTest extends EvalLiveHarnessBase {
 
@@ -63,7 +69,7 @@ class EvalLiveBaselineSuiteTest extends EvalLiveHarnessBase {
         List<ObservationEnvelope> stamped = new ArrayList<>();
         for (ObservationEnvelope observation : observations) {
             stamped.add(observation.withRunMetadata(
-                    runId, gitSha, liveProvider(), before.selectedModel(), liveModelConfigDigest()));
+                    runId, gitSha, liveProvider(), before.selectedModel(), liveModelConfigDigest(before)));
         }
 
         Path outputDir = Path.of(System.getProperty("user.dir"), "build", "eval-live");
@@ -123,8 +129,9 @@ class EvalLiveBaselineSuiteTest extends EvalLiveHarnessBase {
         return "opencode-zen";
     }
 
-    private static String liveModelConfigDigest() {
-        return "unknown";
+    private static String liveModelConfigDigest(LiveChainEvidence evidence) {
+        return Hashes.sha256Hex(evidence.endpoint() + "\n"
+                + evidence.selectedModel() + "\n" + evidence.credentialSource());
     }
 
     private static java.util.Map<String, Object> stabilityToMap(LiveStabilitySummary stability) {
@@ -154,6 +161,8 @@ class EvalLiveBaselineSuiteTest extends EvalLiveHarnessBase {
         java.util.Map<String, Object> map = new java.util.LinkedHashMap<>();
         map.put("java_decision_engine", evidence.javaWiring().decisionEngine());
         map.put("java_inference_gateway", evidence.javaWiring().inferenceGateway());
+        map.put("provider_endpoint", evidence.endpoint());
+        map.put("credential_source", evidence.credentialSource());
         map.put("python_protocol", evidence.pythonBefore().protocolVersion());
         map.put("python_model_mode", evidence.pythonBefore().modelMode());
         map.put("observed_state_update_requests", evidence.pythonBefore().stateUpdates());
@@ -167,9 +176,11 @@ class EvalLiveBaselineSuiteTest extends EvalLiveHarnessBase {
     private static String liveEvidenceText(LiveChainEvidence evidence) {
         return "live_chain: java_engine=" + evidence.javaWiring().decisionEngine()
                 + " java_inference_gateway=" + evidence.javaWiring().inferenceGateway()
+                + " endpoint=" + evidence.endpoint()
                 + " python_mode=" + evidence.pythonBefore().modelMode()
                 + " state_update_requests=" + evidence.pythonBefore().stateUpdates()
                 + " decision_requests=" + evidence.pythonBefore().decisions()
+                + " credential_source=" + evidence.credentialSource()
                 + " selected_model=" + evidence.selectedModel() + "\n";
     }
 

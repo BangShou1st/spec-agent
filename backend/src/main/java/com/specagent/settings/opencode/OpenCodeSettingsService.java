@@ -4,6 +4,8 @@ import com.specagent.model.provider.OpenCodeModelCatalog;
 import com.specagent.model.provider.OpenCodeModelErrorCategory;
 import com.specagent.model.provider.OpenCodeModelException;
 import com.specagent.model.provider.OpenCodeZenTransport;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -13,16 +15,40 @@ import java.util.List;
 @Service
 public class OpenCodeSettingsService {
 
+    static final String DATABASE_SOURCE = "database";
+    static final String EXTERNAL_ENVIRONMENT_SOURCE = "external-environment";
+    static final String EXTERNAL_CREDENTIAL_SOURCE = "external-environment:SPEC_AGENT_EVAL_OPENCODE_KEY";
+
     private final OpenCodeSettingsRepository repository;
     private final OpenCodeModelCatalog catalog;
     private final OpenCodeZenTransport transport;
+    private final String runtimeSettingsSource;
+    private final String externalApiKey;
+    private final String externalSelectedModel;
 
+    /** Default constructor retained for direct unit-test callers. */
     public OpenCodeSettingsService(OpenCodeSettingsRepository repository,
                                    OpenCodeModelCatalog catalog,
                                    OpenCodeZenTransport transport) {
+        this(repository, catalog, transport, DATABASE_SOURCE, "", "");
+    }
+
+    @Autowired
+    public OpenCodeSettingsService(OpenCodeSettingsRepository repository,
+                                   OpenCodeModelCatalog catalog,
+                                   OpenCodeZenTransport transport,
+                                   @Value("${spec.agent.model.runtime-settings-source:database}")
+                                   String runtimeSettingsSource,
+                                   @Value("${spec.agent.model.external.api-key:}")
+                                   String externalApiKey,
+                                   @Value("${spec.agent.model.external.selected-model:}")
+                                   String externalSelectedModel) {
         this.repository = repository;
         this.catalog = catalog;
         this.transport = transport;
+        this.runtimeSettingsSource = runtimeSettingsSource;
+        this.externalApiKey = externalApiKey;
+        this.externalSelectedModel = externalSelectedModel;
     }
 
     public OpenCodeSettingsStatus status() {
@@ -94,6 +120,13 @@ public class OpenCodeSettingsService {
 
     /** The only normal service method that returns the full key to backend code. */
     public RuntimeOpenCodeSettings requireRuntimeSettings() {
+        if (EXTERNAL_ENVIRONMENT_SOURCE.equals(runtimeSettingsSource)) {
+            return requireExternalRuntimeSettings();
+        }
+        if (!DATABASE_SOURCE.equals(runtimeSettingsSource)) {
+            throw new OpenCodeModelException(OpenCodeModelErrorCategory.NOT_CONFIGURED,
+                    "Unsupported OpenCode runtime settings source: " + runtimeSettingsSource);
+        }
         OpenCodeSettings settings = requireStoredSettings();
         if (settings.apiKey() == null || settings.apiKey().isBlank()
                 || settings.selectedModel() == null || settings.selectedModel().isBlank()) {
@@ -104,7 +137,30 @@ public class OpenCodeSettingsService {
             throw new OpenCodeModelException(OpenCodeModelErrorCategory.INVALID_MODEL,
                     "Configured OpenCode model is not currently allowed");
         }
-        return new RuntimeOpenCodeSettings(settings.apiKey(), settings.selectedModel());
+        return new RuntimeOpenCodeSettings(settings.apiKey(), settings.selectedModel(),
+                "database:opencode_settings");
+    }
+
+    /**
+     * Explicit live-evaluation source. Blank values are intentionally not
+     * defaulted from the product database: evalLive must never inherit the
+     * test database's provider row or a product-local model selection.
+     */
+    private RuntimeOpenCodeSettings requireExternalRuntimeSettings() {
+        if (externalApiKey == null || externalApiKey.isBlank()
+                || externalSelectedModel == null || externalSelectedModel.isBlank()) {
+            throw new OpenCodeModelException(OpenCodeModelErrorCategory.NOT_CONFIGURED,
+                    "Live OpenCode provider configuration is missing: set "
+                            + "SPEC_AGENT_EVAL_OPENCODE_KEY and "
+                            + "SPEC_AGENT_EVAL_OPENCODE_MODEL; test database settings are not used");
+        }
+        String model = externalSelectedModel.trim();
+        if (!model.endsWith("-free")) {
+            throw new OpenCodeModelException(OpenCodeModelErrorCategory.INVALID_MODEL,
+                    "Live OpenCode model is invalid: selected model must end with -free");
+        }
+        return new RuntimeOpenCodeSettings(externalApiKey.trim(), model,
+                EXTERNAL_CREDENTIAL_SOURCE);
     }
 
     private List<String> currentFreeModels(String apiKey) {

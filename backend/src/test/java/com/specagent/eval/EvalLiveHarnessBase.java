@@ -2,7 +2,7 @@ package com.specagent.eval;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.specagent.model.gateway.ModelGatewayException;
+import com.specagent.model.provider.OpenCodeZenTransport;
 import com.specagent.settings.opencode.OpenCodeSettingsService;
 import com.specagent.settings.opencode.RuntimeOpenCodeSettings;
 import org.junit.jupiter.api.AfterEach;
@@ -27,9 +27,10 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * {@code EvalProbeCapabilities.Config} here guarantees live observations can
  * never silently come from scripted outputs.
  *
- * <p>Live runs need a reachable agent-brain in broker mode and a configured
- * OpenCode provider behind the Java broker. When either is missing the suite
- * is skipped (non-blocking by construction) so PR CI stays green offline.
+ * <p>Live runs need explicit external OpenCode settings and a reachable
+ * agent-brain in broker mode. Missing/invalid provider settings fail closed;
+ * an unavailable brain remains an environmental skip so PR CI stays green
+ * offline.
  * Cleanup mirrors {@link EvalHarnessBase} project-scoped row deletion because
  * run failure marking commits in its own transaction.
  */
@@ -52,6 +53,9 @@ public abstract class EvalLiveHarnessBase {
 
     @Autowired
     protected OpenCodeSettingsService openCodeSettingsService;
+
+    @Autowired
+    protected OpenCodeZenTransport openCodeZenTransport;
 
     private final List<UUID> liveProjectIds = new ArrayList<>();
 
@@ -81,22 +85,23 @@ public abstract class EvalLiveHarnessBase {
 
     /**
      * Requires a real live chain and returns safe evidence stamped into the
-     * baseline artifact. A reachable health endpoint in fake model mode is not
-     * sufficient: the suite is skipped before any observation is labelled
-     * B-live unless Python reports broker mode and the Java bean guard passes.
+     * baseline artifact. Provider configuration is checked first and is a
+     * hard failure: a live run must never skip or fall back when its explicit
+     * external configuration is missing or invalid.
      */
     protected LiveChainEvidence requireLiveBrain(String brainHealthUrl) {
-        LiveBrainHealth health = readLiveBrainHealth(brainHealthUrl);
-        LiveExecutionGuard.Evidence javaWiring = scenarioRunner.requireLiveWiring();
-
         RuntimeOpenCodeSettings settings;
         try {
             settings = openCodeSettingsService.requireRuntimeSettings();
-        } catch (ModelGatewayException ex) {
-            assumeTrue(false, "live provider is not configured: " + ex.gatewayCategory());
-            return null;
+        } catch (RuntimeException ex) {
+            throw new IllegalStateException(
+                    "B-live rejected before baseline: live provider configuration is "
+                            + "missing or invalid; " + ex.getMessage(), ex);
         }
-        return new LiveChainEvidence(javaWiring, health, settings.selectedModel());
+        LiveExecutionGuard.Evidence javaWiring = scenarioRunner.requireLiveWiring();
+        LiveBrainHealth health = readLiveBrainHealth(brainHealthUrl);
+        return new LiveChainEvidence(javaWiring, health, settings.selectedModel(),
+                settings.credentialSource(), openCodeZenTransport.endpoint());
     }
 
     /** Reads safe Python-side invocation evidence; no prompt or completion data. */
@@ -162,7 +167,9 @@ public abstract class EvalLiveHarnessBase {
 
     protected record LiveChainEvidence(LiveExecutionGuard.Evidence javaWiring,
                                        LiveBrainHealth pythonBefore,
-                                       String selectedModel) {
+                                       String selectedModel,
+                                       String credentialSource,
+                                       String endpoint) {
 
         LiveChainEvidence withPythonAfter(LiveBrainHealth pythonAfter) {
             return new LiveChainEvidence(javaWiring,
@@ -173,7 +180,7 @@ public abstract class EvalLiveHarnessBase {
                             pythonAfter.decisions() - pythonBefore.decisions(),
                             pythonAfter.lastStateUpdateRunId(),
                             pythonAfter.lastDecisionRunId()),
-                    selectedModel);
+                    selectedModel, credentialSource, endpoint);
         }
     }
 

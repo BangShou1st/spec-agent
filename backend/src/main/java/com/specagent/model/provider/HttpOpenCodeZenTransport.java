@@ -74,6 +74,11 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
     }
 
     @Override
+    public String endpoint() {
+        return baseUrl;
+    }
+
+    @Override
     public OpenCodeCompletionResponse complete(String apiKey, OpenCodeChatCompletionRequest request) {
         PreparedRequest prepared = prepareCompletionRequest(apiKey, request);
         HttpResponse<InputStream> response = sendStreaming(prepared, request.model());

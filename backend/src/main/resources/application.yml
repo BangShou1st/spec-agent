@@ -41,6 +41,9 @@ spec:
       # Lower-level inference seam used by the internal broker for the Python
       # brain. Shares the frozen OpenCode transport; fake is test-only.
       inference: ${SPEC_AGENT_MODEL_INFERENCE:opencode}
+      # Production remains database-backed. The live evaluation suite opts
+      # into external-environment explicitly and never falls back to a DB row.
+      runtime-settings-source: ${SPEC_AGENT_MODEL_RUNTIME_SETTINGS_SOURCE:database}
       opencode:
         settings-timeout-seconds: ${SPEC_AGENT_OPENCODE_SETTINGS_TIMEOUT_SECONDS:45}
     brain:

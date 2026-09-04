@@ -54,16 +54,31 @@ tasks.register<Test>("evalBFast") {
 
 // P2 Phase 2 — Live agent behavioral baseline (explicit, non-blocking).
 // Same Scenario Contract through Python Brain + live provider, N=3
-// repetitions per variant. Requires a running agent-brain in broker mode
-// plus a configured provider; skips cleanly when either is missing.
+// repetitions per variant. The suite requires explicit external live
+// provider configuration; missing/invalid settings fail before scenarios.
 // Never wire this into PR-blocking CI: it records the baseline, it does
-// not gate on it.
+// not gate on behavioral pass/fail.
 tasks.register<Test>("evalLive") {
     group = "verification"
     description = "Records the P2 live agent behavioral baseline (non-blocking, requires live brain + provider)."
     useJUnitPlatform()
     filter {
-        includeTestsMatching("com.specagent.eval.EvalLive*")
+        includeTestsMatching("com.specagent.eval.EvalLiveBaselineSuiteTest")
+    }
+    testLogging {
+        events("failed", "skipped")
+        showStandardStreams = true
+    }
+}
+
+// One-attempt live smoke only; this is not the baseline and never runs as
+// part of evalBFast or evalLive.
+tasks.register<Test>("evalLiveSmoke") {
+    group = "verification"
+    description = "Runs the single E01 B-live smoke (requires explicit live provider config)."
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching("com.specagent.eval.EvalLiveE01SmokeTest")
     }
     testLogging {
         events("failed", "skipped")

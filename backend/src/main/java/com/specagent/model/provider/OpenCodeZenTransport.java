@@ -28,6 +28,11 @@ public interface OpenCodeZenTransport {
      */
     String USER_AGENT = "opencode/1.18.16";
 
+    /** Safe endpoint provenance; never contains an authorization value. */
+    default String endpoint() {
+        return BASE_URL;
+    }
+
     /**
      * Issues one chat completion against {@code POST /chat/completions}.
      *

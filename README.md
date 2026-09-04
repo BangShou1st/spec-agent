@@ -117,12 +117,15 @@ cd backend
 Artifacts land in `backend/build/eval-baseline/` (`results.jsonl`,
 `summary.json`, `summary.txt`) and are never committed. Live-provider
 evaluation stays opt-in and non-blocking. To record it locally, start the
-Python Brain in broker mode and run `./gradlew evalLive`; the suite requires
-the concrete `RemotePythonDecisionEngine` and `OpenCodeModelInferenceGateway`
-beans, a broker-mode Brain health response with invocation evidence, and a
-configured OpenCode model. If the provider is unavailable, the run records an
-explicit failed observation and never falls back to a fake provider; it is not
-a valid behavioral baseline.
+Python Brain in broker mode and provide `SPEC_AGENT_EVAL_OPENCODE_KEY` plus
+`SPEC_AGENT_EVAL_OPENCODE_MODEL` from the shell environment, then run
+`./gradlew evalLive`. The suite requires the concrete
+`RemotePythonDecisionEngine` and `OpenCodeModelInferenceGateway` beans, a
+broker-mode Brain health response with invocation evidence, and the fixed
+OpenCode Zen endpoint. The live suite does not read `spec_agent_test`'s
+`opencode_settings` row and fails before scenarios when either live setting is
+missing or invalid. A single-attempt smoke is available as
+`./gradlew evalLiveSmoke`; neither command falls back to a fake provider.
 
 ## Documentation
 
