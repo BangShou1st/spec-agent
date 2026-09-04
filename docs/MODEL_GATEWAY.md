@@ -52,7 +52,7 @@ The first known target provider is opencode zen free model access.
 The provider is expected to require this request header:
 
 ```http
-User-Agent: opencode/1.18.16
+User-Agent: opencode/1.18.21
 ```
 
 This value must be configurable and must not be hard-coded inside business logic.
@@ -74,7 +74,7 @@ spec-agent:
     chat-completions-path: /chat/completions
     model: resolved-from-opencode-settings
     api-key: resolved-from-opencode-settings
-    user-agent: ${SPEC_AGENT_MODEL_USER_AGENT:opencode/1.18.16}
+    user-agent: ${SPEC_AGENT_MODEL_USER_AGENT:opencode/1.18.21}
     settings-timeout-seconds: 45
 ```
 
@@ -158,7 +158,7 @@ Minimum required headers:
 ```http
 Content-Type: application/json
 Authorization: Bearer <api-key>
-User-Agent: opencode/1.18.16
+User-Agent: opencode/1.18.21
 ```
 
 The concrete authorization header must be produced by the provider adapter, not by Runtime Kernel code.

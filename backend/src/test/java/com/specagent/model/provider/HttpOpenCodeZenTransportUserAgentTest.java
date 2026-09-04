@@ -51,7 +51,7 @@ class HttpOpenCodeZenTransportUserAgentTest {
                 .hasSize(3)
                 .allSatisfy(userAgent -> assertThat(userAgent)
                         .isNotBlank()
-                        .isEqualTo(OpenCodeZenTransport.USER_AGENT));
+                        .isEqualTo("opencode/1.18.21"));
         assertThat(userAgents).allMatch(userAgent -> userAgent.equals(userAgents.get(0)));
     }
 

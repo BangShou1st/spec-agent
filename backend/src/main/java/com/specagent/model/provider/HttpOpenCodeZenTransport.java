@@ -42,7 +42,7 @@ import java.util.Map;
  * runtime and structured-output validation remain provider-agnostic.</p>
  *
  * <p>Every request carries the transport-owned identity policy: User-Agent
- * {@code opencode/1.18.16}, bearer authorization when a key is available and
+ * {@code opencode/1.18.21}, bearer authorization when a key is available and
  * JSON content type for payload-bearing requests. Production completions use
  * an unbounded JDK request/client policy; model discovery and credential probes
  * use a separate bounded settings policy.</p>

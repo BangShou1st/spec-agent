@@ -45,7 +45,7 @@ AI integration:
 - ProviderAdapter boundary.
 - OpenAI-compatible provider shape first.
 - Configurable provider base URL, model id, endpoint, API key, timeout, and headers.
-- Required support for configurable `User-Agent`, including `opencode/1.18.16` for opencode zen.
+- Required support for configurable `User-Agent`, including `opencode/1.18.21` for opencode zen.
 - Structured JSON contracts.
 - Prompt versioning.
 - Agent run trace persistence.

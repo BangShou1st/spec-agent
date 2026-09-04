@@ -167,7 +167,7 @@ First-version rules:
 4. Phase 4 may use only a fake model adapter.
 5. Provider-specific HTTP details must stay behind ProviderAdapter.
 6. Provider configuration must include base URL, endpoint path, model id, API key, timeout, and headers.
-7. The opencode zen provider path must support configurable `User-Agent` with `opencode/1.18.16` as the expected local value.
+7. The opencode zen provider path must support configurable `User-Agent` with `opencode/1.18.21` as the expected local value.
 8. Do not hard-code provider headers inside Runtime Kernel, Route, Node, Answer, Context, Patch, or Spec services.
 9. Do not store secrets in traces.
 10. Validate model output before persistence.

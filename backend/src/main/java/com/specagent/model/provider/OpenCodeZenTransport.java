@@ -26,7 +26,7 @@ public interface OpenCodeZenTransport {
      * single definition of the header; the transport applies it to
      * completion, model list and credential probe requests alike.
      */
-    String USER_AGENT = "opencode/1.18.16";
+    String USER_AGENT = "opencode/1.18.21";
 
     /** Safe endpoint provenance; never contains an authorization value. */
     default String endpoint() {

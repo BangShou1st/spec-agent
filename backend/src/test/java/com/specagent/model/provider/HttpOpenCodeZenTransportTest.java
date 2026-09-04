@@ -106,7 +106,7 @@ class HttpOpenCodeZenTransportTest {
         CapturedRequest request = captured.get(0);
         assertThat(request.method()).isEqualTo("POST");
         assertThat(request.path()).isEqualTo("/chat/completions");
-        assertThat(request.headers().getFirst("User-Agent")).isEqualTo(OpenCodeZenTransport.USER_AGENT);
+        assertThat(request.headers().getFirst("User-Agent")).isEqualTo("opencode/1.18.21");
         assertThat(request.headers().getFirst("Authorization")).isEqualTo("Bearer " + TEST_KEY);
         assertThat(request.headers().getFirst("Content-Type")).isEqualTo("application/json");
 
