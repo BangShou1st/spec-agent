@@ -77,6 +77,7 @@ public abstract class EvalLiveHarnessBase {
             long repetitionSeed = variant.seed() * 1000L + repetition;
             ObservationEnvelope observation =
                     scenarioRunner.runLive(scenario, variant, repetitionSeed);
+            observation = observation.withRepetition(repetition);
             liveProjectIds.add(scenarioRunner.lastProjectId());
             observations.add(observation);
         }

@@ -9,6 +9,7 @@ refs; Java re-validates everything fail-closed anyway.
 import json
 import uuid
 
+from ..diagnostics import semantic_diagnostics
 from ..contracts.decisions import (
     ActionProposal,
     AgentV2ResponseEnvelope,
@@ -30,12 +31,13 @@ def handle_decision(request: AgentV2RequestEnvelope, client: ModelClient) -> Age
     if request.decision_budget.max_model_calls < 1:
         raise BrainContractError("decision budget does not allow any model call")
 
+    user_prompt = decision_prompt.render_user_prompt(request)
     completion = client.complete(
         run_id=str(request.run_id),
         call_type="DECISION",
         messages=[
             ChatMessage(role="system", content=decision_prompt.SYSTEM_PROMPT),
-            ChatMessage(role="user", content=decision_prompt.render_user_prompt(request)),
+            ChatMessage(role="user", content=user_prompt),
         ],
     )
     output = _parse_model_output(completion.content)
@@ -61,6 +63,8 @@ def handle_decision(request: AgentV2RequestEnvelope, client: ModelClient) -> Age
             anchor_refs=output.action.anchor_refs,
         ),
         usage=UsageView(model_calls=1, prompt_hashes=[]),
+        diagnostics=semantic_diagnostics(
+            decision_prompt.SYSTEM_PROMPT, user_prompt, "DECISION"),
     )
 
 

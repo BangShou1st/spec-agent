@@ -48,3 +48,5 @@ spec:
       engine: ${SPEC_AGENT_BRAIN_ENGINE:fake}
       worker:
         enabled: false
+    semantic-trace:
+      enabled: true

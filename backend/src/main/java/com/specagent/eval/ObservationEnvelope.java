@@ -1,5 +1,7 @@
 package com.specagent.eval;
 
+import com.specagent.trace.SemanticTrace;
+
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -24,7 +26,11 @@ public final class ObservationEnvelope {
 
     private final String schemaVersion;
     private final String runId;
+    private final String attemptId;
+    private final int repetition;
     private final String gitSha;
+    private final String baselineReferenceCommit;
+    private final String instrumentationCommit;
     private final String scenarioId;
     private final String variantId;
     private final String scenarioHash;
@@ -58,11 +64,16 @@ public final class ObservationEnvelope {
     private final FailureClass failureClass;
     private final Instant timestamp;
     private final long seed;
+    private final SemanticTrace semanticTrace;
 
     private ObservationEnvelope(Builder builder) {
         this.schemaVersion = SCHEMA_VERSION;
         this.runId = builder.runId;
+        this.attemptId = builder.attemptId;
+        this.repetition = builder.repetition;
         this.gitSha = builder.gitSha;
+        this.baselineReferenceCommit = builder.baselineReferenceCommit;
+        this.instrumentationCommit = builder.instrumentationCommit;
         this.scenarioId = builder.scenarioId;
         this.variantId = builder.variantId;
         this.scenarioHash = builder.scenarioHash;
@@ -97,6 +108,8 @@ public final class ObservationEnvelope {
                 : (builder.violations.isEmpty() ? null : builder.violations.get(0).failureClass());
         this.timestamp = builder.timestamp == null ? Instant.now() : builder.timestamp;
         this.seed = builder.seed;
+        this.semanticTrace = builder.semanticTrace == null
+                ? SemanticTrace.empty(null) : builder.semanticTrace;
     }
 
     public static Builder builder(String scenarioId, String variantId,
@@ -119,10 +132,31 @@ public final class ObservationEnvelope {
         return copy.build();
     }
 
+    public ObservationEnvelope withRepetition(int repetition) {
+        Builder copy = toBuilder();
+        copy.repetition = repetition;
+        return copy.build();
+    }
+
+    public ObservationEnvelope withDiagnosticMetadata(String baselineReferenceCommit,
+                                                       String instrumentationCommit) {
+        Builder copy = toBuilder();
+        copy.baselineReferenceCommit = baselineReferenceCommit;
+        copy.instrumentationCommit = instrumentationCommit;
+        copy.semanticTrace = semanticTrace.withMetadata(Map.of(
+                "baseline_reference_commit", baselineReferenceCommit,
+                "instrumentation_commit", instrumentationCommit));
+        return copy.build();
+    }
+
     private Builder toBuilder() {
         Builder copy = new Builder(scenarioId, variantId, scenarioHash, evaluationProfile);
         copy.runId = runId;
+        copy.attemptId = attemptId;
+        copy.repetition = repetition;
         copy.gitSha = gitSha;
+        copy.baselineReferenceCommit = baselineReferenceCommit;
+        copy.instrumentationCommit = instrumentationCommit;
         copy.provider = provider;
         copy.model = model;
         copy.modelConfigDigest = modelConfigDigest;
@@ -152,6 +186,7 @@ public final class ObservationEnvelope {
         copy.failureClass = failureClass;
         copy.timestamp = timestamp;
         copy.seed = seed;
+        copy.semanticTrace = semanticTrace;
         return copy;
     }
 
@@ -163,8 +198,24 @@ public final class ObservationEnvelope {
         return runId;
     }
 
+    public String attemptId() {
+        return attemptId;
+    }
+
+    public int repetition() {
+        return repetition;
+    }
+
     public String gitSha() {
         return gitSha;
+    }
+
+    public String baselineReferenceCommit() {
+        return baselineReferenceCommit;
+    }
+
+    public String instrumentationCommit() {
+        return instrumentationCommit;
     }
 
     public String scenarioId() {
@@ -299,11 +350,19 @@ public final class ObservationEnvelope {
         return seed;
     }
 
+    public SemanticTrace semanticTrace() {
+        return semanticTrace;
+    }
+
     public Map<String, Object> toMap() {
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("schema_version", schemaVersion);
         map.put("run_id", runId);
+        map.put("attempt_id", attemptId);
+        map.put("repetition", repetition);
         map.put("git_sha", gitSha);
+        map.put("baseline_reference_commit", baselineReferenceCommit);
+        map.put("instrumentation_commit", instrumentationCommit);
         map.put("scenario_id", scenarioId);
         map.put("variant_id", variantId);
         map.put("scenario_hash", scenarioHash);
@@ -344,6 +403,7 @@ public final class ObservationEnvelope {
         map.put("failure_class", failureClass == null ? null : failureClass.name());
         map.put("timestamp", timestamp == null ? null : timestamp.toString());
         map.put("seed", seed);
+        map.put("semantic_trace", semanticTrace.toMap());
         map.put("pre_state", preState == null ? null : Map.of(
                 "routes", preState.routes(), "nodes", preState.nodes(),
                 "answers", preState.answers(), "patches", preState.patches(),
@@ -363,7 +423,11 @@ public final class ObservationEnvelope {
         private final String scenarioHash;
         private final EvaluationProfile evaluationProfile;
         private String runId;
+        private String attemptId;
+        private int repetition = -1;
         private String gitSha;
+        private String baselineReferenceCommit;
+        private String instrumentationCommit;
         private String provider;
         private String model;
         private String modelConfigDigest;
@@ -393,6 +457,7 @@ public final class ObservationEnvelope {
         private FailureClass failureClass;
         private Instant timestamp;
         private long seed;
+        private SemanticTrace semanticTrace;
 
         private Builder(String scenarioId, String variantId,
                         String scenarioHash, EvaluationProfile evaluationProfile) {
@@ -407,8 +472,25 @@ public final class ObservationEnvelope {
             return this;
         }
 
+        public Builder attemptId(java.util.UUID attemptId) {
+            this.attemptId = attemptId == null ? null : attemptId.toString();
+            return this;
+        }
+
+        public Builder repetition(int repetition) {
+            this.repetition = repetition;
+            return this;
+        }
+
         public Builder gitSha(String gitSha) {
             this.gitSha = gitSha;
+            return this;
+        }
+
+        public Builder diagnosticMetadata(String baselineReferenceCommit,
+                                          String instrumentationCommit) {
+            this.baselineReferenceCommit = baselineReferenceCommit;
+            this.instrumentationCommit = instrumentationCommit;
             return this;
         }
 
@@ -494,6 +576,11 @@ public final class ObservationEnvelope {
 
         public Builder brainContractDigest(String brainContractDigest) {
             this.brainContractDigest = brainContractDigest;
+            return this;
+        }
+
+        public Builder semanticTrace(SemanticTrace semanticTrace) {
+            this.semanticTrace = semanticTrace;
             return this;
         }
 

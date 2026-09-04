@@ -1,9 +1,11 @@
 package com.specagent.eval;
 
+import com.specagent.trace.SemanticTrace;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -62,6 +64,7 @@ class ObservationEnvelopeTest {
     @Test
     void jsonlRoundTripPreservesRequiredMetadata() {
         ObservationEnvelope observation = passingObservation()
+                .withRepetition(2)
                 .withRunMetadata("run-1", "abc123", "provider-x", "model-y", "digest-z");
 
         String line = EvalArtifactWriter.toJsonl(observation);
@@ -70,10 +73,36 @@ class ObservationEnvelopeTest {
         assertThat(decoded.scenarioId()).isEqualTo("E01");
         assertThat(decoded.variantId()).isEqualTo("base");
         assertThat(decoded.runId()).isEqualTo("run-1");
+        assertThat(decoded.repetition()).isEqualTo(2);
         assertThat(decoded.gitSha()).isEqualTo("abc123");
         assertThat(decoded.actualPrimaryAction()).isEqualTo("REQUEST_USER_INPUT");
         assertThat(decoded.productionModelCalls()).isEqualTo(2);
         assertThat(decoded.cost()).isEqualTo("unknown");
+    }
+
+    @Test
+    void jsonlRoundTripPreservesSemanticTraceAndDiagnosticIdentity() {
+        ObservationEnvelope observation = passingObservation();
+        SemanticTrace trace = SemanticTrace.empty(
+                        UUID.fromString("11111111-1111-1111-1111-111111111111"))
+                .withStage("DECISION_INPUT", Map.of(
+                        "semantic_fingerprint", "fingerprint",
+                        "runtime_request", Map.of("snapshot", Map.of("effectiveClaims", List.of()))));
+        observation = ObservationEnvelope.builder("E01", "base", "hash-1",
+                        EvaluationProfile.LIVE_PROVIDER)
+                .attemptId(UUID.fromString("11111111-1111-1111-1111-111111111111"))
+                .semanticTrace(trace)
+                .diagnosticMetadata("baseline", "instrumentation")
+                .build();
+
+        ObservationEnvelope decoded = EvalArtifactWriter.fromJsonl(
+                EvalArtifactWriter.toJsonl(observation));
+
+        assertThat(decoded.semanticTrace().stages()).containsKey("DECISION_INPUT");
+        assertThat(decoded.attemptId())
+                .isEqualTo("11111111-1111-1111-1111-111111111111");
+        assertThat(decoded.baselineReferenceCommit()).isEqualTo("baseline");
+        assertThat(decoded.instrumentationCommit()).isEqualTo("instrumentation");
     }
 
     @Test

@@ -19,6 +19,7 @@ import com.specagent.agent.runevent.AgentRunEvent;
 import com.specagent.agent.runevent.AgentRunEventService;
 import com.specagent.agent.runevent.AgentRunPhase;
 import com.specagent.agent.snapshot.AgentInputSnapshotBuilder;
+import com.specagent.trace.SemanticTraceRecorder;
 import com.specagent.answer.Answer;
 import com.specagent.answer.AnswerService;
 import com.specagent.context.ContextBuilder;
@@ -84,6 +85,7 @@ public class AnswerCycleService {
     private final com.specagent.project.ProjectRepository projectRepository;
     private final ContextSnapshotRepository contextSnapshotRepository;
     private final com.specagent.agent.snapshot.AgentInputProjectionRepository projectionRepository;
+    private final SemanticTraceRecorder semanticTraceRecorder;
 
     public AnswerCycleService(AgentRunService agentRunService,
                               AgentRunFailureService agentRunFailureService,
@@ -102,7 +104,8 @@ public class AnswerCycleService {
                               com.specagent.agent.action.StaleContextChecker staleContextChecker,
                               com.specagent.project.ProjectRepository projectRepository,
                               ContextSnapshotRepository contextSnapshotRepository,
-                              com.specagent.agent.snapshot.AgentInputProjectionRepository projectionRepository) {
+                              com.specagent.agent.snapshot.AgentInputProjectionRepository projectionRepository,
+                              SemanticTraceRecorder semanticTraceRecorder) {
         this.agentRunService = agentRunService;
         this.agentRunFailureService = agentRunFailureService;
         this.contextBuilder = contextBuilder;
@@ -121,6 +124,7 @@ public class AnswerCycleService {
         this.projectRepository = projectRepository;
         this.contextSnapshotRepository = contextSnapshotRepository;
         this.projectionRepository = projectionRepository;
+        this.semanticTraceRecorder = semanticTraceRecorder;
     }
 
     /**
@@ -281,13 +285,23 @@ public class AnswerCycleService {
         // Rebuild against the exact route (never whatever route happens to be
         // active now) so the new Answer/Patch/effective claims are causally
         // visible while route isolation remains fail-closed.
-        ContextSnapshot decisionSnapshot = resolvePostStateSnapshot(
-                        projectId, route, answer.id(), run.id(), resumeWithCheckpoint)
-                .orElseGet(() -> contextBuilder.buildForRoute(
-                        projectId, route.id(), route.tipNodeId(), run.id(),
-                        ContextOperationType.NORMAL));
-        AgentRequestEnvelope decisionEnvelope = snapshotBuilder.buildEnvelope(
-                run.id(), decisionSnapshot, envelope.event(), envelope.decisionBudget());
+        ContextSnapshot decisionSnapshot;
+        AgentRequestEnvelope decisionEnvelope;
+        try {
+            decisionSnapshot = resolvePostStateSnapshot(
+                            projectId, route, answer.id(), run.id(), resumeWithCheckpoint)
+                    .orElseGet(() -> contextBuilder.buildForRoute(
+                            projectId, route.id(), route.tipNodeId(), run.id(),
+                            ContextOperationType.NORMAL));
+            decisionEnvelope = snapshotBuilder.buildEnvelope(
+                    run.id(), decisionSnapshot, envelope.event(), envelope.decisionBudget());
+        } catch (RuntimeException ex) {
+            semanticTraceRecorder.captureFailure(run.id(),
+                    "DECISION_INPUT_PROJECTION", ex);
+            throw ex;
+        }
+        semanticTraceRecorder.capturePostState(run.id(), decisionEnvelope.snapshot());
+        semanticTraceRecorder.captureDecisionInput(decisionEnvelope);
 
         // Call 2: DECISION.
         trace = appendTrace(trace, "deciding");
@@ -296,8 +310,15 @@ public class AnswerCycleService {
                         "snapshotId", decisionSnapshot.id().toString(),
                         "contextHash", decisionSnapshot.contextHash()));
 
-        AgentResponseEnvelope decisionResponse = decisionEngine.runDecision(decisionEnvelope);
-        AgentBrainResponseValidator.validateDecision(decisionEnvelope, decisionResponse);
+        AgentResponseEnvelope decisionResponse;
+        try {
+            decisionResponse = decisionEngine.runDecision(decisionEnvelope);
+            AgentBrainResponseValidator.validateDecision(decisionEnvelope, decisionResponse);
+            semanticTraceRecorder.captureDecisionOutput(decisionResponse);
+        } catch (RuntimeException ex) {
+            semanticTraceRecorder.captureFailure(run.id(), "DECISION_OUTPUT", ex);
+            throw ex;
+        }
 
         ActionProposal proposal = decisionResponse.actionProposal();
         eventService.append(run.id(), AgentRunPhase.PROPOSAL_CREATED,
@@ -320,6 +341,7 @@ public class AnswerCycleService {
             policyDecision = PolicyDecision.deny(policyDecision.classification(),
                     "提案在本阶段无法在确认后执行: " + proposal.actionFamily());
         }
+        semanticTraceRecorder.capturePolicyDecision(run.id(), policyDecision);
 
         if (policyDecision.denyReason() != null) {
             AgentProposal agentProposal = proposalService.createProposal(
@@ -385,34 +407,47 @@ public class AnswerCycleService {
         eventService.append(run.id(), AgentRunPhase.STATE_UPDATING,
                 "STATE_UPDATE_STARTED", Map.of());
 
-        AgentResponseEnvelope stateUpdateResponse = decisionEngine.runStateUpdate(envelope);
-        AgentBrainResponseValidator.validateStateUpdate(envelope, stateUpdateResponse);
-
-        eventService.append(run.id(), AgentRunPhase.STATE_UPDATED,
-                "STATE_UPDATE_COMPLETED", Map.of(
-                        "claimCount", stateUpdateResponse.stateUpdate() == null
-                                ? 0 : stateUpdateResponse.stateUpdate().claims().size()));
-
-        List<Claim> groundedClaims = groundClaims(
-                stateUpdateResponse.stateUpdate().claims(),
-                route.tipNodeId(), answer.id());
-
-        ReflectionResult patchReflection = patchReflectionGate.validate(
-                new com.specagent.agent.contracts.AnswerPatchDraft(groundedClaims));
-        agentRunService.markReflected(run.id(), trace);
-
-        if (!patchReflection.accepted()) {
-            agentRunService.fail(run.id(),
-                    appendTrace(trace, "failed:patch_reflection_rejected"));
-            throw new ModelContractException(
-                    "Patch reflection rejected: " + patchReflection.errors());
+        semanticTraceRecorder.captureStateUpdateInput(envelope);
+        AgentResponseEnvelope stateUpdateResponse;
+        try {
+            stateUpdateResponse = decisionEngine.runStateUpdate(envelope);
+            AgentBrainResponseValidator.validateStateUpdate(envelope, stateUpdateResponse);
+            semanticTraceRecorder.captureStateUpdateOutput(stateUpdateResponse);
+        } catch (RuntimeException ex) {
+            semanticTraceRecorder.captureFailure(run.id(), "STATE_UPDATE_OUTPUT", ex);
+            throw ex;
         }
 
-        AnswerPatch patch = answerPatchService.save(
-                projectId, route.id(), route.tipNodeId(), answer.id(),
-                groundedClaims, run.id());
-        agentRunService.markPersistedAnswerPatch(run.id(), patch.id(), trace);
-        return patch;
+        try {
+            eventService.append(run.id(), AgentRunPhase.STATE_UPDATED,
+                    "STATE_UPDATE_COMPLETED", Map.of(
+                            "claimCount", stateUpdateResponse.stateUpdate() == null
+                                    ? 0 : stateUpdateResponse.stateUpdate().claims().size()));
+
+            List<Claim> groundedClaims = groundClaims(
+                    stateUpdateResponse.stateUpdate().claims(),
+                    route.tipNodeId(), answer.id());
+
+            ReflectionResult patchReflection = patchReflectionGate.validate(
+                    new com.specagent.agent.contracts.AnswerPatchDraft(groundedClaims));
+            agentRunService.markReflected(run.id(), trace);
+
+            if (!patchReflection.accepted()) {
+                agentRunService.fail(run.id(),
+                        appendTrace(trace, "failed:patch_reflection_rejected"));
+                throw new ModelContractException(
+                        "Patch reflection rejected: " + patchReflection.errors());
+            }
+
+            AnswerPatch patch = answerPatchService.save(
+                    projectId, route.id(), route.tipNodeId(), answer.id(),
+                    groundedClaims, run.id());
+            agentRunService.markPersistedAnswerPatch(run.id(), patch.id(), trace);
+            return patch;
+        } catch (RuntimeException ex) {
+            semanticTraceRecorder.captureFailure(run.id(), "STATE_APPLICATION", ex);
+            throw ex;
+        }
     }
 
     private List<Claim> groundClaims(List<ProposedClaim> proposedClaims,

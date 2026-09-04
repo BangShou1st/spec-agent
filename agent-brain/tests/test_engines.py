@@ -13,6 +13,7 @@ from spec_agent_brain.model_client import ChatMessage, Completion, FakeModelClie
 from spec_agent_brain.model_client import fake as fake_model
 from spec_agent_brain.model_client.broker_client import BrokerModelClient
 from spec_agent_brain.prompts.decision import render_user_prompt
+from spec_agent_brain.prompts.state_update import render_user_prompt as render_state_update_prompt
 from spec_agent_brain.state_update import handle_state_update
 
 FIXTURES_DIR = Path(__file__).resolve().parents[2] / "contracts" / "fixtures"
@@ -48,6 +49,31 @@ def test_state_update_fake_path_is_deterministic():
     assert response.usage.model_calls == 1
 
 
+def test_state_update_semantic_diagnostics_match_the_exact_user_message():
+    request = _request()
+    expected_user_prompt = json.loads(render_state_update_prompt(request))
+
+    response = handle_state_update(request, FakeModelClient())
+    diagnostic = response.diagnostics["semanticTrace"]
+
+    assert diagnostic["stage"] == "STATE_UPDATE"
+    assert diagnostic["modelInput"] == expected_user_prompt
+    assert len(diagnostic["systemPromptSha256"]) == 64
+    assert len(diagnostic["userPromptSha256"]) == 64
+
+
+def test_diagnostics_redact_secret_like_content_without_changing_prompt():
+    request = _request()
+    request.event.free_text = "super-secret-do-not-log"
+    expected = render_state_update_prompt(request)
+
+    response = handle_state_update(request, FakeModelClient())
+    diagnostic = response.diagnostics["semanticTrace"]
+
+    assert render_state_update_prompt(request) == expected
+    assert "super-secret-do-not-log" not in json.dumps(diagnostic, ensure_ascii=False)
+
+
 def test_decision_fake_path_stamps_runtime_owned_base_context():
     request = _request()
     response = handle_decision(request, FakeModelClient())
@@ -55,6 +81,19 @@ def test_decision_fake_path_stamps_runtime_owned_base_context():
     assert proposal.action_family == "REQUEST_USER_INPUT"
     assert str(proposal.base_context_snapshot_id) == str(request.snapshot.snapshot_id)
     assert proposal.base_context_hash == request.snapshot.context_hash
+
+
+def test_decision_semantic_diagnostics_match_the_exact_user_message():
+    request = _request()
+    expected_user_prompt = json.loads(render_user_prompt(request))
+
+    response = handle_decision(request, FakeModelClient())
+    diagnostic = response.diagnostics["semanticTrace"]
+
+    assert diagnostic["stage"] == "DECISION"
+    assert diagnostic["modelInput"] == expected_user_prompt
+    assert len(diagnostic["systemPromptSha256"]) == 64
+    assert len(diagnostic["userPromptSha256"]) == 64
 
 
 def test_decision_model_inventing_source_ref_is_rejected():

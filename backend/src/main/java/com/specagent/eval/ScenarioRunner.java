@@ -26,6 +26,8 @@ import com.specagent.route.Route;
 import com.specagent.route.RouteRepository;
 import com.specagent.route.RouteService;
 import com.specagent.answer.AnswerService;
+import com.specagent.trace.SemanticTrace;
+import com.specagent.trace.SemanticTraceRecorder;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
@@ -76,6 +78,7 @@ public class ScenarioRunner {
     private final ObjectProvider<BrainScriptInstaller> brainScripts;
     private final ObjectProvider<AgentDecisionEngine> decisionEngines;
     private final ObjectProvider<ModelInferenceGateway> inferenceGateways;
+    private final SemanticTraceRecorder semanticTraceRecorder;
 
     private volatile UUID lastProjectId;
 
@@ -95,7 +98,8 @@ public class ScenarioRunner {
                           AgentProposalService proposalService,
                           ObjectProvider<BrainScriptInstaller> brainScripts,
                           ObjectProvider<AgentDecisionEngine> decisionEngines,
-                          ObjectProvider<ModelInferenceGateway> inferenceGateways) {
+                          ObjectProvider<ModelInferenceGateway> inferenceGateways,
+                          SemanticTraceRecorder semanticTraceRecorder) {
         this.projectService = projectService;
         this.nodeService = nodeService;
         this.routeService = routeService;
@@ -113,6 +117,7 @@ public class ScenarioRunner {
         this.brainScripts = brainScripts;
         this.decisionEngines = decisionEngines;
         this.inferenceGateways = inferenceGateways;
+        this.semanticTraceRecorder = semanticTraceRecorder;
     }
 
     public UUID lastProjectId() {
@@ -519,6 +524,7 @@ public class ScenarioRunner {
                 project.id(), runId, run, events, preState, postState, delta,
                 action, executionResult, proposals, capabilityInvocations,
                 preAnswerIds, postAnswerIds, decisionSnapshot,
+                takeSemanticTrace(runId),
                 accounting.stages(), accounting.providerRetries(),
                 latencyMs, stageLatency, failureDetail);
     }
@@ -604,6 +610,7 @@ public class ScenarioRunner {
                 project.id(), runId, run, events, preState, postState, delta,
                 action, executionResult, proposals, capabilityInvocations,
                 preAnswerIds, postAnswerIds, decisionSnapshot,
+                takeSemanticTrace(runId),
                 brain.observedStages(), brain.providerRetries(),
                 latencyMs, Map.of("total", latencyMs), failureDetail);
     }
@@ -667,6 +674,10 @@ public class ScenarioRunner {
             }
         }
         return null;
+    }
+
+    private SemanticTrace takeSemanticTrace(UUID runId) {
+        return semanticTraceRecorder.take(runId);
     }
 
     private StateSummary summarize(UUID projectId) {
@@ -759,6 +770,12 @@ public class ScenarioRunner {
         }
         violations.addAll(tracker.check(scenario.expect().callBudget()));
 
+        SemanticTrace trace = context.semanticTrace();
+        if (!trace.isEmpty()) {
+            trace = trace.withStage("FINAL_RESULT", finalResult(
+                    context, violations, tracker));
+        }
+
         StateSummary pre = context.preState();
         StateSummary post = context.postState();
         return ObservationEnvelope.builder(
@@ -783,8 +800,29 @@ public class ScenarioRunner {
                                 ? null : context.decisionSnapshot().contextHash())
                 .latencyMs(context.latencyMs())
                 .stageLatencyMs(context.stageLatencyMs())
+                .attemptId(context.runId())
+                .semanticTrace(trace)
                 .seed(observationSeed)
                 .build();
+    }
+
+    private static Map<String, Object> finalResult(AttemptContext context,
+                                                   List<Violation> violations,
+                                                   CallBudgetTracker tracker) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("actual_action", context.actualPrimaryAction());
+        result.put("state_delta_summary", context.stateDelta());
+        result.put("evaluation_pass", violations.isEmpty());
+        result.put("violations", violations.stream().map(violation -> Map.of(
+                "failure_class", violation.failureClass().name(),
+                "detail", violation.detail() == null ? "" : violation.detail())).toList());
+        result.put("infrastructure_error", context.failureDetail());
+        result.put("provider_retry_count", tracker.providerRetries());
+        result.put("model_invocation_counts", Map.of(
+                "production", tracker.productionModelCalls(),
+                "capability", tracker.capabilityCalls(),
+                "judge", tracker.judgeModelCalls()));
+        return result;
     }
 
     // -- test-scope probe bridge ------------------------------------------------------

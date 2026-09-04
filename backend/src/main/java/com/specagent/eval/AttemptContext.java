@@ -3,6 +3,7 @@ package com.specagent.eval;
 import com.specagent.agent.AgentRun;
 import com.specagent.agent.policy.AgentProposal;
 import com.specagent.context.ContextSnapshot;
+import com.specagent.trace.SemanticTrace;
 
 import java.util.List;
 import java.util.Map;
@@ -28,6 +29,7 @@ public record AttemptContext(
         List<UUID> preAnswerIds,
         List<UUID> postAnswerIds,
         ContextSnapshot decisionSnapshot,
+        SemanticTrace semanticTrace,
         List<String> observedStages,
         int providerRetries,
         long latencyMs,

@@ -2,6 +2,7 @@
 
 import json
 
+from ..diagnostics import semantic_diagnostics
 from ..contracts.decisions import (
     AgentV2ResponseEnvelope,
     ModelStateUpdateOutput,
@@ -22,12 +23,13 @@ def handle_state_update(request: AgentV2RequestEnvelope, client: ModelClient) ->
     if request.decision_budget.max_model_calls < 1:
         raise BrainContractError("decision budget does not allow any model call")
 
+    user_prompt = state_update_prompt.render_user_prompt(request)
     completion = client.complete(
         run_id=str(request.run_id),
         call_type="STATE_UPDATE",
         messages=[
             ChatMessage(role="system", content=state_update_prompt.SYSTEM_PROMPT),
-            ChatMessage(role="user", content=state_update_prompt.render_user_prompt(request)),
+            ChatMessage(role="user", content=user_prompt),
         ],
     )
     output = _parse_model_output(completion.content)
@@ -37,6 +39,8 @@ def handle_state_update(request: AgentV2RequestEnvelope, client: ModelClient) ->
         run_id=request.run_id,
         state_update=StateUpdateResult(claims=output.claims),
         usage=UsageView(model_calls=1, prompt_hashes=[]),
+        diagnostics=semantic_diagnostics(
+            state_update_prompt.SYSTEM_PROMPT, user_prompt, "STATE_UPDATE"),
     )
 
 

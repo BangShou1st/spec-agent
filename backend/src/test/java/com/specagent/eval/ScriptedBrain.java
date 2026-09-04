@@ -1,6 +1,7 @@
 package com.specagent.eval;
 
 import com.specagent.agent.contract.AgentProtocol;
+import com.specagent.agent.contract.AgentContracts;
 import com.specagent.agent.contract.AgentRequestEnvelope;
 import com.specagent.agent.contract.AgentResponseEnvelope;
 import com.specagent.agent.contract.ActionProposal;
@@ -46,6 +47,7 @@ public class ScriptedBrain implements AgentDecisionEngine, BrainScriptInstaller 
     private final AtomicReference<ActiveScript> active = new AtomicReference<>();
     private final List<String> stateUpdateStages = new ArrayList<>();
     private final List<String> decisionStages = new ArrayList<>();
+    private final List<String> requestPayloads = new ArrayList<>();
     private int providerRetries;
 
     /** Test wiring: exposes this brain as the primary decision engine. */
@@ -83,6 +85,7 @@ public class ScriptedBrain implements AgentDecisionEngine, BrainScriptInstaller 
         active.set(null);
         stateUpdateStages.clear();
         decisionStages.clear();
+        requestPayloads.clear();
         providerRetries = 0;
     }
 
@@ -110,9 +113,14 @@ public class ScriptedBrain implements AgentDecisionEngine, BrainScriptInstaller 
         return decisionStages.size();
     }
 
+    public List<String> requestPayloads() {
+        return List.copyOf(requestPayloads);
+    }
+
     @Override
     public AgentResponseEnvelope runStateUpdate(AgentRequestEnvelope request) {
         ActiveScript script = requireScript();
+        requestPayloads.add(AgentContracts.write(request));
         stateUpdateStages.add("STATE_UPDATE");
         if (stateUpdateStages.size() == script.failStateUpdateAt()) {
             throw new AgentBrainUnavailableException("scripted STATE_UPDATE failure",
@@ -141,6 +149,7 @@ public class ScriptedBrain implements AgentDecisionEngine, BrainScriptInstaller 
     @Override
     public AgentResponseEnvelope runDecision(AgentRequestEnvelope request) {
         ActiveScript script = requireScript();
+        requestPayloads.add(AgentContracts.write(request));
         decisionStages.add("DECISION");
         if (decisionStages.size() == script.failDecisionAt()) {
             throw new AgentBrainUnavailableException("scripted DECISION failure",

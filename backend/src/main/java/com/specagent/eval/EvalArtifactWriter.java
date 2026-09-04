@@ -1,5 +1,7 @@
 package com.specagent.eval;
 
+import com.specagent.trace.SemanticTrace;
+
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -33,12 +35,29 @@ public final class EvalArtifactWriter {
                         .actualPrimaryAction(str(map.get("actual_primary_action")))
                         .executionResult(str(map.get("execution_result")))
                         .stateDelta(intMap(map.get("state_delta_summary")))
+                        .violations(violations(map.get("violations")))
                         .seed(toLong(map.get("seed")));
         if (map.get("run_id") != null) {
             builder.runId(str(map.get("run_id")));
         }
         if (map.get("git_sha") != null) {
             builder.gitSha(str(map.get("git_sha")));
+        }
+        if (map.get("attempt_id") != null) {
+            try {
+                builder.attemptId(java.util.UUID.fromString(str(map.get("attempt_id"))));
+            } catch (IllegalArgumentException ignored) {
+                // Keep the artifact readable; malformed diagnostic identity
+                // is not allowed to make unrelated fields disappear.
+            }
+        }
+        if (map.get("repetition") instanceof Number number) {
+            builder.repetition(number.intValue());
+        }
+        builder.diagnosticMetadata(str(map.get("baseline_reference_commit")),
+                str(map.get("instrumentation_commit")));
+        if (map.get("semantic_trace") instanceof Map<?, ?> trace) {
+            builder.semanticTrace(SemanticTrace.fromMap(stringMap(trace)));
         }
         Object cost = map.get("cost");
         if (cost != null) {
@@ -54,6 +73,33 @@ public final class EvalArtifactWriter {
             builder.latencyMs(number.longValue());
         }
         return builder.build();
+    }
+
+    private static Map<String, Object> stringMap(Map<?, ?> value) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        value.forEach((key, item) -> result.put(String.valueOf(key), item));
+        return result;
+    }
+
+    private static List<Violation> violations(Object value) {
+        if (!(value instanceof List<?> list)) {
+            return List.of();
+        }
+        List<Violation> result = new ArrayList<>();
+        for (Object item : list) {
+            Map<String, Object> map = item instanceof Map<?, ?> raw ? stringMap(raw) : Map.of();
+            String failure = str(map.get("failure_class"));
+            if (failure == null) {
+                continue;
+            }
+            try {
+                result.add(new Violation(FailureClass.valueOf(failure),
+                        str(map.get("detail"))));
+            } catch (IllegalArgumentException ignored) {
+                // Unknown diagnostic taxonomy stays out of the typed view.
+            }
+        }
+        return result;
     }
 
     public static String summaryJson(EvalSummary summary) {

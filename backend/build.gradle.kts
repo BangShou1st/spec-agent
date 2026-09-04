@@ -86,6 +86,22 @@ tasks.register<Test>("evalLiveSmoke") {
     }
 }
 
+// Phase 3B — targeted semantic evidence rerun. This suite is explicitly
+// opt-in, writes to build/eval-live-diagnostic/<run>, and never overwrites the
+// formal build/eval-live baseline.
+tasks.register<Test>("evalLiveDiagnostic") {
+    group = "verification"
+    description = "Runs the targeted live semantic diagnostic suite (requires explicit live provider config)."
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching("com.specagent.eval.EvalLiveDiagnosticSuiteTest")
+    }
+    testLogging {
+        events("failed", "skipped")
+        showStandardStreams = true
+    }
+}
+
 // Single-scenario entry: -PevalTest=E01SimpleAnswerTest
 // (omit to run the whole eval package via evalBFast).
 tasks.register<Test>("evalScenario") {

@@ -65,7 +65,12 @@ public abstract class EvalHarnessBase {
         if (activeProjectId == null) {
             return;
         }
-        UUID projectId = activeProjectId;
+        cleanUpProject(activeProjectId);
+        activeProjectId = null;
+    }
+
+    /** Allows a preservation test to clean an intermediate comparison run. */
+    protected void cleanUpProject(UUID projectId) {
         jdbcTemplate.update(
                 "DELETE FROM agent_run_events WHERE run_id IN (SELECT id FROM agent_runs WHERE project_id = ?)",
                 projectId);
@@ -92,6 +97,5 @@ public abstract class EvalHarnessBase {
         jdbcTemplate.update("DELETE FROM routes WHERE project_id = ?", projectId);
         jdbcTemplate.update("DELETE FROM nodes WHERE project_id = ?", projectId);
         jdbcTemplate.update("DELETE FROM projects WHERE id = ?", projectId);
-        activeProjectId = null;
     }
 }
