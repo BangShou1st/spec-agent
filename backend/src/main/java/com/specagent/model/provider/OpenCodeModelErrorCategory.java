@@ -20,7 +20,7 @@ public enum OpenCodeModelErrorCategory {
     INVALID_RESPONSE,
     /** The completion succeeded but produced no usable content. */
     EMPTY_CONTENT,
-    /** The gateway cannot run because the configured model is not a free model. */
+    /** The active settings source does not allow the configured model. */
     INVALID_MODEL,
     /** The gateway cannot run because a required configuration is missing. */
     NOT_CONFIGURED

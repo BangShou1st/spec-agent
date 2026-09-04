@@ -83,18 +83,19 @@ public final class CausalReportGenerator {
         SemanticTrace trace = observation.semanticTrace();
         Map<String, Map<String, Object>> stages = trace.stages();
         boolean infrastructure = isInfrastructureFailure(observation);
-        List<String> symptoms = symptoms(observation, stages,
+        List<String> symptoms = infrastructure ? List.of() : symptoms(observation, stages,
                 scenario == null ? Set.of() : scenario.expect().acceptablePrimaryActions());
+        if (infrastructure) {
+            return finding(observation, false, true, FirstFault.AMBIGUOUS,
+                    symptoms, List.of("provider/runtime failure; excluded from behavioral matrix"),
+                    fingerprint(stages, "DECISION_INPUT"),
+                    fingerprint(stages, "STATE_UPDATE_OUTPUT"),
+                    fingerprint(stages, "DECISION_OUTPUT"));
+        }
         if (observation.passed()) {
             return finding(observation, false, false, FirstFault.AMBIGUOUS,
                     symptoms, List.of("attempt passed"), fingerprint(stages, "DECISION_INPUT"),
                     fingerprint(stages, "STATE_UPDATE_OUTPUT"), fingerprint(stages, "DECISION_OUTPUT"));
-        }
-        if (infrastructure) {
-            return finding(observation, false, true, FirstFault.AMBIGUOUS,
-                    symptoms, List.of("provider/runtime failure; excluded from behavioral matrix"),
-                    fingerprint(stages, "DECISION_INPUT"), fingerprint(stages, "STATE_UPDATE_OUTPUT"),
-                    fingerprint(stages, "DECISION_OUTPUT"));
         }
 
         FirstFault capturedFailure = capturedFailure(stages);
@@ -123,7 +124,7 @@ public final class CausalReportGenerator {
                                           String decisionOutputFingerprint) {
         return new AttemptFinding(observation.scenarioId(), observation.variantId(),
                 observation.repetition(), observation.actualPrimaryAction(),
-                passed || observation.passed(), infrastructure, firstFault,
+                passed || (!infrastructure && observation.passed()), infrastructure, firstFault,
                 List.copyOf(symptoms), List.copyOf(evidence),
                 decisionInputFingerprint, stateOutputFingerprint,
                 decisionOutputFingerprint);
@@ -241,12 +242,7 @@ public final class CausalReportGenerator {
     }
 
     private static boolean isInfrastructureFailure(ObservationEnvelope observation) {
-        if (observation.executionResult() != null
-                && observation.executionResult().startsWith("failed:")) {
-            return true;
-        }
-        return observation.violations().stream().anyMatch(violation ->
-                violation.failureClass() == FailureClass.PROVIDER_FAILURE);
+        return LiveFailureClassifier.isInfrastructureFailure(observation);
     }
 
     private static List<String> symptoms(ObservationEnvelope observation,

@@ -487,6 +487,21 @@ public final class ObservationEnvelope {
             return this;
         }
 
+        public Builder provider(String provider) {
+            this.provider = provider;
+            return this;
+        }
+
+        public Builder model(String model) {
+            this.model = model;
+            return this;
+        }
+
+        public Builder modelConfigDigest(String modelConfigDigest) {
+            this.modelConfigDigest = modelConfigDigest;
+            return this;
+        }
+
         public Builder diagnosticMetadata(String baselineReferenceCommit,
                                           String instrumentationCommit) {
             this.baselineReferenceCommit = baselineReferenceCommit;

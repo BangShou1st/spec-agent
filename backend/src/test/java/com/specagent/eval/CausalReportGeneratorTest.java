@@ -82,6 +82,23 @@ class CausalReportGeneratorTest {
                 .containsEntry(CausalReportGenerator.FirstFault.COMPOUND, 1);
     }
 
+    @Test
+    void infrastructureAttemptIsNotReportedAsPassedEvenWithoutDerivedViolations() {
+        ObservationEnvelope observation = ObservationEnvelope.builder(
+                        "E01", "base", "hash", EvaluationProfile.LIVE_PROVIDER)
+                .executionResult("failed:timeout")
+                .semanticTrace(SemanticTrace.empty(ATTEMPT))
+                .build();
+
+        CausalReportGenerator.CausalReport report = CausalReportGenerator.generate(
+                List.of(observation), Map.of("E01", EvalCorpus.e01()));
+
+        assertThat(report.behavioralFailures()).isZero();
+        assertThat(report.infrastructureFailures()).isEqualTo(1);
+        assertThat(report.attempts().get(0).passed()).isFalse();
+        assertThat(report.attempts().get(0).infrastructureFailure()).isTrue();
+    }
+
     private static ObservationEnvelope failed(String scenario, String variant,
                                               SemanticTrace trace) {
         return ObservationEnvelope.builder(scenario, variant, "hash", EvaluationProfile.LIVE_PROVIDER)

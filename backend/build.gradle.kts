@@ -102,6 +102,23 @@ tasks.register<Test>("evalLiveDiagnostic") {
     }
 }
 
+// Phase 3 — five-cycle provider qualification. This records reliability and
+// protocol/schema completion only; it is not a behavioral corpus score and
+// must be run separately for each candidate model selected through the
+// explicit external environment.
+tasks.register<Test>("evalLiveQualification") {
+    group = "verification"
+    description = "Qualifies the configured live reference-model candidate (5 real STATE_UPDATE -> DECISION cycles)."
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching("com.specagent.eval.EvalLiveQualificationSuiteTest")
+    }
+    testLogging {
+        events("failed", "skipped")
+        showStandardStreams = true
+    }
+}
+
 // Single-scenario entry: -PevalTest=E01SimpleAnswerTest
 // (omit to run the whole eval package via evalBFast).
 tasks.register<Test>("evalScenario") {

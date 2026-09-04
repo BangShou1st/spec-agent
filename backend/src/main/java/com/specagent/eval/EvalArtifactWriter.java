@@ -3,9 +3,12 @@ package com.specagent.eval;
 import com.specagent.trace.SemanticTrace;
 
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 
 /**
@@ -43,6 +46,15 @@ public final class EvalArtifactWriter {
         if (map.get("git_sha") != null) {
             builder.gitSha(str(map.get("git_sha")));
         }
+        if (map.get("provider") != null) {
+            builder.provider(str(map.get("provider")));
+        }
+        if (map.get("model") != null) {
+            builder.model(str(map.get("model")));
+        }
+        if (map.get("model_config_digest") != null) {
+            builder.modelConfigDigest(str(map.get("model_config_digest")));
+        }
         if (map.get("attempt_id") != null) {
             try {
                 builder.attemptId(java.util.UUID.fromString(str(map.get("attempt_id"))));
@@ -73,6 +85,54 @@ public final class EvalArtifactWriter {
             builder.latencyMs(number.longValue());
         }
         return builder.build();
+    }
+
+    /**
+     * Returns distinct prompt hashes grouped by semantic stage. Raw prompt
+     * text is intentionally not accepted or emitted by this helper.
+     */
+    public static Map<String, Map<String, List<String>>> promptProvenance(
+            List<ObservationEnvelope> observations) {
+        Map<String, Map<String, Set<String>>> collected = new TreeMap<>();
+        if (observations != null) {
+            for (ObservationEnvelope observation : observations) {
+                observation.semanticTrace().stages().forEach((stageName, stageData) -> {
+                    String normalizedStage = stageName.endsWith("_INPUT")
+                            ? stageName.substring(0, stageName.length() - "_INPUT".length())
+                            : stageName;
+                    Map<String, Object> prompt = objectMap(stageData.get("prompt"));
+                    if (prompt.isEmpty()) {
+                        return;
+                    }
+                    Map<String, Set<String>> hashes = collected.computeIfAbsent(
+                            normalizedStage, ignored -> new TreeMap<>());
+                    for (String field : List.of("system_prompt_sha256", "user_prompt_sha256")) {
+                        Object value = prompt.get(field);
+                        if (value != null && !String.valueOf(value).isBlank()) {
+                            hashes.computeIfAbsent(field, ignored -> new HashSet<>())
+                                    .add(String.valueOf(value));
+                        }
+                    }
+                });
+            }
+        }
+        Map<String, Map<String, List<String>>> result = new TreeMap<>();
+        collected.forEach((stage, fields) -> {
+            Map<String, List<String>> sortedFields = new TreeMap<>();
+            fields.forEach((field, values) -> sortedFields.put(field,
+                    values.stream().sorted(Comparator.naturalOrder()).toList()));
+            result.put(stage, sortedFields);
+        });
+        return result;
+    }
+
+    private static Map<String, Object> objectMap(Object value) {
+        if (!(value instanceof Map<?, ?> map)) {
+            return Map.of();
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        map.forEach((key, item) -> result.put(String.valueOf(key), item));
+        return result;
     }
 
     private static Map<String, Object> stringMap(Map<?, ?> value) {

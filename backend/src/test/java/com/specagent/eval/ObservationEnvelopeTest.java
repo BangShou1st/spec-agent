@@ -78,6 +78,9 @@ class ObservationEnvelopeTest {
         assertThat(decoded.actualPrimaryAction()).isEqualTo("REQUEST_USER_INPUT");
         assertThat(decoded.productionModelCalls()).isEqualTo(2);
         assertThat(decoded.cost()).isEqualTo("unknown");
+        assertThat(decoded.provider()).isEqualTo("provider-x");
+        assertThat(decoded.model()).isEqualTo("model-y");
+        assertThat(decoded.modelConfigDigest()).isEqualTo("digest-z");
     }
 
     @Test
@@ -103,6 +106,29 @@ class ObservationEnvelopeTest {
                 .isEqualTo("11111111-1111-1111-1111-111111111111");
         assertThat(decoded.baselineReferenceCommit()).isEqualTo("baseline");
         assertThat(decoded.instrumentationCommit()).isEqualTo("instrumentation");
+    }
+
+    @Test
+    void promptProvenanceContainsOnlyDistinctHashesByStage() {
+        SemanticTrace trace = SemanticTrace.empty(null)
+                .withStage("STATE_UPDATE_INPUT", Map.of("prompt", Map.of(
+                        "system_prompt_sha256", "state-system",
+                        "user_prompt_sha256", "state-user")))
+                .withStage("DECISION_INPUT", Map.of("prompt", Map.of(
+                        "system_prompt_sha256", "decision-system",
+                        "user_prompt_sha256", "decision-user")));
+        ObservationEnvelope observation = ObservationEnvelope.builder(
+                        "E01", "base", "hash", EvaluationProfile.LIVE_PROVIDER)
+                .semanticTrace(trace)
+                .build();
+
+        assertThat(EvalArtifactWriter.promptProvenance(List.of(observation)))
+                .containsEntry("STATE_UPDATE", Map.of(
+                        "system_prompt_sha256", List.of("state-system"),
+                        "user_prompt_sha256", List.of("state-user")))
+                .containsEntry("DECISION", Map.of(
+                        "system_prompt_sha256", List.of("decision-system"),
+                        "user_prompt_sha256", List.of("decision-user")));
     }
 
     @Test

@@ -1,5 +1,10 @@
 # Semantic diagnostic evidence
 
+The model-selection, reference qualification, Arm A/B procedure, and
+behavioral-versus-reliability reporting contract are defined in
+[`MODEL_AGNOSTIC_EVALUATION.md`](MODEL_AGNOSTIC_EVALUATION.md). This document
+describes the semantic trace implementation used by that protocol.
+
 The Phase 3B diagnostic path is opt-in (`spec.agent.semantic-trace.enabled`,
 default `false`). It observes the existing answer cycle without changing the
 request envelope, prompt text, model settings, retry policy, or state

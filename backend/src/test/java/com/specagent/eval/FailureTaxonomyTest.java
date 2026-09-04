@@ -3,6 +3,7 @@ package com.specagent.eval;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -55,5 +56,93 @@ class FailureTaxonomyTest {
                 FailureClass.PROVIDER_FAILURE,
                 FailureClass.CAPABILITY_FAILURE,
                 FailureClass.JUDGE_ONLY);
+    }
+
+    @Test
+    void providerFailureIsClassifiedOutsideBehavioralFailureCounts() {
+        ObservationEnvelope observation = ObservationEnvelope.builder(
+                        "E01", "base", "hash", EvaluationProfile.LIVE_PROVIDER)
+                .executionResult("failed:AgentBrainUnavailableException: provider unavailable")
+                .violations(List.of(new Violation(FailureClass.PROVIDER_FAILURE,
+                        "brain unavailable")))
+                .build();
+
+        LiveStabilitySummary summary = LiveStabilitySummary.from(
+                List.of(observation), 1, 1);
+
+        assertThat(summary.behavioralCompleted()).isZero();
+        assertThat(summary.behavioralPassed()).isZero();
+        assertThat(summary.behavioralFailed()).isZero();
+        assertThat(summary.infrastructureFailed()).isEqualTo(1);
+        assertThat(summary.behavioralPassRate()).isZero();
+        assertThat(summary.availabilityRate()).isZero();
+        assertThat(summary.providerFailureClasses())
+                .containsEntry(ProviderFailureClass.BRAIN_UNAVAILABLE, 1);
+    }
+
+    @Test
+    void allInfrastructureAttemptsCannotProducePerfectBehavioralStability() {
+        List<ObservationEnvelope> observations = List.of(
+                providerFailure("E01", "base"),
+                providerFailure("E01", "base"));
+
+        LiveStabilitySummary summary = LiveStabilitySummary.from(observations, 2, 2);
+
+        assertThat(summary.stability()).isZero();
+        assertThat(summary.notes()).anyMatch(note ->
+                note.contains("NO_BEHAVIORAL_ATTEMPTS E01/base"));
+    }
+
+    @Test
+    void deterministicRuntimeFailureIsNotReclassifiedAsProviderFailure() {
+        ObservationEnvelope observation = ObservationEnvelope.builder(
+                        "E06", "divergent", "hash", EvaluationProfile.LIVE_PROVIDER)
+                .executionResult("failed:SHARED_STATE_DIVERGENCE")
+                .violations(List.of(new Violation(FailureClass.AUTHORIZATION,
+                        "divergence rejected")))
+                .build();
+
+        assertThat(LiveFailureClassifier.isInfrastructureFailure(observation)).isFalse();
+        assertThat(LiveFailureClassifier.classify(observation)).isNull();
+    }
+
+    @Test
+    void providerStatusClassesRemainDistinctForReliabilityReporting() {
+        assertThat(LiveFailureClassifier.classify(providerFailureWithResult("failed:HTTP 401")))
+                .isEqualTo(ProviderFailureClass.UNAUTHORIZED_401);
+        assertThat(LiveFailureClassifier.classify(providerFailureWithResult("failed:HTTP 429 rate limit")))
+                .isEqualTo(ProviderFailureClass.RATE_LIMIT_429);
+        assertThat(LiveFailureClassifier.classify(providerFailureWithResult("failed:HTTP 502")))
+                .isEqualTo(ProviderFailureClass.SERVER_5XX);
+    }
+
+    @Test
+    void schemaFailureCanBeReportedSeparatelyFromProviderTransportFailure() {
+        ObservationEnvelope observation = ObservationEnvelope.builder(
+                        "E01", "base", "hash", EvaluationProfile.LIVE_PROVIDER)
+                .executionResult("failed:ModelContractException")
+                .semanticTrace(com.specagent.trace.SemanticTrace.empty(null)
+                        .withStage("DECISION_OUTPUT", Map.of(
+                                "error_type", "ModelContractException")))
+                .build();
+
+        assertThat(LiveFailureClassifier.isSchemaFailure(observation)).isTrue();
+        assertThat(LiveFailureClassifier.isInfrastructureFailure(observation)).isFalse();
+    }
+
+    private static ObservationEnvelope providerFailure(String scenario, String variant) {
+        return ObservationEnvelope.builder(scenario, variant, "hash",
+                        EvaluationProfile.LIVE_PROVIDER)
+                .executionResult("failed:timeout")
+                .violations(List.of(new Violation(FailureClass.PROVIDER_FAILURE,
+                        "provider timeout")))
+                .build();
+    }
+
+    private static ObservationEnvelope providerFailureWithResult(String result) {
+        return ObservationEnvelope.builder("E01", "base", "hash",
+                        EvaluationProfile.LIVE_PROVIDER)
+                .executionResult(result)
+                .build();
     }
 }

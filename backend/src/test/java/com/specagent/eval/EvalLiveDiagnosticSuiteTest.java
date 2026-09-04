@@ -72,7 +72,9 @@ class EvalLiveDiagnosticSuiteTest extends EvalLiveHarnessBase {
         CausalReportGenerator.CausalReport causal =
                 CausalReportGenerator.generate(stamped, scenarioMap);
         LiveStabilitySummary stability = LiveStabilitySummary.from(
-                stamped, DIAGNOSTIC_REPETITIONS);
+                stamped, DIAGNOSTIC_REPETITIONS, scenarios.stream()
+                        .mapToInt(scenario -> scenario.variants().size() * DIAGNOSTIC_REPETITIONS)
+                        .sum());
         LiveBrainHealth after = readLiveBrainHealth(
                 System.getenv().getOrDefault("SPEC_AGENT_EVAL_BRAIN_BASE_URL",
                         "http://localhost:8100") + "/health");
@@ -129,15 +131,22 @@ class EvalLiveDiagnosticSuiteTest extends EvalLiveHarnessBase {
                                                      LiveChainEvidence before,
                                                      LiveBrainHealth after) {
         Map<String, Object> map = new LinkedHashMap<>();
-        map.put("total_attempts", stability.totalAttempts());
-        map.put("passed", stability.passed());
-        map.put("failed", stability.failed());
-        map.put("pass_rate", stability.passRate());
+        map.put("planned_attempts", stability.plannedAttempts());
+        map.put("executed_attempts", stability.totalAttempts());
+        map.put("behavioral_completed", stability.behavioralCompleted());
+        map.put("behavioral_passed", stability.behavioralPassed());
+        map.put("behavioral_failed", stability.behavioralFailed());
+        map.put("behavioral_pass_rate", stability.behavioralPassRate());
+        map.put("infrastructure_failed", stability.infrastructureFailed());
+        map.put("availability_rate", stability.availabilityRate());
         map.put("layer_a_pass_rate", stability.layerAPassRate());
-        map.put("stability", stability.stability());
+        map.put("behavioral_stability", stability.stability());
         Map<String, Integer> failures = new LinkedHashMap<>();
         stability.failureCounts().forEach((key, value) -> failures.put(key.name(), value));
-        map.put("failure_counts", failures);
+        map.put("behavioral_failure_counts", failures);
+        Map<String, Integer> providerFailures = new LinkedHashMap<>();
+        stability.providerFailureClasses().forEach((key, value) -> providerFailures.put(key.name(), value));
+        map.put("provider_failure_classes", providerFailures);
         map.put("primary_action_distribution", new java.util.TreeMap<>(
                 stability.primaryActionDistribution()));
         map.put("production_model_calls", stability.productionModelCalls());
@@ -160,7 +169,9 @@ class EvalLiveDiagnosticSuiteTest extends EvalLiveHarnessBase {
         map.put("diagnostic_run_id", runId);
         map.put("baseline_reference_commit", BASELINE_REFERENCE_COMMIT);
         map.put("instrumentation_commit", instrumentationCommit);
-        map.put("prompt_changes", false);
+        map.put("evaluation_arm", System.getProperty("spec.agent.eval.arm", "UNSPECIFIED"));
+        map.put("prompt_revision", System.getenv().getOrDefault(
+                "SPEC_AGENT_EVAL_PROMPT_COMMIT", instrumentationCommit));
         map.put("scenario_corpus_identity", corpusIdentity(scenarios));
         map.put("targeted_variants", scenarios.stream().flatMap(scenario ->
                 scenario.variants().stream().map(variant ->
@@ -171,15 +182,18 @@ class EvalLiveDiagnosticSuiteTest extends EvalLiveHarnessBase {
                 "java_engine", before.javaWiring().decisionEngine(),
                 "java_inference_gateway", before.javaWiring().inferenceGateway(),
                 "endpoint", before.endpoint(),
+                "user_agent", com.specagent.model.provider.OpenCodeZenTransport.USER_AGENT,
                 "python_protocol", before.pythonBefore().protocolVersion(),
                 "python_mode", before.pythonBefore().modelMode(),
                 "model", before.selectedModel(),
                 "credential_source", before.credentialSource()));
         map.put("provider_failures", observations.stream()
-                .filter(observation -> observation.executionResult() != null
-                        && observation.executionResult().startsWith("failed:"))
+                .filter(LiveFailureClassifier::isInfrastructureFailure)
                 .count());
         map.put("trace_completeness", traceCompleteness(observations));
+        map.put("prompt_hashes", EvalArtifactWriter.promptProvenance(observations));
+        map.put("schema_failures", observations.stream()
+                .filter(LiveFailureClassifier::isSchemaFailure).count());
         map.put("provider_after", healthMap(after));
         return map;
     }

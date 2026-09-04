@@ -24,7 +24,7 @@ import static org.mockito.Mockito.when;
         "spec.agent.model.inference=opencode",
         "spec.agent.model.runtime-settings-source=external-environment",
         "spec.agent.model.external.api-key=external-test-marker-not-a-secret",
-        "spec.agent.model.external.selected-model=mimo-v2.5-free",
+        "spec.agent.model.external.selected-model=gpt-5.6-terra",
         "spec.agent.model.opencode.base-url=https://opencode.ai/zen/v1"
 })
 @ActiveProfiles("test")
@@ -55,7 +55,7 @@ class OpenCodeLiveRuntimeSettingsProvenanceTest {
         assertThat(inferenceGateway).isInstanceOf(OpenCodeModelInferenceGateway.class);
         assertThat(context.getBeansOfType(FakeModelInferenceGateway.class)).isEmpty();
         assertThat(transport.endpoint()).isEqualTo(OpenCodeZenTransport.BASE_URL);
-        assertThat(resolved.selectedModel()).isEqualTo("mimo-v2.5-free");
+        assertThat(resolved.selectedModel()).isEqualTo("gpt-5.6-terra");
         assertThat(resolved.credentialSource())
                 .isEqualTo("external-environment:SPEC_AGENT_EVAL_OPENCODE_KEY");
         assertThat(resolved.toString()).doesNotContain("external-test-marker-not-a-secret");

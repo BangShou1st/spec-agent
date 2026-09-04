@@ -18,7 +18,9 @@ import java.util.List;
  * transport. Credential resolution, free-model policy and HTTP transport stay
  * exactly where they were; this adapter only reshapes the call into the
  * neutral inference seam so the Python brain can reach the same proven
- * transport through the internal broker without ever seeing a key.
+ * transport through the internal broker without ever seeing a key. Product
+ * database settings remain free-only; the explicitly isolated external eval
+ * source may select any exact qualified provider model.
  *
  * <p>No retry, no provider fallback. Generation limits are not forwarded:
  * production OpenCode completions keep their verified request shape.
@@ -44,7 +46,9 @@ public class OpenCodeModelInferenceGateway implements ModelInferenceGateway {
             throw new OpenCodeModelException(OpenCodeModelErrorCategory.NOT_CONFIGURED,
                     "No OpenCode model is selected");
         }
-        if (!selectedModel.endsWith("-free")) {
+        boolean externalEvaluation = "external-environment:SPEC_AGENT_EVAL_OPENCODE_KEY"
+                .equals(settings.credentialSource());
+        if (!externalEvaluation && !selectedModel.endsWith("-free")) {
             throw new OpenCodeModelException(OpenCodeModelErrorCategory.INVALID_MODEL,
                     "OpenCode gateway requires a free model; configured model is not free: "
                             + selectedModel);

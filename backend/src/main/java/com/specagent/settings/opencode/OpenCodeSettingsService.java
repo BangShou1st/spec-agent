@@ -154,12 +154,12 @@ public class OpenCodeSettingsService {
                             + "SPEC_AGENT_EVAL_OPENCODE_KEY and "
                             + "SPEC_AGENT_EVAL_OPENCODE_MODEL; test database settings are not used");
         }
-        String model = externalSelectedModel.trim();
-        if (!model.endsWith("-free")) {
-            throw new OpenCodeModelException(OpenCodeModelErrorCategory.INVALID_MODEL,
-                    "Live OpenCode model is invalid: selected model must end with -free");
-        }
-        return new RuntimeOpenCodeSettings(externalApiKey.trim(), model,
+        // Product settings remain free-only, but the explicitly isolated live
+        // evaluation source may select any exact model exposed by the
+        // provider (including paid/non-free reference models). Qualification
+        // validates reachability and schema compliance before a model is used
+        // as a reference; it must not be constrained by product cost policy.
+        return new RuntimeOpenCodeSettings(externalApiKey.trim(), externalSelectedModel.trim(),
                 EXTERNAL_CREDENTIAL_SOURCE);
     }
 

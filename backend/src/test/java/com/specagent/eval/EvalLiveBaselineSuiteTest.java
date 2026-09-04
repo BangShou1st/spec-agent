@@ -46,7 +46,8 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
                 "spec.agent.model.runtime-settings-source=external-environment",
                 "spec.agent.model.external.api-key=${SPEC_AGENT_EVAL_OPENCODE_KEY:}",
                 "spec.agent.model.external.selected-model=${SPEC_AGENT_EVAL_OPENCODE_MODEL:}",
-                "spec.agent.model.opencode.base-url=https://opencode.ai/zen/v1"
+                "spec.agent.model.opencode.base-url=https://opencode.ai/zen/v1",
+                "spec.agent.semantic-trace.enabled=true"
         })
 class EvalLiveBaselineSuiteTest extends EvalLiveHarnessBase {
 
@@ -81,16 +82,23 @@ class EvalLiveBaselineSuiteTest extends EvalLiveHarnessBase {
         Files.writeString(outputDir.resolve("results.jsonl"), jsonl.toString(),
                 StandardCharsets.UTF_8);
 
-        LiveStabilitySummary stability = LiveStabilitySummary.from(stamped, LIVE_REPETITIONS);
+        int plannedAttempts = liveCorpus().stream()
+                .mapToInt(scenario -> scenario.variants().size() * LIVE_REPETITIONS)
+                .sum();
+        LiveStabilitySummary stability = LiveStabilitySummary.from(
+                stamped, LIVE_REPETITIONS, plannedAttempts);
         LiveBrainHealth after = readLiveBrainHealth(BRAIN_HEALTH);
         assumeTrue(after.stateUpdates() >= before.pythonBefore().stateUpdates()
                         && after.decisions() >= before.pythonBefore().decisions(),
                 "agent-brain invocation counters reset during the live baseline");
         LiveChainEvidence evidence = before.withPythonAfter(after);
-        java.util.Map<String, Object> stabilityReport = stabilityToMap(stability);
+        java.util.Map<String, Object> stabilityReport = stabilityToMap(stability, stamped);
         stabilityReport.put("live_chain_evidence", evidenceToMap(evidence));
         Files.writeString(outputDir.resolve("stability.json"),
                 EvalArtifactWriter.toJson(stabilityReport), StandardCharsets.UTF_8);
+        Files.writeString(outputDir.resolve("metadata.json"),
+                EvalArtifactWriter.toJson(metadata(runId, gitSha, before, evidence,
+                        plannedAttempts, stamped)), StandardCharsets.UTF_8);
         String header = "# eval live baseline " + Instant.now() + " run=" + runId
                 + " git=" + gitSha + " provider=" + liveProvider()
                 + " model=" + before.selectedModel() + "\n"
@@ -134,17 +142,27 @@ class EvalLiveBaselineSuiteTest extends EvalLiveHarnessBase {
                 + evidence.selectedModel() + "\n" + evidence.credentialSource());
     }
 
-    private static java.util.Map<String, Object> stabilityToMap(LiveStabilitySummary stability) {
+    private static java.util.Map<String, Object> stabilityToMap(
+            LiveStabilitySummary stability, List<ObservationEnvelope> observations) {
         java.util.Map<String, Object> map = new java.util.LinkedHashMap<>();
-        map.put("total_attempts", stability.totalAttempts());
-        map.put("passed", stability.passed());
-        map.put("failed", stability.failed());
-        map.put("pass_rate", stability.passRate());
+        map.put("planned_attempts", stability.plannedAttempts());
+        map.put("executed_attempts", stability.totalAttempts());
+        map.put("behavioral_completed", stability.behavioralCompleted());
+        map.put("behavioral_passed", stability.behavioralPassed());
+        map.put("behavioral_failed", stability.behavioralFailed());
+        map.put("behavioral_pass_rate", stability.behavioralPassRate());
+        map.put("infrastructure_failed", stability.infrastructureFailed());
+        map.put("availability_rate", stability.availabilityRate());
         map.put("layer_a_pass_rate", stability.layerAPassRate());
-        map.put("stability", stability.stability());
+        map.put("behavioral_stability", stability.stability());
         java.util.Map<String, Integer> failures = new java.util.LinkedHashMap<>();
         stability.failureCounts().forEach((key, value) -> failures.put(key.name(), value));
-        map.put("failure_counts", failures);
+        map.put("behavioral_failure_counts", failures);
+        java.util.Map<String, Integer> providerFailures = new java.util.LinkedHashMap<>();
+        stability.providerFailureClasses().forEach((key, value) -> providerFailures.put(key.name(), value));
+        map.put("provider_failure_classes", providerFailures);
+        map.put("schema_failures", observations.stream()
+                .filter(LiveFailureClassifier::isSchemaFailure).count());
         map.put("primary_action_distribution",
                 new java.util.TreeMap<>(stability.primaryActionDistribution()));
         map.put("token_totals", stability.tokenTotals());
@@ -155,6 +173,43 @@ class EvalLiveBaselineSuiteTest extends EvalLiveHarnessBase {
         map.put("scenario_results", stability.scenarioResults());
         map.put("notes", stability.notes());
         return map;
+    }
+
+    private static java.util.Map<String, Object> metadata(
+            String runId, String gitSha, LiveChainEvidence before,
+            LiveChainEvidence evidence, int plannedAttempts,
+            List<ObservationEnvelope> observations) {
+        java.util.Map<String, Object> map = new java.util.LinkedHashMap<>();
+        map.put("schema_version", "eval-live-baseline.v2");
+        map.put("run_id", runId);
+        map.put("git_sha", gitSha);
+        map.put("evaluation_arm", System.getProperty("spec.agent.eval.arm", "UNSPECIFIED"));
+        map.put("prompt_revision", System.getenv().getOrDefault(
+                "SPEC_AGENT_EVAL_PROMPT_COMMIT", gitSha));
+        map.put("scenario_corpus_identity", corpusIdentity(liveCorpus()));
+        map.put("planned_attempts", plannedAttempts);
+        map.put("repetitions_per_variant", LIVE_REPETITIONS);
+        map.put("provider_model_provenance", java.util.Map.of(
+                "provider", "opencode-zen",
+                "endpoint", before.endpoint(),
+                "user_agent", com.specagent.model.provider.OpenCodeZenTransport.USER_AGENT,
+                "model", before.selectedModel(),
+                "credential_source", before.credentialSource(),
+                "java_engine", before.javaWiring().decisionEngine(),
+                "java_inference_gateway", before.javaWiring().inferenceGateway(),
+                "python_protocol", before.pythonBefore().protocolVersion(),
+                "python_mode", before.pythonBefore().modelMode()));
+        map.put("prompt_hashes", EvalArtifactWriter.promptProvenance(observations));
+        map.put("provider_health_before", evidenceToMap(before));
+        map.put("provider_health_after", evidenceToMap(evidence));
+        return map;
+    }
+
+    private static String corpusIdentity(List<ScenarioDefinition> scenarios) {
+        String canonical = scenarios.stream()
+                .map(scenario -> scenario.scenarioId() + ":" + scenario.scenarioHash())
+                .sorted().collect(java.util.stream.Collectors.joining("\n"));
+        return Hashes.sha256Hex(canonical);
     }
 
     private static java.util.Map<String, Object> evidenceToMap(LiveChainEvidence evidence) {
