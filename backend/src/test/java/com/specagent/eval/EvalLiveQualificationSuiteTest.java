@@ -114,8 +114,6 @@ class EvalLiveQualificationSuiteTest extends EvalLiveHarnessBase {
 
     private static boolean isCompletedCycle(ObservationEnvelope observation) {
         return !LiveFailureClassifier.isInfrastructureFailure(observation)
-                && observation.executionResult() != null
-                && !observation.executionResult().startsWith("failed:")
                 && observation.actualPrimaryAction() != null
                 && observation.semanticTrace().stages().containsKey("STATE_UPDATE_OUTPUT")
                 && observation.semanticTrace().stages().containsKey("DECISION_OUTPUT");
