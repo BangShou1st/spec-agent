@@ -76,6 +76,7 @@ public final class ActionEligibilityEvaluator {
         List<String> facts = new ArrayList<>();
         facts.add("event:" + request.event().kind());
         facts.add("hasEventText:" + hasText(request.event().freeText()));
+        facts.add("persistenceIntent:" + String.valueOf(request.event().persistenceIntent()));
         for (ClaimView claim : request.snapshot().effectiveClaims()) {
             facts.add("claim:" + claim.kind() + ":" + claim.status() + ":"
                     + normalizeText(claim.text()));

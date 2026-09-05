@@ -55,6 +55,24 @@ class AgentV2ContractTest {
     }
 
     @Test
+    void typedPersistenceIntentRoundTripsInStrictEnvelope() throws Exception {
+        String mutated = fixture("agent-input-v3-valid.json");
+        int eventStart = mutated.indexOf("\"event\"");
+        int eventText = mutated.indexOf(
+                "\"freeText\": \"团队需要一个内部工单系统。\"", eventStart);
+        String eventFreeText = "\"freeText\": \"团队需要一个内部工单系统。\"";
+        mutated = mutated.substring(0, eventText)
+                + eventFreeText + ",\"persistenceIntent\": \"RECORD_DECISION_NODE\""
+                + mutated.substring(eventText + eventFreeText.length());
+        AgentRequestEnvelope request = AgentContracts.read(mutated, AgentRequestEnvelope.class);
+
+        assertThat(request.event().persistenceIntent())
+                .isEqualTo(AgentEvent.PersistenceIntent.RECORD_DECISION_NODE);
+        assertThat(AgentContracts.write(request))
+                .contains("\"persistenceIntent\":\"RECORD_DECISION_NODE\"");
+    }
+
+    @Test
     void unknownRequestFieldIsRejected() throws Exception {
         assertThatThrownBy(() -> AgentContracts.read(
                 fixture("agent-input-invalid-unknown-field.json"), AgentRequestEnvelope.class))

@@ -28,8 +28,11 @@ SYSTEM_PROMPT = """你是需求工作区的状态更新引擎。你的唯一任�
 
 def render_user_prompt(envelope: AgentV2RequestEnvelope) -> str:
     snapshot = envelope.snapshot
+    event = envelope.event.model_dump(mode="json", by_alias=True)
+    if event.get("persistenceIntent") is None:
+        event.pop("persistenceIntent", None)
     payload: Dict[str, Any] = {
-        "event": envelope.event.model_dump(mode="json", by_alias=True),
+        "event": event,
         "snapshot": {
             "snapshotId": str(snapshot.snapshot_id),
             "allowedSourceRefs": snapshot.allowed_source_refs,

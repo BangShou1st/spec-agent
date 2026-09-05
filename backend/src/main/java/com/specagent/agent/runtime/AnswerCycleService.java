@@ -141,6 +141,12 @@ public class AnswerCycleService {
      */
     public AnswerCycleResult submitAnswer(AgentRun run, UUID projectId,
                                           UUID selectedOptionId, String freeText) {
+        return submitAnswer(run, projectId, selectedOptionId, freeText, null);
+    }
+
+    public AnswerCycleResult submitAnswer(AgentRun run, UUID projectId,
+                                          UUID selectedOptionId, String freeText,
+                                          AgentEvent.PersistenceIntent persistenceIntent) {
         Route route = loadActiveRoute(projectId);
         if (route.tipNodeId() == null) {
             throw new IllegalStateException("Active route has no tip node");
@@ -176,7 +182,7 @@ public class AnswerCycleService {
             // Build envelope with answer event.
             AgentEvent event = new AgentEvent(
                     "ANSWER_SUBMITTED", route.tipNodeId(),
-                    selectedOptionId, normalizedFreeText);
+                    selectedOptionId, normalizedFreeText, persistenceIntent);
             AgentRequestEnvelope envelope = snapshotBuilder.buildEnvelope(
                     run.id(), snapshot, event, new DecisionBudget(2));
 
@@ -202,6 +208,11 @@ public class AnswerCycleService {
      * reused without re-running STATE_UPDATE.
      */
     public AnswerCycleResult resumeAnswer(AgentRun run, UUID projectId, UUID answerId) {
+        return resumeAnswer(run, projectId, answerId, null);
+    }
+
+    public AnswerCycleResult resumeAnswer(AgentRun run, UUID projectId, UUID answerId,
+                                          AgentEvent.PersistenceIntent persistenceIntent) {
         Answer answer = answerService.getAnswer(answerId)
                 .orElseThrow(() -> new IllegalArgumentException("Answer not found: " + answerId));
         if (!answer.projectId().equals(projectId)) {
@@ -241,7 +252,8 @@ public class AnswerCycleService {
                     ? null : UUID.fromString(answer.selectedOptionId());
             String freeText = answer.freeText();
             AgentEvent event = new AgentEvent(
-                    "ANSWER_SUBMITTED", answer.nodeId(), selectedOptionId, freeText);
+                    "ANSWER_SUBMITTED", answer.nodeId(), selectedOptionId, freeText,
+                    persistenceIntent);
             AgentRequestEnvelope envelope = snapshotBuilder.buildEnvelope(
                     run.id(), snapshot, event, new DecisionBudget(2));
 

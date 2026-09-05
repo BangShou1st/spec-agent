@@ -1,5 +1,7 @@
 package com.specagent.eval;
 
+import com.specagent.agent.contract.AgentEvent;
+
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -157,7 +159,8 @@ public final class EvalCorpusBatch2 {
                 new GivenSpec(
                         "e08-title",
                         List.of(new GraphStep.CreateRootQuestion("e08-root-question", true)),
-                        new UserEvent.AnswerTip("e08-authorized-tradeoff"),
+                        new UserEvent.AnswerTip("e08-authorized-tradeoff",
+                                AgentEvent.PersistenceIntent.RECORD_DECISION_NODE),
                         new RouteContextSpec(RouteContextSpec.Kind.ACTIVE_TIP, null),
                         new FocusContextSpec(null, null),
                         List.of(),

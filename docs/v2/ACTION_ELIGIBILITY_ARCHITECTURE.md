@@ -106,11 +106,13 @@ DECISION that merely restates confirmed/resolved state; a DECISION without
 typed delegation or persistence intent; and content that still depends on an
 unresolved blocker.
 
-The current V2/V3 event shape has no Runtime-owned typed delegation/persistence
-intent. Natural-language `freeText` is not authorization. Therefore the first
-enforced version rejects Agent-authored `KNOWLEDGE/DECISION` mutations until a
-future version introduces that typed event intent; Advisor confirmation is a
-separate authorization layer and cannot repair missing eligibility.
+The V2/V3 event shape carries an optional Runtime-owned typed
+`persistenceIntent`. Natural-language `freeText` is never authorization. A
+`RECORD_DECISION_NODE` intent is emitted only from an explicitly authorized
+runtime command and allows the corresponding `KNOWLEDGE/DECISION` proposal to
+pass eligibility; the validator still applies all duplicate and blocker gates.
+Advisor confirmation remains a separate authorization layer and cannot repair
+missing eligibility.
 
 ### REQUEST_USER_INPUT
 

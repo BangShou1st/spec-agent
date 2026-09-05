@@ -1,6 +1,7 @@
 package com.specagent.agent.runtime;
 
 import com.specagent.agent.AgentRun;
+import com.specagent.agent.contract.AgentEvent;
 import com.specagent.agent.AgentRunRepository;
 import com.specagent.agent.AgentRunRequestFingerprint;
 import com.specagent.agent.AgentRunService;
@@ -79,8 +80,19 @@ public class RunService {
                                          UUID selectedOptionId,
                                          String freeText,
                                          UUID answerId) {
-        return createQueuedRunWithInput(projectId, operation, nodeId,
-                selectedOptionId, freeText, answerId, null);
+        return createQueuedRunWithInputResult(projectId, operation, nodeId, selectedOptionId,
+                freeText, answerId, null).id();
+    }
+
+    public UUID createQueuedRunWithInput(UUID projectId,
+                                         String operation,
+                                         UUID nodeId,
+                                         UUID selectedOptionId,
+                                         String freeText,
+                                         UUID answerId,
+                                         AgentEvent.PersistenceIntent persistenceIntent) {
+        return createQueuedRunWithInputResult(projectId, operation, nodeId, selectedOptionId,
+                freeText, answerId, null, persistenceIntent).id();
     }
 
     public UUID createQueuedRunWithInput(UUID projectId,
@@ -98,13 +110,23 @@ public class RunService {
                                                    String operation,
                                                    UUID nodeId,
                                                    UUID selectedOptionId,
+                                         String freeText,
+                                         UUID answerId,
+                                         String idempotencyKey) {
+        return createQueuedRunWithInputResult(projectId, operation, nodeId, selectedOptionId,
+                freeText, answerId, idempotencyKey, null, null);
+    }
+
+    public AgentRun createQueuedRunWithInputResult(UUID projectId,
+                                                   String operation,
+                                                   UUID nodeId,
+                                                   UUID selectedOptionId,
                                                    String freeText,
                                                    UUID answerId,
-                                                   String idempotencyKey) {
-        String fingerprint = AgentRunRequestFingerprint.forClientRequest(
-                projectId, operation, nodeId, null, answerId, selectedOptionId, freeText);
+                                                   String idempotencyKey,
+                                                   AgentEvent.PersistenceIntent persistenceIntent) {
         return createQueuedRunWithInputResult(projectId, operation, nodeId, selectedOptionId,
-                freeText, answerId, idempotencyKey, fingerprint);
+                freeText, answerId, idempotencyKey, null, persistenceIntent);
     }
 
     public AgentRun createQueuedRunWithInputResult(UUID projectId,
@@ -115,6 +137,23 @@ public class RunService {
                                                    UUID answerId,
                                                    String idempotencyKey,
                                                    String requestFingerprint) {
+        return createQueuedRunWithInputResult(projectId, operation, nodeId, selectedOptionId,
+                freeText, answerId, idempotencyKey, requestFingerprint, null);
+    }
+
+    public AgentRun createQueuedRunWithInputResult(UUID projectId,
+                                                   String operation,
+                                                   UUID nodeId,
+                                                   UUID selectedOptionId,
+                                                   String freeText,
+                                                   UUID answerId,
+                                                   String idempotencyKey,
+                                                   String requestFingerprint,
+                                                   AgentEvent.PersistenceIntent persistenceIntent) {
+        String fingerprint = requestFingerprint != null ? requestFingerprint
+                : AgentRunRequestFingerprint.forClientRequest(
+                projectId, operation, nodeId, null, answerId, selectedOptionId, freeText,
+                persistenceIntent);
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new IllegalArgumentException("Project not found: " + projectId));
         if (project.activeRouteId() == null) {
@@ -127,7 +166,7 @@ public class RunService {
         UUID inputNodeId = nodeId != null ? nodeId : route.tipNodeId();
         var created = agentRunService.createWithIdempotency(
                 projectId, route.id(), AgentRunTriggerType.ANSWER_CYCLE,
-                inputNodeId, null, operation, idempotencyKey, requestFingerprint);
+                inputNodeId, null, operation, idempotencyKey, fingerprint);
         AgentRun run = created.run();
 
         Map<String, Object> payload = new LinkedHashMap<>();
@@ -137,6 +176,7 @@ public class RunService {
         if (selectedOptionId != null) payload.put("selectedOptionId", selectedOptionId.toString());
         if (freeText != null) payload.put("freeText", freeText);
         if (answerId != null) payload.put("answerId", answerId.toString());
+        if (persistenceIntent != null) payload.put("persistenceIntent", persistenceIntent.name());
         appendRunCreatedIfInserted(created, payload);
         return run;
     }

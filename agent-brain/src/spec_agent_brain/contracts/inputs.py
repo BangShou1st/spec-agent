@@ -193,6 +193,7 @@ class AgentV2Event(StrictModel):
     anchor_node_id: Optional[UUID] = None
     selected_option_id: Optional[UUID] = None
     free_text: Optional[str] = None
+    persistence_intent: Optional[Literal["RECORD_DECISION_NODE"]] = None
 
     @field_validator("kind")
     @classmethod

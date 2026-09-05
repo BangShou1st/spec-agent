@@ -6,6 +6,7 @@ import com.specagent.agent.AgentRunService;
 import com.specagent.agent.AgentRunStatus;
 import com.specagent.agent.AgentRunTriggerType;
 import com.specagent.agent.ModelContractException;
+import com.specagent.agent.contract.AgentEvent;
 import com.specagent.agent.decision.AgentBrainUnavailableException;
 import com.specagent.agent.runevent.AgentRunEvent;
 import com.specagent.agent.runevent.AgentRunEventService;
@@ -157,11 +158,15 @@ public class RunWorker {
             String freeText = (String) input.get("freeText");
             UUID answerId = input.containsKey("answerId")
                     ? UUID.fromString((String) input.get("answerId")) : null;
+            AgentEvent.PersistenceIntent persistenceIntent = input.containsKey("persistenceIntent")
+                    ? AgentEvent.PersistenceIntent.valueOf((String) input.get("persistenceIntent"))
+                    : null;
 
             if ("RESUME_ANSWER".equals(operation) && answerId != null) {
-                answerCycleService.resumeAnswer(run, run.projectId(), answerId);
+                answerCycleService.resumeAnswer(run, run.projectId(), answerId, persistenceIntent);
             } else {
-                answerCycleService.submitAnswer(run, run.projectId(), selectedOptionId, freeText);
+                answerCycleService.submitAnswer(run, run.projectId(), selectedOptionId, freeText,
+                        persistenceIntent);
             }
         } catch (RuntimeException ex) {
             failIfNotTerminal(runId, ex);

@@ -114,6 +114,19 @@ def test_valid_v3_eligibility_request_and_response_pass_strict_validation():
     validate_v3_response_for_request(request, response)
 
 
+def test_runtime_owned_persistence_intent_is_optional_and_typed():
+    payload = copy.deepcopy(_load("agent-input-v3-valid.json"))
+    payload["event"]["persistenceIntent"] = "RECORD_DECISION_NODE"
+
+    envelope = parse_request_envelope(payload)
+
+    assert envelope.event.persistence_intent == "RECORD_DECISION_NODE"
+
+    payload["event"]["persistenceIntent"] = "free-text-authorization"
+    with pytest.raises(ValidationError):
+        parse_request_envelope(payload)
+
+
 @pytest.mark.parametrize(
     "fixture_name",
     [

@@ -67,7 +67,8 @@ fields contain public structured evidence only, never hidden reasoning.
     "kind": "INITIAL | CONTINUE | ANSWER_SUBMITTED | NODE_QUERY (Stage C)",
     "anchorNodeId": "<uuid|null>",
     "selectedOptionId": "<uuid|null>",
-    "freeText": "<string|null>"
+    "freeText": "<string|null>",
+    "persistenceIntent": "RECORD_DECISION_NODE|null"
   },
   "snapshot": {
     "snapshotId": "<uuid>",

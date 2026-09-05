@@ -1,5 +1,7 @@
 package com.specagent.eval;
 
+import com.specagent.agent.contract.AgentEvent;
+
 /**
  * The user event that triggers the production answer cycle of a scenario.
  */
@@ -7,7 +9,11 @@ public sealed interface UserEvent
         permits UserEvent.AnswerTip, UserEvent.DivergentAnswer {
 
     /** Answers the active-route tip with free text derived from the seed. */
-    record AnswerTip(String freeTextSeed) implements UserEvent {
+    record AnswerTip(String freeTextSeed,
+                     AgentEvent.PersistenceIntent persistenceIntent) implements UserEvent {
+        public AnswerTip(String freeTextSeed) {
+            this(freeTextSeed, null);
+        }
     }
 
     /**
@@ -20,7 +26,8 @@ public sealed interface UserEvent
     /** Canonical rendering for the scenario hash. */
     static String canonical(UserEvent event) {
         if (event instanceof AnswerTip answer) {
-            return "answer-tip(" + answer.freeTextSeed() + ")";
+            return "answer-tip(" + answer.freeTextSeed() + ";intent="
+                    + answer.persistenceIntent() + ")";
         }
         if (event instanceof DivergentAnswer divergent) {
             return "divergent(" + divergent.targetStepRef() + "," + divergent.freeTextSeed() + ")";

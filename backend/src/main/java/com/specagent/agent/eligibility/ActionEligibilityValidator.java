@@ -2,6 +2,7 @@ package com.specagent.agent.eligibility;
 
 import com.specagent.agent.contract.ActionFamily;
 import com.specagent.agent.contract.ActionProposal;
+import com.specagent.agent.contract.AgentEvent;
 import com.specagent.agent.contract.AgentRequestEnvelope;
 import com.specagent.agent.contract.ClaimView;
 import com.specagent.agent.contract.LineageEntry;
@@ -89,12 +90,12 @@ public final class ActionEligibilityValidator {
             reject(ActionEligibilityReasonCode.NO_NEW_DURABLE_UNIT);
         }
 
-        if ("DECISION".equals(subtype)) {
-            // agent-input.v2/v3 currently carries no Runtime-owned typed
-            // delegation or persistence command. Natural-language freeText is
-            // not authority. Until such an event field exists, an Agent-
-            // authored Decision can be ranked but cannot pass the durable
-            // mutation trust boundary.
+        if ("DECISION".equals(subtype)
+                && !("ANSWER_SUBMITTED".equals(request.event().kind())
+                && request.event().persistenceIntent()
+                == AgentEvent.PersistenceIntent.RECORD_DECISION_NODE)) {
+            // Natural-language freeText is not authority. A durable Decision
+            // requires the explicit Runtime-owned event intent above.
             reject(ActionEligibilityReasonCode.MISSING_TYPED_PERSISTENCE_INTENT);
         }
     }

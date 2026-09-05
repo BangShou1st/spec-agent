@@ -1,5 +1,6 @@
 package com.specagent.agent;
 
+import com.specagent.agent.contract.AgentEvent;
 import com.specagent.common.Hashes;
 
 import java.util.UUID;
@@ -29,6 +30,18 @@ public final class AgentRunRequestFingerprint {
                                           UUID answerId,
                                           UUID selectedOptionId,
                                           String freeText) {
+        return forClientRequest(projectId, operation, nodeId, sourceRouteId, answerId,
+                selectedOptionId, freeText, null);
+    }
+
+    public static String forClientRequest(UUID projectId,
+                                          String operation,
+                                          UUID nodeId,
+                                          UUID sourceRouteId,
+                                          UUID answerId,
+                                          UUID selectedOptionId,
+                                          String freeText,
+                                          AgentEvent.PersistenceIntent persistenceIntent) {
         String canonical = String.join("|",
                 field("projectId", projectId),
                 field("operation", operation),
@@ -36,7 +49,8 @@ public final class AgentRunRequestFingerprint {
                 field("sourceRouteId", sourceRouteId),
                 field("answerId", answerId),
                 field("selectedOptionId", selectedOptionId),
-                field("freeText", freeText));
+                field("freeText", freeText),
+                field("persistenceIntent", persistenceIntent));
         return Hashes.sha256Hex(canonical);
     }
 

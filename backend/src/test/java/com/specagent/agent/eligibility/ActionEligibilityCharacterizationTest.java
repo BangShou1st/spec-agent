@@ -1,6 +1,7 @@
 package com.specagent.agent.eligibility;
 
 import com.specagent.agent.contract.ActionProposal;
+import com.specagent.agent.contract.AgentEvent;
 import com.specagent.agent.contract.AgentContracts;
 import com.specagent.agent.contract.AgentInputSnapshot;
 import com.specagent.agent.contract.AgentRequestEnvelope;
@@ -66,6 +67,25 @@ class ActionEligibilityCharacterizationTest {
                 "content", Map.of("text", "采用事件驱动架构处理异步工单。")));
 
         assertIneligible(request, proposal, "MISSING_TYPED_PERSISTENCE_INTENT");
+    }
+
+    @Test
+    void acceptsDecisionWithRuntimeOwnedTypedPersistenceIntent() throws Exception {
+        AgentRequestEnvelope base = request();
+        AgentRequestEnvelope authorized = new AgentRequestEnvelope(
+                base.protocolVersion(), base.runId(),
+                new AgentEvent(base.event().kind(), base.event().anchorNodeId(),
+                        base.event().selectedOptionId(), base.event().freeText(),
+                        AgentEvent.PersistenceIntent.RECORD_DECISION_NODE),
+                base.snapshot(), base.capabilities(), base.decisionBudget());
+        ActionProposal proposal = proposal(authorized, "CREATE_NODE", Map.of(
+                "kind", "KNOWLEDGE",
+                "subtype", "DECISION",
+                "content", Map.of("text", "采用事件驱动架构处理异步工单。")));
+
+        ActionEligibility eligibility = evaluator.evaluate(authorized);
+        assertThatCode(() -> validator.validateSelection(authorized, proposal, eligibility))
+                .doesNotThrowAnyException();
     }
 
     @Test

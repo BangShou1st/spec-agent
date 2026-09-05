@@ -435,7 +435,8 @@ public class ScenarioRunner {
             String freeText = GraphStep.renderText(scenario.scenarioId(),
                     answer.freeTextSeed(), variant.paraphraseIndex(), Map.of());
             UUID queued = runService.createQueuedRunWithInput(
-                    project.id(), "ANSWER_TIP", route.tipNodeId(), null, freeText, null);
+                    project.id(), "ANSWER_TIP", route.tipNodeId(), null, freeText, null,
+                    answer.persistenceIntent());
             try {
                 AgentRun claimed = runService.claimNextAnswerCycle()
                         .orElseThrow(() -> new IllegalStateException("No queued answer-cycle run"));

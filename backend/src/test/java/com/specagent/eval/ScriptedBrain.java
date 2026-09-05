@@ -157,7 +157,7 @@ public class ScriptedBrain implements AgentDecisionEngine, BrainScriptInstaller 
         }
         if (script.malformedDecision()) {
             return new AgentResponseEnvelope(
-                    AgentProtocol.DECISION_PROTOCOL_VERSION,
+                    responseProtocolVersion(request),
                     request.runId(),
                     null,
                     new ObservationView(List.of("x"), List.of(), List.of(), List.of()),
@@ -171,7 +171,10 @@ public class ScriptedBrain implements AgentDecisionEngine, BrainScriptInstaller 
                             request.runId().toString(),
                             List.of()),
                     new UsageView(1, List.of()),
-                    Map.of());
+                    Map.of(),
+                    selectedEligibilityVersion(request),
+                    selectedEligibilityBasisHash(request),
+                    List.of());
         }
         BrainDecision decision = script.brainScript().decision();
         Map<String, Object> payload = renderPayload(
@@ -179,7 +182,7 @@ public class ScriptedBrain implements AgentDecisionEngine, BrainScriptInstaller 
         UUID snapshotId = UUID.fromString(request.snapshot().snapshotId());
         List<String> anchorRefs = anchorRefsFor(decision.actionFamily(), request);
         return new AgentResponseEnvelope(
-                AgentProtocol.DECISION_PROTOCOL_VERSION,
+                responseProtocolVersion(request),
                 request.runId(),
                 null,
                 new ObservationView(
@@ -197,7 +200,24 @@ public class ScriptedBrain implements AgentDecisionEngine, BrainScriptInstaller 
                         request.runId().toString() + ":" + decision.actionFamily(),
                         anchorRefs),
                 new UsageView(1, List.of()),
-                Map.of());
+                Map.of(),
+                selectedEligibilityVersion(request),
+                selectedEligibilityBasisHash(request),
+                List.of());
+    }
+
+    private String responseProtocolVersion(AgentRequestEnvelope request) {
+        return AgentProtocol.INPUT_PROTOCOL_VERSION_V3.equals(request.protocolVersion())
+                ? AgentProtocol.DECISION_PROTOCOL_VERSION_V3
+                : AgentProtocol.DECISION_PROTOCOL_VERSION;
+    }
+
+    private String selectedEligibilityVersion(AgentRequestEnvelope request) {
+        return request.actionEligibility() == null ? null : request.actionEligibility().version();
+    }
+
+    private String selectedEligibilityBasisHash(AgentRequestEnvelope request) {
+        return request.actionEligibility() == null ? null : request.actionEligibility().basisHash();
     }
 
     @Override

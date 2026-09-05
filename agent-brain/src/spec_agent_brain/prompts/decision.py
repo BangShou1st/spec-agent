@@ -68,8 +68,11 @@ def _related_node_view(ref) -> Dict[str, Any]:
 
 def render_user_prompt(envelope: AgentV2RequestEnvelope) -> str:
     snapshot = envelope.snapshot
+    event = envelope.event.model_dump(mode="json", by_alias=True)
+    if event.get("persistenceIntent") is None:
+        event.pop("persistenceIntent", None)
     payload: Dict[str, Any] = {
-        "event": envelope.event.model_dump(mode="json", by_alias=True),
+        "event": event,
         "snapshot": {
             "snapshotId": str(snapshot.snapshot_id),
             "contextHash": snapshot.context_hash,

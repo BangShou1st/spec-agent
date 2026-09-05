@@ -3,6 +3,7 @@ package com.specagent.api.agent;
 import com.specagent.agent.AgentRun;
 import com.specagent.agent.AgentRunRequestFingerprint;
 import com.specagent.agent.AgentRunService;
+import com.specagent.agent.contract.AgentEvent;
 import com.specagent.agent.runevent.AgentRunEvent;
 import com.specagent.agent.runevent.AgentRunEventService;
 import com.specagent.agent.runevent.AgentRunPhase;
@@ -62,7 +63,8 @@ public class AnswerCycleRunController {
         String idempotencyKey = request.idempotencyKey();
         String requestFingerprint = AgentRunRequestFingerprint.forClientRequest(
                 projectId, operation, request.nodeId(), request.sourceRouteId(),
-                request.answerId(), request.selectedOptionId(), request.freeText());
+                request.answerId(), request.selectedOptionId(), request.freeText(),
+                request.persistenceIntent());
 
         var replay = agentRunService.findIdempotentReplay(
                 projectId, idempotencyKey, requestFingerprint);
@@ -139,7 +141,7 @@ public class AnswerCycleRunController {
         AgentRun run = runService.createQueuedRunWithInputResult(
                 projectId, operation, request.nodeId(),
                 request.selectedOptionId(), request.freeText(), answerId,
-                idempotencyKey, requestFingerprint);
+                idempotencyKey, requestFingerprint, request.persistenceIntent());
         return acceptedRun(run);
     }
 
@@ -198,6 +200,7 @@ public class AnswerCycleRunController {
                                    UUID selectedOptionId,
                                    String freeText,
                                    UUID answerId,
-                                   String idempotencyKey) {
+                                   String idempotencyKey,
+                                   AgentEvent.PersistenceIntent persistenceIntent) {
     }
 }
