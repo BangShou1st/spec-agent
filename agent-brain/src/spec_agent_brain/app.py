@@ -28,6 +28,7 @@ from .contracts.protocol import (
 )
 from .artifact import BrainContractError as ArtifactBrainContractError
 from .artifact import handle_artifact
+from .decision import ActionIneligibleBrainError
 from .decision import BrainContractError as DecisionBrainContractError
 from .decision import handle_decision
 from .model_client import BrokerModelClient, FakeModelClient, ModelClient, ModelClientError
@@ -109,6 +110,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         record_invocation("DECISION", str(envelope.run_id))
         try:
             response = handle_decision(envelope, model_client())
+        except ActionIneligibleBrainError as exc:
+            raise HTTPException(status_code=409, detail="ACTION_INELIGIBLE") from exc
         except (DecisionBrainContractError, ModelClientError) as exc:
             raise HTTPException(status_code=502, detail=f"brain_failure:{type(exc).__name__}")
         return _dump(response)

@@ -64,10 +64,7 @@ public class LocalDeterministicDecisionEngine implements AgentDecisionEngine {
                     .findFirst()
                     .orElse(null);
             if (nodeRef != null) {
-                AgentResponseEnvelope invoke = new AgentResponseEnvelope(
-                        AgentProtocol.DECISION_PROTOCOL_VERSION,
-                        request.runId(),
-                        null,
+                AgentResponseEnvelope invoke = decisionResponse(request,
                         new ObservationView(
                                 List.of("A resource is available in the lineage."),
                                 List.of(), List.of(), List.of()),
@@ -80,9 +77,7 @@ public class LocalDeterministicDecisionEngine implements AgentDecisionEngine {
                                 List.of(),
                                 UUID.randomUUID(),
                                 request.runId().toString(),
-                                List.of()),
-                        new UsageView(1, List.of()),
-                        Map.of());
+                                List.of()));
                 AgentBrainResponseValidator.validateDecision(request, invoke);
                 return invoke;
             }
@@ -100,10 +95,7 @@ public class LocalDeterministicDecisionEngine implements AgentDecisionEngine {
                         .map(entry -> "node:" + entry.node().id())
                         .toList();
                 if (lineageNodeRefs.size() >= 2) {
-                    AgentResponseEnvelope connect = new AgentResponseEnvelope(
-                            AgentProtocol.DECISION_PROTOCOL_VERSION,
-                            request.runId(),
-                            null,
+                    AgentResponseEnvelope connect = decisionResponse(request,
                             new ObservationView(
                                     List.of("Two nodes suggest a semantic relation."),
                                     List.of(), List.of(), List.of()),
@@ -119,19 +111,14 @@ public class LocalDeterministicDecisionEngine implements AgentDecisionEngine {
                                     List.of(),
                                     UUID.randomUUID(),
                                     request.runId().toString(),
-                                    List.of()),
-                            new UsageView(1, List.of()),
-                            Map.of());
+                                    List.of()));
                     AgentBrainResponseValidator.validateDecision(request, connect);
                     return connect;
                 }
             }
             // Deterministic contextual answer: the query path expects a
             // read-only response and must never mutate the graph.
-            AgentResponseEnvelope respond = new AgentResponseEnvelope(
-                    AgentProtocol.DECISION_PROTOCOL_VERSION,
-                    request.runId(),
-                    null,
+            AgentResponseEnvelope respond = decisionResponse(request,
                     new ObservationView(
                             List.of("The node context grounds the answer."),
                             List.of(), List.of(), List.of()),
@@ -143,9 +130,7 @@ public class LocalDeterministicDecisionEngine implements AgentDecisionEngine {
                             List.of(),
                             UUID.randomUUID(),
                             request.runId().toString(),
-                            List.of()),
-                    new UsageView(1, List.of()),
-                    Map.of());
+                            List.of()));
             AgentBrainResponseValidator.validateDecision(request, respond);
             return respond;
         }
@@ -160,10 +145,7 @@ public class LocalDeterministicDecisionEngine implements AgentDecisionEngine {
             questionText = "A sharper version of the rejected question.";
             purpose = "This follows the user's direction.";
         }
-        AgentResponseEnvelope response = new AgentResponseEnvelope(
-                AgentProtocol.DECISION_PROTOCOL_VERSION,
-                request.runId(),
-                null,
+        AgentResponseEnvelope response = decisionResponse(request,
                 new ObservationView(
                         List.of("The user clarified the main outcome."),
                         List.of("The user must confirm scope boundaries."),
@@ -181,11 +163,27 @@ public class LocalDeterministicDecisionEngine implements AgentDecisionEngine {
                         List.of(),
                         UUID.randomUUID(),
                         request.runId().toString(),
-                        List.of()),
-                new UsageView(1, List.of()),
-                Map.of());
+                        List.of()));
         AgentBrainResponseValidator.validateDecision(request, response);
         return response;
+    }
+
+    private AgentResponseEnvelope decisionResponse(AgentRequestEnvelope request,
+                                                   ObservationView observation,
+                                                   ActionProposal proposal) {
+        if (AgentProtocol.INPUT_PROTOCOL_VERSION_V3.equals(request.protocolVersion())) {
+            return new AgentResponseEnvelope(
+                    AgentProtocol.DECISION_PROTOCOL_VERSION_V3,
+                    request.runId(), null, observation, proposal,
+                    new UsageView(1, List.of()), Map.of(),
+                    request.actionEligibility().version(),
+                    request.actionEligibility().basisHash(),
+                    proposal.sourceRefs());
+        }
+        return new AgentResponseEnvelope(
+                AgentProtocol.DECISION_PROTOCOL_VERSION_V2,
+                request.runId(), null, observation, proposal,
+                new UsageView(1, List.of()), Map.of());
     }
 
     @Override

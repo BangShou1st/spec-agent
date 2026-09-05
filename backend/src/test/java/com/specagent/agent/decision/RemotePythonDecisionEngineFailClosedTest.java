@@ -6,6 +6,7 @@ import com.specagent.agent.contract.AgentContractException;
 import com.specagent.agent.contract.AgentRequestEnvelope;
 import com.specagent.agent.decision.AgentBrainUnavailableException;
 import com.specagent.agent.decision.RemotePythonDecisionEngine;
+import com.specagent.agent.eligibility.ActionIneligibleException;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -122,5 +123,15 @@ class RemotePythonDecisionEngineFailClosedTest {
 
         assertThatThrownBy(() -> engine.runDecision(request()))
                 .isInstanceOf(AgentBrainUnavailableException.class);
+    }
+
+    @Test
+    void v3IneligibleSelectionResponseBecomesTypedActionFailure() throws Exception {
+        status.set(409);
+        responseBody.set("{\"detail\":\"ACTION_INELIGIBLE\"}");
+
+        assertThatThrownBy(() -> engine.runDecision(request()))
+                .isInstanceOf(ActionIneligibleException.class)
+                .hasMessageContaining("ACTION_INELIGIBLE");
     }
 }

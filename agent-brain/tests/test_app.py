@@ -90,6 +90,22 @@ def test_decisions_endpoint_supports_strict_v3_eligibility_contract(settings):
         payload["actionEligibility"]["basisHash"]
 
 
+def test_v3_ineligible_model_selection_returns_typed_conflict(settings):
+    payload = _v3_request_payload()
+    payload["actionEligibility"]["eligibleFamilies"].remove("REQUEST_USER_INPUT")
+    payload["actionEligibility"]["constraints"]["REQUEST_USER_INPUT"] = {
+        "eligible": False,
+        "reasonCodes": ["RESOLVED_BLOCKER"],
+    }
+
+    response = _client(settings).post(
+        "/v1/decisions", json=payload,
+        headers={"X-Spec-Agent-Internal-Token": "test-secret"})
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "ACTION_INELIGIBLE"
+
+
 def test_state_updates_endpoint_returns_claims_with_fake_model(settings):
     response = _client(settings).post(
         "/v1/state-updates", json=_request_payload(),

@@ -28,6 +28,10 @@ class BrainContractError(RuntimeError):
     """Raised when a model output violates the brain's own output contract."""
 
 
+class ActionIneligibleBrainError(BrainContractError):
+    """The model selected a family outside the Runtime-owned V3 mask."""
+
+
 def handle_decision(
         request: AgentV2RequestEnvelope | AgentV3RequestEnvelope,
         client: ModelClient) -> AgentV2ResponseEnvelope | AgentV3ResponseEnvelope:
@@ -122,7 +126,7 @@ def _check_source_refs(output: ModelDecisionOutput, request: AgentV2RequestEnvel
 def _check_eligibility_action(output: ModelDecisionOutput,
                               request: AgentV3RequestEnvelope) -> None:
     if output.action.action_family not in request.action_eligibility.eligible_families:
-        raise BrainContractError(
+        raise ActionIneligibleBrainError(
             "model selected an action outside the Runtime eligibility mask")
 
 

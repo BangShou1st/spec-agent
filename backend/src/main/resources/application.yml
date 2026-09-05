@@ -34,6 +34,8 @@ logging:
 
 spec:
   agent:
+    action-eligibility:
+      mode: ${SPEC_AGENT_ACTION_ELIGIBILITY_MODE:enforced}
     model:
       # Normal product execution always resolves the global settings aggregate.
       # The fake gateway is test-only and must be selected explicitly there.

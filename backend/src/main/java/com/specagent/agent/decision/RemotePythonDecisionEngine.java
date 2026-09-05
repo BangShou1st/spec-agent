@@ -12,6 +12,9 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.HttpClientErrorException;
+import com.specagent.agent.eligibility.ActionEligibilityReasonCode;
+import com.specagent.agent.eligibility.ActionIneligibleException;
 
 /**
  * Default decision engine: the remote Python {@code agent-brain} service.
@@ -84,6 +87,13 @@ public class RemotePythonDecisionEngine implements AgentDecisionEngine {
                     .body(AgentContracts.write(request))
                     .retrieve()
                     .body(String.class);
+        } catch (HttpClientErrorException.Conflict ex) {
+            if (!stateUpdate) {
+                throw new ActionIneligibleException(
+                        ActionEligibilityReasonCode.FAMILY_NOT_ELIGIBLE);
+            }
+            throw new AgentBrainUnavailableException(
+                    "Agent brain call failed: " + path, ex);
         } catch (RestClientException ex) {
             throw new AgentBrainUnavailableException(
                     "Agent brain call failed: " + path, ex);

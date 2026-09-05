@@ -1,5 +1,5 @@
 """DECISION capability of the brain."""
 
-from .engine import BrainContractError, handle_decision
+from .engine import ActionIneligibleBrainError, BrainContractError, handle_decision
 
-__all__ = ["BrainContractError", "handle_decision"]
+__all__ = ["ActionIneligibleBrainError", "BrainContractError", "handle_decision"]

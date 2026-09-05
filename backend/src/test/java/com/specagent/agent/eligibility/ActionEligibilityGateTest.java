@@ -3,6 +3,8 @@ package com.specagent.agent.eligibility;
 import com.specagent.agent.contract.ActionProposal;
 import com.specagent.agent.contract.AgentContracts;
 import com.specagent.agent.contract.AgentRequestEnvelope;
+import com.specagent.agent.decision.LocalDeterministicDecisionEngine;
+import com.specagent.agent.decision.AgentBrainResponseValidator;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
@@ -71,6 +73,20 @@ class ActionEligibilityGateTest {
             assertThat(assessment.wouldVeto()).isFalse();
             assertThatCode(() -> gate.enforce(assessment)).doesNotThrowAnyException();
         }
+    }
+
+    @Test
+    void deterministicEngineHonorsV3EligibilityIdentityInEnforcedMode() throws Exception {
+        ActionEligibilityGate gate = gate(ActionEligibilityGate.Mode.ENFORCED);
+        AgentRequestEnvelope prepared = gate.prepareDecisionRequest(request());
+
+        var response = new LocalDeterministicDecisionEngine().runDecision(prepared);
+
+        assertThat(response.protocolVersion()).isEqualTo("agent-decision.v3");
+        assertThat(response.selectedEligibilityBasisHash())
+                .isEqualTo(prepared.actionEligibility().basisHash());
+        assertThatCode(() -> AgentBrainResponseValidator.validateDecision(prepared, response))
+                .doesNotThrowAnyException();
     }
 
     private ActionEligibilityGate gate(ActionEligibilityGate.Mode mode) {

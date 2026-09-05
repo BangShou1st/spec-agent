@@ -38,6 +38,10 @@ logging:
 
 spec:
   agent:
+    action-eligibility:
+      # Existing deterministic corpus behavior remains a shadow baseline;
+      # focused enforcement tests opt in explicitly.
+      mode: ${SPEC_AGENT_ACTION_ELIGIBILITY_MODE:shadow}
     model:
       gateway: fake
       inference: fake
