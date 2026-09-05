@@ -52,6 +52,22 @@ tasks.register<Test>("evalBFast") {
     }
 }
 
+tasks.register<JavaExec>("eligibilityShadowReplay") {
+    group = "verification"
+    description = "Replays Runtime-owned action eligibility over existing semantic trace artifacts."
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("com.specagent.eval.ActionEligibilityShadowReplay")
+    val artifactPaths = providers.gradleProperty("eligibilityArtifacts")
+    val outputPath = providers.gradleProperty("eligibilityOutput")
+    doFirst {
+        val inputs = artifactPaths.orNull
+            ?: throw GradleException("-PeligibilityArtifacts=<results.jsonl;...> is required")
+        val output = outputPath.orNull
+            ?: throw GradleException("-PeligibilityOutput=<directory> is required")
+        args = listOf(output) + inputs.split(';').filter { it.isNotBlank() }
+    }
+}
+
 // P2 Phase 2 — Live agent behavioral baseline (explicit, non-blocking).
 // Same Scenario Contract through Python Brain + live provider, N=3
 // repetitions per variant. The suite requires explicit external live

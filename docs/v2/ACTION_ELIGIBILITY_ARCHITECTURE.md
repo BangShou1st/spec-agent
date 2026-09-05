@@ -106,6 +106,12 @@ DECISION that merely restates confirmed/resolved state; a DECISION without
 typed delegation or persistence intent; and content that still depends on an
 unresolved blocker.
 
+The current V2/V3 event shape has no Runtime-owned typed delegation/persistence
+intent. Natural-language `freeText` is not authorization. Therefore the first
+enforced version rejects Agent-authored `KNOWLEDGE/DECISION` mutations until a
+future version introduces that typed event intent; Advisor confirmation is a
+separate authorization layer and cannot repair missing eligibility.
+
 ### REQUEST_USER_INPUT
 
 Structured unresolved conflicts, unresolved open questions, and typed required
@@ -184,4 +190,3 @@ turning Java into a complete semantic planner. It adds contract and migration
 cost, and an overly narrow mask can create false negatives. Shadow mode,
 reason-code telemetry, property tests, and fail-closed versioning are required
 to control that risk.
-

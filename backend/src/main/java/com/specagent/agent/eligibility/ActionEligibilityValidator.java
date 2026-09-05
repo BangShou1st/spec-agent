@@ -63,6 +63,13 @@ public final class ActionEligibilityValidator {
             reject(ActionEligibilityReasonCode.ANSWER_ALREADY_DURABLE);
         }
 
+        String subtype = payload.get("subtype") instanceof String value ? value : "";
+        if ("NOTE".equals(subtype) && containsCurrentAnswer(request, normalized)) {
+            // Exact normalized containment, not fuzzy similarity: a NOTE may
+            // not wrap the already-durable Answer in explanatory boilerplate.
+            reject(ActionEligibilityReasonCode.ANSWER_ALREADY_DURABLE);
+        }
+
         ClaimView duplicateClaim = request.snapshot().effectiveClaims().stream()
                 .filter(claim -> normalized.equals(
                         ActionEligibilityEvaluator.normalizeText(claim.text())))
@@ -81,6 +88,15 @@ public final class ActionEligibilityValidator {
         if (existingNode) {
             reject(ActionEligibilityReasonCode.NO_NEW_DURABLE_UNIT);
         }
+
+        if ("DECISION".equals(subtype)) {
+            // agent-input.v2/v3 currently carries no Runtime-owned typed
+            // delegation or persistence command. Natural-language freeText is
+            // not authority. Until such an event field exists, an Agent-
+            // authored Decision can be ranked but cannot pass the durable
+            // mutation trust boundary.
+            reject(ActionEligibilityReasonCode.MISSING_TYPED_PERSISTENCE_INTENT);
+        }
     }
 
     private boolean matchesCurrentAnswer(AgentRequestEnvelope request, String normalized) {
@@ -93,6 +109,21 @@ public final class ActionEligibilityValidator {
                 .filter(java.util.Objects::nonNull)
                 .anyMatch(answer -> normalized.equals(
                         ActionEligibilityEvaluator.normalizeText(answer.freeText())));
+    }
+
+    private boolean containsCurrentAnswer(AgentRequestEnvelope request, String normalizedContent) {
+        List<String> answers = new java.util.ArrayList<>();
+        String eventAnswer = ActionEligibilityEvaluator.normalizeText(request.event().freeText());
+        if (!eventAnswer.isEmpty()) {
+            answers.add(eventAnswer);
+        }
+        request.snapshot().lineage().stream()
+                .map(LineageEntry::answer)
+                .filter(java.util.Objects::nonNull)
+                .map(answer -> ActionEligibilityEvaluator.normalizeText(answer.freeText()))
+                .filter(answer -> !answer.isEmpty())
+                .forEach(answers::add);
+        return answers.stream().anyMatch(normalizedContent::contains);
     }
 
     private void validateRequestUserInput(AgentRequestEnvelope request,

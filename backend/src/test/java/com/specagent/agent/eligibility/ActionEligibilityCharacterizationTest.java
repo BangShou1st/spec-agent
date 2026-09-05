@@ -5,6 +5,7 @@ import com.specagent.agent.contract.AgentContracts;
 import com.specagent.agent.contract.AgentInputSnapshot;
 import com.specagent.agent.contract.AgentRequestEnvelope;
 import com.specagent.agent.contract.ClaimView;
+import com.specagent.agent.contract.CapabilityDescriptor;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
@@ -15,6 +16,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 /**
  * Generic state-fact characterization for the eligibility boundary. These
@@ -53,6 +55,29 @@ class ActionEligibilityCharacterizationTest {
                 "content", Map.of("text", "用户希望减少因邮件沟通导致的需求遗漏。")));
 
         assertIneligible(request, proposal, "CONFIRMED_STATE_ALREADY_DURABLE");
+    }
+
+    @Test
+    void rejectsDecisionWithoutRuntimeOwnedTypedPersistenceIntent() throws Exception {
+        AgentRequestEnvelope request = request();
+        ActionProposal proposal = proposal(request, "CREATE_NODE", Map.of(
+                "kind", "KNOWLEDGE",
+                "subtype", "DECISION",
+                "content", Map.of("text", "采用事件驱动架构处理异步工单。")));
+
+        assertIneligible(request, proposal, "MISSING_TYPED_PERSISTENCE_INTENT");
+    }
+
+    @Test
+    void rejectsNoteThatWrapsCurrentAnswerInBoilerplate() throws Exception {
+        AgentRequestEnvelope request = request();
+        ActionProposal proposal = proposal(request, "CREATE_NODE", Map.of(
+                "kind", "KNOWLEDGE",
+                "subtype", "NOTE",
+                "content", Map.of("text",
+                        "用户已经回答：目前通过邮件收集，容易遗漏。该回答已被系统接收。")));
+
+        assertIneligible(request, proposal, "ANSWER_ALREADY_DURABLE");
     }
 
     @Test
@@ -119,6 +144,44 @@ class ActionEligibilityCharacterizationTest {
                 "content", Map.of("text", "继续设计部署方案。")));
 
         assertIneligible(blocked, proposal, "UNRESOLVED_BLOCKER");
+    }
+
+    @Test
+    void allowsNewNonDecisionNodeThatDoesNotDuplicateDurableState() throws Exception {
+        AgentRequestEnvelope request = request();
+        ActionProposal proposal = proposal(request, "CREATE_NODE", Map.of(
+                "kind", "KNOWLEDGE",
+                "subtype", "RISK",
+                "content", Map.of("text", "邮件网关中断会延迟工单创建。")));
+
+        ActionEligibility eligibility = evaluator.evaluate(request);
+        assertThatCode(() -> validator.validateSelection(request, proposal, eligibility))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void allowsVisibleGroundedCapabilityWithoutGrantingExecutionAuthority() throws Exception {
+        AgentRequestEnvelope base = request();
+        AgentInputSnapshot snapshot = base.snapshot();
+        AgentInputSnapshot withCapability = new AgentInputSnapshot(
+                snapshot.snapshotId(), snapshot.contextHash(), snapshot.projectId(),
+                snapshot.routeId(), snapshot.anchorNodeId(), snapshot.routeContext(),
+                snapshot.lineage(), snapshot.effectiveClaims(), snapshot.metadata(),
+                snapshot.allowedSourceRefs(), List.of(new CapabilityDescriptor(
+                        "resource.extract", "1", "extract attached resource", false,
+                        "LOCAL_DURABLE")), snapshot.capabilityResults(), snapshot.relations(),
+                snapshot.relatedNodes(), snapshot.autonomy());
+        AgentRequestEnvelope request = new AgentRequestEnvelope(
+                base.protocolVersion(), base.runId(), base.event(), withCapability,
+                base.capabilities(), base.decisionBudget());
+        ActionProposal proposal = proposal(request, "INVOKE_CAPABILITY", Map.of(
+                "capabilityId", "resource.extract",
+                "arguments", Map.of("nodeRef",
+                        "node:33333333-3333-3333-3333-333333333333")));
+
+        ActionEligibility eligibility = evaluator.evaluate(request);
+        assertThatCode(() -> validator.validateSelection(request, proposal, eligibility))
+                .doesNotThrowAnyException();
     }
 
     private void assertIneligible(AgentRequestEnvelope request,
