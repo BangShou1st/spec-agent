@@ -1,0 +1,17 @@
+package com.specagent.agent.eligibility;
+
+/** Machine-readable reasons for deterministic eligibility decisions. */
+public enum ActionEligibilityReasonCode {
+    ANSWER_ALREADY_DURABLE,
+    NO_NEW_DURABLE_UNIT,
+    CONFIRMED_STATE_ALREADY_DURABLE,
+    UNRESOLVED_BLOCKER,
+    NO_PENDING_DEPENDENCY,
+    CAPABILITY_NOT_VISIBLE,
+    UNGROUNDED_CAPABILITY_ARGUMENT,
+    RESOLVED_BLOCKER,
+    GRAPH_MUTATION_NOT_ALLOWED,
+    ELIGIBILITY_VERSION_MISMATCH,
+    ELIGIBILITY_BASIS_MISMATCH,
+    FAMILY_NOT_ELIGIBLE
+}
