@@ -1,5 +1,6 @@
 package com.specagent.agent.contract;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.specagent.agent.eligibility.ActionEligibility;
 
 import java.util.List;
@@ -16,6 +17,7 @@ public record AgentRequestEnvelope(String protocolVersion,
                                      AgentInputSnapshot snapshot,
                                      List<CapabilityDescriptor> capabilities,
                                      DecisionBudget decisionBudget,
+                                     @JsonInclude(JsonInclude.Include.NON_NULL)
                                      ActionEligibility actionEligibility) {
 
     public AgentRequestEnvelope {

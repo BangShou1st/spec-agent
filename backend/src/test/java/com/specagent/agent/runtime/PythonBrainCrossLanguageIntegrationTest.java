@@ -54,7 +54,8 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
         properties = {
                 "server.port=18081",
                 "spec.agent.brain.engine=remote-python",
-                "spec.agent.brain.base-url=http://localhost:8100"
+                "spec.agent.brain.base-url=http://localhost:8100",
+                "spec.agent.action-eligibility.mode=enforced"
         })
 @ActiveProfiles("test")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)

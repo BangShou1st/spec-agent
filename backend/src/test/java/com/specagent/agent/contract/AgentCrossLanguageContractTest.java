@@ -46,6 +46,15 @@ class AgentV2ContractTest {
     }
 
     @Test
+    void v2SerializationOmitsV3EligibilityField() throws Exception {
+        AgentRequestEnvelope envelope = AgentContracts.read(
+                fixture("agent-input-valid.json"), AgentRequestEnvelope.class);
+
+        assertThat(AgentContracts.write(envelope))
+                .doesNotContain("\"actionEligibility\"");
+    }
+
+    @Test
     void unknownRequestFieldIsRejected() throws Exception {
         assertThatThrownBy(() -> AgentContracts.read(
                 fixture("agent-input-invalid-unknown-field.json"), AgentRequestEnvelope.class))

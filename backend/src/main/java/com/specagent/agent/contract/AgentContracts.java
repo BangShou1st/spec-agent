@@ -28,7 +28,7 @@ public final class AgentContracts {
     private AgentContracts() {
     }
 
-    /** Serializes a contract value with null fields included on the wire. */
+    /** Serializes a contract value using its version-aware wire field rules. */
     public static String write(Object value) {
         return JSON.write(value);
     }
