@@ -52,6 +52,15 @@ tasks.register<Test>("evalBFast") {
     }
 }
 
+tasks.register<Test>("testNonLive") {
+    group = "verification"
+    description = "Runs the complete backend test suite except explicit live-provider suites."
+    useJUnitPlatform()
+    filter {
+        excludeTestsMatching("com.specagent.eval.EvalLive*")
+    }
+}
+
 tasks.register<JavaExec>("eligibilityShadowReplay") {
     group = "verification"
     description = "Replays Runtime-owned action eligibility over existing semantic trace artifacts."
