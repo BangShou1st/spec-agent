@@ -5,6 +5,7 @@ import com.specagent.agent.contract.AgentInputSnapshot;
 import com.specagent.agent.contract.AgentRequestEnvelope;
 import com.specagent.agent.contract.AgentResponseEnvelope;
 import com.specagent.agent.policy.PolicyDecision;
+import com.specagent.agent.eligibility.ActionEligibilityGate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -72,6 +73,25 @@ public class SemanticTraceRecorder {
         policy.put("requires_confirmation", decision.requiresConfirmation());
         policy.put("deny_reason", decision.denyReason());
         append(runId, "POLICY_DECISION", policy);
+    }
+
+    public void captureActionEligibility(UUID runId,
+                                         ActionEligibilityGate.Assessment assessment) {
+        if (!shouldCapture(runId) || assessment == null) {
+            return;
+        }
+        Map<String, Object> stage = new LinkedHashMap<>();
+        stage.put("mode", assessment.mode().name());
+        stage.put("version", assessment.eligibility().version());
+        stage.put("basis_hash", assessment.eligibility().basisHash());
+        stage.put("computed_eligible_set", assessment.eligibility().eligibleFamilies());
+        stage.put("constraints", assessment.eligibility().constraints());
+        stage.put("selected_action", assessment.selectedAction());
+        stage.put("selected_action_eligible", assessment.selectedActionEligible());
+        stage.put("would_veto", assessment.wouldVeto());
+        stage.put("reason_codes", assessment.reasonCodes().stream()
+                .map(Enum::name).toList());
+        append(runId, "ACTION_ELIGIBILITY", stage);
     }
 
     public void capturePostState(UUID runId, AgentInputSnapshot postState) {

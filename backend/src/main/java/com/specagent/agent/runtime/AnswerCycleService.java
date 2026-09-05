@@ -14,6 +14,7 @@ import com.specagent.agent.policy.AgentProposal;
 import com.specagent.agent.policy.AgentProposalService;
 import com.specagent.agent.policy.PolicyDecision;
 import com.specagent.agent.policy.ProposalStatus;
+import com.specagent.agent.eligibility.ActionEligibilityGate;
 import com.specagent.agent.snapshot.LegacyFrozenInputUnavailableException;
 import com.specagent.agent.runevent.AgentRunEvent;
 import com.specagent.agent.runevent.AgentRunEventService;
@@ -85,6 +86,7 @@ public class AnswerCycleService {
     private final com.specagent.project.ProjectRepository projectRepository;
     private final ContextSnapshotRepository contextSnapshotRepository;
     private final com.specagent.agent.snapshot.AgentInputProjectionRepository projectionRepository;
+    private final ActionEligibilityGate actionEligibilityGate;
     private final SemanticTraceRecorder semanticTraceRecorder;
 
     public AnswerCycleService(AgentRunService agentRunService,
@@ -105,7 +107,8 @@ public class AnswerCycleService {
                               com.specagent.project.ProjectRepository projectRepository,
                               ContextSnapshotRepository contextSnapshotRepository,
                               com.specagent.agent.snapshot.AgentInputProjectionRepository projectionRepository,
-                              SemanticTraceRecorder semanticTraceRecorder) {
+                              SemanticTraceRecorder semanticTraceRecorder,
+                              ActionEligibilityGate actionEligibilityGate) {
         this.agentRunService = agentRunService;
         this.agentRunFailureService = agentRunFailureService;
         this.contextBuilder = contextBuilder;
@@ -125,6 +128,7 @@ public class AnswerCycleService {
         this.contextSnapshotRepository = contextSnapshotRepository;
         this.projectionRepository = projectionRepository;
         this.semanticTraceRecorder = semanticTraceRecorder;
+        this.actionEligibilityGate = actionEligibilityGate;
     }
 
     /**
@@ -293,8 +297,9 @@ public class AnswerCycleService {
                     .orElseGet(() -> contextBuilder.buildForRoute(
                             projectId, route.id(), route.tipNodeId(), run.id(),
                             ContextOperationType.NORMAL));
-            decisionEnvelope = snapshotBuilder.buildEnvelope(
-                    run.id(), decisionSnapshot, envelope.event(), envelope.decisionBudget());
+            decisionEnvelope = actionEligibilityGate.prepareDecisionRequest(
+                    snapshotBuilder.buildEnvelope(
+                            run.id(), decisionSnapshot, envelope.event(), envelope.decisionBudget()));
         } catch (RuntimeException ex) {
             semanticTraceRecorder.captureFailure(run.id(),
                     "DECISION_INPUT_PROJECTION", ex);
@@ -321,6 +326,10 @@ public class AnswerCycleService {
         }
 
         ActionProposal proposal = decisionResponse.actionProposal();
+        ActionEligibilityGate.Assessment eligibilityAssessment =
+                actionEligibilityGate.assess(decisionEnvelope, proposal);
+        semanticTraceRecorder.captureActionEligibility(run.id(), eligibilityAssessment);
+        actionEligibilityGate.enforce(eligibilityAssessment);
         eventService.append(run.id(), AgentRunPhase.PROPOSAL_CREATED,
                 "PROPOSAL_CREATED", Map.of(
                         "actionFamily", proposal.actionFamily(),

@@ -22,6 +22,8 @@ import com.specagent.agent.policy.AgentProposal;
 import com.specagent.agent.policy.AgentProposalService;
 import com.specagent.agent.policy.PolicyDecision;
 import com.specagent.agent.policy.ProposalStatus;
+import com.specagent.agent.eligibility.ActionEligibilityGate;
+import com.specagent.trace.SemanticTraceRecorder;
 import com.specagent.agent.runevent.AgentRunEventService;
 import com.specagent.agent.runevent.AgentRunPhase;
 import com.specagent.agent.snapshot.AgentInputSnapshotBuilder;
@@ -74,6 +76,8 @@ public class DecisionCycleService {
     private final StaleContextChecker staleContextChecker;
     private final ProjectRepository projectRepository;
     private final RouteRepository routeRepository;
+    private final ActionEligibilityGate actionEligibilityGate;
+    private final SemanticTraceRecorder semanticTraceRecorder;
 
     public DecisionCycleService(AgentRunService agentRunService,
                                 AgentRunFailureService agentRunFailureService,
@@ -87,7 +91,9 @@ public class DecisionCycleService {
                                 AgentRunEventService eventService,
                                 StaleContextChecker staleContextChecker,
                                 ProjectRepository projectRepository,
-                                RouteRepository routeRepository) {
+                                RouteRepository routeRepository,
+                                ActionEligibilityGate actionEligibilityGate,
+                                SemanticTraceRecorder semanticTraceRecorder) {
         this.agentRunService = agentRunService;
         this.agentRunFailureService = agentRunFailureService;
         this.contextBuilder = contextBuilder;
@@ -101,6 +107,8 @@ public class DecisionCycleService {
         this.staleContextChecker = staleContextChecker;
         this.projectRepository = projectRepository;
         this.routeRepository = routeRepository;
+        this.actionEligibilityGate = actionEligibilityGate;
+        this.semanticTraceRecorder = semanticTraceRecorder;
     }
 
     /**
@@ -125,16 +133,23 @@ public class DecisionCycleService {
 
             // Pure continuation: one DECISION call, never a mechanical
             // STATE_UPDATE (there is no Answer to interpret).
-            AgentRequestEnvelope envelope = snapshotBuilder.buildEnvelope(
-                    run.id(), snapshot,
-                    new AgentEvent("CONTINUE", route.tipNodeId(), null, null),
-                    new DecisionBudget(1));
+            AgentRequestEnvelope envelope = actionEligibilityGate.prepareDecisionRequest(
+                    snapshotBuilder.buildEnvelope(
+                            run.id(), snapshot,
+                            new AgentEvent("CONTINUE", route.tipNodeId(), null, null),
+                            new DecisionBudget(1)));
+            semanticTraceRecorder.captureDecisionInput(envelope);
 
             eventService.append(run.id(), AgentRunPhase.DECIDING, "DECISION_STARTED", Map.of());
             AgentResponseEnvelope decision = decisionEngine.runDecision(envelope);
             AgentBrainResponseValidator.validateDecision(envelope, decision);
+            semanticTraceRecorder.captureDecisionOutput(decision);
 
             ActionProposal proposal = decision.actionProposal();
+            ActionEligibilityGate.Assessment eligibilityAssessment =
+                    actionEligibilityGate.assess(envelope, proposal);
+            semanticTraceRecorder.captureActionEligibility(run.id(), eligibilityAssessment);
+            actionEligibilityGate.enforce(eligibilityAssessment);
             eventService.append(run.id(), AgentRunPhase.PROPOSAL_CREATED, "PROPOSAL_CREATED", Map.of(
                     "actionFamily", proposal.actionFamily(),
                     "proposalId", proposal.proposalId().toString()));

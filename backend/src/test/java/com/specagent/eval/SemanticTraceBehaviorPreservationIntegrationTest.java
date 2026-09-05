@@ -53,7 +53,10 @@ class SemanticTraceBehaviorPreservationIntegrationTest extends EvalHarnessBase {
         assertThat(on.semanticTrace().stages()).containsKeys(
                 "STATE_UPDATE_INPUT", "STATE_UPDATE_OUTPUT",
                 "POST_STATE_UPDATE_STATE", "DECISION_INPUT", "DECISION_OUTPUT",
-                "FINAL_RESULT");
+                "ACTION_ELIGIBILITY", "FINAL_RESULT");
+        assertThat(on.semanticTrace().stages().get("ACTION_ELIGIBILITY"))
+                .containsEntry("mode", "SHADOW")
+                .containsEntry("selected_action", on.actualPrimaryAction());
     }
 
     private String normalizeDynamicIdentity(String value) {
