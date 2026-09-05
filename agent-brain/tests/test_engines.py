@@ -26,6 +26,12 @@ def _request():
     return parse_request_envelope(payload)
 
 
+def _v3_request():
+    payload = json.loads(
+        (FIXTURES_DIR / "agent-input-v3-valid.json").read_text(encoding="utf-8"))
+    return parse_request_envelope(payload)
+
+
 def _semantic_node_query_request():
     payload = json.loads((FIXTURES_DIR
                          / "agent-input-node-query-semantic-context-valid.json")
@@ -81,6 +87,27 @@ def test_decision_fake_path_stamps_runtime_owned_base_context():
     assert proposal.action_family == "REQUEST_USER_INPUT"
     assert str(proposal.base_context_snapshot_id) == str(request.snapshot.snapshot_id)
     assert proposal.base_context_hash == request.snapshot.context_hash
+
+
+def test_v3_decision_enforces_mask_and_echoes_runtime_eligibility_identity():
+    request = _v3_request()
+    response = handle_decision(request, FakeModelClient())
+
+    assert response.protocol_version == "agent-decision.v3"
+    assert response.action_proposal.action_family == "REQUEST_USER_INPUT"
+    assert response.selected_eligibility_version == request.action_eligibility.version
+    assert response.selected_eligibility_basis_hash == request.action_eligibility.basis_hash
+    assert "actionEligibility" in response.diagnostics["semanticTrace"]["modelInput"]
+
+
+def test_v3_decision_rejects_model_family_outside_runtime_mask():
+    request = _v3_request()
+    output = json.loads(fake_model.DECISION_OUTPUT)
+    output["action"]["actionFamily"] = "WAIT"
+    output["action"]["payload"] = {}
+
+    with pytest.raises(BrainContractError, match="eligibility mask"):
+        handle_decision(request, ScriptedClient(json.dumps(output)))
 
 
 def test_decision_semantic_diagnostics_match_the_exact_user_message():

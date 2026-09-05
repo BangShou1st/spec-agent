@@ -1,6 +1,7 @@
 package com.specagent.agent.decision;
 
 import com.specagent.agent.contract.ActionFamily;
+import com.specagent.agent.contract.AgentProtocol;
 import com.specagent.agent.contract.AgentArtifactResponse;
 import com.specagent.agent.contract.AgentInputSnapshot;
 import com.specagent.agent.contract.AgentContractException;
@@ -130,7 +131,39 @@ public final class AgentBrainResponseValidator {
         }
         validateObservation(response.observation());
         validateProposal(request, response.actionProposal());
+        validateEligibilityContract(request, response);
         validateConflictAction(request, response);
+    }
+
+    private static void validateEligibilityContract(AgentRequestEnvelope request,
+                                                    AgentResponseEnvelope response) {
+        boolean requestV3 = AgentProtocol.INPUT_PROTOCOL_VERSION_V3
+                .equals(request.protocolVersion());
+        boolean responseV3 = AgentProtocol.DECISION_PROTOCOL_VERSION_V3
+                .equals(response.protocolVersion());
+        if (requestV3 != responseV3) {
+            throw new AgentContractException(
+                    "Decision request/response eligibility protocol versions do not match");
+        }
+        if (!requestV3) {
+            return;
+        }
+        if (!request.actionEligibility().version()
+                .equals(response.selectedEligibilityVersion())) {
+            throw new AgentContractException(
+                    "Selected eligibility version does not match the request");
+        }
+        if (!request.actionEligibility().basisHash()
+                .equals(response.selectedEligibilityBasisHash())) {
+            throw new AgentContractException(
+                    "Selected eligibility basisHash does not match the request");
+        }
+        validateSourceRefs(response.eligibilityEvidenceRefs(), request.snapshot());
+        if (!request.actionEligibility().eligibleFamilies()
+                .contains(response.actionProposal().actionFamily())) {
+            throw new AgentContractException(
+                    "Selected action family is not in the request eligibility mask");
+        }
     }
 
     private static void validateCommon(AgentRequestEnvelope request,

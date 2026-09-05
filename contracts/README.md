@@ -11,11 +11,51 @@
 |---|---|
 | Request envelope (Spring → Python) | `agent-input.v2` |
 | Response envelope (Python → Spring) | `agent-decision.v2` |
+| Eligibility Decision request (Spring → Python) | `agent-input.v3` |
+| Eligibility Decision response (Python → Spring) | `agent-decision.v3` |
 | Internal model inference (Python → Spring broker) | `model-inference.v1` |
 
 Unknown protocol versions are rejected by both sides, fail-closed.
 Unknown fields are rejected by both sides (`extra = forbid` in Pydantic,
 `FAIL_ON_UNKNOWN_PROPERTIES` in the Java strict mapper).
+
+V2 remains the strict historical/state-update contract and cannot carry V3
+eligibility fields. V3 is used for new Decision calls once eligibility shadow
+or enforcement is enabled; it does not relax V2 parsing.
+
+### 1.1 Action eligibility V3 extension
+
+An `agent-input.v3` Decision request adds top-level derived control data:
+
+```json
+"actionEligibility": {
+  "version": "action-eligibility.v1",
+  "eligibleFamilies": ["REQUEST_USER_INPUT", "RESPOND_TO_USER"],
+  "constraints": {
+    "CREATE_NODE": {
+      "eligible": false,
+      "reasonCodes": ["UNRESOLVED_BLOCKER"]
+    }
+  },
+  "basisHash": "<sha256>"
+}
+```
+
+`constraints` covers every closed action family and must agree exactly with
+`eligibleFamilies`. Eligibility is derived from the event and frozen snapshot;
+it is not embedded in or persisted as Graph truth inside the snapshot.
+
+An `agent-decision.v3` response adds:
+
+```json
+"selectedEligibilityVersion": "action-eligibility.v1",
+"selectedEligibilityBasisHash": "<request basisHash>",
+"eligibilityEvidenceRefs": ["<subset of allowedSourceRefs>"]
+```
+
+Java independently checks the echoed identity, evidence refs, and selected
+family against the request mask before authorization or execution. These
+fields contain public structured evidence only, never hidden reasoning.
 
 ## 2. Request envelope — `POST /v1/state-updates`, `POST /v1/decisions`
 

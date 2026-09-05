@@ -11,7 +11,11 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from spec_agent_brain.contracts.decisions import AgentV2ResponseEnvelope
+from spec_agent_brain.contracts.decisions import (
+    AgentV2ResponseEnvelope,
+    AgentV3ResponseEnvelope,
+    validate_v3_response_for_request,
+)
 from spec_agent_brain.contracts.inputs import parse_request_envelope
 from spec_agent_brain.model_client.fake import (
     ARTIFACT_GENERATION_OUTPUT,
@@ -100,6 +104,60 @@ def test_valid_decision_response_fixture_parses():
     response = AgentV2ResponseEnvelope.model_validate(_load("decision-response-valid.json"))
     assert response.action_proposal is not None
     assert response.action_proposal.action_family == "REQUEST_USER_INPUT"
+
+
+def test_valid_v3_eligibility_request_and_response_pass_strict_validation():
+    request = parse_request_envelope(_load("agent-input-v3-valid.json"))
+    response = AgentV3ResponseEnvelope.model_validate(
+        _load("decision-response-v3-valid.json"))
+    assert request.action_eligibility.version == "action-eligibility.v1"
+    validate_v3_response_for_request(request, response)
+
+
+@pytest.mark.parametrize(
+    "fixture_name",
+    [
+        "agent-input-v3-invalid-family.json",
+        "agent-input-v3-invalid-unknown-field.json",
+        "agent-input-v3-invalid-version.json",
+    ],
+)
+def test_invalid_v3_request_fixtures_are_rejected(fixture_name: str):
+    with pytest.raises(ValidationError):
+        parse_request_envelope(_load(fixture_name))
+
+
+@pytest.mark.parametrize(
+    "fixture_name",
+    [
+        "decision-response-v3-invalid-unknown-field.json",
+        "decision-response-v3-invalid-version.json",
+    ],
+)
+def test_invalid_v3_response_schema_is_rejected(fixture_name: str):
+    with pytest.raises(ValidationError):
+        AgentV3ResponseEnvelope.model_validate(_load(fixture_name))
+
+
+@pytest.mark.parametrize(
+    "fixture_name",
+    [
+        "decision-response-v3-invalid-digest.json",
+        "decision-response-v3-invalid-evidence-ref.json",
+    ],
+)
+def test_invalid_v3_response_semantics_are_rejected(fixture_name: str):
+    request = parse_request_envelope(_load("agent-input-v3-valid.json"))
+    response = AgentV3ResponseEnvelope.model_validate(_load(fixture_name))
+    with pytest.raises(ValueError):
+        validate_v3_response_for_request(request, response)
+
+
+def test_v2_request_cannot_carry_v3_eligibility_fields():
+    payload = _load("agent-input-v3-valid.json")
+    payload["protocolVersion"] = "agent-input.v2"
+    with pytest.raises(ValidationError):
+        parse_request_envelope(payload)
 
 
 @pytest.mark.parametrize(

@@ -1,0 +1,9 @@
+{
+  "protocolVersion": "agent-decision.v4",
+  "runId": "22222222-2222-2222-2222-222222222222",
+  "stateUpdate": null,
+  "observation": null,
+  "actionProposal": null,
+  "usage": null,
+  "diagnostics": {}
+}

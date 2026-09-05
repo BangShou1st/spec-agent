@@ -1,0 +1,22 @@
+{
+  "protocolVersion": "agent-input.v3",
+  "runId": "22222222-2222-2222-2222-222222222222",
+  "event": {"kind": "CONTINUE", "anchorNodeId": null, "selectedOptionId": null, "freeText": null},
+  "snapshot": {
+    "snapshotId": "44444444-4444-4444-4444-444444444444",
+    "contextHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "projectId": "55555555-5555-5555-5555-555555555555",
+    "routeId": "66666666-6666-6666-6666-666666666666",
+    "anchorNodeId": null,
+    "routeContext": {"routeId": "66666666-6666-6666-6666-666666666666", "tipNodeId": null, "label": null},
+    "lineage": [], "effectiveClaims": [], "metadata": {"projectTitle": null},
+    "allowedSourceRefs": [], "availableCapabilities": [], "capabilityResults": [],
+    "relations": [], "relatedNodes": [], "autonomy": {"mode": "ADVISOR"}
+  },
+  "capabilities": [], "decisionBudget": {"maxModelCalls": 1},
+  "actionEligibility": {
+    "version": "action-eligibility.v1", "eligibleFamilies": [], "constraints": {},
+    "basisHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  },
+  "unexpected": true
+}

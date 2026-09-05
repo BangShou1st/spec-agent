@@ -1,5 +1,6 @@
 package com.specagent.agent.contract;
 
+import com.specagent.agent.decision.AgentBrainResponseValidator;
 import com.specagent.agent.contract.AgentContracts;
 import com.specagent.agent.contract.AgentContractException;
 import com.specagent.agent.contract.AgentRequestEnvelope;
@@ -13,6 +14,7 @@ import java.nio.file.Path;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
@@ -64,6 +66,63 @@ class AgentV2ContractTest {
                         AgentResponseEnvelope.class);
         assertThat(response.actionProposal().actionFamily()).isEqualTo("REQUEST_USER_INPUT");
         assertThat(response.observation().known()).isNotEmpty();
+    }
+
+    @Test
+    void validV3EligibilityRequestAndResponsePassStrictValidation() throws Exception {
+        AgentRequestEnvelope request = AgentContracts.read(
+                fixture("agent-input-v3-valid.json"), AgentRequestEnvelope.class);
+        AgentResponseEnvelope response = AgentContracts.read(
+                fixture("decision-response-v3-valid.json"), AgentResponseEnvelope.class);
+
+        assertThat(request.actionEligibility().version()).isEqualTo("action-eligibility.v1");
+        assertThat(request.actionEligibility().eligibleFamilies())
+                .contains("REQUEST_USER_INPUT").doesNotContain("CREATE_NODE", "WAIT");
+        assertThatCode(() -> AgentBrainResponseValidator.validateDecision(request, response))
+                .doesNotThrowAnyException();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "agent-input-v3-invalid-family.json",
+            "agent-input-v3-invalid-unknown-field.json",
+            "agent-input-v3-invalid-version.json"
+    })
+    void invalidV3EligibilityRequestsAreRejected(String name) throws Exception {
+        assertThatThrownBy(() -> AgentContracts.read(fixture(name), AgentRequestEnvelope.class))
+                .isInstanceOf(AgentContractException.class);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "decision-response-v3-invalid-unknown-field.json",
+            "decision-response-v3-invalid-version.json"
+    })
+    void invalidV3DecisionResponseSchemaIsRejected(String name) throws Exception {
+        assertThatThrownBy(() -> AgentContracts.read(fixture(name), AgentResponseEnvelope.class))
+                .isInstanceOf(AgentContractException.class);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "decision-response-v3-invalid-digest.json",
+            "decision-response-v3-invalid-evidence-ref.json"
+    })
+    void invalidV3DecisionResponseSemanticsAreRejected(String name) throws Exception {
+        AgentRequestEnvelope request = AgentContracts.read(
+                fixture("agent-input-v3-valid.json"), AgentRequestEnvelope.class);
+        AgentResponseEnvelope response = AgentContracts.read(
+                fixture(name), AgentResponseEnvelope.class);
+        assertThatThrownBy(() -> AgentBrainResponseValidator.validateDecision(request, response))
+                .isInstanceOf(AgentContractException.class);
+    }
+
+    @Test
+    void v2CannotCarryV3EligibilityFields() throws Exception {
+        String mutated = fixture("agent-input-v3-valid.json")
+                .replace("agent-input.v3", "agent-input.v2");
+        assertThatThrownBy(() -> AgentContracts.read(mutated, AgentRequestEnvelope.class))
+                .isInstanceOf(AgentContractException.class);
     }
 
     @ParameterizedTest

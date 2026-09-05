@@ -13,12 +13,13 @@ from ..diagnostics import semantic_diagnostics
 from ..contracts.decisions import (
     ActionProposal,
     AgentV2ResponseEnvelope,
+    AgentV3ResponseEnvelope,
     ModelDecisionOutput,
     ObservationView,
     UsageView,
 )
-from ..contracts.inputs import AgentV2RequestEnvelope
-from ..contracts.protocol import DECISION_PROTOCOL_VERSION
+from ..contracts.inputs import AgentV2RequestEnvelope, AgentV3RequestEnvelope
+from ..contracts.protocol import DECISION_PROTOCOL_VERSION, DECISION_PROTOCOL_VERSION_V3
 from ..model_client import ChatMessage, ModelClient
 from ..prompts import decision as decision_prompt
 
@@ -27,11 +28,13 @@ class BrainContractError(RuntimeError):
     """Raised when a model output violates the brain's own output contract."""
 
 
-def handle_decision(request: AgentV2RequestEnvelope, client: ModelClient) -> AgentV2ResponseEnvelope:
+def handle_decision(
+        request: AgentV2RequestEnvelope | AgentV3RequestEnvelope,
+        client: ModelClient) -> AgentV2ResponseEnvelope | AgentV3ResponseEnvelope:
     if request.decision_budget.max_model_calls < 1:
         raise BrainContractError("decision budget does not allow any model call")
 
-    user_prompt = decision_prompt.render_user_prompt(request)
+    user_prompt = _render_model_input(request)
     completion = client.complete(
         run_id=str(request.run_id),
         call_type="DECISION",
@@ -44,8 +47,18 @@ def handle_decision(request: AgentV2RequestEnvelope, client: ModelClient) -> Age
     _check_source_refs(output, request)
     _check_conflict_action(output, request)
 
-    return AgentV2ResponseEnvelope(
-        protocol_version=DECISION_PROTOCOL_VERSION,
+    if isinstance(request, AgentV3RequestEnvelope):
+        _check_eligibility_action(output, request)
+
+    response_type = (AgentV3ResponseEnvelope
+                     if isinstance(request, AgentV3RequestEnvelope)
+                     else AgentV2ResponseEnvelope)
+    response_version = (DECISION_PROTOCOL_VERSION_V3
+                        if isinstance(request, AgentV3RequestEnvelope)
+                        else DECISION_PROTOCOL_VERSION)
+
+    response_values = dict(
+        protocol_version=response_version,
         run_id=request.run_id,
         observation=output.observation,
         action_proposal=ActionProposal(
@@ -66,6 +79,25 @@ def handle_decision(request: AgentV2RequestEnvelope, client: ModelClient) -> Age
         diagnostics=semantic_diagnostics(
             decision_prompt.SYSTEM_PROMPT, user_prompt, "DECISION"),
     )
+    if isinstance(request, AgentV3RequestEnvelope):
+        response_values.update(
+            selected_eligibility_version=request.action_eligibility.version,
+            selected_eligibility_basis_hash=request.action_eligibility.basis_hash,
+            eligibility_evidence_refs=output.action.source_refs,
+        )
+    return response_type(**response_values)
+
+
+def _render_model_input(
+        request: AgentV2RequestEnvelope | AgentV3RequestEnvelope) -> str:
+    """Adds V3 Runtime control data without modifying Candidate C's prompt."""
+    rendered = decision_prompt.render_user_prompt(request)
+    if not isinstance(request, AgentV3RequestEnvelope):
+        return rendered
+    payload = json.loads(rendered)
+    payload["actionEligibility"] = request.action_eligibility.model_dump(
+        mode="json", by_alias=True)
+    return json.dumps(payload, ensure_ascii=False)
 
 
 def _parse_model_output(content: str) -> ModelDecisionOutput:
@@ -85,6 +117,13 @@ def _check_source_refs(output: ModelDecisionOutput, request: AgentV2RequestEnvel
         if ref not in allowed:
             raise BrainContractError(
                 f"model referenced a source outside the allowed snapshot refs: {ref}")
+
+
+def _check_eligibility_action(output: ModelDecisionOutput,
+                              request: AgentV3RequestEnvelope) -> None:
+    if output.action.action_family not in request.action_eligibility.eligible_families:
+        raise BrainContractError(
+            "model selected an action outside the Runtime eligibility mask")
 
 
 def _check_conflict_action(output: ModelDecisionOutput,

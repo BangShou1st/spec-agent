@@ -11,11 +11,17 @@ import java.util.Set;
  */
 public final class AgentProtocol {
 
-    /** Request envelope version sent by Spring to the Python brain. */
-    public static final String INPUT_PROTOCOL_VERSION = "agent-input.v2";
+    public static final String INPUT_PROTOCOL_VERSION_V2 = "agent-input.v2";
+    public static final String INPUT_PROTOCOL_VERSION_V3 = "agent-input.v3";
 
-    /** Response envelope version returned by the Python brain to Spring. */
-    public static final String DECISION_PROTOCOL_VERSION = "agent-decision.v2";
+    /** Default legacy request version; eligibility Decisions use V3 explicitly. */
+    public static final String INPUT_PROTOCOL_VERSION = INPUT_PROTOCOL_VERSION_V2;
+
+    public static final String DECISION_PROTOCOL_VERSION_V2 = "agent-decision.v2";
+    public static final String DECISION_PROTOCOL_VERSION_V3 = "agent-decision.v3";
+
+    /** Default legacy response version; eligibility Decisions use V3 explicitly. */
+    public static final String DECISION_PROTOCOL_VERSION = DECISION_PROTOCOL_VERSION_V2;
 
     /** Response envelope version for derived artifact generation. */
     public static final String ARTIFACT_PROTOCOL_VERSION = "agent-artifact.v1";

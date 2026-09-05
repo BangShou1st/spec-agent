@@ -206,6 +206,37 @@ class DecisionBudget(StrictModel):
     max_model_calls: int
 
 
+class ActionEligibilityConstraint(StrictModel):
+    eligible: bool
+    reason_codes: List[str] = Field(default_factory=list)
+
+
+class ActionEligibility(StrictModel):
+    version: Literal[protocol.ACTION_ELIGIBILITY_VERSION]
+    eligible_families: List[str]
+    constraints: Dict[str, ActionEligibilityConstraint]
+    basis_hash: str
+
+    @model_validator(mode="after")
+    def _complete_consistent_mask(self) -> "ActionEligibility":
+        expected = set(protocol.ACTION_FAMILIES)
+        listed = self.eligible_families
+        if len(listed) != len(set(listed)):
+            raise ValueError("duplicate eligible action family")
+        if not set(listed).issubset(expected):
+            raise ValueError("unknown eligible action family")
+        if set(self.constraints) != expected:
+            raise ValueError("eligibility constraints must cover every action family")
+        for family in expected:
+            if self.constraints[family].eligible != (family in listed):
+                raise ValueError(
+                    f"eligibility list/constraint mismatch for family: {family}")
+        if len(self.basis_hash) != 64 or any(
+                char not in "0123456789abcdef" for char in self.basis_hash):
+            raise ValueError("eligibility basisHash must be a SHA-256 hex digest")
+        return self
+
+
 class AgentV2RequestEnvelope(StrictModel):
     protocol_version: Literal[protocol.INPUT_PROTOCOL_VERSION]
     run_id: UUID
@@ -263,6 +294,19 @@ class AgentV2RequestEnvelope(StrictModel):
         return self
 
 
-def parse_request_envelope(payload: Dict[str, Any]) -> AgentV2RequestEnvelope:
+class AgentV3RequestEnvelope(AgentV2RequestEnvelope):
+    protocol_version: Literal[protocol.INPUT_PROTOCOL_VERSION_V3]
+    action_eligibility: ActionEligibility
+
+
+def parse_request_envelope(
+        payload: Dict[str, Any]) -> AgentV2RequestEnvelope | AgentV3RequestEnvelope:
     """Parses a raw JSON object into the request envelope, fail-closed."""
+    version = payload.get("protocolVersion")
+    if version == protocol.INPUT_PROTOCOL_VERSION:
+        return AgentV2RequestEnvelope.model_validate(payload)
+    if version == protocol.INPUT_PROTOCOL_VERSION_V3:
+        return AgentV3RequestEnvelope.model_validate(payload)
+    # Preserve a Pydantic ValidationError rather than inventing a parallel
+    # exception type for unknown versions.
     return AgentV2RequestEnvelope.model_validate(payload)

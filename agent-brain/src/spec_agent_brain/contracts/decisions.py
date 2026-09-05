@@ -6,13 +6,16 @@ Model-output models are what the LLM itself must emit; they are parsed with
 the same strictness and then stamped into a runtime-owned envelope.
 """
 
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, TYPE_CHECKING
 from uuid import UUID
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 
 from . import protocol
 from .inputs import StrictModel
+
+if TYPE_CHECKING:
+    from .inputs import AgentV3RequestEnvelope
 
 
 class ProposedClaim(StrictModel):
@@ -79,6 +82,38 @@ class AgentV2ResponseEnvelope(StrictModel):
     action_proposal: Optional[ActionProposal] = None
     usage: Optional[UsageView] = None
     diagnostics: Dict[str, Any] = {}
+
+
+class AgentV3ResponseEnvelope(AgentV2ResponseEnvelope):
+    protocol_version: Literal[protocol.DECISION_PROTOCOL_VERSION_V3]
+    selected_eligibility_version: Literal[protocol.ACTION_ELIGIBILITY_VERSION]
+    selected_eligibility_basis_hash: str
+    eligibility_evidence_refs: List[str] = []
+
+    @model_validator(mode="after")
+    def _eligibility_digest_shape(self) -> "AgentV3ResponseEnvelope":
+        value = self.selected_eligibility_basis_hash
+        if len(value) != 64 or any(char not in "0123456789abcdef" for char in value):
+            raise ValueError("selected eligibility basis hash must be SHA-256 hex")
+        return self
+
+
+def validate_v3_response_for_request(
+        request: "AgentV3RequestEnvelope",
+        response: AgentV3ResponseEnvelope) -> None:
+    """Mirrors Java's V3 eligibility trust-boundary checks."""
+    eligibility = request.action_eligibility
+    if response.selected_eligibility_version != eligibility.version:
+        raise ValueError("selected eligibility version does not match request")
+    if response.selected_eligibility_basis_hash != eligibility.basis_hash:
+        raise ValueError("selected eligibility basis hash does not match request")
+    if response.action_proposal is None:
+        raise ValueError("V3 Decision requires an action proposal")
+    if response.action_proposal.action_family not in eligibility.eligible_families:
+        raise ValueError("selected action family is not eligible")
+    allowed = set(request.snapshot.allowed_source_refs)
+    if any(ref not in allowed for ref in response.eligibility_evidence_refs):
+        raise ValueError("eligibility evidence ref is outside allowed source refs")
 
 
 # --- Model output contracts (what the LLM must emit, strictly parsed) -------

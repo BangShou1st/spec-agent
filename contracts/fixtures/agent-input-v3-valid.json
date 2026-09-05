@@ -1,0 +1,89 @@
+{
+  "protocolVersion": "agent-input.v3",
+  "runId": "22222222-2222-2222-2222-222222222222",
+  "event": {
+    "kind": "ANSWER_SUBMITTED",
+    "anchorNodeId": "33333333-3333-3333-3333-333333333333",
+    "selectedOptionId": null,
+    "freeText": "团队需要一个内部工单系统。"
+  },
+  "snapshot": {
+    "snapshotId": "44444444-4444-4444-4444-444444444444",
+    "contextHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "projectId": "55555555-5555-5555-5555-555555555555",
+    "routeId": "66666666-6666-6666-6666-666666666666",
+    "anchorNodeId": "33333333-3333-3333-3333-333333333333",
+    "routeContext": {
+      "routeId": "66666666-6666-6666-6666-666666666666",
+      "tipNodeId": "33333333-3333-3333-3333-333333333333",
+      "label": null
+    },
+    "lineage": [
+      {
+        "node": {
+          "id": "33333333-3333-3333-3333-333333333333",
+          "body": {
+            "text": "这个项目最重要的目标是什么？",
+            "options": [],
+            "acceptsFreeText": true
+          },
+          "kind": "INTERACTION"
+        },
+        "answer": {
+          "id": "99999999-9999-9999-9999-999999999999",
+          "nodeId": "33333333-3333-3333-3333-333333333333",
+          "selectedOptionId": null,
+          "freeText": "团队需要一个内部工单系统。"
+        },
+        "patches": []
+      }
+    ],
+    "effectiveClaims": [
+      {
+        "kind": "open_question",
+        "text": "系统范围尚未确定。",
+        "status": "unresolved",
+        "confidence": 0.9,
+        "sourceNodeId": "33333333-3333-3333-3333-333333333333",
+        "sourceAnswerId": "99999999-9999-9999-9999-999999999999"
+      }
+    ],
+    "metadata": {"projectTitle": "内部工单系统探索"},
+    "allowedSourceRefs": [
+      "node:33333333-3333-3333-3333-333333333333",
+      "answer:99999999-9999-9999-9999-999999999999",
+      "context:44444444-4444-4444-4444-444444444444",
+      "route:66666666-6666-6666-6666-666666666666"
+    ],
+    "availableCapabilities": [],
+    "capabilityResults": [],
+    "relations": [],
+    "relatedNodes": [],
+    "autonomy": {"mode": "ADVISOR"}
+  },
+  "capabilities": [],
+  "decisionBudget": {"maxModelCalls": 1},
+  "actionEligibility": {
+    "version": "action-eligibility.v1",
+    "eligibleFamilies": [
+      "UPDATE_NODE",
+      "CONNECT_NODE",
+      "CREATE_ROUTE",
+      "REQUEST_USER_INPUT",
+      "RESPOND_TO_USER",
+      "GENERATE_ARTIFACT"
+    ],
+    "constraints": {
+      "CREATE_NODE": {"eligible": false, "reasonCodes": ["UNRESOLVED_BLOCKER"]},
+      "UPDATE_NODE": {"eligible": true, "reasonCodes": []},
+      "CONNECT_NODE": {"eligible": true, "reasonCodes": []},
+      "CREATE_ROUTE": {"eligible": true, "reasonCodes": []},
+      "REQUEST_USER_INPUT": {"eligible": true, "reasonCodes": []},
+      "RESPOND_TO_USER": {"eligible": true, "reasonCodes": []},
+      "INVOKE_CAPABILITY": {"eligible": false, "reasonCodes": ["CAPABILITY_NOT_VISIBLE"]},
+      "GENERATE_ARTIFACT": {"eligible": true, "reasonCodes": []},
+      "WAIT": {"eligible": false, "reasonCodes": ["NO_PENDING_DEPENDENCY"]}
+    },
+    "basisHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  }
+}

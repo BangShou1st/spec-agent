@@ -24,7 +24,6 @@ from . import __version__
 from .config import Settings, load_settings
 from .contracts.protocol import (
     ARTIFACT_PROTOCOL_VERSION,
-    DECISION_PROTOCOL_VERSION,
     INPUT_PROTOCOL_VERSION,
 )
 from .artifact import BrainContractError as ArtifactBrainContractError
@@ -135,7 +134,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     def _dump(envelope) -> Dict[str, Any]:
         data = envelope.model_dump(mode="json", by_alias=True)
-        data["protocolVersion"] = DECISION_PROTOCOL_VERSION
         return data
 
     return app

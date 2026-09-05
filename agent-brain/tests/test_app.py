@@ -21,6 +21,11 @@ def _request_payload() -> dict:
         (FIXTURES_DIR / "agent-input-valid.json").read_text(encoding="utf-8"))
 
 
+def _v3_request_payload() -> dict:
+    return json.loads(
+        (FIXTURES_DIR / "agent-input-v3-valid.json").read_text(encoding="utf-8"))
+
+
 def test_health_reports_protocol_and_mode(settings):
     response = _client(settings).get("/health")
     assert response.status_code == 200
@@ -68,6 +73,21 @@ def test_decisions_endpoint_returns_valid_envelope_with_fake_model(settings):
     assert body["actionProposal"]["baseContextSnapshotId"] == \
         payload["snapshot"]["snapshotId"]
     assert body["actionProposal"]["baseContextHash"] == payload["snapshot"]["contextHash"]
+
+
+def test_decisions_endpoint_supports_strict_v3_eligibility_contract(settings):
+    payload = _v3_request_payload()
+    response = _client(settings).post(
+        "/v1/decisions", json=payload,
+        headers={"X-Spec-Agent-Internal-Token": "test-secret"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["protocolVersion"] == "agent-decision.v3"
+    assert body["actionProposal"]["actionFamily"] == "REQUEST_USER_INPUT"
+    assert body["selectedEligibilityVersion"] == "action-eligibility.v1"
+    assert body["selectedEligibilityBasisHash"] == \
+        payload["actionEligibility"]["basisHash"]
 
 
 def test_state_updates_endpoint_returns_claims_with_fake_model(settings):

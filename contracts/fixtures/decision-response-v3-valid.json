@@ -1,0 +1,30 @@
+{
+  "protocolVersion": "agent-decision.v3",
+  "runId": "22222222-2222-2222-2222-222222222222",
+  "stateUpdate": null,
+  "observation": {
+    "known": ["用户需要内部工单系统。"],
+    "unknowns": ["系统范围尚未确定。"],
+    "conflicts": [],
+    "risks": []
+  },
+  "actionProposal": {
+    "actionFamily": "REQUEST_USER_INPUT",
+    "payload": {
+      "questionText": "首版系统需要覆盖哪些团队？",
+      "options": [],
+      "allowFreeAnswer": true
+    },
+    "baseContextSnapshotId": "44444444-4444-4444-4444-444444444444",
+    "baseContextHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "sourceRefs": ["answer:99999999-9999-9999-9999-999999999999"],
+    "proposalId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+    "idempotencyKey": "22222222-2222-2222-2222-222222222222",
+    "anchorRefs": ["node:33333333-3333-3333-3333-333333333333"]
+  },
+  "usage": {"modelCalls": 1, "promptHashes": []},
+  "diagnostics": {},
+  "selectedEligibilityVersion": "action-eligibility.v1",
+  "selectedEligibilityBasisHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "eligibilityEvidenceRefs": ["answer:99999999-9999-9999-9999-999999999999"]
+}
