@@ -435,8 +435,8 @@ def main():
         json.dumps(manifest, ensure_ascii=False, indent=2),
         encoding="utf-8")
     print(json.dumps({"manifest": str(out_dir / "manifest.json"),
-                      "prompt_hash": manifest["prompt_hash"]}),
-          ensure_ascii=False, flush=True)
+                      "prompt_hash": manifest["prompt_hash"]}, ensure_ascii=False), flush=True)
+
     summary = {"manifest_head": manifest["head"]}
     modes = {"transport": ["transport"], "schema": ["schema"],
              "calibration": ["calibration"],
