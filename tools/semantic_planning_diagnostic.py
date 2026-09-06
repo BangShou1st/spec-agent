@@ -240,7 +240,12 @@ def main() -> None:
     parser.add_argument("--artifact-c", type=Path, required=True)
     parser.add_argument("--out-dir", type=Path, required=True)
     parser.add_argument("--limit", type=int, default=0)
+    parser.add_argument("--recompute-only", type=Path, default=None)
     args = parser.parse_args()
+
+    if args.recompute_only is not None:
+        _recompute_offline(args.replay, args.recompute_only)
+        return
 
     api_key, model = load_credentials(REPO_ROOT)
     check = credential_check(ENDPOINT, api_key)
@@ -331,6 +336,29 @@ def summarize(case_rows: list) -> dict:
                              and item["majority"] in item["expected"])
         item["regressed"] = (item["majority"] is not None
                               and item["majority"] not in item["expected"])
+    missed = [item for item in case_rows
+              if item["identity"]["arm"] == "B+" and item["mappable"]
+              and not item["expected_correct_actual"] and not item["shadow_correct"]]
+    controls15 = [item for item in case_rows
+                  if item["identity"]["arm"] == "B+" and item["mappable"]
+                  and not item["expected_correct_actual"] and item["shadow_correct"]]
+    critical8 = [item for item in case_rows
+                 if item["identity"]["arm"] == "C" and item["historical_pass"]
+                 and item["expected_correct_actual"] and not item["shadow_correct"]]
+    full27 = [item for item in case_rows
+              if item["identity"]["arm"] == "C" and item["historical_pass"]]
+    e22 = [item for item in case_rows if not item["mappable"]]
+    return {
+        "cases": len(case_rows),
+        "unmappable_expected": len(e22),
+        "b_missed": _gate_set(missed),
+        "b_controls15": _control_set(controls15),
+        "c_critical8": _control_set(critical8),
+        "c_full_correct": _control_set(full27),
+        "stability": _stability(case_rows),
+        "schema": _schema_counts(case_rows),
+        "verdict": _verdict(case_rows),
+    }
 
 
 def _gate_set(items: list) -> dict:
@@ -388,29 +416,6 @@ def _schema_counts(case_rows: list) -> dict:
     return {"rep_outcome_counts": counts,
             "ambiguous_reps": ambiguous, "no_winner_reps": no_winner,
             "ineligible_reps": ineligible}
-    missed = [item for item in case_rows
-              if item["identity"]["arm"] == "B+" and item["mappable"]
-              and not item["expected_correct_actual"] and not item["shadow_correct"]]
-    controls15 = [item for item in case_rows
-                  if item["identity"]["arm"] == "B+" and item["mappable"]
-                  and not item["expected_correct_actual"] and item["shadow_correct"]]
-    critical8 = [item for item in case_rows
-                 if item["identity"]["arm"] == "C" and item["historical_pass"]
-                 and item["expected_correct_actual"] and not item["shadow_correct"]]
-    full27 = [item for item in case_rows
-              if item["identity"]["arm"] == "C" and item["historical_pass"]]
-    e22 = [item for item in case_rows if not item["mappable"]]
-    return {
-        "cases": len(case_rows),
-        "unmappable_expected": len(e22),
-        "b_missed": _gate_set(missed),
-        "b_controls15": _control_set(controls15),
-        "c_critical8": _control_set(critical8),
-        "c_full_correct": _control_set(full27),
-        "stability": _stability(case_rows),
-        "schema": _schema_counts(case_rows),
-        "verdict": _verdict(case_rows),
-    }
 
 
 def _verdict(case_rows: list) -> dict:
@@ -464,6 +469,60 @@ def _verdict(case_rows: list) -> dict:
     checks["provider_failures"] = provider_failures
     checks["schema_failures"] = schema_failures
     return checks
+def _recompute_offline(replay_path: Path, out_dir: Path) -> None:
+    replay_rows = load_replay_rows(replay_path)
+    replay_index = {}
+    for row in replay_rows:
+        identity = (row["arm"], row["scenario"], row["variant"], row["repetition"])
+        replay_index[identity] = row
+    groups: dict = {}
+    for line in (out_dir / "results.jsonl").read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        record = json.loads(line)
+        identity = record["identity"]
+        key = (identity["arm"], identity["scenario"], identity["variant"],
+               identity["repetition"])
+        groups.setdefault(key, []).append(record)
+    case_rows = []
+    for key in sorted(groups):
+        reps = sorted(groups[key], key=lambda item: item["rep"])
+        source = replay_index[key]
+        flag_values: dict = {}
+        state_sigs = []
+        outcomes = []
+        for rep in reps:
+            outcome = rep["record"]["outcome"]
+            outcomes.append(outcome)
+            flags = rep["record"].get("flags")
+            if flags is None:
+                state_sigs.append(None)
+                continue
+            for name, value in flags.items():
+                flag_values.setdefault(name, []).append(value)
+            state_sigs.append(json.dumps({
+                "flags": flags,
+                "reason_codes": rep["record"].get("reason_codes"),
+                "evidence_refs": rep["record"].get("evidence_refs"),
+            }, sort_keys=True))
+        case_rows.append({
+            "identity": {"arm": key[0], "scenario": key[1],
+                         "variant": key[2], "repetition": key[3]},
+            "expected": source["expected"],
+            "historical_pass": source["historicalPass"],
+            "expected_correct_actual": source["actualCorrect"],
+            "shadow_correct": source["shadowCorrect"],
+            "outcomes": outcomes,
+            "flag_values": flag_values,
+            "state_sigs": state_sigs,
+        })
+    summary = summarize(case_rows)
+    (out_dir / "summary.json").write_text(
+        json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(json.dumps({"cases": len(case_rows), "verdict": summary["verdict"],
+                      "summary": str(out_dir / "summary.json")}, ensure_ascii=False))
+
+
 def _git_head() -> str:
     try:
         import subprocess
