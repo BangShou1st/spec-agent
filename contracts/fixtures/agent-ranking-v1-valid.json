@@ -1,0 +1,51 @@
+{
+  "protocolVersion": "agent-ranking.v1",
+  "eligibilityVersion": "action-eligibility.v1",
+  "eligibilityBasisHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "inputFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "rankingWeightsVersion": "semantic-ranking-weights.v1",
+  "assessments": [
+    {
+      "family": "REQUEST_USER_INPUT",
+      "applicable": true,
+      "priorityClass": "BLOCKING",
+      "reasonCodes": ["MISSING_USER_INFORMATION"],
+      "evidenceRefs": ["claim:blocker"],
+      "scores": {
+        "blockerClosure": 2,
+        "goalProgress": 2,
+        "externalNeed": 0,
+        "completionProximity": 0,
+        "payloadReadiness": 2
+      }
+    },
+    {
+      "family": "RESPOND_TO_USER",
+      "applicable": true,
+      "priorityClass": "DIRECT_COMPLETION",
+      "reasonCodes": ["GOAL_SATISFIED"],
+      "evidenceRefs": ["claim:goal"],
+      "scores": {
+        "blockerClosure": 0,
+        "goalProgress": 1,
+        "externalNeed": 0,
+        "completionProximity": 2,
+        "payloadReadiness": 2
+      }
+    },
+    {
+      "family": "INVOKE_CAPABILITY",
+      "applicable": false,
+      "priorityClass": "OPTIONAL_PROGRESS",
+      "reasonCodes": ["NOT_NEEDED"],
+      "evidenceRefs": [],
+      "scores": {
+        "blockerClosure": 0,
+        "goalProgress": 0,
+        "externalNeed": 0,
+        "completionProximity": 0,
+        "payloadReadiness": 0
+      }
+    }
+  ]
+}
