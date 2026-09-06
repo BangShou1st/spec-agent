@@ -90,6 +90,16 @@ public class CapabilityInvocationRepository {
                 .stream().findFirst();
     }
 
+    /**
+     * Every invocation row owned by one run, in creation order. Additive
+     * read for continuation eligibility; claim/complete semantics untouched.
+     */
+    public List<CapabilityInvocationRecord> findByRunId(UUID runId) {
+        String sql = "SELECT * FROM capability_invocations "
+                + "WHERE run_id = :runId ORDER BY created_at";
+        return jdbcTemplate.query(sql, Maps.of("runId", runId), rowMapper);
+    }
+
     /** Most recent completed invocations of a project (bounded observations). */
     public List<CapabilityInvocationRecord> findRecentCompleted(UUID projectId, int limit) {
         String sql = """

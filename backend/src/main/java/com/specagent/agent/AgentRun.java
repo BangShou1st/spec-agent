@@ -29,6 +29,9 @@ public class AgentRun {
     private final String requestFingerprint;
     private final Instant createdAt;
     private final Instant completedAt;
+    private final UUID parentRunId;
+    private final UUID rootRunId;
+    private final Integer cycleIndex;
 
     public AgentRun(UUID id,
                     UUID projectId,
@@ -47,6 +50,46 @@ public class AgentRun {
                     String requestFingerprint,
                     Instant createdAt,
                     Instant completedAt) {
+        this(id, projectId, routeId, triggerType, inputNodeId, contextSnapshotId,
+                producedNodeId, producedAnswerId, producedPatchId, producedSpecSnapshotId,
+                status, trace, operation, idempotencyKey, requestFingerprint,
+                createdAt, completedAt, null, null, null);
+    }
+
+    /**
+     * Full constructor including autonomous continuation chain linkage.
+     *
+     * <p>{@code parentRunId} names the run whose terminal boundary spawned
+     * this one; {@code rootRunId} names the chain head for querying;
+     * {@code cycleIndex} counts the child depth with chain roots at 0. All
+     * three stay null for pre-continuation and external runs (lazy chain
+     * identity: null reads as "own root at cycle 0").
+     *
+     * <p>This linkage is unrelated to the legacy {@code createdByRunId}
+     * creation hint carried by {@code AgentRunService.create} overloads,
+     * which is not persisted on the run row. The two concepts must never
+     * be merged.
+     */
+    public AgentRun(UUID id,
+                    UUID projectId,
+                    UUID routeId,
+                    AgentRunTriggerType triggerType,
+                    UUID inputNodeId,
+                    UUID contextSnapshotId,
+                    UUID producedNodeId,
+                    UUID producedAnswerId,
+                    UUID producedPatchId,
+                    UUID producedSpecSnapshotId,
+                    AgentRunStatus status,
+                    String trace,
+                    String operation,
+                    String idempotencyKey,
+                    String requestFingerprint,
+                    Instant createdAt,
+                    Instant completedAt,
+                    UUID parentRunId,
+                    UUID rootRunId,
+                    Integer cycleIndex) {
         this.id = id;
         this.projectId = projectId;
         this.routeId = routeId;
@@ -64,6 +107,9 @@ public class AgentRun {
         this.requestFingerprint = requestFingerprint;
         this.createdAt = createdAt;
         this.completedAt = completedAt;
+        this.parentRunId = parentRunId;
+        this.rootRunId = rootRunId;
+        this.cycleIndex = cycleIndex;
     }
 
     public UUID id() {
@@ -141,5 +187,29 @@ public class AgentRun {
 
     public Instant completedAt() {
         return completedAt;
+    }
+
+    /**
+     * The run whose terminal boundary spawned this run, or null for chain
+     * roots and pre-continuation rows.
+     */
+    public UUID parentRunId() {
+        return parentRunId;
+    }
+
+    /**
+     * The head of this autonomous continuation chain for querying, or null
+     * when the chain identity was never persisted (reads as this run).
+     */
+    public UUID rootRunId() {
+        return rootRunId;
+    }
+
+    /**
+     * Child depth in the chain with roots at 0, or null for
+     * pre-continuation rows (reads as 0).
+     */
+    public Integer cycleIndex() {
+        return cycleIndex;
     }
 }

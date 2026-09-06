@@ -1,5 +1,6 @@
 package com.specagent.agent;
 
+import com.specagent.agent.loop.LoopLinkage;
 import com.specagent.common.Ids;
 import org.springframework.stereotype.Service;
 
@@ -97,6 +98,29 @@ public class AgentRunService {
                                               String operation,
                                               String idempotencyKey,
                                               String requestFingerprint) {
+        return createWithIdempotency(projectId, routeId, triggerType, inputNodeId,
+                createdByRunId, operation, idempotencyKey, requestFingerprint,
+                LoopLinkage.none());
+    }
+
+    /**
+     * Loop-linkage variant of {@link #createWithIdempotency(UUID, UUID,
+     * AgentRunTriggerType, UUID, UUID, String, String, String)}.
+     *
+     * <p>The {@code createdByRunId} creation hint keeps its legacy meaning
+     * (unpersisted) and stays independent from {@code linkage}: the former
+     * records who asked, the latter records which terminal boundary spawned
+     * this run. Callers must not merge the two concepts.
+     */
+    public CreateResult createWithIdempotency(UUID projectId,
+                                              UUID routeId,
+                                              AgentRunTriggerType triggerType,
+                                              UUID inputNodeId,
+                                              UUID createdByRunId,
+                                              String operation,
+                                              String idempotencyKey,
+                                              String requestFingerprint,
+                                              LoopLinkage linkage) {
         UUID runId = Ids.random();
         Instant now = Instant.now();
         String normalizedKey = normalizeKey(idempotencyKey);
@@ -104,9 +128,12 @@ public class AgentRunService {
             throw new IllegalArgumentException(
                     "Client-idempotent agent runs require a request fingerprint");
         }
+        LoopLinkage effectiveLinkage = linkage == null ? LoopLinkage.none() : linkage;
         AgentRun run = new AgentRun(runId, projectId, routeId, triggerType, inputNodeId, null,
                 null, null, null, null, AgentRunStatus.CREATED, null, operation,
-                normalizedKey, normalizedKey == null ? null : requestFingerprint, now, null);
+                normalizedKey, normalizedKey == null ? null : requestFingerprint, now, null,
+                effectiveLinkage.parentRunId(), effectiveLinkage.rootRunId(),
+                effectiveLinkage.cycleIndex());
         if (normalizedKey == null) {
             agentRunRepository.save(run);
             return new CreateResult(run, true);

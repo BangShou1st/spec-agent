@@ -86,6 +86,8 @@ public class RunWorker {
             case NODE_QUERY -> executeNodeQuery(run);
             case GENERATE_SPEC -> executeArtifactGeneration(run);
             case REGENERATE_NODE -> executeRegenerate(run);
+            case CONTINUE_CYCLE -> throw new UnsupportedOperationException(
+                    "CONTINUE_CYCLE execution arrives in Slice 3; Slice 0 wires routing only");
             default -> executeDecisionCycle(run);
         }
     }

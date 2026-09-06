@@ -54,6 +54,25 @@ public final class AgentRunRequestFingerprint {
         return Hashes.sha256Hex(canonical);
     }
 
+    /**
+     * Stable logical identity for a runtime-created continuation child: the
+     * child slot of one parent at one cycle depth. Only loop identity
+     * enters the hash — never semantic fields such as conflicts, goals, or
+     * planning flags. Combined with the project-scoped idempotency unique
+     * index, a repeated terminal callback for the same parent resolves to
+     * the one persisted child instead of creating a second run.
+     */
+    public static String forContinuation(UUID projectId,
+                                         UUID parentRunId,
+                                         int cycleIndex) {
+        String canonical = String.join("|",
+                field("projectId", projectId),
+                field("operation", "CONTINUE"),
+                field("parentRunId", parentRunId),
+                field("cycleIndex", cycleIndex));
+        return Hashes.sha256Hex(canonical);
+    }
+
     private static String field(String name, Object value) {
         if (value == null) {
             return name + ":null";
