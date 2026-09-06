@@ -1,0 +1,41 @@
+[
+  {
+    "label": "temp0_top1",
+    "http_status": 200,
+    "ok": true,
+    "params_sent": {
+      "temperature": 0,
+      "top_p": 1
+    },
+    "raw": "{\"id\":\"0660ff4a-3e85-4454-b219-cc2143db4bad_2ca07627306443f6a81201654c5b0f0a\",\"object\":\"chat.completion\",\"created\":1788698207,\"model\":\"mimo-v2.5-free\",\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"{\\n  \\\"schema\\\": \\\"planning-state.v1\\\",\\n  \\\"state\\\": {\\n    \\\"phase\\\": \\\"probe\\\",\\n    \\\"analysis\\\": {\\n      \\\"eligibleFamilies\\\": [\\\"REQUEST_USER_INPUT\\\", \\\"RESPOND_TO_USER\\\"],\\n      \\\"eventKind\\\": \\\"SAMPLING_PROBE\\\",\\n      \\\"observation\\\": \\\"probe\\\",\\n      \\\"snapshotId\\\": \\\"00000000-0000-0000-0000-000000000001\\\",\\n      \\\"contextHash\\\": \\\"sampling-probe\\\"\\n    },\\n    \\\"intent\\\": \\\"sampling_probe\\\",\\n    \\\"next\\\": {\\n      \\\"action\\\": \\\"await_user_input\\\",\\n      \\\"rationale\\\": \\\"Event is a sampling probe with probe observation, and the system is in an initial state with no available capabilities or prior lineage. The eligible families include REQUEST_USER_INPUT, so the next logical step is to wait for user input to proceed with planning.\\\"\\n    }\\n  }\\n}\",\"reasoning_content\":null,\"tool_calls\":null}}],\"usage\":{\"prompt_tokens\":186,\"completion_tokens\":203,\"total_tokens\":389,\"prompt_tokens_details\":{\"cached_tokens\":0},\"completion_tokens_details\":{\"reasoning_tokens\":0}},\"cost\":\"0\"}"
+  },
+  {
+    "label": "temp0_top1_seed42",
+    "http_status": 200,
+    "ok": true,
+    "params_sent": {
+      "temperature": 0,
+      "top_p": 1,
+      "seed": 42
+    },
+    "raw": "{\"id\":\"37237631-aa28-4175-927d-7b0fdca018d2_011e025a689f43e6939d14afc9a26614\",\"object\":\"chat.completion\",\"created\":1788698215,\"model\":\"mimo-v2.5-free\",\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"{\\n  \\\"state\\\": \\\"awaiting_user_input\\\",\\n  \\\"reason\\\": \\\"The system is configured for a sampling probe with a request to respond to the user. Since the observation is a probe with no active capabilities or claims, the appropriate state is to await user input to proceed.\\\",\\n  \\\"next_action\\\": {\\n    \\\"kind\\\": \\\"REQUEST_USER_INPUT\\\",\\n    \\\"description\\\": \\\"Request user input to respond to the sampling probe and proceed with the conversation.\\\"\\n  }\\n}\",\"reasoning_content\":null,\"tool_calls\":null}}],\"usage\":{\"prompt_tokens\":186,\"completion_tokens\":96,\"total_tokens\":282,\"prompt_tokens_details\":{\"cached_tokens\":128},\"completion_tokens_details\":{\"reasoning_tokens\":0}},\"cost\":\"0\"}"
+  },
+  {
+    "label": "temp1_default",
+    "http_status": 200,
+    "ok": true,
+    "params_sent": {
+      "temperature": 1
+    },
+    "raw": "{\"id\":\"0ed21816-7027-4b90-a15c-7efff86f52c4_9e272a489a9c48e5889bd5210b26f9cb\",\"object\":\"chat.completion\",\"created\":1788698225,\"model\":\"mimo-v2.5-free\",\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"{\\n  \\\"kind\\\": \\\"PLANNING_STATE\\\",\\n  \\\"eligibleFamilies\\\": [\\\"REQUEST_USER_INPUT\\\", \\\"RESPOND_TO_USER\\\"],\\n  \\\"selectedFamily\\\": \\\"REQUEST_USER_INPUT\\\",\\n  \\\"selectedAction\\\": \\\"ASK_CLARIFICATION\\\",\\n  \\\"stateId\\\": \\\"00000000-0000-0000-0000-000000000001\\\",\\n  \\\"planningSteps\\\": [\\n    {\\n      \\\"step\\\": 1,\\n      \\\"thought\\\": \\\"The system is in a sampling probe state with no specific context or user query. The most appropriate action is to request user input to determine the desired task or to clarify any ambiguity.\\\",\\n      \\\"chosenAction\\\": \\\"ASK_CLARIFICATION\\\",\\n      \\\"rationale\\\": \\\"Since the observation indicates a probe and the snapshot has no effective claims or capabilities, the system should engage the user to provide direction or clarify the next step.\\\"\\n    }\\n  ],\\n  \\\"confidence\\\": 0.9\\n}\",\"reasoning_content\":null,\"tool_calls\":null}}],\"usage\":{\"prompt_tokens\":186,\"completion_tokens\":212,\"total_tokens\":398,\"prompt_tokens_details\":{\"cached_tokens\":128},\"completion_tokens_details\":{\"reasoning_tokens\":0}},\"cost\":\"0\"}"
+  },
+  {
+    "label": "temp0_only",
+    "http_status": 200,
+    "ok": true,
+    "params_sent": {
+      "temperature": 0
+    },
+    "raw": "{\"id\":\"d9a5a213-5ce7-45eb-84ed-9489ff4e4411_ced47e82c4b948c29a12384651c65f9e\",\"object\":\"chat.completion\",\"created\":1788698233,\"model\":\"mimo-v2.5-free\",\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"{\\n  \\\"schema\\\": \\\"planning-state.v1\\\",\\n  \\\"state\\\": \\\"sampling-probe\\\",\\n  \\\"phase\\\": \\\"observation\\\",\\n  \\\"eligibleFamilies\\\": [\\\"REQUEST_USER_INPUT\\\", \\\"RESPOND_TO_USER\\\"],\\n  \\\"event\\\": {\\n    \\\"kind\\\": \\\"SAMPLING_PROBE\\\",\\n    \\\"data\\\": {\\n      \\\"probe\\\": true\\n    }\\n  },\\n  \\\"snapshot\\\": {\\n    \\\"snapshotId\\\": \\\"00000000-0000-0000-0000-000000000001\\\",\\n    \\\"contextHash\\\": \\\"sampling-probe\\\",\\n    \\\"lineage\\\": [],\\n    \\\"effectiveClaims\\\": [],\\n    \\\"availableCapabilities\\\": [],\\n    \\\"capabilityResults\\\": [],\\n    \\\"citableRefs\\\": [\\\"node:00000000-0000-0000-0000-000000000001\\\"]\\n  },\\n  \\\"plan\\\": [],\\n  \\\"focus\\\": null\\n}\",\"reasoning_content\":null,\"tool_calls\":null}}],\"usage\":{\"prompt_tokens\":186,\"completion_tokens\":219,\"total_tokens\":405,\"prompt_tokens_details\":{\"cached_tokens\":128},\"completion_tokens_details\":{\"reasoning_tokens\":0}},\"cost\":\"0\"}"
+  }
+]

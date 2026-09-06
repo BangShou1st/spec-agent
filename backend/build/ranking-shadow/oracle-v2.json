@@ -1,0 +1,55 @@
+{
+  "E01/base": [
+    "REQUEST_USER_INPUT"
+  ],
+  "E01/paraphrase": [
+    "REQUEST_USER_INPUT"
+  ],
+  "E01/shuffled": [
+    "REQUEST_USER_INPUT"
+  ],
+  "E07/unresolved": [
+    "REQUEST_USER_INPUT"
+  ],
+  "E07/unresolved-paraphrase": [
+    "REQUEST_USER_INPUT"
+  ],
+  "E07-resolved/resolved": [
+    "RESPOND_TO_USER",
+    "WAIT",
+    "REQUEST_USER_INPUT"
+  ],
+  "E07-resolved/resolved-paraphrase": [
+    "RESPOND_TO_USER",
+    "WAIT",
+    "REQUEST_USER_INPUT"
+  ],
+  "E10/grounded": [
+    "REQUEST_USER_INPUT"
+  ],
+  "E10/grounded-decoy": [
+    "REQUEST_USER_INPUT"
+  ],
+  "E17/unconfirmed": [
+    "REQUEST_USER_INPUT"
+  ],
+  "E17/unconfirmed-decoy": [
+    "REQUEST_USER_INPUT"
+  ],
+  "E19/large": [
+    "REQUEST_USER_INPUT"
+  ],
+  "E19/large-shuffled": [
+    "REQUEST_USER_INPUT"
+  ],
+  "E22-wait/legitimate": [
+    "WAIT"
+  ],
+  "E25/frozen-replay": [
+    "REQUEST_USER_INPUT"
+  ],
+  "E25/stale-relation-set": [
+    "REQUEST_USER_INPUT"
+  ]
+}
+
