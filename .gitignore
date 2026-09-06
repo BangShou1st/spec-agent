@@ -34,3 +34,7 @@ frontend/coverage
 frontend/playwright-report
 frontend/test-results
 *.tsbuildinfo
+
+# Python cache
+__pycache__/
+*.pyc
