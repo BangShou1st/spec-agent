@@ -11,10 +11,12 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.Objects;
 
 /**
  * Optional, in-process diagnostic recorder used by the evaluation plumbing.
@@ -77,9 +79,27 @@ public class SemanticTraceRecorder {
 
     public void captureActionEligibility(UUID runId,
                                          ActionEligibilityGate.Assessment assessment) {
+        captureActionEligibility(runId, null, null, assessment);
+    }
+
+    public void captureActionEligibility(UUID runId,
+                                         AgentRequestEnvelope request,
+                                         AgentResponseEnvelope response,
+                                         ActionEligibilityGate.Assessment assessment) {
         if (!shouldCapture(runId) || assessment == null) {
             return;
         }
+        String requestBasisHash = request == null || request.actionEligibility() == null
+                ? null : request.actionEligibility().basisHash();
+        String selectedBasisHash = response == null
+                ? null : response.selectedEligibilityBasisHash();
+        boolean eligibilityEvidencePresent = requestBasisHash != null || selectedBasisHash != null;
+        boolean basisHashMatch = eligibilityEvidencePresent
+                && Objects.equals(requestBasisHash, selectedBasisHash)
+                && Objects.equals(requestBasisHash, assessment.eligibility().basisHash());
+        List<String> reasonCodes = assessment.reasonCodes().stream()
+                .map(Enum::name).toList();
+        boolean basisMismatch = reasonCodes.contains("ELIGIBILITY_BASIS_MISMATCH");
         Map<String, Object> stage = new LinkedHashMap<>();
         stage.put("mode", assessment.mode().name());
         stage.put("version", assessment.eligibility().version());
@@ -89,8 +109,28 @@ public class SemanticTraceRecorder {
         stage.put("selected_action", assessment.selectedAction());
         stage.put("selected_action_eligible", assessment.selectedActionEligible());
         stage.put("would_veto", assessment.wouldVeto());
-        stage.put("reason_codes", assessment.reasonCodes().stream()
-                .map(Enum::name).toList());
+        stage.put("reason_codes", reasonCodes);
+        stage.put("selected_eligibility_version", response == null
+                ? null : response.selectedEligibilityVersion());
+        stage.put("selected_eligibility_basis_hash", selectedBasisHash);
+        stage.put("request_eligibility_basis_hash", requestBasisHash);
+        stage.put("basis_hash_match", eligibilityEvidencePresent ? basisHashMatch : null);
+        stage.put("selected_family", assessment.selectedAction());
+        stage.put("selected_family_eligible", assessment.selectedActionEligible());
+        stage.put("post_selection_veto_invoked", true);
+        stage.put("post_selection_veto_result", assessment.wouldVeto() ? "VETO" : "PASS");
+        stage.put("post_selection_veto_reason_codes", reasonCodes);
+        stage.put("java_eligibility_validator_result", assessment.wouldVeto()
+                ? (basisMismatch ? "BASIS_MISMATCH" : "ACTION_INELIGIBLE")
+                : "PASS");
+        Map<String, Object> actionIneligible = new LinkedHashMap<>();
+        actionIneligible.put("type", assessment.wouldVeto()
+                ? (basisMismatch ? "ELIGIBILITY_BASIS_MISMATCH" : "ACTION_INELIGIBLE")
+                : "NONE");
+        actionIneligible.put("enforced", assessment.mode() == ActionEligibilityGate.Mode.ENFORCED
+                && assessment.wouldVeto());
+        actionIneligible.put("reason_codes", reasonCodes);
+        stage.put("action_ineligible_mapping", actionIneligible);
         append(runId, "ACTION_ELIGIBILITY", stage);
     }
 

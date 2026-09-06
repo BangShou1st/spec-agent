@@ -340,7 +340,8 @@ public class AnswerCycleService {
         ActionProposal proposal = decisionResponse.actionProposal();
         ActionEligibilityGate.Assessment eligibilityAssessment =
                 actionEligibilityGate.assess(decisionEnvelope, proposal);
-        semanticTraceRecorder.captureActionEligibility(run.id(), eligibilityAssessment);
+        semanticTraceRecorder.captureActionEligibility(
+                run.id(), decisionEnvelope, decisionResponse, eligibilityAssessment);
         actionEligibilityGate.enforce(eligibilityAssessment);
         eventService.append(run.id(), AgentRunPhase.PROPOSAL_CREATED,
                 "PROPOSAL_CREATED", Map.of(

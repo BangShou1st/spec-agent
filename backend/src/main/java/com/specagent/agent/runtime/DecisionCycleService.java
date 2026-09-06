@@ -148,7 +148,8 @@ public class DecisionCycleService {
             ActionProposal proposal = decision.actionProposal();
             ActionEligibilityGate.Assessment eligibilityAssessment =
                     actionEligibilityGate.assess(envelope, proposal);
-            semanticTraceRecorder.captureActionEligibility(run.id(), eligibilityAssessment);
+            semanticTraceRecorder.captureActionEligibility(
+                    run.id(), envelope, decision, eligibilityAssessment);
             actionEligibilityGate.enforce(eligibilityAssessment);
             eventService.append(run.id(), AgentRunPhase.PROPOSAL_CREATED, "PROPOSAL_CREATED", Map.of(
                     "actionFamily", proposal.actionFamily(),
