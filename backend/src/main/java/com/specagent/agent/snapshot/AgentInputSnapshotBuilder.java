@@ -22,6 +22,7 @@ import com.specagent.agent.contract.PatchView;
 import com.specagent.agent.contract.RouteContextView;
 import com.specagent.agent.contract.SnapshotMetadata;
 import com.specagent.context.ContextRelation;
+import com.specagent.agent.AgentRunRepository;
 import com.specagent.answer.Answer;
 import com.specagent.answer.AnswerRepository;
 import com.specagent.capability.CapabilityInvocationRecord;
@@ -79,6 +80,13 @@ public class AgentInputSnapshotBuilder {
     private static final int RECENT_CAPABILITY_RESULTS_LIMIT = 5;
 
     /**
+     * Wider fetch window for visibility filtering: sibling routes may hold the
+     * newest rows, so the projection scans a wider recent window and keeps the
+     * newest visible ones. The projected count stays bounded by the limit above.
+     */
+    private static final int VISIBILITY_FETCH_LIMIT = 20;
+
+    /**
      * Hard upper bound for a canonical frozen payload. The projection is
      * already bounded by construction (bounded lineage, 1-hop relations,
      * bounded resource excerpts, bounded capability observations); exceeding
@@ -93,6 +101,7 @@ public class AgentInputSnapshotBuilder {
     private final RequirementStateBuilder requirementStateBuilder;
     private final CapabilityRegistry capabilityRegistry;
     private final CapabilityInvocationRepository capabilityInvocationRepository;
+    private final AgentRunRepository agentRunRepository;
     private final AgentInputProjectionRepository projectionRepository;
     private final MutableSourceFingerprinter fingerprinter;
     private final Json json;
@@ -104,6 +113,7 @@ public class AgentInputSnapshotBuilder {
                                      RequirementStateBuilder requirementStateBuilder,
                                      CapabilityRegistry capabilityRegistry,
                                      CapabilityInvocationRepository capabilityInvocationRepository,
+                                     AgentRunRepository agentRunRepository,
                                      AgentInputProjectionRepository projectionRepository,
                                      MutableSourceFingerprinter fingerprinter,
                                      Json json) {
@@ -114,6 +124,7 @@ public class AgentInputSnapshotBuilder {
         this.requirementStateBuilder = requirementStateBuilder;
         this.capabilityRegistry = capabilityRegistry;
         this.capabilityInvocationRepository = capabilityInvocationRepository;
+        this.agentRunRepository = agentRunRepository;
         this.projectionRepository = projectionRepository;
         this.fingerprinter = fingerprinter;
         this.json = json;
@@ -405,11 +416,30 @@ public class AgentInputSnapshotBuilder {
      * stays small so prompts never receive an unbounded catalog.
      */
     private List<CapabilityResultView> capabilityResults(ContextSnapshot snapshot) {
-        return capabilityInvocationRepository
-                .findRecentCompleted(snapshot.projectId(), RECENT_CAPABILITY_RESULTS_LIMIT)
-                .stream()
+        List<CapabilityInvocationRecord> recent = capabilityInvocationRepository
+                .findRecentCompleted(snapshot.projectId(), VISIBILITY_FETCH_LIMIT);
+        Set<UUID> lineage = new java.util.HashSet<>(snapshot.includedNodeIds());
+        Map<UUID, CapabilityObservationVisibility.RunAttribution> runsById = new HashMap<>();
+        for (CapabilityInvocationRecord record : recent) {
+            if (record.runId() != null && !runsById.containsKey(record.runId())) {
+                runsById.put(record.runId(), loadRunAttribution(record.runId()));
+            }
+        }
+        return recent.stream()
+                .filter(record -> CapabilityObservationVisibility.isVisible(
+                        snapshot.routeId(), lineage,
+                        runsById.get(record.runId()),
+                        CapabilityObservationVisibility.referencedNodeIds(record)))
+                .limit(RECENT_CAPABILITY_RESULTS_LIMIT)
                 .map(this::capabilityResultView)
                 .toList();
+    }
+
+    private CapabilityObservationVisibility.RunAttribution loadRunAttribution(UUID runId) {
+        return agentRunRepository.findById(runId)
+                .map(run -> new CapabilityObservationVisibility.RunAttribution(
+                        run.routeId(), run.inputNodeId()))
+                .orElse(null);
     }
 
     @SuppressWarnings("unchecked")

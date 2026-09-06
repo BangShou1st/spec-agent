@@ -33,6 +33,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -65,13 +66,41 @@ class AgentInputFrozenProjectionIntegrationTest {
                             false, SideEffectClass.LOCAL_DURABLE, List.of(), List.of());
                 }
 
+                // Lineage visibility requires attributable observations: the probe
+                // echoes node refs from its arguments into source refs so the
+                // late result belongs to the query lineage. Rows with no run and
+                // no refs stay hidden fail-closed (see the lineage visibility test).
                 @Override
                 public CapabilityResult invoke(CapabilityInvocation invocation) {
                     return new CapabilityResult(invocation.invocationId(),
                             invocation.invocationKey(), invocation.capabilityId(),
                             CapabilityResult.Status.SUCCEEDED,
                             Map.of("marker", invocation.invocationKey()),
-                            List.of(), Map.of(), List.of());
+                            nodeRefsFromArguments(invocation.arguments()), Map.of(), List.of());
+                }
+
+                private List<String> nodeRefsFromArguments(Map<String, Object> arguments) {
+                    List<String> refs = new ArrayList<>();
+                    collectRefs(arguments, refs);
+                    return List.copyOf(refs);
+                }
+
+                private void collectRefs(Object value, List<String> refs) {
+                    if (value instanceof String ref && ref.startsWith("node:")) {
+                        try {
+                            UUID.fromString(ref.substring(5));
+                            refs.add(ref);
+                        } catch (IllegalArgumentException ignored) {
+                        }
+                    } else if (value instanceof Map<?, ?> map) {
+                        for (Object entry : map.values()) {
+                            collectRefs(entry, refs);
+                        }
+                    } else if (value instanceof List<?> list) {
+                        for (Object entry : list) {
+                            collectRefs(entry, refs);
+                        }
+                    }
                 }
             };
         }
@@ -229,7 +258,8 @@ class AgentInputFrozenProjectionIntegrationTest {
         assertThat(first.capabilityResults()).isEmpty();
 
         String key = "frozen-proj-test-" + UUID.randomUUID();
-        capabilityRuntime.invoke(key, "test.frozen-probe", project.id(), null, Map.of());
+        capabilityRuntime.invoke(key, "test.frozen-probe", project.id(), null,
+                Map.of("nodeRef", "node:" + draft.id()));
 
         AgentInputSnapshot replayed = snapshotBuilder.build(snapshot);
         assertThat(replayed).isEqualTo(first);
