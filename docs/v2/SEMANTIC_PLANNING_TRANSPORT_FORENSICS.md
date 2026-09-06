@@ -25,6 +25,7 @@ R1 诊断：同 URL 与鉴权，stream 为 false，response_format 为 json_obje
 
 三类形状的规范指纹（URL、排序后非秘密头、模型、stream、response_format、max_tokens、角色、体长度与哈希）已生成，未来可据此证明两条请求是否同一种东西。
 生产形 112 字节，探针形 176 字节，R1 形 228 字节（均为最小载荷下的形状指纹，非 live 体）。
+
 # 5. Probe A（已知好形状，eval 凭证，单发）
 
 POST zen v1 chat completions，钥匙检查同形（单 user、max_tokens 256、json_object、不 stream），eval key，UA 一致。结果 429，延迟约 922 毫秒。
@@ -36,20 +37,26 @@ POST zen v1 chat completions，钥匙检查同形（单 user、max_tokens 256、
 复用 R1 提交版本的 post_completion（同 UA、同超时、同 response_format、同 max_tokens 800），输入为手造最小合成快照（非 benchmark case），与 A 间隔 20 秒。
 结果同样 429，延迟约 968 毫秒，响应体与 A 逐字节相同（同为 FreeUsageLimitError）。R1 精确路径不回传响应头是已知缺口，头证据以 A 为准。
 
-# 7. 分类与根因
+# 7. 分类与根因（已由第 10 章更新）
 
-按量表，本轮落在情况 C（双 429，账户仍受限，不跑诊断）叠加情况 D 的风味（若用户正常流量用的是另一凭证，则差异主因是凭证而非 pacing）。
-根因：eval 凭证的免费配额已耗尽。证据链为单发最小探针同样 429（与 pacing 无关）加 provider 亲口 FreeUsageLimitError 加近 15 小时 Retry-After。
-这同时解释 R1 首请求即 429：R1 启动时 key 已在限制态（9 月 5 到 6 日两组 live eval 在同一免费 key 上烧掉近 200 次模型调用）。
+首次分类落在情况 C（双 429，账户仍受限，不跑诊断）叠加情况 D 的风味。DIRECT 探针后根因更新见第 10 章：配额耗尽说让位给出口代理污染说。
 pacing 假设正式出局：它解释不了首请求 429，更解释不了静置 20 秒后的单发最小探针 429。UA、请求体、stream、response_format、HTTP 库全部洗清嫌疑。
 
 # 8. 缺口与 R2 门
 
-缺口有二：R1 精确路径不回传响应头（B 侧只有体）；用户正常流量的凭证指纹未比对（方法见第 1 章）。
-是否允许建 R2：否。Retry-After 约 15 小时，在此之前任何重跑都是浪费；恢复后也必须先单发探针拿到 200，才有资格按新 lineage 设计预检（小批量固定间隔、无重试），间隔数字届时按传输证据冻结，现在不定 6 秒还是 12 秒。
+缺口当时有二：R1 精确路径不回传响应头（B 侧只有体）；用户正常流量的凭证指纹未比对（方法见第 1 章）。DIRECT 探针后新增结论见第 10 章。
+是否允许建 R2：当时否（Retry-After 约 15 小时，属配额叙事下的判断）。DIRECT 证据出现后，R2 门更新见第 10 章。
 Error evidence 修复保留为 R2 前置要求：错误体、Retry-After、限流头、provider request ID 必须持久化，不得再只存状态码。
 
 # 9. Verdict
 
-TRANSPORT_ROOT_CAUSE_IDENTIFIED。R1 的 INCONCLUSIVE 维持，但原因从未知 provider 失败收敛为已识别的免费配额耗尽；planning 语义问题本身既未被证实也未被证伪，仍待配额恢复后的新 lineage。
+TRANSPORT_ROOT_CAUSE_IDENTIFIED。R1 的 INCONCLUSIVE 维持，但原因从未知 provider 失败收敛；planning 语义问题本身既未被证实也未被证伪，仍待新 lineage。
 本轮零生产改动，临时取证脚本已删，证据 JSON 留在 build 目录（git 忽略），只提交本 addendum。
+
+# 10. DIRECT 探针更新（同日 09:14 UTC，单发）
+
+同 eval key、同 R1 请求构造，唯一变量为显式禁用环境代理直连远端：200，延迟约 3.9 秒，mimo 真实回包（附带 planning 形 JSON，仅作形状参考，非 benchmark 证据，不计门控）。
+而 11 分钟前的同 key 代理请求（Probe B）为 429。本机 8 个代理变量全 SET，runner 的 urllib 默认走环境代理。
+R1 根因更新为 transport proxy/egress contamination：270 次请求经由出口代理路径拿到 429，与配额、pacing、UA、请求体无关。429 体由代理自产还是经其转发无法从此处区分，但 differentiator 已证实（DIRECT 通、代理不通，11 分钟内）。
+R2 设计（只设计不跑）：复用全部冻结项（prompt f8a9cac7、schema、reason codes、case set、映射、门控），transport 改为显式 DIRECT 空代理 opener，
+保留 error body、Retry-After、限流头、request ID 持久化要求；新 lineage、新目录、新 manifest；先小批量固定间隔预检拿 200 再议 270，间隔届时按证据冻结。
