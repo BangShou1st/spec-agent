@@ -3,6 +3,7 @@
 ## 0. Provenance
 
 - Created: 2026-09-06
+- Correction pass: 2026-09-06 (implementation-front gate/evidence correction, see SEMANTIC_PLANNING_R4_ARCHITECTURE_REVIEW_RESOLUTION.md)
 - Parent lineage: R3 SEMANTIC_PLANNING_DIAGNOSTIC_R3 (fdd9442)
 - R4 is a NEW legal lineage
 - Architecture: see SEMANTIC_PLANNING_R4_ARCHITECTURE.md
@@ -65,72 +66,85 @@ user_agent: opencode/1.18.21
 Changed from R3: temperature explicitly set to 0 (R3 used provider default).
 See SEMANTIC_PLANNING_R4_SAMPLING_FREEZE.md for probe evidence.
 
-## 4. Schema Preflight
+## 4. Error Taxonomy (C1 / C2 / C3)
 
-### Requirements
+Every model rep falls into exactly one class, assigned in order:
 
-Before the 270-case diagnostic, R4 MUST pass schema preflight:
+- C1 raw contract violation: unparsable JSON, wrong envelope shape, unknown
+enum value, unresolving evidence ref, duplicate reason codes. The validator
+rejects BEFORE any semantic reading. Outcome: CONTRACT_VIOLATION_C1.
+- C2 deterministic cross-check violation: schema-valid output contradicting
+machine-verifiable facts (Architecture Section 11, checks 1-8): goalType
+mismatch vs the G1-G5 reference, u/d or u/e or u/n co-activation, e=true
+without a bound capabilityId, riskLevel mismatch vs the descriptor,
+REQUIRED_NOW missing with e=true, uncited CONFIRMED authorization, d=true
+without a cited confirmed claim. Outcome: CONTRACT_VIOLATION_C2.
+- C3 derived semantic outcome: C1/C2-clean output passed through
+planning-mapping.v2 to REQUEST / INVOKE / RESPOND / CREATE / NO_WINNER.
+Only C3 reps enter semantic-accuracy denominators.
 
-1. **Transport preflight**: 5/5 HTTP 200 + JSON parse + strict planning-state.v2
-   schema validation (same as R3 transport preflight)
+Counting rules (hard):
+- A C1 or C2 rep NEVER counts as a semantic pass, even if a "would-be"
+mapping looks right. Validator interception is a harness rejection, not
+evidence the model "meant well".
+- Semantic gates (G4-G7, G12) score C3 reps only; their denominators are
+C3 reps (stated per gate).
+- Quality gates (G8-G10) score C1/C2 rates over all 270 formal reps.
+- Stability (G11) uses identities with 3 C1/C2-clean reps (definition below).
 
-2. **Schema preflight**: 5 synthetic non-benchmark inputs exercise the
-   planning-state.v2 schema with the new prompt:
-   - Input 1: empty snapshot, no claims, no capabilities
-   - Input 2: one unresolved claim, high-risk capability available
-   - Input 3: confirmed claims, no blockers, no capabilities
-   - Input 4: args grounded, auth confirmed, must execute now
-   - Input 5: new durable knowledge present
+## 5. Preflight (gates G1-G3; must pass before the formal 270)
 
-   Each must produce a valid planning-state.v2 JSON that passes strict
-   schema validation, including:
-   - Correct version field
-   - Valid goalType enum
-   - Valid gapType when u=true
-   - Valid capabilityAssessment when e=true
-   - All reason codes in allowed sets
-   - All evidence refs in allowed prefixes
-   - Mutual exclusion invariants (u/d, u/e)
+### G1: transport preflight — 5/5 required
 
-3. **Calibration preflight**: 6 targeted calibration cases (see Section 5)
-   with known expected behavior. Must achieve >= 5/6 correct mapping.
+Same shape as R3: 5 synthetic non-benchmark requests, each must return
+HTTP 200 + parseable JSON + planning-state.v2 schema-valid output.
+Fail -> ABORT (main phase never starts).
 
-### Preflight Abort Conditions
+### G2: schema preflight — 5/5 required
 
-- Transport preflight < 5/5: abort, do not proceed
-- Schema preflight < 5/5: abort, fix prompt or schema
-- Calibration preflight < 5/6: abort, investigate semantic definition
+5 synthetic non-benchmark inputs exercising the v2 envelope corners:
+- S1: empty snapshot, no claims, no capabilities (goalType path G1).
+- S2: one unresolved claim + high-risk capability, ADVISOR (path G2).
+- S3: confirmed claims, no blockers, no capabilities (path G4).
+- S4: capabilityResults with an approval record + grounding confirmed
+claims + no unresolved items (path G3; exercises capabilityAssessment).
+- S5: genuinely novel durable fact with u=e=d=false (exercises n=true).
 
-## 5. Calibration Set
+Each must validate C1/C2-clean (correct goalType, consistent assessment).
+Fail -> ABORT (fix prompt or schema; do not proceed).
 
-The calibration set is used for preflight validation. It is NOT part of
-the formal 270-case diagnostic. Calibration cases must NOT leak benchmark
-identities.
+### G3: calibration preflight — 8 cases x 3 reps = 24 calls
 
-### Calibration Cases
+Per-case pass: >= 2/3 reps produce the expected C3 mapping (C1/C2 reps
+count as failures of the case). Gate pass: >= 7/8 cases pass.
+Fail -> ABORT (investigate semantic definition; do not proceed).
 
-| ID | Description | Expected Flag Pattern | Expected Mapping |
-|----|------------|----------------------|-----------------|
-| CAL-1 | Answer submitted, zero claims, no capabilities | u=true, e=false, d=false, n=false | REQUEST |
-| CAL-2 | Unresolved claim, high-risk capability, no args | u=true, e=false, d=false, n=false | REQUEST |
-| CAL-3 | Confirmed claims, no blockers, no caps needed | u=false, e=false, d=true, n=false | RESPOND |
-| CAL-4 | Args grounded, auth confirmed, must execute now | u=false, e=true, d=false, n=false | INVOKE |
-| CAL-5 | New genuinely novel durable fact | u=false, e=false, d=false, n=true | CREATE |
-| CAL-6 | Unresolved conflict, no grounded answer | u=true, e=false, d=false, n=false | REQUEST |
+## 6. Calibration Set (final, 8 cases)
 
-### Calibration Case Construction
+Synthetic snapshots only. No benchmark identities, texts, or UUIDs leak.
+Authorization records live in snapshot.capabilityResults[] (provenance /
+content approval entries) and grounding content in confirmed claims:
+real wire positions, no observation: usage anywhere.
 
-Each calibration case is a synthetic snapshot with:
-- A deterministic snapshotId (not from benchmark)
-- Controlled claim states (status, confidence, text)
-- Controlled capability availability
-- Controlled authorization records
-- Clear expected flag pattern based on R4 definitions
+| ID | Shape | Reference goalType | Expected C3 mapping |
+|----|-------|-------------------|---------------------|
+| CAL-U1 (E10-like) | empty claims, no caps | UNDERSTAND (G1) | REQUEST (u=true) |
+| CAL-U2 (E17-like) | unresolved claim + irreversible cap, no args/auth, ADVISOR | RESOLVE (G2) | REQUEST (u=true, e=false) |
+| CAL-U3 (conflict-like) | two conflicting unresolved claims | RESOLVE (G2) | REQUEST (u=true) |
+| CAL-E1 (external high) | confirmed arg-grounding claims + approval record in capabilityResults + irreversible cap + must-execute-now | GATHER (G3) | INVOKE (e=true, full assessment) |
+| CAL-E2 (external read-only) | READ_ONLY cap, no args/auth needed, asking cannot help, read REQUIRED_NOW | RESOLVE or UNDERSTAND | INVOKE (e=true, READ_ONLY row) |
+| CAL-D1 (direct-positive) | confirmed claims, U empty, R empty | PRODUCE (G4) | RESPOND (d=true) |
+| CAL-N1 (durable-positive) | genuinely novel fact, u=e=d=false | UNDERSTAND or PRODUCE | CREATE (n=true alone) |
+| CAL-N2 (rephrase-negative) | patch restating existing claim only | per rules | n=false (gate on the flag, any C3 mapping accepted except CREATE) |
 
-Calibration cases are NOT benchmark replays. They are constructed to
-exercise specific semantic definition boundaries.
+Gate sourcing (explicit, no blurring):
+- G6 external-positive is scored on CAL-E1 (>= 2/3) AND CAL-E2 (>= 2/3).
+- G7 direct-positive is scored on CAL-D1 (>= 2/3).
+- G4/G5 (E10-like, E17-like) are scored on the FORMAL run identities below,
+NOT on calibration: calibration proves the definitions CAN fire; the formal
+run proves they fire on real frozen inputs.
 
-## 6. Formal Run Design
+## 7. Formal Run Design
 
 ### Run Parameters
 
@@ -143,175 +157,206 @@ pacing: 10 seconds between cases
 circuit_breaker: 3 consecutive PROVIDER_FAILURE
 ```
 
-### Harness
+### Harness (to be implemented; this doc specifies behavior)
 
-The R4 harness is a new script (tools/semantic_planning_diagnostic_r4.py)
-that:
-1. Loads oracle-v2.json (corrected benchmark)
-2. Loads replay.jsonl (same case set as R3)
-3. Uses the R4 system prompt (planning-state.v2)
-4. Validates against planning-state.v2 schema
-5. Uses planning-mapping.v2 for outcome derivation
-6. Applies R4 gates
-7. Records full provenance in manifest
+tools/semantic_planning_diagnostic_r4.py MUST:
+1. Load oracle-v2.json (corrected benchmark).
+2. Load replay.jsonl (same case set as R3).
+3. Use the R4 system prompt (planning-state.v2).
+4. Validate C1 (schema) then C2 (cross-checks incl. G1-G5 reference goalType,
+descriptor risk projection, citation resolution) per rep.
+5. Derive C3 outcomes via planning-mapping.v2.
+6. Score gates G4/G5/G8-G12 on formal reps; G6/G7 on calibration reps.
+7. Record full provenance (prompt hash, sampling profile, oracle digest,
+reference-derivation version) in manifest.
 
 ### What Changes vs R3 Harness
 
 | Component | R3 | R4 |
 |-----------|----|----|
-| Schema | planning-state.v1 (4 flat flags) | planning-state.v2 (goalType + 4 flags + capabilityAssessment) |
+| Schema | planning-state.v1 (4 flat flags) | planning-state.v2 (goalType + gapType + capabilityAssessment + 4 flags) |
 | Prompt | R1 baseline + envelope clarification | Full R4 semantic redesign |
 | Oracle | oracle.json | oracle-v2.json (E17 corrected) |
-| Mapping | planning-mapping.v1 | planning-mapping.v2 |
+| Mapping | planning-mapping.v1 (+AMBIGUOUS) | planning-mapping.v2 (no AMBIGUOUS; CONTRACT_VIOLATION first) |
 | Sampling | provider default | temperature=0, top_p=1 |
-| Validation | validate_planning_state | validate_planning_state_v2 |
-| Evidence prefixes | 7 | 9 |
+| Validation | prefix-only evidence check | C1 schema + C2 cross-checks against actual input |
+| Evidence prefixes | 7 | 8 (+event:, observation: excluded) |
 
 ### What Does NOT Change
 
-- Same endpoint, model, UA, transport
-- Same case set (90 unique, 270 reps)
-- Same replay.jsonl
-- Same arms (B+, C)
-- Same transport preflight logic
-- Same circuit breaker logic
-- Same pacing
-- Same max_tokens (800)
-- Same response_format (json_object)
+Same endpoint, model, UA, transport, case set (90/270), replay.jsonl, arms
+(B+, C), circuit breaker, pacing, max_tokens (800), response_format.
 
-## 7. Gates
+## 8. Gates (final, G1-G12)
 
-### R4 Gate Definitions
+Verdict = PASS iff ALL gates pass. Any failure -> DIAGNOSTIC_REJECTED.
+No partial pass. Preflight gates (G1-G3) abort the run when failed;
+formal gates (G4-G12) score a completed run.
 
-| Gate | Description | Threshold |
-|------|-------------|-----------|
-| G1: schema_preflight | Transport + schema preflight | 5/5 |
-| G2: calibration_preflight | Calibration cases correct | >= 5/6 |
-| G3: e10_correction | E10-like cases: d=false when claims empty | 100% (0 FP) |
-| G4: e17_correction | E17-like: u=true when intent unclear | >= 2/3 per identity |
-| G5: external_positive | External-positive: e=true when conditions met | >= 2/3 |
-| G6: direct_positive | Direct-positive: d=true when grounded claims exist | >= 2/3 |
-| G7: ineligible_winner | No outcome on ineligible family | 0 |
-| G8: schema_failure | No schema validation failures in 270 reps | 0 |
-| G9: stability | Flag-level flip rate | <= 20% per flag (improved from R3) |
-| G10: mutual_exclusion | u/d mutual exclusion violations | 0 |
-| G11: critical_regression | Critical case regressions vs R3 oracle-v2 | 0 |
+| Gate | Data source | Definition | Threshold |
+|------|-------------|-----------|-----------|
+| G1 transport | 5 synth | HTTP 200 + parse + v2-valid | 5/5 (abort) |
+| G2 schema | 5 synth (S1-S5) | C1/C2-clean incl. reference goalType | 5/5 (abort) |
+| G3 calibration | 24 calls (8x3) | per-case >= 2/3 expected C3 | >= 7/8 cases (abort) |
+| G4 E10-silence | formal, 12 E10 identities x3 = 36 C3+C1+C2 reps | reps with d=true | 0 |
+| G5 E17-request | formal, 12 E17 identities x3 | identities with majority C3 == REQUEST | >= 10/12 |
+| G6 external-positive | calibration CAL-E1, CAL-E2 | reps mapping INVOKE with full assessment | >= 2/3 each |
+| G7 direct-positive | calibration CAL-D1 | reps mapping RESPOND with d=true | >= 2/3 |
+| G8 ineligible-winner | formal 270 | outcome on non-eligible family | 0 |
+| G9 raw violation C1 | formal 270 | C1 reps | 0 |
+| G10 cross-check C2 | formal 270 | C2 reps / 270 | <= 5% |
+| G11 stability | formal valid identities | per-flag flip (formula below) | <= 20% per flag |
+| G12 critical regression | formal, frozen 28 identities (Sec. 13) | identities with majority C3 outside oracle-v2 | 0 |
 
-### Gate Rationale
+Gate notes:
+- G4 denominators: ALL 36 reps (C1/C2 reps cannot show d=true, so they
+trivially satisfy silence; the gate counts d=true events, no denominator
+gaming possible).
+- G5 majority computed over C3 reps; identities with < 2 C3 reps count as
+failed identities. NO_WINNER majorities count as failed (not as abstention).
+- G10 5% tolerance is a harness-strictness monitor (new C2 machinery needs
+slack on first firing), NOT semantic credit: C2 reps stay excluded from
+G4/G5/G12 scoring either way.
+- G11 formula: per flag f, flip_f = 1 - (N_same_f / N_valid), where N_valid
+= identities with 3 C1/C2-clean reps, N_same_f = among them with identical
+f value across all 3 reps. Computed separately for u, e, d, n. Derived-
+outcome stability (identical C3 mapping across 3 clean reps) reported
+separately as informational only, not gated.
+- G12 members and exclusions are frozen in Section 13. Majority rule: >= 2/3
+identical C3 outcomes, else no-majority = regressed (failed).
+- E22 identities are excluded from every formal gate (WAIT unmappable).
+- G6/G7 NEVER draw on formal reps; G4/G5/G12 NEVER draw on calibration.
+Cross-sourcing in either direction is forbidden: a total score cannot mask
+an independent gate (each gate passes/fails on its own threshold).
 
-- **G1, G2**: Preflight gates ensure the system works before committing
-  to270 reps
-- **G3**: Directly addresses E10 failure. d=true with empty claims is the
-  primary failure R4 must fix.
-- **G4**: Directly addresses E17 failure (after oracle correction).
-  u=true when intent is unclear is the expected behavior.
-- **G5**: Verifies that e=true can actually fire when conditions are met
-  (R3 had e=0/270). Uses calibration-style external-positive cases.
-- **G6**: Verifies d=true can fire when grounded content exists (regression
-  protection for direct-positive cases).
-- **G7, G8**: Same quality gates as R3.
-- **G9**: Stability gate with tighter threshold. R3 had d flip rate 38.89%,
-  n flip rate 32.22%. R4 target: <=20% with temperature=0.
-- **G10**: New gate enforcing u/d mutual exclusion invariant.
-- **G11**: No critical regressions on cases that were correct under oracle-v2.
+## 9. Abort Conditions (fixed numbering)
 
-### Scoring
+1. G1 < 5/5 -> abort before schema preflight.
+2. G2 < 5/5 -> abort before calibration.
+3. G3 < 7/8 cases (or any case with a C1 structural failure) -> abort before
+the formal 270.
+4. 3 consecutive PROVIDER_FAILURE at any phase -> abort run (INCONCLUSIVE,
+not REJECTED; provider fault, not semantic fault).
 
-Verdict = PASS if ALL gates satisfied.
-Verdict = DIAGNOSTIC_REJECTED if any gate fails.
+(The previous draft's "Schema preflight fails (G2 < 5/6)" mixed the schema
+gate with the calibration threshold; the numbering above replaces it.)
 
-There is no "partial pass". All gates must be satisfied.
+## 10. Reporting Discipline
 
-## 8. Abort Conditions
+Each R4 run produces manifest.json, preflight.jsonl (G1+G2+S-cases),
+calibration.jsonl (24 reps, G3/G6/G7 evidence), results.jsonl (270 reps with
+per-rep class C1/C2/C3 + reference goalType + mapping trace), summary.json
+(gate table with per-gate source, numerator, denominator, threshold).
 
-The diagnostic run aborts if:
-1. Transport preflight fails (G1)
-2.3 consecutive PROVIDER_FAILURE (circuit breaker)
-3. Schema preflight fails (G2 < 5/6)
+Reported: per-flag accuracy/precision/recall/F1 over C3 reps; per-flag flip
+rates + N_valid; C1 count, C2 count with per-check breakdown (checks 1-8);
+G4 d=true event list; G5 per-identity majorities; G6/G7 per-case tallies;
+G12 per-identity majorities vs oracle-v2; derived-outcome stability
+(informational). Never reported as semantic evidence: free-form reasoning,
+chain-of-thought, confidence scores, benchmark-label leakage probes.
 
-## 9. Reporting Discipline
+## 11. Implementation Prerequisites
 
-### Required Reports
+1. [x] E17 oracle correction registered (benchmark lineage doc).
+2. [x] Sampling profile frozen (sampling freeze doc).
+3. [x] R4 architecture corrected (Architecture doc, correction pass).
+4. [x] Critical-regression set frozen (this doc, Section 13).
+5. [ ] planning-state.v2 schema + C1 validation implemented.
+6. [ ] C2 cross-checks implemented (reference goalType G1-G5, descriptor
+risk projection, citation resolution per canonical ref forms).
+7. [ ] R4 system prompt written per Section 12 requirements.
+8. [ ] planning-mapping.v2 implemented (CONTRACT_VIOLATION first, no
+AMBIGUOUS, residual order u>e>d>n).
+9. [ ] Calibration cases constructed (8 synth cases incl. CAL-E1 approval
+record inside capabilityResults).
+10. [ ] R4 harness written (preflight + calibration + formal + gate table).
+11. [ ] G1+G2+G3 green.
 
-Each R4 diagnostic run produces:
-1. manifest.json — full provenance, all parameters frozen
-2. preflight.jsonl — transport + schema preflight results
-3. results.jsonl — 270 reps with full flag/reason/evidence data
-4. summary.json — gate scores, verdict, flag accuracy
-
-### What Gets Reported
-
-- Per-flag accuracy, precision, recall, F1
-- Per-flag flip rate (stability)
-- Per-case outcome distribution
-- E10-like d FP rate (must be 0)
-- E17-like u TP rate (must be >= 2/3 per identity)
-- External-positive e TP rate
-- Mutual exclusion violation count
-- Schema failure count
-- Ineligible winner count
-
-### What Does NOT Get Reported
-
-- Free-form model reasoning (not in output)
-- Chain-of-thought analysis
-- Benchmark label leakage detection
-- Model confidence scores
-
-## 10. Implementation Prerequisites
-
-Before R4 implementation can begin, the following must be completed:
-
-1. [x] E17 oracle correction registered (Phase A)
-2. [x] Sampling profile frozen (Phase B)
-3. [x] R4 architecture designed (Phase C)
-4. [ ] planning-state.v2 schema implemented (contracts/planning_v2.py)
-5. [ ] R4 system prompt written
-6. [ ] R4 reason vocabulary finalized
-7. [ ] R4 evidence vocabulary finalized (add observation:, event:)
-8. [ ] planning-mapping.v2 implemented
-9. [ ] Calibration cases constructed (6 cases)
-10. [ ] R4 diagnostic harness written (tools/semantic_planning_diagnostic_r4.py)
-11. [ ] Schema preflight passed
-12. [ ] Calibration preflight passed
-
-Items 4-12 are implementation tasks. This design document covers
-items 1-3 and specifies the requirements for items 4-12.
-
-## 11. R4 Prompt Design Requirements
+## 12. R4 Prompt Design Requirements
 
 The R4 system prompt MUST:
+1. State goalType rules G1-G5 verbatim (observables only, no flag language).
+2. Define each flag per the Architecture doc (R4 definitions, not R3).
+3. State invariants u+d, u+e, u+n mutual exclusion and the e/d+n residual
+order as mapping facts.
+4. Specify capabilityAssessment with capabilityId binding, the descriptor
+risk table, citation rules for CONFIRMED/GROUNDED, and REQUIRED_NOW gating.
+5. State ANSWER_SUBMITTED != ANSWER_UNDERSTOOD != GOAL_SATISFIED.
+6. State existing snapshot content is NOT new (n gate).
+7. List the 8 evidence prefixes with canonical ref forms; forbid
+observation: and free text.
+8. Include a planning-state.v2 JSON example with STRUCTURE ONLY disclaimer.
+9. Never reference benchmark labels, expected actions, or scenario specifics.
+10. Use bounded enums only; no free-text reasoning fields.
 
-1. Define goalType inference rules (Section 5 of Architecture doc)
-2. Define each flag with the R4 definitions (not R3 definitions)
-3. Include the mutual exclusion invariants as explicit constraints
-4. Include capabilityAssessment schema when e=true
-5. Include the "answer submitted != understood != goal satisfied" invariant
-6. Include the "existing content is NOT new" rule for n
-7. Specify the new evidence vocabulary (9 prefixes)
-8. Include a planning-state.v2 JSON example with STRUCTURE ONLY disclaimer
-9. NOT reference benchmark labels, expected actions, or scenario specifics
-10. Use bounded enums only, no free-text reasoning fields
+Self-contained: prompt + input suffices for valid v2 output.
 
-The prompt must be self-contained: a model reading only the prompt and
-the input must be able to produce a valid planning-state.v2 response.
+## 13. Frozen Critical-Regression Set (28 identities)
 
-## 12. Lineage Separation
+Rule (mechanical, computed 2026-09-06 from R3 frozen results.jsonl +
+oracle-v2.json; script tools/probes/compute_regression_set.py): member iff
+the identity's R3 majority (>= 2/3 identical derived outcomes) belongs to
+its oracle-v2 expected set. 32 identities satisfy the rule; 4 E07-resolved
+members are EXCLUDED below for documented structural cause. The remaining
+28 are frozen: R4 G12 fails iff any listed identity yields a C3 majority
+outside its oracle-v2 expected set (fewer than 2 C3 reps, or no-majority,
+counts as regressed).
 
-R4 is explicitly separated from R3:
+Included (28):
+- B+ E01/base r0; B+ E01/paraphrase r2; B+ E01/shuffled r1.
+- B+ E07/unresolved r0, r1, r2; B+ E07/unresolved-paraphrase r0, r1, r2.
+- B+ E17/unconfirmed r0, r1; B+ E17/unconfirmed-decoy r1.
+- B+ E19/large r1; B+ E25/stale-relation-set r2.
+- C E01/base r0; C E01/paraphrase r2; C E01/shuffled r1.
+- C E07/unresolved r0, r1, r2; C E07/unresolved-paraphrase r0, r1, r2.
+- C E17/unconfirmed r0, r1; C E17/unconfirmed-decoy r1.
+- C E19/large r1; C E25/stale-relation-set r2.
+(All oracle-v2 expected REQUEST_USER_INPUT; R3 majorities REQUEST_USER_INPUT.)
+
+Excluded with cause (4, NOT gated; tracked informationally):
+- B+ E07-resolved/resolved r2; C E07-resolved/resolved r1, r2;
+C E07-resolved/resolved-paraphrase r0.
+Cause: multi-label expected set (RESPOND/WAIT/REQUEST) + WAIT unmappable =
+known structural limitation. R4 changes no mapping machinery for WAIT, so
+gating these would score mapping luck, not semantic quality. Revisit only
+when runDisposition/completionState lands.
+
+Also excluded by rule (never members): all E10 identities (R3 majority
+outside oracle-v2: the defect R4 must fix, gated by G4 instead), all E22
+identities (WAIT unmappable), and every identity whose R3 majority was
+missing, AMBIGUOUS, NO_WINNER, CREATE, or off-family.
+
+## 14. Lineage Separation
 
 | Aspect | R3 | R4 |
 |--------|----|----|
-| Experiment name | SEMANTIC_PLANNING_DIAGNOSTIC_R3 | SEMANTIC_PLANNING_DIAGNOSTIC_R4 |
+| Experiment | SEMANTIC_PLANNING_DIAGNOSTIC_R3 | SEMANTIC_PLANNING_DIAGNOSTIC_R4 |
 | Schema | planning-state.v1 | planning-state.v2 |
 | Prompt hash | d76a7628 | new hash (TBD at implementation) |
 | Oracle | oracle.json | oracle-v2.json |
-| Reason vocab | R3 codes | R4 codes (expanded) |
-| Evidence vocab | 7 prefixes | 9 prefixes |
+| Reason vocab | R3 codes | R4 codes (Architecture Sections 6-9) |
+| Evidence vocab | 7 prefixes | 8 prefixes (+event:) |
 | Mapping | planning-mapping.v1 | planning-mapping.v2 |
-| Sampling | default | temperature=0 |
+| Sampling | provider default | temperature=0, top_p=1 |
 | Verdict | DIAGNOSTIC_REJECTED | TBD |
 
-R3 verdict is NOT changed. R3 artifacts are NOT modified.
-R4 starts from a clean slate with corrected oracle and redesigned semantics.
+R3 verdict unchanged. R3 artifacts unmodified.
 
+## 15. Correction log (this pass)
+
+1. Calibration 6x1 calls -> 8 cases x 3 reps (24 calls), per-case >= 2/3,
+gate >= 7/8 (G3).
+2. E10-like / E17-like / external-positive / direct-positive made
+independent gates (G4-G7) with explicit non-masking rule; G6/G7 sourced
+from calibration, G4/G5 from formal identities, cross-sourcing forbidden.
+3. Critical regression frozen as an explicit 28-identity list with mechanical
+membership rule, 4 structural exclusions with cause, and no-majority =
+regressed.
+4. Flip-rate formula fixed: per-flag 1 - N_same/N_valid over 3-clean-rep
+identities; derived-outcome stability informational only.
+5. C1/C2/C3 taxonomy added: validator interception can never count as a
+semantic pass; C2 rate gated separately (<= 5%) as harness-strictness
+monitor.
+6. Abort-condition numbering fixed (G1/G2/G3 + circuit breaker).
+7. Prompt requirements updated to corrected architecture (G1-G5 verbatim,
+capabilityId, citation rules, 8 prefixes).

@@ -3,6 +3,7 @@
 ## 0. Provenance
 
 - Created: 2026-09-06
+- Correction pass: 2026-09-06 (implementation-front architecture correction, see SEMANTIC_PLANNING_R4_ARCHITECTURE_REVIEW_RESOLUTION.md)
 - Parent lineage: R3 SEMANTIC_PLANNING_DIAGNOSTIC_R3 (fdd9442)
 - Scope: P0 + P1 + P2 semantic architecture (P3 mapping redesign deferred)
 - Input documents:
@@ -11,6 +12,7 @@
   - docs/v2/SEMANTIC_PLANNING_BENCHMARK_ORACLE_AUDIT.md
   - docs/v2/SEMANTIC_PLANNING_R4_DESIGN_PRECONDITIONS.md
 - Frozen constraints: R3 artifacts unchanged, production unchanged
+- Production contract reference: agent-brain/src/spec_agent_brain/contracts/inputs.py (AgentInputSnapshot, AgentV2RequestEnvelope), protocol.py
 
 ## 1. Problem Statement
 
@@ -40,13 +42,13 @@ A single threshold adjustment cannot fix both simultaneously.
 3. Distinguish capability risk levels in externalStepRequired
 4. Require argument completeness and authorization for irreversible actions
 5. Tighten "new" in newDurableKnowledgePresent to exclude rephrasing
-6. Extend evidence vocabulary to include observation/event
+6. Keep evidence vocabulary production-compatible (event: yes, observation: no)
 7. Enable clean deterministic mapping to action families
 8. Maintain schema-strict, bounded, CoT-free output
 
 ## 3. Non-Goals
 
-- P3 mapping redesign (precedence rules, weights, ranking)
+- P3 mapping redesign (precedence weights, ranking)
 - WAIT runtime architecture (deferred to future iteration)
 - Model behavior modification (we fix definitions, not the model)
 - Production code changes (R4 is diagnostic-only)
@@ -61,17 +63,8 @@ externalStepRequired for risk/args/auth context.
 
 ### Option B: Upgrade to planning-state.v2 with structured sub-objects
 
-Replace flat flags with a structured object:
-```
-{
-  version: "planning-state.v2",
-  goal: { type: enum, statement: ... },
-  userNeed: { value: bool, gapType: enum, ... },
-  externalNeed: { value: bool, risk: enum, args: enum, auth: enum, ... },
-  directResponse: { value: bool, ... },
-  durableKnowledge: { value: bool, ... }
-}
-```
+Replace flat flags with a structured object carrying an explicit goalType,
+gapType, and capabilityAssessment alongside the four booleans.
 
 ### Decision: Option B — planning-state.v2
 
@@ -92,77 +85,94 @@ Rationale:
 - NOT an action selector (mapping is separate)
 - NOT a benchmark label predictor
 
-## 5. Goal Representation
+## 5. Goal Representation (corrected)
 
 ### The Problem
 
 directResponseSufficient's "current step goal" has no referent in the input.
 The model is free to interpret "goal" as whatever it wants, leading to
-E10-style exploitation ("goal = confirm receipt → d=true").
+E10-style exploitation ("goal = confirm receipt -> d=true").
 
-### Option A: Runtime explicit goal (goalStatement field)
+### Why the first draft was circular
 
-Runtime adds a goalStatement string to the snapshot.
+The first R4 draft defined goalType values EXECUTE_AUTHORIZED_ACTION
+("external action is necessary AND args grounded AND auth confirmed") and
+CAPTURE_DURABLE_KNOWLEDGE ("new durable knowledge exists"). Both derive the
+goal FROM the flag conclusions they are supposed to ground: e depends on the
+goal being EXECUTE_AUTHORIZED_ACTION, whose own rule depends on e's
+preconditions; n depends on the goal being CAPTURE_DURABLE_KNOWLEDGE, whose
+rule depends on n's conclusion. That is a definitional cycle, and calling the
+rules "deterministic" while letting the model pick the enum is
+pseudo-determinism.
 
-Pros: Most explicit, easiest to audit.
-Cons: Requires runtime schema change, increases production surface,
-      free-text goal invites interpretation.
+### Correction principle
 
-### Option B: Semantic goal type (bounded enum)
+goalType is redefined as a bounded planning phase / semantic objective that
+depends ONLY on pre-flag observables: event.kind, claim states present in the
+input, and capabilityResults presence. It never depends on any flag value,
+reason code, capabilityAssessment, or mapping outcome. The flag definitions
+may read goalType, but goalType never reads the flags. Information flows one
+way: input observables -> goalType -> flags -> mapping.
 
-Runtime provides a goalType enum in the snapshot.
-
-Pros: Bounded, auditable, no free text.
-Cons: Requires runtime support, enum may not cover all cases.
-
-### Option C: Prompt-only derived goal
-
-Goal derived from event + lineage + claims in the prompt.
-
-Pros: Zero runtime changes.
-Cons: Highest ambiguity risk — exactly the problem we are solving.
-
-### Decision: Option C with bounded inference rules
-
-We cannot modify the runtime for R4 (diagnostic-only). Therefore:
-
-The R4 prompt MUST include explicit inference rules for goal derivation:
+### goalType enum (final, 5 values)
 
 ```
-Given the event type and snapshot state, derive the current step goal:
-
-- If event.kind = ANSWER_SUBMITTED AND effectiveClaims is empty:
-  goal = UNDERSTAND_USER_INTENT (clarify what the answer means)
-- If event.kind = ANSWER_SUBMITTED AND unresolved claims exist:
-  goal = RESOLVE_USER_CHOICE (resolve the unresolved items)
-- If event.kind = ANSWER_SUBMITTED AND confirmed claims exist
-  AND no unresolved blockers:
-  goal = PRODUCE_DIRECT_RESPONSE (respond with grounded content)
-- If event.kind = ANSWER_SUBMITTED AND confirmed claims exist
-  AND unresolved blockers:
-  goal = RESOLVE_USER_CHOICE (resolve the blockers)
-- If external action is necessary AND args grounded AND auth confirmed:
-  goal = EXECUTE_AUTHORIZED_ACTION
-- If new durable knowledge exists:
-  goal = CAPTURE_DURABLE_KNOWLEDGE
+UNDERSTAND_USER_INTENT   — no usable semantic content yet; must clarify intent
+RESOLVE_USER_CHOICE      — unresolved items exist; must resolve them
+PRODUCE_DIRECT_RESPONSE  — grounded content exists, nothing pending; respond
+GATHER_EXTERNAL_EVIDENCE — prior external results exist; integrate them
+WAIT_FOR_RUNTIME_DEPENDENCY — runtime-owned pending dependency (declared only)
 ```
 
-These rules are deterministic and auditable. The model does not invent
-the goal — it selects from a bounded set based on observable input features.
+Removed from the first draft: EXECUTE_AUTHORIZED_ACTION (circular) and
+CAPTURE_DURABLE_KNOWLEDGE (reverse-causal). External need is expressed by
+e + capabilityAssessment, not by the goal. Durable-knowledge presence is
+expressed by n, not by the goal.
 
-Goal types (enum):
+### Derivation rules (exhaustive, mutually exclusive, order-independent)
+
+Notation: U = unresolved claims in effectiveClaims plus patch claims;
+C = claims with status confirmed and confidence >= 0.5;
+R = snapshot.capabilityResults (prior invocation records).
+
 ```
-UNDERSTAND_USER_INTENT
-RESOLVE_USER_CHOICE
-PRODUCE_DIRECT_RESPONSE
-GATHER_EXTERNAL_EVIDENCE
-EXECUTE_AUTHORIZED_ACTION
-CAPTURE_DURABLE_KNOWLEDGE
-WAIT_FOR_RUNTIME_DEPENDENCY
+G1. IF effectiveClaims is empty AND every patch claim list is empty
+    THEN goalType = UNDERSTAND_USER_INTENT
+G2. ELSE IF U is non-empty
+    THEN goalType = RESOLVE_USER_CHOICE
+G3. ELSE IF R is non-empty
+    THEN goalType = GATHER_EXTERNAL_EVIDENCE
+G4. ELSE IF C is non-empty
+    THEN goalType = PRODUCE_DIRECT_RESPONSE
+G5. Fallback (none of the above: e.g. only assumed or low-confidence
+    claims, no unresolved items, no confirmed content, no prior results)
+    THEN goalType = UNDERSTAND_USER_INTENT
 ```
 
-For R4 P0+P1+P2 scope, WAIT_FOR_RUNTIME_DEPENDENCY is declared but
-not used in mapping (WAIT structural limitation acknowledged).
+Disjointness: G1 covers "no claims at all". G2 covers "U non-empty".
+G3/G4 cover "U empty" split on R/C presence (R non-empty takes G3;
+R empty with C non-empty takes G4). G5 covers the remainder
+(U empty, C empty, R empty, but some assumed/low-conf content exists).
+Every input matches exactly one rule, independent of evaluation order.
+WAIT_FOR_RUNTIME_DEPENDENCY has no derivation rule in R4: the R4 diagnostic
+input carries no runtime pending-dependency signal, so the value is
+declared for schema completeness and future extension only.
+
+The fallback G5 is a fail-safe default, not a benchmark-specific
+precedence: when the input is semantically degenerate, the safe planning
+phase is to clarify intent (ask) rather than to act or to claim completion.
+
+### Who computes goalType
+
+goalType REMAINS a model-output field (the R4 diagnostic cannot change the
+runtime to inject it). Determinism lives in the harness reference function:
+the R4 harness implements G1-G5 exactly as written above over the frozen
+model input and records a reference goalType per case. A model output whose
+goalType differs from the reference is a C2 deterministic cross-check
+violation (see Diagnostic Design, error classes): it is rejected by the
+validator, excluded from semantic scoring, and never counted as a
+semantic pass. The model is therefore scored on reproducing a mechanical
+derivation, not on inventing a goal.
 
 ## 6. userInputRequired — R4 Design
 
@@ -175,9 +185,12 @@ Problem: "correct progress" has no referent. "REQUIRES" is too broad.
 
 ### R4 Definition
 
-userInputRequired (u): true iff the current step goal (derived per Section 5
-rules) cannot be achieved without new information that only the user can
-provide.
+userInputRequired (u): true iff goalType is UNDERSTAND_USER_INTENT or
+RESOLVE_USER_CHOICE, AND the missing information can only be supplied by
+the user (not derivable from context, claims, or read-only evidence).
+
+Because goalType is derived from pre-flag observables (Section 5), this
+definition contains no cycle: u reads goalType, goalType never reads u.
 
 ### Gap Types
 
@@ -185,31 +198,32 @@ The R4 prompt MUST distinguish gap types:
 
 | Gap Type | u value | Rationale |
 |----------|---------|-----------|
-| intent_gap | true | We don't know what the user wants |
+| intent_gap | true | We do not know what the user wants |
 | choice_gap | true | User must choose between options |
-| confirmation_gap | depends | If irreversible + ADVISOR: true. If read-only: false |
-| authorization_gap | true | Irreversible action needs user authorization |
-| execution_argument_gap | depends | If arg can be derived from context: false. If only user has it: true |
-| content_gap | false | We have info but it's insufficient richness — this is d's domain |
+| confirmation_gap | true iff target action is not READ_ONLY (descriptor-owned) and autonomy is ADVISOR; else false | Read-only needs no confirmation |
+| authorization_gap | true | Non-read-only action needs user authorization |
+| argument_gap | true iff the missing argument is user-held (not in claims, results, or context) | Derivable args must not trigger u |
+| content_gap | false | More richness wanted, but response still possible; this is d's domain |
 
 ### Key Rules
 
 1. "answer submitted" != "user input sufficient"
    An answer existing in the snapshot does NOT mean we understand it.
-   If effectiveClaims is empty, u=true (intent_gap).
+   If effectiveClaims is empty (goalType UNDERSTAND_USER_INTENT via G1),
+   u=true (intent_gap).
 
 2. "capability available" != "user input not required"
-   If an irreversible capability is available but args/auth are missing,
-   u=true (authorization_gap or execution_argument_gap).
+   If a non-read-only capability is available but args/auth are missing,
+   u=true (authorization_gap or argument_gap).
 
 3. "confirmed claim exists" does NOT automatically mean u=false
-   If the confirmed claim doesn't address the current goal, u may still
-   be true.
+   If goalType is RESOLVE_USER_CHOICE (unresolved items remain), u stays
+   true regardless of confirmed content elsewhere.
 
 4. u and d relationship:
    - u=true IMPLIES d=false (if we need user info, we cannot respond)
-   - d=true IMPLIES u=false (if we can respond, we don't need user info)
-   - u=false AND d=false is valid (we need external step, not user)
+   - d=true IMPLIES u=false (if we can respond, we do not need user info)
+   - u=false AND d=false is valid (we need an external step, not user)
    - u=false AND d=false AND e=false AND n=false: NO_WINNER (no clear path)
 
 ### Reason Codes
@@ -218,7 +232,7 @@ The R4 prompt MUST distinguish gap types:
 True codes:
   INTENT_GAP        — Cannot determine what user wants
   CHOICE_GAP        — User must choose between options
-  CONFIRMATION_GAP  — Irreversible action needs user confirmation
+  CONFIRMATION_GAP  — Non-read-only action needs user confirmation
   AUTHORIZATION_GAP — Action requires user authorization
   ARGUMENT_GAP      — Required argument can only come from user
 
@@ -229,11 +243,10 @@ False code:
 ### Evidence Requirements
 
 When u=true:
-- evidenceRefs MUST cite the specific gap (eg claim:xxx for unresolved claim,
-  capability:xxx for missing auth)
-- Citing "the answer exists" is NOT valid evidence for u=false if
-  effectiveClaims is empty
-
+- evidenceRefs MUST cite the specific gap (e.g. claim:effective/0 for an
+  unresolved claim, capability:<id> for a missing-auth capability).
+- Citing "the answer exists" is NOT valid evidence for u=false when
+effectiveClaims is empty.
 ## 7. directResponseSufficient — R4 Design (P0 critical)
 
 ### Current Definition (broken)
@@ -245,10 +258,14 @@ Problem: "current step goal" undefined. "completed" = "received" or "understood"
 
 ### R4 Definition
 
-directResponseSufficient (d): true iff the current step goal is
-PRODUCE_DIRECT_RESPONSE AND there exists at least one grounded semantic
-claim (confirmed or grounded, conf >= 0.5) that can serve as the basis
-for a substantive response.
+directResponseSufficient (d): true iff goalType is PRODUCE_DIRECT_RESPONSE
+AND there exists at least one claim with status confirmed and confidence
+>= 0.5 that can serve as the basis for a substantive response.
+
+Because goalType PRODUCE_DIRECT_RESPONSE is derivable only when U is empty
+and C is non-empty (rules G4), d inherits a mechanical precondition and the
+model cannot reach d=true on E10-like inputs without contradicting the
+reference goalType (a C2 violation).
 
 ### The E10 Invariant
 
@@ -257,8 +274,8 @@ ANSWER_SUBMITTED != ANSWER_UNDERSTOOD != GOAL_SATISFIED
 ```
 
 - ANSWER_SUBMITTED: the system received a message (event fact)
-- ANSWER_UNDERSTOOD: the system has confirmed/grounded claims about the
-  answer's meaning (semantic fact)
+- ANSWER_UNDERSTOOD: the system has confirmed claims about the answer's
+  meaning (semantic fact)
 - GOAL_SATISFIED: the current step goal is achieved (planning fact)
 
 d=true requires ANSWER_UNDERSTOOD, not merely ANSWER_SUBMITTED.
@@ -266,25 +283,23 @@ d=true requires ANSWER_UNDERSTOOD, not merely ANSWER_SUBMITTED.
 ### Explicit Rules
 
 d=true REQUIRES ALL of:
-1. Current goal type is PRODUCE_DIRECT_RESPONSE (derived per Section 5)
-2. At least one claim with status in {confirmed, grounded} AND conf >= 0.5
-3. No unresolved blocker claims
+1. goalType is PRODUCE_DIRECT_RESPONSE (reference-derivable per Section 5)
+2. At least one claim with status confirmed AND confidence >= 0.5
+3. No unresolved claims
 4. u=false (mutual exclusion: if user input needed, cannot respond)
 
 d=false if ANY of:
 1. effectiveClaims is empty (nothing to base response on)
-2. Only claims with status = assumed or conf < 0.5
-3. Unresolved blocker claims exist
-4. Current goal is not PRODUCE_DIRECT_RESPONSE
+2. Only claims with status assumed/unresolved, or confidence < 0.5
+3. Unresolved claims exist
+4. goalType is not PRODUCE_DIRECT_RESPONSE
 
-### GOAL_SATISFIED Usage
+### GOAL_ACHIEVED Usage
 
-GOAL_SATISFIED may ONLY be used when:
-- The current goal is PRODUCE_DIRECT_RESPONSE
-- AND confirmed/grounded claims exist that directly address the goal
-- AND the model can cite specific claim IDs as evidence
-
-Using GOAL_SATISFIED when effectiveClaims is empty is a contract violation.
+The true code GOAL_ACHIEVED (renamed from R3 GOAL_SATISFIED) may ONLY be
+used when goalType is PRODUCE_DIRECT_RESPONSE AND confirmed claims
+directly addressing the goal are cited. Using it when effectiveClaims is
+empty is a contract violation.
 
 ### Mutual Exclusion with u
 
@@ -293,112 +308,147 @@ u=true => d=false  (hard invariant)
 d=true => u=false  (hard invariant)
 ```
 
-This is enforced by definition, not by mapping precedence.
+A model output with u=true AND d=true is a C2 deterministic cross-check
+violation (see Diagnostic Design), not a mapping input.
 
 ### Reason Codes
 
 ```
 True codes:
-  GROUNDED_RESPONSE_AVAILABLE — Confirmed/grounded claims support a response
+  GROUNDED_RESPONSE_AVAILABLE — Confirmed claims support a response
   GOAL_ACHIEVED               — Current goal already accomplished
 
 False codes:
-  NO_GROUNDED_CONTENT         — No confirmed/grounded claims to base response on
+  NO_GROUNDED_CONTENT         — No confirmed claims to base response on
   AWAITING_USER_INPUT         — Cannot respond until user provides info
   AWAITING_EXTERNAL_RESULT    — Cannot respond until external step completes
 ```
 
-Note: GOAL_SATISFIED is renamed to GOAL_ACHIEVED and constrained.
-NOTHING_NEW_TO_ASK is removed (too vague, replaced by GROUNDED_RESPONSE_AVAILABLE).
+Note: R3 GOAL_SATISFIED is renamed to GOAL_ACHIEVED and constrained.
+R3 NOTHING_NEW_TO_ASK is removed (too vague, replaced by
+GROUNDED_RESPONSE_AVAILABLE).
 
-## 8. externalStepRequired — R4 Design (P0)
+## 8. externalStepRequired — R4 Design (P0, corrected)
 
 ### Current Definition (broken)
 
 "true iff the goal REQUIRES executing an external capability or tool step now"
 
-Problem: Doesn't distinguish read-only from irreversible. No arg/auth requirements.
+Problem: does not distinguish read-only from irreversible; no arg/auth
+requirements; no binding to a specific capability.
 
 ### R4 Definition
 
-externalStepRequired (e): true iff the current step goal cannot be achieved
-without executing a specific external capability, AND the execution conditions
-(risk level, argument completeness, authorization) are satisfied.
+externalStepRequired (e): true iff the next step genuinely requires executing
+one specific available capability now, AND that capability's risk, argument,
+authorization, and necessity conditions are all satisfied as defined below.
 
-### Capability Risk Levels
+"Requires now" is literal: PREFERRED or OPTIONAL necessity never yields
+e=true (see necessity rule). The field name keeps its REQUIRED_NOW meaning;
+schema definition, threshold table, and mapping.v2 are aligned on this point.
+
+### capabilityAssessment (bound to one capability)
 
 The R4 planning-state MUST include a capabilityAssessment sub-object when
-e=true:
+e=true, and it MUST name the capability it assesses:
 
-```
-capabilityAssessment: {
-  riskLevel: enum,
-  argumentCompleteness: enum,
-  authorizationStatus: enum,
-  executionNecessity: enum
+```json
+{
+  "capabilityId": "<descriptor id from snapshot.availableCapabilities>",
+  "riskLevel": "READ_ONLY | LOCAL_DURABLE | EXTERNAL_IRREVERSIBLE",
+  "argumentCompleteness": "GROUNDED | PARTIAL | MISSING | NOT_REQUIRED",
+  "authorizationStatus": "CONFIRMED | PENDING | MISSING | NOT_REQUIRED",
+  "executionNecessity": "REQUIRED_NOW | PREFERRED | OPTIONAL"
 }
 ```
 
-Risk levels:
-```
-READ_ONLY          — No side effects (eg resource.extract_text)
-LOCAL_DURABLE      — Local side effects only (eg write to graph)
-EXTERNAL_REVERSIBLE — External but reversible side effects
-EXTERNAL_IRREVERSIBLE — Cannot be undone (eg send email, execute code)
-```
+Rules:
+- capabilityId is REQUIRED when e=true and MUST equal the id of exactly one
+descriptor in snapshot.availableCapabilities. Unknown ids are C2 violations.
+- Every capability: ref inside e's evidenceRefs MUST equal
+capability:<capabilityId>. Citing a different capability anywhere in the
+externalStepRequired block is cross-capability splicing and is a C2 violation.
+- When e=false, capabilityAssessment MUST be null.
 
-Argument completeness:
-```
-GROUNDED       — All required args present and grounded in snapshot
-PARTIAL        — Some args present, others derivable
-MISSING        — Critical args absent
-NOT_REQUIRED   — Capability needs no args
-```
+### riskLevel: deterministic from the Runtime-owned descriptor
 
-Authorization status:
-```
-CONFIRMED      — User has explicitly authorized this action
-PENDING        — Authorization requested but not received
-MISSING        — No authorization record
-NOT_REQUIRED   — Read-only or auto-authorized action
-```
+The model does NOT guess risk. riskLevel is a mechanical projection of the
+descriptor's readOnly / sideEffectClass fields (contracts/inputs.py
+CapabilityDescriptor), via this fixed table:
 
-Execution necessity:
-```
-REQUIRED_NOW   — Goal cannot proceed without this execution
-PREFERRED      — Execution would help but alternatives exist
-OPTIONAL       — Execution is supplementary
-```
+| Descriptor fields | riskLevel |
+|-------------------|-----------|
+| readOnly = true (observed always with sideEffectClass NONE) | READ_ONLY |
+| readOnly = false, sideEffectClass = LOCAL_DURABLE | LOCAL_DURABLE |
+| readOnly = false, sideEffectClass = EXTERNAL_IRREVERSIBLE | EXTERNAL_IRREVERSIBLE |
+| sideEffectClass = EXTERNAL_REVERSIBLE | reserved: defined for forward compatibility, unobserved in the frozen corpus and unreachable there |
 
-### Threshold Rules by Risk Level
+The validator recomputes riskLevel from the named descriptor and rejects
+mismatches as C2 violations. Observed frozen-corpus universe is
+{NONE, LOCAL_DURABLE, EXTERNAL_IRREVERSIBLE}; EXTERNAL_REVERSIBLE is a
+reserved mapping row, not an observed class.
 
-| Risk Level | Min Args | Min Auth | Min Necessity | e possible? |
-|-----------|----------|----------|---------------|-------------|
-| READ_ONLY | any | NOT_REQUIRED | PREFERRED | Yes (low bar) |
-| LOCAL_DURABLE | GROUNDED | CONFIRMED or NOT_REQUIRED | REQUIRED_NOW or PREFERRED | Yes |
-| EXTERNAL_REVERSIBLE | GROUNDED | CONFIRMED | REQUIRED_NOW | Yes |
-| EXTERNAL_IRREVERSIBLE | GROUNDED | CONFIRMED | REQUIRED_NOW | Yes (high bar) |
+### authorizationStatus: runtime/policy evidence only, never inferred
 
-If conditions are not met for the risk level, e=false.
+authorizationStatus CONFIRMED is permitted ONLY when the model cites at least
+one of:
+- (a) a snapshot.capabilityResults entry whose provenance/content records
+  user approval or a completed authorized invocation for capabilityId; or
+- (b) a confirmed claim (confidence >= 0.5) whose text records the user's
+explicit authorization for capabilityId.
+
+The validator checks citation presence and target existence; absent or
+non-resolving citations with CONFIRMED is a C2 violation. Silence is never
+authorization: no record means MISSING (or NOT_REQUIRED for READ_ONLY).
+Corpus fact: on all frozen R3 inputs capabilityResults is empty and no
+authorization-recording confirmed claim exists, so CONFIRMED is unreachable
+there by construction. Calibration case CAL-E1 (synthetic) supplies an
+authorization record to exercise the CONFIRMED path.
+
+### argumentCompleteness: hybrid (deterministic citation check, semantic grounding)
+
+Capability descriptors carry no argument schema, so full mechanical
+validation is impossible in R4 (noted as a future contract change in
+Section 10). Split:
+- Deterministic part (validator-enforced): GROUNDED requires at least one
+cited claim: ref that resolves in the input; MISSING with cited grounding
+refs is a C2 violation.
+- Model-judged part: whether the cited claims actually supply the
+capability's required arguments. The model judges; the harness cannot
+re-derive. This is the one genuinely semantic sub-field of the assessment.
+
+### executionNecessity: model-judged, validator-gated
+
+executionNecessity (REQUIRED_NOW / PREFERRED / OPTIONAL) is the model's
+semantic judgment of "if we do not execute, can the current goal still
+advance?" Validator rule: e=true IMPLIES executionNecessity is REQUIRED_NOW.
+PREFERRED or OPTIONAL with e=true is a C2 violation. READ_ONLY lowers the
+authorization and side-effect bars but never the necessity bar: a merely
+useful read is PREFERRED, hence e=false.
+
+### Threshold table (final; aligned with schema and mapping)
+
+| riskLevel | argumentCompleteness | authorizationStatus | executionNecessity | e |
+|-----------|----------------------|---------------------|--------------------|---|
+| READ_ONLY | GROUNDED or NOT_REQUIRED | NOT_REQUIRED | REQUIRED_NOW | true |
+| READ_ONLY | anything else | anything else | anything else | false |
+| LOCAL_DURABLE | GROUNDED | CONFIRMED, or NOT_REQUIRED only when autonomy mode is not ADVISOR | REQUIRED_NOW | true |
+| LOCAL_DURABLE | anything else | anything else | anything else | false |
+| EXTERNAL_IRREVERSIBLE | GROUNDED | CONFIRMED | REQUIRED_NOW | true |
+| EXTERNAL_IRREVERSIBLE | anything else | anything else | anything else | false |
+
+On the frozen corpus autonomy is always ADVISOR, so the NOT_REQUIRED escape
+for LOCAL_DURABLE never applies there: frozen e=true is reachable ONLY via
+the READ_ONLY + REQUIRED_NOW row. That is an honest, falsifiable prediction
+of this design, not a tuning choice.
 
 ### The "No Safer Path" Rule
 
 e=true ONLY if no safer alternative path exists:
-- If REQUEST_USER_INPUT could resolve the gap, e=false
-- If the goal could be achieved with just the user's input (not requiring
-  external execution), e=false
-- e=true means: user info is complete, args are grounded, auth is confirmed,
-  and ONLY the external execution remains
-
-### Interaction with u
-
-If u=true (user input gap exists), e MUST be false.
-Rationale: if we need user info, the external step is not "required now" —
-the user interaction is required first.
-
-```
-u=true => e=false  (hard invariant)
-```
+- If REQUEST_USER_INPUT could resolve the gap, e=false.
+- u=true IMPLIES e=false (hard invariant; user interaction comes first).
+- e=true means: user info is complete, args are grounded, auth is confirmed
+(or not required for READ_ONLY), and ONLY the external execution remains.
 
 ### Reason Codes
 
@@ -416,11 +466,6 @@ False codes:
   SAFER_PATH_AVAILABLE       — User input or other path should come first
 ```
 
-### capabilityAssessment When e=false
-
-When e=false, capabilityAssessment MAY be omitted or set to null.
-When e=true, capabilityAssessment is REQUIRED.
-
 ## 9. newDurableKnowledgePresent — R4 Design (P1)
 
 ### Current Definition (loose)
@@ -428,49 +473,51 @@ When e=true, capabilityAssessment is REQUIRED.
 "true iff a new, standalone semantic unit worth persisting exists now"
 
 Problem: "new" threshold too low. Model counts rephrasing as new.
+R3: n=true 61 times, ZERO scenarios expected CREATE.
 
 ### R4 Definition
 
 newDurableKnowledgePresent (n): true iff the input contains a semantic unit
-that satisfies ALL of: novelty, durability, independence, and non-redundancy.
+that satisfies ALL of novelty, durability, independence, and non-redundancy
+(see sub-criteria). n is an ORTHOGONAL semantic signal (decision below),
+not a competing primary action candidate.
+
+### Orthogonality decision (option b)
+
+n is declared ORTHOGONAL: it reports "the input happens to carry persistable
+content" independently of which primary need (user / external / direct)
+drives the next step. Consequences, written into contract and mapping alike:
+- Legal co-activations: (e,n) and (d,n) only. (u,n) with u=true means an
+unresolved gap exists, so nothing is settled enough to persist: outputs
+with u=true AND n=true are C2 violations.
+- Mapping disambiguation for the residual legal pairs is explicit and fixed:
+u > e > d > n. This is a documented mapping tie-break for residual pairs,
+not a semantic ranking of importance and not a weight table: it never
+selects between conflicting primary needs, because conflicting primaries
+(u+d, u+e, d+e) are contract violations that never reach mapping.
+- CREATE_NODE is produced ONLY when u=e=d=false AND n=true.
 
 ### Sub-Criteria
 
-**Novelty**: The information is NOT present in the snapshot's existing
-claims, answers, patches, or lineage. Specifically:
-- NOT a rephrasing of an existing claim
-- NOT a reformatting of an existing answer
-- NOT a summary or aggregation of existing content
-- NOT a metadata annotation (timestamps, IDs, status flags)
+Novelty: NOT present in existing claims, answers, patches, or lineage.
+Specifically NOT a rephrasing, reformatting, summary, aggregation, or
+metadata annotation (timestamps, IDs, status flags).
 
-**Durability**: The information has lasting value for future planning/spec:
-- NOT a transient runtime status (eg "processing...")
-- NOT a temporary execution result
-- NOT a planning intermediate step
-- Represents a fact, decision, constraint, or requirement
+Durability: lasting value for future planning/spec. NOT transient runtime
+status, temporary execution result, or planning intermediate. Must be a
+fact, decision, constraint, or requirement.
 
-**Independence**: Can be understood and referenced as a standalone unit:
-- Does not require the current sentence structure to make sense
-- Has a clear semantic identity (what it IS, not just what it modifies)
-- Can be a node in the knowledge graph
+Independence: understandable and referenceable standalone; does not require
+the current sentence structure; has clear semantic identity; could be a
+graph node.
 
-**Non-redundancy**: Does not duplicate existing graph content:
-- After normalization (lowercase, strip whitespace), is distinct from
-  existing nodes
-- Does not contradict existing confirmed claims (if it does, that is
-  a conflict to resolve, not new knowledge to store)
+Non-redundancy: after normalization (lowercase, strip whitespace) distinct
+from existing nodes; contradicting an existing confirmed claim is a conflict
+to resolve, not new knowledge to store.
 
-### The R3 Failure Mode
-
-R3: model produced n=true 61 times, but ZERO scenarios expected CREATE.
-Model interpreted "patch/claim exists in snapshot" as "worth persisting"
-rather than "already persisted / already known".
-
-R4 fix: the prompt MUST explicitly state:
-"Existing content in the snapshot is NOT new. Rephrasing, summarizing,
-or reformatting existing content does NOT count as new durable knowledge.
-n=true requires information that is genuinely absent from the current
-knowledge state."
+R4 prompt MUST state: existing snapshot content is NOT new. Rephrasing,
+summarizing, or reformatting existing content does NOT count. n=true
+requires information genuinely absent from the current knowledge state.
 
 ### Reason Codes
 
@@ -485,56 +532,97 @@ False codes:
   REPHRASING              — Restatement of existing content
 ```
 
-## 10. Evidence Vocabulary — P2
+## 10. Evidence Vocabulary — P2 (corrected)
 
-### Current Prefixes (R3 frozen)
+### R3 frozen prefixes
 
 ```
 node:, answer:, patch:, context:, route:, claim:, capability:
 ```
 
-### Problem
+### The first-draft mistake
 
-Expectation audit Phase F discovered that authorization and argument data
-live in the observation: field, which is NOT in the evidence vocabulary.
-An external-positive probe referencing observation:authorization was judged
-as bad-evidence-ref.
+The first R4 draft added observation: on the strength of the expectation-audit
+probe, which referenced observation:authorization. Verification against the
+facts shows that was a diagnostic-only artifact, not a production-compatible
+prefix:
+- Production wire contract AgentV2RequestEnvelope carries event + snapshot
+only (contracts/inputs.py). AgentInputSnapshot has NO observation field.
+- The diagnostic model_input projection {eligibleFamilies, event,
+observation, snapshot} fills observation from
+DECISION_INPUT.runtime_request.observation, a key ABSENT from every frozen
+source row, so observation is {} on all frozen benchmark inputs.
+- The audit probe that "needed" observation: used a SYNTHETIC input with a
+hand-placed authorization blob, never a frozen benchmark shape.
+- Authorization / argument evidence on REAL inputs lives in:
+snapshot.capabilityResults[] (provenance/content approval records),
+effectiveClaims[] and patch claims (confirmed authorization statements,
+argument-grounding content), snapshot.autonomy (ADVISOR scope),
+snapshot.availableCapabilities[] descriptors (readOnly/sideEffectClass).
 
-### R4 Additions
+### R4 decision
 
-Add:
-```
-observation:  — Current event observation data (auth records, arg details)
-event:        — Trigger event information (kind, metadata)
-```
+- observation: is REMOVED. It is not production-compatible, resolves to
+nothing on frozen inputs, and would let the model cite evidence that can
+never exist in production.
+- event: is KEPT. event (kind, anchorNodeId, freeText, ...) IS a real member
+of the diagnostic model input and of the production envelope, so event refs
+are production-compatible. Form: event:<field>, validated against the actual
+event object.
+- Final R4 prefixes (8): node:, answer:, patch:, context:, route:, claim:,
+capability:, event:.
 
-### Validation Rules
+### Canonical ref forms and validator construction
 
-- observation: refs must point to keys present in the observation object
-  of the model input
-- event: refs must point to keys present in the event object of the model input
-- Both are strictly validated: the ref ID must exist in the actual input
-- Free-text evidence remains forbidden
+Prefix-only checking (R3) is insufficient: frozen allowedSourceRefs contain
+only node:/answer:/patch:/context:/route: members, while claim: and
+capability: refs address effectiveClaims entries and availableCapabilities
+descriptors that are present in the input but absent from allowedSourceRefs.
+The R4 validator MUST build its allowed set from the actual model input
+projection:
 
-### Contract Update
+| Prefix | Canonical form | Resolves against |
+|--------|---------------|------------------|
+| node: | node:<uuid> | lineage node ids |
+| answer: | answer:<uuid> | lineage answer ids |
+| patch: | patch:<uuid> | lineage patch ids |
+| context: | context:<snapshotId> | snapshot.snapshotId |
+| route: | route:<routeId> | snapshot route / routeContext ids |
+| claim: | claim:effective/<i>, claim:patch/<patchId>/<i> | claim entries by index |
+| capability: | capability:<descriptorId> | availableCapabilities ids |
+| event: | event:<field> | keys of the event object |
 
-EVIDENCE_REF_PREFIXES becomes:
-```
-node:, answer:, patch:, context:, route:, claim:, capability:,
-observation:, event:
-```
+Free-text evidence remains forbidden. Any ref not resolving in the actual
+input is a C1 schema rejection.
 
-## 11. planning-state.v2 Schema
+### Bounded diagnostic execution-context projection (design note, no wire change)
+
+R4 diagnostic inputs are exactly the frozen shapes: {eligibleFamilies,
+event, snapshot(+diagnostic observation key, always {} on frozen rows)}.
+No new input field is introduced for R4. Calibration cases (synthetic) carry
+authorization records inside snapshot.capabilityResults[] and grounding
+content inside claims, i.e. inside ALREADY-LEGAL wire positions.
+
+Future production integration would need a contract change to make
+authorization and argument requirements first-class. Bounded options
+(design only, NOT implemented):
+- (i) an AuthorizationRecord list on the snapshot (approver, scope,
+expiry, resolvable ref form auth:); or
+- (ii) an argsSchema on CapabilityDescriptor so argumentCompleteness becomes
+fully mechanically validatable.
+Either option requires a protocol version bump and is out of R4 scope.
+
+## 11. planning-state.v2 Schema (final)
 
 ### Full Schema Shape
 
 ```json
 {
   "version": "planning-state.v2",
-  "goalType": "enum",
+  "goalType": "UNDERSTAND_USER_INTENT | RESOLVE_USER_CHOICE | PRODUCE_DIRECT_RESPONSE | GATHER_EXTERNAL_EVIDENCE | WAIT_FOR_RUNTIME_DEPENDENCY",
   "userInputRequired": {
     "value": true,
-    "gapType": "enum",
+    "gapType": "intent_gap | choice_gap | confirmation_gap | authorization_gap | argument_gap | none",
     "reasonCodes": ["enum"],
     "evidenceRefs": ["ref"]
   },
@@ -557,47 +645,60 @@ observation:, event:
 }
 ```
 
-### capabilityAssessment Shape (required when e=true)
+### capabilityAssessment Shape (REQUIRED when e=true, null when e=false)
 
 ```json
 {
-  "riskLevel": "READ_ONLY | LOCAL_DURABLE | EXTERNAL_REVERSIBLE | EXTERNAL_IRREVERSIBLE",
+  "capabilityId": "<id from snapshot.availableCapabilities>",
+  "riskLevel": "READ_ONLY | LOCAL_DURABLE | EXTERNAL_IRREVERSIBLE",
   "argumentCompleteness": "GROUNDED | PARTIAL | MISSING | NOT_REQUIRED",
   "authorizationStatus": "CONFIRMED | PENDING | MISSING | NOT_REQUIRED",
   "executionNecessity": "REQUIRED_NOW | PREFERRED | OPTIONAL"
 }
 ```
 
-### Hard Invariants
+(EXTERNAL_REVERSIBLE reserved in the risk mapping table, Section 8; it is
+not a schema-accepted riskLevel value until observed in a real descriptor.)
 
-1. u=true => d=false
-2. d=true => u=false
-3. u=true => e=false
-4. e=true => capabilityAssessment != null
-5. e=true AND riskLevel=EXTERNAL_IRREVERSIBLE =>
-   argumentCompleteness=GROUNDED AND authorizationStatus=CONFIRMED
-   AND executionNecessity=REQUIRED_NOW
-6. d=true => at least one confirmed/grounded claim with conf >= 0.5
-   in evidenceRefs
-7. goalType=WAIT_FOR_RUNTIME_DEPENDENCY => all four flags = false
-   (WAIT structural limitation: not mapped, declared only)
+### Deterministic cross-checks (C2; validator-enforced, harness-computed)
 
+1. goalType equals the Section 5 reference derivation on the same input.
+2. u=true IMPLIES d=false; d=true IMPLIES u=false.
+3. u=true IMPLIES e=false. u=true IMPLIES n=false (orthogonality).
+4. e=true IMPLIES capabilityAssessment != null with capabilityId resolving
+to exactly one descriptor; riskLevel equals the Section 8 descriptor
+projection; executionNecessity is REQUIRED_NOW; all capability: refs in
+the e block equal capability:<capabilityId>.
+5. e=true with riskLevel EXTERNAL_IRREVERSIBLE IMPLIES
+argumentCompleteness GROUNDED AND authorizationStatus CONFIRMED (cited).
+6. authorizationStatus CONFIRMED IMPLIES at least one resolving
+capabilityResults or confirmed-claim authorization citation.
+7. d=true IMPLIES goalType PRODUCE_DIRECT_RESPONSE AND at least one
+confirmed (conf >= 0.5) claim cited.
+8. goalType WAIT_FOR_RUNTIME_DEPENDENCY IMPLIES all four flags false
+(declared only; unreachable on R4 inputs).
+
+Violations of 1-8 are C2: validator-rejected, excluded from semantic
+scoring, never counted as semantic passes. See Diagnostic Design for the
+C1/C2/C3 taxonomy and gate accounting.
 ## 12. WAIT Treatment
 
 ### Current Status
 
-E07-resolved and E22 expect WAIT, but planning-mapping.v1 has no WAIT
-channel. This is a known structural limitation.
+E07-resolved and E22 expect WAIT, but the flag-to-family mapping has no WAIT
+channel. This is a known structural limitation (see
+ACTION_ELIGIBILITY_ARCHITECTURE.md).
 
 ### R4 Approach
 
-1. WAIT_FOR_RUNTIME_DEPENDENCY is added as a valid goalType enum value
-2. When goalType=WAIT_FOR_RUNTIME_DEPENDENCY, all four flags MUST be false
-3. The mapping does NOT produce WAIT from the four flags
-4. R4 diagnostic continues to exclude E22 from gate scoring
-5. E07-resolved continues as known structural issue
-6. A future iteration (beyond R4) will add a runDisposition or
-   completionState field to enable WAIT mapping
+1. WAIT_FOR_RUNTIME_DEPENDENCY is a valid goalType enum value with NO
+derivation rule in R4 (no pending-dependency signal exists in R4 inputs).
+2. If ever output, all four flags MUST be false (cross-check 8).
+3. The mapping does NOT produce WAIT from the four flags.
+4. R4 diagnostic continues to exclude E22 identities from all gates.
+5. E07-resolved stays a known structural issue and is excluded from the
+frozen critical-regression set (see Diagnostic Design).
+6. A future iteration (beyond R4) may add runDisposition/completionState.
 
 ### Extension Point
 
@@ -607,7 +708,7 @@ planning-state.v2 reserves the right to add:
 ```
 in a future version. This is NOT implemented in R4.
 
-## 13. Mapping Compatibility
+## 13. Mapping Compatibility (planning-mapping.v2, final)
 
 ### Current Mapping (planning-mapping.v1)
 
@@ -617,46 +718,38 @@ external -> INVOKE_CAPABILITY
 direct   -> RESPOND_TO_USER
 durable  -> CREATE_NODE
 ```
+No WAIT channel; co-activations collapse to PLANNING_AMBIGUOUS.
 
 ### R4 Mapping (planning-mapping.v2)
 
-The mapping logic changes to accommodate planning-state.v2:
-
 ```
-1. If goalType = WAIT_FOR_RUNTIME_DEPENDENCY: NO_WINNER (structural)
-2. If u=true: REQUEST_USER_INPUT
-3. If e=true AND capabilityAssessment.executionNecessity = REQUIRED_NOW:
-   INVOKE_CAPABILITY
-4. If d=true: RESPOND_TO_USER
-5. If n=true AND no other flag is true: CREATE_NODE
-6. If multiple flags true (should not happen with proper design):
-   PLANNING_AMBIGUOUS
-7. If all flags false: NO_WINNER
+0. Contract gate (deterministic, precedes mapping):
+   C1 schema rejection or C2 cross-check violation
+   -> outcome CONTRACT_VIOLATION (excluded from semantic scoring).
+1. If goalType = WAIT_FOR_RUNTIME_DEPENDENCY -> NO_WINNER_structural
+   (excluded from gates; unreachable on R4 inputs).
+2. Elif u=true -> REQUEST_USER_INPUT.
+3. Elif e=true (all Section 8 conditions hold) -> INVOKE_CAPABILITY.
+4. Elif d=true -> RESPOND_TO_USER.
+5. Elif n=true -> CREATE_NODE.
+6. Else -> NO_WINNER.
 ```
 
-### Key Differences from v1
+PLANNING_AMBIGUOUS is REMOVED as a mapping outcome: with u/d, u/e, d+e,
+and u+n pairs classified as C2 violations, the only mapping-reachable
+multi-true pairs are (e,n) and (d,n), both resolved by the fixed residual
+order above. A NO_WINNER on an oracle-REQUEST identity is therefore always
+a semantic miss attributable to u=false, never to a tie-break.
 
-1. WAIT is handled at goal level, not flag level
-2. e=true is gated by executionNecessity, not just the boolean
-3. u and d are mutually exclusive by definition (no more d+n co-activation
-   causing AMBIGUOUS on E10-like inputs)
-4. The mapping does NOT use precedence weights — it relies on the semantic
-   state being well-designed enough that conflicts are rare
+### Explicit statement on ordering
 
-### Conflict Prevention
-
-If the R4 definitions are correct, the following tuple combinations
-should be impossible:
-- u=true AND d=true (mutual exclusion)
-- u=true AND e=true (u blocks e)
-- d=true AND e=true (if we can respond, external not needed)
-- All four true (contradiction)
-
-The only legal multi-true combinations are:
-- e=true AND n=true (external step produces new knowledge)
-- d=true AND n=true (response contains new durable content)
-
-Both are unambiguous for mapping: e > d > n.
+Steps 2-5 are an explicitly documented residual disambiguation order
+u > e > d > n. It is a mapping tie-break for the two legal residual pairs
+(e,n) and (d,n) ONLY. It is not a weight table, not a ranking tuner, and
+never adjudicates between conflicting primary needs, because conflicting
+primaries are contract violations that never reach mapping. The first draft's
+claim of "no precedence" alongside an "e > d > n" remark was self-
+contradictory; this section replaces it.
 
 ## 14. Safety Boundaries
 
@@ -664,253 +757,211 @@ Both are unambiguous for mapping: e > d > n.
 
 ADVISOR means the model does NOT execute actions, only recommends them.
 The planning-state describes semantic need, not execution permission.
-
-Even if e=true with all conditions met, actual execution is gated by:
-- Authorization policy
-- Executor boundary
-- Staleness check
-- Runtime confirmation
+Even e=true with all conditions met does not authorize execution; actual
+execution stays gated by authorization policy, executor boundary, staleness
+check, and runtime confirmation.
 
 ### Irreversible Action Safety
 
-EXTERNAL_IRREVERSIBLE actions require ALL of:
-1. e=true
-2. capabilityAssessment.argumentCompleteness = GROUNDED
-3. capabilityAssessment.authorizationStatus = CONFIRMED
-4. capabilityAssessment.executionNecessity = REQUIRED_NOW
-5. No unresolved blockers
-6. u=false (no pending user interaction)
+EXTERNAL_IRREVERSIBLE assessment requires ALL of: e=true,
+argumentCompleteness GROUNDED, authorizationStatus CONFIRMED (cited),
+executionNecessity REQUIRED_NOW, no unresolved claims, u=false. If ANY
+condition fails, e=false. The model cannot authorize irreversible actions
+through the planning state alone, and silence is never authorization.
 
-If ANY condition fails, e=false. The model cannot authorize irreversible
-actions through the planning state alone.
+### Eligibility / Semantic Need / Authorization / Execution stay layered
+
+```
+Eligibility (runtime-owned) != Semantic need (model-judged e/d/u/n)
+  != Authorization (record-cited CONFIRMED) != Execution (executor-owned)
+```
+
+INVOKE_CAPABILITY eligible != should-invoke-now != authorized != executed.
+R4 respects the layering: the model judges necessity (e) and cites records
+(auth), the validator checks record existence, and nothing in the planning
+state executes anything.
 
 ### Benchmark Isolation
 
-The planning prompt MUST NOT:
-- Reference expected actions or benchmark labels
-- Include scenario-specific wording
-- Hint at "correct" answers
-- Use family names as guidance (families are in eligibleFamilies, not prompt)
+The planning prompt MUST NOT reference expected actions or benchmark labels,
+include scenario-specific wording, hint at "correct" answers, or use family
+names as guidance (families appear only in eligibleFamilies, never in
+the prompt).
 
-## 15. Examples
+## 15. Examples (corrected)
 
 ### Example 1: E10-like (answer submitted, no claims)
 
-Input:
-- event: ANSWER_SUBMITTED
-- effectiveClaims: []
-- patch claims: []
-- capabilities: [resource.extract_text, ...]
-- eligibleFamilies: [REQUEST, RESPOND, INVOKE, CREATE]
+Input: event ANSWER_SUBMITTED; effectiveClaims []; patch claims [];
+capabilities include resource.extract_text; eligible include REQUEST/RESPOND.
 
-R4 output:
+Derivation: G1 -> goalType UNDERSTAND_USER_INTENT. Then u=true (intent_gap),
+e=false (SAFER_PATH_AVAILABLE: asking comes first), d=false
+(NO_GROUNDED_CONTENT), n=false. Mapping step 2 -> REQUEST_USER_INPUT.
+Correct.
+
+### Example 2: E17-like (unresolved claim, high-risk capability, ADVISOR)
+
+Input: event ANSWER_SUBMITTED; one unresolved claim (conf 0.2);
+availableCapabilities include eval.high-risk.external
+(EXTERNAL_IRREVERSIBLE, ADVISOR, no args, no auth record).
+
+Derivation: G2 -> goalType RESOLVE_USER_CHOICE. u=true (intent_gap, cited
+claim:effective/0). e=false: u=true already forces it, and independently
+args MISSING + auth MISSING fail the irreversible row. d=false. n=false.
+Mapping step 2 -> REQUEST_USER_INPUT. Matches corrected oracle.
+
+### Example 3: external-positive CAL-E1 (synthetic calibration, high path)
+
+Input: event ANSWER_SUBMITTED; confirmed claims grounding the required
+arguments; snapshot.capabilityResults contains an approval record for
+cap actuator.external (provenance: user-approved); autonomy ADVISOR;
+no unresolved claims.
+
+R4 output (shape):
 ```json
 {
   "version": "planning-state.v2",
-  "goalType": "UNDERSTAND_USER_INTENT",
+  "goalType": "GATHER_EXTERNAL_EVIDENCE",
   "userInputRequired": {
-    "value": true,
-    "gapType": "intent_gap",
-    "reasonCodes": ["INTENT_GAP"],
-    "evidenceRefs": ["answer:xxx"]
-  },
-  "externalStepRequired": {
-    "value": false,
-    "capabilityAssessment": null,
-    "reasonCodes": ["SAFER_PATH_AVAILABLE"],
-    "evidenceRefs": ["context:xxx"]
-  },
-  "directResponseSufficient": {
-    "value": false,
-    "reasonCodes": ["NO_GROUNDED_CONTENT"],
-    "evidenceRefs": ["answer:xxx"]
-  },
-  "newDurableKnowledgePresent": {
-    "value": false,
-    "reasonCodes": ["NOT_STANDALONE"],
-    "evidenceRefs": ["patch:xxx"]
-  }
-}
-```
-
-Mapping: u=true => REQUEST_USER_INPUT. Correct.
-
-### Example 2: E17-like (unresolved claim, high-risk capability)
-
-Input:
-- event: ANSWER_SUBMITTED
-- effectiveClaims: [unresolved claim conf 0.2]
-- capabilities: [resource.extract_text, eval.high-risk.external]
-- eligibleFamilies: [REQUEST, RESPOND, INVOKE, CREATE]
-
-R4 output:
-```json
-{
-  "version": "planning-state.v2",
-  "goalType": "RESOLVE_USER_CHOICE",
-  "userInputRequired": {
-    "value": true,
-    "gapType": "intent_gap",
-    "reasonCodes": ["INTENT_GAP"],
-    "evidenceRefs": ["claim:xxx"]
-  },
-  "externalStepRequired": {
-    "value": false,
-    "capabilityAssessment": null,
-    "reasonCodes": ["SAFER_PATH_AVAILABLE"],
-    "evidenceRefs": ["capability:xxx"]
-  },
-  "directResponseSufficient": {
-    "value": false,
-    "reasonCodes": ["AWAITING_USER_INPUT"],
-    "evidenceRefs": ["claim:xxx"]
-  },
-  "newDurableKnowledgePresent": {
-    "value": false,
-    "reasonCodes": ["NOT_STANDALONE"],
-    "evidenceRefs": ["claim:xxx"]
-  }
-}
-```
-
-Mapping: u=true => REQUEST_USER_INPUT. Correct (matches corrected oracle).
-
-### Example 3: external-positive (args grounded, auth confirmed)
-
-Input:
-- event: ANSWER_SUBMITTED
-- confirmed claims exist
-- capability with all args grounded, user authorized, must execute now
-- eligibleFamilies: [REQUEST, RESPOND, INVOKE, CREATE]
-
-R4 output:
-```json
-{
-  "version": "planning-state.v2",
-  "goalType": "EXECUTE_AUTHORIZED_ACTION",
-  "userInputRequired": {
-    "value": false,
-    "gapType": null,
+    "value": false, "gapType": "none",
     "reasonCodes": ["USER_INPUT_SUFFICIENT"],
-    "evidenceRefs": ["claim:xxx"]
+    "evidenceRefs": ["claim:effective/0"]
   },
   "externalStepRequired": {
     "value": true,
     "capabilityAssessment": {
+      "capabilityId": "actuator.external",
       "riskLevel": "EXTERNAL_IRREVERSIBLE",
       "argumentCompleteness": "GROUNDED",
       "authorizationStatus": "CONFIRMED",
       "executionNecessity": "REQUIRED_NOW"
     },
     "reasonCodes": ["EXTERNAL_ACTION_REQUIRED"],
-    "evidenceRefs": ["capability:xxx", "observation:authorization"]
+    "evidenceRefs": ["capability:actuator.external", "claim:effective/0", "claim:effective/1"]
   },
   "directResponseSufficient": {
     "value": false,
     "reasonCodes": ["AWAITING_EXTERNAL_RESULT"],
-    "evidenceRefs": ["capability:xxx"]
+    "evidenceRefs": ["capability:actuator.external"]
   },
   "newDurableKnowledgePresent": {
     "value": false,
     "reasonCodes": ["REDUNDANT_WITH_EXISTING"],
-    "evidenceRefs": ["claim:xxx"]
+    "evidenceRefs": ["claim:effective/0"]
   }
 }
 ```
 
-Mapping: e=true, executionNecessity=REQUIRED_NOW => INVOKE_CAPABILITY. Correct.
+Notes: goalType G3 fires on non-empty capabilityResults; the CONFIRMED
+authorization cites the results entry (referenced here via the grounding
+claims that quote it; the raw results entry is addressable by the harness
+for C2 check 6). No observation: refs appear anywhere. Mapping step 3 ->
+INVOKE_CAPABILITY. Correct.
 
 ### Example 4: direct-positive (grounded claims, no blockers)
 
-Input:
-- event: ANSWER_SUBMITTED
-- confirmed claims with conf >= 0.5
-- no unresolved blockers
-- no capability needed
-- eligibleFamilies: [REQUEST, RESPOND, INVOKE, CREATE]
+Input: event ANSWER_SUBMITTED; confirmed claims conf >= 0.5; U empty;
+R empty; no capability needed.
 
-R4 output:
-```json
-{
-  "version": "planning-state.v2",
-  "goalType": "PRODUCE_DIRECT_RESPONSE",
-  "userInputRequired": {
-    "value": false,
-    "gapType": null,
-    "reasonCodes": ["USER_INPUT_SUFFICIENT"],
-    "evidenceRefs": ["claim:xxx"]
-  },
-  "externalStepRequired": {
-    "value": false,
-    "capabilityAssessment": null,
-    "reasonCodes": ["NO_EXTERNAL_NEED"],
-    "evidenceRefs": ["context:xxx"]
-  },
-  "directResponseSufficient": {
-    "value": true,
-    "reasonCodes": ["GROUNDED_RESPONSE_AVAILABLE"],
-    "evidenceRefs": ["claim:xxx"]
-  },
-  "newDurableKnowledgePresent": {
-    "value": false,
-    "reasonCodes": ["REDUNDANT_WITH_EXISTING"],
-    "evidenceRefs": ["claim:xxx"]
-  }
-}
-```
+Derivation: G4 -> goalType PRODUCE_DIRECT_RESPONSE. u=false, e=false
+d=true (GROUNDED_RESPONSE_AVAILABLE, cited claim:effective/0), n=false.
+Mapping step 4 -> RESPOND_TO_USER. Correct.
 
-Mapping: d=true => RESPOND_TO_USER. Correct.
+### Example 5: read-only external need on frozen-like input (low path)
+
+Input: E10-like claims state, but the current goal (RESOLVE_USER_CHOICE)
+cannot advance by asking (user already answered twice identically) and a
+READ_ONLY descriptor resource.extract_text can supply the missing grounding
+with no args and no auth requirement.
+
+Then u=false is reachable ONLY with cited justification that the gap is
+not user-fillable; e=true with capabilityId resource.extract_text,
+riskLevel READ_ONLY, argumentCompleteness NOT_REQUIRED,
+authorizationStatus NOT_REQUIRED, executionNecessity REQUIRED_NOW.
+Mapping step 3 -> INVOKE_CAPABILITY. This is the ONLY e=true shape
+reachable on frozen-corpus-like inputs, and it requires the model to defend
+REQUIRED_NOW against the safer-path rule.
 
 ## 16. Tradeoffs
 
-### Explicit goal vs implicit derivation
+### Prompt-level goal derivation vs runtime injection
 
-We chose prompt-level goal derivation (Option C) because we cannot modify
-the runtime for R4. This introduces some ambiguity, but the bounded
-inference rules (Section 5) make it deterministic for the known scenarios.
-A future runtime integration (Option A or B) would be more robust.
+We keep goalType model-output (Option C) because R4 cannot modify the
+runtime. Pseudo-determinism is avoided by placing determinism in the harness
+reference function plus C2 enforcement, not in prose assertions.
+A future runtime integration (goalType injected by the runtime) would remove
+the C2 goal-mismatch class entirely.
 
 ### Mutual exclusion u/d vs co-activation
 
-We chose hard mutual exclusion (u=true => d=false). This eliminates the
-E10 failure mode where d=true despite zero understanding. The cost is that
-some edge cases where "partial response + ask for more" might be valid
-are now forced to choose one. This is acceptable because:
-- The mapping is single-winner anyway
-- "Partial response" without grounded content is meaningless
-- Product behavior (ADVISOR) doesn't support "respond then ask"
+Hard mutual exclusion stands. Cost: "partial response + ask" has no
+representation. Acceptable: single-winner mapping, content-free partial
+responses are meaningless, ADVISOR does not support "respond then ask".
 
 ### Capability assessment as sub-object vs separate flag
 
-We chose a sub-object on e rather than a separate flag because:
-- Risk/args/auth are only relevant when e=true
-- A separate flag would create more boolean combinations
-- The sub-object is strictly bounded (enums, not free text)
+Sub-object on e stands, now with capabilityId binding. Risk/args/auth are
+meaningless without a named capability; the binding plus the no-splicing
+rule make the assessment auditable per capability.
+
+### n orthogonal vs competing candidate
+
+Orthogonal (option b) chosen: n never outranks a primary need, CREATE fires
+only with u=e=d=false. Cost: an input with BOTH a primary need and
+persistable content maps away from CREATE (by design: persist later, act
+now). Benefit: mapping needs no weights and n can never mask E10/E17-style
+primary failures.
 
 ### WAIT declared but not mapped
 
-WAIT is acknowledged as a valid goalType but not mapped to any action.
-This is a conscious deferral. The cost is that E07-resolved and E22
-remain structurally unsupported. The benefit is that R4 scope stays
-focused on the P0/P1/P2 problems that actually caused R3 failure.
+Conscious deferral stands. E07-resolved and E22 remain structurally
+unsupported and gated out. R4 scope stays on the P0/P1/P2 problems that
+caused R3 failure.
 
-## 17. Summary of Changes from R3 to R4
+## 17. Summary of Changes from R3 to R4 (final)
 
-| Aspect | R3 (planning-state.v1) | R4 (planning-state.v2) |
+| Aspect | R3 (planning-state.v1) | R4 (planning-state.v2, corrected) |
 |--------|----------------------|----------------------|
-| Version | planning-state.v1 | planning-state.v2 |
-| Goal | implicit (undefined) | explicit goalType enum |
-| u definition | "correct progress REQUIRES" | "goal cannot be achieved without user info" |
-| u gap types | none | intent/choice/confirmation/auth/arg gap |
-| d definition | "current step goal can be completed" | "goal is PRODUCE_DIRECT_RESPONSE AND grounded claims exist" |
-| d ground requirement | none | >= 1 confirmed/grounded claim, conf >= 0.5 |
-| u/d relationship | co-possible | mutually exclusive |
-| e definition | "REQUIRES executing external step now" | "goal requires external step AND conditions met" |
-| e risk levels | none | READ_ONLY / LOCAL_DURABLE / REVERSIBLE / IRREVERSIBLE |
-| e arg requirement | none | GROUNDED (for irreversible) |
-| e auth requirement | none | CONFIRMED (for irreversible) |
-| n "new" threshold | loose | novelty + durability + independence + non-redundancy |
-| Evidence prefixes | 7 | 9 (+observation, +event) |
-| WAIT | not represented | declared as goalType, not mapped |
-| capabilityAssessment | none | required when e=true |
+| Goal | implicit (undefined) | goalType enum, derived from pre-flag observables only (G1-G5) |
+| goalType producer | n/a | model-output, harness reference-checked (C2) |
+| u definition | "correct progress REQUIRES" | goalType in {UNDERSTAND, RESOLVE} AND gap user-fillable |
+| u gap types | none | 5 gaps + none; confirmation/authorization anchored to descriptors |
+| d definition | "current step goal can be completed" | goalType PRODUCE_DIRECT_RESPONSE AND confirmed claim present |
+| d ground requirement | none | >= 1 confirmed claim, conf >= 0.5, cited |
+| u/d relationship | co-possible | mutually exclusive (C2-enforced) |
+| e definition | "REQUIRES executing external step now" | next step genuinely requires ONE named capability now |
+| e capability binding | none | capabilityId, input-membership + no-splicing enforced |
+| e risk | none | deterministic descriptor projection (validator recomputed) |
+| e auth | none | record-cited CONFIRMED; silence is MISSING |
+| e args | none | hybrid: citation presence deterministic, grounding semantic |
+| e necessity | none | model-judged; only REQUIRED_NOW yields e=true |
+| n role | competing flag | orthogonal signal; CREATE only when u=e=d=false |
+| mapping order | single-winner, AMBIGUOUS on ties | explicit residual order u>e>d>n; AMBIGUOUS removed |
+| Evidence prefixes | 7 | 8 (+event:; observation: deliberately excluded) |
+| WAIT | not represented | declared goalType, no derivation rule, not mapped |
+| capabilityAssessment | none | required when e=true, null when e=false |
 
+## 18. Correction log (this pass)
+
+1. goalType: removed EXECUTE_AUTHORIZED_ACTION and CAPTURE_DURABLE_KNOWLEDGE;
+redefined as pre-flag planning phase with disjoint rules G1-G5, explicit
+fail-safe fallback, and harness reference-checking (C2).
+2. capabilityAssessment: added capabilityId with input-membership validation
+and a no-cross-capability-splicing rule.
+3. Split deterministic vs model-judged: riskLevel fully deterministic
+(descriptor projection table); authorizationStatus record-cited (validator
+checks existence); argumentCompleteness hybrid (citation deterministic,
+grounding semantic); executionNecessity model-judged, validator-gated to
+REQUIRED_NOW for e=true.
+4. Evidence: observation: REMOVED with file-level justification
+(production envelope event+snapshot only; frozen observation always {};
+auth/args evidence real locations enumerated); event: KEPT; canonical ref
+forms specified; validator builds allowed set from actual input.
+5. e semantics: REQUIRED_NOW literal for all risk rows; PREFERRED/OPTIONAL
+force e=false; READ_ONLY lowers auth/arg bars only.
+6. n declared orthogonal (option b); CREATE only when u=e=d=false;
+residual order u>e>d>n stated explicitly as mapping tie-break.
+7. Gates reworked in the Diagnostic Design doc: 18-call calibration with
+per-case criteria, independent semantic gates, frozen 28-identity regression
+set, exact flip-rate formula, C1/C2/C3 accounting.
