@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.net.URI;
@@ -37,22 +38,27 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * broker, and no provider key material appears anywhere in the exchanged
  * responses or persisted events.
  *
- * <p>Requires a running agent-brain on localhost:8100 in fake model mode and
- * the shared dev secret:
+ * <p>Requires a running agent-brain in broker mode pointed at this
+ * process's broker URL — only broker mode dials back to the Java inference
+ * broker, so fake model mode can never satisfy the broker-call assertions
+ * below. Start it with the broker URL printed by the skip message:
  *
  * <pre>
- * cd agent-brain &amp;&amp; .venv/Scripts/uvicorn spec_agent_brain.app:app --port 8100
+ * cd agent-brain &amp;&amp; SPEC_AGENT_BRAIN_MODEL_MODE=broker \
+ *   SPEC_AGENT_INTERNAL_BROKER_URL=http://localhost:&lt;port&gt;/internal/v1/model-inference \
+ *   .venv/Scripts/uvicorn spec_agent_brain.app:app --port 8100
  * </pre>
  *
- * <p>The test binds Spring to port 18081 so the brain's configured broker URL
- * ({@code http://localhost:18081/internal/v1/model-inference}) reaches this
- * process. When the brain is not running, the test is skipped so the default
- * suite stays green offline.
+ * <p>The test binds Spring to an isolated port — a free OS-assigned port by
+ * default, or {@code SPEC_AGENT_CROSS_LANG_PORT} when an explicit rendezvous
+ * is needed — so parallel runs or stale processes never collide on a fixed
+ * port. The default production broker port is untouched. When the brain is
+ * not running, the test is skipped so the default suite stays green offline.
  */
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.DEFINED_PORT,
         properties = {
-                "server.port=18081",
+                "server.port=${SPEC_AGENT_CROSS_LANG_PORT:0}",
                 "spec.agent.brain.engine=remote-python",
                 "spec.agent.brain.base-url=http://localhost:8100",
                 "spec.agent.action-eligibility.mode=enforced"
@@ -62,6 +68,9 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 class PythonBrainCrossLanguageIntegrationTest {
 
     private static final String BRAIN_HEALTH = "http://localhost:8100/health";
+
+    @LocalServerPort
+    private int serverPort;
 
     @Autowired
     private ProjectService projectService;
@@ -80,7 +89,10 @@ class PythonBrainCrossLanguageIntegrationTest {
     void requireRunningBrain() {
         assumeTrue(brainReachable(),
                 "agent-brain not reachable at " + BRAIN_HEALTH
-                        + " — start it with uvicorn to run the cross-language gate");
+                        + " — start it in broker mode with "
+                        + "SPEC_AGENT_BRAIN_MODEL_MODE=broker "
+                        + "SPEC_AGENT_INTERNAL_BROKER_URL=http://localhost:"
+                        + serverPort + "/internal/v1/model-inference");
     }
 
     @Test
