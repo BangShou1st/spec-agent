@@ -194,9 +194,17 @@ public class DecisionExecutionService {
         if (execResult.producedNodeId() != null) {
             completedPayload.put("producedNodeId", execResult.producedNodeId().toString());
         }
-        terminalizationService.completeWithNodeAndEvent(runId, AgentRunStatus.COMPLETED, trace,
-                execResult.producedNodeId(), AgentRunPhase.COMPLETED, "RUN_COMPLETED",
-                completedPayload);
+        // Only a RESPOND_TO_USER execution produces a user-visible message
+        // effect: capability invocations also carry a diagnostic message in
+        // the result, but persisting it as RESPOND_MESSAGE would park the
+        // chain as TERMINAL_RESPONSE and swallow the capability's own
+        // durable facts. The terminal event stays the single source of truth
+        // for terminal responses — never a second message store.
+        String responseMessage =
+                "RESPOND_TO_USER".equals(execResult.actionFamily())
+                        ? execResult.message() : null;
+        terminalizationService.completeWithResponse(runId, AgentRunStatus.COMPLETED, trace,
+                execResult.producedNodeId(), responseMessage, completedPayload);
 
         return new DecisionExecutionResult(runId, execResult.producedNodeId(), null,
                 "completed", trace);

@@ -185,12 +185,8 @@ public class NodeQueryService {
             ActionResult result = actionExecutor.execute(proposal, new ActionExecutionContext(
                     runId, run.projectId(), routeId, snapshot.id(), anchorNodeId, null, question));
 
-            if (result.message() != null) {
-                eventService.append(runId, AgentRunPhase.COMPLETED,
-                        RESPOND_MESSAGE_EVENT, Map.of("message", result.message()));
-            }
-            agentRunService.complete(runId, AgentRunStatus.COMPLETED, trace + "\ncompleted");
-            eventService.append(runId, AgentRunPhase.COMPLETED, "RUN_COMPLETED", Map.of());
+            terminalizationService.completeWithResponse(runId, AgentRunStatus.COMPLETED,
+                    trace + "\ncompleted", null, result.message(), Map.of());
             return new NodeQueryResult(runId, "completed", result.message(), null);
         } catch (RuntimeException ex) {
             failIfNotTerminal(runId, ex);

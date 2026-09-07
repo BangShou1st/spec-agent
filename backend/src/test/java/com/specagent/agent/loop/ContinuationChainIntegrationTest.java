@@ -385,6 +385,56 @@ class ContinuationChainIntegrationTest {
     }
 
     @Test
+    void terminalRespondPersistsDurableMessageAtomicallyWithoutChild() {
+        Project project = newProjectWithResource("chain-respond");
+        withMaxCycles(5);
+        AtomicInteger decisions = new AtomicInteger();
+        stubDecisionsAfterFirstWithTerminalRespond(decisions);
+
+        // Root's first DECISION really executes (capability success) and the
+        // continuation child's DECISION responds: the child's terminal
+        // RESPOND must persist the user-visible message durably.
+        AgentRun root = runService.createQueuedDraftQuestion(project.id());
+        worker.executeRun(claim(root));
+        UUID childId = agentRunRepository.findChildByParentRunId(root.id())
+                .orElseThrow(() -> new IllegalStateException(
+                        "expected a continuation child")).id();
+        worker.executeRun(runService.claimNextContinue()
+                .filter(run -> run.id().equals(childId))
+                .orElseThrow());
+
+        AgentRun child = agentRunService.getRun(childId).orElseThrow();
+        assertThat(child.status()).isEqualTo(AgentRunStatus.COMPLETED);
+
+        // Durable: the RESPOND_MESSAGE row is the single source of truth.
+        List<String> messages = eventService.findByRunId(childId).stream()
+                .filter(e -> "RESPOND_MESSAGE".equals(e.eventType()))
+                .map(e -> e.payload().get("message"))
+                .filter(String.class::isInstance)
+                .map(String.class::cast)
+                .toList();
+        assertThat(messages).containsExactly("chain observed and done");
+
+        // Atomic: COMPLETED is never visible without the message event and
+        // the RUN_COMPLETED marker — all committed by one terminalization.
+        assertThat(eventService.findByRunId(childId).stream()
+                .anyMatch(e -> "RUN_COMPLETED".equals(e.eventType()))).isTrue();
+
+        // Idempotent read: the message view derives from the same event row
+        // on every read (no second store to diverge).
+        List<String> reread = eventService.findByRunId(childId).stream()
+                .filter(e -> "RESPOND_MESSAGE".equals(e.eventType()))
+                .map(e -> e.payload().get("message"))
+                .filter(String.class::isInstance)
+                .map(String.class::cast)
+                .toList();
+        assertThat(reread).isEqualTo(messages);
+
+        // No child follows a terminal response: the chain ends here.
+        assertThat(agentRunRepository.findChildByParentRunId(childId)).isEmpty();
+    }
+
+    @Test
     void childDecisionSeesParentCapabilityResultInRequest() {
         Project project = newProjectWithResource("chain-fresh-observe");
         withMaxCycles(5);

@@ -73,24 +73,32 @@ public class AgentRunTerminalizationService {
     }
 
     /**
-     * Auto-execute terminal: produced-node persistence, COMPLETED, the
-     * RUN_COMPLETED event, and the continuation-check request commit together.
-     * The two status writes (PERSISTED then COMPLETED) share one transaction,
-     * so no observer ever sees a half-terminalized run.
+     * Slice 5 terminal-response terminal: the user-visible message event,
+     * the run COMPLETED transition, the RUN_COMPLETED marker, and the
+     * continuation-check request commit together. The RESPOND_MESSAGE row is
+     * the single source of truth for the terminal message — the read model
+     * and API derive it from this event, never from the trace string or a
+     * second message store. The coordinator reads the same event to park
+     * the chain (TERMINAL_RESPONSE), so no child follows a response.
      */
     @Transactional
-    public void completeWithNodeAndEvent(UUID runId,
-                                         AgentRunStatus status,
-                                         String trace,
-                                         UUID producedNodeId,
-                                         AgentRunPhase phase,
-                                         String eventType,
-                                         Map<String, Object> payload) {
+    public void completeWithResponse(UUID runId,
+                                     AgentRunStatus status,
+                                     String trace,
+                                     UUID producedNodeId,
+                                     String message,
+                                     Map<String, Object> completedPayload) {
         if (producedNodeId != null) {
             agentRunService.markPersistedNode(runId, producedNodeId, trace);
         }
         agentRunService.complete(runId, status, trace);
-        eventService.append(runId, phase, eventType, payload);
+        if (message != null) {
+            eventService.append(runId, AgentRunPhase.COMPLETED,
+                    com.specagent.agent.runevent.AgentRunEventTypes.RESPOND_MESSAGE_EVENT,
+                    Map.of("message", message));
+        }
+        eventService.append(runId, AgentRunPhase.COMPLETED, "RUN_COMPLETED",
+                completedPayload);
         checkRepository.request(runId);
     }
 }
