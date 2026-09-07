@@ -57,6 +57,8 @@ public class AgentProposalController {
                 ? null : result.producedNodeId().toString());
         body.put("relationId", result.relationId() == null
                 ? null : result.relationId().toString());
+        body.put("originRunId", result.originRunId() == null
+                ? null : result.originRunId().toString());
         return ResponseEntity.ok(body);
     }
 

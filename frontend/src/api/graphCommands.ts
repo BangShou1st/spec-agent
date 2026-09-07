@@ -62,6 +62,8 @@ export interface ProposalAcceptResult {
   actionFamily: string | null
   producedNodeId: string | null
   relationId: string | null
+  /** Originating run whose continuation chain may reopen; null for legacy flows. */
+  originRunId?: string | null
 }
 
 /** Result of rejecting a pending NodeQuery proposal. */

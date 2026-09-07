@@ -90,7 +90,8 @@ public class ProposalAcceptanceService {
         this.continuationDispatch = continuationDispatch;
     }
 
-    public record AcceptedProposalResult(String actionFamily, UUID producedNodeId, UUID relationId) {
+    public record AcceptedProposalResult(String actionFamily, UUID producedNodeId, UUID relationId,
+                                           UUID originRunId) {
     }
 
     /**
@@ -303,7 +304,8 @@ public class ProposalAcceptanceService {
                 stored.runId(), stored.projectId(), stored.routeId(),
                 stored.baseContextSnapshotId(), anchorNodeId, null, null);
         ActionResult result = actionExecutor.execute(proposal, context);
-        return new AcceptedProposalResult(stored.actionFamily(), result.producedNodeId(), null);
+        return new AcceptedProposalResult(stored.actionFamily(), result.producedNodeId(), null,
+                stored.runId());
     }
 
     private AcceptedProposalResult executeConnectNode(ActionProposal proposal, AgentProposal stored) {
@@ -321,7 +323,7 @@ public class ProposalAcceptanceService {
                 NodeRelation.Origin.AGENT,
                 stored.id(),
                 stored.runId());
-        return new AcceptedProposalResult(stored.actionFamily(), null, relation.id());
+        return new AcceptedProposalResult(stored.actionFamily(), null, relation.id(), stored.runId());
     }
 
     /**
@@ -339,7 +341,8 @@ public class ProposalAcceptanceService {
                 stored.runId(), stored.projectId(), stored.routeId(),
                 stored.baseContextSnapshotId(), anchorNodeId, null, null);
         ActionResult result = actionExecutor.execute(proposal, context);
-        return new AcceptedProposalResult(stored.actionFamily(), result.producedNodeId(), null);
+        return new AcceptedProposalResult(stored.actionFamily(), result.producedNodeId(), null,
+                stored.runId());
     }
 
     private boolean isReadOnlyFamily(ActionProposal proposal) {
