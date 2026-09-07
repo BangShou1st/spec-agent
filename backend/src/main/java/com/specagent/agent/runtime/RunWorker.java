@@ -219,13 +219,14 @@ public class RunWorker {
      * Single terminal continuation hook for every cycle that may legally
      * continue (decision, answer, continuation). Terminalization already
      * committed the continuation-check request in the same transaction, so
-     * this hook only dispatches the low-latency fast path: inside a managed
-     * transaction evaluation waits for afterCommit, otherwise the preceding
-     * terminal writes already committed and the dispatch runs inline. A
-     * crashed afterCommit leaves a pending check row for
-     * {@link ContinuationDispatchService#recoverPending()}. No cycle service
-     * calls the dispatcher itself, and no execution result, policy verdict,
-     * or model observation is passed — the input stays one run id.
+     * this hook only dispatches the low-latency fast path — best-effort: a
+     * dispatch failure is logged and left pending for
+     * {@link ContinuationDispatchService#recoverPending()}, and never fails
+     * the already-COMPLETED run. Inside a managed transaction dispatch waits
+     * for afterCommit, otherwise the preceding terminal writes already
+     * committed and the dispatch runs inline. No cycle service calls the
+     * dispatcher itself, and no execution result, policy verdict, or model
+     * observation is passed — the input stays one run id.
      */
     private void evaluateContinuationAfterTerminal(UUID runId) {
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
@@ -233,11 +234,26 @@ public class RunWorker {
                     new TransactionSynchronization() {
                         @Override
                         public void afterCommit() {
-                            continuationDispatch.process(runId);
+                            dispatchContinuationBestEffort(runId);
                         }
                     });
         } else {
+            dispatchContinuationBestEffort(runId);
+        }
+    }
+
+    /**
+     * Best-effort fast-path delivery of one terminal run's continuation
+     * check. Only post-terminal delivery failures are isolated here — cycle
+     * execution exceptions never reach this method (each cycle's catch
+     * terminalizes and rethrows before this hook runs).
+     */
+    void dispatchContinuationBestEffort(UUID runId) {
+        try {
             continuationDispatch.process(runId);
+        } catch (RuntimeException ex) {
+            LOG.warn("Continuation fast-path dispatch deferred for run {}: {}",
+                    runId, ex.getMessage());
         }
     }
 
