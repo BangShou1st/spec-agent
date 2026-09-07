@@ -13,19 +13,22 @@ package com.specagent.agent.loop;
 public enum ContinuationVerdict {
 
     /**
-     * Proof: {@code agent_runs.produced_node_id / produced_answer_id /
-     * produced_patch_id / produced_spec_snapshot_id} non-null, or a
+     * Proof: {@code agent_runs.produced_node_id /
+     * produced_spec_snapshot_id} non-null, or a
      * {@code capability_invocations} row for this run with completed status
      * ({@code SUCCEEDED}, or {@code FAILED} — failures persist as evidence
      * and enter future snapshots). A next snapshot can consume new facts.
+     * Produced answers and patches never count: the answer cycle persists
+     * them before its own DECISION call, so they are already seen.
      */
     EXECUTED_NEW_OBSERVATION,
 
     /**
      * Proof: this run's {@code produced_node_id} names an existing
-     * {@code INTERACTION} node with no finalized answer row for the run's
-     * route. The question waits on an external observation (user answer
-     * via {@code ANSWER_CYCLE}), not on Runtime work.
+     * {@code INTERACTION} node. The question is an external boundary: this
+     * chain ends here permanently, whether or not an answer arrives later.
+     * A later user answer opens a new {@code ANSWER_CYCLE} chain — it never
+     * reactivates this run.
      */
     PARKED_USER_INPUT,
 

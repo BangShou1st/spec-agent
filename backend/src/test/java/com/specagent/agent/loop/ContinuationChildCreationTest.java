@@ -10,6 +10,7 @@ import com.specagent.answer.AnswerService;
 import com.specagent.capability.CapabilityInvocation;
 import com.specagent.capability.CapabilityInvocationRepository;
 import com.specagent.capability.CapabilityResult;
+import com.specagent.graph.GraphCommandService;
 import com.specagent.node.Node;
 import com.specagent.node.NodeService;
 import com.specagent.project.Project;
@@ -54,20 +55,25 @@ class ContinuationChildCreationTest {
     @Autowired private CapabilityInvocationRepository invocationRepository;
     @Autowired private NodeService nodeService;
     @Autowired private AnswerService answerService;
+    @Autowired private GraphCommandService graphCommandService;
     @Autowired private RouteRepository routeRepository;
     @Autowired private ContinuationCoordinator coordinator;
     @Autowired private LoopProperties loopProperties;
     @Autowired private JdbcTemplate jdbcTemplate;
 
     private Project project;
+    private int configuredMaxCycles;
 
     @BeforeEach
     void setUp() {
         project = projectService.createProject("child-creation-" + UUID.randomUUID());
+        configuredMaxCycles = loopProperties.getMaxCycles();
+        loopProperties.setMaxCycles(10);
     }
 
     @AfterEach
     void cleanUp() {
+        loopProperties.setMaxCycles(configuredMaxCycles);
         jdbcTemplate.update(
                 "DELETE FROM agent_run_events WHERE run_id IN "
                         + "(SELECT id FROM agent_runs WHERE project_id = ?)",
@@ -82,11 +88,9 @@ class ContinuationChildCreationTest {
 
     @Test
     void eligibleParentCreatesOneLinkedChild() {
-        Node root = nodeService.createRootNode(
-                project.id(), project.activeRouteId(), "anchor?", null, List.of(), true);
-        answerService.finalizeAnswer(project.id(), project.activeRouteId(),
-                root.id(), null, "anchored", "test-user");
-        UUID parentId = saveRun(AgentRunStatus.COMPLETED, root.id(), null, null, null);
+        Node note = graphCommandService.createRootDraftNode(
+                project.id(), project.activeRouteId(), "NOTE", Map.of("text", "anchor"));
+        UUID parentId = saveRun(AgentRunStatus.COMPLETED, note.id(), null, null, null);
         UUID tip = routeRepository.findById(project.activeRouteId()).orElseThrow().tipNodeId();
 
         Optional<AgentRun> child = coordinator.continueIfEligible(parentId);
@@ -255,11 +259,9 @@ class ContinuationChildCreationTest {
 
     @Test
     void differentFactSourcesShareOneCreationPath() {
-        Node root = nodeService.createRootNode(
-                project.id(), project.activeRouteId(), "source?", null, List.of(), true);
-        answerService.finalizeAnswer(project.id(), project.activeRouteId(),
-                root.id(), null, "sourced", "test-user");
-        UUID nodeParent = saveRun(AgentRunStatus.COMPLETED, root.id(), null, null, null);
+        Node note = graphCommandService.createRootDraftNode(
+                project.id(), project.activeRouteId(), "NOTE", Map.of("text", "source"));
+        UUID nodeParent = saveRun(AgentRunStatus.COMPLETED, note.id(), null, null, null);
         UUID capabilityParent = capabilityParent();
 
         Optional<AgentRun> fromNode = coordinator.continueIfEligible(nodeParent);

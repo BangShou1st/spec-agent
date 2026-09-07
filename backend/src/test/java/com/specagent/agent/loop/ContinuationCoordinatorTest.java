@@ -7,16 +7,20 @@ import com.specagent.agent.AgentRunTriggerType;
 import com.specagent.agent.contract.ActionProposal;
 import com.specagent.agent.policy.AgentProposalService;
 import com.specagent.agent.runevent.AgentRunEventService;
+import com.specagent.agent.runevent.AgentRunEventTypes;
 import com.specagent.agent.runevent.AgentRunPhase;
-import com.specagent.agent.runtime.NodeQueryService;
 import com.specagent.answer.AnswerService;
 import com.specagent.capability.CapabilityInvocation;
 import com.specagent.capability.CapabilityInvocationRepository;
 import com.specagent.capability.CapabilityResult;
+import com.specagent.graph.GraphCommandService;
 import com.specagent.node.Node;
 import com.specagent.node.NodeService;
+import com.specagent.patch.AnswerPatchService;
 import com.specagent.project.Project;
 import com.specagent.project.ProjectService;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -34,6 +38,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * Slice 1: {@code ContinuationCoordinator.evaluate} reads durable Runtime
  * truth only and never consults semantic fields.
+ *
+ * <p>No behavior test depends on the configured default budget: the budget
+ * is widened explicitly per test run, and budget tests set their own value.
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -55,13 +62,25 @@ class ContinuationCoordinatorTest {
     @Autowired
     private AnswerService answerService;
     @Autowired
+    private AnswerPatchService answerPatchService;
+    @Autowired
+    private GraphCommandService graphCommandService;
+    @Autowired
     private ContinuationCoordinator coordinator;
     @Autowired
     private LoopProperties loopProperties;
 
-    @Test
-    void loopBudgetDefaultsToThreeTotalCycles() {
-        assertThat(loopProperties.getMaxCycles()).isEqualTo(3);
+    private int configuredMaxCycles;
+
+    @BeforeEach
+    void widenBudgetExplicitly() {
+        configuredMaxCycles = loopProperties.getMaxCycles();
+        loopProperties.setMaxCycles(10);
+    }
+
+    @AfterEach
+    void restoreBudget() {
+        loopProperties.setMaxCycles(configuredMaxCycles);
     }
 
     @Test
@@ -118,12 +137,9 @@ class ContinuationCoordinatorTest {
     @Test
     void producedGraphDeltaIsEligible() {
         Project project = projectService.createProject("coord-delta");
-        Node root = nodeService.createRootNode(
-                project.id(), project.activeRouteId(), " produced?", null,
-                List.of(), true);
-        answerService.finalizeAnswer(project.id(), project.activeRouteId(),
-                root.id(), null, "delta answer", "test-user");
-        UUID runId = saveRun(project, AgentRunStatus.COMPLETED, root.id(),
+        Node note = graphCommandService.createRootDraftNode(
+                project.id(), project.activeRouteId(), "NOTE", Map.of("text", "delta"));
+        UUID runId = saveRun(project, AgentRunStatus.COMPLETED, note.id(),
                 null, null, null);
 
         ContinuationDecision decision = coordinator.evaluate(runId);
@@ -134,7 +150,7 @@ class ContinuationCoordinatorTest {
     }
 
     @Test
-    void unansweredQuestionParksForUserInput() {
+    void producedQuestionStaysParkedAfterAnswer() {
         Project project = projectService.createProject("coord-parked");
         Node root = nodeService.createRootNode(
                 project.id(), project.activeRouteId(), "unanswered?", null,
@@ -148,10 +164,27 @@ class ContinuationCoordinatorTest {
         answerService.finalizeAnswer(project.id(), project.activeRouteId(),
                 root.id(), null, "answered", "test-user");
 
-        ContinuationDecision after = coordinator.evaluate(runId);
-        assertThat(after.verdict())
-                .isEqualTo(ContinuationVerdict.EXECUTED_NEW_OBSERVATION);
-        assertThat(after.eligible()).isTrue();
+        assertThat(coordinator.evaluate(runId).verdict())
+                .isEqualTo(ContinuationVerdict.PARKED_USER_INPUT);
+        assertThat(coordinator.continueIfEligible(runId)).isEmpty();
+    }
+
+    @Test
+    void answerAndPatchAloneDoNotContinue() {
+        Project project = projectService.createProject("coord-answer-patch");
+        Node root = nodeService.createRootNode(
+                project.id(), project.activeRouteId(), "answered?", null,
+                List.of(), true);
+        var answer = answerService.finalizeAnswer(project.id(), project.activeRouteId(),
+                root.id(), null, "answer text", "test-user");
+        var patch = answerPatchService.save(project.id(), project.activeRouteId(),
+                root.id(), answer.id(), List.of(), null);
+        UUID runId = saveAnswerRun(project, answer.id(), patch.id());
+
+        ContinuationDecision decision = coordinator.evaluate(runId);
+
+        assertThat(decision.verdict()).isEqualTo(ContinuationVerdict.NO_EFFECT);
+        assertThat(coordinator.continueIfEligible(runId)).isEmpty();
     }
 
     @Test
@@ -173,7 +206,7 @@ class ContinuationCoordinatorTest {
     void respondMessageEventIsTerminalResponse() {
         Fixture fx = completedFixture();
         eventService.append(fx.runId, AgentRunPhase.COMPLETED,
-                NodeQueryService.RESPOND_MESSAGE_EVENT, Map.of("message", "hello"));
+                AgentRunEventTypes.RESPOND_MESSAGE_EVENT, Map.of("message", "hello"));
 
         ContinuationDecision decision = coordinator.evaluate(fx.runId);
 
@@ -201,7 +234,7 @@ class ContinuationCoordinatorTest {
     void policyDeniedEventIsDenied() {
         Fixture fx = completedFixture();
         eventService.append(fx.runId, AgentRunPhase.COMPLETED,
-                NodeQueryService.POLICY_DENIED_EVENT,
+                AgentRunEventTypes.POLICY_DENIED_EVENT,
                 Map.of("denyReason", "reason", "actionFamily", "UPDATE_NODE"));
 
         ContinuationDecision decision = coordinator.evaluate(fx.runId);
@@ -242,10 +275,11 @@ class ContinuationCoordinatorTest {
 
     @Test
     void exhaustedBudgetStopsTheChain() {
+        loopProperties.setMaxCycles(5);
         Project project = projectService.createProject("coord-budget");
         Node root = nodeService.createRootNode(
                 project.id(), project.activeRouteId(), "budget?", null, List.of(), true);
-        UUID runId = saveRun(project, AgentRunStatus.COMPLETED, root.id(), null, null, 2);
+        UUID runId = saveRun(project, AgentRunStatus.COMPLETED, root.id(), null, null, 4);
 
         ContinuationDecision decision = coordinator.evaluate(runId);
 
@@ -300,6 +334,16 @@ class ContinuationCoordinatorTest {
                 null, null, producedNodeId, null, null, null, status,
                 "{}", "DRAFT_QUESTION", null, null, Instant.now(), null,
                 parentRunId, rootRunId, cycleIndex));
+        return runId;
+    }
+
+    private UUID saveAnswerRun(Project project, UUID answerId, UUID patchId) {
+        UUID runId = UUID.randomUUID();
+        agentRunRepository.save(new AgentRun(runId, project.id(),
+                project.activeRouteId(), AgentRunTriggerType.ANSWER_CYCLE,
+                null, null, null, answerId, patchId, null, AgentRunStatus.COMPLETED,
+                "{}", "ANSWER_TIP", null, null, Instant.now(), null,
+                null, null, null));
         return runId;
     }
 

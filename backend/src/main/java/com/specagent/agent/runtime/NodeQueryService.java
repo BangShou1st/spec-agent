@@ -22,6 +22,7 @@ import com.specagent.agent.policy.AgentProposal;
 import com.specagent.agent.policy.AgentProposalService;
 import com.specagent.agent.policy.PolicyDecision;
 import com.specagent.agent.runevent.AgentRunEventService;
+import com.specagent.agent.runevent.AgentRunEventTypes;
 import com.specagent.agent.runevent.AgentRunPhase;
 import com.specagent.agent.snapshot.AgentInputSnapshotBuilder;
 import com.specagent.context.ContextBuilder;
@@ -46,9 +47,20 @@ import java.util.UUID;
 @Service
 public class NodeQueryService {
 
-    public static final String RESPOND_MESSAGE_EVENT = "RESPOND_MESSAGE";
-    public static final String POLICY_DENIED_EVENT = "POLICY_DENIED";
-    public static final String MUTATION_NOT_CONFIRMABLE_EVENT = "MUTATION_NOT_CONFIRMABLE";
+    /**
+     * @deprecated Read {@link AgentRunEventTypes} instead. Kept only so
+     * existing callers keep compiling; the values forward to the shared
+     * run-event protocol and must stay identical to it.
+     */
+    @Deprecated(forRemoval = true)
+    public static final String RESPOND_MESSAGE_EVENT = AgentRunEventTypes.RESPOND_MESSAGE_EVENT;
+    /** @deprecated Read {@link AgentRunEventTypes#POLICY_DENIED_EVENT} instead. */
+    @Deprecated(forRemoval = true)
+    public static final String POLICY_DENIED_EVENT = AgentRunEventTypes.POLICY_DENIED_EVENT;
+    /** @deprecated Read {@link AgentRunEventTypes#MUTATION_NOT_CONFIRMABLE_EVENT} instead. */
+    @Deprecated(forRemoval = true)
+    public static final String MUTATION_NOT_CONFIRMABLE_EVENT =
+            AgentRunEventTypes.MUTATION_NOT_CONFIRMABLE_EVENT;
 
     private static final Logger LOG = LoggerFactory.getLogger(NodeQueryService.class);
 

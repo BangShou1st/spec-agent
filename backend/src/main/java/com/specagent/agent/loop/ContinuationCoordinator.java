@@ -9,10 +9,9 @@ import com.specagent.agent.policy.AgentProposalService;
 import com.specagent.agent.policy.ProposalStatus;
 import com.specagent.agent.runevent.AgentRunEvent;
 import com.specagent.agent.runevent.AgentRunEventService;
+import com.specagent.agent.runevent.AgentRunEventTypes;
 import com.specagent.agent.runtime.RunService;
-import com.specagent.agent.runtime.NodeQueryService;
 import com.specagent.agent.runtime.StaleRunTargetException;
-import com.specagent.answer.AnswerService;
 import com.specagent.capability.CapabilityInvocationRepository;
 import com.specagent.capability.CapabilityInvocationRecord;
 import com.specagent.capability.CapabilityResult;
@@ -37,12 +36,11 @@ import java.util.UUID;
  * {@code rootRunId}/{@code cycleIndex} reads as "own root at cycle 0", so
  * external creation paths need no loop metadata.
  *
- * <p>Future child creation (Slice 2) records {@code expectedStartTipNodeId}
- * in the child's {@code RUN_CREATED} event payload (the established channel
- * for execution inputs such as route and node ids — no new column): the
- * child executes only while the live route tip still equals that anchor,
- * otherwise it goes stale instead of following a newer external causal
- * chain.
+ * <p>Child creation (Slice 2) reuses the existing {@code inputNodeId}
+ * mechanism as the stale anchor (no new column): the child records the
+ * row-derived expected tip, and execution fails closed while the live
+ * route tip no longer equals it, instead of following newer external
+ * causal chains.
  */
 @Component
 public class ContinuationCoordinator {
@@ -53,7 +51,6 @@ public class ContinuationCoordinator {
     private final AgentProposalService proposalService;
     private final CapabilityInvocationRepository invocationRepository;
     private final NodeRepository nodeRepository;
-    private final AnswerService answerService;
     private final LoopProperties loopProperties;
     private final RunService runService;
 
@@ -63,7 +60,6 @@ public class ContinuationCoordinator {
                                    AgentProposalService proposalService,
                                    CapabilityInvocationRepository invocationRepository,
                                    NodeRepository nodeRepository,
-                                   AnswerService answerService,
                                    LoopProperties loopProperties,
                                    RunService runService) {
         this.agentRunService = agentRunService;
@@ -72,7 +68,6 @@ public class ContinuationCoordinator {
         this.proposalService = proposalService;
         this.invocationRepository = invocationRepository;
         this.nodeRepository = nodeRepository;
-        this.answerService = answerService;
         this.loopProperties = loopProperties;
         this.runService = runService;
     }
@@ -141,9 +136,9 @@ public class ContinuationCoordinator {
             return ContinuationDecision.of(runId, ContinuationVerdict.PARKED_APPROVAL,
                     "proposal awaits decision: " + proposal.get().id());
         }
-        if (isUnansweredQuestion(run)) {
+        if (producedExternalBoundary(run)) {
             return ContinuationDecision.of(runId, ContinuationVerdict.PARKED_USER_INPUT,
-                    "produced question node awaits an answer: " + run.producedNodeId());
+                    "produced question node ends this chain: " + run.producedNodeId());
         }
         List<AgentRunEvent> events = eventService.findByRunId(runId);
         if (events.stream().anyMatch(ContinuationCoordinator::isRespondMessage)) {
@@ -163,32 +158,37 @@ public class ContinuationCoordinator {
     }
 
     /**
-     * True when this run produced an interaction node that still waits for
-     * an answer. Proven from the node row plus the absence of an answer
-     * row — never from the requested action family name.
+     * True when this run produced an interaction node. A produced question
+     * is an external boundary: this chain ends here permanently, whether or
+     * not an answer arrives later. A later user answer opens a new
+     * ANSWER_CYCLE chain — it never reactivates this run. Proven from the
+     * node row only — never from the requested action family name, and never
+     * from answer state.
      */
-    private boolean isUnansweredQuestion(AgentRun run) {
-        if (run.producedNodeId() == null || run.routeId() == null) {
+    private boolean producedExternalBoundary(AgentRun run) {
+        if (run.producedNodeId() == null) {
             return false;
         }
         Optional<Node> node = nodeRepository.findById(run.producedNodeId());
-        return node.isPresent() && node.get().kind() == NodeKind.INTERACTION
-                && !answerService.existsAnswerFor(run.routeId(), run.producedNodeId());
+        return node.isPresent() && node.get().kind() == NodeKind.INTERACTION;
     }
 
     private static boolean isRespondMessage(AgentRunEvent event) {
-        return NodeQueryService.RESPOND_MESSAGE_EVENT.equals(event.eventType());
+        return AgentRunEventTypes.RESPOND_MESSAGE_EVENT.equals(event.eventType());
     }
 
     /**
      * True when a next snapshot could consume something this run left
-     * behind: produced rows on the run, or completed capability invocation
-     * rows (successes and durable failures alike — failures persist as
-     * evidence). Unfinished invocations do not count.
+     * behind: a produced graph node, a produced spec snapshot, or completed
+     * capability invocation rows (successes and durable failures alike —
+     * failures persist as evidence). Unfinished invocations do not count.
+     *
+     * <p>Produced answers and patches never count: the answer cycle persists
+     * them before its DECISION call, so the current run's own model already
+     * saw them — they are not new observations for a next cycle.
      */
     private boolean hasNewFacts(AgentRun run) {
-        if (run.producedNodeId() != null || run.producedAnswerId() != null
-                || run.producedPatchId() != null || run.producedSpecSnapshotId() != null) {
+        if (run.producedNodeId() != null || run.producedSpecSnapshotId() != null) {
             return true;
         }
         return invocationRepository.findByRunId(run.id()).stream()
@@ -207,7 +207,7 @@ public class ContinuationCoordinator {
             return true;
         }
         return events.stream().anyMatch(event ->
-                NodeQueryService.POLICY_DENIED_EVENT.equals(event.eventType())
-                        || NodeQueryService.MUTATION_NOT_CONFIRMABLE_EVENT.equals(event.eventType()));
+                AgentRunEventTypes.POLICY_DENIED_EVENT.equals(event.eventType())
+                        || AgentRunEventTypes.MUTATION_NOT_CONFIRMABLE_EVENT.equals(event.eventType()));
     }
 }

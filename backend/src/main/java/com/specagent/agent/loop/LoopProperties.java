@@ -27,6 +27,10 @@ public class LoopProperties {
     }
 
     public void setMaxCycles(int maxCycles) {
+        if (maxCycles < 1) {
+            throw new IllegalArgumentException(
+                    "spec.agent.loop.max-cycles must be >= 1, got " + maxCycles);
+        }
         this.maxCycles = maxCycles;
     }
 }

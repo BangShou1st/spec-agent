@@ -302,11 +302,9 @@ public class RunService {
      * <p>Linkage rules: a chain root (no persisted root/cycle) mothers a
      * child with {@code rootRunId = parent.id} at cycle 1; deeper parents
      * keep their root and increment the cycle. The stale anchor reuses the
-     * existing {@code inputNodeId} mechanism: the child records the parent
-     * route's tip at creation time, and Slice 3 execution fails closed when
-     * existing {@code inputNodeId} mechanism: the child records the
-     * row-derived expected tip, and Slice 3 execution fails closed when
-     * the live tip no longer equals it (same check as
+     * existing {@code inputNodeId} mechanism (no new column): the child
+     * records the row-derived expected tip, and Slice 3 execution fails
+     * closed when the live tip no longer equals it (same check as
      * {@code DecisionCycleService} draft targets, null-safe for empty
      * routes). No new anchor metadata is introduced.
      *

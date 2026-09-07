@@ -49,17 +49,22 @@ class ContinuationStaleAnchorRaceTest {
     @Autowired private GraphCommandService graphCommandService;
     @Autowired private RouteRepository routeRepository;
     @Autowired private ContinuationCoordinator coordinator;
+    @Autowired private LoopProperties loopProperties;
     @Autowired private JdbcTemplate jdbcTemplate;
 
     private Project project;
+    private int configuredMaxCycles;
 
     @BeforeEach
     void setUp() {
         project = projectService.createProject("stale-anchor-" + UUID.randomUUID());
+        configuredMaxCycles = loopProperties.getMaxCycles();
+        loopProperties.setMaxCycles(10);
     }
 
     @AfterEach
     void cleanUp() {
+        loopProperties.setMaxCycles(configuredMaxCycles);
         jdbcTemplate.update(
                 "DELETE FROM agent_run_events WHERE run_id IN "
                         + "(SELECT id FROM agent_runs WHERE project_id = ?)",
@@ -86,10 +91,11 @@ class ContinuationStaleAnchorRaceTest {
 
     @Test
     void producedAnchoredParentRefusesChildAfterExternalTipMove() {
-        Node root = answeredRoot("moved-produced?");
-        UUID parentId = saveProducedRun(root.id());
+        Node note = graphCommandService.createRootDraftNode(
+                project.id(), project.activeRouteId(), "NOTE", Map.of("text", "moved"));
+        UUID parentId = saveProducedRun(note.id());
 
-        moveTip(root.id());
+        moveTip(note.id());
 
         assertThat(coordinator.continueIfEligible(parentId)).isEmpty();
         assertThat(childCount(parentId)).isZero();
@@ -97,13 +103,14 @@ class ContinuationStaleAnchorRaceTest {
 
     @Test
     void stableTipStillCreatesChild() {
-        Node root = answeredRoot("stable?");
-        UUID parentId = saveProducedRun(root.id());
+        Node note = graphCommandService.createRootDraftNode(
+                project.id(), project.activeRouteId(), "NOTE", Map.of("text", "stable"));
+        UUID parentId = saveProducedRun(note.id());
 
         var child = coordinator.continueIfEligible(parentId);
 
         assertThat(child).isPresent();
-        assertThat(child.get().inputNodeId()).isEqualTo(root.id());
+        assertThat(child.get().inputNodeId()).isEqualTo(note.id());
     }
 
     @Test
