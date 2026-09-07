@@ -34,20 +34,20 @@
 
 - `frontend/src/views/WorkspaceView.vue` — compose fixed workspace regions and preserve store/event wiring.
 - `frontend/src/views/__tests__/WorkspaceView.spec.ts` — shell wiring and contextual-AI sidebar behavior.
-- `frontend/src/components/workspace/ResizableSidebar.vue` — reused as-is unless a test proves a small presentation defect.
+- `frontend/src/components/workspace/ResizableSidebar.vue` — reused as-is unless a focused test proves a small presentation defect.
 - `frontend/src/components/workspace/RouteSidebar.vue` — default route navigation presentation.
 - `frontend/src/components/workspace/__tests__/RouteSidebar.spec.ts` — route navigation / overflow behavior.
 - `frontend/src/components/workspace/WorkspaceInspector.vue` — stable right-side inspector container.
 - `frontend/src/components/workspace/NodeInspector.vue` — selected-node information hierarchy.
 - `frontend/src/components/workspace/__tests__/WorkspaceInspector.spec.ts` — inspector routing / tabs.
-- `frontend/src/components/workspace/__tests__/NodeInspector.spec.ts` — selected-node detail hierarchy and Agent proposal behavior.
+- `frontend/src/components/workspace/__tests__/NodeInspector.spec.ts` — selected-node hierarchy and Agent proposal behavior.
 - `frontend/src/components/graph/GraphCanvas.vue` — remove floating-window toolbar intents only; preserve graph behavior.
 - `frontend/src/components/graph/GraphToolbar.vue` — compact visible toolbar + overflow.
 - `frontend/src/components/graph/GraphQuestionNode.vue` — compact historical presentation, expanded current interaction.
 - `frontend/src/components/graph/__tests__/GraphCanvas.spec.ts` — toolbar wiring compatibility.
 - `frontend/src/components/graph/__tests__/GraphQuestionNode.spec.ts` — historical/current/pending presentation contracts.
 - `frontend/src/style.css` — visual system and fixed-layout styling.
-- `frontend/e2e/helpers.ts` — remove comments/waits that exist only for floating-window reflow if no longer needed.
+- `frontend/e2e/helpers.ts` — remove waits/comments that exist only for floating-window reflow while preserving Vue Flow settlement.
 - `frontend/e2e/graph-routes.spec.ts` — migrate floating-route assumptions to fixed route sidebar.
 - `frontend/e2e/shared-focus.spec.ts` — migrate route-panel selector while preserving Focus/Active assertions.
 - `frontend/e2e/contextual-ai.spec.ts` — assert fixed Inspector instead of floating Inspector.
@@ -68,10 +68,11 @@
 ### Explicitly not deleted in this slice
 
 - `frontend/src/components/workspace/FloatingWindow.vue`
+- `frontend/src/components/workspace/RouteNavigator.vue`
 - `frontend/src/components/workspace/__tests__/FloatingWindow.spec.ts`
 - legacy floating preference fields in `graphUiStore` / `graphLayoutStorage`
 
-Reason: first make the product layout stable and green. Removing legacy storage/schema code is a cleanup task after the new presentation has shipped; mixing storage migration cleanup into the visual slice adds risk without user-visible value.
+Reason: first make the product layout stable and green. Removing legacy storage/schema code is a cleanup slice after the new presentation has shipped; mixing storage migration cleanup into the visual slice adds risk without user-visible value.
 
 ---
 
@@ -84,7 +85,7 @@ Reason: first make the product layout stable and green. Removing legacy storage/
 
 **Interfaces:**
 - Consumes: `graphUi.leftSidebarOpen`, `graphUi.leftSidebarWidth`, `graphUi.rightSidebarOpen`, `graphUi.rightSidebarWidth`, `graphUi.setLeftSidebar({ open, width })`, `graphUi.setRightSidebar({ open, width })`.
-- Produces: fixed `[data-test="left-sidebar"]`, `[data-test="graph-canvas"]`, `[data-test="right-sidebar"]`; contextual AI opens the right sidebar and selects the canonical visual target.
+- Produces: fixed `[data-test="left-sidebar"]`, center Graph, fixed `[data-test="right-sidebar"]`; contextual AI selects the correct visual node and opens the right sidebar.
 
 - [ ] **Step 1: Change the shell unit test to require the fixed three-region workspace**
 
@@ -105,7 +106,7 @@ it('loads the graph-first shell with fixed route and inspector sidebars', async 
 })
 ```
 
-Change the contextual-AI assertion to:
+Change the existing contextual-AI shell test to:
 
 ```ts
 it('selects the canonical target and opens the fixed inspector', async () => {
@@ -125,18 +126,16 @@ it('selects the canonical target and opens the fixed inspector', async () => {
 
 - [ ] **Step 2: Run the focused shell test and verify it fails**
 
-Run:
-
 ```bash
 cd frontend
 npm test -- src/views/__tests__/WorkspaceView.spec.ts
 ```
 
-Expected: FAIL because `WorkspaceView` still renders `FloatingWindow` / `RouteNavigator` and contextual AI still calls `openWindow('inspector')`.
+Expected: FAIL because `WorkspaceView` still renders `FloatingWindow` / `RouteNavigator` and contextual AI still opens the floating Inspector.
 
 - [ ] **Step 3: Replace floating imports and layout logic with the existing sidebar components**
 
-In `WorkspaceView.vue`:
+In `WorkspaceView.vue`, use:
 
 ```ts
 import ResizableSidebar from '@/components/workspace/ResizableSidebar.vue'
@@ -144,20 +143,30 @@ import RouteSidebar from '@/components/workspace/RouteSidebar.vue'
 import WorkspaceInspector from '@/components/workspace/WorkspaceInspector.vue'
 ```
 
-Remove imports and code used only by floating-window geometry:
+Delete imports and functions used only by floating-window geometry:
 
 ```ts
-// remove FloatingWindow
-// remove RouteNavigator
-// remove FLOATING_WINDOW_RANGES
-// remove computeAutoFloatingWindowLayout / FloatingRect
-// remove resolveSafeFitRegion / FitViewportRegion
-// remove workspaceResizeObserver / floatingLayoutFrame / floatingLayoutSettledTimer
-// remove safeFitRegion, graphObstacles, floatingRect, changedGeometry,
-//        reflowFloatingWindows, scheduleFloatingLayout, openWindow
+// Delete FloatingWindow and RouteNavigator imports.
+// Delete FLOATING_WINDOW_RANGES.
+// Delete computeAutoFloatingWindowLayout / FloatingRect.
+// Delete resolveSafeFitRegion / FitViewportRegion.
+// Delete floatingLayoutFrame, floatingLayoutSettledTimer, workspaceResizeObserver.
+// Delete safeFitRegion, graphObstacles, floatingRect, changedGeometry,
+// reflowFloatingWindows, scheduleFloatingLayout, and openWindow.
 ```
 
-Keep `workspaceBodyRef` only if still needed by another behavior; otherwise remove it too.
+After those removals, `onMounted` becomes the normal project/load path only:
+
+```ts
+onMounted(() => {
+  graphUi.initProject(props.projectId)
+  void store.loadWorkspace(props.projectId).then(() => {
+    void store.refreshUndoRedoAvailability()
+  })
+})
+```
+
+Remove the floating-layout `onBeforeUnmount` block if it has no remaining responsibility.
 
 Contextual AI becomes:
 
@@ -166,16 +175,13 @@ function handleContextualAi(target: ContextualAiTarget): void {
   const visualNodeKey = resolveContextualAiTarget(target)
   if (!visualNodeKey) return
   graphUi.selectNode(visualNodeKey)
-  graphUi.setRightSidebar({
-    open: true,
-    width: graphUi.rightSidebarWidth,
-  })
+  graphUi.setRightSidebar({ open: true, width: graphUi.rightSidebarWidth })
 }
 ```
 
 - [ ] **Step 4: Replace the template composition with fixed left / center / right regions**
 
-Use this structure in `WorkspaceView.vue`:
+Use:
 
 ```vue
 <div v-else class="workspace-shell__body workspace-shell__body--fixed">
@@ -248,11 +254,9 @@ Use this structure in `WorkspaceView.vue`:
 </div>
 ```
 
-Do not pass `safe-region`; the fixed sidebars reduce the actual center layout width instead of overlaying the canvas.
+Do not pass `safe-region`; fixed sidebars reserve actual layout width instead of overlaying the canvas.
 
-- [ ] **Step 5: Add fixed-shell CSS without visual polish yet**
-
-Add the structural rules first:
+- [ ] **Step 5: Add fixed-shell CSS without polishing component details yet**
 
 ```css
 .workspace-shell__body--fixed {
@@ -276,8 +280,6 @@ Add the structural rules first:
 ```
 
 - [ ] **Step 6: Run the shell test again**
-
-Run:
 
 ```bash
 cd frontend
@@ -330,6 +332,7 @@ describe('GraphToolbar', () => {
     expect(wrapper.get('[data-test="zoom-out"]').exists()).toBe(true)
     expect(wrapper.get('[data-test="fit-view"]').exists()).toBe(true)
     expect(wrapper.get('[data-test="toolbar-more"]').exists()).toBe(true)
+    expect(wrapper.get('[data-test="toolbar-more"]').attributes('open')).toBeUndefined()
 
     expect(wrapper.find('[data-test="open-routes"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="open-inspector"]').exists()).toBe(false)
@@ -385,19 +388,20 @@ inspector: []
 'reset-windows': []
 ```
 
-Remove the corresponding `GraphCanvas` toolbar listeners and `WorkspaceView` listeners.
+Remove their toolbar listeners from `GraphCanvas.vue`.
 
-- [ ] **Step 4: Update `GraphCanvas.spec.ts` so it no longer expects floating-window toolbar emits**
+- [ ] **Step 4: Update `GraphCanvas.spec.ts` to match the smaller toolbar contract**
 
-Where toolbar wiring is asserted, keep only the real canvas commands:
+If the test's `GraphToolbar` stub declares emits, the list must become:
 
 ```ts
-expect(wrapper.find('[data-test="graph-toolbar"]').exists()).toBe(true)
-// GraphCanvas continues to wire add / viewport / undo-redo commands.
-// No route/inspector/reset-window emit is part of the canvas contract anymore.
+emits: [
+  'zoom-in', 'zoom-out', 'fit-view', 'auto-layout', 'show-all',
+  'add-idea', 'add-resource', 'undo', 'redo',
+]
 ```
 
-If the test stubs `GraphToolbar`, remove `routes`, `inspector`, and `reset-windows` from the stub emit list.
+Delete assertions that expect `routes`, `inspector`, or `reset-windows` to bubble out of `GraphCanvas`.
 
 - [ ] **Step 5: Run toolbar + canvas unit tests**
 
@@ -430,26 +434,16 @@ git commit -m "refactor(ui): simplify graph toolbar"
 - Historical node becomes navigation-first: Q label, Latest/Shared indicators, compact question, one state, contextual actions on hover/focus.
 - Full answer remains readable in Inspector.
 
-- [ ] **Step 1: Add tests for compact historical vs expanded current nodes**
+- [ ] **Step 1: Add tests using the existing `mountNode`, `currentData`, and `historicalData` helpers**
 
-Add these assertions to `GraphQuestionNode.spec.ts` using the existing fixture helpers:
+Add to `GraphQuestionNode.spec.ts`:
 
 ```ts
 it('renders historical answered nodes as compact navigation cards', () => {
-  const wrapper = mountQuestionNode({
-    canAnswer: false,
-    primaryAnswer: {
-      id: 'a1',
-      nodeId: 'n1',
-      routeId: 'r1',
-      selectedOptionId: null,
-      selectedOptionLabel: null,
-      freeText: 'full historical answer that belongs in inspector',
-      routeLabel: '主路线',
-      createdAt: '2026-01-01T00:00:00Z',
-    },
+  const wrapper = mountNode(historicalData({
     isLatest: true,
-  })
+    qLabel: 'Q3',
+  }))
 
   expect(wrapper.get('[data-test="historical-question"]').exists()).toBe(true)
   expect(wrapper.get('[data-test="node-state"]').text()).toContain('已确认')
@@ -459,15 +453,14 @@ it('renders historical answered nodes as compact navigation cards', () => {
 })
 
 it('keeps the current answerable node expanded', () => {
-  const wrapper = mountQuestionNode({ canAnswer: true })
+  const wrapper = mountNode(currentData({ qLabel: 'Q4' }))
+
   expect(wrapper.get('[data-test="question"]').exists()).toBe(true)
   expect(wrapper.get('[data-test="free-text"]').exists()).toBe(true)
   expect(wrapper.get('[data-test="submit-answer"]').exists()).toBe(true)
   expect(wrapper.get('[data-test="node-state"]').text()).toContain('就绪')
 })
 ```
-
-Use the existing local test helper rather than introducing a second fixture system; adapt the object shape to that helper exactly.
 
 - [ ] **Step 2: Run the node test and verify the historical assertion fails**
 
@@ -493,7 +486,7 @@ const presentationState = computed(() => {
 })
 ```
 
-Render exactly one state marker in the header/body:
+Render exactly one state marker:
 
 ```vue
 <span
@@ -505,11 +498,11 @@ Render exactly one state marker in the header/body:
 </span>
 ```
 
-Do not add a separate badge for every runtime phase; continue using `phaseToCopy()` only inside a generating/pending card when explanatory copy is needed.
+Do not add a badge for each internal Runtime phase. Continue using `phaseToCopy()` inside generating/pending content where explanatory copy is needed.
 
-- [ ] **Step 4: Replace historical answer preview with compact question-only presentation**
+- [ ] **Step 4: Replace historical answer preview with compact question presentation**
 
-Historical branch becomes:
+The historical branch becomes:
 
 ```vue
 <template v-else>
@@ -562,7 +555,7 @@ cd frontend
 npm test -- src/components/graph/__tests__/GraphQuestionNode.spec.ts
 ```
 
-Expected: PASS, including existing input-persistence and action behavior unit coverage.
+Expected: PASS, including the existing submit, shared-reading, action-rail, and input-draft behavior in the file.
 
 - [ ] **Step 7: Commit compact node presentation**
 
@@ -585,35 +578,44 @@ git commit -m "refactor(ui): compact historical graph nodes"
 - Runtime `activate / restore / archive / delete` events remain unchanged.
 - Dim / hide / lifecycle filters remain available but are not permanent first-level controls.
 
-- [ ] **Step 1: Add tests that require a quiet default row and closed overflow**
+- [ ] **Step 1: Add a test helper and quiet-default assertions**
 
-Add to `RouteSidebar.spec.ts`:
+Add this helper below `routeView()` in `RouteSidebar.spec.ts`:
 
 ```ts
-it('renders route rows as navigation first and hides management actions by default', () => {
+function mountSidebar(
+  routes: GraphWorkspaceRouteView[] = [
+    routeView('r1', 'open', ['n1', 'n2']),
+    routeView('r2', 'open', ['n1', 'n3']),
+  ],
+  activeRouteId = 'r1',
+) {
+  return mount(RouteSidebar, {
+    props: { routes, activeRouteId, commandPending: false, pendingRouteCommand: null },
+  })
+}
+```
+
+Add:
+
+```ts
+it('renders route rows as navigation first and keeps management controls behind overflow', () => {
   const wrapper = mountSidebar()
   const route = wrapper.find('[data-route-id="r1"]')
 
   expect(route.get('[data-test="route-primary"]').exists()).toBe(true)
   expect(route.get('[data-test="route-more"]').exists()).toBe(true)
-  expect(route.find('[data-test="runtime-actions-group"]').isVisible()).toBe(false)
-  expect(route.find('[data-test="view-actions-group"]').isVisible()).toBe(false)
+  expect(route.get('[data-test="route-more"]').attributes('open')).toBeUndefined()
 })
 
 it('clicking the route row focuses and locates without activating runtime', async () => {
   const wrapper = mountSidebar()
-  await wrapper.find('[data-route-id="r2"]').trigger('click')
+  await wrapper.find('[data-route-id="r2"] .route-card__label').trigger('click')
 
   expect(useGraphUiStore().focusRouteId).toBe('r2')
-  expect(wrapper.emitted('locate-route')).toEqual([['r2']])
+  expect(wrapper.emitted('locate-route')?.[0]).toEqual(['r2'])
   expect(wrapper.emitted('activate')).toBeUndefined()
 })
-```
-
-If jsdom does not implement `<details>` visibility for `isVisible()`, assert the `open` attribute instead:
-
-```ts
-expect(route.get('[data-test="route-more"]').attributes('open')).toBeUndefined()
 ```
 
 - [ ] **Step 2: Run the route sidebar test and verify it fails**
@@ -623,11 +625,11 @@ cd frontend
 npm test -- src/components/workspace/__tests__/RouteSidebar.spec.ts
 ```
 
-Expected: FAIL because the current `<details>` is always `open` and lifecycle filters/actions occupy first-level space.
+Expected: FAIL because the current route details are always open and the primary row does not use the new quiet structure.
 
 - [ ] **Step 3: Make each row show only primary route information**
 
-Primary row structure:
+Use:
 
 ```vue
 <div class="route-card__primary" data-test="route-primary">
@@ -645,9 +647,11 @@ Primary row structure:
 </div>
 ```
 
-Remove always-visible lifecycle badge for normal open routes.
+Open routes do not need a permanent `开放` badge.
 
-- [ ] **Step 4: Put management and display controls behind closed native `<details>`**
+- [ ] **Step 4: Put route actions behind a closed native overflow**
+
+Use:
 
 ```vue
 <details class="route-card__more" data-test="route-more" @click.stop>
@@ -655,6 +659,7 @@ Remove always-visible lifecycle badge for normal open routes.
 
   <div class="route-card__menu">
     <div class="route-card__group" data-test="view-actions-group">
+      <button class="route-card__menu-item" data-test="locate-route" @click="emit('locate-route', route.id)">定位路线</button>
       <button class="route-card__menu-item" data-test="focus-route" @click="toggleFocus(route)">
         {{ isFocused(route.id) ? '取消浏览聚焦' : '浏览此路线' }}
       </button>
@@ -676,9 +681,34 @@ Remove always-visible lifecycle badge for normal open routes.
 </details>
 ```
 
-Move lifecycle filters into one separate closed `<details class="route-sidebar__filters-menu">` at the bottom of the sidebar; keep the existing checkbox behavior unchanged.
+Move lifecycle filters into one separate closed `<details data-test="route-filters">` after the route list; keep the existing checkbox/store behavior unchanged.
 
-- [ ] **Step 5: Run route sidebar tests**
+- [ ] **Step 5: Update existing RouteSidebar tests to open overflow before triggering hidden actions**
+
+For tests that click a route's action, open its details first:
+
+```ts
+const route = wrapper.find('[data-route-id="r2"]')
+await route.get('[data-test="route-more"]').setValue(true)
+await route.get('[data-test="focus-route"]').trigger('click')
+```
+
+If Vue Test Utils does not toggle `<details>` through `setValue`, use:
+
+```ts
+route.get('[data-test="route-more"]').element.setAttribute('open', '')
+```
+
+For lifecycle-filter tests, open the shared filter details before setting a checkbox:
+
+```ts
+wrapper.get('[data-test="route-filters"]').element.setAttribute('open', '')
+await wrapper.get('[data-test="filter-archived"]').setValue(false)
+```
+
+The assertions about Focus, Active-route hide protection, and emitted runtime route IDs remain unchanged.
+
+- [ ] **Step 6: Run route sidebar tests**
 
 ```bash
 cd frontend
@@ -687,7 +717,7 @@ npm test -- src/components/workspace/__tests__/RouteSidebar.spec.ts
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit route navigation simplification**
+- [ ] **Step 7: Commit route navigation simplification**
 
 ```bash
 git add frontend/src/components/workspace/RouteSidebar.vue frontend/src/components/workspace/__tests__/RouteSidebar.spec.ts frontend/src/style.css
@@ -709,15 +739,30 @@ git commit -m "refactor(ui): simplify route navigation"
 - Preserve contextual AI query API and proposal accept/reject behavior.
 - Preserve route reading context and relation rendering.
 - Preserve existing Requirement State / Spec tabs for this first slice; moving Spec into its own workspace region is a later slice.
-- Reduce first-screen metadata; move timestamps, author, branch provenance, and relations into secondary sections.
+- Reduce first-screen metadata; move timestamps, author, branch provenance, and relations into secondary details.
 
-- [ ] **Step 1: Add an order-focused inspector test**
+- [ ] **Step 1: Add order-focused tests using the existing `nodeData()` helper**
 
 Add to `NodeInspector.spec.ts`:
 
 ```ts
-it('prioritizes node identity, answer, and AI action before secondary metadata', () => {
-  const wrapper = mountInspector(answeredNodeData())
+it('prioritizes content, answer, and agent action before secondary metadata', () => {
+  const wrapper = mount(NodeInspector, {
+    props: {
+      data: nodeData({
+        qLabel: 'Q3',
+        isLatest: true,
+        primaryAnswer: {
+          routeId: 'rA',
+          selectedOptionId: null,
+          selectedOptionLabel: null,
+          freeText: '已确认的回答',
+          isPrimary: true,
+        },
+      }),
+    },
+  })
+
   const sections = wrapper.findAll('[data-test^="inspector-section-"]')
     .map((section) => section.attributes('data-test'))
 
@@ -727,21 +772,14 @@ it('prioritizes node identity, answer, and AI action before secondary metadata',
     'inspector-section-agent',
   ])
   expect(wrapper.get('[data-test="inspector-secondary"]').attributes('open')).toBeUndefined()
+  expect(wrapper.find('[data-test="agent-proposal"]').exists()).toBe(false)
 })
 ```
 
-Use the existing `answeredNodeData()`/fixture helper name from the file; if the local helper has another exact name, reuse that existing helper and only add the assertions.
-
-Add a proposal-specific assertion:
+Extend the existing awaiting-approval test with:
 
 ```ts
-expect(wrapper.find('[data-test="agent-proposal"]').exists()).toBe(false)
-```
-
-Then in the existing awaiting-approval test assert:
-
-```ts
-expect(wrapper.get('[data-test="agent-proposal"]').exists()).toBe(true)
+expect(wrapper.find('[data-test="agent-proposal"]').exists()).toBe(true)
 ```
 
 - [ ] **Step 2: Run inspector unit tests and verify the new order assertion fails**
@@ -751,7 +789,7 @@ cd frontend
 npm test -- src/components/workspace/__tests__/NodeInspector.spec.ts src/components/workspace/__tests__/WorkspaceInspector.spec.ts
 ```
 
-Expected: FAIL because the current Inspector starts with technical metadata / Ask AI before the answer hierarchy and has no grouped secondary details.
+Expected: FAIL because the current Inspector leads with technical metadata / Ask AI and has no grouped secondary section.
 
 - [ ] **Step 3: Introduce a concise selected-node header**
 
@@ -772,7 +810,7 @@ At the top of `NodeInspector.vue`:
 
 Do not show raw node IDs.
 
-- [ ] **Step 4: Reorder the primary sections**
+- [ ] **Step 4: Reorder primary sections**
 
 Use this order:
 
@@ -794,15 +832,20 @@ Use this order:
 
 <section class="node-inspector__section" data-test="inspector-section-agent">
   <h4>问 AI</h4>
-  <!-- keep the existing ask textarea/button/status logic here -->
+  <!-- Keep the existing ask textarea, button, status, and proposal logic here. -->
 </section>
 ```
 
-When an AI query is awaiting approval, wrap the existing proposal UI with:
+For the existing awaiting-approval branch, wrap the current proposal content with:
 
 ```vue
 <div class="node-inspector__proposal" data-test="agent-proposal">
-  <!-- existing candidate action copy + accept/reject buttons -->
+  <p class="graph-answer-text">{{ queryResult.message || 'AI 提出了一个候选动作，等待你确认。' }}</p>
+  <p class="meta-text">候选动作：<strong>{{ queryResult.actionFamily || '未知' }}</strong></p>
+  <div class="node-inspector__proposal-actions">
+    <button class="btn btn-small btn-primary" data-test="accept-proposal" :disabled="acceptingProposal || !queryResult.proposalId" @click="acceptProposal">接受</button>
+    <button class="btn btn-small" data-test="reject-proposal" :disabled="rejectingProposal || !queryResult.proposalId" @click="rejectProposal">拒绝</button>
+  </div>
 </div>
 ```
 
@@ -813,22 +856,30 @@ When an AI query is awaiting approval, wrap the existing proposal UI with:
   <summary>更多详情</summary>
   <div class="node-inspector__secondary-body">
     <p class="meta-text">{{ kindLabel }} · 创建于 {{ formatTime(data.node.createdAt) }}</p>
-    <!-- existing route membership / branch provenance / semantic relation content -->
+
+    <h4 class="node-inspector__heading">路线归属</h4>
+    <p class="meta-text">
+      {{ data.routeIds.length }} 条路线
+      <template v-if="data.isShared">（共享节点）</template>
+    </p>
+
+    <!-- Move the existing branch provenance block here unchanged. -->
+    <!-- Move the existing semantic-relations block here unchanged. -->
   </div>
 </details>
 ```
 
-Historical Fork / Reanswer / Regenerate controls belong below the secondary section as low-frequency contextual actions; they are not moved into the global header.
+Historical Fork / Reanswer / Regenerate controls remain available below secondary details as low-frequency contextual actions.
 
-- [ ] **Step 6: Keep `WorkspaceInspector` tabs but reduce panel chrome**
+- [ ] **Step 6: Keep `WorkspaceInspector` tab semantics stable while reducing chrome**
 
-Do not move Spec yet. Keep the existing tab semantics:
+Keep:
 
 ```ts
 type InspectorTab = 'details' | 'requirement' | 'spec'
 ```
 
-Keep selected node -> `details`, no selection -> `requirement`. Only simplify labels/styling if tests remain semantically identical.
+Keep selected node -> `details`, no selection -> `requirement`. Do not move Spec in this task.
 
 - [ ] **Step 7: Run inspector tests**
 
@@ -837,7 +888,7 @@ cd frontend
 npm test -- src/components/workspace/__tests__/NodeInspector.spec.ts src/components/workspace/__tests__/WorkspaceInspector.spec.ts
 ```
 
-Expected: PASS, including existing contextual AI / proposal acceptance tests.
+Expected: PASS, including proposal accept/reject behavior.
 
 - [ ] **Step 8: Commit inspector hierarchy**
 
@@ -852,15 +903,13 @@ git commit -m "refactor(ui): clarify inspector hierarchy"
 
 **Files:**
 - Modify: `frontend/src/style.css`
-- Modify: `frontend/src/App.vue` only if workspace header spacing needs a small structural class; do not add controls.
+- Modify: `frontend/src/App.vue` only if workspace header spacing needs a structural class; do not add controls.
 
 **Interfaces:**
 - Produces consistent tokens for surfaces, typography, selection, lifecycle status, focus ring, and sidebars.
 - No behavior changes.
 
 - [ ] **Step 1: Update root presentation tokens**
-
-Replace the coarse token block with values in this direction:
 
 ```css
 :root {
@@ -898,7 +947,7 @@ body {
 }
 ```
 
-- [ ] **Step 2: Make Graph visually dominant**
+- [ ] **Step 2: Make Graph visually dominant and sidebars quiet**
 
 ```css
 .workspace-shell__canvas {
@@ -919,11 +968,9 @@ body {
 }
 ```
 
-Do not use heavy card shadows on every node; selected/current nodes get stronger outline, normal historical nodes stay quiet.
+Normal historical nodes use subtle border/no heavy shadow; selected/current node uses accent outline and the stronger focus treatment.
 
-- [ ] **Step 3: Standardize lifecycle styles**
-
-Add only the small set used in Task 3:
+- [ ] **Step 3: Standardize the small lifecycle set**
 
 ```css
 .badge-ready,
@@ -943,7 +990,7 @@ Add only the small set used in Task 3:
 }
 ```
 
-- [ ] **Step 4: Add keyboard-visible focus states for controls that otherwise rely on hover**
+- [ ] **Step 4: Add keyboard-visible focus states for hover/contextual actions**
 
 ```css
 button:focus-visible,
@@ -980,7 +1027,7 @@ git add frontend/src/style.css frontend/src/App.vue
 git commit -m "style(ui): apply low-noise workspace visual system"
 ```
 
-If `App.vue` required no change, do not stage it.
+If `App.vue` has no diff, only `style.css` will be included in the commit.
 
 ---
 
@@ -1002,7 +1049,7 @@ If `App.vue` required no change, do not stage it.
 - Preserve behavior coverage for Graph interaction, Focus/Active separation, contextual AI, proposal approval, and relations.
 - Replace old geometry-persistence acceptance with fixed sidebars that reserve layout space.
 
-- [ ] **Step 1: Add fixed-layout desktop acceptance before deleting old tests**
+- [ ] **Step 1: Add fixed-layout acceptance for all three desktop target sizes before deleting old tests**
 
 Create `workspace-layout.spec.ts`:
 
@@ -1012,26 +1059,41 @@ import { buildThreeNodeLineage, createProject, fitGraph } from './helpers'
 
 test.setTimeout(400000)
 
-test('1366x768 fixed workspace keeps route, graph, and inspector non-overlapping', async ({ page }) => {
+const viewports = [
+  { width: 1366, height: 768 },
+  { width: 1440, height: 900 },
+  { width: 1920, height: 1080 },
+]
+
+for (const viewport of viewports) {
+  test(`${viewport.width}x${viewport.height} keeps route, graph, and inspector non-overlapping`, async ({ page }) => {
+    await page.setViewportSize(viewport)
+    await createProject(page, `E2E Fixed Workspace ${viewport.width}`)
+    await buildThreeNodeLineage(page)
+    await fitGraph(page)
+
+    const left = page.getByTestId('left-sidebar')
+    const canvas = page.getByTestId('graph-canvas')
+    const right = page.getByTestId('right-sidebar')
+
+    await expect(left).toBeVisible()
+    await expect(canvas).toBeVisible()
+    await expect(right).toBeVisible()
+
+    const [l, c, r] = await Promise.all([left.boundingBox(), canvas.boundingBox(), right.boundingBox()])
+    expect(l).not.toBeNull()
+    expect(c).not.toBeNull()
+    expect(r).not.toBeNull()
+    expect((l?.x ?? 0) + (l?.width ?? 0)).toBeLessThanOrEqual((c?.x ?? 0) + 1)
+    expect((c?.x ?? 0) + (c?.width ?? 0)).toBeLessThanOrEqual((r?.x ?? 0) + 1)
+  })
+}
+
+test('minimum desktop layout keeps the current question interactive', async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 768 })
-  await createProject(page, 'E2E Fixed Workspace')
+  await createProject(page, 'E2E Fixed Workspace Interaction')
   await buildThreeNodeLineage(page)
   await fitGraph(page)
-
-  const left = page.getByTestId('left-sidebar')
-  const canvas = page.getByTestId('graph-canvas')
-  const right = page.getByTestId('right-sidebar')
-
-  await expect(left).toBeVisible()
-  await expect(canvas).toBeVisible()
-  await expect(right).toBeVisible()
-
-  const [l, c, r] = await Promise.all([left.boundingBox(), canvas.boundingBox(), right.boundingBox()])
-  expect(l).not.toBeNull()
-  expect(c).not.toBeNull()
-  expect(r).not.toBeNull()
-  expect((l?.x ?? 0) + (l?.width ?? 0)).toBeLessThanOrEqual((c?.x ?? 0) + 1)
-  expect((c?.x ?? 0) + (c?.width ?? 0)).toBeLessThanOrEqual((r?.x ?? 0) + 1)
 
   const current = page.locator('.graph-question-node--current')
   await expect(current).toBeVisible()
@@ -1042,7 +1104,7 @@ test('1366x768 fixed workspace keeps route, graph, and inspector non-overlapping
 })
 ```
 
-- [ ] **Step 2: Run only the new layout spec and verify it fails on the old selectors/structure if Task 1 has not landed; otherwise verify it passes**
+- [ ] **Step 2: Run only the new layout spec**
 
 ```bash
 cd frontend
@@ -1053,7 +1115,7 @@ Expected after Tasks 1–6: PASS.
 
 - [ ] **Step 3: Migrate E2E selectors that only opened or asserted floating panels**
 
-Apply these exact selector substitutions:
+Use these substitutions:
 
 ```ts
 // old
@@ -1069,7 +1131,7 @@ page.getByTestId('floating-window-inspector')
 page.getByTestId('right-sidebar')
 ```
 
-For tests that clicked `open-inspector`, select the target node directly; the right Inspector is already present. Example in `connection.spec.ts`:
+For tests that clicked `open-inspector`, select the target node directly. In `connection.spec.ts`:
 
 ```ts
 const sourceNode = page.locator(`[data-node-id="${sourceNodeId}"]`)
@@ -1097,11 +1159,11 @@ await firstRoute.click()
 await expect(firstRoute).toHaveClass(/route-card--focused/)
 ```
 
-Keep all existing Focus vs Active runtime assertions.
+Keep existing Focus-vs-Active runtime assertions.
 
-- [ ] **Step 5: Remove helper waits/comments that only exist for floating reflow**
+- [ ] **Step 5: Remove helper waits/comments whose only purpose is floating-window reflow**
 
-In `frontend/e2e/helpers.ts`, remove double-RAF comments or waits only if their sole purpose is explicitly the floating-window reflow. Keep waits that are required for Vue Flow viewport settlement.
+In `frontend/e2e/helpers.ts`, keep viewport-settlement waits required by Vue Flow. Remove only the extra double-RAF branch/comment that explicitly waits for floating-window reflow after the viewport has already settled.
 
 - [ ] **Step 6: Delete the three old floating-presentation E2E specs**
 
@@ -1140,8 +1202,7 @@ git commit -m "test(ui): replace floating workspace acceptance with fixed layout
 ### Task 8: Full Frontend Regression and Scope Check
 
 **Files:**
-- No production file should be changed unless a verification failure points to a regression introduced by Tasks 1–7.
-- Update the plan checkbox state only after evidence is recorded in the development session.
+- No production file should change unless a verification failure proves a regression introduced by Tasks 1–7.
 
 **Interfaces:**
 - Produces a verified first slice with no backend changes and no new product capability.
@@ -1170,11 +1231,9 @@ Expected: both exit 0.
 npm run test:e2e
 ```
 
-Expected: PASS. If an E2E failure is caused only by a renamed presentation selector from this slice, update that test to the new semantic selector; do not restore removed floating UI to satisfy an old selector.
+Expected: PASS. Presentation-selector failures introduced by this slice are fixed by migrating the test to the new fixed-layout semantic selector; removed floating UI is not restored to satisfy an old selector.
 
-- [ ] **Step 4: Verify the frozen semantics directly**
-
-Run the focused regressions:
+- [ ] **Step 4: Re-run frozen semantic regressions explicitly**
 
 ```bash
 npx playwright test \
@@ -1209,16 +1268,16 @@ No `backend/`, `agent-brain/`, migration, or Runtime file may appear.
 git diff -- frontend/src frontend/e2e | grep -Ei 'comments?|research|notes|command palette|notification|share permissions|agent persona|analytics' || true
 ```
 
-Expected: no newly implemented product module matching those terms. Existing unrelated words in copy/tests must be reviewed rather than mechanically removed.
+Expected: no new product module matching those terms. Existing unrelated strings are reviewed against the diff rather than removed mechanically.
 
-- [ ] **Step 7: Final commit only if verification required small test/presentation fixes**
+- [ ] **Step 7: Commit only if verification required a small presentation/test regression fix**
 
 ```bash
 git add frontend
 git commit -m "fix(ui): close first-slice regression gaps"
 ```
 
-Skip this commit if Tasks 1–7 already pass without changes.
+Skip this commit when Tasks 1–7 are already green without additional changes.
 
 ---
 
@@ -1233,14 +1292,14 @@ Skip this commit if Tasks 1–7 already pass without changes.
 - Route navigation over management-console UI: Task 4.
 - Inspector priority and contextual AI proposal preservation: Task 5.
 - Low-noise visual system / keyboard focus: Task 6.
-- Fixed-layout desktop acceptance and presentation-test migration: Task 7.
+- 1366×768, 1440×900, 1920×1080 fixed-layout acceptance and presentation-test migration: Task 7.
 - Core behavior / Runtime scope protection: Task 8.
 - Full Spec redesign: intentionally not implemented in this first slice, matching the approved design's explicit deferral.
 - Full Approval / Recovery redesign: intentionally deferred; existing semantics are preserved.
 
-### Placeholder scan
+### Plan-completeness scan
 
-The plan contains no `TBD`, `TODO`, “implement later”, or unspecified “add tests” steps. Every task identifies concrete files, test commands, expected results, and implementation shape.
+Every implementation task names concrete files, exact existing helpers/interfaces, executable test commands, expected outcomes, and implementation structure. There are no unresolved requirements inside this first slice.
 
 ### Type / interface consistency
 
@@ -1248,6 +1307,8 @@ The plan contains no `TBD`, `TODO`, “implement later”, or unspecified “add
 - Runtime route commands remain emitted by `RouteSidebar` and handled by `WorkspaceView`.
 - `GraphCanvas` keeps existing domain emits; only floating-window presentation emits are removed.
 - Contextual AI continues to resolve canonical node -> visual key before selection.
+- `GraphQuestionNode.spec.ts` uses its existing `mountNode`, `currentData`, `historicalData` helpers.
+- `NodeInspector.spec.ts` uses its existing `nodeData()` helper.
 - No new backend contract or API type is introduced.
 
 ## Completion Definition
@@ -1260,7 +1321,7 @@ This slice is complete only when all of the following are true:
 4. Historical nodes are compact; current answerable node is still fully usable.
 5. Route sidebar behaves like navigation; low-frequency controls are behind overflow.
 6. Inspector first screen prioritizes question, answer, and AI action over technical metadata.
-7. 1366×768 fixed layout is usable and non-overlapping.
+7. All three desktop target sizes are non-overlapping; 1366×768 remains fully interactive.
 8. Full frontend unit, typecheck, build, and Playwright suites pass.
 9. No backend/runtime code changed.
 10. No concept-image-only product feature was added.
