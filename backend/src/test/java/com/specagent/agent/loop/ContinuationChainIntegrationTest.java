@@ -78,6 +78,8 @@ class ContinuationChainIntegrationTest {
     @Autowired private LoopProperties loopProperties;
     @Autowired private JdbcTemplate jdbcTemplate;
     @Autowired private com.specagent.answer.AnswerService answerService;
+    @Autowired private com.specagent.agent.policy.AgentProposalService proposalService;
+    @Autowired private com.specagent.agent.policy.ProposalAcceptanceService acceptanceService;
     @SpyBean
     private ContinuationCheckRepository checkRepository;
     @Autowired private com.specagent.route.RouteService routeService;
@@ -365,6 +367,149 @@ class ContinuationChainIntegrationTest {
         assertThat(eventService.findByRunId(root.id()).stream()
                 .anyMatch(e -> "AWAITING_APPROVAL".equals(e.eventType()))).isTrue();
         assertThat(agentRunRepository.findChildByParentRunId(root.id())).isEmpty();
+    }
+
+    @Test
+    void acceptedProposalExecutesOnceAndContinuesToChildSeeingResult() {
+        Project project = newProjectWithResource("chain-approval-accept");
+        // An unanswered question cannot gain a lineage child: answer the
+        // root first so the accepted CREATE_NODE may append.
+        var routeBefore = routeRepository.findById(project.activeRouteId()).orElseThrow();
+        answerService.finalizeAnswer(project.id(), project.activeRouteId(),
+                routeBefore.tipNodeId(), null, "answered for append", "test-user");
+        withMaxCycles(5);
+        AtomicInteger decisions = new AtomicInteger();
+        Answer<Object> forward = invocation -> {
+            AgentRequestEnvelope request = invocation.getArgument(0);
+            if (decisions.getAndIncrement() == 0) {
+                return createAnchoredDecisionNodeProposal(request);
+            }
+            return terminalRespond(request);
+        };
+        Mockito.doAnswer(forward).when(decisionEngine).runDecision(any());
+
+        AgentRun root = runService.createQueuedDraftQuestion(project.id());
+        worker.executeRun(claim(root));
+        assertThat(agentRunRepository.findChildByParentRunId(root.id())).isEmpty();
+
+        // User accepts: the proposal executes exactly once, the originating
+        // run gains the durable effect, and the reopened check dispatches to
+        // exactly one continuation child.
+        var pending = proposalService.findByRunId(root.id())
+                .orElseThrow(() -> new IllegalStateException("expected a pending proposal"));
+        var accepted = acceptanceService.acceptAndExecute(pending.id(), "test-user");
+        assertThat(accepted.producedNodeId()).isNotNull();
+
+        UUID childId = agentRunRepository.findChildByParentRunId(root.id())
+                .orElseThrow(() -> new IllegalStateException(
+                        "accept must continue the chain")).id();
+        assertThat(agentRunService.getRun(root.id()).orElseThrow().producedNodeId())
+                .isEqualTo(accepted.producedNodeId());
+        assertThat(eventService.findByRunId(root.id()).stream()
+                .anyMatch(e -> "ACCEPTANCE_EXECUTED".equals(e.eventType()))).isTrue();
+
+        worker.executeRun(runService.claimNextContinue()
+                .filter(run -> run.id().equals(childId))
+                .orElseThrow());
+        assertThat(agentRunService.getRun(childId).orElseThrow().status())
+                .isEqualTo(AgentRunStatus.COMPLETED);
+
+        // The child's ACTUAL DECISION input lineage contains the approved node.
+        var requests = Mockito.mockingDetails(decisionEngine)
+                .getInvocations().stream()
+                .filter(call -> "runDecision".equals(call.getMethod().getName()))
+                .map(call -> (AgentRequestEnvelope) call.getArgument(0))
+                .toList();
+        assertThat(requests).hasSize(2);
+        assertThat(requests.get(1).snapshot().lineage().stream()
+                .map(entry -> entry.node().id()))
+                .contains(accepted.producedNodeId());
+
+        // Duplicate accept converges on the single winner — never a second
+        // execution, never a second child.
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> acceptanceService.acceptAndExecute(pending.id(), "test-user"))
+                .isInstanceOf(com.specagent.agent.policy.ProposalAlreadyDecidedException.class);
+        Integer rowCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM agent_runs WHERE parent_run_id = ?",
+                Integer.class, root.id());
+        assertThat(rowCount).isEqualTo(1);
+    }
+
+    @Test
+    void rejectedProposalCreatesNoChildAndExecutesNothing() {
+        Project project = newProjectWithResource("chain-approval-reject");
+        withMaxCycles(5);
+        Mockito.doAnswer(invocation ->
+                createDecisionNodeProposal(invocation.getArgument(0)))
+                .when(decisionEngine).runDecision(any());
+
+        AgentRun root = runService.createQueuedDraftQuestion(project.id());
+        worker.executeRun(claim(root));
+        var pending = proposalService.findByRunId(root.id())
+                .orElseThrow(() -> new IllegalStateException("expected a pending proposal"));
+
+        proposalService.rejectProposal(pending.id(), "test-user");
+
+        assertThat(agentRunService.getRun(root.id()).orElseThrow().producedNodeId()).isNull();
+        assertThat(agentRunRepository.findChildByParentRunId(root.id())).isEmpty();
+        Integer nodeCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM nodes WHERE project_id = ?",
+                Integer.class, project.id());
+        // Fixture seeds: 1 resource + 1 knowledge + 1 root question. Reject
+        // executes nothing, so no agent node appears.
+        assertThat(nodeCount).isEqualTo(3);
+    }
+
+    @Test
+    void lostAcceptDispatchRecoversPendingCheckToChild() {
+        Project project = newProjectWithResource("chain-approval-recover");
+        // Same answer-first fixture as the accept test: the accepted
+        // CREATE_NODE must have a lineage parent.
+        var routeBeforeRecover = routeRepository.findById(project.activeRouteId()).orElseThrow();
+        answerService.finalizeAnswer(project.id(), project.activeRouteId(),
+                routeBeforeRecover.tipNodeId(), null, "answered for append", "test-user");
+        withMaxCycles(5);
+        AtomicInteger decisions = new AtomicInteger();
+        Answer<Object> forward = invocation -> {
+            AgentRequestEnvelope request = invocation.getArgument(0);
+            if (decisions.getAndIncrement() == 0) {
+                return createAnchoredDecisionNodeProposal(request);
+            }
+            return terminalRespond(request);
+        };
+        Mockito.doAnswer(forward).when(decisionEngine).runDecision(any());
+
+        AgentRun root = runService.createQueuedDraftQuestion(project.id());
+        worker.executeRun(claim(root));
+        var pending = proposalService.findByRunId(root.id())
+                .orElseThrow(() -> new IllegalStateException("expected a pending proposal"));
+
+        // The accept-time afterCommit dispatch throws: acceptance itself
+        // already committed (execution done once), the check stays pending.
+        Mockito.doThrow(new IllegalStateException("accept dispatch down"))
+                .doCallRealMethod()
+                .when(dispatchService).process(any(UUID.class));
+        var accepted = acceptanceService.acceptAndExecute(pending.id(), "test-user");
+        assertThat(accepted.producedNodeId()).isNotNull();
+        assertThat(agentRunRepository.findChildByParentRunId(root.id())).isEmpty();
+        assertThat(checkRepository.findPendingByRunId(root.id())).isPresent();
+        Mockito.reset(dispatchService);
+
+        // Recovery converges the still-pending check to exactly one child.
+        dispatchService.recoverPending();
+        UUID childId = agentRunRepository.findChildByParentRunId(root.id())
+                .orElseThrow(() -> new IllegalStateException(
+                        "recovery must continue the accepted chain")).id();
+        Integer rowCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM agent_runs WHERE parent_run_id = ?",
+                Integer.class, root.id());
+        assertThat(rowCount).isEqualTo(1);
+        worker.executeRun(runService.claimNextContinue()
+                .filter(run -> run.id().equals(childId))
+                .orElseThrow());
+        assertThat(agentRunService.getRun(childId).orElseThrow().status())
+                .isEqualTo(AgentRunStatus.COMPLETED);
     }
 
     @Test
@@ -972,6 +1117,30 @@ class ContinuationChainIntegrationTest {
                                 "content", Map.of("text", "decide the scope boundary")),
                         snapshotId, request.snapshot().contextHash(), List.of(),
                         UUID.randomUUID(), request.runId().toString(), List.of()),
+                new UsageView(1, List.of()), Map.of());
+    }
+
+    /**
+     * Slice 6: same DECISION proposal but anchored at the live tip, so a
+     * later user accept passes the acceptance stale-anchor gate (the
+     * anchorless variant above can only park — it can never be accepted on
+     * a non-empty route, which is the correct fail-closed behavior).
+     */
+    private AgentResponseEnvelope createAnchoredDecisionNodeProposal(
+            AgentRequestEnvelope request) {
+        UUID snapshotId = UUID.fromString(request.snapshot().snapshotId());
+        UUID tip = request.snapshot().anchorNodeId();
+        return new AgentResponseEnvelope(
+                AgentProtocol.DECISION_PROTOCOL_VERSION_V2,
+                request.runId(), null,
+                new ObservationView(List.of("A decision needs confirmation."),
+                        List.of(), List.of(), List.of()),
+                new ActionProposal("CREATE_NODE",
+                        Map.of("kind", "KNOWLEDGE", "subtype", "DECISION",
+                                "content", Map.of("text", "decide the scope boundary")),
+                        snapshotId, request.snapshot().contextHash(), List.of(),
+                        UUID.randomUUID(), request.runId().toString(),
+                        tip == null ? List.of() : List.of("node:" + tip)),
                 new UsageView(1, List.of()), Map.of());
     }
 

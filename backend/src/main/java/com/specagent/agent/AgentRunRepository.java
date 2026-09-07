@@ -195,8 +195,7 @@ public class AgentRunRepository {
     /**
      * Records the node persisted by this run.
      */
-    public void markPersistedNode(UUID runId, UUID producedNodeId, String trace) {
-        String sql = """
+    public void markPersistedNode(UUID runId, UUID producedNodeId, String trace) {        String sql = """
                 UPDATE agent_runs
                 SET produced_node_id = :producedNodeId,
                     status = :status,
@@ -208,6 +207,24 @@ public class AgentRunRepository {
                 "producedNodeId", producedNodeId,
                 "status", AgentRunStatus.PERSISTED.code(),
                 "trace", json.write(trace)));
+    }
+
+    /**
+     * Attaches an approval-produced node to an already-terminal run without
+     * touching its status or completion. The acceptance transaction owns the
+     * execution; the originating run only gains the durable effect
+     * reference so the continuation coordinator can judge it. Status and
+     * trace stay exactly as terminalization left them.
+     */
+    public void attachApprovalProducedNode(UUID runId, UUID producedNodeId) {
+        String sql = """
+                UPDATE agent_runs
+                SET produced_node_id = :producedNodeId
+                WHERE id = :runId
+                """;
+        jdbcTemplate.update(sql, Maps.of(
+                "runId", runId,
+                "producedNodeId", producedNodeId));
     }
 
     /**
