@@ -8,12 +8,15 @@ import com.specagent.agent.AgentRunTriggerType;
 import com.specagent.agent.ModelContractException;
 import com.specagent.agent.contract.AgentEvent;
 import com.specagent.agent.decision.AgentBrainUnavailableException;
+import com.specagent.agent.loop.ContinuationCoordinator;
 import com.specagent.agent.runevent.AgentRunEvent;
 import com.specagent.agent.runevent.AgentRunEventService;
 import com.specagent.agent.runevent.AgentRunPhase;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.List;
 import java.util.Map;
@@ -46,6 +49,8 @@ public class RunWorker {
     private final ArtifactCycleService artifactCycleService;
     private final ReplacementCycleService replacementCycleService;
     private final NodeQueryService nodeQueryService;
+    private final ContinuationCycleService continuationCycleService;
+    private final ContinuationCoordinator continuationCoordinator;
 
     public RunWorker(RunService runService,
                             AgentRunService agentRunService,
@@ -55,7 +60,9 @@ public class RunWorker {
                             DecisionCycleService decisionCycleService,
                             ArtifactCycleService artifactCycleService,
                             ReplacementCycleService replacementCycleService,
-                            NodeQueryService nodeQueryService) {
+                            NodeQueryService nodeQueryService,
+                            ContinuationCycleService continuationCycleService,
+                            ContinuationCoordinator continuationCoordinator) {
         this.runService = runService;
         this.agentRunService = agentRunService;
         this.agentRunFailureService = agentRunFailureService;
@@ -65,6 +72,8 @@ public class RunWorker {
         this.artifactCycleService = artifactCycleService;
         this.replacementCycleService = replacementCycleService;
         this.nodeQueryService = nodeQueryService;
+        this.continuationCycleService = continuationCycleService;
+        this.continuationCoordinator = continuationCoordinator;
     }
 
     /** Claims and executes at most one queued run from each queue. */
@@ -75,6 +84,7 @@ public class RunWorker {
         runService.claimNextArtifact().ifPresent(this::executeRun);
         runService.claimNextRegenerate().ifPresent(this::executeRun);
         runService.claimNextNodeQuery().ifPresent(this::executeRun);
+        runService.claimNextContinue().ifPresent(this::executeRun);
     }
 
     /**
@@ -86,8 +96,7 @@ public class RunWorker {
             case NODE_QUERY -> executeNodeQuery(run);
             case GENERATE_SPEC -> executeArtifactGeneration(run);
             case REGENERATE_NODE -> executeRegenerate(run);
-            case CONTINUE_CYCLE -> throw new UnsupportedOperationException(
-                    "CONTINUE_CYCLE execution arrives in Slice 3; Slice 0 wires routing only");
+            case CONTINUE_CYCLE -> executeContinuationCycle(run);
             default -> executeDecisionCycle(run);
         }
     }
@@ -139,6 +148,7 @@ public class RunWorker {
         UUID runId = run.id();
         try {
             decisionCycleService.draftQuestion(run);
+            evaluateContinuationAfterTerminal(runId);
         } catch (RuntimeException ex) {
             failIfNotTerminal(runId, ex);
             throw ex;
@@ -170,9 +180,49 @@ public class RunWorker {
                 answerCycleService.submitAnswer(run, run.projectId(), selectedOptionId, freeText,
                         persistenceIntent);
             }
+            evaluateContinuationAfterTerminal(runId);
         } catch (RuntimeException ex) {
             failIfNotTerminal(runId, ex);
             throw ex;
+        }
+    }
+
+    /**
+     * Autonomous continuation: one fresh DECISION in
+     * {@link ContinuationCycleService}.
+     */
+    private void executeContinuationCycle(AgentRun run) {
+        UUID runId = run.id();
+        try {
+            continuationCycleService.executeContinuation(run);
+            evaluateContinuationAfterTerminal(runId);
+        } catch (RuntimeException ex) {
+            failIfNotTerminal(runId, ex);
+            throw ex;
+        }
+    }
+
+    /**
+     * Single terminal continuation hook for every cycle that may legally
+     * continue (decision, answer, continuation). The coordinator re-reads
+     * the run from durable state, so it only ever sees committed terminal
+     * facts: inside a managed transaction evaluation waits for afterCommit,
+     * otherwise the preceding terminal writes already committed and the
+     * evaluation runs inline. No cycle service calls the coordinator
+     * itself, and no execution result, policy verdict, or model observation
+     * is passed — the input stays one run id.
+     */
+    private void evaluateContinuationAfterTerminal(UUID runId) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(
+                    new TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            continuationCoordinator.continueIfEligible(runId);
+                        }
+                    });
+        } else {
+            continuationCoordinator.continueIfEligible(runId);
         }
     }
 

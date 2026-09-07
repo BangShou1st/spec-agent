@@ -122,16 +122,24 @@ class AgentRunLoopLinkageTest {
     }
 
     @Test
-    void continueCycleExecutionIsAnExplicitSlice0Placeholder() {
-        Project project = projectService.createProject("loop-linkage-placeholder");
+    void continueCycleWithoutAnchorFailsClosed() {
+        // Slice 3B: CONTINUE_CYCLE really executes through the production
+        // chain. An anchorless child on an empty route drafts the root
+        // question (INTERACTION), which parks the chain as an external
+        // boundary — it never spawns a further child.
+        Project project = projectService.createProject("loop-linkage-stale");
         AgentRun continued = new AgentRun(UUID.randomUUID(), project.id(),
                 project.activeRouteId(), AgentRunTriggerType.CONTINUE_CYCLE,
                 null, null, null, null, null, null, AgentRunStatus.CREATED,
                 "{}", "CONTINUE", null, null, Instant.now(), null,
                 null, null, null);
+        agentRunRepository.save(continued);
 
-        assertThatThrownBy(() -> worker.executeRun(continued))
-                .isInstanceOf(UnsupportedOperationException.class)
-                .hasMessageContaining("CONTINUE_CYCLE");
+        worker.executeRun(
+                agentRunRepository.findById(continued.id()).orElseThrow());
+
+        assertThat(agentRunRepository.findById(continued.id()).orElseThrow().status())
+                .isEqualTo(AgentRunStatus.COMPLETED);
+        assertThat(agentRunRepository.findChildByParentRunId(continued.id())).isEmpty();
     }
 }
