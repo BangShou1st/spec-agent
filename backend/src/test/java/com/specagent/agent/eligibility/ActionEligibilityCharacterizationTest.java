@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
@@ -143,10 +144,17 @@ class ActionEligibilityCharacterizationTest {
     }
 
     @Test
-    void rejectsOrdinaryNodeCreationWhileStructuredBlockerIsUnresolved() throws Exception {
+    void allowsOrdinaryNoteCreationWhileConflictIsUnresolved() throws Exception {
+        // Frozen principle: constrain execution, not reasoning. An unresolved
+        // conflict/open_question never denies CREATE_NODE at the eligibility
+        // boundary. A plain KNOWLEDGE/NOTE that does not duplicate durable
+        // state passes the validator; policy/runtime safety still applies
+        // downstream (auto-executable vs confirmable vs denied).
         AgentRequestEnvelope base = request();
         AgentInputSnapshot snapshot = base.snapshot();
         List<ClaimView> claims = new ArrayList<>(snapshot.effectiveClaims());
+        claims.add(new ClaimView("conflict", "交付范围与资源约束互斥。", "unresolved",
+                1.0, snapshot.anchorNodeId(), null));
         claims.add(new ClaimView("open_question", "部署区域尚未确定。", "unresolved",
                 1.0, snapshot.anchorNodeId(), null));
         AgentInputSnapshot blockedSnapshot = new AgentInputSnapshot(
@@ -163,7 +171,43 @@ class ActionEligibilityCharacterizationTest {
                 "subtype", "NOTE",
                 "content", Map.of("text", "继续设计部署方案。")));
 
-        assertIneligible(blocked, proposal, "UNRESOLVED_BLOCKER");
+        ActionEligibility eligibility = evaluator.evaluate(blocked);
+        assertThat(eligibility.eligibleFamilies()).contains("CREATE_NODE");
+        assertThatCode(() -> validator.validateSelection(blocked, proposal, eligibility))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void allowsVisibleReadOnlyCapabilityWhileConflictIsUnresolved() throws Exception {
+        // Unresolved conflict does not deny INVOKE_CAPABILITY either: a
+        // visible read-only capability with grounded arguments stays eligible.
+        // Eligibility never grants execution authority — policy still owns
+        // auto-executable vs confirmable vs denied.
+        AgentRequestEnvelope base = request();
+        AgentInputSnapshot snapshot = base.snapshot();
+        List<ClaimView> claims = new ArrayList<>(snapshot.effectiveClaims());
+        claims.add(new ClaimView("conflict", "交付范围与资源约束互斥。", "unresolved",
+                1.0, snapshot.anchorNodeId(), null));
+        AgentInputSnapshot withConflictAndCapability = new AgentInputSnapshot(
+                snapshot.snapshotId(), snapshot.contextHash(), snapshot.projectId(),
+                snapshot.routeId(), snapshot.anchorNodeId(), snapshot.routeContext(),
+                snapshot.lineage(), claims, snapshot.metadata(),
+                snapshot.allowedSourceRefs(), List.of(new CapabilityDescriptor(
+                        "resource.extract", "1", "extract attached resource", true,
+                        "NONE")), snapshot.capabilityResults(), snapshot.relations(),
+                snapshot.relatedNodes(), snapshot.autonomy());
+        AgentRequestEnvelope blocked = new AgentRequestEnvelope(
+                base.protocolVersion(), base.runId(), base.event(), withConflictAndCapability,
+                base.capabilities(), base.decisionBudget());
+        ActionProposal proposal = proposal(blocked, "INVOKE_CAPABILITY", Map.of(
+                "capabilityId", "resource.extract",
+                "arguments", Map.of("nodeRef",
+                        "node:33333333-3333-3333-3333-333333333333")));
+
+        ActionEligibility eligibility = evaluator.evaluate(blocked);
+        assertThat(eligibility.eligibleFamilies()).contains("INVOKE_CAPABILITY");
+        assertThatCode(() -> validator.validateSelection(blocked, proposal, eligibility))
+                .doesNotThrowAnyException();
     }
 
     @Test

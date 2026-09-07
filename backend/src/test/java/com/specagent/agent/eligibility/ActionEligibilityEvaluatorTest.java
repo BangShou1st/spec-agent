@@ -79,19 +79,28 @@ class ActionEligibilityEvaluatorTest {
     }
 
     @Test
-    void unresolvedStructuredBlockerProducesStableCreateNodeDenial() throws Exception {
+    void unresolvedConflictLeavesCreateNodeEligible() throws Exception {
+        // Frozen principle: constrain execution, not reasoning. An unresolved
+        // conflict/open_question never denies CREATE_NODE here. Only objective
+        // execution preconditions (capability visibility, WAIT dependency)
+        // may restrict eligibility at this boundary.
         AgentRequestEnvelope original = request();
         AgentInputSnapshot snapshot = original.snapshot();
         List<ClaimView> claims = new ArrayList<>(snapshot.effectiveClaims());
         claims.add(new ClaimView("open_question", "数据保留期尚未确定。", "unresolved",
                 1.0, null, null));
+        claims.add(new ClaimView("conflict", "交付范围与资源约束互斥。", "unresolved",
+                1.0, null, null));
 
         ActionEligibility result = evaluator.evaluate(withSnapshot(original,
                 copy(snapshot, claims, snapshot.availableCapabilities())));
 
-        assertThat(result.eligibleFamilies()).doesNotContain("CREATE_NODE", "WAIT");
-        assertThat(result.constraints().get("CREATE_NODE").reasonCodes())
-                .containsExactly(ActionEligibilityReasonCode.UNRESOLVED_BLOCKER);
+        assertThat(result.eligibleFamilies()).contains("CREATE_NODE");
+        assertThat(result.constraints().get("CREATE_NODE").eligible()).isTrue();
+        assertThat(result.constraints().get("CREATE_NODE").reasonCodes()).isEmpty();
+        // Objective execution precondition still applies: WAIT has no
+        // pending-dependency representation in this input.
+        assertThat(result.eligibleFamilies()).doesNotContain("WAIT");
         assertThat(result.constraints().get("WAIT").reasonCodes())
                 .containsExactly(ActionEligibilityReasonCode.NO_PENDING_DEPENDENCY);
     }

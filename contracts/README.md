@@ -32,9 +32,9 @@ An `agent-input.v3` Decision request adds top-level derived control data:
   "version": "action-eligibility.v1",
   "eligibleFamilies": ["REQUEST_USER_INPUT", "RESPOND_TO_USER"],
   "constraints": {
-    "CREATE_NODE": {
+    "INVOKE_CAPABILITY": {
       "eligible": false,
-      "reasonCodes": ["UNRESOLVED_BLOCKER"]
+      "reasonCodes": ["CAPABILITY_NOT_VISIBLE"]
     }
   },
   "basisHash": "<sha256>"
