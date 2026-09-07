@@ -112,7 +112,12 @@ class AgentBrainResponseValidatorTest {
     }
 
     @Test
-    void unresolvedConflictRejectsWaitEvenWhenBrainReportsTheConflict() throws Exception {
+    void unresolvedConflictAcceptsAnyActionFamilyOnceConflictIsReported() throws Exception {
+        // Slice 4: the conflict action-family whitelist is removed. Once the
+        // brain faithfully reports the conflict in observation.conflicts, the
+        // ACTION choice is unrestricted here — WAIT included. Execution
+        // safety belongs to Runtime policy/stale/permission gates, never to
+        // this contract check.
         AgentRequestEnvelope request = requestWithUnresolvedConflict();
         AgentResponseEnvelope response = AgentContracts.read(
                 fixture("decision-response-valid.json"), AgentResponseEnvelope.class);
@@ -128,9 +133,8 @@ class AgentBrainResponseValidatorTest {
                         response.actionProposal().idempotencyKey(), List.of()),
                 response.usage(), response.diagnostics());
 
-        assertThatThrownBy(() -> AgentBrainResponseValidator.validateDecision(request, mutated))
-                .isInstanceOf(AgentContractException.class)
-                .hasMessageContaining("unresolved conflict");
+        assertThatCode(() -> AgentBrainResponseValidator.validateDecision(request, mutated))
+                .doesNotThrowAnyException();
     }
 
     @Test
@@ -146,6 +150,34 @@ class AgentBrainResponseValidatorTest {
         assertThatThrownBy(() -> AgentBrainResponseValidator.validateDecision(request, mutated))
                 .isInstanceOf(AgentContractException.class)
                 .hasMessageContaining("observation.conflicts");
+    }
+
+    @Test
+    void unresolvedConflictAcceptsNonDecisionCreateNodeOnceConflictIsReported() throws Exception {
+        // Slice 4: a plain NOTE create (not an explicit DECISION node) was
+        // rejected by the old whitelist; with the whitelist removed it
+        // passes once the conflict is faithfully reported.
+        AgentRequestEnvelope request = requestWithUnresolvedConflict();
+        AgentResponseEnvelope response = AgentContracts.read(
+                fixture("decision-response-valid.json"), AgentResponseEnvelope.class);
+        Map<String, Object> payload = Map.of(
+                "kind", "KNOWLEDGE",
+                "subtype", "NOTE",
+                "content", Map.of("text", "记录冲突双方的约束条件。"));
+        AgentResponseEnvelope mutated = new AgentResponseEnvelope(
+                response.protocolVersion(), response.runId(), null,
+                new ObservationView(List.of(), List.of(),
+                        List.of("交付范围与开发资源约束互斥。"), List.of()),
+                new com.specagent.agent.contract.ActionProposal(
+                        "CREATE_NODE", payload,
+                        response.actionProposal().baseContextSnapshotId(),
+                        response.actionProposal().baseContextHash(),
+                        List.of(), response.actionProposal().proposalId(),
+                        response.actionProposal().idempotencyKey(), List.of()),
+                response.usage(), response.diagnostics());
+
+        assertThatCode(() -> AgentBrainResponseValidator.validateDecision(request, mutated))
+                .doesNotThrowAnyException();
     }
 
     @Test

@@ -80,7 +80,10 @@ def test_state_update_prompt_exposes_effective_claims_for_cross_claim_check():
     assert "互斥" in STATE_UPDATE_SYSTEM_PROMPT
 
 
-def test_unresolved_conflict_rejects_wait():
+def test_unresolved_conflict_accepts_any_action_once_reported():
+    # Slice 4: the action-family whitelist is removed. Once the conflict is
+    # faithfully reported, WAIT is as acceptable as any other family —
+    # execution safety belongs to the Java Runtime gates.
     request = _request_with_unresolved_conflict()
     output = _decision_output(
         "WAIT",
@@ -88,8 +91,8 @@ def test_unresolved_conflict_rejects_wait():
         conflicts=["交付范围与开发资源约束互斥。"],
     )
 
-    with pytest.raises(BrainContractError, match="unresolved conflict"):
-        handle_decision(request, ScriptedClient(output))
+    response = handle_decision(request, ScriptedClient(output))
+    assert response.action_proposal.action_family == "WAIT"
 
 
 def test_unresolved_conflict_requires_observation_conflict():
