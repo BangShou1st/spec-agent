@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, inject, nextTick, onMounted, ref, watch } from 'vue'
 import { routerKey } from 'vue-router'
 import ApiErrorBanner from '@/components/ApiErrorBanner.vue'
 import ConfirmRouteActionDialog from '@/components/ConfirmRouteActionDialog.vue'
@@ -9,8 +9,8 @@ import ReanswerRouteDialog from '@/components/ReanswerRouteDialog.vue'
 import RegenerateNodeDialog from '@/components/RegenerateNodeDialog.vue'
 import GraphCanvas from '@/components/graph/GraphCanvas.vue'
 import RelationProposalDialog from '@/components/graph/RelationProposalDialog.vue'
-import FloatingWindow from '@/components/workspace/FloatingWindow.vue'
-import RouteNavigator from '@/components/workspace/RouteNavigator.vue'
+import ResizableSidebar from '@/components/workspace/ResizableSidebar.vue'
+import RouteSidebar from '@/components/workspace/RouteSidebar.vue'
 import WorkspaceInspector from '@/components/workspace/WorkspaceInspector.vue'
 import {
   projectGraph,
@@ -18,21 +18,19 @@ import {
   type SpecAgentGraphNodeData,
 } from '@/graph/graphProjection'
 import { phaseToCopy } from '@/graph/phaseCopy'
-import { FLOATING_WINDOW_RANGES } from '@/graph/graphLayoutStorage'
-import { computeAutoFloatingWindowLayout, type FloatingRect } from '@/graph/floatingWindowLayout'
-import { resolveSafeFitRegion, type FitViewportRegion } from '@/graph/graphViewport'
 import { productErrorMessage, requiresModelSettings } from '@/api/errorCopy'
 import { useGraphUiStore } from '@/stores/graphUiStore'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
 import type { RegenerateNodeRequest, SubmitAnswerRequest } from '@/api/types'
 
 /**
- * Graph-first workspace shell (Phase 7.3).
+ * Graph-first workspace shell with fixed Route / Graph / Inspector regions.
  *
- * Layout: GraphCanvas with floating route navigation and inspector windows.
- * Runtime commands go through workspaceStore (Active-route only); Focus/
- * Dim/Hide/positions/sidebars live in graphUiStore (browser-only).
- * Focus drives shared-node reading; Active remains runtime-only.
+ * Layout: left RouteSidebar + center GraphCanvas + right WorkspaceInspector,
+ * composed with the existing ResizableSidebar infrastructure. Runtime commands
+ * go through workspaceStore (Active-route only); Focus/Dim/Hide/positions/
+ * sidebars live in graphUiStore (browser-only). Focus drives shared-node
+ * reading; Active remains runtime-only.
  */
 const props = defineProps<{ projectId: string }>()
 
@@ -40,35 +38,6 @@ const store = useWorkspaceStore()
 const graphUi = useGraphUiStore()
 const router = inject(routerKey, null)
 const canvasRef = ref<InstanceType<typeof GraphCanvas> | null>(null)
-const workspaceBodyRef = ref<HTMLElement | null>(null)
-let floatingLayoutFrame: number | null = null
-let floatingLayoutSettledTimer: number | null = null
-let workspaceResizeObserver: ResizeObserver | null = null
-
-const safeFitRegion = computed<FitViewportRegion | null>(() => {
-  const body = workspaceBodyRef.value
-  if (!body) return null
-  const bodyBox = body.getBoundingClientRect()
-  if (bodyBox.width <= 0 || bodyBox.height <= 0) return null
-  const obstacles: FloatingRect[] = []
-  for (const name of ['routes', 'inspector'] as const) {
-    const state = graphUi.floatingWindows[name]
-    if (!state.open) continue
-    if (state.positionMode === 'auto' && state.x === 0 && state.y === 72) continue
-    obstacles.push({ x: state.x, y: state.y, width: state.width, height: state.height })
-  }
-  if (obstacles.length === 0) return null
-  const region = resolveSafeFitRegion({
-    canvasWidth: bodyBox.width,
-    canvasHeight: bodyBox.height,
-    obstacles,
-    gap: 16,
-  })
-  if (region.x === 0 && region.y === 0 && region.width === bodyBox.width && region.height === bodyBox.height) {
-    return null
-  }
-  return region
-})
 
 const forkDialogOpen = ref(false)
 const resourceDialogOpen = ref(false)
@@ -82,30 +51,9 @@ const reanswerNodeId = ref<string | null>(null)
 
 onMounted(() => {
   graphUi.initProject(props.projectId)
-  window.addEventListener('resize', scheduleFloatingLayout)
-  if (workspaceBodyRef.value && 'ResizeObserver' in window) {
-    workspaceResizeObserver = new ResizeObserver(scheduleFloatingLayout)
-    workspaceResizeObserver.observe(workspaceBodyRef.value)
-  }
-  scheduleFloatingLayout()
   void store.loadWorkspace(props.projectId).then(() => {
     void store.refreshUndoRedoAvailability()
-    scheduleFloatingLayout()
   })
-})
-
-onBeforeUnmount(() => {
-  window.removeEventListener('resize', scheduleFloatingLayout)
-  workspaceResizeObserver?.disconnect()
-  workspaceResizeObserver = null
-  if (floatingLayoutFrame !== null) {
-    window.cancelAnimationFrame(floatingLayoutFrame)
-    floatingLayoutFrame = null
-  }
-  if (floatingLayoutSettledTimer !== null) {
-    window.clearTimeout(floatingLayoutSettledTimer)
-    floatingLayoutSettledTimer = null
-  }
 })
 
 // 每次 canonical 刷新后，浏览器视图状态与后端 graph 对齐。
@@ -113,124 +61,8 @@ watch(
   () => store.graphView,
   (view) => {
     graphUi.reconcile(view)
-    scheduleFloatingLayout()
   },
 )
-
-watch(
-  () => [graphUi.nodePositions, graphUi.routeDisplayStates, graphUi.floatingWindows],
-  () => scheduleFloatingLayout(),
-  { deep: true, flush: 'post' },
-)
-
-function graphObstacles(): FloatingRect[] {
-  const body = workspaceBodyRef.value
-  if (!body) return []
-  const bodyBox = body.getBoundingClientRect()
-  return Array.from(body.querySelectorAll<HTMLElement>(
-    '[data-layout-role="graph-node"], [data-layout-role="start-placeholder"], '
-      + '[data-layout-role="toolbar"]',
-  ))
-    .map((element) => {
-      const box = element.getBoundingClientRect()
-      return {
-        x: box.left - bodyBox.left,
-        y: box.top - bodyBox.top,
-        width: box.width,
-        height: box.height,
-      }
-    })
-    .filter((box) => box.width > 0 && box.height > 0)
-}
-
-function floatingRect(name: 'routes' | 'inspector'): FloatingRect {
-  const state = graphUi.floatingWindows[name]
-  return { x: state.x, y: state.y, width: state.width, height: state.height }
-}
-
-function changedGeometry(
-  current: { x: number; y: number; width: number; height: number },
-  next: { x: number; y: number; width: number; height: number },
-): boolean {
-  return Math.abs(current.x - next.x) > 0.5
-    || Math.abs(current.y - next.y) > 0.5
-    || Math.abs(current.width - next.width) > 0.5
-    || Math.abs(current.height - next.height) > 0.5
-}
-
-function reflowFloatingWindows(): void {
-  const body = workspaceBodyRef.value
-  if (!body) return
-  const bodyBox = body.getBoundingClientRect()
-  if (bodyBox.width <= 0 || bodyBox.height <= 0) return
-
-  const obstacles = graphObstacles()
-  const routes = graphUi.floatingWindows.routes
-  const inspector = graphUi.floatingWindows.inspector
-  const routeObstacles = [
-    ...obstacles,
-    ...(inspector.open && inspector.positionMode === 'manual' ? [floatingRect('inspector')] : []),
-  ]
-  if (routes.open && routes.positionMode === 'auto') {
-    const nextRoutes = computeAutoFloatingWindowLayout({
-      viewportWidth: bodyBox.width,
-      viewportHeight: bodyBox.height,
-      state: routes,
-      range: FLOATING_WINDOW_RANGES.routes,
-      obstacles: routeObstacles,
-    })
-    if (changedGeometry(routes, nextRoutes)) {
-      graphUi.setFloatingWindow('routes', nextRoutes)
-    }
-  }
-
-  const refreshedRoutes = graphUi.floatingWindows.routes
-  // Both windows respect the same graph obstacle set: every interactive graph
-  // node, the start placeholder's content, and the toolbar. A knowledge draft
-  // or historical node is never acceptable cover for an auto window.
-  const inspectorObstacles = [
-    ...obstacles,
-    ...(refreshedRoutes.open ? [floatingRect('routes')] : []),
-  ]
-  if (inspector.open && inspector.positionMode === 'auto') {
-    const nextInspector = computeAutoFloatingWindowLayout({
-      viewportWidth: bodyBox.width,
-      viewportHeight: bodyBox.height,
-      state: inspector,
-      range: FLOATING_WINDOW_RANGES.inspector,
-      obstacles: inspectorObstacles,
-      // Window-to-window overlap blocks the close/titlebar controls just as
-      // much as overlap with the current graph interaction does.
-      protectedObstacles: inspectorObstacles,
-    })
-    if (changedGeometry(inspector, nextInspector)) {
-      graphUi.setFloatingWindow('inspector', nextInspector)
-    }
-  }
-}
-
-function scheduleFloatingLayout(): void {
-  if (typeof window === 'undefined' || floatingLayoutFrame !== null) return
-  // Use a double requestAnimationFrame so the layout pass observes the
-  // post-transform graph geometry. Vue Flow's setViewport Promise resolves
-  // on the d3 transition `end` event, which fires when the transform style
-  // is written, but the affected article / floating-window bounding boxes
-  // are not necessarily flushed in the same microtask. Reading them on the
-  // very next frame would still return mid-animation values, and the
-  // auto-layout algorithm would then choose a position that overlaps the
-  // final node rect once the browser commits the layout. Two consecutive
-  // RAFs guarantee the layout has been recalculated against the settled
-  // transform before we read any geometry. ``floatingLayoutFrame`` is held
-  // non-null across both RAF waits so the early-return on re-entry still
-  // coalesces repeat calls, and ``onBeforeUnmount`` can still cancel the
-  // pending wait by cancelling the second (still-stored) id.
-  floatingLayoutFrame = window.requestAnimationFrame(() => {
-    floatingLayoutFrame = window.requestAnimationFrame(() => {
-      floatingLayoutFrame = null
-      reflowFloatingWindows()
-    })
-  })
-}
 
 const selectedNodeData = computed<SpecAgentGraphNodeData | null>(() => {
   if (!store.graphView || !graphUi.primarySelectedNodeId) {
@@ -497,7 +329,7 @@ function handleContextualAi(target: ContextualAiTarget): void {
   const visualNodeKey = resolveContextualAiTarget(target)
   if (!visualNodeKey) return
   graphUi.selectNode(visualNodeKey)
-  openWindow('inspector')
+  graphUi.setRightSidebar({ open: true, width: graphUi.rightSidebarWidth })
 }
 
 async function handleForkSubmit(label: string | null): Promise<void> {
@@ -556,20 +388,6 @@ function handleLocateRoute(routeId: string): void {
   void canvasRef.value?.locateRoute(routeId)
 }
 
-function openWindow(name: 'routes' | 'inspector'): void {
-  graphUi.setFloatingWindow(name, { open: true })
-  graphUi.bringWindowToFront(name)
-  // fit/locate operations animate the Vue Flow viewport. Reflow once more
-  // after that animation so an auto window never settles over the node that
-  // became visible at the end of the transition.
-  scheduleFloatingLayout()
-  if (floatingLayoutSettledTimer !== null) window.clearTimeout(floatingLayoutSettledTimer)
-  floatingLayoutSettledTimer = window.setTimeout(() => {
-    floatingLayoutSettledTimer = null
-    scheduleFloatingLayout()
-  }, 420)
-}
-
 function openConfirm(kind: 'archive' | 'delete', routeId: string): void {
   confirmAction.value = kind
   confirmRouteId.value = routeId
@@ -626,7 +444,29 @@ async function confirmDestructive(): Promise<void> {
 
     <p v-if="store.loading" class="muted workspace-shell__loading">正在加载工作区…</p>
 
-    <div v-else ref="workspaceBodyRef" class="workspace-shell__body">
+    <div v-else class="workspace-shell__body workspace-shell__body--fixed">
+      <ResizableSidebar
+        side="left"
+        :open="graphUi.leftSidebarOpen"
+        :width="graphUi.leftSidebarWidth"
+        :min-width="220"
+        :max-width="420"
+        @update:open="graphUi.setLeftSidebar({ open: $event, width: graphUi.leftSidebarWidth })"
+        @update:width="graphUi.setLeftSidebar({ open: graphUi.leftSidebarOpen, width: $event })"
+      >
+        <RouteSidebar
+          :routes="store.graphView?.routes ?? []"
+          :active-route-id="store.activeRoute?.id ?? null"
+          :command-pending="store.routeCommandPending"
+          :pending-route-command="store.pendingRouteCommand"
+          @locate-route="handleLocateRoute"
+          @activate="store.activateRoute($event)"
+          @restore="store.restoreRoute($event)"
+          @archive="openConfirm('archive', $event)"
+          @delete="openConfirm('delete', $event)"
+        />
+      </ResizableSidebar>
+
       <GraphCanvas
         ref="canvasRef"
         class="workspace-shell__canvas"
@@ -639,7 +479,6 @@ async function confirmDestructive(): Promise<void> {
         :runtime-status="store.answerRunStatus"
         :runtime-phase="store.answerRunPhase"
         :pending-projection="store.pendingRouteProjection"
-        :safe-region="safeFitRegion"
         @draft="handleDraft"
         @submit-answer="handleAnswer"
         @fork="handleFork"
@@ -648,57 +487,21 @@ async function confirmDestructive(): Promise<void> {
         @activate-route="handleActivateRouteForAnswer"
         @contextual-ai="handleContextualAi"
         @retry-pending="store.retryPendingAgentRun"
-        @viewport-settled="scheduleFloatingLayout"
         @add-idea="handleAddIdea"
         @add-resource="resourceDialogOpen = true"
         @relation-proposal="handleRelationProposal"
         @undo="store.undoGraph"
         @redo="store.redoGraph"
-        @routes="openWindow('routes')"
-        @inspector="openWindow('inspector')"
-        @reset-windows="graphUi.resetWindows"
       />
 
-      <FloatingWindow
-        name="routes"
-        title="路线导航"
-        :state="graphUi.floatingWindows.routes"
-        :z-index="graphUi.windowZOrder.indexOf('routes') + 20"
-        :min-width="FLOATING_WINDOW_RANGES.routes.minWidth"
-        :max-width="FLOATING_WINDOW_RANGES.routes.maxWidth"
-        :min-height="FLOATING_WINDOW_RANGES.routes.minHeight"
-        :max-height="FLOATING_WINDOW_RANGES.routes.maxHeight"
-        @update:state="graphUi.setFloatingWindow('routes', $event)"
-        @focus="graphUi.bringWindowToFront('routes')"
-        @close="graphUi.setFloatingWindow('routes', { open: false })"
-        @reset="graphUi.resetWindows"
-      >
-        <RouteNavigator
-          :routes="store.graphView?.routes ?? []"
-          :active-route-id="store.activeRoute?.id ?? null"
-          :command-pending="store.routeCommandPending"
-          :pending-route-command="store.pendingRouteCommand"
-          @locate-route="handleLocateRoute"
-          @activate="store.activateRoute($event)"
-          @restore="store.restoreRoute($event)"
-          @archive="openConfirm('archive', $event)"
-          @delete="openConfirm('delete', $event)"
-        />
-      </FloatingWindow>
-
-      <FloatingWindow
-        name="inspector"
-        title="检查器"
-        :state="graphUi.floatingWindows.inspector"
-        :z-index="graphUi.windowZOrder.indexOf('inspector') + 20"
-        :min-width="FLOATING_WINDOW_RANGES.inspector.minWidth"
-        :max-width="FLOATING_WINDOW_RANGES.inspector.maxWidth"
-        :min-height="FLOATING_WINDOW_RANGES.inspector.minHeight"
-        :max-height="FLOATING_WINDOW_RANGES.inspector.maxHeight"
-        @update:state="graphUi.setFloatingWindow('inspector', $event)"
-        @focus="graphUi.bringWindowToFront('inspector')"
-        @close="graphUi.setFloatingWindow('inspector', { open: false })"
-        @reset="graphUi.resetWindows"
+      <ResizableSidebar
+        side="right"
+        :open="graphUi.rightSidebarOpen"
+        :width="graphUi.rightSidebarWidth"
+        :min-width="300"
+        :max-width="600"
+        @update:open="graphUi.setRightSidebar({ open: $event, width: graphUi.rightSidebarWidth })"
+        @update:width="graphUi.setRightSidebar({ open: graphUi.rightSidebarOpen, width: $event })"
       >
         <WorkspaceInspector
           :node-data="selectedNodeData"
@@ -707,7 +510,7 @@ async function confirmDestructive(): Promise<void> {
           @reanswer="handleReanswer"
           @regenerate="handleRegenerate"
         />
-      </FloatingWindow>
+      </ResizableSidebar>
     </div>
 
     <div class="workspace-shell__toast-layer">

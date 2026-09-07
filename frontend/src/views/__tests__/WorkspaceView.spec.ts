@@ -181,14 +181,17 @@ describe('WorkspaceView graph shell', () => {
     locateSpy.mockReset()
   })
 
-  it('loads the graph-first shell with floating windows and canvas', async () => {
+  it('loads the graph-first shell with fixed route and inspector sidebars', async () => {
     mockViews()
     const { wrapper } = await mountWorkspace()
+
+    expect(wrapper.find('[data-test="left-sidebar"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="route-sidebar"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="graph-canvas-stub"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="floating-window-routes"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="floating-window-inspector"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="route-navigator"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="right-sidebar"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="workspace-inspector"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="floating-window-routes"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="floating-window-inspector"]').exists()).toBe(false)
   })
 
   it('drafts through the canvas draft intent as an async run', async () => {
@@ -249,9 +252,10 @@ describe('WorkspaceView graph shell', () => {
     expect(useWorkspaceStore().feedback).toBe('回答已记录。')
   })
 
-  it('selects the canonical visual target explicitly before opening contextual AI', async () => {
+  it('selects the canonical target and opens the fixed inspector', async () => {
     mockViews()
     const { wrapper, graphUi } = await mountWorkspace()
+    graphUi.setRightSidebar({ open: false, width: graphUi.rightSidebarWidth })
 
     await wrapper.findComponent(GraphCanvasStub).vm.$emit('contextual-ai', {
       canonicalNodeId: 'n2',
@@ -259,7 +263,7 @@ describe('WorkspaceView graph shell', () => {
     })
 
     expect(graphUi.primarySelectedNodeId).toBe('n2')
-    expect(graphUi.floatingWindows.inspector.open).toBe(true)
+    expect(graphUi.rightSidebarOpen).toBe(true)
   })
 
   it('preserves a clicked shared visual instance while the query target stays canonical', async () => {
@@ -286,7 +290,7 @@ describe('WorkspaceView graph shell', () => {
     })
 
     expect(graphUi.primarySelectedNodeId).toBe('route:r2:n2')
-    expect(graphUi.floatingWindows.inspector.open).toBe(true)
+    expect(graphUi.rightSidebarOpen).toBe(true)
   })
 
   it('route sidebar activates a sibling route through the runtime command', async () => {
@@ -452,14 +456,16 @@ describe('WorkspaceView graph shell', () => {
     expect(text).toContain('A confirmed requirement detail.')
   })
 
-  it('floating window state persists independently of canvas layout', async () => {
+  it('sidebar open state toggles independently of canvas layout', async () => {
     mockViews()
     const { wrapper, graphUi } = await mountWorkspace()
-    await wrapper.find('[data-test="floating-window-routes"] [data-test="floating-window-close"]').trigger('click')
-    expect(graphUi.floatingWindows.routes.open).toBe(false)
-    await wrapper.find('[data-test="floating-window-inspector"] [data-test="floating-window-reset"]').trigger('click')
-    expect(graphUi.floatingWindows.routes.open).toBe(true)
-    expect(graphUi.floatingWindows.routes.width).toBe(320)
-    expect(graphUi.floatingWindows.inspector.width).toBe(420)
+    expect(graphUi.leftSidebarOpen).toBe(true)
+    expect(graphUi.rightSidebarOpen).toBe(true)
+    await wrapper.find('[data-test="toggle-left"]').trigger('click')
+    expect(graphUi.leftSidebarOpen).toBe(false)
+    await wrapper.find('[data-test="toggle-right"]').trigger('click')
+    expect(graphUi.rightSidebarOpen).toBe(false)
+    await wrapper.find('[data-test="toggle-left"]').trigger('click')
+    expect(graphUi.leftSidebarOpen).toBe(true)
   })
 })
