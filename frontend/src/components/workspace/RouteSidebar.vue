@@ -107,8 +107,8 @@ function openRoute(route: GraphWorkspaceRouteView): void {
 
 <template>
   <div class="route-sidebar" data-test="route-sidebar">
-    <section class="route-sidebar__section" data-test="lifecycle-filters">
-      <h3 class="route-sidebar__heading">生命周期筛选</h3>
+    <details class="route-sidebar__section route-sidebar__filters" data-test="route-filters">
+      <summary class="route-sidebar__heading">生命周期筛选</summary>
       <label v-for="filter in filterOptions" :key="filter.status" class="route-sidebar__filter">
         <input
           type="checkbox"
@@ -118,7 +118,7 @@ function openRoute(route: GraphWorkspaceRouteView): void {
         />
         {{ filter.label }}
       </label>
-    </section>
+    </details>
 
     <section class="route-sidebar__section" data-test="route-list">
       <h3 class="route-sidebar__heading">路线</h3>
@@ -133,91 +133,44 @@ function openRoute(route: GraphWorkspaceRouteView): void {
          :data-route-id="route.id"
          @click="openRoute(route)"
       >
-        <div class="route-card__head">
-          <span class="badge" :class="`badge-${route.lifecycleStatus}`">
-            {{ lifecycleLabels[route.lifecycleStatus] }}
-          </span>
-          <span v-if="route.id === activeRouteId" class="badge badge-active" data-test="active-route">
-            当前路线
-          </span>
-        </div>
-        <div class="route-card__label">{{ route.label ?? route.id.slice(0, 8) }}</div>
-        <div class="meta-text">节点数：{{ route.lineageNodeIds.length }}</div>
-
-        <details class="route-card__more" open>
-          <summary>更多</summary>
-        <div class="route-card__group" data-test="view-actions-group">
-          <span class="route-card__group-title">查看</span>
-          <div class="route-card__actions">
-             <button class="btn btn-small" data-test="locate-route" @click.stop="emit('locate-route', route.id)">定位路线</button>
-            <button
-              class="btn btn-small"
-              data-test="focus-route"
-              :class="{ 'route-card__focused-btn': isFocused(route.id) }"
-               @click.stop="toggleFocus(route)"
-            >
-              {{ isFocused(route.id) ? '取消聚焦' : '聚焦此路线' }}
-            </button>
-            <button
-              class="btn btn-small"
-              data-test="dim-route"
-              :class="{ 'route-card__dimmed-btn': displayState(route.id) === 'dimmed' }"
-               @click.stop="setDim(route.id, displayState(route.id) !== 'dimmed')"
-            >
-              {{ displayState(route.id) === 'dimmed' ? '取消弱化' : '弱化路线' }}
-            </button>
-            <button
-              class="btn btn-small"
-              data-test="hide-route"
-              :disabled="route.id === activeRouteId"
-               @click.stop="setHidden(route.id, displayState(route.id) !== 'hidden')"
-            >
-              {{ displayState(route.id) === 'hidden' ? '恢复显示' : '隐藏路线' }}
-            </button>
+        <div class="route-card__primary" data-test="route-primary">
+          <div class="route-card__identity">
+            <strong class="route-card__label">{{ route.label ?? route.id.slice(0, 8) }}</strong>
+            <span class="meta-text">{{ route.lineageNodeIds.length }} 个节点</span>
+          </div>
+          <div class="route-card__state">
+            <span v-if="isFocused(route.id)" class="badge badge-focus">正在浏览</span>
+            <span v-if="route.id === activeRouteId" class="badge badge-active" data-test="active-route">运行路线</span>
+            <span v-else-if="route.lifecycleStatus !== 'open'" class="badge" :class="`badge-${route.lifecycleStatus}`">
+              {{ lifecycleLabels[route.lifecycleStatus] }}
+            </span>
           </div>
         </div>
 
-        <div class="route-card__group" data-test="runtime-actions-group">
-          <span class="route-card__group-title">路线状态</span>
-          <div class="route-card__actions">
-            <button
-              v-if="route.lifecycleStatus === 'open' && !route.isActive"
-              class="btn btn-small"
-              data-test="activate-route"
-              :disabled="commandPending"
-               @click.stop="emit('activate', route.id)"
-            >
-              设为当前路线
-            </button>
-            <button
-              v-if="route.lifecycleStatus !== 'open'"
-              class="btn btn-small"
-              data-test="restore-route"
-              :disabled="commandPending"
-               @click.stop="emit('restore', route.id)"
-            >
-              恢复
-            </button>
-            <button
-              v-if="!isArchivedOrDeleted(route)"
-              class="btn btn-small"
-              data-test="archive-route"
-              :disabled="commandPending"
-               @click.stop="emit('archive', route.id)"
-            >
-              归档
-            </button>
-            <button
-              v-if="route.lifecycleStatus !== 'deleted'"
-              class="btn btn-small btn-danger"
-              data-test="delete-route"
-              :disabled="commandPending"
-               @click.stop="emit('delete', route.id)"
-            >
-              删除路线
-            </button>
+        <details class="route-card__more" data-test="route-more" @click.stop>
+          <summary class="route-card__more-trigger" aria-label="路线更多操作">···</summary>
+
+          <div class="route-card__menu">
+            <div class="route-card__group" data-test="view-actions-group">
+              <button class="route-card__menu-item" data-test="locate-route" @click="emit('locate-route', route.id)">定位路线</button>
+              <button class="route-card__menu-item" data-test="focus-route" @click="toggleFocus(route)">
+                {{ isFocused(route.id) ? '取消浏览聚焦' : '浏览此路线' }}
+              </button>
+              <button class="route-card__menu-item" data-test="dim-route" @click="setDim(route.id, displayState(route.id) !== 'dimmed')">
+                {{ displayState(route.id) === 'dimmed' ? '取消弱化' : '弱化路线' }}
+              </button>
+              <button class="route-card__menu-item" data-test="hide-route" :disabled="route.id === activeRouteId" @click="setHidden(route.id, displayState(route.id) !== 'hidden')">
+                {{ displayState(route.id) === 'hidden' ? '恢复显示' : '隐藏路线' }}
+              </button>
+            </div>
+
+            <div class="route-card__group" data-test="runtime-actions-group">
+              <button v-if="route.lifecycleStatus === 'open' && !route.isActive" class="route-card__menu-item" data-test="activate-route" :disabled="commandPending" @click="emit('activate', route.id)">设为运行路线</button>
+              <button v-if="route.lifecycleStatus !== 'open'" class="route-card__menu-item" data-test="restore-route" :disabled="commandPending" @click="emit('restore', route.id)">恢复路线</button>
+              <button v-if="!isArchivedOrDeleted(route)" class="route-card__menu-item" data-test="archive-route" :disabled="commandPending" @click="emit('archive', route.id)">归档</button>
+              <button v-if="route.lifecycleStatus !== 'deleted'" class="route-card__menu-item route-card__menu-item--danger" data-test="delete-route" :disabled="commandPending" @click="emit('delete', route.id)">删除路线</button>
+            </div>
           </div>
-        </div>
         </details>
       </article>
       <p v-if="routes.length === 0" class="muted">暂无路线。</p>

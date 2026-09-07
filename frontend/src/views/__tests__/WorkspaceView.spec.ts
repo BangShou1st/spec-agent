@@ -301,7 +301,9 @@ describe('WorkspaceView graph shell', () => {
       activeRouteId: 'r2',
     })
     const { wrapper } = await mountWorkspace()
-    await wrapper.find('[data-route-id="r2"] [data-test="activate-route"]').trigger('click')
+    const route = wrapper.find('[data-route-id="r2"]')
+    route.get('[data-test="route-more"]').element.setAttribute('open', '')
+    await route.get('[data-test="activate-route"]').trigger('click')
     await flushPromises()
     expect(vi.mocked(apiActivateRoute)).toHaveBeenCalledWith('p1', 'r2')
   })
@@ -309,7 +311,9 @@ describe('WorkspaceView graph shell', () => {
   it('locate route only moves the viewport and never changes focus', async () => {
     mockViews()
     const { wrapper, graphUi } = await mountWorkspace()
-    await wrapper.find('[data-route-id="r2"] [data-test="locate-route"]').trigger('click')
+    const route = wrapper.find('[data-route-id="r2"]')
+    route.get('[data-test="route-more"]').element.setAttribute('open', '')
+    await route.get('[data-test="locate-route"]').trigger('click')
     expect(locateSpy).toHaveBeenCalledWith('r2')
     expect(graphUi.focusRouteId).toBeNull()
   })
@@ -317,7 +321,9 @@ describe('WorkspaceView graph shell', () => {
   it('focus route changes only the browser reading context', async () => {
     mockViews()
     const { wrapper, graphUi } = await mountWorkspace()
-    await wrapper.find('[data-route-id="r2"] [data-test="focus-route"]').trigger('click')
+    const route = wrapper.find('[data-route-id="r2"]')
+    route.get('[data-test="route-more"]').element.setAttribute('open', '')
+    await route.get('[data-test="focus-route"]').trigger('click')
     expect(graphUi.focusRouteId).toBe('r2')
     expect(useWorkspaceStore().activeState?.activeRoute?.id).toBe('r1')
   })
@@ -325,7 +331,9 @@ describe('WorkspaceView graph shell', () => {
   it('archive requires an explicit confirmation dialog', async () => {
     mockViews()
     const { wrapper } = await mountWorkspace()
-    await wrapper.find('[data-route-id="r1"] [data-test="archive-route"]').trigger('click')
+    const route = wrapper.find('[data-route-id="r1"]')
+    route.get('[data-test="route-more"]').element.setAttribute('open', '')
+    await route.get('[data-test="archive-route"]').trigger('click')
     expect(wrapper.find('[data-test="confirm-route-action-dialog"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('归档该路线？')
     await wrapper.find('[data-test="cancel-route-action"]').trigger('click')
@@ -434,20 +442,24 @@ describe('WorkspaceView graph shell', () => {
     const { wrapper, graphUi } = await mountWorkspace()
     graphUi.setFocusRoute('r1')
     await flushPromises()
+    // 导航优先：默认只展示路线名/节点数/浏览与运行状态；管理动作收进闭合溢出。
+    for (const route of wrapper.findAll('[data-route-id]')) {
+      route.get('[data-test="route-more"]').element.setAttribute('open', '')
+    }
+    wrapper.get('[data-test="route-filters"]').element.setAttribute('open', '')
+    await flushPromises()
     const text = wrapper.text()
     // 标题是项目名；壳层文案是中文。
     expect(text).toContain('Test project')
-    expect(text).toContain('当前路线')
-    expect(text).toContain('开放')
-    expect(text).toContain('已替代')
+    expect(text).toContain('正在浏览')
+    expect(text).toContain('运行路线')
     expect(text).toContain('已归档')
-    expect(text).toContain('已删除')
     expect(text).toContain('需求状态')
     expect(text).toContain('规格')
     expect(text).toContain('归档')
     expect(text).toContain('删除路线')
     expect(text).toContain('定位路线')
-    expect(text).toContain('聚焦此路线')
+    expect(text).toContain('浏览此路线')
     expect(text).toContain('弱化路线')
     expect(text).toContain('隐藏路线')
     // 后端/用户内容保持原样（verbatim）：路线名与派生 claim 文本不翻译。
