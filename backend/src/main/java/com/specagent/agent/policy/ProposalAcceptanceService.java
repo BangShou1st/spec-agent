@@ -179,22 +179,26 @@ public class ProposalAcceptanceService {
         //
         // The originating run id is a legacy creation hint: external
         // creation paths may carry a run id with no persisted run row
-        // (proposal-only flows). Continuation effects apply only when the
-        // run row really exists — never a foreign-key violation.
-        UUID originRunId = stored.runId();
-        if (originRunId != null && agentRunRepository.findById(originRunId).isPresent()) {
+        // (proposal-only flows). Only a really persisted run is an origin:
+        // continuation effects AND the returned originRunId share this one
+        // gate, so the API never hands the frontend a ghost run to poll.
+        UUID persistedOriginRunId = stored.runId() != null
+                && agentRunRepository.findById(stored.runId()).isPresent()
+                ? stored.runId() : null;
+        if (persistedOriginRunId != null) {
             if (result.producedNodeId() != null) {
                 agentRunRepository.attachApprovalProducedNode(
-                        originRunId, result.producedNodeId());
+                        persistedOriginRunId, result.producedNodeId());
             }
-            eventService.append(originRunId, AgentRunPhase.COMPLETED,
+            eventService.append(persistedOriginRunId, AgentRunPhase.COMPLETED,
                     "ACCEPTANCE_EXECUTED", Map.of(
                             "proposalId", proposalId.toString(),
                             "actionFamily", stored.actionFamily()));
-            checkRepository.request(originRunId);
-            dispatchContinuationAfterCommit(originRunId);
+            checkRepository.request(persistedOriginRunId);
+            dispatchContinuationAfterCommit(persistedOriginRunId);
         }
-        return result;
+        return new AcceptedProposalResult(result.actionFamily(), result.producedNodeId(),
+                result.relationId(), persistedOriginRunId);
     }
 
     /**
@@ -305,7 +309,7 @@ public class ProposalAcceptanceService {
                 stored.baseContextSnapshotId(), anchorNodeId, null, null);
         ActionResult result = actionExecutor.execute(proposal, context);
         return new AcceptedProposalResult(stored.actionFamily(), result.producedNodeId(), null,
-                stored.runId());
+                null);
     }
 
     private AcceptedProposalResult executeConnectNode(ActionProposal proposal, AgentProposal stored) {
@@ -323,7 +327,7 @@ public class ProposalAcceptanceService {
                 NodeRelation.Origin.AGENT,
                 stored.id(),
                 stored.runId());
-        return new AcceptedProposalResult(stored.actionFamily(), null, relation.id(), stored.runId());
+        return new AcceptedProposalResult(stored.actionFamily(), null, relation.id(), null);
     }
 
     /**
@@ -342,7 +346,7 @@ public class ProposalAcceptanceService {
                 stored.baseContextSnapshotId(), anchorNodeId, null, null);
         ActionResult result = actionExecutor.execute(proposal, context);
         return new AcceptedProposalResult(stored.actionFamily(), result.producedNodeId(), null,
-                stored.runId());
+                null);
     }
 
     private boolean isReadOnlyFamily(ActionProposal proposal) {

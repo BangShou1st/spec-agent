@@ -179,4 +179,26 @@ class AgentProposalControllerApiIntegrationTest {
         }
         throw new AssertionError("Proposal summary not found: " + proposalId);
     }
+
+    @Test
+    void acceptLegacyProposalWithoutRunRowReturnsNullOriginRunId() throws Exception {
+        var pending = proposalService.createProposal(
+                new ActionProposal("CREATE_NODE",
+                        Map.of("kind", "KNOWLEDGE", "subtype", "RISK",
+                                "content", Map.of("text", "legacy")),
+                        UUID.randomUUID(), "hash-" + UUID.randomUUID(),
+                        List.of(), UUID.randomUUID(), "idem-" + UUID.randomUUID(),
+                        List.of("node:" + anchor.id())),
+                UUID.randomUUID(), project.id(), routeId);
+
+        MvcResult result = mockMvc.perform(
+                        org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                                .post("/api/v1/proposals/{proposalId}/accept", pending.id()))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode body = new ObjectMapper().readTree(result.getResponse().getContentAsString());
+        assertThat(body.get("status").asText()).isEqualTo("ACCEPTED");
+        JsonNode originRunId = body.get("originRunId");
+        assertThat(originRunId == null || originRunId.isNull()).isTrue();
+    }
 }
