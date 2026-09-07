@@ -449,6 +449,78 @@ textarea {
   white-space: nowrap;
 }
 
+.graph-toolbar__btn--primary {
+  font-weight: 600;
+}
+
+.graph-toolbar__group {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 4px 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.graph-toolbar__group:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.graph-toolbar__icon-btn {
+  min-width: 32px;
+  padding: 6px 8px;
+  font-size: 14px;
+  pointer-events: auto;
+  white-space: nowrap;
+}
+
+.graph-toolbar__more {
+  position: relative;
+  border-top: 1px solid var(--color-border);
+  padding-top: 6px;
+  pointer-events: auto;
+}
+
+.graph-toolbar__more > summary {
+  list-style: none;
+  cursor: pointer;
+  text-align: center;
+}
+
+.graph-toolbar__more > summary::-webkit-details-marker {
+  display: none;
+}
+
+.graph-toolbar__menu {
+  position: absolute;
+  left: calc(100% + 8px);
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 140px;
+  padding: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-float, 0 8px 24px rgb(16 24 40 / 10%));
+}
+
+.graph-toolbar__menu-item {
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text);
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.graph-toolbar__menu-item:hover {
+  background: var(--color-subdued);
+}
+
 /* ---- start placeholder ---- */
 
 .graph-start-placeholder {

@@ -92,9 +92,6 @@ const emit = defineEmits<{
   connect: [connection: Connection]
   undo: []
   redo: []
-  routes: []
-  inspector: []
-  'reset-windows': []
 }>()
 
 const graphUi = useGraphUiStore()
@@ -821,9 +818,6 @@ const isEmptyProject = computed(() =>
       @add-resource="emit('add-resource')"
       @undo="emit('undo')"
       @redo="emit('redo')"
-      @routes="emit('routes')"
-      @inspector="emit('inspector')"
-      @reset-windows="emit('reset-windows')"
     />
 
     <div v-if="view && !isEmptyProject" class="graph-canvas__flow">
