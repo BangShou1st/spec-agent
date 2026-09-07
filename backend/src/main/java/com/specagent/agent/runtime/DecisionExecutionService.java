@@ -25,6 +25,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -83,13 +84,16 @@ public class DecisionExecutionService {
     /**
      * Executes one prepared DECISION to a terminal run.
      *
-     * @param runId run being executed
-     * @param projectId owning project
-     * @param routeId route the proposal executes against
+     * <p>Run/project/route identity comes from {@code execContext} alone —
+     * there is no second copy to drift. The envelope and snapshot must agree
+     * with it (fail-closed on mismatch) since a prepared input built for one
+     * run must never execute as another.
+     *
      * @param snapshot frozen snapshot the envelope was built from
      * @param envelope prepared DECISION request (budget and event already set
      *                 by the caller)
-     * @param execContext execution context for policy and the executor
+     * @param execContext execution context for policy and the executor; also
+     *                 the single source of run/project/route identity
      * @param trace caller-owned lifecycle trace; the returned trace appends
      *              only this segment's steps with the caller's separator
      * @param traceSeparator separator the caller uses between trace steps
@@ -99,15 +103,23 @@ public class DecisionExecutionService {
      *              cycle records an empty payload. The content differs per
      *              cycle by design and is owned by the caller.
      */
-    public DecisionExecutionResult execute(UUID runId,
-                                           UUID projectId,
-                                           UUID routeId,
-                                           ContextSnapshot snapshot,
+    public DecisionExecutionResult execute(ContextSnapshot snapshot,
                                            AgentRequestEnvelope envelope,
                                            ActionExecutionContext execContext,
                                            String trace,
                                            String traceSeparator,
                                            Map<String, Object> decisionStartedPayload) {
+        UUID runId = execContext.runId();
+        UUID projectId = execContext.projectId();
+        UUID routeId = execContext.routeId();
+        if (!Objects.equals(envelope.runId(), runId)
+                || !Objects.equals(snapshot.id(), execContext.contextSnapshotId())
+                || !Objects.equals(snapshot.projectId(), projectId)
+                || !Objects.equals(snapshot.routeId(), routeId)) {
+            throw new IllegalStateException(
+                    "Prepared DECISION input does not match its execution context "
+                            + "for run " + runId);
+        }
         semanticTraceRecorder.captureDecisionInput(envelope);
 
         eventService.append(runId, AgentRunPhase.DECIDING, "DECISION_STARTED",

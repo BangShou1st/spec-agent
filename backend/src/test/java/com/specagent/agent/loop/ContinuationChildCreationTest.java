@@ -2,6 +2,8 @@ package com.specagent.agent.loop;
 
 import com.specagent.agent.AgentRun;
 import com.specagent.agent.AgentRunRepository;
+import com.specagent.agent.AgentRunRequestFingerprint;
+import com.specagent.agent.AgentRunService;
 import com.specagent.agent.AgentRunStatus;
 import com.specagent.agent.AgentRunTriggerType;
 import com.specagent.agent.runevent.AgentRunEventService;
@@ -38,6 +40,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Slice 2: idempotent continuation child creation.
@@ -58,6 +61,7 @@ class ContinuationChildCreationTest {
     @Autowired private GraphCommandService graphCommandService;
     @Autowired private RouteRepository routeRepository;
     @Autowired private ContinuationCoordinator coordinator;
+    @Autowired private AgentRunService agentRunService;
     @Autowired private LoopProperties loopProperties;
     @Autowired private JdbcTemplate jdbcTemplate;
 
@@ -292,6 +296,27 @@ class ContinuationChildCreationTest {
         assertThat(child.status()).isEqualTo(AgentRunStatus.CREATED);
         assertThat(agentRunRepository.findById(child.id()).orElseThrow().status())
                 .isEqualTo(AgentRunStatus.CREATED);
+    }
+
+    @Test
+    void sameParentDifferentKeyNeverAliasesAsSuccess() {
+        // Fail-closed proof for the V23 loser path: a continuation insert for
+        // an already-continued parent under a DIFFERENT deterministic key
+        // must surface the constraint failure, never return the other key's
+        // child as if it were this request's winner.
+        UUID parentId = capabilityParent();
+        UUID firstChild = coordinator.continueIfEligible(parentId).orElseThrow().id();
+        String otherKey = "continue:" + parentId + ":other";
+        String fingerprint = AgentRunRequestFingerprint.forContinuation(
+                project.id(), parentId, 1);
+
+        assertThatThrownBy(() -> agentRunService.createWithIdempotency(
+                project.id(), project.activeRouteId(),
+                AgentRunTriggerType.CONTINUE_CYCLE, null, null, "CONTINUE",
+                otherKey, fingerprint, new LoopLinkage(parentId, parentId, 1)))
+                .isInstanceOf(RuntimeException.class);
+        assertThat(agentRunRepository.findChildByParentRunId(parentId)
+                .orElseThrow().id()).isEqualTo(firstChild);
     }
 
     private UUID saveRun(AgentRunStatus status, UUID producedNodeId,

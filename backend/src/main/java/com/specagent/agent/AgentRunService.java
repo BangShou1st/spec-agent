@@ -145,26 +145,50 @@ public class AgentRunService {
                 return new CreateResult(run, true);
             }
         } catch (DuplicateKeyException raced) {
-            // Lost a concurrent insert race against a unique backstop the
-            // idempotency ON CONFLICT clause does not cover — today the V23
-            // single-continuation-child index: a sibling transaction inserted
-            // the same parent's child first while this row was in flight.
-            // Fall through to the winner reload below instead of surfacing
-            // the constraint failure.
+            // Loop-linked continuation children race on TWO unique backstops:
+            // the project-scoped idempotency key (covered by the ON CONFLICT
+            // clause) and the V23 single-child index on parent_run_id (not
+            // covered — a sibling transaction may commit the same parent's
+            // child first while this row is in flight). Only that loop-linked
+            // case may recover below; ordinary idempotent creates rethrow so
+            // no unrelated uniqueness failure is ever swallowed.
+            if (effectiveLinkage.parentRunId() == null) {
+                throw raced;
+            }
         }
 
         AgentRun existing = agentRunRepository
                 .findByProjectIdAndIdempotencyKey(projectId, normalizedKey)
-                .or(() -> effectiveLinkage.parentRunId() == null
-                        ? Optional.empty()
-                        : agentRunRepository.findChildByParentRunId(
-                                effectiveLinkage.parentRunId()))
                 .orElseThrow(() -> new IllegalStateException(
                         "Idempotent agent-run row missing after insert race"));
         if (requestFingerprint.equals(existing.requestFingerprint())) {
+            if (effectiveLinkage.parentRunId() != null) {
+                verifyContinuationWinner(effectiveLinkage, normalizedKey,
+                        requestFingerprint, existing);
+            }
             return new CreateResult(existing, false);
         }
         throw new IdempotencyKeyReusedException();
+    }
+
+    /**
+     * Fail-closed check for a loop-linked insert loser: the reloaded winner
+     * must be the same parent's child created under the same deterministic
+     * key and fingerprint. A same-parent row under a different key, or a
+     * same-key row for another parent, never aliases as success.
+     */
+    private void verifyContinuationWinner(LoopLinkage linkage,
+                                          String normalizedKey,
+                                          String requestFingerprint,
+                                          AgentRun existing) {
+        if (!linkage.parentRunId().equals(existing.parentRunId())
+                || !normalizedKey.equals(existing.idempotencyKey())
+                || !requestFingerprint.equals(existing.requestFingerprint())) {
+            throw new IllegalStateException(
+                    "Continuation child race resolved to a different chain row: "
+                            + "expected parent " + linkage.parentRunId()
+                            + " under key " + normalizedKey);
+        }
     }
 
     private String normalizeKey(String idempotencyKey) {

@@ -114,8 +114,8 @@ public class DecisionCycleService {
                     run.id(), run.projectId(), route.id(), snapshot.id(),
                     route.tipNodeId(), null, null);
             DecisionExecutionService.DecisionExecutionResult executed =
-                    decisionExecution.execute(run.id(), run.projectId(), route.id(),
-                            snapshot, envelope, execContext, trace, ">", Map.of());
+                    decisionExecution.execute(snapshot, envelope, execContext,
+                            trace, ">", Map.of());
             return new DecisionCycleResult(run.id(), executed.producedNodeId(),
                     "awaiting_approval".equals(executed.outcome())
                             ? executed.proposalId() : null,

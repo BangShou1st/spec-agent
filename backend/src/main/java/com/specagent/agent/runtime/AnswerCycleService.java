@@ -312,8 +312,8 @@ public class AnswerCycleService {
                 run.id(), projectId, route.id(), decisionSnapshot.id(),
                 route.tipNodeId(), selectedOptionId, freeText);
         DecisionExecutionService.DecisionExecutionResult executed =
-                decisionExecution.execute(run.id(), projectId, route.id(),
-                        decisionSnapshot, decisionEnvelope, execContext, trace, "\n",
+                decisionExecution.execute(decisionSnapshot, decisionEnvelope,
+                        execContext, trace, "\n",
                         Map.of(
                                 "snapshotId", decisionSnapshot.id().toString(),
                                 "contextHash", decisionSnapshot.contextHash()));
