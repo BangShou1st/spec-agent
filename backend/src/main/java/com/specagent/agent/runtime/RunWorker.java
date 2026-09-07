@@ -8,7 +8,7 @@ import com.specagent.agent.AgentRunTriggerType;
 import com.specagent.agent.ModelContractException;
 import com.specagent.agent.contract.AgentEvent;
 import com.specagent.agent.decision.AgentBrainUnavailableException;
-import com.specagent.agent.loop.ContinuationCoordinator;
+import com.specagent.agent.loop.ContinuationDispatchService;
 import com.specagent.agent.runevent.AgentRunEvent;
 import com.specagent.agent.runevent.AgentRunEventService;
 import com.specagent.agent.runevent.AgentRunPhase;
@@ -50,7 +50,7 @@ public class RunWorker {
     private final ReplacementCycleService replacementCycleService;
     private final NodeQueryService nodeQueryService;
     private final ContinuationCycleService continuationCycleService;
-    private final ContinuationCoordinator continuationCoordinator;
+    private final ContinuationDispatchService continuationDispatch;
 
     public RunWorker(RunService runService,
                             AgentRunService agentRunService,
@@ -62,7 +62,7 @@ public class RunWorker {
                             ReplacementCycleService replacementCycleService,
                             NodeQueryService nodeQueryService,
                             ContinuationCycleService continuationCycleService,
-                            ContinuationCoordinator continuationCoordinator) {
+                            ContinuationDispatchService continuationDispatch) {
         this.runService = runService;
         this.agentRunService = agentRunService;
         this.agentRunFailureService = agentRunFailureService;
@@ -73,7 +73,7 @@ public class RunWorker {
         this.replacementCycleService = replacementCycleService;
         this.nodeQueryService = nodeQueryService;
         this.continuationCycleService = continuationCycleService;
-        this.continuationCoordinator = continuationCoordinator;
+        this.continuationDispatch = continuationDispatch;
     }
 
     /** Claims and executes at most one queued run from each queue. */
@@ -89,15 +89,28 @@ public class RunWorker {
 
     /**
      * Dispatches a claimed run to the appropriate handler based on trigger type.
+     *
+     * <p>Fail-closed entry: the worker only executes freshly claimed
+     * {@code RUNNING} rows. A {@code CREATED} row passed directly (without a
+     * claim) is rejected so tests and callers cannot bypass the
+     * claim-and-execute path; a terminal {@code COMPLETED}/{@code FAILED} row
+     * is never re-executed — a duplicate delivery must go through
+     * {@link ContinuationDispatchService#process} instead.
      */
     public void executeRun(AgentRun run) {
-        switch (run.triggerType()) {
-            case ANSWER_CYCLE -> executeAnswerCycle(run);
-            case NODE_QUERY -> executeNodeQuery(run);
-            case GENERATE_SPEC -> executeArtifactGeneration(run);
-            case REGENERATE_NODE -> executeRegenerate(run);
-            case CONTINUE_CYCLE -> executeContinuationCycle(run);
-            default -> executeDecisionCycle(run);
+        AgentRun latest = agentRunService.getRun(run.id()).orElse(run);
+        if (latest.status() != AgentRunStatus.RUNNING) {
+            throw new IllegalStateException(
+                    "RunWorker only executes freshly claimed RUNNING runs: " + run.id()
+                            + " is " + latest.status());
+        }
+        switch (latest.triggerType()) {
+            case ANSWER_CYCLE -> executeAnswerCycle(latest);
+            case NODE_QUERY -> executeNodeQuery(latest);
+            case GENERATE_SPEC -> executeArtifactGeneration(latest);
+            case REGENERATE_NODE -> executeRegenerate(latest);
+            case CONTINUE_CYCLE -> executeContinuationCycle(latest);
+            default -> executeDecisionCycle(latest);
         }
     }
 
@@ -204,13 +217,15 @@ public class RunWorker {
 
     /**
      * Single terminal continuation hook for every cycle that may legally
-     * continue (decision, answer, continuation). The coordinator re-reads
-     * the run from durable state, so it only ever sees committed terminal
-     * facts: inside a managed transaction evaluation waits for afterCommit,
-     * otherwise the preceding terminal writes already committed and the
-     * evaluation runs inline. No cycle service calls the coordinator
-     * itself, and no execution result, policy verdict, or model observation
-     * is passed — the input stays one run id.
+     * continue (decision, answer, continuation). Terminalization already
+     * committed the continuation-check request in the same transaction, so
+     * this hook only dispatches the low-latency fast path: inside a managed
+     * transaction evaluation waits for afterCommit, otherwise the preceding
+     * terminal writes already committed and the dispatch runs inline. A
+     * crashed afterCommit leaves a pending check row for
+     * {@link ContinuationDispatchService#recoverPending()}. No cycle service
+     * calls the dispatcher itself, and no execution result, policy verdict,
+     * or model observation is passed — the input stays one run id.
      */
     private void evaluateContinuationAfterTerminal(UUID runId) {
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
@@ -218,12 +233,21 @@ public class RunWorker {
                     new TransactionSynchronization() {
                         @Override
                         public void afterCommit() {
-                            continuationCoordinator.continueIfEligible(runId);
+                            continuationDispatch.process(runId);
                         }
                     });
         } else {
-            continuationCoordinator.continueIfEligible(runId);
+            continuationDispatch.process(runId);
         }
+    }
+
+    /**
+     * Crash-recovery entry: replays pending continuation checks left by a
+     * lost afterCommit. Called by the poll loop after claiming; one bad row
+     * never blocks the queues.
+     */
+    public void recoverPendingContinuationChecks() {
+        continuationDispatch.recoverPending();
     }
 
     /**

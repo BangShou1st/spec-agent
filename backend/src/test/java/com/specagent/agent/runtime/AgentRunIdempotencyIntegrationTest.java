@@ -48,6 +48,9 @@ class AgentRunIdempotencyIntegrationTest {
         jdbcTemplate.update(
                 "DELETE FROM agent_run_events WHERE run_id IN (SELECT id FROM agent_runs WHERE idempotency_key LIKE ?)",
                 "idem-%");
+        jdbcTemplate.update(
+                "DELETE FROM agent_run_continuation_checks WHERE run_id IN (SELECT id FROM agent_runs WHERE idempotency_key LIKE ?)",
+                "idem-%");
         jdbcTemplate.update("DELETE FROM agent_runs WHERE idempotency_key LIKE ?", "idem-%");
     }
 

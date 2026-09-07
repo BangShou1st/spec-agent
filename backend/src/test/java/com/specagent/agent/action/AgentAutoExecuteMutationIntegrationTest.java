@@ -77,6 +77,8 @@ class AgentAutoExecuteMutationIntegrationTest {
     @AfterEach
     void cleanUp() {
         jdbcTemplate.update("DELETE FROM agent_proposals WHERE project_id = ?", project.id());
+        jdbcTemplate.update("DELETE FROM agent_run_continuation_checks WHERE run_id IN "
+                + "(SELECT id FROM agent_runs WHERE project_id = ?)", project.id());
         jdbcTemplate.update("DELETE FROM agent_run_events WHERE run_id IN "
                 + "(SELECT id FROM agent_runs WHERE project_id = ?)", project.id());
         jdbcTemplate.update("DELETE FROM agent_runs WHERE project_id = ?", project.id());
@@ -368,6 +370,7 @@ class AgentAutoExecuteMutationIntegrationTest {
         // Cleanup isolated project
         jdbcTemplate.update("DELETE FROM agent_proposals WHERE project_id = ?", p.id());
         jdbcTemplate.update("DELETE FROM agent_run_events WHERE run_id IN (SELECT id FROM agent_runs WHERE project_id = ?)", p.id());
+        jdbcTemplate.update("DELETE FROM agent_run_continuation_checks WHERE run_id IN (SELECT id FROM agent_runs WHERE project_id = ?)", p.id());
         jdbcTemplate.update("DELETE FROM agent_runs WHERE project_id = ?", p.id());
         jdbcTemplate.update("DELETE FROM graph_operations WHERE project_id = ?", p.id());
         jdbcTemplate.update("DELETE FROM node_relations WHERE project_id = ?", p.id());
@@ -409,6 +412,7 @@ class AgentAutoExecuteMutationIntegrationTest {
         // Cleanup isolated project
         jdbcTemplate.update("DELETE FROM agent_proposals WHERE project_id = ?", p.id());
         jdbcTemplate.update("DELETE FROM agent_run_events WHERE run_id IN (SELECT id FROM agent_runs WHERE project_id = ?)", p.id());
+        jdbcTemplate.update("DELETE FROM agent_run_continuation_checks WHERE run_id IN (SELECT id FROM agent_runs WHERE project_id = ?)", p.id());
         jdbcTemplate.update("DELETE FROM agent_runs WHERE project_id = ?", p.id());
         jdbcTemplate.update("DELETE FROM graph_operations WHERE project_id = ?", p.id());
         jdbcTemplate.update("DELETE FROM node_relations WHERE project_id = ?", p.id());

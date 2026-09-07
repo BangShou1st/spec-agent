@@ -88,7 +88,10 @@ class PythonBrainCrossLanguageIntegrationTest {
         Project project = projectService.createProject("跨语言决策项目");
 
         AgentRun run = runService.createQueuedDraftQuestion(project.id());
-        worker.executeRun(run);
+        AgentRun claimed = runService.claimDecisionCycleRun(run.id())
+                .orElseThrow(() -> new IllegalStateException(
+                        "Expected queued decision-cycle run " + run.id()));
+        worker.executeRun(claimed);
 
         assertThat(runService.getRun(run.id()).orElseThrow().status())
                 .isEqualTo(AgentRunStatus.COMPLETED);

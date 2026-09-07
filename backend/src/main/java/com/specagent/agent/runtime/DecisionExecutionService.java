@@ -1,7 +1,7 @@
 package com.specagent.agent.runtime;
 
-import com.specagent.agent.AgentRunService;
 import com.specagent.agent.AgentRunStatus;
+import com.specagent.agent.AgentRunTerminalizationService;
 import com.specagent.agent.action.ActionExecutionContext;
 import com.specagent.agent.action.ActionExecutor;
 import com.specagent.agent.action.ActionResult;
@@ -55,7 +55,7 @@ public class DecisionExecutionService {
     private final AdvisorPolicyEngine policyEngine;
     private final ActionExecutor actionExecutor;
     private final AgentProposalService proposalService;
-    private final AgentRunService agentRunService;
+    private final AgentRunTerminalizationService terminalizationService;
     private final AgentRunEventService eventService;
     private final StaleContextChecker staleContextChecker;
     private final ActionEligibilityGate actionEligibilityGate;
@@ -65,7 +65,7 @@ public class DecisionExecutionService {
                                     AdvisorPolicyEngine policyEngine,
                                     ActionExecutor actionExecutor,
                                     AgentProposalService proposalService,
-                                    AgentRunService agentRunService,
+                                    AgentRunTerminalizationService terminalizationService,
                                     AgentRunEventService eventService,
                                     StaleContextChecker staleContextChecker,
                                     ActionEligibilityGate actionEligibilityGate,
@@ -74,7 +74,7 @@ public class DecisionExecutionService {
         this.policyEngine = policyEngine;
         this.actionExecutor = actionExecutor;
         this.proposalService = proposalService;
-        this.agentRunService = agentRunService;
+        this.terminalizationService = terminalizationService;
         this.eventService = eventService;
         this.staleContextChecker = staleContextChecker;
         this.actionEligibilityGate = actionEligibilityGate;
@@ -163,7 +163,7 @@ public class DecisionExecutionService {
                 proposalService.expireProposal(agentProposal.id());
             }
             trace = appendTrace(trace, "policy_denied:" + policyDecision.denyReason(), traceSeparator);
-            agentRunService.complete(runId, AgentRunStatus.COMPLETED, trace);
+            terminalizationService.completeWithCheck(runId, AgentRunStatus.COMPLETED, trace);
             return new DecisionExecutionResult(runId, null, agentProposal.id(),
                     "policy_denied:" + policyDecision.denyReason(), trace);
         }
@@ -172,9 +172,8 @@ public class DecisionExecutionService {
             AgentProposal agentProposal = proposalService.createProposal(
                     proposal, runId, projectId, routeId);
             trace = appendTrace(trace, "awaiting_approval:" + agentProposal.id(), traceSeparator);
-            agentRunService.complete(runId, AgentRunStatus.COMPLETED, trace);
-            eventService.append(runId, AgentRunPhase.AWAITING_APPROVAL,
-                    "AWAITING_APPROVAL", Map.of(
+            terminalizationService.completeWithEvent(runId, AgentRunStatus.COMPLETED, trace,
+                    AgentRunPhase.AWAITING_APPROVAL, "AWAITING_APPROVAL", Map.of(
                             "proposalId", agentProposal.id().toString()));
             return new DecisionExecutionResult(runId, null, agentProposal.id(),
                     "awaiting_approval", trace);
@@ -190,16 +189,14 @@ public class DecisionExecutionService {
         ActionResult execResult = actionExecutor.execute(proposal, execContext);
         trace = appendTrace(trace, "completed", traceSeparator);
 
-        if (execResult.producedNodeId() != null) {
-            agentRunService.markPersistedNode(runId, execResult.producedNodeId(), trace);
-        }
-        agentRunService.complete(runId, AgentRunStatus.COMPLETED, trace);
         Map<String, Object> completedPayload = new HashMap<>();
         completedPayload.put("actionFamily", proposal.actionFamily());
         if (execResult.producedNodeId() != null) {
             completedPayload.put("producedNodeId", execResult.producedNodeId().toString());
         }
-        eventService.append(runId, AgentRunPhase.COMPLETED, "RUN_COMPLETED", completedPayload);
+        terminalizationService.completeWithNodeAndEvent(runId, AgentRunStatus.COMPLETED, trace,
+                execResult.producedNodeId(), AgentRunPhase.COMPLETED, "RUN_COMPLETED",
+                completedPayload);
 
         return new DecisionExecutionResult(runId, execResult.producedNodeId(), null,
                 "completed", trace);

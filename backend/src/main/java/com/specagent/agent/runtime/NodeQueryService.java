@@ -172,10 +172,9 @@ public class NodeQueryService {
                 }
                 AgentProposal agentProposal = proposalService.createProposal(
                         proposal, runId, run.projectId(), routeId);
-                agentRunService.complete(runId, AgentRunStatus.COMPLETED,
-                        trace + "\nawaiting_approval:" + agentProposal.id());
-                eventService.append(runId, AgentRunPhase.AWAITING_APPROVAL,
-                        "AWAITING_APPROVAL", Map.of(
+                terminalizationService.completeWithEvent(runId, AgentRunStatus.COMPLETED,
+                        trace + "\nawaiting_approval:" + agentProposal.id(),
+                        AgentRunPhase.AWAITING_APPROVAL, "AWAITING_APPROVAL", Map.of(
                                 "proposalId", agentProposal.id().toString(),
                                 "actionFamily", proposal.actionFamily()));
                 return new NodeQueryResult(runId, "awaiting_approval", null, agentProposal.id());

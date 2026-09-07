@@ -135,8 +135,11 @@ class AgentRunLoopLinkageTest {
                 null, null, null);
         agentRunRepository.save(continued);
 
-        worker.executeRun(
-                agentRunRepository.findById(continued.id()).orElseThrow());
+        AgentRun claimed = runService.claimNextContinue()
+                .filter(run -> run.id().equals(continued.id()))
+                .orElseThrow(() -> new IllegalStateException(
+                        "Expected queued continuation run " + continued.id()));
+        worker.executeRun(claimed);
 
         assertThat(agentRunRepository.findById(continued.id()).orElseThrow().status())
                 .isEqualTo(AgentRunStatus.COMPLETED);

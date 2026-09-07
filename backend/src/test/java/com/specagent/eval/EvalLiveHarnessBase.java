@@ -191,6 +191,9 @@ public abstract class EvalLiveHarnessBase {
             jdbcTemplate.update(
                     "DELETE FROM agent_run_events WHERE run_id IN (SELECT id FROM agent_runs WHERE project_id = ?)",
                     projectId);
+            jdbcTemplate.update(
+                    "DELETE FROM agent_run_continuation_checks WHERE run_id IN (SELECT id FROM agent_runs WHERE project_id = ?)",
+                    projectId);
             jdbcTemplate.update("DELETE FROM agent_runs WHERE project_id = ?", projectId);
             jdbcTemplate.update(
                     "DELETE FROM agent_input_projections WHERE snapshot_id IN (SELECT id FROM context_snapshots WHERE project_id = ?)",

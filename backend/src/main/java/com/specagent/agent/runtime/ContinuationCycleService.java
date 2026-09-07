@@ -4,11 +4,13 @@ import com.specagent.agent.AgentRun;
 import com.specagent.agent.AgentRunFailureService;
 import com.specagent.agent.AgentRunService;
 import com.specagent.agent.AgentRunStatus;
+import com.specagent.agent.ModelContractException;
 import com.specagent.agent.action.ActionExecutionContext;
 import com.specagent.agent.contract.AgentEvent;
 import com.specagent.agent.contract.AgentRequestEnvelope;
 import com.specagent.agent.contract.DecisionBudget;
 import com.specagent.agent.eligibility.ActionEligibilityGate;
+import com.specagent.agent.gates.ContextGuard;
 import com.specagent.agent.runevent.AgentRunEventService;
 import com.specagent.agent.runevent.AgentRunPhase;
 import com.specagent.agent.snapshot.AgentInputSnapshotBuilder;
@@ -53,6 +55,7 @@ public class ContinuationCycleService {
     private final AgentRunService agentRunService;
     private final AgentRunFailureService agentRunFailureService;
     private final ContextBuilder contextBuilder;
+    private final ContextGuard contextGuard;
     private final AgentInputSnapshotBuilder snapshotBuilder;
     private final AgentRunEventService eventService;
     private final DecisionExecutionService decisionExecution;
@@ -63,6 +66,7 @@ public class ContinuationCycleService {
     public ContinuationCycleService(AgentRunService agentRunService,
                                     AgentRunFailureService agentRunFailureService,
                                     ContextBuilder contextBuilder,
+                                    ContextGuard contextGuard,
                                     AgentInputSnapshotBuilder snapshotBuilder,
                                     AgentRunEventService eventService,
                                     DecisionExecutionService decisionExecution,
@@ -72,6 +76,7 @@ public class ContinuationCycleService {
         this.agentRunService = agentRunService;
         this.agentRunFailureService = agentRunFailureService;
         this.contextBuilder = contextBuilder;
+        this.contextGuard = contextGuard;
         this.snapshotBuilder = snapshotBuilder;
         this.eventService = eventService;
         this.decisionExecution = decisionExecution;
@@ -100,6 +105,15 @@ public class ContinuationCycleService {
             eventService.append(run.id(), AgentRunPhase.SNAPSHOT_BUILT, "SNAPSHOT_BUILT", Map.of(
                     "snapshotId", snapshot.id().toString(),
                     "contextHash", snapshot.contextHash()));
+
+            // Route/tip re-anchor above pins the execution target; the shared
+            // guard re-validates the fresh snapshot (route exists, OPEN,
+            // still the active route, hash present). No guard logic is copied
+            // here — an active-route switch after child creation rejects here
+            // with zero model calls, zero actions, zero children.
+            if (!contextGuard.validate(snapshot).accepted()) {
+                throw new ModelContractException("Context guard rejected continuation run");
+            }
 
             // Fresh continuation: one DECISION call, never a STATE_UPDATE.
             AgentRequestEnvelope envelope = actionEligibilityGate.prepareDecisionRequest(

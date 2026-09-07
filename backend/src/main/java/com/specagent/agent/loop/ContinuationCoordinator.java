@@ -179,16 +179,19 @@ public class ContinuationCoordinator {
 
     /**
      * True when a next snapshot could consume something this run left
-     * behind: a produced graph node, a produced spec snapshot, or completed
-     * capability invocation rows (successes and durable failures alike —
-     * failures persist as evidence). Unfinished invocations do not count.
+     * behind: a produced graph node, or completed capability invocation rows
+     * (successes and durable failures alike — failures persist as evidence).
+     * Unfinished invocations do not count.
      *
-     * <p>Produced answers and patches never count: the answer cycle persists
-     * them before its DECISION call, so the current run's own model already
-     * saw them — they are not new observations for a next cycle.
+     * <p>Produced spec snapshots never count: no fresh
+     * {@code AgentInputSnapshot} projection reads them, so a child DECISION
+     * could not observe them — they are not new observations for a next
+     * cycle. Produced answers and patches never count either: the answer
+     * cycle persists them before its DECISION call, so the current run's own
+     * model already saw them.
      */
     private boolean hasNewFacts(AgentRun run) {
-        if (run.producedNodeId() != null || run.producedSpecSnapshotId() != null) {
+        if (run.producedNodeId() != null) {
             return true;
         }
         return invocationRepository.findByRunId(run.id()).stream()

@@ -15,6 +15,7 @@ import com.specagent.agent.decision.AgentDecisionEngine;
 import com.specagent.agent.runevent.AgentRunEventService;
 import com.specagent.agent.runtime.RunService;
 import com.specagent.agent.runtime.RunWorker;
+import com.specagent.route.RouteService;
 import com.specagent.agent.snapshot.AgentInputSnapshotBuilder;
 import com.specagent.capability.CapabilityInvocationRepository;
 import com.specagent.capability.CapabilityResult;
@@ -76,6 +77,9 @@ class ContinuationChainIntegrationTest {
     @Autowired private LoopProperties loopProperties;
     @Autowired private JdbcTemplate jdbcTemplate;
     @Autowired private com.specagent.answer.AnswerService answerService;
+    @Autowired private ContinuationDispatchService dispatchService;
+    @Autowired private ContinuationCheckRepository checkRepository;
+    @Autowired private com.specagent.route.RouteService routeService;
 
     @SpyBean
     private AgentDecisionEngine decisionEngine;
@@ -91,6 +95,10 @@ class ContinuationChainIntegrationTest {
         }
         Mockito.reset(decisionEngine);
         for (UUID projectId : projectIds) {
+            jdbcTemplate.update(
+                    "DELETE FROM agent_run_continuation_checks WHERE run_id IN "
+                            + "(SELECT id FROM agent_runs WHERE project_id = ?)",
+                    (Object) projectId);
             jdbcTemplate.update(
                     "DELETE FROM agent_run_events WHERE run_id IN "
                             + "(SELECT id FROM agent_runs WHERE project_id = ?)",
@@ -263,8 +271,10 @@ class ContinuationChainIntegrationTest {
                 .orElseThrow().id();
 
         // A retried terminal hook (worker retry, duplicate delivery) must
-        // converge on the same persisted child, never a second row.
-        worker.executeRun(runService.getRun(root.id()).orElseThrow());
+        // converge on the same persisted child, never a second row. The
+        // duplicate goes through dispatch — never by re-executing the
+        // terminal COMPLETED run's model/action path.
+        dispatchService.process(root.id());
 
         assertThat(agentRunRepository.findChildByParentRunId(root.id())
                 .orElseThrow().id()).isEqualTo(childId);
@@ -368,6 +378,199 @@ class ContinuationChainIntegrationTest {
         assertThat(completed.status()).isEqualTo(AgentRunStatus.COMPLETED);
         assertThat(completed.trace()).contains("policy_denied");
         assertThat(agentRunRepository.findChildByParentRunId(root.id())).isEmpty();
+    }
+
+    @Test
+    void childDecisionSeesParentCapabilityResultInRequest() {
+        Project project = newProjectWithResource("chain-fresh-observe");
+        withMaxCycles(5);
+        AtomicInteger decisions = new AtomicInteger();
+        stubDecisionsAfterFirstWithTerminalRespond(decisions);
+
+        AgentRun root = runService.createQueuedDraftQuestion(project.id());
+        worker.executeRun(claim(root));
+        UUID childId = agentRunRepository.findChildByParentRunId(root.id())
+                .orElseThrow(() -> new IllegalStateException(
+                        "expected a continuation child")).id();
+
+        worker.executeRun(runService.claimNextContinue()
+                .filter(run -> run.id().equals(childId))
+                .orElseThrow());
+
+        // Proof is the child's ACTUAL DECISION input — not a rebuilt test
+        // snapshot: the second runDecision request carries the parent's
+        // SUCCEEDED capability result. (The capability fixture produces no
+        // graph node, so lineage proof lives in the graph-mutation test.)
+        var requests = Mockito.mockingDetails(decisionEngine)
+                .getInvocations().stream()
+                .filter(call -> "runDecision".equals(call.getMethod().getName()))
+                .map(call -> (AgentRequestEnvelope) call.getArgument(0))
+                .toList();
+        assertThat(requests).hasSize(2);
+        AgentRequestEnvelope second = requests.get(1);
+        assertThat(second.snapshot().capabilityResults())
+                .anyMatch(view -> view.status().equals(
+                        CapabilityResult.Status.SUCCEEDED.name()));
+    }
+
+    @Test
+    void completedRunNeverReexecutesModelOrAction() {
+        Project project = newProjectWithResource("chain-fail-closed");
+        withMaxCycles(5);
+
+        AgentRun root = runService.createQueuedDraftQuestion(project.id());
+        worker.executeRun(claim(root));
+        int decisionsAfterFirstRun = Mockito.mockingDetails(decisionEngine)
+                .getInvocations().size();
+
+        // A duplicate delivery of the terminal COMPLETED run must fail
+        // closed — never re-run model/action. Recovery goes through
+        // dispatch, never through executeRun on a terminal row.
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> worker.executeRun(
+                                runService.getRun(root.id()).orElseThrow()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("RUNNING");
+        int decisionsAfterDuplicate = Mockito.mockingDetails(decisionEngine)
+                .getInvocations().size();
+        assertThat(decisionsAfterDuplicate).isEqualTo(decisionsAfterFirstRun);
+    }
+
+    @Test
+    void lostAfterCommitRecoversPendingCheckToChild() {
+        Project project = newProjectWithResource("chain-recover");
+        withMaxCycles(5);
+        AtomicInteger decisions = new AtomicInteger();
+        stubDecisionsAfterFirstWithTerminalRespond(decisions);
+
+        AgentRun root = runService.createQueuedDraftQuestion(project.id());
+        worker.executeRun(claim(root));
+
+        // Simulate a crash after COMMIT but before afterCommit dispatch: the
+        // terminal check row is pending while no child exists yet. Recovery
+        // must create exactly one child and mark the check processed. The
+        // fast-path child is removed in FK order (events first, then the
+        // run) so the replay starts from the same durable state as a crash.
+        assertThat(agentRunRepository.findChildByParentRunId(root.id())).isPresent();
+        UUID childId = agentRunRepository.findChildByParentRunId(root.id())
+                .orElseThrow().id();
+        jdbcTemplate.update("DELETE FROM agent_run_events WHERE run_id = ?", childId);
+        jdbcTemplate.update("DELETE FROM agent_runs WHERE id = ?", childId);
+        jdbcTemplate.update(
+                "INSERT INTO agent_run_continuation_checks (run_id, requested_at, processed_at)"
+                        + " VALUES (?, CURRENT_TIMESTAMP, NULL)"
+                        + " ON CONFLICT (run_id) DO UPDATE"
+                        + " SET requested_at = CURRENT_TIMESTAMP, processed_at = NULL",
+                root.id());
+
+        dispatchService.recoverPending();
+
+        UUID recovered = agentRunRepository.findChildByParentRunId(root.id())
+                .orElseThrow(() -> new IllegalStateException(
+                        "recovery must create the missing child")).id();
+        Integer rowCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM agent_runs WHERE parent_run_id = ?",
+                Integer.class, root.id());
+        assertThat(rowCount).isEqualTo(1);
+        assertThat(checkRepository.findPending(10)).doesNotContain(root.id());
+        worker.executeRun(runService.claimNextContinue()
+                .filter(run -> run.id().equals(recovered))
+                .orElseThrow());
+        assertThat(agentRunService.getRun(recovered).orElseThrow().status())
+                .isEqualTo(AgentRunStatus.COMPLETED);
+    }
+
+    @Test
+    void recoveryWithExistingChildMarksProcessedWithoutSecondChild() {
+        Project project = newProjectWithResource("chain-recover-dedup");
+        withMaxCycles(5);
+        AtomicInteger decisions = new AtomicInteger();
+        stubDecisionsAfterFirstWithTerminalRespond(decisions);
+
+        AgentRun root = runService.createQueuedDraftQuestion(project.id());
+        worker.executeRun(claim(root));
+        UUID childId = agentRunRepository.findChildByParentRunId(root.id())
+                .orElseThrow(() -> new IllegalStateException(
+                        "expected a continuation child")).id();
+
+        // Simulate a crash between child creation and markProcessed: the
+        // check is still pending while the child already exists. Recovery
+        // must converge via ALREADY_CONTINUED — no second child.
+        jdbcTemplate.update(
+                "INSERT INTO agent_run_continuation_checks (run_id, requested_at, processed_at)"
+                        + " VALUES (?, CURRENT_TIMESTAMP, NULL)"
+                        + " ON CONFLICT (run_id) DO UPDATE"
+                        + " SET requested_at = CURRENT_TIMESTAMP, processed_at = NULL",
+                root.id());
+
+        dispatchService.recoverPending();
+
+        assertThat(agentRunRepository.findChildByParentRunId(root.id())
+                .orElseThrow().id()).isEqualTo(childId);
+        Integer rowCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM agent_runs WHERE parent_run_id = ?",
+                Integer.class, root.id());
+        assertThat(rowCount).isEqualTo(1);
+        assertThat(checkRepository.findPending(10)).doesNotContain(root.id());
+    }
+
+    @Test
+    void activeRouteSwitchFailsContinuationClosedWithoutModelCall() {
+        Project project = newProjectWithResource("chain-route-switch");
+        var routeBefore = routeRepository.findById(project.activeRouteId()).orElseThrow();
+        answerService.finalizeAnswer(project.id(), project.activeRouteId(),
+                routeBefore.tipNodeId(), null, "answered for append", "test-user");
+        withMaxCycles(5);
+        AtomicInteger decisions = new AtomicInteger();
+        org.mockito.stubbing.Answer<Object> forward = invocation -> {
+            AgentRequestEnvelope request = invocation.getArgument(0);
+            if (decisions.getAndIncrement() == 0) {
+                return createNoteProposal(request, "continuation observes this note");
+            }
+            return terminalRespond(request);
+        };
+        Mockito.doAnswer(forward).when(decisionEngine).runDecision(any());
+
+        AgentRun root = runService.createQueuedDraftQuestion(project.id());
+        worker.executeRun(claim(root));
+        UUID childId = agentRunRepository.findChildByParentRunId(root.id())
+                .orElseThrow(() -> new IllegalStateException(
+                        "expected a continuation child")).id();
+
+        // The active route switches while the child waits — but the old tip
+        // is untouched, so the stale-anchor check alone would still pass. The
+        // shared ContextGuard (active-route match) must reject instead. The
+        // fork branch point needs a finalized answer, so answer the child's
+        // produced tip first (it is the live tip after the root run).
+        UUID liveTip = routeRepository.findById(project.activeRouteId())
+                .orElseThrow().tipNodeId();
+        answerService.finalizeAnswer(project.id(), project.activeRouteId(),
+                liveTip, null, "answered for fork", "test-user");
+        var forked = routeService.forkFromNode(project.id(), project.activeRouteId(),
+                liveTip, "switched");
+        assertThat(projectService.getProject(project.id()).orElseThrow().activeRouteId())
+                .isEqualTo(forked.id());
+
+        int decisionsBefore = Mockito.mockingDetails(decisionEngine)
+                .getInvocations().size();
+        AgentRun childClaimed = runService.claimNextContinue()
+                .filter(run -> run.id().equals(childId))
+                .orElseThrow(() -> new IllegalStateException(
+                        "expected the switched child to stay claimable"));
+        try {
+            worker.executeRun(childClaimed);
+        } catch (RuntimeException expected) {
+            // Guard rejection fails the run closed; the worker terminalizes.
+        }
+
+        int decisionsAfter = Mockito.mockingDetails(decisionEngine)
+                .getInvocations().size();
+        assertThat(decisionsAfter).isEqualTo(decisionsBefore);
+        assertThat(agentRunService.getRun(childId).orElseThrow().status())
+                .isEqualTo(AgentRunStatus.FAILED);
+        assertThat(agentRunRepository.findChildByParentRunId(childId)).isEmpty();
+        assertThat(eventService.findByRunId(childId).stream()
+                .anyMatch(e -> "EXECUTING".equals(e.eventType()))).isFalse();
     }
 
     private Project newProjectWithResource(String name) {

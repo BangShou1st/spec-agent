@@ -21,5 +21,6 @@ public class RunWorkerPoller {
     @Scheduled(fixedDelayString = "${spec.agent.brain.worker.poll-interval-ms:2000}")
     public void poll() {
         worker.tryClaimAndExecute();
+        worker.recoverPendingContinuationChecks();
     }
 }
