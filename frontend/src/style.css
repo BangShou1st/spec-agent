@@ -572,7 +572,12 @@ textarea {
 }
 
 .graph-question-node--historical {
+  width: 220px;
   opacity: 0.96;
+}
+
+.graph-question-node--historical .graph-question-node__body {
+  padding: 12px 14px 14px;
 }
 
 .graph-question-node--shared .graph-question-node__header {
@@ -768,13 +773,28 @@ textarea {
 }
 
 .graph-node-question--compact {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   font-size: 13px;
+  line-height: 1.45;
 }
 
 .graph-node-purpose {
   margin: 0 0 10px;
   color: var(--color-text-secondary);
   font-size: 12px;
+}
+
+.graph-node-purpose--compact {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
 }
 
 .graph-option {

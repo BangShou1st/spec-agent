@@ -147,6 +147,28 @@ function historicalData(overrides: Partial<SpecAgentGraphNodeData> = {}): SpecAg
 }
 
 describe('graph question node', () => {
+  it('renders historical answered nodes as compact navigation cards', () => {
+    const wrapper = mountNode(historicalData({
+      isLatest: true,
+      qLabel: 'Q3',
+    }))
+
+    expect(wrapper.find('[data-test="historical-question"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="node-state"]').text()).toContain('已确认')
+    expect(wrapper.find('[data-test="answer-summary"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="free-text"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="submit-answer"]').exists()).toBe(false)
+  })
+
+  it('keeps the current answerable node expanded', () => {
+    const wrapper = mountNode(currentData({ qLabel: 'Q4' }))
+
+    expect(wrapper.find('[data-test="question"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="free-text"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="submit-answer"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="node-state"]').text()).toContain('就绪')
+  })
+
   it('renders current question, purpose, option labels and impacts verbatim', () => {
     const wrapper = mountNode(currentData())
     expect(wrapper.text()).toContain('What outcome matters most?')
@@ -201,28 +223,13 @@ describe('graph question node', () => {
     expect((wrapper.find('[data-test="free-text"]').element as HTMLTextAreaElement).value).toBe('')
   })
 
-  it('historical node has no answer inputs and shows the full answer summary', () => {
+  it('historical node has no answer inputs and stays compact; full answer lives in Inspector', () => {
     const wrapper = mountNode(historicalData())
     expect(wrapper.find('[data-test="free-text"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="submit-answer"]').exists()).toBe(false)
-    expect(wrapper.text()).toContain('Product team')
-    expect(wrapper.text()).toContain('Keep this exact user answer.')
-    expect(wrapper.find('[data-test="answer-summary"]').exists()).toBe(true)
-  })
-
-  it('historical freeText carries the bounded-summary class so a long answer never overflows the graph card', () => {
-    const wrapper = mountNode(historicalData({
-      answers: [
-        { routeId: 'r1', selectedOptionId: null, selectedOptionLabel: null,
-          freeText: 'A'.repeat(5000), isPrimary: true },
-      ],
-    }))
-    const clamped = wrapper.find('[data-test="clamped-free-text"]')
-    expect(clamped.exists()).toBe(true)
-    expect(clamped.classes()).toContain('graph-answer-text--clamped')
-    // current answerable node must NOT carry the clamp class.
-    const current = mountNode(currentData())
-    expect(current.find('[data-test="clamped-free-text"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="historical-question"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="answer-summary"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Keep this exact user answer.')
   })
 
   it('action rail renders outside the node body as a right-side vertical stack', () => {
@@ -259,7 +266,8 @@ describe('graph question node', () => {
   it('historical node never expands verbose route history inside the graph card', async () => {
     const expanded = historicalData({ isExpanded: true })
     const wrapper = mountNode(expanded)
-    expect(wrapper.find('[data-test="answer-summary"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="answer-summary"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="historical-question"]').exists()).toBe(true)
     expect(wrapper.find('.graph-node-details').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('Second route answer.')
   })
@@ -311,7 +319,7 @@ describe('graph question node', () => {
     expect(wrapper.text()).not.toContain('共享 · 2 条路线')
   })
 
-  it('renders runtime status separately on a pending projection and exposes retry', async () => {
+  it('renders runtime state on a pending projection and exposes retry', async () => {
     const wrapper = mountNode(historicalData({
       node: nodeData({ id: 'pending:run-1', question: '下一步问题生成失败' }),
       routeIds: ['r2'],
@@ -323,7 +331,7 @@ describe('graph question node', () => {
       runtimeMessage: '模型服务不可用',
     }))
     expect(wrapper.find('[data-test="pending-card"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="runtime-status"]').text()).toContain('运行失败')
+    expect(wrapper.find('[data-test="node-state"]').text()).toContain('需处理')
     expect(wrapper.text()).toContain('模型服务不可用')
     expect(wrapper.find('[data-test="contextual-ai"]').exists()).toBe(false)
     await wrapper.find('[data-test="retry-pending"]').trigger('click')
@@ -344,7 +352,7 @@ describe('graph question node', () => {
   })
 })
 describe('shared node canonical answer (no route-specific waiting)', () => {
-  it('shared answered node shows the canonical answer once and never offers a route-specific "answer this question"', async () => {
+  it('shared answered node stays compact and never offers a route-specific "answer this question"', async () => {
     const wrapper = mountNode(historicalData({
       routeIds: ['r1', 'r2'],
       answers: [answer('r1', { freeText: 'Shared canonical answer.', isPrimary: true })],
@@ -354,9 +362,10 @@ describe('shared node canonical answer (no route-specific waiting)', () => {
         { routeId: 'r2', label: 'Route-B', lifecycleStatus: 'archived', isActive: false },
       ],
     }))
-    // canonical Answer 只展示一次。
-    expect(wrapper.find('[data-test="answer-summary"]').exists()).toBe(true)
-    expect(wrapper.text()).toContain('Shared canonical answer.')
+    // 历史卡保持紧凑：完整答案在 Inspector 中查看，卡片只保留导航信息。
+    expect(wrapper.find('[data-test="answer-summary"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="historical-question"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="node-state"]').text()).toContain('已确认')
     // 绝不出现 route-specific 的"回答这个问题"入口。
     expect(wrapper.find('[data-test="answer-this-question"]').exists()).toBe(false)
   })
