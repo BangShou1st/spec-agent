@@ -33,6 +33,15 @@ tasks.withType<Test> {
     useJUnitPlatform()
 }
 
+// The default `test` task never runs live-provider suites. Live behavior is
+// recorded only through the explicit evalLive* tasks, so ordinary PR runs
+// and local `./gradlew test` invocations stay deterministic and offline-safe.
+tasks.named<Test>("test") {
+    filter {
+        excludeTestsMatching("com.specagent.eval.EvalLive*")
+    }
+}
+
 // P2 evaluation harness (deterministic B-fast profile, CI-blocking).
 // Runs the scenario contract tests, corpus validation, Layer A / B-fast
 // corpus scenarios, and the baseline artifact suite — no live provider,

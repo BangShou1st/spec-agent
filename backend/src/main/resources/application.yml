@@ -68,3 +68,9 @@ spec:
       broker:
         max-prompt-chars: ${SPEC_AGENT_BROKER_MAX_PROMPT_CHARS:200000}
         max-output-tokens: ${SPEC_AGENT_BROKER_MAX_OUTPUT_TOKENS:32768}
+    loop:
+      # Total AgentRuns allowed in one autonomous continuation chain, the
+      # chain root (cycle 0) included. Bounds execution volume only; the
+      # remaining budget always derives from the persisted cycle index, so
+      # no remaining-budget counter is stored anywhere.
+      max-cycles: ${SPEC_AGENT_LOOP_MAX_CYCLES:3}

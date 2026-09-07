@@ -52,7 +52,10 @@ class RunWorkerIntegrationTest {
                 .activeRouteId()).isNotNull();
 
         AgentRun run = runService.createQueuedDraftQuestion(project.id());
-        worker.executeRun(run);
+        AgentRun claimed = runService.claimDecisionCycleRun(run.id())
+                .orElseThrow(() -> new IllegalStateException(
+                        "Expected queued decision-cycle run " + run.id()));
+        worker.executeRun(claimed);
 
         AgentRun completed = runService.getRun(run.id()).orElseThrow();
         assertThat(completed.status()).isEqualTo(AgentRunStatus.COMPLETED);
@@ -88,7 +91,10 @@ class RunWorkerIntegrationTest {
                 root.id(), null, "answered root", "test-user");
 
         AgentRun run = runService.createQueuedDraftQuestion(project.id());
-        worker.executeRun(run);
+        AgentRun claimed = runService.claimDecisionCycleRun(run.id())
+                .orElseThrow(() -> new IllegalStateException(
+                        "Expected queued decision-cycle run " + run.id()));
+        worker.executeRun(claimed);
 
         AgentRun completed = runService.getRun(run.id()).orElseThrow();
         assertThat(completed.status()).isEqualTo(AgentRunStatus.COMPLETED);

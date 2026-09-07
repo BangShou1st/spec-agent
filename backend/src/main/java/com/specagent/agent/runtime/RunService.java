@@ -6,6 +6,7 @@ import com.specagent.agent.AgentRunRepository;
 import com.specagent.agent.AgentRunRequestFingerprint;
 import com.specagent.agent.AgentRunService;
 import com.specagent.agent.AgentRunTriggerType;
+import com.specagent.agent.loop.LoopLinkage;
 import com.specagent.agent.runevent.AgentRunEventService;
 import com.specagent.agent.runevent.AgentRunPhase;
 import com.specagent.project.Project;
@@ -16,6 +17,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -294,6 +296,78 @@ public class RunService {
         }
     }
 
+    /**
+     * Creates the autonomous continuation child of a terminal parent run.
+     *
+     * <p>Linkage rules: a chain root (no persisted root/cycle) mothers a
+     * child with {@code rootRunId = parent.id} at cycle 1; deeper parents
+     * keep their root and increment the cycle. The stale anchor reuses the
+     * existing {@code inputNodeId} mechanism (no new column): the child
+     * records the row-derived expected tip, and Slice 3 execution fails
+     * closed when the live tip no longer equals it (same check as
+     * {@code DecisionCycleService} draft targets, null-safe for empty
+     * routes). No new anchor metadata is introduced.
+     *
+     * <p>Stale-anchor gate: the expected tip derives from the parent row
+     * alone — the produced node when the parent moved the tip, otherwise
+     * the input node it decided against (both null on an empty route).
+     * The live tip must still equal it, or creation throws
+     * {@link StaleRunTargetException} instead of letting an autonomous
+     * continuation follow newer external causality. The rule reads Runtime
+     * graph state and produced refs only; no action family participates.
+     *
+     * <p>Exactly-once: the deterministic key
+     * {@code "continue:<parentRunId>"} plus the project-scoped idempotency
+     * unique index arbitrate concurrent creators — duplicate calls return
+     * the one persisted child, never a second row. The method takes the
+     * parent row only: no action family, conflict, or other semantic input
+     * participates in child identity.
+     */
+    public AgentRunService.CreateResult createContinueRun(AgentRun parent) {
+        if (parent.routeId() == null) {
+            throw new StaleRunTargetException(
+                    "Parent run " + parent.id()
+                            + " has no route to anchor a continuation; refusing");
+        }
+        Route route = routeRepository.findById(parent.routeId())
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Parent route not found: " + parent.routeId()));
+        if (!route.projectId().equals(parent.projectId())) {
+            throw new IllegalArgumentException(
+                    "Parent route does not belong to project: " + parent.routeId());
+        }
+        UUID expectedTip = parent.producedNodeId() != null
+                ? parent.producedNodeId() : parent.inputNodeId();
+        if (!Objects.equals(route.tipNodeId(), expectedTip)) {
+            throw new StaleRunTargetException(
+                    "Parent route tip moved since parent " + parent.id()
+                            + " completed: expected " + expectedTip
+                            + " but live tip is " + route.tipNodeId()
+                            + "; refusing autonomous continuation");
+        }
+        UUID rootId = parent.rootRunId() != null ? parent.rootRunId() : parent.id();
+        int parentCycle = parent.cycleIndex() != null ? parent.cycleIndex() : 0;
+        int childCycle = parentCycle + 1;
+        String key = "continue:" + parent.id();
+        String fingerprint = AgentRunRequestFingerprint.forContinuation(
+                parent.projectId(), parent.id(), childCycle);
+
+        var created = agentRunService.createWithIdempotency(
+                parent.projectId(), route.id(), AgentRunTriggerType.CONTINUE_CYCLE,
+                expectedTip, null, "CONTINUE", key, fingerprint,
+                new LoopLinkage(parent.id(), rootId, childCycle));
+        AgentRun run = created.run();
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("triggerType", AgentRunTriggerType.CONTINUE_CYCLE.code());
+        payload.put("operation", "CONTINUE");
+        payload.put("routeId", route.id().toString());
+        payload.put("parentRunId", parent.id().toString());
+        payload.put("rootRunId", rootId.toString());
+        payload.put("cycleIndex", childCycle);
+        appendRunCreatedIfInserted(created, payload);
+        return created;
+    }
+
     public UUID getActiveRouteId(UUID projectId) {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new IllegalArgumentException("Project not found: " + projectId));
@@ -310,5 +384,6 @@ public class RunService {
     public Optional<AgentRun> claimNextAnswerCycle() { return agentRunRepository.claimNextAnswerCycleRun(); }
     public Optional<AgentRun> claimNextNodeQuery() { return agentRunRepository.claimNextNodeQueryRun(); }
     public Optional<AgentRun> claimNodeQueryRun(UUID runId) { return agentRunRepository.claimNodeQueryRun(runId); }
+    public Optional<AgentRun> claimNextContinue() { return agentRunRepository.claimNextContinueRun(); }
     public Optional<AgentRun> getRun(UUID runId) { return agentRunService.getRun(runId); }
 }

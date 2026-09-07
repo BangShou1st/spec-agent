@@ -104,6 +104,10 @@ class NodeQueryTerminalAtomicityIntegrationTest {
     @AfterEach
     void cleanUp() {
         jdbcTemplate.update("DELETE FROM agent_proposals WHERE project_id = ?", project.id());
+        jdbcTemplate.update(
+                "DELETE FROM agent_run_continuation_checks WHERE run_id IN "
+                        + "(SELECT id FROM agent_runs WHERE project_id = ?)",
+                project.id());
         jdbcTemplate.update("DELETE FROM agent_run_events WHERE run_id IN "
                 + "(SELECT id FROM agent_runs WHERE project_id = ?)", project.id());
         jdbcTemplate.update("DELETE FROM agent_runs WHERE project_id = ?", project.id());

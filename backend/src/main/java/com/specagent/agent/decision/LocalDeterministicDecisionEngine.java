@@ -12,8 +12,12 @@ import com.specagent.agent.contract.UsageView;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
+import java.text.Normalizer;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -139,11 +143,24 @@ public class LocalDeterministicDecisionEngine implements AgentDecisionEngine {
         // a distinct question instead of the canonical draft question.
         String questionText = "What is the most important outcome?";
         String purpose = "This clarifies the primary requirement goal.";
+        String optionLabel = "Clarify the primary goal";
         if ("CONTINUE".equals(request.event().kind())
                 && request.event().freeText() != null
                 && !request.event().freeText().isBlank()) {
             questionText = "A sharper version of the rejected question.";
             purpose = "This follows the user's direction.";
+            optionLabel = "Clarify the primary goal";
+        } else if (!"NODE_QUERY".equals(request.event().kind())) {
+            // Deterministic clarification ladder: the fake must never repeat
+            // an already-answered question, or the enforced RESOLVED_BLOCKER
+            // rule fails the run before it reaches terminal. Zero answered
+            // questions keep the canonical first question; each answered one
+            // advances to the next rung, and the fallback stays clear of every
+            // answered text under the same normalization the gate enforces.
+            FollowUpQuestion followUp = selectFollowUpQuestion(request);
+            questionText = followUp.questionText();
+            purpose = followUp.purpose();
+            optionLabel = followUp.optionLabel();
         }
         AgentResponseEnvelope response = decisionResponse(request,
                 new ObservationView(
@@ -156,7 +173,7 @@ public class LocalDeterministicDecisionEngine implements AgentDecisionEngine {
                         Map.of(
                                 "questionText", questionText,
                                 "purpose", purpose,
-                                "options", List.of(Map.of("label", "Clarify the primary goal")),
+                                "options", List.of(Map.of("label", optionLabel)),
                                 "allowFreeAnswer", true),
                         snapshotId,
                         request.snapshot().contextHash(),
@@ -166,6 +183,64 @@ public class LocalDeterministicDecisionEngine implements AgentDecisionEngine {
                         List.of()));
         AgentBrainResponseValidator.validateDecision(request, response);
         return response;
+    }
+
+    /**
+     * Deterministic clarification ladder shared with the Python brain's fake
+     * model client: picks the first candidate whose normalized text is not an
+     * already-answered lineage question. The first rung is the canonical fake
+     * question so zero-answered behavior is unchanged; the numbered fallback
+     * keeps advancing past any answered text when every named rung is taken.
+     */
+    static FollowUpQuestion selectFollowUpQuestion(AgentRequestEnvelope request) {
+        Set<String> answered = new HashSet<>();
+        request.snapshot().lineage().stream()
+                .filter(entry -> entry.answer() != null)
+                .map(entry -> normalizeQuestion(entry.node().body().text()))
+                .forEach(answered::add);
+        List<FollowUpQuestion> ladder = List.of(
+                new FollowUpQuestion(
+                        "What is the most important outcome?",
+                        "This clarifies the primary requirement goal.",
+                        "Clarify the primary goal"),
+                new FollowUpQuestion(
+                        "What is the next most important outcome?",
+                        "This clarifies the next requirement goal.",
+                        "Clarify the next goal"),
+                new FollowUpQuestion(
+                        "What scope boundaries must be confirmed?",
+                        "This confirms the scope boundaries.",
+                        "Confirm the scope boundaries"));
+        for (FollowUpQuestion candidate : ladder) {
+            if (!answered.contains(normalizeQuestion(candidate.questionText()))) {
+                return candidate;
+            }
+        }
+        int followUp = answered.size() + 1;
+        while (true) {
+            FollowUpQuestion candidate = new FollowUpQuestion(
+                    "What else should be clarified next? (follow-up " + followUp + ")",
+                    "This clarifies the remaining requirement details.",
+                    "Clarify the remaining details");
+            if (!answered.contains(normalizeQuestion(candidate.questionText()))) {
+                return candidate;
+            }
+            followUp += 1;
+        }
+    }
+
+    /** One rung of the deterministic clarification ladder. */
+    record FollowUpQuestion(String questionText, String purpose, String optionLabel) {
+    }
+
+    static String normalizeQuestion(String value) {
+        if (value == null) {
+            return "";
+        }
+        return Normalizer.normalize(value, Normalizer.Form.NFKC)
+                .strip()
+                .replaceAll("\\s+", " ")
+                .toLowerCase(Locale.ROOT);
     }
 
     private AgentResponseEnvelope decisionResponse(AgentRequestEnvelope request,

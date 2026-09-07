@@ -103,8 +103,14 @@ class AgentV2ContractTest {
                 fixture("decision-response-v3-valid.json"), AgentResponseEnvelope.class);
 
         assertThat(request.actionEligibility().version()).isEqualTo("action-eligibility.v1");
+        // Frozen principle: unresolved conflict/open_question never denies
+        // CREATE_NODE at the eligibility boundary. The V3 fixture keeps an
+        // unresolved open_question to prove it: CREATE_NODE stays eligible
+        // while objective preconditions (WAIT dependency, capability
+        // visibility) still apply.
         assertThat(request.actionEligibility().eligibleFamilies())
-                .contains("REQUEST_USER_INPUT").doesNotContain("CREATE_NODE", "WAIT");
+                .contains("CREATE_NODE", "REQUEST_USER_INPUT")
+                .doesNotContain("WAIT", "INVOKE_CAPABILITY");
         assertThatCode(() -> AgentBrainResponseValidator.validateDecision(request, response))
                 .doesNotThrowAnyException();
     }

@@ -22,6 +22,7 @@ import com.specagent.agent.policy.AgentProposal;
 import com.specagent.agent.policy.AgentProposalService;
 import com.specagent.agent.policy.PolicyDecision;
 import com.specagent.agent.runevent.AgentRunEventService;
+import com.specagent.agent.runevent.AgentRunEventTypes;
 import com.specagent.agent.runevent.AgentRunPhase;
 import com.specagent.agent.snapshot.AgentInputSnapshotBuilder;
 import com.specagent.context.ContextBuilder;
@@ -46,9 +47,20 @@ import java.util.UUID;
 @Service
 public class NodeQueryService {
 
-    public static final String RESPOND_MESSAGE_EVENT = "RESPOND_MESSAGE";
-    public static final String POLICY_DENIED_EVENT = "POLICY_DENIED";
-    public static final String MUTATION_NOT_CONFIRMABLE_EVENT = "MUTATION_NOT_CONFIRMABLE";
+    /**
+     * @deprecated Read {@link AgentRunEventTypes} instead. Kept only so
+     * existing callers keep compiling; the values forward to the shared
+     * run-event protocol and must stay identical to it.
+     */
+    @Deprecated(forRemoval = true)
+    public static final String RESPOND_MESSAGE_EVENT = AgentRunEventTypes.RESPOND_MESSAGE_EVENT;
+    /** @deprecated Read {@link AgentRunEventTypes#POLICY_DENIED_EVENT} instead. */
+    @Deprecated(forRemoval = true)
+    public static final String POLICY_DENIED_EVENT = AgentRunEventTypes.POLICY_DENIED_EVENT;
+    /** @deprecated Read {@link AgentRunEventTypes#MUTATION_NOT_CONFIRMABLE_EVENT} instead. */
+    @Deprecated(forRemoval = true)
+    public static final String MUTATION_NOT_CONFIRMABLE_EVENT =
+            AgentRunEventTypes.MUTATION_NOT_CONFIRMABLE_EVENT;
 
     private static final Logger LOG = LoggerFactory.getLogger(NodeQueryService.class);
 
@@ -160,10 +172,9 @@ public class NodeQueryService {
                 }
                 AgentProposal agentProposal = proposalService.createProposal(
                         proposal, runId, run.projectId(), routeId);
-                agentRunService.complete(runId, AgentRunStatus.COMPLETED,
-                        trace + "\nawaiting_approval:" + agentProposal.id());
-                eventService.append(runId, AgentRunPhase.AWAITING_APPROVAL,
-                        "AWAITING_APPROVAL", Map.of(
+                terminalizationService.completeWithEvent(runId, AgentRunStatus.COMPLETED,
+                        trace + "\nawaiting_approval:" + agentProposal.id(),
+                        AgentRunPhase.AWAITING_APPROVAL, "AWAITING_APPROVAL", Map.of(
                                 "proposalId", agentProposal.id().toString(),
                                 "actionFamily", proposal.actionFamily()));
                 return new NodeQueryResult(runId, "awaiting_approval", null, agentProposal.id());
@@ -174,12 +185,8 @@ public class NodeQueryService {
             ActionResult result = actionExecutor.execute(proposal, new ActionExecutionContext(
                     runId, run.projectId(), routeId, snapshot.id(), anchorNodeId, null, question));
 
-            if (result.message() != null) {
-                eventService.append(runId, AgentRunPhase.COMPLETED,
-                        RESPOND_MESSAGE_EVENT, Map.of("message", result.message()));
-            }
-            agentRunService.complete(runId, AgentRunStatus.COMPLETED, trace + "\ncompleted");
-            eventService.append(runId, AgentRunPhase.COMPLETED, "RUN_COMPLETED", Map.of());
+            terminalizationService.completeWithResponse(runId, AgentRunStatus.COMPLETED,
+                    trace + "\ncompleted", null, result.message(), Map.of());
             return new NodeQueryResult(runId, "completed", result.message(), null);
         } catch (RuntimeException ex) {
             failIfNotTerminal(runId, ex);

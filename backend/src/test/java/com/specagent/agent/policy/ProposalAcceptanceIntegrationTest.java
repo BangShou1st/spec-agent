@@ -41,6 +41,9 @@ class ProposalAcceptanceIntegrationTest {
     @Autowired private GraphCommandService graphCommandService;
     @Autowired private ProposalAcceptanceService acceptanceService;
     @Autowired private AgentProposalService proposalService;
+    @Autowired private com.specagent.agent.AgentRunService agentRunService;
+    @Autowired private com.specagent.agent.AgentRunRepository agentRunRepository;
+    @Autowired private com.specagent.agent.loop.ContinuationCheckRepository checkRepository;
     @Autowired private NodeRepository nodeRepository;
     @Autowired private RouteRepository routeRepository;
     @Autowired private NodeRelationRepository relationRepository;
@@ -144,5 +147,49 @@ class ProposalAcceptanceIntegrationTest {
                 .hasMessageContaining("already been decided")
                 .extracting(e -> ((ProposalAlreadyDecidedException) e).currentStatus())
                 .isEqualTo("ACCEPTED");
+    }
+
+    @Test
+    void acceptWithPersistedRunReturnsOriginRunIdAndRequestsContinuation() {
+        com.specagent.agent.AgentRun run = agentRunService.create(project.id(), route.id(),
+                com.specagent.agent.AgentRunTriggerType.DECISION_CYCLE, null, null,
+                "DRAFT_QUESTION");
+        ActionProposal proposal = new ActionProposal(
+                "CREATE_NODE",
+                Map.of("kind", "KNOWLEDGE", "subtype", "RISK",
+                        "content", Map.of("text", "persisted origin")),
+                UUID.randomUUID(), "hash-" + UUID.randomUUID(),
+                List.of(), UUID.randomUUID(), "idem-" + UUID.randomUUID(),
+                List.of("node:" + tip.id()));
+        AgentProposal pending = proposalService.createProposal(
+                proposal, run.id(), project.id(), route.id());
+
+        ProposalAcceptanceService.AcceptedProposalResult result =
+                acceptanceService.acceptAndExecute(pending.id(), "user");
+
+        assertThat(result.originRunId()).isEqualTo(run.id());
+        assertThat(checkRepository.findPendingByRunId(run.id())).isPresent();
+    }
+
+    @Test
+    void acceptWithGhostRunIdReturnsNullOriginAndWritesNoCheck() {
+        UUID ghostRunId = UUID.randomUUID();
+        assertThat(agentRunRepository.findById(ghostRunId)).isEmpty();
+        ActionProposal proposal = new ActionProposal(
+                "CREATE_NODE",
+                Map.of("kind", "KNOWLEDGE", "subtype", "RISK",
+                        "content", Map.of("text", "ghost origin")),
+                UUID.randomUUID(), "hash-" + UUID.randomUUID(),
+                List.of(), UUID.randomUUID(), "idem-" + UUID.randomUUID(),
+                List.of("node:" + tip.id()));
+        AgentProposal pending = proposalService.createProposal(
+                proposal, ghostRunId, project.id(), route.id());
+
+        ProposalAcceptanceService.AcceptedProposalResult result =
+                acceptanceService.acceptAndExecute(pending.id(), "user");
+
+        assertThat(result.producedNodeId()).isNotNull();
+        assertThat(result.originRunId()).isNull();
+        assertThat(checkRepository.findPendingByRunId(ghostRunId)).isEmpty();
     }
 }

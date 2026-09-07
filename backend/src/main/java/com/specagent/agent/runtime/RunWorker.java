@@ -8,12 +8,15 @@ import com.specagent.agent.AgentRunTriggerType;
 import com.specagent.agent.ModelContractException;
 import com.specagent.agent.contract.AgentEvent;
 import com.specagent.agent.decision.AgentBrainUnavailableException;
+import com.specagent.agent.loop.ContinuationDispatchService;
 import com.specagent.agent.runevent.AgentRunEvent;
 import com.specagent.agent.runevent.AgentRunEventService;
 import com.specagent.agent.runevent.AgentRunPhase;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.List;
 import java.util.Map;
@@ -46,6 +49,8 @@ public class RunWorker {
     private final ArtifactCycleService artifactCycleService;
     private final ReplacementCycleService replacementCycleService;
     private final NodeQueryService nodeQueryService;
+    private final ContinuationCycleService continuationCycleService;
+    private final ContinuationDispatchService continuationDispatch;
 
     public RunWorker(RunService runService,
                             AgentRunService agentRunService,
@@ -55,7 +60,9 @@ public class RunWorker {
                             DecisionCycleService decisionCycleService,
                             ArtifactCycleService artifactCycleService,
                             ReplacementCycleService replacementCycleService,
-                            NodeQueryService nodeQueryService) {
+                            NodeQueryService nodeQueryService,
+                            ContinuationCycleService continuationCycleService,
+                            ContinuationDispatchService continuationDispatch) {
         this.runService = runService;
         this.agentRunService = agentRunService;
         this.agentRunFailureService = agentRunFailureService;
@@ -65,6 +72,8 @@ public class RunWorker {
         this.artifactCycleService = artifactCycleService;
         this.replacementCycleService = replacementCycleService;
         this.nodeQueryService = nodeQueryService;
+        this.continuationCycleService = continuationCycleService;
+        this.continuationDispatch = continuationDispatch;
     }
 
     /** Claims and executes at most one queued run from each queue. */
@@ -75,18 +84,33 @@ public class RunWorker {
         runService.claimNextArtifact().ifPresent(this::executeRun);
         runService.claimNextRegenerate().ifPresent(this::executeRun);
         runService.claimNextNodeQuery().ifPresent(this::executeRun);
+        runService.claimNextContinue().ifPresent(this::executeRun);
     }
 
     /**
      * Dispatches a claimed run to the appropriate handler based on trigger type.
+     *
+     * <p>Fail-closed entry: the worker only executes freshly claimed
+     * {@code RUNNING} rows. A {@code CREATED} row passed directly (without a
+     * claim) is rejected so tests and callers cannot bypass the
+     * claim-and-execute path; a terminal {@code COMPLETED}/{@code FAILED} row
+     * is never re-executed — a duplicate delivery must go through
+     * {@link ContinuationDispatchService#process} instead.
      */
     public void executeRun(AgentRun run) {
-        switch (run.triggerType()) {
-            case ANSWER_CYCLE -> executeAnswerCycle(run);
-            case NODE_QUERY -> executeNodeQuery(run);
-            case GENERATE_SPEC -> executeArtifactGeneration(run);
-            case REGENERATE_NODE -> executeRegenerate(run);
-            default -> executeDecisionCycle(run);
+        AgentRun latest = agentRunService.getRun(run.id()).orElse(run);
+        if (latest.status() != AgentRunStatus.RUNNING) {
+            throw new IllegalStateException(
+                    "RunWorker only executes freshly claimed RUNNING runs: " + run.id()
+                            + " is " + latest.status());
+        }
+        switch (latest.triggerType()) {
+            case ANSWER_CYCLE -> executeAnswerCycle(latest);
+            case NODE_QUERY -> executeNodeQuery(latest);
+            case GENERATE_SPEC -> executeArtifactGeneration(latest);
+            case REGENERATE_NODE -> executeRegenerate(latest);
+            case CONTINUE_CYCLE -> executeContinuationCycle(latest);
+            default -> executeDecisionCycle(latest);
         }
     }
 
@@ -137,6 +161,7 @@ public class RunWorker {
         UUID runId = run.id();
         try {
             decisionCycleService.draftQuestion(run);
+            evaluateContinuationAfterTerminal(runId);
         } catch (RuntimeException ex) {
             failIfNotTerminal(runId, ex);
             throw ex;
@@ -168,10 +193,77 @@ public class RunWorker {
                 answerCycleService.submitAnswer(run, run.projectId(), selectedOptionId, freeText,
                         persistenceIntent);
             }
+            evaluateContinuationAfterTerminal(runId);
         } catch (RuntimeException ex) {
             failIfNotTerminal(runId, ex);
             throw ex;
         }
+    }
+
+    /**
+     * Autonomous continuation: one fresh DECISION in
+     * {@link ContinuationCycleService}.
+     */
+    private void executeContinuationCycle(AgentRun run) {
+        UUID runId = run.id();
+        try {
+            continuationCycleService.executeContinuation(run);
+            evaluateContinuationAfterTerminal(runId);
+        } catch (RuntimeException ex) {
+            failIfNotTerminal(runId, ex);
+            throw ex;
+        }
+    }
+
+    /**
+     * Single terminal continuation hook for every cycle that may legally
+     * continue (decision, answer, continuation). Terminalization already
+     * committed the continuation-check request in the same transaction, so
+     * this hook only dispatches the low-latency fast path — best-effort: a
+     * dispatch failure is logged and left pending for
+     * {@link ContinuationDispatchService#recoverPending()}, and never fails
+     * the already-COMPLETED run. Inside a managed transaction dispatch waits
+     * for afterCommit, otherwise the preceding terminal writes already
+     * committed and the dispatch runs inline. No cycle service calls the
+     * dispatcher itself, and no execution result, policy verdict, or model
+     * observation is passed — the input stays one run id.
+     */
+    private void evaluateContinuationAfterTerminal(UUID runId) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(
+                    new TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            dispatchContinuationBestEffort(runId);
+                        }
+                    });
+        } else {
+            dispatchContinuationBestEffort(runId);
+        }
+    }
+
+    /**
+     * Best-effort fast-path delivery of one terminal run's continuation
+     * check. Only post-terminal delivery failures are isolated here — cycle
+     * execution exceptions never reach this method (each cycle's catch
+     * terminalizes and rethrows before this hook runs).
+     */
+    void dispatchContinuationBestEffort(UUID runId) {
+        try {
+            continuationDispatch.process(runId);
+        } catch (RuntimeException ex) {
+            LOG.warn("Continuation fast-path dispatch deferred for run {}: {}",
+                    runId, ex.getMessage());
+        }
+    }
+
+    /**
+     * Crash-recovery entry: replays pending continuation checks left by a
+     * lost afterCommit. Called by the poll loop after claiming; one bad row
+     * never blocks the queues.
+     */
+    public void recoverPendingContinuationChecks() {
+        continuationDispatch.recoverPending();
     }
 
     /**

@@ -67,6 +67,12 @@ export interface AgentRunView {
   producedAnswerId: string | null
   producedPatchId: string | null
   producedSpecSnapshotId: string | null
+  /** Direct automatic-continuation child run id; absent when none exists yet. */
+  childRunId?: string | null
+  /** True while the durable continuation check for this run is still pending. */
+  continuationPending?: boolean
+  /** Latest durable RESPOND_MESSAGE text; absent when the run never responded. */
+  respondMessage?: string | null
 }
 
 export interface CreateAgentRunPayload {

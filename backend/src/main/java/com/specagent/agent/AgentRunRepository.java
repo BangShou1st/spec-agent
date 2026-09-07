@@ -40,7 +40,10 @@ public class AgentRunRepository {
                 rs.getString("idempotency_key"),
                 rs.getString("request_fingerprint"),
                 rs.getTimestamp("created_at").toInstant(),
-                rs.getTimestamp("completed_at") == null ? null : rs.getTimestamp("completed_at").toInstant());
+                rs.getTimestamp("completed_at") == null ? null : rs.getTimestamp("completed_at").toInstant(),
+                rs.getObject("parent_run_id", UUID.class),
+                rs.getObject("root_run_id", UUID.class),
+                rs.getObject("cycle_index", Integer.class));
     }
 
     public void save(AgentRun run) {
@@ -48,11 +51,13 @@ public class AgentRunRepository {
                 INSERT INTO agent_runs (id, project_id, route_id, trigger_type, input_node_id,
                                         context_snapshot_id, produced_node_id, produced_answer_id,
                                         produced_patch_id, produced_spec_snapshot_id, status, trace,
-                                        operation, idempotency_key, request_fingerprint, created_at, completed_at)
+                                        operation, idempotency_key, request_fingerprint, created_at, completed_at,
+                                        parent_run_id, root_run_id, cycle_index)
                 VALUES (:id, :projectId, :routeId, :triggerType, :inputNodeId, :contextSnapshotId,
                         :producedNodeId, :producedAnswerId, :producedPatchId, :producedSpecSnapshotId,
                         :status, CAST(:trace AS jsonb), :operation, :idempotencyKey,
-                        :requestFingerprint, :createdAt, :completedAt)
+                        :requestFingerprint, :createdAt, :completedAt,
+                        :parentRunId, :rootRunId, :cycleIndex)
                 """;
         jdbcTemplate.update(sql, Maps.of(
                 "id", run.id(),
@@ -71,7 +76,10 @@ public class AgentRunRepository {
                 "idempotencyKey", run.idempotencyKey(),
                 "requestFingerprint", run.requestFingerprint(),
                 "createdAt", Timestamp.from(run.createdAt()),
-                "completedAt", run.completedAt() == null ? null : Timestamp.from(run.completedAt())));
+                "completedAt", run.completedAt() == null ? null : Timestamp.from(run.completedAt()),
+                "parentRunId", run.parentRunId(),
+                "rootRunId", run.rootRunId(),
+                "cycleIndex", run.cycleIndex()));
     }
 
     /**
@@ -86,11 +94,13 @@ public class AgentRunRepository {
                 INSERT INTO agent_runs (id, project_id, route_id, trigger_type, input_node_id,
                                         context_snapshot_id, produced_node_id, produced_answer_id,
                                         produced_patch_id, produced_spec_snapshot_id, status, trace,
-                                        operation, idempotency_key, request_fingerprint, created_at, completed_at)
+                                        operation, idempotency_key, request_fingerprint, created_at, completed_at,
+                                        parent_run_id, root_run_id, cycle_index)
                 VALUES (:id, :projectId, :routeId, :triggerType, :inputNodeId, :contextSnapshotId,
                         :producedNodeId, :producedAnswerId, :producedPatchId, :producedSpecSnapshotId,
                         :status, CAST(:trace AS jsonb), :operation, :idempotencyKey,
-                        :requestFingerprint, :createdAt, :completedAt)
+                        :requestFingerprint, :createdAt, :completedAt,
+                        :parentRunId, :rootRunId, :cycleIndex)
                 ON CONFLICT (project_id, idempotency_key)
                     WHERE idempotency_key IS NOT NULL DO NOTHING
                 """;
@@ -111,7 +121,10 @@ public class AgentRunRepository {
                 "idempotencyKey", run.idempotencyKey(),
                 "requestFingerprint", run.requestFingerprint(),
                 "createdAt", Timestamp.from(run.createdAt()),
-                "completedAt", run.completedAt() == null ? null : Timestamp.from(run.completedAt()))) == 1;
+                "completedAt", run.completedAt() == null ? null : Timestamp.from(run.completedAt()),
+                "parentRunId", run.parentRunId(),
+                "rootRunId", run.rootRunId(),
+                "cycleIndex", run.cycleIndex())) == 1;
     }
 
     /** Loads the persisted winner of an idempotent create race in one project. */
@@ -120,6 +133,18 @@ public class AgentRunRepository {
         String sql = "SELECT * FROM agent_runs "
                 + "WHERE project_id = :projectId AND idempotency_key = :key";
         return jdbcTemplate.query(sql, Maps.of("projectId", projectId, "key", idempotencyKey), rowMapper)
+                .stream().findFirst();
+    }
+
+    /**
+     * Newest run spawned from the given parent run, if any. The continuation
+     * coordinator uses this to enforce exactly-once child creation: a parent
+     * with a child never spawns a second one.
+     */
+    public Optional<AgentRun> findChildByParentRunId(UUID parentRunId) {
+        String sql = "SELECT * FROM agent_runs "
+                + "WHERE parent_run_id = :parentRunId ORDER BY created_at DESC LIMIT 1";
+        return jdbcTemplate.query(sql, Maps.of("parentRunId", parentRunId), rowMapper)
                 .stream().findFirst();
     }
 
@@ -170,8 +195,7 @@ public class AgentRunRepository {
     /**
      * Records the node persisted by this run.
      */
-    public void markPersistedNode(UUID runId, UUID producedNodeId, String trace) {
-        String sql = """
+    public void markPersistedNode(UUID runId, UUID producedNodeId, String trace) {        String sql = """
                 UPDATE agent_runs
                 SET produced_node_id = :producedNodeId,
                     status = :status,
@@ -183,6 +207,24 @@ public class AgentRunRepository {
                 "producedNodeId", producedNodeId,
                 "status", AgentRunStatus.PERSISTED.code(),
                 "trace", json.write(trace)));
+    }
+
+    /**
+     * Attaches an approval-produced node to an already-terminal run without
+     * touching its status or completion. The acceptance transaction owns the
+     * execution; the originating run only gains the durable effect
+     * reference so the continuation coordinator can judge it. Status and
+     * trace stay exactly as terminalization left them.
+     */
+    public void attachApprovalProducedNode(UUID runId, UUID producedNodeId) {
+        String sql = """
+                UPDATE agent_runs
+                SET produced_node_id = :producedNodeId
+                WHERE id = :runId
+                """;
+        jdbcTemplate.update(sql, Maps.of(
+                "runId", runId,
+                "producedNodeId", producedNodeId));
     }
 
     /**
@@ -341,6 +383,11 @@ public class AgentRunRepository {
     /** Atomically claims the oldest queued artifact-generation run. */
     public Optional<AgentRun> claimNextArtifactRun() {
         return claimNextByTrigger(AgentRunTriggerType.GENERATE_SPEC);
+    }
+
+    /** Atomically claims the oldest queued autonomous continuation run. */
+    public Optional<AgentRun> claimNextContinueRun() {
+        return claimNextByTrigger(AgentRunTriggerType.CONTINUE_CYCLE);
     }
 
     /** Atomically claims the oldest queued replacement run. */

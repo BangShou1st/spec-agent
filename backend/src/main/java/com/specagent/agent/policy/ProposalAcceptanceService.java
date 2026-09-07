@@ -1,11 +1,16 @@
 package com.specagent.agent.policy;
 
+import com.specagent.agent.AgentRunRepository;
 import com.specagent.agent.action.ActionExecutionContext;
 import com.specagent.agent.action.ActionExecutor;
 import com.specagent.agent.action.ActionResult;
 import com.specagent.agent.action.StaleProposalException;
 import com.specagent.agent.contract.ActionFamily;
 import com.specagent.agent.contract.ActionProposal;
+import com.specagent.agent.loop.ContinuationCheckRepository;
+import com.specagent.agent.loop.ContinuationDispatchService;
+import com.specagent.agent.runevent.AgentRunEventService;
+import com.specagent.agent.runevent.AgentRunPhase;
 import com.specagent.graph.GraphCommandService;
 import com.specagent.agent.action.StaleContextChecker;
 import com.specagent.context.ContextSnapshotRepository;
@@ -18,8 +23,12 @@ import com.specagent.node.NodeRepository;
 import com.specagent.project.ProjectRepository;
 import com.specagent.route.Route;
 import com.specagent.route.RouteRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.List;
 import java.util.Map;
@@ -37,6 +46,8 @@ import java.util.UUID;
 @Service
 public class ProposalAcceptanceService {
 
+    private static final Logger LOG = LoggerFactory.getLogger(ProposalAcceptanceService.class);
+
     private final AgentProposalService proposalService;
     private final ActionExecutor actionExecutor;
     private final GraphCommandService graphCommandService;
@@ -46,6 +57,10 @@ public class ProposalAcceptanceService {
     private final ProjectRepository projectRepository;
     private final StaleContextChecker staleContextChecker;
     private final ContextSnapshotRepository contextSnapshotRepository;
+    private final AgentRunRepository agentRunRepository;
+    private final AgentRunEventService eventService;
+    private final ContinuationCheckRepository checkRepository;
+    private final ContinuationDispatchService continuationDispatch;
 
     public ProposalAcceptanceService(AgentProposalService proposalService,
                                      ActionExecutor actionExecutor,
@@ -55,7 +70,11 @@ public class ProposalAcceptanceService {
                                      RouteRepository routeRepository,
                                      ProjectRepository projectRepository,
                                      StaleContextChecker staleContextChecker,
-                                     ContextSnapshotRepository contextSnapshotRepository) {
+                                     ContextSnapshotRepository contextSnapshotRepository,
+                                     AgentRunRepository agentRunRepository,
+                                     AgentRunEventService eventService,
+                                     ContinuationCheckRepository checkRepository,
+                                     ContinuationDispatchService continuationDispatch) {
         this.proposalService = proposalService;
         this.actionExecutor = actionExecutor;
         this.graphCommandService = graphCommandService;
@@ -65,9 +84,14 @@ public class ProposalAcceptanceService {
         this.projectRepository = projectRepository;
         this.staleContextChecker = staleContextChecker;
         this.contextSnapshotRepository = contextSnapshotRepository;
+        this.agentRunRepository = agentRunRepository;
+        this.eventService = eventService;
+        this.checkRepository = checkRepository;
+        this.continuationDispatch = continuationDispatch;
     }
 
-    public record AcceptedProposalResult(String actionFamily, UUID producedNodeId, UUID relationId) {
+    public record AcceptedProposalResult(String actionFamily, UUID producedNodeId, UUID relationId,
+                                           UUID originRunId) {
     }
 
     /**
@@ -143,7 +167,68 @@ public class ProposalAcceptanceService {
                 producedRefs,
                 Map.of(), Map.of("actionFamily", stored.actionFamily()),
                 "proposal:" + proposalId);
-        return result;
+
+        // Slice 6: the originating run gains the durable effect reference
+        // (status/trace untouched — it already terminalized) plus an
+        // ACCEPTANCE_EXECUTED event, and its continuation check reopens in
+        // the SAME transaction. The coordinator re-judges the run from
+        // these durable facts: ACCEPTED (no longer PARKED_APPROVAL) plus a
+        // consumable effect (graph node) yields a child; INTERACTION output
+        // still parks as an external boundary; effect-free acceptance still
+        // yields NO_EFFECT. Acceptance itself never forces continuation.
+        //
+        // The originating run id is a legacy creation hint: external
+        // creation paths may carry a run id with no persisted run row
+        // (proposal-only flows). Only a really persisted run is an origin:
+        // continuation effects AND the returned originRunId share this one
+        // gate, so the API never hands the frontend a ghost run to poll.
+        UUID persistedOriginRunId = stored.runId() != null
+                && agentRunRepository.findById(stored.runId()).isPresent()
+                ? stored.runId() : null;
+        if (persistedOriginRunId != null) {
+            if (result.producedNodeId() != null) {
+                agentRunRepository.attachApprovalProducedNode(
+                        persistedOriginRunId, result.producedNodeId());
+            }
+            eventService.append(persistedOriginRunId, AgentRunPhase.COMPLETED,
+                    "ACCEPTANCE_EXECUTED", Map.of(
+                            "proposalId", proposalId.toString(),
+                            "actionFamily", stored.actionFamily()));
+            checkRepository.request(persistedOriginRunId);
+            dispatchContinuationAfterCommit(persistedOriginRunId);
+        }
+        return new AcceptedProposalResult(result.actionFamily(), result.producedNodeId(),
+                result.relationId(), persistedOriginRunId);
+    }
+
+    /**
+     * Best-effort fast-path delivery of the reopened continuation check.
+     * The acceptance transaction already committed the request; a dispatch
+     * failure is logged and left pending for the recovery scanner — it
+     * never fails the user's acceptance call.
+     */
+    private void dispatchContinuationAfterCommit(UUID runId) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(
+                    new TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            try {
+                                continuationDispatch.process(runId);
+                            } catch (RuntimeException ex) {
+                                LOG.warn("Continuation dispatch deferred for run {}: {}",
+                                        runId, ex.getMessage());
+                            }
+                        }
+                    });
+        } else {
+            try {
+                continuationDispatch.process(runId);
+            } catch (RuntimeException ex) {
+                LOG.warn("Continuation dispatch deferred for run {}: {}",
+                        runId, ex.getMessage());
+            }
+        }
     }
 
     /**
@@ -223,7 +308,8 @@ public class ProposalAcceptanceService {
                 stored.runId(), stored.projectId(), stored.routeId(),
                 stored.baseContextSnapshotId(), anchorNodeId, null, null);
         ActionResult result = actionExecutor.execute(proposal, context);
-        return new AcceptedProposalResult(stored.actionFamily(), result.producedNodeId(), null);
+        return new AcceptedProposalResult(stored.actionFamily(), result.producedNodeId(), null,
+                null);
     }
 
     private AcceptedProposalResult executeConnectNode(ActionProposal proposal, AgentProposal stored) {
@@ -241,7 +327,7 @@ public class ProposalAcceptanceService {
                 NodeRelation.Origin.AGENT,
                 stored.id(),
                 stored.runId());
-        return new AcceptedProposalResult(stored.actionFamily(), null, relation.id());
+        return new AcceptedProposalResult(stored.actionFamily(), null, relation.id(), null);
     }
 
     /**
@@ -259,7 +345,8 @@ public class ProposalAcceptanceService {
                 stored.runId(), stored.projectId(), stored.routeId(),
                 stored.baseContextSnapshotId(), anchorNodeId, null, null);
         ActionResult result = actionExecutor.execute(proposal, context);
-        return new AcceptedProposalResult(stored.actionFamily(), result.producedNodeId(), null);
+        return new AcceptedProposalResult(stored.actionFamily(), result.producedNodeId(), null,
+                null);
     }
 
     private boolean isReadOnlyFamily(ActionProposal proposal) {

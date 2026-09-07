@@ -1,19 +1,12 @@
 package com.specagent.agent.runtime;
 
 import com.specagent.agent.*;
-import com.specagent.agent.action.ActionExecutor;
 import com.specagent.agent.action.ActionExecutionContext;
-import com.specagent.agent.action.ActionResult;
 import com.specagent.agent.contract.*;
 import com.specagent.agent.decision.AgentBrainResponseValidator;
 import com.specagent.agent.decision.AgentDecisionEngine;
 import com.specagent.agent.gates.PatchReflectionGate;
 import com.specagent.agent.contracts.ReflectionResult;
-import com.specagent.agent.policy.AdvisorPolicyEngine;
-import com.specagent.agent.policy.AgentProposal;
-import com.specagent.agent.policy.AgentProposalService;
-import com.specagent.agent.policy.PolicyDecision;
-import com.specagent.agent.policy.ProposalStatus;
 import com.specagent.agent.eligibility.ActionEligibilityGate;
 import com.specagent.agent.snapshot.LegacyFrozenInputUnavailableException;
 import com.specagent.agent.runevent.AgentRunEvent;
@@ -76,13 +69,10 @@ public class AnswerCycleService {
     private final AnswerService answerService;
     private final AnswerPatchService answerPatchService;
     private final PatchReflectionGate patchReflectionGate;
-    private final AdvisorPolicyEngine policyEngine;
-    private final ActionExecutor actionExecutor;
-    private final AgentProposalService proposalService;
+    private final DecisionExecutionService decisionExecution;
     private final AgentRunEventService eventService;
     private final NodeService nodeService;
     private final RouteRepository routeRepository;
-    private final com.specagent.agent.action.StaleContextChecker staleContextChecker;
     private final com.specagent.project.ProjectRepository projectRepository;
     private final ContextSnapshotRepository contextSnapshotRepository;
     private final com.specagent.agent.snapshot.AgentInputProjectionRepository projectionRepository;
@@ -97,13 +87,10 @@ public class AnswerCycleService {
                               AnswerService answerService,
                               AnswerPatchService answerPatchService,
                               PatchReflectionGate patchReflectionGate,
-                              AdvisorPolicyEngine policyEngine,
-                              ActionExecutor actionExecutor,
-                              AgentProposalService proposalService,
+                              DecisionExecutionService decisionExecution,
                               AgentRunEventService eventService,
                               NodeService nodeService,
                               RouteRepository routeRepository,
-                              com.specagent.agent.action.StaleContextChecker staleContextChecker,
                               com.specagent.project.ProjectRepository projectRepository,
                               ContextSnapshotRepository contextSnapshotRepository,
                               com.specagent.agent.snapshot.AgentInputProjectionRepository projectionRepository,
@@ -117,13 +104,10 @@ public class AnswerCycleService {
         this.answerService = answerService;
         this.answerPatchService = answerPatchService;
         this.patchReflectionGate = patchReflectionGate;
-        this.policyEngine = policyEngine;
-        this.actionExecutor = actionExecutor;
-        this.proposalService = proposalService;
+        this.decisionExecution = decisionExecution;
         this.eventService = eventService;
         this.nodeService = nodeService;
         this.routeRepository = routeRepository;
-        this.staleContextChecker = staleContextChecker;
         this.projectRepository = projectRepository;
         this.contextSnapshotRepository = contextSnapshotRepository;
         this.projectionRepository = projectionRepository;
@@ -318,104 +302,24 @@ public class AnswerCycleService {
             throw ex;
         }
         semanticTraceRecorder.capturePostState(run.id(), decisionEnvelope.snapshot());
-        semanticTraceRecorder.captureDecisionInput(decisionEnvelope);
 
-        // Call 2: DECISION.
+        // Call 2: DECISION through the shared execution core. The policy /
+        // stale-check / execute / terminalize segment is the same fail-closed
+        // chain as the question-draft cycle; only the post-state DECISION
+        // input preparation above stays answer-specific.
         trace = appendTrace(trace, "deciding");
-        eventService.append(run.id(), AgentRunPhase.DECIDING,
-                "DECISION_STARTED", Map.of(
-                        "snapshotId", decisionSnapshot.id().toString(),
-                        "contextHash", decisionSnapshot.contextHash()));
-
-        AgentResponseEnvelope decisionResponse;
-        try {
-            decisionResponse = decisionEngine.runDecision(decisionEnvelope);
-            AgentBrainResponseValidator.validateDecision(decisionEnvelope, decisionResponse);
-            semanticTraceRecorder.captureDecisionOutput(decisionResponse);
-        } catch (RuntimeException ex) {
-            semanticTraceRecorder.captureFailure(run.id(), "DECISION_OUTPUT", ex);
-            throw ex;
-        }
-
-        ActionProposal proposal = decisionResponse.actionProposal();
-        ActionEligibilityGate.Assessment eligibilityAssessment =
-                actionEligibilityGate.assess(decisionEnvelope, proposal);
-        semanticTraceRecorder.captureActionEligibility(
-                run.id(), decisionEnvelope, decisionResponse, eligibilityAssessment);
-        actionEligibilityGate.enforce(eligibilityAssessment);
-        eventService.append(run.id(), AgentRunPhase.PROPOSAL_CREATED,
-                "PROPOSAL_CREATED", Map.of(
-                        "actionFamily", proposal.actionFamily(),
-                        "proposalId", proposal.proposalId().toString()));
-
-        // Policy evaluation.
         ActionExecutionContext execContext = new ActionExecutionContext(
                 run.id(), projectId, route.id(), decisionSnapshot.id(),
                 route.tipNodeId(), selectedOptionId, freeText);
-
-        PolicyDecision policyDecision = policyEngine.evaluate(proposal, execContext);
-
-        // Contract closure: a confirmation verdict for a proposal that could
-        // never be executed after acceptance is downgraded to a deny, so no
-        // clickable-but-unexecutable proposal is ever persisted.
-        if (policyDecision.requiresConfirmation()
-                && !policyEngine.canProduceAcceptableProposal(proposal, execContext)) {
-            policyDecision = PolicyDecision.deny(policyDecision.classification(),
-                    "提案在本阶段无法在确认后执行: " + proposal.actionFamily());
-        }
-        semanticTraceRecorder.capturePolicyDecision(run.id(), policyDecision);
-
-        if (policyDecision.denyReason() != null) {
-            AgentProposal agentProposal = proposalService.createProposal(
-                    proposal, run.id(), projectId, route.id());
-            // Idempotent deny: on a retry the proposal row already exists and
-            // may have been expired by an earlier attempt. Expiring it again
-            // must stay a no-op here, not a lifecycle-race failure.
-            if (agentProposal.status() == ProposalStatus.PROPOSED) {
-                proposalService.expireProposal(agentProposal.id());
-            }
-            trace = appendTrace(trace, "policy_denied:" + policyDecision.denyReason());
-            agentRunService.complete(run.id(), AgentRunStatus.COMPLETED, trace);
-            return new AnswerCycleResult(run.id(), answer.id(), patch.id(),
-                    null, "policy_denied:" + policyDecision.denyReason());
-        }
-
-        if (policyDecision.requiresConfirmation()) {
-            AgentProposal agentProposal = proposalService.createProposal(
-                    proposal, run.id(), projectId, route.id());
-            trace = appendTrace(trace, "awaiting_approval:" + agentProposal.id());
-            agentRunService.complete(run.id(), AgentRunStatus.COMPLETED, trace);
-            eventService.append(run.id(), AgentRunPhase.AWAITING_APPROVAL,
-                    "AWAITING_APPROVAL", Map.of(
-                            "proposalId", agentProposal.id().toString()));
-            return new AnswerCycleResult(run.id(), answer.id(), patch.id(),
-                    agentProposal.id(), "awaiting_approval");
-        }
-
-        // Auto-execute: verify the proposal's base context is still the live
-        // post-state snapshot before any mutation (stale proposals are
-        // rejected, never silently rebased onto newer graph state).
-        staleContextChecker.check(proposal, execContext, decisionSnapshot);
-        trace = appendTrace(trace, "executing");
-        eventService.append(run.id(), AgentRunPhase.EXECUTING,
-                "EXECUTING", Map.of("actionFamily", proposal.actionFamily()));
-
-        ActionResult execResult = actionExecutor.execute(proposal, execContext);
-        trace = appendTrace(trace, "completed");
-
-        if (execResult.producedNodeId() != null) {
-            agentRunService.markPersistedNode(run.id(), execResult.producedNodeId(), trace);
-        }
-        agentRunService.complete(run.id(), AgentRunStatus.COMPLETED, trace);
-        Map<String, Object> completedPayload = new java.util.HashMap<>();
-        completedPayload.put("actionFamily", proposal.actionFamily());
-        if (execResult.producedNodeId() != null) {
-            completedPayload.put("producedNodeId", execResult.producedNodeId().toString());
-        }
-        eventService.append(run.id(), AgentRunPhase.COMPLETED, "RUN_COMPLETED", completedPayload);
+        DecisionExecutionService.DecisionExecutionResult executed =
+                decisionExecution.execute(decisionSnapshot, decisionEnvelope,
+                        execContext, trace, "\n",
+                        Map.of(
+                                "snapshotId", decisionSnapshot.id().toString(),
+                                "contextHash", decisionSnapshot.contextHash()));
 
         return new AnswerCycleResult(run.id(), answer.id(), patch.id(),
-                execResult.producedNodeId(), "completed");
+                executed.producedNodeId(), executed.outcome());
     }
 
     /**

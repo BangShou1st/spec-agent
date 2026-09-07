@@ -165,6 +165,9 @@ describe('workspaceStore', () => {
       producedAnswerId: 'answer-1',
       producedPatchId: 'patch-1',
       producedSpecSnapshotId: null,
+      childRunId: null,
+      continuationPending: false,
+      respondMessage: null,
       ...overrides,
     }
   }

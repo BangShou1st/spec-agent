@@ -145,16 +145,23 @@ class QuestionDraftIntegrationTest {
                 draftDriver.draftQuestion(project.id()).producedNodeId()).orElseThrow();
         // The second draft chains off the first tip. An unanswered Question must
         // stay the tip, so answer the first node before drafting the next one.
+        // The deterministic fake advances past the answered question (repeating
+        // it would trip the enforced RESOLVED_BLOCKER rule), so the follow-up
+        // is the second rung of the clarification ladder.
         answerService.finalizeAnswer(project.id(), project.activeRouteId(),
                 draft1.id(), null, "answered for determinism check", "test-user");
         Node draft2 = nodeService.getNode(
                 draftDriver.draftQuestion(project.id()).producedNodeId()).orElseThrow();
 
-        assertThat(draft1.question()).isEqualTo(draft2.question());
         assertThat(draft1.question()).isEqualTo("What is the most important outcome?");
         assertThat(draft1.purpose()).isEqualTo("This clarifies the primary requirement goal.");
         assertThat(draft1.allowFreeAnswer()).isTrue();
         assertThat(draft1.options()).hasSize(1);
         assertThat(draft1.options().get(0).label()).isEqualTo("Clarify the primary goal");
+        assertThat(draft2.question()).isEqualTo("What is the next most important outcome?");
+        assertThat(draft2.purpose()).isEqualTo("This clarifies the next requirement goal.");
+        assertThat(draft2.allowFreeAnswer()).isTrue();
+        assertThat(draft2.options()).hasSize(1);
+        assertThat(draft2.options().get(0).label()).isEqualTo("Clarify the next goal");
     }
 }

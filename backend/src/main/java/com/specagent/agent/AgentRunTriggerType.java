@@ -17,7 +17,14 @@ public enum AgentRunTriggerType {
     GENERATE_SPEC,
     DECISION_CYCLE,
     ANSWER_CYCLE,
-    NODE_QUERY;
+    NODE_QUERY,
+    /**
+     * Autonomous continuation of a previous run inside one external
+     * observation boundary. Created only by the continuation coordinator
+     * (Slice 2+), never directly by user-facing APIs. Slice 0 wires the
+     * routing; execution arrives later.
+     */
+    CONTINUE_CYCLE;
 
     public String code() {
         return name().toLowerCase();

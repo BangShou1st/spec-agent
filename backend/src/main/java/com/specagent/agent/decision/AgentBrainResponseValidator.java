@@ -241,11 +241,14 @@ public final class AgentBrainResponseValidator {
     }
 
     /**
-     * An unresolved conflict is a planning control-flow boundary, not merely
-     * display metadata. Mirror the Python brain guard here because the Java
-     * runtime never trusts the remote brain as an authorization boundary.
-     * NODE_QUERY remains exempt: it is a contextual read flow and must stay
-     * usable while the workspace still contains unresolved planning conflicts.
+     * An unresolved conflict must still be surfaced faithfully: the response
+     * must carry a non-empty {@code observation.conflicts}. The ACTION
+     * choice itself is never restricted here (Slice 4): a read-only
+     * capability invocation is as acceptable as asking the user — Runtime
+     * policy, stale-context, permission, and graph-invariant gates own
+     * execution safety, never this contract check. NODE_QUERY remains exempt
+     * entirely: it is a contextual read flow and must stay usable while the
+     * workspace still contains unresolved planning conflicts.
      */
     private static void validateConflictAction(AgentRequestEnvelope request,
                                                AgentResponseEnvelope response) {
@@ -262,35 +265,6 @@ public final class AgentBrainResponseValidator {
             throw new AgentContractException(
                     "unresolved conflict requires a non-empty observation.conflicts");
         }
-
-        ActionFamily family;
-        try {
-            family = ActionFamily.fromCode(response.actionProposal().actionFamily());
-        } catch (IllegalArgumentException ex) {
-            throw new AgentContractException(ex.getMessage());
-        }
-        if (family == ActionFamily.REQUEST_USER_INPUT) {
-            return;
-        }
-        if (family == ActionFamily.CREATE_NODE
-                && isExplicitDecisionNode(response.actionProposal().payload())) {
-            return;
-        }
-        throw new AgentContractException(
-                "unresolved conflict requires REQUEST_USER_INPUT or CREATE_NODE/DECISION");
-    }
-
-    private static boolean isExplicitDecisionNode(Map<String, Object> payload) {
-        if (!"KNOWLEDGE".equals(payload.get("kind"))
-                || !"DECISION".equals(payload.get("subtype"))) {
-            return false;
-        }
-        Object content = payload.get("content");
-        if (!(content instanceof Map<?, ?> contentMap)) {
-            return false;
-        }
-        Object text = contentMap.get("text");
-        return text instanceof String value && !value.isBlank();
     }
 
     private static final java.util.List<String> REF_PREFIXES =

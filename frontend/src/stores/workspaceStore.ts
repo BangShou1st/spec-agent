@@ -198,6 +198,8 @@ export const useWorkspaceStore = defineStore('workspace', {
     pendingRouteCommand: null as PendingRouteCommand,
     /** Browser-only virtual card for a queued/failed AgentRun. */
     pendingRouteProjection: null as GraphPendingProjection | null,
+    /** Latest terminal RESPOND leaf message of the last completed draft chain. */
+    pendingDraftRespondMessage: null as string | null,
     /** Fork is durable even when its follow-up Draft command fails. */
     forkDraftRetryRouteId: null as string | null,
 
@@ -375,6 +377,7 @@ export const useWorkspaceStore = defineStore('workspace', {
       }
       this.drafting = true
       this.error = null
+      this.pendingDraftRespondMessage = null
       const beforeRouteId = this.activeState?.activeRoute?.id
         ?? this.project?.activeRouteId
         ?? null
@@ -401,7 +404,9 @@ export const useWorkspaceStore = defineStore('workspace', {
         }
         const outcome = await this.pollDraftRun(run.runId)
         if (outcome === 'completed') {
-          this.feedback = '问题已起草。'
+          // A terminal RESPOND leaf carries the user-visible message; a
+          // graph-mutation leaf keeps the existing draft confirmation copy.
+          this.feedback = this.pendingDraftRespondMessage ?? '问题已起草。'
           const refreshed = await this.refreshWorkspace()
           if (refreshed) this.pendingRouteProjection = null
           this.manualModelRetry = null
@@ -504,16 +509,60 @@ export const useWorkspaceStore = defineStore('workspace', {
     },
 
     /**
-     * Polls one question-draft run to a terminal status. Drafting has no
+     * Follows one autonomous run chain to its terminal leaf. A COMPLETED run
+     * with a childRunId continues on the child; a COMPLETED run with no
+     * child but a pending continuation check keeps polling the same run
+     * until the dispatcher/recovery creates the child. The poll budget is
+     * shared across the whole chain so a long chain cannot poll forever.
+     * Returns the terminal leaf view, 'failed' for a FAILED leaf, or
+     * 'unknown' when the budget ran out or the project switched.
+     */
+    async pollRunChainToTerminal(
+      rootRunId: string,
+      onView?: (view: AgentRunView) => void,
+    ): Promise<AgentRunView | 'failed' | 'unknown'> {
+      const projectId = this.projectId
+      if (!projectId) return 'unknown'
+      let currentRunId = rootRunId
+      for (let attempt = 0; attempt < AGENT_RUN_MAX_POLLS; attempt += 1) {
+        if (attempt > 0) {
+          await new Promise((resolve) => setTimeout(resolve, AGENT_RUN_POLL_INTERVAL_MS))
+          if (projectId !== this.projectId) {
+            return 'unknown'
+          }
+        }
+        try {
+          const view = await getAgentRun(projectId, currentRunId)
+          onView?.(view)
+          if (!isTerminalRunStatus(view.status)) continue
+          if (view.status === 'failed') return 'failed'
+          if (view.childRunId) {
+            currentRunId = view.childRunId
+            continue
+          }
+          if (view.continuationPending) continue
+          return view
+        } catch {
+          // Transient poll failure: keep polling within budget.
+        }
+      }
+      return 'unknown'
+    },
+
+    /**
+     * Polls one question-draft run chain to a terminal leaf. Drafting has no
      * immutable-input concerns: 'completed' refreshes canonical state in the
      * caller, anything else reconciles.
      */
     async pollDraftRun(runId: string): Promise<'completed' | 'failed' | 'unknown'> {
-      const outcome = await this.pollRunToTerminal(
+      const outcome = await this.pollRunChainToTerminal(
         runId,
         (view) => this.updatePendingRouteProjection(view),
       )
       if (outcome === 'unknown' || outcome === 'failed') return outcome
+      if (outcome.respondMessage) {
+        this.pendingDraftRespondMessage = outcome.respondMessage
+      }
       return 'completed'
     },
 
@@ -640,16 +689,18 @@ export const useWorkspaceStore = defineStore('workspace', {
     },
 
     /**
-     * Polls one answer run until a terminal status. One loop per call — the
-     * same run never gets two timers because submit guards on `submitting`.
-     * Network failures inside the loop keep polling within the attempt
-     * budget; exhausting it surfaces an unknown outcome for reconciliation
-     * instead of re-submitting anything. Stops observing when the project
-     * switches.
+     * Polls one answer run chain to its terminal leaf. One loop per call —
+     * the same run never gets two timers because submit guards on
+     * `submitting`. Network failures inside the loop keep polling within the
+     * shared chain attempt budget; exhausting it surfaces an unknown outcome
+     * for reconciliation instead of re-submitting anything. Stops observing
+     * when the project switches. Only the terminal leaf decides success:
+     * an intermediate COMPLETED parent with a child must never finish early.
      */
     async pollAnswerRun(runId: string): Promise<void> {
       const projectId = this.projectId
       if (!projectId) return
+      let currentRunId = runId
       for (let attempt = 0; attempt < AGENT_RUN_MAX_POLLS; attempt += 1) {
         if (attempt > 0) {
           await new Promise((resolve) => setTimeout(resolve, AGENT_RUN_POLL_INTERVAL_MS))
@@ -659,7 +710,7 @@ export const useWorkspaceStore = defineStore('workspace', {
           }
         }
         try {
-          const view = await getAgentRun(projectId, runId)
+          const view = await getAgentRun(projectId, currentRunId)
           this.answerRunPhase = view.phase
           this.answerRunStatus = view.status === 'failed'
             ? 'FAILED'
@@ -675,6 +726,11 @@ export const useWorkspaceStore = defineStore('workspace', {
             await this.reconcileFailedAnswerRun()
             return
           }
+          if (view.childRunId) {
+            currentRunId = view.childRunId
+            continue
+          }
+          if (view.continuationPending) continue
           await this.finishSuccessfulAnswerRun(view)
           return
         } catch {
@@ -685,16 +741,17 @@ export const useWorkspaceStore = defineStore('workspace', {
       this.answerOutcomeUnknown = true
     },
 
-    /** COMPLETED run: refresh canonical state and clear pending affordances. */
+    /** Terminal chain leaf: refresh canonical state and clear pending affordances. */
     async finishSuccessfulAnswerRun(
-      _view: Awaited<ReturnType<typeof getAgentRun>>,
+      view: Awaited<ReturnType<typeof getAgentRun>>,
     ): Promise<void> {
       // Cleanup identity is the SUBMITTED answer target captured when the
       // user action started — never producedNodeId, which names the NEXT node
       // the runtime generated, and never a route id re-read after refresh.
       const answeredNodeId = this.pendingAnswerNodeId
       const submittedRouteId = this.submittedRouteIdForCleanup ?? null
-      this.feedback = '回答已记录。'
+      const leafMessage = view.respondMessage ?? null
+      this.feedback = leafMessage ?? '回答已记录。'
       await this.refreshWorkspace()
       this.manualModelRetry = null
       this.repairableAnswerId = null
@@ -1257,13 +1314,14 @@ export const useWorkspaceStore = defineStore('workspace', {
           sourceRouteId: payload.sourceRouteId,
           freeText: payload.instruction ?? null,
         })
-        const outcome = await this.pollRunToTerminal(run.runId)
+        const outcome = await this.pollRunChainToTerminal(run.runId)
         if (outcome !== 'unknown' && outcome !== 'failed') {
-          // COMPLETED: the replacement route is now the active route; the
-          // canonical refresh owns every id — never reconstructed locally.
+          // Terminal chain leaf: the replacement route is now the active
+          // route; the canonical refresh owns every id — never reconstructed
+          // locally. A RESPOND leaf message wins over the default copy.
           const replacementNodeId = outcome.producedNodeId
           await this.refreshWorkspace()
-          this.feedback = '已创建换一个问题路线。'
+          this.feedback = outcome.respondMessage ?? '已创建换一个问题路线。'
           this.manualModelRetry = null
           const focusRouteId = this.activeState?.activeRoute?.id
           if (focusRouteId) {
@@ -1421,7 +1479,7 @@ export const useWorkspaceStore = defineStore('workspace', {
         const created = await createAgentRun(this.projectId, {
           operation: 'GENERATE_ARTIFACT',
         })
-        const outcome = await this.pollRunToTerminal(created.runId)
+        const outcome = await this.pollRunChainToTerminal(created.runId)
         if (outcome === 'unknown' || outcome === 'failed') {
           // FAILED or outcome unknown: reconcile canonical reads through the
           // shared fail-closed reconciliation (exactly-one-new-snapshot rule).
@@ -1843,19 +1901,28 @@ export const useWorkspaceStore = defineStore('workspace', {
      * becomes visible. The in-memory nodeQuery lifecycle is only mutated when
      * the proposal being accepted IS the current query's own proposal —
      * handling a durable proposal must never mark an unrelated in-memory query
-     * as accepted.
+     * as accepted. When the accept reopens an autonomous continuation chain,
+     * the origin run is followed to its terminal leaf before the refresh so
+     * the UI never settles on an intermediate COMPLETED parent.
      */
     async acceptNodeQueryProposal(proposalId: string): Promise<boolean> {
       if (!this.projectId) return false
       this.error = null
       try {
-        await acceptProposal(proposalId)
+        const accepted = await acceptProposal(proposalId)
+        let leafMessage: string | null = null
+        if (accepted.originRunId) {
+          const leaf = await this.pollRunChainToTerminal(accepted.originRunId)
+          if (leaf !== 'unknown' && leaf !== 'failed') {
+            leafMessage = leaf.respondMessage ?? null
+          }
+        }
         await this.refreshWorkspace()
         await this.loadNodeQueryProposals()
         if (this.nodeQuery && this.nodeQuery.proposalId === proposalId) {
           this.nodeQuery = { ...this.nodeQuery, status: 'ACCEPTED', proposalStatus: 'ACCEPTED' }
         }
-        this.feedback = '已接受提案，Graph 已更新。'
+        this.feedback = leafMessage ?? '已接受提案，Graph 已更新。'
         return true
       } catch (err) {
         this.error = toDisplayError(err)

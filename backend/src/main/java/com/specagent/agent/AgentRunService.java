@@ -1,6 +1,8 @@
 package com.specagent.agent;
 
+import com.specagent.agent.loop.LoopLinkage;
 import com.specagent.common.Ids;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -97,6 +99,29 @@ public class AgentRunService {
                                               String operation,
                                               String idempotencyKey,
                                               String requestFingerprint) {
+        return createWithIdempotency(projectId, routeId, triggerType, inputNodeId,
+                createdByRunId, operation, idempotencyKey, requestFingerprint,
+                LoopLinkage.none());
+    }
+
+    /**
+     * Loop-linkage variant of {@link #createWithIdempotency(UUID, UUID,
+     * AgentRunTriggerType, UUID, UUID, String, String, String)}.
+     *
+     * <p>The {@code createdByRunId} creation hint keeps its legacy meaning
+     * (unpersisted) and stays independent from {@code linkage}: the former
+     * records who asked, the latter records which terminal boundary spawned
+     * this run. Callers must not merge the two concepts.
+     */
+    public CreateResult createWithIdempotency(UUID projectId,
+                                              UUID routeId,
+                                              AgentRunTriggerType triggerType,
+                                              UUID inputNodeId,
+                                              UUID createdByRunId,
+                                              String operation,
+                                              String idempotencyKey,
+                                              String requestFingerprint,
+                                              LoopLinkage linkage) {
         UUID runId = Ids.random();
         Instant now = Instant.now();
         String normalizedKey = normalizeKey(idempotencyKey);
@@ -104,16 +129,32 @@ public class AgentRunService {
             throw new IllegalArgumentException(
                     "Client-idempotent agent runs require a request fingerprint");
         }
+        LoopLinkage effectiveLinkage = linkage == null ? LoopLinkage.none() : linkage;
         AgentRun run = new AgentRun(runId, projectId, routeId, triggerType, inputNodeId, null,
                 null, null, null, null, AgentRunStatus.CREATED, null, operation,
-                normalizedKey, normalizedKey == null ? null : requestFingerprint, now, null);
+                normalizedKey, normalizedKey == null ? null : requestFingerprint, now, null,
+                effectiveLinkage.parentRunId(), effectiveLinkage.rootRunId(),
+                effectiveLinkage.cycleIndex());
         if (normalizedKey == null) {
             agentRunRepository.save(run);
             return new CreateResult(run, true);
         }
 
-        if (agentRunRepository.insertIfAbsent(run)) {
-            return new CreateResult(run, true);
+        try {
+            if (agentRunRepository.insertIfAbsent(run)) {
+                return new CreateResult(run, true);
+            }
+        } catch (DuplicateKeyException raced) {
+            // Loop-linked continuation children race on TWO unique backstops:
+            // the project-scoped idempotency key (covered by the ON CONFLICT
+            // clause) and the V23 single-child index on parent_run_id (not
+            // covered — a sibling transaction may commit the same parent's
+            // child first while this row is in flight). Only that loop-linked
+            // case may recover below; ordinary idempotent creates rethrow so
+            // no unrelated uniqueness failure is ever swallowed.
+            if (effectiveLinkage.parentRunId() == null) {
+                throw raced;
+            }
         }
 
         AgentRun existing = agentRunRepository
@@ -121,9 +162,33 @@ public class AgentRunService {
                 .orElseThrow(() -> new IllegalStateException(
                         "Idempotent agent-run row missing after insert race"));
         if (requestFingerprint.equals(existing.requestFingerprint())) {
+            if (effectiveLinkage.parentRunId() != null) {
+                verifyContinuationWinner(effectiveLinkage, normalizedKey,
+                        requestFingerprint, existing);
+            }
             return new CreateResult(existing, false);
         }
         throw new IdempotencyKeyReusedException();
+    }
+
+    /**
+     * Fail-closed check for a loop-linked insert loser: the reloaded winner
+     * must be the same parent's child created under the same deterministic
+     * key and fingerprint. A same-parent row under a different key, or a
+     * same-key row for another parent, never aliases as success.
+     */
+    private void verifyContinuationWinner(LoopLinkage linkage,
+                                          String normalizedKey,
+                                          String requestFingerprint,
+                                          AgentRun existing) {
+        if (!linkage.parentRunId().equals(existing.parentRunId())
+                || !normalizedKey.equals(existing.idempotencyKey())
+                || !requestFingerprint.equals(existing.requestFingerprint())) {
+            throw new IllegalStateException(
+                    "Continuation child race resolved to a different chain row: "
+                            + "expected parent " + linkage.parentRunId()
+                            + " under key " + normalizedKey);
+        }
     }
 
     private String normalizeKey(String idempotencyKey) {

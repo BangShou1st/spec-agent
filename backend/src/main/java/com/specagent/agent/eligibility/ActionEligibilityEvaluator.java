@@ -17,6 +17,14 @@ import java.util.Map;
 /**
  * Pure Runtime-owned evaluator for deterministic necessary conditions and
  * hard prohibitions. It deliberately does not implement semantic ranking.
+ *
+ * <p>Frozen principle: constrain execution, not reasoning. Unresolved
+ * conflicts and open questions never restrict the eligible action set here.
+ * They must still be surfaced faithfully in {@code observation.conflicts},
+ * but the ACTION choice stays unrestricted at this boundary. Execution
+ * safety belongs to the capability-visibility, WAIT-dependency, duplicate,
+ * schema, refs, stale, policy, permission, and graph-invariant gates —
+ * never to a semantic conflict/open-question mapping.
  */
 public final class ActionEligibilityEvaluator {
 
@@ -37,11 +45,6 @@ public final class ActionEligibilityEvaluator {
                     ActionEligibilityReasonCode.CAPABILITY_NOT_VISIBLE));
         }
 
-        if (hasUnresolvedBlocker(request)) {
-            evaluated.put(ActionFamily.CREATE_NODE, ActionEligibilityConstraint.deny(
-                    ActionEligibilityReasonCode.UNRESOLVED_BLOCKER));
-        }
-
         Map<String, ActionEligibilityConstraint> constraints = new LinkedHashMap<>();
         List<String> eligibleFamilies = new ArrayList<>();
         for (ActionFamily family : ActionFamily.values()) {
@@ -57,13 +60,6 @@ public final class ActionEligibilityEvaluator {
                 eligibleFamilies,
                 constraints,
                 basisHash(request, evaluated));
-    }
-
-    private boolean hasUnresolvedBlocker(AgentRequestEnvelope request) {
-        return request.snapshot().effectiveClaims().stream()
-                .anyMatch(claim -> "unresolved".equals(claim.status())
-                        && ("conflict".equals(claim.kind())
-                        || "open_question".equals(claim.kind())));
     }
 
     /**

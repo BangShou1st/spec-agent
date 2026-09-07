@@ -66,6 +66,7 @@
   "actionEligibility": {
     "version": "action-eligibility.v1",
     "eligibleFamilies": [
+      "CREATE_NODE",
       "UPDATE_NODE",
       "CONNECT_NODE",
       "CREATE_ROUTE",
@@ -74,7 +75,7 @@
       "GENERATE_ARTIFACT"
     ],
     "constraints": {
-      "CREATE_NODE": {"eligible": false, "reasonCodes": ["UNRESOLVED_BLOCKER"]},
+      "CREATE_NODE": {"eligible": true, "reasonCodes": []},
       "UPDATE_NODE": {"eligible": true, "reasonCodes": []},
       "CONNECT_NODE": {"eligible": true, "reasonCodes": []},
       "CREATE_ROUTE": {"eligible": true, "reasonCodes": []},

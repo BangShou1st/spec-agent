@@ -31,6 +31,7 @@ public class AnswerCycleRunController {
     private final RouteService routeService;
     private final com.specagent.project.ProjectService projectService;
     private final com.specagent.node.NodeService nodeService;
+    private final com.specagent.agent.loop.AgentRunChainReadService chainReadService;
 
     public AnswerCycleRunController(RunService runService,
                                     AgentRunService agentRunService,
@@ -38,7 +39,8 @@ public class AnswerCycleRunController {
                                     AnswerService answerService,
                                     RouteService routeService,
                                     com.specagent.project.ProjectService projectService,
-                                    com.specagent.node.NodeService nodeService) {
+                                    com.specagent.node.NodeService nodeService,
+                                    com.specagent.agent.loop.AgentRunChainReadService chainReadService) {
         this.runService = runService;
         this.agentRunService = agentRunService;
         this.eventService = eventService;
@@ -46,6 +48,7 @@ public class AnswerCycleRunController {
         this.routeService = routeService;
         this.projectService = projectService;
         this.nodeService = nodeService;
+        this.chainReadService = chainReadService;
     }
 
     @PostMapping
@@ -181,6 +184,10 @@ public class AnswerCycleRunController {
         view.put("producedAnswerId", toStringOrNull(run.producedAnswerId()));
         view.put("producedPatchId", toStringOrNull(run.producedPatchId()));
         view.put("producedSpecSnapshotId", toStringOrNull(run.producedSpecSnapshotId()));
+        var chain = chainReadService.read(run.id());
+        view.put("childRunId", chain.childRunId() == null ? null : chain.childRunId().toString());
+        view.put("continuationPending", chain.continuationPending());
+        view.put("respondMessage", chain.respondMessage());
         return view;
     }
 

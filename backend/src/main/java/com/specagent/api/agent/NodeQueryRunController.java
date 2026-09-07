@@ -3,10 +3,10 @@ package com.specagent.api.agent;
 import com.specagent.agent.AgentRun;
 import com.specagent.agent.AgentRunService;
 import com.specagent.agent.AgentRunStatus;
-import com.specagent.agent.runtime.NodeQueryService;
 import com.specagent.agent.runtime.RunService;
 import com.specagent.agent.runevent.AgentRunEvent;
 import com.specagent.agent.runevent.AgentRunEventService;
+import com.specagent.agent.runevent.AgentRunEventTypes;
 import com.specagent.agent.policy.AgentProposalService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -111,9 +111,9 @@ public class NodeQueryRunController {
         // collapsing into COMPLETED.
         List<AgentRunEvent> events = eventService.findByRunId(run.id());
         boolean policyDenied = events.stream()
-                .anyMatch(e -> NodeQueryService.POLICY_DENIED_EVENT.equals(e.eventType()));
+                .anyMatch(e -> AgentRunEventTypes.POLICY_DENIED_EVENT.equals(e.eventType()));
         boolean notConfirmable = events.stream()
-                .anyMatch(e -> NodeQueryService.MUTATION_NOT_CONFIRMABLE_EVENT.equals(e.eventType()));
+                .anyMatch(e -> AgentRunEventTypes.MUTATION_NOT_CONFIRMABLE_EVENT.equals(e.eventType()));
         view.put("proposalId", null);
         view.put("proposalStatus", null);
         view.put("actionFamily", null);
@@ -135,7 +135,7 @@ public class NodeQueryRunController {
     private String respondMessage(UUID runId) {
         List<AgentRunEvent> events = eventService.findByRunId(runId);
         return events.stream()
-                .filter(e -> NodeQueryService.RESPOND_MESSAGE_EVENT.equals(e.eventType()))
+                .filter(e -> AgentRunEventTypes.RESPOND_MESSAGE_EVENT.equals(e.eventType()))
                 .map(e -> e.payload().get("message"))
                 .filter(value -> value instanceof String)
                 .map(String.class::cast)
