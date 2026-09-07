@@ -30,7 +30,7 @@ test('问 AI opens the Inspector and anchors NodeQuery to the canonical node id'
   const root = page.locator('[data-test="graph-question-node"]').first()
   await root.hover()
   await root.getByTestId('contextual-ai').click()
-  await expect(page.getByTestId('floating-window-inspector')).toBeVisible()
+  await expect(page.getByTestId('right-sidebar')).toBeVisible()
   await expect(page.getByTestId('node-detail-question')).toBeVisible()
 
   let queryUrl = ''

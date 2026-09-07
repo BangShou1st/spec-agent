@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { buildThreeNodeLineage, closeFloatingWorkspaceWindows, createProject, fitGraph, forkFromNode } from './helpers'
+import { buildThreeNodeLineage, closeFloatingWorkspaceWindows, createProject, fitGraph, forkFromNode, openRouteMore } from './helpers'
 
 test('fork from a focused visual node has no route picker and preserves history', async ({ page }) => {
   await createProject(page, 'E2E Fork Graph Flow')
@@ -43,6 +43,7 @@ test('shared-node fork requires Focus and never renders a source picker', async 
 
   const cards = page.locator('[data-route-id]')
   const nonActive = cards.filter({ hasNot: page.getByTestId('active-route') }).first()
+  await openRouteMore(nonActive)
   await nonActive.getByTestId('focus-route').click()
   await closeFloatingWorkspaceWindows(page)
   await fitGraph(page)
@@ -56,7 +57,7 @@ test('shared-node fork requires Focus and never renders a source picker', async 
   await expect(page.locator('[data-test="fork-base-route"]')).toHaveCount(0)
   await page.getByTestId('fork-submit').click()
   await expect(page.getByTestId('fork-dialog')).toHaveCount(0)
-  await page.getByTestId('open-routes').click()
+  await expect(page.getByTestId('left-sidebar')).toBeVisible()
   await expect(page.locator('[data-route-id]')).toHaveCount(3)
 })
 
@@ -68,6 +69,7 @@ test('ambiguous shared-node fork is blocked until Current View is selected', asy
 
   const cards = page.locator('[data-route-id]')
   const nonActive = cards.filter({ hasNot: page.getByTestId('active-route') }).first()
+  await openRouteMore(nonActive)
   await nonActive.getByTestId('focus-route').click()
   await nonActive.getByTestId('focus-route').click()
   await closeFloatingWorkspaceWindows(page)

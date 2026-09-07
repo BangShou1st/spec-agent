@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { buildThreeNodeLineage, closeFloatingWorkspaceWindows, createProject, fitGraph, forkFromNode } from './helpers'
+import { buildThreeNodeLineage, closeFloatingWorkspaceWindows, createProject, fitGraph, forkFromNode, hoverNode, openRouteMore } from './helpers'
 
 test('shared node current-reading selector changes Focus without activating a route', async ({ page }) => {
   await createProject(page, 'E2E Shared Focus Flow')
@@ -19,6 +19,8 @@ test('shared node current-reading selector changes Focus without activating a ro
   expect(oldRouteId).not.toBeNull()
 
   // Clear the browser-only Focus. Active remains the runtime working route.
+  // Focus controls live behind the per-route overflow menu.
+  await openRouteMore(activeCard)
   await activeCard.getByTestId('focus-route').click()
   await expect(activeCard).not.toHaveClass(/route-card--focused/)
   await expect(activeCard.getByTestId('active-route')).toBeVisible()
@@ -36,12 +38,12 @@ test('shared node current-reading selector changes Focus without activating a ro
   // Focus only; it does not activate the selected route.
   await selector.selectOption(oldRouteId!)
   await expect(selector).toHaveValue(oldRouteId!)
-  await page.getByTestId('open-routes').click()
+  // Route sidebar is a fixed region: no floating window to open or close.
+  await expect(page.getByTestId('left-sidebar')).toBeVisible()
   const activeCardAfterFocus = page.locator(`[data-route-id="${activeRouteId}"]`)
   const oldCardAfterFocus = page.locator(`[data-route-id="${oldRouteId}"]`)
   await expect(oldCardAfterFocus).toHaveClass(/route-card--focused/)
   await expect(activeCardAfterFocus.getByTestId('active-route')).toBeVisible()
-  await page.getByTestId('floating-window-routes').getByTestId('floating-window-close').click()
   await fitGraph(page)
 
   // Branching uses the selected node Focus as sourceRouteId and never opens
@@ -53,9 +55,9 @@ test('shared node current-reading selector changes Focus without activating a ro
     }
   })
   // The action rail is hidden until the node is hovered (or selected /
-  // keyboard-focused). Real users must cross the gap to keep the rail
-  // visible; the test mirrors that interaction explicitly.
-  await sharedNode.hover()
+  // keyboard-focused). Hover the node's right half: the canvas toolbar
+  // overlays the left canvas edge and can intercept a center hover.
+  await hoverNode(sharedNode)
   await sharedNode.getByTestId('fork-node').click()
   await expect(page.getByTestId('fork-dialog')).toBeVisible()
   await expect(page.locator('[data-test="fork-source-route"]')).toHaveCount(0)
