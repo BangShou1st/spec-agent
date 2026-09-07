@@ -328,4 +328,31 @@ class ArchitectureTests {
 
         rule.check(CLASSES);
     }
+
+    @Test
+    void sharedDecisionExecutionCoreStaysCycleNeutral() {
+        // Slice 3A: DecisionExecutionService executes an already-prepared
+        // DECISION only. Cycle preparation (context building, Answer/Patch
+        // persistence, post-state reconstruction) and continuation belong to
+        // the callers — never to the shared core.
+        ArchRule rule = noClasses()
+            .that().haveSimpleName("DecisionExecutionService")
+            .should().dependOnClassesThat()
+            .haveSimpleNameEndingWith("ContextBuilder")
+            .orShould().dependOnClassesThat()
+            .haveSimpleNameEndingWith("AnswerService")
+            .orShould().dependOnClassesThat()
+            .haveSimpleNameEndingWith("AnswerPatchService")
+            .orShould().dependOnClassesThat()
+            .haveSimpleNameEndingWith("ProjectRepository")
+            .orShould().dependOnClassesThat()
+            .haveSimpleNameEndingWith("RouteRepository")
+            .orShould().dependOnClassesThat()
+            .haveSimpleNameEndingWith("ContinuationCoordinator")
+            .because("The shared DECISION execution core must stay cycle-neutral: "
+                + "no context building, no Answer/Patch reads, no route loading, "
+                + "no trigger dispatch, no continuation");
+
+        rule.check(CLASSES);
+    }
 }

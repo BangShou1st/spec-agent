@@ -5,25 +5,12 @@ import com.specagent.agent.AgentRunFailureService;
 import com.specagent.agent.AgentRunService;
 import com.specagent.agent.AgentRunStatus;
 import com.specagent.agent.ModelContractException;
-import com.specagent.agent.action.ActionExecutor;
 import com.specagent.agent.action.ActionExecutionContext;
-import com.specagent.agent.action.ActionResult;
-import com.specagent.agent.action.StaleContextChecker;
-import com.specagent.agent.contract.ActionProposal;
 import com.specagent.agent.contract.AgentEvent;
 import com.specagent.agent.contract.AgentRequestEnvelope;
-import com.specagent.agent.contract.AgentResponseEnvelope;
 import com.specagent.agent.contract.DecisionBudget;
-import com.specagent.agent.decision.AgentBrainResponseValidator;
-import com.specagent.agent.decision.AgentDecisionEngine;
 import com.specagent.agent.gates.ContextGuard;
-import com.specagent.agent.policy.AdvisorPolicyEngine;
-import com.specagent.agent.policy.AgentProposal;
-import com.specagent.agent.policy.AgentProposalService;
-import com.specagent.agent.policy.PolicyDecision;
-import com.specagent.agent.policy.ProposalStatus;
 import com.specagent.agent.eligibility.ActionEligibilityGate;
-import com.specagent.trace.SemanticTraceRecorder;
 import com.specagent.agent.runevent.AgentRunEventService;
 import com.specagent.agent.runevent.AgentRunPhase;
 import com.specagent.agent.snapshot.AgentInputSnapshotBuilder;
@@ -38,7 +25,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -68,47 +54,32 @@ public class DecisionCycleService {
     private final ContextBuilder contextBuilder;
     private final ContextGuard contextGuard;
     private final AgentInputSnapshotBuilder snapshotBuilder;
-    private final AgentDecisionEngine decisionEngine;
-    private final AdvisorPolicyEngine policyEngine;
-    private final ActionExecutor actionExecutor;
-    private final AgentProposalService proposalService;
     private final AgentRunEventService eventService;
-    private final StaleContextChecker staleContextChecker;
+    private final DecisionExecutionService decisionExecution;
     private final ProjectRepository projectRepository;
     private final RouteRepository routeRepository;
     private final ActionEligibilityGate actionEligibilityGate;
-    private final SemanticTraceRecorder semanticTraceRecorder;
 
     public DecisionCycleService(AgentRunService agentRunService,
                                 AgentRunFailureService agentRunFailureService,
                                 ContextBuilder contextBuilder,
                                 ContextGuard contextGuard,
                                 AgentInputSnapshotBuilder snapshotBuilder,
-                                AgentDecisionEngine decisionEngine,
-                                AdvisorPolicyEngine policyEngine,
-                                ActionExecutor actionExecutor,
-                                AgentProposalService proposalService,
+                                DecisionExecutionService decisionExecution,
                                 AgentRunEventService eventService,
-                                StaleContextChecker staleContextChecker,
                                 ProjectRepository projectRepository,
                                 RouteRepository routeRepository,
-                                ActionEligibilityGate actionEligibilityGate,
-                                SemanticTraceRecorder semanticTraceRecorder) {
+                                ActionEligibilityGate actionEligibilityGate) {
         this.agentRunService = agentRunService;
         this.agentRunFailureService = agentRunFailureService;
         this.contextBuilder = contextBuilder;
         this.contextGuard = contextGuard;
         this.snapshotBuilder = snapshotBuilder;
-        this.decisionEngine = decisionEngine;
-        this.policyEngine = policyEngine;
-        this.actionExecutor = actionExecutor;
-        this.proposalService = proposalService;
+        this.decisionExecution = decisionExecution;
         this.eventService = eventService;
-        this.staleContextChecker = staleContextChecker;
         this.projectRepository = projectRepository;
         this.routeRepository = routeRepository;
         this.actionEligibilityGate = actionEligibilityGate;
-        this.semanticTraceRecorder = semanticTraceRecorder;
     }
 
     /**
@@ -138,99 +109,21 @@ public class DecisionCycleService {
                             run.id(), snapshot,
                             new AgentEvent("CONTINUE", route.tipNodeId(), null, null),
                             new DecisionBudget(1)));
-            semanticTraceRecorder.captureDecisionInput(envelope);
 
-            eventService.append(run.id(), AgentRunPhase.DECIDING, "DECISION_STARTED", Map.of());
-            AgentResponseEnvelope decision = decisionEngine.runDecision(envelope);
-            AgentBrainResponseValidator.validateDecision(envelope, decision);
-            semanticTraceRecorder.captureDecisionOutput(decision);
-
-            ActionProposal proposal = decision.actionProposal();
-            ActionEligibilityGate.Assessment eligibilityAssessment =
-                    actionEligibilityGate.assess(envelope, proposal);
-            semanticTraceRecorder.captureActionEligibility(
-                    run.id(), envelope, decision, eligibilityAssessment);
-            actionEligibilityGate.enforce(eligibilityAssessment);
-            eventService.append(run.id(), AgentRunPhase.PROPOSAL_CREATED, "PROPOSAL_CREATED", Map.of(
-                    "actionFamily", proposal.actionFamily(),
-                    "proposalId", proposal.proposalId().toString()));
-
-            return applyPolicyAndExecute(run, route, snapshot, proposal, trace);
+            ActionExecutionContext execContext = new ActionExecutionContext(
+                    run.id(), run.projectId(), route.id(), snapshot.id(),
+                    route.tipNodeId(), null, null);
+            DecisionExecutionService.DecisionExecutionResult executed =
+                    decisionExecution.execute(run.id(), run.projectId(), route.id(),
+                            snapshot, envelope, execContext, trace, ">", Map.of());
+            return new DecisionCycleResult(run.id(), executed.producedNodeId(),
+                    "awaiting_approval".equals(executed.outcome())
+                            ? executed.proposalId() : null,
+                    executed.outcome());
         } catch (RuntimeException ex) {
             failIfNotTerminal(run.id(), trace, ex);
             throw ex;
         }
-    }
-
-    /**
-     * Shared policy + execution closure — the same deny / AWAITING_APPROVAL /
-     * auto-execute semantics as the answer cycle, minus the answer artifacts.
-     */
-    private DecisionCycleResult applyPolicyAndExecute(AgentRun run, Route route,
-                                                      ContextSnapshot snapshot,
-                                                      ActionProposal proposal, String trace) {
-        ActionExecutionContext execContext = new ActionExecutionContext(
-                run.id(), run.projectId(), route.id(), snapshot.id(),
-                route.tipNodeId(), null, null);
-
-        PolicyDecision policyDecision = policyEngine.evaluate(proposal, execContext);
-
-        // A confirmation verdict for a proposal that could never be executed
-        // after acceptance is downgraded to a deny — no clickable-but-dead
-        // proposals are ever persisted.
-        if (policyDecision.requiresConfirmation()
-                && !policyEngine.canProduceAcceptableProposal(proposal, execContext)) {
-            policyDecision = PolicyDecision.deny(policyDecision.classification(),
-                    "提案在本阶段无法在确认后执行: " + proposal.actionFamily());
-        }
-
-        if (policyDecision.denyReason() != null) {
-            AgentProposal agentProposal = proposalService.createProposal(
-                    proposal, run.id(), run.projectId(), route.id());
-            if (agentProposal.status() == ProposalStatus.PROPOSED) {
-                proposalService.expireProposal(agentProposal.id());
-            }
-            trace = appendTrace(trace, "policy_denied:" + policyDecision.denyReason());
-            agentRunService.complete(run.id(), AgentRunStatus.COMPLETED, trace);
-            return new DecisionCycleResult(run.id(), null, null,
-                    "policy_denied:" + policyDecision.denyReason());
-        }
-
-        if (policyDecision.requiresConfirmation()) {
-            AgentProposal agentProposal = proposalService.createProposal(
-                    proposal, run.id(), run.projectId(), route.id());
-            trace = appendTrace(trace, "awaiting_approval:" + agentProposal.id());
-            agentRunService.complete(run.id(), AgentRunStatus.COMPLETED, trace);
-            eventService.append(run.id(), AgentRunPhase.AWAITING_APPROVAL,
-                    "AWAITING_APPROVAL", Map.of(
-                            "proposalId", agentProposal.id().toString()));
-            return new DecisionCycleResult(run.id(), null, agentProposal.id(),
-                    "awaiting_approval");
-        }
-
-        // Auto-execute: the proposal's base context must still be the live
-        // snapshot before any mutation.
-        staleContextChecker.check(proposal, execContext, snapshot);
-        trace = appendTrace(trace, "executing");
-        eventService.append(run.id(), AgentRunPhase.EXECUTING,
-                "EXECUTING", Map.of("actionFamily", proposal.actionFamily()));
-
-        ActionResult execResult = actionExecutor.execute(proposal, execContext);
-        trace = appendTrace(trace, "completed");
-
-        if (execResult.producedNodeId() != null) {
-            agentRunService.markPersistedNode(run.id(), execResult.producedNodeId(), trace);
-        }
-        agentRunService.complete(run.id(), AgentRunStatus.COMPLETED, trace);
-        Map<String, Object> completedPayload = new HashMap<>();
-        completedPayload.put("actionFamily", proposal.actionFamily());
-        if (execResult.producedNodeId() != null) {
-            completedPayload.put("producedNodeId", execResult.producedNodeId().toString());
-        }
-        eventService.append(run.id(), AgentRunPhase.COMPLETED, "RUN_COMPLETED", completedPayload);
-
-        return new DecisionCycleResult(run.id(), execResult.producedNodeId(), null,
-                "completed");
     }
 
     /**

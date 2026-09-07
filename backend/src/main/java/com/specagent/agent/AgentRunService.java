@@ -2,6 +2,7 @@ package com.specagent.agent;
 
 import com.specagent.agent.loop.LoopLinkage;
 import com.specagent.common.Ids;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -139,12 +140,25 @@ public class AgentRunService {
             return new CreateResult(run, true);
         }
 
-        if (agentRunRepository.insertIfAbsent(run)) {
-            return new CreateResult(run, true);
+        try {
+            if (agentRunRepository.insertIfAbsent(run)) {
+                return new CreateResult(run, true);
+            }
+        } catch (DuplicateKeyException raced) {
+            // Lost a concurrent insert race against a unique backstop the
+            // idempotency ON CONFLICT clause does not cover — today the V23
+            // single-continuation-child index: a sibling transaction inserted
+            // the same parent's child first while this row was in flight.
+            // Fall through to the winner reload below instead of surfacing
+            // the constraint failure.
         }
 
         AgentRun existing = agentRunRepository
                 .findByProjectIdAndIdempotencyKey(projectId, normalizedKey)
+                .or(() -> effectiveLinkage.parentRunId() == null
+                        ? Optional.empty()
+                        : agentRunRepository.findChildByParentRunId(
+                                effectiveLinkage.parentRunId()))
                 .orElseThrow(() -> new IllegalStateException(
                         "Idempotent agent-run row missing after insert race"));
         if (requestFingerprint.equals(existing.requestFingerprint())) {
