@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
+import { nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import RouteSidebar from '@/components/workspace/RouteSidebar.vue'
@@ -111,6 +112,22 @@ describe('route sidebar', () => {
     const active = wrapper.find('[data-route-id="r1"]')
     expect(active.text()).toContain('运行路线')
     expect(wrapper.find('[data-route-id="r2"]').text()).not.toContain('运行路线')
+  })
+
+  it('marks focus and active with independent text labels instead of color only', async () => {
+    const routes = [routeView('r1', 'open', ['n1']), routeView('r2', 'open', ['n1'])]
+    const wrapper = mount(RouteSidebar, {
+      props: { routes, activeRouteId: 'r1', commandPending: false, pendingRouteCommand: null },
+    })
+    useGraphUiStore().setFocusRoute('r2')
+    await nextTick()
+    const focusRow = wrapper.find('[data-route-id="r2"]')
+    const activeRow = wrapper.find('[data-route-id="r1"]')
+    expect(focusRow.attributes('aria-current')).toBe('location')
+    expect(focusRow.find('.route-card__state').text()).toContain('正在浏览')
+    expect(activeRow.find('.route-card__state').text()).toContain('运行路线')
+    expect(focusRow.find('.route-card__state').text()).not.toContain('运行路线')
+    expect(activeRow.attributes('aria-current')).toBeUndefined()
   })
 
   it('separates view-only actions from runtime route actions', () => {

@@ -123,16 +123,18 @@ function openRoute(route: GraphWorkspaceRouteView): void {
 <template>
   <div class="route-sidebar" data-test="route-sidebar">
     <details class="route-sidebar__section route-sidebar__filters" data-test="route-filters">
-      <summary class="route-sidebar__heading">生命周期筛选</summary>
-      <label v-for="filter in filterOptions" :key="filter.status" class="route-sidebar__filter">
-        <input
-          type="checkbox"
-          :checked="graphUi.lifecycleFilters[filter.status]"
-          :data-test="`filter-${filter.status}`"
-          @change="setFilter(filter.status, ($event.target as HTMLInputElement).checked)"
-        />
-        {{ filter.label }}
-      </label>
+      <summary class="route-sidebar__section-summary">筛选<span class="chevron" aria-hidden="true">▾</span></summary>
+      <div class="route-sidebar__filter-list">
+        <label v-for="filter in filterOptions" :key="filter.status" class="route-sidebar__filter">
+          <input
+            type="checkbox"
+            :checked="graphUi.lifecycleFilters[filter.status]"
+            :data-test="`filter-${filter.status}`"
+            @change="setFilter(filter.status, ($event.target as HTMLInputElement).checked)"
+          />
+          {{ filter.label }}
+        </label>
+      </div>
     </details>
 
     <section class="route-sidebar__section" data-test="route-list">
@@ -146,17 +148,30 @@ function openRoute(route: GraphWorkspaceRouteView): void {
           { 'route-card--focused': isFocused(route.id) },
         ]"
          :data-route-id="route.id"
+         tabindex="0"
+         :aria-current="isFocused(route.id) ? 'location' : undefined"
+         :aria-label="`${routeLabel(route)}${isFocused(route.id) ? '（正在浏览）' : ''}${route.id === activeRouteId ? '（运行路线）' : ''}`"
          @click="openRoute(route)"
+         @keydown.enter.self.prevent="openRoute(route)"
+         @keydown.space.self.prevent="openRoute(route)"
       >
         <div class="route-card__primary" data-test="route-primary">
           <div class="route-card__identity">
-            <strong class="route-card__label">{{ routeLabel(route) }}</strong>
+            <strong class="route-card__label" :title="routeLabel(route)">{{ routeLabel(route) }}</strong>
             <span class="meta-text">{{ route.lineageNodeIds.length }} 个节点</span>
           </div>
           <div class="route-card__state">
-            <span v-if="isFocused(route.id)" class="badge badge-focus">正在浏览</span>
-            <span v-if="route.id === activeRouteId" class="badge badge-active" data-test="active-route">运行路线</span>
-            <span v-else-if="route.lifecycleStatus !== 'open'" class="badge" :class="`badge-${route.lifecycleStatus}`">
+            <span v-if="isFocused(route.id)" class="route-focus-indicator" data-test="focus-route-label">
+              <span class="route-focus-indicator__dot" aria-hidden="true" />正在浏览
+            </span>
+            <span v-if="route.id === activeRouteId" class="route-active-indicator" data-test="active-route">
+              <span class="route-active-indicator__dot" aria-hidden="true" />运行路线
+            </span>
+            <span
+              v-else-if="route.lifecycleStatus !== 'open'"
+              class="badge"
+              :class="`badge-${route.lifecycleStatus}`"
+            >
               {{ lifecycleLabels[route.lifecycleStatus] }}
             </span>
           </div>

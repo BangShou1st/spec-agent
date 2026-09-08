@@ -3,14 +3,11 @@ import type { RouteLifecycleStatus } from '@/api/types'
 import {
   LEFT_SIDEBAR_RANGE,
   RIGHT_SIDEBAR_RANGE,
-  DEFAULT_WORKSPACE_UI_V2,
   loadProjectGraphPreferencesV2,
   loadWorkspaceUiPreferences,
-  loadWorkspaceUiPreferencesV2,
   saveProjectGraphPreferences,
   saveProjectGraphPreferencesV2,
   saveWorkspaceUiPreferences,
-  saveWorkspaceUiPreferencesV2,
 } from '@/graph/graphLayoutStorage'
 import type {
   GraphPosition,
@@ -18,8 +15,6 @@ import type {
   ProjectGraphPreferencesV1,
   ProjectGraphPreferencesV2,
   WorkspaceUiPreferencesV1,
-  WorkspaceUiPreferencesV2,
-  FloatingWindowPreference,
 } from '@/graph/graphTypes'
 import { buildVisualInstances } from '@/graph/graphVisualIdentity'
 
@@ -48,7 +43,6 @@ const DEFAULT_FILTERS: Record<RouteLifecycleStatus, boolean> = {
 export const useGraphUiStore = defineStore('graphUi', {
   state: () => {
     const workspaceUi = loadWorkspaceUiPreferences()
-    const floatingUi = loadWorkspaceUiPreferencesV2()
     return {
       projectId: null as string | null,
       activeRouteId: null as string | null,
@@ -76,8 +70,6 @@ export const useGraphUiStore = defineStore('graphUi', {
       routeDisplayStates: {} as Record<string, GraphRouteDisplayState>,
       expandedNodeIds: [] as string[],
       nodePositions: {} as Record<string, GraphPosition>,
-      floatingWindows: { ...floatingUi.windows } as WorkspaceUiPreferencesV2['windows'],
-      windowZOrder: ['routes', 'inspector'] as Array<'routes' | 'inspector'>,
       leftSidebarOpen: workspaceUi.leftSidebar.open,
       leftSidebarWidth: workspaceUi.leftSidebar.width,
       rightSidebarOpen: workspaceUi.rightSidebar.open,
@@ -265,27 +257,6 @@ export const useGraphUiStore = defineStore('graphUi', {
         : [...this.expandedNodeIds, nodeId]
     },
 
-    setFloatingWindow(name: 'routes' | 'inspector', value: Partial<FloatingWindowPreference>): void {
-      this.floatingWindows = {
-        ...this.floatingWindows,
-        [name]: { ...this.floatingWindows[name], ...value },
-      }
-      this.persistWorkspaceV2()
-    },
-
-    bringWindowToFront(name: 'routes' | 'inspector'): void {
-      this.windowZOrder = [...this.windowZOrder.filter((item) => item !== name), name]
-    },
-
-    resetWindows(): void {
-      this.floatingWindows = {
-        routes: { ...DEFAULT_WORKSPACE_UI_V2.windows.routes },
-        inspector: { ...DEFAULT_WORKSPACE_UI_V2.windows.inspector },
-      }
-      this.windowZOrder = ['routes', 'inspector']
-      this.persistWorkspaceV2()
-    },
-
     setNodePosition(nodeId: string, position: GraphPosition): void {
       this.nodePositions = { ...this.nodePositions, [nodeId]: position }
       this.persistProjectState()
@@ -388,18 +359,6 @@ export const useGraphUiStore = defineStore('graphUi', {
         rightSidebar: { open: this.rightSidebarOpen, width: this.rightSidebarWidth },
       }
       saveWorkspaceUiPreferences(prefs)
-      this.persistWorkspaceV2()
-    },
-
-    persistWorkspaceV2(): void {
-      const prefs: WorkspaceUiPreferencesV2 = {
-        version: 2,
-        windows: {
-          routes: { ...this.floatingWindows.routes },
-          inspector: { ...this.floatingWindows.inspector },
-        },
-      }
-      saveWorkspaceUiPreferencesV2(prefs)
     },
   },
 })

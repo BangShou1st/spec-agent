@@ -51,6 +51,21 @@ describe('AgentProposalCard', () => {
     expect(wrapper.emitted('reject')).toHaveLength(1)
   })
 
+  it('exposes exactly one accept/reject control pair', () => {
+    const wrapper = mount(AgentProposalCard, {
+      props: {
+        actionFamily: 'CREATE_NODE',
+        message: '建议创建节点',
+        nodeContext: 'Q3',
+        accepting: false,
+        rejecting: false,
+      },
+    })
+    expect(wrapper.findAll('[data-test="proposal-accept"]')).toHaveLength(1)
+    expect(wrapper.findAll('[data-test="proposal-reject"]')).toHaveLength(1)
+    expect(wrapper.text()).not.toContain('CREATE_NODE')
+  })
+
   it('respects pending flags with disabled state', () => {
     const wrapper = mount(AgentProposalCard, {
       props: {

@@ -207,6 +207,18 @@ describe('WorkspaceView unified center status', () => {
     expect(occurrences).toBe(1)
   })
 
+  it('hides the one-line status once the run reaches a terminal phase', async () => {
+    mockViews()
+    const { wrapper, store } = await mountWorkspace()
+    // 成功链终态：即使 answerRunId 仍保留，也不常驻“已完成”。
+    store.answerRunId = 'run-done'
+    store.answerRunStatus = 'SUCCEEDED'
+    store.answerRunPhase = 'COMPLETED'
+    await flushPromises()
+    expect(wrapper.find('[data-test="agent-status"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('已完成')
+  })
+
   it('renders the unknown fallback exactly once without the raw phase', async () => {
     mockViews()
     const { wrapper, store } = await mountWorkspace()

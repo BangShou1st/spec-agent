@@ -21,6 +21,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   'generate-spec': []
   'select-snapshot': [snapshotId: string]
+  'expanded-change': [expanded: boolean]
 }>()
 
 const expanded = ref(false)
@@ -39,6 +40,7 @@ const selectedSpec = computed<SpecSnapshotResponse | null>(() => {
 
 const sectionCount = computed(() => selectedSpec.value?.sections.length ?? 0)
 const unresolvedCount = computed(() => selectedSpec.value?.unresolvedItems.length ?? 0)
+const emptyBody = computed(() => selectedSpec.value === null)
 const latestLabel = computed(() => {
   if (props.snapshots.length === 0) return '暂无快照'
   if (selectedSpec.value && sortedSnapshots.value[0]?.id === selectedSpec.value.id) return '最新'
@@ -67,6 +69,7 @@ function formatTime(iso: string): string {
 
 function toggle(): void {
   expanded.value = !expanded.value
+  emit('expanded-change', expanded.value)
 }
 
 function onSelectSnapshot(event: Event): void {
@@ -78,7 +81,10 @@ function onSelectSnapshot(event: Event): void {
 <template>
   <section
     class="spec-dock"
-    :class="expanded ? 'spec-dock--expanded' : 'spec-dock--collapsed'"
+    :class="[
+      expanded ? 'spec-dock--expanded' : 'spec-dock--collapsed',
+      { 'spec-dock--empty': expanded && emptyBody },
+    ]"
     :data-state="expanded ? 'expanded' : 'collapsed'"
     data-test="spec-dock"
     aria-label="规格停靠栏"
@@ -210,7 +216,9 @@ function onSelectSnapshot(event: Event): void {
 <style scoped>
 .spec-dock {
   border-top: 1px solid var(--color-border);
-  background: var(--color-surface);
+  /* A whisper of tint helps the Dock read as a graph-derived deliverable
+     region without ever competing with the Graph for attention. */
+  background: #fbfbfe;
 }
 
 .spec-dock--collapsed {
@@ -226,6 +234,13 @@ function onSelectSnapshot(event: Event): void {
   min-height: 0;
   display: flex;
   flex-direction: column;
+}
+
+/* Without a snapshot the expanded body has almost nothing to show: collapse
+   the Dock to its real content height so the Graph keeps the space instead
+   of a large empty slab. */
+.spec-dock--expanded.spec-dock--empty {
+  flex: 0 0 auto;
 }
 
 .spec-dock__bar {
@@ -338,11 +353,15 @@ function onSelectSnapshot(event: Event): void {
 }
 
 .spec-dock__section h4 {
-  margin: 0 0 4px;
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.45;
 }
 
 .spec-dock__section p {
   margin: 0;
+  line-height: 1.6;
   white-space: pre-wrap;
 }
 

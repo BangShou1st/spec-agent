@@ -758,6 +758,8 @@ export const useWorkspaceStore = defineStore('workspace', {
       this.resubmitAnswerPayload = null
       this.pendingAnswerNodeId = null
       this.answerOutcomeUnknown = false
+      this.answerRunId = null
+      this.answerRunPhase = null
       this.answerRunStatus = null
       if (answeredNodeId) {
         useInputDraftStore().clearDraft(
