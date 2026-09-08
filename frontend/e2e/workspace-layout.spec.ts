@@ -30,6 +30,16 @@ for (const viewport of viewports) {
     expect(r).not.toBeNull()
     expect((l?.x ?? 0) + (l?.width ?? 0)).toBeLessThanOrEqual((c?.x ?? 0) + 1)
     expect((c?.x ?? 0) + (c?.width ?? 0)).toBeLessThanOrEqual((r?.x ?? 0) + 1)
+    expect(c?.width ?? 0).toBeGreaterThan(0)
+    expect(c?.height ?? 0).toBeGreaterThan(0)
+    // Graph 是中央最大工作面：宽度显著大于任一侧边栏。
+    expect(c?.width ?? 0).toBeGreaterThan(l?.width ?? 0)
+    // 页面无横向滚动。
+    const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth)
+    expect(scrollWidth).toBeLessThanOrEqual(viewport.width + 1)
+    // Inspector 内部滚动而非撑开页面。
+    const inspector = page.getByTestId('workspace-inspector')
+    await expect(inspector).toBeVisible()
   })
 }
 
@@ -99,8 +109,20 @@ test('1366x768 expanding the dock keeps graph and inspector usable', async ({ pa
   expect(dockBox).not.toBeNull()
   expect(centerBox).not.toBeNull()
   expect((dockBox?.height ?? 0) / (centerBox?.height ?? 1)).toBeLessThanOrEqual(0.5)
-  // Inspector 仍可用。
-  await expect(page.getByTestId('workspace-inspector')).toBeVisible()
+  // Inspector 仍可见/内部可滚动。
+  const inspector = page.getByTestId('workspace-inspector')
+  await expect(inspector).toBeVisible()
+  const inspectorScrollable = await inspector.evaluate((el) => {
+    const style = getComputedStyle(el)
+    const body = el.querySelector('.inspector-body') as HTMLElement | null
+    const target = body ?? el
+    const targetStyle = body ? getComputedStyle(body) : style
+    return target.scrollHeight >= target.clientHeight && (targetStyle.overflowY === 'auto' || targetStyle.overflowY === 'scroll')
+  })
+  expect(inspectorScrollable).toBe(true)
+  // 展开态同样无横向滚动。
+  const expandedScrollWidth = await page.evaluate(() => document.documentElement.scrollWidth)
+  expect(expandedScrollWidth).toBeLessThanOrEqual(1366 + 1)
 
   // 折叠后空间归还，Graph 交互状态不丢失。
   await page.getByTestId('spec-dock-toggle').click()
