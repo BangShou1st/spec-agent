@@ -19,7 +19,6 @@ import {
   type ContextualAiTarget,
   type SpecAgentGraphNodeData,
 } from '@/graph/graphProjection'
-import { phaseToCopy } from '@/graph/phaseCopy'
 import { agentPhaseLabel } from '@/presentation/agentPresentation'
 import {
   recoveryNoticeFromState,
@@ -186,16 +185,6 @@ const agentStatusCopy = computed(() => {
   }
   if (store.answerRunId || store.answerRunStatus) {
     return agentPhaseLabel(store.answerRunPhase)
-  }
-  return null
-})
-
-const runtimePhaseCopy = computed(() => {
-  if (store.pendingRouteProjection) {
-    return phaseToCopy(store.pendingRouteProjection.phase)
-  }
-  if (store.answerRunId || store.answerRunStatus) {
-    return phaseToCopy(store.answerRunPhase)
   }
   return null
 })
@@ -602,9 +591,6 @@ async function confirmDestructive(): Promise<void> {
         <div class="workspace-shell__toast-layer">
           <p v-if="agentStatusCopy" class="muted workspace-shell__runtime-phase" data-test="agent-status">
             {{ agentStatusCopy }}
-          </p>
-          <p v-if="runtimePhaseCopy" class="muted workspace-shell__runtime-phase" data-test="runtime-phase">
-            {{ runtimePhaseCopy }}
           </p>
           <p v-if="store.refreshing" class="muted workspace-shell__refreshing" data-test="refreshing">
             正在刷新工作区…

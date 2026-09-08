@@ -281,21 +281,6 @@ function relationDirectionLabel(relation: {
                 @accept="acceptProposal"
                 @reject="rejectProposal"
               />
-              <!-- 兼容旧测试入口：隐藏但可触发的语义按钮 -->
-              <span class="node-inspector__compat-actions" aria-hidden="true">
-                <button
-                  data-test="accept-proposal"
-                  tabindex="-1"
-                  :disabled="acceptingProposal || !queryResult.proposalId"
-                  @click="acceptProposal"
-                >接受</button>
-                <button
-                  data-test="reject-proposal"
-                  tabindex="-1"
-                  :disabled="rejectingProposal || !queryResult.proposalId"
-                  @click="rejectProposal"
-                >拒绝</button>
-              </span>
             </div>
           </template>
           <template v-else-if="queryResult.status === 'ACCEPTED'">
@@ -441,23 +426,6 @@ function relationDirectionLabel(relation: {
 
 .node-inspector__secondary-body {
   padding-top: 8px;
-}
-
-/* 兼容旧测试入口的隐藏语义按钮：不占视觉空间，不可聚焦。 */
-.node-inspector__compat-actions {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.node-inspector__compat-actions button {
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  border: 0;
 }
 
 .node-inspector__heading {

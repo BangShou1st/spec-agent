@@ -190,4 +190,36 @@ describe('WorkspaceView unified center status', () => {
     expect(wrapper.find('[data-test="recovery-notice"]').exists()).toBe(false)
     expect(wrapper.find('.error-banner').exists()).toBe(true)
   })
+
+  it('renders the agent status exactly once with no legacy runtime-phase element', async () => {
+    mockViews()
+    const { wrapper, store } = await mountWorkspace()
+    store.pendingRouteProjection = {
+      routeId: 'r1', sourceNodeId: null, runId: 'run-1',
+      status: 'RUNNING', phase: 'DECIDING', message: null,
+    }
+    await flushPromises()
+
+    expect(wrapper.findAll('[data-test="agent-status"]')).toHaveLength(1)
+    expect(wrapper.find('[data-test="runtime-phase"]').exists()).toBe(false)
+    // “正在规划下一步”在中央只出现一次（无重复渲染）。
+    const occurrences = wrapper.text().split('正在规划下一步').length - 1
+    expect(occurrences).toBe(1)
+  })
+
+  it('renders the unknown fallback exactly once without the raw phase', async () => {
+    mockViews()
+    const { wrapper, store } = await mountWorkspace()
+    store.pendingRouteProjection = {
+      routeId: 'r1', sourceNodeId: null, runId: 'run-1',
+      status: 'RUNNING', phase: 'SOME_NEW_INTERNAL_PHASE', message: null,
+    }
+    await flushPromises()
+
+    expect(wrapper.findAll('[data-test="agent-status"]')).toHaveLength(1)
+    expect(wrapper.find('[data-test="runtime-phase"]').exists()).toBe(false)
+    const occurrences = wrapper.text().split('处理中…').length - 1
+    expect(occurrences).toBe(1)
+    expect(wrapper.text()).not.toContain('SOME_NEW_INTERNAL_PHASE')
+  })
 })
