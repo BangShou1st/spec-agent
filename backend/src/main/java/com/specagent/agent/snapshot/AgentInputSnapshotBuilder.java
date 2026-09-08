@@ -30,6 +30,7 @@ import com.specagent.capability.CapabilityInvocationRepository;
 import com.specagent.capability.CapabilityQueryContext;
 import com.specagent.capability.CapabilityRegistry;
 import com.specagent.capability.CapabilityVisibilityService;
+import com.specagent.skill.discovery.SkillHostToolVisibility;
 import com.specagent.common.Hashes;
 import com.specagent.common.Json;
 import com.specagent.context.ContextSnapshot;
@@ -103,6 +104,7 @@ public class AgentInputSnapshotBuilder {
     private final RequirementStateBuilder requirementStateBuilder;
     private final CapabilityRegistry capabilityRegistry;
     private final CapabilityVisibilityService capabilityVisibilityService;
+    private final SkillHostToolVisibility skillHostToolVisibility;
     private final CapabilityInvocationRepository capabilityInvocationRepository;
     private final AgentRunRepository agentRunRepository;
     private final AgentInputProjectionRepository projectionRepository;
@@ -116,6 +118,7 @@ public class AgentInputSnapshotBuilder {
                                      RequirementStateBuilder requirementStateBuilder,
                                      CapabilityRegistry capabilityRegistry,
                                      CapabilityVisibilityService capabilityVisibilityService,
+                                     SkillHostToolVisibility skillHostToolVisibility,
                                      CapabilityInvocationRepository capabilityInvocationRepository,
                                      AgentRunRepository agentRunRepository,
                                      AgentInputProjectionRepository projectionRepository,
@@ -128,6 +131,7 @@ public class AgentInputSnapshotBuilder {
         this.requirementStateBuilder = requirementStateBuilder;
         this.capabilityRegistry = capabilityRegistry;
         this.capabilityVisibilityService = capabilityVisibilityService;
+        this.skillHostToolVisibility = skillHostToolVisibility;
         this.capabilityInvocationRepository = capabilityInvocationRepository;
         this.agentRunRepository = agentRunRepository;
         this.projectionRepository = projectionRepository;
@@ -287,7 +291,7 @@ public class AgentInputSnapshotBuilder {
                 effectiveClaims(snapshot),
                 metadata(snapshot),
                 allowedSourceRefs(snapshot, relatedRefs),
-                visibleCapabilityDescriptors(lineageNodes, relatedNodes),
+                visibleCapabilityDescriptors(snapshot, lineageNodes, relatedNodes),
                 capabilityResults(snapshot),
                 relations(snapshot),
                 relatedRefs,
@@ -381,7 +385,8 @@ public class AgentInputSnapshotBuilder {
      * the model can construct valid calls for dynamic providers without ever
      * seeing implementation classes, connections, endpoints or credentials.
      */
-    private List<CapabilityDescriptor> visibleCapabilityDescriptors(List<Node> lineageNodes,
+    private List<CapabilityDescriptor> visibleCapabilityDescriptors(ContextSnapshot snapshot,
+                                                                    List<Node> lineageNodes,
                                                                     List<Node> relatedNodes) {
         List<String> contextKinds = new ArrayList<>();
         for (Node node : lineageNodes) {
@@ -398,7 +403,10 @@ public class AgentInputSnapshotBuilder {
         }
         CapabilityQueryContext context = new CapabilityQueryContext(
                 Set.of(), List.copyOf(contextKinds), Map.of());
+        boolean skillsPresent = skillHostToolVisibility.anyEnabledSkill(snapshot.projectId());
         return capabilityVisibilityService.visibleCapabilities(context).stream()
+                .filter(descriptor -> skillsPresent
+                        || !isSkillHostTool(descriptor.capabilityId()))
                 .map(descriptor -> new CapabilityDescriptor(
                         descriptor.capabilityId(),
                         descriptor.version(),
@@ -408,6 +416,17 @@ public class AgentInputSnapshotBuilder {
                         descriptor.sideEffectClass().code(),
                         descriptor.supports()))
                 .toList();
+    }
+
+    /**
+     * Skill Host Function Tools are exposed only when the project actually has
+     * an enabled Skill to activate/read — "installed != loaded" applies to the
+     * procedural-knowledge tools just as it does to Skill bodies. The check is
+     * a deterministic structured fact (a registered capability id prefix),
+     * never user wording.
+     */
+    private boolean isSkillHostTool(String capabilityId) {
+        return capabilityId.startsWith("skill.");
     }
 
     /**

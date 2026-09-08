@@ -15,9 +15,15 @@ public final class Hashes {
     }
 
     public static String sha256Hex(String input) {
+        return sha256Hex(input == null
+                ? new byte[0] : input.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** SHA-256 of raw bytes (used for immutable package content identity). */
+    public static String sha256Hex(byte[] input) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hashed = digest.digest(input.getBytes(StandardCharsets.UTF_8));
+            byte[] hashed = digest.digest(input == null ? new byte[0] : input);
             StringBuilder hex = new StringBuilder(hashed.length * 2);
             for (byte b : hashed) {
                 hex.append(String.format("%02x", b));
