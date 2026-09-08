@@ -404,7 +404,46 @@ describe('WorkspaceView graph shell', () => {
     })
   })
 
-  it('spec tab reads the reading route and generates for the active route', async () => {
+  it('inspector no longer hosts spec content; reading context stays explicit', async () => {
+    mockViews()
+    const { wrapper, graphUi } = await mountWorkspace()
+    graphUi.setFocusRoute('r1')
+    await flushPromises()
+    // Spec 已搬出 Inspector：无 tab、无生成入口、无快照详情。
+    expect(wrapper.find('[data-test="tab-spec"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="generate-spec"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="spec-snapshot-detail"]').exists()).toBe(false)
+    // 无选择时展示项目摘要，阅读路线上下文仍明确。
+    expect(wrapper.find('[data-test="project-summary"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('当前查看路线')
+  })
+
+  it('spec dock is collapsed by default in the graph center and keeps graph mounted', async () => {
+    mockViews()
+    vi.mocked(listRouteSpecs).mockResolvedValue([])
+    const { wrapper, graphUi } = await mountWorkspace()
+    graphUi.setFocusRoute('r1')
+    await flushPromises()
+    const dock = wrapper.find('[data-test="spec-dock"]')
+    expect(dock.exists()).toBe(true)
+    expect(dock.attributes('data-state')).toBe('collapsed')
+    // Dock 位于中央列，Graph 仍挂载。
+    expect(wrapper.find('.workspace-shell__graph-region [data-test="graph-canvas-stub"]').exists()).toBe(true)
+  })
+
+  it('expanding the dock keeps graph and inspector usable', async () => {
+    mockViews()
+    vi.mocked(listRouteSpecs).mockResolvedValue([])
+    const { wrapper, graphUi } = await mountWorkspace()
+    graphUi.setFocusRoute('r1')
+    await flushPromises()
+    await wrapper.find('[data-test="spec-dock-toggle"]').trigger('click')
+    expect(wrapper.find('[data-test="spec-dock"]').attributes('data-state')).toBe('expanded')
+    expect(wrapper.find('.workspace-shell__graph-region [data-test="graph-canvas-stub"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="workspace-inspector"]').exists()).toBe(true)
+  })
+
+  it('dock generate-spec still targets the active route while reading another', async () => {
     mockViews()
     vi.mocked(listRouteSpecs).mockResolvedValue([])
     mockedCreateAgentRun.mockResolvedValue({
@@ -415,7 +454,7 @@ describe('WorkspaceView graph shell', () => {
     mockedGetAgentRun.mockResolvedValue({
       runId: 'run-spec',
       projectId: 'p1',
-      routeId: 'r-active',
+      routeId: 'r1',
       operation: 'GENERATE_ARTIFACT',
       status: 'completed',
       phase: 'COMPLETED',
@@ -425,15 +464,14 @@ describe('WorkspaceView graph shell', () => {
       producedSpecSnapshotId: 'spec-1',
     })
     const { wrapper, graphUi } = await mountWorkspace()
-    graphUi.setFocusRoute('r1')
-    await wrapper.find('[data-test="tab-spec"]').trigger('click')
+    graphUi.setFocusRoute('r2')
     await flushPromises()
-    expect(wrapper.find('[data-test="generate-spec"]').exists()).toBe(true)
-    vi.mocked(listRouteSpecs).mockResolvedValue([makeSpecSnapshot({ id: 'spec-1', routeId: 'r-active' })])
+    expect(wrapper.find('[data-test="spec-route-warning"]').exists()).toBe(true)
+    await wrapper.find('[data-test="spec-dock-toggle"]').trigger('click')
+    vi.mocked(listRouteSpecs).mockResolvedValue([makeSpecSnapshot({ id: 'spec-1', routeId: 'r1' })])
     await wrapper.find('[data-test="generate-spec"]').trigger('click')
     await flushPromises()
     expect(mockedCreateAgentRun).toHaveBeenCalledWith('p1', { operation: 'GENERATE_ARTIFACT' })
-    expect(wrapper.find('[data-test="spec-snapshot-detail"]').exists()).toBe(true)
   })
 
 
@@ -454,18 +492,20 @@ describe('WorkspaceView graph shell', () => {
     expect(text).toContain('正在浏览')
     expect(text).toContain('运行路线')
     expect(text).toContain('已归档')
-    expect(text).toContain('需求状态')
-    expect(text).toContain('规格')
+    expect(text).toContain('查看完整需求状态')
     expect(text).toContain('归档')
     expect(text).toContain('删除路线')
     expect(text).toContain('定位路线')
     expect(text).toContain('浏览此路线')
     expect(text).toContain('弱化路线')
     expect(text).toContain('隐藏路线')
-    // 后端/用户内容保持原样（verbatim）：路线名与派生 claim 文本不翻译。
+    // 后端/用户内容保持原样（verbatim）：路线名不翻译。
     expect(text).toContain('开放分支')
     expect(text).toContain('旧路线')
-    expect(text).toContain('A confirmed requirement detail.')
+    // 派生 claim 文本在二级需求视图中保持原样。
+    await wrapper.find('[data-test="open-requirements"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('A confirmed requirement detail.')
   })
 
   it('sidebar open state toggles independently of canvas layout', async () => {

@@ -5,7 +5,7 @@ import { answerActiveNode, buildThreeNodeLineage, closeFloatingWorkspaceWindows,
  * 最终产品模型：一个 canonical Question Node 只有一个 immutable Answer
  * identity。共享节点(被多条 route 引用)：
  *  - 只渲染一个 visual card
- *  - route chips 显示全部 memberships
+ *  - 历史卡 header 只展示「共享 · N 条路线」计数（完整成员在 Inspector）
  *  - Answer 只显示一份，绝不出现 route-divergent 多答案
  *  - Focus 切换不改变 Answer 内容
  *  - Active 不随 Focus 变化
@@ -35,18 +35,20 @@ test('shared Question renders once with route memberships and a single Answer id
   expect(distinctIds.size).toBe(1)
   expect(q2Answers[0].freeText).toBe(answerOnA.freeText)
 
-  // 共享节点只渲染一个 visual card,并显示两条 route memberships。
+  // 共享节点只渲染一个 visual card,header 展示「共享 · 2 条路线」计数。
   const q2Cards = page.locator(`[data-node-id="${q2Id}"]`)
   await expect(q2Cards).toHaveCount(1)
-  const chip = q2Cards.getByTestId('route-membership')
-  await expect(chip).toBeVisible()
-  await expect(q2Cards.locator('.graph-route-chip')).toHaveCount(2)
+  await expect(q2Cards.getByTestId('shared-membership')).toBeVisible()
+  await expect(q2Cards.getByTestId('shared-membership')).toContainText('共享 · 2 条路线')
+  await expect(q2Cards.locator('.graph-route-chip')).toHaveCount(0)
 
   // 历史卡保持紧凑：完整答案在 Inspector 中查看，卡片只保留导航信息。
   await expect(q2Cards).not.toContainText(answerOnA.freeText as string)
   await q2Cards.click()
   await expect(page.getByTestId('node-inspector')).toBeVisible()
   await expect(page.getByTestId('canonical-answer')).toContainText(answerOnA.freeText as string)
+  // 完整路线成员在 Inspector 路线归属中可读。
+  await expect(page.getByTestId('inspector-section-membership')).toBeVisible()
 })
 
 test('Focus switching does not change the Answer content and Active never follows Focus', async ({ page, request }) => {

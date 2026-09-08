@@ -243,8 +243,19 @@ function setReadingRoute(event: Event): void {
           最新
         </span>
       </span>
+      <!-- 历史共享节点：header 只展示计数，不逐个渲染路线 chip；
+           完整成员在阅读路线下拉框与 Inspector 路线归属中查看。
+           当前可回答节点保持原有上下文 chip。 -->
       <span
-        v-if="data.routeMembership?.length"
+        v-if="!data.canAnswer && data.isShared && data.routeMembership?.length"
+        class="graph-question-node__routes graph-question-node__routes--compact"
+        :title="data.routeMembership.map((membership) => membership.label).join(' · ')"
+        data-test="shared-membership"
+      >
+        共享 · {{ data.routeMembership.length }} 条路线
+      </span>
+      <span
+        v-else-if="data.routeMembership?.length"
         class="graph-question-node__routes"
         :title="data.routeMembership.map((membership) => membership.label).join(' · ')"
         data-test="route-membership"

@@ -2,6 +2,8 @@
 import { computed, inject, nextTick, onMounted, ref, watch } from 'vue'
 import { routerKey } from 'vue-router'
 import ApiErrorBanner from '@/components/ApiErrorBanner.vue'
+import RecoveryNotice from '@/components/workspace/RecoveryNotice.vue'
+import SpecDock from '@/components/workspace/SpecDock.vue'
 import ConfirmRouteActionDialog from '@/components/ConfirmRouteActionDialog.vue'
 import ForkRouteDialog from '@/components/ForkRouteDialog.vue'
 import ResourceDialog from '@/components/ResourceDialog.vue'
@@ -17,7 +19,12 @@ import {
   type ContextualAiTarget,
   type SpecAgentGraphNodeData,
 } from '@/graph/graphProjection'
-import { phaseToCopy } from '@/graph/phaseCopy'
+import { agentPhaseLabel } from '@/presentation/agentPresentation'
+import {
+  recoveryNoticeFromState,
+  type RecoveryAction,
+  type RecoveryNoticeModel,
+} from '@/presentation/recoveryPresentation'
 import { productErrorMessage, requiresModelSettings } from '@/api/errorCopy'
 import { useGraphUiStore } from '@/stores/graphUiStore'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
@@ -152,12 +159,32 @@ const workspaceRetrying = computed(() => store.loading || store.refreshing
   || store.submitting || store.repairingAnswer || store.drafting
   || store.routeCommandPending || store.generatingSpec)
 
-const runtimePhaseCopy = computed(() => {
+/**
+ * 统一恢复提示：一次最多一个。model settings 错误仍走普通错误条；
+ * 已被恢复模型覆盖的状态不再渲染旧的三块恢复按钮。
+ */
+const recoveryModel = computed<RecoveryNoticeModel | null>(() => {
+  if (store.error && requiresModelSettings(store.error.code)) return null
+  return recoveryNoticeFromState({
+    answerOutcomeUnknown: store.answerOutcomeUnknown,
+    repairableAnswerId: store.repairableAnswerId,
+    resubmitAnswerPayload: store.resubmitAnswerPayload,
+    manualRetryState: store.manualModelRetry?.state ?? null,
+    errorCode: store.error?.code ?? null,
+  })
+})
+
+const showPlainErrorBanner = computed(() =>
+  store.error !== null && recoveryModel.value === null,
+)
+
+/** 中央一句话 Agent 状态：运行时显示产品化文案，未知 phase 只回退通用语。 */
+const agentStatusCopy = computed(() => {
   if (store.pendingRouteProjection) {
-    return phaseToCopy(store.pendingRouteProjection.phase)
+    return agentPhaseLabel(store.pendingRouteProjection.phase)
   }
   if (store.answerRunId || store.answerRunStatus) {
-    return phaseToCopy(store.answerRunPhase)
+    return agentPhaseLabel(store.answerRunPhase)
   }
   return null
 })
@@ -169,11 +196,77 @@ const forkFinalizedRouteIds = computed(() => {
     .map((answer) => answer.routeId)
 })
 
+/** Spec Dock 阅读路线：显式 Focus，单路线回退；绝不隐式改 Focus/Active。 */
+const specReadingRouteId = computed<string | null>(() => {
+  const focused = graphUi.readingRouteId()
+  if (focused) return focused
+  const routes = store.graphView?.routes ?? []
+  return routes.length === 1 ? routes[0].id : null
+})
+const specReadingRouteLabel = computed(() => {
+  if (!specReadingRouteId.value) return '未选择'
+  return store.graphView?.routes.find((route) => route.id === specReadingRouteId.value)?.label?.trim() || '当前路线'
+})
+const specActiveRouteLabel = computed(() =>
+  store.activeRoute?.label?.trim() || '当前路线',
+)
+const specSnapshots = computed(() =>
+  specReadingRouteId.value ? store.specsByRoute[specReadingRouteId.value] ?? [] : [],
+)
+const specSelectedId = computed(() =>
+  specReadingRouteId.value ? store.selectedSpecIdByRoute[specReadingRouteId.value] ?? null : null,
+)
+
+// 读取路线变化时，规格历史从后端加载（与 Inspector 的需求加载同语义）。
+watch(
+  specReadingRouteId,
+  (routeId) => {
+    if (routeId) {
+      void store.loadRouteSpecs(routeId)
+    }
+  },
+  { immediate: true },
+)
+
+async function handleGenerateSpec(): Promise<void> {
+  const generated = await store.generateSpec()
+  if (generated) {
+    graphUi.setFocusRoute(store.activeRoute?.id ?? null)
+  }
+}
+
+function handleSelectSpec(snapshotId: string): void {
+  if (specReadingRouteId.value) {
+    store.selectSpecForRoute(specReadingRouteId.value, snapshotId)
+  }
+}
+
 const reanswerFinalized = computed(() => {
   if (!reanswerNodeId.value || !reanswerSourceRoute.value || !store.graphView) return false
   return store.graphView.answers.some((answer) => answer.nodeId === reanswerNodeId.value
     && answer.routeId === reanswerSourceRoute.value!.id)
 })
+
+/** 恢复 CTA 的语义意图 → 已有 store 命令，不新增语义。 */
+async function handleRecoveryAction(action: RecoveryAction): Promise<void> {
+  if (action === 'reconcile-answer') {
+    await store.reconcileAnswerOutcome()
+  } else if (action === 'resume-answer') {
+    if (store.repairableAnswerId) {
+      await store.repairAnswerForActiveFlow(store.repairableAnswerId)
+    }
+  } else if (action === 'resubmit-answer') {
+    await store.resubmitFailedAnswer()
+  } else if (action === 'retry-model-operation') {
+    const retryKind = store.manualModelRetry?.kind
+    const ok = await store.retryManualModelOperation()
+    if (ok && retryKind === 'regenerate') {
+      await focusAfterMutation()
+    }
+  } else {
+    await store.refreshWorkspace()
+  }
+}
 
 async function retry(): Promise<void> {
   if (store.error && requiresModelSettings(store.error.code)) {
@@ -438,64 +531,66 @@ async function confirmDestructive(): Promise<void> {
         </header>
 
         <div class="workspace-shell__status-layer">
+          <RecoveryNotice
+            v-if="recoveryModel"
+            :model="recoveryModel"
+            @action="handleRecoveryAction"
+          />
           <ApiErrorBanner
-            v-if="store.error"
+            v-else-if="showPlainErrorBanner"
             :message="workspaceErrorMessage"
-            :code="store.error.code"
+            :code="store.error!.code"
             :retry-label="workspaceRetryLabel"
             :retrying="workspaceRetrying"
             @retry="retry"
           />
-          <div v-if="store.repairableAnswerId" class="workspace-answer-retry" data-test="answer-retry">
-            <span>回答已保存，后续生成未完成。</span>
-            <button class="btn btn-primary" type="button" :disabled="workspaceRetrying" @click="retry">
-              {{ workspaceRetrying ? '正在请求…' : '重新请求' }}
-            </button>
-          </div>
-          <div v-else-if="store.answerOutcomeUnknown" class="workspace-answer-retry" data-test="answer-outcome-unknown">
-            <span>提交结果未知，请先恢复状态。</span>
-            <button class="btn" type="button" :disabled="workspaceRetrying" @click="retry">
-              刷新状态
-            </button>
-          </div>
-          <div v-else-if="store.resubmitAnswerPayload" class="workspace-answer-retry" data-test="answer-resubmit">
-            <span>回答尚未保存，可以再次提交。</span>
-            <button class="btn btn-primary" type="button" :disabled="workspaceRetrying" @click="retry">
-              再次提交
-            </button>
-          </div>
         </div>
 
-        <GraphCanvas
-          ref="canvasRef"
-          class="workspace-shell__canvas"
-          :view="store.graphView"
-          :active-node-id="store.activeState?.activeNode?.id ?? null"
-          :submitting="store.submitting"
-          :drafting="store.drafting"
-          :pending="store.routeCommandPending"
-          :runtime-node-id="store.pendingAnswerNodeId"
-          :runtime-status="store.answerRunStatus"
-          :runtime-phase="store.answerRunPhase"
-          :pending-projection="store.pendingRouteProjection"
-          @draft="handleDraft"
-          @submit-answer="handleAnswer"
-          @fork="handleFork"
-          @reanswer="handleReanswer"
-          @regenerate="handleRegenerate"
-          @activate-route="handleActivateRouteForAnswer"
-          @contextual-ai="handleContextualAi"
-          @retry-pending="store.retryPendingAgentRun"
-          @add-idea="handleAddIdea"
-          @add-resource="resourceDialogOpen = true"
-          @relation-proposal="handleRelationProposal"
-          @undo="store.undoGraph"
-          @redo="store.redoGraph"
+        <div class="workspace-shell__graph-region">
+          <GraphCanvas
+            ref="canvasRef"
+            class="workspace-shell__canvas"
+            :view="store.graphView"
+            :active-node-id="store.activeState?.activeNode?.id ?? null"
+            :submitting="store.submitting"
+            :drafting="store.drafting"
+            :pending="store.routeCommandPending"
+            :runtime-node-id="store.pendingAnswerNodeId"
+            :runtime-status="store.answerRunStatus"
+            :runtime-phase="store.answerRunPhase"
+            :pending-projection="store.pendingRouteProjection"
+            @draft="handleDraft"
+            @submit-answer="handleAnswer"
+            @fork="handleFork"
+            @reanswer="handleReanswer"
+            @regenerate="handleRegenerate"
+            @activate-route="handleActivateRouteForAnswer"
+            @contextual-ai="handleContextualAi"
+            @retry-pending="store.retryPendingAgentRun"
+            @add-idea="handleAddIdea"
+            @add-resource="resourceDialogOpen = true"
+            @relation-proposal="handleRelationProposal"
+            @undo="store.undoGraph"
+            @redo="store.redoGraph"
+          />
+        </div>
+
+        <SpecDock
+          :reading-route-id="specReadingRouteId"
+          :reading-route-label="specReadingRouteLabel"
+          :active-route-id="store.activeRoute?.id ?? null"
+          :active-route-label="specActiveRouteLabel"
+          :snapshots="specSnapshots"
+          :selected-spec-id="specSelectedId"
+          :generating="store.generatingSpec"
+          :command-pending="store.routeCommandPending"
+          @generate-spec="handleGenerateSpec"
+          @select-snapshot="handleSelectSpec"
         />
 
         <div class="workspace-shell__toast-layer">
-          <p v-if="runtimePhaseCopy" class="muted workspace-shell__runtime-phase" data-test="runtime-phase">
-            {{ runtimePhaseCopy }}
+          <p v-if="agentStatusCopy" class="muted workspace-shell__runtime-phase" data-test="agent-status">
+            {{ agentStatusCopy }}
           </p>
           <p v-if="store.refreshing" class="muted workspace-shell__refreshing" data-test="refreshing">
             正在刷新工作区…

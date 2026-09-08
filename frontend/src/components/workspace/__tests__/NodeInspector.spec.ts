@@ -108,9 +108,18 @@ describe('node inspector ask AI proposal', () => {
     expect(wrapper.find('[data-test="ask-result"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="agent-proposal"]').exists()).toBe(true)
     // 提案可见，且有明确的接受/拒绝入口（不允许只有一句"可查看待确认提案"）。
-    expect(wrapper.find('[data-test="accept-proposal"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="reject-proposal"]').exists()).toBe(true)
-    expect(wrapper.text()).toContain('CREATE_NODE')
+    // 生产 DOM 只保留卡片内真正可见的一组按钮：proposal-accept / proposal-reject。
+    expect(wrapper.find('[data-test="proposal-accept"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="proposal-reject"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="accept-proposal"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="reject-proposal"]').exists()).toBe(false)
+    expect(wrapper.find('.node-inspector__compat-actions').exists()).toBe(false)
+    // 产品化卡片：可读标签 + 确认执行/拒绝，不暴露 raw actionFamily。
+    expect(wrapper.find('[data-test="proposal-card"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('创建节点')
+    expect(wrapper.text()).toContain('确认执行')
+    expect(wrapper.text()).toContain('拒绝')
+    expect(wrapper.text()).not.toContain('CREATE_NODE')
   })
 
   it('accepting a proposal refreshes the graph and shows the accepted state', async () => {
@@ -129,7 +138,7 @@ describe('node inspector ask AI proposal', () => {
       projectId: 'p1', activeRouteId: 'rA', routes: [], nodes: [], answers: [], relations: [],
     })
     const wrapper = mount(NodeInspector, { props: { data: nodeData() } })
-    await wrapper.find('[data-test="accept-proposal"]').trigger('click')
+    await wrapper.find('[data-test="proposal-accept"]').trigger('click')
     await flushPromises()
     expect(mockedAcceptProposal).toHaveBeenCalledWith('prop-1')
     // Accept 成功后刷新 canonical Graph（后端可能已产生节点/关系）。
@@ -148,7 +157,7 @@ describe('node inspector ask AI proposal', () => {
     }
     mockedRejectProposal.mockResolvedValue({ proposalId: 'prop-1', status: 'REJECTED' })
     const wrapper = mount(NodeInspector, { props: { data: nodeData() } })
-    await wrapper.find('[data-test="reject-proposal"]').trigger('click')
+    await wrapper.find('[data-test="proposal-reject"]').trigger('click')
     await flushPromises()
     expect(mockedRejectProposal).toHaveBeenCalledWith('prop-1')
     // Reject 不改变 Graph：不应刷新 canonical Graph。

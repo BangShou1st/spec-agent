@@ -1,18 +1,21 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import NodeInspector from '@/components/workspace/NodeInspector.vue'
-import RequirementStatePanel from '@/components/RequirementStatePanel.vue'
-import SpecSnapshotPanel from '@/components/SpecSnapshotPanel.vue'
+import ProjectSummary from '@/components/workspace/ProjectSummary.vue'
+import RequirementDetailView from '@/components/workspace/RequirementDetailView.vue'
 import type { SpecAgentGraphNodeData } from '@/graph/graphProjection'
 import { useGraphUiStore } from '@/stores/graphUiStore'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
 
 /**
- * 右侧检查器：详情 / 需求状态 / 规格。
+ * 上下文检查器：单一表面，按选择切换。
  *
- * 无节点选中时默认显示需求状态；选中节点后默认显示详情。需求状态与规格
- * 历史跟随显式 Focus；单路线项目可直接读取唯一路线。共享节点无 Focus 时
- * 不猜测路线。生成规格始终针对后端 Active 路线，不改变 Focus。
+ * - 选中节点 → NodeInspector
+ * - 选中边 → 边上下文视图
+ * - 无选择 → 项目摘要（二级：完整需求视图 ↔ 返回）
+ *
+ * 不再有顶层 详情 / 需求状态 / 规格 tabs；规格已搬到 Graph 中央 Spec Dock。
+ * 选择变化会重置二级视图，但绝不改变 Focus / Active 路线。
  */
 interface SelectedEdge {
   id: string
@@ -35,8 +38,24 @@ const emit = defineEmits<{
 const workspace = useWorkspaceStore()
 const graphUi = useGraphUiStore()
 
-type InspectorTab = 'details' | 'requirement' | 'spec'
-const activeTab = ref<InspectorTab>('requirement')
+type SecondaryView = 'summary' | 'requirements'
+const secondaryView = ref<SecondaryView>('summary')
+const inspectorBody = ref<HTMLElement | null>(null)
+
+/**
+ * 二级视图切换后保持键盘焦点：把焦点移到新视图的第一个可操作按钮，
+ * 避免焦点因旧按钮卸载而丢失到 body。
+ */
+async function switchSecondaryView(view: SecondaryView): Promise<void> {
+  secondaryView.value = view
+  await nextTick()
+  const target = inspectorBody.value?.querySelector<HTMLElement>(
+    view === 'requirements'
+      ? '[data-test="requirement-back"]'
+      : '[data-test="open-requirements"]',
+  )
+  target?.focus()
+}
 
 const readingRouteId = computed<string | null>(() => {
   const focusedRouteId = graphUi.readingRouteId()
@@ -48,112 +67,57 @@ const readingRouteLabel = computed(() => {
   if (!readingRouteId.value) return '未选择'
   return workspace.graphView?.routes.find((route) => route.id === readingRouteId.value)?.label?.trim() || '当前路线'
 })
-const routeLabels = computed<Record<string, string>>(() => Object.fromEntries(
-  (workspace.graphView?.routes ?? []).map((route) => [route.id, route.label?.trim() || '路线']),
-))
 
 const requirementState = computed(() =>
   readingRouteId.value ? workspace.requirementStatesByRoute[readingRouteId.value] ?? null : null,
 )
-
-const snapshots = computed(() =>
-  readingRouteId.value ? workspace.specsByRoute[readingRouteId.value] ?? [] : [],
+const requirementLoading = computed(() =>
+  workspace.loadingRequirementRouteId === readingRouteId.value,
 )
 
-const selectedSpecId = computed(() =>
-  readingRouteId.value ? workspace.selectedSpecIdByRoute[readingRouteId.value] ?? null : null,
-)
-
-// 读取路线变化时，路线级需求状态与规格历史总是从后端加载。
+// 读取路线变化时，路线级需求状态总是从后端加载。
 watch(
   readingRouteId,
   (routeId) => {
     if (routeId) {
       void workspace.ensureRequirementState(routeId)
-      void workspace.loadRouteSpecs(routeId)
     }
   },
   { immediate: true },
 )
 
-// 每次 canonical 刷新完成后，重新从后端加载读取路线的需求状态与规格历史
-// （缓存只对单次读取生命周期有效）。
+// 每次 canonical 刷新完成后，重新从后端加载读取路线的需求状态。
 watch(
   () => workspace.refreshing,
   (refreshing, wasRefreshing) => {
     if (!refreshing && wasRefreshing && readingRouteId.value) {
       void workspace.ensureRequirementState(readingRouteId.value)
-      void workspace.loadRouteSpecs(readingRouteId.value)
     }
   },
 )
 
-// 批准语义：选中节点 → 默认详情；清除选择 → 回到默认需求状态（绝不允许
-// 空详情状态落到规格页）。
+// 选择节点/边 → 回到主视图；选择变化不触碰 Focus / Active。
 watch(
-  () => props.nodeData,
-  (data) => {
-    if (data) {
-      activeTab.value = 'details'
-    } else if (activeTab.value === 'details') {
-      activeTab.value = 'requirement'
-    }
+  [() => props.nodeData, () => props.selectedEdge],
+  () => {
+    secondaryView.value = 'summary'
   },
-  { immediate: true },
 )
 
-async function handleGenerateSpec(): Promise<void> {
-  const generated = await workspace.generateSpec()
-  if (generated) {
-    // The user explicitly asked for the Active route's artifact; focus that
-    // returned route so the newly generated snapshot is immediately visible.
-    graphUi.setFocusRoute(workspace.activeRoute?.id ?? null)
-  }
-}
-
-function selectSpec(snapshotId: string): void {
-  if (readingRouteId.value) {
-    workspace.selectSpecForRoute(readingRouteId.value, snapshotId)
-  }
+function edgeRouteLabel(routeId: string): string {
+  return workspace.graphView?.routes.find((route) => route.id === routeId)?.label?.trim() || '路线'
 }
 </script>
 
 <template>
   <div class="workspace-inspector panel" data-test="workspace-inspector">
-    <div class="inspector-tabs" data-test="inspector-tabs">
-      <button
-        class="inspector-tab"
-        :class="{ active: activeTab === 'details' }"
-        data-test="tab-details"
-        @click="activeTab = 'details'"
-      >
-        详情
-      </button>
-      <button
-        class="inspector-tab"
-        :class="{ active: activeTab === 'requirement' }"
-        data-test="tab-requirement"
-        @click="activeTab = 'requirement'"
-      >
-        需求状态
-      </button>
-      <button
-        class="inspector-tab"
-        :class="{ active: activeTab === 'spec' }"
-        data-test="tab-spec"
-        @click="activeTab = 'spec'"
-      >
-        规格
-      </button>
-    </div>
-
     <div class="inspector-reading-context" data-test="current-reading-route">
       当前查看路线：<strong>{{ readingRouteLabel }}</strong>
     </div>
 
-    <div class="inspector-body">
+    <div ref="inspectorBody" class="inspector-body">
       <NodeInspector
-        v-if="activeTab === 'details' && nodeData && !selectedEdge"
+        v-if="nodeData && !selectedEdge"
         :data="nodeData"
         @fork="emit('fork', $event)"
         @reanswer="emit('reanswer', $event)"
@@ -169,40 +133,42 @@ function selectSpec(snapshotId: string): void {
           手动创建的节点连接（可在图上拖线新增，撤销可移除）。
         </p>
         <p v-else class="meta-text">该物理边不会自动猜测或切换聚焦路线。</p>
-        <p class="meta-text">边：{{ selectedEdge.id }}</p>
-        <p v-if="selectedEdge.kind === 'relation'" class="meta-text">
-          类型：{{ selectedEdge.relationType ?? 'RELATED_TO' }}
-        </p>
         <template v-if="selectedEdge.kind !== 'relation'">
           <h4 class="node-inspector__heading">路线成员</h4>
           <ul class="node-inspector__options">
             <li v-for="routeId in selectedEdge.routeIds" :key="routeId" class="node-inspector__option">
-              {{ workspace.graphView?.routes.find((route) => route.id === routeId)?.label || '路线' }}
+              {{ edgeRouteLabel(routeId) }}
             </li>
             <li v-if="selectedEdge.routeIds.length === 0" class="muted">暂无路线成员。</li>
           </ul>
         </template>
+        <details class="node-inspector__secondary">
+          <summary>更多详情</summary>
+          <div class="node-inspector__secondary-body">
+            <p class="meta-text">边：{{ selectedEdge.id }}</p>
+            <p v-if="selectedEdge.kind === 'relation'" class="meta-text">
+              类型：{{ selectedEdge.relationType ?? 'RELATED_TO' }}
+            </p>
+          </div>
+        </details>
       </div>
 
-      <RequirementStatePanel
-        v-else-if="activeTab === 'requirement'"
+      <RequirementDetailView
+        v-else-if="secondaryView === 'requirements'"
         :requirement-state="requirementState"
+        :route-label="readingRouteLabel"
         :route-id="readingRouteId"
-        :route-label="readingRouteId ? routeLabels[readingRouteId] : null"
-        :loading="workspace.loadingRequirementRouteId === readingRouteId"
+        :loading="requirementLoading"
+        @back="switchSecondaryView('summary')"
       />
 
-      <SpecSnapshotPanel
+      <ProjectSummary
         v-else
+        :requirement-state="requirementState"
+        :route-label="readingRouteLabel"
         :route-id="readingRouteId"
-        :active-route-id="workspace.activeRoute?.id ?? null"
-        :route-labels="routeLabels"
-        :snapshots="snapshots"
-        :selected-spec-id="selectedSpecId"
-        :generating="workspace.generatingSpec"
-        :command-pending="workspace.routeCommandPending"
-        @generate-spec="handleGenerateSpec"
-        @select="selectSpec"
+        :loading="requirementLoading"
+        @open-requirements="switchSecondaryView('requirements')"
       />
     </div>
   </div>
@@ -211,28 +177,6 @@ function selectSpec(snapshotId: string): void {
 <style scoped>
 .workspace-inspector {
   height: 100%;
-}
-
-.inspector-tabs {
-  display: flex;
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-subdued);
-}
-
-.inspector-tab {
-  flex: 1;
-  padding: 8px 6px;
-  border: 0;
-  border-right: 1px solid var(--color-border);
-  background: transparent;
-  color: var(--color-text-secondary);
-  font-size: 13px;
-}
-
-.inspector-tab.active {
-  background: var(--color-surface);
-  color: var(--color-accent);
-  font-weight: 600;
 }
 
 .inspector-body {

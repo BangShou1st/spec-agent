@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import AgentProposalCard from '@/components/workspace/AgentProposalCard.vue'
 import type { SpecAgentGraphNodeData } from '@/graph/graphProjection'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
 
@@ -115,6 +116,16 @@ const queryResult = computed(() => {
 
 const acceptingProposal = ref(false)
 const rejectingProposal = ref(false)
+/** 更多详情默认闭合且不挂载技术内容：raw id 只在用户展开后可见。 */
+const proposalTechOpen = ref(false)
+
+/** 审批卡的节点上下文：Q 号 + 可读标题，无可读文本时回退通用"节点"。 */
+const proposalNodeContext = computed(() => {
+  if (!props.data) return null
+  const q = props.data.qLabel ? `${props.data.qLabel} · ` : ''
+  const title = nodeQuestion.value || contentText.value
+  return `${q}${title || '节点'}`.slice(0, 48)
+})
 
 watch(
   () => props.data?.node.id,
@@ -260,25 +271,16 @@ function relationDirectionLabel(relation: {
             <span class="badge badge-open">AI 正在基于该节点上下文回答…</span>
           </template>
           <template v-else-if="queryResult.status === 'AWAITING_APPROVAL'">
-            <div class="node-inspector__proposal" data-test="agent-proposal">
-              <p class="graph-answer-text">{{ queryResult.message || 'AI 提出了一个候选动作，等待你确认。' }}</p>
-              <p class="meta-text">
-                候选动作：<strong>{{ queryResult.actionFamily || '未知' }}</strong>
-              </p>
-              <div class="node-inspector__proposal-actions">
-                <button
-                  class="btn btn-small btn-primary"
-                  data-test="accept-proposal"
-                  :disabled="acceptingProposal || !queryResult.proposalId"
-                  @click="acceptProposal"
-                >接受</button>
-                <button
-                  class="btn btn-small"
-                  data-test="reject-proposal"
-                  :disabled="rejectingProposal || !queryResult.proposalId"
-                  @click="rejectProposal"
-                >拒绝</button>
-              </div>
+            <div data-test="agent-proposal">
+              <AgentProposalCard
+                :action-family="queryResult.actionFamily ?? null"
+                :message="queryResult.message"
+                :node-context="proposalNodeContext"
+                :accepting="acceptingProposal"
+                :rejecting="rejectingProposal"
+                @accept="acceptProposal"
+                @reject="rejectProposal"
+              />
             </div>
           </template>
           <template v-else-if="queryResult.status === 'ACCEPTED'">
@@ -304,27 +306,41 @@ function relationDirectionLabel(relation: {
 
       </section>
 
-      <details class="node-inspector__secondary" data-test="inspector-secondary">
+      <section class="node-inspector__section" data-test="inspector-section-membership">
+        <h4>路线归属</h4>
+        <p class="meta-text">
+          {{ data.routeIds.length }} 条路线
+          <template v-if="data.isShared">（共享节点）</template>
+        </p>
+        <div v-if="data.routeMembership?.some((membership) => membership.branchType)" class="node-inspector__provenance">
+          <h4 class="node-inspector__heading">分支来源</h4>
+          <p
+            v-for="membership in data.routeMembership?.filter((item) => item.branchType)"
+            :key="membership.routeId"
+            class="meta-text"
+          >
+            {{ membership.label }} · {{ branchLabel(membership.branchType) }}
+            <template v-if="membership.sourceRouteId"> · 来源 {{ membershipLabel(data, membership.sourceRouteId) }}</template>
+          </p>
+        </div>
+      </section>
+
+      <details
+        class="node-inspector__secondary"
+        data-test="inspector-secondary"
+        @toggle="proposalTechOpen = ($event.target as HTMLDetailsElement).open"
+      >
         <summary>更多详情</summary>
-        <div class="node-inspector__secondary-body">
+        <div v-if="proposalTechOpen" class="node-inspector__secondary-body">
           <p class="meta-text">{{ kindLabel }} · 创建于 {{ formatTime(data.node.createdAt) }}</p>
 
-          <h4 class="node-inspector__heading">路线归属</h4>
-          <p class="meta-text">
-            {{ data.routeIds.length }} 条路线
-            <template v-if="data.isShared">（共享节点）</template>
-          </p>
-          <div v-if="data.routeMembership?.some((membership) => membership.branchType)" class="node-inspector__provenance">
-            <h4 class="node-inspector__heading">分支来源</h4>
-            <p
-              v-for="membership in data.routeMembership?.filter((item) => item.branchType)"
-              :key="membership.routeId"
-              class="meta-text"
-            >
-              {{ membership.label }} · {{ branchLabel(membership.branchType) }}
-              <template v-if="membership.sourceRouteId"> · 来源 {{ membershipLabel(data, membership.sourceRouteId) }}</template>
-            </p>
-          </div>
+          <template v-if="queryResult?.proposalId">
+            <h4 class="node-inspector__heading">提案技术详情</h4>
+            <p class="meta-text">提案：{{ queryResult.proposalId }}</p>
+            <p v-if="queryResult.runId" class="meta-text">运行：{{ queryResult.runId }}</p>
+            <p class="meta-text">动作：{{ queryResult.actionFamily ?? '—' }}</p>
+            <p class="meta-text">状态：{{ queryResult.proposalStatus ?? queryResult.status }}</p>
+          </template>
 
           <h4 class="node-inspector__heading">语义关系</h4>
           <p v-if="relations.length === 0" class="muted" data-test="node-detail-no-relations">暂无语义关系。</p>
@@ -412,13 +428,6 @@ function relationDirectionLabel(relation: {
   padding-top: 8px;
 }
 
-.node-inspector__proposal {
-  padding: 8px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  background: var(--color-accent-soft);
-}
-
 .node-inspector__heading {
   margin: 14px 0 6px;
   font-size: 12px;
@@ -450,12 +459,6 @@ function relationDirectionLabel(relation: {
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   background: var(--color-bg-inset, rgba(127, 127, 127, 0.06));
-}
-
-.node-inspector__proposal-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 8px;
 }
 
 .node-inspector__options {

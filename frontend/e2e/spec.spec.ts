@@ -10,7 +10,8 @@ import {
 } from './helpers'
 
 /**
- * Spec flow on the graph: generate a derived snapshot for the ACTIVE route;
+ * Spec flow on the graph: generate a derived snapshot for the ACTIVE route
+ * through the graph-center Spec Dock (collapsed by default);
  * sections/unresolved items/source refs render; snapshot history updates.
  * Fake gateway only — no real model.
  */
@@ -19,7 +20,16 @@ test('generate and inspect a derived spec snapshot', async ({ page }) => {
   await draftFirstQuestion(page)
   await answerActiveNode(page, 'Spec-worthy answer content')
 
-  await page.getByTestId('tab-spec').click()
+  // Spec Dock 默认折叠在 Graph 中央下方。
+  const dock = page.getByTestId('spec-dock')
+  await expect(dock).toBeVisible()
+  await expect(dock).toHaveAttribute('data-state', 'collapsed')
+  await expect(page.getByTestId('generate-spec')).toHaveCount(0)
+
+  await page.getByTestId('spec-dock-toggle').click()
+  await expect(dock).toHaveAttribute('data-state', 'expanded')
+  // Graph 在 Dock 展开后仍然可见可用。
+  await expect(page.getByTestId('graph-canvas')).toBeVisible()
   await expect(page.getByTestId('generate-spec')).toBeVisible()
   await expect(page.getByText('为当前路线生成规格')).toBeVisible()
 
@@ -28,7 +38,7 @@ test('generate and inspect a derived spec snapshot', async ({ page }) => {
   await expect(page.getByTestId('spec-snapshot-detail')).toBeVisible()
   await expect(page.getByTestId('derived-label')).toContainText('派生产物')
   await expect(page.getByText('用户澄清了主要目标：明确最重要的成果。')).toBeVisible()
-  await expect(page.getByTestId('spec-snapshot-item')).toHaveCount(1)
+  await expect(page.getByTestId('spec-snapshot-select')).toBeVisible()
   await expect(page.locator('.error-banner')).toHaveCount(0)
 })
 
@@ -63,20 +73,23 @@ test('Active=A Focus=B separates reading context from work context', async ({ pa
   // Focus 不改变 Active。
   await expect(page.getByTestId('active-route')).toHaveCount(1)
 
-  // 需求状态与规格历史跟随读取路线 B（固定右侧 Inspector）。
+  // 需求摘要与规格 Dock 跟随读取路线 B（项目摘要 + 中央 Dock）。
   await expect(page.getByTestId('right-sidebar')).toBeVisible()
-  await expect(page.getByTestId('requirement-state-panel')).toBeVisible()
-  await expect(page.getByText('路线：Route-B').first()).toBeVisible()
+  await expect(page.getByTestId('project-summary')).toBeVisible()
+  await expect(page.getByText('当前查看路线：').first()).toBeVisible()
+  const dock = page.getByTestId('spec-dock')
+  await expect(dock).toBeVisible()
+  // 折叠摘要即声明正在查看 B、生成目标 A。
+  await expect(page.getByTestId('spec-route-warning')).toContainText('Route-B')
 
   // 唯一可回答节点仍是 A 上的节点（Focus 不移动工作上下文）。
-  await page.getByTestId('tab-spec').click()
-  await expect(page.getByTestId('generate-focus-warning')).toContainText('Route-B')
-  await expect(page.getByText('当前路线：主路线')).toBeVisible()
-  await expect(page.getByTestId('specs-empty')).toBeVisible()
+  await expect(page.locator('.graph-question-node--current')).toHaveCount(1)
 
   // 生成始终针对当前路线 A，成功后读取上下文跟随返回的 A 产物。
+  await page.getByTestId('spec-dock-toggle').click()
+  await expect(page.getByTestId('spec-dock-body')).toContainText('Route-B')
+  await expect(page.getByTestId('spec-dock-body')).toContainText('生成操作将针对当前路线')
   await page.getByTestId('generate-spec').click()
   await expect(page.getByTestId('spec-snapshot-detail')).toBeVisible()
-  await expect(page.getByText('读取路线：主路线')).toBeVisible()
-  await expect(page.getByTestId('spec-snapshot-item')).toHaveCount(1)
+  await expect(page.getByTestId('spec-snapshot-select')).toBeVisible()
 })

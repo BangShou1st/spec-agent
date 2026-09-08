@@ -314,9 +314,9 @@ describe('graph question node', () => {
     expect(wrapper.text()).not.toContain('Second route answer.')
     expect(wrapper.emitted('fork')).toBeUndefined()
     expect(wrapper.emitted('submit-answer')).toBeUndefined()
-    expect(wrapper.text()).toContain('Initial')
-    expect(wrapper.text()).toContain('Route-B')
-    expect(wrapper.text()).not.toContain('共享 · 2 条路线')
+    // 历史共享节点：header 只展示计数，完整成员在下拉框/Inspector 中查看。
+    expect(wrapper.find('[data-test="shared-membership"]').text()).toContain('共享 · 2 条路线')
+    expect(wrapper.findAll('.graph-route-chip')).toHaveLength(0)
   })
 
   it('renders runtime state on a pending projection and exposes retry', async () => {
@@ -370,16 +370,34 @@ describe('shared node canonical answer (no route-specific waiting)', () => {
     expect(wrapper.find('[data-test="answer-this-question"]').exists()).toBe(false)
   })
 
-  it('shared node membership chips render both routes', async () => {
+  it('historical shared node summarizes membership as a count, not per-route chips', async () => {
     const wrapper = mountNode(historicalData({
-      routeIds: ['r1', 'r2'],
+      isShared: true,
+      routeIds: ['r1', 'r2', 'r3', 'r4'],
+      visibleRouteIds: ['r1', 'r2', 'r3', 'r4'],
       routeMembership: [
-        { routeId: 'r1', label: 'Initial', lifecycleStatus: 'open', isActive: true },
-        { routeId: 'r2', label: 'Route-B', lifecycleStatus: 'archived', isActive: false },
+        { routeId: 'r1', label: '主路线', lifecycleStatus: 'open', isActive: true },
+        { routeId: 'r2', label: '分支一', lifecycleStatus: 'open', isActive: false },
+        { routeId: 'r3', label: '分支二', lifecycleStatus: 'open', isActive: false },
+        { routeId: 'r4', label: '分支三', lifecycleStatus: 'archived', isActive: false },
       ],
     }))
-    expect(wrapper.text()).toContain('Initial')
-    expect(wrapper.text()).toContain('Route-B')
+    expect(wrapper.find('[data-test="shared-membership"]').text()).toContain('共享 · 4 条路线')
+    expect(wrapper.findAll('.graph-route-chip')).toHaveLength(0)
+  })
+
+  it('current answerable node keeps its reading context chips', async () => {
+    const wrapper = mountNode(currentData({
+      isShared: true,
+      routeIds: ['r1', 'r2'],
+      visibleRouteIds: ['r1', 'r2'],
+      routeMembership: [
+        { routeId: 'r1', label: '主路线', lifecycleStatus: 'open', isActive: true },
+        { routeId: 'r2', label: '分支一', lifecycleStatus: 'open', isActive: false },
+      ],
+    }))
+    expect(wrapper.find('[data-test="shared-membership"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="route-membership"]').exists()).toBe(true)
   })
 
   it('shared unanswered node shows only plain waiting, never a route-specific resume affordance', async () => {

@@ -634,6 +634,17 @@ textarea {
   min-width: 0;
 }
 
+/* 历史共享节点的计数摘要：安静的单行文本，不再逐个渲染路线 chip。 */
+.graph-question-node__routes--compact {
+  display: block;
+  flex: 0 1 auto;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .graph-question-node__header:active {
   cursor: grabbing;
 }
@@ -1169,6 +1180,9 @@ input:focus-visible {
   display: flex;
   min-width: 0;
   min-height: 0;
+  /* 相对 shell（height:100%）取确定高度，否则纵向 column 的
+     graph-region 百分比高度失效、canvas 被内容高度反推。 */
+  height: 100%;
   overflow: hidden;
 }
 
@@ -1198,9 +1212,25 @@ input:focus-visible {
   min-width: 0;
   min-height: 0;
   display: flex;
+  flex-direction: column;
 }
 
 .workspace-shell__center > .workspace-shell__canvas {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Graph 区域：Dock 上方的可见工作区，展开 Dock 时压缩但不消失。 */
+.workspace-shell__graph-region {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+}
+
+.workspace-shell__graph-region > .workspace-shell__canvas {
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
