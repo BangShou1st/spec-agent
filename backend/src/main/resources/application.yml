@@ -74,3 +74,9 @@ spec:
       # remaining budget always derives from the persisted cycle index, so
       # no remaining-budget counter is stored anywhere.
       max-cycles: ${SPEC_AGENT_LOOP_MAX_CYCLES:3}
+    capability:
+      # Deterministic planner-facing capability catalog bounds. Model output
+      # can never change these limits.
+      max-visible: ${SPEC_AGENT_CAPABILITY_CATALOG_MAX_VISIBLE:32}
+      max-descriptor-bytes: ${SPEC_AGENT_CAPABILITY_CATALOG_MAX_DESCRIPTOR_BYTES:2048}
+      max-description-chars: ${SPEC_AGENT_CAPABILITY_CATALOG_MAX_DESCRIPTION_CHARS:320}

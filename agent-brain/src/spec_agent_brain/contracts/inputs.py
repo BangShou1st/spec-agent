@@ -119,6 +119,12 @@ class CapabilityDescriptor(StrictModel):
     read_only: bool
     description: str = ""
     side_effect_class: str = "NONE"
+    # Bounded JSON-Schema-flavoured argument shape (optional for wire/replay
+    # compatibility with older frozen payloads and brains).
+    input_schema: Dict[str, Any] = Field(default_factory=dict)
+    # Structured relevance facts ("KIND" or "KIND:SUBTYPE") that drove
+    # visibility; mirrors the runtime projection, never model-authored.
+    supports: List[str] = Field(default_factory=list)
 
 
 class CapabilityResultView(StrictModel):

@@ -154,6 +154,16 @@ Rules:
   observations from earlier invocations (external evidence / generated
   summaries with `sourceRefs` + `provenance`) — they are never auto-confirmed
   graph truth.
+- Capability/Dynamic-provider extension: an `availableCapabilities` entry
+  carries the bounded planner-facing descriptor shape
+  `{id, version, description, inputSchema, readOnly, sideEffectClass, supports}`.
+  `inputSchema` (optional JSON-Schema-flavoured object) gives the model the
+  bounded argument shape needed to build valid calls for dynamic providers
+  (e.g. MCP tools); `supports` mirrors the structured relevance facts
+  ("KIND" or "KIND:SUBTYPE") that drove visibility. Both fields are optional
+  and default to empty, so legacy frozen payloads and older brains replay
+  unchanged. They never carry credentials, endpoints, or implementation
+  details.
 - Stage C bounded 1-hop semantic context (`NODE_QUERY` only; empty lists for
   every other operation): `snapshot.relations` is the ACTIVE SEMANTIC
   relations touching the anchor, direction preserved exactly as stored

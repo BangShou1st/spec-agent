@@ -11,6 +11,8 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -124,6 +126,58 @@ class AgentV2ContractTest {
     void invalidV3EligibilityRequestsAreRejected(String name) throws Exception {
         assertThatThrownBy(() -> AgentContracts.read(fixture(name), AgentRequestEnvelope.class))
                 .isInstanceOf(AgentContractException.class);
+    }
+
+    @Test
+    void capabilityDescriptorSchemaFieldsRoundTripStrictly() throws Exception {
+        AgentRequestEnvelope envelope = AgentContracts.read(
+                fixture("agent-input-valid.json"), AgentRequestEnvelope.class);
+        var enriched = new AgentRequestEnvelope(
+                envelope.protocolVersion(), envelope.runId(), envelope.event(),
+                withCapabilities(envelope.snapshot(),
+                        new CapabilityDescriptor("mcp.demo.tool", "1",
+                                "Demo MCP tool",
+                                Map.of("type", "object",
+                                        "properties", Map.of("query",
+                                                Map.of("type", "string"))),
+                                false, "EXTERNAL_REVERSIBLE",
+                                List.of("DOCUMENT", "RESOURCE:FILE"))),
+                envelope.capabilities(), envelope.decisionBudget(), envelope.actionEligibility());
+
+        AgentRequestEnvelope reparsed = AgentContracts.read(
+                AgentContracts.write(enriched), AgentRequestEnvelope.class);
+        CapabilityDescriptor descriptor =
+                reparsed.snapshot().availableCapabilities().get(0);
+        assertThat(descriptor.id()).isEqualTo("mcp.demo.tool");
+        assertThat(descriptor.inputSchema())
+                .containsEntry("type", "object");
+        assertThat(descriptor.supports())
+                .containsExactly("DOCUMENT", "RESOURCE:FILE");
+        // Legacy 5-arg constructor stays wire-equivalent (empty schema/supports).
+        assertThat(AgentContracts.write(new CapabilityDescriptor(
+                "legacy.tool", "1", "legacy", true, "NONE")))
+                .contains("\"inputSchema\":{}")
+                .contains("\"supports\":[]");
+    }
+
+    @Test
+    void legacyFixturesWithoutSchemaFieldsStillParse() throws Exception {
+        // Every existing golden fixture predates inputSchema/supports; they
+        // must keep parsing with empty defaults (replay compatibility).
+        AgentRequestEnvelope envelope = AgentContracts.read(
+                fixture("agent-input-valid.json"), AgentRequestEnvelope.class);
+        assertThat(envelope.snapshot().availableCapabilities()).isEmpty();
+    }
+
+    private AgentInputSnapshot withCapabilities(AgentInputSnapshot snapshot,
+                                                 CapabilityDescriptor... descriptors) {
+        return new AgentInputSnapshot(
+                snapshot.snapshotId(), snapshot.contextHash(), snapshot.projectId(),
+                snapshot.routeId(), snapshot.anchorNodeId(), snapshot.routeContext(),
+                snapshot.lineage(), snapshot.effectiveClaims(), snapshot.metadata(),
+                snapshot.allowedSourceRefs(), List.of(descriptors),
+                snapshot.capabilityResults(), snapshot.relations(),
+                snapshot.relatedNodes(), snapshot.autonomy());
     }
 
     @ParameterizedTest

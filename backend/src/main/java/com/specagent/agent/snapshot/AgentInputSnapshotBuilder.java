@@ -27,7 +27,9 @@ import com.specagent.answer.Answer;
 import com.specagent.answer.AnswerRepository;
 import com.specagent.capability.CapabilityInvocationRecord;
 import com.specagent.capability.CapabilityInvocationRepository;
+import com.specagent.capability.CapabilityQueryContext;
 import com.specagent.capability.CapabilityRegistry;
+import com.specagent.capability.CapabilityVisibilityService;
 import com.specagent.common.Hashes;
 import com.specagent.common.Json;
 import com.specagent.context.ContextSnapshot;
@@ -100,6 +102,7 @@ public class AgentInputSnapshotBuilder {
     private final RouteRepository routeRepository;
     private final RequirementStateBuilder requirementStateBuilder;
     private final CapabilityRegistry capabilityRegistry;
+    private final CapabilityVisibilityService capabilityVisibilityService;
     private final CapabilityInvocationRepository capabilityInvocationRepository;
     private final AgentRunRepository agentRunRepository;
     private final AgentInputProjectionRepository projectionRepository;
@@ -112,6 +115,7 @@ public class AgentInputSnapshotBuilder {
                                      RouteRepository routeRepository,
                                      RequirementStateBuilder requirementStateBuilder,
                                      CapabilityRegistry capabilityRegistry,
+                                     CapabilityVisibilityService capabilityVisibilityService,
                                      CapabilityInvocationRepository capabilityInvocationRepository,
                                      AgentRunRepository agentRunRepository,
                                      AgentInputProjectionRepository projectionRepository,
@@ -123,6 +127,7 @@ public class AgentInputSnapshotBuilder {
         this.routeRepository = routeRepository;
         this.requirementStateBuilder = requirementStateBuilder;
         this.capabilityRegistry = capabilityRegistry;
+        this.capabilityVisibilityService = capabilityVisibilityService;
         this.capabilityInvocationRepository = capabilityInvocationRepository;
         this.agentRunRepository = agentRunRepository;
         this.projectionRepository = projectionRepository;
@@ -366,48 +371,43 @@ public class AgentInputSnapshotBuilder {
     }
 
     /**
-     * Permission- and relevance-filtered capability descriptors. Relevance is
-     * driven by each descriptor's {@code supports} declarations ("KIND" or
-     * "KIND:SUBTYPE") against the context node kinds — the lineage nodes plus
-     * the bounded 1-hop related nodes — a generic rule, so new capabilities
-     * become visible by declaring supports, without edits to the builder or
-     * planner. A directly-related RESOURCE node therefore exposes an allowed
-     * capability without any workspace-wide scan. Context-free capabilities
-     * (empty supports) stay visible everywhere.
+     * Permission-, availability- and relevance-filtered capability descriptors
+     * projected onto the wire contract. Filtering (permissions, provider
+     * availability, {@code supports} compatibility against the context node
+     * kinds, catalog bounds) is owned by
+     * {@link CapabilityVisibilityService}; this builder only maps the bounded
+     * runtime descriptor onto the versioned wire shape — including the bounded
+     * input schema and the {@code supports} facts that drove visibility — so
+     * the model can construct valid calls for dynamic providers without ever
+     * seeing implementation classes, connections, endpoints or credentials.
      */
     private List<CapabilityDescriptor> visibleCapabilityDescriptors(List<Node> lineageNodes,
                                                                     List<Node> relatedNodes) {
-        List<Node> contextNodes = new ArrayList<>(lineageNodes);
-        contextNodes.addAll(relatedNodes);
-        return capabilityRegistry.descriptorsFor(java.util.Set.of()).stream()
-                .filter(descriptor -> supportsAnyLineageNode(descriptor, contextNodes))
+        List<String> contextKinds = new ArrayList<>();
+        for (Node node : lineageNodes) {
+            contextKinds.add(node.kind().code());
+            if (node.subtype() != null && !node.subtype().isBlank()) {
+                contextKinds.add(node.kind().code() + ":" + node.subtype());
+            }
+        }
+        for (Node node : relatedNodes) {
+            contextKinds.add(node.kind().code());
+            if (node.subtype() != null && !node.subtype().isBlank()) {
+                contextKinds.add(node.kind().code() + ":" + node.subtype());
+            }
+        }
+        CapabilityQueryContext context = new CapabilityQueryContext(
+                Set.of(), List.copyOf(contextKinds), Map.of());
+        return capabilityVisibilityService.visibleCapabilities(context).stream()
                 .map(descriptor -> new CapabilityDescriptor(
                         descriptor.capabilityId(),
                         descriptor.version(),
                         descriptor.description(),
+                        descriptor.inputSchema(),
                         descriptor.readOnly(),
-                        descriptor.sideEffectClass().code()))
+                        descriptor.sideEffectClass().code(),
+                        descriptor.supports()))
                 .toList();
-    }
-
-    private boolean supportsAnyLineageNode(com.specagent.capability.CapabilityDescriptor descriptor,
-                                           List<Node> lineageNodes) {
-        if (descriptor.supports().isEmpty()) {
-            return true;
-        }
-        return descriptor.supports().stream().anyMatch(support -> lineageNodes.stream()
-                .anyMatch(node -> supportMatches(support, node)));
-    }
-
-    private boolean supportMatches(String support, Node node) {
-        int separator = support.indexOf(':');
-        if (separator < 0) {
-            return support.equalsIgnoreCase(node.kind().code());
-        }
-        String kind = support.substring(0, separator);
-        String subtype = support.substring(separator + 1);
-        return kind.equalsIgnoreCase(node.kind().code())
-                && subtype.equalsIgnoreCase(node.subtype());
     }
 
     /**
