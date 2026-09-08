@@ -178,10 +178,18 @@ const showPlainErrorBanner = computed(() =>
   store.error !== null && recoveryModel.value === null,
 )
 
-/** 中央一句话 Agent 状态：运行时显示产品化文案，未知 phase 只回退通用语。 */
+/** 中央一句话 Agent 状态：仅运行时显示产品化文案，未知 phase 只回退通用语。
+ * 终态（成功/失败）不常驻：成功由 toast 承担，失败由 Recovery/横幅承担。 */
 const agentStatusCopy = computed(() => {
   if (store.pendingRouteProjection) {
+    if (store.pendingRouteProjection.status === 'SUCCEEDED'
+      || store.pendingRouteProjection.status === 'FAILED') {
+      return null
+    }
     return agentPhaseLabel(store.pendingRouteProjection.phase)
+  }
+  if (store.answerRunStatus === 'SUCCEEDED' || store.answerRunStatus === 'FAILED') {
+    return null
   }
   if (store.answerRunId || store.answerRunStatus) {
     return agentPhaseLabel(store.answerRunPhase)
