@@ -49,6 +49,10 @@ test('empty start drafts the first real node and answers inside the graph node',
 
   // 需求状态跟随回答更新（后端派生内容 verbatim）。决策引擎的 STATE_UPDATE
   // 只产出一条 confirmed claim；不会再有旧的 unresolved claim。
+  // 需求全文在 Inspector 二级视图中查看（默认项目摘要只展示计数）。
+  await expect(page.getByTestId('project-summary')).toBeVisible()
+  await page.getByTestId('open-requirements').click()
+  await expect(page.getByTestId('requirement-detail')).toBeVisible()
   await expect(page.getByText('The user clarified the main outcome.')).toBeVisible()
   await expect(page.locator('.error-banner')).toHaveCount(0)
 })
