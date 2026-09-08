@@ -2,6 +2,7 @@
 import { computed, inject, nextTick, onMounted, ref, watch } from 'vue'
 import { routerKey } from 'vue-router'
 import ApiErrorBanner from '@/components/ApiErrorBanner.vue'
+import RecoveryNotice from '@/components/workspace/RecoveryNotice.vue'
 import ConfirmRouteActionDialog from '@/components/ConfirmRouteActionDialog.vue'
 import ForkRouteDialog from '@/components/ForkRouteDialog.vue'
 import ResourceDialog from '@/components/ResourceDialog.vue'
@@ -18,6 +19,12 @@ import {
   type SpecAgentGraphNodeData,
 } from '@/graph/graphProjection'
 import { phaseToCopy } from '@/graph/phaseCopy'
+import { agentPhaseLabel } from '@/presentation/agentPresentation'
+import {
+  recoveryNoticeFromState,
+  type RecoveryAction,
+  type RecoveryNoticeModel,
+} from '@/presentation/recoveryPresentation'
 import { productErrorMessage, requiresModelSettings } from '@/api/errorCopy'
 import { useGraphUiStore } from '@/stores/graphUiStore'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
@@ -152,6 +159,36 @@ const workspaceRetrying = computed(() => store.loading || store.refreshing
   || store.submitting || store.repairingAnswer || store.drafting
   || store.routeCommandPending || store.generatingSpec)
 
+/**
+ * 统一恢复提示：一次最多一个。model settings 错误仍走普通错误条；
+ * 已被恢复模型覆盖的状态不再渲染旧的三块恢复按钮。
+ */
+const recoveryModel = computed<RecoveryNoticeModel | null>(() => {
+  if (store.error && requiresModelSettings(store.error.code)) return null
+  return recoveryNoticeFromState({
+    answerOutcomeUnknown: store.answerOutcomeUnknown,
+    repairableAnswerId: store.repairableAnswerId,
+    resubmitAnswerPayload: store.resubmitAnswerPayload,
+    manualRetryState: store.manualModelRetry?.state ?? null,
+    errorCode: store.error?.code ?? null,
+  })
+})
+
+const showPlainErrorBanner = computed(() =>
+  store.error !== null && recoveryModel.value === null,
+)
+
+/** 中央一句话 Agent 状态：运行时显示产品化文案，未知 phase 只回退通用语。 */
+const agentStatusCopy = computed(() => {
+  if (store.pendingRouteProjection) {
+    return agentPhaseLabel(store.pendingRouteProjection.phase)
+  }
+  if (store.answerRunId || store.answerRunStatus) {
+    return agentPhaseLabel(store.answerRunPhase)
+  }
+  return null
+})
+
 const runtimePhaseCopy = computed(() => {
   if (store.pendingRouteProjection) {
     return phaseToCopy(store.pendingRouteProjection.phase)
@@ -174,6 +211,27 @@ const reanswerFinalized = computed(() => {
   return store.graphView.answers.some((answer) => answer.nodeId === reanswerNodeId.value
     && answer.routeId === reanswerSourceRoute.value!.id)
 })
+
+/** 恢复 CTA 的语义意图 → 已有 store 命令，不新增语义。 */
+async function handleRecoveryAction(action: RecoveryAction): Promise<void> {
+  if (action === 'reconcile-answer') {
+    await store.reconcileAnswerOutcome()
+  } else if (action === 'resume-answer') {
+    if (store.repairableAnswerId) {
+      await store.repairAnswerForActiveFlow(store.repairableAnswerId)
+    }
+  } else if (action === 'resubmit-answer') {
+    await store.resubmitFailedAnswer()
+  } else if (action === 'retry-model-operation') {
+    const retryKind = store.manualModelRetry?.kind
+    const ok = await store.retryManualModelOperation()
+    if (ok && retryKind === 'regenerate') {
+      await focusAfterMutation()
+    }
+  } else {
+    await store.refreshWorkspace()
+  }
+}
 
 async function retry(): Promise<void> {
   if (store.error && requiresModelSettings(store.error.code)) {
@@ -438,32 +496,19 @@ async function confirmDestructive(): Promise<void> {
         </header>
 
         <div class="workspace-shell__status-layer">
+          <RecoveryNotice
+            v-if="recoveryModel"
+            :model="recoveryModel"
+            @action="handleRecoveryAction"
+          />
           <ApiErrorBanner
-            v-if="store.error"
+            v-else-if="showPlainErrorBanner"
             :message="workspaceErrorMessage"
-            :code="store.error.code"
+            :code="store.error!.code"
             :retry-label="workspaceRetryLabel"
             :retrying="workspaceRetrying"
             @retry="retry"
           />
-          <div v-if="store.repairableAnswerId" class="workspace-answer-retry" data-test="answer-retry">
-            <span>回答已保存，后续生成未完成。</span>
-            <button class="btn btn-primary" type="button" :disabled="workspaceRetrying" @click="retry">
-              {{ workspaceRetrying ? '正在请求…' : '重新请求' }}
-            </button>
-          </div>
-          <div v-else-if="store.answerOutcomeUnknown" class="workspace-answer-retry" data-test="answer-outcome-unknown">
-            <span>提交结果未知，请先恢复状态。</span>
-            <button class="btn" type="button" :disabled="workspaceRetrying" @click="retry">
-              刷新状态
-            </button>
-          </div>
-          <div v-else-if="store.resubmitAnswerPayload" class="workspace-answer-retry" data-test="answer-resubmit">
-            <span>回答尚未保存，可以再次提交。</span>
-            <button class="btn btn-primary" type="button" :disabled="workspaceRetrying" @click="retry">
-              再次提交
-            </button>
-          </div>
         </div>
 
         <GraphCanvas
@@ -494,6 +539,9 @@ async function confirmDestructive(): Promise<void> {
         />
 
         <div class="workspace-shell__toast-layer">
+          <p v-if="agentStatusCopy" class="muted workspace-shell__runtime-phase" data-test="agent-status">
+            {{ agentStatusCopy }}
+          </p>
           <p v-if="runtimePhaseCopy" class="muted workspace-shell__runtime-phase" data-test="runtime-phase">
             {{ runtimePhaseCopy }}
           </p>
