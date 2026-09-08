@@ -11,7 +11,6 @@ import {
   makeProject,
   makeRequirementState,
   makeRoute,
-  makeSpecSnapshot,
 } from '@/test/fixtures'
 
 vi.mock('@/api/projects', () => ({ getProject: vi.fn() }))
@@ -26,6 +25,22 @@ vi.mock('@/api/requirementState', () => ({
   getRouteRequirementState: vi.fn(),
 }))
 vi.mock('@/api/graph', () => ({ getProjectGraph: vi.fn() }))
+vi.mock('@/api/graphCommands', () => ({
+  acceptProposal: vi.fn(),
+  appendContinuation: vi.fn(),
+  attachResource: vi.fn(),
+  createFloatingDraftNode: vi.fn(),
+  createNodeQuery: vi.fn(),
+  createRelation: vi.fn(),
+  getNodeQueryResult: vi.fn(),
+  getUndoRedoAvailability: vi.fn(),
+  listProposals: vi.fn().mockResolvedValue([]),
+  redoGraphOperation: vi.fn(),
+  rejectProposal: vi.fn(),
+  reviseDraftNode: vi.fn(),
+  setKnowledgeStatus: vi.fn(),
+  undoGraphOperation: vi.fn(),
+}))
 vi.mock('@/api/routes', () => ({
   activateRoute: vi.fn(),
   archiveRoute: vi.fn(),
@@ -51,6 +66,29 @@ const mockedGetRouteRequirementState = vi.mocked(getRouteRequirementState)
 const mockedGetProjectGraph = vi.mocked(getProjectGraph)
 const mockedListRouteSpecs = vi.mocked(listRouteSpecs)
 
+function nodeData(overrides: Record<string, unknown> = {}) {
+  return {
+    node: makeNode({ id: 'n1', question: 'Selection question' }),
+    canonicalNodeId: 'n1',
+    routeIds: ['rA'],
+    visibleRouteIds: ['rA'],
+    answers: [],
+    routeStates: [{ routeId: 'rA', answer: null }],
+    primaryAnswer: null,
+    answerPresentationMode: 'single-route' as const,
+    readingRouteId: 'rA',
+    isCurrent: false,
+    canAnswer: false,
+    isExpanded: false,
+    isShared: false,
+    projectId: 'project-1',
+    isLatest: false,
+    qLabel: null,
+    visualWeight: 'normal' as const,
+    ...overrides,
+  }
+}
+
 async function loadStore(active = makeActiveState()) {
   const store = useWorkspaceStore()
   mockedGetProject.mockResolvedValue(active.project)
@@ -64,7 +102,7 @@ async function loadStore(active = makeActiveState()) {
   return store
 }
 
-describe('workspace inspector', () => {
+describe('workspace inspector contextual surface', () => {
   beforeEach(() => {
     localStorage.clear()
     setActivePinia(createPinia())
@@ -78,7 +116,7 @@ describe('workspace inspector', () => {
     expect(ui.readingRouteId(store.activeRoute?.id ?? null)).toBeNull()
   })
 
-  it('Active=A + Focus=B reads requirement state and specs for B only', async () => {
+  it('Active=A + Focus=B reads requirement state for B only', async () => {
     const activeA = makeActiveState({
       project: makeProject({ id: 'p1', activeRouteId: 'rA' }),
       activeRoute: makeRoute({ id: 'rA', isActive: true }),
@@ -88,189 +126,136 @@ describe('workspace inspector', () => {
     const ui = useGraphUiStore()
     ui.setFocusRoute('rB')
     mockedGetRouteRequirementState.mockResolvedValue(makeRequirementState({ routeId: 'rB' }))
-    mockedListRouteSpecs.mockResolvedValue([makeSpecSnapshot({ routeId: 'rB', id: 'spec-B' })])
 
     const wrapper = mount(WorkspaceInspector, { props: { nodeData: null } })
     await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
 
     expect(mockedGetRouteRequirementState).toHaveBeenCalledWith('p1', 'rB')
-    expect(mockedListRouteSpecs).toHaveBeenCalledWith('p1', 'rB')
     expect(store.requirementStatesByRoute.rB?.routeId).toBe('rB')
   })
 
-  it('no selection defaults to the requirement-state tab', async () => {
+  it('no selection shows the project summary without top-level tabs', async () => {
     await loadStore()
     const wrapper = mount(WorkspaceInspector, { props: { nodeData: null } })
-    expect(wrapper.find('[data-test="tab-requirement"]').classes()).toContain('active')
-    expect(wrapper.find('[data-test="requirement-state-panel"]').exists()).toBe(true)
-  })
-
-  it('a selected node switches the default tab to details', async () => {
-    await loadStore()
-    const nodeData = {
-      node: makeNode({ id: 'n1', question: 'Selection question' }),
-      routeIds: ['rA'],
-      visibleRouteIds: ['rA'],
-      answers: [],
-      routeStates: [{ routeId: 'rA', answer: null }],
-      primaryAnswer: null,
-      answerPresentationMode: 'single-route' as const,
-      readingRouteId: 'rA',
-      isCurrent: false,
-      canAnswer: false,
-      isExpanded: false,
-      isShared: false,
-      projectId: 'project-1',
-      isLatest: false,
-      qLabel: null,
-      visualWeight: 'normal' as const,
-    }
-    const wrapper = mount(WorkspaceInspector, { props: { nodeData } })
-    expect(wrapper.find('[data-test="node-inspector"]').exists()).toBe(true)
-  })
-
-  it('clearing the selection returns to the requirement tab, never the spec tab', async () => {
-    await loadStore()
-    const nodeData = {
-      node: makeNode({ id: 'n1', question: 'Selection question' }),
-      routeIds: ['rA'],
-      visibleRouteIds: ['rA'],
-      answers: [],
-      routeStates: [{ routeId: 'rA', answer: null }],
-      primaryAnswer: null,
-      answerPresentationMode: 'single-route' as const,
-      readingRouteId: 'rA',
-      isCurrent: false,
-      canAnswer: false,
-      isExpanded: false,
-      isShared: false,
-      projectId: 'project-1',
-      isLatest: false,
-      qLabel: null,
-      visualWeight: 'normal' as const,
-    }
-    const wrapper = mount(WorkspaceInspector, { props: { nodeData } })
-    // 选中节点 → 详情。
-    expect(wrapper.find('[data-test="node-inspector"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="tab-details"]').classes()).toContain('active')
-    // 清除选择 → 默认需求状态（不是规格）。
-    await wrapper.setProps({ nodeData: null })
-    await wrapper.vm.$nextTick()
-    expect(wrapper.find('[data-test="node-inspector"]').exists()).toBe(false)
-    expect(wrapper.find('[data-test="tab-requirement"]').classes()).toContain('active')
-    expect(wrapper.find('[data-test="requirement-state-panel"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="inspector-tabs"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="tab-details"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="tab-requirement"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="tab-spec"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="project-summary"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="spec-snapshot-panel"]').exists()).toBe(false)
   })
 
-  it('inspector shows the canonical Answer once and route membership without per-route answer lists', async () => {
+  it('a selected node shows the node inspector, not the summary', async () => {
     await loadStore()
-    const nodeData = {
-      node: makeNode({ id: 'n1', question: 'Shared node question' }),
-      routeIds: ['rA', 'rB'],
-      visibleRouteIds: ['rA', 'rB'],
-      answers: [
-        { routeId: 'rA', selectedOptionId: null, selectedOptionLabel: null, freeText: 'A answer', isPrimary: true },
-      ],
-      routeStates: [
-        { routeId: 'rA', answer: { routeId: 'rA', selectedOptionId: null, selectedOptionLabel: null, freeText: 'A answer', isPrimary: true } },
-        { routeId: 'rB', answer: null },
-      ],
-      primaryAnswer: {
-        routeId: 'rA', selectedOptionId: null, selectedOptionLabel: null, freeText: 'A answer', isPrimary: true,
+    const wrapper = mount(WorkspaceInspector, { props: { nodeData: nodeData() } })
+    expect(wrapper.find('[data-test="node-inspector"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="project-summary"]').exists()).toBe(false)
+  })
+
+  it('a selected edge shows the edge view with readable route members', async () => {
+    await loadStore()
+    const wrapper = mount(WorkspaceInspector, {
+      props: {
+        nodeData: null,
+        selectedEdge: { id: 'lineage:x', kind: 'lineage', relationType: null, routeIds: [] },
       },
-      answerPresentationMode: 'focused' as const,
-      readingRouteId: 'rB',
-      isCurrent: false,
-      canAnswer: false,
-      isExpanded: false,
-      isShared: true,
-      projectId: 'project-1',
-      isLatest: false,
-      qLabel: null,
-      visualWeight: 'focus' as const,
-    }
-    const wrapper = mount(WorkspaceInspector, { props: { nodeData } })
-    // canonical Answer 只展示一次，不按路线拆分。
+    })
+    expect(wrapper.find('[data-test="edge-inspector"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="project-summary"]').exists()).toBe(false)
+  })
+
+  it('project summary opens the requirement detail view and returns', async () => {
+    await loadStore()
+    const wrapper = mount(WorkspaceInspector, { props: { nodeData: null } })
+    await wrapper.find('[data-test="open-requirements"]').trigger('click')
+    expect(wrapper.find('[data-test="requirement-detail"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="project-summary"]').exists()).toBe(false)
+    await wrapper.find('[data-test="requirement-back"]').trigger('click')
+    expect(wrapper.find('[data-test="project-summary"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="requirement-detail"]').exists()).toBe(false)
+  })
+
+  it('selecting a node resets the secondary requirements view', async () => {
+    await loadStore()
+    const wrapper = mount(WorkspaceInspector, { props: { nodeData: null } })
+    await wrapper.find('[data-test="open-requirements"]').trigger('click')
+    expect(wrapper.find('[data-test="requirement-detail"]').exists()).toBe(true)
+    await wrapper.setProps({ nodeData: nodeData() })
+    expect(wrapper.find('[data-test="node-inspector"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="requirement-detail"]').exists()).toBe(false)
+  })
+
+  it('inspector shows the canonical Answer once and keeps readable membership', async () => {
+    await loadStore()
+    const wrapper = mount(WorkspaceInspector, {
+      props: {
+        nodeData: nodeData({
+          node: makeNode({ id: 'n1', question: 'Shared node question' }),
+          routeIds: ['rA', 'rB'],
+          visibleRouteIds: ['rA', 'rB'],
+          answers: [
+            { routeId: 'rA', selectedOptionId: null, selectedOptionLabel: null, freeText: 'A answer', isPrimary: true },
+          ],
+          routeStates: [
+            { routeId: 'rA', answer: { routeId: 'rA', selectedOptionId: null, selectedOptionLabel: null, freeText: 'A answer', isPrimary: true } },
+            { routeId: 'rB', answer: null },
+          ],
+          primaryAnswer: {
+            routeId: 'rA', selectedOptionId: null, selectedOptionLabel: null, freeText: 'A answer', isPrimary: true,
+          },
+          answerPresentationMode: 'focused' as const,
+          readingRouteId: 'rB',
+          isShared: true,
+          visualWeight: 'focus' as const,
+        }),
+      },
+    })
     expect(wrapper.find('[data-test="canonical-answer"]').text()).toContain('A answer')
-    // 不再有逐路线 answer 列表 / 逐路线等待标记。
     expect(wrapper.find('[data-test="route-answer-rA"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="route-answer-rB"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="route-waiting"]').exists()).toBe(false)
-    // 路线归属区块仍展示共享路线成员。
     expect(wrapper.text()).toContain('路线归属')
   })
 
   it('current pending node keeps details but offers no fork or regenerate', async () => {
     await loadStore()
-    const nodeData = {
-      node: makeNode({ id: 'nC', question: 'Current pending question' }),
-      routeIds: ['rA'],
-      visibleRouteIds: ['rA'],
-      answers: [],
-      routeStates: [{ routeId: 'rA', answer: null }],
-      primaryAnswer: null,
-      answerPresentationMode: 'single-route' as const,
-      readingRouteId: 'rA',
-      isCurrent: true,
-      canAnswer: true,
-      isExpanded: false,
-      isShared: false,
-      projectId: 'project-1',
-      isLatest: false,
-      qLabel: null,
-      visualWeight: 'active' as const,
-    }
-    const wrapper = mount(WorkspaceInspector, { props: { nodeData } })
-    // 详情照常展示：问题、等待状态都在。
+    const wrapper = mount(WorkspaceInspector, {
+      props: {
+        nodeData: nodeData({
+          node: makeNode({ id: 'nC', question: 'Current pending question' }),
+          isCurrent: true,
+          canAnswer: true,
+          visualWeight: 'active' as const,
+        }),
+      },
+    })
     expect(wrapper.find('[data-test="node-inspector"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="node-detail-question"]').text()).toContain('Current pending question')
-    // 当前待回答节点：检查器展示"还没有回答"，不再按路线拆分等待。
     expect(wrapper.find('[data-test="node-detail-no-answer"]').text()).toContain('还没有回答')
-    // 当前待回答节点不提供历史动作：无“从此分支”、无“重新生成这个问题”。
     expect(wrapper.find('[data-test="inspector-fork"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="inspector-regenerate"]').exists()).toBe(false)
-    // 回答界面也只存在于 Graph 节点内，检查器没有第二套提交入口。
     expect(wrapper.find('[data-test="submit-answer"]').exists()).toBe(false)
   })
 
   it('historical nodes offer fork and regenerate from the inspector', async () => {
     await loadStore()
-    const nodeData = {
-      node: makeNode({ id: 'nOld', question: 'Historical question' }),
-      routeIds: ['rA'],
-      visibleRouteIds: ['rA'],
-      answers: [],
-      routeStates: [{ routeId: 'rA', answer: null }],
-      primaryAnswer: null,
-      answerPresentationMode: 'single-route' as const,
-      readingRouteId: 'rA',
-      isCurrent: false,
-      canAnswer: false,
-      isExpanded: false,
-      isShared: false,
-      projectId: 'project-1',
-      isLatest: false,
-      qLabel: null,
-      visualWeight: 'normal' as const,
-    }
-    const wrapper = mount(WorkspaceInspector, { props: { nodeData } })
+    const wrapper = mount(WorkspaceInspector, {
+      props: {
+        nodeData: nodeData({ node: makeNode({ id: 'nOld', question: 'Historical question' }) }),
+      },
+    })
     expect(wrapper.find('[data-test="inspector-fork"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="inspector-regenerate"]').exists()).toBe(true)
   })
 
-  it('spec generation warning targets the active route while reading another', async () => {
-    const activeA = makeActiveState({
-      project: makeProject({ id: 'p1', activeRouteId: 'rA' }),
-      activeRoute: makeRoute({ id: 'rA', isActive: true, tipNodeId: 'nA' }),
-      activeNode: makeNode({ id: 'nA' }),
-    })
-    await loadStore(activeA)
-    const ui = useGraphUiStore()
-    ui.setFocusRoute('rB')
+  it('never renders spec content inside the inspector', async () => {
+    await loadStore()
+    mockedListRouteSpecs.mockResolvedValue([])
     const wrapper = mount(WorkspaceInspector, { props: { nodeData: null } })
-    await wrapper.find('[data-test="tab-spec"]').trigger('click')
-    expect(wrapper.text()).toContain('当前查看路线：当前路线')
-    expect(wrapper.text()).toContain('你目前正在查看 路线，生成操作将针对当前路线 路线。')
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('[data-test="spec-snapshot-panel"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="generate-spec"]').exists()).toBe(false)
+    expect(mockedListRouteSpecs).not.toHaveBeenCalled()
   })
 })
