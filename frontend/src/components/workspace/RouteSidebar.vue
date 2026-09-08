@@ -91,8 +91,23 @@ function setHidden(routeId: string, hidden: boolean): void {
   else graphUi.restoreRouteDisplay(routeId)
 }
 
+function isolateRoute(route: GraphWorkspaceRouteView): void {
+  graphUi.isolateRoute(route.id, props.routes.map((candidate) => candidate.id))
+}
+
 function isArchivedOrDeleted(route: GraphWorkspaceRouteView): boolean {
   return route.lifecycleStatus === 'archived' || route.lifecycleStatus === 'deleted'
+}
+
+/** Human-readable route name. Never falls back to a raw id slice: an
+ * unlabeled route is described by its branch origin, then by whether it
+ * is the Active route. */
+function routeLabel(route: GraphWorkspaceRouteView): string {
+  if (route.label?.trim()) return route.label.trim()
+  if (route.branchType === 'fork') return '分支路线'
+  if (route.branchType === 'reanswer') return '重新回答路线'
+  if (route.branchType === 'regenerate') return '换题路线'
+  return route.isActive ? '主路线' : '路线'
 }
 
 /** The card is secondary navigation: reading Focus plus viewport location. */
@@ -135,7 +150,7 @@ function openRoute(route: GraphWorkspaceRouteView): void {
       >
         <div class="route-card__primary" data-test="route-primary">
           <div class="route-card__identity">
-            <strong class="route-card__label">{{ route.label ?? route.id.slice(0, 8) }}</strong>
+            <strong class="route-card__label">{{ routeLabel(route) }}</strong>
             <span class="meta-text">{{ route.lineageNodeIds.length }} 个节点</span>
           </div>
           <div class="route-card__state">
@@ -162,6 +177,7 @@ function openRoute(route: GraphWorkspaceRouteView): void {
               <button class="route-card__menu-item" data-test="hide-route" :disabled="route.id === activeRouteId" @click="setHidden(route.id, displayState(route.id) !== 'hidden')">
                 {{ displayState(route.id) === 'hidden' ? '恢复显示' : '隐藏路线' }}
               </button>
+              <button class="route-card__menu-item" data-test="isolate-route" @click="isolateRoute(route)">独览此路线</button>
             </div>
 
             <div class="route-card__group" data-test="runtime-actions-group">

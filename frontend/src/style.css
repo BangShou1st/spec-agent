@@ -1133,6 +1133,10 @@ input:focus-visible {
   box-shadow: 0 4px 14px rgb(31 36 48 / 10%);
   backdrop-filter: blur(8px);
   pointer-events: none;
+  /* Anchored to the Graph center column (the fixed body is the containing
+     block), never to the whole workspace: fixed sidebars reserve real
+     layout width at any size. */
+  max-width: min(360px, calc(100% - 32px));
 }
 
 .workspace-shell__header > * {
@@ -1161,6 +1165,7 @@ input:focus-visible {
 }
 
 .workspace-shell__body--fixed {
+  position: relative;
   display: flex;
   min-width: 0;
   min-height: 0;
@@ -1175,8 +1180,30 @@ input:focus-visible {
 
 .workspace-shell__body--fixed > .resizable-sidebar {
   flex: 0 0 auto;
-  height: 100%;
+  /* Stretch via flex alignment, not height:100%: a percentage height can
+     fail to resolve against the flex container and fall back to auto,
+     which collapses the collapsed strip (no in-flow content left) to 0
+     and clips the expand toggle under overflow:hidden. */
+  align-self: stretch;
   border-radius: 0;
+}
+
+/* Graph center column: the only flex child that grows. It is also the
+   containing block for the title/status/toast overlays, so they center
+   against the Graph — never against the whole workspace, and never over
+   the fixed sidebars at any sidebar width. */
+.workspace-shell__center {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+}
+
+.workspace-shell__center > .workspace-shell__canvas {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
 }
 
 .workspace-shell__compat-control,
@@ -1193,8 +1220,8 @@ input:focus-visible {
 .workspace-shell__toast-layer {
   position: absolute;
   left: 50%;
-  /* Above the toolbar (40) and floating windows (20+): an error or feedback
-     toast must never be hidden behind any other overlay again. */
+  /* Above the toolbar (40): an error or feedback toast must never be hidden
+     behind any other overlay again. */
   z-index: 45;
   transform: translateX(-50%);
   pointer-events: none;
@@ -1202,7 +1229,9 @@ input:focus-visible {
 
 .workspace-shell__status-layer {
   top: 96px;
-  width: min(720px, calc(100% - 32px));
+  /* Width is relative to the Graph center column (the containing block),
+     so the layer can never spill over the fixed sidebars at any width. */
+  width: min(560px, calc(100% - 32px));
 }
 
 .workspace-shell__status-layer > *,
@@ -1216,6 +1245,9 @@ input:focus-visible {
   flex-direction: column;
   align-items: center;
   gap: 4px;
+  /* Same Graph-center constraint as the status layer above. */
+  max-width: min(560px, calc(100% - 32px));
+  min-width: min(280px, calc(100% - 32px));
 }
 
 .workspace-shell__loading {
@@ -1393,6 +1425,9 @@ input:focus-visible {
 .resizable-sidebar--collapsed {
   width: 28px !important;
   background: rgb(255 255 255 / 76%);
+  /* Collapsed strip stays clickable: the center-column title pill would
+     otherwise cover the expand toggle where they overlap. */
+  z-index: 13;
 }
 
 .resizable-sidebar__content {

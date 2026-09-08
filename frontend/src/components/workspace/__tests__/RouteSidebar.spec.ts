@@ -57,6 +57,38 @@ describe('route sidebar', () => {
     expect(wrapper.emitted('activate')).toBeUndefined()
   })
 
+  it('keeps isolate behind the overflow menu and isolates visibility-only state', async () => {
+    const wrapper = mountSidebar()
+    const route = wrapper.find('[data-route-id="r2"]')
+    // 默认不常驻：只在 overflow 里。
+    expect(route.find('[data-test="route-more"]').attributes('open')).toBeUndefined()
+    route.get('[data-test="route-more"]').element.setAttribute('open', '')
+    await route.get('[data-test="isolate-route"]').trigger('click')
+    // 独览只改变浏览器可见性：r1 被隐藏，active r1 受保护不被隐藏。
+    expect(useGraphUiStore().routeDisplayStates.r1).toBe('hidden')
+    expect(useGraphUiStore().focusRouteId).toBeNull()
+  })
+
+  it('names unlabeled routes by branch origin instead of raw id slices', () => {
+    const routes: GraphWorkspaceRouteView[] = [
+      { ...routeView('r1', 'open', ['n1']), label: null, branchType: 'fork', isActive: false },
+      { ...routeView('r2', 'open', ['n1']), label: '  ', branchType: 'reanswer', isActive: false },
+      { ...routeView('r3', 'open', ['n1']), label: null, branchType: 'regenerate', isActive: false },
+      { ...routeView('r4', 'open', ['n1']), label: null, branchType: null, isActive: true },
+      { ...routeView('r5', 'open', ['n1']), label: null, branchType: null, isActive: false },
+    ]
+    const wrapper = mount(RouteSidebar, {
+      props: { routes, activeRouteId: 'r4', commandPending: false, pendingRouteCommand: null },
+    })
+    const text = (id: string) => wrapper.find(`[data-route-id="${id}"] .route-card__label`).text()
+    expect(text('r1')).toBe('分支路线')
+    expect(text('r2')).toBe('重新回答路线')
+    expect(text('r3')).toBe('换题路线')
+    expect(text('r4')).toBe('主路线')
+    expect(text('r5')).toBe('路线')
+    expect(wrapper.text()).not.toContain('r1'.slice(0, 8))
+  })
+
   it('shows chinese lifecycle labels and independent active indicator per route', () => {
     const routes = [
       routeView('r1', 'open', ['n1', 'n2']),

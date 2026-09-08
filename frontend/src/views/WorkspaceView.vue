@@ -409,42 +409,7 @@ async function confirmDestructive(): Promise<void> {
 
 <template>
   <div class="workspace-shell" data-test="workspace-shell">
-    <header class="workspace-shell__header" data-test="workspace-project-badge">
-      <h1 class="workspace-shell__title">{{ store.project?.title ?? '工作区' }}</h1>
-    </header>
-
-    <div class="workspace-shell__status-layer">
-      <ApiErrorBanner
-        v-if="store.error"
-        :message="workspaceErrorMessage"
-        :code="store.error.code"
-        :retry-label="workspaceRetryLabel"
-        :retrying="workspaceRetrying"
-        @retry="retry"
-      />
-      <div v-if="store.repairableAnswerId" class="workspace-answer-retry" data-test="answer-retry">
-        <span>回答已保存，后续生成未完成。</span>
-        <button class="btn btn-primary" type="button" :disabled="workspaceRetrying" @click="retry">
-          {{ workspaceRetrying ? '正在请求…' : '重新请求' }}
-        </button>
-      </div>
-      <div v-else-if="store.answerOutcomeUnknown" class="workspace-answer-retry" data-test="answer-outcome-unknown">
-        <span>提交结果未知，请先恢复状态。</span>
-        <button class="btn" type="button" :disabled="workspaceRetrying" @click="retry">
-          刷新状态
-        </button>
-      </div>
-      <div v-else-if="store.resubmitAnswerPayload" class="workspace-answer-retry" data-test="answer-resubmit">
-        <span>回答尚未保存，可以再次提交。</span>
-        <button class="btn btn-primary" type="button" :disabled="workspaceRetrying" @click="retry">
-          再次提交
-        </button>
-      </div>
-    </div>
-
-    <p v-if="store.loading" class="muted workspace-shell__loading">正在加载工作区…</p>
-
-    <div v-else class="workspace-shell__body workspace-shell__body--fixed">
+    <div v-if="!store.loading" class="workspace-shell__body workspace-shell__body--fixed" data-test="workspace-center">
       <ResizableSidebar
         side="left"
         :open="graphUi.leftSidebarOpen"
@@ -467,32 +432,78 @@ async function confirmDestructive(): Promise<void> {
         />
       </ResizableSidebar>
 
-      <GraphCanvas
-        ref="canvasRef"
-        class="workspace-shell__canvas"
-        :view="store.graphView"
-        :active-node-id="store.activeState?.activeNode?.id ?? null"
-        :submitting="store.submitting"
-        :drafting="store.drafting"
-        :pending="store.routeCommandPending"
-        :runtime-node-id="store.pendingAnswerNodeId"
-        :runtime-status="store.answerRunStatus"
-        :runtime-phase="store.answerRunPhase"
-        :pending-projection="store.pendingRouteProjection"
-        @draft="handleDraft"
-        @submit-answer="handleAnswer"
-        @fork="handleFork"
-        @reanswer="handleReanswer"
-        @regenerate="handleRegenerate"
-        @activate-route="handleActivateRouteForAnswer"
-        @contextual-ai="handleContextualAi"
-        @retry-pending="store.retryPendingAgentRun"
-        @add-idea="handleAddIdea"
-        @add-resource="resourceDialogOpen = true"
-        @relation-proposal="handleRelationProposal"
-        @undo="store.undoGraph"
-        @redo="store.redoGraph"
-      />
+      <div class="workspace-shell__center">
+        <header class="workspace-shell__header" data-test="workspace-project-badge">
+          <h1 class="workspace-shell__title">{{ store.project?.title ?? '工作区' }}</h1>
+        </header>
+
+        <div class="workspace-shell__status-layer">
+          <ApiErrorBanner
+            v-if="store.error"
+            :message="workspaceErrorMessage"
+            :code="store.error.code"
+            :retry-label="workspaceRetryLabel"
+            :retrying="workspaceRetrying"
+            @retry="retry"
+          />
+          <div v-if="store.repairableAnswerId" class="workspace-answer-retry" data-test="answer-retry">
+            <span>回答已保存，后续生成未完成。</span>
+            <button class="btn btn-primary" type="button" :disabled="workspaceRetrying" @click="retry">
+              {{ workspaceRetrying ? '正在请求…' : '重新请求' }}
+            </button>
+          </div>
+          <div v-else-if="store.answerOutcomeUnknown" class="workspace-answer-retry" data-test="answer-outcome-unknown">
+            <span>提交结果未知，请先恢复状态。</span>
+            <button class="btn" type="button" :disabled="workspaceRetrying" @click="retry">
+              刷新状态
+            </button>
+          </div>
+          <div v-else-if="store.resubmitAnswerPayload" class="workspace-answer-retry" data-test="answer-resubmit">
+            <span>回答尚未保存，可以再次提交。</span>
+            <button class="btn btn-primary" type="button" :disabled="workspaceRetrying" @click="retry">
+              再次提交
+            </button>
+          </div>
+        </div>
+
+        <GraphCanvas
+          ref="canvasRef"
+          class="workspace-shell__canvas"
+          :view="store.graphView"
+          :active-node-id="store.activeState?.activeNode?.id ?? null"
+          :submitting="store.submitting"
+          :drafting="store.drafting"
+          :pending="store.routeCommandPending"
+          :runtime-node-id="store.pendingAnswerNodeId"
+          :runtime-status="store.answerRunStatus"
+          :runtime-phase="store.answerRunPhase"
+          :pending-projection="store.pendingRouteProjection"
+          @draft="handleDraft"
+          @submit-answer="handleAnswer"
+          @fork="handleFork"
+          @reanswer="handleReanswer"
+          @regenerate="handleRegenerate"
+          @activate-route="handleActivateRouteForAnswer"
+          @contextual-ai="handleContextualAi"
+          @retry-pending="store.retryPendingAgentRun"
+          @add-idea="handleAddIdea"
+          @add-resource="resourceDialogOpen = true"
+          @relation-proposal="handleRelationProposal"
+          @undo="store.undoGraph"
+          @redo="store.redoGraph"
+        />
+
+        <div class="workspace-shell__toast-layer">
+          <p v-if="runtimePhaseCopy" class="muted workspace-shell__runtime-phase" data-test="runtime-phase">
+            {{ runtimePhaseCopy }}
+          </p>
+          <p v-if="store.refreshing" class="muted workspace-shell__refreshing" data-test="refreshing">
+            正在刷新工作区…
+          </p>
+          <p v-if="store.feedback" class="feedback-line" data-test="feedback">{{ store.feedback }}</p>
+          <button v-if="store.forkDraftRetryRouteId" class="btn btn-primary workspace-shell__retry-draft" data-test="retry-fork-draft" :disabled="workspaceRetrying" @click="retryForkDraft">重试起草</button>
+        </div>
+      </div>
 
       <ResizableSidebar
         side="right"
@@ -513,16 +524,7 @@ async function confirmDestructive(): Promise<void> {
       </ResizableSidebar>
     </div>
 
-    <div class="workspace-shell__toast-layer">
-      <p v-if="runtimePhaseCopy" class="muted workspace-shell__runtime-phase" data-test="runtime-phase">
-        {{ runtimePhaseCopy }}
-      </p>
-      <p v-if="store.refreshing" class="muted workspace-shell__refreshing" data-test="refreshing">
-        正在刷新工作区…
-      </p>
-      <p v-if="store.feedback" class="feedback-line" data-test="feedback">{{ store.feedback }}</p>
-      <button v-if="store.forkDraftRetryRouteId" class="btn btn-primary workspace-shell__retry-draft" data-test="retry-fork-draft" :disabled="workspaceRetrying" @click="retryForkDraft">重试起草</button>
-    </div>
+    <p v-if="store.loading" class="muted workspace-shell__loading">正在加载工作区…</p>
 
     <ResourceDialog
       :open="resourceDialogOpen"
