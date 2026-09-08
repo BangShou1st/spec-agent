@@ -404,10 +404,10 @@ function onInit(): void {
     if (!canvasWidth || !canvasHeight) {
       return
     }
-    // 初始 fit 使用全画布语义：safeRegion 只属于显式适应视图。初始视口
-    // 决定浮窗自动布局的输入几何，若在此消费 safeRegion 会形成双向耦合。
+    // 初始 fit 与显式适应视图使用相同的可用矩形：左侧 toolbar 与顶部
+    // 标题是覆盖在画布上的 overlay，初始视口同样不应把节点放在它们下方。
     applyViewport(
-      computeFitViewport(collectViewportNodes(), canvasWidth, canvasHeight, { padding: 48 }),
+      computeFitViewport(collectViewportNodes(), canvasWidth, canvasHeight, { padding: 48, region: props.safeRegion ?? fitRegion(canvasWidth, canvasHeight) }),
       0,
     )
   })
@@ -417,6 +417,24 @@ function onInit(): void {
  * 自研适应视图：直接基于投影坐标计算 viewport 变换（setViewport），只改
  * 视口、绝不移动节点坐标。绝不依赖 Vue Flow 的节点测量。
  */
+
+/**
+ * 固定 overlay gutter：左侧 toolbar 与顶部 workspace 标题是覆盖在画布上
+ * 的 overlay（不占布局宽度）。fit 类操作把图放进剩余可用矩形，避免 fit
+ * 后节点落在 toolbar 下方无法 hover/拖拽。纯视口计算，不改变任何节点
+ * 坐标、Focus/Active 语义。
+ */
+function fitRegion(canvasWidth: number, canvasHeight: number): import('@/graph/graphViewport').FitViewportRegion {
+  const left = 108
+  const top = 60
+  return {
+    x: left,
+    y: top,
+    width: Math.max(canvasWidth - left, 1),
+    height: Math.max(canvasHeight - top, 1),
+  }
+}
+
 function performFitView(): void {
   const canvasWidth = vf.dimensions.value.width
   const canvasHeight = vf.dimensions.value.height
@@ -424,7 +442,7 @@ function performFitView(): void {
     return
   }
   applyViewport(
-    computeFitViewport(collectViewportNodes(), canvasWidth, canvasHeight, { padding: 48, region: props.safeRegion ?? undefined }),
+    computeFitViewport(collectViewportNodes(), canvasWidth, canvasHeight, { padding: 48, region: props.safeRegion ?? fitRegion(canvasWidth, canvasHeight) }),
     300,
   )
 }
@@ -505,7 +523,7 @@ function manualFitNode(nodeId: string): void {
   }
   const target = collectViewportNodes(new Set([resolveFlowNodeId(nodeId)]))[0] ?? null
   applyViewport(
-    computeFitNodeViewport(target, canvasWidth, canvasHeight, { padding: 48 }),
+    computeFitNodeViewport(target, canvasWidth, canvasHeight, { padding: 48, region: props.safeRegion ?? fitRegion(canvasWidth, canvasHeight) }),
     400,
   )
 }
@@ -722,7 +740,7 @@ async function locateRoute(routeId: string): Promise<void> {
       collectViewportNodes(new Set(ids)),
       canvasWidth,
       canvasHeight,
-      { padding: 48 },
+      { padding: 48, region: props.safeRegion ?? fitRegion(canvasWidth, canvasHeight) },
     ),
     400,
   )
@@ -792,7 +810,7 @@ async function autoLayout(): Promise<void> {
     position: positions[node.id] ?? node.position,
   }))
   applyViewport(
-    computeFitViewport(viewportNodes, canvasWidth, canvasHeight, { padding: 48 }),
+    computeFitViewport(viewportNodes, canvasWidth, canvasHeight, { padding: 48, region: props.safeRegion ?? fitRegion(canvasWidth, canvasHeight) }),
     300,
   )
 }

@@ -114,6 +114,8 @@ test('fixed sidebars reserve layout space and leave the graph interactive', asyn
   await forkFromNode(page, 1, 'Route-B')
   await answerActiveNode(page, 'Route B answer')
   await expect(page.locator('.graph-question-node')).toHaveCount(5)
+  // 新增节点不触发自动全图适应（已冻结行为）：显式 fit 把新节点带进视口。
+  await fitGraph(page)
 
   const left = page.getByTestId('left-sidebar')
   const canvas = page.getByTestId('graph-canvas')

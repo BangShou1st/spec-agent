@@ -42,8 +42,11 @@ test('shared Question renders once with route memberships and a single Answer id
   await expect(chip).toBeVisible()
   await expect(q2Cards.locator('.graph-route-chip')).toHaveCount(2)
 
-  // 卡片上只显示一份 Answer 内容。
-  await expect(q2Cards).toContainText(answerOnA.freeText as string)
+  // 历史卡保持紧凑：完整答案在 Inspector 中查看，卡片只保留导航信息。
+  await expect(q2Cards).not.toContainText(answerOnA.freeText as string)
+  await q2Cards.click()
+  await expect(page.getByTestId('node-inspector')).toBeVisible()
+  await expect(page.getByTestId('canonical-answer')).toContainText(answerOnA.freeText as string)
 })
 
 test('Focus switching does not change the Answer content and Active never follows Focus', async ({ page, request }) => {
@@ -78,21 +81,23 @@ test('Focus switching does not change the Answer content and Active never follow
   await fitGraph(page)
 
   const sharedCard = page.locator(`[data-node-id="${sharedNodeId}"]`)
-  // 卡片始终只显示这一份 Answer。
-  await expect(sharedCard).toContainText(answerText)
+  // 历史卡紧凑不展示全文；完整答案在 Inspector 中唯一展示。
+  await expect(sharedCard).not.toContainText(answerText)
+  await sharedCard.click()
+  await expect(page.getByTestId('canonical-answer')).toContainText(answerText)
 
   // 通过 reading-route select 切换 Focus 到 Route A。
   const select = sharedCard.getByTestId('reading-route-select')
   await select.selectOption(routeA.id)
   await page.waitForTimeout(300)
-  await expect(sharedCard).toContainText(answerText)
+  await expect(page.getByTestId('canonical-answer')).toContainText(answerText)
   const activeAfterFocusA = (await (await request.get(`/api/v1/projects/${projectId}/graph`)).json()).activeRouteId
   expect(activeAfterFocusA).toBe(routeBId) // Active 不随 Focus 变化
 
   // 切回 Route B,Answer 内容仍然不变。
   await select.selectOption(routeBId)
   await page.waitForTimeout(300)
-  await expect(sharedCard).toContainText(answerText)
+  await expect(page.getByTestId('canonical-answer')).toContainText(answerText)
   const activeAfterFocusB = (await (await request.get(`/api/v1/projects/${projectId}/graph`)).json()).activeRouteId
   expect(activeAfterFocusB).toBe(routeBId)
 })
