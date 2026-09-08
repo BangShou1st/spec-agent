@@ -116,21 +116,17 @@ const isPendingCard = computed(() =>
   && props.data.node.id.startsWith('pending:')
   && props.data.runtimeStatus != null,
 )
-const runtimeStatusLabel = computed(() => {
-  switch (props.data.runtimeStatus) {
-    case 'PENDING': return '等待运行'
-    case 'RUNNING': return '运行中'
-    case 'FAILED': return '运行失败'
-    case 'SUCCEEDED': return '已完成'
-    default: return null
-  }
-})
-const runtimeStatusClass = computed(() => {
-  switch (props.data.runtimeStatus) {
-    case 'FAILED': return 'badge-danger'
-    case 'RUNNING': return 'badge-open'
-    default: return 'badge-warn'
-  }
+
+/** 单一产品化节点状态：卡片只展示这一个状态徽标，不为每个 Runtime
+ * phase 单独加 badge。生成中/待处理的解释文案仍由 phaseToCopy()
+ * 在 pending 内容区承担。 */
+const presentationState = computed(() => {
+  if (props.data.runtimeStatus === 'FAILED') return { label: '需处理', className: 'badge-danger' }
+  if (props.data.runtimeStatus === 'RUNNING') return { label: '生成中', className: 'badge-open' }
+  if (isPendingCard.value || props.data.runtimeStatus === 'PENDING') return { label: '待处理', className: 'badge-warn' }
+  if (props.data.canAnswer) return { label: '就绪', className: 'badge-ready' }
+  if (props.data.primaryAnswer) return { label: '已确认', className: 'badge-confirmed' }
+  return { label: '待处理', className: 'badge-neutral' }
 })
 
 /** 显式阅读路线只作 read context 标识，不参与 Answer 内容选择。Shared
@@ -262,8 +258,12 @@ function setReadingRoute(event: Event): void {
           {{ membership.label }}
         </span>
       </span>
-      <span v-if="runtimeStatusLabel" class="badge graph-runtime-badge" :class="runtimeStatusClass" data-test="runtime-status">
-        {{ runtimeStatusLabel }}
+      <span
+        class="badge graph-question-node__state"
+        :class="presentationState.className"
+        data-test="node-state"
+      >
+        {{ presentationState.label }}
       </span>
     </header>
 
@@ -358,36 +358,20 @@ function setReadingRoute(event: Event): void {
 
       </template>
 
-      <!-- Historical node: concise reading preview; details remain in Inspector. -->
+      <!-- Historical node: compact navigation card; full answer stays in Inspector. -->
       <template v-else>
         <h4 class="graph-node-question graph-node-question--compact" data-test="historical-question">
           {{ node.question }}
         </h4>
-
-        <!-- 历史答案：canonical Question 只有一个 immutable Answer identity，
-             primary 即该答案；Focus 只改变阅读上下文，不改变内容。Shared
-             answered Question 在任意 Focus/路线归属下展示同一答案。 -->
-        <div
-          v-if="primary"
-          class="graph-answer-summary"
-          data-test="answer-summary"
-        >
-          <span v-if="primary.selectedOptionLabel" class="graph-answer-option badge badge-open">
-            {{ primary.selectedOptionLabel }}
-          </span>
-          <p
-            v-if="primary.freeText"
-            class="graph-answer-text graph-answer-text--clamped"
-            data-test="clamped-free-text"
-          >{{ primary.freeText }}</p>
-          <span class="graph-answer-route meta-text">{{ primary.routeLabel || '当前查看路线' }}</span>
-        </div>
+        <p v-if="node.purpose" class="graph-node-purpose graph-node-purpose--compact">
+          {{ node.purpose }}
+        </p>
 
         <!-- 阅读路线 tip 的 canonical 未答 Question：显示等待 + 激活所属路线
              即可回答（route count 不变，不创建 RESUME 分支）。已答节点与未选
              查看路线的 shared 节点绝不出现此入口。 -->
         <div
-          v-else-if="unansweredReadingTip"
+          v-if="!primary && unansweredReadingTip"
           class="graph-answer-summary"
           data-test="waiting-summary"
         >
@@ -407,10 +391,11 @@ function setReadingRoute(event: Event): void {
           </button>
         </div>
 
-        <!-- 其余历史未答节点：明确显示等待即可，绝不按路线拆分出 route-specific
+        <!-- 其余历史节点：已答节点保持紧凑（完整答案在 Inspector 中查看）；
+             未答节点明确显示等待即可，绝不按路线拆分出 route-specific
              的"回答这个问题"入口（那会人为制造 Shared 分叉）。 -->
         <p
-          v-else
+          v-else-if="!primary"
           class="meta-text graph-node-question--compact"
           data-test="waiting-plain"
         >等待回答</p>

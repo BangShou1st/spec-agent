@@ -40,7 +40,7 @@ async function askOnNode(page: Page, request: APIRequestContext, question: strin
   const card = page.locator(`[data-node-id="${canonicalNodeId}"]`)
   await card.hover()
   await card.getByTestId('contextual-ai').click()
-  await expect(page.getByTestId('floating-window-inspector')).toBeVisible()
+  await expect(page.getByTestId('right-sidebar')).toBeVisible()
 
   let queryRunId = ''
   // The create endpoint returns 202 + {runId} in the POST RESPONSE body; the
@@ -159,7 +159,7 @@ test('Floating node Ask AI sends routeId=null (real endpoint)', async ({ page, r
   await expect(card).toBeVisible()
   await card.hover()
   await card.getByTestId('contextual-ai').click()
-  await expect(page.getByTestId('floating-window-inspector')).toBeVisible()
+  await expect(page.getByTestId('right-sidebar')).toBeVisible()
 
   let queryBody: { routeId: unknown } | null = null
   page.on('request', (req) => {

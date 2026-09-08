@@ -55,7 +55,7 @@ onBeforeUnmount(stopResize)
   <aside
     class="resizable-sidebar"
     :class="[`resizable-sidebar--${side}`, { 'resizable-sidebar--collapsed': !open }]"
-    :style="{ width: open ? width + 'px' : '28px' }"
+    :style="{ position: 'relative', width: open ? width + 'px' : '28px' }"
     :data-test="side + '-sidebar'"
   >
     <button

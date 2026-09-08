@@ -200,19 +200,44 @@ function relationDirectionLabel(relation: {
 <template>
   <div class="node-inspector" data-test="node-inspector">
     <template v-if="data">
-      <h3 class="node-inspector__title" data-test="node-detail-question">{{ nodeTitle }}</h3>
-      <p class="meta-text">
-        <span class="badge badge-open" data-test="node-kind">{{ kindLabel }}</span>
-        · 创建于 {{ formatTime(data.node.createdAt) }}
-        <template v-if="data.node.authorKind === 'USER'">· 用户创建</template>
-      </p>
-      <p v-if="data.node.purpose" class="graph-node-purpose">{{ data.node.purpose }}</p>
-      <p class="node-inspector__reading" data-test="current-reading-route">
-        当前查看路线：<strong>{{ data.readingRouteId ? membershipLabel(data, data.readingRouteId) : '未选择' }}</strong>
-      </p>
+      <header class="node-inspector__header">
+        <div class="node-inspector__identity">
+          <span v-if="data.qLabel" class="node-inspector__q">{{ data.qLabel }}</span>
+          <span v-if="data.isLatest" class="badge badge-latest">最新</span>
+          <span v-if="data.isShared" class="badge badge-neutral">共享</span>
+        </div>
+        <p class="node-inspector__route-context">
+          当前查看：<strong>{{ data.readingRouteId ? membershipLabel(data, data.readingRouteId) : '未选择路线' }}</strong>
+        </p>
+      </header>
 
-      <h4 class="node-inspector__heading">问 AI</h4>
-      <div class="node-inspector__ask" data-test="node-ask">
+      <section class="node-inspector__section" data-test="inspector-section-content">
+        <h4>问题</h4>
+        <h3 class="node-inspector__title" data-test="node-detail-question">{{ nodeTitle }}</h3>
+        <p v-if="data.node.purpose" class="meta-text">{{ data.node.purpose }}</p>
+        <template v-if="data.node.options.length > 0">
+          <h4 class="node-inspector__heading">选项</h4>
+          <ul class="node-inspector__options">
+            <li v-for="option in data.node.options" :key="option.id" class="node-inspector__option">
+              <span class="graph-option-label">{{ option.label }}</span>
+              <span v-if="option.impact" class="graph-option-impact">{{ option.impact }}</span>
+            </li>
+          </ul>
+        </template>
+      </section>
+
+      <section v-if="data.node.kind === 'INTERACTION'" class="node-inspector__section" data-test="inspector-section-answer">
+        <h4>回答</h4>
+        <div v-if="data.primaryAnswer" class="node-inspector__answer" data-test="canonical-answer">
+          <span v-if="data.primaryAnswer.selectedOptionLabel" class="badge badge-open">{{ data.primaryAnswer.selectedOptionLabel }}</span>
+          <p v-if="data.primaryAnswer.freeText" class="graph-answer-text">{{ data.primaryAnswer.freeText }}</p>
+        </div>
+        <p v-else class="muted" data-test="node-detail-no-answer">该节点还没有回答。</p>
+      </section>
+
+      <section class="node-inspector__section" data-test="inspector-section-agent">
+        <h4>问 AI</h4>
+        <div class="node-inspector__ask" data-test="node-ask">
         <textarea
           v-model="askInput"
           class="graph-answer-input node-inspector__ask-input"
@@ -235,23 +260,25 @@ function relationDirectionLabel(relation: {
             <span class="badge badge-open">AI 正在基于该节点上下文回答…</span>
           </template>
           <template v-else-if="queryResult.status === 'AWAITING_APPROVAL'">
-            <p class="graph-answer-text">{{ queryResult.message || 'AI 提出了一个候选动作，等待你确认。' }}</p>
-            <p class="meta-text">
-              候选动作：<strong>{{ queryResult.actionFamily || '未知' }}</strong>
-            </p>
-            <div class="node-inspector__proposal-actions">
-              <button
-                class="btn btn-small btn-primary"
-                data-test="accept-proposal"
-                :disabled="acceptingProposal || !queryResult.proposalId"
-                @click="acceptProposal"
-              >接受</button>
-              <button
-                class="btn btn-small"
-                data-test="reject-proposal"
-                :disabled="rejectingProposal || !queryResult.proposalId"
-                @click="rejectProposal"
-              >拒绝</button>
+            <div class="node-inspector__proposal" data-test="agent-proposal">
+              <p class="graph-answer-text">{{ queryResult.message || 'AI 提出了一个候选动作，等待你确认。' }}</p>
+              <p class="meta-text">
+                候选动作：<strong>{{ queryResult.actionFamily || '未知' }}</strong>
+              </p>
+              <div class="node-inspector__proposal-actions">
+                <button
+                  class="btn btn-small btn-primary"
+                  data-test="accept-proposal"
+                  :disabled="acceptingProposal || !queryResult.proposalId"
+                  @click="acceptProposal"
+                >接受</button>
+                <button
+                  class="btn btn-small"
+                  data-test="reject-proposal"
+                  :disabled="rejectingProposal || !queryResult.proposalId"
+                  @click="rejectProposal"
+                >拒绝</button>
+              </div>
             </div>
           </template>
           <template v-else-if="queryResult.status === 'ACCEPTED'">
@@ -275,51 +302,41 @@ function relationDirectionLabel(relation: {
         </div>
       </div>
 
-      <template v-if="data.node.options.length > 0">
-        <h4 class="node-inspector__heading">选项</h4>
-        <ul class="node-inspector__options">
-          <li v-for="option in data.node.options" :key="option.id" class="node-inspector__option">
-            <span class="graph-option-label">{{ option.label }}</span>
-            <span v-if="option.impact" class="graph-option-impact">{{ option.impact }}</span>
-          </li>
-        </ul>
-      </template>
+      </section>
 
-      <h4 class="node-inspector__heading">路线归属</h4>
-      <p class="meta-text">
-        {{ data.routeIds.length }} 条路线
-        <template v-if="data.isShared">（共享节点）</template>
-      </p>
-      <div v-if="data.routeMembership?.some((membership) => membership.branchType)" class="node-inspector__provenance">
-        <h4 class="node-inspector__heading">分支来源</h4>
-        <p
-          v-for="membership in data.routeMembership?.filter((item) => item.branchType)"
-          :key="membership.routeId"
-          class="meta-text"
-        >
-          {{ membership.label }} · {{ branchLabel(membership.branchType) }}
-          <template v-if="membership.sourceRouteId"> · 来源 {{ membershipLabel(data, membership.sourceRouteId) }}</template>
-        </p>
-      </div>
+      <details class="node-inspector__secondary" data-test="inspector-secondary">
+        <summary>更多详情</summary>
+        <div class="node-inspector__secondary-body">
+          <p class="meta-text">{{ kindLabel }} · 创建于 {{ formatTime(data.node.createdAt) }}</p>
 
-      <template v-if="data.node.kind === 'INTERACTION'">
-        <h4 class="node-inspector__heading">回答</h4>
-        <div v-if="data.primaryAnswer" class="node-inspector__answer" data-test="canonical-answer">
-          <span v-if="data.primaryAnswer.selectedOptionLabel" class="badge badge-open">{{ data.primaryAnswer.selectedOptionLabel }}</span>
-          <p v-if="data.primaryAnswer.freeText" class="graph-answer-text">{{ data.primaryAnswer.freeText }}</p>
+          <h4 class="node-inspector__heading">路线归属</h4>
+          <p class="meta-text">
+            {{ data.routeIds.length }} 条路线
+            <template v-if="data.isShared">（共享节点）</template>
+          </p>
+          <div v-if="data.routeMembership?.some((membership) => membership.branchType)" class="node-inspector__provenance">
+            <h4 class="node-inspector__heading">分支来源</h4>
+            <p
+              v-for="membership in data.routeMembership?.filter((item) => item.branchType)"
+              :key="membership.routeId"
+              class="meta-text"
+            >
+              {{ membership.label }} · {{ branchLabel(membership.branchType) }}
+              <template v-if="membership.sourceRouteId"> · 来源 {{ membershipLabel(data, membership.sourceRouteId) }}</template>
+            </p>
+          </div>
+
+          <h4 class="node-inspector__heading">语义关系</h4>
+          <p v-if="relations.length === 0" class="muted" data-test="node-detail-no-relations">暂无语义关系。</p>
+          <ul v-else class="node-inspector__relations" data-test="node-relations">
+            <li v-for="relation in relations" :key="relation.id" class="meta-text">
+              <span class="badge badge-open">{{ relationTypeLabels[relation.relationType] ?? relation.relationType }}</span>
+              {{ relationDirectionLabel(relation) }}
+              <span v-if="relation.origin === 'AGENT'" class="meta-text">（AI 建议）</span>
+            </li>
+          </ul>
         </div>
-        <p v-else class="muted" data-test="node-detail-no-answer">该节点还没有回答。</p>
-      </template>
-
-      <h4 class="node-inspector__heading">语义关系</h4>
-      <p v-if="relations.length === 0" class="muted" data-test="node-detail-no-relations">暂无语义关系。</p>
-      <ul v-else class="node-inspector__relations" data-test="node-relations">
-        <li v-for="relation in relations" :key="relation.id" class="meta-text">
-          <span class="badge badge-open">{{ relationTypeLabels[relation.relationType] ?? relation.relationType }}</span>
-          {{ relationDirectionLabel(relation) }}
-          <span v-if="relation.origin === 'AGENT'" class="meta-text">（AI 建议）</span>
-        </li>
-      </ul>
+      </details>
 
       <!-- 历史节点才提供 Fork / Regenerate；当前待回答节点保持只读详情，
            回答只发生在 Graph 节点内部。 -->
@@ -341,9 +358,65 @@ function relationDirectionLabel(relation: {
 </template>
 
 <style scoped>
+.node-inspector__header {
+  margin-bottom: 4px;
+}
+
+.node-inspector__identity {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.node-inspector__q {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--color-accent);
+}
+
+.node-inspector__route-context {
+  margin: 0 0 4px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.node-inspector__section {
+  margin-top: 12px;
+}
+
+.node-inspector__section > h4 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .node-inspector__title {
   margin: 0 0 6px;
   font-size: 15px;
+}
+
+.node-inspector__secondary {
+  margin-top: 12px;
+  border-top: 1px solid var(--color-border);
+  padding-top: 8px;
+}
+
+.node-inspector__secondary > summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.node-inspector__secondary-body {
+  padding-top: 8px;
+}
+
+.node-inspector__proposal {
+  padding: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-accent-soft);
 }
 
 .node-inspector__heading {

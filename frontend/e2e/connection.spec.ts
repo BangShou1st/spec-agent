@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
-import { buildThreeNodeLineage, closeFloatingWorkspaceWindows, createProject, fitGraph } from './helpers'
+import { buildThreeNodeLineage, clickCanvasBlank, closeFloatingWorkspaceWindows, createProject, fitGraph } from './helpers'
 
 /**
  * 真实 Chromium mouse drag: source handle → target handle 只产生 Pending
@@ -152,15 +152,20 @@ test('confirm shows the created relation on the selected node; clearing selectio
   await expect(page.locator('.vue-flow__edge.graph-edge--relation')).toHaveCount(1)
 
   // 取消选择 → global 层 OFF → relation 收起。
-  await page.mouse.click(10, 400)
+  // 固定布局下左侧栏占据视口左侧，旧的裸坐标会落在侧栏上；改点画布空白处。
+  await clickCanvasBlank(page)
   await page.waitForTimeout(400)
   await expect(page.locator('.vue-flow__edge.graph-edge--relation')).toHaveCount(0)
 
-  // Inspector 始终能看到 canonical 关系。
-  await page.getByTestId('open-inspector').click()
-  await expect(page.getByTestId('floating-window-inspector')).toBeVisible()
+  // Inspector 始终能看到 canonical 关系（语义关系在“更多详情”次级区）。
   const sourceNode = page.locator(`[data-node-id="${sourceNodeId}"]`)
   await sourceNode.click()
+  await expect(page.getByTestId('right-sidebar')).toBeVisible()
+  await expect(page.getByTestId('node-inspector')).toBeVisible()
+  const secondary = page.getByTestId('inspector-secondary')
+  if (await secondary.getAttribute('open') === null) {
+    await secondary.locator('summary').click()
+  }
   await expect(page.getByTestId('node-relations')).toBeVisible()
   await expect(page.getByTestId('node-relations').first()).toContainText('相关')
 })

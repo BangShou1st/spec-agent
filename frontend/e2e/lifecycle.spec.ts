@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { createProject, draftFirstQuestion } from './helpers'
+import { createProject, draftFirstQuestion, openRouteMore } from './helpers'
 
 /**
  * Route lifecycle through the graph route sidebar: archive active route →
@@ -14,6 +14,9 @@ test('archive, restore, and soft-delete a route through the graph sidebar', asyn
   const card = page.locator('[data-route-id]').first()
   await expect(card.getByTestId('active-route')).toBeVisible()
 
+  // 路线管理动作在每条路线的溢出菜单中。
+  await openRouteMore(card)
+
   // 归档需要显式确认；归档当前路线后没有当前路线。
   await card.getByTestId('archive-route').click()
   await expect(page.getByTestId('confirm-route-action-dialog')).toBeVisible()
@@ -23,10 +26,10 @@ test('archive, restore, and soft-delete a route through the graph sidebar', asyn
   // 历史节点仍在图上看得到（归档路线可只读检查）。
   await expect(page.locator('.graph-question-node--historical')).toHaveCount(1)
 
-  // 恢复 → OPEN + ACTIVE，根节点重新可回答。
+  // 恢复 → 运行路线徽标回到卡片，根节点重新可回答。
+  // （open 生命周期不再展示常驻徽标，以 active-route 徽标为准。）
   await card.getByTestId('restore-route').click()
-  await expect(card.locator('.badge-open')).toBeVisible()
-  await expect(page.getByTestId('active-route')).toHaveCount(1)
+  await expect(card.getByTestId('active-route')).toBeVisible()
   await expect(page.locator('.graph-question-node--current')).toHaveCount(1)
 
   // 软删除需要确认；历史数据保留。
@@ -39,9 +42,10 @@ test('archive, restore, and soft-delete a route through the graph sidebar', asyn
   // 已删除路线默认被生命周期筛选隐藏：图上不再有节点。
   await expect(page.locator('.graph-question-node')).toHaveCount(0)
 
-  // 再恢复 → OPEN + ACTIVE，根节点重新出现在图上并回到可回答状态。
+  // 再恢复 → 运行路线徽标回到卡片，根节点重新出现在图上并回到可回答状态。
+  await openRouteMore(card)
   await card.getByTestId('restore-route').click()
-  await expect(card.locator('.badge-open')).toBeVisible()
+  await expect(card.getByTestId('active-route')).toBeVisible()
   await expect(page.getByTestId('active-route')).toHaveCount(1)
   await expect(page.locator('.graph-question-node--current')).toHaveCount(1)
 })

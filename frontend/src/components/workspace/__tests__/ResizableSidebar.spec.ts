@@ -22,8 +22,26 @@ describe('resizable sidebar', () => {
     expect(wrapper.find('[data-test="sidebar-content"]').exists()).toBe(false)
   })
 
-  it('clamps resize deltas to the allowed range', async () => {
-    const wrapper = mount(ResizableSidebar, {
+  it('establishes its own containing block for the absolute toggle and resize handle', async () => {
+    for (const side of ['left', 'right'] as const) {
+      const wrapper = mount(ResizableSidebar, {
+        props: { side, open: true, width: 280, minWidth: 220, maxWidth: 420 },
+        slots: { default: '<div data-test="slot-content">routes</div>' },
+      })
+      const aside = wrapper.find(`[data-test="${side}-sidebar"]`)
+      // The aside must be the containing block for its absolutely
+      // positioned toggle button and resize handle; otherwise they anchor
+      // to the workspace shell (or viewport) once the sidebar becomes a
+      // plain flex item instead of an absolutely positioned overlay.
+      // (Real pixel geometry is asserted in e2e/workspace-layout.spec.ts;
+      // jsdom has no layout engine so getBoundingClientRect is always 0.)
+      expect(['relative', 'absolute', 'fixed', 'sticky']).toContain(
+        window.getComputedStyle(aside.element).position,
+      )
+    }
+  })
+
+  it('clamps resize deltas to the allowed range', async () => {    const wrapper = mount(ResizableSidebar, {
       props: { side: 'left', open: true, width: 280, minWidth: 220, maxWidth: 420 },
     })
     const handle = wrapper.find('[data-test="resize-handle-left"]')

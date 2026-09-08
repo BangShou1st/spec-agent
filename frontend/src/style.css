@@ -1,22 +1,28 @@
 :root {
-  --color-bg: #f6f7f9;
+  --color-bg: #f7f8fa;
   --color-surface: #ffffff;
-  --color-border: #d8dce2;
-  --color-text: #1f2430;
-  --color-text-secondary: #5b6472;
-  --color-text-muted: #8a93a3;
-  --color-accent: #2f6fed;
-  --color-accent-soft: #e8effd;
-  --color-danger: #b3261e;
-  --color-danger-soft: #fdecea;
-  --color-success: #1e7d46;
-  --color-success-soft: #e6f4ec;
-  --color-warn: #8a5a00;
-  --color-warn-soft: #fdf3e0;
-  --color-subdued: #eef0f3;
+  --color-surface-subtle: #fafbfc;
+  --color-border: #e4e7ec;
+  --color-border-strong: #d0d5dd;
+  --color-text: #17202f;
+  --color-text-secondary: #667085;
+  --color-text-muted: #98a2b3;
+  --color-accent: #3b6ff5;
+  --color-accent-soft: #eef3ff;
+  --color-success: #168456;
+  --color-success-soft: #eaf8f1;
+  --color-warn: #9a6700;
+  --color-warn-soft: #fff7df;
+  --color-danger: #c43232;
+  --color-danger-soft: #fff0f0;
+  --color-subdued: #f2f4f7;
   --graph-node-width: 320px;
   --graph-node-height: 220px;
-  --radius: 6px;
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+  --shadow-float: 0 8px 24px rgb(16 24 40 / 10%);
+  --focus-ring: 0 0 0 3px rgb(59 111 245 / 18%);
   --space: 16px;
 }
 
@@ -32,8 +38,7 @@ body {
 }
 
 body {
-  font-family:
-    'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', Arial, sans-serif;
   font-size: 14px;
   line-height: 1.5;
   color: var(--color-text);
@@ -200,6 +205,22 @@ textarea {
 .badge-open {
   background: var(--color-success-soft);
   color: var(--color-success);
+}
+
+.badge-ready,
+.badge-confirmed {
+  background: var(--color-success-soft);
+  color: var(--color-success);
+}
+
+.badge-neutral {
+  background: var(--color-subdued);
+  color: var(--color-text-secondary);
+}
+
+.badge-latest {
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
 }
 
 .badge-superseded,
@@ -449,6 +470,78 @@ textarea {
   white-space: nowrap;
 }
 
+.graph-toolbar__btn--primary {
+  font-weight: 600;
+}
+
+.graph-toolbar__group {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 4px 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.graph-toolbar__group:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.graph-toolbar__icon-btn {
+  min-width: 32px;
+  padding: 6px 8px;
+  font-size: 14px;
+  pointer-events: auto;
+  white-space: nowrap;
+}
+
+.graph-toolbar__more {
+  position: relative;
+  border-top: 1px solid var(--color-border);
+  padding-top: 6px;
+  pointer-events: auto;
+}
+
+.graph-toolbar__more > summary {
+  list-style: none;
+  cursor: pointer;
+  text-align: center;
+}
+
+.graph-toolbar__more > summary::-webkit-details-marker {
+  display: none;
+}
+
+.graph-toolbar__menu {
+  position: absolute;
+  left: calc(100% + 8px);
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 140px;
+  padding: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-float, 0 8px 24px rgb(16 24 40 / 10%));
+}
+
+.graph-toolbar__menu-item {
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text);
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.graph-toolbar__menu-item:hover {
+  background: var(--color-subdued);
+}
+
 /* ---- start placeholder ---- */
 
 .graph-start-placeholder {
@@ -500,7 +593,12 @@ textarea {
 }
 
 .graph-question-node--historical {
+  width: 220px;
   opacity: 0.96;
+}
+
+.graph-question-node--historical .graph-question-node__body {
+  padding: 12px 14px 14px;
 }
 
 .graph-question-node--shared .graph-question-node__header {
@@ -696,13 +794,28 @@ textarea {
 }
 
 .graph-node-question--compact {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   font-size: 13px;
+  line-height: 1.45;
 }
 
 .graph-node-purpose {
   margin: 0 0 10px;
   color: var(--color-text-secondary);
   font-size: 12px;
+}
+
+.graph-node-purpose--compact {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
 }
 
 .graph-option {
@@ -859,13 +972,34 @@ textarea {
 }
 .graph-question-node:hover .graph-node-actions--toolbar,
 .graph-question-node--selected .graph-node-actions--toolbar,
-.graph-node-actions--toolbar:focus-within {
+.graph-node-actions--toolbar:focus-within,
+.graph-question-node:focus-within .graph-node-actions--toolbar {
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
 }
 .graph-node-actions--toolbar .btn {
   pointer-events: auto;
+}
+
+/* Keyboard-visible focus for hover/contextual actions and form controls. */
+button:focus-visible,
+summary:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+input:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* Historical nodes stay quiet; selected/current nodes get accent treatment. */
+.graph-question-node--historical {
+  box-shadow: none;
+}
+
+.graph-question-node--selected {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px var(--color-accent-soft);
 }
 
 /* Q label and Latest marker */
@@ -999,6 +1133,10 @@ textarea {
   box-shadow: 0 4px 14px rgb(31 36 48 / 10%);
   backdrop-filter: blur(8px);
   pointer-events: none;
+  /* Anchored to the Graph center column (the fixed body is the containing
+     block), never to the whole workspace: fixed sidebars reserve real
+     layout width at any size. */
+  max-width: min(360px, calc(100% - 32px));
 }
 
 .workspace-shell__header > * {
@@ -1026,6 +1164,48 @@ textarea {
   height: 100%;
 }
 
+.workspace-shell__body--fixed {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.workspace-shell__body--fixed > .workspace-shell__canvas {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+.workspace-shell__body--fixed > .resizable-sidebar {
+  flex: 0 0 auto;
+  /* Stretch via flex alignment, not height:100%: a percentage height can
+     fail to resolve against the flex container and fall back to auto,
+     which collapses the collapsed strip (no in-flow content left) to 0
+     and clips the expand toggle under overflow:hidden. */
+  align-self: stretch;
+  border-radius: 0;
+}
+
+/* Graph center column: the only flex child that grows. It is also the
+   containing block for the title/status/toast overlays, so they center
+   against the Graph — never against the whole workspace, and never over
+   the fixed sidebars at any sidebar width. */
+.workspace-shell__center {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+}
+
+.workspace-shell__center > .workspace-shell__canvas {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
 .workspace-shell__compat-control,
 .workspace-shell__compat-marker {
   position: absolute;
@@ -1040,8 +1220,8 @@ textarea {
 .workspace-shell__toast-layer {
   position: absolute;
   left: 50%;
-  /* Above the toolbar (40) and floating windows (20+): an error or feedback
-     toast must never be hidden behind any other overlay again. */
+  /* Above the toolbar (40): an error or feedback toast must never be hidden
+     behind any other overlay again. */
   z-index: 45;
   transform: translateX(-50%);
   pointer-events: none;
@@ -1049,7 +1229,9 @@ textarea {
 
 .workspace-shell__status-layer {
   top: 96px;
-  width: min(720px, calc(100% - 32px));
+  /* Width is relative to the Graph center column (the containing block),
+     so the layer can never spill over the fixed sidebars at any width. */
+  width: min(560px, calc(100% - 32px));
 }
 
 .workspace-shell__status-layer > *,
@@ -1063,6 +1245,9 @@ textarea {
   flex-direction: column;
   align-items: center;
   gap: 4px;
+  /* Same Graph-center constraint as the status layer above. */
+  max-width: min(560px, calc(100% - 32px));
+  min-width: min(280px, calc(100% - 32px));
 }
 
 .workspace-shell__loading {
@@ -1216,33 +1401,33 @@ textarea {
   margin-top: 6px;
 }
 
-/* The graph remains the only layout surface; panels float above it. */
+/* Fixed sidebars reserve real layout width; the Graph owns the center. */
+.workspace-shell__canvas {
+  background: var(--color-bg);
+}
+
 .resizable-sidebar {
-  position: absolute;
-  top: 12px;
-  bottom: 12px;
-  z-index: 11;
   display: flex;
   min-width: 0;
-  background: rgb(255 255 255 / 88%);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  box-shadow: 0 8px 24px rgb(31 36 48 / 14%);
-  backdrop-filter: blur(8px);
+  background: var(--color-surface);
+  border: 0;
   overflow: hidden;
 }
 
 .resizable-sidebar--left {
-  left: 12px;
+  border-right: 1px solid var(--color-border);
 }
 
 .resizable-sidebar--right {
-  right: 12px;
+  border-left: 1px solid var(--color-border);
 }
 
 .resizable-sidebar--collapsed {
   width: 28px !important;
   background: rgb(255 255 255 / 76%);
+  /* Collapsed strip stays clickable: the center-column title pill would
+     otherwise cover the expand toggle where they overlap. */
+  z-index: 13;
 }
 
 .resizable-sidebar__content {
@@ -1374,6 +1559,33 @@ textarea {
   margin-bottom: 4px;
 }
 
+.route-card__primary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.route-card__identity {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.route-card__state {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.badge-focus {
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+
 .route-card__label {
   font-weight: 600;
   font-size: 13px;
@@ -1398,11 +1610,75 @@ textarea {
   gap: 4px;
 }
 
+.route-card__more {
+  margin-top: 4px;
+}
+
 .route-card__more > summary {
-  color: var(--color-text-secondary);
+  list-style: none;
   cursor: pointer;
-  font-size: 12px;
-  margin: 6px 0;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  letter-spacing: 2px;
+  text-align: right;
+  padding: 2px 4px;
+  border-radius: 6px;
+}
+
+.route-card__more > summary::-webkit-details-marker {
+  display: none;
+}
+
+.route-card__more > summary:hover {
+  background: var(--color-subdued);
+  color: var(--color-text);
+}
+
+.route-card__more-trigger {
+  user-select: none;
+}
+
+.route-card__menu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+  padding: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface-subtle, #fafbfc);
+}
+
+.route-card__menu-item {
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text);
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.route-card__menu-item:hover:not(:disabled) {
+  background: var(--color-subdued);
+}
+
+.route-card__menu-item--danger {
+  color: var(--color-danger);
+}
+
+.route-card__menu-item--danger:hover:not(:disabled) {
+  background: var(--color-danger-soft);
+}
+
+.route-sidebar__filters > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.route-sidebar__filters > summary::-webkit-details-marker {
+  display: none;
 }
 
 .route-card__focused-btn {

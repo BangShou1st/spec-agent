@@ -181,14 +181,17 @@ describe('WorkspaceView graph shell', () => {
     locateSpy.mockReset()
   })
 
-  it('loads the graph-first shell with floating windows and canvas', async () => {
+  it('loads the graph-first shell with fixed route and inspector sidebars', async () => {
     mockViews()
     const { wrapper } = await mountWorkspace()
+
+    expect(wrapper.find('[data-test="left-sidebar"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="route-sidebar"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="graph-canvas-stub"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="floating-window-routes"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="floating-window-inspector"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="route-navigator"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="right-sidebar"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="workspace-inspector"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="floating-window-routes"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="floating-window-inspector"]').exists()).toBe(false)
   })
 
   it('drafts through the canvas draft intent as an async run', async () => {
@@ -249,9 +252,10 @@ describe('WorkspaceView graph shell', () => {
     expect(useWorkspaceStore().feedback).toBe('回答已记录。')
   })
 
-  it('selects the canonical visual target explicitly before opening contextual AI', async () => {
+  it('selects the canonical target and opens the fixed inspector', async () => {
     mockViews()
     const { wrapper, graphUi } = await mountWorkspace()
+    graphUi.setRightSidebar({ open: false, width: graphUi.rightSidebarWidth })
 
     await wrapper.findComponent(GraphCanvasStub).vm.$emit('contextual-ai', {
       canonicalNodeId: 'n2',
@@ -259,7 +263,7 @@ describe('WorkspaceView graph shell', () => {
     })
 
     expect(graphUi.primarySelectedNodeId).toBe('n2')
-    expect(graphUi.floatingWindows.inspector.open).toBe(true)
+    expect(graphUi.rightSidebarOpen).toBe(true)
   })
 
   it('preserves a clicked shared visual instance while the query target stays canonical', async () => {
@@ -286,7 +290,7 @@ describe('WorkspaceView graph shell', () => {
     })
 
     expect(graphUi.primarySelectedNodeId).toBe('route:r2:n2')
-    expect(graphUi.floatingWindows.inspector.open).toBe(true)
+    expect(graphUi.rightSidebarOpen).toBe(true)
   })
 
   it('route sidebar activates a sibling route through the runtime command', async () => {
@@ -297,7 +301,9 @@ describe('WorkspaceView graph shell', () => {
       activeRouteId: 'r2',
     })
     const { wrapper } = await mountWorkspace()
-    await wrapper.find('[data-route-id="r2"] [data-test="activate-route"]').trigger('click')
+    const route = wrapper.find('[data-route-id="r2"]')
+    route.get('[data-test="route-more"]').element.setAttribute('open', '')
+    await route.get('[data-test="activate-route"]').trigger('click')
     await flushPromises()
     expect(vi.mocked(apiActivateRoute)).toHaveBeenCalledWith('p1', 'r2')
   })
@@ -305,7 +311,9 @@ describe('WorkspaceView graph shell', () => {
   it('locate route only moves the viewport and never changes focus', async () => {
     mockViews()
     const { wrapper, graphUi } = await mountWorkspace()
-    await wrapper.find('[data-route-id="r2"] [data-test="locate-route"]').trigger('click')
+    const route = wrapper.find('[data-route-id="r2"]')
+    route.get('[data-test="route-more"]').element.setAttribute('open', '')
+    await route.get('[data-test="locate-route"]').trigger('click')
     expect(locateSpy).toHaveBeenCalledWith('r2')
     expect(graphUi.focusRouteId).toBeNull()
   })
@@ -313,7 +321,9 @@ describe('WorkspaceView graph shell', () => {
   it('focus route changes only the browser reading context', async () => {
     mockViews()
     const { wrapper, graphUi } = await mountWorkspace()
-    await wrapper.find('[data-route-id="r2"] [data-test="focus-route"]').trigger('click')
+    const route = wrapper.find('[data-route-id="r2"]')
+    route.get('[data-test="route-more"]').element.setAttribute('open', '')
+    await route.get('[data-test="focus-route"]').trigger('click')
     expect(graphUi.focusRouteId).toBe('r2')
     expect(useWorkspaceStore().activeState?.activeRoute?.id).toBe('r1')
   })
@@ -321,7 +331,9 @@ describe('WorkspaceView graph shell', () => {
   it('archive requires an explicit confirmation dialog', async () => {
     mockViews()
     const { wrapper } = await mountWorkspace()
-    await wrapper.find('[data-route-id="r1"] [data-test="archive-route"]').trigger('click')
+    const route = wrapper.find('[data-route-id="r1"]')
+    route.get('[data-test="route-more"]').element.setAttribute('open', '')
+    await route.get('[data-test="archive-route"]').trigger('click')
     expect(wrapper.find('[data-test="confirm-route-action-dialog"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('归档该路线？')
     await wrapper.find('[data-test="cancel-route-action"]').trigger('click')
@@ -430,20 +442,24 @@ describe('WorkspaceView graph shell', () => {
     const { wrapper, graphUi } = await mountWorkspace()
     graphUi.setFocusRoute('r1')
     await flushPromises()
+    // 导航优先：默认只展示路线名/节点数/浏览与运行状态；管理动作收进闭合溢出。
+    for (const route of wrapper.findAll('[data-route-id]')) {
+      route.get('[data-test="route-more"]').element.setAttribute('open', '')
+    }
+    wrapper.get('[data-test="route-filters"]').element.setAttribute('open', '')
+    await flushPromises()
     const text = wrapper.text()
     // 标题是项目名；壳层文案是中文。
     expect(text).toContain('Test project')
-    expect(text).toContain('当前路线')
-    expect(text).toContain('开放')
-    expect(text).toContain('已替代')
+    expect(text).toContain('正在浏览')
+    expect(text).toContain('运行路线')
     expect(text).toContain('已归档')
-    expect(text).toContain('已删除')
     expect(text).toContain('需求状态')
     expect(text).toContain('规格')
     expect(text).toContain('归档')
     expect(text).toContain('删除路线')
     expect(text).toContain('定位路线')
-    expect(text).toContain('聚焦此路线')
+    expect(text).toContain('浏览此路线')
     expect(text).toContain('弱化路线')
     expect(text).toContain('隐藏路线')
     // 后端/用户内容保持原样（verbatim）：路线名与派生 claim 文本不翻译。
@@ -452,14 +468,16 @@ describe('WorkspaceView graph shell', () => {
     expect(text).toContain('A confirmed requirement detail.')
   })
 
-  it('floating window state persists independently of canvas layout', async () => {
+  it('sidebar open state toggles independently of canvas layout', async () => {
     mockViews()
     const { wrapper, graphUi } = await mountWorkspace()
-    await wrapper.find('[data-test="floating-window-routes"] [data-test="floating-window-close"]').trigger('click')
-    expect(graphUi.floatingWindows.routes.open).toBe(false)
-    await wrapper.find('[data-test="floating-window-inspector"] [data-test="floating-window-reset"]').trigger('click')
-    expect(graphUi.floatingWindows.routes.open).toBe(true)
-    expect(graphUi.floatingWindows.routes.width).toBe(320)
-    expect(graphUi.floatingWindows.inspector.width).toBe(420)
+    expect(graphUi.leftSidebarOpen).toBe(true)
+    expect(graphUi.rightSidebarOpen).toBe(true)
+    await wrapper.find('[data-test="toggle-left"]').trigger('click')
+    expect(graphUi.leftSidebarOpen).toBe(false)
+    await wrapper.find('[data-test="toggle-right"]').trigger('click')
+    expect(graphUi.rightSidebarOpen).toBe(false)
+    await wrapper.find('[data-test="toggle-left"]').trigger('click')
+    expect(graphUi.leftSidebarOpen).toBe(true)
   })
 })

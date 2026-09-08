@@ -28,13 +28,14 @@ test('regenerate creates a replacement route and keeps old history', async ({ pa
   await page.getByTestId('regenerate-submit').click()
 
   // 旧路线 → 已替代；替代路线 → 当前路线；替代节点为当前可回答节点。
+  // Route 侧栏是固定区域：无需打开浮窗即可断言。
   await expect(page.getByTestId('question')).not.toHaveText('What is the most important outcome?')
-  await page.getByTestId('open-routes').click()
+  await expect(page.getByTestId('left-sidebar')).toBeVisible()
   await expect(page.getByTestId('active-route')).toHaveCount(1)
   const cards = page.locator('[data-route-id]')
   await expect(cards).toHaveCount(2)
   await expect(cards.nth(0).locator('.badge-superseded')).toBeVisible()
-  await expect(cards.nth(1).locator('.badge-open')).toBeVisible()
+  await expect(cards.nth(1).getByTestId('active-route')).toBeVisible()
 
   // 旧历史完整保留（root + child + grandchild），加上替代节点 = 4 个节点。
   await expect(page.locator('.graph-question-node')).toHaveCount(4)

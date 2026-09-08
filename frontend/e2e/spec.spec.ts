@@ -6,6 +6,7 @@ import {
   draftFirstQuestion,
   fitGraph,
   forkFromNode,
+  openRouteMore,
 } from './helpers'
 
 /**
@@ -46,8 +47,10 @@ test('Active=A Focus=B separates reading context from work context', async ({ pa
   await expect(page.locator('[data-route-id]')).toHaveCount(2)
 
   // 把 A 重新设为当前路线 → Active=A；B 保持 OPEN 非当前。
+  // 设为运行路线在每条路线的溢出菜单中。
   const cards = page.locator('[data-route-id]')
   const cardA = cards.filter({ hasNot: page.getByTestId('active-route') }).first()
+  await openRouteMore(cardA)
   await cardA.getByTestId('activate-route').click()
   // activate 是后端命令：等确认反馈（canonical 刷新完成）后再定位卡片，
   // 避免徽标切换竞态导致后续 locator 指向错误的路线。
@@ -60,8 +63,8 @@ test('Active=A Focus=B separates reading context from work context', async ({ pa
   // Focus 不改变 Active。
   await expect(page.getByTestId('active-route')).toHaveCount(1)
 
-  // 需求状态与规格历史跟随读取路线 B。
-  await page.getByTestId('open-inspector').click()
+  // 需求状态与规格历史跟随读取路线 B（固定右侧 Inspector）。
+  await expect(page.getByTestId('right-sidebar')).toBeVisible()
   await expect(page.getByTestId('requirement-state-panel')).toBeVisible()
   await expect(page.getByText('路线：Route-B').first()).toBeVisible()
 

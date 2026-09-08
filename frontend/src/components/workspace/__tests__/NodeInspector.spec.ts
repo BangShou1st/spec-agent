@@ -52,6 +52,43 @@ function nodeData(overrides: Partial<SpecAgentGraphNodeData> = {}): SpecAgentGra
   }
 }
 
+describe('node inspector information hierarchy', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+  })
+
+  it('prioritizes content, answer, and agent action before secondary metadata', () => {
+    const wrapper = mount(NodeInspector, {
+      props: {
+        data: nodeData({
+          qLabel: 'Q3',
+          isLatest: true,
+          primaryAnswer: {
+            routeId: 'rA',
+            selectedOptionId: null,
+            selectedOptionLabel: null,
+            freeText: '已确认的回答',
+            isPrimary: true,
+          },
+        }),
+      },
+    })
+
+    const sections = wrapper.findAll('[data-test^="inspector-section-"]')
+      .map((section) => section.attributes('data-test'))
+
+    expect(sections.slice(0, 3)).toEqual([
+      'inspector-section-content',
+      'inspector-section-answer',
+      'inspector-section-agent',
+    ])
+    expect(wrapper.get('[data-test="inspector-secondary"]').attributes('open')).toBeUndefined()
+    expect(wrapper.find('[data-test="agent-proposal"]').exists()).toBe(false)
+  })
+})
+
 describe('node inspector ask AI proposal', () => {
   beforeEach(() => {
     localStorage.clear()
@@ -69,6 +106,7 @@ describe('node inspector ask AI proposal', () => {
     }
     const wrapper = mount(NodeInspector, { props: { data: nodeData() } })
     expect(wrapper.find('[data-test="ask-result"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="agent-proposal"]').exists()).toBe(true)
     // 提案可见，且有明确的接受/拒绝入口（不允许只有一句"可查看待确认提案"）。
     expect(wrapper.find('[data-test="accept-proposal"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="reject-proposal"]').exists()).toBe(true)
