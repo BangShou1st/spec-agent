@@ -1198,9 +1198,25 @@ input:focus-visible {
   min-width: 0;
   min-height: 0;
   display: flex;
+  flex-direction: column;
 }
 
 .workspace-shell__center > .workspace-shell__canvas {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Graph 区域：Dock 上方的可见工作区，展开 Dock 时压缩但不消失。 */
+.workspace-shell__graph-region {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+}
+
+.workspace-shell__graph-region > .workspace-shell__canvas {
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;

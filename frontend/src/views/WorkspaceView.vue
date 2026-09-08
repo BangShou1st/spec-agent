@@ -3,6 +3,7 @@ import { computed, inject, nextTick, onMounted, ref, watch } from 'vue'
 import { routerKey } from 'vue-router'
 import ApiErrorBanner from '@/components/ApiErrorBanner.vue'
 import RecoveryNotice from '@/components/workspace/RecoveryNotice.vue'
+import SpecDock from '@/components/workspace/SpecDock.vue'
 import ConfirmRouteActionDialog from '@/components/ConfirmRouteActionDialog.vue'
 import ForkRouteDialog from '@/components/ForkRouteDialog.vue'
 import ResourceDialog from '@/components/ResourceDialog.vue'
@@ -205,6 +206,51 @@ const forkFinalizedRouteIds = computed(() => {
     .filter((answer) => answer.nodeId === forkNodeId.value)
     .map((answer) => answer.routeId)
 })
+
+/** Spec Dock 阅读路线：显式 Focus，单路线回退；绝不隐式改 Focus/Active。 */
+const specReadingRouteId = computed<string | null>(() => {
+  const focused = graphUi.readingRouteId()
+  if (focused) return focused
+  const routes = store.graphView?.routes ?? []
+  return routes.length === 1 ? routes[0].id : null
+})
+const specReadingRouteLabel = computed(() => {
+  if (!specReadingRouteId.value) return '未选择'
+  return store.graphView?.routes.find((route) => route.id === specReadingRouteId.value)?.label?.trim() || '当前路线'
+})
+const specActiveRouteLabel = computed(() =>
+  store.activeRoute?.label?.trim() || '当前路线',
+)
+const specSnapshots = computed(() =>
+  specReadingRouteId.value ? store.specsByRoute[specReadingRouteId.value] ?? [] : [],
+)
+const specSelectedId = computed(() =>
+  specReadingRouteId.value ? store.selectedSpecIdByRoute[specReadingRouteId.value] ?? null : null,
+)
+
+// 读取路线变化时，规格历史从后端加载（与 Inspector 的需求加载同语义）。
+watch(
+  specReadingRouteId,
+  (routeId) => {
+    if (routeId) {
+      void store.loadRouteSpecs(routeId)
+    }
+  },
+  { immediate: true },
+)
+
+async function handleGenerateSpec(): Promise<void> {
+  const generated = await store.generateSpec()
+  if (generated) {
+    graphUi.setFocusRoute(store.activeRoute?.id ?? null)
+  }
+}
+
+function handleSelectSpec(snapshotId: string): void {
+  if (specReadingRouteId.value) {
+    store.selectSpecForRoute(specReadingRouteId.value, snapshotId)
+  }
+}
 
 const reanswerFinalized = computed(() => {
   if (!reanswerNodeId.value || !reanswerSourceRoute.value || !store.graphView) return false
@@ -511,31 +557,46 @@ async function confirmDestructive(): Promise<void> {
           />
         </div>
 
-        <GraphCanvas
-          ref="canvasRef"
-          class="workspace-shell__canvas"
-          :view="store.graphView"
-          :active-node-id="store.activeState?.activeNode?.id ?? null"
-          :submitting="store.submitting"
-          :drafting="store.drafting"
-          :pending="store.routeCommandPending"
-          :runtime-node-id="store.pendingAnswerNodeId"
-          :runtime-status="store.answerRunStatus"
-          :runtime-phase="store.answerRunPhase"
-          :pending-projection="store.pendingRouteProjection"
-          @draft="handleDraft"
-          @submit-answer="handleAnswer"
-          @fork="handleFork"
-          @reanswer="handleReanswer"
-          @regenerate="handleRegenerate"
-          @activate-route="handleActivateRouteForAnswer"
-          @contextual-ai="handleContextualAi"
-          @retry-pending="store.retryPendingAgentRun"
-          @add-idea="handleAddIdea"
-          @add-resource="resourceDialogOpen = true"
-          @relation-proposal="handleRelationProposal"
-          @undo="store.undoGraph"
-          @redo="store.redoGraph"
+        <div class="workspace-shell__graph-region">
+          <GraphCanvas
+            ref="canvasRef"
+            class="workspace-shell__canvas"
+            :view="store.graphView"
+            :active-node-id="store.activeState?.activeNode?.id ?? null"
+            :submitting="store.submitting"
+            :drafting="store.drafting"
+            :pending="store.routeCommandPending"
+            :runtime-node-id="store.pendingAnswerNodeId"
+            :runtime-status="store.answerRunStatus"
+            :runtime-phase="store.answerRunPhase"
+            :pending-projection="store.pendingRouteProjection"
+            @draft="handleDraft"
+            @submit-answer="handleAnswer"
+            @fork="handleFork"
+            @reanswer="handleReanswer"
+            @regenerate="handleRegenerate"
+            @activate-route="handleActivateRouteForAnswer"
+            @contextual-ai="handleContextualAi"
+            @retry-pending="store.retryPendingAgentRun"
+            @add-idea="handleAddIdea"
+            @add-resource="resourceDialogOpen = true"
+            @relation-proposal="handleRelationProposal"
+            @undo="store.undoGraph"
+            @redo="store.redoGraph"
+          />
+        </div>
+
+        <SpecDock
+          :reading-route-id="specReadingRouteId"
+          :reading-route-label="specReadingRouteLabel"
+          :active-route-id="store.activeRoute?.id ?? null"
+          :active-route-label="specActiveRouteLabel"
+          :snapshots="specSnapshots"
+          :selected-spec-id="specSelectedId"
+          :generating="store.generatingSpec"
+          :command-pending="store.routeCommandPending"
+          @generate-spec="handleGenerateSpec"
+          @select-snapshot="handleSelectSpec"
         />
 
         <div class="workspace-shell__toast-layer">

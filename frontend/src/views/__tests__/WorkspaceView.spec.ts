@@ -418,6 +418,62 @@ describe('WorkspaceView graph shell', () => {
     expect(wrapper.text()).toContain('当前查看路线')
   })
 
+  it('spec dock is collapsed by default in the graph center and keeps graph mounted', async () => {
+    mockViews()
+    vi.mocked(listRouteSpecs).mockResolvedValue([])
+    const { wrapper, graphUi } = await mountWorkspace()
+    graphUi.setFocusRoute('r1')
+    await flushPromises()
+    const dock = wrapper.find('[data-test="spec-dock"]')
+    expect(dock.exists()).toBe(true)
+    expect(dock.attributes('data-state')).toBe('collapsed')
+    // Dock 位于中央列，Graph 仍挂载。
+    expect(wrapper.find('.workspace-shell__graph-region [data-test="graph-canvas-stub"]').exists()).toBe(true)
+  })
+
+  it('expanding the dock keeps graph and inspector usable', async () => {
+    mockViews()
+    vi.mocked(listRouteSpecs).mockResolvedValue([])
+    const { wrapper, graphUi } = await mountWorkspace()
+    graphUi.setFocusRoute('r1')
+    await flushPromises()
+    await wrapper.find('[data-test="spec-dock-toggle"]').trigger('click')
+    expect(wrapper.find('[data-test="spec-dock"]').attributes('data-state')).toBe('expanded')
+    expect(wrapper.find('.workspace-shell__graph-region [data-test="graph-canvas-stub"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="workspace-inspector"]').exists()).toBe(true)
+  })
+
+  it('dock generate-spec still targets the active route while reading another', async () => {
+    mockViews()
+    vi.mocked(listRouteSpecs).mockResolvedValue([])
+    mockedCreateAgentRun.mockResolvedValue({
+      runId: 'run-spec',
+      operation: 'GENERATE_ARTIFACT',
+      phase: 'CREATED',
+    })
+    mockedGetAgentRun.mockResolvedValue({
+      runId: 'run-spec',
+      projectId: 'p1',
+      routeId: 'r1',
+      operation: 'GENERATE_ARTIFACT',
+      status: 'completed',
+      phase: 'COMPLETED',
+      producedNodeId: null,
+      producedAnswerId: null,
+      producedPatchId: null,
+      producedSpecSnapshotId: 'spec-1',
+    })
+    const { wrapper, graphUi } = await mountWorkspace()
+    graphUi.setFocusRoute('r2')
+    await flushPromises()
+    expect(wrapper.find('[data-test="spec-route-warning"]').exists()).toBe(true)
+    await wrapper.find('[data-test="spec-dock-toggle"]').trigger('click')
+    vi.mocked(listRouteSpecs).mockResolvedValue([makeSpecSnapshot({ id: 'spec-1', routeId: 'r1' })])
+    await wrapper.find('[data-test="generate-spec"]').trigger('click')
+    await flushPromises()
+    expect(mockedCreateAgentRun).toHaveBeenCalledWith('p1', { operation: 'GENERATE_ARTIFACT' })
+  })
+
 
   it('shell copy is chinese while backend content stays verbatim', async () => {
     mockViews()
