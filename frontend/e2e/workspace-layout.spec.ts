@@ -47,6 +47,85 @@ test('minimum desktop layout keeps the current question interactive', async ({ p
   await expect(input).toHaveValue('fixed layout remains interactive')
 })
 
+for (const viewport of viewports) {
+  test(`${viewport.width}x${viewport.height} keeps the spec dock collapsed with graph dominant`, async ({ page }) => {
+    await page.setViewportSize(viewport)
+    await createProject(page, `E2E Spec Dock Collapsed ${viewport.width}`)
+    await buildThreeNodeLineage(page)
+    await fitGraph(page)
+
+    const dock = page.getByTestId('spec-dock')
+    await expect(dock).toBeVisible()
+    await expect(dock).toHaveAttribute('data-state', 'collapsed')
+    const dockBox = await dock.boundingBox()
+    expect(dockBox).not.toBeNull()
+    // 折叠高度约 44–52px。
+    expect(dockBox?.height ?? 0).toBeGreaterThanOrEqual(40)
+    expect(dockBox?.height ?? 0).toBeLessThanOrEqual(60)
+
+    // Graph 仍是视觉主体：canvas 高度显著大于折叠 Dock。
+    const canvas = page.getByTestId('graph-canvas')
+    const canvasBox = await canvas.boundingBox()
+    expect(canvasBox).not.toBeNull()
+    expect(canvasBox?.height ?? 0).toBeGreaterThan((dockBox?.height ?? 0) * 3)
+
+    // 当前问题仍可回答。
+    const current = page.locator('.graph-question-node--current')
+    await expect(current).toBeVisible()
+  })
+}
+
+test('1366x768 expanding the dock keeps graph and inspector usable', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 768 })
+  await createProject(page, 'E2E Spec Dock Expanded')
+  await buildThreeNodeLineage(page)
+  await fitGraph(page)
+
+  const dock = page.getByTestId('spec-dock')
+  const canvas = page.getByTestId('graph-canvas')
+  const before = await canvas.boundingBox()
+  await page.getByTestId('spec-dock-toggle').click()
+  await expect(dock).toHaveAttribute('data-state', 'expanded')
+
+  // Graph 仍可见且有可用高度（非零）。
+  await expect(canvas).toBeVisible()
+  const after = await canvas.boundingBox()
+  expect(after).not.toBeNull()
+  expect(after?.height ?? 0).toBeGreaterThan(0)
+  expect(after?.height ?? 0).toBeLessThan(before?.height ?? Number.MAX_SAFE_INTEGER)
+  // 展开不超过中央区 45%：Dock 高度占比检查。
+  const dockBox = await dock.boundingBox()
+  const centerBox = await page.locator('.workspace-shell__center').boundingBox()
+  expect(dockBox).not.toBeNull()
+  expect(centerBox).not.toBeNull()
+  expect((dockBox?.height ?? 0) / (centerBox?.height ?? 1)).toBeLessThanOrEqual(0.5)
+  // Inspector 仍可用。
+  await expect(page.getByTestId('workspace-inspector')).toBeVisible()
+
+  // 折叠后空间归还，Graph 交互状态不丢失。
+  await page.getByTestId('spec-dock-toggle').click()
+  await expect(dock).toHaveAttribute('data-state', 'collapsed')
+  const current = page.locator('.graph-question-node--current')
+  await expect(current).toBeVisible()
+  await current.getByTestId('free-text').fill('dock collapse keeps interaction')
+  await expect(current.getByTestId('free-text')).toHaveValue('dock collapse keeps interaction')
+})
+
+test('default workspace exposes no raw technical identifiers', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await createProject(page, 'E2E No Technical Noise')
+  await buildThreeNodeLineage(page)
+  await fitGraph(page)
+
+  const bodyText = await page.locator('.workspace-shell').innerText()
+  // 默认首屏无 UUID 形态、raw actionFamily、raw phase。
+  expect(bodyText).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)
+  expect(bodyText).not.toContain('CREATE_NODE')
+  expect(bodyText).not.toContain('SNAPSHOT_BUILT')
+  expect(bodyText).not.toContain('STATE_UPDATING')
+  expect(bodyText).not.toContain('PROPOSAL_CREATED')
+})
+
 test('max-width sidebars leave status and toast overlays inside the graph center', async ({ page }) => {
   // 1920 宽度 + 双栏 max-width（左 420 + 右 600）下中心列仍可操作；
   // 1366 + max-width 的中心列过窄本就不可操作，不作为验收目标。

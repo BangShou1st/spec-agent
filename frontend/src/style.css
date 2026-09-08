@@ -1169,6 +1169,9 @@ input:focus-visible {
   display: flex;
   min-width: 0;
   min-height: 0;
+  /* 相对 shell（height:100%）取确定高度，否则纵向 column 的
+     graph-region 百分比高度失效、canvas 被内容高度反推。 */
+  height: 100%;
   overflow: hidden;
 }
 

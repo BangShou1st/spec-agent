@@ -102,13 +102,15 @@ test('NodeQuery proposal → Accept refreshes the graph', async ({ page, request
   // Deterministic fake 对该输入稳定产出 CONNECT_NODE → AWAITING_APPROVAL。
   expect(status).toBe('AWAITING_APPROVAL')
 
-  await expect(page.getByTestId('accept-proposal')).toBeVisible()
-  await expect(page.getByTestId('reject-proposal')).toBeVisible()
-  // 候选动作摘要可见。
-  await expect(page.getByTestId('ask-result')).toContainText('CONNECT_NODE')
+  await expect(page.getByTestId('proposal-card')).toBeVisible()
+  await expect(page.getByTestId('proposal-accept')).toBeVisible()
+  await expect(page.getByTestId('proposal-reject')).toBeVisible()
+  // 候选动作展示产品化中文标签，不暴露 raw actionFamily。
+  await expect(page.getByTestId('proposal-action')).toContainText('连接节点')
+  await expect(page.getByTestId('ask-result')).not.toContainText('CONNECT_NODE')
 
   const relationsBefore = await relationCount(request, projectId)
-  await page.getByTestId('accept-proposal').click()
+  await page.getByTestId('proposal-accept').click()
   await expect(page.getByTestId('ask-result')).toContainText('提案已接受')
 
   // 真实 accept 后：proposal 状态 ACCEPTED（经 NodeQuery result API 读回）。
@@ -131,7 +133,7 @@ test('NodeQuery proposal → Reject leaves the graph unchanged', async ({ page, 
   )
   expect(status).toBe('AWAITING_APPROVAL')
 
-  await page.getByTestId('reject-proposal').click()
+  await page.getByTestId('proposal-reject').click()
   await expect(page.getByTestId('ask-result')).toContainText('提案已拒绝')
 
   await expect.poll(async () => {
