@@ -94,15 +94,11 @@ function onSelectSnapshot(event: Event): void {
       >
         <span class="spec-dock__chevron" aria-hidden="true">{{ expanded ? '▾' : '▴' }}</span>
       </button>
+      <!-- 摘要文本保持可读；键盘切换走唯一的 toggle button，避免重复停靠点。 -->
       <div
         class="spec-dock__summary"
         data-test="spec-dock-summary"
-        role="button"
-        tabindex="0"
-        aria-label="展开或折叠规格"
         @click="toggle"
-        @keydown.enter="toggle"
-        @keydown.space.prevent="toggle"
       >
         <strong>规格</strong>
         <span class="spec-dock__meta">{{ readingRouteLabel }} · {{ latestLabel }}</span>
@@ -239,6 +235,17 @@ function onSelectSnapshot(event: Event): void {
   height: 48px;
   min-height: 48px;
   padding: 0 12px;
+  transition: background-color 120ms ease;
+}
+
+.spec-dock__bar:hover {
+  background: var(--color-surface-subtle);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spec-dock__bar {
+    transition: none;
+  }
 }
 
 .spec-dock__toggle {
@@ -256,6 +263,7 @@ function onSelectSnapshot(event: Event): void {
   gap: 12px;
   flex: 1 1 auto;
   min-width: 0;
+  overflow: hidden;
   cursor: pointer;
   font-size: 13px;
 }
@@ -264,6 +272,10 @@ function onSelectSnapshot(event: Event): void {
   font-size: 12px;
   color: var(--color-text-secondary);
   white-space: nowrap;
+}
+
+.spec-dock__meta--warn {
+  color: var(--color-warn);
 }
 
 .spec-dock__body {

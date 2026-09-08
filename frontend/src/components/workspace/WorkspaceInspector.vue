@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import NodeInspector from '@/components/workspace/NodeInspector.vue'
 import ProjectSummary from '@/components/workspace/ProjectSummary.vue'
 import RequirementDetailView from '@/components/workspace/RequirementDetailView.vue'
@@ -40,6 +40,22 @@ const graphUi = useGraphUiStore()
 
 type SecondaryView = 'summary' | 'requirements'
 const secondaryView = ref<SecondaryView>('summary')
+const inspectorBody = ref<HTMLElement | null>(null)
+
+/**
+ * 二级视图切换后保持键盘焦点：把焦点移到新视图的第一个可操作按钮，
+ * 避免焦点因旧按钮卸载而丢失到 body。
+ */
+async function switchSecondaryView(view: SecondaryView): Promise<void> {
+  secondaryView.value = view
+  await nextTick()
+  const target = inspectorBody.value?.querySelector<HTMLElement>(
+    view === 'requirements'
+      ? '[data-test="requirement-back"]'
+      : '[data-test="open-requirements"]',
+  )
+  target?.focus()
+}
 
 const readingRouteId = computed<string | null>(() => {
   const focusedRouteId = graphUi.readingRouteId()
@@ -99,7 +115,7 @@ function edgeRouteLabel(routeId: string): string {
       当前查看路线：<strong>{{ readingRouteLabel }}</strong>
     </div>
 
-    <div class="inspector-body">
+    <div ref="inspectorBody" class="inspector-body">
       <NodeInspector
         v-if="nodeData && !selectedEdge"
         :data="nodeData"
@@ -143,7 +159,7 @@ function edgeRouteLabel(routeId: string): string {
         :route-label="readingRouteLabel"
         :route-id="readingRouteId"
         :loading="requirementLoading"
-        @back="secondaryView = 'summary'"
+        @back="switchSecondaryView('summary')"
       />
 
       <ProjectSummary
@@ -152,7 +168,7 @@ function edgeRouteLabel(routeId: string): string {
         :route-label="readingRouteLabel"
         :route-id="readingRouteId"
         :loading="requirementLoading"
-        @open-requirements="secondaryView = 'requirements'"
+        @open-requirements="switchSecondaryView('requirements')"
       />
     </div>
   </div>

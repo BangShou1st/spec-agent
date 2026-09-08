@@ -634,6 +634,17 @@ textarea {
   min-width: 0;
 }
 
+/* 历史共享节点的计数摘要：安静的单行文本，不再逐个渲染路线 chip。 */
+.graph-question-node__routes--compact {
+  display: block;
+  flex: 0 1 auto;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .graph-question-node__header:active {
   cursor: grabbing;
 }

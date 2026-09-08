@@ -176,6 +176,21 @@ describe('workspace inspector contextual surface', () => {
     expect(wrapper.find('[data-test="requirement-detail"]').exists()).toBe(false)
   })
 
+  it('secondary view toggles preserve keyboard focus', async () => {
+    await loadStore()
+    const wrapper = mount(WorkspaceInspector, {
+      props: { nodeData: null },
+      attachTo: document.body,
+    })
+    await wrapper.find('[data-test="open-requirements"]').trigger('click')
+    await wrapper.vm.$nextTick()
+    expect(document.activeElement?.getAttribute('data-test')).toBe('requirement-back')
+    await wrapper.find('[data-test="requirement-back"]').trigger('click')
+    await wrapper.vm.$nextTick()
+    expect(document.activeElement?.getAttribute('data-test')).toBe('open-requirements')
+    wrapper.unmount()
+  })
+
   it('selecting a node resets the secondary requirements view', async () => {
     await loadStore()
     const wrapper = mount(WorkspaceInspector, { props: { nodeData: null } })
