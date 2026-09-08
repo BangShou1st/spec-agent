@@ -588,7 +588,7 @@ async function confirmDestructive(): Promise<void> {
             <p v-if="store.refreshing" class="muted workspace-shell__refreshing" data-test="refreshing">
               正在刷新工作区…
             </p>
-            <p v-if="store.feedback" class="feedback-line" data-test="feedback">{{ store.feedback }}</p>
+            <p v-if="store.feedback" class="feedback-line" data-test="feedback" role="status">{{ store.feedback }}</p>
             <button v-if="store.forkDraftRetryRouteId" class="btn btn-primary workspace-shell__retry-draft" data-test="retry-fork-draft" :disabled="workspaceRetrying" @click="retryForkDraft">重试起草</button>
           </div>
         </div>
