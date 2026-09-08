@@ -799,9 +799,10 @@ textarea {
 
 .graph-node-question {
   margin: 0 0 8px;
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 1.4;
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.45;
+  letter-spacing: -0.01em;
 }
 
 .graph-node-question--compact {
@@ -1028,7 +1029,7 @@ input:focus-visible,
 
 .graph-question-node--selected {
   border-color: var(--color-accent);
-  box-shadow: 0 0 0 2px var(--color-accent-soft);
+  box-shadow: var(--focus-ring);
 }
 
 /* Q label and Latest marker */
@@ -1479,7 +1480,7 @@ input:focus-visible,
 
 .route-card__primary {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
 }

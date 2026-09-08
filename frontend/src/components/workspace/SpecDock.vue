@@ -338,11 +338,15 @@ function onSelectSnapshot(event: Event): void {
 }
 
 .spec-dock__section h4 {
-  margin: 0 0 4px;
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.45;
 }
 
 .spec-dock__section p {
   margin: 0;
+  line-height: 1.6;
   white-space: pre-wrap;
 }
 
