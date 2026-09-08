@@ -110,7 +110,12 @@ describe('node inspector ask AI proposal', () => {
     // 提案可见，且有明确的接受/拒绝入口（不允许只有一句"可查看待确认提案"）。
     expect(wrapper.find('[data-test="accept-proposal"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="reject-proposal"]').exists()).toBe(true)
-    expect(wrapper.text()).toContain('CREATE_NODE')
+    // 产品化卡片：可读标签 + 确认执行/拒绝，不暴露 raw actionFamily。
+    expect(wrapper.find('[data-test="proposal-card"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('创建节点')
+    expect(wrapper.text()).toContain('确认执行')
+    expect(wrapper.text()).toContain('拒绝')
+    expect(wrapper.text()).not.toContain('CREATE_NODE')
   })
 
   it('accepting a proposal refreshes the graph and shows the accepted state', async () => {
