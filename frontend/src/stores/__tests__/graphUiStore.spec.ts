@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useGraphUiStore } from '@/stores/graphUiStore'
 import type { GraphWorkspaceView } from '@/api/types'
-import { DEFAULT_WORKSPACE_UI_V2 } from '@/graph/graphLayoutStorage'
 
 const PROJECT_ID = 'p1'
 const ACTIVE_ROUTE_ID = 'rActive'
@@ -302,15 +301,17 @@ describe('graph ui store', () => {
     expect(useGraphUiStore().nodePositions).toEqual({})
   })
 
-  it('reset windows restores the complete default geometry and open state', () => {
+  it('persists fixed sidebar open state and clamped widths without floating-window state', () => {
     const store = useGraphUiStore()
-    store.setFloatingWindow('routes', { x: 400, y: 300, width: 470, height: 700, open: false })
-    store.setFloatingWindow('inspector', { x: 10, y: 20, width: 330, height: 300, open: false })
+    store.setLeftSidebar({ open: false, width: 9999 })
+    store.setRightSidebar({ open: true, width: -10 })
 
-    store.resetWindows()
-
-    expect(store.floatingWindows).toEqual(DEFAULT_WORKSPACE_UI_V2.windows)
-    const saved = JSON.parse(localStorage.getItem('spec-agent.workspace-ui.v2') ?? '{}')
-    expect(saved.windows).toEqual(DEFAULT_WORKSPACE_UI_V2.windows)
+    const saved = JSON.parse(localStorage.getItem('spec-agent.workspace-ui.v1') ?? '{}')
+    expect(saved.leftSidebar.open).toBe(false)
+    expect(saved.leftSidebar.width).toBe(420)
+    expect(saved.rightSidebar.open).toBe(true)
+    expect(saved.rightSidebar.width).toBe(300)
+    expect('floatingWindows' in store).toBe(false)
   })
+
 })

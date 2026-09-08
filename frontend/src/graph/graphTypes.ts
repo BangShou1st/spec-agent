@@ -35,20 +35,3 @@ export interface WorkspaceUiPreferencesV1 {
   rightSidebar: { open: boolean; width: number }
 }
 
-export interface FloatingWindowPreference {
-  x: number
-  y: number
-  width: number
-  height: number
-  open: boolean
-  /** Auto layout avoids current graph/window obstacles; manual preserves user placement. */
-  positionMode: 'auto' | 'manual'
-}
-
-export interface WorkspaceUiPreferencesV2 {
-  version: 2
-  windows: {
-    routes: FloatingWindowPreference
-    inspector: FloatingWindowPreference
-  }
-}

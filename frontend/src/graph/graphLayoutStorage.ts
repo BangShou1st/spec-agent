@@ -3,8 +3,6 @@ import type {
   GraphRouteDisplayState,
   ProjectGraphPreferencesV1,
   ProjectGraphPreferencesV2,
-  FloatingWindowPreference,
-  WorkspaceUiPreferencesV2,
   WorkspaceUiPreferencesV1,
 } from './graphTypes'
 
@@ -20,7 +18,6 @@ import type {
 const PROJECT_KEY_PREFIX = 'spec-agent.graph-layout.v1.'
 const PROJECT_V2_KEY_PREFIX = 'spec-agent.graph-layout.v2.'
 const WORKSPACE_KEY = 'spec-agent.workspace-ui.v1'
-const WORKSPACE_V2_KEY = 'spec-agent.workspace-ui.v2'
 
 export const LEFT_SIDEBAR_RANGE = { min: 220, max: 420, default: 280 }
 export const RIGHT_SIDEBAR_RANGE = { min: 300, max: 600, default: 380 }
@@ -29,27 +26,6 @@ export const DEFAULT_WORKSPACE_UI: WorkspaceUiPreferencesV1 = {
   version: 1,
   leftSidebar: { open: true, width: LEFT_SIDEBAR_RANGE.default },
   rightSidebar: { open: true, width: RIGHT_SIDEBAR_RANGE.default },
-}
-
-export const FLOATING_WINDOW_RANGES = {
-  routes: { minWidth: 260, maxWidth: 480, minHeight: 220, maxHeight: 760 },
-  inspector: { minWidth: 320, maxWidth: 640, minHeight: 260, maxHeight: 820 },
-} as const
-
-export const DEFAULT_WORKSPACE_UI_V2: WorkspaceUiPreferencesV2 = {
-  version: 2,
-  windows: {
-    routes: { x: 0, y: 72, width: 320, height: 560, open: true, positionMode: 'auto' },
-    inspector: { x: 0, y: 72, width: 420, height: 640, open: true, positionMode: 'auto' },
-  },
-}
-
-const LEGACY_DEFAULT_WORKSPACE_UI_V2: WorkspaceUiPreferencesV2 = {
-  version: 2,
-  windows: {
-    routes: { x: 24, y: 72, width: 320, height: 560, open: true, positionMode: 'auto' },
-    inspector: { x: 836, y: 72, width: 420, height: 640, open: true, positionMode: 'auto' },
-  },
 }
 
 function emptyProjectPrefs(): ProjectGraphPreferencesV1 {
@@ -207,67 +183,3 @@ export function saveWorkspaceUiPreferences(value: WorkspaceUiPreferencesV1): voi
   }
 }
 
-function clampFloatingWindow(
-  value: Partial<FloatingWindowPreference> | undefined,
-  fallback: FloatingWindowPreference,
-  range: { minWidth: number; maxWidth: number; minHeight: number; maxHeight: number },
-  legacyFallback: FloatingWindowPreference,
-): FloatingWindowPreference {
-  const hasPositionMode = value?.positionMode === 'auto' || value?.positionMode === 'manual'
-  const matchesLegacyDefault =
-    Number(value?.x) === legacyFallback.x &&
-    Number(value?.y) === legacyFallback.y &&
-    Number(value?.width) === legacyFallback.width &&
-    Number(value?.height) === legacyFallback.height &&
-    value?.open === legacyFallback.open
-  return {
-    x: Number.isFinite(Number(value?.x)) ? Number(value?.x) : fallback.x,
-    y: Number.isFinite(Number(value?.y)) ? Number(value?.y) : fallback.y,
-    width: clamp(Number(value?.width), range.minWidth, range.maxWidth, fallback.width),
-    height: clamp(Number(value?.height), range.minHeight, range.maxHeight, fallback.height),
-    open: typeof value?.open === 'boolean' ? value.open : fallback.open,
-    // v2 did not persist an interaction mode. Repair its known defaults, but
-    // preserve a non-default legacy placement as an intentional manual move.
-    positionMode: hasPositionMode
-      ? value.positionMode as 'auto' | 'manual'
-      : matchesLegacyDefault ? 'auto' : 'manual',
-  }
-}
-
-export function loadWorkspaceUiPreferencesV2(): WorkspaceUiPreferencesV2 {
-  try {
-    const raw = localStorage.getItem(WORKSPACE_V2_KEY)
-    if (!raw) return structuredClone(DEFAULT_WORKSPACE_UI_V2)
-    const parsed: unknown = JSON.parse(raw)
-    if (typeof parsed !== 'object' || parsed === null) return structuredClone(DEFAULT_WORKSPACE_UI_V2)
-    const candidate = parsed as Partial<WorkspaceUiPreferencesV2>
-    if (candidate.version !== 2) return structuredClone(DEFAULT_WORKSPACE_UI_V2)
-    return {
-      version: 2,
-      windows: {
-        routes: clampFloatingWindow(
-          candidate.windows?.routes,
-          DEFAULT_WORKSPACE_UI_V2.windows.routes,
-          FLOATING_WINDOW_RANGES.routes,
-          LEGACY_DEFAULT_WORKSPACE_UI_V2.windows.routes,
-        ),
-        inspector: clampFloatingWindow(
-          candidate.windows?.inspector,
-          DEFAULT_WORKSPACE_UI_V2.windows.inspector,
-          FLOATING_WINDOW_RANGES.inspector,
-          LEGACY_DEFAULT_WORKSPACE_UI_V2.windows.inspector,
-        ),
-      },
-    }
-  } catch {
-    return structuredClone(DEFAULT_WORKSPACE_UI_V2)
-  }
-}
-
-export function saveWorkspaceUiPreferencesV2(value: WorkspaceUiPreferencesV2): void {
-  try {
-    localStorage.setItem(WORKSPACE_V2_KEY, JSON.stringify(value))
-  } catch {
-    // Best-effort only.
-  }
-}
