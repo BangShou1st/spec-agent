@@ -998,9 +998,27 @@ button:focus-visible,
 summary:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
-input:focus-visible {
+input:focus-visible,
+.graph-question-node:focus-within,
+.route-sidebar__row:focus-visible,
+.route-card:focus-visible,
+.graph-toolbar button:focus-visible,
+.graph-toolbar summary:focus-visible,
+.spec-dock__toggle:focus-visible,
+.resizable-sidebar__toggle:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spec-dock,
+  .spec-dock *,
+  .workspace-shell,
+  .workspace-shell * {
+    scroll-behavior: auto;
+    transition: none;
+    animation: none;
+  }
 }
 
 /* Historical nodes stay quiet; selected/current nodes get accent treatment. */
@@ -1488,7 +1506,31 @@ input:focus-visible {
   font-weight: 600;
   font-size: 13px;
   margin-bottom: 2px;
-  word-break: break-all;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.route-card__primary {
+  min-width: 0;
+}
+
+.spec-dock__summary,
+.spec-dock__meta,
+.inspector-reading-context,
+.project-summary__route,
+.requirement-detail__route {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.graph-node-question,
+.graph-node-purpose,
+.requirement-detail__text,
+.spec-dock__section p {
+  overflow-wrap: anywhere;
 }
 
 .route-card__group {

@@ -146,11 +146,13 @@ function openRoute(route: GraphWorkspaceRouteView): void {
           { 'route-card--focused': isFocused(route.id) },
         ]"
          :data-route-id="route.id"
+         :aria-current="isFocused(route.id) ? 'location' : undefined"
+         :aria-label="`${routeLabel(route)}${isFocused(route.id) ? '（正在浏览）' : ''}${route.id === activeRouteId ? '（运行路线）' : ''}`"
          @click="openRoute(route)"
       >
         <div class="route-card__primary" data-test="route-primary">
           <div class="route-card__identity">
-            <strong class="route-card__label">{{ routeLabel(route) }}</strong>
+            <strong class="route-card__label" :title="routeLabel(route)">{{ routeLabel(route) }}</strong>
             <span class="meta-text">{{ route.lineageNodeIds.length }} 个节点</span>
           </div>
           <div class="route-card__state">
