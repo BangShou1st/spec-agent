@@ -180,7 +180,7 @@ describe('graph canvas', () => {
     expect(setViewport).toHaveBeenCalledTimes(1)
     // bounds n1(0,0,320,220)+n2(HORIZONTAL_GAP,0,...) -> center in viewport
     expect(setViewport).toHaveBeenCalledWith(
-      expect.objectContaining({ x: 666 - ((320 + HORIZONTAL_GAP) / 2), y: 320, zoom: 1 }),
+      expect.objectContaining({ x: 652 - ((320 + HORIZONTAL_GAP) / 2), y: 312, zoom: 1 }),
       expect.objectContaining({ duration: 0 }),
     )
   })
@@ -196,7 +196,7 @@ describe('graph canvas', () => {
     expect(fitViewSpy).not.toHaveBeenCalled()
     expect(setViewport).toHaveBeenCalledTimes(1)
     expect(setViewport).toHaveBeenCalledWith(
-      expect.objectContaining({ x: 666 - ((320 + HORIZONTAL_GAP) / 2), y: 320, zoom: 1 }),
+      expect.objectContaining({ x: 652 - ((320 + HORIZONTAL_GAP) / 2), y: 312, zoom: 1 }),
       expect.objectContaining({ duration: 400 }),
     )
     expect(useGraphUiStore().focusRouteId).toBeNull()
@@ -211,7 +211,7 @@ describe('graph canvas', () => {
     await exposed.locateNode('n2')
     // n2 at (HORIZONTAL_GAP, 0) 320x220 -> centered in the viewport
     expect(setViewport).toHaveBeenCalledWith(
-      expect.objectContaining({ x: 666 - (HORIZONTAL_GAP + 160), y: 320, zoom: 1 }),
+      expect.objectContaining({ x: 652 - (HORIZONTAL_GAP + 160), y: 312, zoom: 1 }),
       expect.objectContaining({ duration: 400 }),
     )
   })
@@ -256,8 +256,8 @@ describe('graph canvas', () => {
       expect(setViewport).toHaveBeenCalledTimes(1)
       expect(setViewport).toHaveBeenCalledWith(
         expect.objectContaining({
-          x: 666 - (HORIZONTAL_GAP + 160),
-          y: 320,
+          x: 652 - (HORIZONTAL_GAP + 160),
+          y: 312,
           zoom: 1,
         }),
         expect.objectContaining({ duration: 400 }),
@@ -351,7 +351,7 @@ describe('graph canvas', () => {
       vi.advanceTimersByTime(550)
       expect(setViewport).toHaveBeenCalledTimes(1)
       expect(setViewport).toHaveBeenCalledWith(
-        expect.objectContaining({ x: 286, y: 320, zoom: 1 }),
+        expect.objectContaining({ x: 312, y: 312, zoom: 1 }),
         expect.objectContaining({ duration: 300 }),
       )
     } finally {
@@ -368,7 +368,7 @@ describe('graph canvas', () => {
     await wrapper.find('[data-test="fit-view"]').trigger('click')
     expect(fitViewSpy).not.toHaveBeenCalled()
     expect(setViewport).toHaveBeenCalledWith(
-      expect.objectContaining({ x: 286, y: 320, zoom: 1 }),
+      expect.objectContaining({ x: 312, y: 312, zoom: 1 }),
       expect.objectContaining({ duration: 300 }),
     )
   })
@@ -389,7 +389,7 @@ describe('graph canvas', () => {
     )
     expect(fitViewSpy).not.toHaveBeenCalled()
     expect(setViewport).toHaveBeenCalledWith(
-      expect.objectContaining({ x: 666 - ((320 + HORIZONTAL_GAP) / 2), y: 320, zoom: 1 }),
+      expect.objectContaining({ x: 652 - ((320 + HORIZONTAL_GAP) / 2), y: 312, zoom: 1 }),
       expect.objectContaining({ duration: 300 }),
     )
   })

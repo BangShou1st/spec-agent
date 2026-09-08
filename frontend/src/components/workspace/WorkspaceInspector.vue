@@ -189,7 +189,8 @@ function edgeRouteLabel(routeId: string): string {
 .inspector-reading-context {
   padding: 8px 12px;
   border-bottom: 1px solid var(--color-border);
-  background: var(--color-subdued);
+  background: var(--color-focus-soft);
+  color: var(--color-text-secondary);
   font-size: 12px;
 }
 </style>

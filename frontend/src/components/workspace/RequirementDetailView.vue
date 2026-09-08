@@ -57,6 +57,7 @@ function confidenceText(claim: RequirementClaimView): string {
         v-for="group in groups"
         :key="group.key"
         class="requirement-detail__group"
+        :class="`requirement-detail__group--${group.key}`"
         :data-test="`claim-group-${group.key}`"
       >
         <h4>{{ group.title }}（{{ group.claims.length }}）</h4>
@@ -115,6 +116,14 @@ function confidenceText(claim: RequirementClaimView): string {
   font-size: 13px;
 }
 
+/* Semantic color only carries the group category — never the whole card —
+   so claim text stays the focus and the list never reads as four dashboard
+   tiles. */
+.requirement-detail__group--confirmed > h4 { color: var(--color-success); }
+.requirement-detail__group--unresolved > h4 { color: var(--color-warn); }
+.requirement-detail__group--assumed > h4 { color: var(--color-focus); }
+.requirement-detail__group--rejected > h4 { color: var(--color-danger); }
+
 .requirement-detail__list {
   list-style: none;
   margin: 0;
@@ -128,7 +137,15 @@ function confidenceText(claim: RequirementClaimView): string {
   padding: 8px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
+  background: var(--color-surface);
 }
+
+/* Very light tint per category reinforces the group without saturating the
+   list. */
+.requirement-detail__group--confirmed .requirement-detail__claim { background: var(--color-success-soft); border-color: color-mix(in srgb, var(--color-success) 24%, var(--color-border)); }
+.requirement-detail__group--unresolved .requirement-detail__claim { background: var(--color-warn-soft); border-color: color-mix(in srgb, var(--color-warn) 24%, var(--color-border)); }
+.requirement-detail__group--assumed .requirement-detail__claim { background: var(--color-focus-soft); border-color: color-mix(in srgb, var(--color-focus) 24%, var(--color-border)); }
+.requirement-detail__group--rejected .requirement-detail__claim { background: var(--color-danger-soft); border-color: color-mix(in srgb, var(--color-danger) 24%, var(--color-border)); }
 
 .requirement-detail__text {
   margin: 0;

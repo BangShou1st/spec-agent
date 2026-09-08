@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import {
   VueFlow,
   useVueFlow,
@@ -106,6 +106,15 @@ type FlowCanvasNode = Node<SpecAgentGraphNodeData, Record<string, never>, string
 const flowNodes = shallowRef<FlowCanvasNode[]>([])
 const flowEdges = shallowRef<Edge[]>([])
 const shiftSelecting = ref(false)
+const rootEl = ref<HTMLElement | null>(null)
+
+onMounted(() => {
+  startContainerResizeObserver(rootEl.value)
+})
+
+onUnmounted(() => {
+  stopContainerResizeObserver()
+})
 
 /**
  * One-shot explicit Fit revalidation intent (ephemeral, per-component).
@@ -317,6 +326,42 @@ watch(
   },
 )
 
+/**
+ * 当画布实际尺寸变化（例如 Spec Dock 展开会压缩 Graph 区域、或在已展开时
+ * 内容增高使 Dock 达到 45%）时，等 Vue Flow 重新测量完成再检查当前节点是否
+ * 被 Dock 裁切。只调整 viewport，绝不移动节点坐标；只有当前节点真的越出
+ * 画布边界时才动作。jsdom 测试环境没有 ResizeObserver，守卫后为空操作。
+ */
+let containerResizeObserver: ResizeObserver | null = null
+let containerResizeFrame: number | null = null
+
+function onContainerResize(): void {
+  if (containerResizeFrame !== null) {
+    window.cancelAnimationFrame(containerResizeFrame)
+  }
+  containerResizeFrame = window.requestAnimationFrame(() => {
+    containerResizeFrame = null
+    void nextTick(() => ensureActiveNodeInView())
+  })
+}
+
+function startContainerResizeObserver(el: HTMLElement | null): void {
+  if (typeof ResizeObserver === 'undefined' || !el) {
+    return
+  }
+  containerResizeObserver = new ResizeObserver(() => onContainerResize())
+  containerResizeObserver.observe(el)
+}
+
+function stopContainerResizeObserver(): void {
+  containerResizeObserver?.disconnect()
+  containerResizeObserver = null
+  if (containerResizeFrame !== null) {
+    window.cancelAnimationFrame(containerResizeFrame)
+    containerResizeFrame = null
+  }
+}
+
 /** Converts current flow nodes into viewport inputs (measured size when known). */
 function collectViewportNodes(ids?: Set<string> | null): ViewportNode[] {
   const result: ViewportNode[] = []
@@ -407,7 +452,7 @@ function onInit(): void {
     // 初始 fit 与显式适应视图使用相同的可用矩形：左侧 toolbar 与顶部
     // 标题是覆盖在画布上的 overlay，初始视口同样不应把节点放在它们下方。
     applyViewport(
-      computeFitViewport(collectViewportNodes(), canvasWidth, canvasHeight, { padding: 48, region: props.safeRegion ?? fitRegion(canvasWidth, canvasHeight) }),
+      computeFitViewport(collectViewportNodes(), canvasWidth, canvasHeight, { padding: 22, region: props.safeRegion ?? fitRegion(canvasWidth, canvasHeight) }),
       0,
     )
   })
@@ -425,8 +470,8 @@ function onInit(): void {
  * 坐标、Focus/Active 语义。
  */
 function fitRegion(canvasWidth: number, canvasHeight: number): import('@/graph/graphViewport').FitViewportRegion {
-  const left = 132
-  const top = 60
+  const left = 104
+  const top = 44
   return {
     x: left,
     y: top,
@@ -442,7 +487,7 @@ function performFitView(): void {
     return
   }
   applyViewport(
-    computeFitViewport(collectViewportNodes(), canvasWidth, canvasHeight, { padding: 48, region: props.safeRegion ?? fitRegion(canvasWidth, canvasHeight) }),
+    computeFitViewport(collectViewportNodes(), canvasWidth, canvasHeight, { padding: 22, region: props.safeRegion ?? fitRegion(canvasWidth, canvasHeight) }),
     300,
   )
 }
@@ -523,9 +568,48 @@ function manualFitNode(nodeId: string): void {
   }
   const target = collectViewportNodes(new Set([resolveFlowNodeId(nodeId)]))[0] ?? null
   applyViewport(
-    computeFitNodeViewport(target, canvasWidth, canvasHeight, { padding: 48, region: props.safeRegion ?? fitRegion(canvasWidth, canvasHeight) }),
+    computeFitNodeViewport(target, canvasWidth, canvasHeight, { padding: 22, region: props.safeRegion ?? fitRegion(canvasWidth, canvasHeight) }),
     400,
   )
+}
+
+/**
+ * Ensures the current answerable node stays fully inside the Graph region.
+ * Called when a sibling (the Spec Dock) resizes the canvas so the active
+ * node is never left clipped behind it. Only adjusts the viewport transform;
+ * it never moves node coordinates or saved positions.
+ */
+function ensureActiveNodeInView(): void {
+  const activeNodeId = props.activeNodeId
+  if (!activeNodeId) {
+    return
+  }
+  const canvasWidth = vf.dimensions.value.width
+  const canvasHeight = vf.dimensions.value.height
+  if (!canvasWidth || !canvasHeight) {
+    return
+  }
+  const target = collectViewportNodes(new Set([resolveFlowNodeId(activeNodeId)]))[0]
+  if (!target) {
+    return
+  }
+  const { width, height } = getNodeSize(target)
+  const vp = vf.viewport.value
+  // A 1px tolerance keeps a node that merely touches an edge (e.g. the root
+  // node at the top-left of a fresh layout) from being treated as clipped,
+  // while a node genuinely pushed past the canvas boundary (e.g. behind the
+  // expanded Spec Dock) is re-fitted.
+  const tolerance = 1
+  const left = target.position.x * vp.zoom + vp.x
+  const top = target.position.y * vp.zoom + vp.y
+  const right = left + width * vp.zoom
+  const bottom = top + height * vp.zoom
+  const fullyVisible = left >= -tolerance && top >= -tolerance
+    && right <= canvasWidth + tolerance && bottom <= canvasHeight + tolerance
+  if (!fullyVisible) {
+    clearActiveNodeFitTimer()
+    manualFitNode(activeNodeId)
+  }
 }
 
 function onNodesChange(changes: NodeChange[]): void {
@@ -740,13 +824,13 @@ async function locateRoute(routeId: string): Promise<void> {
       collectViewportNodes(new Set(ids)),
       canvasWidth,
       canvasHeight,
-      { padding: 48, region: props.safeRegion ?? fitRegion(canvasWidth, canvasHeight) },
+      { padding: 22, region: props.safeRegion ?? fitRegion(canvasWidth, canvasHeight) },
     ),
     400,
   )
 }
 
-defineExpose({ locateNode, locateRoute })
+defineExpose({ locateNode, locateRoute, ensureActiveNodeInView })
 
 async function zoomIn(): Promise<void> {
   clearActiveNodeFitTimer()
@@ -810,7 +894,7 @@ async function autoLayout(): Promise<void> {
     position: positions[node.id] ?? node.position,
   }))
   applyViewport(
-    computeFitViewport(viewportNodes, canvasWidth, canvasHeight, { padding: 48, region: props.safeRegion ?? fitRegion(canvasWidth, canvasHeight) }),
+    computeFitViewport(viewportNodes, canvasWidth, canvasHeight, { padding: 22, region: props.safeRegion ?? fitRegion(canvasWidth, canvasHeight) }),
     300,
   )
 }
@@ -825,7 +909,7 @@ const isEmptyProject = computed(() =>
 </script>
 
 <template>
-  <div class="graph-canvas" data-test="graph-canvas" :data-viewport-settled="viewportSettledRevision > 0 ? String(viewportSettledRevision) : undefined">
+  <div ref="rootEl" class="graph-canvas" data-test="graph-canvas" :data-viewport-settled="viewportSettledRevision > 0 ? String(viewportSettledRevision) : undefined">
     <GraphToolbar
       @zoom-in="zoomIn"
       @zoom-out="zoomOut"

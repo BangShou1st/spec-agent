@@ -249,6 +249,29 @@ function handleSelectSpec(snapshotId: string): void {
   }
 }
 
+/**
+ * Spec Dock 展开/折叠会改变 Graph 区域高度。等 Vue Flow 重新测量画布尺寸
+ * 后，若当前 answerable node 被 Dock 顶部裁切，则只在 viewport 层把它带
+ * 回可视区域 —— 绝不移动节点坐标或已保存位置。
+ */
+/**
+ * Spec Dock 展开/折叠会改变 Graph 区域高度。Vue Flow 的 canvas 尺寸由
+ * ResizeObserver 异步测量；等测量完成后，若当前 answerable node 被 Dock
+ * 顶部裁切，则只在 viewport 层把它带回可视区域 —— 绝不移动节点坐标或已保存位置。
+ */
+function handleSpecDockExpandedChange(): void {
+  window.setTimeout(() => {
+    void nextTick(() => {
+      requestAnimationFrame(() => {
+        const canvas = canvasRef.value as { ensureActiveNodeInView?: () => void } | null
+        if (typeof canvas?.ensureActiveNodeInView === 'function') {
+          canvas.ensureActiveNodeInView()
+        }
+      })
+    })
+  }, 160)
+}
+
 const reanswerFinalized = computed(() => {
   if (!reanswerNodeId.value || !reanswerSourceRoute.value || !store.graphView) return false
   return store.graphView.answers.some((answer) => answer.nodeId === reanswerNodeId.value
@@ -604,6 +627,7 @@ async function confirmDestructive(): Promise<void> {
           :command-pending="store.routeCommandPending"
           @generate-spec="handleGenerateSpec"
           @select-snapshot="handleSelectSpec"
+          @expanded-change="handleSpecDockExpandedChange"
         />
       </div>
 

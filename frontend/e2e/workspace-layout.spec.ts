@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { buildThreeNodeLineage, createProject, fitGraph } from './helpers'
+import { answerActiveNode, buildThreeNodeLineage, createProject, draftFirstQuestion, fitGraph } from './helpers'
 
 test.setTimeout(400000)
 
@@ -201,3 +201,52 @@ test('max-width sidebars leave status and toast overlays inside the graph center
   expect(headerBox?.x ?? 0).toBeGreaterThanOrEqual(centerLeft - 1)
   expect((headerBox?.x ?? 0) + (headerBox?.width ?? 0)).toBeLessThanOrEqual(centerRight + 1)
 })
+
+// Spec Dock 展开后，当前 answerable node 与其 submit CTA 必须完整落在 Graph
+// 区域内，不能被 Dock 遮挡；同时在最小的官方视口也必须成立。
+const specViewports = [
+  { width: 1440, height: 900, title: 'E2E Dock Clip 1440' },
+  { width: 1366, height: 768, title: 'E2E Dock Clip 1366' },
+]
+
+for (const viewport of specViewports) {
+  test(`${viewport.width}x${viewport.height} spec dock expansion never clips the answerable node or its submit`, async ({ page }) => {
+    // 与截图 spec 相同的确定性流程：单问单答后生成一个真实快照，让 Dock
+    // 处于 40/45% 高度的最坏情况。
+    await page.setViewportSize({ width: viewport.width, height: viewport.height })
+    await createProject(page, viewport.title)
+    await draftFirstQuestion(page)
+    await answerActiveNode(page, 'Spec-worthy answer content')
+    await fitGraph(page)
+    await page.getByTestId('spec-dock-toggle').click()
+    await expect(page.getByTestId('spec-dock')).toHaveAttribute('data-state', 'expanded')
+    await page.getByTestId('generate-spec').click()
+    await expect(page.getByTestId('spec-snapshot-detail')).toBeVisible({ timeout: 120000 })
+    // 等 Dock 高度稳定（内容加载可能把 Dock 顶到 45%）后检查几何。
+    await page.waitForTimeout(600)
+
+    const region = await page.locator('.workspace-shell__graph-region').boundingBox()
+    const current = page.locator('.graph-question-node--current')
+    await expect(current).toBeVisible()
+    const cb = await current.boundingBox()
+    expect(region).not.toBeNull()
+    expect(cb).not.toBeNull()
+    const regionBottom = (region?.y ?? 0) + (region?.height ?? 0)
+    const regionRight = (region?.x ?? 0) + (region?.width ?? 0)
+    // 当前节点完整位于 graph-region。
+    expect((cb?.y ?? 0)).toBeGreaterThanOrEqual((region?.y ?? 0) - 1)
+    expect((cb?.x ?? 0)).toBeGreaterThanOrEqual((region?.x ?? 0) - 1)
+    expect((cb?.y ?? 0) + (cb?.height ?? 0)).toBeLessThanOrEqual(regionBottom + 1)
+    expect((cb?.x ?? 0) + (cb?.width ?? 0)).toBeLessThanOrEqual(regionRight + 1)
+    // submit CTA 完整位于 graph-region。
+    const submit = current.getByTestId('submit-answer')
+    const sb = await submit.boundingBox()
+    expect(sb).not.toBeNull()
+    expect((sb?.y ?? 0) + (sb?.height ?? 0)).toBeLessThanOrEqual(regionBottom + 1)
+    expect((sb?.x ?? 0) + (sb?.width ?? 0)).toBeLessThanOrEqual(regionRight + 1)
+    // Graph 仍可见，无横向页面滚动。
+    await expect(page.getByTestId('graph-canvas')).toBeVisible()
+    const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth)
+    expect(scrollWidth).toBeLessThanOrEqual(viewport.width + 1)
+  })
+}

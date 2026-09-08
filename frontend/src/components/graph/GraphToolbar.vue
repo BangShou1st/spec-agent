@@ -34,7 +34,7 @@ defineEmits<{
     <div class="graph-toolbar__group" aria-label="视图缩放">
       <button class="btn graph-toolbar__icon-btn" data-test="zoom-out" aria-label="缩小" title="缩小" @click="$emit('zoom-out')">−</button>
       <button class="btn graph-toolbar__icon-btn" data-test="zoom-in" aria-label="放大" title="放大" @click="$emit('zoom-in')">+</button>
-      <button class="btn graph-toolbar__btn" data-test="fit-view" title="适应视图" @click="$emit('fit-view')">适应</button>
+      <button class="btn graph-toolbar__icon-btn" data-test="fit-view" aria-label="适应视图" title="适应视图" @click="$emit('fit-view')">⤢</button>
     </div>
 
     <details class="graph-toolbar__more" data-test="toolbar-more">

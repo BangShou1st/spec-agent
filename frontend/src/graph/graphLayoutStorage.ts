@@ -19,8 +19,8 @@ const PROJECT_KEY_PREFIX = 'spec-agent.graph-layout.v1.'
 const PROJECT_V2_KEY_PREFIX = 'spec-agent.graph-layout.v2.'
 const WORKSPACE_KEY = 'spec-agent.workspace-ui.v1'
 
-export const LEFT_SIDEBAR_RANGE = { min: 220, max: 420, default: 280 }
-export const RIGHT_SIDEBAR_RANGE = { min: 300, max: 600, default: 380 }
+export const LEFT_SIDEBAR_RANGE = { min: 220, max: 420, default: 236 }
+export const RIGHT_SIDEBAR_RANGE = { min: 300, max: 600, default: 332 }
 
 export const DEFAULT_WORKSPACE_UI: WorkspaceUiPreferencesV1 = {
   version: 1,
