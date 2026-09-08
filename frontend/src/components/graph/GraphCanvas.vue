@@ -425,7 +425,7 @@ function onInit(): void {
  * 坐标、Focus/Active 语义。
  */
 function fitRegion(canvasWidth: number, canvasHeight: number): import('@/graph/graphViewport').FitViewportRegion {
-  const left = 108
+  const left = 132
   const top = 60
   return {
     x: left,

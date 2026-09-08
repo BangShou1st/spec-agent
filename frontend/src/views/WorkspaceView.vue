@@ -573,6 +573,16 @@ async function confirmDestructive(): Promise<void> {
             @undo="store.undoGraph"
             @redo="store.redoGraph"
           />
+          <div class="workspace-shell__toast-layer">
+            <p v-if="agentStatusCopy" class="muted workspace-shell__runtime-phase" data-test="agent-status">
+              {{ agentStatusCopy }}
+            </p>
+            <p v-if="store.refreshing" class="muted workspace-shell__refreshing" data-test="refreshing">
+              正在刷新工作区…
+            </p>
+            <p v-if="store.feedback" class="feedback-line" data-test="feedback">{{ store.feedback }}</p>
+            <button v-if="store.forkDraftRetryRouteId" class="btn btn-primary workspace-shell__retry-draft" data-test="retry-fork-draft" :disabled="workspaceRetrying" @click="retryForkDraft">重试起草</button>
+          </div>
         </div>
 
         <SpecDock
@@ -587,17 +597,6 @@ async function confirmDestructive(): Promise<void> {
           @generate-spec="handleGenerateSpec"
           @select-snapshot="handleSelectSpec"
         />
-
-        <div class="workspace-shell__toast-layer">
-          <p v-if="agentStatusCopy" class="muted workspace-shell__runtime-phase" data-test="agent-status">
-            {{ agentStatusCopy }}
-          </p>
-          <p v-if="store.refreshing" class="muted workspace-shell__refreshing" data-test="refreshing">
-            正在刷新工作区…
-          </p>
-          <p v-if="store.feedback" class="feedback-line" data-test="feedback">{{ store.feedback }}</p>
-          <button v-if="store.forkDraftRetryRouteId" class="btn btn-primary workspace-shell__retry-draft" data-test="retry-fork-draft" :disabled="workspaceRetrying" @click="retryForkDraft">重试起草</button>
-        </div>
       </div>
 
       <ResizableSidebar

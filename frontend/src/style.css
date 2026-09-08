@@ -1221,9 +1221,11 @@ input:focus-visible,
 }
 
 /* Graph center column: the only flex child that grows. It is also the
-   containing block for the title/status/toast overlays, so they center
+   containing block for the title/status overlays, so they center
    against the Graph — never against the whole workspace, and never over
-   the fixed sidebars at any sidebar width. */
+   the fixed sidebars at any sidebar width. The toast layer lives inside
+   the graph region instead, so it floats over the Graph only and can
+   never cover the expanded Spec Dock. */
 .workspace-shell__center {
   position: relative;
   flex: 1 1 auto;
