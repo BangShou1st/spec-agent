@@ -100,3 +100,14 @@ spec:
       git-clone-bytes: ${SPEC_AGENT_SKILL_GIT_CLONE_BYTES:10485760}
       git-timeout-seconds: ${SPEC_AGENT_SKILL_GIT_TIMEOUT_SECONDS:30}
       git-max-redirects: ${SPEC_AGENT_SKILL_GIT_MAX_REDIRECTS:3}
+    mcp:
+      # Remote MCP runtime bounds. Model output can never change these.
+      discovery-timeout-ms: ${SPEC_AGENT_MCP_DISCOVERY_TIMEOUT_MS:10000}
+      call-timeout-ms: ${SPEC_AGENT_MCP_CALL_TIMEOUT_MS:15000}
+      result-max-inline-bytes: ${SPEC_AGENT_MCP_RESULT_MAX_INLINE_BYTES:30000}
+      connection-max-redirects: ${SPEC_AGENT_MCP_CONNECTION_MAX_REDIRECTS:3}
+      connection-max-metadata-bytes: ${SPEC_AGENT_MCP_CONNECTION_MAX_METADATA_BYTES:4096}
+      max-description-chars: ${SPEC_AGENT_MCP_MAX_DESCRIPTION_CHARS:320}
+      # Explicit opt-in for localhost HTTP MCP servers (test/local tooling).
+      # Default off; the shared outbound policy otherwise blocks loopback.
+      allow-localhost-http: ${SPEC_AGENT_MCP_ALLOW_LOCALHOST_HTTP:false}

@@ -7,6 +7,7 @@ import com.specagent.agent.policy.ProposalAlreadyDecidedException;
 import com.specagent.readmodel.graph.GraphWorkspaceQueryException;
 import com.specagent.readmodel.requirement.RequirementStateQueryException;
 import com.specagent.readmodel.route.RouteLineageQueryException;
+import com.specagent.connection.service.ConnectionCommandException;
 import com.specagent.skill.importing.SkillImportException;
 import com.specagent.skill.runtime.SkillResourceRejectedException;
 import org.slf4j.Logger;
@@ -167,6 +168,13 @@ public class ApiExceptionHandler {
             SkillResourceRejectedException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ApiErrorResponse.of("SKILL_RESOURCE_REJECTED", ex.getMessage()));
+    }
+
+    @ExceptionHandler(ConnectionCommandException.class)
+    public ResponseEntity<ApiErrorResponse> handleConnectionCommand(
+            ConnectionCommandException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiErrorResponse.of("CONNECTION_COMMAND_REJECTED", ex.getMessage()));
     }
 
     @ExceptionHandler(Exception.class)
