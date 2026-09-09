@@ -20,15 +20,18 @@ public class GlobalAssistantConversationService {
     private final GlobalAssistantMessageRepository messages;
     private final GlobalAssistantRunRepository runs;
     private final Json json;
+    private final GlobalAssistantThreadListRepository threadLists;
     public GlobalAssistantConversationService(
             GlobalAssistantThreadRepository threads,
             GlobalAssistantMessageRepository messages,
             GlobalAssistantRunRepository runs,
-            Json json) {
+            Json json,
+            GlobalAssistantThreadListRepository threadLists) {
         this.threads = threads;
         this.messages = messages;
         this.runs = runs;
         this.json = json;
+        this.threadLists = threadLists;
     }
     @Transactional
     public GlobalAssistantThread createThread() {
@@ -69,6 +72,9 @@ public class GlobalAssistantConversationService {
     public java.util.List<GlobalAssistantMessage> listMessages(UUID threadId) {
         requireThread(threadId);
         return messages.findByThread(threadId);
+    }
+    public java.util.List<GlobalAssistantThreadListItem> listThreads() {
+        return threadLists.listRecent(GlobalAssistantConversationLibrary.LIST_LIMIT);
     }
     public GlobalAssistantWorkingState readWorkingState(UUID threadId) {
         GlobalAssistantThread thread = requireThread(threadId);

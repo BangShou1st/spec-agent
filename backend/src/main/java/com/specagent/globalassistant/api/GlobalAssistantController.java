@@ -4,6 +4,7 @@ import com.specagent.globalassistant.conversation.GlobalAssistantMessage;
 import com.specagent.globalassistant.conversation.GlobalAssistantRun;
 import com.specagent.globalassistant.conversation.GlobalAssistantRunEventRepository;
 import com.specagent.globalassistant.conversation.GlobalAssistantThread;
+import com.specagent.globalassistant.conversation.GlobalAssistantThreadListItem;
 import com.specagent.globalassistant.context.GlobalAssistantContextBuilder;
 import com.specagent.globalassistant.stream.GlobalAssistantStreamService;
 import jakarta.validation.Valid;
@@ -55,10 +56,25 @@ public class GlobalAssistantController {
     public record RunResponse(String runId, String threadId, String status, int stepCount,
             String cancelRequestedAt, String startedAt, String completedAt, String errorCode) {
     }
+    public record ThreadListItemResponse(String threadId, String title, String preview,
+            String updatedAt, String createdAt) {
+    }
     @PostMapping("/threads")
     public CreateThreadResponse createThread() {
         GlobalAssistantThread thread = application.createThread();
         return new CreateThreadResponse(thread.id().toString());
+    }
+    @GetMapping("/threads")
+    public List<ThreadListItemResponse> listThreads() {
+        List<GlobalAssistantThreadListItem> items = application.listThreads();
+        return items.stream()
+                .map(item -> new ThreadListItemResponse(
+                        item.threadId().toString(),
+                        item.title(),
+                        item.preview(),
+                        item.updatedAt().toString(),
+                        item.createdAt().toString()))
+                .toList();
     }
     @PostMapping("/threads/{threadId}/runs")
     public CreateRunResponse createRun(@PathVariable UUID threadId,

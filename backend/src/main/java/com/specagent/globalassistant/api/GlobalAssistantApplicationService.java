@@ -8,6 +8,7 @@ import com.specagent.globalassistant.conversation.GlobalAssistantRun;
 import com.specagent.globalassistant.conversation.GlobalAssistantRunActiveException;
 import com.specagent.globalassistant.conversation.GlobalAssistantRunRepository;
 import com.specagent.globalassistant.conversation.GlobalAssistantThread;
+import com.specagent.globalassistant.conversation.GlobalAssistantThreadListItem;
 import com.specagent.globalassistant.model.GlobalAssistantPromptRenderer;
 import com.specagent.globalassistant.runtime.GlobalAssistantErrorCode;
 import com.specagent.globalassistant.runtime.GlobalAssistantRunLifecycleService;
@@ -43,6 +44,9 @@ public class GlobalAssistantApplicationService {
     }
     public GlobalAssistantThread createThread() {
         return conversations.createThread();
+    }
+    public List<GlobalAssistantThreadListItem> listThreads() {
+        return conversations.listThreads();
     }
     public GlobalAssistantThread requireThread(UUID threadId) {
         return conversations.findThread(threadId)
