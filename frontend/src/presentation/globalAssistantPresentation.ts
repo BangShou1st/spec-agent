@@ -20,6 +20,8 @@ const GA_ERROR_COPY: Record<string, string> = {
   RUN_STEP_LIMIT: '本次任务步骤已达上限，请换一种问法重试。',
   RUN_CANCELLED: '本次任务已停止。',
   GLOBAL_ASSISTANT_RUN_ACTIVE: '上一个请求仍在处理中，请稍候。',
+  GLOBAL_ASSISTANT_STEER_PENDING: '上一条调整正在生效，请稍后再发送新的要求。',
+  GLOBAL_ASSISTANT_THREAD_ACTIVE: '当前任务完成或停止后可以切换会话。',
   RUN_INTERRUPTED: '任务被中断，请重新发送。',
   THREAD_NOT_FOUND: '当前会话已失效，已为你开始新会话。',
   RUN_NOT_FOUND: '当前任务已不存在，请重新发送。',
@@ -54,4 +56,3 @@ export function gaArgsSummary(args: unknown): string | null {
   if (picked.length === 0) return null
   return picked.join(' · ')
 }
-

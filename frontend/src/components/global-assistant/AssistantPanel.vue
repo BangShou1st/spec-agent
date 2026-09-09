@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import ConversationTimeline from './ConversationTimeline.vue'
 import AssistantComposer from './AssistantComposer.vue'
 import ConversationHistory from './ConversationHistory.vue'
-import GaIcon from './GaIcon.vue'
+import AppIcon from '@/components/AppIcon.vue'
 import { buildGaUiContext } from '@/api/globalAssistant'
 import { useGlobalAssistantStore } from '@/stores/globalAssistantStore'
 import { currentGaTitle } from '@/presentation/conversationLibrary'
@@ -19,7 +19,9 @@ const running = computed(() => store.isRunning)
 const isReconnecting = computed(() => store.connection === 'reconnecting')
 const isDisconnected = computed(() => store.connection === 'disconnected')
 const historyOpen = computed(() => store.historyOpen)
-const switchGuard = computed(() => running.value || store.sending)
+const switchGuard = computed(() => running.value || store.sending || store.steerSending)
+const pendingSteer = computed(() => store.pendingSteer)
+const stoppedNotice = computed(() => store.stoppedNotice)
 const currentTitle = computed(() => currentGaTitle(store.threadId, store.threads, '新对话'))
 
 function handleReconnect(): void {
@@ -86,6 +88,9 @@ function handleToggleHistory(): void {
 function handleSelectThread(threadId: string): void {
   void store.switchThread(threadId)
 }
+function handleConfirmDelete(threadId: string): void {
+  void store.deleteThread(threadId)
+}
 
 function handleRetryHistory(): void {
   void store.loadThreads()
@@ -115,7 +120,7 @@ function handleClose(): void {
         aria-controls="ga-history-region"
         @click="handleToggleHistory"
       >
-        <GaIcon name="history" />
+        <AppIcon name="history" />
       </button>
       <div class="ga-panel__title" data-test="ga-current-conversation" :title="currentTitle">
         <strong class="ga-panel__name">助手</strong>
@@ -132,7 +137,7 @@ function handleClose(): void {
           :disabled="switchGuard"
           @click="handleNewConversation"
         >
-          <GaIcon name="plus" />
+          <AppIcon name="plus" />
         </button>
         <button
           class="icon-btn"
@@ -141,7 +146,7 @@ function handleClose(): void {
           aria-label="关闭助手"
           @click="handleClose"
         >
-          <GaIcon name="close" />
+          <AppIcon name="close" />
         </button>
       </div>
     </header>
@@ -155,7 +160,7 @@ function handleClose(): void {
 
     <div v-if="store.error" class="ga-panel__error" role="alert" data-test="ga-error">
       <span>{{ store.error.message }}</span>
-      <button class="icon-btn" type="button" aria-label="关闭错误提示" @click="store.error = null"><GaIcon name="close" /></button>
+      <button class="icon-btn" type="button" aria-label="关闭错误提示" @click="store.error = null"><AppIcon name="close" /></button>
     </div>
 
     <div class="ga-panel__status-live visually-hidden" aria-live="polite" atomic="true">
@@ -165,7 +170,7 @@ function handleClose(): void {
 
     <p v-if="store.loadingThread" class="ga-panel__loading muted" data-test="ga-loading">正在恢复会话…</p>
 
-    <div v-else-if="historyOpen" id="ga-history-region" class="ga-panel__history-wrap">
+    <div v-if="historyOpen" id="ga-history-region" class="ga-panel__history-wrap">
       <ConversationHistory
         :threads="store.threads"
         :current-thread-id="store.threadId"
@@ -173,18 +178,26 @@ function handleClose(): void {
         :error="store.threadsError"
         :disabled="switchGuard"
         :switching="store.switchingThread"
+        :active-thread-id="store.isRunning ? store.threadId : null"
+        :deleting-thread-id="store.deletingThreadId"
+        :confirm-delete-thread-id="store.confirmDeleteThreadId"
         @select="handleSelectThread"
         @retry="handleRetryHistory"
+        @request-delete="store.confirmDeleteThreadId = $event"
+        @cancel-delete="store.confirmDeleteThreadId = null"
+        @confirm-delete="handleConfirmDelete"
       />
     </div>
     <ConversationTimeline
-      v-else
+      v-if="!historyOpen"
       :messages="store.messages"
       :activities="store.activities"
       :streaming-text="store.streamingText"
       :current-status="store.currentStatus"
       :running="running"
       :waiting-question="store.waitingQuestion"
+      :pending-steer="pendingSteer"
+      :stopped-notice="stoppedNotice"
     />
 
     <AssistantComposer
@@ -194,6 +207,8 @@ function handleClose(): void {
       :sending="store.sending"
       :cancel-requested="store.cancelRequested"
       :waiting-question="store.waitingQuestion"
+      :pending-steer="!!pendingSteer"
+      :steer-sending="store.steerSending"
       @send="handleSend"
       @cancel="handleCancel"
     />
@@ -201,20 +216,21 @@ function handleClose(): void {
 </template>
 
 <style scoped>
-.ga-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--color-surface); }
-.ga-panel__header { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--color-border); background: var(--color-surface); }
-.ga-panel__history-btn[aria-expanded='true'] { background: var(--color-focus-soft); color: var(--color-focus-strong); }
+.ga-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; background: linear-gradient(180deg, #fafbff 0%, var(--color-surface) 28%, var(--color-surface) 100%); }
+.ga-panel__header { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--color-border); background: linear-gradient(135deg, rgba(99,102,241,0.10), rgba(168,85,247,0.08) 45%, rgba(255,255,255,0.9)); backdrop-filter: blur(8px); }
+.ga-panel__history-btn[aria-expanded='true'] { background: var(--color-focus-soft); color: var(--color-focus-strong); box-shadow: inset 0 0 0 1px var(--color-focus); }
 .ga-panel__title { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
-.ga-panel__name { font-size: 14px; font-weight: 650; letter-spacing: 0.01em; }
-.ga-panel__current { font-size: 12px; color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
-.ga-panel__run-dot { width: 7px; height: 7px; border-radius: 999px; background: var(--color-accent); flex: none; }
+.ga-panel__name { font-size: 14px; font-weight: 750; letter-spacing: 0.01em; background: linear-gradient(135deg, #312e81, #7c3aed); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.ga-panel__current { font-size: 12px; color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; background: rgba(255,255,255,0.7); border: 1px solid var(--color-border); padding: 2px 8px; border-radius: 999px; }
+.ga-panel__run-dot { width: 8px; height: 8px; border-radius: 999px; background: linear-gradient(135deg, var(--color-accent), #a855f7); box-shadow: 0 0 0 4px var(--color-accent-soft); animation: ga-pulse 1.6s ease-in-out infinite; flex: none; }
 .ga-panel__actions { display: flex; gap: 4px; }
 .ga-panel__history-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.ga-panel__connection { padding: 6px 12px; font-size: 12px; color: var(--color-warn); background: var(--color-warn-soft); border-bottom: 1px solid var(--color-border); display: flex; align-items: center; gap: 8px; }
-.ga-panel__reconnect { margin-left: auto; border: 1px solid var(--color-border); background: var(--color-surface); border-radius: 999px; padding: 3px 10px; font-size: 12px; }
+.ga-panel__connection { padding: 8px 12px; font-size: 12px; color: var(--color-warn); background: linear-gradient(135deg, var(--color-warn-soft), rgba(255,255,255,0.6)); border-bottom: 1px solid var(--color-border); display: flex; align-items: center; gap: 8px; }
+.ga-panel__reconnect { margin-left: auto; border: 1px solid var(--color-border); background: var(--color-surface); border-radius: 999px; padding: 4px 12px; font-size: 12px; box-shadow: 0 2px 8px -4px rgba(0,0,0,0.2); }
 .ga-panel__reconnect:focus-visible { outline: none; box-shadow: var(--focus-ring); }
-.ga-panel__approval { margin: 8px 12px 0; padding: 8px 10px; border-radius: 8px; background: var(--color-surface-subtle); border: 1px solid var(--color-border); color: var(--color-text-secondary); font-size: 13px; }
-.ga-panel__error { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 8px 12px 0; padding: 8px 10px; border-radius: 8px; background: var(--color-danger-soft); border: 1px solid #ecc0bc; color: var(--color-danger); font-size: 13px; }
+.ga-panel__approval { margin: 8px 12px 0; padding: 10px 12px; border-radius: 12px; background: var(--color-surface-subtle); border: 1px solid var(--color-border); color: var(--color-text-secondary); font-size: 13px; }
+.ga-panel__error { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 8px 12px 0; padding: 10px 12px; border-radius: 12px; background: linear-gradient(135deg, var(--color-danger-soft), rgba(255,255,255,0.7)); border: 1px solid #ecc0bc; color: var(--color-danger); font-size: 13px; box-shadow: 0 6px 18px -10px rgba(190,40,40,0.4); }
 .ga-panel__loading { padding: 16px 12px; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+@keyframes ga-pulse { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(0.85); opacity: 0.75; } }
 </style>

@@ -112,6 +112,48 @@ export function cancelGaRun(runId: string): Promise<GaRun> {
   return apiClient.post<GaRun>(BASE + '/runs/' + runId + '/cancel')
 }
 
+export interface GaSteerResult {
+  steerId: string
+  status: 'QUEUED' | 'STARTED'
+  interruptedRunId: string
+  successorRunId: string | null
+}
+
+export function steerGaRun(runId: string, message: string, uiContext: GaUiContext): Promise<GaSteerResult> {
+  return apiClient.post<GaSteerResult>(BASE + '/runs/' + runId + '/steer', { message, uiContext })
+}
+
+export interface GaActivityRun {
+  runId: string
+  status: GaRunStatus
+}
+
+export interface GaActivitySteer {
+  steerId: string
+  message: string
+  status: 'PENDING' | 'CLAIMED' | 'CONSUMED' | 'DISCARDED'
+  interruptedRunId: string
+  successorRunId: string | null
+  createdAt: string
+}
+
+export interface GaThreadActivity {
+  activeRun: GaActivityRun | null
+  pendingSteer: GaActivitySteer | null
+}
+
+export function getGaThreadActivity(threadId: string): Promise<GaThreadActivity> {
+  return apiClient.get<GaThreadActivity>(BASE + '/threads/' + threadId + '/activity')
+}
+
+export function stopGaThread(threadId: string): Promise<GaThreadActivity> {
+  return apiClient.post<GaThreadActivity>(BASE + '/threads/' + threadId + '/stop')
+}
+
+export function deleteGaThread(threadId: string): Promise<void> {
+  return apiClient.delete<void>(BASE + '/threads/' + threadId)
+}
+
 export interface GaThreadListItem {
   threadId: string
   title: string

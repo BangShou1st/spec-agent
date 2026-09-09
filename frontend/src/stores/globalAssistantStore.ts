@@ -1,18 +1,22 @@
 import { defineStore } from 'pinia'
 import { ApiError } from '@/api/client'
 import {
-  cancelGaRun,
   createGaRun,
   createGaThread,
+  deleteGaThread,
   getGaRun,
   getGaThread,
+  getGaThreadActivity,
   listGaEvents,
   listGaMessages,
   listGaThreads,
+  steerGaRun,
+  stopGaThread,
   gaUiActionToRoute,
   type GaEventEnvelope,
   type GaMessage,
   type GaRun,
+  type GaThreadActivity,
   type GaThreadListItem,
   type GaUiContext,
 } from '@/api/globalAssistant'
@@ -248,6 +252,11 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
     threadsError: null as string | null,
     historyOpen: false,
     switchingThread: false,
+    pendingSteer: null as { id: string; message: string; status: string; createdAt: string; optimisticId: string | null } | null,
+    steerSending: false as boolean,
+    stoppedNotice: false as boolean,
+    deletingThreadId: null as string | null,
+    confirmDeleteThreadId: null as string | null,
   }),
   getters: {
     isRunning(state): boolean {
@@ -292,7 +301,16 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
         await getGaThread(storedThread)
         this.threadId = storedThread
         this.messages = await listGaMessages(storedThread)
-        if (storedRun) await this.recoverRun(storedRun)
+        await this.refreshActivity()
+        if (this.activeRunId) {
+          try {
+            const envelopes = await listGaEvents(this.activeRunId)
+            for (const envelope of envelopes) this.ingestEvent(envelope)
+          } catch { /* replay best-effort; SSE catches up */ }
+          if (this.activeRunId) this.openStream()
+        } else if (storedRun && !this.pendingSteer) {
+          await this.recoverRun(storedRun)
+        }
       } catch (err) {
         if (err instanceof ApiError && err.code === 'THREAD_NOT_FOUND') {
           writeStored(GA_THREAD_KEY, null)
@@ -300,6 +318,7 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
           this.threadId = null
           this.messages = []
           this.activeRunId = null
+          this.pendingSteer = null
         } else if (err instanceof ApiError) {
           this.threadId = storedThread
           try { this.messages = await listGaMessages(storedThread) } catch { /* keep empty */ }
@@ -309,6 +328,45 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
         this.loadingThread = false
       }
       void this.loadThreads()
+    },
+    async refreshActivity(): Promise<GaThreadActivity | null> {
+      if (!this.threadId) return null
+      try {
+        const act = await getGaThreadActivity(this.threadId)
+        if (act.activeRun) {
+          this.activeRunId = act.activeRun.runId
+          this.activeStatus = act.activeRun.status
+          writeStored(GA_RUN_KEY, act.activeRun.runId)
+        } else if (!this.activeRunId) {
+          this.activeRunId = null
+          this.activeStatus = null
+          writeStored(GA_RUN_KEY, null)
+        }
+        if (act.pendingSteer) {
+          const existingOptimistic = this.messages.find((m) => m.id === this.pendingSteer?.optimisticId)
+          this.pendingSteer = {
+            id: act.pendingSteer.steerId,
+            message: act.pendingSteer.message,
+            status: act.pendingSteer.status,
+            createdAt: act.pendingSteer.createdAt,
+            optimisticId: existingOptimistic ? existingOptimistic.id : this.pendingSteer?.optimisticId ?? null,
+          }
+          this.dedupeOptimistic()
+        } else if (!this.steerSending) {
+          this.pendingSteer = null
+        }
+        return act
+      } catch {
+        return null
+      }
+    },
+    dedupeOptimistic(): void {
+      if (!this.pendingSteer?.message) return
+      const canonical = this.messages.find((m) => m.role === 'USER' && m.content === this.pendingSteer?.message && !String(m.id).startsWith('local-'))
+      if (canonical && this.pendingSteer.optimisticId) {
+        this.messages = this.messages.filter((m) => m.id !== this.pendingSteer?.optimisticId)
+        this.pendingSteer = this.pendingSteer ? { ...this.pendingSteer, optimisticId: null } : null
+      }
     },
     async ensureThread(): Promise<string> {
       if (this.threadId) return this.threadId
@@ -338,7 +396,6 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
       }
     },
     setHistoryOpen(open: boolean): void {
-      if (open && this.isRunning) return
       this.historyOpen = open
       if (open) void this.loadThreads()
     },
@@ -346,7 +403,7 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
       this.setHistoryOpen(!this.historyOpen)
     },
     async switchThread(threadId: string): Promise<void> {
-      if (!threadId || this.switchingThread || this.isRunning || this.sending) return
+      if (!threadId || this.switchingThread || this.isRunning || this.sending || this.steerSending) return
       if (threadId === this.threadId) {
         this.historyOpen = false
         return
@@ -354,14 +411,13 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
       this.switchingThread = true
       this.error = null
       try {
-        const messages = await listGaMessages(threadId)
+        let messages: GaMessage[]
         try {
+          messages = await listGaMessages(threadId)
           await getGaThread(threadId)
         } catch (err) {
           if (err instanceof ApiError && err.code === 'THREAD_NOT_FOUND') {
-            writeStored(GA_THREAD_KEY, null)
-            this.threadId = null
-            this.messages = []
+            this.error = { code: 'THREAD_NOT_FOUND', message: '该会话已不存在，已为你保留当前会话。' }
             await this.loadThreads()
             return
           }
@@ -381,6 +437,8 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
         this.pendingNavigation = null
         this.activeRunId = null
         this.activeStatus = null
+        this.pendingSteer = null
+        this.stoppedNotice = false
         this.lastSequence = 0
         this.cancelRequested = false
         this.connection = 'idle'
@@ -451,9 +509,14 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
       if (terminal.type === 'RUN_FAILED') {
         const code = terminal.errorCode ?? 'UNKNOWN_ERROR'
         this.error = { code, message: gaErrorMessage(code, terminal.reason ?? undefined) }
+        this.stoppedNotice = false
       }
       if (terminal.type === 'RUN_CANCELLED') {
         this.error = null
+        this.stoppedNotice = true
+      }
+      if (terminal.type === 'RUN_COMPLETED') {
+        this.stoppedNotice = false
       }
       this.activeStatus = terminal.type === 'RUN_COMPLETED' ? 'COMPLETED' : terminal.type === 'RUN_FAILED' ? 'FAILED' : 'CANCELLED'
       this.currentStatus = null
@@ -461,28 +524,114 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
       this.closeStream()
       this.connection = 'idle'
       writeStored(GA_RUN_KEY, null)
-      const runId = this.activeRunId
       this.activeRunId = null
-      void runId
       void this.reconcileMessages()
       void this.loadThreads()
+      void this.pollSuccessorAfterTerminal()
+    },
+    async pollSuccessorAfterTerminal(): Promise<void> {
+      if (!this.threadId) return
+      if (!this.pendingSteer) {
+        const act = await this.refreshActivity()
+        if (act?.pendingSteer) {
+          await this.attachSuccessorIfReady()
+        }
+        return
+      }
+      await this.attachSuccessorIfReady()
+    },
+    async attachSuccessorIfReady(): Promise<void> {
+      if (!this.threadId) return
+      const act = await this.refreshActivity()
+      if (!act) return
+      if (act.activeRun && act.activeRun.runId !== this.activeRunId) {
+        this.pendingSteer = null
+        this.stoppedNotice = false
+        this.activeRunId = act.activeRun.runId
+        this.activeStatus = act.activeRun.status
+        writeStored(GA_RUN_KEY, act.activeRun.runId)
+        this.lastSequence = 0
+        this.streamingText = ''
+        this.activities = []
+        this.currentStatus = '正在调整方向…'
+        try {
+          const envelopes = await listGaEvents(act.activeRun.runId)
+          for (const envelope of envelopes) this.ingestEvent(envelope)
+        } catch { /* SSE catches up */ }
+        this.openStream()
+        await this.reconcileMessages()
+      } else if (!act.activeRun && act.pendingSteer) {
+        this.currentStatus = '正在调整方向…'
+      }
     },
     async reconcileMessages(): Promise<void> {
-      // Backend messages are canonical for chat bubbles; tool cards and the
-      // clarification question are durable timeline state for the last run.
-      // They survive reconciliation and are cleared only on the next send.
       if (!this.threadId) return
       try {
         this.messages = await listGaMessages(this.threadId)
         this.streamingText = ''
+        this.dedupeOptimistic()
       } catch { /* keep optimistic projection */ }
     },
     async sendMessage(text: string, uiContext: GaUiContext): Promise<void> {
       const message = text.trim()
-      if (!message || this.sending || this.isRunning) return
+      if (!message || this.sending || this.steerSending) return
+      if (message.length > 4000) {
+        this.error = { code: 'MESSAGE_TOO_LONG', message: gaErrorMessage('MESSAGE_TOO_LONG') }
+        this.draft = text
+        return
+      }
+      if (this.isRunning) {
+        await this.steerActiveRun(message, uiContext)
+        return
+      }
+      await this.createIdleRun(message, uiContext)
+    },
+    async steerActiveRun(message: string, uiContext: GaUiContext): Promise<void> {
+      if (!this.threadId || !this.activeRunId || this.pendingSteer || this.steerSending) return
+      this.error = null
+      this.steerSending = true
+      const optimisticId = 'local-steer-' + Date.now()
+      const optimistic: GaMessage = {
+        id: optimisticId,
+        threadId: this.threadId,
+        role: 'USER',
+        content: message,
+        runId: null,
+        createdAt: new Date().toISOString(),
+      }
+      this.messages = [...this.messages, optimistic]
+      this.currentStatus = '正在调整方向…'
+      try {
+        const result = await steerGaRun(this.activeRunId, message, uiContext)
+        this.pendingSteer = {
+          id: result.steerId,
+          message,
+          status: result.status,
+          createdAt: new Date().toISOString(),
+          optimisticId,
+        }
+        this.draft = ''
+        if (result.status === 'STARTED' && result.successorRunId) {
+          await this.attachSuccessorIfReady()
+        }
+      } catch (err) {
+        this.messages = this.messages.filter((m) => m.id !== optimisticId)
+        this.draft = message
+        this.currentStatus = null
+        if (err instanceof ApiError) {
+          this.error = { code: err.code, message: gaErrorMessage(err.code, err.message) }
+        } else {
+          this.error = { code: 'UNKNOWN_ERROR', message: gaErrorMessage('UNKNOWN_ERROR') }
+        }
+      } finally {
+        this.steerSending = false
+      }
+    },
+    async createIdleRun(message: string, uiContext: GaUiContext): Promise<void> {
       this.error = null
       this.sending = true
       this.draft = ''
+      this.stoppedNotice = false
       let threadId = this.threadId
       try {
         if (!threadId) threadId = await this.ensureThread()
@@ -494,6 +643,7 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
               this.threadId = null
               this.messages = []
               this.activeRunId = null
+              this.pendingSteer = null
               void this.loadThreads()
               threadId = await this.ensureThread()
             } else throw err
@@ -533,6 +683,7 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
           }
           return
         }
+        this.dedupeCreateOptimistic(optimistic.id, message)
         this.activeRunId = created.runId
         this.activeStatus = created.status as GaRun['status']
         this.lastSequence = 0
@@ -551,6 +702,14 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
         this.openStream()
       } finally {
         this.sending = false
+      }
+    },
+    dedupeCreateOptimistic(optimisticId: string, message: string): void {
+      const canonical = this.messages.find((m) => m.role === 'USER' && m.content === message && !String(m.id).startsWith('local-'))
+      if (canonical) {
+        this.messages = this.messages.filter((m) => m.id !== optimisticId)
+      } else {
+        this.messages = this.messages.map((m) => (m.id === optimisticId ? { ...m, id: 'pending-' + optimisticId } : m))
       }
     },
     openStream(): void {
@@ -614,20 +773,103 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
       this.openStream()
     },
     async cancelActiveRun(): Promise<void> {
-      const runId = this.activeRunId
-      if (!runId || this.cancelRequested) return
+      if (!this.threadId || this.cancelRequested) return
+      if (!this.activeRunId && !this.pendingSteer) return
       this.cancelRequested = true
+      this.currentStatus = '正在停止…'
       try {
-        await cancelGaRun(runId)
+        const act = await stopGaThread(this.threadId)
+        if (!act.activeRun && !act.pendingSteer) {
+          this.pendingSteer = null
+        } else if (!act.pendingSteer) {
+          this.pendingSteer = null
+        }
       } catch (err) {
         this.cancelRequested = false
+        this.currentStatus = null
         if (err instanceof ApiError) {
           this.error = { code: err.code, message: gaErrorMessage(err.code, err.message) }
         }
       }
     },
+    async deleteThread(threadId: string): Promise<boolean> {
+      if (!threadId || this.deletingThreadId) return false
+      this.deletingThreadId = threadId
+      this.error = null
+      try {
+        await deleteGaThread(threadId)
+        const wasCurrent = threadId === this.threadId
+        await this.loadThreads()
+        if (wasCurrent) {
+          const next = this.threads.find((t) => t.threadId !== threadId) ?? null
+          this.closeStream()
+          if (next) {
+            await this.switchThreadIdle(next.threadId)
+          } else {
+            this.threadId = null
+            writeStored(GA_THREAD_KEY, null)
+            writeStored(GA_RUN_KEY, null)
+            this.messages = []
+            this.streamingText = ''
+            this.activities = []
+            this.currentStatus = null
+            this.waitingQuestion = null
+            this.activeRunId = null
+            this.activeStatus = null
+            this.pendingSteer = null
+            this.stoppedNotice = false
+          }
+        }
+        this.confirmDeleteThreadId = null
+        return true
+      } catch (err) {
+        if (err instanceof ApiError) {
+          this.error = { code: err.code, message: gaErrorMessage(err.code, err.message) }
+        } else {
+          this.error = { code: 'UNKNOWN_ERROR', message: gaErrorMessage('UNKNOWN_ERROR') }
+        }
+        return false
+      } finally {
+        this.deletingThreadId = null
+      }
+    },
+    async switchThreadIdle(threadId: string): Promise<void> {
+      this.switchingThread = true
+      try {
+        const messages = await listGaMessages(threadId)
+        await getGaThread(threadId)
+        this.closeStream()
+        this.threadId = threadId
+        writeStored(GA_THREAD_KEY, threadId)
+        writeStored(GA_RUN_KEY, null)
+        this.messages = messages
+        this.streamingText = ''
+        this.activities = []
+        this.currentStatus = null
+        this.waitingQuestion = null
+        this.approvalRequired = false
+        this.activeRunId = null
+        this.activeStatus = null
+        this.pendingSteer = null
+        this.stoppedNotice = false
+        this.lastSequence = 0
+        this.cancelRequested = false
+        this.connection = 'idle'
+        this.historyOpen = false
+        await this.refreshActivity()
+      } catch (err) {
+        if (err instanceof ApiError && err.code === 'THREAD_NOT_FOUND') {
+          this.error = { code: 'THREAD_NOT_FOUND', message: '该会话已不存在，已为你保留当前会话。' }
+          await this.loadThreads()
+        } else if (err instanceof ApiError) {
+          this.error = { code: err.code, message: gaErrorMessage(err.code, err.message) }
+        }
+      } finally {
+        this.switchingThread = false
+      }
+    },
     async startNewConversation(): Promise<void> {
-      if (this.sending || this.isRunning) return
+      if (this.sending || this.isRunning || this.steerSending) return
       this.closeStream()
       this.error = null
       this.historyOpen = false
@@ -682,6 +924,11 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
       this.historyOpen = false
       this.switchingThread = false
       this.loadingThread = false
+      this.pendingSteer = null
+      this.steerSending = false
+      this.stoppedNotice = false
+      this.deletingThreadId = null
+      this.confirmDeleteThreadId = null
     },
   },
 })
