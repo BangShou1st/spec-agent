@@ -16,9 +16,9 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class GlobalAssistantSummaryService {
-    static final int MESSAGE_THRESHOLD = 30;
-    static final int MAX_SUMMARY_CHARS = 1500;
     static final int MAX_RECENT_KEPT = 24;
+    static final int SUMMARY_CHUNK_SIZE = 10;
+    static final int MAX_SUMMARY_CHARS = 1500;
     private static final Logger log = LoggerFactory.getLogger(GlobalAssistantSummaryService.class);
     private final GlobalAssistantConversationService conversations;
     private final GlobalAssistantBrain brain;
@@ -33,18 +33,19 @@ public class GlobalAssistantSummaryService {
             return false;
         }
         List<GlobalAssistantMessage> messages = conversations.listMessages(threadId);
-        if (messages.size() < MESSAGE_THRESHOLD * (thread.summaryVersion() + 1)) {
+        int evictedCount = Math.max(0, messages.size() - MAX_RECENT_KEPT);
+        int alreadySummarized = thread.summaryVersion() * SUMMARY_CHUNK_SIZE;
+        if (evictedCount < alreadySummarized + SUMMARY_CHUNK_SIZE) {
             return false;
         }
+        List<GlobalAssistantMessage> chunk =
+                messages.subList(alreadySummarized, alreadySummarized + SUMMARY_CHUNK_SIZE);
         StringBuilder input = new StringBuilder();
         if (thread.summary() != null && !thread.summary().isBlank()) {
             input.append("Previous summary:\n").append(bound(thread.summary(), 800)).append("\n\n");
         }
-        input.append("Evicted conversation facts (oldest first):\n");
-        int evicted = Math.max(0, messages.size() - MAX_RECENT_KEPT);
-        int shown = 0;
-        for (int i = 0; i < evicted && shown < 10; i++, shown++) {
-            GlobalAssistantMessage message = messages.get(i);
+        input.append("New conversation facts (oldest first):\n");
+        for (GlobalAssistantMessage message : chunk) {
             String content = message.content() == null ? "" : message.content();
             input.append(message.role().name()).append(": ").append(bound(content, 500)).append("\n");
         }

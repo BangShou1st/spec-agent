@@ -119,35 +119,69 @@ class GlobalAssistantContinuitySummaryTest {
         assertThat(rendered).contains(state.waitingFor());
     }
     @Test
-    void summaryThresholdCallsModelOnceAndPersists() {
+    void summaryProgressesOneChunkPerVersionWithoutOverlap() {
         AtomicInteger summaryCalls = new AtomicInteger();
+        java.util.List<String> summaryInputs = new java.util.ArrayList<>();
         ModelInferenceGateway counting = (ModelInferenceRequest request) -> {
             if ("GLOBAL_ASSISTANT_SUMMARY".equals(request.callType())) {
                 summaryCalls.incrementAndGet();
-                return new ModelInferenceResponse("Goals preserved across runs.", "stop", 0, 0);
+                summaryInputs.add(request.messages().get(request.messages().size() - 1).content());
+                return new ModelInferenceResponse("Goals preserved across runs " + summaryCalls.get() + ".",
+                        "stop", 0, 0);
             }
             return new ModelInferenceResponse("{\"done\":true, \"assistantText\":\"ok\"}", "stop", 0, 0);
         };
         GlobalAssistantBrain brain = new GlobalAssistantBrain(renderer, counting, parser, validator);
         GlobalAssistantSummaryService summaries = new GlobalAssistantSummaryService(conversations, brain);
         GlobalAssistantThread thread = conversations.createThread();
-        for (int i = 0; i < 10; i++) {
-            conversations.appendUserMessage(thread.id(), "small talk " + i, null);
+        for (int i = 0; i < 30; i++) {
+            conversations.appendUserMessage(thread.id(), "chunk talk " + i, null);
         }
         assertThat(summaries.maybeSummarize(thread.id(), UUID.randomUUID())).isFalse();
         assertThat(summaryCalls.get()).isEqualTo(0);
-        for (int i = 10; i < 30; i++) {
-            conversations.appendUserMessage(thread.id(), "small talk " + i, null);
+        for (int i = 30; i < 34; i++) {
+            conversations.appendUserMessage(thread.id(), "chunk talk " + i, null);
         }
+        // The cursor partitions the deterministic read order, which is the
+        // only order the service may assume (same-millisecond rows tie on
+        // created_at and fall back to id).
+        java.util.List<String> order34 = conversations.listMessages(thread.id()).stream()
+                .map(m -> m.content()).toList();
+        assertThat(order34).hasSize(34);
         assertThat(summaries.maybeSummarize(thread.id(), UUID.randomUUID())).isTrue();
         assertThat(summaryCalls.get()).isEqualTo(1);
-        var reloaded = conversations.findThread(thread.id()).orElseThrow();
-        assertThat(reloaded.summary()).contains("Goals preserved");
-        assertThat(reloaded.summaryVersion()).isEqualTo(1);
+        assertThat(userLines(summaryInputs.get(0)))
+                .isEqualTo(new java.util.HashSet<>(order34.subList(0, 10)));
+        var afterFirst = conversations.findThread(thread.id()).orElseThrow();
+        assertThat(afterFirst.summary()).contains("Goals preserved");
+        assertThat(afterFirst.summaryVersion()).isEqualTo(1);
         GlobalAssistantContext later = contextBuilder.build(thread.id(), "follow-up",
                 new GlobalAssistantContextBuilder.UiRequest("PROJECTS", null));
         assertThat(later.conversationSummary()).contains("Goals preserved");
+        for (int i = 34; i < 44; i++) {
+            conversations.appendUserMessage(thread.id(), "chunk talk " + i, null);
+        }
+        java.util.List<String> order44 = conversations.listMessages(thread.id()).stream()
+                .map(m -> m.content()).toList();
+        assertThat(summaries.maybeSummarize(thread.id(), UUID.randomUUID())).isTrue();
+        assertThat(summaryCalls.get()).isEqualTo(2);
+        assertThat(summaryInputs.get(1)).contains("Goals preserved across runs 1.");
+        assertThat(userLines(summaryInputs.get(1)))
+                .isEqualTo(new java.util.HashSet<>(order44.subList(10, 20)));
+        assertThat(conversations.findThread(thread.id()).orElseThrow().summaryVersion()).isEqualTo(2);
+        for (int i = 44; i < 49; i++) {
+            conversations.appendUserMessage(thread.id(), "chunk talk " + i, null);
+        }
         assertThat(summaries.maybeSummarize(thread.id(), UUID.randomUUID())).isFalse();
-        assertThat(summaryCalls.get()).isEqualTo(1);
+        assertThat(summaryCalls.get()).isEqualTo(2);
+    }
+    private static java.util.Set<String> userLines(String summaryInput) {
+        java.util.Set<String> lines = new java.util.HashSet<>();
+        for (String line : summaryInput.split("\n")) {
+            if (line.startsWith("USER: ")) {
+                lines.add(line.substring("USER: ".length()));
+            }
+        }
+        return lines;
     }
 }

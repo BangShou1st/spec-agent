@@ -64,6 +64,8 @@ class GlobalAssistantOwnershipRecoveryTest {
     @Autowired ProjectService projects;
     @Autowired ObjectMapper mapper;
     @Autowired com.specagent.globalassistant.runtime.GlobalAssistantRunRecoveryService recovery;
+    @Autowired com.specagent.globalassistant.runtime.GlobalAssistantRunRecoveryListener recoveryListener;
+    @Autowired org.springframework.context.ConfigurableApplicationContext applicationContext;
     @Autowired JdbcTemplate jdbc;
     @AfterEach
     void cleanUp() {
@@ -123,6 +125,39 @@ class GlobalAssistantOwnershipRecoveryTest {
         assertThat(matching).hasSize(1);
         assertThat(runs.findById(run.id()).orElseThrow().status())
                 .isEqualTo(GlobalAssistantRunStatus.COMPLETED);
+    }
+    @Test
+    void listenerPathRecoversOrphanThroughTransactionalService() {
+        GlobalAssistantThread thread = conversations.createThread();
+        GlobalAssistantRun orphan = conversations.createRunWithUserMessage(
+                thread.id(), "orphaned via listener", "v1", "v1", "fp");
+        recoveryListener.onApplicationReady(new org.springframework.boot.context.event.ApplicationReadyEvent(
+                new org.springframework.boot.SpringApplication(), new String[0], applicationContext,
+                java.time.Duration.ZERO));
+        GlobalAssistantRun finished = runs.findById(orphan.id()).orElseThrow();
+        assertThat(finished.status()).isEqualTo(GlobalAssistantRunStatus.FAILED);
+        assertThat(finished.errorCode()).isEqualTo("RUN_INTERRUPTED");
+        assertThat(events.findByRun(orphan.id()).stream()
+                        .anyMatch(e -> e.type().equals("RUN_FAILED")))
+                .isTrue();
+        GlobalAssistantRun next = conversations.createRunWithUserMessage(
+                thread.id(), "after listener recovery", "v1", "v1", "fp");
+        assertThat(next.status()).isEqualTo(GlobalAssistantRunStatus.CREATED);
+    }
+    @Test
+    void recoveryListenerIsASeparateBeanWithoutSelfCall() {
+        assertThat(recoveryListener).isNotSameAs((Object) recovery);
+        boolean serviceHasListener = java.util.Arrays.stream(
+                        com.specagent.globalassistant.runtime.GlobalAssistantRunRecoveryService.class
+                                .getDeclaredMethods())
+                .anyMatch(m -> m.isAnnotationPresent(
+                        org.springframework.context.event.EventListener.class));
+        assertThat(serviceHasListener).isFalse();
+        boolean listenerHandlesReady = java.util.Arrays.stream(
+                        recoveryListener.getClass().getDeclaredMethods())
+                .anyMatch(m -> m.isAnnotationPresent(
+                        org.springframework.context.event.EventListener.class));
+        assertThat(listenerHandlesReady).isTrue();
     }
     @Test
     void orphanRunRecoveryFailsClosedAndReleasesSlot() {
