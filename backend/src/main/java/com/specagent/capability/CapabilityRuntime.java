@@ -41,9 +41,13 @@ public class CapabilityRuntime {
     }
 
     /**
-     * Executes (or replays) one invocation. Callers must have passed policy
-     * for the descriptor's side-effect class first — the runtime enforces
-     * idempotency and typing, policy enforces authorization.
+     * Executes (or replays) one project-scoped invocation. Callers must have
+     * passed policy for the descriptor's side-effect class first — the runtime
+     * enforces idempotency and typing, policy enforces authorization.
+     *
+     * <p>Strictly project-scoped: {@code projectId} must be non-null and
+     * fail closed otherwise. Application-scoped callers must use
+     * {@link #invokeApplicationScoped}.
      */
     @Transactional
     public CapabilityResult invoke(String invocationKey,
@@ -51,6 +55,31 @@ public class CapabilityRuntime {
                                    UUID projectId,
                                    UUID runId,
                                    Map<String, Object> arguments) {
+        if (projectId == null) {
+            throw new IllegalArgumentException(
+                    "Project-scoped invoke requires a non-null projectId; use invokeApplicationScoped for application scope");
+        }
+        return execute(invocationKey, capabilityId, projectId, runId, arguments);
+    }
+
+    /**
+     * The single application-scoped public entry point for Global Assistant
+     * host tools. Persists {@code project_id = NULL} while reusing the exact
+     * registry → adapter → claim/complete/replay path. No dummy project.
+     */
+    @Transactional
+    public CapabilityResult invokeApplicationScoped(String invocationKey,
+                                                     String capabilityId,
+                                                     UUID runId,
+                                                     Map<String, Object> arguments) {
+        return execute(invocationKey, capabilityId, null, runId, arguments);
+    }
+
+    private CapabilityResult execute(String invocationKey,
+                                     String capabilityId,
+                                     UUID projectId,
+                                     UUID runId,
+                                     Map<String, Object> arguments) {
         CapabilityInvocation invocation = new CapabilityInvocation(
                 Ids.random(), invocationKey, capabilityId, projectId, runId, arguments);
 
