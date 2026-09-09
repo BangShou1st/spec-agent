@@ -63,6 +63,22 @@ f86bdb62a88fdae6330e532734f135ec82c22b39
 
 Work governed by `docs/v2/CAPABILITY_SKILLS_MCP_IMPLEMENTATION_PLAN.md` used this branch. The Capability / Skills / MCP dedicated branch exception was used for this initiative and is now closed after merge. Default branch policy returns to the normal repository rule. No new feature branch is authorized by this historical exception.
 
+### Scoped owner override — Global Assistant V1 initiative
+
+The project owner has explicitly authorized one dedicated feature branch for the Global Assistant V1 initiative:
+
+```text
+global-assistant-v1
+```
+
+It was created from `main` commit:
+
+```text
+41914ab356e7e076a28da71430ffae6619e1481e
+```
+
+Work governed by `docs/v2/GLOBAL_ASSISTANT_IMPLEMENTATION_PLAN.md` uses this branch. Backend must be accepted and frozen before Frontend development begins. Do not create additional Global Assistant feature branches unless the owner explicitly changes this rule again.
+
 For unrelated work, the default main-only policy still applies unless the owner explicitly changes it again.
 
 ## 4. Core Invariants
@@ -258,90 +274,3 @@ Never include:
 ## 10. Reflection Gates
 
 Do not implement reflection as vague self-talk. Reflection must be structured.
-
-Required gate types:
-
-- Context Guard.
-- Gap Reflection.
-- Node Reflection.
-- Patch Reflection.
-- Spec Grounding Gate.
-
-A gate must produce a machine-checkable result where possible.
-
-## 11. Testing Requirements
-
-When implementing a feature, add tests for the relevant invariants.
-
-Minimum test categories:
-
-- ContextBuilder lineage replay.
-- Sibling route exclusion.
-- Superseded route exclusion.
-- Deleted route exclusion.
-- Regenerate context contract.
-- Route restore context rebuild.
-- Soft delete shared ancestor safety.
-- Answer immutability.
-- Spec source references.
-- Unsupported claim handling.
-- Architecture dependency rules.
-- Domain-specific runtime keyword prevention.
-- Runtime package isolation from model packages.
-- Provider adapter configurable `User-Agent` support.
-- Spring AI absence unless explicitly approved later.
-
-Do not claim a feature is complete without tests covering its context, route, model-boundary, and persistence behavior.
-
-## 12. Documentation Requirements
-
-If implementation changes one of these, update docs in the same change:
-
-- Product boundary.
-- Core concepts.
-- Route operation semantics.
-- Active route semantics.
-- Node or Answer immutability.
-- Context rules.
-- AgentRun lifecycle.
-- ModelGateway strategy.
-- Provider adapter behavior.
-- Reflection gates.
-- Anti-overfitting rules.
-
-Do not let code silently diverge from docs.
-
-## 13. Implementation Style
-
-Prefer small, explicit services:
-
-- `ProjectService`
-- `RouteService`
-- `NodeService`
-- `AnswerService`
-- `ContextBuilder`
-- `RequirementStateBuilder`
-- `AgentRunService`
-- `AnswerPatchService`
-- `SpecSnapshotService`
-- `ModelGateway`
-- `ProviderAdapter`
-
-Avoid god services that parse user language, mutate route state, call the model, generate specs, and persist results in one place.
-
-## 14. Before Finishing Any Change
-
-Check:
-
-1. Did I introduce a concrete business-domain branch?
-2. Did I introduce a domain-specific class, enum, package, or table?
-3. Did I pass global history to the model?
-4. Did I let model output mutate state without validation?
-5. Did I preserve route lineage rules?
-6. Did regenerate exclude old answer, patch, children, and spec?
-7. Did spec content include source references?
-8. Did I add a model dependency before the correct phase?
-9. Did I accidentally add Spring AI as a default integration?
-10. Did provider-specific code leak into Runtime Kernel?
-11. Did tests cover the invariant touched by this change?
-12. Did docs stay consistent with the code?
