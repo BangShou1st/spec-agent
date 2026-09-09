@@ -1,0 +1,173 @@
+<script setup lang="ts">
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import ConversationTimeline from './ConversationTimeline.vue'
+import AssistantComposer from './AssistantComposer.vue'
+import { buildGaUiContext } from '@/api/globalAssistant'
+import { useGlobalAssistantStore } from '@/stores/globalAssistantStore'
+
+const store = useGlobalAssistantStore()
+const route = useRoute()
+const router = useRouter()
+const composerText = ref('')
+const composerRef = ref<InstanceType<typeof AssistantComposer> | null>(null)
+
+const running = computed(() => store.isRunning)
+const isReconnecting = computed(() => store.connection === 'reconnecting')
+const isDisconnected = computed(() => store.connection === 'disconnected')
+
+function handleReconnect(): void {
+  store.retryConnection()
+}
+
+onMounted(() => {
+  void store.init().then(() => {
+    if (store.draft) composerText.value = store.draft
+  })
+})
+
+watch(
+  () => store.pendingNavigation,
+  async (target) => {
+    if (!target) return
+    const current = route.path
+    store.consumeNavigation()
+    if (current === target) return
+    try {
+      await router.push(target)
+    } catch {
+      /* navigation is best-effort; thread stays alive */
+    }
+  },
+)
+
+watch(
+  () => store.waitingQuestion,
+  (question) => {
+    if (question) composerRef.value?.focusComposer()
+  },
+)
+
+watch(
+  () => store.draft,
+  (draft) => {
+    if (draft && !composerText.value) composerText.value = draft
+  },
+)
+
+async function handleSend(): Promise<void> {
+  const text = composerText.value
+  if (!text.trim()) return
+  const uiContext = buildGaUiContext({ path: route.path, params: route.params as Record<string, string> })
+  composerText.value = ''
+  await store.sendMessage(text, uiContext)
+  if (store.draft) composerText.value = store.draft
+}
+
+function handleCancel(): void {
+  void store.cancelActiveRun()
+}
+
+function handleNewConversation(): void {
+  void store.startNewConversation()
+}
+
+function handleClose(): void {
+  store.setPanelOpen(false)
+}
+</script>
+
+<template>
+  <section
+    class="ga-panel"
+    role="complementary"
+    aria-label="Spec Agent 全局助手"
+    data-test="ga-panel"
+    :data-state="store.panelOpen ? 'open' : 'closed'"
+  >
+    <header class="ga-panel__header">
+      <div class="ga-panel__title">
+        <strong>助手</strong>
+        <span class="ga-panel__subtitle">在 Spec Agent 内工作</span>
+      </div>
+      <div class="ga-panel__actions">
+        <button
+          class="icon-btn"
+          type="button"
+          data-test="ga-new-conversation"
+          aria-label="开始新对话"
+          title="开始新对话"
+          :disabled="running || store.sending"
+          @click="handleNewConversation"
+        >
+          ＋
+        </button>
+        <button
+          class="icon-btn"
+          type="button"
+          data-test="ga-close"
+          aria-label="关闭助手"
+          @click="handleClose"
+        >
+          ✕
+        </button>
+      </div>
+    </header>
+
+    <div v-if="isReconnecting" class="ga-panel__connection" data-test="ga-connection">重新连接中…</div>
+    <div v-else-if="isDisconnected" class="ga-panel__connection ga-panel__connection--disconnected" data-test="ga-connection">
+      <span>连接已断开，任务仍在后台继续</span>
+      <button class="ga-panel__reconnect" type="button" data-test="ga-reconnect" @click="handleReconnect">重新连接</button>
+    </div>
+    <div v-if="store.approvalRequired" class="ga-panel__approval" data-test="ga-approval">该步骤需要批准，当前版本暂不支持审批操作。</div>
+
+    <div v-if="store.error" class="ga-panel__error" role="alert" data-test="ga-error">
+      <span>{{ store.error.message }}</span>
+      <button class="icon-btn" type="button" aria-label="关闭错误提示" @click="store.error = null">✕</button>
+    </div>
+
+    <div class="ga-panel__status-live visually-hidden" aria-live="polite" atomic="true">
+      <span v-if="store.currentStatus">{{ store.currentStatus }}</span>
+      <span v-else-if="running">助手正在处理</span>
+    </div>
+
+    <p v-if="store.loadingThread" class="ga-panel__loading muted" data-test="ga-loading">正在恢复会话…</p>
+
+    <ConversationTimeline
+      v-else
+      :messages="store.messages"
+      :activities="store.activities"
+      :streaming-text="store.streamingText"
+      :current-status="store.currentStatus"
+      :running="running"
+      :waiting-question="store.waitingQuestion"
+    />
+
+    <AssistantComposer
+      ref="composerRef"
+      v-model="composerText"
+      :running="running"
+      :sending="store.sending"
+      :cancel-requested="store.cancelRequested"
+      :waiting-question="store.waitingQuestion"
+      @send="handleSend"
+      @cancel="handleCancel"
+    />
+  </section>
+</template>
+
+<style scoped>
+.ga-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--color-surface); }
+.ga-panel__header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--color-border); background: var(--color-surface-subtle); }
+.ga-panel__title { display: flex; align-items: baseline; gap: 8px; }
+.ga-panel__title strong { font-size: 14px; }
+.ga-panel__subtitle { font-size: 12px; color: var(--color-text-muted); }
+.ga-panel__actions { display: flex; gap: 4px; }
+.ga-panel__connection { padding: 6px 12px; font-size: 12px; color: var(--color-warn); background: var(--color-warn-soft); border-bottom: 1px solid var(--color-border); display: flex; align-items: center; gap: 8px; }
+.ga-panel__reconnect { margin-left: auto; border: 1px solid var(--color-border); background: var(--color-surface); border-radius: 999px; padding: 3px 10px; font-size: 12px; }
+.ga-panel__reconnect:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.ga-panel__approval { margin: 8px 12px 0; padding: 8px 10px; border-radius: 8px; background: var(--color-surface-subtle); border: 1px solid var(--color-border); color: var(--color-text-secondary); font-size: 13px; }
+.ga-panel__error { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 8px 12px 0; padding: 8px 10px; border-radius: 8px; background: var(--color-danger-soft); border: 1px solid #ecc0bc; color: var(--color-danger); font-size: 13px; }
+.ga-panel__loading { padding: 16px 12px; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+</style>
