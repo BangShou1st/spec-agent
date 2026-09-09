@@ -37,8 +37,12 @@ class ApiClient {
   async post<T>(path: string, body?: unknown): Promise<T> {
     const init: RequestInit = { method: 'POST' }
     if (body !== undefined) {
-      init.headers = { 'Content-Type': 'application/json' }
-      init.body = JSON.stringify(body)
+      if (typeof FormData !== 'undefined' && body instanceof FormData) {
+        init.body = body as BodyInit
+      } else {
+        init.headers = { 'Content-Type': 'application/json' }
+        init.body = JSON.stringify(body)
+      }
     }
     return this.request<T>(path, init)
   }
@@ -51,11 +55,23 @@ class ApiClient {
     return this.requestWithBody<T>('PATCH', path, body)
   }
 
+  async delete<T = void>(path: string): Promise<T> {
+    return this.request<T>(path, { method: 'DELETE' })
+  }
+
+  async postForm<T>(path: string, form: FormData): Promise<T> {
+    return this.request<T>(path, { method: 'POST', body: form })
+  }
+
   private async requestWithBody<T>(method: string, path: string, body?: unknown): Promise<T> {
     const init: RequestInit = { method }
     if (body !== undefined) {
-      init.headers = { 'Content-Type': 'application/json' }
-      init.body = JSON.stringify(body)
+      if (typeof FormData !== 'undefined' && body instanceof FormData) {
+        init.body = body
+      } else {
+        init.headers = { 'Content-Type': 'application/json' }
+        init.body = JSON.stringify(body)
+      }
     }
     return this.request<T>(path, init)
   }
@@ -69,6 +85,26 @@ class ApiClient {
     }
 
     if (response.ok) {
+      if (response.status === 204 || response.status === 205) {
+        return undefined as T
+      }
+      const maybeText = (response as Response & { text?: unknown }).text
+      if (typeof maybeText === 'function') {
+        let textBody = ''
+        try {
+          textBody = await response.text()
+        } catch {
+          throw new ApiError(GENERIC_ERROR_MESSAGE, 'INVALID_RESPONSE', response.status)
+        }
+        if (!textBody) {
+          return undefined as T
+        }
+        try {
+          return JSON.parse(textBody) as T
+        } catch {
+          throw new ApiError(GENERIC_ERROR_MESSAGE, 'INVALID_RESPONSE', response.status)
+        }
+      }
       try {
         return (await response.json()) as T
       } catch {

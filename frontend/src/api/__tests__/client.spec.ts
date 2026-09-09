@@ -118,4 +118,114 @@ describe('api client', () => {
     expect(init.method).toBe('POST')
     expect(JSON.parse(String(init.body))).toEqual({ title: 'New project' })
   })
+
+  it('resolves 204 POST success without INVALID_RESPONSE', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 204,
+        text: async () => '',
+        json: async () => {
+          throw new Error('no body')
+        },
+      }),
+    )
+    await expect(apiClient.post('/connections/conn_1/enable')).resolves.toBeUndefined()
+  })
+
+  it('resolves 204 DELETE success without INVALID_RESPONSE', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 204,
+      text: async () => '',
+      json: async () => {
+        throw new Error('no body')
+      },
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(apiClient.delete('/skills/s1')).resolves.toBeUndefined()
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('/api/v1/skills/s1')
+    expect(init.method).toBe('DELETE')
+  })
+
+  it('resolves 205 empty success without INVALID_RESPONSE', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 205,
+        text: async () => '',
+        json: async () => {
+          throw new Error('no body')
+        },
+      }),
+    )
+    await expect(apiClient.get('/connections')).resolves.toBeUndefined()
+  })
+
+  it('resolves empty 200 body as undefined instead of INVALID_RESPONSE', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: async () => '',
+        json: async () => {
+          throw new Error('no json')
+        },
+      }),
+    )
+    await expect(apiClient.get('/skills')).resolves.toBeUndefined()
+  })
+
+  it('parses normal JSON text responses', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ connectionId: 'conn_1' }),
+        json: async () => ({ connectionId: 'conn_1' }),
+      }),
+    )
+    await expect(apiClient.get('/connections/conn_1')).resolves.toEqual({ connectionId: 'conn_1' })
+  })
+
+  it('does not force JSON Content-Type for FormData uploads', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 201,
+      text: async () => JSON.stringify({ stagedImportId: 's1' }),
+      json: async () => ({ stagedImportId: 's1' }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const form = new FormData()
+    form.append('file', new Blob(['x']), 'skill.zip')
+    const result = await apiClient.postForm('/skills/imports/zip', form)
+    expect(result).toEqual({ stagedImportId: 's1' })
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(init.method).toBe('POST')
+    expect(init.body).toBe(form)
+    const headers = (init.headers ?? {}) as Record<string, string>
+    expect(headers['Content-Type']).toBeUndefined()
+  })
+
+  it('rejects malformed non-empty 2xx bodies as INVALID_RESPONSE', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: async () => 'not-json{{{',
+        json: async () => {
+          throw new Error('bad json')
+        },
+      }),
+    )
+    const err = (await apiClient.get('/x').catch((e: unknown) => e)) as ApiError
+    expect(err.code).toBe('INVALID_RESPONSE')
+    expect(err.message).toBe(GENERIC_ERROR_MESSAGE)
+  })
 })
