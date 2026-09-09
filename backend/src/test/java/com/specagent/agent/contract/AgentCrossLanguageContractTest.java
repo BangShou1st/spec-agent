@@ -169,6 +169,44 @@ class AgentV2ContractTest {
         assertThat(envelope.snapshot().availableCapabilities()).isEmpty();
     }
 
+    @Test
+    void skillCatalogRoundTripsStrictlyWithLegacyDefault() throws Exception {
+        // Phase 4: availableSkills is a bounded catalog with fingerprint +
+        // truncation evidence; legacy fixtures without it parse to empty.
+        AgentRequestEnvelope legacy = AgentContracts.read(
+                fixture("agent-input-valid.json"), AgentRequestEnvelope.class);
+        assertThat(legacy.snapshot().availableSkills().skills()).isEmpty();
+        assertThat(legacy.snapshot().availableSkills().truncated()).isFalse();
+
+        AgentInputSnapshot snapshot = legacy.snapshot();
+        AgentInputSnapshot enriched = new AgentInputSnapshot(
+                snapshot.snapshotId(), snapshot.contextHash(), snapshot.projectId(),
+                snapshot.routeId(), snapshot.anchorNodeId(), snapshot.routeContext(),
+                snapshot.lineage(), snapshot.effectiveClaims(), snapshot.metadata(),
+                snapshot.allowedSourceRefs(), snapshot.availableCapabilities(),
+                new SkillCatalogView(
+                        List.of(new AvailableSkillView("sk-1", "migration-safety",
+                                "数据库迁移安全检查", "migration.sql")),
+                        false, "fp-1"),
+                snapshot.capabilityResults(), snapshot.relations(),
+                snapshot.relatedNodes(), snapshot.autonomy());
+        AgentRequestEnvelope reparsed = AgentContracts.read(
+                AgentContracts.write(new AgentRequestEnvelope(
+                        legacy.protocolVersion(), legacy.runId(), legacy.event(),
+                        enriched, legacy.capabilities(), legacy.decisionBudget(),
+                        legacy.actionEligibility())),
+                AgentRequestEnvelope.class);
+        assertThat(reparsed.snapshot().availableSkills().skills())
+                .extracting(AvailableSkillView::skillId).containsExactly("sk-1");
+        assertThat(reparsed.snapshot().availableSkills().fingerprint())
+                .isEqualTo("fp-1");
+        // No full SKILL.md, paths, scores, or DB internals on the wire.
+        assertThat(AgentContracts.write(enriched))
+                .doesNotContain("SKILL.md")
+                .doesNotContain("embedding")
+                .doesNotContain("filesystem");
+    }
+
     private AgentInputSnapshot withCapabilities(AgentInputSnapshot snapshot,
                                                  CapabilityDescriptor... descriptors) {
         return new AgentInputSnapshot(

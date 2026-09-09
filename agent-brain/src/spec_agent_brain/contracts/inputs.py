@@ -142,6 +142,31 @@ class CapabilityResultView(StrictModel):
     provenance: Dict[str, Any] = Field(default_factory=dict)
 
 
+class AvailableSkillView(StrictModel):
+    """One bounded Skill catalog entry in the frozen input snapshot.
+
+    Identity plus bounded metadata only — never full SKILL.md, filesystem
+    paths, embedding scores, or DB internals.
+    """
+
+    skill_id: str
+    name: str = ""
+    description: str = ""
+    compatibility_hint: Optional[str] = None
+
+
+class SkillCatalogView(StrictModel):
+    """Bounded Skill catalog with replay evidence.
+
+    ``fingerprint`` plus ``truncated`` let replay verify the model saw the
+    same catalog; entry order is stable.
+    """
+
+    skills: List[AvailableSkillView] = Field(default_factory=list)
+    truncated: bool = False
+    fingerprint: str = ""
+
+
 class RelationView(StrictModel):
     """One direction-preserving semantic relation on the wire.
 
@@ -187,6 +212,9 @@ class AgentInputSnapshot(StrictModel):
     metadata: SnapshotMetadata
     allowed_source_refs: List[str] = Field(default_factory=list)
     available_capabilities: List[CapabilityDescriptor] = Field(default_factory=list)
+    # Bounded Skill catalog for the fresh Decision context (optional for
+    # wire/replay compatibility with older frozen payloads).
+    available_skills: SkillCatalogView = Field(default_factory=SkillCatalogView)
     capability_results: List[CapabilityResultView] = Field(default_factory=list)
     # Bounded 1-hop semantic context (NODE_QUERY only; empty for other ops).
     relations: List[RelationView] = Field(default_factory=list)

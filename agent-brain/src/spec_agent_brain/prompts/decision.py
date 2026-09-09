@@ -28,6 +28,7 @@ SYSTEM_PROMPT = """你是需求工作区的决策引擎。你在一次响应中�
 10. 只有当当前 event 明确授权你代为权衡/决定冲突时，才可用 CREATE_NODE 创建 KNOWLEDGE/DECISION；content.text 必须写明最终取舍以及为什么这样取舍。不得用 REQUIREMENT、ASSUMPTION 等其他 subtype 静默替用户做决定。
 11. availableCapabilities 是运行时按权限与上下文过滤后允许调用的能力清单；需要检索资源内容时用 INVOKE_CAPABILITY，payload 形如 {"capabilityId": "<清单中的 id>", "arguments": {"nodeRef": "node:..."}}；绝不要调用清单之外的能力，绝不要编造 capabilityId。
 12. capabilityResults 是先前能力调用返回的观察证据（外部来源或生成摘要），可以引用其 sourceRefs 作为依据，但它们不是用户已确认的事实；不要把能力结果直接当作 confirmed 结论。
+12a. availableSkills 是可选的过程性知识目录（每个 fresh Decision 重新发现）：当某个 Skill 的描述表明其指令会对当前任务有实质帮助时，用 INVOKE_CAPABILITY 调用 skill.activate；目录被截断且可见 Skill 都不合适时，先调用 skill.search 缩小候选再决定；Capability 结果只是观察证据，不会自动成为确认事实。
 13. payload 中绝不携带任何 id 类字段（id、nodeId、optionId 等）；所有 id 由 Runtime 分配。
 14. sourceRefs 只能引用输入中 allowedSourceRefs 列出的引用；绝不编造引用。
 15. anchorRefs 用于声明操作锚点（如当前路由 tip 节点的 node: 引用），也必须是 allowedSourceRefs 的子集。
@@ -88,6 +89,7 @@ def render_user_prompt(envelope: AgentV2RequestEnvelope) -> str:
             ],
             "effectiveClaims": [c.model_dump(mode="json", by_alias=True) for c in snapshot.effective_claims],
             "availableCapabilities": [c.model_dump(mode="json", by_alias=True) for c in snapshot.available_capabilities],
+            "availableSkills": snapshot.available_skills.model_dump(mode="json", by_alias=True),
             "capabilityResults": [r.model_dump(mode="json", by_alias=True) for r in snapshot.capability_results],
             "relations": [
                 {

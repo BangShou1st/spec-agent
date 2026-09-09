@@ -23,6 +23,7 @@ public record AgentInputSnapshot(String snapshotId,
                                  SnapshotMetadata metadata,
                                  List<String> allowedSourceRefs,
                                  List<CapabilityDescriptor> availableCapabilities,
+                                 SkillCatalogView availableSkills,
                                  List<CapabilityResultView> capabilityResults,
                                  List<RelationView> relations,
                                  List<RelatedNodeRef> relatedNodes,
@@ -34,9 +35,33 @@ public record AgentInputSnapshot(String snapshotId,
         allowedSourceRefs = allowedSourceRefs == null ? List.of() : List.copyOf(allowedSourceRefs);
         availableCapabilities = availableCapabilities == null
                 ? List.of() : List.copyOf(availableCapabilities);
+        availableSkills = availableSkills == null
+                ? SkillCatalogView.empty() : availableSkills;
         capabilityResults = capabilityResults == null
                 ? List.of() : List.copyOf(capabilityResults);
         relations = relations == null ? List.of() : List.copyOf(relations);
         relatedNodes = relatedNodes == null ? List.of() : List.copyOf(relatedNodes);
+    }
+
+    /** Legacy constructor for callers that predate the Skill catalog field. */
+    public AgentInputSnapshot(String snapshotId,
+                              String contextHash,
+                              UUID projectId,
+                              UUID routeId,
+                              UUID anchorNodeId,
+                              RouteContextView routeContext,
+                              List<LineageEntry> lineage,
+                              List<ClaimView> effectiveClaims,
+                              SnapshotMetadata metadata,
+                              List<String> allowedSourceRefs,
+                              List<CapabilityDescriptor> availableCapabilities,
+                              List<CapabilityResultView> capabilityResults,
+                              List<RelationView> relations,
+                              List<RelatedNodeRef> relatedNodes,
+                              AutonomyInputs autonomy) {
+        this(snapshotId, contextHash, projectId, routeId, anchorNodeId,
+                routeContext, lineage, effectiveClaims, metadata, allowedSourceRefs,
+                availableCapabilities, SkillCatalogView.empty(), capabilityResults,
+                relations, relatedNodes, autonomy);
     }
 }

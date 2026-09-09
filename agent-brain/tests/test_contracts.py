@@ -35,6 +35,30 @@ def test_valid_request_fixture_parses():
     assert str(envelope.run_id) == "22222222-2222-2222-2222-222222222222"
     assert envelope.snapshot.metadata.project_title == "内部工单系统探索"
     assert len(envelope.snapshot.lineage) == 2
+    # Phase 4: legacy fixtures without availableSkills parse to an empty catalog.
+    assert envelope.snapshot.available_skills.skills == []
+    assert envelope.snapshot.available_skills.truncated is False
+
+
+def test_skill_catalog_round_trips_with_fingerprint():
+    envelope = parse_request_envelope(_load("agent-input-valid.json"))
+    payload = copy.deepcopy(_load("agent-input-valid.json"))
+    payload["snapshot"]["availableSkills"] = {
+        "skills": [
+            {"skillId": "sk-1", "name": "migration-safety",
+             "description": "数据库迁移安全检查"},
+        ],
+        "truncated": False,
+        "fingerprint": "fp-1",
+    }
+    reparsed = parse_request_envelope(payload)
+    assert [s.skill_id for s in reparsed.snapshot.available_skills.skills] == ["sk-1"]
+    assert reparsed.snapshot.available_skills.fingerprint == "fp-1"
+    # Unknown skill fields still fail closed.
+    bad = copy.deepcopy(payload)
+    bad["snapshot"]["availableSkills"]["skills"][0]["filesystemPath"] = "/tmp/x"
+    with pytest.raises(ValidationError):
+        parse_request_envelope(bad)
 
 
 def test_routeless_node_query_fixture_parses_with_null_route_ids():
