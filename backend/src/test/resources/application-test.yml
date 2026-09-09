@@ -54,3 +54,10 @@ spec:
         enabled: false
     semantic-trace:
       enabled: true
+    secret:
+      # Deterministic test master key (32 bytes base64) so connection tests
+      # exercise the real AES-GCM secret path without a runtime env var.
+      master-key: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+    mcp:
+      # Fake in-process MCP servers live on 127.0.0.1 in tests.
+      allow-localhost-http: true

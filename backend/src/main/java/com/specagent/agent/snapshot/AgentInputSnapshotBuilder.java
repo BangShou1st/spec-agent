@@ -8,6 +8,9 @@ import com.specagent.agent.contract.AgentProtocol;
 import com.specagent.agent.contract.AgentRequestEnvelope;
 import com.specagent.agent.contract.AnswerView;
 import com.specagent.agent.contract.AutonomyInputs;
+import com.specagent.agent.contract.AgentInputSnapshot;
+import com.specagent.agent.contract.AvailableSkillView;
+import com.specagent.agent.contract.SkillCatalogView;
 import com.specagent.agent.contract.CapabilityDescriptor;
 import com.specagent.agent.contract.CapabilityResultView;
 import com.specagent.agent.contract.ClaimView;
@@ -27,7 +30,14 @@ import com.specagent.answer.Answer;
 import com.specagent.answer.AnswerRepository;
 import com.specagent.capability.CapabilityInvocationRecord;
 import com.specagent.capability.CapabilityInvocationRepository;
+import com.specagent.capability.CapabilityQueryContext;
 import com.specagent.capability.CapabilityRegistry;
+import com.specagent.capability.CapabilityVisibilityService;
+import com.specagent.skill.discovery.SkillCatalogEntry;
+import com.specagent.skill.discovery.SkillDiscoveryContext;
+import com.specagent.skill.discovery.SkillDiscoveryService;
+import com.specagent.skill.discovery.SkillHostToolVisibility;
+import com.specagent.skill.runtime.SkillSearchHostTool;
 import com.specagent.common.Hashes;
 import com.specagent.common.Json;
 import com.specagent.context.ContextSnapshot;
@@ -100,6 +110,9 @@ public class AgentInputSnapshotBuilder {
     private final RouteRepository routeRepository;
     private final RequirementStateBuilder requirementStateBuilder;
     private final CapabilityRegistry capabilityRegistry;
+    private final CapabilityVisibilityService capabilityVisibilityService;
+    private final SkillDiscoveryService skillDiscoveryService;
+    private final SkillHostToolVisibility skillHostToolVisibility;
     private final CapabilityInvocationRepository capabilityInvocationRepository;
     private final AgentRunRepository agentRunRepository;
     private final AgentInputProjectionRepository projectionRepository;
@@ -112,6 +125,9 @@ public class AgentInputSnapshotBuilder {
                                      RouteRepository routeRepository,
                                      RequirementStateBuilder requirementStateBuilder,
                                      CapabilityRegistry capabilityRegistry,
+                                     CapabilityVisibilityService capabilityVisibilityService,
+                                     SkillDiscoveryService skillDiscoveryService,
+                                     SkillHostToolVisibility skillHostToolVisibility,
                                      CapabilityInvocationRepository capabilityInvocationRepository,
                                      AgentRunRepository agentRunRepository,
                                      AgentInputProjectionRepository projectionRepository,
@@ -123,6 +139,9 @@ public class AgentInputSnapshotBuilder {
         this.routeRepository = routeRepository;
         this.requirementStateBuilder = requirementStateBuilder;
         this.capabilityRegistry = capabilityRegistry;
+        this.capabilityVisibilityService = capabilityVisibilityService;
+        this.skillDiscoveryService = skillDiscoveryService;
+        this.skillHostToolVisibility = skillHostToolVisibility;
         this.capabilityInvocationRepository = capabilityInvocationRepository;
         this.agentRunRepository = agentRunRepository;
         this.projectionRepository = projectionRepository;
@@ -271,6 +290,12 @@ public class AgentInputSnapshotBuilder {
                 .toList();
         List<Node> relatedNodes = loadRelatedNodes(snapshot, lineageNodes);
         List<RelatedNodeRef> relatedRefs = relatedNodeRefs(snapshot, relatedNodes);
+        // One Skill discovery projection per first-freeze build: the same
+        // catalog feeds both the wire field and the skill.search visibility
+        // gate, so the two can never disagree (and a future heavier retriever
+        // cannot produce two different catalogs for one frozen snapshot).
+        SkillCatalogView skillCatalog =
+                availableSkills(snapshot, lineageNodes, relatedNodes);
         return new AgentInputSnapshot(
                 snapshot.id().toString(),
                 snapshot.contextHash(),
@@ -282,7 +307,8 @@ public class AgentInputSnapshotBuilder {
                 effectiveClaims(snapshot),
                 metadata(snapshot),
                 allowedSourceRefs(snapshot, relatedRefs),
-                visibleCapabilityDescriptors(lineageNodes, relatedNodes),
+                visibleCapabilityDescriptors(snapshot, lineageNodes, relatedNodes, skillCatalog),
+                skillCatalog,
                 capabilityResults(snapshot),
                 relations(snapshot),
                 relatedRefs,
@@ -366,48 +392,101 @@ public class AgentInputSnapshotBuilder {
     }
 
     /**
-     * Permission- and relevance-filtered capability descriptors. Relevance is
-     * driven by each descriptor's {@code supports} declarations ("KIND" or
-     * "KIND:SUBTYPE") against the context node kinds — the lineage nodes plus
-     * the bounded 1-hop related nodes — a generic rule, so new capabilities
-     * become visible by declaring supports, without edits to the builder or
-     * planner. A directly-related RESOURCE node therefore exposes an allowed
-     * capability without any workspace-wide scan. Context-free capabilities
-     * (empty supports) stay visible everywhere.
+     * Permission-, availability- and relevance-filtered capability descriptors
+     * projected onto the wire contract. Filtering (permissions, provider
+     * availability, {@code supports} compatibility against the context node
+     * kinds, catalog bounds) is owned by
+     * {@link CapabilityVisibilityService}; this builder only maps the bounded
+     * runtime descriptor onto the versioned wire shape — including the bounded
+     * input schema and the {@code supports} facts that drove visibility — so
+     * the model can construct valid calls for dynamic providers without ever
+     * seeing implementation classes, connections, endpoints or credentials.
      */
-    private List<CapabilityDescriptor> visibleCapabilityDescriptors(List<Node> lineageNodes,
-                                                                    List<Node> relatedNodes) {
-        List<Node> contextNodes = new ArrayList<>(lineageNodes);
-        contextNodes.addAll(relatedNodes);
-        return capabilityRegistry.descriptorsFor(java.util.Set.of()).stream()
-                .filter(descriptor -> supportsAnyLineageNode(descriptor, contextNodes))
+    private List<CapabilityDescriptor> visibleCapabilityDescriptors(ContextSnapshot snapshot,
+                                                                    List<Node> lineageNodes,
+                                                                    List<Node> relatedNodes,
+                                                                    SkillCatalogView skillCatalog) {
+        List<String> contextKinds = new ArrayList<>();
+        for (Node node : lineageNodes) {
+            contextKinds.add(node.kind().code());
+            if (node.subtype() != null && !node.subtype().isBlank()) {
+                contextKinds.add(node.kind().code() + ":" + node.subtype());
+            }
+        }
+        for (Node node : relatedNodes) {
+            contextKinds.add(node.kind().code());
+            if (node.subtype() != null && !node.subtype().isBlank()) {
+                contextKinds.add(node.kind().code() + ":" + node.subtype());
+            }
+        }
+        CapabilityQueryContext context = new CapabilityQueryContext(
+                Set.of(), List.copyOf(contextKinds), Map.of());
+        boolean skillsPresent = skillHostToolVisibility.anyEnabledSkill(snapshot.projectId());
+        // skill.search is a truncation fallback only: it stays hidden unless
+        // the single Skill catalog projection for this build was truncated.
+        // The precomputed catalog is passed in — no second discovery call.
+        boolean catalogTruncated = skillCatalog.truncated();
+        return capabilityVisibilityService.visibleCapabilities(context).stream()
+                .filter(descriptor -> skillsPresent
+                        || !isSkillHostTool(descriptor.capabilityId()))
+                .filter(descriptor -> catalogTruncated
+                        || !SkillSearchHostTool.CAPABILITY_ID.equals(descriptor.capabilityId()))
                 .map(descriptor -> new CapabilityDescriptor(
                         descriptor.capabilityId(),
                         descriptor.version(),
                         descriptor.description(),
+                        descriptor.inputSchema(),
                         descriptor.readOnly(),
-                        descriptor.sideEffectClass().code()))
+                        descriptor.sideEffectClass().code(),
+                        descriptor.supports()))
                 .toList();
     }
 
-    private boolean supportsAnyLineageNode(com.specagent.capability.CapabilityDescriptor descriptor,
-                                           List<Node> lineageNodes) {
-        if (descriptor.supports().isEmpty()) {
-            return true;
-        }
-        return descriptor.supports().stream().anyMatch(support -> lineageNodes.stream()
-                .anyMatch(node -> supportMatches(support, node)));
+    /**
+     * Skill Host Function Tools are exposed only when the project actually has
+     * an enabled Skill to activate/read — "installed != loaded" applies to the
+     * procedural-knowledge tools just as it does to Skill bodies. The check is
+     * a deterministic structured fact (a registered capability id prefix),
+     * never user wording.
+     */
+    private boolean isSkillHostTool(String capabilityId) {
+        return capabilityId.startsWith("skill.");
     }
 
-    private boolean supportMatches(String support, Node node) {
-        int separator = support.indexOf(':');
-        if (separator < 0) {
-            return support.equalsIgnoreCase(node.kind().code());
+    /**
+     * Bounded Skill catalog for one fresh Decision context. Discovery runs
+     * here — at first-freeze time — so every fresh continuation snapshot gets
+     * a freshly discovered catalog while the same frozen snapshot always
+     * replays the identical frozen projection. Only identity + bounded
+     * metadata cross the boundary; full SKILL.md stays behind activation.
+     */
+    private SkillCatalogView availableSkills(ContextSnapshot snapshot,
+                                            List<Node> lineageNodes,
+                                            List<Node> relatedNodes) {
+        List<String> resourceKinds = new ArrayList<>();
+        for (Node node : lineageNodes) {
+            resourceKinds.add(node.kind().code());
         }
-        String kind = support.substring(0, separator);
-        String subtype = support.substring(separator + 1);
-        return kind.equalsIgnoreCase(node.kind().code())
-                && subtype.equalsIgnoreCase(node.subtype());
+        for (Node node : relatedNodes) {
+            resourceKinds.add(node.kind().code());
+        }
+        List<String> recentCapabilityIds = capabilityInvocationRepository
+                .findRecentCompleted(snapshot.projectId(), RECENT_CAPABILITY_RESULTS_LIMIT)
+                .stream().map(CapabilityInvocationRecord::capabilityId).toList();
+        SkillDiscoveryContext context = new SkillDiscoveryContext(
+                snapshot.operationType() == null ? null : snapshot.operationType().name(),
+                List.copyOf(resourceKinds), recentCapabilityIds, Map.of());
+        var projection = skillDiscoveryService.discover(context);
+        List<AvailableSkillView> skills = projection.entries().stream()
+                .map(this::toSkillView)
+                .toList();
+        return new SkillCatalogView(skills, projection.truncated(),
+                projection.fingerprint());
+    }
+
+    private AvailableSkillView toSkillView(SkillCatalogEntry entry) {
+        return new AvailableSkillView(entry.skillId(), entry.name(),
+                entry.description(), entry.compatibilityHint());
     }
 
     /**

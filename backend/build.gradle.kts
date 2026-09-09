@@ -21,6 +21,18 @@ dependencies {
     implementation("org.flywaydb:flyway-core")
     implementation("org.flywaydb:flyway-database-postgresql")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
+    // Pure-Java git client for HTTPS Skill imports. JGit never runs git
+    // hooks, never initializes submodules, and never smudges LFS content
+    // automatically — the import-security posture the Skill runtime requires.
+    implementation("org.eclipse.jgit:org.eclipse.jgit:7.8.0.202609011348-r")
+    implementation("org.eclipse.jgit:org.eclipse.jgit.ssh.apache:7.8.0.202609011348-r")
+    // Zip parsing with Unix entry-mode visibility (symlink/device rejection).
+    implementation("org.apache.commons:commons-compress:1.28.0")
+    // Official MCP Java SDK (Remote Streamable HTTP transport). Version 0.18.x
+// targets Jackson 2, matching Spring Boot 3.3 — the 1.x line moved to Jackson
+// 3 and would conflict at runtime. All SDK types stay behind com.specagent.mcp;
+// nothing leaks into agent/brain/policy.
+implementation("io.modelcontextprotocol.sdk:mcp:0.18.4")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.testcontainers:junit-jupiter")

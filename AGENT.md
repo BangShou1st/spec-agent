@@ -39,7 +39,7 @@ If a requested change pushes the project toward one of these, stop and update th
 
 ## 3. Development Branch Policy
 
-For now, use one branch only:
+Default repository policy remains:
 
 ```text
 local main ↔ remote main
@@ -47,7 +47,23 @@ local main ↔ remote main
 
 Do not create feature branches or PRs unless the project owner explicitly changes this rule.
 
-Because all work lands on `main`, keep commits small, run tests before claiming completion, and avoid broad partial changes.
+### Scoped owner override — Capability / Skills / MCP initiative
+
+The project owner has explicitly authorized one dedicated feature branch for the Capability / Skills / MCP initiative:
+
+```text
+capability-skills-mcp
+```
+
+It was created from `main` commit:
+
+```text
+f86bdb62a88fdae6330e532734f135ec82c22b39
+```
+
+Work governed by `docs/v2/CAPABILITY_SKILLS_MCP_IMPLEMENTATION_PLAN.md` used this branch. The Capability / Skills / MCP dedicated branch exception was used for this initiative and is now closed after merge. Default branch policy returns to the normal repository rule. No new feature branch is authorized by this historical exception.
+
+For unrelated work, the default main-only policy still applies unless the owner explicitly changes it again.
 
 ## 4. Core Invariants
 

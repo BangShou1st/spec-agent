@@ -74,3 +74,40 @@ spec:
       # remaining budget always derives from the persisted cycle index, so
       # no remaining-budget counter is stored anywhere.
       max-cycles: ${SPEC_AGENT_LOOP_MAX_CYCLES:3}
+    capability:
+      # Deterministic planner-facing capability catalog bounds. Model output
+      # can never change these limits.
+      max-visible: ${SPEC_AGENT_CAPABILITY_CATALOG_MAX_VISIBLE:32}
+      max-descriptor-bytes: ${SPEC_AGENT_CAPABILITY_CATALOG_MAX_DESCRIPTOR_BYTES:2048}
+      max-description-chars: ${SPEC_AGENT_CAPABILITY_CATALOG_MAX_DESCRIPTION_CHARS:320}
+    skill:
+      # Skill import security bounds (ZIP/git). Conservative by default;
+      # scripts and dependency installation never run during validate/install.
+      max-archive-bytes: ${SPEC_AGENT_SKILL_MAX_ARCHIVE_BYTES:2097152}
+      max-extracted-bytes: ${SPEC_AGENT_SKILL_MAX_EXTRACTED_BYTES:10485760}
+      max-files: ${SPEC_AGENT_SKILL_MAX_FILES:256}
+      max-depth: ${SPEC_AGENT_SKILL_MAX_DEPTH:8}
+      max-path-chars: ${SPEC_AGENT_SKILL_MAX_PATH_CHARS:512}
+      # Discovery/catalog bounds.
+      max-visible: ${SPEC_AGENT_SKILL_CATALOG_MAX_VISIBLE:24}
+      max-metadata-bytes: ${SPEC_AGENT_SKILL_CATALOG_MAX_METADATA_BYTES:4096}
+      max-description-chars: ${SPEC_AGENT_SKILL_CATALOG_MAX_DESCRIPTION_CHARS:320}
+      search-max-results: ${SPEC_AGENT_SKILL_SEARCH_MAX_RESULTS:10}
+      activation-max-instruction-bytes: ${SPEC_AGENT_SKILL_ACTIVATION_MAX_INSTRUCTION_BYTES:60000}
+      resource-max-inline-bytes: ${SPEC_AGENT_SKILL_RESOURCE_MAX_INLINE_BYTES:20000}
+      max-resources-listed: ${SPEC_AGENT_SKILL_MAX_RESOURCES_LISTED:500}
+      # Git import bounds.
+      git-clone-bytes: ${SPEC_AGENT_SKILL_GIT_CLONE_BYTES:10485760}
+      git-timeout-seconds: ${SPEC_AGENT_SKILL_GIT_TIMEOUT_SECONDS:30}
+      git-max-redirects: ${SPEC_AGENT_SKILL_GIT_MAX_REDIRECTS:3}
+    mcp:
+      # Remote MCP runtime bounds. Model output can never change these.
+      discovery-timeout-ms: ${SPEC_AGENT_MCP_DISCOVERY_TIMEOUT_MS:10000}
+      call-timeout-ms: ${SPEC_AGENT_MCP_CALL_TIMEOUT_MS:15000}
+      result-max-inline-bytes: ${SPEC_AGENT_MCP_RESULT_MAX_INLINE_BYTES:30000}
+      connection-max-redirects: ${SPEC_AGENT_MCP_CONNECTION_MAX_REDIRECTS:3}
+      connection-max-metadata-bytes: ${SPEC_AGENT_MCP_CONNECTION_MAX_METADATA_BYTES:4096}
+      max-description-chars: ${SPEC_AGENT_MCP_MAX_DESCRIPTION_CHARS:320}
+      # Explicit opt-in for localhost HTTP MCP servers (test/local tooling).
+      # Default off; the shared outbound policy otherwise blocks loopback.
+      allow-localhost-http: ${SPEC_AGENT_MCP_ALLOW_LOCALHOST_HTTP:false}

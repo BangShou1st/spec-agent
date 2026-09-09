@@ -7,6 +7,9 @@ import com.specagent.agent.policy.ProposalAlreadyDecidedException;
 import com.specagent.readmodel.graph.GraphWorkspaceQueryException;
 import com.specagent.readmodel.requirement.RequirementStateQueryException;
 import com.specagent.readmodel.route.RouteLineageQueryException;
+import com.specagent.connection.service.ConnectionCommandException;
+import com.specagent.skill.importing.SkillImportException;
+import com.specagent.skill.runtime.SkillResourceRejectedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -152,6 +155,26 @@ public class ApiExceptionHandler {
         }
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ApiErrorResponse.of("INVALID_ARGUMENT", "Path or query argument has an invalid value"));
+    }
+
+    @ExceptionHandler(SkillImportException.class)
+    public ResponseEntity<ApiErrorResponse> handleSkillImport(SkillImportException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiErrorResponse.of("SKILL_IMPORT_REJECTED", ex.getMessage()));
+    }
+
+    @ExceptionHandler(SkillResourceRejectedException.class)
+    public ResponseEntity<ApiErrorResponse> handleSkillResource(
+            SkillResourceRejectedException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiErrorResponse.of("SKILL_RESOURCE_REJECTED", ex.getMessage()));
+    }
+
+    @ExceptionHandler(ConnectionCommandException.class)
+    public ResponseEntity<ApiErrorResponse> handleConnectionCommand(
+            ConnectionCommandException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiErrorResponse.of("CONNECTION_COMMAND_REJECTED", ex.getMessage()));
     }
 
     @ExceptionHandler(Exception.class)
