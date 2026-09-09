@@ -34,6 +34,8 @@ class GlobalAssistantSliceFStreamTest {
     @Autowired ObjectMapper mapper;
     @Autowired GlobalAssistantRunRepository runs;
     @Autowired GlobalAssistantRunEventRepository events;
+    @Autowired com.specagent.globalassistant.conversation.GlobalAssistantConversationService conversations;
+    @Autowired com.specagent.globalassistant.runtime.GlobalAssistantRunLifecycleService lifecycle;
     @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
     @org.junit.jupiter.api.AfterEach
     void cleanUp() {
@@ -94,53 +96,70 @@ class GlobalAssistantSliceFStreamTest {
                 .andReturn();
         JsonNode stored = mapper.readTree(eventList.getResponse().getContentAsString());
         assertThat(stored.size()).isGreaterThanOrEqualTo(2);
-        // Ordering: sequences ascend.
+        // Ordering: sequences ascend; eventId is the persisted UUID, SSE id is the sequence.
         int previous = 0;
         for (JsonNode envelope : stored) {
             int sequence = envelope.get("sequence").asInt();
             assertThat(sequence).isGreaterThan(previous);
             previous = sequence;
-            assertThat(envelope.get("eventId").asInt()).isEqualTo(sequence);
+            assertThat(envelope.get("eventId").asText())
+                    .matches("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
             assertThat(envelope.get("runId").asText()).isEqualTo(runId);
         }
     }
     @Test
     void secondActiveRunConflictsWith409() throws Exception {
         String threadId = createThread();
-        // First run occupies the slot (fake gateway answers quickly, but the
-        // invariant is still exercised: immediate second create races the slot).
-        String firstRun = createRun(threadId, "first");
-        // Poll once so the async worker has a chance to terminalize; if it is
-        // still active the second create must 409, if it already finished the
-        // second create succeeds — both outcomes preserve the invariant that
-        // at most one CREATED/RUNNING row exists per thread.
+        // Occupy the slot deterministically with a CREATED run owned by no
+        // executor, so the second create must conflict regardless of timing.
+        var first = conversations.createRunWithUserMessage(
+                UUID.fromString(threadId), "first", "v1", "v1", "fp");
         MvcResult second = mockMvc.perform(
                         post("/api/v1/global-assistant/threads/" + threadId + "/runs")
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(mapper.writeValueAsString(Map.of("message", "second"))))
+                .andExpect(status().isConflict())
                 .andReturn();
-        int code = second.getResponse().getStatus();
-        assertThat(code).isIn(200, 409);
-        if (code == 409) {
-            assertThat(second.getResponse().getContentAsString())
-                    .contains("GLOBAL_ASSISTANT_RUN_ACTIVE");
-        }
-        waitForTerminal(firstRun);
-    }
-    @Test
-    void cancelIsIdempotentAndTerminal() throws Exception {
-        String threadId = createThread();
-        String runId = createRun(threadId, "please wait");
-        mockMvc.perform(post("/api/v1/global-assistant/runs/" + runId + "/cancel"))
-                .andExpect(status().isOk());
-        mockMvc.perform(post("/api/v1/global-assistant/runs/" + runId + "/cancel"))
-                .andExpect(status().isOk());
-        waitForTerminal(runId);
-        MvcResult run = mockMvc.perform(get("/api/v1/global-assistant/runs/" + runId))
+        assertThat(second.getResponse().getContentAsString())
+                .contains("GLOBAL_ASSISTANT_RUN_ACTIVE");
+        lifecycle.cancelAndTerminalize(first.id());
+        MvcResult third = mockMvc.perform(
+                        post("/api/v1/global-assistant/threads/" + threadId + "/runs")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(mapper.writeValueAsString(Map.of("message", "third"))))
                 .andExpect(status().isOk())
                 .andReturn();
-        assertThat(mapper.readTree(run.getResponse().getContentAsString()).get("status").asText())
-                .isIn("COMPLETED", "FAILED", "CANCELLED");
+        waitForTerminal(mapper.readTree(third.getResponse().getContentAsString()).get("runId").asText());
+    }
+    @Test
+    void cancelSignalsWithoutTerminalizing() throws Exception {
+        String threadId = createThread();
+        // A CREATED run with no executor stays put: cancel only records the
+        // cooperative signal and never flips the status itself.
+        var created = conversations.createRunWithUserMessage(
+                UUID.fromString(threadId), "please wait", "v1", "v1", "fp");
+        String runId = created.id().toString();
+        mockMvc.perform(post("/api/v1/global-assistant/runs/" + runId + "/cancel"))
+                .andExpect(status().isOk());
+        MvcResult once = mockMvc.perform(get("/api/v1/global-assistant/runs/" + runId))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode body = mapper.readTree(once.getResponse().getContentAsString());
+        assertThat(body.get("status").asText()).isEqualTo("CREATED");
+        assertThat(body.get("cancelRequestedAt").asText()).isNotBlank();
+        mockMvc.perform(post("/api/v1/global-assistant/runs/" + runId + "/cancel"))
+                .andExpect(status().isOk());
+        MvcResult twice = mockMvc.perform(get("/api/v1/global-assistant/runs/" + runId))
+                .andExpect(status().isOk())
+                .andReturn();
+        assertThat(mapper.readTree(twice.getResponse().getContentAsString()).get("status").asText())
+                .isEqualTo("CREATED");
+        lifecycle.cancelAndTerminalize(created.id());
+        MvcResult terminal = mockMvc.perform(get("/api/v1/global-assistant/runs/" + runId))
+                .andExpect(status().isOk())
+                .andReturn();
+        assertThat(mapper.readTree(terminal.getResponse().getContentAsString()).get("status").asText())
+                .isEqualTo("CANCELLED");
     }
     @Test
     void sseReplayCursorSemantics() throws Exception {

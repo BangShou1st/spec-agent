@@ -60,6 +60,11 @@ public class GlobalAssistantRunRepository {
         return jdbc.query("SELECT * FROM global_assistant_runs WHERE thread_id = :threadId ORDER BY started_at, id",
                 Maps.of("threadId", threadId), rowMapper);
     }
+    public List<GlobalAssistantRun> findActiveRuns() {
+        return jdbc.query(
+                "SELECT * FROM global_assistant_runs WHERE status IN ('CREATED','RUNNING') ORDER BY started_at, id",
+                rowMapper);
+    }
     public Optional<GlobalAssistantRun> findActiveByThread(UUID threadId) {
         List<GlobalAssistantRun> rows = jdbc.query(
                 "SELECT * FROM global_assistant_runs WHERE thread_id = :threadId AND status IN ('CREATED','RUNNING') ORDER BY started_at DESC LIMIT 1",

@@ -49,16 +49,19 @@ class GlobalAssistantSliceERuntimeTest {
     @Autowired CapabilityRuntime capabilities;
     @Autowired GlobalAssistantRunRepository runs;
     @Autowired GlobalAssistantRunEventRepository events;
-    @Autowired GlobalAssistantStreamService streams;
     @Autowired GlobalAssistantToolArgumentCanonicalizer canonicalizer;
     @Autowired GlobalAssistantRuntimeProperties budgets;
+    @Autowired com.specagent.globalassistant.runtime.GlobalAssistantRunLifecycleService lifecycle;
+    @Autowired com.specagent.globalassistant.stream.GlobalAssistantRunEventService runEvents;
+    @Autowired com.specagent.globalassistant.runtime.GlobalAssistantUiActionValidator uiValidator;
+    @Autowired com.specagent.globalassistant.model.GlobalAssistantSummaryService summaries;
     @Autowired ProjectService projects;
     @Autowired ObjectMapper mapper;
     private GlobalAssistantRuntime runtimeWithScripts(Queue<String> scripts) {
         ModelInferenceGateway stub = request -> new ModelInferenceResponse(scripts.poll(), "stop", 0, 0);
         GlobalAssistantBrain brain = new GlobalAssistantBrain(renderer, stub, parser, validator);
         return new GlobalAssistantRuntime(conversations, contextBuilder, brain, capabilities,
-                runs, events, streams, canonicalizer, budgets);
+                runs, canonicalizer, budgets, lifecycle, runEvents, uiValidator, summaries);
     }
     @Test
     void toolLoopResolvesSearchThenFinalAnswer() {
@@ -106,8 +109,8 @@ class GlobalAssistantSliceERuntimeTest {
                 .isEqualTo(GlobalAssistantRunStatus.COMPLETED);
         long toolStarts = events.findByRun(run.id()).stream()
                 .filter(e -> e.type().equals("TOOL_STARTED")).count();
-        // No-progress stops the second identical call from running forever.
-        assertThat(toolStarts).isLessThanOrEqualTo(2);
+        // No-progress stops before the second identical call executes.
+        assertThat(toolStarts).isEqualTo(1);
     }
     @Test
     void cancelRequestedBeforeToolPreventsExecution() {
@@ -148,10 +151,10 @@ class GlobalAssistantSliceERuntimeTest {
         runtimeWithScripts(scripts).executeRun(thread.id(), run.id(), "keep listing",
                 new GlobalAssistantContextBuilder.UiRequest("PROJECTS", null));
         GlobalAssistantRun finished = runs.findById(run.id()).orElseThrow();
-        assertThat(finished.status()).isIn(
-                GlobalAssistantRunStatus.COMPLETED, GlobalAssistantRunStatus.FAILED);
+        assertThat(finished.status()).isEqualTo(GlobalAssistantRunStatus.FAILED);
+        assertThat(finished.errorCode()).isEqualTo("RUN_STEP_LIMIT");
         long toolStarts = events.findByRun(run.id()).stream()
                 .filter(e -> e.type().equals("TOOL_STARTED")).count();
-        assertThat(toolStarts).isLessThanOrEqualTo(5);
+        assertThat(toolStarts).isEqualTo(5);
     }
 }

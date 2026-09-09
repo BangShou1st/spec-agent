@@ -106,19 +106,37 @@ public class GlobalAssistantController {
         application.requireRun(runId);
         return streams.listEnvelopes(runId);
     }
+    /**
+     * SSE stream. Error statuses stay bare: a JSON error body cannot be
+     * content-negotiated for an event-stream Accept, so unknown runs answer
+     * 404 and malformed cursors answer 400 without a negotiated body. The
+     * JSON read endpoints keep the typed error bodies.
+     */
     @GetMapping(value = "/runs/{runId}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter streamEvents(@PathVariable UUID runId,
+    public org.springframework.http.ResponseEntity<SseEmitter> streamEvents(@PathVariable UUID runId,
             @RequestHeader(value = "Last-Event-ID", required = false) String lastEventId) {
-        application.requireRun(runId);
-        Integer cursor = null;
-        if (lastEventId != null && !lastEventId.isBlank()) {
-            try {
-                cursor = Integer.parseInt(lastEventId.trim());
-            } catch (NumberFormatException ignored) {
-                cursor = null;
-            }
+        if (application.findRun(runId).isEmpty()) {
+            return org.springframework.http.ResponseEntity.notFound().build();
         }
-        return streams.subscribe(runId, cursor);
+        Integer cursor = parseCursor(lastEventId);
+        if (cursor == null) {
+            return org.springframework.http.ResponseEntity.badRequest().build();
+        }
+        return org.springframework.http.ResponseEntity.ok()
+                .contentType(MediaType.TEXT_EVENT_STREAM)
+                .body(streams.subscribe(runId, cursor));
+    }
+    private Integer parseCursor(String lastEventId) {
+        if (lastEventId == null || lastEventId.isBlank()) {
+            return 0;
+        }
+        int cursor;
+        try {
+            cursor = Integer.parseInt(lastEventId.trim());
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+        return cursor < 0 ? null : cursor;
     }
     @PostMapping("/runs/{runId}/cancel")
     public RunResponse cancelRun(@PathVariable UUID runId) {

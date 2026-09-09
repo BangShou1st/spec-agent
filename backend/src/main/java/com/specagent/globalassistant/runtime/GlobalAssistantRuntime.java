@@ -2,27 +2,25 @@ package com.specagent.globalassistant.runtime;
 
 import com.specagent.capability.CapabilityResult;
 import com.specagent.capability.CapabilityRuntime;
-import com.specagent.common.Ids;
 import com.specagent.globalassistant.context.GlobalAssistantContext;
 import com.specagent.globalassistant.context.GlobalAssistantContextBuilder;
 import com.specagent.globalassistant.conversation.GlobalAssistantConversationService;
 import com.specagent.globalassistant.conversation.GlobalAssistantEventType;
-import com.specagent.globalassistant.conversation.GlobalAssistantRun;
-import com.specagent.globalassistant.conversation.GlobalAssistantRunEventRepository;
 import com.specagent.globalassistant.conversation.GlobalAssistantRunRepository;
-import com.specagent.globalassistant.conversation.GlobalAssistantRunStatus;
+import com.specagent.globalassistant.conversation.GlobalAssistantVersionConflictException;
 import com.specagent.globalassistant.conversation.GlobalAssistantWorkingState;
 import com.specagent.globalassistant.model.GlobalAssistantBrain;
 import com.specagent.globalassistant.model.GlobalAssistantDecision;
 import com.specagent.globalassistant.model.GlobalAssistantModelException;
-import com.specagent.globalassistant.stream.GlobalAssistantStreamService;
+import com.specagent.globalassistant.stream.GlobalAssistantRunEventService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Bounded sequential tool-agent loop. Owns orchestration only:
@@ -36,25 +34,31 @@ public class GlobalAssistantRuntime {
     private final GlobalAssistantBrain brain;
     private final CapabilityRuntime capabilities;
     private final GlobalAssistantRunRepository runs;
-    private final GlobalAssistantRunEventRepository events;
-    private final GlobalAssistantStreamService streams;
     private final GlobalAssistantToolArgumentCanonicalizer canonicalizer;
     private final GlobalAssistantRuntimeProperties budgets;
+    private final GlobalAssistantRunLifecycleService lifecycle;
+    private final GlobalAssistantRunEventService runEvents;
+    private final GlobalAssistantUiActionValidator uiValidator;
+    private final com.specagent.globalassistant.model.GlobalAssistantSummaryService summaries;
+    private static final Logger log = LoggerFactory.getLogger(GlobalAssistantRuntime.class);
     public GlobalAssistantRuntime(GlobalAssistantConversationService conversations,
             GlobalAssistantContextBuilder contextBuilder, GlobalAssistantBrain brain,
             CapabilityRuntime capabilities, GlobalAssistantRunRepository runs,
-            GlobalAssistantRunEventRepository events, GlobalAssistantStreamService streams,
             GlobalAssistantToolArgumentCanonicalizer canonicalizer,
-            GlobalAssistantRuntimeProperties budgets) {
+            GlobalAssistantRuntimeProperties budgets, GlobalAssistantRunLifecycleService lifecycle,
+            GlobalAssistantRunEventService runEvents, GlobalAssistantUiActionValidator uiValidator,
+            com.specagent.globalassistant.model.GlobalAssistantSummaryService summaries) {
         this.conversations = conversations;
         this.contextBuilder = contextBuilder;
         this.brain = brain;
         this.capabilities = capabilities;
         this.runs = runs;
-        this.events = events;
-        this.streams = streams;
         this.canonicalizer = canonicalizer;
         this.budgets = budgets;
+        this.lifecycle = lifecycle;
+        this.runEvents = runEvents;
+        this.uiValidator = uiValidator;
+        this.summaries = summaries;
     }
     /**
      * Executes one user turn synchronously. The run row already exists;
@@ -62,8 +66,13 @@ public class GlobalAssistantRuntime {
      */
     public void executeRun(UUID threadId, UUID runId, String userMessage,
             GlobalAssistantContextBuilder.UiRequest uiRequest) {
-        appendEvent(runId, GlobalAssistantEventType.RUN_STARTED, Map.of("threadId", threadId.toString()));
-        markRunning(runId);
+        try {
+            lifecycle.claimAndStart(runId);
+        } catch (GlobalAssistantRunClaimedException ex) {
+            log.debug("Global assistant run already owned, skipping duplicate dispatch: runId={} status={}",
+                    runId, ex.status());
+            return;
+        }
         List<Map<String, Object>> observations = new ArrayList<>();
         List<GlobalAssistantObservation> typedObservations = new ArrayList<>();
         String lastCapability = null;
@@ -73,7 +82,7 @@ public class GlobalAssistantRuntime {
         int steps = 0;
         while (true) {
             if (isCancelRequested(runId)) {
-                terminalizeCancelled(threadId, runId);
+                lifecycle.cancelAndTerminalize(runId);
                 return;
             }
             if (steps >= budgets.maxSteps()) {
@@ -81,7 +90,14 @@ public class GlobalAssistantRuntime {
                         "Step budget exhausted", observations);
                 return;
             }
-            GlobalAssistantContext context = contextBuilder.build(threadId, userMessage, uiRequest);
+            GlobalAssistantContext context;
+            try {
+                context = contextBuilder.build(threadId, runId, userMessage, uiRequest);
+            } catch (IllegalStateException ex) {
+                failRun(threadId, runId, GlobalAssistantErrorCode.TOOL_EXECUTION_FAILED,
+                        "Working-state storage is corrupt", observations);
+                return;
+            }
             GlobalAssistantDecision decision;
             try {
                 decision = brain.decide(runId, context, observations);
@@ -106,23 +122,33 @@ public class GlobalAssistantRuntime {
                         && lastCanonicalArgs != null && lastCanonicalArgs.equals(canonicalArgs)) {
                     int currentFingerprint = observations.hashCode() + workingStateFingerprint(threadId);
                     if (currentFingerprint == observationFingerprint) {
-                        String text = decision.assistantText() != null && !decision.assistantText().isBlank()
-                                ? decision.assistantText()
-                                : "The same lookup was already tried without new results, so I stopped here.";
-                        completeWithText(threadId, runId, text, decision.uiAction());
+                        finishSuccessfully(threadId, runId, userMessage,
+                                "The same lookup was already tried without new results, so I stopped here.",
+                                null, null);
                         return;
                     }
                 }
                 if (isCancelRequested(runId)) {
-                    terminalizeCancelled(threadId, runId);
+                    lifecycle.cancelAndTerminalize(runId);
                     return;
                 }
                 String statusLabel = statusLabelFor(decision.toolRequest().capabilityId());
-                appendEvent(runId, GlobalAssistantEventType.STATUS, Map.of("message", statusLabel));
-                appendEvent(runId, GlobalAssistantEventType.TOOL_STARTED, Map.of(
+                runEvents.append(runId, GlobalAssistantEventType.STATUS, Map.of("message", statusLabel));
+                runEvents.append(runId, GlobalAssistantEventType.TOOL_STARTED, Map.of(
                         "capabilityId", decision.toolRequest().capabilityId(),
                         "arguments", sanitizedArgs(decision.toolRequest().arguments())));
-                CapabilityResult result = executeTool(runId, toolCalls, decision);
+                CapabilityResult result;
+                try {
+                    result = executeTool(runId, toolCalls, decision);
+                } catch (RuntimeException ex) {
+                    runEvents.append(runId, GlobalAssistantEventType.TOOL_FAILED, Map.of(
+                            "capabilityId", decision.toolRequest().capabilityId(),
+                            "errorCode", GlobalAssistantErrorCode.TOOL_EXECUTION_FAILED,
+                            "reason", "Tool execution failed"));
+                    failRun(threadId, runId, GlobalAssistantErrorCode.TOOL_EXECUTION_FAILED,
+                            "Tool execution failed", observations);
+                    return;
+                }
                 toolCalls++;
                 GlobalAssistantObservation observation = toObservation(decision.toolRequest().capabilityId(), result);
                 typedObservations.add(observation);
@@ -130,11 +156,11 @@ public class GlobalAssistantRuntime {
                 updateWorkingState(threadId, decision.toolRequest().capabilityId(), result);
                 if (result.status() == CapabilityResult.Status.SUCCEEDED
                         || result.status() == CapabilityResult.Status.REPLAYED) {
-                    appendEvent(runId, GlobalAssistantEventType.TOOL_COMPLETED, Map.of(
+                    runEvents.append(runId, GlobalAssistantEventType.TOOL_COMPLETED, Map.of(
                             "capabilityId", decision.toolRequest().capabilityId(),
                             "summary", toolSummary(decision.toolRequest().capabilityId(), result)));
                 } else if (result.status() == CapabilityResult.Status.IN_PROGRESS) {
-                    appendEvent(runId, GlobalAssistantEventType.TOOL_FAILED, Map.of(
+                    runEvents.append(runId, GlobalAssistantEventType.TOOL_FAILED, Map.of(
                             "capabilityId", decision.toolRequest().capabilityId(),
                             "errorCode", GlobalAssistantErrorCode.TOOL_EXECUTION_FAILED,
                             "reason", "Tool is still running; stopping the loop honestly."));
@@ -145,7 +171,7 @@ public class GlobalAssistantRuntime {
                     String errorCode = isNotFound(result)
                             ? GlobalAssistantErrorCode.PROJECT_NOT_FOUND
                             : GlobalAssistantErrorCode.TOOL_EXECUTION_FAILED;
-                    appendEvent(runId, GlobalAssistantEventType.TOOL_FAILED, Map.of(
+                    runEvents.append(runId, GlobalAssistantEventType.TOOL_FAILED, Map.of(
                             "capabilityId", decision.toolRequest().capabilityId(),
                             "errorCode", errorCode,
                             "reason", sanitizedReason(result)));
@@ -153,63 +179,53 @@ public class GlobalAssistantRuntime {
                 lastCapability = decision.toolRequest().capabilityId();
                 lastCanonicalArgs = canonicalArgs;
                 observationFingerprint = observations.hashCode() + workingStateFingerprint(threadId);
-                if (decision.done() && decision.toolRequest() != null && decision.assistantText() != null
-                        && !decision.assistantText().isBlank() && toolCalls > 0) {
-                    // Model asked for a tool and already has final text: continue one more
-                    // decision so the text is emitted after the observation.
-                }
                 continue;
             }
             if (decision.requiresUserInput()) {
-                String question = decision.assistantText() != null && !decision.assistantText().isBlank()
-                        ? decision.assistantText()
-                        : "Could you clarify which project you mean?";
-                persistAssistant(threadId, runId, question);
-                appendEvent(runId, GlobalAssistantEventType.ASSISTANT_DELTA, Map.of("text", question));
-                appendEvent(runId, GlobalAssistantEventType.ASSISTANT_COMPLETED, Map.of());
-                appendEvent(runId, GlobalAssistantEventType.USER_INPUT_REQUIRED,
-                        Map.of("question", question));
-                if (decision.uiAction() != null) {
-                    emitUiAction(runId, decision.uiAction());
+                String question = decision.assistantText();
+                try {
+                    rememberClarification(threadId, question);
+                } catch (IllegalStateException ex) {
+                    failRun(threadId, runId, GlobalAssistantErrorCode.TOOL_EXECUTION_FAILED,
+                            "Working-state storage is corrupt", observations);
+                    return;
                 }
-                terminalizeCompleted(threadId, runId);
+                lifecycle.completeForClarification(threadId, runId, question);
+                refreshSummaryBestEffort(threadId, runId);
                 return;
             }
-            if (decision.done() || decision.uiAction() != null
-                    || (decision.assistantText() != null && !decision.assistantText().isBlank())) {
-                String text = decision.assistantText() != null ? decision.assistantText() : "";
-                if (decision.uiAction() != null) {
-                    try {
-                        emitUiAction(runId, decision.uiAction());
-                    } catch (GlobalAssistantModelException ex) {
-                        failRun(threadId, runId, GlobalAssistantErrorCode.TOOL_ARGUMENT_INVALID,
-                                ex.getMessage(), observations);
-                        return;
-                    }
-                    if (text.isBlank()) {
-                        text = defaultNavigationText(decision.uiAction());
-                    }
+            if (decision.toolRequest() == null && decision.uiAction() == null && !decision.done()) {
+                failRun(threadId, runId, GlobalAssistantErrorCode.MODEL_INVALID_RESPONSE,
+                        "Indecisive model response", observations);
+                return;
+            }
+            String text = decision.assistantText() != null ? decision.assistantText() : "";
+            String uiDestination = null;
+            String uiResourceId = null;
+            if (decision.uiAction() != null) {
+                UUID validated;
+                try {
+                    validated = decision.uiAction().resourceId() == null
+                            || decision.uiAction().resourceId().isBlank() ? null
+                            : uiValidator.requireExistingProject(decision.uiAction().resourceId());
+                } catch (GlobalAssistantModelException ex) {
+                    failRun(threadId, runId, ex.errorCode(), ex.getMessage(), observations);
+                    return;
                 }
+                uiDestination = decision.uiAction().destination().name();
+                uiResourceId = validated == null ? null : validated.toString();
                 if (text.isBlank()) {
-                    text = "Done.";
+                    text = defaultNavigationText(decision.uiAction());
                 }
-                completeWithText(threadId, runId, text, null);
-                return;
             }
-            failRun(threadId, runId, GlobalAssistantErrorCode.MODEL_INVALID_RESPONSE,
-                    "Indecisive model response", observations);
+            finishSuccessfully(threadId, runId, userMessage, text, uiDestination, uiResourceId);
             return;
         }
     }
     private CapabilityResult executeTool(UUID runId, int toolIndex, GlobalAssistantDecision decision) {
-        String invocationKey = "ga:" + runId + ":" + toolIndex + ":" + Ids.random();
-        try {
-            return capabilities.invokeApplicationScoped(invocationKey,
-                    decision.toolRequest().capabilityId(), runId, decision.toolRequest().arguments());
-        } catch (RuntimeException ex) {
-            return CapabilityResult.failed(Ids.random(), invocationKey,
-                    decision.toolRequest().capabilityId(), "Capability execution failed");
-        }
+        String invocationKey = "ga:" + runId + ":tool:" + toolIndex;
+        return capabilities.invokeApplicationScoped(invocationKey,
+                decision.toolRequest().capabilityId(), runId, decision.toolRequest().arguments());
     }
     private GlobalAssistantObservation toObservation(String capabilityId, CapabilityResult result) {
         if (result.status() == CapabilityResult.Status.SUCCEEDED
@@ -221,29 +237,78 @@ public class GlobalAssistantRuntime {
             return new GlobalAssistantObservation(capabilityId, false, Map.of(), GlobalAssistantErrorCode.TOOL_EXECUTION_FAILED);
         }
         String reason = sanitizedReason(result);
-        String code = reason.contains("not found") || reason.contains("Not found")
-                ? GlobalAssistantErrorCode.PROJECT_NOT_FOUND
-                : GlobalAssistantErrorCode.TOOL_EXECUTION_FAILED;
-        if (capabilityId.equals("project.get_summary") && reason.contains("Project not found")) {
-            code = GlobalAssistantErrorCode.PROJECT_NOT_FOUND;
-        }
+        String code = structuredErrorCode(result);
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("reason", reason);
         return new GlobalAssistantObservation(capabilityId, false, data, code);
     }
-    @Transactional
-    public void updateWorkingState(UUID threadId, String capabilityId, CapabilityResult result) {
-        GlobalAssistantWorkingState current = conversations.readWorkingState(threadId);
-        var thread = conversations.findThread(threadId).orElseThrow();
-        GlobalAssistantWorkingState next = evolveWorkingState(current, capabilityId, result);
-        try {
-            conversations.writeWorkingState(threadId, next, thread.workingStateVersion());
-        } catch (IllegalStateException ex) {
-            GlobalAssistantWorkingState fresh = conversations.readWorkingState(threadId);
-            var latest = conversations.findThread(threadId).orElseThrow();
-            conversations.writeWorkingState(threadId, evolveWorkingState(fresh, capabilityId, result),
-                    latest.workingStateVersion());
+    private String structuredErrorCode(CapabilityResult result) {
+        Object code = result.content().get("errorCode");
+        if (code instanceof String text
+                && (GlobalAssistantErrorCode.PROJECT_NOT_FOUND.equals(text)
+                        || GlobalAssistantErrorCode.TOOL_ARGUMENT_INVALID.equals(text)
+                        || GlobalAssistantErrorCode.TOOL_EXECUTION_FAILED.equals(text))) {
+            return text;
         }
+        return GlobalAssistantErrorCode.TOOL_EXECUTION_FAILED;
+    }
+    public void updateWorkingState(UUID threadId, String capabilityId, CapabilityResult result) {
+        updateWorkingStateRetrying(threadId,
+                current -> evolveWorkingState(current, capabilityId, result));
+    }
+    private void updateWorkingStateRetrying(UUID threadId,
+            java.util.function.UnaryOperator<GlobalAssistantWorkingState> evolve) {
+        for (int attempt = 0; attempt < 2; attempt++) {
+            GlobalAssistantWorkingState current = conversations.readWorkingState(threadId);
+            var thread = conversations.findThread(threadId).orElseThrow();
+            try {
+                conversations.writeWorkingState(threadId, evolve.apply(current), thread.workingStateVersion());
+                return;
+            } catch (GlobalAssistantVersionConflictException ex) {
+                if (attempt == 0) {
+                    continue;
+                }
+                throw ex;
+            }
+        }
+    }
+    private void rememberClarification(UUID threadId, String question) {
+        String bounded = question.length() <= 500 ? question : question.substring(0, 500);
+        updateWorkingStateRetrying(threadId, current -> new GlobalAssistantWorkingState(
+                current.goal(), current.candidateProjects(), bounded,
+                current.lastResolvedProjectId(), current.lastToolResultRefs()));
+    }
+    private void finishSuccessfully(UUID threadId, UUID runId, String userMessage, String text,
+            String uiDestination, String uiResourceId) {
+        settleWorkingStateOnCompletion(threadId, userMessage);
+        if (uiDestination != null) {
+            lifecycle.completeWithAssistantAndUiAction(threadId, runId, text, uiDestination, uiResourceId);
+        } else {
+            lifecycle.completeWithAssistant(threadId, runId, text);
+        }
+        refreshSummaryBestEffort(threadId, runId);
+    }
+    private void refreshSummaryBestEffort(UUID threadId, UUID runId) {
+        try {
+            summaries.maybeSummarize(threadId, runId);
+        } catch (RuntimeException ex) {
+            log.warn("Global assistant summary refresh failed: runId={} error={}",
+                    runId, ex.getClass().getSimpleName());
+        }
+    }
+    private void settleWorkingStateOnCompletion(UUID threadId, String userMessage) {
+        updateWorkingStateRetrying(threadId, current -> {
+            String goal = current.waitingFor() != null ? current.goal() : boundedGoal(userMessage, current.goal());
+            return new GlobalAssistantWorkingState(goal, java.util.List.of(), null,
+                    current.lastResolvedProjectId(), current.lastToolResultRefs());
+        });
+    }
+    private String boundedGoal(String userMessage, String fallback) {
+        if (userMessage == null || userMessage.isBlank()) {
+            return fallback;
+        }
+        String trimmed = userMessage.trim();
+        return trimmed.length() <= 500 ? trimmed : trimmed.substring(0, 500);
     }
     @SuppressWarnings("unchecked")
     private GlobalAssistantWorkingState evolveWorkingState(GlobalAssistantWorkingState current,
@@ -305,11 +370,7 @@ public class GlobalAssistantRuntime {
         return new GlobalAssistantWorkingState(current.goal(), candidates, current.waitingFor(), resolved, refs);
     }
     private int workingStateFingerprint(UUID threadId) {
-        try {
-            return conversations.readWorkingState(threadId).hashCode();
-        } catch (Exception ex) {
-            return 0;
-        }
+        return conversations.readWorkingState(threadId).hashCode();
     }
     private Map<String, Object> sanitizedArgs(Map<String, Object> args) {
         if (args == null) {
@@ -328,7 +389,7 @@ public class GlobalAssistantRuntime {
         return text.length() <= 500 ? text : text.substring(0, 500) + "\u2026";
     }
     private boolean isNotFound(CapabilityResult result) {
-        return sanitizedReason(result).contains("not found") || sanitizedReason(result).contains("Not found");
+        return GlobalAssistantErrorCode.PROJECT_NOT_FOUND.equals(structuredErrorCode(result));
     }
     private String statusLabelFor(String capabilityId) {
         return switch (capabilityId) {
@@ -363,64 +424,13 @@ public class GlobalAssistantRuntime {
             case SETTINGS -> "Opening settings now.";
         };
     }
-    @Transactional
-    public void markRunning(UUID runId) {
-        try {
-            runs.markRunning(runId);
-        } catch (IllegalStateException ignored) {
-        }
-    }
-    @Transactional
     public void incrementStep(UUID runId) {
         runs.incrementStep(runId);
-    }
-    @Transactional
-    public void appendEvent(UUID runId, String type, Map<String, Object> payload) {
-        events.append(runId, type, payload);
-        streams.publish(runId, events.findByRun(runId).get(events.findByRun(runId).size() - 1));
     }
     public boolean isCancelRequested(UUID runId) {
         return runs.findById(runId).map(r -> r.cancelRequestedAt() != null).orElse(false);
     }
-    @Transactional
-    public void persistAssistant(UUID threadId, UUID runId, String text) {
-        conversations.appendAssistantMessage(threadId, text, runId);
-    }
-    @Transactional
-    public void completeWithText(UUID threadId, UUID runId, String text, GlobalAssistantDecision.UiAction deferredUi) {
-        persistAssistantInTx(threadId, runId, text);
-        appendEventInTx(runId, GlobalAssistantEventType.ASSISTANT_DELTA, Map.of("text", text));
-        appendEventInTx(runId, GlobalAssistantEventType.ASSISTANT_COMPLETED, Map.of());
-        terminalizeCompletedInTx(threadId, runId);
-    }
-    @Transactional
-    public void terminalizeCompleted(UUID threadId, UUID runId) {
-        terminalizeCompletedInTx(threadId, runId);
-    }
-    private void persistAssistantInTx(UUID threadId, UUID runId, String text) {
-        conversations.appendAssistantMessage(threadId, text, runId);
-    }
-    private void appendEventInTx(UUID runId, String type, Map<String, Object> payload) {
-        var appended = events.append(runId, type, payload);
-        streams.publish(runId, appended);
-    }
-    private void terminalizeCompletedInTx(UUID threadId, UUID runId) {
-        appendEventInTx(runId, GlobalAssistantEventType.RUN_COMPLETED, Map.of());
-        try {
-            runs.terminalize(runId, GlobalAssistantRunStatus.COMPLETED, null);
-        } catch (IllegalStateException ignored) {
-        }
-    }
-    @Transactional
-    public void terminalizeCancelled(UUID threadId, UUID runId) {
-        appendEventInTx(runId, GlobalAssistantEventType.RUN_CANCELLED, Map.of());
-        try {
-            runs.terminalize(runId, GlobalAssistantRunStatus.CANCELLED, GlobalAssistantErrorCode.RUN_CANCELLED);
-        } catch (IllegalStateException ignored) {
-        }
-    }
-    @Transactional
-    public void failRun(UUID threadId, UUID runId, String errorCode, String reason,
+    private void failRun(UUID threadId, UUID runId, String errorCode, String reason,
             List<Map<String, Object>> observations) {
         String text = "I couldn't complete that step (" + errorCode + ").";
         if (GlobalAssistantErrorCode.RUN_STEP_LIMIT.equals(errorCode)) {
@@ -428,36 +438,7 @@ public class GlobalAssistantRuntime {
         } else if (GlobalAssistantErrorCode.PROJECT_NOT_FOUND.equals(errorCode)) {
             text = "I couldn't find that project.";
         }
-        try {
-            conversations.appendAssistantMessage(threadId, text, runId);
-        } catch (Exception ignored) {
-        }
-        appendEventInTx(runId, GlobalAssistantEventType.ASSISTANT_DELTA, Map.of("text", text));
-        appendEventInTx(runId, GlobalAssistantEventType.ASSISTANT_COMPLETED, Map.of());
-        appendEventInTx(runId, GlobalAssistantEventType.RUN_FAILED,
-                Map.of("errorCode", errorCode, "reason", truncate(reason)));
-        try {
-            runs.terminalize(runId, GlobalAssistantRunStatus.FAILED, errorCode);
-        } catch (IllegalStateException ignored) {
-        }
-    }
-    private void emitUiAction(UUID runId, GlobalAssistantDecision.UiAction uiAction) {
-        if (uiAction.resourceId() != null && !uiAction.resourceId().isBlank()) {
-            String trimmed = uiAction.resourceId().trim();
-            if (trimmed.startsWith("http") || trimmed.contains("://") || trimmed.startsWith("javascript:")) {
-                throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE", "UI resource must be a project id");
-            }
-            try {
-                UUID resource = UUID.fromString(trimmed);
-                appendEvent(runId, GlobalAssistantEventType.UI_ACTION, Map.of(
-                        "destination", uiAction.destination().name(), "resourceId", resource.toString()));
-                return;
-            } catch (IllegalArgumentException ex) {
-                throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE", "UI resource must be a project id");
-            }
-        }
-        appendEvent(runId, GlobalAssistantEventType.UI_ACTION,
-                Map.of("destination", uiAction.destination().name()));
+        lifecycle.failWithAssistant(threadId, runId, text, errorCode, truncate(reason));
     }
     private String truncate(String value) {
         if (value == null) {

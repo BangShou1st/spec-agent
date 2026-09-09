@@ -14,4 +14,5 @@ public final class GlobalAssistantErrorCode {
     public static final String RUN_STEP_LIMIT = "RUN_STEP_LIMIT";
     public static final String RUN_CANCELLED = "RUN_CANCELLED";
     public static final String RUN_ACTIVE = "GLOBAL_ASSISTANT_RUN_ACTIVE";
+    public static final String RUN_INTERRUPTED = "RUN_INTERRUPTED";
 }
