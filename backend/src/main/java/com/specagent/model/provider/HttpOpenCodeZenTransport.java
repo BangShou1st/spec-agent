@@ -70,13 +70,24 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
         this.mapper = mapper;
         this.baseUrl = baseUrl == null || baseUrl.isBlank() ? BASE_URL : stripTrailingSlash(baseUrl);
         this.settingsTimeout = Duration.ofSeconds(settingsTimeoutSeconds);
-        this.productionHttpClient = HttpClient.newBuilder().build();
-        this.settingsHttpClient = HttpClient.newBuilder().connectTimeout(settingsTimeout).build();
+        this.productionHttpClient = directHttpClientBuilder().build();
+        this.settingsHttpClient = directHttpClientBuilder().connectTimeout(settingsTimeout).build();
     }
 
     @Override
     public String endpoint() {
         return baseUrl;
+    }
+
+    /**
+     * DIRECT-only builder for every OpenCode Zen HTTP client owned here.
+     * Zen requests never inherit the JVM/system default {@link java.net.ProxySelector},
+     * so no application-level HTTP/SOCKS proxy can interpose regardless of the
+     * host environment. Scoped to this transport's own clients only; the JVM
+     * default selector is never modified.
+     */
+    private static HttpClient.Builder directHttpClientBuilder() {
+        return HttpClient.newBuilder().proxy(HttpClient.Builder.NO_PROXY);
     }
 
     @Override

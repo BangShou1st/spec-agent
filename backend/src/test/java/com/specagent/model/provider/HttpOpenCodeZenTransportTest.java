@@ -9,16 +9,21 @@ import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.parallel.ResourceLock;
 
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
+import java.net.Proxy;
+import java.net.ProxySelector;
 import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -600,6 +605,100 @@ class HttpOpenCodeZenTransportTest {
         assertThat(payload.get("response_format").get("json_schema").get("schema")
                 .get("additionalProperties").asBoolean()).isFalse();
         assertThat(result.requestDiagnostics().responseFormatPresent()).isTrue();
+    }
+
+    @ResourceLock("jvm-proxy-selector")
+    @Test
+    void productionCompletionIgnoresDefaultProxySelector() {
+        ProxySelector original = ProxySelector.getDefault();
+        RecordingPoisonSelector poison = new RecordingPoisonSelector();
+        ProxySelector.setDefault(poison);
+        try {
+            stubBody = streamingJson("{\"direct\":true}");
+
+            OpenCodeCompletionResponse result =
+                    transport().complete(TEST_KEY, TEST_SESSION, completionRequest());
+
+            assertThat(result.content()).contains("direct");
+            assertThat(captured).hasSize(1);
+            assertThat(poison.selectCalls()).isZero();
+        } finally {
+            ProxySelector.setDefault(original);
+        }
+        assertThat(ProxySelector.getDefault()).isSameAs(original);
+    }
+
+    @ResourceLock("jvm-proxy-selector")
+    @Test
+    void modelListIgnoresDefaultProxySelector() throws IOException {
+        ProxySelector original = ProxySelector.getDefault();
+        RecordingPoisonSelector poison = new RecordingPoisonSelector();
+        ProxySelector.setDefault(poison);
+        try {
+            stubBody = mapper.writeValueAsString(Map.of("data", List.of(
+                    Map.of("id", "one-free", "object", "model"))));
+
+            OpenCodeModelList models = transport().listModels(TEST_KEY);
+
+            assertThat(models.data()).extracting(OpenCodeModel::id).containsExactly("one-free");
+            assertThat(captured).hasSize(1);
+            assertThat(poison.selectCalls()).isZero();
+        } finally {
+            ProxySelector.setDefault(original);
+        }
+        assertThat(ProxySelector.getDefault()).isSameAs(original);
+    }
+
+    @ResourceLock("jvm-proxy-selector")
+    @Test
+    void credentialProbeIgnoresDefaultProxySelector() {
+        ProxySelector original = ProxySelector.getDefault();
+        RecordingPoisonSelector poison = new RecordingPoisonSelector();
+        ProxySelector.setDefault(poison);
+        try {
+            stubBody = completionJson("{\"action\":\"finish\"}");
+
+            transport().validateCredential(TEST_KEY, "current-free");
+
+            assertThat(captured).hasSize(1);
+            assertThat(poison.selectCalls()).isZero();
+        } finally {
+            ProxySelector.setDefault(original);
+        }
+        assertThat(ProxySelector.getDefault()).isSameAs(original);
+    }
+
+    /**
+     * Fail-closed stand-in for any application-level proxy: records every
+     * selection and routes to an ephemeral dead port that nothing listens
+     * on, so any transport that honors it cannot reach its target.
+     */
+    private static final class RecordingPoisonSelector extends ProxySelector {
+        private final AtomicInteger selects = new AtomicInteger();
+        private final List<java.net.URI> seen = new CopyOnWriteArrayList<>();
+
+        @Override
+        public List<Proxy> select(java.net.URI uri) {
+            selects.incrementAndGet();
+            seen.add(uri);
+            int deadPort;
+            try (ServerSocket socket = new ServerSocket(0)) {
+                deadPort = socket.getLocalPort();
+            } catch (IOException ex) {
+                throw new IllegalStateException(ex);
+            }
+            return List.of(new Proxy(Proxy.Type.HTTP,
+                    new InetSocketAddress("127.0.0.1", deadPort)));
+        }
+
+        @Override
+        public void connectFailed(java.net.URI uri, java.net.SocketAddress address,
+                IOException failure) {
+        }
+
+        int selectCalls() {
+            return selects.get();
+        }
     }
 
     private record CapturedRequest(String method, String path, Headers headers, byte[] body) {
