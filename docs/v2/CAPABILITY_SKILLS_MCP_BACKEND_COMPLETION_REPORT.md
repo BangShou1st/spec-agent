@@ -20,7 +20,7 @@ credential in this environment, so real-model selection eval is recorded as
 - Phase 3: `de01515` (Connection + Remote MCP runtime).
 - Phase 4: `a6f50b7` (Agent integration + eval).
 - Final Skill discovery fix: `5dd234d05916a9db692bdbc797162095b6940831`.
-- Unicode/CJK lexical fix: 049b1527db54b7a9713c8d7299645977acb6414a.
+- Unicode/CJK lexical fix: `a7e839a70d9e5d2e9a8c42b7fd33b5e1824bded4`.
 
 ## Phase 0 — contracts frozen (done, `5360153`)
 
@@ -46,7 +46,8 @@ credential in this environment, so real-model selection eval is recorded as
 - SKILL.md parser; ZIP + Git HTTPS import; SafeZipExtractor;
   shared OutboundNetworkPolicy (SSRF/private/link-local/metadata defense).
 - Skill scripts never execute.
-- Discovery chain (Visibility → PassThrough Retriever → Projector);
+- Discovery chain (Visibility → SkillCandidateRetriever, current
+  implementation: generic lexical metadata retrieval → Projector);
   `skill.activate` / `skill.read_resource` Host Function Tools gated by
   `SkillHostToolVisibility` (installed != loaded regression fixed).
 
@@ -142,7 +143,7 @@ large Skill / Capability world
 Runtime deterministic eligibility (Visibility)
         |
         v
-small bounded candidate space (Retriever pass-through + Projector/bounds)
+small bounded candidate space (Retriever lexical + Projector/bounds)
         |
         v
 Model semantic judgment (activate / search-then-activate / invoke)
@@ -215,7 +216,8 @@ deterministic discovery/selection eval covers the backend gate.
 
 - `5360153` Phase 0/1, `eb5c03a` Phase 2, `de01515` Phase 3,
   `a6f50b7` Phase 4, `5dd234d05916a9db692bdbc797162095b6940831`
-  Skill fallback fix, Unicode/CJK fix this change (pending SHA).
+  Skill fallback fix, `a7e839a70d9e5d2e9a8c42b7fd33b5e1824bded4`
+  Unicode/CJK lexical fix.
 
 ## Deviations from plan
 

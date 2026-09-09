@@ -61,7 +61,7 @@ It was created from `main` commit:
 f86bdb62a88fdae6330e532734f135ec82c22b39
 ```
 
-Work governed by `docs/v2/CAPABILITY_SKILLS_MCP_IMPLEMENTATION_PLAN.md` may use this branch. Keep commits small, preserve the phase gates in that document, run the relevant test suites before claiming completion, and do not use this scoped exception to create unrelated feature branches.
+Work governed by `docs/v2/CAPABILITY_SKILLS_MCP_IMPLEMENTATION_PLAN.md` used this branch. The Capability / Skills / MCP dedicated branch exception was used for this initiative and is now closed after merge. Default branch policy returns to the normal repository rule. No new feature branch is authorized by this historical exception.
 
 For unrelated work, the default main-only policy still applies unless the owner explicitly changes it again.
 
