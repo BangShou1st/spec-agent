@@ -85,8 +85,9 @@ public final class SkillMetadataScorer {
 
     /**
      * Generic token affinity in [0,1]: exact equality is full signal; a shared
-     * stem-length prefix is partial signal (covers inflections like
-     * migration/migrations without any domain dictionary). Nothing else.
+     * stem-length prefix is partial signal (covers Latin inflections like
+     * migration/migrations and lets CJK bigrams match longer shared runs
+     * without any domain dictionary). Nothing else.
      */
     static double affinity(String queryToken, String fieldToken) {
         if (queryToken.equals(fieldToken)) {
@@ -94,6 +95,12 @@ public final class SkillMetadataScorer {
         }
         int shared = sharedPrefixLength(queryToken, fieldToken);
         int shorter = Math.min(queryToken.length(), fieldToken.length());
+        if (isCjkToken(queryToken) || isCjkToken(fieldToken)) {
+            // CJK bigram overlap: a shared bigram is already meaningful, and
+            // prefix affinity on 2-char tokens would be noise — exact match
+            // is the only signal across scripts.
+            return 0.0;
+        }
         if (shared >= 5 && shared >= shorter - 2) {
             return 0.6;
         }
@@ -109,18 +116,77 @@ public final class SkillMetadataScorer {
         return shared;
     }
 
+    private static boolean isCjkToken(String token) {
+        return token.codePoints().anyMatch(SkillMetadataScorer::isCjk);
+    }
+
     static List<String> tokenize(String text) {
         if (text == null || text.isBlank()) {
             return List.of();
         }
-        String[] raw = text.toLowerCase(Locale.ROOT).split("[^a-z0-9]+");
+        // Unicode-aware split: Latin runs keep the existing pipeline
+        // (lowercase, stop words, minimal stemming, min length); CJK runs
+        // emit generic character bigrams (O(n)); separators flush both.
+        // Script detection uses the standard UnicodeScript API — no
+        // hand-written character ranges, no domain vocabulary.
         List<String> tokens = new ArrayList<>();
-        for (String token : raw) {
-            if (token.length() >= MIN_TOKEN_CHARS && !STOP_TOKENS.contains(token)) {
-                tokens.add(stem(token));
+        StringBuilder latin = new StringBuilder();
+        StringBuilder cjk = new StringBuilder();
+        String lowered = text.toLowerCase(Locale.ROOT);
+        lowered.codePoints().forEach(codePoint -> {
+            if (isCjk(codePoint)) {
+                flushLatin(latin, tokens);
+                cjk.appendCodePoint(codePoint);
+            } else if (Character.isLetter(codePoint) || Character.isDigit(codePoint)) {
+                flushCjk(cjk, tokens);
+                latin.appendCodePoint(codePoint);
+            } else {
+                flushLatin(latin, tokens);
+                flushCjk(cjk, tokens);
             }
-        }
+        });
+        flushLatin(latin, tokens);
+        flushCjk(cjk, tokens);
         return List.copyOf(tokens);
+    }
+
+    private static void flushLatin(StringBuilder buffer, List<String> tokens) {
+        if (buffer.length() == 0) {
+            return;
+        }
+        String token = buffer.toString();
+        buffer.setLength(0);
+        if (token.length() >= MIN_TOKEN_CHARS && !STOP_TOKENS.contains(token)) {
+            tokens.add(stem(token));
+        }
+    }
+
+    /**
+     * Generic CJK tokenization: contiguous CJK runs become overlapping
+     * character bigrams (a single-char run stays a unigram). Pure character
+     * sequence — the algorithm never knows what any CJK word means.
+     */
+    private static void flushCjk(StringBuilder buffer, List<String> tokens) {
+        if (buffer.length() == 0) {
+            return;
+        }
+        int[] codePoints = buffer.toString().codePoints().toArray();
+        buffer.setLength(0);
+        if (codePoints.length == 1) {
+            tokens.add(new String(codePoints, 0, 1));
+            return;
+        }
+        for (int i = 0; i + 1 < codePoints.length; i++) {
+            tokens.add(new String(codePoints, i, 2));
+        }
+    }
+
+    private static boolean isCjk(int codePoint) {
+        Character.UnicodeScript script = Character.UnicodeScript.of(codePoint);
+        return script == Character.UnicodeScript.HAN
+                || script == Character.UnicodeScript.HIRAGANA
+                || script == Character.UnicodeScript.KATAKANA
+                || script == Character.UnicodeScript.HANGUL;
     }
 
     /**

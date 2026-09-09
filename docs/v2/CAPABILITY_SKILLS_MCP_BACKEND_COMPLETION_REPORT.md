@@ -19,7 +19,8 @@ credential in this environment, so real-model selection eval is recorded as
 - Phase 2: `eb5c03a` (Skill Runtime, secure import, discovery, activation).
 - Phase 3: `de01515` (Connection + Remote MCP runtime).
 - Phase 4: `a6f50b7` (Agent integration + eval).
-- Final Skill discovery fix: 3a46d7d8df051ddf73c6b906fcb76a78fd2a6060 (this fix).
+- Final Skill discovery fix: `5dd234d05916a9db692bdbc797162095b6940831`.
+- Unicode/CJK lexical fix: 049b1527db54b7a9713c8d7299645977acb6414a.
 
 ## Phase 0 — contracts frozen (done, `5360153`)
 
@@ -199,11 +200,11 @@ Runtime validation / authorization / execution (Validator/Policy/Approval)
 
 | Suite | Command | Result |
 |---|---|---|
-| Backend full | `:test --offline --rerun-tasks` | **957 passed, 0 failed, 2 skipped** |
+| Backend full | `:test --offline --rerun-tasks` | **969 passed, 0 failed, 2 skipped** |
 | Brain full | `.venv/Scripts/python -m pytest tests/ -q` | **94 passed** |
 | Contract cross-lang | both suites above | green (fixtures + skill-catalog round-trip) |
 | Phase 3 integration | SDK fake server (9) + controller API (2) | green |
-| Phase 4 acceptance | evolution (3) + attribution (6) + eval (5) + search tool (3) + fallback e2e (1) + large-catalog recall (5) | green |
+| Phase 4 acceptance | evolution (3) + attribution (6) + eval (5) + search tool (3) + fallback e2e (1) + large-catalog recall EN (5) + CN (6) + tokenizer (6) | green |
 | Architecture | boundary suites incl. Phase 3/4 rules | green |
 
 Skips: 2 pre-existing environment-conditional skips (live-brain dependent).
@@ -213,7 +214,8 @@ deterministic discovery/selection eval covers the backend gate.
 ## Commits
 
 - `5360153` Phase 0/1, `eb5c03a` Phase 2, `de01515` Phase 3,
-  Phase 4 change pending (this report + code).
+  `a6f50b7` Phase 4, `5dd234d05916a9db692bdbc797162095b6940831`
+  Skill fallback fix, Unicode/CJK fix this change (pending SHA).
 
 ## Deviations from plan
 
@@ -224,6 +226,10 @@ deterministic discovery/selection eval covers the backend gate.
 - `capability.search` deferred (catalog fits in bounds; deterministic filter
   suffices); interface seam reserved per plan.
 - No vector DB / LLM router / cross-encoder / UniversalRetriever (per plan).
+- Current Skill search is generic lexical metadata retrieval. It supports
+  Unicode/CJK lexical matching but does not provide cross-language semantic
+  retrieval. Semantic/hybrid retrieval remains an eval-triggered future
+  implementation behind the same SkillCandidateRetriever interface.
 
 ## Environment blockers
 
