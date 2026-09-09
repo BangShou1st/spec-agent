@@ -34,7 +34,8 @@ public class GlobalAssistantBrain {
         List<com.specagent.model.inference.ModelInferenceMessage> messages = renderer.render(context, observations);
         ModelInferenceResponse response;
         try {
-            response = gateway.complete(new ModelInferenceRequest(runId, DECISION_CALL_TYPE, messages, 1024));
+            response = gateway.complete(new ModelInferenceRequest(runId, DECISION_CALL_TYPE, messages, 1024,
+                    GlobalAssistantDecisionSchema.contract()));
         } catch (RuntimeException ex) {
             throw new GlobalAssistantModelException("MODEL_UNAVAILABLE", "Model gateway unavailable", ex);
         }
@@ -49,7 +50,8 @@ public class GlobalAssistantBrain {
         ModelInferenceResponse response;
         try {
             response = gateway.complete(new ModelInferenceRequest(runId, SUMMARY_CALL_TYPE,
-                    renderer.renderSummary(recentText), 512));
+                    renderer.renderSummary(recentText), 512,
+                    com.specagent.model.inference.ModelOutputContract.text()));
         } catch (RuntimeException ex) {
             throw new GlobalAssistantModelException("MODEL_UNAVAILABLE", "Summary model call failed", ex);
         }
