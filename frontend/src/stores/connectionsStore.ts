@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ApiError, GENERIC_ERROR_MESSAGE } from '@/api/client'
 import { connectConnection, createConnection, deleteConnection, disableConnection, enableConnection, getConnection, listConnectionPrompts, listConnectionResources, listConnectionTools, listConnections, readConnectionResource, refreshConnection, testConnection, updateConnection } from '@/api/connections'
-import type { ConnectionDetail, ConnectionDiscovery, ConnectionPromptView, ConnectionResourceContent, ConnectionResourceView, ConnectionSummary, ConnectionToolView, CreateConnectionRequest, UpdateConnectionRequest } from '@/api/connectionTypes'
+import type { ConnectionDetail, ConnectionPromptView, ConnectionResourceContent, ConnectionResourceView, ConnectionSummary, ConnectionToolView, CreateConnectionRequest, UpdateConnectionRequest } from '@/api/connectionTypes'
 
 export interface ConnectionsStoreError {
   code: string
@@ -23,7 +23,6 @@ export const useConnectionsStore = defineStore('connections', {
   state: () => ({
     list: [] as ConnectionSummary[],
     detail: null as ConnectionDetail | null,
-    discovery: null as ConnectionDiscovery | null,
     tools: [] as ConnectionToolView[],
     resources: [] as ConnectionResourceView[],
     prompts: [] as ConnectionPromptView[],
@@ -90,7 +89,7 @@ export const useConnectionsStore = defineStore('connections', {
       this.actionLoading = true
       this.error = null
       try {
-        this.discovery = await testConnection(connectionId)
+        await testConnection(connectionId)
         this.detail = await getConnection(connectionId)
         return true
       } catch (err) {
@@ -104,7 +103,7 @@ export const useConnectionsStore = defineStore('connections', {
       this.actionLoading = true
       this.error = null
       try {
-        this.discovery = await connectConnection(connectionId)
+        await connectConnection(connectionId)
         this.detail = await getConnection(connectionId)
         this.tools = await listConnectionTools(connectionId)
         return true
@@ -119,7 +118,7 @@ export const useConnectionsStore = defineStore('connections', {
       this.actionLoading = true
       this.error = null
       try {
-        this.discovery = await refreshConnection(connectionId)
+        await refreshConnection(connectionId)
         this.detail = await getConnection(connectionId)
         this.tools = await listConnectionTools(connectionId)
         return true
