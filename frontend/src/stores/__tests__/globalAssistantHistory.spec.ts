@@ -71,7 +71,7 @@ describe('global assistant conversation library store', () => {
     expect(store.canSwitchThread).toBe(false)
   })
 
-  it('recovers thread-not-found by clearing identity and refreshing history', async () => {
+  it('recovers thread-not-found by keeping current thread and refreshing history', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonOk([]))
       .mockResolvedValueOnce(jsonOk({ code: 'THREAD_NOT_FOUND', message: 'gone' }, 404))
@@ -80,7 +80,8 @@ describe('global assistant conversation library store', () => {
     const store = useGlobalAssistantStore()
     store.threadId = 'missing'
     await store.switchThread('also-missing')
-    expect(store.threadId).toBeNull()
+    expect(store.threadId).toBe('missing')
+    expect(store.error?.code).toBe('THREAD_NOT_FOUND')
   })
 
   it('creates a new conversation and clears transient projection', async () => {

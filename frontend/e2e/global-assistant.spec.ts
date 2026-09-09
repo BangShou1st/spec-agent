@@ -270,6 +270,11 @@ test('cancel stops the active run without implying rollback', async ({ page }) =
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) })
     }
   })
+  await page.route('**/api/v1/global-assistant/threads/' + THREAD_ID + '/stop', async (route) => {
+    cancelCalls += 1
+    cancelled = true
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ activeRun: { runId, status: 'RUNNING' }, pendingSteer: null }) })
+  })
   await page.route('**/api/v1/global-assistant/runs/' + runId + '/cancel', async (route) => {
     cancelCalls += 1
     cancelled = true

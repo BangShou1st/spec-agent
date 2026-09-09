@@ -39,7 +39,13 @@ describe('assistant composer', () => {
   it('shows stop control while running', () => {
     const wrapper = mount(AssistantComposer, { props: { running: true, sending: false, cancelRequested: false, waitingQuestion: null, modelValue: '' } })
     expect(wrapper.find('[data-test="ga-stop"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="ga-send"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="ga-send"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="ga-composer-input"]').attributes('placeholder')).toContain('调整方向')
+  })
+  it('disables send while steer pending', () => {
+    const wrapper = mount(AssistantComposer, { props: { running: true, sending: false, cancelRequested: false, waitingQuestion: null, modelValue: '换方向', pendingSteer: true } })
+    expect((wrapper.find('[data-test="ga-send"]').element as HTMLButtonElement).disabled).toBe(true)
+    expect(wrapper.find('[data-test="ga-steer-pending"]').exists()).toBe(true)
   })
 });
 
@@ -100,4 +106,3 @@ describe('assistant panel open and failed states', () => {
     expect(wrapper.find('[data-test="ga-reconnect"]').exists()).toBe(true)
   })
 });
-

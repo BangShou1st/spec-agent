@@ -148,15 +148,20 @@ class GlobalAssistantHardeningMiscTest {
     }
     @Autowired com.specagent.globalassistant.conversation.GlobalAssistantRunRepository runRepository;
     @Autowired com.specagent.globalassistant.runtime.GlobalAssistantRunLifecycleService runLifecycle;
+    @Autowired com.specagent.globalassistant.turn.TurnHandoffService handoff;
+    @Autowired com.specagent.globalassistant.turn.ThreadActivityService activitySvc;
+    @Autowired com.specagent.globalassistant.turn.ConversationDeleteService deletes;
     @Test
     void schedulingRejectionFailsClosedAndReleasesSlot() {
         java.util.concurrent.Executor rejecting = runnable -> {
             throw new java.util.concurrent.RejectedExecutionException("saturated");
         };
+        @SuppressWarnings("unchecked")
+        org.springframework.beans.factory.ObjectProvider<com.specagent.globalassistant.runtime.GlobalAssistantRuntime> provider =
+                Mockito.mock(org.springframework.beans.factory.ObjectProvider.class);
+        var dispatcher = new com.specagent.globalassistant.turn.RunDispatcher(rejecting, provider, runLifecycle, runRepository);
         var service = new com.specagent.globalassistant.api.GlobalAssistantApplicationService(
-                conversations, runRepository,
-                Mockito.mock(com.specagent.globalassistant.runtime.GlobalAssistantRuntime.class),
-                runLifecycle, rejecting);
+                conversations, runRepository, runLifecycle, handoff, activitySvc, deletes, dispatcher);
         GlobalAssistantThread thread = conversations.createThread();
         var first = service.createRun(thread.id(), "hello",
                 new GlobalAssistantContextBuilder.UiRequest("PROJECTS", null));
