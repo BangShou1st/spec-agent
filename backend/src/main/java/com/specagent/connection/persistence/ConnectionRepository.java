@@ -116,6 +116,25 @@ public class ConnectionRepository {
                 .addValue("updatedAt", Timestamp.from(Instant.now())));
     }
 
+    public void updateManagement(UUID id, String name, Map<String, Object> config, String credentialRef, ConnectionStatus status, boolean enabled, String lastError) {
+        String sql = """
+                UPDATE connections
+                SET name = :name, config = :config, credential_ref = :credentialRef,
+                    status = :status, enabled = :enabled, last_error = :lastError,
+                    updated_at = :updatedAt
+                WHERE id = :id
+                """;
+        jdbc.update(sql, new MapSqlParameterSource()
+                .addValue("id", id)
+                .addValue("name", name)
+                .addValue("config", json.write(config == null ? Map.of() : config))
+                .addValue("credentialRef", credentialRef)
+                .addValue("status", status.code())
+                .addValue("enabled", enabled)
+                .addValue("lastError", lastError)
+                .addValue("updatedAt", Timestamp.from(Instant.now())));
+    }
+
     public Optional<Connection> findEnabledByName(String name) {
         String sql = "SELECT * FROM connections WHERE name = :name AND enabled = true";
         return jdbc.query(sql, Map.of("name", name), rowMapper).stream().findFirst();

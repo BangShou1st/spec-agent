@@ -1,6 +1,7 @@
 package com.specagent.mcp.provider;
 
 import com.specagent.connection.domain.Connection;
+import com.specagent.connection.service.ConnectionCommandException;
 import com.specagent.connection.persistence.ConnectionRepository;
 import com.specagent.mcp.domain.McpDiscovery;
 import com.specagent.mcp.domain.McpPrompt;
@@ -33,14 +34,28 @@ public class McpPromptAssetProvider {
         return discovery.prompts();
     }
 
+    /** Connection-resolved prompts read for the product-level management API. */
+    public List<McpPrompt> discoverPromptsResolved(Connection connection) {
+        requireVisibleResolved(connection);
+        McpDiscovery discovery = discoveryService.discover(connection);
+        return discovery.prompts();
+    }
+
     private Connection requireVisible(UUID connectionRowId) {
         Connection connection = connectionRepository.findById(connectionRowId)
-                .orElseThrow(() -> new IllegalArgumentException(
+                .orElseThrow(() -> new ConnectionCommandException(
                         "Connection not found: " + connectionRowId));
         if (!connection.agentVisible()) {
-            throw new IllegalArgumentException(
+            throw new ConnectionCommandException(
                     "Connection is not agent-visible: " + connection.connectionId());
         }
         return connection;
+    }
+
+    private void requireVisibleResolved(Connection connection) {
+        if (!connection.agentVisible()) {
+            throw new ConnectionCommandException(
+                    "Connection is not agent-visible: " + connection.connectionId());
+        }
     }
 }

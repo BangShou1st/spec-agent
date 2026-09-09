@@ -62,6 +62,11 @@ public class McpDiscoveryService {
         return discoverLive(connection);
     }
 
+    /** Cache-only read for management UI: never triggers live network discovery. */
+    public Optional<McpDiscovery> findCached(UUID connectionRowId) {
+        return cacheRepository.findByConnection(connectionRowId).map(this::fromCache);
+    }
+
     public void persist(UUID connectionId, McpDiscovery discovery) {
         cacheRepository.upsert(connectionId,
                 discovery.tools(), discovery.resources(), discovery.prompts(),
