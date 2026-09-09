@@ -15,9 +15,22 @@ import java.util.UUID;
 public record ModelInferenceRequest(UUID runId,
                                     String callType,
                                     List<ModelInferenceMessage> messages,
-                                    Integer maxOutputTokens) {
+                                    Integer maxOutputTokens,
+                                    ModelOutputContract outputContract) {
 
     public ModelInferenceRequest {
         messages = messages == null ? List.of() : List.copyOf(messages);
+        outputContract = outputContract == null ? ModelOutputContract.text() : outputContract;
+    }
+
+    /**
+     * Historical shape: behaves as {@link ModelOutputContract.Text}.
+     * Existing callers keep their exact behavior without passing a contract.
+     */
+    public ModelInferenceRequest(UUID runId,
+                                 String callType,
+                                 List<ModelInferenceMessage> messages,
+                                 Integer maxOutputTokens) {
+        this(runId, callType, messages, maxOutputTokens, ModelOutputContract.text());
     }
 }

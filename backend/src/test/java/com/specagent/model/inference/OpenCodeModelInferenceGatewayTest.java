@@ -100,6 +100,56 @@ class OpenCodeModelInferenceGatewayTest {
                 .hasMessageContaining("requires a free model");
     }
 
+    @Test
+    void textContractSendsNoResponseFormat() {
+        OpenCodeZenTransport transport = mock(OpenCodeZenTransport.class);
+        OpenCodeSettingsService settings = mock(OpenCodeSettingsService.class);
+        when(settings.requireRuntimeSettings()).thenReturn(new RuntimeOpenCodeSettings(
+                "test-key", "some-free", EXTERNAL_SOURCE));
+        when(transport.complete(eq("test-key"), any(String.class), any(OpenCodeChatCompletionRequest.class)))
+                .thenReturn(new OpenCodeCompletionResponse("{}", "stop", 1, 1, 2));
+
+        ModelInferenceRequest inference = new ModelInferenceRequest(UUID.randomUUID(),
+                "GLOBAL_ASSISTANT_DECISION",
+                List.of(new ModelInferenceMessage("user", "{}")), 1024,
+                ModelOutputContract.text());
+        new OpenCodeModelInferenceGateway(transport, settings).complete(inference);
+
+        var captor = org.mockito.ArgumentCaptor.forClass(OpenCodeChatCompletionRequest.class);
+        verify(transport).complete(eq("test-key"), any(String.class), captor.capture());
+        assertThat(captor.getValue().responseFormat()).isNull();
+    }
+
+    @Test
+    void jsonSchemaContractMapsToProviderResponseFormat() {
+        OpenCodeZenTransport transport = mock(OpenCodeZenTransport.class);
+        OpenCodeSettingsService settings = mock(OpenCodeSettingsService.class);
+        when(settings.requireRuntimeSettings()).thenReturn(new RuntimeOpenCodeSettings(
+                "test-key", "some-free", EXTERNAL_SOURCE));
+        when(transport.complete(eq("test-key"), any(String.class), any(OpenCodeChatCompletionRequest.class)))
+                .thenReturn(new OpenCodeCompletionResponse("{}", "stop", 1, 1, 2));
+
+        java.util.Map<String, Object> schema = new java.util.LinkedHashMap<>();
+        schema.put("type", "object");
+        schema.put("additionalProperties", false);
+        ModelInferenceRequest inference = new ModelInferenceRequest(UUID.randomUUID(),
+                "GLOBAL_ASSISTANT_DECISION",
+                List.of(new ModelInferenceMessage("user", "{}")), 1024,
+                ModelOutputContract.jsonSchema("decision", schema));
+        new OpenCodeModelInferenceGateway(transport, settings).complete(inference);
+
+        var captor = org.mockito.ArgumentCaptor.forClass(OpenCodeChatCompletionRequest.class);
+        verify(transport).complete(eq("test-key"), any(String.class), captor.capture());
+        java.util.Map<String, Object> format = captor.getValue().responseFormat();
+        assertThat(format.get("type")).isEqualTo("json_schema");
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, Object> wrapper =
+                (java.util.Map<String, Object>) format.get("json_schema");
+        assertThat(wrapper.get("name")).isEqualTo("decision");
+        assertThat(wrapper.get("strict")).isEqualTo(Boolean.TRUE);
+        assertThat(wrapper.get("schema")).isEqualTo(schema);
+    }
+
     private static ModelInferenceRequest request() {
         return new ModelInferenceRequest(UUID.randomUUID(), "DECISION",
                 List.of(new ModelInferenceMessage("user", "{}")), null);

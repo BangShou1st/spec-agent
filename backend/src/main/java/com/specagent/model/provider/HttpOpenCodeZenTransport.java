@@ -150,7 +150,8 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
         byte[] body = completionPayload(request);
         return prepareRequest("POST", "/chat/completions", apiKey, sessionId, body, request.model(),
                 RequestType.PRODUCTION_COMPLETION, request.messages().stream()
-                        .map(OpenCodeChatMessage::content).toList(), true);
+                        .map(OpenCodeChatMessage::content).toList(), true,
+                request.responseFormat() != null);
     }
 
     private PreparedRequest prepareSettingsRequest(String method,
@@ -160,7 +161,7 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
                                                    List<String> messageContents,
                                                    boolean stream) {
         return prepareRequest(method, path, apiKey, OpenCodeZenSessionIds.newEphemeral(), body, null,
-                RequestType.SETTINGS, messageContents, stream);
+                RequestType.SETTINGS, messageContents, stream, false);
     }
 
     private PreparedRequest prepareRequest(String method,
@@ -171,7 +172,8 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
                                            String selectedModel,
                                            RequestType requestType,
                                            List<String> messageContents,
-                                           boolean stream) {
+                                           boolean stream,
+                                           boolean responseFormatPresent) {
         HttpClient client = requestType == RequestType.PRODUCTION_COMPLETION
                 ? productionHttpClient : settingsHttpClient;
         HttpRequest.Builder builder = HttpRequest.newBuilder()
@@ -204,7 +206,7 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
                 stream,
                 false,
                 false,
-                false,
+                responseFormatPresent,
                 httpRequest.timeout().isPresent(),
                 client.connectTimeout().isPresent());
         return new PreparedRequest(httpRequest, client, path,
@@ -633,6 +635,9 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("model", request.model());
         payload.put("messages", request.messages());
+        if (request.responseFormat() != null) {
+            payload.put("response_format", request.responseFormat());
+        }
         payload.put("stream", true);
         return writeJson(payload);
     }

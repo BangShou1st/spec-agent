@@ -567,6 +567,41 @@ class HttpOpenCodeZenTransportTest {
                 .satisfies(ex -> assertThat(ex.getMessage()).doesNotContain("sk-super-secret-value"));
     }
 
+    @Test
+    void structuredContractKeepsStreamingAndSendsResponseFormat() throws IOException {
+        stubBody = streamingJson("{\"value\":\"hello\"}");
+        Map<String, Object> valueProperty = new LinkedHashMap<>();
+        valueProperty.put("type", "string");
+        Map<String, Object> schemaProperties = new LinkedHashMap<>();
+        schemaProperties.put("value", valueProperty);
+        Map<String, Object> probeSchema = new LinkedHashMap<>();
+        probeSchema.put("type", "object");
+        probeSchema.put("properties", schemaProperties);
+        probeSchema.put("required", List.of("value"));
+        probeSchema.put("additionalProperties", false);
+        Map<String, Object> wrapper = new LinkedHashMap<>();
+        wrapper.put("name", "probe");
+        wrapper.put("strict", true);
+        wrapper.put("schema", probeSchema);
+        Map<String, Object> format = new LinkedHashMap<>();
+        format.put("type", "json_schema");
+        format.put("json_schema", wrapper);
+        OpenCodeChatCompletionRequest structured = new OpenCodeChatCompletionRequest("mimo-v2.5-free",
+                List.of(new OpenCodeChatMessage("user", "hi")), format);
+
+        OpenCodeCompletionResponse result = transport().complete(TEST_KEY, TEST_SESSION, structured);
+
+        assertThat(result.content()).contains("hello");
+        JsonNode payload = mapper.readTree(captured.get(0).body());
+        assertThat(payload.get("model").asText()).isEqualTo("mimo-v2.5-free");
+        assertThat(payload.get("stream").asBoolean()).isTrue();
+        assertThat(payload.get("response_format").get("type").asText()).isEqualTo("json_schema");
+        assertThat(payload.get("response_format").get("json_schema").get("strict").asBoolean()).isTrue();
+        assertThat(payload.get("response_format").get("json_schema").get("schema")
+                .get("additionalProperties").asBoolean()).isFalse();
+        assertThat(result.requestDiagnostics().responseFormatPresent()).isTrue();
+    }
+
     private record CapturedRequest(String method, String path, Headers headers, byte[] body) {
     }
 

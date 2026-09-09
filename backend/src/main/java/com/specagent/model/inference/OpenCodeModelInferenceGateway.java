@@ -12,7 +12,9 @@ import com.specagent.settings.opencode.RuntimeOpenCodeSettings;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Real {@link ModelInferenceGateway} backed by the frozen OpenCode Zen
@@ -57,14 +59,44 @@ public class OpenCodeModelInferenceGateway implements ModelInferenceGateway {
         List<OpenCodeChatMessage> messages = request.messages().stream()
                 .map(message -> new OpenCodeChatMessage(message.role(), message.content()))
                 .toList();
+        OpenCodeChatCompletionRequest completionRequest =
+                toProviderRequest(selectedModel, messages, request.outputContract());
         OpenCodeCompletionResponse completion =
                 transport.complete(settings.apiKey(),
                         OpenCodeZenSessionIds.forRun(request.runId()),
-                        new OpenCodeChatCompletionRequest(selectedModel, messages));
+                        completionRequest);
         return new ModelInferenceResponse(
                 completion.content(),
                 completion.finishReason(),
                 completion.promptTokens(),
                 completion.completionTokens());
+    }
+
+    /**
+     * Translates the neutral output contract into the OpenCode-native
+     * request shape. Text stays on the historical wire shape; a JSON schema
+     * becomes {@code response_format.json_schema} with strict enforcement.
+     * Unknown contract variants fail closed instead of silently
+     * downgrading to text.
+     */
+    private static OpenCodeChatCompletionRequest toProviderRequest(
+            String selectedModel,
+            List<OpenCodeChatMessage> messages,
+            ModelOutputContract outputContract) {
+        if (outputContract instanceof ModelOutputContract.JsonSchema jsonSchema) {
+            Map<String, Object> schemaWrapper = new LinkedHashMap<>();
+            schemaWrapper.put("name", jsonSchema.name());
+            schemaWrapper.put("strict", true);
+            schemaWrapper.put("schema", jsonSchema.schema());
+            Map<String, Object> responseFormat = new LinkedHashMap<>();
+            responseFormat.put("type", "json_schema");
+            responseFormat.put("json_schema", schemaWrapper);
+            return new OpenCodeChatCompletionRequest(selectedModel, messages, responseFormat);
+        }
+        if (outputContract instanceof ModelOutputContract.Text) {
+            return new OpenCodeChatCompletionRequest(selectedModel, messages);
+        }
+        throw new IllegalArgumentException(
+                "Unsupported ModelOutputContract: " + outputContract);
     }
 }
