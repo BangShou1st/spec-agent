@@ -11,18 +11,27 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Startup orphan recovery for the single-instance V1 executor.
  * Persisted CREATED/RUNNING runs from a dead process terminalize as honest
- * failures: no automatic tool replay, no durable side-effect retry. This bean
- * owns the transaction; the separate listener bean owns the event
- * subscription so the startup path never relies on proxy self-invocation.
+ * failures: no automatic tool replay, no durable side-effect retry.
+ * Pending-steer recovery is delegated to TurnHandoffService so stranded
+ * steers still hand off exactly once.
  */
 @Service
 public class GlobalAssistantRunRecoveryService {
     private final GlobalAssistantRunRepository runs;
     private final GlobalAssistantRunEventService events;
+    private final com.specagent.globalassistant.turn.PendingTurnRepository pending;
+    private final com.specagent.globalassistant.turn.TurnHandoffService handoff;
+    private final com.specagent.globalassistant.turn.RunDispatcher dispatcher;
     public GlobalAssistantRunRecoveryService(GlobalAssistantRunRepository runs,
-            GlobalAssistantRunEventService events) {
+            GlobalAssistantRunEventService events,
+            com.specagent.globalassistant.turn.PendingTurnRepository pending,
+            com.specagent.globalassistant.turn.TurnHandoffService handoff,
+            com.specagent.globalassistant.turn.RunDispatcher dispatcher) {
         this.runs = runs;
         this.events = events;
+        this.pending = pending;
+        this.handoff = handoff;
+        this.dispatcher = dispatcher;
     }
     @Transactional
     public int recoverOrphans() {
@@ -34,6 +43,24 @@ public class GlobalAssistantRunRecoveryService {
             runs.terminalize(orphan.id(), GlobalAssistantRunStatus.FAILED,
                     GlobalAssistantErrorCode.RUN_INTERRUPTED);
         }
-        return orphans.size();
+        int stranded = 0;
+        try {
+            var pendings = pending.findStrandedPending();
+            for (var pt : pendings) {
+                try {
+                    if (runs.findActiveByThread(pt.threadId()).isPresent()) {
+                        continue;
+                    }
+                    var successor = handoff.tryHandoff(pt.threadId());
+                    successor.ifPresent(s -> dispatcher.dispatch(s.run().threadId(), s.run().id(), s.message(), s.uiRequest()));
+                    if (successor.isPresent()) {
+                        stranded++;
+                    }
+                } catch (Exception ignored) {
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return orphans.size() + stranded;
     }
 }
