@@ -97,7 +97,7 @@ class McpResourcePromptSeparationTest {
         when(discoveryService.discover(visible)).thenReturn(discovery);
 
         assertThatThrownBy(() -> resourceProvider.read(visible.id(), "docs://nope"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(com.specagent.connection.service.ConnectionCommandException.class)
                 .hasMessageContaining("not exposed");
     }
 
@@ -110,7 +110,7 @@ class McpResourcePromptSeparationTest {
                 .thenReturn(Optional.of(disabled));
 
         assertThatThrownBy(() -> resourceProvider.read(visible.id(), "docs://guide"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(com.specagent.connection.service.ConnectionCommandException.class)
                 .hasMessageContaining("not agent-visible");
     }
 

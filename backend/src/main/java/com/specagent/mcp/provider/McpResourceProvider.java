@@ -1,6 +1,7 @@
 package com.specagent.mcp.provider;
 
 import com.specagent.connection.domain.Connection;
+import com.specagent.connection.service.ConnectionCommandException;
 import com.specagent.connection.persistence.ConnectionRepository;
 import com.specagent.mcp.domain.McpDiscovery;
 import com.specagent.mcp.domain.McpResource;
@@ -41,22 +42,35 @@ public class McpResourceProvider {
     /** Reads one resource of an agent-visible connection with provenance. */
     public com.specagent.mcp.domain.McpResourceContent read(UUID connectionRowId, String uri) {
         Connection connection = connectionRepository.findById(connectionRowId)
-                .orElseThrow(() -> new IllegalArgumentException(
+                .orElseThrow(() -> new ConnectionCommandException(
                         "Connection not found: " + connectionRowId));
         listAgentVisible(connection);
         McpDiscovery discovery = discoveryService.discover(connection);
         boolean known = discovery.resources().stream()
                 .anyMatch(resource -> uri.equals(resource.uri()));
         if (!known) {
-            throw new IllegalArgumentException(
-                    "Resource is not exposed by the connected server: " + uri);
+            throw new ConnectionCommandException(
+                    "Resource is not exposed by the connected server");
+        }
+        return connectionRuntime.openAndRead(connection, uri);
+    }
+
+    /** Connection-resolved read for the product-level management API. */
+    public com.specagent.mcp.domain.McpResourceContent readResolved(Connection connection, String uri) {
+        listAgentVisible(connection);
+        McpDiscovery discovery = discoveryService.discover(connection);
+        boolean known = discovery.resources().stream()
+                .anyMatch(resource -> uri.equals(resource.uri()));
+        if (!known) {
+            throw new ConnectionCommandException(
+                    "Resource is not exposed by the connected server");
         }
         return connectionRuntime.openAndRead(connection, uri);
     }
 
     private void listAgentVisible(Connection connection) {
         if (!connection.agentVisible()) {
-            throw new IllegalArgumentException(
+            throw new ConnectionCommandException(
                     "Connection is not agent-visible: " + connection.connectionId());
         }
     }

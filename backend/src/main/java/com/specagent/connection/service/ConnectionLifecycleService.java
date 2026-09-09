@@ -47,13 +47,12 @@ public class ConnectionLifecycleService {
     @Transactional
     public Connection create(ConnectionKind kind, String name, Map<String, Object> config,
                              String secret) {
-        if (name == null || name.isBlank()) {
-            throw new ConnectionCommandException("Connection name is required");
-        }
+        String validatedName = validatedName(name);
+        Map<String, Object> validatedConfig = validatedConfig(kind, config);
         Connection connection = new Connection(
                 UUID.randomUUID(), "conn_" + Ids.random().toString().substring(0, 12),
-                name.strip(), kind, ConnectionStatus.CREATED, false,
-                config == null ? Map.of() : config, null, null,
+                validatedName, kind, ConnectionStatus.CREATED, false,
+                validatedConfig, null, null,
                 Instant.now(), Instant.now());
         repository.insert(connection);
         String credentialRef = null;
@@ -147,6 +146,135 @@ public class ConnectionLifecycleService {
 
     public List<Connection> list() {
         return repository.list();
+    }
+
+    /** Product-level resolve for the public management API. */
+    public Connection requireByConnectionId(String connectionId) {
+        if (connectionId == null || connectionId.isBlank()) {
+            throw new ConnectionNotFoundException(String.valueOf(connectionId));
+        }
+        return repository.findById(connectionId.strip())
+                .orElseThrow(() -> new ConnectionNotFoundException(connectionId.strip()));
+    }
+
+    public McpDiscovery testByConnectionId(String connectionId) {
+        return test(requireByConnectionId(connectionId).id());
+    }
+
+    public McpDiscovery connectByConnectionId(String connectionId) {
+        return connect(requireByConnectionId(connectionId).id());
+    }
+
+    public McpDiscovery refreshByConnectionId(String connectionId) {
+        return refresh(requireByConnectionId(connectionId).id());
+    }
+
+    @Transactional
+    public void enableByConnectionId(String connectionId) {
+        enable(requireByConnectionId(connectionId).id());
+    }
+
+    @Transactional
+    public void disableByConnectionId(String connectionId) {
+        disable(requireByConnectionId(connectionId).id());
+    }
+
+    @Transactional
+    public void deleteByConnectionId(String connectionId) {
+        delete(requireByConnectionId(connectionId).id());
+    }
+
+    @Transactional
+    public Connection updateByConnectionId(String connectionId, String name, Map<String, Object> config, boolean hasName, boolean hasConfig, boolean hasSecret, String secret) {
+        Connection current = requireByConnectionId(connectionId);
+        String nextName = current.name();
+        boolean nameChanged = false;
+        if (hasName) {
+            String validated = validatedName(name);
+            if (!validated.equals(current.name())) {
+                nextName = validated;
+                nameChanged = true;
+            }
+        }
+        Map<String, Object> nextConfig = current.config();
+        boolean configChanged = false;
+        if (hasConfig) {
+            Map<String, Object> validated = validatedConfig(current.kind(), config);
+            if (!validated.equals(current.config())) {
+                nextConfig = validated;
+                configChanged = true;
+            }
+        }
+        boolean secretChanged = hasSecret;
+        if (hasSecret && (secret == null || secret.isBlank())) {
+            throw new ConnectionValidationException("Replacement secret must be non-blank");
+        }
+        if (!nameChanged && !configChanged && !secretChanged) {
+            return current;
+        }
+        if (nameChanged && current.enabled()) {
+            String candidate = nextName;
+            UUID currentId = current.id();
+            repository.findEnabledByName(candidate).ifPresent(existing -> {
+                if (!existing.id().equals(currentId)) {
+                    throw new ConnectionCommandException("Another enabled Connection already uses the name \u0027" + candidate + "\u0027 (disable it first)");
+                }
+            });
+        }
+        String nextCredentialRef = current.credentialRef();
+        if (secretChanged) {
+            String newRef = secretStore.store(current.id(), secret);
+            if (nextCredentialRef != null && !nextCredentialRef.isBlank()) {
+                try { secretStore.delete(nextCredentialRef); } catch (RuntimeException ignored) { }
+            }
+            nextCredentialRef = newRef;
+        }
+        if (configChanged || secretChanged) {
+            discoveryService.invalidate(current.id());
+            repository.updateManagement(current.id(), nextName, nextConfig, nextCredentialRef, ConnectionStatus.CREATED, false, null);
+        } else {
+            repository.updateManagement(current.id(), nextName, nextConfig, nextCredentialRef, current.status(), current.enabled(), current.lastError());
+        }
+        return repository.findById(current.id()).orElseThrow();
+    }
+
+    /** Shared safe-config validation: config is non-secret metadata, never a secret carrier. */
+    static Map<String, Object> validatedConfig(ConnectionKind kind, Map<String, Object> config) {
+        Map<String, Object> safe = config == null ? Map.of() : Map.copyOf(config);
+        for (String key : safe.keySet()) {
+            if (key == null || key.isBlank()) {
+                throw new ConnectionValidationException("Connection config keys must be non-blank");
+            }
+            String lower = key.toLowerCase();
+            if (lower.contains("token") || lower.contains("secret") || lower.contains("password") || lower.contains("passwd") || lower.contains("authorization") || lower.contains("apikey") || lower.contains("api_key") || lower.contains("accesskey") || lower.contains("access_key")) {
+                throw new ConnectionValidationException("Connection config must not carry secrets; use the secret field");
+            }
+        }
+        if (kind == ConnectionKind.CUSTOM_MCP) {
+            Object url = safe.get("serverUrl");
+            if (!(url instanceof String s) || s.isBlank()) {
+                throw new ConnectionValidationException("Custom MCP connection requires a non-empty serverUrl");
+            }
+            if (safe.size() != 1 || !safe.containsKey("serverUrl")) {
+                throw new ConnectionValidationException("Custom MCP config supports only serverUrl in this version");
+            }
+        } else {
+            if (!safe.isEmpty()) {
+                throw new ConnectionValidationException("This connection kind accepts no config in this version");
+            }
+        }
+        return safe;
+    }
+
+    static String validatedName(String name) {
+        if (name == null || name.isBlank()) {
+            throw new ConnectionValidationException("Connection name is required");
+        }
+        String trimmed = name.strip();
+        if (trimmed.length() > 128) {
+            throw new ConnectionValidationException("Connection name must be at most 128 characters");
+        }
+        return trimmed;
     }
 
     public Optional<Connection> find(String connectionId) {

@@ -213,6 +213,40 @@ textarea {
   background: #2459c9;
 }
 
+.btn-danger {
+  background: var(--color-danger);
+  border-color: var(--color-danger);
+  color: #ffffff;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #a82e26;
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text-secondary);
+}
+
+.icon-btn:hover:not(:disabled) {
+  background: var(--color-subdued);
+  color: var(--color-text);
+}
+
+.icon-btn:focus-visible {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: var(--color-accent-soft) 0 0 0 3px;
+}
+
 /* ---------- Badges ---------- */
 
 .badge {

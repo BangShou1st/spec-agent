@@ -8,6 +8,8 @@ import com.specagent.readmodel.graph.GraphWorkspaceQueryException;
 import com.specagent.readmodel.requirement.RequirementStateQueryException;
 import com.specagent.readmodel.route.RouteLineageQueryException;
 import com.specagent.connection.service.ConnectionCommandException;
+import com.specagent.connection.service.ConnectionNotFoundException;
+import com.specagent.connection.service.ConnectionValidationException;
 import com.specagent.skill.importing.SkillImportException;
 import com.specagent.skill.runtime.SkillResourceRejectedException;
 import org.slf4j.Logger;
@@ -175,6 +177,20 @@ public class ApiExceptionHandler {
             ConnectionCommandException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ApiErrorResponse.of("CONNECTION_COMMAND_REJECTED", ex.getMessage()));
+    }
+
+    @ExceptionHandler(ConnectionValidationException.class)
+    public ResponseEntity<ApiErrorResponse> handleConnectionValidation(
+            ConnectionValidationException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiErrorResponse.of("VALIDATION_ERROR", ex.getMessage()));
+    }
+
+    @ExceptionHandler(ConnectionNotFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleConnectionNotFound(
+            ConnectionNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiErrorResponse.of("CONNECTION_NOT_FOUND", ex.getMessage()));
     }
 
     @ExceptionHandler(Exception.class)
