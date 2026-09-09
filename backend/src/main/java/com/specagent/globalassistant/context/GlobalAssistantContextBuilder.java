@@ -19,7 +19,6 @@ import org.springframework.stereotype.Service;
 @Service
 public class GlobalAssistantContextBuilder {
     public static final String CONTEXT_PROJECTION_VERSION = "v1";
-    static final int MAX_RECENT_MESSAGES = 24;
     static final int MAX_MESSAGE_CHARS = 2000;
     static final int MAX_HINTS = 5;
     private final GlobalAssistantConversationService conversations;
@@ -49,7 +48,8 @@ public class GlobalAssistantContextBuilder {
                 .orElseThrow(() -> new IllegalArgumentException("Global assistant thread not found: " + threadId));
         List<GlobalAssistantMessage> stored = conversations.listMessages(threadId);
         List<GlobalAssistantContext.ConversationTurn> recent = new ArrayList<>();
-        int start = Math.max(0, stored.size() - MAX_RECENT_MESSAGES);
+        int start = com.specagent.globalassistant.conversation.GlobalAssistantConversationWindowPolicy
+                .recentStart(stored.size(), thread.summaryVersion());
         for (int i = start; i < stored.size(); i++) {
             GlobalAssistantMessage message = stored.get(i);
             if (currentRunId != null && message.role() == GlobalAssistantMessage.Role.USER

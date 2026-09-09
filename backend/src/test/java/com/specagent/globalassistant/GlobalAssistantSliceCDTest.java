@@ -50,7 +50,8 @@ class GlobalAssistantSliceCDTest {
         }
         GlobalAssistantContext context = contextBuilder.build(thread.id(), "current",
                 new GlobalAssistantContextBuilder.UiRequest("PROJECTS", null));
-        assertThat(context.recentConversation()).hasSizeLessThanOrEqualTo(24);
+        // No summary yet: every message is unsummarized remainder inside the hard bound.
+        assertThat(context.recentConversation()).hasSizeLessThanOrEqualTo(33);
         assertThat(context.toolDescriptors()).hasSize(4);
         assertThat(context.recentProjectHints()).hasSizeLessThanOrEqualTo(5);
         for (GlobalAssistantContext.ConversationTurn turn : context.recentConversation()) {

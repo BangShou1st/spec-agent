@@ -16,8 +16,6 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class GlobalAssistantSummaryService {
-    static final int MAX_RECENT_KEPT = 24;
-    static final int SUMMARY_CHUNK_SIZE = 10;
     static final int MAX_SUMMARY_CHARS = 1500;
     private static final Logger log = LoggerFactory.getLogger(GlobalAssistantSummaryService.class);
     private final GlobalAssistantConversationService conversations;
@@ -33,13 +31,16 @@ public class GlobalAssistantSummaryService {
             return false;
         }
         List<GlobalAssistantMessage> messages = conversations.listMessages(threadId);
-        int evictedCount = Math.max(0, messages.size() - MAX_RECENT_KEPT);
-        int alreadySummarized = thread.summaryVersion() * SUMMARY_CHUNK_SIZE;
-        if (evictedCount < alreadySummarized + SUMMARY_CHUNK_SIZE) {
+        int alreadySummarized = com.specagent.globalassistant.conversation.GlobalAssistantConversationWindowPolicy
+                .summarizedCount(thread.summaryVersion());
+        int chunkSize = com.specagent.globalassistant.conversation.GlobalAssistantConversationWindowPolicy
+                .SUMMARY_CHUNK_SIZE;
+        int evictedCount = com.specagent.globalassistant.conversation.GlobalAssistantConversationWindowPolicy
+                .evictedCount(messages.size());
+        if (evictedCount < alreadySummarized + chunkSize) {
             return false;
         }
-        List<GlobalAssistantMessage> chunk =
-                messages.subList(alreadySummarized, alreadySummarized + SUMMARY_CHUNK_SIZE);
+        List<GlobalAssistantMessage> chunk = messages.subList(alreadySummarized, alreadySummarized + chunkSize);
         StringBuilder input = new StringBuilder();
         if (thread.summary() != null && !thread.summary().isBlank()) {
             input.append("Previous summary:\n").append(bound(thread.summary(), 800)).append("\n\n");

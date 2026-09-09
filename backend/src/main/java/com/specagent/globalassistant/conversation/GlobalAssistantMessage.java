@@ -14,7 +14,8 @@ public record GlobalAssistantMessage(
         Role role,
         String content,
         UUID runId,
-        Instant createdAt) {
+        Instant createdAt,
+        long sequence) {
     public enum Role {
         USER,
         ASSISTANT;
