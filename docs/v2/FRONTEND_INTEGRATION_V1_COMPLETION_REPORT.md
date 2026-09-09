@@ -68,7 +68,7 @@ This version closes the management contract between the backend and a Settings U
 - Backend full (`gradlew cleanTest test`, test profile, fake gateway): 976 tests, 0 failures, 0 errors, 2 skipped (pre-existing environment-conditional skips).
 - Deterministic eval harness (`gradlew evalBFast`): 82 tests, 0 failures.
 - Agent brain (`pytest tests/`): 94 passed.
-- Frontend unit (`vitest run`): 67 files, 498 tests, all pass. The runner exits non-zero only because of a pre-existing requestAnimationFrame teardown flake in the untouched WorkspaceView.spec, which passes in isolation and whose files are byte-identical to main.
+- Frontend unit (`vitest run`): 67 files, 498 assertions passed. One pre-existing local `requestAnimationFrame` teardown issue in the untouched `WorkspaceView.spec` may cause a non-zero local runner exit in one environment; that test passes in isolation, the relevant files are byte-identical to `main`, and the PR frontend CI job is green.
 - Typecheck (`vue-tsc --noEmit`) and production build (`vite build`) green.
 - Playwright full suite against a real test-profile backend: 59 of 59 pass, covering Projects, Workspace, Graph, clarification, routes, fork, reanswer, regenerate, lifecycle, contextual AI, semantic relations, pending and recovery, settings, Skills, and Connections.
 - Desktop and accessibility smoke at 1366x768, 1440x900, and 1920x1080: no horizontal overflow, Settings nav usable, primary CTAs visible and unclipped, BackLink keyboard reachable and operable, dialogs close on Escape, tabs and destructive confirms behave.
@@ -80,7 +80,13 @@ This version closes the management contract between the backend and a Settings U
 
 ## CI status
 
-- Recorded after PR checks complete (see PR). No workflow files were modified in this version.
+- PR #11 implementation head `1abfacae0ca45a338dacc7a355ab6abfbadb002c` completed successfully on GitHub Actions.
+- `backend`: PASS.
+- `frontend`: PASS.
+- `e2e`: PASS.
+- `eval-baseline`: PASS.
+- No workflow files were modified in this version.
+- This final documentation-only update must still be revalidated by the same PR checks before merge.
 
 ## Deferred work
 
@@ -99,5 +105,4 @@ This version closes the management contract between the backend and a Settings U
 
 ## Final verdict
 
-PASS, pending PR checks. The branch is ready to merge subject to green CI and reviewer approval.
-
+PASS. Frontend Integration v1 has passed the implementation, architecture, security, visual, and release-quality gates. PR #11 is ready to merge once the latest documentation-only head has completed the same CI checks successfully.
