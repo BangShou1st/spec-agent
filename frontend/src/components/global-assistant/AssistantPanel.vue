@@ -3,8 +3,11 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ConversationTimeline from './ConversationTimeline.vue'
 import AssistantComposer from './AssistantComposer.vue'
+import ConversationHistory from './ConversationHistory.vue'
+import GaIcon from './GaIcon.vue'
 import { buildGaUiContext } from '@/api/globalAssistant'
 import { useGlobalAssistantStore } from '@/stores/globalAssistantStore'
+import { currentGaTitle } from '@/presentation/conversationLibrary'
 
 const store = useGlobalAssistantStore()
 const route = useRoute()
@@ -15,6 +18,9 @@ const composerRef = ref<InstanceType<typeof AssistantComposer> | null>(null)
 const running = computed(() => store.isRunning)
 const isReconnecting = computed(() => store.connection === 'reconnecting')
 const isDisconnected = computed(() => store.connection === 'disconnected')
+const historyOpen = computed(() => store.historyOpen)
+const switchGuard = computed(() => running.value || store.sending)
+const currentTitle = computed(() => currentGaTitle(store.threadId, store.threads, '新对话'))
 
 function handleReconnect(): void {
   store.retryConnection()
@@ -69,7 +75,20 @@ function handleCancel(): void {
 }
 
 function handleNewConversation(): void {
+  if (switchGuard.value) return
   void store.startNewConversation()
+}
+
+function handleToggleHistory(): void {
+  store.toggleHistory()
+}
+
+function handleSelectThread(threadId: string): void {
+  void store.switchThread(threadId)
+}
+
+function handleRetryHistory(): void {
+  void store.loadThreads()
 }
 
 function handleClose(): void {
@@ -86,9 +105,22 @@ function handleClose(): void {
     :data-state="store.panelOpen ? 'open' : 'closed'"
   >
     <header class="ga-panel__header">
-      <div class="ga-panel__title">
-        <strong>助手</strong>
-        <span class="ga-panel__subtitle">在 Spec Agent 内工作</span>
+      <button
+        class="icon-btn ga-panel__history-btn"
+        type="button"
+        data-test="ga-history-toggle"
+        aria-label="查看最近对话"
+        title="最近对话"
+        :aria-expanded="historyOpen ? 'true' : 'false'"
+        aria-controls="ga-history-region"
+        @click="handleToggleHistory"
+      >
+        <GaIcon name="history" />
+      </button>
+      <div class="ga-panel__title" data-test="ga-current-conversation" :title="currentTitle">
+        <strong class="ga-panel__name">助手</strong>
+        <span class="ga-panel__current">{{ currentTitle }}</span>
+        <span v-if="running" class="ga-panel__run-dot" aria-hidden="true" />
       </div>
       <div class="ga-panel__actions">
         <button
@@ -97,10 +129,10 @@ function handleClose(): void {
           data-test="ga-new-conversation"
           aria-label="开始新对话"
           title="开始新对话"
-          :disabled="running || store.sending"
+          :disabled="switchGuard"
           @click="handleNewConversation"
         >
-          ＋
+          <GaIcon name="plus" />
         </button>
         <button
           class="icon-btn"
@@ -109,7 +141,7 @@ function handleClose(): void {
           aria-label="关闭助手"
           @click="handleClose"
         >
-          ✕
+          <GaIcon name="close" />
         </button>
       </div>
     </header>
@@ -123,7 +155,7 @@ function handleClose(): void {
 
     <div v-if="store.error" class="ga-panel__error" role="alert" data-test="ga-error">
       <span>{{ store.error.message }}</span>
-      <button class="icon-btn" type="button" aria-label="关闭错误提示" @click="store.error = null">✕</button>
+      <button class="icon-btn" type="button" aria-label="关闭错误提示" @click="store.error = null"><GaIcon name="close" /></button>
     </div>
 
     <div class="ga-panel__status-live visually-hidden" aria-live="polite" atomic="true">
@@ -133,6 +165,18 @@ function handleClose(): void {
 
     <p v-if="store.loadingThread" class="ga-panel__loading muted" data-test="ga-loading">正在恢复会话…</p>
 
+    <div v-else-if="historyOpen" id="ga-history-region" class="ga-panel__history-wrap">
+      <ConversationHistory
+        :threads="store.threads"
+        :current-thread-id="store.threadId"
+        :loading="store.threadsLoading"
+        :error="store.threadsError"
+        :disabled="switchGuard"
+        :switching="store.switchingThread"
+        @select="handleSelectThread"
+        @retry="handleRetryHistory"
+      />
+    </div>
     <ConversationTimeline
       v-else
       :messages="store.messages"
@@ -158,11 +202,14 @@ function handleClose(): void {
 
 <style scoped>
 .ga-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--color-surface); }
-.ga-panel__header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--color-border); background: var(--color-surface-subtle); }
-.ga-panel__title { display: flex; align-items: baseline; gap: 8px; }
-.ga-panel__title strong { font-size: 14px; }
-.ga-panel__subtitle { font-size: 12px; color: var(--color-text-muted); }
+.ga-panel__header { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--color-border); background: var(--color-surface); }
+.ga-panel__history-btn[aria-expanded='true'] { background: var(--color-focus-soft); color: var(--color-focus-strong); }
+.ga-panel__title { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
+.ga-panel__name { font-size: 14px; font-weight: 650; letter-spacing: 0.01em; }
+.ga-panel__current { font-size: 12px; color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
+.ga-panel__run-dot { width: 7px; height: 7px; border-radius: 999px; background: var(--color-accent); flex: none; }
 .ga-panel__actions { display: flex; gap: 4px; }
+.ga-panel__history-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .ga-panel__connection { padding: 6px 12px; font-size: 12px; color: var(--color-warn); background: var(--color-warn-soft); border-bottom: 1px solid var(--color-border); display: flex; align-items: center; gap: 8px; }
 .ga-panel__reconnect { margin-left: auto; border: 1px solid var(--color-border); background: var(--color-surface); border-radius: 999px; padding: 3px 10px; font-size: 12px; }
 .ga-panel__reconnect:focus-visible { outline: none; box-shadow: var(--focus-ring); }

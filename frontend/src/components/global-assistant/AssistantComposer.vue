@@ -105,13 +105,15 @@ defineExpose({ focusComposer })
 
 <style scoped>
 .ga-composer { border-top: 1px solid var(--color-border); padding: 10px 12px 12px; background: var(--color-surface); }
-.ga-composer__question { margin: 0 0 8px; padding: 8px 10px; border-radius: 8px; background: var(--color-focus-soft); color: var(--color-text); font-size: 13px; border: 1px solid var(--color-border); }
+ .ga-composer__question { margin: 0 0 8px; padding: 8px 10px; border-radius: 8px; background: var(--color-focus-soft); color: var(--color-text); font-size: 13px; border: 1px solid #d8cff7; line-height: 1.55; }
 .ga-composer__label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-.ga-composer__input { width: 100%; min-height: 64px; max-height: 160px; resize: vertical; border: 1px solid var(--color-border); border-radius: 10px; padding: 8px 10px; background: var(--color-surface); line-height: 1.5; }
-.ga-composer__input:focus { outline: none; border-color: var(--color-focus); box-shadow: var(--focus-ring); }
+.ga-composer__input { width: 100%; min-height: 68px; max-height: 160px; resize: vertical; border: 1px solid var(--color-border-strong); border-radius: 12px; padding: 10px 12px; background: var(--color-surface); line-height: 1.55; font-size: 13.5px; transition: border-color 120ms ease, box-shadow 120ms ease; }
+ .ga-composer__input::placeholder { color: var(--color-text-muted); }
+ .ga-composer__input:hover:not(:disabled) { border-color: var(--color-border-strong); }
+ .ga-composer__input:focus { outline: none; border-color: var(--color-focus); box-shadow: var(--focus-ring); }
+ .ga-composer__input:disabled { background: var(--color-surface-subtle); }
 .ga-composer__row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
-.ga-composer__hint { font-size: 12px; color: var(--color-text-muted); }
-.ga-composer__count { font-size: 12px; color: var(--color-text-secondary); }
+.ga-composer__hint { font-size: 11.5px; color: var(--color-text-muted); }
+ .ga-composer__count { font-size: 11.5px; color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
 .ga-composer__spacer { flex: 1; }
 </style>
-

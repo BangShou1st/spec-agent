@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted } from 'vue'
 import AssistantPanel from './AssistantPanel.vue'
+import GaIcon from './GaIcon.vue'
 import { useGlobalAssistantStore } from '@/stores/globalAssistantStore'
 
 const store = useGlobalAssistantStore()
@@ -23,6 +24,10 @@ function onKeydown(event: KeyboardEvent): void {
   if (target && (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT')) {
     if ((event as KeyboardEvent).isComposing) return
   }
+  if (store.historyOpen) {
+    store.setHistoryOpen(false)
+    return
+  }
   if (store.panelOpen) store.setPanelOpen(false)
 }
 
@@ -44,7 +49,7 @@ function toggle(): void {
       :class="{ 'ga-toggle--running': running }"
       @click="toggle"
     >
-      <span class="ga-toggle__icon" aria-hidden="true">✦</span>
+      <GaIcon name="spark" />
       <span class="ga-toggle__label">助手</span>
       <span v-if="running" class="ga-toggle__pulse" aria-hidden="true" />
     </button>
