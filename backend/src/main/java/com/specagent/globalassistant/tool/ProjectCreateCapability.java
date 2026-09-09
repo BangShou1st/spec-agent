@@ -43,6 +43,12 @@ public class ProjectCreateCapability implements InternalCapabilityAdapter {
     }
     @Override
     public CapabilityResult invoke(CapabilityInvocation invocation) {
+        if (!GlobalAssistantToolCatalog.allowedArguments(CAPABILITY_ID)
+                .containsAll(invocation.arguments().keySet())) {
+            return GlobalAssistantToolFailures.failed(invocation, CAPABILITY_ID,
+                    com.specagent.globalassistant.runtime.GlobalAssistantErrorCode.TOOL_ARGUMENT_INVALID,
+                    "Unknown argument for " + CAPABILITY_ID);
+        }
         Object rawTitle = invocation.arguments().get("title");
         if (!(rawTitle instanceof String title) || title.isBlank()) {
             return GlobalAssistantToolFailures.failed(invocation, CAPABILITY_ID,

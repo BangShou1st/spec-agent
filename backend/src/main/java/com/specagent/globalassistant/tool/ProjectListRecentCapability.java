@@ -38,22 +38,19 @@ public class ProjectListRecentCapability implements InternalCapabilityAdapter {
     }
     @Override
     public CapabilityResult invoke(CapabilityInvocation invocation) {
-        Object rawLimit = invocation.arguments().get("limit");
-        Integer limit = null;
-        if (rawLimit != null) {
-            if (!(rawLimit instanceof Number n)) {
-                return GlobalAssistantToolFailures.failed(invocation, CAPABILITY_ID,
-                        com.specagent.globalassistant.runtime.GlobalAssistantErrorCode.TOOL_ARGUMENT_INVALID,
-                        "arguments.limit must be an integer between 1 and 10");
-            }
-            int v = n.intValue();
-            if (v < 1 || v > 10) {
-                return GlobalAssistantToolFailures.failed(invocation, CAPABILITY_ID,
-                        com.specagent.globalassistant.runtime.GlobalAssistantErrorCode.TOOL_ARGUMENT_INVALID,
-                        "arguments.limit must be an integer between 1 and 10");
-            }
-            limit = v;
+        if (!GlobalAssistantToolCatalog.allowedArguments(CAPABILITY_ID)
+                .containsAll(invocation.arguments().keySet())) {
+            return GlobalAssistantToolFailures.failed(invocation, CAPABILITY_ID,
+                    com.specagent.globalassistant.runtime.GlobalAssistantErrorCode.TOOL_ARGUMENT_INVALID,
+                    "Unknown argument for " + CAPABILITY_ID);
         }
+        Object rawLimit = invocation.arguments().get("limit");
+        if (!GlobalAssistantToolCatalog.isValidLimit(rawLimit)) {
+            return GlobalAssistantToolFailures.failed(invocation, CAPABILITY_ID,
+                    com.specagent.globalassistant.runtime.GlobalAssistantErrorCode.TOOL_ARGUMENT_INVALID,
+                    "arguments.limit must be an integer between 1 and 10");
+        }
+        Integer limit = rawLimit == null ? null : GlobalAssistantToolCatalog.limitOrDefault(rawLimit, 5);
         List<GlobalProjectSearchService.Candidate> recents = search.listRecent(limit);
         List<Map<String, Object>> serialized = recents.stream().map(c -> {
             Map<String, Object> m = new LinkedHashMap<>();

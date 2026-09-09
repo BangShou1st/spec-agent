@@ -39,6 +39,12 @@ public class ProjectGetSummaryCapability implements InternalCapabilityAdapter {
     }
     @Override
     public CapabilityResult invoke(CapabilityInvocation invocation) {
+        if (!GlobalAssistantToolCatalog.allowedArguments(CAPABILITY_ID)
+                .containsAll(invocation.arguments().keySet())) {
+            return GlobalAssistantToolFailures.failed(invocation, CAPABILITY_ID,
+                    com.specagent.globalassistant.runtime.GlobalAssistantErrorCode.TOOL_ARGUMENT_INVALID,
+                    "Unknown argument for " + CAPABILITY_ID);
+        }
         Object rawId = invocation.arguments().get("projectId");
         if (!(rawId instanceof String text) || text.isBlank()) {
             return GlobalAssistantToolFailures.failed(invocation, CAPABILITY_ID,

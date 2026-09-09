@@ -41,18 +41,25 @@ public class ProjectSearchCapability implements InternalCapabilityAdapter {
     }
     @Override
     public CapabilityResult invoke(CapabilityInvocation invocation) {
+        if (!GlobalAssistantToolCatalog.allowedArguments(CAPABILITY_ID)
+                .containsAll(invocation.arguments().keySet())) {
+            return GlobalAssistantToolFailures.failed(invocation, CAPABILITY_ID,
+                    com.specagent.globalassistant.runtime.GlobalAssistantErrorCode.TOOL_ARGUMENT_INVALID,
+                    "Unknown argument for " + CAPABILITY_ID);
+        }
         Object rawQuery = invocation.arguments().get("query");
         if (!(rawQuery instanceof String query) || query.isBlank()) {
             return GlobalAssistantToolFailures.failed(invocation, CAPABILITY_ID,
                     com.specagent.globalassistant.runtime.GlobalAssistantErrorCode.TOOL_ARGUMENT_INVALID,
                     "arguments.query is required and must be a non-blank string");
         }
-        Integer limit = readLimit(invocation.arguments().get("limit"));
-        if (invocation.arguments().get("limit") != null && limit == null) {
+        Object rawLimit = invocation.arguments().get("limit");
+        if (!GlobalAssistantToolCatalog.isValidLimit(rawLimit)) {
             return GlobalAssistantToolFailures.failed(invocation, CAPABILITY_ID,
                     com.specagent.globalassistant.runtime.GlobalAssistantErrorCode.TOOL_ARGUMENT_INVALID,
                     "arguments.limit must be an integer between 1 and 10");
         }
+        Integer limit = rawLimit == null ? null : GlobalAssistantToolCatalog.limitOrDefault(rawLimit, 5);
         List<GlobalProjectSearchService.Candidate> candidates = search.search(query.trim(), limit);
         List<Map<String, Object>> serialized = candidates.stream().map(c -> {
             Map<String, Object> m = new LinkedHashMap<>();
@@ -66,15 +73,5 @@ public class ProjectSearchCapability implements InternalCapabilityAdapter {
         content.put("totalCandidates", serialized.size());
         return new CapabilityResult(invocation.invocationId(), invocation.invocationKey(), CAPABILITY_ID,
                 CapabilityResult.Status.SUCCEEDED, content, List.of(), Map.of("kind", "PROJECT_SEARCH"), List.of());
-    }
-    private Integer readLimit(Object raw) {
-        if (raw == null) {
-            return null;
-        }
-        if (raw instanceof Number n) {
-            int v = n.intValue();
-            return v >= 1 && v <= 10 ? v : null;
-        }
-        return null;
     }
 }

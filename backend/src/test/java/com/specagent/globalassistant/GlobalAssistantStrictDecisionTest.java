@@ -98,4 +98,45 @@ class GlobalAssistantStrictDecisionTest {
         assertThatThrownBy(() -> validator.validate(decision))
                 .isInstanceOf(GlobalAssistantModelException.class);
     }
+    @Test
+    void createRejectsUnknownArgument() {
+        var decision = parser.parse(
+                "{\"done\":false, \"toolRequest\":{\"capabilityId\":\"project.create\", \"arguments\":{\"title\":\"T\", \"mode\":\"fast\"}}}");
+        assertThatThrownBy(() -> validator.validate(decision))
+                .isInstanceOf(GlobalAssistantModelException.class);
+    }
+    @Test
+    void searchRejectsUnknownArgument() {
+        var decision = parser.parse(
+                "{\"done\":false, \"toolRequest\":{\"capabilityId\":\"project.search\", \"arguments\":{\"query\":\"x\", \"sort\":\"recent\"}}}");
+        assertThatThrownBy(() -> validator.validate(decision))
+                .isInstanceOf(GlobalAssistantModelException.class);
+    }
+    @Test
+    void listRecentRejectsUnknownArgument() {
+        var decision = parser.parse(
+                "{\"done\":false, \"toolRequest\":{\"capabilityId\":\"project.list_recent\", \"arguments\":{\"limit\":5, \"offset\":2}}}");
+        assertThatThrownBy(() -> validator.validate(decision))
+                .isInstanceOf(GlobalAssistantModelException.class);
+    }
+    @Test
+    void getSummaryRejectsUnknownArgument() {
+        var decision = parser.parse(
+                "{\"done\":false, \"toolRequest\":{\"capabilityId\":\"project.get_summary\", \"arguments\":{\"projectId\":\"00000000-0000-0000-0000-000000000001\", \"verbose\":true}}}");
+        assertThatThrownBy(() -> validator.validate(decision))
+                .isInstanceOf(GlobalAssistantModelException.class);
+    }
+    @Test
+    void fractionalLimitIsRejected() {
+        var decision = parser.parse(
+                "{\"done\":false, \"toolRequest\":{\"capabilityId\":\"project.search\", \"arguments\":{\"query\":\"x\", \"limit\":1.5}}}");
+        assertThatThrownBy(() -> validator.validate(decision))
+                .isInstanceOf(GlobalAssistantModelException.class);
+    }
+    @Test
+    void integerLimitIsAccepted() {
+        var decision = parser.parse(
+                "{\"done\":false, \"toolRequest\":{\"capabilityId\":\"project.search\", \"arguments\":{\"query\":\"x\", \"limit\":5}}}");
+        validator.validate(decision);
+    }
 }

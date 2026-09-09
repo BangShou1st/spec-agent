@@ -83,6 +83,15 @@ public class GlobalAssistantDecisionValidator {
     }
     private void validateToolArguments(String capabilityId, Map<String, Object> arguments) {
         Map<String, Object> args = arguments == null ? Map.of() : arguments;
+        java.util.Set<String> allowed = GlobalAssistantToolCatalog.allowedArguments(capabilityId);
+        if (allowed != null) {
+            for (String key : args.keySet()) {
+                if (!allowed.contains(key)) {
+                    throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
+                            "Unknown argument for " + capabilityId + ": " + key);
+                }
+            }
+        }
         switch (capabilityId) {
             case "project.create" -> {
                 Object title = args.get("title");
@@ -118,10 +127,7 @@ public class GlobalAssistantDecisionValidator {
         }
     }
     private void validateLimit(Object raw) {
-        if (raw == null) {
-            return;
-        }
-        if (!(raw instanceof Number n) || n.intValue() < 1 || n.intValue() > 10) {
+        if (!GlobalAssistantToolCatalog.isValidLimit(raw)) {
             throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
                     "limit must be an integer between 1 and 10");
         }
