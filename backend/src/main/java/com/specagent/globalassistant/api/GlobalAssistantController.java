@@ -13,6 +13,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -157,11 +159,60 @@ public class GlobalAssistantController {
     @PostMapping("/runs/{runId}/cancel")
     public RunResponse cancelRun(@PathVariable UUID runId) {
         GlobalAssistantRun run = application.cancelRun(runId);
-        return new RunResponse(run.id().toString(), run.threadId().toString(),
-                run.status().name(), run.stepCount(),
-                run.cancelRequestedAt() == null ? null : run.cancelRequestedAt().toString(),
-                run.startedAt().toString(),
-                run.completedAt() == null ? null : run.completedAt().toString(),
-                run.errorCode());
+        return toRun(run);
+    }
+    public record SteerRunRequest(@NotBlank String message, CreateRunRequest.UiContextDto uiContext) {
+    }
+    public record SteerRunResponse(String steerId, String status, String interruptedRunId, String successorRunId) {
+    }
+    public record ActivityRunDto(String runId, String status) {
+    }
+    public record ActivitySteerDto(String steerId, String message, String status, String interruptedRunId, String successorRunId, String createdAt) {
+    }
+    public record ActivityResponse(ActivityRunDto activeRun, ActivitySteerDto pendingSteer) {
+    }
+    @PostMapping("/runs/{runId}/steer")
+    public SteerRunResponse steerRun(@PathVariable UUID runId, @Valid @RequestBody SteerRunRequest request) {
+        GlobalAssistantContextBuilder.UiRequest uiRequest = toUiRequest(request.uiContext());
+        var result = application.steerRun(runId, request.message(), uiRequest);
+        var pending = result.pending();
+        var successor = result.successor();
+        String status = successor == null ? "QUEUED" : "STARTED";
+        String successorId = successor == null ? null : successor.run().id().toString();
+        return new SteerRunResponse(pending.id().toString(), status, pending.interruptedRunId().toString(), successorId);
+    }
+    @GetMapping("/threads/{threadId}/activity")
+    public ActivityResponse threadActivity(@PathVariable UUID threadId) {
+        var activity = application.threadActivity(threadId);
+        ActivityRunDto active = activity.activeRun().map(run -> new ActivityRunDto(run.id().toString(), run.status().name())).orElse(null);
+        ActivitySteerDto steer = activity.pendingSteer().map(p -> new ActivitySteerDto(p.id().toString(), p.message(), p.status().name(), p.interruptedRunId().toString(), p.successorRunId() == null ? null : p.successorRunId().toString(), p.createdAt().toString())).orElse(null);
+        return new ActivityResponse(active, steer);
+    }
+    @PostMapping("/threads/{threadId}/stop")
+    public ActivityResponse stopThread(@PathVariable UUID threadId) {
+        var activity = application.stopThread(threadId);
+        ActivityRunDto active = activity.activeRun().map(run -> new ActivityRunDto(run.id().toString(), run.status().name())).orElse(null);
+        ActivitySteerDto steer = activity.pendingSteer().map(p -> new ActivitySteerDto(p.id().toString(), p.message(), p.status().name(), p.interruptedRunId().toString(), p.successorRunId() == null ? null : p.successorRunId().toString(), p.createdAt().toString())).orElse(null);
+        return new ActivityResponse(active, steer);
+    }
+    @DeleteMapping("/threads/{threadId}")
+    public ResponseEntity<Void> deleteThread(@PathVariable UUID threadId) {
+        application.deleteThread(threadId);
+        return ResponseEntity.noContent().build();
+    }
+    private RunResponse toRun(GlobalAssistantRun run) {
+        return new RunResponse(run.id().toString(), run.threadId().toString(), run.status().name(), run.stepCount(),
+                run.cancelRequestedAt() == null ? null : run.cancelRequestedAt().toString(), run.startedAt().toString(),
+                run.completedAt() == null ? null : run.completedAt().toString(), run.errorCode());
+    }
+    private GlobalAssistantContextBuilder.UiRequest toUiRequest(CreateRunRequest.UiContextDto dto) {
+        if (dto == null) {
+            return null;
+        }
+        GlobalAssistantContextBuilder.UiRequest.SelectedRef selected = null;
+        if (dto.selectedEntity() != null) {
+            selected = new GlobalAssistantContextBuilder.UiRequest.SelectedRef(dto.selectedEntity().type(), dto.selectedEntity().id());
+        }
+        return new GlobalAssistantContextBuilder.UiRequest(dto.currentPage(), selected);
     }
 }
