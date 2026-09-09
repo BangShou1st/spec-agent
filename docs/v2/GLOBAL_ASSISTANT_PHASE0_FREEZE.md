@@ -73,7 +73,7 @@ Freeze 决策：小幅泛化现有 Capability Runtime，不建 GlobalToolRuntime
 
 - 现状证据：`V13` 中 `capability_invocations.project_id NOT NULL REFERENCES projects(id)`；`CapabilityRuntime.invoke(..., UUID projectId, ...)` 必传；`CapabilityInvocationRepository.claim` 直接插入 project_id。
 - V1 需求：`project.create` 执行前无目标 projectId；`project.search/list_recent` 为应用级上下文执行。
-- 冻结方案（只冻结不实现）：新增 migration（如 V28）`ALTER TABLE capability_invocations ALTER COLUMN project_id DROP NOT NULL`（FK 保留，nullable 后仍引用合法 project）；Java 新增显式入口如 `invokeApplicationScoped(invocationKey, capabilityId, runId, arguments)`（projectId=null），现有 `invoke(...)` 保持兼容（传 null 即 fail-closed 或转调新入口，由实现时选定，但行为必须文档化）；application-scoped 调用仍走同一 registry→adapter→claim/complete/replay 路径，idempotency 仍由 `invocation_key` 唯一索引仲裁。
+- 冻结方案（只冻结不实现，唯一语义）：新增 migration（见 §19 V29）`ALTER TABLE capability_invocations ALTER COLUMN project_id DROP NOT NULL`（FK 保留，nullable 后仍引用合法 project）；`CapabilityRuntime.invoke(...)` 继续是严格 project-scoped public API，要求 `projectId != null`，传 null 必须 fail-closed；新增 `CapabilityRuntime.invokeApplicationScoped(invocationKey, capabilityId, runId, arguments)` 作为 application-scoped invocation 的唯一 public entry point，它内部允许 `projectId = null`；两个 public entry point 后续可以共享一个 private execution implementation，但调用语义不得混淆；application-scoped 调用仍走同一 registry→adapter→claim/complete/replay 路径，idempotency 仍由 `invocation_key` 唯一索引仲裁。
 - 兼容性：现有 project-scoped 调用方零改动；`findRecentCompleted(projectId)` 等按 project 过滤的方法对 null 不返回（SQL 语义）；新增按 runId 查询即可覆盖 GA 观测需求。
 - 回归要求：保留现有 CapabilityRuntime claim/replay 测试；新增 nullable 列 + 双入口兼容测试 + project.create 无 projectId 端到端（slice 级）测试。
 
@@ -88,7 +88,7 @@ GlobalAssistantToolCatalog → existing CapabilityRegistry → existing Capabili
 - V1 Server Tool 白名单：`project.create/search/list_recent/get_summary`。不得自动继承 `skill.* / mcp.* / connection.*` 及 Project Agent planner catalog。
 - `GlobalAssistantToolCatalog` 为产品能力边界（非自然语言硬编码）：显式定义 V1 Tool ID 集合，向模型仅暴露这 4 个 descriptor。
 - 现有隔离机制证据：`CapabilityRegistry.descriptorsFor(context)` 已做 requiredPermissions 过滤 + 跨 provider 去重 fail-closed；`CapabilityVisibilityService` 做 supports 兼容 + 截断。GA catalog 在此之上再做白名单过滤。
-- Defense-in-depth：冻结时预留结构化 scope marker（如 `APPLICATION:GLOBAL_ASSISTANT`），实现时二选一：(a) requiredPermissions 增 GA 专用 grant；(b) supports/scopeFacts 增应用域标记。必须双向保证：Global tools 不进入 Project Agent planner catalog；Skill/MCP tools 不进入 GA catalog。以 registry 单测 + visibility 单测锁定。
+- Defense-in-depth（唯一冻结）：GA V1 Tool 的 descriptor 冻结为 `supports = ["APPLICATION:GLOBAL_ASSISTANT"]`。原因：`requiredPermissions = authorization`（用户权限），`supports = context compatibility`（上下文兼容），GA 隔离属于 application/context compatibility 而不是用户权限。Global Assistant 建立 capability query context 时必须包含 `APPLICATION:GLOBAL_ASSISTANT`，Project Agent context 不包含此 marker。因此形成双重隔离：`supports marker + GA explicit whitelist`。必须双向保证：Global tools 不进入 Project Agent planner catalog；Skill/MCP tools 不进入 GA catalog。后续实现必须有双向 leakage regression test（registry + visibility 层）。
 
 ## 6. ui.navigate ownership (Contract C)
 
@@ -106,13 +106,14 @@ Freeze 决策：plan §8 的 4 表为基础，按 Phase 0 §7 补齐 working_sta
 ```text
 global_assistant_threads(id, summary, summary_version, working_state JSONB, working_state_version, created_at, updated_at)
 global_assistant_messages(id, thread_id FK, role USER|ASSISTANT, content, created_at, run_id nullable)
-global_assistant_runs(id, thread_id FK, status, step_count, started_at, completed_at, model_provider, model_name, prompt_version, context_projection_version, error_code nullable)
+global_assistant_runs(id, thread_id FK, status, step_count, started_at, completed_at, prompt_version, context_projection_version, tool_catalog_fingerprint, error_code nullable)
 global_assistant_run_events(id, run_id FK, sequence, type, payload JSONB sanitized, created_at, UNIQUE(run_id, sequence))
 ```
 
 - Working State 只存跨 Run 未完成任务的 bounded structured facts（如 goal/candidateProjects/waitingFor/lastResolvedProjectId/lastToolResultRefs）；禁止 hidden reasoning/CoT/完整 Tool dump/完整历史；stepCount 属于 Run 不属于 WorkingState。
 - 更新 owner：Working State 由 Runtime 在 tool observation/decision 边界更新；summary 由 Runtime 在阈值触发时经 ModelInferenceGateway（callType=GLOBAL_ASSISTANT_SUMMARY）更新；模型只建议不直写。版本策略：乐观锁 version 递增，冲突 fail-closed 重读；bounded limits（大小 + 字段白名单），超限截断失败而非静默丢弃。
 - messages 不存 CoT；ASSISTANT 文本只存最终 sanitized 文本；Tool 明细以 invocation + run_events 为准。
+- V1 从 `global_assistant_runs` 中删除 `model_provider / model_name`：当前 provider-neutral `ModelInferenceGateway / ModelInferenceResponse` 并不提供该信息，保留它们会迫使 GA Runtime 去读 provider-specific settings（如 `OpenCodeSettingsService / ProviderAdapter`）。GA 调用链保持 `Runtime → Brain → ModelInferenceGateway`；未来如需 provider/model identity，必须通过独立的 provider-neutral inference telemetry contract 扩展，不允许 GA Runtime 读取 provider-specific settings。
 
 ## 8. thread/run concurrency freeze (Contract E)
 
@@ -137,6 +138,7 @@ Freeze：V1 public run events 必须持久化（plan §8 的“if reasonable”�
 - internal event id = UUID；public SSE id = per-run sequence（monotonic，UNIQUE(run_id,sequence)，复用 AgentRunEventRepository 原子序号思想但新表新类型）。
 - Reconnect：`Last-Event-ID = last sequence → replay sequence > cursor → tail live`。
 - `STREAM_DISCONNECTED` 仅 transport 条件，不得作为 terminal failure；Run 可继续。
+- 并发语义（唯一冻结）：所有 `GlobalAssistantRunEventRepository.append(...)` 必须在事务中先对对应 `global_assistant_runs` row 做 `SELECT ... FOR UPDATE`，然后计算并插入 next per-run sequence。Runtime event、cancel event、terminal event 必须走同一 append service/repository serialization path。不得依赖无 row lock 的 `MAX(sequence)+1` 自行避免并发冲突。不得引入复杂 message broker / global sequence / Redis。
 
 ## 11. read API contract (Contract H)
 
@@ -210,7 +212,7 @@ Freeze GA-specific eval（归 `com.specagent.globalassistant/eval`），复用�
 
 ## 19. planned migration numbers/files
 
-- 新 migration（编号按当时最新顺延，当前最大 V27）：`V28__global_assistant_threads.sql`（threads+working_state/messages/runs/run_events，含 UNIQUE(run_id,sequence) + active-run 部分唯一约束）; `V29__capability_invocations_application_scope.sql`（project_id DROP NOT NULL）；如需 marker 则 `V30__global_assistant_scope_marker.sql`（permissions/supports 种子或列，视 §5 实现选择而定）。
+- 新 migration（编号按当时最新顺延，当前最大 V27）：`V28__global_assistant_threads.sql`（threads+working_state/messages/runs/run_events，含 UNIQUE(run_id,sequence) + active-run 部分唯一约束）; `V29__capability_invocations_application_scope.sql`（project_id DROP NOT NULL）。scope marker 为 descriptor/context 层（§5 `supports`），不需要 DB migration，不规划 V30。
 - 新 Java 包（高内聚低耦合，见 §20）：`com.specagent.globalassistant/{api,conversation,context,model,runtime,stream,tool,eval}`；tool 层只调 ProjectService/read models，不直连 repository；runtime 只调 Brain 不碰 OpenCode transport；brain 只调 ModelInferenceGateway。
 
 ## 20. implementation dependency order
