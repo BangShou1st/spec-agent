@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { connectionKindLabel } from '@/presentation/managementCopy'
 import type { ConnectionSummary } from '@/api/connectionTypes'
 
 withDefaults(defineProps<{
@@ -19,7 +20,7 @@ const confirmingId = ref<string | null>(null)
 
 function endpointOf(c: ConnectionSummary): string {
   const u = c.config?.serverUrl
-  return typeof u === 'string' && u ? u : c.kind
+  return typeof u === 'string' && u ? u : connectionKindLabel(c.kind)
 }
 
 function statusText(c: ConnectionSummary): string {
@@ -50,13 +51,13 @@ function statusClass(c: ConnectionSummary): string {
         <details class="conns-more" :data-test="`connection-more-${c.connectionId}`">
           <summary aria-label="More actions">...</summary>
           <div class="conns-more__actions">
-            <button v-if="!c.enabled" type="button" class="btn" :disabled="busyId === c.connectionId" :data-test="`connection-enable-${c.connectionId}`" @click="emit('enable', c.connectionId)">Enable</button>
-            <button v-else type="button" class="btn" :disabled="busyId === c.connectionId" :data-test="`connection-disable-${c.connectionId}`" @click="emit('disable', c.connectionId)">Disable</button>
-            <button v-if="confirmingId !== c.connectionId" type="button" class="btn" :disabled="busyId === c.connectionId" :data-test="`connection-delete-${c.connectionId}`" @click="confirmingId = c.connectionId">Delete</button>
+            <button v-if="!c.enabled" type="button" class="btn" :disabled="busyId === c.connectionId" :data-test="`connection-enable-${c.connectionId}`" @click="emit('enable', c.connectionId)">启用</button>
+            <button v-else type="button" class="btn" :disabled="busyId === c.connectionId" :data-test="`connection-disable-${c.connectionId}`" @click="emit('disable', c.connectionId)">禁用</button>
+            <button v-if="confirmingId !== c.connectionId" type="button" class="btn" :disabled="busyId === c.connectionId" :data-test="`connection-delete-${c.connectionId}`" @click="confirmingId = c.connectionId">删除</button>
             <span v-else class="conns-confirm">
-              <span>Delete this connection?</span>
-              <button type="button" class="btn btn-primary" :disabled="busyId === c.connectionId" :data-test="`connection-delete-confirm-${c.connectionId}`" @click="emit('remove', c.connectionId); confirmingId = null">Confirm delete</button>
-              <button type="button" class="btn" :data-test="`connection-delete-cancel-${c.connectionId}`" @click="confirmingId = null">Cancel</button>
+              <span>删除该连接及其发现缓存？</span>
+              <button type="button" class="btn btn-danger" :disabled="busyId === c.connectionId" :data-test="`connection-delete-confirm-${c.connectionId}`" @click="emit('remove', c.connectionId); confirmingId = null">确认删除</button>
+              <button type="button" class="btn" :data-test="`connection-delete-cancel-${c.connectionId}`" @click="confirmingId = null">取消</button>
             </span>
           </div>
         </details>
@@ -68,7 +69,8 @@ function statusClass(c: ConnectionSummary): string {
 <style scoped>
 .conns-list { width: 100%; }
 .conns-rows { list-style: none; margin: 0; padding: 0; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 12px; }
-.conns-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; }
+.conns-row { display: flex; align-items: center; gap: 12px; padding: 13px 16px; transition: background 120ms ease; }
+.conns-row:hover { background: var(--color-surface-subtle); }
 .conns-row + .conns-row { border-top: 1px solid var(--color-border); }
 .conns-main { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; background: none; border: none; padding: 0; text-align: left; cursor: pointer; }
 .conns-main:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: 6px; }

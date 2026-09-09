@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { onUnmounted, ref, watch } from 'vue'
 import { managementErrorMessage } from '@/api/errorCopy'
 import type { ConnectionDetail } from '@/api/connectionTypes'
 import type { ConnectionsStoreError } from '@/stores/connectionsStore'
@@ -44,12 +44,17 @@ function submit(): void {
 function onKey(e: KeyboardEvent): void {
   if (e.key === 'Escape') emit('close')
 }
+watch(() => props.open, (v) => {
+  if (v) window.addEventListener('keydown', onKey)
+  else window.removeEventListener('keydown', onKey)
+}, { immediate: true })
+onUnmounted(() => window.removeEventListener('keydown', onKey))
 </script>
 
 <template>
-  <div v-if="open" class="dlg-veil" data-test="connection-edit-dialog" @keydown="onKey">
+  <div v-if="open" class="dlg-veil" data-test="connection-edit-dialog">
     <div class="dlg-card" role="dialog" aria-modal="true" aria-label="Edit connection">
-      <header class="dlg-head"><h3>编辑连接</h3><button type="button" class="btn" data-test="close-edit" @click="emit('close')">关闭</button></header>
+      <header class="dlg-head"><h3>编辑连接</h3><button type="button" class="icon-btn" data-test="close-edit" aria-label="关闭" @click="emit('close')"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button></header>
       <p class="muted">仅改名可保持当前状态；修改地址或凭证后需要重新测试、连接并启用。</p>
       <label class="settings-field" for="conn-edit-name"><span class="settings-field__label">名称</span>
         <input id="conn-edit-name" v-model="name" class="settings-control" type="text" autocomplete="off" maxlength="128" data-test="edit-name" /></label>

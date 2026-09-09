@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { onUnmounted, ref, watch } from 'vue'
 import { managementErrorMessage } from '@/api/errorCopy'
 import type { SkillsStoreError } from '@/stores/skillsStore'
 
@@ -51,14 +51,19 @@ function submitGit(): void {
 function onKey(e: KeyboardEvent): void {
   if (e.key === 'Escape') emit('close')
 }
+watch(() => props.open, (v) => {
+  if (v) window.addEventListener('keydown', onKey)
+  else window.removeEventListener('keydown', onKey)
+}, { immediate: true })
+onUnmounted(() => window.removeEventListener('keydown', onKey))
 </script>
 
 <template>
-  <div v-if="open" class="import-veil" data-test="import-dialog" @keydown="onKey">
+  <div v-if="open" class="import-veil" data-test="import-dialog">
     <div class="import-card" role="dialog" aria-modal="true" aria-label="Add Skill">
       <header class="import-head">
         <h3>添加 Skill</h3>
-        <button type="button" class="btn" data-test="close-import" @click="emit('close')">关闭</button>
+        <button type="button" class="icon-btn" data-test="close-import" aria-label="关闭" @click="emit('close')"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
       </header>
       <div class="import-tabs" role="tablist">
         <button type="button" role="tab" :aria-selected="mode === 'zip'" class="import-tab" :class="{ active: mode === 'zip' }" data-test="import-tab-zip" @click="mode = 'zip'">从 ZIP 导入</button>

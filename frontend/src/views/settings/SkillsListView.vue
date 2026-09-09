@@ -5,6 +5,7 @@ import { managementErrorMessage } from '@/api/errorCopy'
 import SkillsList from '@/components/skills/SkillsList.vue'
 import SkillImportDialog from '@/components/skills/SkillImportDialog.vue'
 import SkillImportReview from '@/components/skills/SkillImportReview.vue'
+import { formatBytes, skillSourceLabel } from '@/presentation/managementCopy'
 import { useSkillsStore } from '@/stores/skillsStore'
 
 const store = useSkillsStore()
@@ -13,12 +14,6 @@ const router = useRouter()
 const importOpen = ref(false)
 const reviewId = ref<string | null>(null)
 const busyId = ref<string | null>(null)
-
-function formatSize(bytes: number): string {
-  if (!bytes) return '0 B'
-  if (bytes < 1024) return `${bytes} B`
-  return `${(bytes / 1024).toFixed(1)} KB`
-}
 
 function shortIdentity(v: string): string {
   return v.length > 48 ? v.slice(0, 48) : v
@@ -130,7 +125,7 @@ function retry(): void {
         <li v-for="s in store.staged" :key="s.stagedImportId" :data-test="`staged-row-${s.stagedImportId}`">
           <div class="staged-main">
             <span class="staged-id">{{ shortIdentity(s.sourceIdentity) }}</span>
-            <span class="muted">{{ s.sourceKind }} · {{ s.fileCount }} 个文件 · {{ formatSize(s.totalBytes) }}</span>
+            <span class="muted">{{ skillSourceLabel(s.sourceKind) }} · {{ s.fileCount }} 个文件 · {{ formatBytes(s.totalBytes) }}</span>
           </div>
           <button type="button" class="btn" :data-test="`review-staged-${s.stagedImportId}`" @click="openReview(s.stagedImportId)">查看并安装</button>
         </li>

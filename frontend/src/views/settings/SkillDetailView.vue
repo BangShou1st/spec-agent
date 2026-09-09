@@ -2,7 +2,9 @@
 import { onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { managementErrorMessage } from '@/api/errorCopy'
+import BackLink from '@/components/BackLink.vue'
 import SkillResourceViewer from '@/components/skills/SkillResourceViewer.vue'
+import { formatBytes, formatDateTime, skillSourceLabel } from '@/presentation/managementCopy'
 import { useSkillsStore } from '@/stores/skillsStore'
 
 const props = defineProps<{ skillId: string }>()
@@ -19,10 +21,6 @@ function load(): void {
 
 onMounted(load)
 watch(() => props.skillId, load)
-
-function back(): void {
-  void router.push('/settings/skills')
-}
 
 function readResource(path: string): void {
   void store.readResource(props.skillId, path)
@@ -47,16 +45,11 @@ async function remove(): Promise<void> {
   if (ok) void router.push('/settings/skills')
 }
 
-function formatSize(bytes: number): string {
-  if (!bytes) return '0 B'
-  if (bytes < 1024) return `${bytes} B`
-  return `${(bytes / 1024).toFixed(1)} KB`
-}
 </script>
 
 <template>
   <section class="mgmt-page" data-test="skill-detail-page">
-    <button type="button" class="back-link" data-test="back-to-skills" @click="back">← Skills</button>
+    <BackLink to="/settings/skills" label="返回 Skills" test-id="back-to-skills" />
     <p v-if="store.detailLoading" class="muted" data-test="skill-detail-loading">加载中…</p>
     <p v-else-if="store.error && !store.detail" class="error-banner" data-test="skill-detail-error">
       <span>{{ managementErrorMessage(store.error.code, store.error.message) }}</span>
@@ -70,7 +63,7 @@ function formatSize(bytes: number): string {
       </header>
       <p class="muted" data-test="skill-detail-desc">{{ store.detail.description }}</p>
       <dl class="detail-meta">
-        <div><dt>来源</dt><dd data-test="skill-detail-source">{{ store.detail.sourceKind }}</dd></div>
+        <div><dt>来源</dt><dd data-test="skill-detail-source">{{ skillSourceLabel(store.detail.sourceKind) }}</dd></div>
         <div><dt>当前版本</dt><dd data-test="skill-detail-version">{{ store.detail.versionId ? store.detail.versionId.slice(0, 8) : '—' }}</dd></div>
       </dl>
       <details class="detail-tech">
@@ -87,7 +80,7 @@ function formatSize(bytes: number): string {
         <button v-if="!confirmingDelete" type="button" class="btn" data-test="skill-detail-delete" :disabled="busy || store.actionLoading" @click="confirmingDelete = true">删除</button>
         <span v-else class="delete-confirm">
           <span>删除该 Skill 及其全部版本？此操作不可撤销。</span>
-          <button type="button" class="btn btn-primary" data-test="skill-detail-delete-confirm" :disabled="busy || store.actionLoading" @click="remove">确认删除</button>
+          <button type="button" class="btn btn-danger" data-test="skill-detail-delete-confirm" :disabled="busy || store.actionLoading" @click="remove">确认删除</button>
           <button type="button" class="btn" data-test="skill-detail-delete-cancel" @click="confirmingDelete = false">取消</button>
         </span>
       </div>
@@ -98,7 +91,7 @@ function formatSize(bytes: number): string {
         <ul v-else class="res-list">
           <li v-for="r in store.resources" :key="r.path">
             <button type="button" class="res-btn" :data-test="`skill-resource-${r.path}`" @click="readResource(r.path)">
-              <span>{{ r.path }}</span><span class="muted">{{ r.kind }} · {{ formatSize(r.sizeBytes) }}</span>
+              <span>{{ r.path }}</span><span class="muted">{{ r.kind }} · {{ formatBytes(r.sizeBytes) }}</span>
             </button>
           </li>
         </ul>
@@ -110,7 +103,7 @@ function formatSize(bytes: number): string {
           <li v-for="(v, i) in store.versions" :key="v.id" :data-test="`skill-version-${v.versionNo}`">
             <span>版本 {{ v.versionNo }}</span>
             <span v-if="i === 0" class="ver-current">当前</span>
-            <span class="muted">{{ v.fileCount }} 个文件 · {{ formatSize(v.totalBytes) }}</span>
+            <span class="muted">{{ v.fileCount }} 个文件 · {{ formatBytes(v.totalBytes) }} · {{ formatDateTime(v.createdAt) }}</span>
           </li>
         </ul>
       </section>
@@ -120,8 +113,6 @@ function formatSize(bytes: number): string {
 
 <style scoped>
 .mgmt-page { width: 100%; max-width: 880px; margin: 0 auto; padding: 8px 0 48px; }
-.back-link { background: none; border: none; padding: 0; color: var(--color-accent); font-size: 14px; margin-bottom: 8px; }
-.back-link:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: 4px; }
 .detail-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .detail-head h2 { margin: 0; font-size: 24px; }
 .skills-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; white-space: nowrap; }

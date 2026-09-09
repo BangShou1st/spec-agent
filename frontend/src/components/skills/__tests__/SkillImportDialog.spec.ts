@@ -24,6 +24,13 @@ describe('SkillImportDialog', () => {
     expect(w.emitted('submit-git')).toEqual([[ 'https://example.com/skill.git', 'main' ]])
   })
 
+  it('closes on window Escape even when focus is outside', async () => {
+    const w = mount(SkillImportDialog, { props: { open: true, staging: false, error: null }, attachTo: document.body })
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    expect(w.emitted('close')).toHaveLength(1)
+    w.unmount()
+  })
+
   it('renders nothing when closed', () => {
     const w = mount(SkillImportDialog, { props: { open: false, staging: false, error: null } })
     expect(w.find('[data-test="import-dialog"]').exists()).toBe(false)

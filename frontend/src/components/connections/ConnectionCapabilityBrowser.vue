@@ -74,10 +74,11 @@ function toggleTool(name: string): void {
 
 <style scoped>
 .cap { margin-top: 18px; }
-.cap-tabs { display: inline-flex; gap: 4px; padding: 3px; background: var(--color-subdued); border-radius: 999px; margin-bottom: 12px; }
-.cap-tabs button { border: none; background: none; padding: 6px 14px; border-radius: 999px; color: var(--color-text-secondary); font-size: 13px; }
-.cap-tabs button.active { background: var(--color-surface); color: var(--color-text); font-weight: 700; box-shadow: var(--shadow-card); }
-.cap-tabs button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.cap-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--color-border); margin-bottom: 14px; }
+.cap-tabs button { border: none; background: none; padding: 8px 12px; margin-bottom: -1px; border-bottom: 2px solid transparent; color: var(--color-text-secondary); font-size: 14px; }
+.cap-tabs button:hover { color: var(--color-text); }
+.cap-tabs button.active { color: var(--color-text); font-weight: 700; border-bottom-color: var(--color-accent); }
+.cap-tabs button:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: 6px 6px 0 0; }
 .cap-list { list-style: none; margin: 0; padding: 0; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 12px; }
 .cap-list li + li { border-top: 1px solid var(--color-border); }
 .cap-row { width: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; background: none; border: none; padding: 10px 14px; cursor: pointer; text-align: left; }

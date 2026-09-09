@@ -18,7 +18,7 @@ import { RouterLink, RouterView } from 'vue-router'
 </template>
 
 <style scoped>
-.settings-shell { width: 100%; max-width: 960px; margin: 0 auto; padding: 32px 0 64px; }
+.settings-shell { width: 100%; max-width: 880px; margin: 0 auto; padding: 32px 0 64px; }
 .settings-shell__heading .eyebrow { margin: 0 0 6px; color: var(--color-text-muted); font-size: 12px; font-weight: 600; letter-spacing: 0.08em; }
 .settings-shell__heading h1 { margin: 0; font-size: 30px; line-height: 1.2; letter-spacing: -0.02em; }
 .settings-shell__nav { display: flex; gap: 4px; margin: 20px 0 24px; padding: 3px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 999px; width: fit-content; }

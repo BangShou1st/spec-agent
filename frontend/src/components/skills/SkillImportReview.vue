@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onUnmounted, watch } from 'vue'
 import { managementErrorMessage } from '@/api/errorCopy'
+import { formatBytes } from '@/presentation/managementCopy'
 import type { StagedImportDetail, StagedImportView } from '@/api/skillTypes'
 import type { SkillsStoreError } from '@/stores/skillsStore'
 
@@ -18,13 +19,6 @@ const emit = defineEmits<{
   (e: 'reject'): void
 }>()
 
-function formatSize(bytes: number): string {
-  if (!bytes) return '0 B'
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
-}
-
 const manifestPreview = computed(() => {
   const m = props.detail?.manifest ?? ''
   return m.length > 2000 ? m.slice(0, 2000) : m
@@ -35,21 +29,26 @@ const manifestClipped = computed(() => (props.detail?.manifest ?? '').length > 2
 function onKey(e: KeyboardEvent): void {
   if (e.key === 'Escape') emit('close')
 }
+watch(() => props.open, (v) => {
+  if (v) window.addEventListener('keydown', onKey)
+  else window.removeEventListener('keydown', onKey)
+}, { immediate: true })
+onUnmounted(() => window.removeEventListener('keydown', onKey))
 </script>
 
 <template>
-  <div v-if="open" class="review-veil" data-test="staged-review" @keydown="onKey">
+  <div v-if="open" class="review-veil" data-test="staged-review">
     <div class="review-card" role="dialog" aria-modal="true" aria-label="Review staged Skill">
       <header class="review-head">
         <h3>确认导入</h3>
-        <button type="button" class="btn" data-test="close-review" @click="emit('close')">关闭</button>
+        <button type="button" class="icon-btn" data-test="close-review" aria-label="关闭" @click="emit('close')"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
       </header>
       <p class="review-name" data-test="staged-name">{{ staged?.name ?? '未命名 Skill' }}</p>
       <p class="muted" data-test="staged-desc">{{ staged?.description }}</p>
       <dl class="review-meta" data-test="staged-meta">
         <div><dt>来源</dt><dd>{{ detail?.sourceKind }} · {{ detail?.sourceIdentity }}</dd></div>
         <div><dt>文件数</dt><dd>{{ staged?.fileCount ?? detail?.fileCount }}</dd></div>
-        <div><dt>大小</dt><dd>{{ formatSize(staged?.totalBytes ?? detail?.totalBytes ?? 0) }}</dd></div>
+        <div><dt>大小</dt><dd>{{ formatBytes(staged?.totalBytes ?? detail?.totalBytes ?? 0) }}</dd></div>
       </dl>
       <section class="review-manifest">
         <h4>SKILL.md</h4>

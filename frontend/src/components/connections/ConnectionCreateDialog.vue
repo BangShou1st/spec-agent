@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { onUnmounted, ref, watch } from 'vue'
 import { managementErrorMessage } from '@/api/errorCopy'
 import type { ConnectionsStoreError } from '@/stores/connectionsStore'
 
@@ -39,12 +39,17 @@ function submit(): void {
 function onKey(e: KeyboardEvent): void {
   if (e.key === 'Escape') emit('close')
 }
+watch(() => props.open, (v) => {
+  if (v) window.addEventListener('keydown', onKey)
+  else window.removeEventListener('keydown', onKey)
+}, { immediate: true })
+onUnmounted(() => window.removeEventListener('keydown', onKey))
 </script>
 
 <template>
-  <div v-if="open" class="dlg-veil" data-test="connection-create-dialog" @keydown="onKey">
+  <div v-if="open" class="dlg-veil" data-test="connection-create-dialog">
     <div class="dlg-card" role="dialog" aria-modal="true" aria-label="Create connection">
-      <header class="dlg-head"><h3>新建连接</h3><button type="button" class="btn" data-test="close-create" @click="emit('close')">关闭</button></header>
+      <header class="dlg-head"><h3>新建连接</h3><button type="button" class="icon-btn" data-test="close-create" aria-label="关闭" @click="emit('close')"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button></header>
       <p class="muted">Custom MCP 连接。凭证只保存一次，不会再次完整显示。</p>
       <label class="settings-field" for="conn-name"><span class="settings-field__label">名称</span>
         <input id="conn-name" v-model="name" class="settings-control" type="text" autocomplete="off" maxlength="128" placeholder="例如 Research Tools" data-test="conn-name" /></label>
