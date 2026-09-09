@@ -21,8 +21,11 @@ async function handleCreate(title: string): Promise<void> {
 </script>
 
 <template>
-  <div>
-    <h1>项目</h1>
+  <div class="projects-page">
+    <div class="projects-page__heading">
+      <h1>项目</h1>
+      <p>继续上次的工作，或创建新项目。只展示真实项目与真实时间。</p>
+    </div>
 
     <ApiErrorBanner
       v-if="projectStore.error"
@@ -33,18 +36,24 @@ async function handleCreate(title: string): Promise<void> {
       @retry="projectStore.loadProjects()"
     />
 
-    <ProjectCreateForm :creating="projectStore.creating" @create="handleCreate" />
+    <div class="projects-create">
+      <ProjectCreateForm :creating="projectStore.creating" @create="handleCreate" />
+    </div>
 
     <p v-if="projectStore.loading" class="muted">正在加载项目…</p>
 
     <div v-else-if="projectStore.projects.length === 0" class="empty-state">
-      还没有项目。先创建第一个项目。
+      <strong>还没有项目。</strong>
+      <span>先在上方创建第一个项目，创建后会出现在列表中。</span>
     </div>
 
-    <div v-else>
-      <div v-for="project in projectStore.projects" :key="project.id" class="project-row">
-        <RouterLink :to="`/projects/${project.id}`">{{ project.title }}</RouterLink>
-        <span class="meta-text">创建于 {{ project.createdAt }}</span>
+    <div v-else role="list" aria-label="项目列表">
+      <div v-for="project in projectStore.projects" :key="project.id" class="project-row" role="listitem">
+        <div class="project-row__main">
+          <RouterLink class="project-row__title" :to="`/projects/${project.id}`">{{ project.title }}</RouterLink>
+          <div class="project-row__meta meta-text">创建于 {{ project.createdAt }}</div>
+        </div>
+        <RouterLink class="project-row__open" :to="`/projects/${project.id}`" :aria-label="'打开项目 ' + project.title">打开</RouterLink>
       </div>
     </div>
   </div>

@@ -1793,3 +1793,143 @@ input:focus-visible,
 .btn-danger:hover:not(:disabled) {
   background: var(--color-danger-soft);
 }
+
+/* ==================================================
+   Product refinement foundation (Conversation Library + Whole-App freeze)
+   Calm slate system: precise, dense-but-readable, graph-first.
+   No identity change: same tokens, tighter discipline.
+   ================================================== */
+
+:root {
+  --type-app-name: 15px;
+  --type-page-title: 24px;
+  --type-page-desc: 13px;
+  --type-section: 14px;
+  --type-object: 14px;
+  --type-panel: 13px;
+  --type-body: 14px;
+  --type-secondary: 13px;
+  --type-label: 12px;
+  --type-meta: 12px;
+  --type-micro: 11px;
+  --control-h-sm: 30px;
+  --control-h: 34px;
+  --control-h-lg: 38px;
+  --motion-fast: 120ms;
+  --motion-medium: 200ms;
+  --z-header: 20;
+  --z-drawer: 60;
+  --z-menu: 70;
+  --z-toast: 80;
+}
+
+/* ---------- Typography discipline ---------- */
+h1 { font-size: var(--type-page-title); line-height: 1.25; letter-spacing: -0.015em; margin: 0 0 6px; font-weight: 650; }
+h2 { font-size: var(--type-section); line-height: 1.4; margin: 0 0 8px; font-weight: 650; }
+h3 { font-size: var(--type-panel); line-height: 1.45; margin: 0 0 6px; font-weight: 600; }
+.page__desc, .page-desc { font-size: var(--type-page-desc); color: var(--color-text-secondary); margin: 0 0 16px; max-width: 68ch; }
+.eyebrow { font-size: var(--type-label); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-text-muted); }
+
+/* ---------- App shell ---------- */
+.app-header { gap: 12px; min-height: 48px; }
+.app-header .app-name { font-size: var(--type-app-name); font-weight: 700; letter-spacing: 0.01em; }
+.app-header nav, .app-header .app-nav { display: flex; align-items: center; gap: 2px; }
+.app-header a { position: relative; padding: 6px 10px; border-radius: 8px; font-size: 13.5px; }
+.app-header a:hover { background: var(--color-surface-subtle); color: var(--color-text); }
+.app-header a.router-link-active { color: var(--color-text); font-weight: 600; background: var(--color-subdued); }
+.app-header a.router-link-active::after { content: ''; position: absolute; left: 10px; right: 10px; bottom: 3px; height: 2px; border-radius: 2px; background: var(--color-accent); }
+.app-header a:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+/* ---------- Buttons: primary / secondary / quiet / danger / icon ---------- */
+.btn { min-height: var(--control-h); font-size: 13.5px; font-weight: 550; border-radius: 8px; transition: background var(--motion-fast) ease, border-color var(--motion-fast) ease, color var(--motion-fast) ease; }
+.btn:focus-visible { outline: none; box-shadow: var(--focus-ring); border-color: var(--color-focus); }
+.btn-secondary { background: var(--color-surface); border-color: var(--color-border-strong); color: var(--color-text); }
+.btn-secondary:hover:not(:disabled) { background: var(--color-surface-subtle); }
+.btn-quiet { background: transparent; border-color: transparent; color: var(--color-text-secondary); }
+.btn-quiet:hover:not(:disabled) { background: var(--color-subdued); color: var(--color-text); }
+.btn-small { min-height: var(--control-h-sm); }
+.icon-btn { border-radius: 8px; transition: background var(--motion-fast) ease, color var(--motion-fast) ease; }
+.app-icon, .ga-icon { width: 16px; height: 16px; }
+
+/* ---------- Forms ---------- */
+input[type='text'], input[type='search'], input:not([type]), textarea, select {
+  min-height: var(--control-h);
+  border-radius: 8px;
+}
+input[type='text']:focus, input[type='search']:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--color-focus);
+  box-shadow: var(--focus-ring);
+}
+input:disabled, textarea:disabled, select:disabled { background: var(--color-surface-subtle); color: var(--color-text-muted); }
+input[aria-invalid='true'], textarea[aria-invalid='true'] { border-color: var(--color-danger); }
+.form-helper { font-size: var(--type-label); color: var(--color-text-muted); margin-top: 4px; }
+.form-error { font-size: var(--type-label); color: var(--color-danger); margin-top: 4px; }
+
+/* ---------- Project library ---------- */
+.projects-page { max-width: 880px; margin: 0 auto; padding: 28px 0 48px; }
+.projects-page__heading h1 { margin-bottom: 4px; }
+.projects-page__heading p { margin: 0 0 16px; font-size: var(--type-page-desc); color: var(--color-text-secondary); max-width: 62ch; }
+.projects-create { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 12px; padding: 12px; margin-bottom: 18px; }
+.projects-create__label { font-size: var(--type-label); font-weight: 600; color: var(--color-text-secondary); margin-bottom: 8px; display: block; }
+.project-row { border-radius: 12px; padding: 12px 14px; align-items: flex-start; transition: border-color var(--motion-fast) ease, background var(--motion-fast) ease; }
+.project-row:hover { border-color: var(--color-border-strong); background: var(--color-surface); }
+.project-row__main { min-width: 0; flex: 1; }
+.project-row__title { font-size: var(--type-object); font-weight: 620; }
+.project-row__meta { font-size: var(--type-meta); margin-top: 2px; }
+.project-row__open { flex: none; font-size: 13px; color: var(--color-text-secondary); }
+.project-row__open:hover { color: var(--color-accent-strong); }
+
+/* ---------- Settings system ---------- */
+.settings-shell { max-width: 920px; }
+.settings-section { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; }
+.settings-section h2 { font-size: var(--type-section); }
+.settings-section p.desc { font-size: var(--type-secondary); color: var(--color-text-secondary); margin: 0 0 12px; max-width: 68ch; }
+.status-dot { width: 8px; height: 8px; border-radius: 999px; display: inline-block; flex: none; }
+.status-dot--ok { background: var(--color-success); }
+.status-dot--warn { background: #c98a00; }
+.status-dot--bad { background: var(--color-danger); }
+.status-dot--idle { background: var(--color-border-strong); }
+
+/* ---------- Empty / error states (calm, no giant boxes) ---------- */
+.empty-state { padding: 18px 16px; font-size: var(--type-secondary); border-radius: 12px; }
+.empty-state strong { display: block; font-size: var(--type-body); margin-bottom: 2px; }
+.error-banner { border-radius: 10px; font-size: 13px; }
+.inline-error { font-size: var(--type-label); color: var(--color-danger); background: var(--color-danger-soft); border: 1px solid #ecc0bc; border-radius: 8px; padding: 6px 10px; }
+
+/* ---------- Motion ---------- */
+* { scroll-behavior: auto; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+/* ---------- Focus visibility ---------- */
+:focus-visible { outline: none; }
+button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, summary:focus-visible {
+  box-shadow: var(--focus-ring);
+  border-radius: 8px;
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 1280px) {
+  .page { max-width: 1080px; }
+}
+@media (max-width: 1024px) {
+  .page { padding: 12px; }
+  .projects-page { padding: 20px 0 32px; }
+  .app-header { gap: 8px; padding: 8px 12px; }
+  .ga-drawer { width: min(420px, 100vw); }
+}
+
+.projects-create__form { margin: 0; }
+ .projects-create__row { display: flex; gap: 8px; }
+ .projects-create__row input { flex: 1; }
+ @media (max-width: 640px) {
+   .projects-create__row { flex-direction: column; }
+}
+
+.graph-toolbar__btn--primary { display: inline-flex; align-items: center; gap: 6px; }
+ .graph-toolbar__icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; }
+ .ga-timeline { padding: 12px 14px; }
+ .ga-activity-group { background: var(--color-surface-subtle); border: 1px solid var(--color-border); border-radius: 10px; padding: 4px 10px; margin: 8px 0; }
+ .ga-activity-group:empty { display: none; }

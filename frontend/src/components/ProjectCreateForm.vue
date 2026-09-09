@@ -29,17 +29,24 @@ function submit(): void {
 </script>
 
 <template>
-  <form class="create-form" @submit.prevent="submit">
-    <input
-      v-model="title"
-      type="text"
-      maxlength="255"
-      placeholder="项目标题"
-      aria-label="Project title"
-    />
-    <button class="btn btn-primary" type="submit" :disabled="creating || blank()">
-      {{ creating ? '正在创建…' : '创建项目' }}
-    </button>
+  <form class="create-form projects-create__form" @submit.prevent="submit">
+    <label class="projects-create__label" for="project-create-input">新建项目</label>
+    <div class="projects-create__row">
+      <input
+        id="project-create-input"
+        v-model="title"
+        type="text"
+        maxlength="255"
+        placeholder="例如：AI 邮件助手"
+        aria-label="Project title"
+        :aria-invalid="touched && blank() ? 'true' : undefined"
+        :disabled="creating"
+      />
+      <button class="btn btn-primary" type="submit" :disabled="creating || blank()">
+        {{ creating ? '正在创建…' : '创建项目' }}
+      </button>
+    </div>
+    <p class="form-helper">输入标题后回车即可创建，创建后直接进入工作区。</p>
+    <p v-if="touched && blank()" class="form-error" role="alert">请输入项目标题以创建项目。</p>
   </form>
-  <p v-if="touched && blank()" class="muted">请输入项目标题以创建项目。</p>
 </template>

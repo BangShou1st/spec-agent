@@ -10,9 +10,11 @@ const isWorkspaceRoute = computed(() => route.name === 'workspace')
 
 <template>
   <header class="app-header" :class="{ 'app-header--workspace': isWorkspaceRoute }">
-    <span class="app-name">Spec Agent</span>
-    <RouterLink to="/projects">项目</RouterLink>
-    <RouterLink to="/settings">设置</RouterLink>
+    <span class="app-name" aria-label="Spec Agent">Spec Agent</span>
+    <nav class="app-nav" aria-label="全局导航">
+      <RouterLink to="/projects">项目</RouterLink>
+      <RouterLink to="/settings">设置</RouterLink>
+    </nav>
     <span class="app-header__spacer" />
     <GlobalAssistantShell />
   </header>
@@ -23,4 +25,5 @@ const isWorkspaceRoute = computed(() => route.name === 'workspace')
 
 <style scoped>
 .app-header__spacer { flex: 1; }
+.app-nav { display: flex; align-items: center; gap: 2px; }
 </style>
