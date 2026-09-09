@@ -42,7 +42,7 @@ class HttpOpenCodeZenTransportUserAgentTest {
 
         transport.listModels(null);
         transport.validateCredential("probe-key", "alpha-free");
-        transport.complete("completion-key", new OpenCodeChatCompletionRequest(
+        transport.complete("completion-key", "ses_useragentprobe01", new OpenCodeChatCompletionRequest(
                 "alpha-free",
                 List.of(new OpenCodeChatMessage("user", "hello"))));
 

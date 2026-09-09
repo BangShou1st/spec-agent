@@ -11,7 +11,8 @@ class OpenCodeModelCatalogTest {
     private static OpenCodeModelCatalog catalogWith(OpenCodeModel... models) {
         OpenCodeZenTransport transport = new OpenCodeZenTransport() {
             @Override
-            public OpenCodeCompletionResponse complete(String apiKey, OpenCodeChatCompletionRequest request) {
+            public OpenCodeCompletionResponse complete(String apiKey, String sessionId,
+                                                       OpenCodeChatCompletionRequest request) {
                 throw new UnsupportedOperationException("catalog test does not complete");
             }
 

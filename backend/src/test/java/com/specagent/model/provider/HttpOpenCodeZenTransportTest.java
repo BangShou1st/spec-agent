@@ -31,6 +31,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class HttpOpenCodeZenTransportTest {
 
     private static final String TEST_KEY = "sk-test-only-key";
+    private static final String TEST_SESSION = "ses_testsession01";
 
     private final ObjectMapper mapper = new ObjectMapper();
     private HttpServer server;
@@ -99,7 +100,7 @@ class HttpOpenCodeZenTransportTest {
     @Test
     void completionRequestSendsOpenCodeUserAgentAndHeaders() throws IOException {
         stubBody = streamingJson("{\"action\":\"finish\"}");
-        OpenCodeCompletionResponse result = transport().complete(TEST_KEY, completionRequest());
+        OpenCodeCompletionResponse result = transport().complete(TEST_KEY, TEST_SESSION, completionRequest());
 
         assertThat(result.content()).isEqualTo("{\"action\":\"finish\"}");
         assertThat(captured).hasSize(1);
@@ -109,6 +110,7 @@ class HttpOpenCodeZenTransportTest {
         assertThat(request.headers().getFirst("User-Agent")).isEqualTo("opencode/1.18.21");
         assertThat(request.headers().getFirst("Authorization")).isEqualTo("Bearer " + TEST_KEY);
         assertThat(request.headers().getFirst("Content-Type")).isEqualTo("application/json");
+        assertThat(request.headers().getFirst("x-opencode-session")).isEqualTo(TEST_SESSION);
 
         JsonNode payload = mapper.readTree(request.body());
         assertThat(payload.get("model").asText()).isEqualTo("mimo-v2.5-free");
@@ -150,6 +152,17 @@ class HttpOpenCodeZenTransportTest {
     }
 
     @Test
+    void blankSessionIdFailsClosedBeforeHttpSend() {
+        assertThatThrownBy(() -> transport().complete(TEST_KEY, null, completionRequest()))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> transport().complete(TEST_KEY, "   ", completionRequest()))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> transport().complete(TEST_KEY, "ses_bad\nvalue", completionRequest()))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(captured).isEmpty();
+    }
+
+    @Test
     void productionCompletionHasNoRequestOrConnectDeadline() {
         HttpOpenCodeZenTransport transport = (HttpOpenCodeZenTransport) transport();
 
@@ -188,7 +201,7 @@ class HttpOpenCodeZenTransportTest {
     void streamingChunksAreAggregatedUntilDone() {
         stubBody = streamingJson("foo", "bar");
 
-        OpenCodeCompletionResponse result = transport().complete(TEST_KEY, completionRequest());
+        OpenCodeCompletionResponse result = transport().complete(TEST_KEY, TEST_SESSION, completionRequest());
 
         assertThat(result.content()).isEqualTo("foobar");
     }
@@ -202,7 +215,7 @@ class HttpOpenCodeZenTransportTest {
                 + streamDelta(Map.of("content", "{\"action\":\"finish\",\"output\":{}}"), "stop")
                 + "data: [DONE]\n\n";
 
-        OpenCodeCompletionResponse result = transport().complete(TEST_KEY, completionRequest());
+        OpenCodeCompletionResponse result = transport().complete(TEST_KEY, TEST_SESSION, completionRequest());
 
         assertThat(result.content()).isEqualTo("{\"action\":\"finish\",\"output\":{}}");
         assertThat(result.reasoningEventCount()).isEqualTo(2);
@@ -227,6 +240,7 @@ class HttpOpenCodeZenTransportTest {
         assertThat(request.headers().getFirst("User-Agent")).isEqualTo(OpenCodeZenTransport.USER_AGENT);
         assertThat(request.headers().getFirst("Authorization")).isEqualTo("Bearer " + TEST_KEY);
         assertThat(request.headers().getFirst("Content-Type")).isNull();
+        assertThat(request.headers().getFirst("x-opencode-session")).isNotBlank().startsWith("ses_");
     }
 
     @Test
@@ -240,6 +254,7 @@ class HttpOpenCodeZenTransportTest {
         assertThat(captured.get(0).headers().getFirst("Authorization")).isNull();
         assertThat(captured.get(0).headers().getFirst("User-Agent"))
                 .isEqualTo(OpenCodeZenTransport.USER_AGENT);
+        assertThat(captured.get(0).headers().getFirst("x-opencode-session")).isNotBlank().startsWith("ses_");
     }
 
     @Test
@@ -255,7 +270,9 @@ class HttpOpenCodeZenTransportTest {
         assertThat(request.headers().getFirst("Content-Type")).isEqualTo("application/json");
 
         // The probe model comes from the caller (currently discovered free
-        // model); the transport never hardcodes one.
+        // model); the transport never hardcodes one. Probes carry an ephemeral
+        // session from the same centralized wire policy.
+        assertThat(request.headers().getFirst("x-opencode-session")).isNotBlank().startsWith("ses_");
         JsonNode payload = mapper.readTree(request.body());
         assertThat(payload.get("model").asText()).isEqualTo("current-free");
         assertThat(payload.get("messages").get(0).get("role").asText()).isEqualTo("user");
@@ -267,7 +284,7 @@ class HttpOpenCodeZenTransportTest {
     @Test
     void authenticationFailureIsMapped() {
         stubStatus = 401;
-        assertThatThrownBy(() -> transport().complete(TEST_KEY, completionRequest()))
+        assertThatThrownBy(() -> transport().complete(TEST_KEY, TEST_SESSION, completionRequest()))
                 .isInstanceOf(OpenCodeModelException.class)
                 .satisfies(ex -> {
                     OpenCodeModelException modelException = (OpenCodeModelException) ex;
@@ -277,7 +294,7 @@ class HttpOpenCodeZenTransportTest {
                 });
 
         stubStatus = 403;
-        assertThatThrownBy(() -> transport().complete(TEST_KEY, completionRequest()))
+        assertThatThrownBy(() -> transport().complete(TEST_KEY, TEST_SESSION, completionRequest()))
                 .isInstanceOf(OpenCodeModelException.class)
                 .satisfies(ex -> assertThat(((OpenCodeModelException) ex).category())
                         .isEqualTo(OpenCodeModelErrorCategory.AUTHENTICATION));
@@ -286,7 +303,7 @@ class HttpOpenCodeZenTransportTest {
     @Test
     void rateLimitIsMapped() {
         stubStatus = 429;
-        assertThatThrownBy(() -> transport().complete(TEST_KEY, completionRequest()))
+        assertThatThrownBy(() -> transport().complete(TEST_KEY, TEST_SESSION, completionRequest()))
                 .isInstanceOf(OpenCodeModelException.class)
                 .satisfies(ex -> {
                     OpenCodeModelException modelException = (OpenCodeModelException) ex;
@@ -300,7 +317,7 @@ class HttpOpenCodeZenTransportTest {
     @Test
     void serverErrorIsMapped() {
         stubStatus = 504;
-        assertThatThrownBy(() -> transport().complete(TEST_KEY, completionRequest()))
+        assertThatThrownBy(() -> transport().complete(TEST_KEY, TEST_SESSION, completionRequest()))
                 .isInstanceOf(OpenCodeModelException.class)
                 .satisfies(ex -> {
                     OpenCodeModelException modelException = (OpenCodeModelException) ex;
@@ -312,7 +329,7 @@ class HttpOpenCodeZenTransportTest {
     @Test
     void otherClientErrorIsMapped() {
         stubStatus = 400;
-        assertThatThrownBy(() -> transport().complete(TEST_KEY, completionRequest()))
+        assertThatThrownBy(() -> transport().complete(TEST_KEY, TEST_SESSION, completionRequest()))
                 .isInstanceOf(OpenCodeModelException.class)
                 .satisfies(ex -> {
                     OpenCodeModelException modelException = (OpenCodeModelException) ex;
@@ -324,7 +341,7 @@ class HttpOpenCodeZenTransportTest {
     @Test
     void malformedJsonIsMappedToInvalidResponse() {
         stubBody = "data: not-json-at-all\n\n";
-        assertThatThrownBy(() -> transport().complete(TEST_KEY, completionRequest()))
+        assertThatThrownBy(() -> transport().complete(TEST_KEY, TEST_SESSION, completionRequest()))
                 .isInstanceOf(OpenCodeModelException.class)
                 .satisfies(ex -> {
                     OpenCodeModelException modelException = (OpenCodeModelException) ex;
@@ -339,7 +356,7 @@ class HttpOpenCodeZenTransportTest {
     @Test
     void unexpectedCompletionPayloadIsMappedToInvalidResponse() throws IOException {
         stubBody = "data: " + mapper.writeValueAsString(Map.of("object", "list", "data", List.of())) + "\n\n";
-        assertThatThrownBy(() -> transport().complete(TEST_KEY, completionRequest()))
+        assertThatThrownBy(() -> transport().complete(TEST_KEY, TEST_SESSION, completionRequest()))
                 .isInstanceOf(OpenCodeModelException.class)
                 .satisfies(ex -> {
                     OpenCodeModelException modelException = (OpenCodeModelException) ex;
@@ -355,7 +372,7 @@ class HttpOpenCodeZenTransportTest {
     void providerErrorEventAtHttp200IsMappedWithoutGenericMalformedChunk() throws IOException {
         stubBody = streamingError("provider_error", "upstream_failure", "provider is temporarily busy");
 
-        assertThatThrownBy(() -> transport().complete(TEST_KEY, completionRequest()))
+        assertThatThrownBy(() -> transport().complete(TEST_KEY, TEST_SESSION, completionRequest()))
                 .isInstanceOf(OpenCodeModelException.class)
                 .satisfies(ex -> {
                     OpenCodeModelException modelException = (OpenCodeModelException) ex;
@@ -375,7 +392,7 @@ class HttpOpenCodeZenTransportTest {
     void knownRateLimitProviderErrorEventAtHttp200MapsToRateLimited() throws IOException {
         stubBody = streamingError("rate_limit", "too_many_requests", "slow down");
 
-        assertThatThrownBy(() -> transport().complete(TEST_KEY, completionRequest()))
+        assertThatThrownBy(() -> transport().complete(TEST_KEY, TEST_SESSION, completionRequest()))
                 .isInstanceOf(OpenCodeModelException.class)
                 .satisfies(ex -> {
                     OpenCodeModelException modelException = (OpenCodeModelException) ex;
@@ -393,7 +410,7 @@ class HttpOpenCodeZenTransportTest {
                 + "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\n"
                 + "data: [DONE]\n\n";
 
-        OpenCodeCompletionResponse result = transport().complete(TEST_KEY, completionRequest());
+        OpenCodeCompletionResponse result = transport().complete(TEST_KEY, TEST_SESSION, completionRequest());
 
         assertThat(result.content()).isEqualTo("ok");
         assertThat(result.finishReason()).isEqualTo("stop");
@@ -410,7 +427,7 @@ class HttpOpenCodeZenTransportTest {
         choice.put("finish_reason", null);
         stubBody = streamEvent(mapper.writeValueAsString(Map.of("choices", List.of(choice))));
 
-        assertThatThrownBy(() -> transport().complete(TEST_KEY, completionRequest()))
+        assertThatThrownBy(() -> transport().complete(TEST_KEY, TEST_SESSION, completionRequest()))
                 .isInstanceOf(OpenCodeModelException.class)
                 .satisfies(ex -> assertThat(((OpenCodeModelException) ex).diagnostics().diagnosticReason())
                         .isEqualTo(OpenCodeDiagnosticReason.STREAM_MISSING_DELTA));
@@ -424,7 +441,7 @@ class HttpOpenCodeZenTransportTest {
         choice.put("finish_reason", null);
         stubBody = streamEvent(mapper.writeValueAsString(Map.of("choices", List.of(choice))));
 
-        assertThatThrownBy(() -> transport().complete(TEST_KEY, completionRequest()))
+        assertThatThrownBy(() -> transport().complete(TEST_KEY, TEST_SESSION, completionRequest()))
                 .isInstanceOf(OpenCodeModelException.class)
                 .satisfies(ex -> assertThat(((OpenCodeModelException) ex).diagnostics().diagnosticReason())
                         .isEqualTo(OpenCodeDiagnosticReason.STREAM_NON_TEXT_CONTENT));
@@ -435,7 +452,7 @@ class HttpOpenCodeZenTransportTest {
         stubStatus = 302;
         stubBody = streamingJson("would-not-be-parsed");
 
-        assertThatThrownBy(() -> transport().complete(TEST_KEY, completionRequest()))
+        assertThatThrownBy(() -> transport().complete(TEST_KEY, TEST_SESSION, completionRequest()))
                 .isInstanceOf(OpenCodeModelException.class)
                 .satisfies(ex -> {
                     OpenCodeModelException modelException = (OpenCodeModelException) ex;
@@ -459,7 +476,7 @@ class HttpOpenCodeZenTransportTest {
                                 + " " + answerMarker + " " + reasoningMarker),
                 "raw_body", rawBodyMarker)) + "\n\n";
 
-        assertThatThrownBy(() -> transport().complete("sk-test-credential", completionRequest()))
+        assertThatThrownBy(() -> transport().complete("sk-test-credential", TEST_SESSION, completionRequest()))
                 .isInstanceOf(OpenCodeModelException.class)
                 .satisfies(ex -> {
                     OpenCodeModelException modelException = (OpenCodeModelException) ex;
@@ -479,7 +496,7 @@ class HttpOpenCodeZenTransportTest {
         stubBody = streamDelta(Map.of("reasoning_content", reasoningText), null)
                 + "data: malformed-json\n\n";
 
-        assertThatThrownBy(() -> transport().complete(TEST_KEY, completionRequest()))
+        assertThatThrownBy(() -> transport().complete(TEST_KEY, TEST_SESSION, completionRequest()))
                 .isInstanceOf(OpenCodeModelException.class)
                 .satisfies(ex -> {
                     OpenCodeModelException modelException = (OpenCodeModelException) ex;
@@ -496,7 +513,7 @@ class HttpOpenCodeZenTransportTest {
     @Test
     void emptyModelContentIsMappedToEmptyContent() {
         stubBody = streamingJson("   ");
-        assertThatThrownBy(() -> transport().complete(TEST_KEY, completionRequest()))
+        assertThatThrownBy(() -> transport().complete(TEST_KEY, TEST_SESSION, completionRequest()))
                 .isInstanceOf(OpenCodeModelException.class)
                 .satisfies(ex -> assertThat(((OpenCodeModelException) ex).category())
                         .isEqualTo(OpenCodeModelErrorCategory.EMPTY_CONTENT));
@@ -506,7 +523,7 @@ class HttpOpenCodeZenTransportTest {
     void lengthFinishReasonWithEmptyContentIsMappedToTruncation() {
         stubBody = streamDelta(Map.of("content", ""), "length") + "data: [DONE]\n\n";
 
-        assertThatThrownBy(() -> transport().complete(TEST_KEY, completionRequest()))
+        assertThatThrownBy(() -> transport().complete(TEST_KEY, TEST_SESSION, completionRequest()))
                 .isInstanceOf(OpenCodeModelException.class)
                 .satisfies(ex -> {
                     OpenCodeModelException modelException = (OpenCodeModelException) ex;
@@ -536,7 +553,7 @@ class HttpOpenCodeZenTransportTest {
         OpenCodeZenTransport transport = new HttpOpenCodeZenTransport(mapper,
                 "http://127.0.0.1:" + freePort, 5);
 
-        assertThatThrownBy(() -> transport.complete(TEST_KEY, completionRequest()))
+        assertThatThrownBy(() -> transport.complete(TEST_KEY, TEST_SESSION, completionRequest()))
                 .isInstanceOf(OpenCodeModelException.class)
                 .satisfies(ex -> assertThat(((OpenCodeModelException) ex).category())
                         .isEqualTo(OpenCodeModelErrorCategory.CONNECTION));
@@ -545,7 +562,7 @@ class HttpOpenCodeZenTransportTest {
     @Test
     void errorsNeverContainApiKey() {
         stubStatus = 401;
-        assertThatThrownBy(() -> transport().complete("sk-super-secret-value", completionRequest()))
+        assertThatThrownBy(() -> transport().complete("sk-super-secret-value", TEST_SESSION, completionRequest()))
                 .isInstanceOf(OpenCodeModelException.class)
                 .satisfies(ex -> assertThat(ex.getMessage()).doesNotContain("sk-super-secret-value"));
     }

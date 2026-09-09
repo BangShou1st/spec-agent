@@ -29,14 +29,62 @@ class OpenCodeModelInferenceGatewayTest {
         OpenCodeSettingsService settings = mock(OpenCodeSettingsService.class);
         when(settings.requireRuntimeSettings()).thenReturn(new RuntimeOpenCodeSettings(
                 "test-key", "gpt-5.6-terra", EXTERNAL_SOURCE));
-        when(transport.complete(eq("test-key"), any(OpenCodeChatCompletionRequest.class)))
+        when(transport.complete(eq("test-key"), any(String.class), any(OpenCodeChatCompletionRequest.class)))
                 .thenReturn(new OpenCodeCompletionResponse("{}", "stop", 1, 1, 2));
 
         ModelInferenceResponse response = new OpenCodeModelInferenceGateway(
                 transport, settings).complete(request());
 
         assertThat(response.content()).isEqualTo("{}");
-        verify(transport).complete(eq("test-key"), any(OpenCodeChatCompletionRequest.class));
+        verify(transport).complete(eq("test-key"), any(String.class), any(OpenCodeChatCompletionRequest.class));
+    }
+
+    @Test
+    void gatewayDerivesStableSessionFromRunId() {
+        UUID runId = UUID.fromString("12345678-1234-1234-1234-123456789abc");
+        OpenCodeZenTransport transport = mock(OpenCodeZenTransport.class);
+        OpenCodeSettingsService settings = mock(OpenCodeSettingsService.class);
+        when(settings.requireRuntimeSettings()).thenReturn(new RuntimeOpenCodeSettings(
+                "test-key", "some-free", EXTERNAL_SOURCE));
+        when(transport.complete(eq("test-key"), eq("ses_12345678123412341234123456789abc"),
+                any(OpenCodeChatCompletionRequest.class)))
+                .thenReturn(new OpenCodeCompletionResponse("{}", "stop", 1, 1, 2));
+
+        ModelInferenceRequest first = new ModelInferenceRequest(runId, "DECISION",
+                List.of(new ModelInferenceMessage("user", "{}")), null);
+        ModelInferenceRequest second = new ModelInferenceRequest(runId, "DECISION",
+                List.of(new ModelInferenceMessage("user", "{}")), null);
+
+        assertThat(new OpenCodeModelInferenceGateway(transport, settings).complete(first).content())
+                .isEqualTo("{}");
+        assertThat(new OpenCodeModelInferenceGateway(transport, settings).complete(second).content())
+                .isEqualTo("{}");
+        verify(transport, org.mockito.Mockito.times(2)).complete(eq("test-key"),
+                eq("ses_12345678123412341234123456789abc"),
+                any(OpenCodeChatCompletionRequest.class));
+    }
+
+    @Test
+    void differentRunsGetDifferentSessions() {
+        OpenCodeZenTransport transport = mock(OpenCodeZenTransport.class);
+        OpenCodeSettingsService settings = mock(OpenCodeSettingsService.class);
+        when(settings.requireRuntimeSettings()).thenReturn(new RuntimeOpenCodeSettings(
+                "test-key", "some-free", EXTERNAL_SOURCE));
+        when(transport.complete(eq("test-key"), any(String.class),
+                any(OpenCodeChatCompletionRequest.class)))
+                .thenReturn(new OpenCodeCompletionResponse("{}", "stop", 1, 1, 2));
+
+        var captor = org.mockito.ArgumentCaptor.forClass(String.class);
+        var gateway = new OpenCodeModelInferenceGateway(transport, settings);
+        gateway.complete(request());
+        gateway.complete(request());
+
+        verify(transport, org.mockito.Mockito.times(2)).complete(eq("test-key"), captor.capture(),
+                any(OpenCodeChatCompletionRequest.class));
+        assertThat(captor.getAllValues()).hasSize(2);
+        assertThat(captor.getAllValues().get(0)).isNotBlank().startsWith("ses_");
+        assertThat(captor.getAllValues().get(1)).isNotBlank().startsWith("ses_");
+        assertThat(captor.getAllValues().get(0)).isNotEqualTo(captor.getAllValues().get(1));
     }
 
     @Test

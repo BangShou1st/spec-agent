@@ -5,6 +5,7 @@ import com.specagent.model.provider.OpenCodeChatMessage;
 import com.specagent.model.provider.OpenCodeCompletionResponse;
 import com.specagent.model.provider.OpenCodeModelErrorCategory;
 import com.specagent.model.provider.OpenCodeModelException;
+import com.specagent.model.provider.OpenCodeZenSessionIds;
 import com.specagent.model.provider.OpenCodeZenTransport;
 import com.specagent.settings.opencode.OpenCodeSettingsService;
 import com.specagent.settings.opencode.RuntimeOpenCodeSettings;
@@ -57,8 +58,9 @@ public class OpenCodeModelInferenceGateway implements ModelInferenceGateway {
                 .map(message -> new OpenCodeChatMessage(message.role(), message.content()))
                 .toList();
         OpenCodeCompletionResponse completion =
-                transport.complete(settings.apiKey(), new OpenCodeChatCompletionRequest(
-                        selectedModel, messages));
+                transport.complete(settings.apiKey(),
+                        OpenCodeZenSessionIds.forRun(request.runId()),
+                        new OpenCodeChatCompletionRequest(selectedModel, messages));
         return new ModelInferenceResponse(
                 completion.content(),
                 completion.finishReason(),

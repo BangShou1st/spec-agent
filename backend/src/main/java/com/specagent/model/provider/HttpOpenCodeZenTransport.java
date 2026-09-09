@@ -42,8 +42,9 @@ import java.util.Map;
  * runtime and structured-output validation remain provider-agnostic.</p>
  *
  * <p>Every request carries the transport-owned identity policy: User-Agent
- * {@code opencode/1.18.21}, bearer authorization when a key is available and
- * JSON content type for payload-bearing requests. Production completions use
+ * {@code opencode/1.18.21}, bearer authorization when a key is available,
+ * the non-empty {@code x-opencode-session} correlation header and JSON
+ * content type for payload-bearing requests. Production completions use
  * an unbounded JDK request/client policy; model discovery and credential probes
  * use a separate bounded settings policy.</p>
  */
@@ -79,10 +80,27 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
     }
 
     @Override
-    public OpenCodeCompletionResponse complete(String apiKey, OpenCodeChatCompletionRequest request) {
-        PreparedRequest prepared = prepareCompletionRequest(apiKey, request);
+    public OpenCodeCompletionResponse complete(String apiKey, String sessionId,
+                                                OpenCodeChatCompletionRequest request) {
+        PreparedRequest prepared = prepareCompletionRequest(apiKey, requireSessionId(sessionId), request);
         HttpResponse<InputStream> response = sendStreaming(prepared, request.model());
         return parseStreaming(response, request.model(), prepared.execution());
+    }
+
+    /**
+     * Fail-closed session gate for production completions: a missing,
+     * blank or CR/LF-containing value never reaches the wire and is never
+     * silently replaced, because the stable run affinity is a gateway
+     * contract that callers must honor explicitly.
+     */
+    private static String requireSessionId(String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) {
+            throw new IllegalArgumentException("OpenCode session id must be non-blank");
+        }
+        if (sessionId.indexOf('\n') >= 0 || sessionId.indexOf('\r') >= 0) {
+            throw new IllegalArgumentException("OpenCode session id must be single-line");
+        }
+        return sessionId;
     }
 
     @Override
@@ -127,9 +145,10 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
     }
 
     private PreparedRequest prepareCompletionRequest(String apiKey,
+                                                      String sessionId,
                                                       OpenCodeChatCompletionRequest request) {
         byte[] body = completionPayload(request);
-        return prepareRequest("POST", "/chat/completions", apiKey, body, request.model(),
+        return prepareRequest("POST", "/chat/completions", apiKey, sessionId, body, request.model(),
                 RequestType.PRODUCTION_COMPLETION, request.messages().stream()
                         .map(OpenCodeChatMessage::content).toList(), true);
     }
@@ -140,13 +159,14 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
                                                    byte[] body,
                                                    List<String> messageContents,
                                                    boolean stream) {
-        return prepareRequest(method, path, apiKey, body, null, RequestType.SETTINGS,
-                messageContents, stream);
+        return prepareRequest(method, path, apiKey, OpenCodeZenSessionIds.newEphemeral(), body, null,
+                RequestType.SETTINGS, messageContents, stream);
     }
 
     private PreparedRequest prepareRequest(String method,
                                            String path,
                                            String apiKey,
+                                           String sessionId,
                                            byte[] body,
                                            String selectedModel,
                                            RequestType requestType,
@@ -156,7 +176,8 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
                 ? productionHttpClient : settingsHttpClient;
         HttpRequest.Builder builder = HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl + path))
-                .header("User-Agent", USER_AGENT);
+                .header("User-Agent", USER_AGENT)
+                .header(SESSION_HEADER, sessionId);
         if (requestType == RequestType.SETTINGS) {
             builder.timeout(settingsTimeout);
         }
@@ -699,7 +720,7 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
 
     /** Package-private contract hooks used only by deterministic transport tests. */
     HttpRequest completionRequestForTest(OpenCodeChatCompletionRequest request) {
-        return prepareCompletionRequest(null, request).request();
+        return prepareCompletionRequest(null, OpenCodeZenSessionIds.newEphemeral(), request).request();
     }
 
     /** Package-private contract hook used only by deterministic transport tests. */

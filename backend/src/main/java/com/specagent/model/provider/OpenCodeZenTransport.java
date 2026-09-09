@@ -28,6 +28,12 @@ public interface OpenCodeZenTransport {
      */
     String USER_AGENT = "opencode/1.18.21";
 
+    /**
+     * Provider session correlation header, sent on every Zen HTTP request
+     * from the single transport-owned wire policy below.
+     */
+    String SESSION_HEADER = "x-opencode-session";
+
     /** Safe endpoint provenance; never contains an authorization value. */
     default String endpoint() {
         return BASE_URL;
@@ -36,11 +42,14 @@ public interface OpenCodeZenTransport {
     /**
      * Issues one chat completion against {@code POST /chat/completions}.
      *
-     * @param apiKey  the OpenCode bearer credential; must not be blank
-     * @param request the minimal chat completion payload
+     * @param apiKey    the OpenCode bearer credential; must not be blank
+     * @param sessionId the provider session, e.g. the gateway-mapped stable
+     *                  run session; must be non-blank and single-line
+     * @param request   the minimal chat completion payload
      * @return the parsed completion content plus optional usage fields
      */
-    OpenCodeCompletionResponse complete(String apiKey, OpenCodeChatCompletionRequest request);
+    OpenCodeCompletionResponse complete(String apiKey, String sessionId,
+                                         OpenCodeChatCompletionRequest request);
 
     /**
      * Fetches the current model list against {@code GET /models}.
