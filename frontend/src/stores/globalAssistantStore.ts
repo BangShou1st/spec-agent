@@ -8,10 +8,12 @@ import {
   getGaThread,
   listGaEvents,
   listGaMessages,
+  listGaThreads,
   gaUiActionToRoute,
   type GaEventEnvelope,
   type GaMessage,
   type GaRun,
+  type GaThreadListItem,
   type GaUiContext,
 } from '@/api/globalAssistant'
 import { openGaEventStream } from '@/api/globalAssistantEvents'
@@ -241,6 +243,11 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
     initialized: false,
     panelOpen: false,
     reconnectAttempts: 0,
+    threads: [] as GaThreadListItem[],
+    threadsLoading: false,
+    threadsError: null as string | null,
+    historyOpen: false,
+    switchingThread: false,
   }),
   getters: {
     isRunning(state): boolean {
@@ -248,6 +255,9 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
     },
     hasMessages(state): boolean {
       return state.messages.length > 0 || state.streamingText.length > 0 || state.activities.length > 0
+    },
+    canSwitchThread(state): boolean {
+      return state.activeRunId === null || !((state.activeStatus === 'CREATED' || state.activeStatus === 'RUNNING'))
     },
   },
   actions: {
@@ -273,7 +283,10 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
       this.initPanel()
       const storedThread = readStored(GA_THREAD_KEY)
       const storedRun = readStored(GA_RUN_KEY)
-      if (!storedThread) return
+      if (!storedThread) {
+        void this.loadThreads()
+        return
+      }
       this.loadingThread = true
       try {
         await getGaThread(storedThread)
@@ -295,6 +308,7 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
       } finally {
         this.loadingThread = false
       }
+      void this.loadThreads()
     },
     async ensureThread(): Promise<string> {
       if (this.threadId) return this.threadId
@@ -302,6 +316,85 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
       this.threadId = created.threadId
       writeStored(GA_THREAD_KEY, created.threadId)
       return created.threadId
+    },
+    async loadThreads(): Promise<void> {
+      if (this.threadsLoading) return
+      this.threadsLoading = true
+      this.threadsError = null
+      try {
+        const items = await listGaThreads()
+        const seen = new Set<string>()
+        const deduped: GaThreadListItem[] = []
+        for (const item of items ?? []) {
+          if (!item || !item.threadId || seen.has(item.threadId)) continue
+          seen.add(item.threadId)
+          deduped.push(item)
+        }
+        this.threads = deduped
+      } catch (err) {
+        this.threadsError = err instanceof ApiError ? gaErrorMessage(err.code, err.message) : gaErrorMessage('UNKNOWN_ERROR')
+      } finally {
+        this.threadsLoading = false
+      }
+    },
+    setHistoryOpen(open: boolean): void {
+      if (open && this.isRunning) return
+      this.historyOpen = open
+      if (open) void this.loadThreads()
+    },
+    toggleHistory(): void {
+      this.setHistoryOpen(!this.historyOpen)
+    },
+    async switchThread(threadId: string): Promise<void> {
+      if (!threadId || this.switchingThread || this.isRunning || this.sending) return
+      if (threadId === this.threadId) {
+        this.historyOpen = false
+        return
+      }
+      this.switchingThread = true
+      this.error = null
+      try {
+        const messages = await listGaMessages(threadId)
+        try {
+          await getGaThread(threadId)
+        } catch (err) {
+          if (err instanceof ApiError && err.code === 'THREAD_NOT_FOUND') {
+            writeStored(GA_THREAD_KEY, null)
+            this.threadId = null
+            this.messages = []
+            await this.loadThreads()
+            return
+          }
+          throw err
+        }
+        this.closeStream()
+        this.threadId = threadId
+        writeStored(GA_THREAD_KEY, threadId)
+        writeStored(GA_RUN_KEY, null)
+        this.messages = messages
+        this.streamingText = ''
+        this.activities = []
+        this.currentStatus = null
+        this.waitingQuestion = null
+        this.approvalRequired = false
+        this.lastUiAction = null
+        this.pendingNavigation = null
+        this.activeRunId = null
+        this.activeStatus = null
+        this.lastSequence = 0
+        this.cancelRequested = false
+        this.connection = 'idle'
+        this.historyOpen = false
+        void this.loadThreads()
+      } catch (err) {
+        if (err instanceof ApiError) {
+          this.error = { code: err.code, message: gaErrorMessage(err.code, err.message) }
+        } else {
+          this.error = { code: 'UNKNOWN_ERROR', message: gaErrorMessage('UNKNOWN_ERROR') }
+        }
+      } finally {
+        this.switchingThread = false
+      }
     },
     async recoverRun(runId: string): Promise<void> {
       let run: GaRun
@@ -372,6 +465,7 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
       this.activeRunId = null
       void runId
       void this.reconcileMessages()
+      void this.loadThreads()
     },
     async reconcileMessages(): Promise<void> {
       // Backend messages are canonical for chat bubbles; tool cards and the
@@ -396,6 +490,11 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
           try { await getGaThread(threadId) } catch (err) {
             if (err instanceof ApiError && err.code === 'THREAD_NOT_FOUND') {
               writeStored(GA_THREAD_KEY, null)
+              writeStored(GA_RUN_KEY, null)
+              this.threadId = null
+              this.messages = []
+              this.activeRunId = null
+              void this.loadThreads()
               threadId = await this.ensureThread()
             } else throw err
           }
@@ -531,6 +630,7 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
       if (this.sending || this.isRunning) return
       this.closeStream()
       this.error = null
+      this.historyOpen = false
       try {
         const created = await createGaThread()
         this.threadId = created.threadId
@@ -547,6 +647,8 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
         this.activeRunId = null
         this.activeStatus = null
         this.lastSequence = 0
+        this.cancelRequested = false
+        this.connection = 'idle'
       } catch (err) {
         if (err instanceof ApiError) this.error = { code: err.code, message: gaErrorMessage(err.code, err.message) }
       }
@@ -574,6 +676,12 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
       this.sending = false
       this.draft = ''
       this.reconnectAttempts = 0
+      this.threads = []
+      this.threadsLoading = false
+      this.threadsError = null
+      this.historyOpen = false
+      this.switchingThread = false
+      this.loadingThread = false
     },
   },
 })

@@ -11,6 +11,7 @@ import {
   isGaTerminalEventType,
   listGaEvents,
   listGaMessages,
+  listGaThreads,
 } from '@/api/globalAssistant'
 import { parseGaEnvelope, parseSseBuffer } from '@/api/globalAssistantEvents'
 
@@ -25,6 +26,16 @@ describe('global assistant api', () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonOk({ threadId: 't-1' }, 201))
     vi.stubGlobal('fetch', fetchMock)
     await expect(createGaThread()).resolves.toEqual({ threadId: 't-1' })
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/global-assistant/threads')
+  })
+
+  it('lists conversation library threads', async () => {
+    const body = [
+      { threadId: 't-1', title: '帮我找支付项目', preview: '找到了三个候选', updatedAt: '2026-09-10T10:00:00Z', createdAt: '2026-09-10T09:00:00Z' },
+    ]
+    const fetchMock = vi.fn().mockResolvedValue(jsonOk(body))
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(listGaThreads()).resolves.toEqual(body)
     expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/global-assistant/threads')
   })
 
@@ -92,4 +103,3 @@ describe('global assistant api', () => {
     expect(isGaTerminalEventType('STATUS')).toBe(false)
   })
 })
-

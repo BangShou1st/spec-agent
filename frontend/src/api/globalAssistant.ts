@@ -112,6 +112,18 @@ export function cancelGaRun(runId: string): Promise<GaRun> {
   return apiClient.post<GaRun>(BASE + '/runs/' + runId + '/cancel')
 }
 
+export interface GaThreadListItem {
+  threadId: string
+  title: string
+  preview: string
+  updatedAt: string
+  createdAt: string
+}
+
+export function listGaThreads(): Promise<GaThreadListItem[]> {
+  return apiClient.get<GaThreadListItem[]>(BASE + '/threads')
+}
+
 /** Minimal route shape so the mapper stays testable without vue-router. */
 export interface GaRouteLike {
   path: string
@@ -168,4 +180,3 @@ export function isGaTerminalStatus(status: string): boolean {
 export function isGaTerminalEventType(type: string): boolean {
   return type === 'RUN_COMPLETED' || type === 'RUN_FAILED' || type === 'RUN_CANCELLED'
 }
-
