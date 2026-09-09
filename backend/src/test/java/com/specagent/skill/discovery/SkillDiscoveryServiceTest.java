@@ -26,9 +26,9 @@ class SkillDiscoveryServiceTest {
     private final SkillProperties properties = SkillProperties.defaults();
     private final SkillQueryService queryService = mock(SkillQueryService.class);
     private final SkillVisibilityService visibility =
-            new SkillVisibilityService(properties);
+            new SkillVisibilityService();
     private final SkillCandidateRetriever retriever =
-            new PassThroughSkillCandidateRetriever(properties);
+            new LexicalSkillCandidateRetriever();
     private final SkillCatalogProjector projector = new SkillCatalogProjector(properties);
 
     private final SkillDiscoveryService service = new SkillDiscoveryService(
@@ -111,13 +111,60 @@ class SkillDiscoveryServiceTest {
         when(queryService.listSkills()).thenReturn(List.of(
                 skill("sk-a", "Alpha", true, "v1"),
                 skill("sk-hidden", "Hidden", false, "v2")));
+        when(queryService.findVersion(any(UUID.class))).thenReturn(Optional.empty());
+        when(queryService.listFileSummaries(any(UUID.class))).thenReturn(List.of());
 
-        List<SkillSearchCandidate> results = service.search(SkillDiscoveryContext.empty());
+        List<SkillSearchCandidate> results =
+                service.search(SkillDiscoveryContext.forSearch("alpha"));
 
         assertThat(results)
                 .extracting(SkillSearchCandidate::skillId)
                 .containsExactly("sk-a");
         assertThat(results.get(0).description()).isNotEmpty();
+    }
+
+    @Test
+    void searchIsQueryAwareOverFullEligibleUniverse() {
+        when(queryService.findVersion(any(UUID.class))).thenReturn(Optional.empty());
+        when(queryService.listFileSummaries(any(UUID.class))).thenReturn(List.of());
+        var alpha = skill("sk-a", "aaa-first", true, "v1");
+        var target = new Skill(UUID.randomUUID(), "sk-target",
+                "zzz-postgres-migration-safety",
+                "Reviews schema migrations for backwards compatibility "
+                        + "and destructive changes.",
+                SkillSourceKind.UPLOAD_ZIP, "source:sk-target",
+                markerId("v2"), true, Instant.EPOCH, Instant.EPOCH);
+        when(queryService.listSkills()).thenReturn(List.of(alpha, target));
+
+        List<SkillSearchCandidate> results = service.search(
+                SkillDiscoveryContext.forSearch("schema migration backwards compatibility"));
+
+        assertThat(results).extracting(SkillSearchCandidate::skillId)
+                .contains("sk-target");
+        // Query-aware: the migration Skill outranks the alphabetically-first one.
+        assertThat(results.get(0).skillId()).isEqualTo("sk-target");
+    }
+
+    @Test
+    void truncatedReflectsEligibleNotInstalled() {
+        properties.setMaxVisible(24);
+        var all = new java.util.ArrayList<Skill>();
+        for (int i = 0; i < 30; i++) {
+            all.add(skill("sk-off-" + i, "Off " + i, false, "v1"));
+        }
+        for (int i = 0; i < 10; i++) {
+            all.add(skill("sk-on-" + i, "On " + i, true, "v2"));
+        }
+        when(queryService.listSkills()).thenReturn(List.copyOf(all));
+        when(queryService.findVersion(any(UUID.class))).thenReturn(Optional.empty());
+        when(queryService.listFileSummaries(any(UUID.class))).thenReturn(List.of());
+
+        SkillCatalogProjector.Projection projection =
+                service.discover(SkillDiscoveryContext.empty());
+
+        // 40 installed but only 10 eligible: no truncation.
+        assertThat(projection.entries()).hasSize(10);
+        assertThat(projection.truncated()).isFalse();
     }
 
     private Skill skill(String skillId, String name, boolean enabled, String versionMarker) {

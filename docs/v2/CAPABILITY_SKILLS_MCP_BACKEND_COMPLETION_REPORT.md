@@ -18,7 +18,8 @@ credential in this environment, so real-model selection eval is recorded as
 - Phase 0/1: `5360153` (contract freeze + dynamic Capability foundation).
 - Phase 2: `eb5c03a` (Skill Runtime, secure import, discovery, activation).
 - Phase 3: `de01515` (Connection + Remote MCP runtime).
-- Phase 4: this change (Agent integration + eval, uncommitted at report time).
+- Phase 4: `a6f50b7` (Agent integration + eval).
+- Final Skill discovery fix: 3a46d7d8df051ddf73c6b906fcb76a78fd2a6060 (this fix).
 
 ## Phase 0 — contracts frozen (done, `5360153`)
 
@@ -68,7 +69,7 @@ credential in this environment, so real-model selection eval is recorded as
   fake server (no hand-rolled JSON-RPC, no mock-only gate).
 - Architecture tests lock low coupling (incl. MCP SDK containment).
 
-## Phase 4 — Agent integration (this change)
+## Phase 4 — Agent integration (done, `a6f50b7`)
 
 - `AgentInputSnapshot.availableSkills`: bounded `SkillCatalogView`
   (`skills[]` = skillId/name/description/compatibilityHint, `truncated`,
@@ -88,6 +89,36 @@ credential in this environment, so real-model selection eval is recorded as
 - Retrieval eval harness pins attribution layers
   (Visibility / Retriever / Descriptor-Prompt-Model / Validator-Policy /
   MCP / Normalization) with recall/cost gates for the small-catalog version.
+
+## Final Skill discovery fix (this change, merge-review blocker)
+
+Final merge review found the truncated-catalog fallback loop was broken and
+fixed it without redesign, without prompt patches, without new retrieval
+platforms:
+
+- Premature visibility truncation: `SkillVisibilityService` applied
+  `.limit(maxVisible)`, hiding Skills past position 24 from every current
+  and future retriever. Now returns ALL eligible Skills; Top-K is the
+  retriever + projector's job.
+- Query-agnostic `skill.search`: the old implementation ignored the query
+  (name-ordered first-N). Now query-aware through the shared retriever:
+  `LexicalSkillCandidateRetriever` (generic token-overlap scorer over
+  name/description/compatibilityHint only) serves both the automatic catalog
+  (no query → stable order) and search (query → ranked Top-N over the full
+  eligible universe). `PassThroughSkillCandidateRetriever` removed as
+  superseded; query travels via a typed `SkillDiscoveryContext.searchQuery`
+  (`forSearch`), never ambient user text.
+- `truncated` semantics: now eligible-vs-projected (`eligible.size() >
+  topK.size()`), so 40-installed/10-enabled never reports truncated.
+- Double discovery in `AgentInputSnapshotBuilder`: `buildFromLiveRecords`
+  now runs one projection feeding both the wire field and the search
+  visibility gate.
+- Incidental: compatibility hints no longer list `SKILL.md` itself.
+- Acceptance: `SkillLargeCatalogRecallTest` (40 Skills, target past Top-K:
+  truncation hides it, search recalls it, paraphrase recalls it, unrelated
+  ranks below, metadata-only) + `SkillSearchFallbackIntegrationTest`
+  (end-to-end, incl. never-activates) + large-catalog Recall@K eval gate +
+  extended evolution replay test.
 
 ## Contract decisions
 
@@ -168,11 +199,11 @@ Runtime validation / authorization / execution (Validator/Policy/Approval)
 
 | Suite | Command | Result |
 |---|---|---|
-| Backend full | `:test --offline --rerun-tasks` | **946 passed, 0 failed, 2 skipped** |
+| Backend full | `:test --offline --rerun-tasks` | **957 passed, 0 failed, 2 skipped** |
 | Brain full | `.venv/Scripts/python -m pytest tests/ -q` | **94 passed** |
 | Contract cross-lang | both suites above | green (fixtures + skill-catalog round-trip) |
 | Phase 3 integration | SDK fake server (9) + controller API (2) | green |
-| Phase 4 acceptance | evolution (2) + attribution (5) + eval (4) + search tool (3) | green |
+| Phase 4 acceptance | evolution (3) + attribution (6) + eval (5) + search tool (3) + fallback e2e (1) + large-catalog recall (5) | green |
 | Architecture | boundary suites incl. Phase 3/4 rules | green |
 
 Skips: 2 pre-existing environment-conditional skips (live-brain dependent).

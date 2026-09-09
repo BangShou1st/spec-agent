@@ -43,6 +43,9 @@ public class SkillDiscoveryService {
 
     /**
      * Builds the bounded model-facing Skill catalog for one discovery context.
+     * The full eligible universe flows into the retriever; the projector owns
+     * the model-facing Top-K bound, so {@code truncated} reflects eligible
+     * vs projected — never installed-vs-visible.
      */
     public SkillCatalogProjector.Projection discover(SkillDiscoveryContext context) {
         List<SkillCatalogEntry> all = queryService.listSkills().stream()
@@ -51,23 +54,28 @@ public class SkillDiscoveryService {
         List<SkillCatalogEntry> eligible = visibilityService.eligible(all, context);
         List<SkillCatalogEntry> topK = retriever.retrieve(context, eligible,
                 properties.getMaxVisible());
-        boolean truncated = all.size() > properties.getMaxVisible();
+        boolean truncated = eligible.size() > topK.size();
         return projector.project(topK, truncated);
     }
 
     /**
-     * {@code skill.search}: metadata-only candidates for a semantic query.
-     * Never activates anything; the model makes the final activation decision.
-     * Returns candidates regardless of catalog truncation (the Host Function
-     * Tool is exposed only when the catalog is truncated; the search itself
-     * stays metadata-only).
+     * {@code skill.search}: query-aware metadata candidates over the FULL
+     * eligible universe — the point of the fallback is recalling Skills the
+     * automatic Top-K did not show. Never activates anything; the model makes
+     * the final activation decision. Metadata only (no SKILL.md bodies,
+     * resource content, scripts, paths, or DB internals).
      */
     public List<SkillSearchCandidate> search(SkillDiscoveryContext context) {
-        return queryService.listSkills().stream()
-                .filter(Skill::enabled)
-                .limit(properties.getSearchMaxResults())
-                .map(skill -> new SkillSearchCandidate(
-                        skill.skillId(), skill.name(), skill.description(), null))
+        List<SkillCatalogEntry> all = queryService.listSkills().stream()
+                .map(this::toCatalogEntry)
+                .toList();
+        List<SkillCatalogEntry> eligible = visibilityService.eligible(all, context);
+        List<SkillCatalogEntry> ranked = retriever.retrieve(context, eligible,
+                properties.getSearchMaxResults());
+        return ranked.stream()
+                .map(entry -> new SkillSearchCandidate(
+                        entry.skillId(), entry.name(), entry.description(),
+                        entry.compatibilityHint()))
                 .toList();
     }
 
@@ -87,11 +95,14 @@ public class SkillDiscoveryService {
         }
         List<String> refs = queryService.listFileSummaries(UUID.fromString(entry.versionId()))
                 .stream()
-                .filter(summary -> summary.relativePath().toLowerCase()
+                .map(summary -> summary.relativePath())
+                // SKILL.md itself is the instruction body, not a hint; only
+                // sibling resource/reference files describe compatibility.
+                .filter(path -> !"SKILL.md".equals(path))
+                .filter(path -> path.toLowerCase()
                         .matches(".*\\.(pdf|docx|xlsx|csv|json|sql|md|txt)$"))
                 .limit(4)
-                .map(summary -> summary.relativePath().substring(
-                        summary.relativePath().lastIndexOf('/') + 1))
+                .map(path -> path.substring(path.lastIndexOf('/') + 1))
                 .toList();
         return refs.isEmpty() ? null : String.join(", ", refs);
     }

@@ -63,10 +63,11 @@ public class SkillSearchHostTool implements InternalCapabilityAdapter {
         }
         String boundedQuery = query.length() > 512
                 ? query.substring(0, 512) : query;
+        // The model's own query flows through the typed search context into
+        // the shared retriever — search ranks the full eligible universe, and
+        // the service already bounds to searchMaxResults.
         List<SkillSearchCandidate> candidates = discoveryService
-                .search(new SkillDiscoveryContext(null, List.of(), List.of(),
-                        Map.of("query", boundedQuery)))
-                .stream().limit(properties.getSearchMaxResults()).toList();
+                .search(SkillDiscoveryContext.forSearch(boundedQuery));
         List<Map<String, Object>> views = candidates.stream().map(candidate -> {
             Map<String, Object> view = new LinkedHashMap<>();
             view.put("skillId", candidate.skillId());

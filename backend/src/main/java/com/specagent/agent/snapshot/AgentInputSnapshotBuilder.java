@@ -290,6 +290,12 @@ public class AgentInputSnapshotBuilder {
                 .toList();
         List<Node> relatedNodes = loadRelatedNodes(snapshot, lineageNodes);
         List<RelatedNodeRef> relatedRefs = relatedNodeRefs(snapshot, relatedNodes);
+        // One Skill discovery projection per first-freeze build: the same
+        // catalog feeds both the wire field and the skill.search visibility
+        // gate, so the two can never disagree (and a future heavier retriever
+        // cannot produce two different catalogs for one frozen snapshot).
+        SkillCatalogView skillCatalog =
+                availableSkills(snapshot, lineageNodes, relatedNodes);
         return new AgentInputSnapshot(
                 snapshot.id().toString(),
                 snapshot.contextHash(),
@@ -301,8 +307,8 @@ public class AgentInputSnapshotBuilder {
                 effectiveClaims(snapshot),
                 metadata(snapshot),
                 allowedSourceRefs(snapshot, relatedRefs),
-                visibleCapabilityDescriptors(snapshot, lineageNodes, relatedNodes),
-                availableSkills(snapshot, lineageNodes, relatedNodes),
+                visibleCapabilityDescriptors(snapshot, lineageNodes, relatedNodes, skillCatalog),
+                skillCatalog,
                 capabilityResults(snapshot),
                 relations(snapshot),
                 relatedRefs,
@@ -398,7 +404,8 @@ public class AgentInputSnapshotBuilder {
      */
     private List<CapabilityDescriptor> visibleCapabilityDescriptors(ContextSnapshot snapshot,
                                                                     List<Node> lineageNodes,
-                                                                    List<Node> relatedNodes) {
+                                                                    List<Node> relatedNodes,
+                                                                    SkillCatalogView skillCatalog) {
         List<String> contextKinds = new ArrayList<>();
         for (Node node : lineageNodes) {
             contextKinds.add(node.kind().code());
@@ -416,11 +423,9 @@ public class AgentInputSnapshotBuilder {
                 Set.of(), List.copyOf(contextKinds), Map.of());
         boolean skillsPresent = skillHostToolVisibility.anyEnabledSkill(snapshot.projectId());
         // skill.search is a truncation fallback only: it stays hidden unless
-        // the projected Skill catalog for this snapshot was actually truncated.
-        // The catalog is discovered here (same frozen inputs as availableSkills
-        // below), so the gate is deterministic per snapshot.
-        boolean catalogTruncated = availableSkills(snapshot, lineageNodes, relatedNodes)
-                .truncated();
+        // the single Skill catalog projection for this build was truncated.
+        // The precomputed catalog is passed in — no second discovery call.
+        boolean catalogTruncated = skillCatalog.truncated();
         return capabilityVisibilityService.visibleCapabilities(context).stream()
                 .filter(descriptor -> skillsPresent
                         || !isSkillHostTool(descriptor.capabilityId()))

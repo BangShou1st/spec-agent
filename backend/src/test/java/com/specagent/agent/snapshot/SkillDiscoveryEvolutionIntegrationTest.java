@@ -105,7 +105,7 @@ class SkillDiscoveryEvolutionIntegrationTest {
                 List.of(), Map.of("kind", "MCP_TOOL"), List.of()));
 
         // The migration-safety Skill gets installed before the continuation.
-        SkillImportService.StagedResult staged = importService.stageZip(zip());
+        SkillImportService.StagedResult staged = importService.stageZip(zip(MIGRATION_SKILL_MD));
         SkillImportService.InstalledResult installed =
                 importService.install(staged.stagedImportId());
         importService.enable(installed.skillRowId());
@@ -132,7 +132,7 @@ class SkillDiscoveryEvolutionIntegrationTest {
     void skillSearchOnlyVisibleWhenCatalogTruncated() {
         Project project = projectService.createProject("截断门禁项目");
         // One small Skill: catalog is not truncated, so skill.search stays hidden.
-        SkillImportService.StagedResult staged = importService.stageZip(zip());
+        SkillImportService.StagedResult staged = importService.stageZip(zip(MIGRATION_SKILL_MD));
         SkillImportService.InstalledResult installed =
                 importService.install(staged.stagedImportId());
         importService.enable(installed.skillRowId());
@@ -149,10 +149,55 @@ class SkillDiscoveryEvolutionIntegrationTest {
         assertThat(projected.availableSkills().skills()).hasSize(1);
     }
 
-    private byte[] zip() {
+    @Test
+    void largeCatalogTruncatesAndReplayStaysConsistent() {
+        Project project = projectService.createProject("大目录截断项目");
+        // 39 filler Skills + the migration target parked last: the automatic
+        // catalog (maxVisible=24) truncates and skill.search becomes visible.
+        for (int i = 0; i < 39; i++) {
+            String padded = String.format("%02d", i);
+            installSkill("aaa-filler-" + padded,
+                    "General workspace note-taking helper number " + padded);
+        }
+        installSkill("zzz-postgres-migration-safety",
+                "Reviews schema migrations for backwards compatibility "
+                        + "and destructive changes.");
+
+        ContextSnapshot snapshot = contextBuilder.buildFromActiveRoute(
+                project.id(), UUID.randomUUID(), ContextOperationType.NORMAL);
+        AgentInputSnapshot projected = snapshotBuilder.build(snapshot);
+
+        assertThat(projected.availableSkills().skills()).hasSizeLessThanOrEqualTo(24);
+        assertThat(projected.availableSkills().truncated()).isTrue();
+        assertThat(projected.availableSkills().skills())
+                .extracting(skill -> skill.name())
+                .doesNotContain("zzz-postgres-migration-safety");
+        assertThat(projected.availableCapabilities())
+                .extracting(com.specagent.agent.contract.CapabilityDescriptor::id)
+                .contains("skill.search");
+
+        // Same frozen snapshot replays catalog + search visibility identically.
+        AgentInputSnapshot replayed = snapshotBuilder.build(snapshot);
+        assertThat(replayed.availableSkills().skills())
+                .isEqualTo(projected.availableSkills().skills());
+        assertThat(replayed.availableSkills().truncated()).isTrue();
+        assertThat(replayed.availableCapabilities())
+                .extracting(com.specagent.agent.contract.CapabilityDescriptor::id)
+                .contains("skill.search");
+    }
+
+    private void installSkill(String name, String description) {
+        String md = "---\nname: " + name + "\ndescription: " + description + "\n---\nBody\n";
+        SkillImportService.StagedResult staged = importService.stageZip(zip(md));
+        SkillImportService.InstalledResult installed =
+                importService.install(staged.stagedImportId());
+        importService.enable(installed.skillRowId());
+    }
+
+    private byte[] zip(String skillMd) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         try (ZipArchiveOutputStream zip = new ZipArchiveOutputStream(out)) {
-            byte[] data = MIGRATION_SKILL_MD.getBytes(StandardCharsets.UTF_8);
+            byte[] data = skillMd.getBytes(StandardCharsets.UTF_8);
             CRC32 crc = new CRC32();
             crc.update(data);
             ZipArchiveEntry entry = new ZipArchiveEntry("SKILL.md");

@@ -15,9 +15,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 class SkillRetrievalAttributionTest {
 
     private final SkillProperties properties = SkillProperties.defaults();
-    private final SkillVisibilityService visibility = new SkillVisibilityService(properties);
-    private final PassThroughSkillCandidateRetriever retriever =
-            new PassThroughSkillCandidateRetriever(properties);
+    private final SkillVisibilityService visibility = new SkillVisibilityService();
+    private final LexicalSkillCandidateRetriever retriever =
+            new LexicalSkillCandidateRetriever();
     private final SkillCatalogProjector projector = new SkillCatalogProjector(properties);
 
     private SkillCatalogEntry entry(String skillId, boolean enabled) {
@@ -43,10 +43,24 @@ class SkillRetrievalAttributionTest {
     void eligibleButAbsentIsRetrieverFailure() {
         List<SkillCatalogEntry> eligible =
                 List.of(entry("sk-a", true), entry("sk-b", true), entry("sk-c", true));
-        // Eligible but absent from Top-K -> Retriever layer owns it.
+        // Eligible but absent from Top-K -> Retriever layer owns it. Without a
+        // query the retriever preserves stable catalog order (Top-2 = first two).
         List<SkillCatalogEntry> topK = retriever.retrieve(context(), eligible, 2);
         assertThat(topK).extracting(SkillCatalogEntry::skillId)
                 .containsExactly("sk-a", "sk-b");
+    }
+
+    @Test
+    void visibilityNeverTruncatesEligibleUniverse() {
+        // Regression guard for the merge-review finding: visibility must not
+        // pre-limit to maxVisible — the full eligible universe reaches the
+        // retriever even when it exceeds the model-facing budget.
+        var all = new java.util.ArrayList<SkillCatalogEntry>();
+        for (int i = 0; i < 40; i++) {
+            all.add(entry("sk-" + i, true));
+        }
+        List<SkillCatalogEntry> eligible = visibility.eligible(all, context());
+        assertThat(eligible).hasSize(40);
     }
 
     @Test
