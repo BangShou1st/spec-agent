@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   classifyModelFailure,
+  managementErrorMessage,
   productErrorMessage,
   requiresModelSettings,
 } from '@/api/errorCopy'
@@ -34,5 +35,11 @@ describe('stable model error classifier and product copy', () => {
     expect(classifyModelFailure('AUTHENTICATION', 401)).toBe('none')
     expect(classifyModelFailure('INVALID_MODEL', 400)).toBe('none')
     expect(requiresModelSettings('INVALID_MODEL')).toBe(true)
+  })
+
+  it('prefers safe backend messages for management actions', () => {
+    expect(managementErrorMessage('CONNECTION_COMMAND_REJECTED', 'bad server')).toBe('bad server')
+    expect(managementErrorMessage('VALIDATION_ERROR', '')).toBe(productErrorMessage('VALIDATION_ERROR'))
+    expect(managementErrorMessage('UNKNOWN_ERROR', 'raw payload')).toBe(productErrorMessage('UNKNOWN_ERROR'))
   })
 })

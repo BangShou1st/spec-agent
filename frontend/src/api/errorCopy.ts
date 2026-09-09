@@ -17,6 +17,11 @@ const ERROR_COPY: Record<string, string> = {
   UNKNOWN_ERROR: '操作失败，请稍后重试。',
   INTERNAL_ERROR: '操作失败，请稍后重试。',
   INTERNAL_INVARIANT_VIOLATION: '工作区状态出现异常，请刷新状态。',
+  SKILL_IMPORT_REJECTED: 'Skill 导入被拒绝，请检查文件或地址后重试。',
+  SKILL_RESOURCE_REJECTED: 'Skill 资源无法读取，请稍后再试。',
+  CONNECTION_COMMAND_REJECTED: '连接操作失败，请稍后再试。',
+  CONNECTION_NOT_FOUND: '该连接不存在，可能已被删除。',
+  VALIDATION_ERROR: '输入有误，请检查后重试。',
 }
 
 function stableCode(code: string): string {
@@ -39,6 +44,21 @@ function stableCode(code: string): string {
 
 export function productErrorMessage(code: string, _safeFallback?: string): string {
   return ERROR_COPY[stableCode(code)] ?? '操作失败，请稍后重试。'
+}
+
+export function managementErrorMessage(code: string, safeBackendMessage?: string): string {
+  const normalized = code.toUpperCase()
+  if (
+    normalized === 'CONNECTION_COMMAND_REJECTED' ||
+    normalized === 'VALIDATION_ERROR' ||
+    normalized === 'SKILL_IMPORT_REJECTED' ||
+    normalized === 'SKILL_RESOURCE_REJECTED'
+  ) {
+    if (safeBackendMessage && safeBackendMessage.trim().length > 0) {
+      return safeBackendMessage
+    }
+  }
+  return productErrorMessage(code)
 }
 
 export function requiresModelSettings(code: string): boolean {
