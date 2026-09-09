@@ -43,13 +43,15 @@ public class ProjectSearchCapability implements InternalCapabilityAdapter {
     public CapabilityResult invoke(CapabilityInvocation invocation) {
         Object rawQuery = invocation.arguments().get("query");
         if (!(rawQuery instanceof String query) || query.isBlank()) {
-            return CapabilityResult.failed(invocation.invocationId(), invocation.invocationKey(),
-                    CAPABILITY_ID, "arguments.query is required and must be a non-blank string");
+            return GlobalAssistantToolFailures.failed(invocation, CAPABILITY_ID,
+                    com.specagent.globalassistant.runtime.GlobalAssistantErrorCode.TOOL_ARGUMENT_INVALID,
+                    "arguments.query is required and must be a non-blank string");
         }
         Integer limit = readLimit(invocation.arguments().get("limit"));
         if (invocation.arguments().get("limit") != null && limit == null) {
-            return CapabilityResult.failed(invocation.invocationId(), invocation.invocationKey(),
-                    CAPABILITY_ID, "arguments.limit must be an integer between 1 and 10");
+            return GlobalAssistantToolFailures.failed(invocation, CAPABILITY_ID,
+                    com.specagent.globalassistant.runtime.GlobalAssistantErrorCode.TOOL_ARGUMENT_INVALID,
+                    "arguments.limit must be an integer between 1 and 10");
         }
         List<GlobalProjectSearchService.Candidate> candidates = search.search(query.trim(), limit);
         List<Map<String, Object>> serialized = candidates.stream().map(c -> {

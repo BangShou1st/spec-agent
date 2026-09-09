@@ -25,19 +25,54 @@ public class GlobalAssistantDecisionValidator {
         if (decision.uiAction() != null) {
             validateUiAction(decision.uiAction());
         }
-        if (decision.toolRequest() != null && decision.requiresUserInput()
-                && decision.toolRequest() != null && decision.done() == false) {
-            // clarification + tool in one decision is allowed only when the tool
-            // result is needed first; terminal contract below still applies.
+        if (decision.toolRequest() != null) {
+            if (decision.done()) {
+                throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
+                        "Tool decisions must have done=false");
+            }
+            if (decision.requiresUserInput()) {
+                throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
+                        "Tool decisions must not require user input");
+            }
+            if (decision.uiAction() != null) {
+                throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
+                        "Tool decisions must not carry a UI action");
+            }
+            return;
         }
-        if (decision.toolRequest() == null && decision.uiAction() == null
-                && !decision.requiresUserInput() && !decision.done()) {
-            throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
-                    "Decision must either request a tool, emit a UI action, require input, or finish");
+        if (decision.requiresUserInput()) {
+            if (!decision.done()) {
+                throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
+                        "requiresUserInput must terminalize the current run (done=true)");
+            }
+            if (decision.uiAction() != null) {
+                throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
+                        "Clarification decisions must not carry a UI action");
+            }
+            if (decision.assistantText() == null || decision.assistantText().isBlank()) {
+                throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
+                        "Clarification decisions require a non-blank question");
+            }
+            return;
         }
-        if (decision.requiresUserInput() && !decision.done()) {
+        if (decision.uiAction() != null) {
+            if (!decision.done()) {
+                throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
+                        "UI action decisions must have done=true");
+            }
+            if (decision.requiresUserInput()) {
+                throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
+                        "UI action decisions must not require user input");
+            }
+            return;
+        }
+        if (!decision.done()) {
             throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
-                    "requiresUserInput must terminalize the current run (done=true)");
+                    "Final decisions must have done=true");
+        }
+        if (decision.assistantText() == null || decision.assistantText().isBlank()) {
+            throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
+                    "Final decisions require non-blank assistant text");
         }
         if (decision.assistantText() != null && decision.assistantText().length() > 4000) {
             throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE", "assistantText too long");
@@ -96,6 +131,15 @@ public class GlobalAssistantDecisionValidator {
             throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE", "UI destination is required");
         }
         String resourceId = uiAction.resourceId();
+        if (uiAction.destination() == GlobalAssistantDecision.UiDestination.PROJECT) {
+            if (resourceId == null || resourceId.isBlank()) {
+                throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
+                        "PROJECT navigation requires a resourceId");
+            }
+        } else if (resourceId != null && !resourceId.isBlank()) {
+            throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
+                    "resourceId is only allowed for the PROJECT destination");
+        }
         if (resourceId != null && !resourceId.isBlank()) {
             String trimmed = resourceId.trim();
             if (trimmed.startsWith("http://") || trimmed.startsWith("https://")

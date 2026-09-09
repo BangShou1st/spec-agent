@@ -42,13 +42,15 @@ public class ProjectListRecentCapability implements InternalCapabilityAdapter {
         Integer limit = null;
         if (rawLimit != null) {
             if (!(rawLimit instanceof Number n)) {
-                return CapabilityResult.failed(invocation.invocationId(), invocation.invocationKey(),
-                        CAPABILITY_ID, "arguments.limit must be an integer between 1 and 10");
+                return GlobalAssistantToolFailures.failed(invocation, CAPABILITY_ID,
+                        com.specagent.globalassistant.runtime.GlobalAssistantErrorCode.TOOL_ARGUMENT_INVALID,
+                        "arguments.limit must be an integer between 1 and 10");
             }
             int v = n.intValue();
             if (v < 1 || v > 10) {
-                return CapabilityResult.failed(invocation.invocationId(), invocation.invocationKey(),
-                        CAPABILITY_ID, "arguments.limit must be an integer between 1 and 10");
+                return GlobalAssistantToolFailures.failed(invocation, CAPABILITY_ID,
+                        com.specagent.globalassistant.runtime.GlobalAssistantErrorCode.TOOL_ARGUMENT_INVALID,
+                        "arguments.limit must be an integer between 1 and 10");
             }
             limit = v;
         }

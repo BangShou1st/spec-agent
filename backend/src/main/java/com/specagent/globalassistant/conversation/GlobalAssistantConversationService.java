@@ -52,6 +52,20 @@ public class GlobalAssistantConversationService {
         requireThread(threadId);
         return runs.create(threadId, promptVersion, contextProjectionVersion, toolCatalogFingerprint);
     }
+    /**
+     * Atomic run + current USER message creation: both commit or both roll
+     * back, so no orphan active run survives without its user message.
+     * Callers schedule execution only after this transaction commits.
+     */
+    @Transactional
+    public GlobalAssistantRun createRunWithUserMessage(UUID threadId, String content, String promptVersion,
+            String contextProjectionVersion, String toolCatalogFingerprint) {
+        requireThread(threadId);
+        GlobalAssistantRun run =
+                runs.create(threadId, promptVersion, contextProjectionVersion, toolCatalogFingerprint);
+        messages.append(threadId, GlobalAssistantMessage.Role.USER, content, run.id());
+        return run;
+    }
     public java.util.List<GlobalAssistantMessage> listMessages(UUID threadId) {
         requireThread(threadId);
         return messages.findByThread(threadId);
@@ -61,11 +75,19 @@ public class GlobalAssistantConversationService {
         if (thread.workingStateJson() == null || thread.workingStateJson().isBlank()) {
             return GlobalAssistantWorkingState.empty();
         }
+        Map<String, Object> map;
         try {
-            Map<String, Object> map = json.read(thread.workingStateJson(), MAP_REF);
-            return GlobalAssistantWorkingState.fromMap(map);
+            map = json.read(thread.workingStateJson(), MAP_REF);
         } catch (IllegalStateException ex) {
+            throw new IllegalStateException("Working-state storage is corrupt for thread: " + threadId);
+        }
+        if (map == null) {
             return GlobalAssistantWorkingState.empty();
+        }
+        try {
+            return GlobalAssistantWorkingState.fromMap(map);
+        } catch (RuntimeException ex) {
+            throw new IllegalStateException("Working-state storage is corrupt for thread: " + threadId);
         }
     }
     @Transactional

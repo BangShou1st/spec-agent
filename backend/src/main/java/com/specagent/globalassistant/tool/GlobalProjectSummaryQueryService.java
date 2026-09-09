@@ -55,15 +55,11 @@ public class GlobalProjectSummaryQueryService {
             }
         }
         boolean specAvailable = false;
-        try {
-            for (Route route : projectRoutes) {
-                if (!specs.findByRoute(route.id()).isEmpty()) {
-                    specAvailable = true;
-                    break;
-                }
+        for (Route route : projectRoutes) {
+            if (!specs.findByRoute(route.id()).isEmpty()) {
+                specAvailable = true;
+                break;
             }
-        } catch (Exception ex) {
-            specAvailable = false;
         }
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("projectId", p.id().toString());

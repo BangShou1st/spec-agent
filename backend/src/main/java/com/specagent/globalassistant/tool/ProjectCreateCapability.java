@@ -45,13 +45,15 @@ public class ProjectCreateCapability implements InternalCapabilityAdapter {
     public CapabilityResult invoke(CapabilityInvocation invocation) {
         Object rawTitle = invocation.arguments().get("title");
         if (!(rawTitle instanceof String title) || title.isBlank()) {
-            return CapabilityResult.failed(invocation.invocationId(), invocation.invocationKey(),
-                    CAPABILITY_ID, "arguments.title is required and must be a non-blank string");
+            return GlobalAssistantToolFailures.failed(invocation, CAPABILITY_ID,
+                    com.specagent.globalassistant.runtime.GlobalAssistantErrorCode.TOOL_ARGUMENT_INVALID,
+                    "arguments.title is required and must be a non-blank string");
         }
         String trimmed = title.trim();
         if (trimmed.length() > 200) {
-            return CapabilityResult.failed(invocation.invocationId(), invocation.invocationKey(),
-                    CAPABILITY_ID, "arguments.title must be at most 200 characters");
+            return GlobalAssistantToolFailures.failed(invocation, CAPABILITY_ID,
+                    com.specagent.globalassistant.runtime.GlobalAssistantErrorCode.TOOL_ARGUMENT_INVALID,
+                    "arguments.title must be at most 200 characters");
         }
         Project created = projects.createProject(trimmed);
         Map<String, Object> content = new LinkedHashMap<>();

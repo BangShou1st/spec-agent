@@ -60,7 +60,7 @@ public class GlobalAssistantThreadRepository {
                 "now", Timestamp.from(Instant.now()),
                 "expected", expectedVersion));
         if (updated != 1) {
-            throw new IllegalStateException("WorkingState version conflict for thread: " + threadId);
+            throw new GlobalAssistantVersionConflictException("WorkingState version conflict for thread: " + threadId);
         }
     }
     /**
@@ -74,7 +74,7 @@ public class GlobalAssistantThreadRepository {
                 "now", Timestamp.from(Instant.now()),
                 "expected", expectedVersion));
         if (updated != 1) {
-            throw new IllegalStateException("Summary version conflict for thread: " + threadId);
+            throw new GlobalAssistantVersionConflictException("Summary version conflict for thread: " + threadId);
         }
     }
 }

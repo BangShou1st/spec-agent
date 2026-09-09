@@ -41,20 +41,23 @@ public class ProjectGetSummaryCapability implements InternalCapabilityAdapter {
     public CapabilityResult invoke(CapabilityInvocation invocation) {
         Object rawId = invocation.arguments().get("projectId");
         if (!(rawId instanceof String text) || text.isBlank()) {
-            return CapabilityResult.failed(invocation.invocationId(), invocation.invocationKey(),
-                    CAPABILITY_ID, "arguments.projectId is required and must be a project UUID string");
+            return GlobalAssistantToolFailures.failed(invocation, CAPABILITY_ID,
+                    com.specagent.globalassistant.runtime.GlobalAssistantErrorCode.TOOL_ARGUMENT_INVALID,
+                    "arguments.projectId is required and must be a project UUID string");
         }
         UUID projectId;
         try {
             projectId = UUID.fromString(text.trim());
         } catch (IllegalArgumentException ex) {
-            return CapabilityResult.failed(invocation.invocationId(), invocation.invocationKey(),
-                    CAPABILITY_ID, "arguments.projectId is not a valid UUID");
+            return GlobalAssistantToolFailures.failed(invocation, CAPABILITY_ID,
+                    com.specagent.globalassistant.runtime.GlobalAssistantErrorCode.TOOL_ARGUMENT_INVALID,
+                    "arguments.projectId is not a valid UUID");
         }
         Optional<Map<String, Object>> summary = summaries.summarize(projectId);
         if (summary.isEmpty()) {
-            return CapabilityResult.failed(invocation.invocationId(), invocation.invocationKey(),
-                    CAPABILITY_ID, "Project not found: " + projectId);
+            return GlobalAssistantToolFailures.failed(invocation, CAPABILITY_ID,
+                    com.specagent.globalassistant.runtime.GlobalAssistantErrorCode.PROJECT_NOT_FOUND,
+                    "Project not found: " + projectId);
         }
         return new CapabilityResult(invocation.invocationId(), invocation.invocationKey(), CAPABILITY_ID,
                 CapabilityResult.Status.SUCCEEDED, summary.get(),
