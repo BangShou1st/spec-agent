@@ -38,10 +38,12 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Slice G: deterministic backend acceptance. Semantic scenarios run through
- * the real runtime with scripted provider-neutral decisions (no live model),
- * plus paraphrase/held-out/negative-control coverage and metric reporting.
- * Live-model qualification is reported separately and never mocked as PASS.
+ * Deterministic runtime acceptance with scripted provider-neutral decisions
+ * (no live model): correct execution of each scripted decision, budget
+ * enforcement, typed failures, event protocol and context continuity across
+ * canonical/paraphrase/held-out wordings plus negative controls. This is not
+ * a semantic model-accuracy measurement. Live semantic qualification is
+ * reported separately and never mocked as PASS.
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -55,22 +57,29 @@ class GlobalAssistantEvalTest {
     @Autowired CapabilityRuntime capabilities;
     @Autowired GlobalAssistantRunRepository runs;
     @Autowired GlobalAssistantRunEventRepository events;
-    @Autowired GlobalAssistantStreamService streams;
     @Autowired GlobalAssistantToolArgumentCanonicalizer canonicalizer;
     @Autowired GlobalAssistantRuntimeProperties budgets;
+    @Autowired com.specagent.globalassistant.runtime.GlobalAssistantRunLifecycleService lifecycle;
+    @Autowired com.specagent.globalassistant.stream.GlobalAssistantRunEventService runEvents;
+    @Autowired com.specagent.globalassistant.runtime.GlobalAssistantUiActionValidator uiValidator;
+    @Autowired com.specagent.globalassistant.model.GlobalAssistantSummaryService summaries;
     @Autowired ProjectService projects;
     @Autowired ObjectMapper mapper;
     record ScenarioResult(String scenario, String variant, boolean completed,
-            int steps, int toolCalls, String selectedTool) {
+            int runSteps, int toolCalls, String selectedTool, String expectedTool, Boolean titleMatches) {
     }
     private GlobalAssistantRuntime runtimeFor(Queue<String> scripts) {
         ModelInferenceGateway stub = request -> new ModelInferenceResponse(scripts.poll(), "stop", 0, 0);
         GlobalAssistantBrain brain = new GlobalAssistantBrain(renderer, stub, parser, validator);
         return new GlobalAssistantRuntime(conversations, contextBuilder, brain, capabilities,
-                runs, events, streams, canonicalizer, budgets);
+                runs, canonicalizer, budgets, lifecycle, runEvents, uiValidator, summaries);
     }
     private ScenarioResult runScenario(String scenario, String variant, String userMessage,
             List<String> scripts) {
+        return runScenario(scenario, variant, userMessage, null, null, scripts);
+    }
+    private ScenarioResult runScenario(String scenario, String variant, String userMessage,
+            String expectedTool, String expectedTitle, List<String> scripts) {
         GlobalAssistantThread thread = conversations.createThread();
         GlobalAssistantRun run = conversations.createRun(thread.id(), "v1", "v1",
                 GlobalAssistantToolCatalog.FINGERPRINT);
@@ -83,9 +92,17 @@ class GlobalAssistantEvalTest {
         String selected = stored.stream().filter(e -> e.type().equals("TOOL_STARTED"))
                 .map(e -> String.valueOf(e.payload().get("capabilityId")))
                 .findFirst().orElse(null);
+        Boolean titleMatches = null;
+        if (expectedTitle != null) {
+            titleMatches = stored.stream().filter(e -> e.type().equals("TOOL_STARTED"))
+                    .map(e -> e.payload().get("arguments"))
+                    .filter(args -> args instanceof java.util.Map)
+                    .map(args -> ((java.util.Map<?, ?>) args).get("title"))
+                    .anyMatch(expectedTitle::equals);
+        }
         return new ScenarioResult(scenario, variant,
                 finished.status() == GlobalAssistantRunStatus.COMPLETED,
-                stored.size(), (int) toolCalls, selected);
+                finished.stepCount(), (int) toolCalls, selected, expectedTool, titleMatches);
     }
     @Test
     void semanticScenariosWithParaphraseAndHeldOut() {
@@ -93,38 +110,38 @@ class GlobalAssistantEvalTest {
         Project payProject = projects.createProject("Eval Pay Ledger " + UUID.randomUUID());
         List<ScenarioResult> results = new ArrayList<>();
         // create: canonical / paraphrase / held-out entity
-        results.add(runScenario("create", "canonical", "create a project",
+        results.add(runScenario("create", "canonical", "create a project", "project.create", "Eval Calendar",
                 List.of("{\"toolRequest\": {\"capabilityId\": \"project.create\", \"arguments\": {\"title\": \"Eval Calendar\" }}, \"done\": false}",
                         "{\"assistantText\": \"Created.\", \"done\": true}")));
-        results.add(runScenario("create", "paraphrase", "start a new billing analysis workspace for me",
+        results.add(runScenario("create", "paraphrase", "start a new billing analysis workspace for me", "project.create", "Billing Analysis",
                 List.of("{\"toolRequest\": {\"capabilityId\": \"project.create\", \"arguments\": {\"title\": \"Billing Analysis\" }}, \"done\": false}",
                         "{\"assistantText\": \"Created.\", \"done\": true}")));
-        results.add(runScenario("create", "held-out", "I want to design a fresh notes product",
+        results.add(runScenario("create", "held-out", "I want to design a fresh notes product", "project.create", "Notes Product",
                 List.of("{\"toolRequest\": {\"capabilityId\": \"project.create\", \"arguments\": {\"title\": \"Notes Product\" }}, \"done\": false}",
                         "{\"assistantText\": \"Created.\", \"done\": true}")));
         // search: canonical / paraphrase / word-order variation
-        results.add(runScenario("search", "canonical", "find the mail project",
+        results.add(runScenario("search", "canonical", "find the mail project", "project.search", null,
                 List.of("{\"toolRequest\": {\"capabilityId\": \"project.search\", \"arguments\": {\"query\": \"" + mailProject.title().substring(0, 8) + "\"}}, \"done\": false}",
                         "{\"assistantText\": \"Found.\", \"done\": true}")));
-        results.add(runScenario("search", "paraphrase", "where is that ledger for payments we had",
+        results.add(runScenario("search", "paraphrase", "where is that ledger for payments we had", "project.search", null,
                 List.of("{\"toolRequest\": {\"capabilityId\": \"project.search\", \"arguments\": {\"query\": \"" + payProject.title().substring(0, 8) + "\"}}, \"done\": false}",
                         "{\"assistantText\": \"Found.\", \"done\": true}")));
-        results.add(runScenario("search", "held-out", "dig up the old sorter for mail",
+        results.add(runScenario("search", "held-out", "dig up the old sorter for mail", "project.search", null,
                 List.of("{\"toolRequest\": {\"capabilityId\": \"project.search\", \"arguments\": {\"query\": \"" + mailProject.title().substring(0, 8) + "\"}}, \"done\": false}",
                         "{\"assistantText\": \"Found.\", \"done\": true}")));
         // list_recent
-        results.add(runScenario("list_recent", "canonical", "show recent projects",
+        results.add(runScenario("list_recent", "canonical", "show recent projects", "project.list_recent", null,
                 List.of("{\"toolRequest\": {\"capabilityId\": \"project.list_recent\", \"arguments\": {}}, \"done\": false}",
                         "{\"assistantText\": \"Here they are.\", \"done\": true}")));
-        results.add(runScenario("list_recent", "paraphrase", "what have I worked on lately",
+        results.add(runScenario("list_recent", "paraphrase", "what have I worked on lately", "project.list_recent", null,
                 List.of("{\"toolRequest\": {\"capabilityId\": \"project.list_recent\", \"arguments\": {}}, \"done\": false}",
                         "{\"assistantText\": \"Here they are.\", \"done\": true}")));
         // get_summary
-        results.add(runScenario("get_summary", "canonical", "how is the pay project doing",
+        results.add(runScenario("get_summary", "canonical", "how is the pay project doing", "project.get_summary", null,
                 List.of("{\"toolRequest\": {\"capabilityId\": \"project.get_summary\", \"arguments\": {\"projectId\": \""
                         + payProject.id() + "\"}}, \"done\": false}",
                         "{\"assistantText\": \"Status ready.\", \"done\": true}")));
-        results.add(runScenario("get_summary", "held-out", "check the current state of the mail sorter",
+        results.add(runScenario("get_summary", "held-out", "check the current state of the mail sorter", "project.get_summary", null,
                 List.of("{\"toolRequest\": {\"capabilityId\": \"project.get_summary\", \"arguments\": {\"projectId\": \""
                         + mailProject.id() + "\"}}, \"done\": false}",
                         "{\"assistantText\": \"Status ready.\", \"done\": true}")));
@@ -141,11 +158,12 @@ class GlobalAssistantEvalTest {
                                 "PROJECT", payProject.id().toString())));
         assertThat(runs.findById(navRun.id()).orElseThrow().status())
                 .isEqualTo(GlobalAssistantRunStatus.COMPLETED);
+        assertThat(runs.findById(navRun.id()).orElseThrow().stepCount()).isEqualTo(1);
         // ambiguous reference asks instead of guessing
         results.add(runScenario("ambiguity", "canonical", "open the mail one",
                 List.of("{\"assistantText\": \"I found two candidates, which one?\", \"requiresUserInput\": true, \"done\": true}")));
         // multi-step reference resolution
-        results.add(runScenario("multi-step", "canonical", "open the pay project and summarize it",
+        results.add(runScenario("multi-step", "canonical", "open the pay project and summarize it", "project.search", null,
                 List.of("{\"toolRequest\": {\"capabilityId\": \"project.search\", \"arguments\": {\"query\": \"" + payProject.title().substring(0, 8) + "\"}}, \"done\": false}",
                         "{\"toolRequest\": {\"capabilityId\": \"project.get_summary\", \"arguments\": {\"projectId\": \""
                                 + payProject.id() + "\"}}, \"done\": false}",
@@ -157,15 +175,20 @@ class GlobalAssistantEvalTest {
         results.add(runScenario("no-tool", "paraphrase", "what does the word project mean in English?",
                 List.of("{\"assistantText\": \"It means a workspace.\", \"done\": true}")));
         long completed = results.stream().filter(ScenarioResult::completed).count();
-        double completionRate = (double) completed / results.size();
-        double toolAccuracy = results.stream()
-                .filter(r -> r.selectedTool() != null || r.scenario().equals("no-tool") || r.scenario().equals("ambiguity"))
-                .count() / (double) results.size();
-        System.out.println("GA eval: scenarios=" + results.size() + " completed=" + completed
-                + " completionRate=" + completionRate + " toolAccuracy=" + toolAccuracy);
+        long scriptedMatched = results.stream()
+                .filter(r -> java.util.Objects.equals(r.selectedTool(), r.expectedTool()))
+                .count();
+        long titleMeasured = results.stream().filter(r -> r.titleMatches() != null).count();
+        long titleCorrect = results.stream().filter(r -> Boolean.TRUE.equals(r.titleMatches())).count();
+        System.out.println("GA deterministic runtime acceptance: scenarios=" + results.size()
+                + " completed=" + completed
+                + " scriptedDecisionExecution=" + scriptedMatched + "/" + results.size()
+                + " titleArguments=" + titleCorrect + "/" + titleMeasured);
         assertThat(completed).isEqualTo(results.size());
-        // Mean steps stay bounded.
-        double meanSteps = results.stream().mapToInt(ScenarioResult::steps).average().orElse(0);
+        assertThat(scriptedMatched).isEqualTo(results.size());
+        assertThat(titleCorrect).isEqualTo(titleMeasured);
+        // Mean model steps come from the persisted run counter, not event counts.
+        double meanSteps = results.stream().mapToInt(ScenarioResult::runSteps).average().orElse(0);
         assertThat(meanSteps).isLessThanOrEqualTo(10);
     }
     @Test

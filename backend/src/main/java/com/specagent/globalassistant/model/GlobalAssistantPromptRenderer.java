@@ -14,6 +14,10 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class GlobalAssistantPromptRenderer {
+    private final com.fasterxml.jackson.databind.ObjectMapper mapper;
+    public GlobalAssistantPromptRenderer(com.fasterxml.jackson.databind.ObjectMapper mapper) {
+        this.mapper = mapper;
+    }
     public static final String PROMPT_VERSION = "v1";
     static final String SYSTEM_PROMPT = """
             You are Spec Agent's application-level assistant.
@@ -72,17 +76,29 @@ public class GlobalAssistantPromptRenderer {
             user.append("\n\n");
         }
         if (context.workingState() != null) {
-            user.append("Working state: goal=").append(nullSafe(context.workingState().goal()));
+            user.append("Working state (continuity hints, not canonical truth): goal=")
+                    .append(nullSafe(context.workingState().goal()));
             if (context.workingState().lastResolvedProjectId() != null) {
                 user.append(", lastResolved=" + context.workingState().lastResolvedProjectId());
             }
             if (!context.workingState().candidateProjects().isEmpty()) {
-                user.append(", candidates=" + context.workingState().candidateProjects().size());
+                user.append("\ncandidates:\n");
+                int shown = 0;
+                for (java.util.Map<String, String> candidate : context.workingState().candidateProjects()) {
+                    if (shown >= 10) {
+                        break;
+                    }
+                    String id = candidate.get("projectId");
+                    String title = candidate.get("title");
+                    user.append("- " + truncate(id == null ? "" : id, 40)
+                            + " " + truncate(title == null ? "" : title, 80) + "\n");
+                    shown++;
+                }
             }
             if (context.workingState().waitingFor() != null) {
-                user.append(", waitingFor=" + context.workingState().waitingFor());
+                user.append("waitingFor=" + truncate(context.workingState().waitingFor(), 500) + "\n");
             }
-            user.append("\n\n");
+            user.append("\n");
         }
         if (!context.recentProjectHints().isEmpty()) {
             user.append("Recent project hints (hints only, not truth; verify with tools when identity matters):\n");
@@ -94,11 +110,15 @@ public class GlobalAssistantPromptRenderer {
         user.append("Available tools:\n");
         for (CapabilityDescriptor descriptor : context.toolDescriptors()) {
             user.append("- " + descriptor.capabilityId() + ": " + descriptor.description() + "\n");
+            user.append("  inputSchema: " + boundedJson(descriptor.inputSchema(), 800) + "\n");
+            user.append("  readOnly=" + descriptor.readOnly()
+                    + " sideEffectClass=" + descriptor.sideEffectClass() + "\n");
+            user.append("  outputSchema: " + boundedJson(descriptor.outputSchema(), 800) + "\n");
         }
         if (observations != null && !observations.isEmpty()) {
-            user.append("\nTool observations (fresh truth):\n");
+            user.append("\nTool observations (fresh truth, stable JSON):\n");
             for (Map<String, Object> observation : observations) {
-                user.append(truncate(String.valueOf(observation), 2000)).append("\n");
+                user.append(boundedObservationJson(observation)).append("\n");
             }
         }
         messages.add(new ModelInferenceMessage("user", user.toString()));
@@ -115,6 +135,54 @@ public class GlobalAssistantPromptRenderer {
     }
     private String nullSafe(String value) {
         return value == null ? "" : value;
+    }
+    private String boundedJson(Object value, int max) {
+        if (value == null) {
+            return "{}";
+        }
+        try {
+            Object bounded = truncateJsonValues(value, 300);
+            String json = jsonMapper().writeValueAsString(bounded);
+            return json.length() <= max ? json : json.substring(0, max) + "...";
+        } catch (Exception ex) {
+            return "{}";
+        }
+    }
+    private String boundedObservationJson(Map<String, Object> observation) {
+        try {
+            Object bounded = truncateJsonValues(
+                    observation == null ? Map.of() : observation, 1000);
+            String json = jsonMapper().writeValueAsString(bounded);
+            return json.length() <= 3000 ? json : json.substring(0, 3000) + "...";
+        } catch (Exception ex) {
+            return "{}";
+        }
+    }
+    private Object truncateJsonValues(Object value, int max) {
+        if (value instanceof String text) {
+            return text.length() <= max ? text : text.substring(0, max) + "...";
+        }
+        if (value instanceof Map<?, ?> map) {
+            java.util.Map<String, Object> copy = new java.util.LinkedHashMap<>();
+            map.forEach((key, entry) -> copy.put(String.valueOf(key), truncateJsonValues(entry, max)));
+            return copy;
+        }
+        if (value instanceof java.util.List<?> list) {
+            java.util.List<Object> copy = new java.util.ArrayList<>();
+            int kept = 0;
+            for (Object entry : list) {
+                if (kept >= 50) {
+                    break;
+                }
+                copy.add(truncateJsonValues(entry, max));
+                kept++;
+            }
+            return copy;
+        }
+        return value;
+    }
+    private com.fasterxml.jackson.databind.ObjectMapper jsonMapper() {
+        return mapper;
     }
     private String truncate(String value, int max) {
         if (value == null) {

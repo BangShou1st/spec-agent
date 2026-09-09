@@ -132,6 +132,17 @@ class GlobalAssistantSliceBIntegrationTest {
             }
         }
     }
+    @Autowired com.specagent.globalassistant.tool.GlobalAssistantCatalogService catalogService;
+    @Test
+    void modelCatalogHoldsExactlyTheFourV1Tools() {
+        assertThat(catalogService.modelCatalog().stream()
+                        .map(com.specagent.capability.CapabilityDescriptor::capabilityId).toList())
+                .containsExactlyInAnyOrder(
+                        ProjectCreateCapability.CAPABILITY_ID,
+                        ProjectSearchCapability.CAPABILITY_ID,
+                        ProjectListRecentCapability.CAPABILITY_ID,
+                        ProjectGetSummaryCapability.CAPABILITY_ID);
+    }
     @Test
     void projectAgentCatalogDoesNotSeeGaTools() {
         CapabilityQueryContext projectContext =
