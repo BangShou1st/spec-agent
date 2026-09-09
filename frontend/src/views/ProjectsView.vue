@@ -24,7 +24,7 @@ async function handleCreate(title: string): Promise<void> {
   <div class="projects-page">
     <div class="projects-page__heading">
       <h1>项目</h1>
-      <p>继续上次的工作，或创建新项目。只展示真实项目与真实时间。</p>
+      <p>继续上次的工作，或开始一个新项目。</p>
     </div>
 
     <ApiErrorBanner
