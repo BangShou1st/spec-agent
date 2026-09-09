@@ -15,4 +15,9 @@ describe('SkillImportReview', () => {
     expect(w.emitted('install')).toHaveLength(1)
     expect(w.emitted('reject')).toHaveLength(1)
   })
+
+  it('falls back to the source identity when opened from the staged list', () => {
+    const w = mount(SkillImportReview, { props: { open: true, staged: null, detail, working: false, error: null } })
+    expect(w.get('[data-test="staged-name"]').text()).toContain('skill')
+  })
 })

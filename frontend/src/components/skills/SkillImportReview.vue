@@ -25,6 +25,13 @@ const manifestPreview = computed(() => {
 })
 
 const manifestClipped = computed(() => (props.detail?.manifest ?? '').length > 2000)
+const displayName = computed(() => {
+  if (props.staged?.name) return props.staged.name
+  const identity = props.detail?.sourceIdentity ?? ''
+  const tail = identity.split('/').pop()?.split('\\').pop() ?? ''
+  const clean = tail.replace(/\.(git|zip)$/i, '')
+  return clean || identity || 'staged import'
+})
 
 function onKey(e: KeyboardEvent): void {
   if (e.key === 'Escape') emit('close')
@@ -43,7 +50,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
         <h3>确认导入</h3>
         <button type="button" class="icon-btn" data-test="close-review" aria-label="关闭" @click="emit('close')"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
       </header>
-      <p class="review-name" data-test="staged-name">{{ staged?.name ?? '未命名 Skill' }}</p>
+      <p class="review-name" data-test="staged-name">{{ displayName }}</p>
       <p class="muted" data-test="staged-desc">{{ staged?.description }}</p>
       <dl class="review-meta" data-test="staged-meta">
         <div><dt>来源</dt><dd>{{ detail?.sourceKind }} · {{ detail?.sourceIdentity }}</dd></div>

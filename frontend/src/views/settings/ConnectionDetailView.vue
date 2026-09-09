@@ -66,7 +66,7 @@ async function remove(): Promise<void> {
       </header>
       <dl class="detail-meta">
         <div><dt>服务器地址</dt><dd data-test="connection-endpoint">{{ endpoint }}</dd></div>
-        <div><dt>凭证</dt><dd data-test="connection-credential">{{ store.detail.hasCredential ? (`••••${store.detail.maskedSuffix ?? ''}`) : '未设置' }}</dd></div>
+        <div><dt>凭证</dt><dd data-test="connection-credential">{{ store.detail.hasCredential ? (store.detail.maskedSuffix ?? '已设置') : '未设置' }}</dd></div>
       </dl>
       <ConnectionLifecycleAction
         :detail="store.detail"
