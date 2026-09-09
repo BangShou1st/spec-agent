@@ -106,7 +106,7 @@ Freeze 决策：plan §8 的 4 表为基础，按 Phase 0 §7 补齐 working_sta
 ```text
 global_assistant_threads(id, summary, summary_version, working_state JSONB, working_state_version, created_at, updated_at)
 global_assistant_messages(id, thread_id FK, role USER|ASSISTANT, content, created_at, run_id nullable)
-global_assistant_runs(id, thread_id FK, status, step_count, started_at, completed_at, prompt_version, context_projection_version, tool_catalog_fingerprint, error_code nullable)
+global_assistant_runs(id, thread_id FK, status, step_count, cancel_requested_at nullable, started_at, completed_at, prompt_version, context_projection_version, tool_catalog_fingerprint, error_code nullable)
 global_assistant_run_events(id, run_id FK, sequence, type, payload JSONB sanitized, created_at, UNIQUE(run_id, sequence))
 ```
 
@@ -118,7 +118,13 @@ global_assistant_run_events(id, run_id FK, sequence, type, payload JSONB sanitiz
 ## 8. thread/run concurrency freeze (Contract E)
 
 Freeze：V1 单 Thread 同时最多 1 个 active run。`CREATED/RUNNING` 为 active；建第二个 run 返回 `HTTP 409 GLOBAL_ASSISTANT_RUN_ACTIVE`。
-实现方案：以 `global_assistant_runs(thread_id, status)` 部分唯一索引或事务内 SELECT FOR UPDATE 串行化建 run（类似 ProjectRepository.lockById + AgentRun claim 思想），禁止 parallel turns/branching/race-reconciliation。取消/完成才释放。
+唯一 DB invariant（最终约束，不依赖 application 自觉）：`global_assistant_runs` 必须存在数据库级 partial unique invariant，含义为一个 thread 同时最多只能存在一个 CREATED/RUNNING run。实际 PostgreSQL migration 用等价 partial unique index 语法：
+
+  ```sql
+  UNIQUE (thread_id)
+  WHERE status IN ('CREATED', 'RUNNING')
+  ```
+Run creation service 必须在事务中执行建 run；并发创建命中 active-run unique constraint conflict 时必须稳定映射 `HTTP 409 GLOBAL_ASSISTANT_RUN_ACTIVE`。可以在事务中额外使用 locking 改善竞争行为，但不能用 application lock 替代 DB partial unique invariant。禁止 parallel turns/branching/race-reconciliation。真正 terminalize（COMPLETED/FAILED/CANCELLED）以前 slot 不释放；cancel requested（`cancel_requested_at` 已设但尚未 terminalize）仍然占用 active slot，见 §16。
 
 ## 9. run lifecycle (Contract F)
 
@@ -130,6 +136,7 @@ CREATED → RUNNING → COMPLETED | FAILED | CANCELLED
 
 - `USER_INPUT_REQUIRED` 不是持久 status：emit 事件 + persist WorkingState + 正常 terminalize 当前 run；下一条 USER message 建新 Run。
 - 顺序冻结：USER message 先 persist → 建 run 行（CREATED）→ emit RUN_STARTED（RUNNING）→ … → ASSISTANT message persist → emit RUN_COMPLETED/FAILED/CANCELLED。禁止模糊 terminalization。
+- 持久状态机仍是 `CREATED → RUNNING → COMPLETED | FAILED | CANCELLED`。`cancel_requested_at` 不是 RunStatus，只是一个 cooperative cancellation request signal；V1 不新增 `CANCELLING / CANCEL_REQUESTED` 等额外 persisted status，保持状态机简单（细节见 §16）。
 
 ## 10. SSE cursor/reconnect contract (Contract G)
 
@@ -199,7 +206,12 @@ GlobalAssistantBrain → GlobalAssistantPromptRenderer → ModelInferenceGateway
 
 ## 16. cancellation (Phase 0 §20)
 
-Freeze cooperative cancellation：cancel requested → 下个 model/tool step 前停；已进入同步 Provider call 不承诺硬中断；已成功 durable Tool 不回滚；最终 CANCELLED，不伪装 rollback。
+Freeze cooperative cancellation（持久化 signal + 协作停止，唯一语义）：
+
+- `POST /runs/{runId}/cancel` 对 run 做事务性读取/锁定；仅当 run 为 `CREATED / RUNNING` 时设 `cancel_requested_at = now()`，此时不得立即将 status 设为 CANCELLED（执行中的同步 Provider call / Tool step 可能尚未真正停止）。因此 cancel requested != terminal CANCELLED，且 active-run DB invariant 在真正 terminalize 以前仍然保持占用。
+- Runtime 在开始下一 model step 前、开始下一 tool step 前必须检查最新 persisted cancellation state；若 `cancel_requested_at != null` 则不得继续启动新的 model/tool operation。Runtime 在安全停止边界负责 `status → CANCELLED`、emit terminal cancellation event、set completed_at，之后 active-run slot 才释放。
+- 若 cancel 到达时同步 Provider call 已开始，V1 不承诺硬 interrupt；Provider call 返回后 Runtime 在下一执行边界观察 cancellation request，并禁止后续 Tool/model step。已成功执行的 durable Tool 不得 rollback。最终 CANCELLED 不伪装 rollback。
+- 幂等：重复 cancel 必须幂等；已设 `cancel_requested_at` 时不得产生新的不同 cancellation semantics。对已 `COMPLETED / FAILED / CANCELLED` 的 run 不得恢复、不得改变 terminal result（具体 HTTP representation 由后续 API contract 实现遵循现有项目惯例，状态语义不变）。
 
 ## 17. rolling summary (Phase 0 §19)
 
@@ -212,7 +224,7 @@ Freeze GA-specific eval（归 `com.specagent.globalassistant/eval`），复用�
 
 ## 19. planned migration numbers/files
 
-- 新 migration（编号按当时最新顺延，当前最大 V27）：`V28__global_assistant_threads.sql`（threads+working_state/messages/runs/run_events，含 UNIQUE(run_id,sequence) + active-run 部分唯一约束）; `V29__capability_invocations_application_scope.sql`（project_id DROP NOT NULL）。scope marker 为 descriptor/context 层（§5 `supports`），不需要 DB migration，不规划 V30。
+- 新 migration（编号按当时最新顺延，当前最大 V27）：`V28__global_assistant_threads.sql`（threads+working_state/messages/runs/run_events，含 UNIQUE(run_id,sequence) + active-run partial unique constraint `UNIQUE (thread_id) WHERE status IN ('CREATED','RUNNING')`，与 §8 完全一致）; `V29__capability_invocations_application_scope.sql`（project_id DROP NOT NULL）。scope marker 为 descriptor/context 层（§5 `supports`），不需要 DB migration，不规划 V30。
 - 新 Java 包（高内聚低耦合，见 §20）：`com.specagent.globalassistant/{api,conversation,context,model,runtime,stream,tool,eval}`；tool 层只调 ProjectService/read models，不直连 repository；runtime 只调 Brain 不碰 OpenCode transport；brain 只调 ModelInferenceGateway。
 
 ## 20. implementation dependency order
