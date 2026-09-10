@@ -15,6 +15,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -56,28 +57,38 @@ public class TurnHandoffService {
     @Transactional
     public AcceptResult acceptSteer(UUID threadId, UUID targetRunId, String rawMessage, GlobalAssistantContextBuilder.UiRequest uiRequest) {
         if (rawMessage == null || rawMessage.isBlank()) {
-            throw new IllegalArgumentException("Steer message must not be blank");
+            throw new SteerRejectedException(SteerRejectedException.Reason.BLANK, "Steer message must not be blank");
         }
         String message = rawMessage.trim();
         if (message.length() > 4000) {
-            throw new IllegalArgumentException("Steer message too long");
+            throw new SteerRejectedException(SteerRejectedException.Reason.TOO_LONG, "Steer message too long");
         }
         lockThread(threadId);
-        var target = runs.findById(targetRunId).orElseThrow(() -> new IllegalArgumentException("Run not found: " + targetRunId));
-        if (!target.threadId().equals(threadId)) {
-            throw new IllegalArgumentException("Run does not belong to thread");
+        com.specagent.globalassistant.conversation.GlobalAssistantRun freshTarget;
+        try {
+            freshTarget = runs.lockById(targetRunId);
+        } catch (IllegalArgumentException ex) {
+            throw new SteerRejectedException(SteerRejectedException.Reason.RUN_NOT_FOUND, "Run not found");
+        }
+        if (!freshTarget.threadId().equals(threadId)) {
+            throw new SteerRejectedException(SteerRejectedException.Reason.THREAD_MISMATCH, "Run does not belong to thread");
+        }
+        var currentActive = runs.findActiveByThread(threadId);
+        if (!freshTarget.status().isActive()) {
+            if (currentActive.isPresent() && !currentActive.get().id().equals(targetRunId)) {
+                throw new SteerRejectedException(SteerRejectedException.Reason.STALE_TARGET, "Target run is stale; thread already hosts a newer active run");
+            }
         }
         String uiJson = uiContextJson(uiRequest);
-        PendingTurn created;
-        try {
-            created = pending.insert(threadId, targetRunId, message, uiJson);
-        } catch (SteerPendingException ex) {
-            throw ex;
-        }
-        var freshTarget = runs.lockById(targetRunId);
-        if (freshTarget.status().isActive()) {
+        PendingTurn created = pending.insert(threadId, targetRunId, message, uiJson);
+        var lockedTarget = runs.lockById(targetRunId);
+        if (lockedTarget.status().isActive()) {
             runs.requestCancel(targetRunId);
             return new AcceptResult(created, Optional.empty());
+        }
+        var resealedActive = runs.findActiveByThread(threadId);
+        if (resealedActive.isPresent()) {
+            throw new SteerRejectedException(SteerRejectedException.Reason.STALE_TARGET, "Target terminalized but a newer active run exists");
         }
         Optional<Successor> successor = claimAndCreateSuccessorLocked(threadId);
         var claimed = successor.map(s -> pending.findById(s.pendingId()).orElseThrow()).orElse(created);
@@ -86,11 +97,29 @@ public class TurnHandoffService {
 
     @Transactional
     public Optional<Successor> tryHandoff(UUID threadId) {
+        return doHandoff(threadId);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public Optional<Successor> tryHandoffAfterCommit(UUID threadId) {
+        return doHandoff(threadId);
+    }
+
+    private Optional<Successor> doHandoff(UUID threadId) {
         lockThread(threadId);
         if (runs.findActiveByThread(threadId).isPresent()) {
             return Optional.empty();
         }
         return claimAndCreateSuccessorLocked(threadId);
+    }
+
+    @Transactional
+    public com.specagent.globalassistant.turn.ThreadActivity stopThreadAtomically(UUID threadId) {
+        lockThread(threadId);
+        pending.markDiscardedByThread(threadId);
+        var active = runs.findActiveByThread(threadId);
+        active.ifPresent(run -> runs.requestCancel(run.id()));
+        return new com.specagent.globalassistant.turn.ThreadActivity(runs.findActiveByThread(threadId), pending.findUnresolvedByThread(threadId));
     }
 
     private Optional<Successor> claimAndCreateSuccessorLocked(UUID threadId) {

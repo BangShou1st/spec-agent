@@ -13,11 +13,8 @@ import com.specagent.globalassistant.model.GlobalAssistantBrain;
 import com.specagent.globalassistant.model.GlobalAssistantDecision;
 import com.specagent.globalassistant.model.GlobalAssistantModelException;
 import com.specagent.globalassistant.stream.GlobalAssistantRunEventService;
-import com.specagent.globalassistant.turn.RunTerminalEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.ApplicationEventPublisher;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -45,17 +42,14 @@ public class GlobalAssistantRuntime {
     private final GlobalAssistantRunEventService runEvents;
     private final GlobalAssistantUiActionValidator uiValidator;
     private final com.specagent.globalassistant.model.GlobalAssistantSummaryService summaries;
-    private final ApplicationEventPublisher eventsPublisher;
     private static final Logger log = LoggerFactory.getLogger(GlobalAssistantRuntime.class);
-    @Autowired
     public GlobalAssistantRuntime(GlobalAssistantConversationService conversations,
             GlobalAssistantContextBuilder contextBuilder, GlobalAssistantBrain brain,
             CapabilityRuntime capabilities, GlobalAssistantRunRepository runs,
             GlobalAssistantToolArgumentCanonicalizer canonicalizer,
             GlobalAssistantRuntimeProperties budgets, GlobalAssistantRunLifecycleService lifecycle,
             GlobalAssistantRunEventService runEvents, GlobalAssistantUiActionValidator uiValidator,
-            com.specagent.globalassistant.model.GlobalAssistantSummaryService summaries,
-            ApplicationEventPublisher eventsPublisher) {
+            com.specagent.globalassistant.model.GlobalAssistantSummaryService summaries) {
         this.conversations = conversations;
         this.contextBuilder = contextBuilder;
         this.brain = brain;
@@ -67,17 +61,6 @@ public class GlobalAssistantRuntime {
         this.runEvents = runEvents;
         this.uiValidator = uiValidator;
         this.summaries = summaries;
-        this.eventsPublisher = eventsPublisher;
-    }
-    /** Test-only path without event bus. */
-    public GlobalAssistantRuntime(GlobalAssistantConversationService conversations,
-            GlobalAssistantContextBuilder contextBuilder, GlobalAssistantBrain brain,
-            CapabilityRuntime capabilities, GlobalAssistantRunRepository runs,
-            GlobalAssistantToolArgumentCanonicalizer canonicalizer,
-            GlobalAssistantRuntimeProperties budgets, GlobalAssistantRunLifecycleService lifecycle,
-            GlobalAssistantRunEventService runEvents, GlobalAssistantUiActionValidator uiValidator,
-            com.specagent.globalassistant.model.GlobalAssistantSummaryService summaries) {
-        this(conversations, contextBuilder, brain, capabilities, runs, canonicalizer, budgets, lifecycle, runEvents, uiValidator, summaries, null);
     }
     /**
      * Executes one user turn synchronously. The run row already exists;
@@ -101,7 +84,7 @@ public class GlobalAssistantRuntime {
         int steps = 0;
         while (true) {
             if (isCancelRequested(runId)) {
-                cancelAndPublish(threadId, runId);
+                lifecycle.cancelAndTerminalize(runId);
                 return;
             }
             if (steps >= budgets.maxSteps()) {
@@ -131,7 +114,7 @@ public class GlobalAssistantRuntime {
             incrementStep(runId);
             steps++;
             if (isCancelRequested(runId)) {
-                cancelAndPublish(threadId, runId);
+                lifecycle.cancelAndTerminalize(runId);
                 return;
             }
             if (decision.toolRequest() != null) {
@@ -152,7 +135,7 @@ public class GlobalAssistantRuntime {
                     }
                 }
                 if (isCancelRequested(runId)) {
-                    cancelAndPublish(threadId, runId);
+                    lifecycle.cancelAndTerminalize(runId);
                     return;
                 }
                 String statusLabel = statusLabelFor(decision.toolRequest().capabilityId());
@@ -206,7 +189,7 @@ public class GlobalAssistantRuntime {
             }
             if (decision.requiresUserInput()) {
                 if (isCancelRequested(runId)) {
-                    cancelAndPublish(threadId, runId);
+                    lifecycle.cancelAndTerminalize(runId);
                     return;
                 }
                 String question = decision.assistantText();
@@ -218,11 +201,10 @@ public class GlobalAssistantRuntime {
                     return;
                 }
                 if (isCancelRequested(runId)) {
-                    cancelAndPublish(threadId, runId);
+                    lifecycle.cancelAndTerminalize(runId);
                     return;
                 }
                 lifecycle.completeForClarification(threadId, runId, question);
-                publishTerminal(threadId, runId, "COMPLETED");
                 refreshSummaryBestEffort(threadId, runId);
                 return;
             }
@@ -232,7 +214,7 @@ public class GlobalAssistantRuntime {
                 return;
             }
             if (isCancelRequested(runId)) {
-                cancelAndPublish(threadId, runId);
+                lifecycle.cancelAndTerminalize(runId);
                 return;
             }
             String text = decision.assistantText() != null ? decision.assistantText() : "";
@@ -249,7 +231,7 @@ public class GlobalAssistantRuntime {
                     return;
                 }
                 if (isCancelRequested(runId)) {
-                    cancelAndPublish(threadId, runId);
+                    lifecycle.cancelAndTerminalize(runId);
                     return;
                 }
                 uiDestination = decision.uiAction().destination().name();
@@ -259,7 +241,7 @@ public class GlobalAssistantRuntime {
                 }
             }
             if (isCancelRequested(runId)) {
-                cancelAndPublish(threadId, runId);
+                lifecycle.cancelAndTerminalize(runId);
                 return;
             }
             finishSuccessfully(threadId, runId, userMessage, text, uiDestination, uiResourceId);
@@ -330,7 +312,6 @@ public class GlobalAssistantRuntime {
         } else {
             lifecycle.completeWithAssistant(threadId, runId, text);
         }
-        publishTerminal(threadId, runId, "COMPLETED");
         refreshSummaryBestEffort(threadId, runId);
     }
     private void refreshSummaryBestEffort(UUID threadId, UUID runId) {
@@ -484,24 +465,6 @@ public class GlobalAssistantRuntime {
             text = "I couldn't find that project.";
         }
         lifecycle.failWithAssistant(threadId, runId, text, errorCode, truncate(reason));
-        publishTerminal(threadId, runId, "FAILED");
-    }
-    private void cancelAndPublish(UUID threadId, UUID runId) {
-        try {
-            lifecycle.cancelAndTerminalize(runId);
-        } finally {
-            publishTerminal(threadId, runId, "CANCELLED");
-        }
-    }
-    private void publishTerminal(UUID threadId, UUID runId, String status) {
-        if (eventsPublisher == null) {
-            return;
-        }
-        try {
-            eventsPublisher.publishEvent(new RunTerminalEvent(threadId, runId, status));
-        } catch (Exception ex) {
-            log.debug("Global assistant terminal event publish failed: runId={}", runId);
-        }
     }
     private String truncate(String value) {
         if (value == null) {

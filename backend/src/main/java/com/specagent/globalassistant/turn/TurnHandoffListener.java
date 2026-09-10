@@ -27,7 +27,7 @@ public class TurnHandoffListener {
             return;
         }
         try {
-            var successor = handoff.tryHandoff(event.threadId());
+            var successor = handoff.tryHandoffAfterCommit(event.threadId());
             successor.ifPresent(s -> dispatcher.dispatch(s.run().threadId(), s.run().id(), s.message(), s.uiRequest()));
         } catch (Exception ex) {
             log.warn("Global assistant handoff failed: thread={} error={}", event.threadId(), ex.getClass().getSimpleName());

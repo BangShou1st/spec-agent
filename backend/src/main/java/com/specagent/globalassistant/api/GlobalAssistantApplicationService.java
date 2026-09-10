@@ -115,18 +115,15 @@ public class GlobalAssistantApplicationService {
             return new SteerResult(accepted.pendingTurn(), accepted.successor().orElse(null));
         } catch (SteerPendingException ex) {
             throw ApiException.conflict(GlobalAssistantErrorCode.STEER_PENDING, "Previous steer is still taking effect");
-        } catch (IllegalArgumentException ex) {
-            String msg = String.valueOf(ex.getMessage());
-            if (msg.contains("too long")) {
-                throw ApiException.badRequest("MESSAGE_TOO_LONG", "Message too long");
-            }
-            if (msg.contains("must not be blank")) {
-                throw ApiException.badRequest("MESSAGE_REQUIRED", "Message must not be blank");
-            }
-            if (msg.contains("Run not found") || msg.contains("Thread not found") || msg.contains("does not belong")) {
-                throw ApiException.notFound("RUN_NOT_FOUND", "Run not found");
-            }
-            throw ApiException.badRequest("STEER_INVALID", "Steer request invalid");
+        } catch (com.specagent.globalassistant.turn.SteerRejectedException ex) {
+            throw switch (ex.reason()) {
+                case BLANK -> ApiException.badRequest("MESSAGE_REQUIRED", "Message must not be blank");
+                case TOO_LONG -> ApiException.badRequest("MESSAGE_TOO_LONG", "Message too long");
+                case RUN_NOT_FOUND -> ApiException.notFound("RUN_NOT_FOUND", "Run not found");
+                case THREAD_MISMATCH -> ApiException.notFound("RUN_NOT_FOUND", "Run not found");
+                case STALE_TARGET -> ApiException.conflict(GlobalAssistantErrorCode.RUN_STALE, "Target run is stale; refresh and send as a new message");
+                case INVALID -> ApiException.badRequest("STEER_INVALID", "Steer request invalid");
+            };
         }
     }
     public ThreadActivity threadActivity(UUID threadId) {
@@ -135,10 +132,7 @@ public class GlobalAssistantApplicationService {
     }
     public ThreadActivity stopThread(UUID threadId) {
         requireThread(threadId);
-        handoff.discardUnresolved(threadId);
-        var active = runs.findActiveByThread(threadId);
-        active.ifPresent(run -> runs.requestCancel(run.id()));
-        return activity.read(threadId);
+        return handoff.stopThreadAtomically(threadId);
     }
     public void deleteThread(UUID threadId) {
         requireThread(threadId);

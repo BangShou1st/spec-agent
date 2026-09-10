@@ -35,8 +35,8 @@ public class ConversationDeleteService {
         var runIds = jdbc.queryForList("SELECT id FROM global_assistant_runs WHERE thread_id = :threadId", Maps.of("threadId", threadId), UUID.class);
         if (!runIds.isEmpty()) {
             jdbc.update("DELETE FROM global_assistant_run_events WHERE run_id IN (:runIds)", Maps.of("runIds", runIds));
+            jdbc.update("DELETE FROM capability_invocations WHERE run_id IN (:runIds)", Maps.of("runIds", runIds));
         }
-        jdbc.update("UPDATE capability_invocations SET run_id = NULL WHERE run_id IN (SELECT id FROM global_assistant_runs WHERE thread_id = :threadId)", Maps.of("threadId", threadId));
         pending.deleteByThread(threadId);
         jdbc.update("DELETE FROM global_assistant_messages WHERE thread_id = :threadId", Maps.of("threadId", threadId));
         jdbc.update("DELETE FROM global_assistant_runs WHERE thread_id = :threadId", Maps.of("threadId", threadId));

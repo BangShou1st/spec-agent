@@ -21,6 +21,7 @@ const GA_ERROR_COPY: Record<string, string> = {
   RUN_CANCELLED: '本次任务已停止。',
   GLOBAL_ASSISTANT_RUN_ACTIVE: '上一个请求仍在处理中，请稍候。',
   GLOBAL_ASSISTANT_STEER_PENDING: '上一条调整正在生效，请稍后再发送新的要求。',
+  GLOBAL_ASSISTANT_RUN_STALE: '当前任务已更新，请刷新后作为新消息发送。',
   GLOBAL_ASSISTANT_THREAD_ACTIVE: '当前任务完成或停止后可以切换会话。',
   RUN_INTERRUPTED: '任务被中断，请重新发送。',
   THREAD_NOT_FOUND: '当前会话已失效，已为你开始新会话。',

@@ -17,4 +17,5 @@ public final class GlobalAssistantErrorCode {
     public static final String RUN_INTERRUPTED = "RUN_INTERRUPTED";
     public static final String STEER_PENDING = "GLOBAL_ASSISTANT_STEER_PENDING";
     public static final String THREAD_ACTIVE = "GLOBAL_ASSISTANT_THREAD_ACTIVE";
+    public static final String RUN_STALE = "GLOBAL_ASSISTANT_RUN_STALE";
 }

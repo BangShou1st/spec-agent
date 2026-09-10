@@ -1,13 +1,8 @@
 package com.specagent.globalassistant.runtime;
-import com.specagent.globalassistant.conversation.GlobalAssistantEventType;
 import com.specagent.globalassistant.conversation.GlobalAssistantRun;
 import com.specagent.globalassistant.conversation.GlobalAssistantRunRepository;
-import com.specagent.globalassistant.conversation.GlobalAssistantRunStatus;
-import com.specagent.globalassistant.stream.GlobalAssistantRunEventService;
 import java.util.List;
-import java.util.Map;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 /**
  * Startup orphan recovery for the single-instance V1 executor.
  * Persisted CREATED/RUNNING runs from a dead process terminalize as honest
@@ -18,30 +13,30 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class GlobalAssistantRunRecoveryService {
     private final GlobalAssistantRunRepository runs;
-    private final GlobalAssistantRunEventService events;
+    private final GlobalAssistantRunLifecycleService lifecycle;
     private final com.specagent.globalassistant.turn.PendingTurnRepository pending;
     private final com.specagent.globalassistant.turn.TurnHandoffService handoff;
     private final com.specagent.globalassistant.turn.RunDispatcher dispatcher;
     public GlobalAssistantRunRecoveryService(GlobalAssistantRunRepository runs,
-            GlobalAssistantRunEventService events,
+            GlobalAssistantRunLifecycleService lifecycle,
             com.specagent.globalassistant.turn.PendingTurnRepository pending,
             com.specagent.globalassistant.turn.TurnHandoffService handoff,
             com.specagent.globalassistant.turn.RunDispatcher dispatcher) {
         this.runs = runs;
-        this.events = events;
+        this.lifecycle = lifecycle;
         this.pending = pending;
         this.handoff = handoff;
         this.dispatcher = dispatcher;
     }
-    @Transactional
     public int recoverOrphans() {
         List<GlobalAssistantRun> orphans = runs.findActiveRuns();
+        int interrupted = 0;
         for (GlobalAssistantRun orphan : orphans) {
-            events.append(orphan.id(), GlobalAssistantEventType.RUN_FAILED, Map.of(
-                    "errorCode", GlobalAssistantErrorCode.RUN_INTERRUPTED,
-                    "reason", "The previous process stopped before this run finished."));
-            runs.terminalize(orphan.id(), GlobalAssistantRunStatus.FAILED,
-                    GlobalAssistantErrorCode.RUN_INTERRUPTED);
+            try {
+                lifecycle.interruptAndTerminalize(orphan.id());
+                interrupted++;
+            } catch (Exception ignored) {
+            }
         }
         int stranded = 0;
         try {
@@ -51,9 +46,10 @@ public class GlobalAssistantRunRecoveryService {
                     if (runs.findActiveByThread(pt.threadId()).isPresent()) {
                         continue;
                     }
-                    var successor = handoff.tryHandoff(pt.threadId());
-                    successor.ifPresent(s -> dispatcher.dispatch(s.run().threadId(), s.run().id(), s.message(), s.uiRequest()));
+                    var successor = handoff.tryHandoffAfterCommit(pt.threadId());
                     if (successor.isPresent()) {
+                        var s = successor.get();
+                        dispatcher.dispatch(s.run().threadId(), s.run().id(), s.message(), s.uiRequest());
                         stranded++;
                     }
                 } catch (Exception ignored) {
@@ -61,6 +57,6 @@ public class GlobalAssistantRunRecoveryService {
             }
         } catch (Exception ignored) {
         }
-        return orphans.size() + stranded;
+        return interrupted + stranded;
     }
 }
