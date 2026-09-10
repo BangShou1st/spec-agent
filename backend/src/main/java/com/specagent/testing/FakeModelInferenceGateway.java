@@ -41,7 +41,7 @@ requirement goal.","options":[{"label":"Clarify the primary goal"}],\
         String content = switch (request.callType()) {
             case "STATE_UPDATE" -> STATE_UPDATE_OUTPUT;
             case "DECISION" -> DECISION_OUTPUT;
-            case "GLOBAL_ASSISTANT_DECISION" -> "{\"assistantText\": \"Hello! How can I help?\", \"done\": true}";
+            case "GLOBAL_ASSISTANT_DECISION" -> "{\"kind\":\"FINAL\",\"assistantText\": \"Hello! How can I help?\"}";
             case "GLOBAL_ASSISTANT_SUMMARY" -> "User goals and resolved project identities preserved.";
             default -> throw new IllegalArgumentException(
                     "FakeModelInferenceGateway does not support call type: " + request.callType());

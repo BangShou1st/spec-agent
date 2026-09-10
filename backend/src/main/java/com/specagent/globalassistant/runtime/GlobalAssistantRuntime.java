@@ -117,7 +117,12 @@ public class GlobalAssistantRuntime {
                 lifecycle.cancelAndTerminalize(runId);
                 return;
             }
-            if (decision.toolRequest() != null) {
+            if (decision.kind() == null) {
+                failRun(threadId, runId, GlobalAssistantErrorCode.MODEL_INVALID_RESPONSE,
+                        "Missing decision kind", observations);
+                return;
+            }
+            if (decision.kind() == GlobalAssistantDecision.DecisionKind.TOOL) {
                 if (toolCalls >= budgets.maxToolCalls()) {
                     failRun(threadId, runId, GlobalAssistantErrorCode.RUN_STEP_LIMIT,
                             "Tool budget exhausted", observations);
@@ -187,7 +192,7 @@ public class GlobalAssistantRuntime {
                 observationFingerprint = observations.hashCode() + workingStateFingerprint(threadId);
                 continue;
             }
-            if (decision.requiresUserInput()) {
+            if (decision.kind() == GlobalAssistantDecision.DecisionKind.CLARIFY) {
                 if (isCancelRequested(runId)) {
                     lifecycle.cancelAndTerminalize(runId);
                     return;
@@ -208,22 +213,19 @@ public class GlobalAssistantRuntime {
                 refreshSummaryBestEffort(threadId, runId);
                 return;
             }
-            if (decision.toolRequest() == null && decision.uiAction() == null && !decision.done()) {
-                failRun(threadId, runId, GlobalAssistantErrorCode.MODEL_INVALID_RESPONSE,
-                        "Indecisive model response", observations);
-                return;
-            }
-            if (isCancelRequested(runId)) {
-                lifecycle.cancelAndTerminalize(runId);
-                return;
-            }
-            String text = decision.assistantText() != null ? decision.assistantText() : "";
-            String uiDestination = null;
-            String uiResourceId = null;
-            if (decision.uiAction() != null) {
+            if (decision.kind() == GlobalAssistantDecision.DecisionKind.NAVIGATE) {
+                if (isCancelRequested(runId)) {
+                    lifecycle.cancelAndTerminalize(runId);
+                    return;
+                }
+                String text = decision.assistantText();
+                if (text == null || text.isBlank()) {
+                    text = defaultNavigationText(decision.uiAction());
+                }
                 UUID validated;
                 try {
-                    validated = decision.uiAction().resourceId() == null
+                    validated = decision.uiAction() == null
+                            || decision.uiAction().resourceId() == null
                             || decision.uiAction().resourceId().isBlank() ? null
                             : uiValidator.requireExistingProject(decision.uiAction().resourceId());
                 } catch (GlobalAssistantModelException ex) {
@@ -234,17 +236,30 @@ public class GlobalAssistantRuntime {
                     lifecycle.cancelAndTerminalize(runId);
                     return;
                 }
-                uiDestination = decision.uiAction().destination().name();
-                uiResourceId = validated == null ? null : validated.toString();
-                if (text.isBlank()) {
-                    text = defaultNavigationText(decision.uiAction());
+                String uiDestination = decision.uiAction().destination().name();
+                String uiResourceId = validated == null ? null : validated.toString();
+                if (isCancelRequested(runId)) {
+                    lifecycle.cancelAndTerminalize(runId);
+                    return;
                 }
-            }
-            if (isCancelRequested(runId)) {
-                lifecycle.cancelAndTerminalize(runId);
+                finishSuccessfully(threadId, runId, userMessage, text, uiDestination, uiResourceId);
                 return;
             }
-            finishSuccessfully(threadId, runId, userMessage, text, uiDestination, uiResourceId);
+            if (decision.kind() == GlobalAssistantDecision.DecisionKind.FINAL) {
+                if (isCancelRequested(runId)) {
+                    lifecycle.cancelAndTerminalize(runId);
+                    return;
+                }
+                String text = decision.assistantText() != null ? decision.assistantText() : "";
+                if (isCancelRequested(runId)) {
+                    lifecycle.cancelAndTerminalize(runId);
+                    return;
+                }
+                finishSuccessfully(threadId, runId, userMessage, text, null, null);
+                return;
+            }
+            failRun(threadId, runId, GlobalAssistantErrorCode.MODEL_INVALID_RESPONSE,
+                    "Unknown decision kind", observations);
             return;
         }
     }

@@ -6,7 +6,9 @@ import java.util.UUID;
 import org.springframework.stereotype.Component;
 
 /**
- * Fail-closed decision validation. Model output is never authorization.
+ * Fail-closed discriminated decision validation V2. Model output is never
+ * authorization. Schema is the generation contract, parser is the syntactic
+ * application contract, this validator is the executable safety contract.
  */
 @Component
 public class GlobalAssistantDecisionValidator {
@@ -14,71 +16,78 @@ public class GlobalAssistantDecisionValidator {
         if (decision == null) {
             throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE", "Decision must not be null");
         }
-        if (decision.toolRequest() != null) {
-            String capabilityId = decision.toolRequest().capabilityId();
-            if (!GlobalAssistantToolCatalog.isAllowed(capabilityId)) {
-                throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
-                        "Tool not in Global Assistant catalog: " + capabilityId);
-            }
-            validateToolArguments(capabilityId, decision.toolRequest().arguments());
+        if (decision.kind() == null) {
+            throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE", "Decision kind is required");
         }
-        if (decision.uiAction() != null) {
-            validateUiAction(decision.uiAction());
-        }
-        if (decision.toolRequest() != null) {
-            if (decision.done()) {
-                throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
-                        "Tool decisions must have done=false");
+        switch (decision.kind()) {
+            case TOOL -> {
+                if (decision.toolRequest() == null) {
+                    throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
+                            "TOOL decisions require toolRequest");
+                }
+                if (decision.assistantText() != null) {
+                    throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
+                            "TOOL decisions must not carry assistantText");
+                }
+                if (decision.uiAction() != null) {
+                    throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
+                            "TOOL decisions must not carry a UI action");
+                }
+                String capabilityId = decision.toolRequest().capabilityId();
+                if (!GlobalAssistantToolCatalog.isAllowed(capabilityId)) {
+                    throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
+                            "Tool not in Global Assistant catalog: " + capabilityId);
+                }
+                validateToolArguments(capabilityId, decision.toolRequest().arguments());
             }
-            if (decision.requiresUserInput()) {
-                throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
-                        "Tool decisions must not require user input");
+            case CLARIFY -> {
+                if (decision.toolRequest() != null) {
+                    throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
+                            "CLARIFY decisions must not carry toolRequest");
+                }
+                if (decision.uiAction() != null) {
+                    throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
+                            "CLARIFY decisions must not carry a UI action");
+                }
+                if (decision.assistantText() == null || decision.assistantText().isBlank()) {
+                    throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
+                            "CLARIFY decisions require a non-blank question");
+                }
+                if (decision.assistantText().length() > 4000) {
+                    throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE", "assistantText too long");
+                }
             }
-            if (decision.uiAction() != null) {
-                throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
-                        "Tool decisions must not carry a UI action");
+            case NAVIGATE -> {
+                if (decision.toolRequest() != null) {
+                    throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
+                            "NAVIGATE decisions must not carry toolRequest");
+                }
+                if (decision.uiAction() == null) {
+                    throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
+                            "NAVIGATE decisions require uiAction");
+                }
+                validateUiAction(decision.uiAction());
+                if (decision.assistantText() != null && decision.assistantText().length() > 4000) {
+                    throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE", "assistantText too long");
+                }
             }
-            return;
-        }
-        if (decision.requiresUserInput()) {
-            if (!decision.done()) {
-                throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
-                        "requiresUserInput must terminalize the current run (done=true)");
+            case FINAL -> {
+                if (decision.toolRequest() != null) {
+                    throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
+                            "FINAL decisions must not carry toolRequest");
+                }
+                if (decision.uiAction() != null) {
+                    throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
+                            "FINAL decisions must not carry a UI action");
+                }
+                if (decision.assistantText() == null || decision.assistantText().isBlank()) {
+                    throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
+                            "FINAL decisions require non-blank assistant text");
+                }
+                if (decision.assistantText().length() > 4000) {
+                    throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE", "assistantText too long");
+                }
             }
-            if (decision.uiAction() != null) {
-                throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
-                        "Clarification decisions must not carry a UI action");
-            }
-            if (decision.assistantText() == null || decision.assistantText().isBlank()) {
-                throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
-                        "Clarification decisions require a non-blank question");
-            }
-            return;
-        }
-        if (decision.uiAction() != null) {
-            if (!decision.done()) {
-                throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
-                        "UI action decisions must have done=true");
-            }
-            if (decision.requiresUserInput()) {
-                throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
-                        "UI action decisions must not require user input");
-            }
-            return;
-        }
-        if (!decision.done()) {
-            throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
-                    "Final decisions must have done=true");
-        }
-        if (decision.assistantText() == null || decision.assistantText().isBlank()) {
-            throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
-                    "Final decisions require non-blank assistant text");
-        }
-        if (decision.assistantText() != null && decision.assistantText().length() > 4000) {
-            throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE", "assistantText too long");
-        }
-        if (decision.statusText() != null && decision.statusText().length() > 200) {
-            throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE", "statusText too long");
         }
     }
     private void validateToolArguments(String capabilityId, Map<String, Object> arguments) {

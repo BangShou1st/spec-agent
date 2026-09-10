@@ -8,12 +8,16 @@ import java.util.Set;
 import org.springframework.stereotype.Component;
 
 /**
- * Strict decision parse. Fail-closed on any schema violation.
+ * Strict discriminated decision parse V2. Fail-closed on any schema violation.
+ * Parses {@code kind} first, then only the corresponding branch. No legacy
+ * compatibility path, no leniency.
  */
 @Component
 public class GlobalAssistantDecisionParser {
     private static final Set<String> TOP_LEVEL_FIELDS = Set.of(
-            "assistantText", "statusText", "toolRequest", "uiAction", "requiresUserInput", "done");
+            "kind", "assistantText", "toolRequest", "uiAction");
+    private static final Set<String> LEGACY_FIELDS = Set.of(
+            "statusText", "requiresUserInput", "done");
     private static final Set<String> TOOL_FIELDS = Set.of("capabilityId", "arguments");
     private static final Set<String> UI_FIELDS = Set.of("destination", "resourceId");
     private final ObjectMapper mapper;
@@ -42,87 +46,158 @@ public class GlobalAssistantDecisionParser {
         }
         for (java.util.Iterator<String> names = root.fieldNames(); names.hasNext();) {
             String field = names.next();
+            if (LEGACY_FIELDS.contains(field)) {
+                throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
+                        "Legacy decision field is not accepted in V2: " + field);
+            }
             if (!TOP_LEVEL_FIELDS.contains(field)) {
                 throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
                         "Unknown decision field: " + field);
             }
         }
-        String assistantText = strictTextOrNull(root, "assistantText");
-        String statusText = strictTextOrNull(root, "statusText");
-        GlobalAssistantDecision.ToolRequest toolRequest = null;
-        if (root.has("toolRequest") && !root.get("toolRequest").isNull()) {
-            JsonNode tool = root.get("toolRequest");
-            if (!tool.isObject()) {
-                throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE", "toolRequest must be an object");
-            }
-            for (java.util.Iterator<String> names = tool.fieldNames(); names.hasNext();) {
-                String field = names.next();
-                if (!TOOL_FIELDS.contains(field)) {
-                    throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
-                            "Unknown toolRequest field: " + field);
-                }
-            }
-            String capabilityId = strictTextOrNull(tool, "capabilityId");
-            if (capabilityId == null || capabilityId.isBlank()) {
-                throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE", "toolRequest.capabilityId is required");
-            }
-            Map<String, Object> arguments = Map.of();
-            if (tool.has("arguments") && !tool.get("arguments").isNull()) {
-                if (!tool.get("arguments").isObject()) {
-                    throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE", "toolRequest.arguments must be an object");
-                }
-                arguments = new LinkedHashMap<>();
-                var fields = tool.get("arguments").fields();
-                while (fields.hasNext()) {
-                    var entry = fields.next();
-                    arguments.put(entry.getKey(), jsonValue(entry.getValue()));
-                }
-            }
-            toolRequest = new GlobalAssistantDecision.ToolRequest(capabilityId.trim(), arguments);
+        if (!root.has("kind") || root.get("kind").isNull()) {
+            throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE", "kind is required");
         }
-        GlobalAssistantDecision.UiAction uiAction = null;
-        if (root.has("uiAction") && !root.get("uiAction").isNull()) {
-            JsonNode ui = root.get("uiAction");
-            if (!ui.isObject()) {
-                throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE", "uiAction must be an object");
-            }
-            for (java.util.Iterator<String> names = ui.fieldNames(); names.hasNext();) {
-                String field = names.next();
-                if (!UI_FIELDS.contains(field)) {
-                    throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
-                            "Unknown uiAction field: " + field);
-                }
-            }
-            String destination = strictTextOrNull(ui, "destination");
-            if (destination == null || destination.isBlank()) {
-                throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE", "uiAction.destination is required");
-            }
-            GlobalAssistantDecision.UiDestination dest;
-            try {
-                dest = GlobalAssistantDecision.UiDestination.fromCode(destination);
-            } catch (IllegalArgumentException ex) {
-                throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE", "Unknown UI destination: " + destination);
-            }
-            String resourceId = strictTextOrNull(ui, "resourceId");
-            uiAction = new GlobalAssistantDecision.UiAction(dest, resourceId);
+        if (!root.get("kind").isTextual()) {
+            throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE", "kind must be a string");
         }
-        boolean requiresUserInput = false;
-        if (root.has("requiresUserInput") && !root.get("requiresUserInput").isNull()) {
-            JsonNode flag = root.get("requiresUserInput");
-            if (!flag.isBoolean()) {
+        GlobalAssistantDecision.DecisionKind kind;
+        try {
+            kind = GlobalAssistantDecision.DecisionKind.fromCode(root.get("kind").asText());
+        } catch (IllegalArgumentException ex) {
+            throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
+                    "Unknown decision kind: " + root.get("kind").asText());
+        }
+        return switch (kind) {
+            case TOOL -> parseTool(root);
+            case CLARIFY -> parseClarify(root);
+            case NAVIGATE -> parseNavigate(root);
+            case FINAL -> parseFinal(root);
+        };
+    }
+    private GlobalAssistantDecision parseTool(JsonNode root) {
+        if (root.has("assistantText")) {
+            throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
+                    "TOOL decisions must not carry assistantText");
+        }
+        if (root.has("uiAction")) {
+            throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
+                    "TOOL decisions must not carry uiAction");
+        }
+        if (!root.has("toolRequest") || root.get("toolRequest").isNull()) {
+            throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE", "TOOL decisions require toolRequest");
+        }
+        JsonNode tool = root.get("toolRequest");
+        if (!tool.isObject()) {
+            throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE", "toolRequest must be an object");
+        }
+        for (java.util.Iterator<String> names = tool.fieldNames(); names.hasNext();) {
+            String field = names.next();
+            if (!TOOL_FIELDS.contains(field)) {
                 throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
-                        "requiresUserInput must be a boolean");
+                        "Unknown toolRequest field: " + field);
             }
-            requiresUserInput = flag.booleanValue();
         }
-        if (!root.has("done") || root.get("done").isNull()) {
-            throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE", "done is required");
+        String capabilityId = strictTextOrNull(tool, "capabilityId");
+        if (capabilityId == null || capabilityId.isBlank()) {
+            throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE", "toolRequest.capabilityId is required");
         }
-        if (!root.get("done").isBoolean()) {
-            throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE", "done must be a boolean");
+        if (!tool.has("arguments") || tool.get("arguments").isNull()) {
+            throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE", "toolRequest.arguments is required");
         }
-        boolean done = root.get("done").booleanValue();
-        return new GlobalAssistantDecision(assistantText, statusText, toolRequest, uiAction, requiresUserInput, done);
+        if (!tool.get("arguments").isObject()) {
+            throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE", "toolRequest.arguments must be an object");
+        }
+        Map<String, Object> arguments = new LinkedHashMap<>();
+        var fields = tool.get("arguments").fields();
+        while (fields.hasNext()) {
+            var entry = fields.next();
+            arguments.put(entry.getKey(), jsonValue(entry.getValue()));
+        }
+        GlobalAssistantDecision.ToolRequest toolRequest =
+                new GlobalAssistantDecision.ToolRequest(capabilityId.trim(), arguments);
+        return new GlobalAssistantDecision(GlobalAssistantDecision.DecisionKind.TOOL, null, toolRequest, null);
+    }
+    private GlobalAssistantDecision parseClarify(JsonNode root) {
+        if (root.has("toolRequest")) {
+            throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
+                    "CLARIFY decisions must not carry toolRequest");
+        }
+        if (root.has("uiAction")) {
+            throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
+                    "CLARIFY decisions must not carry uiAction");
+        }
+        String assistantText = requireText(root, "assistantText");
+        return new GlobalAssistantDecision(GlobalAssistantDecision.DecisionKind.CLARIFY, assistantText, null, null);
+    }
+    private GlobalAssistantDecision parseNavigate(JsonNode root) {
+        if (root.has("toolRequest")) {
+            throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
+                    "NAVIGATE decisions must not carry toolRequest");
+        }
+        if (!root.has("uiAction") || root.get("uiAction").isNull()) {
+            throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE", "NAVIGATE decisions require uiAction");
+        }
+        JsonNode ui = root.get("uiAction");
+        if (!ui.isObject()) {
+            throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE", "uiAction must be an object");
+        }
+        for (java.util.Iterator<String> names = ui.fieldNames(); names.hasNext();) {
+            String field = names.next();
+            if (!UI_FIELDS.contains(field)) {
+                throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
+                        "Unknown uiAction field: " + field);
+            }
+        }
+        String destination = strictTextOrNull(ui, "destination");
+        if (destination == null || destination.isBlank()) {
+            throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE", "uiAction.destination is required");
+        }
+        GlobalAssistantDecision.UiDestination dest;
+        try {
+            dest = GlobalAssistantDecision.UiDestination.fromCode(destination);
+        } catch (IllegalArgumentException ex) {
+            throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE", "Unknown UI destination: " + destination);
+        }
+        String resourceId = strictTextOrNull(ui, "resourceId");
+        GlobalAssistantDecision.UiAction uiAction = new GlobalAssistantDecision.UiAction(dest, resourceId);
+        String assistantText = null;
+        if (root.has("assistantText")) {
+            JsonNode textNode = root.get("assistantText");
+            if (textNode.isNull()) {
+                assistantText = null;
+            } else if (textNode.isTextual()) {
+                assistantText = textNode.asText();
+            } else {
+                throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
+                        "assistantText must be a string when present");
+            }
+        }
+        return new GlobalAssistantDecision(
+                GlobalAssistantDecision.DecisionKind.NAVIGATE, assistantText, null, uiAction);
+    }
+    private GlobalAssistantDecision parseFinal(JsonNode root) {
+        if (root.has("toolRequest")) {
+            throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
+                    "FINAL decisions must not carry toolRequest");
+        }
+        if (root.has("uiAction")) {
+            throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
+                    "FINAL decisions must not carry uiAction");
+        }
+        String assistantText = requireText(root, "assistantText");
+        return new GlobalAssistantDecision(GlobalAssistantDecision.DecisionKind.FINAL, assistantText, null, null);
+    }
+    private String requireText(JsonNode node, String field) {
+        if (!node.has(field) || node.get(field).isNull()) {
+            throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE", field + " is required");
+        }
+        JsonNode value = node.get(field);
+        if (value.isTextual()) {
+            return value.asText();
+        }
+        throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
+                field + " must be a string when present");
     }
     private String strictTextOrNull(JsonNode node, String field) {
         if (!node.has(field) || node.get(field).isNull()) {

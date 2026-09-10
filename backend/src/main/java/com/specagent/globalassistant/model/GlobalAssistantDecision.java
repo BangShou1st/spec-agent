@@ -3,15 +3,26 @@ package com.specagent.globalassistant.model;
 import java.util.Map;
 
 /**
- * Strict JSON logical contract. At most one primary tool per decision.
+ * Discriminated decision contract V2. Exactly one decision kind per model
+ * output. No combinatorial flags.
  */
 public record GlobalAssistantDecision(
+        DecisionKind kind,
         String assistantText,
-        String statusText,
         ToolRequest toolRequest,
-        UiAction uiAction,
-        boolean requiresUserInput,
-        boolean done) {
+        UiAction uiAction) {
+    public enum DecisionKind {
+        TOOL,
+        CLARIFY,
+        NAVIGATE,
+        FINAL;
+        public static DecisionKind fromCode(String code) {
+            if (code == null) {
+                throw new IllegalArgumentException("Decision kind must not be null");
+            }
+            return valueOf(code.trim().toUpperCase());
+        }
+    }
     public record ToolRequest(String capabilityId, Map<String, Object> arguments) {
         public ToolRequest {
             arguments = arguments == null ? Map.of() : Map.copyOf(arguments);
