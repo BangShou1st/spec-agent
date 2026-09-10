@@ -104,8 +104,29 @@ public class GlobalAssistantRuntime {
             try {
                 decision = brain.decide(runId, context, observations);
             } catch (GlobalAssistantModelException ex) {
-                failRun(threadId, runId, ex.errorCode(), ex.getMessage(), observations);
-                return;
+                if (!GlobalAssistantErrorCode.MODEL_INVALID_RESPONSE.equals(ex.errorCode())) {
+                    failRun(threadId, runId, ex.errorCode(), ex.getMessage(), observations);
+                    return;
+                }
+                if (isCancelRequested(runId)) {
+                    lifecycle.cancelAndTerminalize(runId);
+                    return;
+                }
+                try {
+                    decision = brain.repairDecision(runId, context, observations,
+                            sanitizedRejectionReason(ex.getMessage()));
+                } catch (GlobalAssistantModelException repairEx) {
+                    failRun(threadId, runId, repairEx.errorCode(), repairEx.getMessage(), observations);
+                    return;
+                } catch (RuntimeException repairEx) {
+                    failRun(threadId, runId, GlobalAssistantErrorCode.MODEL_UNAVAILABLE,
+                            "Model unavailable", observations);
+                    return;
+                }
+                if (isCancelRequested(runId)) {
+                    lifecycle.cancelAndTerminalize(runId);
+                    return;
+                }
             } catch (RuntimeException ex) {
                 failRun(threadId, runId, GlobalAssistantErrorCode.MODEL_UNAVAILABLE,
                         "Model unavailable", observations);
@@ -470,6 +491,18 @@ public class GlobalAssistantRuntime {
     }
     public boolean isCancelRequested(UUID runId) {
         return runs.findById(runId).map(r -> r.cancelRequestedAt() != null).orElse(false);
+    }
+    /**
+     * Bounded sanitized contract error for repair prompts. Never carries raw
+     * payloads, credentials, or stack traces; the brain only forwards these
+     * short validator/parser messages.
+     */
+    private String sanitizedRejectionReason(String value) {
+        if (value == null || value.isBlank()) {
+            return "rejected decision";
+        }
+        String collapsed = value.trim().replaceAll("\\s+", " ");
+        return collapsed.length() <= 300 ? collapsed : collapsed.substring(0, 300);
     }
     private void failRun(UUID threadId, UUID runId, String errorCode, String reason,
             List<Map<String, Object>> observations) {

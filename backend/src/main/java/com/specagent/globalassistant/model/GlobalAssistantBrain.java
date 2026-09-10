@@ -22,6 +22,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class GlobalAssistantBrain {
     public static final String DECISION_CALL_TYPE = "GLOBAL_ASSISTANT_DECISION";
+    public static final String DECISION_REPAIR_CALL_TYPE = "GLOBAL_ASSISTANT_DECISION_REPAIR";
     public static final String SUMMARY_CALL_TYPE = "GLOBAL_ASSISTANT_SUMMARY";
     private final GlobalAssistantPromptRenderer renderer;
     private final ModelInferenceGateway gateway;
@@ -34,11 +35,6 @@ public class GlobalAssistantBrain {
         this.parser = parser;
         this.validator = validator;
     }
-    /**
-     * Single frozen production output contract. Qualification selects exactly
-     * one of JSON_SCHEMA or JSON_OBJECT; production then uses it for every
-     * decision call.
-     */
     /**
      * Frozen V1 production output mode: JSON_OBJECT.
      * Single fixed contract for every model and scenario. No model branch,
@@ -54,10 +50,25 @@ public class GlobalAssistantBrain {
     /** Qualification / test path with an explicit contract. No silent fallback. */
     public GlobalAssistantDecision decide(UUID runId, GlobalAssistantContext context,
             List<Map<String, Object>> observations, ModelOutputContract contract) {
-        List<com.specagent.model.inference.ModelInferenceMessage> messages = renderer.render(context, observations);
+        return completeDecision(runId, DECISION_CALL_TYPE,
+                renderer.render(context, observations), contract);
+    }
+    /**
+     * Exactly one structural repair inference for a rejected semantic decision.
+     * Same context, observations and production output contract; only a short
+     * bounded rejection reason is added. Never loops internally.
+     */
+    public GlobalAssistantDecision repairDecision(UUID runId, GlobalAssistantContext context,
+            List<Map<String, Object>> observations, String rejectionReason) {
+        return completeDecision(runId, DECISION_REPAIR_CALL_TYPE,
+                renderer.renderRepair(context, observations, rejectionReason), productionContract());
+    }
+    private GlobalAssistantDecision completeDecision(UUID runId, String callType,
+            List<com.specagent.model.inference.ModelInferenceMessage> messages,
+            ModelOutputContract contract) {
         ModelInferenceResponse response;
         try {
-            response = gateway.complete(new ModelInferenceRequest(runId, DECISION_CALL_TYPE, messages, 1024,
+            response = gateway.complete(new ModelInferenceRequest(runId, callType, messages, 1024,
                     contract));
         } catch (RuntimeException ex) {
             throw new GlobalAssistantModelException("MODEL_UNAVAILABLE", "Model gateway unavailable", ex);
