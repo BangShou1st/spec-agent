@@ -86,9 +86,9 @@ class GlobalAssistantOwnershipRecoveryTest {
         String title = "Dup Dispatch " + UUID.randomUUID();
         GlobalAssistantRun run = conversations.createRunWithUserMessage(thread.id(),
                 "create " + title, "v1", "v1", "fp");
-        String createJson = "{\"done\":false, \"toolRequest\":{\"capabilityId\":\"project.create\","
+         String createJson = "{\"kind\":\"TOOL\", \"toolRequest\":{\"capabilityId\":\"project.create\","
                 + " \"arguments\":{\"title\":\"" + title + "\"}}}";
-        String doneJson = "{\"done\":true, \"assistantText\":\"Created.\"}";
+         String doneJson = "{\"kind\":\"FINAL\", \"assistantText\":\"Created.\"}";
         ExecutorService pool = Executors.newFixedThreadPool(2);
         CountDownLatch start = new CountDownLatch(1);
         try {

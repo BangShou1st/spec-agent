@@ -103,8 +103,8 @@ class GlobalAssistantContinuitySummaryTest {
                 thread.id(), "open the continuity project", "v1", "v1", "fp");
         String marker = first.title().substring(0, 12);
         Queue<String> scripts1 = new ArrayDeque<>(List.of(
-                "{\"done\":false, \"toolRequest\":{\"capabilityId\":\"project.search\", \"arguments\":{\"query\":\"" + marker + "\"}}}",
-                "{\"done\":true, \"requiresUserInput\":true, \"assistantText\":\"I found several candidates, which one did you mean?\"}"));
+                 "{\"kind\":\"TOOL\", \"toolRequest\":{\"capabilityId\":\"project.search\", \"arguments\":{\"query\":\"" + marker + "\"}}}",
+                 "{ \"kind\":\"CLARIFY\", \"assistantText\":\"I found several candidates, which one did you mean?\"}"));
         runtimeFor(scripts1, noSummary()).executeRun(thread.id(), run1.id(), "open the continuity project",
                 new GlobalAssistantContextBuilder.UiRequest("PROJECTS", null));
         GlobalAssistantWorkingState state = conversations.readWorkingState(thread.id());
@@ -129,7 +129,7 @@ class GlobalAssistantContinuitySummaryTest {
                 return new ModelInferenceResponse("Goals preserved across runs " + summaryCalls.get() + ".",
                         "stop", 0, 0);
             }
-            return new ModelInferenceResponse("{\"done\":true, \"assistantText\":\"ok\"}", "stop", 0, 0);
+             return new ModelInferenceResponse("{\"kind\":\"FINAL\", \"assistantText\":\"ok\"}", "stop", 0, 0);
         };
         GlobalAssistantBrain brain = new GlobalAssistantBrain(renderer, counting, parser, validator);
         GlobalAssistantSummaryService summaries = new GlobalAssistantSummaryService(conversations, brain);

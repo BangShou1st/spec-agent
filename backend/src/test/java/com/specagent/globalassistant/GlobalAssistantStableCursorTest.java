@@ -72,7 +72,7 @@ class GlobalAssistantStableCursorTest {
                 summaryInputs.add(request.messages().get(request.messages().size() - 1).content());
                 return new ModelInferenceResponse("chunk summary " + summaryCalls.get() + ".", "stop", 0, 0);
             }
-            return new ModelInferenceResponse("{\"done\":true, \"assistantText\":\"ok\"}", "stop", 0, 0);
+             return new ModelInferenceResponse("{\"kind\":\"FINAL\", \"assistantText\":\"ok\"}", "stop", 0, 0);
         };
         var summaries = new GlobalAssistantSummaryService(conversations,
                 new GlobalAssistantBrain(renderer, counting, parser, validator));

@@ -42,20 +42,16 @@ class GlobalAssistantBrainContractTest {
     }
 
     @Test
-    void decisionRequestsStructuredContract() {
+    void decisionRequestsProductionObjectContract() {
         AtomicReference<ModelInferenceRequest> captured = new AtomicReference<>();
         GlobalAssistantBrain brain = brainWith(captured,
-                "{\"assistantText\":\"Hi.\",\"done\":true}");
+                 "{\"assistantText\":\"Hi.\",\"kind\":\"FINAL\"}");
 
         brain.decide(UUID.randomUUID(), null, List.of());
 
         assertThat(captured.get().callType()).isEqualTo(GlobalAssistantBrain.DECISION_CALL_TYPE);
         assertThat(captured.get().outputContract())
-                .isInstanceOf(ModelOutputContract.JsonSchema.class);
-        ModelOutputContract.JsonSchema contract =
-                (ModelOutputContract.JsonSchema) captured.get().outputContract();
-        assertThat(contract.name()).isEqualTo(GlobalAssistantDecisionSchema.CONTRACT_NAME);
-        assertThat(contract.schema()).isEqualTo(GlobalAssistantDecisionSchema.schema());
+                .isInstanceOf(ModelOutputContract.JsonObject.class);
     }
 
     @Test
@@ -81,5 +77,25 @@ class GlobalAssistantBrainContractTest {
         ModelInferenceResponse response = fake.complete(request);
 
         assertThat(response.content()).isNotBlank();
+    }
+
+    @Test
+    void productionUsesSingleFixedMode() {
+        assertThat(GlobalAssistantBrain.productionContract())
+                .isInstanceOf(ModelOutputContract.JsonObject.class);
+    }
+
+    @Test
+    void explicitContractIsHonoredWithoutFallback() {
+        AtomicReference<ModelInferenceRequest> captured = new AtomicReference<>();
+        GlobalAssistantBrain brain = brainWith(captured,
+                "{\"kind\":\"FINAL\",\"assistantText\":\"Hi.\"}");
+        brain.decide(UUID.randomUUID(), null, List.of(), ModelOutputContract.jsonObject());
+        assertThat(captured.get().outputContract()).isInstanceOf(ModelOutputContract.JsonObject.class);
+        AtomicReference<ModelInferenceRequest> captured2 = new AtomicReference<>();
+        GlobalAssistantBrain brain2 = brainWith(captured2,
+                "{\"kind\":\"FINAL\",\"assistantText\":\"Hi.\"}");
+        brain2.decide(UUID.randomUUID(), null, List.of(), GlobalAssistantDecisionSchema.contract());
+        assertThat(captured2.get().outputContract()).isInstanceOf(ModelOutputContract.JsonSchema.class);
     }
 }

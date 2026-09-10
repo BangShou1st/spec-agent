@@ -69,9 +69,9 @@ class GlobalAssistantSliceERuntimeTest {
         GlobalAssistantThread thread = conversations.createThread();
         GlobalAssistantRun run = conversations.createRun(thread.id(), "v1", "v1", "fp");
         Queue<String> scripts = new ArrayDeque<>(List.of(
-                "{\"toolRequest\": {\"capabilityId\": \"project.search\", \"arguments\": {\"query\": \"" + project.title().substring(0, 8) + "\"}}, \"done\": false}",
+                 "{\"toolRequest\": {\"capabilityId\": \"project.search\", \"arguments\": {\"query\": \"" + project.title().substring(0, 8) + "\"}}, \"kind\":\"TOOL\"}",
                 "{\"assistantText\": \"Found it.\", \"uiAction\": {\"destination\": \"PROJECT\", \"resourceId\": \""
-                        + project.id() + "\"}, \"done\": true}"));
+                          + project.id() + "\"}, \"kind\":\"NAVIGATE\"}"));
         runtimeWithScripts(scripts).executeRun(thread.id(), run.id(), "open my project",
                 new GlobalAssistantContextBuilder.UiRequest("PROJECTS", null));
         GlobalAssistantRun finished = runs.findById(run.id()).orElseThrow();
@@ -86,7 +86,7 @@ class GlobalAssistantSliceERuntimeTest {
         GlobalAssistantThread thread = conversations.createThread();
         GlobalAssistantRun run = conversations.createRun(thread.id(), "v1", "v1", "fp");
         Queue<String> scripts = new ArrayDeque<>(List.of(
-                "{\"assistantText\": \"You can organize projects by recency.\", \"done\": true}"));
+                 "{\"assistantText\": \"You can organize projects by recency.\", \"kind\":\"FINAL\"}"));
         runtimeWithScripts(scripts).executeRun(thread.id(), run.id(), "how are projects organized?",
                 new GlobalAssistantContextBuilder.UiRequest("PROJECTS", null));
         assertThat(runs.findById(run.id()).orElseThrow().status())
@@ -100,9 +100,9 @@ class GlobalAssistantSliceERuntimeTest {
         GlobalAssistantThread thread = conversations.createThread();
         GlobalAssistantRun run = conversations.createRun(thread.id(), "v1", "v1", "fp");
         String toolJson =
-                "{\"toolRequest\": {\"capabilityId\": \"project.list_recent\", \"arguments\": {}}, \"done\": false}";
+                 "{\"toolRequest\": {\"capabilityId\": \"project.list_recent\", \"arguments\": {}}, \"kind\":\"TOOL\"}";
         Queue<String> scripts = new ArrayDeque<>(List.of(toolJson, toolJson,
-                "{\"assistantText\": \"Done.\", \"done\": true}"));
+                 "{\"assistantText\": \"Done.\", \"kind\":\"FINAL\"}"));
         runtimeWithScripts(scripts).executeRun(thread.id(), run.id(), "list recents",
                 new GlobalAssistantContextBuilder.UiRequest("PROJECTS", null));
         assertThat(runs.findById(run.id()).orElseThrow().status())
@@ -118,7 +118,7 @@ class GlobalAssistantSliceERuntimeTest {
         GlobalAssistantRun run = conversations.createRun(thread.id(), "v1", "v1", "fp");
         runs.requestCancel(run.id());
         Queue<String> scripts = new ArrayDeque<>(List.of(
-                "{\"toolRequest\": {\"capabilityId\": \"project.list_recent\", \"arguments\": {}}, \"done\": false}"));
+                 "{\"toolRequest\": {\"capabilityId\": \"project.list_recent\", \"arguments\": {}}, \"kind\":\"TOOL\"}"));
         runtimeWithScripts(scripts).executeRun(thread.id(), run.id(), "list",
                 new GlobalAssistantContextBuilder.UiRequest("PROJECTS", null));
         assertThat(runs.findById(run.id()).orElseThrow().status())
@@ -132,7 +132,7 @@ class GlobalAssistantSliceERuntimeTest {
         GlobalAssistantThread thread = conversations.createThread();
         GlobalAssistantRun run = conversations.createRun(thread.id(), "v1", "v1", "fp");
         Queue<String> scripts = new ArrayDeque<>(List.of(
-                "{\"toolRequest\": {\"capabilityId\": \"skill.secret\", \"arguments\": {}}, \"done\": false}"));
+                 "{\"toolRequest\": {\"capabilityId\": \"skill.secret\", \"arguments\": {}}, \"kind\":\"TOOL\"}"));
         runtimeWithScripts(scripts).executeRun(thread.id(), run.id(), "do secret",
                 new GlobalAssistantContextBuilder.UiRequest("PROJECTS", null));
         GlobalAssistantRun finished = runs.findById(run.id()).orElseThrow();
@@ -146,7 +146,7 @@ class GlobalAssistantSliceERuntimeTest {
         Queue<String> scripts = new ArrayDeque<>();
         for (int i = 0; i < 7; i++) {
             scripts.add("{\"toolRequest\": {\"capabilityId\": \"project.list_recent\", \"arguments\": {\"limit\": "
-                    + ((i % 10) + 1) + "}}, \"done\": false}");
+                     + ((i % 10) + 1) + "}}, \"kind\":\"TOOL\"}");
         }
         runtimeWithScripts(scripts).executeRun(thread.id(), run.id(), "keep listing",
                 new GlobalAssistantContextBuilder.UiRequest("PROJECTS", null));

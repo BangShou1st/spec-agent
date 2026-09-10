@@ -111,47 +111,47 @@ class GlobalAssistantEvalTest {
         List<ScenarioResult> results = new ArrayList<>();
         // create: canonical / paraphrase / held-out entity
         results.add(runScenario("create", "canonical", "create a project", "project.create", "Eval Calendar",
-                List.of("{\"toolRequest\": {\"capabilityId\": \"project.create\", \"arguments\": {\"title\": \"Eval Calendar\" }}, \"done\": false}",
-                        "{\"assistantText\": \"Created.\", \"done\": true}")));
+                 List.of("{\"toolRequest\": {\"capabilityId\": \"project.create\", \"arguments\": {\"title\": \"Eval Calendar\" }}, \"kind\":\"TOOL\"}",
+                         "{\"assistantText\": \"Created.\", \"kind\":\"FINAL\"}")));
         results.add(runScenario("create", "paraphrase", "start a new billing analysis workspace for me", "project.create", "Billing Analysis",
-                List.of("{\"toolRequest\": {\"capabilityId\": \"project.create\", \"arguments\": {\"title\": \"Billing Analysis\" }}, \"done\": false}",
-                        "{\"assistantText\": \"Created.\", \"done\": true}")));
+                 List.of("{\"toolRequest\": {\"capabilityId\": \"project.create\", \"arguments\": {\"title\": \"Billing Analysis\" }}, \"kind\":\"TOOL\"}",
+                         "{\"assistantText\": \"Created.\", \"kind\":\"FINAL\"}")));
         results.add(runScenario("create", "held-out", "I want to design a fresh notes product", "project.create", "Notes Product",
-                List.of("{\"toolRequest\": {\"capabilityId\": \"project.create\", \"arguments\": {\"title\": \"Notes Product\" }}, \"done\": false}",
-                        "{\"assistantText\": \"Created.\", \"done\": true}")));
+                 List.of("{\"toolRequest\": {\"capabilityId\": \"project.create\", \"arguments\": {\"title\": \"Notes Product\" }}, \"kind\":\"TOOL\"}",
+                         "{\"assistantText\": \"Created.\", \"kind\":\"FINAL\"}")));
         // search: canonical / paraphrase / word-order variation
         results.add(runScenario("search", "canonical", "find the mail project", "project.search", null,
-                List.of("{\"toolRequest\": {\"capabilityId\": \"project.search\", \"arguments\": {\"query\": \"" + mailProject.title().substring(0, 8) + "\"}}, \"done\": false}",
-                        "{\"assistantText\": \"Found.\", \"done\": true}")));
+                 List.of("{\"toolRequest\": {\"capabilityId\": \"project.search\", \"arguments\": {\"query\": \"" + mailProject.title().substring(0, 8) + "\"}}, \"kind\":\"TOOL\"}",
+                         "{\"assistantText\": \"Found.\", \"kind\":\"FINAL\"}")));
         results.add(runScenario("search", "paraphrase", "where is that ledger for payments we had", "project.search", null,
-                List.of("{\"toolRequest\": {\"capabilityId\": \"project.search\", \"arguments\": {\"query\": \"" + payProject.title().substring(0, 8) + "\"}}, \"done\": false}",
-                        "{\"assistantText\": \"Found.\", \"done\": true}")));
+                 List.of("{\"toolRequest\": {\"capabilityId\": \"project.search\", \"arguments\": {\"query\": \"" + payProject.title().substring(0, 8) + "\"}}, \"kind\":\"TOOL\"}",
+                         "{\"assistantText\": \"Found.\", \"kind\":\"FINAL\"}")));
         results.add(runScenario("search", "held-out", "dig up the old sorter for mail", "project.search", null,
-                List.of("{\"toolRequest\": {\"capabilityId\": \"project.search\", \"arguments\": {\"query\": \"" + mailProject.title().substring(0, 8) + "\"}}, \"done\": false}",
-                        "{\"assistantText\": \"Found.\", \"done\": true}")));
+                 List.of("{\"toolRequest\": {\"capabilityId\": \"project.search\", \"arguments\": {\"query\": \"" + mailProject.title().substring(0, 8) + "\"}}, \"kind\":\"TOOL\"}",
+                         "{\"assistantText\": \"Found.\", \"kind\":\"FINAL\"}")));
         // list_recent
         results.add(runScenario("list_recent", "canonical", "show recent projects", "project.list_recent", null,
-                List.of("{\"toolRequest\": {\"capabilityId\": \"project.list_recent\", \"arguments\": {}}, \"done\": false}",
-                        "{\"assistantText\": \"Here they are.\", \"done\": true}")));
+                 List.of("{\"toolRequest\": {\"capabilityId\": \"project.list_recent\", \"arguments\": {}}, \"kind\":\"TOOL\"}",
+                         "{\"assistantText\": \"Here they are.\", \"kind\":\"FINAL\"}")));
         results.add(runScenario("list_recent", "paraphrase", "what have I worked on lately", "project.list_recent", null,
-                List.of("{\"toolRequest\": {\"capabilityId\": \"project.list_recent\", \"arguments\": {}}, \"done\": false}",
-                        "{\"assistantText\": \"Here they are.\", \"done\": true}")));
+                 List.of("{\"toolRequest\": {\"capabilityId\": \"project.list_recent\", \"arguments\": {}}, \"kind\":\"TOOL\"}",
+                         "{\"assistantText\": \"Here they are.\", \"kind\":\"FINAL\"}")));
         // get_summary
         results.add(runScenario("get_summary", "canonical", "how is the pay project doing", "project.get_summary", null,
                 List.of("{\"toolRequest\": {\"capabilityId\": \"project.get_summary\", \"arguments\": {\"projectId\": \""
-                        + payProject.id() + "\"}}, \"done\": false}",
-                        "{\"assistantText\": \"Status ready.\", \"done\": true}")));
+                         + payProject.id() + "\"}}, \"kind\":\"TOOL\"}",
+                         "{\"assistantText\": \"Status ready.\", \"kind\":\"FINAL\"}")));
         results.add(runScenario("get_summary", "held-out", "check the current state of the mail sorter", "project.get_summary", null,
                 List.of("{\"toolRequest\": {\"capabilityId\": \"project.get_summary\", \"arguments\": {\"projectId\": \""
-                        + mailProject.id() + "\"}}, \"done\": false}",
-                        "{\"assistantText\": \"Status ready.\", \"done\": true}")));
+                         + mailProject.id() + "\"}}, \"kind\":\"TOOL\"}",
+                         "{\"assistantText\": \"Status ready.\", \"kind\":\"FINAL\"}")));
         // resolved navigation (structured selection, no search needed)
         GlobalAssistantThread navThread = conversations.createThread();
         GlobalAssistantRun navRun = conversations.createRun(navThread.id(), "v1", "v1",
                 GlobalAssistantToolCatalog.FINGERPRINT);
         Queue<String> navScripts = new ArrayDeque<>(List.of(
                 "{\"assistantText\": \"Opening.\", \"uiAction\": {\"destination\": \"PROJECT\", \"resourceId\": \""
-                        + payProject.id() + "\"}, \"done\": true}"));
+                          + payProject.id() + "\"}, \"kind\":\"NAVIGATE\"}"));
         runtimeFor(navScripts).executeRun(navThread.id(), navRun.id(), "open this",
                 new GlobalAssistantContextBuilder.UiRequest("PROJECTS",
                         new GlobalAssistantContextBuilder.UiRequest.SelectedRef(
@@ -161,19 +161,19 @@ class GlobalAssistantEvalTest {
         assertThat(runs.findById(navRun.id()).orElseThrow().stepCount()).isEqualTo(1);
         // ambiguous reference asks instead of guessing
         results.add(runScenario("ambiguity", "canonical", "open the mail one",
-                List.of("{\"assistantText\": \"I found two candidates, which one?\", \"requiresUserInput\": true, \"done\": true}")));
+                 List.of("{\"assistantText\": \"I found two candidates, which one?\", \"kind\":\"CLARIFY\"}")));
         // multi-step reference resolution
         results.add(runScenario("multi-step", "canonical", "open the pay project and summarize it", "project.search", null,
-                List.of("{\"toolRequest\": {\"capabilityId\": \"project.search\", \"arguments\": {\"query\": \"" + payProject.title().substring(0, 8) + "\"}}, \"done\": false}",
+                 List.of("{\"toolRequest\": {\"capabilityId\": \"project.search\", \"arguments\": {\"query\": \"" + payProject.title().substring(0, 8) + "\"}}, \"kind\":\"TOOL\"}",
                         "{\"toolRequest\": {\"capabilityId\": \"project.get_summary\", \"arguments\": {\"projectId\": \""
-                                + payProject.id() + "\"}}, \"done\": false}",
+                                 + payProject.id() + "\"}}, \"kind\":\"TOOL\"}",
                         "{\"assistantText\": \"Done.\", \"uiAction\": {\"destination\": \"PROJECT\", \"resourceId\": \""
-                                + payProject.id() + "\"}, \"done\": true}")));
+                                  + payProject.id() + "\"}, \"kind\":\"NAVIGATE\"}")));
         // no-tool conversational answer
         results.add(runScenario("no-tool", "canonical", "how are projects usually organized?",
-                List.of("{\"assistantText\": \"By recency and search.\", \"done\": true}")));
+                 List.of("{\"assistantText\": \"By recency and search.\", \"kind\":\"FINAL\"}")));
         results.add(runScenario("no-tool", "paraphrase", "what does the word project mean in English?",
-                List.of("{\"assistantText\": \"It means a workspace.\", \"done\": true}")));
+                 List.of("{\"assistantText\": \"It means a workspace.\", \"kind\":\"FINAL\"}")));
         long completed = results.stream().filter(ScenarioResult::completed).count();
         long scriptedMatched = results.stream()
                 .filter(r -> java.util.Objects.equals(r.selectedTool(), r.expectedTool()))
@@ -196,21 +196,21 @@ class GlobalAssistantEvalTest {
         // Casual question triggers no tool.
         ScenarioResult casual = runScenario("negative-casual", "control",
                 "will I maybe build a pay project someday",
-                List.of("{\"assistantText\": \"Let me know when you want one.\", \"done\": true}"));
+                 List.of("{\"assistantText\": \"Let me know when you want one.\", \"kind\":\"FINAL\"}"));
         // A well-formed but unknown project id passes shape validation.
         java.util.UUID fakeId = java.util.UUID.randomUUID();
         validator.validate(new com.specagent.globalassistant.model.GlobalAssistantDecision(
-                null, null,
+                com.specagent.globalassistant.model.GlobalAssistantDecision.DecisionKind.TOOL, null,
                 new com.specagent.globalassistant.model.GlobalAssistantDecision.ToolRequest(
                         "project.get_summary", java.util.Map.of("projectId", fakeId.toString())),
-                null, false, false));
+                null));
         // Unknown tool rejected.
         assertThatThrownBy(() -> validator.validate(parser.parse(
-                        "{\"toolRequest\": {\"capabilityId\": \"skill.do\", \"arguments\": {}}, \"done\": false}")))
+                         "{\"toolRequest\": {\"capabilityId\": \"skill.do\", \"arguments\": {}}, \"kind\":\"TOOL\"}")))
                 .isInstanceOf(GlobalAssistantModelException.class);
         // Arbitrary URL rejected.
         assertThatThrownBy(() -> validator.validate(parser.parse(
-                        "{\"assistantText\": \"go\", \"uiAction\": {\"destination\": \"PROJECT\", \"resourceId\": \"https://x\"}, \"done\": true}")))
+                         "{\"assistantText\": \"go\", \"uiAction\": {\"destination\": \"PROJECT\", \"resourceId\": \"https://x\"}, \"kind\":\"NAVIGATE\"}")))
                 .isInstanceOf(GlobalAssistantModelException.class);
         // Skill/MCP leakage absent from catalog.
         assertThat(GlobalAssistantToolCatalog.TOOL_IDS)

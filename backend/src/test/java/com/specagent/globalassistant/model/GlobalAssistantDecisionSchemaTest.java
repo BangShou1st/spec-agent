@@ -10,45 +10,55 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
- * Single-schema-source tests: the decision schema owner must mirror the
- * strict parser contract while the parser stays the executable authority.
+ * Single-schema-source tests V2: the discriminated decision schema must mirror
+ * the strict parser contract while the parser stays the executable authority.
  */
 class GlobalAssistantDecisionSchemaTest {
 
     @SuppressWarnings("unchecked")
-    private static Map<String, Object> properties() {
-        return (Map<String, Object>) GlobalAssistantDecisionSchema.schema().get("properties");
+    private static List<Map<String, Object>> branches() {
+        return (List<Map<String, Object>>) GlobalAssistantDecisionSchema.schema().get("oneOf");
     }
 
     @Test
-    void schemaCoversEveryDecisionField() {
-        assertThat(properties()).containsKeys(
-                "assistantText", "statusText", "toolRequest", "uiAction",
-                "requiresUserInput", "done");
-    }
-
-    @Test
-    void topLevelAndNestedObjectsForbidAdditionalProperties() {
-        assertThat(GlobalAssistantDecisionSchema.schema()).containsEntry("additionalProperties", false);
-        assertThat(((Map<String, Object>) properties().get("toolRequest")))
-                .containsEntry("additionalProperties", false);
-        assertThat(((Map<String, Object>) properties().get("uiAction")))
-                .containsEntry("additionalProperties", false);
-    }
-
-    @Test
-    void schemaRequiresTerminalFlags() {
+    void schemaIsDiscriminatedOnKind() {
         assertThat((List<String>) GlobalAssistantDecisionSchema.schema().get("required"))
-                .contains("requiresUserInput", "done");
+                .containsExactly("kind");
+        assertThat(branches()).hasSize(4);
     }
 
     @Test
-    void uiActionDestinationIsAClosedEnum() {
-        Map<String, Object> uiAction = (Map<String, Object>) properties().get("uiAction");
-        Map<String, Object> uiProperties = (Map<String, Object>) uiAction.get("properties");
-        Map<String, Object> destination = (Map<String, Object>) uiProperties.get("destination");
-        assertThat((List<String>) destination.get("enum"))
-                .containsExactlyInAnyOrder("PROJECT", "PROJECTS", "SKILLS", "CONNECTIONS", "SETTINGS");
+    void toolBranchDiscriminatesCapability() {
+        String schemaJson = toJson(GlobalAssistantDecisionSchema.schema());
+        assertThat(schemaJson).contains("project.create");
+        assertThat(schemaJson).contains("project.search");
+        assertThat(schemaJson).contains("project.list_recent");
+        assertThat(schemaJson).contains("project.get_summary");
+    }
+
+    @Test
+    void branchesForbidAdditionalProperties() {
+        for (Map<String, Object> branch : branches()) {
+            assertThat(branch).containsEntry("additionalProperties", false);
+        }
+    }
+
+    @Test
+    void legacyFieldsAreNotInSchema() {
+        String schemaJson = toJson(GlobalAssistantDecisionSchema.schema());
+        assertThat(schemaJson).doesNotContain("statusText");
+        assertThat(schemaJson).doesNotContain("requiresUserInput");
+        assertThat(schemaJson).doesNotContain("\"done\"");
+    }
+
+    @Test
+    void navigationDestinationsAreClosed() {
+        String schemaJson = toJson(GlobalAssistantDecisionSchema.schema());
+        assertThat(schemaJson).contains("PROJECT");
+        assertThat(schemaJson).contains("PROJECTS");
+        assertThat(schemaJson).contains("SKILLS");
+        assertThat(schemaJson).contains("CONNECTIONS");
+        assertThat(schemaJson).contains("SETTINGS");
     }
 
     @Test
@@ -58,21 +68,38 @@ class GlobalAssistantDecisionSchemaTest {
         assertThat(contract.schema()).isEqualTo(GlobalAssistantDecisionSchema.schema());
     }
 
+    private static String toJson(Object value) {
+        try {
+            return new ObjectMapper().writeValueAsString(value);
+        } catch (Exception ex) {
+            throw new IllegalStateException(ex);
+        }
+    }
+
     @Test
     void parserAcceptsContractShapedExample() {
         GlobalAssistantDecisionParser parser = new GlobalAssistantDecisionParser(new ObjectMapper());
         GlobalAssistantDecision decision = parser.parse(
-                "{\"assistantText\":\"Hi.\",\"statusText\":null,"
-                        + "\"toolRequest\":null,\"uiAction\":null,"
-                        + "\"requiresUserInput\":false,\"done\":true}");
+                "{\"kind\":\"FINAL\",\"assistantText\":\"Hi.\"}");
         new GlobalAssistantDecisionValidator().validate(decision);
-        assertThat(decision.done()).isTrue();
+        assertThat(decision.kind()).isEqualTo(GlobalAssistantDecision.DecisionKind.FINAL);
     }
 
     @Test
     void parserStillRejectsUnknownFields() {
         GlobalAssistantDecisionParser parser = new GlobalAssistantDecisionParser(new ObjectMapper());
-        assertThatThrownBy(() -> parser.parse("{\"assistantText\":\"Hi.\",\"done\":true,\"extra\":1}"))
+        assertThatThrownBy(() -> parser.parse("{\"kind\":\"FINAL\",\"assistantText\":\"Hi.\",\"extra\":1}"))
+                .isInstanceOf(GlobalAssistantModelException.class);
+    }
+
+    @Test
+    void parserRejectsLegacyFields() {
+        GlobalAssistantDecisionParser parser = new GlobalAssistantDecisionParser(new ObjectMapper());
+        assertThatThrownBy(() -> parser.parse("{\"kind\":\"FINAL\",\"assistantText\":\"Hi.\",\"done\":true}"))
+                .isInstanceOf(GlobalAssistantModelException.class);
+        assertThatThrownBy(() -> parser.parse("{\"kind\":\"FINAL\",\"assistantText\":\"Hi.\",\"statusText\":\"x\"}"))
+                .isInstanceOf(GlobalAssistantModelException.class);
+        assertThatThrownBy(() -> parser.parse("{\"kind\":\"FINAL\",\"assistantText\":\"Hi.\",\"requiresUserInput\":false}"))
                 .isInstanceOf(GlobalAssistantModelException.class);
     }
 }

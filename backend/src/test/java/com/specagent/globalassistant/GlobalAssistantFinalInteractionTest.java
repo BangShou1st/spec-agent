@@ -79,7 +79,7 @@ class GlobalAssistantFinalInteractionTest {
         GlobalAssistantRun run = conversations.createRun(thread.id(), "v1", "v1", "fp");
         ModelInferenceGateway stub = request -> {
             runs.requestCancel(run.id());
-            return new ModelInferenceResponse("{\"assistantText\": \"should never commit\", \"done\": true}", "stop", 0, 0);
+             return new ModelInferenceResponse("{\"assistantText\": \"should never commit\", \"kind\":\"FINAL\"}", "stop", 0, 0);
         };
         GlobalAssistantBrain brain = new GlobalAssistantBrain(renderer, stub, parser, validator);
         var runtime = new GlobalAssistantRuntime(conversations, contextBuilder, brain, capabilities, runs, canonicalizer, budgets, lifecycle, runEvents, uiValidator, summaries);
@@ -94,7 +94,7 @@ class GlobalAssistantFinalInteractionTest {
         GlobalAssistantRun run = conversations.createRun(thread.id(), "v1", "v1", "fp");
         ModelInferenceGateway stub = request -> {
             runs.requestCancel(run.id());
-            return new ModelInferenceResponse("{\"assistantText\": \"which project?\", \"requiresUserInput\": true, \"done\": true}", "stop", 0, 0);
+             return new ModelInferenceResponse("{\"assistantText\": \"which project?\", \"kind\":\"CLARIFY\"}", "stop", 0, 0);
         };
         GlobalAssistantBrain brain = new GlobalAssistantBrain(renderer, stub, parser, validator);
         var runtime = new GlobalAssistantRuntime(conversations, contextBuilder, brain, capabilities, runs, canonicalizer, budgets, lifecycle, runEvents, uiValidator, summaries);
@@ -109,7 +109,7 @@ class GlobalAssistantFinalInteractionTest {
         GlobalAssistantRun run = conversations.createRun(thread.id(), "v1", "v1", "fp");
         ModelInferenceGateway stub = request -> {
             runs.requestCancel(run.id());
-            return new ModelInferenceResponse("{\"assistantText\": \"Opening.\", \"uiAction\": {\"destination\": \"PROJECT\", \"resourceId\": \"" + project.id() + "\"}, \"done\": true}", "stop", 0, 0);
+             return new ModelInferenceResponse("{\"assistantText\": \"Opening.\", \"uiAction\": {\"destination\": \"PROJECT\", \"resourceId\": \"" + project.id() + "\"}, \"kind\":\"NAVIGATE\"}", "stop", 0, 0);
         };
         GlobalAssistantBrain brain = new GlobalAssistantBrain(renderer, stub, parser, validator);
         var runtime = new GlobalAssistantRuntime(conversations, contextBuilder, brain, capabilities, runs, canonicalizer, budgets, lifecycle, runEvents, uiValidator, summaries);
@@ -123,8 +123,8 @@ class GlobalAssistantFinalInteractionTest {
         GlobalAssistantThread thread = conversations.createThread();
         GlobalAssistantRun run = conversations.createRunWithUserMessage(thread.id(), "find", "v1", "v1", "fp");
         Queue<String> scripts = new ArrayDeque<>(List.of(
-                "{\"toolRequest\": {\"capabilityId\": \"project.list_recent\", \"arguments\": {}}, \"done\": false}",
-                "{\"assistantText\": \"done after tool\", \"done\": true}"));
+                 "{\"toolRequest\": {\"capabilityId\": \"project.list_recent\", \"arguments\": {}}, \"kind\":\"TOOL\"}",
+                 "{\"assistantText\": \"done after tool\", \"kind\":\"FINAL\"}"));
         java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
         ModelInferenceGateway stub = request -> {
             if (calls.incrementAndGet() == 2) {

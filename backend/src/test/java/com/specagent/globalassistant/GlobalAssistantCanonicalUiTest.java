@@ -83,7 +83,7 @@ class GlobalAssistantCanonicalUiTest {
                 thread.id(), "open it", "v1", "v1", "fp");
         String randomId = UUID.randomUUID().toString();
         Queue<String> scripts = new ArrayDeque<>(List.of(
-                "{\"done\":true, \"assistantText\":\"Opening.\", \"uiAction\":{\"destination\":\"PROJECT\", \"resourceId\":\"" + randomId + "\"}}"));
+                 "{\"kind\":\"NAVIGATE\", \"assistantText\":\"Opening.\", \"uiAction\":{\"destination\":\"PROJECT\", \"resourceId\":\"" + randomId + "\"}}"));
         runtimeFor(scripts).executeRun(thread.id(), run.id(), "open it",
                 new GlobalAssistantContextBuilder.UiRequest("PROJECTS", null));
         var finished = runs.findById(run.id()).orElseThrow();
@@ -98,7 +98,7 @@ class GlobalAssistantCanonicalUiTest {
         GlobalAssistantRun run = conversations.createRunWithUserMessage(
                 thread.id(), "open it", "v1", "v1", "fp");
         Queue<String> scripts = new ArrayDeque<>(List.of(
-                "{\"done\":true, \"assistantText\":\"Opening.\", \"uiAction\":{\"destination\":\"PROJECT\", \"resourceId\":\"" + project.id() + "\"}}"));
+                 "{\"kind\":\"NAVIGATE\", \"assistantText\":\"Opening.\", \"uiAction\":{\"destination\":\"PROJECT\", \"resourceId\":\"" + project.id() + "\"}}"));
         runtimeFor(scripts).executeRun(thread.id(), run.id(), "open it",
                 new GlobalAssistantContextBuilder.UiRequest("PROJECTS", null));
         assertThat(runs.findById(run.id()).orElseThrow().status())
@@ -136,7 +136,7 @@ class GlobalAssistantCanonicalUiTest {
         GlobalAssistantRun run = conversations.createRunWithUserMessage(
                 thread.id(), "list them", "v1", "v1", "fp");
         Queue<String> scripts = new ArrayDeque<>(List.of(
-                "{\"done\":false, \"toolRequest\":{\"capabilityId\":\"project.list_recent\", \"arguments\":{}}}"));
+                 "{\"kind\":\"TOOL\", \"toolRequest\":{\"capabilityId\":\"project.list_recent\", \"arguments\":{}}}"));
         runtimeWithCapabilities(scripts, failing).executeRun(thread.id(), run.id(), "list them",
                 new GlobalAssistantContextBuilder.UiRequest("PROJECTS", null));
         var finished = runs.findById(run.id()).orElseThrow();
@@ -158,7 +158,7 @@ class GlobalAssistantCanonicalUiTest {
         org.springframework.jdbc.core.JdbcTemplate jdbc = applicationContextJdbc();
         jdbc.update("UPDATE global_assistant_threads SET working_state = CAST('\"broken\"' AS jsonb) WHERE id = ?",
                 thread.id());
-        Queue<String> scripts = new ArrayDeque<>(List.of("{\"done\":true, \"assistantText\":\"Hi.\"}"));
+         Queue<String> scripts = new ArrayDeque<>(List.of("{\"kind\":\"FINAL\", \"assistantText\":\"Hi.\"}"));
         runtimeFor(scripts).executeRun(thread.id(), run.id(), "hello",
                 new GlobalAssistantContextBuilder.UiRequest("PROJECTS", null));
         var finished = runs.findById(run.id()).orElseThrow();

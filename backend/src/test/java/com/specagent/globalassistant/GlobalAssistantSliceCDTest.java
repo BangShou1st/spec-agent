@@ -61,8 +61,8 @@ class GlobalAssistantSliceCDTest {
     @Test
     void parserAcceptsMinimalFinalDecision() {
         GlobalAssistantDecision decision =
-                parser.parse("{\"assistantText\": \"Done.\", \"done\": true}");
-        assertThat(decision.done()).isTrue();
+                parser.parse("{\"kind\":\"FINAL\",\"assistantText\": \"Done.\"}");
+        assertThat(decision.kind()).isEqualTo(GlobalAssistantDecision.DecisionKind.FINAL);
         assertThat(decision.toolRequest()).isNull();
     }
     @Test
@@ -72,35 +72,37 @@ class GlobalAssistantSliceCDTest {
     }
     @Test
     void validatorRejectsUnknownCapability() {
-        GlobalAssistantDecision decision = new GlobalAssistantDecision("hi", null,
+        GlobalAssistantDecision decision = new GlobalAssistantDecision(
+                GlobalAssistantDecision.DecisionKind.TOOL, null,
                 new GlobalAssistantDecision.ToolRequest("skill.secret", Map.of()),
-                null, false, false);
+                null);
         assertThatThrownBy(() -> validator.validate(decision))
                 .isInstanceOf(GlobalAssistantModelException.class)
                 .hasMessageContaining("not in Global Assistant catalog");
     }
     @Test
     void validatorRejectsForgedProjectId() {
-        GlobalAssistantDecision decision = new GlobalAssistantDecision(null, null,
+        GlobalAssistantDecision decision = new GlobalAssistantDecision(
+                GlobalAssistantDecision.DecisionKind.TOOL, null,
                 new GlobalAssistantDecision.ToolRequest(
                         "project.get_summary", Map.of("projectId", "not-a-uuid")),
-                null, false, false);
+                null);
         assertThatThrownBy(() -> validator.validate(decision))
                 .isInstanceOf(GlobalAssistantModelException.class);
     }
     @Test
     void validatorRejectsArbitraryUrlUiAction() {
-        GlobalAssistantDecision decision = new GlobalAssistantDecision("go", null, null,
+        GlobalAssistantDecision decision = new GlobalAssistantDecision(
+                GlobalAssistantDecision.DecisionKind.NAVIGATE, "go", null,
                 new GlobalAssistantDecision.UiAction(
-                        GlobalAssistantDecision.UiDestination.PROJECT, "https://evil.example/x"),
-                false, true);
+                        GlobalAssistantDecision.UiDestination.PROJECT, "https://evil.example/x"));
         assertThatThrownBy(() -> validator.validate(decision))
                 .isInstanceOf(GlobalAssistantModelException.class);
     }
     @Test
-    void validatorRejectsNonTerminalClarification() {
-        GlobalAssistantDecision decision = new GlobalAssistantDecision("which one?", null, null,
-                null, true, false);
+    void validatorRejectsEmptyClarification() {
+        GlobalAssistantDecision decision = new GlobalAssistantDecision(
+                GlobalAssistantDecision.DecisionKind.CLARIFY, "   ", null, null);
         assertThatThrownBy(() -> validator.validate(decision))
                 .isInstanceOf(GlobalAssistantModelException.class);
     }
@@ -114,13 +116,17 @@ class GlobalAssistantSliceCDTest {
         assertThat(rendered).doesNotContain("\u652f\u4ed8");
         assertThat(rendered).doesNotContain("\u90ae\u4ef6");
         assertThat(rendered).contains("Do not invent project IDs");
-        assertThat(rendered).contains("Use tools when canonical application state is required");
+        assertThat(rendered).contains("canonical");
+        assertThat(rendered).contains("TOOL");
+        assertThat(rendered).contains("CLARIFY");
+        assertThat(rendered).contains("NAVIGATE");
+        assertThat(rendered).contains("FINAL");
     }
     @Test
     void brainUsesOnlyGatewayAndValidates() {
         ModelInferenceGateway stub = request -> new ModelInferenceResponse(
                 "{\"toolRequest\": {\"capabilityId\": \"project.list_recent\", \"arguments\": {}}, "
-                        + "\"done\": false}",
+                         + "\"kind\":\"TOOL\"}",
                 "stop", 0, 0);
         GlobalAssistantBrain brain = new GlobalAssistantBrain(
                 renderer, stub, parser, validator);

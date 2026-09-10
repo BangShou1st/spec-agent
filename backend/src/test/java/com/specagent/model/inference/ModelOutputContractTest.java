@@ -68,4 +68,18 @@ class ModelOutputContractTest {
                 List.of(new ModelInferenceMessage("user", "hi")), 128, contract);
         assertThat(request.outputContract()).isSameAs(contract);
     }
+
+    @Test
+    void jsonObjectContractExists() {
+        ModelOutputContract contract = ModelOutputContract.jsonObject();
+        assertThat(contract).isInstanceOf(ModelOutputContract.JsonObject.class);
+    }
+
+    @Test
+    void requestKeepsExplicitJsonObjectContract() {
+        ModelOutputContract.JsonObject contract = ModelOutputContract.jsonObject();
+        ModelInferenceRequest request = new ModelInferenceRequest(UUID.randomUUID(), "DECISION",
+                List.of(new ModelInferenceMessage("user", "hi")), 128, contract);
+        assertThat(request.outputContract()).isSameAs(contract);
+    }
 }
