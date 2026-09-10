@@ -95,4 +95,23 @@ class GlobalAssistantPromptV2Test {
         assertThat(prompt).doesNotContain("MiMo");
         assertThat(prompt).doesNotContain("mimo");
     }
+
+    @Test
+    void projectNavigationRequiresResourceId() {
+        String prompt = systemPrompt();
+        assertThat(prompt).contains("PROJECT requires");
+        assertThat(prompt).contains("resourceId");
+    }
+
+    @Test
+    void nonProjectNavigationForbidsResourceId() {
+        String prompt = systemPrompt();
+        assertThat(prompt).contains("must not include resourceId");
+    }
+
+    @Test
+    void navigateAssistantTextIsOptional() {
+        String prompt = systemPrompt();
+        assertThat(prompt).contains("optional and may be omitted");
+    }
 }

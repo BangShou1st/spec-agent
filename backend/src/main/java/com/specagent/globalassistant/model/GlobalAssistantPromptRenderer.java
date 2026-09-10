@@ -69,7 +69,13 @@ public class GlobalAssistantPromptRenderer {
             Structural templates (shapes only, no scenario content):
             TOOL: {"kind":"TOOL","toolRequest":{"capabilityId":"...","arguments":{...}}}
             CLARIFY: {"kind":"CLARIFY","assistantText":"..."}
-            NAVIGATE: {"kind":"NAVIGATE","assistantText":"...","uiAction":{"destination":"...","resourceId":"..."}}
+            NAVIGATE PROJECT (resourceId required):
+            {"kind":"NAVIGATE","uiAction":{"destination":"PROJECT","resourceId":"<project-uuid>"}}
+            NAVIGATE application page (resourceId forbidden):
+            {"kind":"NAVIGATE","uiAction":{"destination":"PROJECTS"}}
+            PROJECT requires a valid project-UUID resourceId. PROJECTS, SKILLS, CONNECTIONS, SETTINGS \
+            must not include resourceId. NAVIGATE assistantText is optional and may be omitted; when omitted \
+            the runtime uses default navigation text.
             FINAL: {"kind":"FINAL","assistantText":"..."}
             """;
     public List<ModelInferenceMessage> render(GlobalAssistantContext context, List<Map<String, Object>> observations) {
@@ -142,6 +148,27 @@ public class GlobalAssistantPromptRenderer {
             }
         }
         messages.add(new ModelInferenceMessage("user", user.toString()));
+        return messages;
+    }
+    /**
+     * Repair rendering: same context/observations/contract as {@link #render},
+     * plus one short structural note. Never embeds raw invalid output, only a
+     * bounded sanitized rejection reason.
+     */
+    public List<ModelInferenceMessage> renderRepair(GlobalAssistantContext context,
+            List<Map<String, Object>> observations, String rejectionReason) {
+        List<ModelInferenceMessage> messages = new ArrayList<>(render(context, observations));
+        String reason = rejectionReason == null ? "rejected" : rejectionReason.trim();
+        if (reason.length() > 400) {
+            reason = reason.substring(0, 400);
+        }
+        messages.add(new ModelInferenceMessage("user",
+                "Structural repair: the previous decision was rejected before it executed any action. "
+                + "Re-evaluate the same next action from the unchanged context and observations. "
+                + "Return exactly one valid Decision V2 JSON object with kind TOOL, CLARIFY, NAVIGATE, or FINAL. "
+                + "Keep the user's goal unchanged merely to satisfy the format. "
+                + "Do not emit statusText, requiresUserInput, or done. "
+                + "Rejection reason: " + reason));
         return messages;
     }
     public List<ModelInferenceMessage> renderSummary(String recentText) {
