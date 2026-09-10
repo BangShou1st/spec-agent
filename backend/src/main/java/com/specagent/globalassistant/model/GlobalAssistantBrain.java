@@ -4,6 +4,7 @@ import com.specagent.globalassistant.context.GlobalAssistantContext;
 import com.specagent.model.inference.ModelInferenceGateway;
 import com.specagent.model.inference.ModelInferenceRequest;
 import com.specagent.model.inference.ModelInferenceResponse;
+import com.specagent.model.inference.ModelOutputContract;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -13,6 +14,10 @@ import org.springframework.stereotype.Component;
  * Dedicated Global Assistant inference path. Provider-neutral: only the
  * ModelInferenceGateway seam is used. No OpenCode settings/client, no
  * provider adapters, no second client, no retry/fallback, no function calling.
+ *
+ * <p>V2 production uses exactly one fixed output mode for all models and all
+ * scenarios. No model-specific branch, no per-scenario switch, no semantic
+ * retry switching modes.
  */
 @Component
 public class GlobalAssistantBrain {
@@ -29,13 +34,31 @@ public class GlobalAssistantBrain {
         this.parser = parser;
         this.validator = validator;
     }
+    /**
+     * Single frozen production output contract. Qualification selects exactly
+     * one of JSON_SCHEMA or JSON_OBJECT; production then uses it for every
+     * decision call.
+     */
+    /**
+     * Frozen V1 production output mode: JSON_OBJECT.
+     * Single fixed contract for every model and scenario. No model branch,
+     * no per-scenario switch, no silent fallback.
+     */
+    public static ModelOutputContract productionContract() {
+        return ModelOutputContract.jsonObject();
+    }
     public GlobalAssistantDecision decide(UUID runId, GlobalAssistantContext context,
             List<Map<String, Object>> observations) {
+        return decide(runId, context, observations, productionContract());
+    }
+    /** Qualification / test path with an explicit contract. No silent fallback. */
+    public GlobalAssistantDecision decide(UUID runId, GlobalAssistantContext context,
+            List<Map<String, Object>> observations, ModelOutputContract contract) {
         List<com.specagent.model.inference.ModelInferenceMessage> messages = renderer.render(context, observations);
         ModelInferenceResponse response;
         try {
             response = gateway.complete(new ModelInferenceRequest(runId, DECISION_CALL_TYPE, messages, 1024,
-                    GlobalAssistantDecisionSchema.contract()));
+                    contract));
         } catch (RuntimeException ex) {
             throw new GlobalAssistantModelException("MODEL_UNAVAILABLE", "Model gateway unavailable", ex);
         }

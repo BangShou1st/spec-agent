@@ -12,15 +12,25 @@ import java.util.Map;
  * callers. Adapters fail closed on contract variants they do not support
  * instead of silently downgrading to text.
  *
- * <p>V1 carries exactly two variants: {@link Text} (ordinary prose) and
- * {@link JsonSchema} (native structured output). Requests without an
- * explicit contract behave as {@link Text}, preserving historical behavior.
+ * <p>V2 carries exactly three variants: {@link Text} (ordinary prose),
+ * {@link JsonObject} (syntactically valid JSON object without claiming native
+ * schema enforcement) and {@link JsonSchema} (native structured output).
+ * Requests without an explicit contract behave as {@link Text}, preserving
+ * historical behavior.
  */
 public sealed interface ModelOutputContract
-        permits ModelOutputContract.Text, ModelOutputContract.JsonSchema {
+        permits ModelOutputContract.Text, ModelOutputContract.JsonObject, ModelOutputContract.JsonSchema {
 
     /** Ordinary text output; the provider request carries no format enforcement. */
     record Text() implements ModelOutputContract {
+    }
+
+    /**
+     * Syntactically valid JSON object output without claiming native schema
+     * enforcement. Provider-neutral abstraction: never expose provider-native
+     * wire types here.
+     */
+    record JsonObject() implements ModelOutputContract {
     }
 
     /**
@@ -57,6 +67,11 @@ public sealed interface ModelOutputContract
     /** Ordinary text output contract. */
     static Text text() {
         return new Text();
+    }
+
+    /** JSON object output contract without native schema enforcement. */
+    static JsonObject jsonObject() {
+        return new JsonObject();
     }
 
     /** Structured-output contract for one named JSON object schema. */

@@ -74,10 +74,12 @@ public class OpenCodeModelInferenceGateway implements ModelInferenceGateway {
 
     /**
      * Translates the neutral output contract into the OpenCode-native
-     * request shape. Text stays on the historical wire shape; a JSON schema
-     * becomes {@code response_format.json_schema} with strict enforcement.
+     * request shape. Text stays on the historical wire shape; a JSON object
+     * becomes {@code response_format.type=json_object} without claiming
+     * native schema enforcement; a JSON schema becomes
+     * {@code response_format.json_schema} with strict enforcement.
      * Unknown contract variants fail closed instead of silently
-     * downgrading to text.
+     * downgrading to text. No silent fallback between modes.
      */
     private static OpenCodeChatCompletionRequest toProviderRequest(
             String selectedModel,
@@ -91,6 +93,11 @@ public class OpenCodeModelInferenceGateway implements ModelInferenceGateway {
             Map<String, Object> responseFormat = new LinkedHashMap<>();
             responseFormat.put("type", "json_schema");
             responseFormat.put("json_schema", schemaWrapper);
+            return new OpenCodeChatCompletionRequest(selectedModel, messages, responseFormat);
+        }
+        if (outputContract instanceof ModelOutputContract.JsonObject) {
+            Map<String, Object> responseFormat = new LinkedHashMap<>();
+            responseFormat.put("type", "json_object");
             return new OpenCodeChatCompletionRequest(selectedModel, messages, responseFormat);
         }
         if (outputContract instanceof ModelOutputContract.Text) {
