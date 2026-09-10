@@ -2,7 +2,9 @@
 import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import ApiErrorBanner from '@/components/ApiErrorBanner.vue'
+import AppIcon from '@/components/AppIcon.vue'
 import ProjectCreateForm from '@/components/ProjectCreateForm.vue'
+import { formatProjectCreatedAt } from '@/presentation/projectPresentation'
 import { useProjectStore } from '@/stores/projectStore'
 
 const router = useRouter()
@@ -51,9 +53,17 @@ async function handleCreate(title: string): Promise<void> {
       <div v-for="project in projectStore.projects" :key="project.id" class="project-row" role="listitem">
         <div class="project-row__main">
           <RouterLink class="project-row__title" :to="`/projects/${project.id}`">{{ project.title }}</RouterLink>
-          <div class="project-row__meta meta-text">创建于 {{ project.createdAt }}</div>
+          <div class="project-row__meta meta-text">创建于 {{ formatProjectCreatedAt(project.createdAt) }}</div>
         </div>
-        <RouterLink class="project-row__open" :to="`/projects/${project.id}`" :aria-label="'打开项目 ' + project.title">打开</RouterLink>
+        <RouterLink
+          class="icon-btn project-row__open"
+          :to="`/projects/${project.id}`"
+          :title="'打开项目 ' + project.title"
+          :aria-label="'打开项目 ' + project.title"
+        >
+          <AppIcon name="chevron-right" />
+          <span class="visually-hidden">打开</span>
+        </RouterLink>
       </div>
     </div>
   </div>

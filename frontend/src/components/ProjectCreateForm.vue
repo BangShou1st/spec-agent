@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import AppIcon from '@/components/AppIcon.vue'
 
 /**
  * 项目创建表单。客户端只做 UX 层面的空值校验；标题校验以后端为准。
@@ -43,7 +44,8 @@ function submit(): void {
         :disabled="creating"
       />
       <button class="btn btn-primary" type="submit" :disabled="creating || blank()">
-        {{ creating ? '正在创建…' : '创建项目' }}
+        <AppIcon v-if="!creating" name="plus" />
+        <span>{{ creating ? '正在创建…' : '创建项目' }}</span>
       </button>
     </div>
     <p class="form-helper">输入标题后回车即可创建，创建后直接进入工作区。</p>
