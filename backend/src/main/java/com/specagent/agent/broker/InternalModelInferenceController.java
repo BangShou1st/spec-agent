@@ -10,6 +10,7 @@ import com.specagent.model.gateway.ModelGatewayException;
 import com.specagent.model.inference.ModelInferenceGateway;
 import com.specagent.model.inference.ModelInferenceMessage;
 import com.specagent.model.inference.ModelInferenceRequest;
+import com.specagent.model.inference.ModelOutputContract;
 import com.specagent.model.inference.ModelInferenceResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -91,7 +92,8 @@ public class InternalModelInferenceController {
                     request.messages().stream()
                             .map(message -> new ModelInferenceMessage(message.role(), message.content()))
                             .toList(),
-                    request.maxOutputTokens()));
+                    request.maxOutputTokens(),
+                    ModelOutputContract.jsonObject())); // brain parses strictly as JSON; force structured output
         } catch (ModelGatewayException ex) {
             recordFailure(request, ex);
             // Provider-neutral category only; provider payloads never leave here.
