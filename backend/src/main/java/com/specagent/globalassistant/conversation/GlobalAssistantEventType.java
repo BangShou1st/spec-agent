@@ -9,6 +9,9 @@ public final class GlobalAssistantEventType {
     public static final String RUN_STARTED = "RUN_STARTED";
     public static final String STATUS = "STATUS";
     public static final String ASSISTANT_DELTA = "ASSISTANT_DELTA";
+    public static final String ANSWER_STREAM_STARTED = "ANSWER_STREAM_STARTED";
+    public static final String ANSWER_DELTA = "ANSWER_DELTA";
+    public static final String ANSWER_STREAM_RESET = "ANSWER_STREAM_RESET";
     public static final String TOOL_STARTED = "TOOL_STARTED";
     public static final String TOOL_COMPLETED = "TOOL_COMPLETED";
     public static final String TOOL_FAILED = "TOOL_FAILED";

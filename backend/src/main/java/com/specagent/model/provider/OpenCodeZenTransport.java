@@ -52,6 +52,25 @@ public interface OpenCodeZenTransport {
                                          OpenCodeChatCompletionRequest request);
 
     /**
+     * Streaming variant of {@link #complete(String, String, OpenCodeChatCompletionRequest)}.
+     * Decoded content fragments reach {@code listener} in arrival order while the
+     * provider is still generating; the returned response is the same fully
+     * aggregated contract. A declined fragment aborts the stream with
+     * {@link StreamCancelledException}.
+     */
+    default OpenCodeCompletionResponse completeStreaming(String apiKey, String sessionId,
+                                                          OpenCodeChatCompletionRequest request,
+                                                          FragmentListener listener) {
+        OpenCodeCompletionResponse response = complete(apiKey, sessionId, request);
+        if (response != null && response.content() != null && !response.content().isEmpty()) {
+            if (!listener.onFragment(response.content())) {
+                throw new StreamCancelledException("listener declined content");
+            }
+        }
+        return response;
+    }
+
+    /**
      * Fetches the current model list against {@code GET /models}.
      *
      * @param apiKey the optional bearer credential; may be null or blank because

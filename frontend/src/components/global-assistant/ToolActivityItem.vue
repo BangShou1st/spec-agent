@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { GaToolActivity } from '@/stores/globalAssistantStore'
+import { completedCountLabel } from '@/presentation/capabilityPresentation'
 import AppIcon from '@/components/AppIcon.vue'
+import ProjectResourceList from './ProjectResourceList.vue'
 
 const props = defineProps<{ activity: GaToolActivity }>()
 
@@ -11,6 +13,18 @@ const stateLabel = computed(() => {
   if (props.activity.state === 'running') return '执行中'
   if (props.activity.state === 'success') return '完成'
   return '失败'
+})
+
+/**
+ * Completed line from the generic registry and the REAL result count only.
+ * Falls back to the backend summary string when no trustworthy count exists.
+ * Never parses prompts, prose, or project names.
+ */
+const completedLine = computed(() => {
+  if (props.activity.state !== 'success') return null
+  const label = completedCountLabel(props.activity.capabilityId, props.activity.resultCount)
+  if (label) return label
+  return props.activity.summary
 })
 
 const stateClass = computed(() => 'ga-tool--' + props.activity.state)
@@ -45,8 +59,11 @@ function toggle(): void {
       <span class="ga-tool__status">{{ stateLabel }}</span>
       <span class="ga-tool__chevron" aria-hidden="true"><AppIcon :name="expanded ? 'chevron-down' : 'chevron-right'" /></span>
     </button>
-    <p v-if="props.activity.summary" class="ga-tool__summary">{{ props.activity.summary }}</p>
+    <p v-if="completedLine" class="ga-tool__summary">{{ completedLine }}</p>
+    <ProjectResourceList v-if="props.activity.resourceRefs && props.activity.resourceRefs.length" :resources="props.activity.resourceRefs" />
     <div v-if="expanded" class="ga-tool__detail" data-test="ga-tool-detail">
+      <p class="ga-tool__meta">Tool: {{ props.activity.capabilityId }}</p>
+      <p v-if="props.activity.summary" class="ga-tool__meta">{{ props.activity.summary }}</p>
       <p v-if="props.activity.argsSummary" class="ga-tool__meta">{{ props.activity.argsSummary }}</p>
       <p v-if="formatDuration(props.activity.durationMs)" class="ga-tool__meta">
         用时 {{ formatDuration(props.activity.durationMs) }}

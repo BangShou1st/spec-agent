@@ -21,13 +21,49 @@ import {
   type GaUiContext,
 } from '@/api/globalAssistant'
 import { openGaEventStream } from '@/api/globalAssistantEvents'
-import { gaErrorMessage, gaToolDisplayName, gaArgsSummary } from '@/presentation/globalAssistantPresentation'
+import { gaErrorMessage, gaToolDisplayName, gaArgsSummary, gaStatusMessage, GA_SENDING_STATUS, GA_GENERATING_STATUS } from '@/presentation/globalAssistantPresentation'
 
 export const GA_THREAD_KEY = 'spec-agent:global-assistant:thread:v1'
 export const GA_RUN_KEY = 'spec-agent:global-assistant:run:v1'
 export const GA_PANEL_KEY = 'spec-agent:global-assistant:panel:v1'
 
 export type GaToolState = 'running' | 'success' | 'failure'
+
+export interface GaResourceRef {
+  kind: string
+  id: string
+  label: string
+  metadata?: Record<string, unknown> | null
+}
+
+const GA_UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
+
+/** Code-point-safe bounded truncation: Array.from splits by code point, never by UTF-16 unit. */
+function truncateGaLabel(value: string, max = 200): string {
+  const points = Array.from(value)
+  return points.length > max ? points.slice(0, max).join('') : value
+}
+
+export function sanitizeGaResourceRefs(raw: unknown): GaResourceRef[] {
+  if (!Array.isArray(raw)) return []
+  const out: GaResourceRef[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const m = item as Record<string, unknown>
+    if (m.kind !== 'PROJECT') continue
+    if (typeof m.id !== 'string' || !GA_UUID_RE.test(m.id)) continue
+    if (typeof m.label !== 'string' || !m.label) continue
+    const label = truncateGaLabel(m.label)
+    let metadata: Record<string, unknown> | null = null
+    if (m.metadata && typeof m.metadata === 'object') {
+      const mm = m.metadata as Record<string, unknown>
+      if (typeof mm.updatedAt === 'string') metadata = { updatedAt: mm.updatedAt.slice(0, 64) }
+    }
+    out.push({ kind: 'PROJECT', id: m.id, label, metadata })
+    if (out.length >= 10) break
+  }
+  return out
+}
 
 export interface GaToolActivity {
   key: string
@@ -39,6 +75,16 @@ export interface GaToolActivity {
   startedAt: string
   endedAt: string | null
   durationMs: number | null
+  resourceRefs: GaResourceRef[]
+  /** Structured result kind from the TOOL_COMPLETED event (generic rendering). */
+  resultKind: string | null
+  /** Trustworthy result count: sanitized refs length wins, else event resultCount. */
+  resultCount: number | null
+}
+
+function sanitizeResultCount(raw: unknown): number | null {
+  if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 0 || raw > 10000) return null
+  return raw
 }
 
 export interface GaTerminal {
@@ -51,6 +97,7 @@ export interface GaTerminal {
 export class GaRunProjection {
   lastSequence = 0
   streamingText = ''
+  streamGeneration: number | null = null
   currentStatus: string | null = null
   activities: GaToolActivity[] = []
   waitingQuestion: string | null = null
@@ -71,13 +118,44 @@ export class GaRunProjection {
       case 'STATUS': {
         const message = typeof payload.message === 'string' ? payload.message : ''
         if (!message) return false
-        this.currentStatus = message
+        this.currentStatus = gaStatusMessage(message)
         return true
       }
       case 'ASSISTANT_DELTA': {
+        // Legacy at-once message event (old persisted runs, failure texts,
+        // mocked streams). New runs use ANSWER_STREAM_* with generations.
         const text = typeof payload.text === 'string' ? payload.text : ''
         if (!text) return false
         this.streamingText += text
+        return true
+      }
+      case 'ANSWER_STREAM_STARTED': {
+        const generation = typeof payload.generation === 'number' ? payload.generation : null
+        if (generation === null) return false
+        if (this.streamGeneration === generation) return false
+        this.streamGeneration = generation
+        this.streamingText = ''
+        return true
+      }
+      case 'ANSWER_DELTA': {
+        const text = typeof payload.text === 'string' ? payload.text : ''
+        if (!text) return false
+        const generation = typeof payload.generation === 'number' ? payload.generation : null
+        if (generation !== null && generation !== this.streamGeneration) {
+          // New generation without an explicit STARTED (e.g. resubscribe
+          // snapshot): reconcile by replacing the stale draft.
+          this.streamGeneration = generation
+          this.streamingText = text
+          return true
+        }
+        this.streamingText += text
+        return true
+      }
+      case 'ANSWER_STREAM_RESET': {
+        const generation = typeof payload.generation === 'number' ? payload.generation : null
+        if (generation === null) return false
+        this.streamGeneration = generation
+        this.streamingText = ''
         return true
       }
       case 'ASSISTANT_COMPLETED':
@@ -95,16 +173,26 @@ export class GaRunProjection {
           startedAt: typeof event.createdAt === 'string' ? event.createdAt : new Date().toISOString(),
           endedAt: null,
           durationMs: null,
+          resourceRefs: [],
+          resultKind: null,
+          resultCount: null,
         })
         return true
       }
       case 'TOOL_COMPLETED': {
         const capabilityId = typeof payload.capabilityId === 'string' ? payload.capabilityId : 'unknown'
         const summary = typeof payload.summary === 'string' ? payload.summary : null
+        const resourceRefs = sanitizeGaResourceRefs(payload.resourceRefs)
+        const resultKind = typeof payload.resultKind === 'string' ? payload.resultKind : null
+        const eventCount = sanitizeResultCount(payload.resultCount)
+        const resultCount = resourceRefs.length > 0 ? resourceRefs.length : eventCount
         const target = findRunningActivity(this.activities, capabilityId)
         if (target) {
           target.state = 'success'
           target.summary = summary
+          target.resourceRefs = resourceRefs
+          target.resultKind = resultKind
+          target.resultCount = resultCount
           target.endedAt = typeof event.createdAt === 'string' ? event.createdAt : target.endedAt
           target.durationMs = diffMs(target.startedAt, target.endedAt)
           return true
@@ -120,6 +208,9 @@ export class GaRunProjection {
           startedAt: typeof event.createdAt === 'string' ? event.createdAt : new Date().toISOString(),
           endedAt: typeof event.createdAt === 'string' ? event.createdAt : null,
           durationMs: null,
+          resourceRefs,
+          resultKind,
+          resultCount,
         })
         return true
       }
@@ -147,6 +238,9 @@ export class GaRunProjection {
           startedAt: typeof event.createdAt === 'string' ? event.createdAt : new Date().toISOString(),
           endedAt: typeof event.createdAt === 'string' ? event.createdAt : null,
           durationMs: null,
+          resourceRefs: [],
+          resultKind: null,
+          resultCount: null,
         })
         return true
       }
@@ -235,8 +329,12 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
     activeStatus: null as string | null,
     lastSequence: 0,
     streamingText: '',
+    streamGeneration: null as number | null,
     activities: [] as GaToolActivity[],
     currentStatus: null as string | null,
+    sendStartedAt: null as number | null,
+    firstVisibleUiMs: null as number | null,
+    firstToolResultMs: null as number | null,
     waitingQuestion: null as string | null,
     approvalRequired: false,
     pendingNavigation: null as string | null,
@@ -429,6 +527,7 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
         writeStored(GA_RUN_KEY, null)
         this.messages = messages
         this.streamingText = ''
+      this.streamGeneration = null
         this.activities = []
         this.currentStatus = null
         this.waitingQuestion = null
@@ -484,6 +583,7 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
       const projection = new GaRunProjection()
       projection.lastSequence = this.lastSequence
       projection.streamingText = this.streamingText
+      projection.streamGeneration = this.streamGeneration
       projection.currentStatus = this.currentStatus
       projection.activities = this.activities
       projection.waitingQuestion = this.waitingQuestion
@@ -491,9 +591,24 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
       projection.uiAction = this.lastUiAction
       const changed = projection.apply(event)
       void changed
+      if (this.sendStartedAt !== null) {
+        if (this.firstToolResultMs === null && event.type === 'TOOL_COMPLETED') {
+          this.firstToolResultMs = Date.now() - this.sendStartedAt
+        }
+      }
       this.lastSequence = projection.lastSequence
       this.streamingText = projection.streamingText
+      this.streamGeneration = projection.streamGeneration
       this.currentStatus = projection.currentStatus
+      if (
+        (event.type === 'ANSWER_STREAM_STARTED' || event.type === 'ANSWER_DELTA') &&
+        this.streamingText.length > 0 &&
+        this.currentStatus === GA_SENDING_STATUS
+      ) {
+        // Real stream evidence supersedes the optimistic send-time label.
+        // No timers: the visible draft itself is the generating state.
+        this.currentStatus = GA_GENERATING_STATUS
+      }
       this.activities = [...projection.activities]
       this.waitingQuestion = projection.waitingQuestion
       this.approvalRequired = projection.approvalRequired
@@ -506,6 +621,11 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
       return true
     },
     finishTerminal(terminal: GaTerminal): void {
+      // A terminal run never leaves a transient draft behind: the authoritative
+      // message arrives via messages reload. Without this the streamed draft
+      // would linger as a ghost duplicate of the final answer.
+      this.streamingText = ''
+      this.streamGeneration = null
       if (terminal.type === 'RUN_FAILED') {
         const code = terminal.errorCode ?? 'UNKNOWN_ERROR'
         this.error = { code, message: gaErrorMessage(code, terminal.reason ?? undefined) }
@@ -552,6 +672,7 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
         writeStored(GA_RUN_KEY, act.activeRun.runId)
         this.lastSequence = 0
         this.streamingText = ''
+      this.streamGeneration = null
         this.activities = []
         this.currentStatus = '正在调整方向…'
         try {
@@ -569,6 +690,7 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
       try {
         this.messages = await listGaMessages(this.threadId)
         this.streamingText = ''
+        this.streamGeneration = null
         this.dedupeOptimistic()
       } catch { /* keep optimistic projection */ }
     },
@@ -659,8 +781,12 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
         }
         this.messages = [...this.messages, optimistic]
         this.streamingText = ''
+      this.streamGeneration = null
         this.activities = []
-        this.currentStatus = '正在处理…'
+        this.currentStatus = GA_SENDING_STATUS
+        this.sendStartedAt = Date.now()
+        this.firstVisibleUiMs = 0
+        this.firstToolResultMs = null
         this.waitingQuestion = null
         this.approvalRequired = false
         this.lastUiAction = null
@@ -811,6 +937,7 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
             writeStored(GA_RUN_KEY, null)
             this.messages = []
             this.streamingText = ''
+            this.streamGeneration = null
             this.activities = []
             this.currentStatus = null
             this.waitingQuestion = null
@@ -844,6 +971,7 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
         writeStored(GA_RUN_KEY, null)
         this.messages = messages
         this.streamingText = ''
+      this.streamGeneration = null
         this.activities = []
         this.currentStatus = null
         this.waitingQuestion = null
@@ -880,6 +1008,7 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
         writeStored(GA_RUN_KEY, null)
         this.messages = []
         this.streamingText = ''
+      this.streamGeneration = null
         this.activities = []
         this.currentStatus = null
         this.waitingQuestion = null
@@ -906,6 +1035,7 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
       this.activeStatus = null
       this.lastSequence = 0
       this.streamingText = ''
+      this.streamGeneration = null
       this.activities = []
       this.currentStatus = null
       this.waitingQuestion = null

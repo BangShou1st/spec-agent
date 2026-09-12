@@ -2,6 +2,7 @@ package com.specagent.settings.opencode;
 
 import com.specagent.model.inference.ModelInferenceGateway;
 import com.specagent.model.inference.OpenCodeModelInferenceGateway;
+import com.specagent.model.inference.RoutingModelInferenceGateway;
 import com.specagent.model.provider.OpenCodeZenTransport;
 import com.specagent.testing.FakeModelInferenceGateway;
 import org.junit.jupiter.api.Test;
@@ -52,7 +53,9 @@ class OpenCodeLiveRuntimeSettingsProvenanceTest {
 
         RuntimeOpenCodeSettings resolved = service.requireRuntimeSettings();
 
-        assertThat(inferenceGateway).isInstanceOf(OpenCodeModelInferenceGateway.class);
+        // MODEL PROVIDERS V1: routing is the authoritative entry; OpenCode stays the delegate.
+        assertThat(inferenceGateway).isInstanceOf(RoutingModelInferenceGateway.class);
+        assertThat(context.getBeansOfType(OpenCodeModelInferenceGateway.class)).hasSize(1);
         assertThat(context.getBeansOfType(FakeModelInferenceGateway.class)).isEmpty();
         assertThat(transport.endpoint()).isEqualTo(OpenCodeZenTransport.BASE_URL);
         assertThat(resolved.selectedModel()).isEqualTo("gpt-5.6-terra");

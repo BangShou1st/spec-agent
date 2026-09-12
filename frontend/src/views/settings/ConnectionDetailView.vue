@@ -62,7 +62,7 @@ async function remove(): Promise<void> {
       <header class="detail-head">
         <div><h2 data-test="connection-detail-name">{{ store.detail.name }}</h2>
         <p class="muted">{{ connectionKindLabel(store.detail.kind) }} · {{ endpoint }}</p></div>
-        <button type="button" class="btn" data-test="edit-connection" @click="editOpen = true">编辑连接</button>
+      <button type="button" class="btn" data-test="edit-connection" @click="store.clearError(); editOpen = true">编辑连接</button>
       </header>
       <dl class="detail-meta">
         <div><dt>服务器地址</dt><dd data-test="connection-endpoint">{{ endpoint }}</dd></div>

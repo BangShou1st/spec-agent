@@ -38,7 +38,7 @@ class HttpOpenCodeZenTransportUserAgentTest {
         HttpOpenCodeZenTransport transport = new HttpOpenCodeZenTransport(
                 new ObjectMapper(),
                 "http://127.0.0.1:" + server.getAddress().getPort(),
-                5);
+                5, "DIRECT");
 
         transport.listModels(null);
         transport.validateCredential("probe-key", "alpha-free");

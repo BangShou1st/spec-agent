@@ -2,9 +2,11 @@ package com.specagent.api.project;
 
 import com.specagent.api.common.ApiException;
 import com.specagent.project.Project;
+import com.specagent.project.ProjectDeletionService;
 import com.specagent.project.ProjectService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -26,11 +28,14 @@ import java.util.UUID;
 public class ProjectController {
 
     private final ProjectService projectService;
+    private final ProjectDeletionService deletionService;
     private final ProjectRuntimeQueryService runtimeQueryService;
 
     public ProjectController(ProjectService projectService,
+                             ProjectDeletionService deletionService,
                              ProjectRuntimeQueryService runtimeQueryService) {
         this.projectService = projectService;
+        this.deletionService = deletionService;
         this.runtimeQueryService = runtimeQueryService;
     }
 
@@ -58,5 +63,17 @@ public class ProjectController {
     @GetMapping("/{projectId}/active")
     public ActiveProjectStateResponse getActiveState(@PathVariable UUID projectId) {
         return runtimeQueryService.getActiveState(projectId);
+    }
+
+    @DeleteMapping("/{projectId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteProject(@PathVariable UUID projectId) {
+        try {
+            deletionService.deleteProject(projectId);
+        } catch (IllegalArgumentException ex) {
+            throw ApiException.notFound("PROJECT_NOT_FOUND", "Project not found");
+        } catch (IllegalStateException ex) {
+            throw ApiException.conflict("PROJECT_HAS_RUNNING_RUNS", "Project has running runs");
+        }
     }
 }

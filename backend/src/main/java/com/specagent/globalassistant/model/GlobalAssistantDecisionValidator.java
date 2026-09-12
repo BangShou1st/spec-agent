@@ -12,6 +12,31 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class GlobalAssistantDecisionValidator {
+    /**
+     * User-visible prose must contain only complete Unicode scalar values.
+     * Jackson accepts lone surrogates, so this explicit fail-closed check
+     * routes them into the bounded repair path instead of the UI.
+     */
+    static void requireScalarValidText(String assistantText) {
+        if (assistantText == null) return;
+        for (int i = 0; i < assistantText.length(); ) {
+            char c = assistantText.charAt(i);
+            if (Character.isHighSurrogate(c)) {
+                if (i + 1 >= assistantText.length()
+                        || !Character.isLowSurrogate(assistantText.charAt(i + 1))) {
+                    throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
+                            "assistantText contains an unpaired surrogate");
+                }
+                i += 2;
+            } else if (Character.isLowSurrogate(c)) {
+                throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
+                        "assistantText contains an unpaired surrogate");
+            } else {
+                i++;
+            }
+        }
+    }
+
     public void validate(GlobalAssistantDecision decision) {
         if (decision == null) {
             throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE", "Decision must not be null");
@@ -56,6 +81,7 @@ public class GlobalAssistantDecisionValidator {
                 if (decision.assistantText().length() > 4000) {
                     throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE", "assistantText too long");
                 }
+                requireScalarValidText(decision.assistantText());
             }
             case NAVIGATE -> {
                 if (decision.toolRequest() != null) {
@@ -70,6 +96,7 @@ public class GlobalAssistantDecisionValidator {
                 if (decision.assistantText() != null && decision.assistantText().length() > 4000) {
                     throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE", "assistantText too long");
                 }
+                requireScalarValidText(decision.assistantText());
             }
             case FINAL -> {
                 if (decision.toolRequest() != null) {
@@ -87,6 +114,7 @@ public class GlobalAssistantDecisionValidator {
                 if (decision.assistantText().length() > 4000) {
                     throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE", "assistantText too long");
                 }
+                requireScalarValidText(decision.assistantText());
             }
         }
     }

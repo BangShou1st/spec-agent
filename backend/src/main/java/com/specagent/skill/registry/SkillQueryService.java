@@ -63,9 +63,10 @@ public class SkillQueryService {
     }
 
     public List<SkillStagedImport> listStagedImports() {
+        // Pending-review surface only: REJECTED rows stay durable for audit
+        // but must never reappear as actionable pending imports.
         return repository.listStagedImports(List.of(
                 SkillStagedImport.Status.STAGED,
-                SkillStagedImport.Status.READY,
-                SkillStagedImport.Status.REJECTED));
+                SkillStagedImport.Status.READY));
     }
 }

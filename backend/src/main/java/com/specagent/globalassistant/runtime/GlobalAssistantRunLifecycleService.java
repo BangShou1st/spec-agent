@@ -48,8 +48,9 @@ public class GlobalAssistantRunLifecycleService {
     @Transactional
     public void completeWithAssistantAndUiAction(UUID threadId, UUID runId, String text,
             String uiDestination, String uiResourceId) {
+        // The authoritative message is persisted exactly once. User-visible prose
+        // already streamed as ANSWER_DELTA transients; no full-text delta here.
         conversations.appendAssistantMessage(threadId, text, runId);
-        events.append(runId, GlobalAssistantEventType.ASSISTANT_DELTA, Map.of("text", text));
         events.append(runId, GlobalAssistantEventType.ASSISTANT_COMPLETED, Map.of());
         if (uiDestination != null) {
             if (uiResourceId != null) {
@@ -65,8 +66,8 @@ public class GlobalAssistantRunLifecycleService {
     }
     @Transactional
     public void completeForClarification(UUID threadId, UUID runId, String question) {
+        // Question prose already streamed as ANSWER_DELTA transients, if any.
         conversations.appendAssistantMessage(threadId, question, runId);
-        events.append(runId, GlobalAssistantEventType.ASSISTANT_DELTA, Map.of("text", question));
         events.append(runId, GlobalAssistantEventType.ASSISTANT_COMPLETED, Map.of());
         events.append(runId, GlobalAssistantEventType.USER_INPUT_REQUIRED, Map.of("question", question));
         events.append(runId, GlobalAssistantEventType.RUN_COMPLETED, Map.of());

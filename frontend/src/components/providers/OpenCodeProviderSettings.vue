@@ -1,0 +1,308 @@
+<script setup lang="ts">
+import { computed, onMounted, ref } from 'vue'
+import ApiErrorBanner from '@/components/ApiErrorBanner.vue'
+import { productErrorMessage, requiresModelSettings } from '@/api/errorCopy'
+import { useModelSettingsStore } from '@/stores/modelSettingsStore'
+import { useProviderSettingsStore } from '@/stores/providerSettingsStore'
+
+type RetryAction = 'load' | 'models' | 'probe' | 'save' | 'save-model' | null
+
+const store = useModelSettingsStore()
+const providers = useProviderSettingsStore()
+const apiKey = ref('')
+const probed = ref(false)
+const retryAction = ref<RetryAction>(null)
+
+const isActive = computed(() => providers.activeProvider === 'OPENCODE_ZEN')
+const canProbe = computed(() => apiKey.value.trim().length > 0 && !store.probing && !store.saving)
+const canSave = computed(() => probed.value && apiKey.value.trim().length > 0
+  && store.selectedModel !== null && !store.saving && !store.probing)
+const canSaveModel = computed(() => store.status?.configured === true
+  && !store.changingCredential && store.selectedModel !== null
+  && store.freeModels.includes(store.selectedModel)
+  && !store.saving && !store.loadingModels)
+const canReset = computed(() => apiKey.value.length > 0 || probed.value
+  || (store.status?.configured === true && store.changingCredential))
+const safeErrorMessage = computed(() => productErrorMessage(store.error?.code ?? 'UNKNOWN_ERROR'))
+const showCredentialForm = computed(() => !store.status?.configured || store.changingCredential)
+const authenticationFailed = computed(() => store.error?.code.toUpperCase().includes('AUTHENTICATION') ?? false)
+const settingsActionRequired = computed(() => store.error !== null
+  && requiresModelSettings(store.error.code))
+
+async function loadStatus(): Promise<void> {
+  retryAction.value = 'load'
+  await store.loadStatus()
+  if (!store.error) {
+    retryAction.value = null
+  }
+}
+
+async function refreshModels(): Promise<void> {
+  retryAction.value = 'models'
+  await store.refreshModels()
+  if (!store.error) {
+    retryAction.value = null
+  }
+}
+
+async function probe(): Promise<void> {
+  retryAction.value = 'probe'
+  const models = await store.probe(apiKey.value)
+  probed.value = models.length > 0
+  if (!store.error) {
+    retryAction.value = null
+  }
+}
+
+async function save(): Promise<void> {
+  if (!store.selectedModel) {
+    return
+  }
+  retryAction.value = 'save'
+  const saved = await store.save(apiKey.value, store.selectedModel)
+  if (saved) {
+    apiKey.value = ''
+    probed.value = false
+    retryAction.value = null
+  }
+}
+
+async function saveModel(): Promise<void> {
+  if (!store.selectedModel) {
+    return
+  }
+  retryAction.value = 'save-model'
+  const saved = await store.saveModel(store.selectedModel)
+  if (saved) {
+    retryAction.value = null
+  }
+}
+
+async function resetDraft(): Promise<void> {
+  apiKey.value = ''
+  probed.value = false
+  retryAction.value = null
+  if (store.status?.configured && store.changingCredential) {
+    store.cancelCredentialChange()
+    await store.refreshModels()
+  } else {
+    store.resetProbe()
+  }
+}
+
+async function retryLastAction(): Promise<void> {
+  if (authenticationFailed.value || store.error?.code.toUpperCase().includes('NOT_CONFIGURED')) {
+    store.beginCredentialChange()
+    retryAction.value = null
+    return
+  }
+  if (settingsActionRequired.value) {
+    await refreshModels()
+    return
+  }
+  if (retryAction.value === 'load') {
+    await loadStatus()
+  } else if (retryAction.value === 'models') {
+    await refreshModels()
+  } else if (retryAction.value === 'probe') {
+    await probe()
+  } else if (retryAction.value === 'save') {
+    await save()
+  } else if (retryAction.value === 'save-model') {
+    await saveModel()
+  } else {
+    store.clearError()
+  }
+}
+
+async function activate(): Promise<void> {
+  await providers.activate('OPENCODE_ZEN')
+}
+
+onMounted(() => {
+  void loadStatus()
+})
+</script>
+
+<template>
+  <article class="settings-card" data-test="opencode-card">
+    <header class="settings-card__header">
+      <div>
+        <h3>OpenCode Zen</h3>
+        <p class="settings-card__description">用于问题生成、回答理解和 Spec 生成。现有配置与传输保持不变。</p>
+      </div>
+      <span
+        class="settings-status"
+        :class="isActive ? 'settings-status--active' : (store.status?.configured ? 'settings-status--configured' : 'settings-status--empty')"
+        data-test="opencode-state"
+      >
+        <span class="settings-status__dot" aria-hidden="true"></span>
+        {{ isActive ? '当前使用' : (store.status?.configured ? '已配置' : '尚未配置') }}
+      </span>
+    </header>
+    <span
+      class="settings-status"
+      :class="store.status?.configured ? 'settings-status--configured' : 'settings-status--empty'"
+      data-test="configuration-status"
+      style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)"
+      aria-hidden="true"
+    >{{ store.status?.configured ? '已配置' : '尚未配置' }}</span>
+
+    <ApiErrorBanner
+      v-if="store.error"
+      class="settings-error"
+      data-test="settings-error"
+      :message="safeErrorMessage"
+      :code="store.error.code"
+      :retry-label="settingsActionRequired ? '前往模型设置' : '重试'"
+      :retrying="store.loading || store.probing || store.saving || store.loadingModels"
+      @retry="retryLastAction"
+    />
+
+    <section v-if="store.status?.configured" class="settings-current-config" data-test="current-config">
+      <div class="settings-current-config__item">
+        <span>API Key</span>
+        <strong data-test="masked-key">{{ store.status.maskedKey }}</strong>
+      </div>
+      <div class="settings-current-config__item">
+        <span>当前模型</span>
+        <strong class="ellipsis" :title="store.status.selectedModel ?? ''">{{ store.status.selectedModel }}</strong>
+      </div>
+      <button
+        class="btn settings-action"
+        type="button"
+        data-test="change-api-key"
+        :disabled="store.probing || store.saving"
+        @click="store.beginCredentialChange()"
+      >
+        更换 API Key
+      </button>
+    </section>
+
+    <div v-if="showCredentialForm" class="settings-form settings-form--credential">
+      <label class="settings-field" for="opencode-api-key">
+        <span class="settings-field__label">新 API Key</span>
+        <span class="settings-field__hint">密钥只用于验证和保存，不会显示完整内容。</span>
+        <input
+          id="opencode-api-key"
+          v-model="apiKey"
+          class="settings-control settings-key-input"
+          type="password"
+          autocomplete="off"
+          data-test="opencode-api-key"
+          placeholder="输入你的 API Key"
+        />
+      </label>
+      <div class="settings-form__action-row">
+        <button
+          class="btn settings-action"
+          type="button"
+          data-test="probe-opencode"
+          :disabled="!canProbe"
+          @click="probe"
+        >
+          {{ store.probing ? '正在验证…' : '验证并获取模型' }}
+        </button>
+      </div>
+      <label class="settings-field" for="opencode-model">
+        <span class="settings-field__label">可用模型</span>
+        <span class="settings-field__hint">验证后请选择一个当前可用的 free model。</span>
+        <select
+          id="opencode-model"
+          v-model="store.selectedModel"
+          class="settings-control settings-model-select"
+          data-test="opencode-model"
+          :disabled="!probed || store.freeModels.length === 0 || store.saving"
+        >
+          <option :value="null" disabled>请选择一个 free model</option>
+          <option v-for="model in store.freeModels" :key="model" :value="model">{{ model }}</option>
+        </select>
+        <span v-if="probed && store.freeModels.length === 0" class="settings-field__empty">
+          当前没有可用的 free model。
+        </span>
+      </label>
+    </div>
+
+    <section v-if="store.status?.configured && !store.changingCredential" class="settings-models" data-test="saved-key-models">
+      <label class="settings-field" for="opencode-model-saved">
+        <span class="settings-field__label">可用模型</span>
+        <span class="settings-field__hint">使用当前已保存的 API Key 获取，不需要重新输入密钥。</span>
+        <select
+          id="opencode-model-saved"
+          v-model="store.selectedModel"
+          class="settings-control settings-model-select"
+          data-test="opencode-model"
+          :disabled="store.loadingModels || store.saving || store.freeModels.length === 0"
+        >
+          <option :value="null" disabled>请选择一个 free model</option>
+          <option v-for="model in store.freeModels" :key="model" :value="model">{{ model }}</option>
+        </select>
+        <span v-if="store.modelUnavailable" class="settings-field__warning settings-field__empty">
+          当前模型已不可用，请重新选择。
+        </span>
+      </label>
+      <div class="settings-form__action-row">
+        <button
+          class="btn settings-action"
+          type="button"
+          data-test="refresh-models"
+          :disabled="store.loadingModels || store.saving"
+          @click="refreshModels"
+        >
+          {{ store.loadingModels ? '正在刷新…' : '刷新可用模型' }}
+        </button>
+        <button
+          class="btn btn-primary settings-action"
+          type="button"
+          data-test="save-model"
+          :disabled="!canSaveModel"
+          @click="saveModel"
+        >
+          {{ store.saving ? '正在保存…' : '保存模型' }}
+        </button>
+      </div>
+    </section>
+
+    <footer class="settings-card__footer">
+      <button
+        v-if="canReset"
+        class="btn settings-action"
+        type="button"
+        data-test="reset-opencode"
+        :disabled="store.probing || store.saving"
+        @click="resetDraft"
+      >
+        {{ store.status?.configured && store.changingCredential ? '取消更换' : '取消/重置' }}
+      </button>
+      <button
+        v-if="showCredentialForm"
+        class="btn btn-primary settings-action"
+        type="button"
+        data-test="save-opencode"
+        :disabled="!canSave"
+        @click="save"
+      >
+        {{ store.saving ? '正在保存…' : '保存凭证' }}
+      </button>
+      <button
+        class="btn settings-action"
+        type="button"
+        data-test="activate-opencode"
+        :disabled="isActive || !store.status?.configured || providers.activating"
+        :title="isActive ? '已是当前 Provider' : '通过服务端校验后设为当前 Provider'"
+        @click="activate"
+      >
+        {{ isActive ? '当前使用' : (providers.activating ? '正在切换…' : '设为当前 Provider') }}
+      </button>
+    </footer>
+  </article>
+</template>
+
+<style scoped>
+.ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+}
+</style>

@@ -65,6 +65,38 @@ public class OpenCodeModelInferenceGateway implements ModelInferenceGateway {
                 transport.complete(settings.apiKey(),
                         OpenCodeZenSessionIds.forRun(request.runId()),
                         completionRequest);
+        return toResponse(completion);
+    }
+
+    @Override
+    public ModelInferenceResponse completeStreaming(ModelInferenceRequest request,
+            com.specagent.model.provider.FragmentListener listener) {
+        RuntimeOpenCodeSettings settings = settingsService.requireRuntimeSettings();
+        String selectedModel = settings.selectedModel();
+        if (selectedModel == null || selectedModel.isBlank()) {
+            throw new OpenCodeModelException(OpenCodeModelErrorCategory.NOT_CONFIGURED,
+                    "No OpenCode model is selected");
+        }
+        boolean externalEvaluation = "external-environment:SPEC_AGENT_EVAL_OPENCODE_KEY"
+                .equals(settings.credentialSource());
+        if (!externalEvaluation && !selectedModel.endsWith("-free")) {
+            throw new OpenCodeModelException(OpenCodeModelErrorCategory.INVALID_MODEL,
+                    "OpenCode gateway requires a free model; configured model is not free: "
+                            + selectedModel);
+        }
+        List<OpenCodeChatMessage> messages = request.messages().stream()
+                .map(message -> new OpenCodeChatMessage(message.role(), message.content()))
+                .toList();
+        OpenCodeChatCompletionRequest completionRequest =
+                toProviderRequest(selectedModel, messages, request.outputContract());
+        OpenCodeCompletionResponse completion =
+                transport.completeStreaming(settings.apiKey(),
+                        OpenCodeZenSessionIds.forRun(request.runId()),
+                        completionRequest, listener);
+        return toResponse(completion);
+    }
+
+    private static ModelInferenceResponse toResponse(OpenCodeCompletionResponse completion) {
         return new ModelInferenceResponse(
                 completion.content(),
                 completion.finishReason(),

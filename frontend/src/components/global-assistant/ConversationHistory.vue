@@ -215,7 +215,7 @@ function onMenuKeydown(event: KeyboardEvent, threadId: string): void {
   border-top: 1px solid var(--color-border);
 }
  .ga-history {
-  background: linear-gradient(180deg, rgba(255,255,255,0.9), var(--color-surface));
+  background: var(--color-surface);
 }
 .ga-history__item { position: relative; }
 .ga-history__row {
@@ -294,8 +294,8 @@ function onMenuKeydown(event: KeyboardEvent, threadId: string): void {
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
-.ga-history__row:hover:not(:disabled) { background: linear-gradient(135deg, var(--color-surface-subtle), rgba(255,255,255,0.8)); }
-.ga-history__row[data-current='true'] { background: linear-gradient(135deg, var(--color-focus-soft), rgba(255,255,255,0.8)); border-left: 2px solid var(--color-focus); }
+.ga-history__row:hover:not(:disabled) { background: var(--color-surface-subtle); }
+.ga-history__row[data-current='true'] { background: var(--color-focus-soft); box-shadow: inset 0 0 0 1px var(--color-focus); }
 .ga-history__more { position: absolute; right: 6px; top: 8px; }
 .ga-history__more-btn { opacity: 0; border-radius: 999px; background: rgba(255,255,255,0.9); border: 1px solid var(--color-border); width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; }
 .ga-history__item:hover .ga-history__more-btn, .ga-history__more-btn:focus-visible, .ga-history__more-btn[aria-expanded='true'] { opacity: 1; }
@@ -304,7 +304,7 @@ function onMenuKeydown(event: KeyboardEvent, threadId: string): void {
 .ga-history__menu-item { width: 100%; text-align: left; border: 0; background: transparent; padding: 8px 10px; border-radius: 8px; font-size: 13px; color: var(--color-text); }
 .ga-history__menu-item:hover:not(:disabled) { background: var(--color-surface-subtle); }
 .ga-history__menu-item:disabled { opacity: 0.5; cursor: not-allowed; }
-.ga-history__confirm { margin: 6px 4px 10px; padding: 12px; border-radius: 14px; background: linear-gradient(135deg, #fff7ed, #fef2f2); border: 1px solid #fed7aa; box-shadow: 0 10px 28px -14px rgba(180,80,20,0.35); }
+.ga-history__confirm { margin: 6px 4px 10px; padding: 12px; border-radius: 12px; background: var(--color-surface); border: 1px solid var(--color-border-strong); }
 .ga-history__confirm-text { margin: 0 0 10px; font-size: 12.5px; line-height: 1.6; color: var(--color-text-secondary); }
 .ga-history__confirm-row { display: flex; justify-content: flex-end; gap: 8px; }
 .btn-danger { background: #fff; border: 1px solid #f0a8a0; color: #b42318; border-radius: 999px; padding: 6px 14px; }

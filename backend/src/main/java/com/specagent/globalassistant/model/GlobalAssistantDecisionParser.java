@@ -2,6 +2,7 @@ package com.specagent.globalassistant.model;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.JsonParser;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -37,6 +38,7 @@ public class GlobalAssistantDecisionParser {
         try {
             root = mapper.readerFor(com.fasterxml.jackson.databind.JsonNode.class)
                     .with(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+                    .with(JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
                     .readTree(trimmed);
         } catch (Exception ex) {
             throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE", "Model response is not valid JSON");

@@ -57,7 +57,7 @@ function retry(): void {
   <section class="mgmt-page" data-test="connections-page">
     <header class="mgmt-head">
       <div><h2>Connections</h2><p class="muted">连接外部 MCP 服务，让 Agent 在任务中使用它们的工具与资源。</p></div>
-      <button type="button" class="btn btn-primary" data-test="add-connection" @click="createOpen = true">+ 新建连接</button>
+      <button type="button" class="btn btn-primary" data-test="add-connection" @click="store.clearError(); createOpen = true">+ 新建连接</button>
     </header>
     <p v-if="store.error && !store.list.length && !store.listLoading" class="error-banner" data-test="connections-error">
       <span>{{ managementErrorMessage(store.error.code, store.error.message) }}</span>

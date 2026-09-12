@@ -82,7 +82,7 @@ class HttpOpenCodeZenTransportTest {
 
     private OpenCodeZenTransport transport() {
         return new HttpOpenCodeZenTransport(mapper,
-                "http://127.0.0.1:" + server.getAddress().getPort(), 5);
+                "http://127.0.0.1:" + server.getAddress().getPort(), 5, "DIRECT");
     }
 
     private OpenCodeChatCompletionRequest completionRequest() {
@@ -188,7 +188,7 @@ class HttpOpenCodeZenTransportTest {
     void settingsResponseTimeoutIsDiagnosedSeparately() {
         stallResponse = true;
         HttpOpenCodeZenTransport transport = new HttpOpenCodeZenTransport(mapper,
-                "http://127.0.0.1:" + server.getAddress().getPort(), 1);
+                "http://127.0.0.1:" + server.getAddress().getPort(), 1, "DIRECT");
 
         assertThatThrownBy(() -> transport.validateCredential(TEST_KEY, "current-free"))
                 .isInstanceOf(OpenCodeModelException.class)
@@ -556,7 +556,7 @@ class HttpOpenCodeZenTransportTest {
             freePort = socket.getLocalPort();
         }
         OpenCodeZenTransport transport = new HttpOpenCodeZenTransport(mapper,
-                "http://127.0.0.1:" + freePort, 5);
+                "http://127.0.0.1:" + freePort, 5, "DIRECT");
 
         assertThatThrownBy(() -> transport.complete(TEST_KEY, TEST_SESSION, completionRequest()))
                 .isInstanceOf(OpenCodeModelException.class)

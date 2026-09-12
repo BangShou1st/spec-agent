@@ -216,20 +216,20 @@ function handleClose(): void {
 </template>
 
 <style scoped>
-.ga-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; background: linear-gradient(180deg, #fafbff 0%, var(--color-surface) 28%, var(--color-surface) 100%); }
-.ga-panel__header { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--color-border); background: linear-gradient(135deg, rgba(99,102,241,0.10), rgba(168,85,247,0.08) 45%, rgba(255,255,255,0.9)); backdrop-filter: blur(8px); }
+.ga-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--color-surface); }
+.ga-panel__header { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--color-border); background: var(--color-surface); }
 .ga-panel__history-btn[aria-expanded='true'] { background: var(--color-focus-soft); color: var(--color-focus-strong); box-shadow: inset 0 0 0 1px var(--color-focus); }
 .ga-panel__title { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
-.ga-panel__name { font-size: 14px; font-weight: 750; letter-spacing: 0.01em; background: linear-gradient(135deg, #312e81, #7c3aed); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.ga-panel__name { font-size: 14px; font-weight: 700; letter-spacing: 0.01em; color: var(--color-text); }
 .ga-panel__current { font-size: 12px; color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; background: rgba(255,255,255,0.7); border: 1px solid var(--color-border); padding: 2px 8px; border-radius: 999px; }
-.ga-panel__run-dot { width: 8px; height: 8px; border-radius: 999px; background: linear-gradient(135deg, var(--color-accent), #a855f7); box-shadow: 0 0 0 4px var(--color-accent-soft); animation: ga-pulse 1.6s ease-in-out infinite; flex: none; }
+.ga-panel__run-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--color-accent); box-shadow: 0 0 0 4px var(--color-accent-soft); animation: ga-pulse 1.6s ease-in-out infinite; flex: none; }
 .ga-panel__actions { display: flex; gap: 4px; }
 .ga-panel__history-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.ga-panel__connection { padding: 8px 12px; font-size: 12px; color: var(--color-warn); background: linear-gradient(135deg, var(--color-warn-soft), rgba(255,255,255,0.6)); border-bottom: 1px solid var(--color-border); display: flex; align-items: center; gap: 8px; }
+.ga-panel__connection { padding: 8px 12px; font-size: 12px; color: var(--color-warn); background: var(--color-warn-soft); border-bottom: 1px solid var(--color-border); display: flex; align-items: center; gap: 8px; }
 .ga-panel__reconnect { margin-left: auto; border: 1px solid var(--color-border); background: var(--color-surface); border-radius: 999px; padding: 4px 12px; font-size: 12px; box-shadow: 0 2px 8px -4px rgba(0,0,0,0.2); }
 .ga-panel__reconnect:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .ga-panel__approval { margin: 8px 12px 0; padding: 10px 12px; border-radius: 12px; background: var(--color-surface-subtle); border: 1px solid var(--color-border); color: var(--color-text-secondary); font-size: 13px; }
-.ga-panel__error { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 8px 12px 0; padding: 10px 12px; border-radius: 12px; background: linear-gradient(135deg, var(--color-danger-soft), rgba(255,255,255,0.7)); border: 1px solid #ecc0bc; color: var(--color-danger); font-size: 13px; box-shadow: 0 6px 18px -10px rgba(190,40,40,0.4); }
+.ga-panel__error { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 8px 12px 0; padding: 10px 12px; border-radius: 12px; background: var(--color-danger-soft); border: 1px solid #ecc0bc; color: var(--color-danger); font-size: 13px; }
 .ga-panel__loading { padding: 16px 12px; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 @keyframes ga-pulse { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(0.85); opacity: 0.75; } }

@@ -70,15 +70,77 @@ public class GlobalAssistantBrain {
         try {
             response = gateway.complete(new ModelInferenceRequest(runId, callType, messages, 1024,
                     contract));
+        } catch (com.specagent.model.provider.StreamCancelledException ex) {
+            throw ex;
         } catch (RuntimeException ex) {
             throw new GlobalAssistantModelException("MODEL_UNAVAILABLE", "Model gateway unavailable", ex);
         }
         if (response == null || response.content() == null || response.content().isBlank()) {
             throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE", "Empty model completion");
         }
-        GlobalAssistantDecision decision = parser.parse(response.content());
+        return parseAndValidate(response.content());
+    }
+
+    private GlobalAssistantDecision parseAndValidate(String content) {
+        GlobalAssistantDecision decision = parser.parse(content);
         validator.validate(decision);
         return decision;
+    }
+
+    /**
+     * Streaming variant of {@link #decide(UUID, GlobalAssistantContext, List)}.
+     * Every real provider fragment first consults {@code shouldContinue},
+     * so cancellation is polled even when the fragment carries no releasable
+     * prose (e.g. TOOL JSON). Only releasable assistant prose (per contract
+     * kind) reaches {@code fragmentSink}, never control JSON. The returned
+     * decision comes from the same strict parse+validate path as the blocking variant.
+     */
+    public GlobalAssistantDecision decideStreaming(UUID runId, GlobalAssistantContext context,
+            List<Map<String, Object>> observations, java.util.function.BooleanSupplier shouldContinue,
+            com.specagent.model.provider.FragmentListener fragmentSink) {
+        return completeDecisionStreaming(runId, DECISION_CALL_TYPE,
+                renderer.render(context, observations), productionContract(), shouldContinue, fragmentSink);
+    }
+
+    /** Streaming variant of {@link #repairDecision(UUID, GlobalAssistantContext, List, String)}. */
+    public GlobalAssistantDecision repairDecisionStreaming(UUID runId, GlobalAssistantContext context,
+            List<Map<String, Object>> observations, String rejectionReason, java.util.function.BooleanSupplier shouldContinue,
+            com.specagent.model.provider.FragmentListener fragmentSink) {
+        return completeDecisionStreaming(runId, DECISION_REPAIR_CALL_TYPE,
+                renderer.renderRepair(context, observations, rejectionReason), productionContract(),
+                shouldContinue, fragmentSink);
+    }
+
+    private GlobalAssistantDecision completeDecisionStreaming(UUID runId, String callType,
+            List<com.specagent.model.inference.ModelInferenceMessage> messages,
+            ModelOutputContract contract, java.util.function.BooleanSupplier shouldContinue,
+            com.specagent.model.provider.FragmentListener fragmentSink) {
+        AssistantTextStreamDecoder decoder = new AssistantTextStreamDecoder();
+        ModelInferenceResponse response;
+        try {
+            response = gateway.completeStreaming(new ModelInferenceRequest(runId, callType, messages,
+                    1024, contract), fragment -> {
+                // Flow control first: every provider fragment is a cancellation
+                // checkpoint, even with no releasable prose. Presentation
+                // emission stays a separate step below.
+                if (!shouldContinue.getAsBoolean()) {
+                    return false;
+                }
+                String releasable = decoder.append(fragment).releasableText();
+                if (!releasable.isEmpty() && !fragmentSink.onFragment(releasable)) {
+                    return false;
+                }
+                return true;
+            });
+        } catch (com.specagent.model.provider.StreamCancelledException ex) {
+            throw ex;
+        } catch (RuntimeException ex) {
+            throw new GlobalAssistantModelException("MODEL_UNAVAILABLE", "Model gateway unavailable", ex);
+        }
+        if (response == null || response.content() == null || response.content().isBlank()) {
+            throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE", "Empty model completion");
+        }
+        return parseAndValidate(response.content());
     }
     public String summarize(UUID runId, String recentText) {
         ModelInferenceResponse response;

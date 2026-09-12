@@ -5,7 +5,6 @@ import { RouterLink, RouterView } from 'vue-router'
 <template>
   <section class="settings-shell" data-test="settings-shell">
     <header class="settings-shell__heading">
-      <p class="eyebrow">SETTINGS</p>
       <h1>设置</h1>
       <p class="page-desc">管理模型、Skills 和连接，配置 Spec Agent 的工作方式。</p>
     </header>
@@ -19,9 +18,9 @@ import { RouterLink, RouterView } from 'vue-router'
 </template>
 
 <style scoped>
-.settings-shell { width: 100%; max-width: 880px; margin: 0 auto; padding: 32px 0 64px; }
-.settings-shell__heading .eyebrow { margin: 0 0 6px; color: var(--color-text-muted); font-size: 12px; font-weight: 600; letter-spacing: 0.08em; }
-.settings-shell__heading h1 { margin: 0; font-size: 30px; line-height: 1.2; letter-spacing: -0.02em; }
+.settings-shell { width: 100%; max-width: 880px; margin: 0 auto; padding: 28px 0 48px; }
+.settings-shell__heading h1 { margin: 0 0 4px; font-size: 24px; line-height: 1.25; letter-spacing: -0.015em; font-weight: 650; }
+.settings-shell__heading .page-desc { margin: 0; }
 .settings-shell__nav { display: flex; gap: 2px; margin: 16px 0 20px; padding: 0 0 8px; border-bottom: 1px solid var(--color-border); width: 100%; }
  .settings-shell__nav a { position: relative; padding: 7px 12px; border-radius: 8px; color: var(--color-text-secondary); text-decoration: none; font-size: 13.5px; }
  .settings-shell__nav a:hover { background: var(--color-surface-subtle); color: var(--color-text); }

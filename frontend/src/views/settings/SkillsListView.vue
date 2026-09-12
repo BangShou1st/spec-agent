@@ -25,6 +25,7 @@ onMounted(() => {
 })
 
 function openImport(): void {
+  store.clearError()
   importOpen.value = true
 }
 

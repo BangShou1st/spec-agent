@@ -68,13 +68,27 @@ public class GlobalAssistantRuntime {
      */
     public void executeRun(UUID threadId, UUID runId, String userMessage,
             GlobalAssistantContextBuilder.UiRequest uiRequest) {
+        long runStartNanos = System.nanoTime();
+        long queueMs = 0;
+        long contextBuildMs = 0;
+        long decision1Ms = 0;
+        long toolExecutionMs = 0;
+        long decision2Ms = 0;
+        long repairMs = 0;
+        long summaryMs = 0;
+        int decisionCount = 0;
+        AnswerStreamPublisher streamer = new AnswerStreamPublisher(runEvents, runId, runStartNanos);
         try {
-            lifecycle.claimAndStart(runId);
-        } catch (GlobalAssistantRunClaimedException ex) {
-            log.debug("Global assistant run already owned, skipping duplicate dispatch: runId={} status={}",
-                    runId, ex.status());
-            return;
-        }
+            long queueStart = System.nanoTime();
+            try {
+                lifecycle.claimAndStart(runId);
+            } catch (GlobalAssistantRunClaimedException ex) {
+                log.debug("Global assistant run already owned, skipping duplicate dispatch: runId={} status={}",
+                        runId, ex.status());
+                return;
+            } finally {
+                queueMs = (System.nanoTime() - queueStart) / 1_000_000;
+            }
         List<Map<String, Object>> observations = new ArrayList<>();
         List<GlobalAssistantObservation> typedObservations = new ArrayList<>();
         String lastCapability = null;
@@ -94,7 +108,12 @@ public class GlobalAssistantRuntime {
             }
             GlobalAssistantContext context;
             try {
-                context = contextBuilder.build(threadId, runId, userMessage, uiRequest);
+                long t0 = System.nanoTime();
+                try {
+                    context = contextBuilder.build(threadId, runId, userMessage, uiRequest);
+                } finally {
+                    contextBuildMs += (System.nanoTime() - t0) / 1_000_000;
+                }
             } catch (IllegalStateException ex) {
                 failRun(threadId, runId, GlobalAssistantErrorCode.TOOL_EXECUTION_FAILED,
                         "Working-state storage is corrupt", observations);
@@ -102,7 +121,29 @@ public class GlobalAssistantRuntime {
             }
             GlobalAssistantDecision decision;
             try {
-                decision = brain.decide(runId, context, observations);
+                long t0 = System.nanoTime();
+                try {
+                    streamer.nextGeneration();
+                    decision = brain.decideStreaming(runId, context, observations,
+                            () -> !isCancelRequested(runId), fragment -> {
+                                streamer.accept(fragment);
+                                return true;
+                            });
+                    streamer.finish();
+                } finally {
+                    long d = (System.nanoTime() - t0) / 1_000_000;
+                    decisionCount++;
+                    if (decisionCount == 1) decision1Ms += d;
+                    else decision2Ms += d;
+                }
+            } catch (com.specagent.model.provider.StreamCancelledException ex) {
+                if (isCancelRequested(runId)) {
+                    lifecycle.cancelAndTerminalize(runId);
+                    return;
+                }
+                failRun(threadId, runId, GlobalAssistantErrorCode.MODEL_UNAVAILABLE,
+                        "Model stream interrupted", observations);
+                return;
             } catch (GlobalAssistantModelException ex) {
                 if (!GlobalAssistantErrorCode.MODEL_INVALID_RESPONSE.equals(ex.errorCode())) {
                     failRun(threadId, runId, ex.errorCode(), ex.getMessage(), observations);
@@ -113,8 +154,27 @@ public class GlobalAssistantRuntime {
                     return;
                 }
                 try {
-                    decision = brain.repairDecision(runId, context, observations,
-                            sanitizedRejectionReason(ex.getMessage()));
+                    long t0 = System.nanoTime();
+                    try {
+                        streamer.nextGeneration();
+                        decision = brain.repairDecisionStreaming(runId, context, observations,
+                                sanitizedRejectionReason(ex.getMessage()), () -> !isCancelRequested(runId),
+                                fragment -> {
+                                    streamer.accept(fragment);
+                                    return true;
+                                });
+                        streamer.finish();
+                    } finally {
+                        repairMs += (System.nanoTime() - t0) / 1_000_000;
+                    }
+                } catch (com.specagent.model.provider.StreamCancelledException repairCancel) {
+                    if (isCancelRequested(runId)) {
+                        lifecycle.cancelAndTerminalize(runId);
+                        return;
+                    }
+                    failRun(threadId, runId, GlobalAssistantErrorCode.MODEL_UNAVAILABLE,
+                            "Model stream interrupted", observations);
+                    return;
                 } catch (GlobalAssistantModelException repairEx) {
                     failRun(threadId, runId, repairEx.errorCode(), repairEx.getMessage(), observations);
                     return;
@@ -154,7 +214,7 @@ public class GlobalAssistantRuntime {
                         && lastCanonicalArgs != null && lastCanonicalArgs.equals(canonicalArgs)) {
                     int currentFingerprint = observations.hashCode() + workingStateFingerprint(threadId);
                     if (currentFingerprint == observationFingerprint) {
-                        finishSuccessfully(threadId, runId, userMessage,
+                        summaryMs += finishSuccessfully(threadId, runId, userMessage,
                                 "The same lookup was already tried without new results, so I stopped here.",
                                 null, null);
                         return;
@@ -171,7 +231,12 @@ public class GlobalAssistantRuntime {
                         "arguments", sanitizedArgs(decision.toolRequest().arguments())));
                 CapabilityResult result;
                 try {
-                    result = executeTool(runId, toolCalls, decision);
+                    long t0 = System.nanoTime();
+                    try {
+                        result = executeTool(runId, toolCalls, decision);
+                    } finally {
+                        toolExecutionMs += (System.nanoTime() - t0) / 1_000_000;
+                    }
                 } catch (RuntimeException ex) {
                     runEvents.append(runId, GlobalAssistantEventType.TOOL_FAILED, Map.of(
                             "capabilityId", decision.toolRequest().capabilityId(),
@@ -188,9 +253,22 @@ public class GlobalAssistantRuntime {
                 updateWorkingState(threadId, decision.toolRequest().capabilityId(), result);
                 if (result.status() == CapabilityResult.Status.SUCCEEDED
                         || result.status() == CapabilityResult.Status.REPLAYED) {
-                    runEvents.append(runId, GlobalAssistantEventType.TOOL_COMPLETED, Map.of(
-                            "capabilityId", decision.toolRequest().capabilityId(),
-                            "summary", toolSummary(decision.toolRequest().capabilityId(), result)));
+                    java.util.List<Map<String, Object>> refs =
+                            com.specagent.globalassistant.tool.GlobalAssistantToolPresentation
+                                    .projectResources(decision.toolRequest().capabilityId(), result.content());
+                    Map<String, Object> completedPayload = new LinkedHashMap<>();
+                    completedPayload.put("capabilityId", decision.toolRequest().capabilityId());
+                    completedPayload.put("summary", toolSummary(decision.toolRequest().capabilityId(), result));
+                    completedPayload.put("resourceRefs", refs);
+                    completedPayload.put("resultCount", refs.size());
+                    completedPayload.put("resultKind", com.specagent.globalassistant.tool.GlobalAssistantToolPresentation
+                            .resultKind(decision.toolRequest().capabilityId()));
+                    runEvents.append(runId, GlobalAssistantEventType.TOOL_COMPLETED, completedPayload);
+                    // Real phase transition, not a timer: the tool finished and the
+                    // final model round starts now. Keeps the UI truthful during
+                    // the second model call without narrating tool internals.
+                    runEvents.append(runId, GlobalAssistantEventType.STATUS, Map.of("message",
+                            com.specagent.globalassistant.tool.GlobalAssistantToolPresentation.COMPOSING_MESSAGE));
                 } else if (result.status() == CapabilityResult.Status.IN_PROGRESS) {
                     runEvents.append(runId, GlobalAssistantEventType.TOOL_FAILED, Map.of(
                             "capabilityId", decision.toolRequest().capabilityId(),
@@ -263,7 +341,7 @@ public class GlobalAssistantRuntime {
                     lifecycle.cancelAndTerminalize(runId);
                     return;
                 }
-                finishSuccessfully(threadId, runId, userMessage, text, uiDestination, uiResourceId);
+                summaryMs += finishSuccessfully(threadId, runId, userMessage, text, uiDestination, uiResourceId);
                 return;
             }
             if (decision.kind() == GlobalAssistantDecision.DecisionKind.FINAL) {
@@ -276,12 +354,23 @@ public class GlobalAssistantRuntime {
                     lifecycle.cancelAndTerminalize(runId);
                     return;
                 }
-                finishSuccessfully(threadId, runId, userMessage, text, null, null);
+                summaryMs += finishSuccessfully(threadId, runId, userMessage, text, null, null);
                 return;
             }
             failRun(threadId, runId, GlobalAssistantErrorCode.MODEL_INVALID_RESPONSE,
                     "Unknown decision kind", observations);
             return;
+        }
+        } finally {
+            long runTotalMs = (System.nanoTime() - runStartNanos) / 1_000_000;
+            long providerTotalMs = decision1Ms + decision2Ms + repairMs + summaryMs;
+            log.info("GA timing runId={} threadId={} queue_ms={} context_build_ms={} model_decision_1_ms={} tool_execution_ms={} model_decision_2_ms={} repair_ms={} summary_ms={} provider_total_ms={} run_total_ms={}",
+                    runId, threadId, queueMs, contextBuildMs, decision1Ms, toolExecutionMs, decision2Ms, repairMs, summaryMs, providerTotalMs, runTotalMs);
+            if (streamer.generation() > 0) {
+                log.info("GA stream runId={} threadId={} generations={} deltas={} first_delta_ms={}",
+                        runId, threadId, streamer.generation(), streamer.deltaCount(),
+                        streamer.firstDeltaMillisSinceRunStart());
+            }
         }
     }
     private CapabilityResult executeTool(UUID runId, int toolIndex, GlobalAssistantDecision decision) {
@@ -340,7 +429,7 @@ public class GlobalAssistantRuntime {
                 current.goal(), current.candidateProjects(), bounded,
                 current.lastResolvedProjectId(), current.lastToolResultRefs()));
     }
-    private void finishSuccessfully(UUID threadId, UUID runId, String userMessage, String text,
+    private long finishSuccessfully(UUID threadId, UUID runId, String userMessage, String text,
             String uiDestination, String uiResourceId) {
         settleWorkingStateOnCompletion(threadId, userMessage);
         if (uiDestination != null) {
@@ -348,15 +437,17 @@ public class GlobalAssistantRuntime {
         } else {
             lifecycle.completeWithAssistant(threadId, runId, text);
         }
-        refreshSummaryBestEffort(threadId, runId);
+        return refreshSummaryBestEffort(threadId, runId);
     }
-    private void refreshSummaryBestEffort(UUID threadId, UUID runId) {
+    private long refreshSummaryBestEffort(UUID threadId, UUID runId) {
+        long t0 = System.nanoTime();
         try {
             summaries.maybeSummarize(threadId, runId);
         } catch (RuntimeException ex) {
             log.warn("Global assistant summary refresh failed: runId={} error={}",
                     runId, ex.getClass().getSimpleName());
         }
+        return (System.nanoTime() - t0) / 1_000_000;
     }
     private void settleWorkingStateOnCompletion(UUID threadId, String userMessage) {
         updateWorkingStateRetrying(threadId, current -> {
@@ -383,23 +474,17 @@ public class GlobalAssistantRuntime {
         List<Map<String, String>> candidates = new ArrayList<>(current.candidateProjects());
         UUID resolved = current.lastResolvedProjectId();
         List<String> refs = new ArrayList<>(current.lastToolResultRefs());
-        if ("project.search".equals(capabilityId) || "project.list_recent".equals(capabilityId)) {
-            Object raw = "project.search".equals(capabilityId) ? content.get("candidates") : content.get("projects");
-            candidates = new ArrayList<>();
-            if (raw instanceof List<?> list) {
-                for (Object item : list) {
-                    if (item instanceof Map<?, ?> m) {
-                        Object id = m.get("projectId");
-                        Object title = m.get("title");
-                        if (id != null && title != null) {
-                            candidates.add(Map.of("projectId", String.valueOf(id), "title", String.valueOf(title)));
-                        }
-                    }
-                    if (candidates.size() >= 10) {
-                        break;
-                    }
-                }
-            }
+        // Capability result shapes live in the presentation registry; the
+        // runtime only passes the opaque capability id through. A fifth
+        // capability needs registration only, no runtime change.
+        com.specagent.globalassistant.tool.GlobalAssistantToolPresentation.ResultShape shape =
+                com.specagent.globalassistant.tool.GlobalAssistantToolPresentation.resultShapeOf(capabilityId);
+        if (shape == null) {
+            return current;
+        }
+        if (shape.listKey() != null) {
+            candidates = new ArrayList<>(com.specagent.globalassistant.tool.GlobalAssistantToolPresentation
+                    .candidatePairs(capabilityId, content));
             if (candidates.size() == 1) {
                 try {
                     resolved = UUID.fromString(candidates.get(0).get("projectId"));
@@ -407,24 +492,16 @@ public class GlobalAssistantRuntime {
                 }
             }
             refs.add(capabilityId + ":" + candidates.size());
-        } else if ("project.create".equals(capabilityId)) {
-            Object id = content.get("projectId");
+        } else {
+            String id = com.specagent.globalassistant.tool.GlobalAssistantToolPresentation
+                    .directProjectId(capabilityId, content);
             if (id != null) {
                 try {
-                    resolved = UUID.fromString(String.valueOf(id));
+                    resolved = UUID.fromString(id);
                 } catch (IllegalArgumentException ignored) {
                 }
             }
-            refs.add("project.create:" + id);
-        } else if ("project.get_summary".equals(capabilityId)) {
-            Object id = content.get("projectId");
-            if (id != null) {
-                try {
-                    resolved = UUID.fromString(String.valueOf(id));
-                } catch (IllegalArgumentException ignored) {
-                }
-            }
-            refs.add("project.get_summary:" + id);
+            refs.add(capabilityId + ":" + id);
         }
         if (refs.size() > 20) {
             refs = refs.subList(refs.size() - 20, refs.size());
@@ -454,13 +531,7 @@ public class GlobalAssistantRuntime {
         return GlobalAssistantErrorCode.PROJECT_NOT_FOUND.equals(structuredErrorCode(result));
     }
     private String statusLabelFor(String capabilityId) {
-        return switch (capabilityId) {
-            case "project.create" -> "Creating project";
-            case "project.search" -> "Searching projects";
-            case "project.list_recent" -> "Listing recent projects";
-            case "project.get_summary" -> "Reading project summary";
-            default -> "Working";
-        };
+        return com.specagent.globalassistant.tool.GlobalAssistantToolPresentation.runningMessage(capabilityId);
     }
     private String toolSummary(String capabilityId, CapabilityResult result) {
         Object candidates = result.content().get("candidates");

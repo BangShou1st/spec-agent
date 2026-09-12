@@ -13,3 +13,7 @@ export function createProject(title: string): Promise<ProjectResponse> {
 export function getProject(projectId: string): Promise<ProjectResponse> {
   return apiClient.get<ProjectResponse>(`/projects/${projectId}`)
 }
+
+export function deleteProject(projectId: string): Promise<void> {
+  return apiClient.delete<void>(`/projects/${projectId}`)
+}

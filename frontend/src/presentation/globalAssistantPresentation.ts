@@ -1,14 +1,8 @@
 /** Presentation-only mapping for Global Assistant (never decides semantics). */
-
-export const GA_TOOL_DISPLAY_NAMES: Record<string, string> = {
-  'project.create': '创建项目',
-  'project.search': '搜索项目',
-  'project.list_recent': '查看最近项目',
-  'project.get_summary': '读取项目概要',
-}
+import { capabilityPresentation } from './capabilityPresentation'
 
 export function gaToolDisplayName(capabilityId: string): string {
-  return GA_TOOL_DISPLAY_NAMES[capabilityId] ?? '执行操作'
+  return capabilityPresentation(capabilityId).actionLabel
 }
 
 const GA_ERROR_COPY: Record<string, string> = {
@@ -56,4 +50,26 @@ export function gaArgsSummary(args: unknown): string | null {
   }
   if (picked.length === 0) return null
   return picked.join(' · ')
+}
+/** Optimistic send-time status, replaced once real runtime evidence arrives. */
+export const GA_SENDING_STATUS = '正在处理…'
+/** Phase label used once streamed answer text is visibly generating. */
+export const GA_GENERATING_STATUS = '正在生成回答…'
+/**
+ * Presentation-only mapping for backend runtime status strings.
+ * Keyed by the frozen backend message contract, never by prompt text,
+ * capability branches in views, or per-scenario special cases.
+ * Unknown messages pass through verbatim so information is never hidden.
+ */
+const GA_STATUS_COPY: Record<string, string> = {
+  'Creating project': '正在创建项目…',
+  'Searching projects': '正在搜索项目…',
+  'Listing recent projects': '正在列出最近项目…',
+  'Reading project summary': '正在读取项目概要…',
+  'Working': '正在处理…',
+  'Composing answer': '正在生成回答…',
+}
+export function gaStatusMessage(message: string): string {
+  if (!message) return message
+  return GA_STATUS_COPY[message] ?? message
 }

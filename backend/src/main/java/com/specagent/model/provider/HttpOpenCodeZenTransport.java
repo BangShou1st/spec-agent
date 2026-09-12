@@ -66,12 +66,14 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
 
     public HttpOpenCodeZenTransport(ObjectMapper mapper,
                                     @Value("${spec.agent.model.opencode.base-url:" + BASE_URL + "}") String baseUrl,
-                                    @Value("${spec.agent.model.opencode.settings-timeout-seconds:45}") long settingsTimeoutSeconds) {
+                                    @Value("${spec.agent.model.opencode.settings-timeout-seconds:45}") long settingsTimeoutSeconds,
+                                    @Value("${spec.agent.model.opencode.proxy:DIRECT}") String proxyConfig) {
         this.mapper = mapper;
         this.baseUrl = baseUrl == null || baseUrl.isBlank() ? BASE_URL : stripTrailingSlash(baseUrl);
         this.settingsTimeout = Duration.ofSeconds(settingsTimeoutSeconds);
-        this.productionHttpClient = directHttpClientBuilder().build();
-        this.settingsHttpClient = directHttpClientBuilder().connectTimeout(settingsTimeout).build();
+        java.net.ProxySelector selector = proxySelectorFor(proxyConfig);
+        this.productionHttpClient = HttpClient.newBuilder().proxy(selector).build();
+        this.settingsHttpClient = HttpClient.newBuilder().proxy(selector).connectTimeout(settingsTimeout).build();
     }
 
     @Override
@@ -80,22 +82,50 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
     }
 
     /**
-     * DIRECT-only builder for every OpenCode Zen HTTP client owned here.
+     * Explicit proxy selector for Zen HTTP clients. Default is DIRECT (NO_PROXY):
      * Zen requests never inherit the JVM/system default {@link java.net.ProxySelector},
-     * so no application-level HTTP/SOCKS proxy can interpose regardless of the
-     * host environment. Scoped to this transport's own clients only; the JVM
-     * default selector is never modified.
+     * so no application-level HTTP/SOCKS proxy can interpose regardless of the host
+     * environment unless {@code spec.agent.model.opencode.proxy} is explicitly set to
+     * {@code http://host:port}. Scoped to this transport's own clients only; the JVM
+     * default selector is never modified and system proxy env is never read.
      */
     private static HttpClient.Builder directHttpClientBuilder() {
         return HttpClient.newBuilder().proxy(HttpClient.Builder.NO_PROXY);
     }
 
+    static java.net.ProxySelector proxySelectorFor(String proxyConfig) {
+        if (proxyConfig == null || proxyConfig.isBlank() || "DIRECT".equalsIgnoreCase(proxyConfig.trim())) {
+            return HttpClient.Builder.NO_PROXY;
+        }
+        String v = proxyConfig.trim();
+        if (v.startsWith("http://")) v = v.substring("http://".length());
+        else if (v.startsWith("https://")) v = v.substring("https://".length());
+        int colon = v.lastIndexOf(':');
+        if (colon <= 0 || colon == v.length() - 1) return HttpClient.Builder.NO_PROXY;
+        String host = v.substring(0, colon);
+        int port;
+        try {
+            port = Integer.parseInt(v.substring(colon + 1));
+        } catch (NumberFormatException ex) {
+            return HttpClient.Builder.NO_PROXY;
+        }
+        if (host.isBlank() || port <= 0 || port > 65535) return HttpClient.Builder.NO_PROXY;
+        return java.net.ProxySelector.of(new java.net.InetSocketAddress(host, port));
+    }
+
     @Override
     public OpenCodeCompletionResponse complete(String apiKey, String sessionId,
                                                 OpenCodeChatCompletionRequest request) {
+        return completeStreaming(apiKey, sessionId, request, fragment -> true);
+    }
+
+    @Override
+    public OpenCodeCompletionResponse completeStreaming(String apiKey, String sessionId,
+                                                         OpenCodeChatCompletionRequest request,
+                                                         FragmentListener listener) {
         PreparedRequest prepared = prepareCompletionRequest(apiKey, requireSessionId(sessionId), request);
         HttpResponse<InputStream> response = sendStreaming(prepared, request.model());
-        return parseStreaming(response, request.model(), prepared.execution());
+        return parseStreaming(response, request.model(), prepared.execution(), listener);
     }
 
     /**
@@ -384,7 +414,8 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
 
     private OpenCodeCompletionResponse parseStreaming(HttpResponse<InputStream> response,
                                                       String selectedModel,
-                                                      RequestExecution execution) {
+                                                      RequestExecution execution,
+                                                      FragmentListener listener) {
         StringBuilder eventData = new StringBuilder();
         StringBuilder content = new StringBuilder();
         StreamState state = new StreamState();
@@ -410,6 +441,7 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
                         break;
                     }
                     content.append(chunk.content());
+                    offerFragment(listener, chunk.content());
                     state.finishReason = firstNonNull(chunk.finishReason(), state.finishReason);
                     promptTokens = firstNonNull(chunk.promptTokens(), promptTokens);
                     completionTokens = firstNonNull(chunk.completionTokens(), completionTokens);
@@ -434,6 +466,7 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
                     done = true;
                 } else {
                     content.append(chunk.content());
+                    offerFragment(listener, chunk.content());
                     state.finishReason = firstNonNull(chunk.finishReason(), state.finishReason);
                     promptTokens = firstNonNull(chunk.promptTokens(), promptTokens);
                     completionTokens = firstNonNull(chunk.completionTokens(), completionTokens);
@@ -469,6 +502,22 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
                 content.toString(), state.finishReason, promptTokens, completionTokens, totalTokens,
                 response.statusCode(), state.eventCount, state.reasoningEventCount,
                 state.reasoningCharCount, state.reasoningSha256(), execution.snapshot());
+    }
+
+    /**
+     * Delivers one decoded provider fragment to the streaming listener. A
+     * declined fragment aborts the read loop: the try-with-resources closes
+     * the HTTP stream and the run terminalizes as CANCELLED upstream.
+     *
+     * <p>Every provider SSE event is a cancellation checkpoint, including
+     * content-less reasoning/usage events delivered as an empty string.
+     * Empty fragments are flow-control only and never displayable text;
+     * reasoning content is observed for accounting and never shown.
+     */
+    private static void offerFragment(FragmentListener listener, String content) {
+        if (!listener.onFragment(content == null ? "" : content)) {
+            throw new StreamCancelledException("Provider stream cancelled by run owner");
+        }
     }
 
     private StreamChunk parseStreamEvent(CharSequence eventData,

@@ -51,7 +51,7 @@ describe('assistant composer', () => {
 
 describe('tool activity', () => {
   it('renders running, success and failure states', () => {
-    const base = { key: 'k', capabilityId: 'project.search', displayName: '搜索项目', summary: null, argsSummary: null, startedAt: '2026-01-01T00:00:00Z', endedAt: null, durationMs: null } as const
+    const base = { key: 'k', capabilityId: 'project.search', displayName: '搜索项目', summary: null, argsSummary: null, startedAt: '2026-01-01T00:00:00Z', endedAt: null, durationMs: null, resourceRefs: [] as { kind: string; id: string; label: string }[], resultKind: null, resultCount: null }
     const running = mount(ToolActivityItem, { props: { activity: { ...base, state: 'running' } } })
     expect(running.attributes('data-state')).toBe('running')
     const success = mount(ToolActivityItem, { props: { activity: { ...base, state: 'success', summary: 'Found 2' } } })
@@ -68,7 +68,7 @@ describe('conversation timeline', () => {
     const full = mount(ConversationTimeline, {
       props: {
         messages: [{ id: 'm-1', threadId: 't-1', role: 'USER', content: 'hi', runId: null, createdAt: '2026-01-01T00:00:00Z' }],
-        activities: [{ key: 'k1', capabilityId: 'project.search', displayName: '搜索项目', state: 'running', summary: null, argsSummary: null, startedAt: '2026-01-01T00:00:00Z', endedAt: null, durationMs: null }],
+        activities: [{ key: 'k1', capabilityId: 'project.search', displayName: '搜索项目', state: 'running', summary: null, argsSummary: null, startedAt: '2026-01-01T00:00:00Z', endedAt: null, durationMs: null, resourceRefs: [], resultKind: null, resultCount: null }],
         streamingText: '',
         currentStatus: '正在查找项目…',
         running: true,
