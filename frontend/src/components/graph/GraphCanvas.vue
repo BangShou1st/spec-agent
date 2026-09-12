@@ -158,19 +158,27 @@ const projection = computed(() => {
   })
 })
 
-// Canonical refresh must never move existing nodes: keep the runtime
-// properties Vue Flow owns (selected, dragging, dimensions) on reused ids
-// and only refresh position/data for nodes that changed.
+// Canonical refresh must never move existing nodes, and must never hand Vue
+// Flow's runtime state back to Vue Flow.
+//
+// `next.nodes` are pure projection descriptors (id / type / position / data /
+// dragHandle / class). Vue Flow merges each descriptor into its own internal
+// node with `Object.assign(internalNode, descriptor)`, so every key we do NOT
+// send through is preserved on the internal node: dimensions, handleBounds,
+// computedPosition, initialized, selected, dragging.
+//
+// Merging the previous local snapshot back in (`{ ...existing, ...node }`) was
+// the BUG-02 root cause. That snapshot is whatever `flowNodes` currently holds,
+// which may predate Vue Flow's measurement — in that case it carries
+// `dimensions: { width: 0, height: 0 }`, and writing it back zeroes the real
+// measurement. NodeWrapper then renders the node `visibility: hidden`, and
+// because the element's box never changes afterwards the ResizeObserver never
+// re-measures it, so the node stays hidden permanently (refresh, Fit View and
+// zoom cannot recover it).
 watch(
   projection,
   (next) => {
-    const current = new Map(flowNodes.value.map((n): [string, FlowCanvasNode] => [n.id, n]))
-    flowNodes.value = next.nodes.map((node) => {
-      const existing = current.get(node.id)
-      return existing ? { ...existing, ...node } : node
-    })
-    const ids = new Set(next.nodes.map((n) => n.id))
-    flowNodes.value = flowNodes.value.filter((n) => ids.has(n.id))
+    flowNodes.value = next.nodes.map((node) => ({ ...node }))
     flowEdges.value = next.edges.map((edge) => ({ ...edge }))
     adoptProjectedPositions()
     // A pending → real replacement lands through the canonical projection;
@@ -182,13 +190,14 @@ watch(
 
 // Real node measurement arrives through Vue Flow after the projection swap
 // (no fixed timeout): re-check the armed intent when dimensions change.
-// The watch covers v-model sync; the update-node-internals handler covers
-// the explicit Vue Flow measurement event (jsdom-safe: both are no-ops
-// without an armed intent).
+// Measurement is Vue Flow's own state (see measuredSizeById), so this watches
+// Vue Flow's store; the update-node-internals handler covers the explicit
+// Vue Flow measurement event (jsdom-safe: both are no-ops without an armed
+// intent).
 watch(
-  () => flowNodes.value.map((node) => {
-    const measured = (node as FlowCanvasNode & { dimensions?: Dimensions }).dimensions
-    return `${node.id}:${measured?.width ?? 0}x${measured?.height ?? 0}`
+  () => vf.nodes.value.map((node) => {
+    const measured = (node as { dimensions?: Dimensions }).dimensions
+    return `${String(node.id)}:${measured?.width ?? 0}x${measured?.height ?? 0}`
   }),
   () => {
     maybeRevalidatePendingFit()
@@ -197,35 +206,13 @@ watch(
 
 /**
  * Vue Flow reports measured node geometry through update-node-internals
- * after rendering/measuring. Merge the reported dimensions into the local
- * flow nodes (positions stay canonical) and re-check an armed intent.
+ * after rendering/measuring. The measurement stays in Vue Flow's own store —
+ * it is deliberately NOT copied into the local flow nodes, because those
+ * descriptors are handed straight back to Vue Flow and would then overwrite
+ * the measurement they were copied from (BUG-02). This handler only re-checks
+ * an armed intent.
  */
-function onUpdateNodeInternals(ids?: string[]): void {
-  if (!ids || ids.length === 0) {
-    maybeRevalidatePendingFit()
-    return
-  }
-  const measuredById = new Map<string, Dimensions>()
-  for (const node of vf.nodes.value) {
-    const id = (node as { id?: unknown }).id
-    const dimensions = (node as { dimensions?: unknown }).dimensions
-    if (typeof id === 'string'
-      && typeof dimensions === 'object' && dimensions !== null
-      && Number((dimensions as { width?: unknown }).width) > 0
-      && Number((dimensions as { height?: unknown }).height) > 0) {
-      measuredById.set(id, dimensions as Dimensions)
-    }
-  }
-  if (measuredById.size > 0) {
-    for (const node of flowNodes.value) {
-      if (ids.includes(node.id)) {
-        const measured = measuredById.get(node.id)
-        if (measured) {
-          ;(node as FlowCanvasNode & { dimensions?: Dimensions }).dimensions = { ...measured }
-        }
-      }
-    }
-  }
+function onUpdateNodeInternals(_ids?: string[]): void {
   maybeRevalidatePendingFit()
 }
 
@@ -362,19 +349,39 @@ function stopContainerResizeObserver(): void {
   }
 }
 
+/**
+ * Measured node sizes, keyed by node id, taken from Vue Flow's own store.
+ *
+ * Vue Flow owns node measurement; the local flow nodes only carry the
+ * projection (see the projection watcher). Geometry must therefore always be
+ * read here — never from the descriptors we hand back to Vue Flow, which by
+ * contract carry no measurement at all.
+ */
+function measuredSizeById(): Map<string, Dimensions> {
+  const measured = new Map<string, Dimensions>()
+  for (const node of vf.nodes.value) {
+    const dimensions = (node as { dimensions?: Dimensions }).dimensions
+    if (dimensions && dimensions.width > 0 && dimensions.height > 0) {
+      measured.set(String(node.id), dimensions)
+    }
+  }
+  return measured
+}
+
 /** Converts current flow nodes into viewport inputs (measured size when known). */
 function collectViewportNodes(ids?: Set<string> | null): ViewportNode[] {
+  const measured = measuredSizeById()
   const result: ViewportNode[] = []
   for (const node of flowNodes.value) {
     if (ids && !ids.has(node.id)) {
       continue
     }
-    const measured = (node as FlowCanvasNode & { dimensions?: Dimensions }).dimensions
+    const size = measured.get(node.id)
     result.push({
       id: node.id,
       position: { x: node.position.x, y: node.position.y },
-      width: measured?.width,
-      height: measured?.height,
+      width: size?.width,
+      height: size?.height,
     })
   }
   return result
@@ -495,12 +502,12 @@ function performFitView(): void {
 /** Measured (not fallback, not pending) flow node ids currently on canvas. */
 function measuredRealNodeIds(): Set<string> {
   const ids = new Set<string>()
+  const measured = measuredSizeById()
   for (const node of flowNodes.value) {
     if (node.id.startsWith('pending:')) {
       continue
     }
-    const measured = (node as FlowCanvasNode & { dimensions?: Dimensions }).dimensions
-    if (measured && measured.width > 0 && measured.height > 0) {
+    if (measured.has(node.id)) {
       ids.add(node.id)
     }
   }
@@ -666,6 +673,7 @@ function onNodeDrag(event: NodeDragEvent): void {
  */
 function rerouteEdgeHandles(nodes: FlowCanvasNode[], edges: Edge[]): Edge[] {
   const byId = new Map(nodes.map((n): [string, FlowCanvasNode] => [n.id, n]))
+  const measured = measuredSizeById()
   const nextEdges: Edge[] = []
   for (const edge of edges) {
     const source = byId.get(edge.source)
@@ -674,7 +682,10 @@ function rerouteEdgeHandles(nodes: FlowCanvasNode[], edges: Edge[]): Edge[] {
       nextEdges.push(edge)
       continue
     }
-    const handles = selectEdgeHandles(toNodeGeometry(source), toNodeGeometry(target))
+    const handles = selectEdgeHandles(
+      toNodeGeometry(source, measured),
+      toNodeGeometry(target, measured),
+    )
     if (edge.sourceHandle === handles.sourceHandle && edge.targetHandle === handles.targetHandle) {
       nextEdges.push(edge)
       continue
@@ -685,12 +696,12 @@ function rerouteEdgeHandles(nodes: FlowCanvasNode[], edges: Edge[]): Edge[] {
 }
 
 /** Flow node -> routing geometry: measured size when known, safe fallback otherwise. */
-function toNodeGeometry(node: FlowCanvasNode): NodeGeometry {
-  const measured = (node as FlowCanvasNode & { dimensions?: Dimensions }).dimensions
+function toNodeGeometry(node: FlowCanvasNode, measured?: Map<string, Dimensions>): NodeGeometry {
+  const size = (measured ?? measuredSizeById()).get(node.id)
   return {
     position: { x: node.position.x, y: node.position.y },
-    width: measured?.width,
-    height: measured?.height,
+    width: size?.width,
+    height: size?.height,
   }
 }
 

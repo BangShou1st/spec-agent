@@ -1,0 +1,97 @@
+{
+  "_comment": "BUG-02 regression read model. Captured from a real GET /api/v1/projects/{id}/graph response and trimmed to a minimal 1-route lineage (2 INTERACTION questions + 1 KNOWLEDGE idea) plus the answer that makes the first question historical. The canvas projection and Vue Flow integration under test are real; only the backend read model is stubbed because draftQuestion is currently blocked by BUG-03 (INTERNAL_ERROR), which would otherwise make every graph regression fail for an unrelated reason.",
+  "projectId": "00000000-0000-4000-8000-000000000000",
+  "activeRouteId": "11111111-1111-4111-8111-111111111111",
+  "routes": [
+    {
+      "id": "11111111-1111-4111-8111-111111111111",
+      "label": "主路线",
+      "lifecycleStatus": "open",
+      "isActive": true,
+      "rootNodeId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "tipNodeId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      "createdFromNodeId": null,
+      "supersedesRouteId": null,
+      "replacementOfNodeId": null,
+      "branchType": null,
+      "sourceRouteId": null,
+      "branchAtNodeId": null,
+      "lineageNodeIds": [
+        "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "projectId": "00000000-0000-4000-8000-000000000000",
+      "parentNodeId": null,
+      "supersedesNodeId": null,
+      "question": "What is the most important outcome?",
+      "purpose": "This clarifies the primary requirement goal.",
+      "options": [
+        { "id": "cccccccc-0001-4ccc-8ccc-cccccccccccc", "label": "Define the goal", "impact": null },
+        { "id": "cccccccc-0002-4ccc-8ccc-cccccccccccc", "label": "Design the spec", "impact": null }
+      ],
+      "allowFreeAnswer": true,
+      "createdAt": "2026-09-02T10:50:11.777Z",
+      "kind": "INTERACTION",
+      "subtype": "QUESTION",
+      "content": {},
+      "authorKind": "AGENT",
+      "knowledgeStatus": null,
+      "userEditableDraft": false
+    },
+    {
+      "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      "projectId": "00000000-0000-4000-8000-000000000000",
+      "parentNodeId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "supersedesNodeId": null,
+      "question": "Which constraint matters most?",
+      "purpose": "Narrow the first outcome to something actionable.",
+      "options": [
+        { "id": "cccccccc-0003-4ccc-8ccc-cccccccccccc", "label": "Time", "impact": null },
+        { "id": "cccccccc-0004-4ccc-8ccc-cccccccccccc", "label": "Cost", "impact": null }
+      ],
+      "allowFreeAnswer": true,
+      "createdAt": "2026-09-02T10:52:15.954Z",
+      "kind": "INTERACTION",
+      "subtype": "QUESTION",
+      "content": {},
+      "authorKind": "AGENT",
+      "knowledgeStatus": null,
+      "userEditableDraft": false
+    },
+    {
+      "id": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+      "projectId": "00000000-0000-4000-8000-000000000000",
+      "parentNodeId": null,
+      "supersedesNodeId": null,
+      "question": null,
+      "purpose": null,
+      "options": [],
+      "allowFreeAnswer": false,
+      "createdAt": "2026-09-02T10:53:00.000Z",
+      "kind": "KNOWLEDGE",
+      "subtype": "IDEA",
+      "content": {},
+      "authorKind": "USER",
+      "knowledgeStatus": "PROPOSED",
+      "userEditableDraft": true
+    }
+  ],
+  "answers": [
+    {
+      "id": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+      "routeId": "11111111-1111-4111-8111-111111111111",
+      "ownerRouteId": "11111111-1111-4111-8111-111111111111",
+      "inherited": false,
+      "nodeId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "selectedOptionId": null,
+      "freeText": "The product must let one user clarify one requirement.",
+      "createdAt": "2026-09-02T10:50:13.803Z"
+    }
+  ],
+  "relations": []
+}
