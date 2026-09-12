@@ -38,6 +38,23 @@ export interface GaResourceRef {
 
 const GA_UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
 
+/** Shown while a steer handoff is pending and the successor is not visible yet. */
+const GA_STEERING_STATUS = '正在调整方向…'
+
+/**
+ * BUG-01: the backend creates the steer successor in an AFTER_COMMIT phase, so
+ * canonical thread activity legitimately reports `{ activeRun: null, pendingSteer: S }`
+ * for a window of unknown length. The store must keep observing activity until
+ * the handoff resolves instead of giving up after a single read.
+ *
+ * Observation lifetime is driven by canonical state, never by a deadline:
+ * fast reads first, then a sustained slow cadence while the pending steer is
+ * still unresolved. Only canonical resolution or a lifecycle event ends it.
+ */
+export const GA_SUCCESSOR_OBSERVE_INTERVAL_MS = 400
+export const GA_SUCCESSOR_OBSERVE_FAST_READS = 10
+export const GA_SUCCESSOR_OBSERVE_SLOW_INTERVAL_MS = 1500
+
 /** Code-point-safe bounded truncation: Array.from splits by code point, never by UTF-16 unit. */
 function truncateGaLabel(value: string, max = 200): string {
   const points = Array.from(value)
@@ -355,6 +372,10 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
     stoppedNotice: false as boolean,
     deletingThreadId: null as string | null,
     confirmDeleteThreadId: null as string | null,
+    /** Non-zero while a successor-observation loop owns this thread (singleton token). */
+    successorObserverToken: 0 as number,
+    /** Last successor run already attached; makes attach idempotent. */
+    successorAttachedRunId: null as string | null,
   }),
   getters: {
     isRunning(state): boolean {
@@ -428,34 +449,50 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
       void this.loadThreads()
     },
     async refreshActivity(): Promise<GaThreadActivity | null> {
+      const act = await this.readThreadActivity()
+      if (!act) return null
+      this.applyThreadActivity(act)
+      return act
+    },
+    /**
+     * Canonical read with the thread guard. Deliberately projection-free so
+     * callers can validate ownership BEFORE anything is written to state.
+     */
+    async readThreadActivity(): Promise<GaThreadActivity | null> {
       if (!this.threadId) return null
+      const requestedThreadId = this.threadId
       try {
         const act = await getGaThreadActivity(this.threadId)
-        if (act.activeRun) {
-          this.activeRunId = act.activeRun.runId
-          this.activeStatus = act.activeRun.status
-          writeStored(GA_RUN_KEY, act.activeRun.runId)
-        } else if (!this.activeRunId) {
-          this.activeRunId = null
-          this.activeStatus = null
-          writeStored(GA_RUN_KEY, null)
-        }
-        if (act.pendingSteer) {
-          const existingOptimistic = this.messages.find((m) => m.id === this.pendingSteer?.optimisticId)
-          this.pendingSteer = {
-            id: act.pendingSteer.steerId,
-            message: act.pendingSteer.message,
-            status: act.pendingSteer.status,
-            createdAt: act.pendingSteer.createdAt,
-            optimisticId: existingOptimistic ? existingOptimistic.id : this.pendingSteer?.optimisticId ?? null,
-          }
-          this.dedupeOptimistic()
-        } else if (!this.steerSending) {
-          this.pendingSteer = null
-        }
+        // A read that lands after a thread switch belongs to the old thread.
+        if (this.threadId !== requestedThreadId) return null
         return act
       } catch {
         return null
+      }
+    },
+    /** Projects a validated canonical activity read onto the store. */
+    applyThreadActivity(act: GaThreadActivity): void {
+      if (act.activeRun) {
+        this.activeRunId = act.activeRun.runId
+        this.activeStatus = act.activeRun.status
+        writeStored(GA_RUN_KEY, act.activeRun.runId)
+      } else if (!this.activeRunId) {
+        this.activeRunId = null
+        this.activeStatus = null
+        writeStored(GA_RUN_KEY, null)
+      }
+      if (act.pendingSteer) {
+        const existingOptimistic = this.messages.find((m) => m.id === this.pendingSteer?.optimisticId)
+        this.pendingSteer = {
+          id: act.pendingSteer.steerId,
+          message: act.pendingSteer.message,
+          status: act.pendingSteer.status,
+          createdAt: act.pendingSteer.createdAt,
+          optimisticId: existingOptimistic ? existingOptimistic.id : this.pendingSteer?.optimisticId ?? null,
+        }
+        this.dedupeOptimistic()
+      } else if (!this.steerSending) {
+        this.pendingSteer = null
       }
     },
     dedupeOptimistic(): void {
@@ -534,6 +571,7 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
         this.approvalRequired = false
         this.lastUiAction = null
         this.pendingNavigation = null
+        this.stopSuccessorObservation()
         this.activeRunId = null
         this.activeStatus = null
         this.pendingSteer = null
@@ -651,39 +689,121 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
     },
     async pollSuccessorAfterTerminal(): Promise<void> {
       if (!this.threadId) return
-      if (!this.pendingSteer) {
-        const act = await this.refreshActivity()
-        if (act?.pendingSteer) {
-          await this.attachSuccessorIfReady()
-        }
-        return
-      }
       await this.attachSuccessorIfReady()
     },
+    /**
+     * Single entry point after a terminal: ensures one observer generation
+     * owns the thread, then performs one canonical observation step.
+     * Re-entrant calls reuse the active generation (never a second loop).
+     */
     async attachSuccessorIfReady(): Promise<void> {
       if (!this.threadId) return
-      const act = await this.refreshActivity()
-      if (!act) return
-      if (act.activeRun && act.activeRun.runId !== this.activeRunId) {
-        this.pendingSteer = null
-        this.stoppedNotice = false
-        this.activeRunId = act.activeRun.runId
-        this.activeStatus = act.activeRun.status
-        writeStored(GA_RUN_KEY, act.activeRun.runId)
-        this.lastSequence = 0
-        this.streamingText = ''
-      this.streamGeneration = null
-        this.activities = []
-        this.currentStatus = '正在调整方向…'
-        try {
-          const envelopes = await listGaEvents(act.activeRun.runId)
-          for (const envelope of envelopes) this.ingestEvent(envelope)
-        } catch { /* SSE catches up */ }
-        this.openStream()
-        await this.reconcileMessages()
-      } else if (!act.activeRun && act.pendingSteer) {
-        this.currentStatus = '正在调整方向…'
+      if (this.successorObserverToken === 0) {
+        successorObserverSeq += 1
+        this.successorObserverToken = successorObserverSeq
       }
+      await this.observeSuccessor(this.successorObserverToken, 0)
+    },
+    /**
+     * Attaches the successor run: resets the per-run projection, replays its
+     * events and opens its stream. Idempotent per run id.
+     */
+    async attachSuccessorRun(runId: string, status: string): Promise<void> {
+      if (!this.threadId) return
+      if (this.successorAttachedRunId === runId) return
+      this.stopSuccessorObservation()
+      this.successorAttachedRunId = runId
+      this.pendingSteer = null
+      this.stoppedNotice = false
+      this.activeRunId = runId
+      this.activeStatus = status
+      writeStored(GA_RUN_KEY, runId)
+      this.lastSequence = 0
+      this.streamingText = ''
+      this.streamGeneration = null
+      this.activities = []
+      this.currentStatus = GA_STEERING_STATUS
+      try {
+        const envelopes = await listGaEvents(runId)
+        for (const envelope of envelopes) {
+          // Replay may terminalize the successor: stop projecting into it.
+          if (this.activeRunId !== runId) return
+          this.ingestEvent(envelope)
+        }
+      } catch { /* SSE catches up */ }
+      if (this.activeRunId !== runId) return
+      this.openStream()
+      await this.reconcileMessages()
+    },
+    /** Invalidates the observation loop. Pending reads/timers become no-ops. */
+    stopSuccessorObservation(): void {
+      this.successorObserverToken = 0
+      clearSuccessorTimer()
+    },
+    /**
+     * One observation step. `token` is the deterministic cancellation ownership.
+     * The canonical read is deliberately separated from its projection: a result
+     * that lost ownership (stop / thread switch / delete / reset) never gets the
+     * chance to write activeRunId, activeStatus or pendingSteer.
+     */
+    async observeSuccessor(token: number, attempt: number): Promise<void> {
+      if (this.successorObserverToken !== token) return
+      if (!this.threadId) {
+        this.resolveSuccessorObservation(false)
+        return
+      }
+      const previousRunId = this.activeRunId
+      const act = await this.readThreadActivity()
+      // Ownership check BEFORE projection: never apply a stale read.
+      if (this.successorObserverToken !== token) return
+      if (!act) {
+        this.scheduleSuccessorObservation(token, attempt + 1)
+        return
+      }
+      const hadPendingSteer = this.pendingSteer !== null
+      this.applyThreadActivity(act)
+      const run = act.activeRun
+      if (run) {
+        if (run.runId === previousRunId) this.stopSuccessorObservation()
+        else await this.attachSuccessorRun(run.runId, run.status)
+        return
+      }
+      if (act.pendingSteer) {
+        // Handoff still pending: the successor simply is not visible yet.
+        // Observation stays alive for as long as the canonical pending steer
+        // exists, downshifting to slow polling instead of giving up.
+        this.currentStatus = GA_STEERING_STATUS
+        this.scheduleSuccessorObservation(token, attempt + 1)
+        return
+      }
+      // No successor and no pending steer: the handoff resolved on its own.
+      this.resolveSuccessorObservation(hadPendingSteer)
+    },
+    /**
+     * Schedules the next observation. Fast cadence for the first reads, then a
+     * sustained slow cadence. There is no wall-clock deadline: only canonical
+     * resolution or a lifecycle event ends the observation.
+     */
+    scheduleSuccessorObservation(token: number, completedReads: number): void {
+      if (this.successorObserverToken !== token) return
+      if (!this.threadId) {
+        this.resolveSuccessorObservation(false)
+        return
+      }
+      clearSuccessorTimer()
+      const delay = completedReads >= GA_SUCCESSOR_OBSERVE_FAST_READS
+        ? GA_SUCCESSOR_OBSERVE_SLOW_INTERVAL_MS
+        : GA_SUCCESSOR_OBSERVE_INTERVAL_MS
+      successorTimer = setTimeout(() => {
+        successorTimer = null
+        void this.observeSuccessor(token, completedReads)
+      }, delay)
+    },
+    /** Exits observation and falls back to canonical thread state. */
+    resolveSuccessorObservation(reconcileCanonical: boolean): void {
+      this.stopSuccessorObservation()
+      this.currentStatus = null
+      if (reconcileCanonical) void this.reconcileMessages()
     },
     async reconcileMessages(): Promise<void> {
       if (!this.threadId) return
@@ -722,7 +842,7 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
         createdAt: new Date().toISOString(),
       }
       this.messages = [...this.messages, optimistic]
-      this.currentStatus = '正在调整方向…'
+      this.currentStatus = GA_STEERING_STATUS
       try {
         const result = await steerGaRun(this.activeRunId, message, uiContext)
         this.pendingSteer = {
@@ -902,6 +1022,8 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
       if (!this.threadId || this.cancelRequested) return
       if (!this.activeRunId && !this.pendingSteer) return
       this.cancelRequested = true
+      // An explicit stop cancels any pending steer continuation.
+      this.stopSuccessorObservation()
       this.currentStatus = '正在停止…'
       try {
         const act = await stopGaThread(this.threadId)
@@ -922,6 +1044,7 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
       if (!threadId || this.deletingThreadId) return false
       this.deletingThreadId = threadId
       this.error = null
+      if (threadId === this.threadId) this.stopSuccessorObservation()
       try {
         await deleteGaThread(threadId)
         const wasCurrent = threadId === this.threadId
@@ -976,6 +1099,7 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
         this.currentStatus = null
         this.waitingQuestion = null
         this.approvalRequired = false
+        this.stopSuccessorObservation()
         this.activeRunId = null
         this.activeStatus = null
         this.pendingSteer = null
@@ -1015,6 +1139,7 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
         this.approvalRequired = false
         this.lastUiAction = null
         this.pendingNavigation = null
+        this.stopSuccessorObservation()
         this.activeRunId = null
         this.activeStatus = null
         this.lastSequence = 0
@@ -1028,6 +1153,8 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
       closeStreamHandle()
     },
     $resetForTest(): void {
+      this.stopSuccessorObservation()
+      this.successorAttachedRunId = null
       this.closeStream()
       this.threadId = null
       this.messages = []
@@ -1065,6 +1192,16 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
 
 let activeHandle: { close: () => void } | null = null
 let activeController: AbortController | null = null
+/** BUG-01 successor observation: monotonic token + owned timer. */
+let successorObserverSeq = 0
+let successorTimer: ReturnType<typeof setTimeout> | null = null
+
+function clearSuccessorTimer(): void {
+  if (successorTimer !== null) {
+    clearTimeout(successorTimer)
+    successorTimer = null
+  }
+}
 
 function streamAbortSignal(): AbortSignal {
   activeController = new AbortController()
