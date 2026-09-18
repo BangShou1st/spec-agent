@@ -54,15 +54,18 @@ public class InternalModelInferenceController {
     private final AgentRunEventService eventService;
     private final AgentBrainProperties properties;
     private final RunExistenceCheck runExistenceCheck;
+    private final RunProjectLookup runProjectLookup;
 
     public InternalModelInferenceController(ModelInferenceGateway gateway,
                                             AgentRunEventService eventService,
                                             AgentBrainProperties properties,
-                                            RunExistenceCheck runExistenceCheck) {
+                                            RunExistenceCheck runExistenceCheck,
+                                            RunProjectLookup runProjectLookup) {
         this.gateway = gateway;
         this.eventService = eventService;
         this.properties = properties;
         this.runExistenceCheck = runExistenceCheck;
+        this.runProjectLookup = runProjectLookup;
     }
 
     @PostMapping
@@ -86,6 +89,10 @@ public class InternalModelInferenceController {
         long startedAt = System.nanoTime();
         ModelInferenceResponse response;
         try {
+            // One project is one provider-side conversation: the run's owning
+            // project becomes the conversation identity, so every model call
+            // inside a project shares one session while request ids stay per call.
+            UUID conversationId = resolveConversationId(request.runId());
             response = gateway.complete(new ModelInferenceRequest(
                     request.runId(),
                     request.callType(),
@@ -93,7 +100,8 @@ public class InternalModelInferenceController {
                             .map(message -> new ModelInferenceMessage(message.role(), message.content()))
                             .toList(),
                     request.maxOutputTokens(),
-                    ModelOutputContract.jsonObject())); // brain parses strictly as JSON; force structured output
+                    ModelOutputContract.jsonObject(), // brain parses strictly as JSON; force structured output
+                    conversationId));
         } catch (ModelGatewayException ex) {
             recordFailure(request, ex);
             // Provider-neutral category only; provider payloads never leave here.
@@ -119,8 +127,22 @@ public class InternalModelInferenceController {
                 new ModelInferenceHttpResponse.Usage(response.promptTokens(), response.completionTokens())));
     }
 
-    private void recordFailure(ModelInferenceHttpRequest request, ModelGatewayException ex) {
-        Map<String, Object> payload = new LinkedHashMap<>();
+    /**
+     * Project affinity is a correlation detail, never a reason to fail a model
+     * call: an unresolvable project means the conversation simply falls back to
+     * the run.
+     */
+    private UUID resolveConversationId(UUID runId) {
+        try {
+            return runProjectLookup.projectIdOf(runId);
+        } catch (RuntimeException ex) {
+            LOG.warn("Owning project lookup failed for run {}; continuing without project affinity: {}",
+                    runId, ex.getMessage());
+            return null;
+        }
+    }
+
+    private void recordFailure(ModelInferenceHttpRequest request, ModelGatewayException ex) {        Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("callType", request.callType());
         payload.put("gatewayCategory", ex.gatewayCategory());
         eventService.append(request.runId(), phaseFor(request.callType()),

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, inject, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { routerKey } from 'vue-router'
 import ApiErrorBanner from '@/components/ApiErrorBanner.vue'
 import RecoveryNotice from '@/components/workspace/RecoveryNotice.vue'
@@ -16,9 +16,11 @@ import RouteSidebar from '@/components/workspace/RouteSidebar.vue'
 import WorkspaceInspector from '@/components/workspace/WorkspaceInspector.vue'
 import {
   projectGraph,
+  getVisibleRouteIds,
   type ContextualAiTarget,
   type SpecAgentGraphNodeData,
 } from '@/graph/graphProjection'
+import { resolveReadingRouteId } from '@/graph/graphInteraction'
 import { agentPhaseLabel } from '@/presentation/agentPresentation'
 import {
   recoveryNoticeFromState,
@@ -50,14 +52,24 @@ const forkDialogOpen = ref(false)
 const resourceDialogOpen = ref(false)
 const reanswerDialogOpen = ref(false)
 const regenerateDialogOpen = ref(false)
-const confirmAction = ref<'archive' | 'delete' | null>(null)
+const confirmAction = ref<'archive' | null>(null)
 const confirmRouteId = ref<string | null>(null)
 const forkNodeId = ref<string | null>(null)
 const regenerateNodeId = ref<string | null>(null)
 const reanswerNodeId = ref<string | null>(null)
 
+/**
+ * 项目身份必须在 setup 阶段就建立，不能等 onMounted。
+ *
+ * 本组件与 WorkspaceInspector 里所有 `{ immediate: true }` 的 watcher 都在
+ * setup 中执行（早于 onMounted）。若等到 onMounted 才切换身份，它们会用
+ * **上一个项目**的 projectId / graphView 去发请求：上一个项目还在时只是
+ * 一次脏读，已被删除时就是 404 PROJECT_NOT_FOUND，且错误会盖在新项目上。
+ */
+graphUi.initProject(props.projectId)
+store.beginProject(props.projectId)
+
 onMounted(() => {
-  graphUi.initProject(props.projectId)
   void store.loadWorkspace(props.projectId).then(() => {
     void store.refreshUndoRedoAvailability()
   })
@@ -82,6 +94,7 @@ const selectedNodeData = computed<SpecAgentGraphNodeData | null>(() => {
       focusRouteId: graphUi.focusRouteId,
       lifecycleFilters: graphUi.lifecycleFilters,
       routeDisplayStates: graphUi.routeDisplayStates,
+      isolatedRouteId: graphUi.isolatedRouteId,
       expandedNodeIds: graphUi.expandedNodeIds,
       showRelationLayer: graphUi.showRelationLayer,
     },
@@ -128,15 +141,29 @@ const reanswerNodeData = computed(() =>
     : null,
 )
 
-/** Resolves operation source from the visual node plus explicit reading Focus.
- * A shared node with no Focus is intentionally ambiguous and returns null. */
+/**
+ * Resolves the source route for a node command (fork / reanswer / regenerate).
+ *
+ * Uses the SAME deterministic resolver as the canvas projection, so a node can
+ * never read under one route while its commands have no source route at all.
+ * 只看这条路线 / 点卡片定下的 Focus 直接生效；当其它归属路线都被隐藏/筛掉时，
+ * 唯一可见的那条也被视为已确定；只有真正歧义（多归属且都可见且无 Focus）时
+ * 才返回 null，此时卡片会显式要求用户选一条。
+ */
 function sourceRouteForNode(nodeId: string | null) {
   if (!nodeId || !store.graphView) return null
   const memberships = store.graphView.routes.filter((route) => route.lineageNodeIds.includes(nodeId))
-  if (graphUi.focusRouteId) {
-    return memberships.find((route) => route.id === graphUi.focusRouteId) ?? null
-  }
-  return memberships.length === 1 ? memberships[0] : null
+  const visible = getVisibleRouteIds(store.graphView, {
+    lifecycleFilters: graphUi.lifecycleFilters,
+    routeDisplayStates: graphUi.routeDisplayStates,
+    isolatedRouteId: graphUi.isolatedRouteId,
+  })
+  const resolved = resolveReadingRouteId({
+    membershipRouteIds: memberships.map((route) => route.id),
+    visibleRouteIds: visible,
+    focusRouteId: graphUi.focusRouteId,
+  })
+  return memberships.find((route) => route.id === resolved) ?? null
 }
 
 const forkSourceRoute = computed(() => sourceRouteForNode(forkNodeId.value))
@@ -226,10 +253,12 @@ const specSelectedId = computed(() =>
 )
 
 // 读取路线变化时，规格历史从后端加载（与 Inspector 的需求加载同语义）。
+// 只有当 store 已经属于当前项目时才读：这是一条显式不变量，任何一次
+// 用别的项目的 id 发起的路线级读取都是 bug（旧项目被删就是 404）。
 watch(
   specReadingRouteId,
   (routeId) => {
-    if (routeId) {
+    if (routeId && store.projectId === props.projectId) {
       void store.loadRouteSpecs(routeId)
     }
   },
@@ -258,11 +287,30 @@ function handleSelectSpec(snapshotId: string): void {
  * Spec Dock 展开/折叠会改变 Graph 区域高度。Vue Flow 的 canvas 尺寸由
  * ResizeObserver 异步测量；等测量完成后，若当前 answerable node 被 Dock
  * 顶部裁切，则只在 viewport 层把它带回可视区域 —— 绝不移动节点坐标或已保存位置。
+ *
+ * 延迟定时器在组件卸载时必须清掉：否则它会跨越测试环境销毁继续执行
+ * （jsdom 拆掉后 window/rAF 都不存在），变成 unhandled rejection。
  */
+let specDockResizeTimer: number | null = null
+
+function clearSpecDockResizeTimer(): void {
+  if (specDockResizeTimer !== null) {
+    window.clearTimeout(specDockResizeTimer)
+    specDockResizeTimer = null
+  }
+}
+
 function handleSpecDockExpandedChange(): void {
-  window.setTimeout(() => {
+  clearSpecDockResizeTimer()
+  specDockResizeTimer = window.setTimeout(() => {
+    specDockResizeTimer = null
     void nextTick(() => {
-      requestAnimationFrame(() => {
+      // jsdom (unit tests) has no requestAnimationFrame; fall back to a timer so
+      // the callback never becomes an unhandled rejection in the test run.
+      const scheduleFrame = typeof window.requestAnimationFrame === 'function'
+        ? window.requestAnimationFrame.bind(window)
+        : (callback: FrameRequestCallback) => window.setTimeout(() => callback(0), 0)
+      scheduleFrame(() => {
         const canvas = canvasRef.value as { ensureActiveNodeInView?: () => void } | null
         if (typeof canvas?.ensureActiveNodeInView === 'function') {
           canvas.ensureActiveNodeInView()
@@ -271,6 +319,8 @@ function handleSpecDockExpandedChange(): void {
     })
   }, 160)
 }
+
+onUnmounted(clearSpecDockResizeTimer)
 
 const reanswerFinalized = computed(() => {
   if (!reanswerNodeId.value || !reanswerSourceRoute.value || !store.graphView) return false
@@ -363,6 +413,54 @@ function relationNodeLabel(nodeId: string | null | undefined): string {
   return typeof text === 'string' && text ? text.slice(0, 24) : nodeId.slice(0, 8)
 }
 
+/**
+ * 把画布上"浮动节点 ↔ 路线节点"的一条连线变成接入命令。
+ *
+ * 路线来源必须是**显式**的：先看该锚点属于哪些 OPEN 路线（锚点通常就是路线
+ * 末端），再用同一套确定性解析（Focus / 只看这条路线 / 唯一可见归属）坍缩成
+ * 单值。解析不出来就明确失败，绝不猜 Active/first/latest —— 与共享节点的
+ * 来源路线规则保持一致，也避免把资源接到用户没在看的那条链上。
+ */
+async function handleConnectFloating(payload: {
+  floatingNodeId: string
+  anchorNodeId: string
+}): Promise<void> {
+  if (!store.graphView) return
+  const view = store.graphView
+  const anchorNode = view.nodes.find((node) => node.id === payload.anchorNodeId)
+  const anchorLabel = anchorNode?.question?.slice(0, 24) ?? '该节点'
+  // 后端只接受"当前末端"作为父节点，所以候选路线必须是该锚点为 tip 的路线。
+  const candidates = view.routes.filter(
+    (route) => route.lifecycleStatus === 'open' && route.tipNodeId === payload.anchorNodeId,
+  )
+  if (candidates.length === 0) {
+    store.error = {
+      code: 'CONNECT_REQUIRES_ROUTE_TIP',
+      message: `只能接入「${anchorLabel}」所在路线的末端；请连到某条路线最末端的节点`,
+    }
+    return
+  }
+  const visible = getVisibleRouteIds(view, {
+    lifecycleFilters: graphUi.lifecycleFilters,
+    routeDisplayStates: graphUi.routeDisplayStates,
+    isolatedRouteId: graphUi.isolatedRouteId,
+  })
+  const routeId = resolveReadingRouteId({
+    membershipRouteIds: candidates.map((route) => route.id),
+    visibleRouteIds: visible,
+    focusRouteId: graphUi.focusRouteId,
+  })
+  const route = candidates.find((candidate) => candidate.id === routeId) ?? null
+  if (!route) {
+    store.error = {
+      code: 'SOURCE_ROUTE_REQUIRED',
+      message: '该节点是多条路线的末端：请先点击要接入的路线卡（或使用「只看这条路线」），再连线',
+    }
+    return
+  }
+  await store.connectFloatingNode(payload.floatingNodeId, route.id, payload.anchorNodeId)
+}
+
 async function handleRelationConfirm(payload: {
   sourceNodeId: string
   targetNodeId: string
@@ -382,11 +480,15 @@ async function handleRelationConfirm(payload: {
   }
 }
 
-async function handleAttachResource(
+/**
+ * 添加资源 = 创建一个**独立**资源节点（零模型调用、不依赖 Active 路线）。
+ * 归属路线由用户在画布上连线决定（见 handleConnectFloating）。
+ */
+async function handleCreateFloatingResource(
   subtype: 'TEXT' | 'URL' | 'FILE',
   content: Record<string, unknown>,
 ): Promise<void> {
-  const ok = await store.attachResource(subtype, content)
+  const ok = await store.createFloatingResource(subtype, content)
   if (ok) resourceDialogOpen.value = false
 }
 
@@ -418,7 +520,7 @@ async function handleActivateRouteForAnswer(routeId: string): Promise<void> {
   if (!routeId) {
     store.error = {
       code: 'SOURCE_ROUTE_REQUIRED',
-      message: '请先选择明确的来源路线。',
+      message: '请先选择明确的来源路线',
     }
     return
   }
@@ -437,6 +539,7 @@ function resolveContextualAiTarget(target: ContextualAiTarget): string | null {
       focusRouteId: graphUi.focusRouteId,
       lifecycleFilters: graphUi.lifecycleFilters,
       routeDisplayStates: graphUi.routeDisplayStates,
+      isolatedRouteId: graphUi.isolatedRouteId,
       expandedNodeIds: graphUi.expandedNodeIds,
       showRelationLayer: graphUi.showRelationLayer,
     },
@@ -512,18 +615,17 @@ function handleLocateRoute(routeId: string): void {
   void canvasRef.value?.locateRoute(routeId)
 }
 
-function openConfirm(kind: 'archive' | 'delete', routeId: string): void {
+function openConfirm(kind: 'archive', routeId: string): void {
   confirmAction.value = kind
   confirmRouteId.value = routeId
 }
 
+/** 归档是唯一的"收起路线"动作（软删除入口已移除）；归档后默认从视图隐藏。 */
 async function confirmDestructive(): Promise<void> {
   if (!confirmAction.value || !confirmRouteId.value) {
     return
   }
-  const ok = confirmAction.value === 'archive'
-    ? await store.archiveRoute(confirmRouteId.value)
-    : await store.deleteRoute(confirmRouteId.value)
+  const ok = await store.archiveRoute(confirmRouteId.value)
   if (ok) {
     confirmAction.value = null
     confirmRouteId.value = null
@@ -552,7 +654,6 @@ async function confirmDestructive(): Promise<void> {
           @activate="store.activateRoute($event)"
           @restore="store.restoreRoute($event)"
           @archive="openConfirm('archive', $event)"
-          @delete="openConfirm('delete', $event)"
         />
       </ResizableSidebar>
 
@@ -601,6 +702,7 @@ async function confirmDestructive(): Promise<void> {
             @add-idea="handleAddIdea"
             @add-resource="resourceDialogOpen = true"
             @relation-proposal="handleRelationProposal"
+            @connect-floating="handleConnectFloating"
             @undo="store.undoGraph"
             @redo="store.redoGraph"
           />
@@ -657,7 +759,7 @@ async function confirmDestructive(): Promise<void> {
       :pending="store.graphCommandPending"
       :route-empty="(store.activeRoute?.tipNodeId ?? null) === null"
       @close="resourceDialogOpen = false"
-      @submit="handleAttachResource"
+      @submit="handleCreateFloatingResource"
     />
 
     <ForkRouteDialog

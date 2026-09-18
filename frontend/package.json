@@ -4,7 +4,10 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "vendor:ocr": "node tools/vendor-ocr-assets.mjs",
+    "predev": "npm run vendor:ocr",
     "dev": "vite",
+    "prebuild": "npm run vendor:ocr",
     "build": "vue-tsc --noEmit && vite build",
     "typecheck": "vue-tsc --noEmit",
     "test:unit": "vitest",
@@ -16,8 +19,11 @@
     "@types/dompurify": "^3.0.5",
     "@vue-flow/core": "1.48.2",
     "dompurify": "^3.4.15",
+    "jszip": "^3.10.2",
     "marked": "^18.0.12",
+    "pdfjs-dist": "^4.10.38",
     "pinia": "^2.3.1",
+    "tesseract.js": "^5.1.1",
     "vue": "^3.5.13",
     "vue-router": "^4.5.0"
   },

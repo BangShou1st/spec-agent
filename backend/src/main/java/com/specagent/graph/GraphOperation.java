@@ -26,6 +26,18 @@ public class GraphOperation {
         APPEND_CONTINUATION(true),
         CREATE_BRANCH_AND_APPEND(true),
         ATTACH_RESOURCE(true),
+        /**
+         * A floating (route-less) node is attached to a route tip. Undo
+         * detaches it again (the node keeps existing, disconnected) instead of
+         * retracting it — the user's content survives a connect/undo cycle.
+         */
+        CONNECT_FLOATING_NODE(true),
+        /**
+         * A node is detached from its route and becomes floating again. The
+         * node's content is never touched; redo re-attaches it to the tip it
+         * came from.
+         */
+        DISCONNECT_NODE(true),
         CREATE_SEMANTIC_RELATION(true),
         SET_KNOWLEDGE_STATUS(true),
         ACCEPT_AGENT_PROPOSAL(false);

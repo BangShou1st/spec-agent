@@ -13,18 +13,22 @@ import java.util.UUID;
  *
  * <p>Deletes a durable project and every project-owned row in FK-safe order.
  * FK graph (all `project_id` unless noted): routes, nodes (self-FKs parent/supersedes),
- * answers (route, node), answer_patches (route, node, answers), agent_runs (route, node),
+ * answers (route, node), answer_patches (route, node, answers),
+ * agent_runs (route, node, answers via produced_answer_id, answer_patches via produced_patch_id,
+ * self-FKs parent_run_id/root_run_id),
  * agent_run_events + continuation_checks (via agent_runs), agent_proposals (logical project_id),
  * context_snapshots (route, node; cascades to agent_input_projections), spec_snapshots
  * (route, node, context), route_inherited_answers (via routes), node_relations (via nodes),
  * graph_operations, capability_invocations, skill_activations. GA conversation tables are
  * application-scoped and are never project-owned, so they are untouched.
  *
- * <p>Order is leaf-first: events/checks/proposals, inherited answers (they reference
- * answers), specs, contexts (cascade projections), patches then answers, runs,
- * relations, operations, invocations, activations, then routes (after self-FKs
- * cleared), nodes (after self-FKs cleared), finally the project row. Any failure
- * rolls back the whole transaction; no orphan rows.
+ * <p>Order is leaf-first: events/checks, then runs (after its self-FKs
+ * parent_run_id/root_run_id are cleared — runs reference answers, answer_patches,
+ * nodes and routes, so they must go before those rows), then proposals, inherited
+ * answers (they reference answers), specs, contexts (cascade projections), patches
+ * then answers, relations, operations, invocations, activations, then routes
+ * (after self-FKs cleared), nodes (after self-FKs cleared), finally the project row.
+ * Any failure rolls back the whole transaction; no orphan rows.
  * Running agent_runs block deletion with a conflict so an active execution is never torn down.
  */
 @Service
@@ -50,13 +54,17 @@ public class ProjectDeletionService {
         Map<String, Object> p = Maps.of("projectId", projectId);
         jdbc.update("DELETE FROM agent_run_events WHERE run_id IN (SELECT id FROM agent_runs WHERE project_id = :projectId)", p);
         jdbc.update("DELETE FROM agent_run_continuation_checks WHERE run_id IN (SELECT id FROM agent_runs WHERE project_id = :projectId)", p);
+        // agent_runs must be removed before the rows it references (answers, answer_patches,
+        // nodes, routes) and its own self-FKs (parent_run_id, root_run_id) must be cleared
+        // first, otherwise the later deletes violate the FK constraints.
+        jdbc.update("UPDATE agent_runs SET parent_run_id = NULL, root_run_id = NULL WHERE project_id = :projectId", p);
+        jdbc.update("DELETE FROM agent_runs WHERE project_id = :projectId", p);
         jdbc.update("DELETE FROM agent_proposals WHERE project_id = :projectId", p);
         jdbc.update("DELETE FROM route_inherited_answers WHERE branch_route_id IN (SELECT id FROM routes WHERE project_id = :projectId)", p);
         jdbc.update("DELETE FROM spec_snapshots WHERE project_id = :projectId", p);
         jdbc.update("DELETE FROM context_snapshots WHERE project_id = :projectId", p);
         jdbc.update("DELETE FROM answer_patches WHERE project_id = :projectId", p);
         jdbc.update("DELETE FROM answers WHERE project_id = :projectId", p);
-        jdbc.update("DELETE FROM agent_runs WHERE project_id = :projectId", p);
         jdbc.update("DELETE FROM node_relations WHERE project_id = :projectId", p);
         jdbc.update("DELETE FROM graph_operations WHERE project_id = :projectId", p);
         jdbc.update("DELETE FROM capability_invocations WHERE project_id = :projectId", p);

@@ -60,7 +60,7 @@ export function recoveryNoticeFromState(input: RecoveryPresentationInput): Recov
     return {
       kind: 'unknown',
       title: '提交结果暂时无法确认',
-      message: '为了避免重复操作，请先同步最新状态。',
+      message: '为了避免重复操作，请先同步最新状态',
       action: 'reconcile-answer',
       actionLabel: '同步状态',
     }
@@ -69,7 +69,7 @@ export function recoveryNoticeFromState(input: RecoveryPresentationInput): Recov
     return {
       kind: 'saved',
       title: '回答已经保存',
-      message: '后续生成没有完成，不需要重新填写回答。',
+      message: '后续生成没有完成，不需要重新填写回答',
       action: 'resume-answer',
       actionLabel: '继续生成',
     }
@@ -78,7 +78,7 @@ export function recoveryNoticeFromState(input: RecoveryPresentationInput): Recov
     return {
       kind: 'resubmit',
       title: '回答尚未保存',
-      message: '已确认可以安全地再次提交。',
+      message: '已确认可以安全地再次提交',
       action: 'resubmit-answer',
       actionLabel: '再次提交',
     }
@@ -87,7 +87,7 @@ export function recoveryNoticeFromState(input: RecoveryPresentationInput): Recov
     return {
       kind: 'retryable',
       title: '操作可以重试',
-      message: '上一次运行没有完成，可以安全地再试一次。',
+      message: '上一次运行没有完成，可以安全地再试一次',
       action: 'retry-model-operation',
       actionLabel: '重新请求',
     }
@@ -96,7 +96,7 @@ export function recoveryNoticeFromState(input: RecoveryPresentationInput): Recov
     return {
       kind: 'stale',
       title: '状态需要同步',
-      message: '请先同步最新状态，确认后再决定是否重试。',
+      message: '请先同步最新状态，确认后再决定是否重试',
       action: 'refresh-workspace',
       actionLabel: '同步状态',
     }
@@ -105,7 +105,7 @@ export function recoveryNoticeFromState(input: RecoveryPresentationInput): Recov
     return {
       kind: 'stale',
       title: '状态需要同步',
-      message: '当前显示的内容可能已过期，请同步最新状态。',
+      message: '当前显示的内容可能已过期，请同步最新状态',
       action: 'refresh-workspace',
       actionLabel: '同步状态',
     }
@@ -114,7 +114,7 @@ export function recoveryNoticeFromState(input: RecoveryPresentationInput): Recov
     return {
       kind: 'blocked',
       title: '当前操作无法继续',
-      message: '请按提示处理后再试，不需要重复提交。',
+      message: '请按提示处理后再试，不需要重复提交',
       action: null,
       actionLabel: null,
     }

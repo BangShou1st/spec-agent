@@ -7,6 +7,9 @@ import AppIcon from '@/components/AppIcon.vue'
  * undo/redo, zoom, fit). Low-frequency actions (add resource, auto layout,
  * show all) live in a native overflow menu. Floating-window commands are
  * gone: Route and Inspector are fixed sidebar regions.
+ *
+ * The rail is deliberately narrow (vertical strip), so the 只看这条路线 state
+ * indicator lives on the canvas itself (GraphCanvas), not here.
  */
 const workspace = useWorkspaceStore()
 

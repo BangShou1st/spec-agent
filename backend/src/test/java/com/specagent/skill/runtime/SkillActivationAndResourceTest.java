@@ -108,10 +108,28 @@ class SkillActivationAndResourceTest {
 
         assertThatThrownBy(() -> resourceService.readResource(VERSION_ID, "../etc/passwd"))
                 .isInstanceOf(SkillResourceRejectedException.class);
-        assertThatThrownBy(() -> resourceService.readResource(VERSION_ID, "SKILL.md"))
-                .isInstanceOf(SkillResourceRejectedException.class);
         assertThatThrownBy(() -> resourceService.readResource(VERSION_ID, "/absolute"))
                 .isInstanceOf(SkillResourceRejectedException.class);
+    }
+
+    @Test
+    void resourceReadServesSkillMarkdownSoTheDetailPageCanShowIt() {
+        SkillResourceService resourceService =
+                new SkillResourceService(queryService, properties);
+        when(queryService.findPackageFile(VERSION_ID, "SKILL.md")).thenReturn(
+                Optional.of(new com.specagent.skill.domain.SkillPackageFile(
+                        UUID.randomUUID(), VERSION_ID, "SKILL.md",
+                        com.specagent.skill.domain.SkillPackageFile.FileKind.SKILL_MD,
+                        13, "skill-hash", "skill content".getBytes())));
+
+        // Reading the instructions is display-only; running the Skill still goes
+        // through activation, which is a separate path.
+        SkillResourceService.ResourceRead read =
+                resourceService.readResource(VERSION_ID, "SKILL.md");
+
+        assertThat(read.relativePath()).isEqualTo("SKILL.md");
+        assertThat(read.content()).isEqualTo("skill content");
+        assertThat(read.sha256()).isEqualTo("skill-hash");
     }
 
     @Test

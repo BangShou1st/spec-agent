@@ -56,7 +56,7 @@ function retry(): void {
 <template>
   <section class="mgmt-page" data-test="connections-page">
     <header class="mgmt-head">
-      <div><h2>Connections</h2><p class="muted">连接外部 MCP 服务，让 Agent 在任务中使用它们的工具与资源。</p></div>
+      <div><h2>Connections</h2><p class="muted">连接外部 MCP 服务，让 Agent 在任务中使用它们的工具与资源</p></div>
       <button type="button" class="btn btn-primary" data-test="add-connection" @click="store.clearError(); createOpen = true">+ 新建连接</button>
     </header>
     <p v-if="store.error && !store.list.length && !store.listLoading" class="error-banner" data-test="connections-error">
@@ -64,7 +64,7 @@ function retry(): void {
       <button type="button" class="btn" data-test="connections-retry" @click="retry">重试</button>
     </p>
     <div v-if="store.listLoading" class="muted" data-test="connections-loading">加载中…</div>
-    <p v-else-if="!store.list.length && !store.error" class="mgmt-empty" data-test="connections-empty">还没有连接，点击右上角新建第一个连接。</p>
+    <p v-else-if="!store.list.length && !store.error" class="mgmt-empty" data-test="connections-empty">还没有连接，点击右上角新建第一个连接</p>
     <ConnectionsList v-else :connections="store.list" :loading="store.listLoading" :busy-id="busyId" @select="select" @enable="enable" @disable="disable" @remove="remove" />
     <p v-if="store.error && store.list.length" class="mgmt-inline-error" data-test="connections-action-error">{{ managementErrorMessage(store.error.code, store.error.message) }}</p>
     <ConnectionCreateDialog :open="createOpen" :saving="store.actionLoading" :error="store.error" @close="createOpen = false" @create="create" />

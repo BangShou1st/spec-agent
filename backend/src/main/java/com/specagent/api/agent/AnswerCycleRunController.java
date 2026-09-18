@@ -75,25 +75,39 @@ public class AnswerCycleRunController {
             return acceptedRun(replay.get());
         }
 
+        // 可选显式路线：本次 run 从此只认这条路线，而不是项目唯一的 Active 指针。
+        // 这是"多条路线各自独立生成/回答"的入口 —— 路由归属由端点校验（同项目 + OPEN
+        // 在 RunService 里做），未提供时下面每一条分支都退回原有的 Active 语义。
+        UUID explicitRouteId = request.sourceRouteId();
+        if (explicitRouteId != null) {
+            com.specagent.api.common.CommandExecution.requireRouteInProject(
+                    projectService, routeService, projectId, explicitRouteId);
+        }
+
         if ("DRAFT_QUESTION".equals(operation)) {
-            requireActiveRoute(projectId);
+            if (explicitRouteId == null) {
+                requireActiveRoute(projectId);
+            }
             return acceptedRun(runService.createQueuedDraftQuestion(
-                    projectId, idempotencyKey, requestFingerprint));
+                    projectId, idempotencyKey, requestFingerprint, explicitRouteId));
         }
 
         if ("GENERATE_ARTIFACT".equals(operation)) {
-            requireActiveRoute(projectId);
-            UUID activeRouteId = runService.getActiveRouteId(projectId);
-            var route = routeService.getRoute(activeRouteId)
+            if (explicitRouteId == null) {
+                requireActiveRoute(projectId);
+            }
+            UUID targetRouteId = explicitRouteId != null
+                    ? explicitRouteId : runService.getActiveRouteId(projectId);
+            var route = routeService.getRoute(targetRouteId)
                     .orElseThrow(() -> new IllegalStateException(
-                            "Active route not found: " + activeRouteId));
+                            "Route not found: " + targetRouteId));
             if (route.tipNodeId() == null) {
                 throw com.specagent.api.common.ApiException.conflict(
                         "NO_ACTIVE_TIP_NODE",
                         "The active route has no tip node to generate a spec from");
             }
             return acceptedRun(runService.createQueuedArtifactGeneration(
-                    projectId, idempotencyKey, requestFingerprint));
+                    projectId, idempotencyKey, requestFingerprint, explicitRouteId));
         }
 
         if ("REGENERATE_NODE".equals(operation)) {
@@ -105,8 +119,6 @@ public class AnswerCycleRunController {
             com.specagent.api.common.CommandExecution.requireProject(projectService, projectId);
             var target = com.specagent.api.common.CommandExecution.requireNodeInProject(
                     projectService, nodeService, projectId, request.nodeId());
-            com.specagent.api.common.CommandExecution.requireRouteInProject(
-                    projectService, routeService, projectId, request.sourceRouteId());
             if (target.parentNodeId() == null) {
                 throw com.specagent.api.common.ApiException.conflict(
                         "REGENERATE_ROOT_NOT_SUPPORTED",
@@ -118,17 +130,20 @@ public class AnswerCycleRunController {
         }
 
         if ("ANSWER_TIP".equals(operation) || "RESUME_ANSWER".equals(operation)) {
-            requireActiveRoute(projectId);
+            if (explicitRouteId == null) {
+                requireActiveRoute(projectId);
+            }
         }
 
         UUID answerId = request.answerId();
         if ("ANSWER_TIP".equals(operation) && request.nodeId() != null && answerId == null) {
-            UUID activeRouteId = runService.getActiveRouteId(projectId);
-            boolean answerExists = answerService.existsAnswerFor(activeRouteId, request.nodeId());
+            UUID targetRouteId = explicitRouteId != null
+                    ? explicitRouteId : runService.getActiveRouteId(projectId);
+            boolean answerExists = answerService.existsAnswerFor(targetRouteId, request.nodeId());
             if (answerExists) {
-                UUID tipNodeId = routeService.getRoute(activeRouteId)
+                UUID tipNodeId = routeService.getRoute(targetRouteId)
                         .orElseThrow(() -> new IllegalStateException(
-                                "Active route not found: " + activeRouteId))
+                                "Route not found: " + targetRouteId))
                         .tipNodeId();
                 if (!request.nodeId().equals(tipNodeId)) {
                     throw com.specagent.api.common.ApiException.conflict(
@@ -136,15 +151,15 @@ public class AnswerCycleRunController {
                             "The active node has already been answered");
                 }
                 operation = "RESUME_ANSWER";
-                answerId = answerService.findAnswerForNode(activeRouteId, request.nodeId())
+                answerId = answerService.findAnswerForNode(targetRouteId, request.nodeId())
                         .map(a -> a.id()).orElse(null);
             }
         }
 
-        AgentRun run = runService.createQueuedRunWithInputResult(
+        AgentRun run = runService.createQueuedRunWithInputResultForRoute(
                 projectId, operation, request.nodeId(),
                 request.selectedOptionId(), request.freeText(), answerId,
-                idempotencyKey, requestFingerprint, request.persistenceIntent());
+                idempotencyKey, requestFingerprint, request.persistenceIntent(), explicitRouteId);
         return acceptedRun(run);
     }
 

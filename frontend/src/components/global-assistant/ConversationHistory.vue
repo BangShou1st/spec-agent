@@ -68,14 +68,14 @@ function onMenuKeydown(event: KeyboardEvent, threadId: string): void {
 <template>
   <div class="ga-history" data-test="ga-history" role="region" aria-label="最近对话">
     <p class="ga-history__eyebrow">最近对话</p>
-    <p v-if="disabled" class="ga-history__guard" data-test="ga-switch-guard">当前任务完成或停止后可以切换会话。</p>
+    <p v-if="disabled" class="ga-history__guard" data-test="ga-switch-guard">当前任务完成或停止后可以切换会话</p>
     <p v-if="loading" class="ga-history__state muted" data-test="ga-history-loading">正在加载历史会话…</p>
     <div v-else-if="error" class="ga-history__state ga-history__error" data-test="ga-history-error" role="alert">
       <span>{{ error }}</span>
       <button class="ga-history__retry" type="button" data-test="ga-history-retry" @click="emit('retry')">重试</button>
     </div>
     <p v-else-if="groups.length === 0" class="ga-history__state muted" data-test="ga-history-empty">
-      暂无历史会话，发送第一条消息后会自动收录。
+      暂无历史会话，发送第一条消息后会自动收录
     </p>
     <div v-else class="ga-history__groups">
       <section
@@ -96,7 +96,7 @@ function onMenuKeydown(event: KeyboardEvent, threadId: string): void {
               :data-current="isCurrent(item.threadId) ? 'true' : 'false'"
               :aria-current="isCurrent(item.threadId) ? 'true' : undefined"
               :disabled="!canSwitch() || isCurrent(item.threadId)"
-              :title="!canSwitch() ? '当前任务完成或停止后可以切换会话。' : item.title"
+              :title="!canSwitch() ? '当前任务完成或停止后可以切换会话' : item.title"
               @click="handleSelect(item.threadId)"
             >
               <span class="ga-history__row-main">
@@ -121,7 +121,7 @@ function onMenuKeydown(event: KeyboardEvent, threadId: string): void {
                 :aria-expanded="openMenuId === item.threadId ? 'true' : 'false'"
                 aria-haspopup="menu"
                 :disabled="isActiveThread(item.threadId) || deletingThreadId === item.threadId"
-                :title="isActiveThread(item.threadId) ? '当前任务完成或停止后可以删除会话。' : '更多操作'"
+                :title="isActiveThread(item.threadId) ? '当前任务完成或停止后可以删除会话' : '更多操作'"
                 @click="toggleMenu(item.threadId)"
                 @keydown="onMenuKeydown($event, item.threadId)"
               >
@@ -139,7 +139,7 @@ function onMenuKeydown(event: KeyboardEvent, threadId: string): void {
               </div>
             </div>
             <div v-if="confirmDeleteThreadId === item.threadId" class="ga-history__confirm" role="alertdialog" aria-label="确认删除对话" data-test="ga-delete-confirm">
-              <p class="ga-history__confirm-text">将删除这段对话记录。<br />已创建或修改的项目不会被删除。</p>
+              <p class="ga-history__confirm-text">将删除这段对话记录。<br />已创建或修改的项目不会被删除</p>
               <div class="ga-history__confirm-row">
                 <button class="btn" type="button" data-test="ga-delete-cancel" @click="emit('cancel-delete')">取消</button>
                 <button class="btn btn-danger" type="button" data-test="ga-delete-confirm-btn" :disabled="deletingThreadId === item.threadId" @click="emit('confirm-delete', item.threadId)">{{ deletingThreadId === item.threadId ? '删除中…' : '删除' }}</button>

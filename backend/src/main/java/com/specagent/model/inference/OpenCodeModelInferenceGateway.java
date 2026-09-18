@@ -18,12 +18,12 @@ import java.util.Map;
 
 /**
  * Real {@link ModelInferenceGateway} backed by the frozen OpenCode Zen
- * transport. Credential resolution, free-model policy and HTTP transport stay
+ * transport. Credential resolution and HTTP transport stay
  * exactly where they were; this adapter only reshapes the call into the
  * neutral inference seam so the Python brain can reach the same proven
- * transport through the internal broker without ever seeing a key. Product
- * database settings remain free-only; the explicitly isolated external eval
- * source may select any exact qualified provider model.
+ * transport through the internal broker without ever seeing a key. Model
+ * selection is validated against the live provider list when settings are
+ * saved; the runtime path imposes no additional cost-policy filter.
  *
  * <p>No retry, no provider fallback. Generation limits are not forwarded:
  * production OpenCode completions keep their verified request shape.
@@ -49,13 +49,6 @@ public class OpenCodeModelInferenceGateway implements ModelInferenceGateway {
             throw new OpenCodeModelException(OpenCodeModelErrorCategory.NOT_CONFIGURED,
                     "No OpenCode model is selected");
         }
-        boolean externalEvaluation = "external-environment:SPEC_AGENT_EVAL_OPENCODE_KEY"
-                .equals(settings.credentialSource());
-        if (!externalEvaluation && !selectedModel.endsWith("-free")) {
-            throw new OpenCodeModelException(OpenCodeModelErrorCategory.INVALID_MODEL,
-                    "OpenCode gateway requires a free model; configured model is not free: "
-                            + selectedModel);
-        }
         List<OpenCodeChatMessage> messages = request.messages().stream()
                 .map(message -> new OpenCodeChatMessage(message.role(), message.content()))
                 .toList();
@@ -63,7 +56,7 @@ public class OpenCodeModelInferenceGateway implements ModelInferenceGateway {
                 toProviderRequest(selectedModel, messages, request.outputContract());
         OpenCodeCompletionResponse completion =
                 transport.complete(settings.apiKey(),
-                        OpenCodeZenSessionIds.forRun(request.runId()),
+                        OpenCodeZenSessionIds.forConversation(request.conversationOrRun()),
                         completionRequest);
         return toResponse(completion);
     }
@@ -77,13 +70,6 @@ public class OpenCodeModelInferenceGateway implements ModelInferenceGateway {
             throw new OpenCodeModelException(OpenCodeModelErrorCategory.NOT_CONFIGURED,
                     "No OpenCode model is selected");
         }
-        boolean externalEvaluation = "external-environment:SPEC_AGENT_EVAL_OPENCODE_KEY"
-                .equals(settings.credentialSource());
-        if (!externalEvaluation && !selectedModel.endsWith("-free")) {
-            throw new OpenCodeModelException(OpenCodeModelErrorCategory.INVALID_MODEL,
-                    "OpenCode gateway requires a free model; configured model is not free: "
-                            + selectedModel);
-        }
         List<OpenCodeChatMessage> messages = request.messages().stream()
                 .map(message -> new OpenCodeChatMessage(message.role(), message.content()))
                 .toList();
@@ -91,7 +77,7 @@ public class OpenCodeModelInferenceGateway implements ModelInferenceGateway {
                 toProviderRequest(selectedModel, messages, request.outputContract());
         OpenCodeCompletionResponse completion =
                 transport.completeStreaming(settings.apiKey(),
-                        OpenCodeZenSessionIds.forRun(request.runId()),
+                        OpenCodeZenSessionIds.forConversation(request.conversationOrRun()),
                         completionRequest, listener);
         return toResponse(completion);
     }

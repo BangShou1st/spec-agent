@@ -4,6 +4,7 @@ import com.specagent.common.Maps;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.Optional;
+import java.util.UUID;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -14,6 +15,7 @@ public class JdbcModelProviderSettingsRepository implements ModelProviderSetting
     private final NamedParameterJdbcTemplate jdbc;
     private final RowMapper<ModelProviderSettings> rowMapper = (rs, rowNum) -> new ModelProviderSettings(
             rs.getString("active_provider"),
+            rs.getObject("active_provider_id", UUID.class),
             rs.getTimestamp("updated_at").toInstant());
 
     public JdbcModelProviderSettingsRepository(NamedParameterJdbcTemplate jdbc) {
@@ -27,14 +29,18 @@ public class JdbcModelProviderSettingsRepository implements ModelProviderSetting
     }
 
     @Override
-    public void setActiveProvider(String activeProvider) {
+    public void setActive(String activeProvider, UUID activeProviderId) {
         Instant now = Instant.now();
         jdbc.update("""
-                INSERT INTO model_provider_settings (singleton_id, active_provider, updated_at)
-                VALUES (1, :activeProvider, :updatedAt)
+                INSERT INTO model_provider_settings (singleton_id, active_provider, active_provider_id, updated_at)
+                VALUES (1, :activeProvider, :activeProviderId, :updatedAt)
                 ON CONFLICT (singleton_id) DO UPDATE SET
                     active_provider = EXCLUDED.active_provider,
+                    active_provider_id = EXCLUDED.active_provider_id,
                     updated_at = EXCLUDED.updated_at
-                """, Maps.of("activeProvider", activeProvider, "updatedAt", Timestamp.from(now)));
+                """, Maps.of(
+                "activeProvider", activeProvider,
+                "activeProviderId", activeProviderId,
+                "updatedAt", Timestamp.from(now)));
     }
 }

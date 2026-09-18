@@ -50,8 +50,8 @@ class RevisionValidationTest {
         }
         public void markValidated(long rev) {
             stored = new CustomProviderSettings(stored.apiFormat(), stored.baseUrl(), stored.apiKey(),
-                    stored.maskedSuffix(), stored.selectedModel(), stored.modelSource(), stored.configRevision(), rev,
-                    stored.createdAt(), stored.updatedAt(), Instant.now());
+                    stored.maskedSuffix(), stored.selectedModel(), stored.modelSource(), stored.displayName(),
+                    stored.configRevision(), rev, stored.createdAt(), stored.updatedAt(), Instant.now());
         }
     }
 
@@ -92,14 +92,14 @@ class RevisionValidationTest {
     @Test void customChangeInvalidates() {
         MemCustomRepo repo = new MemCustomRepo();
         Instant now = Instant.now();
-        repo.stored = new CustomProviderSettings("CHAT_COMPLETIONS", "http://localhost:11434/v1", null, null, "m", "DISCOVERED", 1, 1L, now, now, now);
+        repo.stored = new CustomProviderSettings("CHAT_COMPLETIONS", "http://localhost:11434/v1", null, null, "m", "DISCOVERED", null, 1, 1L, now, now, now);
         CustomProviderSettingsService svc = new CustomProviderSettingsService(repo, new ObjectMapper(), registry(), noopProbe());
         svc.requireActivatable();
         // Change baseUrl bumps revision and clears validation.
-        repo.stored = new CustomProviderSettings("CHAT_COMPLETIONS", "http://localhost:11435/v1", null, null, "m", "DISCOVERED", 2, null, now, now, null);
+        repo.stored = new CustomProviderSettings("CHAT_COMPLETIONS", "http://localhost:11435/v1", null, null, "m", "DISCOVERED", null, 2, null, now, now, null);
         assertThatThrownBy(svc::requireActivatable).isInstanceOf(ModelProviderException.class);
         // Change format also invalidates.
-        repo.stored = new CustomProviderSettings("RESPONSES", "http://localhost:11435/v1", null, null, "m", "DISCOVERED", 3, null, now, now, null);
+        repo.stored = new CustomProviderSettings("RESPONSES", "http://localhost:11435/v1", null, null, "m", "DISCOVERED", null, 3, null, now, now, null);
         assertThatThrownBy(svc::requireActivatable).isInstanceOf(ModelProviderException.class);
         repo.markValidated(3);
         svc.requireActivatable();
@@ -109,7 +109,7 @@ class RevisionValidationTest {
         MemCustomRepo repo = new MemCustomRepo();
         Instant now = Instant.now();
         repo.stored = new CustomProviderSettings("ANTHROPIC_MESSAGES", "https://gateway.example/v1",
-                null, null, "m", "DISCOVERED", 1, null, now, now, null);
+                null, null, "m", "DISCOVERED", null, 1, null, now, now, null);
         CustomProviderSettingsService svc = new CustomProviderSettingsService(repo, new ObjectMapper(), registry(), noopProbe());
         assertThatThrownBy(svc::validate).isInstanceOf(ModelProviderException.class);
         assertThatThrownBy(svc::requireActivatable).isInstanceOf(ModelProviderException.class);

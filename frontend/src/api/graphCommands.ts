@@ -117,15 +117,49 @@ export function createRootDraftNode(
 
 /** Creates a standalone (floating) draft that starts disconnected from every
  * lineage. The creation-context route id is optional — a floating node may be
- * created with no Active route (routeId=null is legal). */
+ * created with no Active route (routeId=null is legal).
+ *
+ * `nodeKind` selects the node's semantics: KNOWLEDGE (default, "+ 想法") or
+ * RESOURCE (attached documents). A floating resource is authored first and
+ * connected to a route later via {@link connectFloatingNode}. */
 export function createFloatingDraftNode(
   projectId: string,
   routeId: string | null,
-  payload: DraftNodePayload,
+  payload: DraftNodePayload & { nodeKind?: 'KNOWLEDGE' | 'RESOURCE' },
 ): Promise<CreatedNodeResponse> {
   return apiClient.post<CreatedNodeResponse>(
     `/projects/${projectId}/floating-nodes`,
     { routeId, ...payload },
+  )
+}
+
+/**
+ * Connects a floating node into a route as its new tip. The backend only
+ * accepts the route's current tip (never a historical insert) and rejects an
+ * unanswered question as parent, so a hand-drawn connection cannot rewrite
+ * lineage. The node keeps its id, kind and content.
+ */
+export function connectFloatingNode(
+  projectId: string,
+  nodeId: string,
+  routeId: string,
+  parentNodeId: string | null,
+): Promise<CreatedNodeResponse> {
+  return apiClient.post<CreatedNodeResponse>(
+    `/projects/${projectId}/nodes/${nodeId}/connect`,
+    { routeId, parentNodeId },
+  )
+}
+
+/** Detaches the current tip from its route, restoring a floating node. */
+export function disconnectNode(
+  projectId: string,
+  nodeId: string,
+  routeId: string,
+): Promise<CreatedNodeResponse> {
+  return apiClient.post<CreatedNodeResponse>(
+    `/projects/${projectId}/nodes/${nodeId}/disconnect`,
+    { routeId },
   )
 }
 

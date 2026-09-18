@@ -31,7 +31,8 @@ public class SkillResourceService {
      * Reads one resource inside an activated Skill version.
      *
      * @param versionId    the immutable activated version id
-     * @param relativePath normalized, containment-checked resource path
+     * @param relativePath normalized, containment-checked resource path; SKILL.md
+     *                     included, since it is shown read-only by the detail page
      * @throws SkillImportException on traversal, oversize, missing, or binary
      */
     public ResourceRead readResource(UUID versionId, String relativePath) {
@@ -67,12 +68,10 @@ public class SkillResourceService {
             throw new SkillResourceRejectedException(
                     "Skill resource path rejected: " + path);
         }
-        // Must stay inside the package's resources/references/assets (SKILL.md
-        // itself is not a resource).
-        if ("SKILL.md".equals(normalized)) {
-            throw new SkillResourceRejectedException(
-                    "SKILL.md is not a resource; activation returns instructions");
-        }
+        // SKILL.md is readable like any other text resource so the detail page can
+        // show what the Skill actually says. Reading it never changes execution
+        // semantics: running the Skill still goes through activation, which is
+        // what injects the instructions.
         return normalized;
     }
 

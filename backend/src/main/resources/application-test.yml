@@ -42,3 +42,9 @@ spec:
       engine: ${SPEC_AGENT_BRAIN_ENGINE:fake}
       worker:
         enabled: false
+    skill:
+      builtin:
+        # Built-in skill packages are shipped for product/testing use, but the
+        # skill integration tests assert exact catalog states (empty before
+        # install, one entry after), so they must not be seeded into the test DB.
+        seed-enabled: false

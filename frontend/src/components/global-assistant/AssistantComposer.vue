@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import AppIcon from '@/components/AppIcon.vue'
 import { GA_COMPOSER_WARN_AT, GA_MAX_MESSAGE_LENGTH } from '@/api/globalAssistant'
 
 const props = defineProps<{
@@ -64,9 +65,6 @@ defineExpose({ focusComposer })
 
 <template>
   <div class="ga-composer" data-test="ga-composer" :data-running="props.running ? 'true' : 'false'">
-    <p v-if="props.waitingQuestion" class="ga-composer__question" data-test="ga-clarification">
-      {{ props.waitingQuestion }}
-    </p>
     <div v-if="props.running" class="ga-composer__running-line" data-test="ga-running-hint">
       <span class="ga-composer__pulse" aria-hidden="true" />
       <span>助手正在工作中，你可以继续输入来调整方向…</span>
@@ -94,23 +92,26 @@ defineExpose({ focusComposer })
       <span class="ga-composer__spacer" />
       <button
         v-if="props.running"
-        class="btn ga-composer__stop"
+        class="ga-composer__icon-btn ga-composer__stop"
         type="button"
         data-test="ga-stop"
         :disabled="props.cancelRequested"
+        :aria-label="props.cancelRequested ? '正在停止…' : '停止'"
+        :title="props.cancelRequested ? '正在停止…' : '停止'"
         @click="emit('cancel')"
       >
-        {{ props.cancelRequested ? '正在停止…' : '停止' }}
+        <AppIcon name="stop" />
       </button>
       <button
-        class="btn btn-primary ga-composer__send"
+        class="ga-composer__icon-btn ga-composer__send"
         type="button"
         data-test="ga-send"
         :disabled="!canSend"
-        :title="hasPending ? '上一条调整正在生效，请稍后再发送新的要求。' : ''"
+        :aria-label="sendLabel"
+        :title="hasPending ? '上一条调整正在生效，请稍后再发送新的要求' : sendLabel"
         @click="emit('send')"
       >
-        {{ sendLabel }}
+        <AppIcon name="send" />
       </button>
     </div>
   </div>
@@ -119,7 +120,6 @@ defineExpose({ focusComposer })
 <style scoped>
 .ga-composer { border-top: 1px solid var(--color-border); padding: 12px 14px 14px; background: linear-gradient(180deg, var(--color-surface) 0%, var(--color-surface-subtle) 100%); }
 .ga-composer[data-running='true'] .ga-composer__input { border-color: var(--color-accent); box-shadow: 0 0 0 3px var(--color-accent-soft), 0 8px 24px -12px var(--color-accent-soft); }
- .ga-composer__question { margin: 0 0 8px; padding: 10px 12px; border-radius: 12px; background: linear-gradient(135deg, var(--color-focus-soft), rgba(255,255,255,0.6)); color: var(--color-text); font-size: 13px; border: 1px solid #d8cff7; line-height: 1.55; box-shadow: 0 4px 16px -8px rgba(90,70,180,0.25); }
 .ga-composer__running-line { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; padding: 8px 12px; border-radius: 999px; font-size: 12.5px; color: var(--color-accent-strong); background: linear-gradient(135deg, var(--color-accent-soft), rgba(255,255,255,0.7)); border: 1px solid var(--color-accent); }
 .ga-composer__pulse { width: 8px; height: 8px; border-radius: 999px; background: var(--color-accent); box-shadow: 0 0 0 4px var(--color-accent-soft); animation: ga-pulse 1.6s ease-in-out infinite; flex: none; }
 .ga-composer__pending { margin: 0 0 8px; font-size: 12.5px; color: var(--color-text-secondary); background: var(--color-surface); border: 1px dashed var(--color-border-strong); border-radius: 10px; padding: 7px 10px; }
@@ -133,8 +133,14 @@ defineExpose({ focusComposer })
 .ga-composer__hint { font-size: 11.5px; color: var(--color-text-muted); }
  .ga-composer__count { font-size: 11.5px; color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
 .ga-composer__spacer { flex: 1; }
-.ga-composer__stop { border-radius: 999px; padding: 7px 16px; }
-.ga-composer__send { border-radius: 999px; padding: 7px 18px; box-shadow: 0 6px 18px -8px var(--color-accent); }
+/* Icon-only round action buttons: send = accent, stop = danger red. */
+.ga-composer__icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 999px; border: 1px solid transparent; cursor: pointer; transition: background 140ms ease, box-shadow 140ms ease, opacity 140ms ease; }
+.ga-composer__icon-btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.ga-composer__icon-btn:disabled { cursor: default; opacity: 0.45; }
+.ga-composer__stop { background: var(--color-danger-soft, #fdecea); color: var(--color-danger, #b42318); border-color: #f0a8a0; }
+.ga-composer__stop:hover:not(:disabled) { background: var(--color-danger, #b42318); color: #fff; }
+.ga-composer__send { background: var(--color-accent); color: #fff; box-shadow: 0 6px 18px -8px var(--color-accent); }
+.ga-composer__send:hover:not(:disabled) { background: var(--color-accent-strong); }
 .ga-composer__send:disabled { box-shadow: none; }
 @keyframes ga-pulse { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(0.82); opacity: 0.7; } }
 @media (prefers-reduced-motion: reduce) { .ga-composer__pulse { animation: none; } }

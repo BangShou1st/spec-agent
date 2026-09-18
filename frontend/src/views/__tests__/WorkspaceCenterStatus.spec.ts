@@ -184,7 +184,7 @@ describe('WorkspaceView unified center status', () => {
   it('keeps an ordinary error banner when no recovery model applies', async () => {
     mockViews()
     const { wrapper, store } = await mountWorkspace()
-    store.error = { code: 'UNKNOWN_ERROR', message: '操作失败，请稍后重试。' }
+    store.error = { code: 'UNKNOWN_ERROR', message: '操作失败，请稍后重试' }
     await flushPromises()
 
     expect(wrapper.find('[data-test="recovery-notice"]').exists()).toBe(false)

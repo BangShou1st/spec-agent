@@ -8,6 +8,11 @@ import {
   validateOpenRouter,
 } from '@/api/modelProviders'
 
+/** Mirrors the backend free-id policy: openrouter/free or the :free suffix. */
+function isFreeModelId(id: string): boolean {
+  return id === 'openrouter/free' || id.endsWith(':free')
+}
+
 export interface ProviderError {
   code: string
   message: string
@@ -27,12 +32,18 @@ export const useOpenRouterStore = defineStore('openRouter', {
     selectedModel: null as string | null,
     configRevision: 0,
     validated: false,
+    // Full provider catalog (free and paid) plus the free subset; the UI
+    // defaults to the full list and can toggle "仅免费" to filter.
+    allModels: [] as string[],
     freeModels: [] as string[],
+    freeOnly: false,
     // True provider-available models from the last successful fetch.
     // freeModels is the display list (available + injected persisted for
     // visibility). Save gating must use availableModels, never the display
     // list, so an injected unavailable persisted value cannot be saved.
     availableModels: [] as string[],
+    /** 首次状态加载中：此时列表为空只代表「还没到」，不代表「没有」。 */
+    loading: false,
     probing: false,
     saving: false,
     validating: false,
@@ -41,16 +52,31 @@ export const useOpenRouterStore = defineStore('openRouter', {
     failed: false,
     error: null as ProviderError | null,
   }),
+  getters: {
+    /** Display list: full catalog by default, free-only when toggled. */
+    displayModels(state): string[] {
+      return state.freeOnly
+      && state.freeModels.length > 0 ? state.freeModels : state.allModels
+    },
+  },
   actions: {
     ensurePersistedVisible(): void {
       // A persisted selection must stay visible even before models are
       // (re)fetched. It is prepended as the saved value, never replaced
       // by silently picking another model.
-      if (this.selectedModel && !this.freeModels.includes(this.selectedModel)) {
+      if (this.selectedModel && !this.allModels.includes(this.selectedModel)) {
+        this.allModels = [this.selectedModel, ...this.allModels]
+      }
+      if (this.selectedModel && isFreeModelId(this.selectedModel)
+        && !this.freeModels.includes(this.selectedModel)) {
         this.freeModels = [this.selectedModel, ...this.freeModels]
       }
     },
+    setFreeOnly(value: boolean): void {
+      this.freeOnly = value
+    },
     async loadStatus(): Promise<void> {
+      this.loading = true
       this.error = null
       try {
         const s = await getOpenRouterStatus()
@@ -63,6 +89,8 @@ export const useOpenRouterStore = defineStore('openRouter', {
         this.failed = false
       } catch (err) {
         this.error = displayError(err)
+      } finally {
+        this.loading = false
       }
     },
     async probe(apiKey: string): Promise<string[]> {
@@ -73,12 +101,15 @@ export const useOpenRouterStore = defineStore('openRouter', {
       this.error = null
       try {
         const res = await probeOpenRouter(apiKey.trim())
-        this.availableModels = [...res.freeModels]
-        this.freeModels = [...res.freeModels]
+        // 兼容旧后端：没有 allModels 时回退到 freeModels（只展示免费列表）。
+        const all = Array.isArray(res.allModels) ? res.allModels : res.freeModels
+        this.availableModels = [...all]
+        this.allModels = [...all]
+        this.freeModels = [...(res.freeModels ?? [])]
         this.selectedModel = null
         this.modelUnavailable = false
         this.failed = false
-        return this.freeModels
+        return this.allModels
       } catch (err) {
         this.error = displayError(err)
         this.failed = true
@@ -95,12 +126,19 @@ export const useOpenRouterStore = defineStore('openRouter', {
       this.error = null
       try {
         const res = await listOpenRouterModels()
-        this.availableModels = [...res.freeModels]
-        this.freeModels = [...res.freeModels]
-        this.ensurePersistedVisible()
+        // 兼容旧后端：没有 allModels 时回退到 freeModels（只展示免费列表）。
+        const all = Array.isArray(res.allModels) ? res.allModels : res.freeModels
+        this.availableModels = [...all]
+        this.allModels = [...all]
+        this.freeModels = [...(res.freeModels ?? [])]
+        // Unavailability is judged against the true live list BEFORE the
+        // persisted value is prepended for visibility, so an injected stale
+        // selection still surfaces as unavailable.
+        const visible = this.freeOnly && this.freeModels.length > 0 ? this.freeModels : this.allModels
         this.modelUnavailable = Boolean(
-          this.configured && this.selectedModel && !res.freeModels.includes(this.selectedModel),
+          this.configured && this.selectedModel && !visible.includes(this.selectedModel),
         )
+        this.ensurePersistedVisible()
         this.failed = false
       } catch (err) {
         this.error = displayError(err)

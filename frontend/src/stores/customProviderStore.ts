@@ -36,6 +36,8 @@ export const useCustomProviderStore = defineStore('customProvider', {
     // is unaffected.
     availableModels: [] as string[],
     manualModel: false,
+    /** Pill label from the backend; falls back to 'Custom' at render time. */
+    displayName: null as string | null,
     configRevision: 0,
     validated: false,
     discovering: false,
@@ -66,6 +68,7 @@ export const useCustomProviderStore = defineStore('customProvider', {
         this.maskedKey = s.maskedKey
         this.selectedModel = s.selectedModel ?? ''
         this.manualModel = s.manualModel
+        this.displayName = s.displayName
         this.configRevision = s.configRevision
         this.validated = s.validated
         this.ensurePersistedVisible()
@@ -111,7 +114,7 @@ export const useCustomProviderStore = defineStore('customProvider', {
         this.discovering = false
       }
     },
-    async save(apiKey: string | null | undefined): Promise<boolean> {
+    async save(apiKey: string | null | undefined, displayName?: string | null): Promise<boolean> {
       if (this.saving) {
         return false
       }
@@ -119,7 +122,7 @@ export const useCustomProviderStore = defineStore('customProvider', {
       this.error = null
       try {
         const s = await saveCustomWithSource(this.apiFormat, this.baseUrl.trim(), apiKey,
-          this.selectedModel.trim(), this.manualModel ? 'MANUAL' : 'DISCOVERED')
+          this.selectedModel.trim(), this.manualModel ? 'MANUAL' : 'DISCOVERED', displayName)
         this.configured = s.configured
         this.apiFormat = s.apiFormat
         this.baseUrl = s.baseUrl
@@ -128,6 +131,7 @@ export const useCustomProviderStore = defineStore('customProvider', {
         this.maskedKey = s.maskedKey
         this.selectedModel = s.selectedModel
         this.manualModel = s.manualModel
+        this.displayName = s.displayName
         this.configRevision = s.configRevision
         this.validated = s.validated
         this.ensurePersistedVisible()

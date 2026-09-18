@@ -112,10 +112,16 @@ class HttpOpenCodeZenTransportTest {
         CapturedRequest request = captured.get(0);
         assertThat(request.method()).isEqualTo("POST");
         assertThat(request.path()).isEqualTo("/chat/completions");
-        assertThat(request.headers().getFirst("User-Agent")).isEqualTo("opencode/1.18.21");
+        assertThat(request.headers().getFirst("User-Agent")).isEqualTo(OpenCodeZenTransport.USER_AGENT);
         assertThat(request.headers().getFirst("Authorization")).isEqualTo("Bearer " + TEST_KEY);
         assertThat(request.headers().getFirst("Content-Type")).isEqualTo("application/json");
         assertThat(request.headers().getFirst("x-opencode-session")).isEqualTo(TEST_SESSION);
+        assertThat(request.headers().getFirst(OpenCodeZenTransport.CLIENT_HEADER))
+                .isEqualTo(OpenCodeZenTransport.CLIENT_ID);
+        assertThat(request.headers().getFirst(OpenCodeZenTransport.REQUEST_HEADER))
+                .isNotBlank().hasSize(4 + 26).startsWith("msg_");
+        assertThat(request.headers().getFirst(OpenCodeZenTransport.PROJECT_HEADER))
+                .isEqualTo(OpenCodeZenTransport.GLOBAL_PROJECT);
 
         JsonNode payload = mapper.readTree(request.body());
         assertThat(payload.get("model").asText()).isEqualTo("mimo-v2.5-free");
@@ -124,7 +130,11 @@ class HttpOpenCodeZenTransportTest {
         assertThat(payload.get("messages").get(1).get("content").asText()).isEqualTo("user context");
         assertThat(payload.get("stream").asBoolean()).isTrue();
         assertThat(payload.fieldNames()).toIterable()
-                .containsExactlyInAnyOrder("model", "messages", "stream");
+                .containsExactlyInAnyOrder("model", "messages", "stream", "tools");
+        // Zen's free tier only answers client-shaped requests, so every
+        // completion carries the transport-owned placeholder tool array.
+        assertThat(payload.get("tools")).isNotEmpty();
+        assertThat(payload.get("tools").get(0).get("type").asText()).isEqualTo("function");
         assertThat(payload.get("temperature")).isNull();
         assertThat(payload.get("top_p")).isNull();
         assertThat(payload.get("top_k")).isNull();
@@ -264,6 +274,7 @@ class HttpOpenCodeZenTransportTest {
 
     @Test
     void credentialProbeUsesSameOpenCodeTransport() throws IOException {
+        stubBody = streamingJson("{\"action\":\"finish\"}");
         transport().validateCredential(TEST_KEY, "current-free");
 
         CapturedRequest request = captured.get(0);
@@ -283,7 +294,12 @@ class HttpOpenCodeZenTransportTest {
         assertThat(payload.get("messages").get(0).get("role").asText()).isEqualTo("user");
         assertThat(payload.get("max_tokens").asInt()).isEqualTo(256);
         assertThat(payload.get("response_format").get("type").asText()).isEqualTo("json_object");
-        assertThat(payload.get("stream").asBoolean()).isFalse();
+        // Zen admits the free tier only for client-shaped requests: the probe has
+        // to be streamed and carry a non-empty tools array, exactly like the
+        // production completion. A non-streamed or tool-less probe is rejected
+        // with FreeTierError before any credential check happens.
+        assertThat(payload.get("stream").asBoolean()).isTrue();
+        assertThat(payload.get("tools")).isNotEmpty();
     }
 
     @Test
@@ -656,7 +672,7 @@ class HttpOpenCodeZenTransportTest {
         RecordingPoisonSelector poison = new RecordingPoisonSelector();
         ProxySelector.setDefault(poison);
         try {
-            stubBody = completionJson("{\"action\":\"finish\"}");
+            stubBody = streamingJson("{\"action\":\"finish\"}");
 
             transport().validateCredential(TEST_KEY, "current-free");
 

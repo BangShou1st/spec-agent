@@ -61,7 +61,20 @@ export type ProviderState =
   | 'invalid'
   | 'active'
 
-export function openRouterState(configured: boolean, validated: boolean, active: boolean, failed: boolean): ProviderState {
+/**
+ * Single state mapping for every provider card. `busy` lets a card show the
+ * in-flight state without inventing a fourth mapping.
+ */
+export function providerCardState(
+  configured: boolean,
+  validated: boolean,
+  active: boolean,
+  failed: boolean,
+  busy = false,
+): ProviderState {
+  if (busy) {
+    return 'validating'
+  }
   if (active && validated) {
     return 'active'
   }
@@ -75,6 +88,10 @@ export function openRouterState(configured: boolean, validated: boolean, active:
     return 'valid-inactive'
   }
   return 'configured-unvalidated'
+}
+
+export function openRouterState(configured: boolean, validated: boolean, active: boolean, failed: boolean): ProviderState {
+  return providerCardState(configured, validated, active, failed)
 }
 
 export function stateLabel(state: ProviderState): string {

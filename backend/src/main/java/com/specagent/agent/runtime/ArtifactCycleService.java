@@ -108,8 +108,7 @@ public class ArtifactCycleService {
      * user switched the active route while this run was queued, the run fails
      * closed (STALE) instead of generating a mixed or outdated spec.
      */
-    public SpecGenerationOutcome generateSpec(AgentRun run) {
-        Route route = routeRepository.findById(run.routeId())
+    public SpecGenerationOutcome generateSpec(AgentRun run) {        Route route = routeRepository.findById(run.routeId())
                 .orElseThrow(() -> new IllegalStateException(
                         "Route not found: " + run.routeId()));
         if (!route.projectId().equals(run.projectId())) {
@@ -128,7 +127,12 @@ public class ArtifactCycleService {
         com.specagent.project.Project project = projectRepository.findById(run.projectId())
                 .orElseThrow(() -> new IllegalStateException(
                         "Project not found: " + run.projectId()));
-        if (!java.util.Objects.equals(project.activeRouteId(), run.routeId())) {
+        boolean explicitRoute = isExplicitRouteRun(run);
+        // Active mode keeps the original fail-closed guarantee: a spec is never
+        // generated for a route the user stopped working on. Explicit-route
+        // runs target their own route instead (its OPEN-ness and tip are still
+        // checked above).
+        if (!explicitRoute && !java.util.Objects.equals(project.activeRouteId(), run.routeId())) {
             throw new StaleRunTargetException(
                     "Active route changed while artifact run was queued: run route "
                             + run.routeId() + ", active route " + project.activeRouteId());
@@ -151,7 +155,7 @@ public class ArtifactCycleService {
                     "snapshotId", snapshot.id().toString(),
                     "contextHash", snapshot.contextHash()));
 
-            if (!contextGuard.validate(snapshot).accepted()) {
+            if (!contextGuard.validate(snapshot, explicitRoute).accepted()) {
                 throw new ModelContractException("Context guard rejected agent run");
             }
 
@@ -255,6 +259,20 @@ public class ArtifactCycleService {
                     section.sourceRefs() == null ? List.of() : section.sourceRefs());
         }
         return new SpecDraft(sections, result.unresolvedItems(), refsBySection);
+    }
+
+    /**
+     * Whether this run was queued against an EXPLICIT route (recorded in its
+     * RUN_CREATED payload by {@code RunService}). Only then may the artifact
+     * run skip the Active-equality rule; Active-mode runs keep failing closed.
+     */
+    private boolean isExplicitRouteRun(AgentRun run) {
+        return eventService.findByRunId(run.id()).stream()
+                .filter(event -> "RUN_CREATED".equals(event.eventType()))
+                .map(com.specagent.agent.runevent.AgentRunEvent::payload)
+                .findFirst()
+                .map(payload -> "EXPLICIT".equals(payload.get("routeSelection")))
+                .orElse(false);
     }
 
     private void failIfNotTerminal(UUID runId, String trace, RuntimeException ex) {

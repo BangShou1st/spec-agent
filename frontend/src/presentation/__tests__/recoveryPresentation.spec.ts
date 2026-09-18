@@ -16,7 +16,7 @@ describe('recoveryNoticeFromState', () => {
     expect(model).toMatchObject({
       kind: 'unknown',
       title: '提交结果暂时无法确认',
-      message: '为了避免重复操作，请先同步最新状态。',
+      message: '为了避免重复操作，请先同步最新状态',
       action: 'reconcile-answer',
       actionLabel: '同步状态',
     })
@@ -31,7 +31,7 @@ describe('recoveryNoticeFromState', () => {
     expect(model).toMatchObject({
       kind: 'saved',
       title: '回答已经保存',
-      message: '后续生成没有完成，不需要重新填写回答。',
+      message: '后续生成没有完成，不需要重新填写回答',
       action: 'resume-answer',
       actionLabel: '继续生成',
     })
@@ -44,7 +44,7 @@ describe('recoveryNoticeFromState', () => {
     expect(model).toMatchObject({
       kind: 'resubmit',
       title: '回答尚未保存',
-      message: '已确认可以安全地再次提交。',
+      message: '已确认可以安全地再次提交',
       action: 'resubmit-answer',
       actionLabel: '再次提交',
     })

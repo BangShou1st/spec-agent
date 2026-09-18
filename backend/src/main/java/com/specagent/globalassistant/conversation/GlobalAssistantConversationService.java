@@ -50,6 +50,15 @@ public class GlobalAssistantConversationService {
         requireThread(threadId);
         return messages.append(threadId, GlobalAssistantMessage.Role.ASSISTANT, content, runId);
     }
+
+    /** Append an assistant message with model accounting attribution. */
+    @Transactional
+    public GlobalAssistantMessage appendAssistantMessage(UUID threadId, String content, UUID runId,
+            String providerLabel, String modelId) {
+        requireThread(threadId);
+        return messages.append(threadId, GlobalAssistantMessage.Role.ASSISTANT, content, runId,
+                providerLabel, modelId);
+    }
     @Transactional
     public GlobalAssistantRun createRun(UUID threadId, String promptVersion, String contextProjectionVersion, String toolCatalogFingerprint) {
         requireThread(threadId);

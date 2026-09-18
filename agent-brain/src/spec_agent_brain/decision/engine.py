@@ -28,8 +28,29 @@ class BrainContractError(RuntimeError):
     """Raised when a model output violates the brain's own output contract."""
 
 
+class ConflictSurfacingError(BrainContractError):
+    """The output omitted observation.conflicts while unresolved conflicts exist.
+
+    Kept distinct from the other contract failures because it is the one
+    violation a second, explicitly-instructed call can actually repair: the
+    unresolved claim stays in the snapshot, so without a repair every later
+    decision on that route fails identically and the project becomes
+    permanently unanswerable.
+    """
+
+
 class ActionIneligibleBrainError(BrainContractError):
     """The model selected a family outside the Runtime-owned V3 mask."""
+
+
+CONFLICT_REPAIR_INSTRUCTION = (
+    "上一次输出违反了输出契约：snapshot.effectiveClaims 中存在 kind=conflict 且 "
+    "status=unresolved 的 claim，但 observation.conflicts 为空。未解决冲突如下：\n"
+    "{conflicts}\n"
+    "请重新输出完整的决策 JSON（保持 JSON 格式与全部必需字段），"
+    "并在 observation.conflicts 中至少逐条列出上述冲突，"
+    "同时按规则 9 让本周期的主动作直接推进冲突解决。只输出 JSON。"
+)
 
 
 def handle_decision(
@@ -39,20 +60,33 @@ def handle_decision(
         raise BrainContractError("decision budget does not allow any model call")
 
     user_prompt = _render_model_input(request)
+    messages = [
+        ChatMessage(role="system", content=decision_prompt.SYSTEM_PROMPT),
+        ChatMessage(role="user", content=user_prompt),
+    ]
     completion = client.complete(
         run_id=str(request.run_id),
         call_type="DECISION",
-        messages=[
-            ChatMessage(role="system", content=decision_prompt.SYSTEM_PROMPT),
-            ChatMessage(role="user", content=user_prompt),
-        ],
+        messages=messages,
     )
-    output = _parse_model_output(completion.content)
-    _check_source_refs(output, request)
-    _check_conflict_action(output, request)
-
-    if isinstance(request, AgentV3RequestEnvelope):
-        _check_eligibility_action(output, request)
+    model_calls = 1
+    try:
+        output = _validate_output(completion.content, request)
+    except ConflictSurfacingError:
+        # One bounded repair, and only when the Runtime-declared budget funds a
+        # second call. Nothing else is retried: every other violation still
+        # fails closed on the first output, exactly as before.
+        if request.decision_budget.max_model_calls < 2:
+            raise
+        repair = CONFLICT_REPAIR_INSTRUCTION.format(
+            conflicts="\n".join("- " + text for text in _unresolved_conflict_texts(request)))
+        completion = client.complete(
+            run_id=str(request.run_id),
+            call_type="DECISION",
+            messages=messages + [ChatMessage(role="user", content=repair)],
+        )
+        model_calls = 2
+        output = _validate_output(completion.content, request)
 
     response_type = (AgentV3ResponseEnvelope
                      if isinstance(request, AgentV3RequestEnvelope)
@@ -79,7 +113,9 @@ def handle_decision(
             idempotency_key=str(request.run_id),
             anchor_refs=output.action.anchor_refs,
         ),
-        usage=UsageView(model_calls=1, prompt_hashes=[]),
+        # Honest accounting: the repair call is reported, never hidden. Java
+        # rejects the response when this exceeds the declared budget.
+        usage=UsageView(model_calls=model_calls, prompt_hashes=[]),
         diagnostics=semantic_diagnostics(
             decision_prompt.SYSTEM_PROMPT, user_prompt, "DECISION"),
     )
@@ -90,6 +126,23 @@ def handle_decision(
             eligibility_evidence_refs=output.action.source_refs,
         )
     return response_type(**response_values)
+
+
+def _validate_output(
+        content: str,
+        request: AgentV2RequestEnvelope | AgentV3RequestEnvelope) -> ModelDecisionOutput:
+    output = _parse_model_output(content)
+    _check_source_refs(output, request)
+    _check_conflict_action(output, request)
+    if isinstance(request, AgentV3RequestEnvelope):
+        _check_eligibility_action(output, request)
+    return output
+
+
+def _unresolved_conflict_texts(
+        request: AgentV2RequestEnvelope | AgentV3RequestEnvelope) -> list[str]:
+    return [claim.text for claim in request.snapshot.effective_claims
+            if claim.kind == "conflict" and claim.status == "unresolved"]
 
 
 def _render_model_input(
@@ -153,5 +206,5 @@ def _check_conflict_action(output: ModelDecisionOutput,
         return
 
     if not output.observation.conflicts:
-        raise BrainContractError(
+        raise ConflictSurfacingError(
             "unresolved conflict requires a non-empty observation.conflicts")

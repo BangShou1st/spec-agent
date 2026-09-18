@@ -286,7 +286,7 @@ describe('workspaceStore', () => {
     expect(mockedCreateAgentRun).toHaveBeenCalledWith('p1', { operation: 'DRAFT_QUESTION' })
     expect(mockedGetActiveState.mock.calls.length).toBe(readCallsBefore + 1)
     expect(store.activeState?.activeNode?.question).toBe('First drafted question')
-    expect(store.feedback).toBe('问题已起草。')
+    expect(store.feedback).toBe('问题已起草')
   })
 
   it('keeps an in-flight draft projection bound to a real active route', async () => {
@@ -364,6 +364,7 @@ describe('workspaceStore', () => {
       nodeId: store.pendingAnswerNodeId,
       selectedOptionId: null,
       freeText: 'async answer',
+      sourceRouteId: null,
       idempotencyKey: expect.any(String),
     })
     expect(store.submitting).toBe(true)
@@ -394,8 +395,70 @@ describe('workspaceStore', () => {
       nodeId: expect.any(String),
       selectedOptionId: 'opt-a',
       freeText: null,
+      sourceRouteId: null,
       idempotencyKey: expect.any(String),
     })
+  })
+
+  it('回答聚焦的非运行路线末端时带上显式路线（多路线独立）', async () => {
+    mockBackendViews(makeActiveState(), makeRequirementState())
+    mockedCreateAgentRun.mockResolvedValue({
+      runId: 'run-1',
+      operation: 'ANSWER_TIP',
+      phase: 'CREATED',
+    })
+    mockedGetAgentRun.mockResolvedValue(completedRunView())
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+
+    const ok = await store.submitAnswer({
+      selectedOptionId: 'opt-a',
+      nodeId: 'node-other-route',
+      routeId: 'r2',
+    })
+
+    expect(ok).toBe(true)
+    // 目标不是运行路线 → sourceRouteId 必须显式带上（后端据此把 run 绑到 r2）。
+    expect(mockedCreateAgentRun).toHaveBeenCalledWith('p1', {
+      operation: 'ANSWER_TIP',
+      nodeId: 'node-other-route',
+      selectedOptionId: 'opt-a',
+      freeText: null,
+      sourceRouteId: 'r2',
+      idempotencyKey: expect.any(String),
+    })
+    expect(store.submittedRouteIdForCleanup).toBe('r2')
+  })
+
+  it('一条路线的运行不会挡住另一条路线（按路线加锁）', async () => {
+    mockBackendViews(makeActiveState(), makeRequirementState())
+    mockedCreateAgentRun.mockResolvedValue({
+      runId: 'run-1',
+      operation: 'ANSWER_TIP',
+      phase: 'CREATED',
+    })
+    // 轮询永不返回终态：两条路线的 run 都停在"进行中"。
+    mockedGetAgentRun.mockReturnValue(new Promise(() => undefined))
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+    const activeRouteId = store.activeState?.activeRoute?.id ?? null
+
+    void store.submitAnswer({ selectedOptionId: 'opt-a' })
+    await vi.waitFor(() => expect(store.answerRunsInFlight).toEqual([activeRouteId]))
+    expect(store.submitting).toBe(true)
+
+    // 同一条路线：拒绝并发（一个节点永远只能有一个答题周期）。
+    expect(await store.submitAnswer({ selectedOptionId: 'opt-b' })).toBe(false)
+
+    // 另一条路线：不受影响 —— 这就是"链路互不影响"。
+    void store.submitAnswer({
+      selectedOptionId: 'opt-b',
+      nodeId: 'node-other-route',
+      routeId: 'r2',
+    })
+    await vi.waitFor(() => expect(store.answerRunsInFlight).toContain('r2'))
+    expect(mockedCreateAgentRun).toHaveBeenCalledTimes(2)
+    expect(store.answerRunsInFlight).toContain(activeRouteId)
   })
 
   it('submits a free-text-only answer payload', async () => {
@@ -416,6 +479,7 @@ describe('workspaceStore', () => {
       nodeId: expect.any(String),
       selectedOptionId: null,
       freeText: 'We need a single-user tool',
+      sourceRouteId: null,
       idempotencyKey: expect.any(String),
     })
   })
@@ -438,6 +502,7 @@ describe('workspaceStore', () => {
       nodeId: expect.any(String),
       selectedOptionId: 'opt-a',
       freeText: 'explanation text',
+      sourceRouteId: null,
       idempotencyKey: expect.any(String),
     })
   })
@@ -535,7 +600,7 @@ describe('workspaceStore', () => {
     expect(mockedGetRequirementState).toHaveBeenCalledTimes(2)
     expect(store.requirementState?.confirmed[0].text).toBe('Backend-derived confirmed claim')
     expect(store.activeState?.activeNode?.question).toBe('Drafted next question')
-    expect(store.feedback).toBe('回答已记录。')
+    expect(store.feedback).toBe('回答已记录')
   })
 
   it('surfaces a provider-neutral rate-limit error safely when the run fails', async () => {
@@ -922,7 +987,7 @@ describe('workspaceStore', () => {
     expect(store.forkDraftRetryRouteId).toBeNull()
     expect(store.manualModelRetry).toBeNull()
     expect(store.error).toBeNull()
-    expect(store.feedback).toBe('已创建新分支路线。')
+    expect(store.feedback).toBe('已创建新分支路线')
   })
 
   it('reload restores an owned active-tip Answer as the repair target', async () => {

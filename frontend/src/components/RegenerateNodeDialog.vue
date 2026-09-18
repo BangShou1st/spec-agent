@@ -34,14 +34,14 @@ function submit(): void {
     <div class="dialog" role="dialog" aria-modal="true" aria-label="换一个问题">
       <h3 style="margin-top: 0">换一个问题</h3>
       <p class="muted" style="margin-top: 0">
-        你接下来更想澄清哪个方面？也可以直接说说你目前最关心的需求。
+        你接下来更想澄清哪个方面？也可以直接说说你目前最关心的需求
       </p>
       <p v-if="node" class="meta-text">当前问题：{{ node.question }}</p>
       <p v-if="isRootNode" class="info-line regenerate-blocker" data-test="regenerate-root-blocker">
-        根问题暂不支持替换。
+        根问题暂不支持替换
       </p>
       <p v-else-if="!sourceRouteId" class="info-line regenerate-blocker" data-test="regenerate-source-blocker">
-        请先在该共享节点的“当前查看”控件中选择一条路线。
+        请先在该共享节点的“当前查看”控件中选择一条路线
       </p>
 
       <label class="field-label secondary">
@@ -72,7 +72,7 @@ function submit(): void {
 .dialog { background: var(--color-surface); border-radius: var(--radius); padding: 18px; width: 100%; max-width: 520px; box-shadow: 0 12px 32px rgba(15, 20, 30, 0.25); }
 .field-label { display: block; margin-top: 12px; font-size: 13px; }
 .field-label .answer-input { display: block; min-height: 100px; margin-top: 4px; }
-.dialog-actions { display: flex; gap: 8px; margin-top: 16px; }
+.dialog-actions { margin-top: 16px; }
 .info-line { font-size: 12px; }
 .regenerate-blocker { color: var(--color-warn); }
 </style>

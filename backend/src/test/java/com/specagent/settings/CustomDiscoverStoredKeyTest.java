@@ -85,7 +85,7 @@ class CustomDiscoverStoredKeyTest {
     private void storeKey(String key) {
         Instant now = Instant.now();
         repo.stored = new CustomProviderSettings("CHAT_COMPLETIONS", baseUrl, key,
-                key == null ? null : "KEY1", "m1", "DISCOVERED", 1, null, now, now, null);
+                key == null ? null : "KEY1", "m1", "DISCOVERED", null, 1, null, now, now, null);
     }
 
     @Test void storedKeyUsedWhenNull() {

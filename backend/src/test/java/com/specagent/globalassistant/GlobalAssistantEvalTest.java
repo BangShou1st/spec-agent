@@ -49,6 +49,7 @@ import org.springframework.transaction.annotation.Transactional;
 @ActiveProfiles("test")
 @Transactional
 class GlobalAssistantEvalTest {
+    @Autowired com.specagent.globalassistant.model.GlobalAssistantModelTargetResolver modelTargets;
     @Autowired GlobalAssistantConversationService conversations;
     @Autowired GlobalAssistantContextBuilder contextBuilder;
     @Autowired GlobalAssistantPromptRenderer renderer;
@@ -72,7 +73,7 @@ class GlobalAssistantEvalTest {
         ModelInferenceGateway stub = request -> new ModelInferenceResponse(scripts.poll(), "stop", 0, 0);
         GlobalAssistantBrain brain = new GlobalAssistantBrain(renderer, stub, parser, validator);
         return new GlobalAssistantRuntime(conversations, contextBuilder, brain, capabilities,
-                runs, canonicalizer, budgets, lifecycle, runEvents, uiValidator, summaries);
+                runs, canonicalizer, budgets, lifecycle, runEvents, uiValidator, summaries, modelTargets);
     }
     private ScenarioResult runScenario(String scenario, String variant, String userMessage,
             List<String> scripts) {

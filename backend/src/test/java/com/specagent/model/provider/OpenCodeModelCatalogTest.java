@@ -45,6 +45,19 @@ class OpenCodeModelCatalogTest {
     }
 
     @Test
+    void listAllModelsReturnsEveryExposedModelSortedAndDistinct() {
+        OpenCodeModelCatalog catalog = catalogWith(
+                new OpenCodeModel("paid-model", "opencode"),
+                new OpenCodeModel("two-free", "opencode"),
+                new OpenCodeModel("one-free", "opencode"),
+                new OpenCodeModel("paid-model", "opencode"));
+
+        assertThat(catalog.listAllModels(null))
+                .containsExactly("one-free", "paid-model", "two-free");
+        assertThat(catalog.listAllModels(null)).anySatisfy(id -> assertThat(id).doesNotEndWith("-free"));
+    }
+
+    @Test
     void listFreeModelsReturnsEmptyWhenNothingIsFree() {
         OpenCodeModelCatalog catalog = catalogWith(
                 new OpenCodeModel("paid-model", "opencode"),

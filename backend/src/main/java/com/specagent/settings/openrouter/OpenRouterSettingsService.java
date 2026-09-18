@@ -50,23 +50,37 @@ public class OpenRouterSettingsService {
                 .orElseGet(() -> new Status(false, null, null, 0, false, isActive));
     }
 
-    /** Candidate probe: validates key reachability + free list without saving. */
-    public List<String> probeCandidate(String apiKey) {
+    /**
+     * One model-discovery result: every displayable provider model plus the
+     * free qualified subset used for the reachability probe.
+     */
+    public record CandidateModels(List<String> allModels, List<String> freeModels) {
+    }
+
+    /** Candidate probe: validates key reachability + model list without saving. */
+    public CandidateModels probeCandidate(String apiKey) {
         String key = requireKey(apiKey);
-        List<String> all = fetchModelIds(key, "openrouter");
-        List<String> free = all.stream().filter(OpenRouterGatewaySupport::isFreeModelId).sorted().toList();
-        if (free.isEmpty()) {
+        CandidateModels models = discover(key);
+        if (models.freeModels().isEmpty()) {
             throw ModelProviderException.invalidModel("openrouter", "No free models available", null);
         }
         // Credential reachability is proven by a successful model list; the
         // compatibility probe runs per selected model at validate time.
-        return free;
+        return models;
     }
 
-    public List<String> listSavedKeyModels() {
+    public CandidateModels listSavedKeyModels() {
         OpenRouterSettings s = requireStored();
-        List<String> all = fetchModelIds(s.apiKey(), "openrouter");
-        return all.stream().filter(OpenRouterGatewaySupport::isFreeModelId).sorted().toList();
+        return discover(s.apiKey());
+    }
+
+    private CandidateModels discover(String apiKey) {
+        var ids = OpenRouterModelQualification.qualifiedModelIds(
+                fetchModelRoot(apiKey, "openrouter"), "openrouter");
+        List<String> free = ids.all().stream()
+                .filter(OpenRouterGatewaySupport::isFreeModelId)
+                .toList();
+        return new CandidateModels(ids.all(), free);
     }
 
     /** Save invalidates prior validation when key or model changes. */
@@ -82,19 +96,13 @@ public class OpenRouterSettingsService {
         } else {
             resolvedKey = apiKeyInput.trim();
         }
-        if (!OpenRouterGatewaySupport.isFreeModelId(model)) {
-            // Still verify against live list so paid ids fail with a clear error.
-            List<String> free = probeCandidate(resolvedKey);
-            if (!free.contains(model)) {
-                throw ModelProviderException.invalidModel("openrouter",
-                        "Selected OpenRouter model is not an available free model", null);
-            }
-        } else {
-            List<String> free = probeCandidate(resolvedKey);
-            if (!free.contains(model)) {
-                throw ModelProviderException.invalidModel("openrouter",
-                        "Selected OpenRouter model is not currently available", null);
-            }
+        // Selection follows the live provider list: free and paid ids are
+        // both saveable, but the id must exist right now and the saved pair
+        // must pass the real compatibility probe before activation.
+        CandidateModels models = probeCandidate(resolvedKey);
+        if (!models.allModels().contains(model)) {
+            throw ModelProviderException.invalidModel("openrouter",
+                    "Selected OpenRouter model is not currently available", null);
         }
         Instant now = Instant.now();
         if (existing != null && existing.apiKey().equals(resolvedKey)
@@ -107,11 +115,11 @@ public class OpenRouterSettingsService {
         return status(false);
     }
 
-    /** Compatibility test on the saved configuration. Sets validated revision. */
+/** Compatibility test on the saved configuration. Sets validated revision. */
     public Status validate() {
         OpenRouterSettings s = requireStored();
-        List<String> free = probeCandidate(s.apiKey());
-        if (!free.contains(s.selectedModel())) {
+        CandidateModels models = probeCandidate(s.apiKey());
+        if (!models.allModels().contains(s.selectedModel())) {
             throw ModelProviderException.invalidModel("openrouter",
                     "Selected OpenRouter model is not currently available", null);
         }
@@ -137,7 +145,7 @@ public class OpenRouterSettingsService {
                 .orElseThrow(() -> ModelProviderException.notConfigured("openrouter", "OpenRouter is not configured"));
     }
 
-    private List<String> fetchModelIds(String apiKey, String context) {
+    private JsonNode fetchModelRoot(String apiKey, String context) {
         var adapter = registry.require(CustomApiFormat.CHAT_COMPLETIONS);
         String url = OpenRouterGatewaySupport.BASE_URL + "/models";
         ProviderHttpSupport.HttpResult result = ProviderHttpSupport.getJson(
@@ -147,7 +155,7 @@ public class OpenRouterSettingsService {
         if (root == null) {
             throw ModelProviderException.invalidResponse(context, "OpenRouter model list unsupported");
         }
-        return OpenRouterModelQualification.qualifiedIds(root, context);
+        return root;
     }
 
     private static String requireKey(String apiKey) {

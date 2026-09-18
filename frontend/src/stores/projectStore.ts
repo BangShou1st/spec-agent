@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { createProject, deleteProject, listProjects } from '@/api/projects'
+import { createProject, deleteProject, listProjects, renameProject } from '@/api/projects'
 import { ApiError, GENERIC_ERROR_MESSAGE } from '@/api/client'
 import type { ProjectResponse, ProjectSummaryResponse } from '@/api/types'
 
@@ -15,6 +15,9 @@ function toDisplayError(err: unknown): DisplayError {
   return { code: 'UNKNOWN_ERROR', message: GENERIC_ERROR_MESSAGE }
 }
 
+// Module-level monotonically increasing token for loadProjects race safety.
+let loadToken = 0
+
 /**
  * Project list/create application state. Backend remains authoritative for
  * everything; this store only mirrors list data and creation results.
@@ -25,18 +28,30 @@ export const useProjectStore = defineStore('project', {
     loading: false,
     creating: false,
     deletingId: null as string | null,
+    renamingId: null as string | null,
     error: null as DisplayError | null,
   }),
   actions: {
-    async loadProjects(): Promise<void> {
+    // Monotonic token so a slow, stale list response can never overwrite a
+    // newer one. Typing triggers several in-flight requests; only the latest
+    // wins. This is lighter than debouncing and keeps the list responsive.
+    async loadProjects(title?: string): Promise<void> {
+      const token = ++loadToken
       this.loading = true
       this.error = null
       try {
-        this.projects = await listProjects()
+        const result = await listProjects(title)
+        if (token === loadToken) {
+          this.projects = result
+        }
       } catch (err) {
-        this.error = toDisplayError(err)
+        if (token === loadToken) {
+          this.error = toDisplayError(err)
+        }
       } finally {
-        this.loading = false
+        if (token === loadToken) {
+          this.loading = false
+        }
       }
     },
 
@@ -55,6 +70,23 @@ export const useProjectStore = defineStore('project', {
         return null
       } finally {
         this.creating = false
+      }
+    },
+
+    /** Renames one project in place; list order and history stay untouched. */
+    async renameProject(id: string, title: string): Promise<boolean> {
+      if (this.renamingId) return false
+      this.renamingId = id
+      this.error = null
+      try {
+        const updated = await renameProject(id, title)
+        this.projects = this.projects.map((p) => (p.id === id ? { ...p, title: updated.title, updatedAt: updated.updatedAt } : p))
+        return true
+      } catch (err) {
+        this.error = toDisplayError(err)
+        return false
+      } finally {
+        this.renamingId = null
       }
     },
 

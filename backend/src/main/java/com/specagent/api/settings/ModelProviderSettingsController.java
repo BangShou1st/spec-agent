@@ -40,7 +40,7 @@ public class ModelProviderSettingsController {
         this.custom = custom;
     }
 
-    public record ActiveResponse(String activeProvider) {
+    public record ActiveResponse(String activeProvider, String activeProviderId) {
     }
 
     public record ActivateRequest(String provider) {
@@ -48,7 +48,9 @@ public class ModelProviderSettingsController {
 
     @GetMapping("/active")
     public ActiveResponse active() {
-        return new ActiveResponse(providerSettings.activeProviderCode());
+        return new ActiveResponse(providerSettings.activeProviderCode(),
+                providerSettings.activeProviderId() == null
+                        ? null : providerSettings.activeProviderId().toString());
     }
 
     @PostMapping("/activate")
@@ -65,7 +67,7 @@ public class ModelProviderSettingsController {
             default -> throw new IllegalArgumentException("Unknown provider");
         }
         providerSettings.setActiveProviderByCode(target);
-        return new ActiveResponse(target);
+        return new ActiveResponse(target, null);
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

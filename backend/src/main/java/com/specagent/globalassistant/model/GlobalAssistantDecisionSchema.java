@@ -67,6 +67,14 @@ public final class GlobalAssistantDecisionSchema {
                         "projectId", Map.of("type", "string", "pattern", UUID_PATTERN)),
                 "required", List.of("projectId"),
                 "additionalProperties", false);
+        Map<String, Object> skillImportArgs = Map.of(
+                "type", "object",
+                "properties", Map.of(
+                        "url", Map.of("type", "string", "minLength", 1, "maxLength", 500),
+                        "ref", Map.of("type", "string", "maxLength", 200),
+                        "skill", Map.of("type", "string", "maxLength", 512)),
+                "required", List.of("url"),
+                "additionalProperties", false);
         Map<String, Object> createBranch = Map.of(
                 "type", "object",
                 "properties", Map.of(
@@ -95,11 +103,18 @@ public final class GlobalAssistantDecisionSchema {
                         "arguments", summaryArgs),
                 "required", List.of("capabilityId", "arguments"),
                 "additionalProperties", false);
+        Map<String, Object> skillImportBranch = Map.of(
+                "type", "object",
+                "properties", Map.of(
+                        "capabilityId", Map.of("const", "skill.import"),
+                        "arguments", skillImportArgs),
+                "required", List.of("capabilityId", "arguments"),
+                "additionalProperties", false);
         Map<String, Object> toolBranch = Map.of(
                 "type", "object",
                 "properties", Map.of(
                         "kind", Map.of("const", "TOOL"),
-                        "toolRequest", Map.of("oneOf", List.of(createBranch, searchBranch, recentBranch, summaryBranch))),
+                        "toolRequest", Map.of("oneOf", List.of(createBranch, searchBranch, recentBranch, summaryBranch, skillImportBranch))),
                 "required", List.of("kind", "toolRequest"),
                 "additionalProperties", false);
         Map<String, Object> clarifyBranch = Map.of(

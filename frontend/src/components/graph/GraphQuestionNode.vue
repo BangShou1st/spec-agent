@@ -13,6 +13,7 @@ import type { SubmitAnswerRequest } from '@/api/types'
 import type { SpecAgentGraphNodeData } from '@/graph/graphProjection'
 import { useInputDraftStore } from '@/stores/inputDraftStore'
 import { phaseToCopy } from '@/graph/phaseCopy'
+import RichAssistantText from '@/components/global-assistant/RichAssistantText.vue'
 
 /**
  * Four-side edge anchors for adaptive routing. Every side carries one
@@ -60,9 +61,10 @@ const emit = defineEmits<{
  *
  * Only the backend Active node without a finalized answer is answerable;
  * answer inputs live directly inside the node. Historical nodes are
- * read-only: they show only the primary/current reading answer preview.
- * Full route membership, answer history, and provenance remain in the
- * Inspector.
+ * read-only: selected (clicked) historical nodes show the complete question
+ * and answer at the same fidelity as the current node; unselected ones stay
+ * a compact navigation card so a long history never buries the canvas.
+ * Route-by-route answer history and provenance remain in the Inspector.
  *
  * Drag safety: only the header drags. Interactive body controls (options,
  * textarea, buttons) stop click propagation so they neither drag
@@ -166,6 +168,11 @@ function submit(): void {
     freeText: props.data.node.allowFreeAnswer && freeText.value.trim().length > 0
       ? freeText.value.trim()
       : null,
+    // Explicit target: when this card is the tip of the route the user is
+    // reading (e.g. a non-Active route), the answer must be written to THAT
+    // route instead of whatever route happens to be Active.
+    nodeId: props.data.canonicalNodeId ?? props.data.node.id,
+    routeId: props.data.readingRouteId,
   })
 }
 
@@ -184,6 +191,36 @@ function reanswerNode(): void {
 const isRootNode = computed(() => props.data.node.parentNodeId === null)
 const readingRouteOptions = computed(() => props.data.routeMembership ?? [])
 
+/**
+ * 当前查看 = 已确定时只展示（默认由 Focus / 只看这条路线 / 唯一可见归属填满），
+ * 真正歧义时（多归属且都可见且无 Focus）才给出选择器。
+ * 只有一条候选时选择器没有可选项意义 —— 那就是"下拉碍事"的来源。
+ */
+const readingRouteLabel = computed<string | null>(() => {
+  const routeId = props.data.readingRouteId
+  if (!routeId) return null
+  const membership = readingRouteOptions.value.find((option) => option.routeId === routeId)
+  return membership?.label ?? '已选路线'
+})
+const needsReadingRouteChoice = computed(() =>
+  props.data.readingRouteId === null && readingRouteOptions.value.length > 1,
+)
+
+/**
+ * 被选中的历史节点展开为"完整问答"：与当前问题节点同等规格地展示完整问题、
+ * 目的、全部选项（标出实际选择）与自由文本回答（富文本渲染）。
+ *
+ * 未选中时仍保持紧凑导航卡，避免画布被长文本铺满；逐路线的回答历史继续留在
+ * Inspector 中（那里才是多路线事实的唯一权威视图）。
+ */
+const showFullHistory = computed(() => props.selected === true)
+
+/** 全部选项 + 该项是否就是实际提交的选择（只读展示，回答仍在 Inspector/历史中）。 */
+const historyOptions = computed(() => {
+  const chosen = primary.value?.selectedOptionId ?? null
+  return node.value.options.map((option) => ({ option, chosen: option.id === chosen }))
+})
+
 function setReadingRoute(event: Event): void {
   const value = (event.target as HTMLSelectElement).value
   emit('focus-route', value || null)
@@ -200,6 +237,7 @@ function setReadingRoute(event: Event): void {
         'graph-question-node--historical': !data.canAnswer,
         'graph-question-node--shared': data.isShared,
         'graph-question-node--selected': selected === true,
+        'graph-question-node--detailed': !data.canAnswer && showFullHistory,
       },
     ]"
     data-test="graph-question-node"
@@ -285,10 +323,15 @@ function setReadingRoute(event: Event): void {
         data-test="shared-reading-route"
         @click.stop
       >
-        <label class="graph-reading-route__label" :for="'shared-reading-route-select-' + data.visualNodeKey">
-          当前查看
-        </label>
+        <span class="graph-reading-route__label">当前查看</span>
+        <span
+          v-if="!needsReadingRouteChoice"
+          class="graph-reading-route__value"
+          data-test="reading-route-resolved"
+          :title="readingRouteLabel ?? '未选择'"
+        >{{ readingRouteLabel ?? '未选择' }}</span>
         <select
+          v-else
           :id="'shared-reading-route-select-' + data.visualNodeKey"
           class="graph-reading-route__select nodrag"
           data-test="reading-route-select"
@@ -369,7 +412,77 @@ function setReadingRoute(event: Event): void {
 
       </template>
 
-      <!-- Historical node: compact navigation card; full answer stays in Inspector. -->
+      <!-- 选中的历史节点：完整问答（与当前问题节点同规格）。点击节点即展开，
+           取消选择恢复紧凑导航卡。逐路线历史仍在 Inspector 中查看。 -->
+      <template v-else-if="showFullHistory">
+        <h3 class="graph-node-question" data-test="historical-question">
+          {{ node.question }}
+        </h3>
+        <p v-if="node.purpose" class="graph-node-purpose">
+          {{ node.purpose }}
+        </p>
+
+        <div v-if="primary" class="graph-history-answer" data-test="historical-answer">
+          <p class="graph-history-answer__head">
+            <span class="badge badge-confirmed">回答</span>
+            <span v-if="primary.routeLabel" class="graph-history-answer__route">
+              {{ primary.routeLabel }}
+            </span>
+          </p>
+          <p
+            v-if="primary.selectedOptionLabel"
+            class="graph-history-answer__choice"
+            data-test="historical-answer-option"
+          >
+            {{ primary.selectedOptionLabel }}
+          </p>
+          <RichAssistantText
+            v-if="primary.freeText"
+            class="graph-history-answer__text"
+            data-test="historical-answer-text"
+            :content="primary.freeText"
+          />
+          <p v-if="primary.inherited" class="meta-text">该回答继承自来源路线</p>
+        </div>
+
+        <!-- 阅读路线 tip 的 canonical 未答 Question：显示等待 + 激活所属路线
+             即可回答（route count 不变，不创建 RESUME 分支）。 -->
+        <div
+          v-else-if="unansweredReadingTip"
+          class="graph-answer-summary"
+          data-test="waiting-summary"
+        >
+          <span class="badge badge-warn">{{ unansweredReadingTipLabel }} · 等待回答</span>
+          <p v-if="node.purpose" class="graph-node-purpose">{{ node.purpose }}</p>
+          <button
+            v-if="data.readingRouteId"
+            class="btn btn-primary graph-wake-answer nodrag"
+            type="button"
+            data-test="answer-this-question"
+            @click.stop="emit('activate-route', data.readingRouteId)"
+          >
+            回答这个问题
+          </button>
+        </div>
+
+        <p v-else class="meta-text" data-test="waiting-plain">等待回答</p>
+
+        <!-- 完整选项列表：只读，标出实际提交的那一项。 -->
+        <ul v-if="historyOptions.length > 0" class="graph-history-options" data-test="historical-options">
+          <li
+            v-for="entry in historyOptions"
+            :key="entry.option.id"
+            class="graph-history-option"
+            :class="{ 'graph-history-option--chosen': entry.chosen }"
+          >
+            <span class="graph-history-option__mark" aria-hidden="true">{{ entry.chosen ? '✓' : '·' }}</span>
+            <span class="graph-option-label">{{ entry.option.label }}</span>
+            <span v-if="entry.option.impact" class="graph-option-impact">{{ entry.option.impact }}</span>
+          </li>
+        </ul>
+      </template>
+
+      <!-- 未选中的历史节点：紧凑导航卡；点击（选中）后展开完整信息。 -->
       <template v-else>
         <h4 class="graph-node-question graph-node-question--compact" data-test="historical-question">
           {{ node.question }}
@@ -410,6 +523,7 @@ function setReadingRoute(event: Event): void {
           class="meta-text graph-node-question--compact"
           data-test="waiting-plain"
         >等待回答</p>
+        <p v-else class="meta-text graph-node-expand-hint" data-test="expand-hint">点击查看完整回答</p>
       </template>
     </div>
 
@@ -425,7 +539,7 @@ function setReadingRoute(event: Event): void {
       <button
         class="btn graph-action nodrag"
         data-test="fork-node"
-        title="我接受现在，换未来。"
+        title="我接受现在，换未来"
         @click.stop="forkNode"
       >
         从这里开新路线
@@ -433,7 +547,7 @@ function setReadingRoute(event: Event): void {
       <button
         class="btn graph-action nodrag"
         data-test="reanswer-node"
-        title="问题没错，答案换一个。"
+        title="问题没错，答案换一个"
         @click.stop="reanswerNode"
       >
         重新选择答案
@@ -442,7 +556,7 @@ function setReadingRoute(event: Event): void {
         class="btn graph-action nodrag"
         data-test="regenerate-node"
         :disabled="isRootNode || pending"
-        title="问题本身换掉。"
+        title="问题本身换掉"
         @click.stop="regenerateNode"
       >
         换一个问题

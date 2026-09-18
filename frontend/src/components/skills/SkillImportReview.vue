@@ -60,7 +60,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
       <section class="review-manifest">
         <h4>SKILL.md</h4>
         <pre data-test="staged-manifest">{{ manifestPreview || '（暂无预览）' }}</pre>
-        <p v-if="manifestClipped" class="muted">内容较长，仅显示前 2000 字。</p>
+        <p v-if="manifestClipped" class="muted">内容较长，仅显示前 2000 字</p>
       </section>
       <details class="review-tech">
         <summary>技术详情</summary>

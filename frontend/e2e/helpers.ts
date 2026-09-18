@@ -143,7 +143,7 @@ export async function draftFirstQuestion(page: Page): Promise<void> {
 export async function answerActiveNode(page: Page, text: string): Promise<void> {
   await page.getByTestId('free-text').fill(text)
   await page.getByTestId('submit-answer').click()
-  await expect(page.getByText('回答已记录。')).toBeVisible()
+  await expect(page.getByText('回答已记录')).toBeVisible()
   await expect(page.getByTestId('free-text')).toHaveValue('')
 }
 

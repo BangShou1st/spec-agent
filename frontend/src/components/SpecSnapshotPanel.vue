@@ -85,7 +85,7 @@ function sourceLabel(ref: { kind: string; refId: string }): string {
       <p v-if="generating" class="muted" style="font-size: 12px; margin: 0">正在生成…</p>
     </div>
     <p v-if="!activeRouteId" class="muted info-line" data-test="generate-spec-hint">
-      没有当前路线——无法生成规格。
+      没有当前路线——无法生成规格
     </p>
     <p v-else class="muted info-line" data-test="active-route-target">
       当前路线：{{ routeLabel(activeRouteId) }}
@@ -149,7 +149,7 @@ function sourceLabel(ref: { kind: string; refId: string }): string {
     </div>
 
     <p v-else-if="snapshots.length > 0" class="muted info-line">
-      选择一条快照进行查看。
+      选择一条快照进行查看
     </p>
   </div>
 </template>

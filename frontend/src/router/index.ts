@@ -10,6 +10,15 @@ import ConnectionDetailView from '@/views/settings/ConnectionDetailView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
+  // 设置三个子页高度不同，切换时若保留旧滚动位置，页面会“弹来弹去”。
+  // 子路由切换一律回到顶部；历史导航沿用浏览器保存的位置。
+  scrollBehavior(to, from, savedPosition) {
+    if (savedPosition) return savedPosition
+    if (to.path.startsWith('/settings/') && from.path.startsWith('/settings/')) {
+      return { top: 0 }
+    }
+    return {}
+  },
   routes: [
     { path: '/', redirect: '/projects' },
     { path: '/projects', name: 'projects', component: ProjectsView },

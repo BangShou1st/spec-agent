@@ -39,7 +39,7 @@ function formatConfidence(claim: RequirementClaimView): string {
     <div class="panel-body">
       <p v-if="loading" class="muted">正在加载需求状态…</p>
       <template v-else-if="requirementState === null">
-        <p class="muted" data-test="requirement-empty">暂无需求状态。</p>
+        <p class="muted" data-test="requirement-empty">暂无需求状态</p>
       </template>
 
       <template v-else>
@@ -68,7 +68,7 @@ function formatConfidence(claim: RequirementClaimView): string {
               节点 {{ claim.sourceNodeId ?? '—' }} · 回答 {{ claim.sourceAnswerId ?? '—' }}
             </p>
           </div>
-          <p v-if="group.claims.length === 0" class="muted" style="margin: 0">无。</p>
+          <p v-if="group.claims.length === 0" class="muted" style="margin: 0">无</p>
         </section>
       </template>
     </div>

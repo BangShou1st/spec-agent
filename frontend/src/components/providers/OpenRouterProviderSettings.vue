@@ -1,29 +1,40 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import ApiErrorBanner from '@/components/ApiErrorBanner.vue'
-import { productErrorMessage } from '@/api/errorCopy'
+import ProviderCard from '@/components/providers/ProviderCard.vue'
+import ProviderModelField from '@/components/providers/ProviderModelField.vue'
+import ProviderSummaryItem from '@/components/providers/ProviderSummaryItem.vue'
 import { useOpenRouterStore } from '@/stores/openRouterStore'
 import { useProviderSettingsStore } from '@/stores/providerSettingsStore'
-import { openRouterState, stateLabel } from '@/presentation/providerPresentation'
+import { providerCardState } from '@/presentation/providerPresentation'
 
+/**
+ * OpenRouter card. This is the provider-card paradigm the other providers are
+ * aligned to: header + status pill, current-configuration summary with a
+ * single 更换 API Key entry, one always-visible model field, and the
+ * 保存并测试 / 重新测试 / 设为当前 Provider action row.
+ */
 const store = useOpenRouterStore()
 const providers = useProviderSettingsStore()
 const apiKey = ref('')
+// 与 OpenCode 卡一致：密钥输入仅在未配置或主动更换时出现，已配置时只展示掩码。
+const changingCredential = ref(false)
 
 const isActive = computed(() => providers.activeProvider === 'OPENROUTER')
-const state = computed(() => {
-  if (store.validating || store.probing) {
-    return 'validating' as const
-  }
-  return openRouterState(store.configured, store.validated, isActive.value, store.failed)
-})
-const stateLabelText = computed(() => stateLabel(state.value))
+const state = computed(() => providerCardState(
+  store.configured,
+  store.validated,
+  isActive.value,
+  store.failed,
+  store.validating || store.probing,
+))
 const canProbe = computed(() => apiKey.value.trim().length > 0 && !store.probing && !store.saving)
-// Display list (freeModels) contains the injected persisted value for
-// visibility. Save gating must use the true available list so an injected
-// unavailable persisted value cannot be saved. Before any fetch,
-// availableModels is empty and we fall back to the modelUnavailable flag
-// (false after loadStatus), preserving the pre-fetch save behavior.
+const showCredentialForm = computed(() => !store.configured || changingCredential.value)
+
+/**
+ * Display list contains the injected persisted value for visibility, but save
+ * gating must use the true available list so an injected unavailable persisted
+ * value cannot be written back.
+ */
 const isUnavailableSelected = computed(() => {
   if (store.selectedModel === null) {
     return false
@@ -34,20 +45,19 @@ const isUnavailableSelected = computed(() => {
   return store.modelUnavailable
 })
 const showUnavailable = computed(() => {
-  if (store.selectedModel === null) {
-    return false
-  }
-  if (!store.freeModels.includes(store.selectedModel)) {
+  if (store.selectedModel === null || !store.displayModels.includes(store.selectedModel)) {
     return false
   }
   return isUnavailableSelected.value
 })
-const canSave = computed(() => store.selectedModel !== null && store.freeModels.includes(store.selectedModel)
+const canSave = computed(() => store.selectedModel !== null
+  && store.displayModels.includes(store.selectedModel)
   && !isUnavailableSelected.value
-  && !store.saving && !store.probing && (apiKey.value.trim().length > 0 || store.configured))
+  && !store.saving && !store.probing
+  // 更换密钥或首次配置必须输入新 Key；已配置且未更换时可仅改模型（发送 null 复用已存密钥）。
+  && (changingCredential.value || !store.configured ? apiKey.value.trim().length > 0 : true))
 const canValidate = computed(() => store.configured && !store.validating && !store.saving)
 const canActivate = computed(() => store.configured && store.validated && !isActive.value && !providers.activating)
-const safeErrorMessage = computed(() => productErrorMessage(store.error?.code ?? 'UNKNOWN_ERROR'))
 
 async function probe(): Promise<void> {
   await store.probe(apiKey.value)
@@ -61,7 +71,20 @@ async function saveAndTest(): Promise<void> {
   const ok = await store.save(keyToSend, store.selectedModel)
   if (ok) {
     apiKey.value = ''
+    changingCredential.value = false
     await store.validate()
+  }
+}
+
+function beginCredentialChange(): void {
+  changingCredential.value = true
+}
+
+async function cancelCredentialChange(): Promise<void> {
+  changingCredential.value = false
+  apiKey.value = ''
+  if (store.configured) {
+    await store.refreshModels()
   }
 }
 
@@ -69,64 +92,46 @@ async function activate(): Promise<void> {
   await providers.activate('OPENROUTER')
 }
 
-onMounted(() => {
-  void store.loadStatus()
+onMounted(async () => {
+  await store.loadStatus()
+  // 与 OpenCode 卡一致：已配置时用已存密钥自动拉取模型，无需重新输入。
+  if (store.configured) {
+    void store.refreshModels()
+  }
 })
 </script>
 
 <template>
-  <article class="settings-card" data-test="openrouter-card">
-    <header class="settings-card__header">
-      <div>
-        <h3>OpenRouter</h3>
-        <p class="settings-card__description">固定使用 Chat Completions 协议与官方模型列表，仅展示 free 模型。</p>
-      </div>
-      <span
-        class="settings-status"
-        :class="{
-          'settings-status--active': state === 'active',
-          'settings-status--configured': state === 'valid-inactive',
-          'settings-status--warning': state === 'configured-unvalidated',
-          'settings-status--error': state === 'invalid',
-          'settings-status--empty': state === 'unconfigured' || state === 'validating',
-        }"
-        data-test="openrouter-state"
+  <ProviderCard
+    card-test-id="openrouter-card"
+    title="OpenRouter"
+    description="固定使用 Chat Completions 协议与官方模型列表，可按需过滤仅免费"
+    :state="state"
+    state-test-id="openrouter-state"
+    :error="store.error"
+    error-test-id="openrouter-error"
+    summary-test-id="openrouter-current"
+    :retrying="store.probing || store.saving || store.validating || store.loadingModels"
+    @retry="() => store.clearError()"
+  >
+    <template v-if="store.configured" #summary>
+      <ProviderSummaryItem label="API Key" :value="store.maskedKey" test-id="openrouter-masked" />
+      <ProviderSummaryItem label="当前模型" :value="store.selectedModel" test-id="openrouter-selected" ellipsis />
+      <button
+        class="btn settings-action"
+        type="button"
+        data-test="openrouter-change-key"
+        :disabled="store.probing || store.saving"
+        @click="beginCredentialChange"
       >
-        <span class="settings-status__dot" aria-hidden="true"></span>
-        {{ stateLabelText }}
-      </span>
-    </header>
+        更换 API Key
+      </button>
+    </template>
 
-    <ApiErrorBanner
-      v-if="store.error"
-      class="settings-error"
-      data-test="openrouter-error"
-      :message="safeErrorMessage"
-      :code="store.error.code"
-      retry-label="重试"
-      :retrying="store.probing || store.saving || store.validating || store.loadingModels"
-      @retry="() => store.clearError()"
-    />
-
-    <section v-if="store.configured" class="settings-current-config" data-test="openrouter-current">
-      <div class="settings-current-config__item">
-        <span>API Key</span>
-        <strong data-test="openrouter-masked">{{ store.maskedKey ?? '—' }}</strong>
-      </div>
-      <div class="settings-current-config__item">
-        <span>当前模型</span>
-        <strong class="ellipsis" :title="store.selectedModel ?? ''" data-test="openrouter-selected">{{ store.selectedModel ?? '—' }}</strong>
-      </div>
-      <div class="settings-current-config__item">
-        <span>配置版本</span>
-        <strong data-test="openrouter-revision">v{{ store.configRevision }}{{ store.validated ? ' · 已验证' : ' · 未验证' }}</strong>
-      </div>
-    </section>
-
-    <div class="settings-form">
+    <div v-if="showCredentialForm" class="settings-form settings-form--credential">
       <label class="settings-field" for="openrouter-api-key">
-        <span class="settings-field__label">API Key</span>
-        <span class="settings-field__hint">仅用于验证与保存，不会明文返回。已配置后可留空以复用已存密钥。</span>
+        <span class="settings-field__label">{{ store.configured ? '新 API Key' : 'API Key' }}</span>
+        <span class="settings-field__hint">仅用于验证与保存，不会明文返回</span>
         <input
           id="openrouter-api-key"
           v-model="apiKey"
@@ -147,8 +152,26 @@ onMounted(() => {
         >
           {{ store.probing ? '正在验证…' : '验证并获取模型' }}
         </button>
+      </div>
+    </div>
+
+    <div class="settings-form">
+      <ProviderModelField
+        test-id="openrouter-model"
+        :model-value="store.selectedModel"
+        :models="store.displayModels"
+        :disabled="store.displayModels.length === 0 || store.saving"
+        :loading="store.loadingModels || store.loading"
+        :free-only="store.freeOnly"
+        free-toggle-id="openrouter-free-only"
+        :hint="store.configured ? '使用当前已保存的 API Key 获取，不需要重新输入密钥' : '展示当前可用模型；付费模型保存前会做兼容性测试'"
+        :empty-text="store.configured ? '暂无可用模型，请点击“刷新模型”' : '暂无可用模型，请先验证 Key'"
+        :warning-text="showUnavailable ? '已保存的模型当前不可用，请重新验证后选择' : null"
+        @update:model-value="store.selectedModel = $event"
+        @update:free-only="store.setFreeOnly"
+      />
+      <div v-if="store.configured" class="settings-form__action-row">
         <button
-          v-if="store.configured"
           class="btn settings-action"
           type="button"
           data-test="openrouter-refresh"
@@ -158,29 +181,19 @@ onMounted(() => {
           {{ store.loadingModels ? '正在刷新…' : '刷新模型' }}
         </button>
       </div>
-      <label class="settings-field" for="openrouter-model">
-        <span class="settings-field__label">Model</span>
-        <span class="settings-field__hint">仅展示 free 且具备文本与结构化输出能力的模型。</span>
-        <select
-          id="openrouter-model"
-          v-model="store.selectedModel"
-          class="settings-control settings-model-select"
-          data-test="openrouter-model"
-          :disabled="store.freeModels.length === 0 || store.saving"
-        >
-          <option :value="null" disabled>请选择 free 模型</option>
-          <option v-for="model in store.freeModels" :key="model" :value="model">{{ model }}</option>
-        </select>
-        <span v-if="!store.probing && store.freeModels.length === 0" class="settings-field__empty">
-          暂无可用 free 模型，请先验证 Key。
-        </span>
-        <span v-if="showUnavailable" class="settings-field__empty settings-field__warning" data-test="openrouter-unavailable">
-          已保存的模型当前不可用，请重新验证后选择。
-        </span>
-      </label>
     </div>
 
-    <footer class="settings-card__footer">
+    <template #footer>
+      <button
+        v-if="changingCredential"
+        class="btn settings-action"
+        type="button"
+        data-test="openrouter-cancel-change"
+        :disabled="store.probing || store.saving"
+        @click="cancelCredentialChange"
+      >
+        取消更换
+      </button>
       <button
         class="btn btn-primary settings-action"
         type="button"
@@ -209,36 +222,10 @@ onMounted(() => {
       >
         {{ isActive ? '当前使用' : (providers.activating ? '正在切换…' : '设为当前 Provider') }}
       </button>
-    </footer>
-  </article>
+    </template>
+  </ProviderCard>
 </template>
 
 <style scoped>
-.ellipsis {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  display: block;
-}
-.settings-card__footer {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-top: 18px;
-}
-.settings-status--active {
-  color: var(--color-success);
-  background: var(--color-success-soft);
-  border-color: #c9e7d5;
-}
-.settings-status--warning {
-  color: var(--color-warn);
-  background: var(--color-warn-soft);
-  border-color: #ecd9ae;
-}
-.settings-status--error {
-  color: var(--color-danger);
-  background: var(--color-danger-soft);
-  border-color: #f0c4c0;
-}
+/* 结构性样式统一收口在 providerSettings.css；此卡无自身私有样式。 */
 </style>

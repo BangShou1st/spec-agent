@@ -9,7 +9,7 @@ import {
 describe('stable model error classifier and product copy', () => {
   it('maps provider unreachable to the Chinese connection copy', () => {
     expect(productErrorMessage('MODEL_PROVIDER_UNREACHABLE')).toBe(
-      '无法连接到 OpenCode，请检查网络后重试。',
+      '无法连接到 OpenCode，请检查网络后重试',
     )
     expect(classifyModelFailure('MODEL_PROVIDER_UNREACHABLE', 503)).toBe('retryable')
   })

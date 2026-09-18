@@ -79,7 +79,17 @@ export interface CreateAgentRunPayload {
   operation: AgentRunOperation
   /** Node being answered/regenerated; backend falls back to the active route tip when omitted. */
   nodeId?: string | null
-  /** Required for REGENERATE_NODE: the explicit source route of the replacement. */
+  /**
+   * Explicit route of this run.
+   *
+   * Required for REGENERATE_NODE (the replacement's source route). Also
+   * optional for ANSWER_TIP / RESUME_ANSWER / DRAFT_QUESTION /
+   * GENERATE_ARTIFACT: when present the run is bound to that route for its
+   * whole life ("EXPLICIT" route mode), which is what lets several routes
+   * answer and generate independently. When absent the run follows the
+   * project's Active route exactly as before — including failing closed if
+   * that pointer moves while the run is queued.
+   */
   sourceRouteId?: string | null
   selectedOptionId?: string | null
   freeText?: string | null

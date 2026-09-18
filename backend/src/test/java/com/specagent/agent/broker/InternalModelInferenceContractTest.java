@@ -9,6 +9,7 @@ import com.specagent.model.inference.ModelInferenceRequest;
 import com.specagent.model.inference.ModelInferenceResponse;
 import com.specagent.model.inference.ModelOutputContract;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -51,6 +52,8 @@ class InternalModelInferenceContractTest {
     private AgentBrainProperties properties;
     @Mock
     private RunExistenceCheck runExistenceCheck;
+    @Mock
+    private RunProjectLookup runProjectLookup;
 
     @BeforeEach
     void setUp() {
@@ -62,13 +65,18 @@ class InternalModelInferenceContractTest {
     }
 
     private InternalModelInferenceController controller() {
-        return new InternalModelInferenceController(gateway, eventService, properties, runExistenceCheck);
+        return new InternalModelInferenceController(gateway, eventService, properties,
+                runExistenceCheck, runProjectLookup);
     }
 
     private String bodyFor(String callType) {
+        return bodyFor(callType, UUID.randomUUID());
+    }
+
+    private String bodyFor(String callType, UUID runId) {
         ModelInferenceHttpRequest request = new ModelInferenceHttpRequest(
                 AgentProtocol.INFERENCE_PROTOCOL_VERSION,
-                UUID.randomUUID(),
+                runId,
                 callType,
                 List.of(new ModelInferenceHttpRequest.Message("user", "hi")),
                 1000);
@@ -86,5 +94,33 @@ class InternalModelInferenceContractTest {
                 .describedAs("Brain call type %s must request structured JSON so the model "
                         + "cannot return fenced/prose JSON that breaks json.loads", callType)
                 .isInstanceOf(ModelOutputContract.JsonObject.class);
+    }
+
+    @Test
+    void brokerPassesTheOwningProjectAsTheConversationIdentity() {
+        UUID runId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        when(runProjectLookup.projectIdOf(runId)).thenReturn(projectId);
+
+        controller().complete("dev-internal-secret", bodyFor("DECISION", runId));
+
+        ArgumentCaptor<ModelInferenceRequest> captor = ArgumentCaptor.forClass(ModelInferenceRequest.class);
+        verify(gateway).complete(captor.capture());
+        // One project is one provider-side conversation.
+        assertThat(captor.getValue().conversationId()).isEqualTo(projectId);
+        assertThat(captor.getValue().conversationOrRun()).isEqualTo(projectId);
+    }
+
+    @Test
+    void unresolvableProjectFallsBackToTheRunInsteadOfFailingTheCall() {
+        UUID runId = UUID.randomUUID();
+        when(runProjectLookup.projectIdOf(runId)).thenReturn(null);
+
+        controller().complete("dev-internal-secret", bodyFor("DECISION", runId));
+
+        ArgumentCaptor<ModelInferenceRequest> captor = ArgumentCaptor.forClass(ModelInferenceRequest.class);
+        verify(gateway).complete(captor.capture());
+        assertThat(captor.getValue().conversationId()).isNull();
+        assertThat(captor.getValue().conversationOrRun()).isEqualTo(runId);
     }
 }

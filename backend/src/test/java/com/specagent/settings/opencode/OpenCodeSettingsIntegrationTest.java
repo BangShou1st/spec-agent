@@ -44,17 +44,22 @@ class OpenCodeSettingsIntegrationTest {
 
     @Test
     void probeDiscoversFreeModelsWithoutPersistingCandidate() {
-        when(catalog.listFreeModels("candidate-key")).thenReturn(List.of("alpha-free", "beta-free"));
-        doNothing().when(transport).validateCredential("candidate-key", "alpha-free");
+        when(catalog.listAllModels("candidate-key"))
+                .thenReturn(List.of("alpha-free", "beta-free", "paid-model"));
+        doNothing().when(transport).validateCredential(org.mockito.ArgumentMatchers.eq("candidate-key"),
+                org.mockito.ArgumentMatchers.eq("alpha-free"));
 
         assertThat(service.status()).isEqualTo(OpenCodeSettingsStatus.unconfigured());
-        assertThat(service.probe("candidate-key")).containsExactly("alpha-free", "beta-free");
+        var discovered = service.probe("candidate-key");
+        assertThat(discovered.allModels()).containsExactly("alpha-free", "beta-free", "paid-model");
+        assertThat(discovered.freeModels()).containsExactly("alpha-free", "beta-free");
+        assertThat(discovered.recommendedProbeModel()).isEqualTo("alpha-free");
         assertThat(service.status()).isEqualTo(OpenCodeSettingsStatus.unconfigured());
     }
 
     @Test
     void saveRevalidatesAndPersistsKeyAndModelAtomically() {
-        when(catalog.listFreeModels("candidate-key")).thenReturn(List.of("alpha-free", "beta-free"));
+        when(catalog.listAllModels("candidate-key")).thenReturn(List.of("alpha-free", "beta-free"));
         doNothing().when(transport).validateCredential("candidate-key", "alpha-free");
 
         OpenCodeSettingsStatus saved = service.save("candidate-key", "alpha-free");
@@ -69,11 +74,11 @@ class OpenCodeSettingsIntegrationTest {
 
     @Test
     void invalidModelLeavesPreviousWorkingSettingsUntouched() {
-        when(catalog.listFreeModels("first-key")).thenReturn(List.of("alpha-free"));
+        when(catalog.listAllModels("first-key")).thenReturn(List.of("alpha-free"));
         doNothing().when(transport).validateCredential("first-key", "alpha-free");
         service.save("first-key", "alpha-free");
 
-        when(catalog.listFreeModels("second-key")).thenReturn(List.of("beta-free"));
+        when(catalog.listAllModels("second-key")).thenReturn(List.of("beta-free"));
 
         assertThatThrownBy(() -> service.save("second-key", "alpha-free"))
                 .isInstanceOf(RuntimeException.class);
@@ -83,12 +88,12 @@ class OpenCodeSettingsIntegrationTest {
 
     @Test
     void savedKeyListsModelsAndChangesModelWithoutBeingSubmittedAgain() {
-        when(catalog.listFreeModels("saved-key")).thenReturn(List.of("alpha-free", "beta-free"));
+        when(catalog.listAllModels("saved-key")).thenReturn(List.of("alpha-free", "beta-free"));
         doNothing().when(transport).validateCredential("saved-key", "alpha-free");
         service.save("saved-key", "alpha-free");
         OpenCodeSettings before = repository.find().orElseThrow();
 
-        assertThat(service.listSavedKeyModels()).containsExactly("alpha-free", "beta-free");
+        assertThat(service.listSavedKeyModels().allModels()).containsExactly("alpha-free", "beta-free");
 
         doNothing().when(transport).validateCredential("saved-key", "beta-free");
         OpenCodeSettingsStatus changed = service.changeModel("beta-free");
@@ -105,11 +110,11 @@ class OpenCodeSettingsIntegrationTest {
 
     @Test
     void failedSavedKeyModelChangePreservesTheExistingConfiguration() {
-        when(catalog.listFreeModels("saved-key")).thenReturn(List.of("alpha-free"));
+        when(catalog.listAllModels("saved-key")).thenReturn(List.of("alpha-free"));
         doNothing().when(transport).validateCredential("saved-key", "alpha-free");
         service.save("saved-key", "alpha-free");
 
-        when(catalog.listFreeModels("saved-key")).thenReturn(List.of("beta-free"));
+        when(catalog.listAllModels("saved-key")).thenReturn(List.of("beta-free"));
         assertThatThrownBy(() -> service.changeModel("alpha-free"))
                 .isInstanceOf(RuntimeException.class);
 

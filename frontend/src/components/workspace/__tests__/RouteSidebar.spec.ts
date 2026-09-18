@@ -58,16 +58,53 @@ describe('route sidebar', () => {
     expect(wrapper.emitted('activate')).toBeUndefined()
   })
 
-  it('keeps isolate behind the overflow menu and isolates visibility-only state', async () => {
+  it('keeps isolate behind the overflow menu and isolates exactly one route', async () => {
     const wrapper = mountSidebar()
     const route = wrapper.find('[data-route-id="r2"]')
     // 默认不常驻：只在 overflow 里。
     expect(route.find('[data-test="route-more"]').attributes('open')).toBeUndefined()
     route.get('[data-test="route-more"]').element.setAttribute('open', '')
     await route.get('[data-test="isolate-route"]').trigger('click')
-    // 独览只改变浏览器可见性：r1 被隐藏，active r1 受保护不被隐藏。
-    expect(useGraphUiStore().routeDisplayStates.r1).toBe('hidden')
-    expect(useGraphUiStore().focusRouteId).toBeNull()
+    const graphUi = useGraphUiStore()
+    // 镜头是显式单路线意图：画布上只剩 r2（运行路线 r1 也被移出画布）。
+    expect(graphUi.isolatedRouteId).toBe('r2')
+    expect(graphUi.focusRouteId).toBe('r2')
+    // 不再改写持久化的 display state（旧实现会永久隐藏 r1）。
+    expect(graphUi.routeDisplayStates).toEqual({})
+  })
+
+  it('只看这条路线 是开关：同一条路线再点一次即退出', async () => {
+    const wrapper = mountSidebar()
+    const route = wrapper.find('[data-route-id="r2"]')
+    route.get('[data-test="route-more"]').element.setAttribute('open', '')
+    const button = route.get('[data-test="isolate-route"]')
+    await button.trigger('click')
+    expect(button.text()).toBe('退出只看')
+    await button.trigger('click')
+    const graphUi = useGraphUiStore()
+    expect(graphUi.isolatedRouteId).toBeNull()
+    // 退出镜头保留阅读聚焦与视图，不需要重来一遍。
+    expect(graphUi.focusRouteId).toBe('r2')
+    expect(button.text()).toBe('只看这条路线')
+  })
+
+  it('镜头开启时点击另一张路线卡 = 移动镜头（绝不静默无响应）', async () => {
+    const wrapper = mountSidebar()
+    const graphUi = useGraphUiStore()
+    graphUi.isolateRoute('r2')
+    await nextTick()
+    await wrapper.find('[data-route-id="r1"] .route-card__label').trigger('click')
+    expect(graphUi.isolatedRouteId).toBe('r1')
+    expect(graphUi.focusRouteId).toBe('r1')
+    expect(wrapper.emitted('locate-route')?.[0]).toEqual(['r1'])
+  })
+
+  it('镜头卡片显示"只看中"，其余卡片不显示', async () => {
+    const wrapper = mountSidebar()
+    useGraphUiStore().isolateRoute('r2')
+    await nextTick()
+    expect(wrapper.find('[data-route-id="r2"] [data-test="isolate-route-label"]').exists()).toBe(true)
+    expect(wrapper.find('[data-route-id="r1"] [data-test="isolate-route-label"]').exists()).toBe(false)
   })
 
   it('names unlabeled routes by branch origin instead of raw id slices', () => {
@@ -161,30 +198,40 @@ describe('route sidebar', () => {
     expect(wrapper.emitted('locate-route')?.[0]).toEqual(['r2'])
   })
 
-  it('focus changes only the browser reading context', async () => {
+  it('card-click focus changes only the browser reading context', async () => {
     const routes = [routeView('r1', 'open', ['n1']), routeView('r2', 'open', ['n1'])]
     const wrapper = mount(RouteSidebar, {
       props: { routes, activeRouteId: 'r1', commandPending: false, pendingRouteCommand: null },
     })
-    const route = wrapper.find('[data-route-id="r2"]')
-    route.get('[data-test="route-more"]').element.setAttribute('open', '')
-    await route.get('[data-test="focus-route"]').trigger('click')
+    await wrapper.find('[data-route-id="r2"] .route-card__label').trigger('click')
     expect(useGraphUiStore().focusRouteId).toBe('r2')
+    // 阅读聚焦绝不改动运行路线：没有任何 runtime 命令被发出。
+    expect(wrapper.emitted('activate')).toBeUndefined()
+    expect(wrapper.emitted('archive')).toBeUndefined()
+    expect(wrapper.find('[data-route-id="r1"]').attributes('aria-current')).toBeUndefined()
   })
 
-  it('hide never hides the active route', async () => {
-    const routes = [routeView('r1', 'open', ['n1']), routeView('r2', 'open', ['n1'])]
+  it('isolate 是唯一允许把运行路线移出画布的视图动作', async () => {
+    const routes = [
+      routeView('r1', 'open', ['n1']),
+      routeView('r2', 'open', ['n2']),
+      routeView('r3', 'open', ['n3']),
+    ]
     const wrapper = mount(RouteSidebar, {
       props: { routes, activeRouteId: 'r1', commandPending: false, pendingRouteCommand: null },
     })
-    const r1 = wrapper.find('[data-route-id="r1"]')
-    r1.get('[data-test="route-more"]').element.setAttribute('open', '')
-    await r1.get('[data-test="hide-route"]').trigger('click')
-    expect(useGraphUiStore().routeDisplayStates.r1).toBeUndefined()
+    const graphUi = useGraphUiStore()
+    // 运行路线的浏览器态由 reconcile 对齐后端指针（reconcile 需要完整的
+    // route 视图，含 lineageNodeIds）。
+    graphUi.reconcile({ activeRouteId: 'r1', routes, nodes: [] })
     const r2 = wrapper.find('[data-route-id="r2"]')
     r2.get('[data-test="route-more"]').element.setAttribute('open', '')
-    await r2.get('[data-test="hide-route"]').trigger('click')
-    expect(useGraphUiStore().routeDisplayStates.r2).toBe('hidden')
+    await r2.get('[data-test="isolate-route"]').trigger('click')
+    // 手工 hide 仍然保护运行路线；只有"只看"这条显式命令能把它移出画布。
+    graphUi.hideRoute('r1')
+    expect(graphUi.isolatedRouteId).toBe('r2')
+    expect(graphUi.routeDisplayStates.r1).toBeUndefined()
+    expect(graphUi.activeRouteId).toBe('r1')
   })
 
   it('runtime actions emit the route id upward', async () => {
@@ -216,13 +263,13 @@ describe('route sidebar', () => {
     const wrapper = mount(RouteSidebar, {
       props: { routes, activeRouteId: 'r1', commandPending: false, pendingRouteCommand: null },
     })
-    const route = wrapper.find('[data-route-id="r2"]')
-    route.get('[data-test="route-more"]').element.setAttribute('open', '')
-    await route.get('[data-test="focus-route"]').trigger('click')
-    expect(useGraphUiStore().focusRouteId).toBe('r2')
+    // 归档默认隐藏 → 先勾选筛选让它可见，才能被聚焦。
     wrapper.get('[data-test="route-filters"]').element.setAttribute('open', '')
+    await wrapper.get('[data-test="filter-archived"]').setValue(true)
+    await wrapper.find('[data-route-id="r2"] .route-card__label').trigger('click')
+    expect(useGraphUiStore().focusRouteId).toBe('r2')
+    // 关掉筛选时先清 Focus：focusRouteId 绝不指向 filtered-out 路线。
     await wrapper.get('[data-test="filter-archived"]').setValue(false)
-    // Focus 被清除，筛选才生效：focusRouteId 绝不指向 filtered-out 路线。
     expect(useGraphUiStore().focusRouteId).toBeNull()
     expect(useGraphUiStore().lifecycleFilters.archived).toBe(false)
   })
@@ -236,16 +283,14 @@ describe('route sidebar', () => {
     const wrapper = mount(RouteSidebar, {
       props: { routes, activeRouteId: 'r1', commandPending: false, pendingRouteCommand: null },
     })
-    wrapper.get('[data-test="route-filters"]').element.setAttribute('open', '')
-    await wrapper.get('[data-test="filter-archived"]').setValue(false)
-    const r2 = wrapper.find('[data-route-id="r2"]')
-    r2.get('[data-test="route-more"]').element.setAttribute('open', '')
-    await r2.get('[data-test="focus-route"]').trigger('click')
-    expect(useGraphUiStore().focusRouteId).toBeNull()
-    const r3 = wrapper.find('[data-route-id="r3"]')
-    r3.get('[data-test="route-more"]').element.setAttribute('open', '')
-    await r3.get('[data-test="hide-route"]').trigger('click')
-    await r3.get('[data-test="focus-route"]').trigger('click')
-    expect(useGraphUiStore().focusRouteId).toBeNull()
+    const graphUi = useGraphUiStore()
+    // 归档现在默认隐藏（DEFAULT_FILTERS.archived = false）：无法被聚焦。
+    expect(graphUi.lifecycleFilters.archived).toBe(false)
+    await wrapper.find('[data-route-id="r2"] .route-card__label').trigger('click')
+    expect(graphUi.focusRouteId).toBeNull()
+    // 手工隐藏的路线同样不能被聚焦。
+    graphUi.hideRoute('r3')
+    await wrapper.find('[data-route-id="r3"] .route-card__label').trigger('click')
+    expect(graphUi.focusRouteId).toBeNull()
   })
 })

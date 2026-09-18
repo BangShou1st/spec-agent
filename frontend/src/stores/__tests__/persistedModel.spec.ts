@@ -28,7 +28,7 @@ describe('persisted model restoration', () => {
     })
     const store = useOpenRouterStore()
     await store.loadStatus()
-    expect(store.freeModels).toContain('saved:free')
+    expect(store.allModels).toContain('saved:free')
     expect(store.selectedModel).toBe('saved:free')
   })
 
@@ -37,11 +37,11 @@ describe('persisted model restoration', () => {
       configured: true, maskedKey: 'xx', selectedModel: 'saved:free',
       configRevision: 1, validated: true, active: false,
     })
-    vi.mocked(api.listOpenRouterModels).mockResolvedValue({ freeModels: ['other:free'] })
+    vi.mocked(api.listOpenRouterModels).mockResolvedValue({ allModels: ['other:free'], freeModels: ['other:free'] })
     const store = useOpenRouterStore()
     await store.loadStatus()
     await store.refreshModels()
-    expect(store.freeModels).toContain('saved:free')
+    expect(store.allModels).toContain('saved:free')
     expect(store.modelUnavailable).toBe(true)
   })
 
@@ -50,18 +50,18 @@ describe('persisted model restoration', () => {
       configured: true, maskedKey: 'xx', selectedModel: 'saved:free',
       configRevision: 1, validated: true, active: false,
     })
-    vi.mocked(api.listOpenRouterModels).mockResolvedValue({ freeModels: ['other:free'] })
+    vi.mocked(api.listOpenRouterModels).mockResolvedValue({ allModels: ['other:free'], freeModels: ['other:free'] })
     const store = useOpenRouterStore()
     await store.loadStatus()
     await store.refreshModels()
     // Visible for transparency.
-    expect(store.freeModels).toContain('saved:free')
+    expect(store.allModels).toContain('saved:free')
     // True available list excludes the injected unavailable value.
     expect(store.availableModels).not.toContain('saved:free')
     expect(store.availableModels).toContain('other:free')
     // Component save gating: display includes selected but available does not.
     const canSave = store.selectedModel !== null
-      && store.freeModels.includes(store.selectedModel)
+      && store.allModels.includes(store.selectedModel)
       && (store.availableModels.length > 0
         ? store.availableModels.includes(store.selectedModel)
         : !store.modelUnavailable)
@@ -74,7 +74,7 @@ describe('persisted model restoration', () => {
       configured: true, maskedKey: 'xx', selectedModel: 'saved:free',
       configRevision: 1, validated: true, active: false,
     })
-    vi.mocked(api.listOpenRouterModels).mockResolvedValue({ freeModels: ['other:free'] })
+    vi.mocked(api.listOpenRouterModels).mockResolvedValue({ allModels: ['other:free'], freeModels: ['other:free'] })
     const store = useOpenRouterStore()
     await store.loadStatus()
     await store.refreshModels()
@@ -84,7 +84,7 @@ describe('persisted model restoration', () => {
       : store.modelUnavailable
     expect(isUnavailable).toBe(false)
     const canSave = store.selectedModel !== null
-      && store.freeModels.includes(store.selectedModel)
+      && store.allModels.includes(store.selectedModel)
       && !isUnavailable
     expect(canSave).toBe(true)
   })
@@ -94,7 +94,7 @@ describe('persisted model restoration', () => {
       configured: true, apiFormat: 'CHAT_COMPLETIONS', baseUrl: 'http://localhost:11434/v1',
       endpointPreview: 'http://localhost:11434/v1/chat/completions', hasKey: false,
       maskedKey: null, selectedModel: 'typed-model', manualModel: true,
-      configRevision: 2, validated: true,
+      displayName: 'Local Gateway', configRevision: 2, validated: true,
     })
     const store = useCustomProviderStore()
     await store.loadStatus()
@@ -107,7 +107,7 @@ describe('persisted model restoration', () => {
       configured: true, apiFormat: 'RESPONSES', baseUrl: 'https://gateway.example/v1',
       endpointPreview: 'https://gateway.example/v1/responses', hasKey: false,
       maskedKey: null, selectedModel: 'custom-model-a', manualModel: false,
-      configRevision: 1, validated: false,
+      displayName: null, configRevision: 1, validated: false,
     })
     const store = useCustomProviderStore()
     await store.loadStatus()
@@ -120,7 +120,7 @@ describe('persisted model restoration', () => {
       configured: true, apiFormat: 'CHAT_COMPLETIONS', baseUrl: 'http://localhost:11434/v1',
       endpointPreview: 'http://localhost:11434/v1/chat/completions', hasKey: false,
       maskedKey: null, selectedModel: 'custom-model-a', manualModel: false,
-      configRevision: 1, validated: false,
+      displayName: null, configRevision: 1, validated: false,
     })
     vi.mocked(api.discoverCustom).mockResolvedValue({
       models: ['other-model'], manualModel: false, endpointPreview: 'http://localhost:11434/v1/chat/completions',

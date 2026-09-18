@@ -118,6 +118,26 @@ public class NodeRepository {
                 "updatedAt", Timestamp.from(updatedAt)));
     }
 
+    /**
+     * Sets (or clears) a node's single parent — i.e. its lineage membership.
+     *
+     * <p>Only the explicit connect/disconnect commands use this: a node's
+     * belonging is expressed by the {@code parent_node_id} chain plus the
+     * owning route's tip, never by a {@code node_route} join table. Callers
+     * must therefore update the route tip in the same transaction.
+     */
+    public void updateParent(UUID nodeId, UUID parentNodeId, Instant updatedAt) {
+        String sql = """
+                UPDATE nodes
+                SET parent_node_id = :parentNodeId, updated_at = :updatedAt
+                WHERE id = :id
+                """;
+        jdbcTemplate.update(sql, Maps.of(
+                "id", nodeId,
+                "parentNodeId", parentNodeId,
+                "updatedAt", Timestamp.from(updatedAt)));
+    }
+
     public void updateRetracted(UUID nodeId, Instant retractedAt) {
         String sql = """
                 UPDATE nodes

@@ -121,9 +121,21 @@ public class SkillController {
     public ResponseEntity<StagedImportResponse> stageGit(
             @RequestBody GitImportRequest request) {
         SkillImportService.StagedResult staged =
-                importService.stageGit(request.url(), request.ref());
+                importService.stageGit(request.url(), request.ref(), request.subPath());
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(StagedImportResponse.from(staged));
+    }
+
+    /**
+     * Lists the Skill packages a repository offers without staging anything, so
+     * a library or marketplace can be navigated instead of rejected.
+     */
+    @PostMapping("/imports/git/discover")
+    public ResponseEntity<GitDiscoveryResponse> discoverGit(
+            @RequestBody GitImportRequest request) {
+        SkillImportService.DiscoveryResult discovery =
+                importService.discoverGit(request.url(), request.ref());
+        return ResponseEntity.ok(GitDiscoveryResponse.from(discovery));
     }
 
     @GetMapping("/imports")
@@ -272,7 +284,26 @@ public class SkillController {
                                        int totalChars, String sha256, String versionId) {
     }
 
-    public record GitImportRequest(String url, String ref) {
+    /** {@code subPath} selects one Skill directory inside a larger repository. */
+    public record GitImportRequest(String url, String ref, String subPath) {
+    }
+
+    public record GitCandidateResponse(String path, String name, String description,
+                                       String kind, String declaredBy, int fileCount,
+                                       boolean parseable) {
+        static GitCandidateResponse from(SkillImportService.DiscoveryCandidate candidate) {
+            return new GitCandidateResponse(candidate.path(), candidate.name(),
+                    candidate.description(), candidate.kind(), candidate.declaredBy(),
+                    candidate.fileCount(), candidate.parseable());
+        }
+    }
+
+    public record GitDiscoveryResponse(String commitSha, String suggestedPath,
+                                       List<GitCandidateResponse> candidates) {
+        static GitDiscoveryResponse from(SkillImportService.DiscoveryResult discovery) {
+            return new GitDiscoveryResponse(discovery.commitSha(), discovery.suggestedPath(),
+                    discovery.candidates().stream().map(GitCandidateResponse::from).toList());
+        }
     }
 
     public record RejectRequest(String reason) {

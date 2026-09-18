@@ -61,7 +61,7 @@ test('skills list shows installed and staged, enables a skill', async ({ page })
   await expect(page.getByTestId('skill-row-s1')).toBeVisible()
   await expect(page.getByTestId('skill-status-s2')).toContainText('已禁用')
   await expect(page.getByTestId('staged-section')).toBeVisible()
-  await page.getByTestId('skill-more-s2').locator('summary').click()
+  // 生命周期控件是行内的开关，不再藏在「...」菜单里。
   await page.getByTestId('skill-enable-s2').click()
   await expect(page.getByTestId('skill-status-s2')).toContainText('已启用')
 })

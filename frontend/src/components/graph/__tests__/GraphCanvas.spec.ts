@@ -20,6 +20,7 @@ const VueFlowStub = defineComponent({
   props: {
     nodes: { type: Array, default: () => [] },
     edges: { type: Array, default: () => [] },
+    deleteKeyCode: { type: [String, Array, Object, null], default: undefined },
   },
   emits: ['init', 'node-click', 'edge-click', 'node-drag', 'node-drag-stop', 'nodes-change', 'pane-click', 'connect', 'viewport-change-end', 'update-node-internals'],
   setup() {
@@ -183,6 +184,43 @@ describe('graph canvas', () => {
       expect.objectContaining({ x: 652 - ((320 + HORIZONTAL_GAP) / 2), y: 312, zoom: 1 }),
       expect.objectContaining({ duration: 0 }),
     )
+  })
+
+  it('只看这条路线 时画布真的只剩这一条，并给出可一键退出的指示条', async () => {
+    const graphUi = useGraphUiStore()
+    const wrapper = mountCanvas(viewWithNodes())
+    const flow = wrapper.findComponent(VueFlowStub)
+    const nodeIds = () => (flow.props('nodes') as { id: string }[]).map((node) => node.id).sort()
+    // 镜头关闭：两条路线都在画布上。
+    expect(nodeIds()).toEqual(['n1', 'n2'])
+    expect(wrapper.find('[data-test="isolate-chip"]').exists()).toBe(false)
+
+    // 只看运行路线 r1：只属于 r2 的 n2 必须离开画布。
+    graphUi.isolateRoute(ACTIVE_ROUTE)
+    await nextTick()
+    expect(nodeIds()).toEqual(['n1'])
+    expect(wrapper.get('[data-test="isolate-chip-label"]').text()).toBe('只看：Initial route')
+
+    // 连续第二次只看（旧实现里被运行路线的强制可见挡掉，看起来没反应）。
+    graphUi.isolateRoute('r2')
+    await nextTick()
+    expect(nodeIds()).toEqual(['n1', 'n2'])
+    expect(wrapper.get('[data-test="isolate-chip-label"]').text()).toBe('只看：Second route')
+
+    await wrapper.get('[data-test="isolate-chip-exit"]').trigger('click')
+    await nextTick()
+    expect(graphUi.isolatedRouteId).toBeNull()
+    expect(nodeIds()).toEqual(['n1', 'n2'])
+    expect(wrapper.find('[data-test="isolate-chip"]').exists()).toBe(false)
+  })
+
+  it('deletion shortcuts are disabled: no node may be dropped from the canvas client-side', () => {
+    const wrapper = mountCanvas(viewWithNodes())
+    const flow = wrapper.findComponent(VueFlowStub)
+    // Vue Flow defaults deleteKeyCode to 'Backspace'; that only removes the
+    // node from its own in-memory store, so a canonical refresh resurrects it.
+    // Runtime has no single-node delete command -> the shortcut stays off.
+    expect(flow.props('deleteKeyCode')).toBeNull()
   })
 
   it('locateRoute fits only that route visible nodes via setViewport, never focus', async () => {
@@ -385,7 +423,7 @@ describe('graph canvas', () => {
     expect(ui.nodePositions.n1).toBeDefined()
     expect(ui.nodePositions.n2).toBeDefined()
     expect(window.confirm).toHaveBeenCalledWith(
-      '重新自动布局将覆盖当前项目手工调整过的节点位置。Runtime 历史不会改变。',
+      '重新自动布局将覆盖当前项目手工调整过的节点位置。Runtime 历史不会改变',
     )
     expect(fitViewSpy).not.toHaveBeenCalled()
     expect(setViewport).toHaveBeenCalledWith(
@@ -614,6 +652,45 @@ describe('GraphCanvas onConnect (connection affordance)', () => {
     // pending:run-x is not a canonical Node; the frontend refuses to even
     // raise a relation proposal.
     expect(wrapper.emitted('relation-proposal')).toBeUndefined()
+  })
+
+  it('浮动节点与路线节点之间的连线 = 接入意图，不是语义关系', async () => {
+    // float 不属于任何路线（父节点为空且不在任何 lineage 里）。
+    const wrapper = mountCanvas(viewWithNodes({
+      nodes: [
+        makeNode({ id: 'n1', projectId: PROJECT_ID }),
+        makeNode({ id: 'n2', projectId: PROJECT_ID, parentNodeId: 'n1' }),
+        makeNode({ id: 'float', projectId: PROJECT_ID, parentNodeId: null }),
+      ],
+    }))
+    const flow = wrapper.findComponent(VueFlowStub)
+
+    await flow.vm.$emit('connect', {
+      source: 'float',
+      target: 'n2',
+      sourceHandle: 'source-right',
+      targetHandle: 'target-left',
+    })
+    await wrapper.vm.$nextTick()
+    expect(wrapper.emitted('connect-floating')?.[0]?.[0]).toEqual({
+      floatingNodeId: 'float',
+      anchorNodeId: 'n2',
+    })
+    // 接入意图绝不顺手变成语义关系。
+    expect(wrapper.emitted('relation-proposal')).toBeUndefined()
+
+    // 反向拖拽（路线节点 → 浮动节点）是同一个意图。
+    await flow.vm.$emit('connect', {
+      source: 'n1',
+      target: 'float',
+      sourceHandle: 'source-right',
+      targetHandle: 'target-left',
+    })
+    await wrapper.vm.$nextTick()
+    expect(wrapper.emitted('connect-floating')?.[1]?.[0]).toEqual({
+      floatingNodeId: 'float',
+      anchorNodeId: 'n1',
+    })
   })
 
   it('connection between two canonical nodes opens a pending proposal without calling the backend', async () => {

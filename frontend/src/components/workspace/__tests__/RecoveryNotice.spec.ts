@@ -7,7 +7,7 @@ function model(overrides: Partial<RecoveryNoticeModel> = {}): RecoveryNoticeMode
   return {
     kind: 'saved',
     title: '回答已经保存',
-    message: '后续生成没有完成，不需要重新填写回答。',
+    message: '后续生成没有完成，不需要重新填写回答',
     action: 'resume-answer',
     actionLabel: '继续生成',
     ...overrides,
@@ -37,7 +37,7 @@ describe('RecoveryNotice', () => {
         model: model({
           kind: 'blocked',
           title: '当前操作无法继续',
-          message: '请按提示处理后再试，不需要重复提交。',
+          message: '请按提示处理后再试，不需要重复提交',
           action: null,
           actionLabel: null,
         }),

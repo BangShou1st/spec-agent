@@ -119,13 +119,29 @@ public class GraphCommandService {
                                         UUID routeId,
                                         String subtype,
                                         Map<String, Object> content) {
+        return createFloatingDraftNode(projectId, routeId, NodeKind.KNOWLEDGE, subtype, content);
+    }
+
+    /**
+     * Same as {@link #createFloatingDraftNode(UUID, UUID, String, Map)} with an
+     * explicit kind, so a resource can also start detached. Resources are
+     * capability context sources; keeping the kind explicit (instead of
+     * inferring it from the subtype) keeps the node's semantics user-visible
+     * and the subtype whitelist per kind authoritative.
+     */
+    @Transactional
+    public Node createFloatingDraftNode(UUID projectId,
+                                        UUID routeId,
+                                        NodeKind kind,
+                                        String subtype,
+                                        Map<String, Object> content) {
         projectRepository.lockById(projectId);
         if (routeId != null) {
             requireOpenRouteInProject(projectId, routeId);
         }
         Node node = nodeService.createFloatingWorkspaceNode(
-                projectId, NodeKind.KNOWLEDGE, subtype, content,
-                NodeAuthorKind.USER, KnowledgeStatus.PROPOSED);
+                projectId, kind, subtype, content,
+                NodeAuthorKind.USER, kind == NodeKind.RESOURCE ? null : KnowledgeStatus.PROPOSED);
         // The Node itself carries no routeId (it is route-less). The creation
         // context route id is recorded only in the operation log, not in the
         // persisted node row; null context is legal.
@@ -143,6 +159,117 @@ public class GraphCommandService {
                 GraphOperation.Type.CREATE_DRAFT_NODE, List.of(node.id()),
                 beforeRefs, afterRefs);
         return node;
+    }
+
+    /**
+     * Connects an existing floating (route-less) node into a route by making
+     * it the route's new tip.
+     *
+     * <p>This is the "先浮动、再自己连线" half of resource attachment: content
+     * is authored once, route membership is a separate explicit act. It shares
+     * {@link #attachResource}'s placement rule — only the current tip may take
+     * a new lineage child, answered questions only — so a hand-drawn edge can
+     * never insert into history or jump an unanswered question. The node keeps
+     * its id, kind and content; only {@code parent_node_id} and the route tip
+     * change, which makes the operation cleanly reversible (undo detaches).
+     */
+    @Transactional
+    public Node connectFloatingNodeToRoute(UUID projectId,
+                                           UUID routeId,
+                                           UUID nodeId,
+                                           UUID parentNodeId) {
+        projectRepository.lockById(projectId);
+        Route route = requireOpenRouteInProject(projectId, routeId);
+        nodeRepository.lockById(nodeId);
+        Node node = requireNodeInProject(projectId, nodeId);
+        if (node.isRetracted()) {
+            throw new IllegalStateException("Node is retracted and cannot be connected: " + nodeId);
+        }
+        if (node.parentNodeId() != null) {
+            throw new IllegalStateException(
+                    "Node already belongs to a lineage; disconnect it first: " + nodeId);
+        }
+        if (route.tipNodeId() == null) {
+            if (parentNodeId != null) {
+                throw new IllegalStateException(
+                        "Route has no content yet; connect the node as its root instead: " + routeId);
+            }
+        } else {
+            if (parentNodeId == null) {
+                throw new IllegalStateException(
+                        "Route already has content; connect at the current tip instead: " + routeId);
+            }
+            requireNodeInProject(projectId, parentNodeId);
+            if (!route.tipNodeId().equals(parentNodeId)) {
+                throw new IllegalStateException(
+                        "Nodes may only be connected at the current tip, never as a historical branch");
+            }
+            // The node being attached is a resource / knowledge node: it is
+            // not answerable, so it may hang off the current tip even when
+            // that tip is still unanswered. See the kind-aware overload.
+            invariantValidator.validateQuestionCanHaveChild(
+                    projectId, routeId, parentNodeId, node.kind());
+        }
+        UUID previousTipNodeId = route.tipNodeId();
+        Instant now = Instant.now();
+        nodeRepository.updateParent(nodeId, parentNodeId, now);
+        routeRepository.updateTipAndRoot(routeId, nodeId,
+                route.rootNodeId() != null ? route.rootNodeId() : nodeId, now);
+        operationRepository.append(projectId, GraphOperation.Actor.USER,
+                GraphOperation.Type.CONNECT_FLOATING_NODE, List.of(nodeId),
+                Map.of("routeId", routeId.toString(),
+                       "previousTipNodeId", previousTipNodeId == null ? "" : previousTipNodeId.toString(),
+                       "detached", true),
+                Map.of("routeId", routeId.toString(),
+                       "nodeId", nodeId.toString(),
+                       "parentId", parentNodeId == null ? "" : parentNodeId.toString(),
+                       "previousTipNodeId", previousTipNodeId == null ? "" : previousTipNodeId.toString()));
+        return requireNodeInProject(projectId, nodeId);
+    }
+
+    /**
+     * Detaches a node from its route, restoring it to a floating node. Only
+     * the current tip may be detached (a node with live children would break
+     * the lineage). Used by connect-undo, and available as an explicit user
+     * action: content is never destroyed, only its membership.
+     */
+    @Transactional
+    public Node detachNodeFromRoute(UUID projectId, UUID routeId, UUID nodeId) {
+        projectRepository.lockById(projectId);
+        Route route = requireOpenRouteInProject(projectId, routeId);
+        nodeRepository.lockById(nodeId);
+        Node node = requireNodeInProject(projectId, nodeId);
+        if (node.parentNodeId() == null) {
+            throw new IllegalStateException("Node is already floating: " + nodeId);
+        }
+        if (!route.tipNodeId().equals(nodeId)) {
+            throw new IllegalStateException("Only the current tip can be detached: " + nodeId);
+        }
+        if (nodeRepository.existsActiveByParentNodeId(nodeId)) {
+            throw new IllegalStateException("Node has live children and cannot be detached: " + nodeId);
+        }
+        detachNode(projectId, route, node);
+        operationRepository.append(projectId, GraphOperation.Actor.USER,
+                GraphOperation.Type.DISCONNECT_NODE, List.of(nodeId),
+                Map.of("routeId", routeId.toString(),
+                       "previousTipNodeId", nodeId.toString(),
+                       "parentId", node.parentNodeId().toString()),
+                Map.of("routeId", routeId.toString(),
+                       "nodeId", nodeId.toString(),
+                       "detached", true));
+        return requireNodeInProject(projectId, nodeId);
+    }
+
+    /** Shared detach mutation: re-anchor the tip at the node's parent. */
+    private void detachNode(UUID projectId, Route route, Node node) {
+        Instant now = Instant.now();
+        UUID parentId = node.parentNodeId();
+        nodeRepository.updateParent(node.id(), null, now);
+        if (parentId == null) {
+            routeRepository.clearTipAndRoot(route.id(), now);
+            return;
+        }
+        routeRepository.updateTipAndRoot(route.id(), parentId, route.rootNodeId(), now);
     }
 
     /** Result of a continuation command: the new node plus the route it landed on. */

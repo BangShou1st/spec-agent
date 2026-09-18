@@ -31,13 +31,27 @@ public class OpenCodeModelCatalog {
      *               model discovery is public
      */
     public List<String> listFreeModels(String apiKey) {
+        return listAllModels(apiKey).stream().filter(OpenCodeModelCatalog::isFreeModel).toList();
+    }
+
+    /**
+     * Returns every model id the provider currently exposes, free and paid,
+     * sorted for stable display. Selection gating lives in the settings
+     * service, not here.
+     *
+     * @param apiKey optional bearer credential; may be null or blank because
+     *               model discovery is public
+     */
+    public List<String> listAllModels(String apiKey) {
         return transport.listModels(apiKey).data().stream()
-                .filter(model -> isFreeModel(model.id()))
                 .map(OpenCodeModel::id)
+                .filter(id -> id != null && !id.isBlank())
+                .distinct()
+                .sorted()
                 .toList();
     }
 
-    private static boolean isFreeModel(String modelId) {
+    public static boolean isFreeModel(String modelId) {
         return modelId != null && modelId.endsWith("-free");
     }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { projectGraph, getNodeRouteMembership, getLineageEdgeMembership, selectPrimaryAnswer, getVisibleRouteIds } from '@/graph/graphProjection'
+import { projectGraph, getNodeRouteMembership, getLineageEdgeMembership, selectPrimaryAnswer, getVisibleRouteIds, estimateNodeCardHeight } from '@/graph/graphProjection'
 import type { GraphWorkspaceNodeView, GraphWorkspaceRelationView, GraphWorkspaceView, RouteLifecycleStatus } from '@/api/types'
 import { HORIZONTAL_GAP, VERTICAL_GAP } from '@/graph/graphLayout'
 import type { GraphPosition } from '@/graph/graphTypes'
@@ -102,6 +102,7 @@ function uiState(overrides: Partial<{
   focusRouteId: string | null
   lifecycleFilters: Record<RouteLifecycleStatus, boolean>
   routeDisplayStates: Record<string, 'normal' | 'dimmed' | 'hidden'>
+  isolatedRouteId: string | null
   expandedNodeIds: string[]
   showRelationLayer: boolean
 }> = {}) {
@@ -109,6 +110,7 @@ function uiState(overrides: Partial<{
     focusRouteId: null,
     lifecycleFilters: { ...DEFAULT_FILTERS },
     routeDisplayStates: {},
+    isolatedRouteId: null,
     expandedNodeIds: [],
     showRelationLayer: false,
     ...overrides,
@@ -517,6 +519,32 @@ describe('graph projection', () => {
     expect(rel).toBeUndefined()
   })
 
+  it('聚焦另一条路线时，它的未答末端也可直接回答（多路线独立）', () => {
+    // 默认视图（无 Focus）：可回答节点仍然只有运行路线的当前节点。
+    const plain = project()
+    expect(plain.nodes.find((node) => node.id === 'c')?.data?.canAnswer).toBe(true)
+    expect(plain.nodes.find((node) => node.id === 'd')?.data?.canAnswer).toBe(false)
+
+    // 显式聚焦 B：B 的未答末端 d 变成可回答，答案写入 B（提交带显式路线）。
+    const focused = project({ uiState: uiState({ focusRouteId: ROUTE_B_ID }) })
+    const d = focused.nodes.find((node) => node.id === 'd')
+    expect(d?.data?.canAnswer).toBe(true)
+    expect(d?.data?.readingRouteId).toBe(ROUTE_B_ID)
+    expect(d?.data?.isTipOfReadingRoute).toBe(true)
+    // 运行路线的当前节点语义不受影响。
+    expect(focused.nodes.find((node) => node.id === 'c')?.data?.canAnswer).toBe(true)
+  })
+
+  it('已答的聚焦末端不再可回答，绝不制造第二个作答入口', () => {
+    // B 的末端 d 已被回答（写入 B）后，聚焦 B 也不应再出现作答表单。
+    const view = project({ uiState: uiState({ focusRouteId: ROUTE_B_ID }) })
+    const answered = project({
+      uiState: uiState({ focusRouteId: ROUTE_B_ID }),
+    })
+    expect(answered.nodes.find((node) => node.id === 'b')?.data?.canAnswer).toBe(false)
+    expect(view.nodes.find((node) => node.id === 'b')?.data?.isTipOfReadingRoute).toBe(false)
+  })
+
   it('getVisibleRouteIds honors lifecycle filters and manual hide', () => {
     const view = fixture()
     const visible = getVisibleRouteIds(view, {
@@ -526,6 +554,63 @@ describe('graph projection', () => {
     expect(visible.has(ACTIVE_ROUTE_ID)).toBe(true)
     expect(visible.has(ROUTE_B_ID)).toBe(false)
     expect(visible.has(ROUTE_C_ID)).toBe(false)
+  })
+})
+
+/**
+ * 只看这条路线（isolate lens）。
+ *
+ * 回归点：旧实现把"运行路线永不被隐藏"当成了硬规则，于是对非运行路线做
+ * "只看"，运行路线的节点依然留在画布上 —— 连续第二次"只看"看起来毫无效果。
+ */
+describe('只看这条路线 (isolate lens)', () => {
+  it('renders exactly one route and removes the running route from the canvas', () => {
+    const result = project({ uiState: uiState({ isolatedRouteId: ROUTE_B_ID }) })
+    const ids = result.nodes.map((node) => node.id).sort()
+    // rB = a -> b -> d：共享前缀 a/b 保留，只有 rB 的 d 保留。
+    expect(ids).toEqual(['a', 'b', 'd'])
+    // 运行路线 rA 的独占节点 c 必须离开画布。
+    expect(ids).not.toContain('c')
+    expect(result.nodes.find((node) => node.id === 'a')?.data?.visibleRouteIds).toEqual([ROUTE_B_ID])
+  })
+
+  it('switching the lens from the running route to another route actually switches', () => {
+    const view = fixture()
+    const runningRouteLens = getVisibleRouteIds(view, {
+      lifecycleFilters: { ...DEFAULT_FILTERS },
+      routeDisplayStates: {},
+      isolatedRouteId: ACTIVE_ROUTE_ID,
+    })
+    expect([...runningRouteLens]).toEqual([ACTIVE_ROUTE_ID])
+
+    const secondLens = getVisibleRouteIds(view, {
+      lifecycleFilters: { ...DEFAULT_FILTERS },
+      routeDisplayStates: {},
+      isolatedRouteId: ROUTE_B_ID,
+    })
+    expect([...secondLens]).toEqual([ROUTE_B_ID])
+  })
+
+  it('the lens is explicit intent: it outranks lifecycle filters and manual hide', () => {
+    const view = fixture()
+    const visible = getVisibleRouteIds(view, {
+      lifecycleFilters: { ...DEFAULT_FILTERS, archived: false },
+      routeDisplayStates: { [ROUTE_C_ID]: 'hidden' },
+      isolatedRouteId: ROUTE_C_ID,
+    })
+    expect([...visible]).toEqual([ROUTE_C_ID])
+  })
+
+  it('without a lens every previous visibility rule still holds', () => {
+    const view = fixture()
+    const visible = getVisibleRouteIds(view, {
+      lifecycleFilters: { ...DEFAULT_FILTERS },
+      routeDisplayStates: {},
+      isolatedRouteId: null,
+    })
+    expect(visible.has(ACTIVE_ROUTE_ID)).toBe(true)
+    expect(visible.has(ROUTE_B_ID)).toBe(true)
+    expect(visible.has(ROUTE_D_ID)).toBe(true)
   })
 })
 
@@ -791,5 +876,93 @@ describe('adaptive edge routing in the canonical projection', () => {
     const bToD = result.edges.find((e) => e.id === 'b->d')!
     expect(bToD.sourceHandle).toBe('source-top')
     expect(bToD.targetHandle).toBe('target-bottom')
+  })
+})
+
+describe('estimateNodeCardHeight (first-layout fallback before measurement)', () => {
+  it('grows with the rendered line count of a note', () => {
+    const short = estimateNodeCardHeight(node('n1', null))
+    const long = estimateNodeCardHeight({
+      ...node('n2', null),
+      kind: 'KNOWLEDGE' as const,
+      subtype: 'NOTE',
+      question: '',
+      purpose: null,
+      content: { text: '内容'.repeat(300) },
+    })
+    expect(long).toBeGreaterThan(short)
+    expect(long).toBeGreaterThan(500)
+  })
+
+  it('stays in the measured ballpark for a real long note', () => {
+    // 实测样本：482 字 / 20 个换行的笔记在 320px 卡里渲染 802px 高。
+    const text = Array.from({ length: 20 }, (_, i) =>
+      `第 ${i + 1} 行说明：这是一段用于校准估算的笔记内容`).join('\n')
+    const estimate = estimateNodeCardHeight({
+      ...node('n3', null),
+      kind: 'KNOWLEDGE' as const,
+      subtype: 'NOTE',
+      question: '',
+      purpose: null,
+      content: { text },
+    })
+    expect(estimate).toBeGreaterThan(802 * 0.7)
+    expect(estimate).toBeLessThan(802 * 1.35)
+  })
+
+  it('counts explicit line breaks, not just character count', () => {
+    const flat = estimateNodeCardHeight({
+      ...node('n1', null),
+      kind: 'KNOWLEDGE' as const,
+      subtype: 'NOTE',
+      question: '',
+      purpose: null,
+      content: { text: 'a'.repeat(120) },
+    })
+    const broken = estimateNodeCardHeight({
+      ...node('n2', null),
+      kind: 'KNOWLEDGE' as const,
+      subtype: 'NOTE',
+      question: '',
+      purpose: null,
+      content: { text: Array.from({ length: 12 }, () => 'a'.repeat(10)).join('\n') },
+    })
+    expect(broken).toBeGreaterThan(flat)
+  })
+
+  it('reserves room for options and the free-answer box on interaction nodes', () => {
+    const bare = estimateNodeCardHeight(node('n1', null))
+    const withInputs = estimateNodeCardHeight({
+      ...node('n2', null),
+      allowFreeAnswer: true,
+      options: [
+        { id: 'o1', label: 'A', impact: null },
+        { id: 'o2', label: 'B', impact: null },
+        { id: 'o3', label: 'C', impact: null },
+      ],
+    })
+    expect(withInputs).toBeGreaterThan(bare)
+    expect(withInputs - bare).toBeGreaterThanOrEqual(90)
+  })
+
+  it('stays within sane bounds for empty and huge content', () => {
+    const empty = estimateNodeCardHeight({
+      ...node('n1', null),
+      kind: 'KNOWLEDGE' as const,
+      subtype: 'NOTE',
+      question: '',
+      purpose: null,
+      content: {},
+    })
+    const huge = estimateNodeCardHeight({
+      ...node('n2', null),
+      kind: 'KNOWLEDGE' as const,
+      subtype: 'NOTE',
+      question: '',
+      purpose: null,
+      content: { text: 'x'.repeat(50000) },
+    })
+    expect(empty).toBeGreaterThanOrEqual(110)
+    expect(huge).toBeLessThanOrEqual(1400)
   })
 })

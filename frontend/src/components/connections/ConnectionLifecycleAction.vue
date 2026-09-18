@@ -29,11 +29,11 @@ const phase = computed<Phase>(() => {
 
 const hint = computed(() => {
   switch (phase.value) {
-    case 'created': return '尚未测试，先验证这个连接是否可用。'
-    case 'tested': return '测试通过，现在可以建立连接。'
-    case 'connected': return '连接成功，启用后 Agent 才可以使用。'
-    case 'enabled': return 'Agent 已经可以使用这个连接。'
-    case 'failed': return props.detail.lastError ? props.detail.lastError : '连接失败，请重新测试。'
+    case 'created': return '尚未测试，先验证这个连接是否可用'
+    case 'tested': return '测试通过，现在可以建立连接'
+    case 'connected': return '连接成功，启用后 Agent 才可以使用'
+    case 'enabled': return 'Agent 已经可以使用这个连接'
+    case 'failed': return props.detail.lastError ? props.detail.lastError : '连接失败，请重新测试'
   }
 })
 </script>

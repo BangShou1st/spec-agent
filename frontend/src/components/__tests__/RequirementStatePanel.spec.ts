@@ -88,11 +88,11 @@ describe('RequirementStatePanel', () => {
     const wrapper = mountPanel(
       makeRequirementState({ confirmed: [], assumed: [], unresolved: [], rejected: [] }),
     )
-    expect(wrapper.findAll('.muted').some((el) => el.text() === '无。')).toBe(true)
+    expect(wrapper.findAll('.muted').some((el) => el.text() === '无')).toBe(true)
   })
 
   it('shows a not-loaded placeholder before the endpoint returns', () => {
     const wrapper = mountPanel(null)
-    expect(wrapper.text()).toContain('暂无需求状态。')
+    expect(wrapper.text()).toContain('暂无需求状态')
   })
 })

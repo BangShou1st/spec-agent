@@ -42,6 +42,7 @@ import org.springframework.transaction.annotation.Transactional;
 @ActiveProfiles("test")
 @Transactional
 class GlobalAssistantFinalInteractionTest {
+    @Autowired com.specagent.globalassistant.model.GlobalAssistantModelTargetResolver modelTargets;
     @Autowired GlobalAssistantConversationService conversations;
     @Autowired GlobalAssistantContextBuilder contextBuilder;
     @Autowired GlobalAssistantPromptRenderer renderer;
@@ -66,7 +67,7 @@ class GlobalAssistantFinalInteractionTest {
     private GlobalAssistantRuntime runtimeWithScripts(Queue<String> scripts) {
         ModelInferenceGateway stub = request -> new ModelInferenceResponse(scripts.poll(), "stop", 0, 0);
         GlobalAssistantBrain brain = new GlobalAssistantBrain(renderer, stub, parser, validator);
-        return new GlobalAssistantRuntime(conversations, contextBuilder, brain, capabilities, runs, canonicalizer, budgets, lifecycle, runEvents, uiValidator, summaries);
+        return new GlobalAssistantRuntime(conversations, contextBuilder, brain, capabilities, runs, canonicalizer, budgets, lifecycle, runEvents, uiValidator, summaries, modelTargets);
     }
 
     private GlobalAssistantContextBuilder.UiRequest ui() {
@@ -82,7 +83,7 @@ class GlobalAssistantFinalInteractionTest {
              return new ModelInferenceResponse("{\"assistantText\": \"should never commit\", \"kind\":\"FINAL\"}", "stop", 0, 0);
         };
         GlobalAssistantBrain brain = new GlobalAssistantBrain(renderer, stub, parser, validator);
-        var runtime = new GlobalAssistantRuntime(conversations, contextBuilder, brain, capabilities, runs, canonicalizer, budgets, lifecycle, runEvents, uiValidator, summaries);
+        var runtime = new GlobalAssistantRuntime(conversations, contextBuilder, brain, capabilities, runs, canonicalizer, budgets, lifecycle, runEvents, uiValidator, summaries, modelTargets);
         runtime.executeRun(thread.id(), run.id(), "hello", ui());
         assertThat(runs.findById(run.id()).orElseThrow().status()).isEqualTo(GlobalAssistantRunStatus.CANCELLED);
         assertThat(conversations.listMessages(thread.id()).stream().noneMatch(m -> "should never commit".equals(m.content()))).isTrue();
@@ -97,7 +98,7 @@ class GlobalAssistantFinalInteractionTest {
              return new ModelInferenceResponse("{\"assistantText\": \"which project?\", \"kind\":\"CLARIFY\"}", "stop", 0, 0);
         };
         GlobalAssistantBrain brain = new GlobalAssistantBrain(renderer, stub, parser, validator);
-        var runtime = new GlobalAssistantRuntime(conversations, contextBuilder, brain, capabilities, runs, canonicalizer, budgets, lifecycle, runEvents, uiValidator, summaries);
+        var runtime = new GlobalAssistantRuntime(conversations, contextBuilder, brain, capabilities, runs, canonicalizer, budgets, lifecycle, runEvents, uiValidator, summaries, modelTargets);
         runtime.executeRun(thread.id(), run.id(), "open", ui());
         assertThat(runs.findById(run.id()).orElseThrow().status()).isEqualTo(GlobalAssistantRunStatus.CANCELLED);
     }
@@ -112,7 +113,7 @@ class GlobalAssistantFinalInteractionTest {
              return new ModelInferenceResponse("{\"assistantText\": \"Opening.\", \"uiAction\": {\"destination\": \"PROJECT\", \"resourceId\": \"" + project.id() + "\"}, \"kind\":\"NAVIGATE\"}", "stop", 0, 0);
         };
         GlobalAssistantBrain brain = new GlobalAssistantBrain(renderer, stub, parser, validator);
-        var runtime = new GlobalAssistantRuntime(conversations, contextBuilder, brain, capabilities, runs, canonicalizer, budgets, lifecycle, runEvents, uiValidator, summaries);
+        var runtime = new GlobalAssistantRuntime(conversations, contextBuilder, brain, capabilities, runs, canonicalizer, budgets, lifecycle, runEvents, uiValidator, summaries, modelTargets);
         runtime.executeRun(thread.id(), run.id(), "open it", ui());
         assertThat(runs.findById(run.id()).orElseThrow().status()).isEqualTo(GlobalAssistantRunStatus.CANCELLED);
     }
@@ -133,7 +134,7 @@ class GlobalAssistantFinalInteractionTest {
             return new ModelInferenceResponse(scripts.poll(), "stop", 0, 0);
         };
         GlobalAssistantBrain brain = new GlobalAssistantBrain(renderer, stub, parser, validator);
-        var runtime = new GlobalAssistantRuntime(conversations, contextBuilder, brain, capabilities, runs, canonicalizer, budgets, lifecycle, runEvents, uiValidator, summaries);
+        var runtime = new GlobalAssistantRuntime(conversations, contextBuilder, brain, capabilities, runs, canonicalizer, budgets, lifecycle, runEvents, uiValidator, summaries, modelTargets);
         runtime.executeRun(thread.id(), run.id(), "find", ui());
         assertThat(runs.findById(run.id()).orElseThrow().status()).isEqualTo(GlobalAssistantRunStatus.CANCELLED);
         assertThat(runEvents.findByRun(run.id()).stream().anyMatch(e -> "TOOL_COMPLETED".equals(e.type()))).isTrue();

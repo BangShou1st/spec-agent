@@ -131,9 +131,30 @@ public class AnswerCycleService {
     public AnswerCycleResult submitAnswer(AgentRun run, UUID projectId,
                                           UUID selectedOptionId, String freeText,
                                           AgentEvent.PersistenceIntent persistenceIntent) {
-        Route route = loadActiveRoute(projectId);
+        return submitAnswer(run, projectId, selectedOptionId, freeText, persistenceIntent, null);
+    }
+
+    /**
+     * Same as above, but the run may target an EXPLICIT route
+     * ({@code explicitRouteId != null}) instead of the project's Active route.
+     *
+     * <p>This is what makes several routes independent: route B keeps
+     * answering while route A is the Active route, because the run resolves its
+     * target from itself instead of re-reading the single Active pointer. The
+     * tip/staleness checks are unchanged — they just run against the resolved
+     * route — and with {@code explicitRouteId == null} the behaviour is
+     * byte-identical to the Active-route path.
+     */
+    public AnswerCycleResult submitAnswer(AgentRun run, UUID projectId,
+                                          UUID selectedOptionId, String freeText,
+                                          AgentEvent.PersistenceIntent persistenceIntent,
+                                          UUID explicitRouteId) {
+        Route route = resolveRunRoute(projectId, explicitRouteId);
+        boolean explicitRoute = explicitRouteId != null;
         if (route.tipNodeId() == null) {
-            throw new IllegalStateException("Active route has no tip node");
+            throw new IllegalStateException(explicitRoute
+                    ? "Route has no tip node: " + route.id()
+                    : "Active route has no tip node");
         }
         Node tipNode = nodeService.getNode(route.tipNodeId())
                 .orElseThrow(() -> new IllegalStateException(
@@ -143,8 +164,9 @@ public class AnswerCycleService {
         // moved on before the worker claimed the run, fail instead of
         // answering a different node than the user was looking at.
         if (run.inputNodeId() != null && !run.inputNodeId().equals(route.tipNodeId())) {
-            throw new IllegalStateException(
-                    "Answer target is no longer the active route tip: " + run.inputNodeId());
+            throw new IllegalStateException(explicitRoute
+                    ? "Answer target is not the tip of route " + route.id() + ": " + run.inputNodeId()
+                    : "Answer target is no longer the active route tip: " + run.inputNodeId());
         }
 
         String selectedOption = validateSelectedOption(tipNode, selectedOptionId);
@@ -154,7 +176,9 @@ public class AnswerCycleService {
         String trace = "created";
         try {
             trace = appendTrace(trace, "context_built");
-            ContextSnapshot snapshot = buildAndValidateContext(run, projectId, trace);
+            ContextSnapshot snapshot = explicitRoute
+                    ? buildAndValidateContextForRoute(run, projectId, route, trace)
+                    : buildAndValidateContext(run, projectId, trace);
 
             // Persist immutable Answer BEFORE any model call.
             Answer answer = answerService.finalizeAnswer(
@@ -197,6 +221,13 @@ public class AnswerCycleService {
 
     public AnswerCycleResult resumeAnswer(AgentRun run, UUID projectId, UUID answerId,
                                           AgentEvent.PersistenceIntent persistenceIntent) {
+        return resumeAnswer(run, projectId, answerId, persistenceIntent, null);
+    }
+
+    /** Resume with an EXPLICIT route (see {@link #submitAnswer} for the mode). */
+    public AnswerCycleResult resumeAnswer(AgentRun run, UUID projectId, UUID answerId,
+                                          AgentEvent.PersistenceIntent persistenceIntent,
+                                          UUID explicitRouteId) {
         Answer answer = answerService.getAnswer(answerId)
                 .orElseThrow(() -> new IllegalArgumentException("Answer not found: " + answerId));
         if (!answer.projectId().equals(projectId)) {
@@ -204,12 +235,17 @@ public class AnswerCycleService {
                     "Answer does not belong to project: " + projectId);
         }
 
-        Route route = loadActiveRoute(projectId);
+        Route route = resolveRunRoute(projectId, explicitRouteId);
+        boolean explicitRoute = explicitRouteId != null;
         if (!answer.routeId().equals(route.id())) {
-            throw new IllegalStateException("Answer does not belong to active route");
+            throw new IllegalStateException(explicitRoute
+                    ? "Answer does not belong to route " + route.id()
+                    : "Answer does not belong to active route");
         }
         if (!answer.nodeId().equals(route.tipNodeId())) {
-            throw new IllegalStateException("Answer node is not the active route tip");
+            throw new IllegalStateException(explicitRoute
+                    ? "Answer node is not the tip of route " + route.id()
+                    : "Answer node is not the active route tip");
         }
 
         failIfLegacyReplay(answer.id());
@@ -224,7 +260,9 @@ public class AnswerCycleService {
             // original snapshot is undiscoverable builds a fresh context.
             ContextSnapshot snapshot = resolveOriginalPreAnswerSnapshot(projectId, answer)
                     .map(original -> attachSnapshot(run, original, traceAfterBuild))
-                    .orElseGet(() -> buildAndValidateContext(run, projectId, traceAfterBuild));
+                    .orElseGet(() -> explicitRoute
+                            ? buildAndValidateContextForRoute(run, projectId, route, traceAfterBuild)
+                            : buildAndValidateContext(run, projectId, traceAfterBuild));
 
             trace = appendTrace(trace, "persisted_answer");
             agentRunService.markPersistedAnswer(run.id(), answer.id(), trace);
@@ -440,9 +478,43 @@ public class AnswerCycleService {
                         "Active route not found: " + project.activeRouteId()));
     }
 
+    /**
+     * The route an answer cycle writes to. Without an explicit route this is
+     * the project Active route (unchanged, still fail-closed when the pointer
+     * moved); with one, the route must belong to the project and be OPEN.
+     */
+    private Route resolveRunRoute(UUID projectId, UUID explicitRouteId) {
+        if (explicitRouteId == null) {
+            return loadActiveRoute(projectId);
+        }
+        Route route = routeRepository.findById(explicitRouteId)
+                .orElseThrow(() -> new IllegalArgumentException("Route not found: " + explicitRouteId));
+        if (!route.projectId().equals(projectId)) {
+            throw new IllegalArgumentException(
+                    "Route " + explicitRouteId + " does not belong to project " + projectId);
+        }
+        if (route.lifecycleStatus() != com.specagent.route.RouteLifecycleStatus.OPEN) {
+            throw new IllegalStateException(
+                    "Route is not open: " + explicitRouteId
+                            + " is " + route.lifecycleStatus().code());
+        }
+        return route;
+    }
+
     private ContextSnapshot buildAndValidateContext(AgentRun run, UUID projectId, String trace) {
         ContextSnapshot snapshot = contextBuilder.buildFromActiveRoute(
                 projectId, run.id(), ContextOperationType.NORMAL);
+        return attachSnapshot(run, snapshot, trace);
+    }
+
+    /**
+     * Explicit-route context: built from the run's own route instead of the
+     * Active pointer, so an independently running chain reads its own lineage.
+     */
+    private ContextSnapshot buildAndValidateContextForRoute(AgentRun run, UUID projectId,
+                                                            Route route, String trace) {
+        ContextSnapshot snapshot = contextBuilder.buildForRoute(
+                projectId, route.id(), route.tipNodeId(), run.id(), ContextOperationType.NORMAL);
         return attachSnapshot(run, snapshot, trace);
     }
 

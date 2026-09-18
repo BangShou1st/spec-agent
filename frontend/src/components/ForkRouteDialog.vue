@@ -39,12 +39,12 @@ function submit(): void {
       <h3 style="margin-top: 0">从这里开新路线</h3>
       <p class="muted" style="margin-top: 0">{{ node?.question }}</p>
       <p v-if="!sourceRoute" class="info-line blocker" data-test="choose-reading-route">
-        请先在该共享节点的“当前查看”控件中选择一条路线。
+        请先在该共享节点的“当前查看”控件中选择一条路线
       </p>
       <p v-else class="meta-text">来源：{{ sourceRoute.label ?? sourceRoute.id }}</p>
-      <p v-if="sourceRoute && sourceRoute.lifecycleStatus === 'archived'" class="info-line blocker">请先恢复归档路线。</p>
-      <p v-if="sourceRoute && sourceRoute.lifecycleStatus === 'deleted'" class="info-line blocker">已删除路线不能作为操作来源。</p>
-      <p v-if="sourceRoute && !finalized" class="info-line blocker">该来源路线在此问题上还没有回答。</p>
+      <p v-if="sourceRoute && sourceRoute.lifecycleStatus === 'archived'" class="info-line blocker">请先恢复归档路线</p>
+      <p v-if="sourceRoute && sourceRoute.lifecycleStatus === 'deleted'" class="info-line blocker">已删除路线不能作为操作来源</p>
+      <p v-if="sourceRoute && !finalized" class="info-line blocker">该来源路线在此问题上还没有回答</p>
       <button
         v-if="sourceRoute && sourceRoute.lifecycleStatus === 'archived'"
         class="btn"
@@ -70,7 +70,7 @@ function submit(): void {
 .dialog { background: var(--color-surface); border-radius: var(--radius); padding: 18px; width: 100%; max-width: 520px; box-shadow: 0 12px 32px rgba(15, 20, 30, 0.25); }
 .field-label { display: block; margin-top: 12px; font-size: 13px; }
 .field-label input { display: block; margin-top: 4px; }
-.dialog-actions { display: flex; gap: 8px; margin-top: 14px; }
+.dialog-actions { margin-top: 14px; }
 .info-line { font-size: 12px; }
 .blocker { color: var(--color-warn); }
 </style>

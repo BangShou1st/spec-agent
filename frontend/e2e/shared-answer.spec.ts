@@ -82,23 +82,31 @@ test('Focus switching does not change the Answer content and Active never follow
   await closeFloatingWorkspaceWindows(page)
   await fitGraph(page)
 
+  // Fork 会把 Focus 落到 Route B：共享节点的阅读路线随之被解析成 B，卡片渲染
+  // 只读徽标而不是下拉；而阅读路线下拉只在「阅读路线未解析且候选 > 1」时存在。
+  // 所以先点画布空白清掉浏览器态 Focus，让阅读路线回到未解析，下拉才会出现。
+  await page.locator('.vue-flow__pane').dispatchEvent('click')
+
   const sharedCard = page.locator(`[data-node-id="${sharedNodeId}"]`)
   // 历史卡紧凑不展示全文；完整答案在 Inspector 中唯一展示。
   await expect(sharedCard).not.toContainText(answerText)
   await sharedCard.click()
   await expect(page.getByTestId('canonical-answer')).toContainText(answerText)
 
-  // 通过 reading-route select 切换 Focus 到 Route A。
-  const select = sharedCard.getByTestId('reading-route-select')
-  await select.selectOption(routeA.id)
-  await page.waitForTimeout(300)
+  // 通过 reading-route select 切换 Focus 到 Route A（只写 Focus，不改 Active）。
+  await sharedCard.getByTestId('reading-route-select').selectOption(routeA.id)
+  // 阅读路线一经确定即回落为只读徽标，下拉随之消失。
+  await expect(sharedCard.getByTestId('reading-route-select')).toHaveCount(0)
+  await expect(sharedCard.getByTestId('reading-route-resolved')).toBeVisible()
   await expect(page.getByTestId('canonical-answer')).toContainText(answerText)
   const activeAfterFocusA = (await (await request.get(`/api/v1/projects/${projectId}/graph`)).json()).activeRouteId
   expect(activeAfterFocusA).toBe(routeBId) // Active 不随 Focus 变化
 
-  // 切回 Route B,Answer 内容仍然不变。
-  await select.selectOption(routeBId)
-  await page.waitForTimeout(300)
+  // 切回 Route B，同样先清 Focus 让下拉回来；Answer 内容仍然不变。
+  await page.locator('.vue-flow__pane').dispatchEvent('click')
+  await sharedCard.getByTestId('reading-route-select').selectOption(routeBId)
+  await expect(sharedCard.getByTestId('reading-route-resolved')).toBeVisible()
+  await sharedCard.click()
   await expect(page.getByTestId('canonical-answer')).toContainText(answerText)
   const activeAfterFocusB = (await (await request.get(`/api/v1/projects/${projectId}/graph`)).json()).activeRouteId
   expect(activeAfterFocusB).toBe(routeBId)

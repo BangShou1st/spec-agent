@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { deleteSkill, deleteStagedImport, disableSkill, enableSkill, getSkill, installStagedImport, listSkills, listSkillVersions, readSkillResource, rejectStagedImport, stageSkillGit } from '@/api/skills'
+import { deleteSkill, deleteStagedImport, disableSkill, discoverSkillGit, enableSkill, getSkill, installStagedImport, listSkills, listSkillVersions, readSkillResource, rejectStagedImport, stageSkillGit } from '@/api/skills'
 
 function ok(body: unknown, status = 200) {
   return { ok: true, status, text: async () => (body == null ? '' : JSON.stringify(body)), json: async () => body }
@@ -29,6 +29,7 @@ describe('skills api', () => {
   it('drives staged git import, install, reject, and lifecycle without FormData JSON headers', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(ok({ stagedImportId: 'st1' }, 201))
+      .mockResolvedValueOnce(ok({ commitSha: 'abc', suggestedPath: 'skills/a', candidates: [] }))
       .mockResolvedValueOnce(ok({ skillId: 's9' }))
       .mockResolvedValueOnce(ok(undefined, 204))
       .mockResolvedValueOnce(ok(undefined, 204))
@@ -36,7 +37,8 @@ describe('skills api', () => {
       .mockResolvedValueOnce(ok(undefined, 204))
       .mockResolvedValueOnce(ok(undefined, 204))
     vi.stubGlobal('fetch', fetchMock)
-    await stageSkillGit('https://example.com/skill.git', 'main')
+    await stageSkillGit('https://example.com/skill.git', 'main', 'skills/brainstorming')
+    await discoverSkillGit('https://example.com/library.git', 'main')
     await installStagedImport('st1')
     await rejectStagedImport('st1', 'nope')
     await deleteStagedImport('st1')
@@ -46,6 +48,7 @@ describe('skills api', () => {
     const urls = fetchMock.mock.calls.map((c) => String(c[0]))
     expect(urls).toEqual([
       '/api/v1/skills/imports/git',
+      '/api/v1/skills/imports/git/discover',
       '/api/v1/skills/imports/st1/install',
       '/api/v1/skills/imports/st1/reject',
       '/api/v1/skills/imports/st1',
@@ -53,7 +56,10 @@ describe('skills api', () => {
       '/api/v1/skills/s9/disable',
       '/api/v1/skills/s9',
     ])
-    expect(fetchMock.mock.calls[3][1].method).toBe('DELETE')
-    expect(fetchMock.mock.calls[6][1].method).toBe('DELETE')
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1].body))).toEqual({
+      url: 'https://example.com/skill.git', ref: 'main', subPath: 'skills/brainstorming',
+    })
+    expect(fetchMock.mock.calls[4][1].method).toBe('DELETE')
+    expect(fetchMock.mock.calls[7][1].method).toBe('DELETE')
   })
 })

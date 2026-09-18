@@ -182,14 +182,14 @@ describe('graph question node', () => {
     const wrapper = mountNode(currentData())
     await wrapper.find('input[type=radio][value="opt-b"]').setValue()
     await wrapper.find('[data-test="submit-answer"]').trigger('click')
-    expect(wrapper.emitted('submit-answer')?.[0]).toEqual([{ selectedOptionId: 'opt-b', freeText: null }])
+    expect(wrapper.emitted('submit-answer')?.[0]).toEqual([{ selectedOptionId: 'opt-b', freeText: null, nodeId: 'n1', routeId: 'r1' }])
   })
 
   it('submits a free-text-only payload', async () => {
     const wrapper = mountNode(currentData())
     await wrapper.find('[data-test="free-text"]').setValue('free text answer')
     await wrapper.find('[data-test="submit-answer"]').trigger('click')
-    expect(wrapper.emitted('submit-answer')?.[0]).toEqual([{ selectedOptionId: null, freeText: 'free text answer' }])
+    expect(wrapper.emitted('submit-answer')?.[0]).toEqual([{ selectedOptionId: null, freeText: 'free text answer', nodeId: 'n1', routeId: 'r1' }])
   })
 
   it('submits combined option + free text payload', async () => {
@@ -198,7 +198,7 @@ describe('graph question node', () => {
     await wrapper.find('[data-test="free-text"]').setValue('with explanation')
     await wrapper.find('[data-test="submit-answer"]').trigger('click')
     expect(wrapper.emitted('submit-answer')?.[0]).toEqual([
-      { selectedOptionId: 'opt-a', freeText: 'with explanation' },
+      { selectedOptionId: 'opt-a', freeText: 'with explanation', nodeId: 'n1', routeId: 'r1' },
     ])
   })
 
@@ -229,6 +229,49 @@ describe('graph question node', () => {
     expect(wrapper.find('[data-test="submit-answer"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="historical-question"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="answer-summary"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Keep this exact user answer.')
+  })
+
+  it('clicking (selecting) a historical node reveals the complete question and answer', () => {
+    const wrapper = mountNode(historicalData(), { selected: true })
+
+    // 完整问题按当前节点同规格渲染，不再是两行截断。
+    const question = wrapper.find('[data-test="historical-question"]')
+    expect(question.exists()).toBe(true)
+    expect(question.text()).toContain('What outcome matters most?')
+    expect(question.classes()).not.toContain('graph-node-question--compact')
+    expect(wrapper.find('.graph-question-node--detailed').exists()).toBe(true)
+
+    // 完整回答：选中的选项 + 自由文本原文。
+    expect(wrapper.find('[data-test="historical-answer"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="historical-answer-option"]').text()).toBe('Product team')
+    expect(wrapper.find('[data-test="historical-answer-text"]').text()).toContain('Keep this exact user answer.')
+
+    // 展开仍然是只读的：绝不出现第二套回答输入界面。
+    expect(wrapper.find('[data-test="free-text"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="submit-answer"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="option"]').exists()).toBe(false)
+    // 逐路线历史仍不进卡片。
+    expect(wrapper.text()).not.toContain('Second route answer.')
+  })
+
+  it('expanded historical node lists every option and marks the submitted one', () => {
+    const wrapper = mountNode(historicalData(), { selected: true })
+
+    const rows = wrapper.findAll('.graph-history-option')
+    expect(rows).toHaveLength(2)
+    expect(wrapper.text()).toContain('Engineering team')
+    expect(wrapper.text()).toContain('Fastest value')
+    const chosen = rows.filter((row) => row.classes().includes('graph-history-option--chosen'))
+    expect(chosen).toHaveLength(1)
+    expect(chosen[0].text()).toContain('Product team')
+  })
+
+  it('unselected historical node hides the answer and only offers an expand hint', () => {
+    const wrapper = mountNode(historicalData())
+    expect(wrapper.find('[data-test="historical-answer"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="historical-options"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="expand-hint"]').exists()).toBe(true)
     expect(wrapper.text()).not.toContain('Keep this exact user answer.')
   })
 
@@ -296,7 +339,7 @@ describe('graph question node', () => {
     expect(wrapper.emitted('regenerate')?.[0]).toEqual(['n1'])
   })
 
-  it('shared nodes expose the real current-reading selector without duplicating route history', async () => {
+  it('当前查看已确定时只读展示，不再要求用户选一次', async () => {
     const wrapper = mountNode(
       historicalData({
         routeMembership: [
@@ -306,17 +349,36 @@ describe('graph question node', () => {
       }),
       { selected: true },
     )
-    const selector = wrapper.find('[data-test="reading-route-select"]')
-    expect(selector.exists()).toBe(true)
-    expect((selector.element as HTMLSelectElement).value).toBe('r1')
-    await selector.setValue('r2')
-    expect(wrapper.emitted('focus-route')?.[0]).toEqual(['r2'])
+    // 已确定（Focus / 只看这条路线 / 唯一可见归属）→ 只读标签，无选择器。
+    expect(wrapper.find('[data-test="reading-route-select"]').exists()).toBe(false)
+    const resolved = wrapper.find('[data-test="reading-route-resolved"]')
+    expect(resolved.exists()).toBe(true)
+    expect(resolved.text()).toBe('Initial')
     expect(wrapper.text()).not.toContain('Second route answer.')
     expect(wrapper.emitted('fork')).toBeUndefined()
     expect(wrapper.emitted('submit-answer')).toBeUndefined()
-    // 历史共享节点：header 只展示计数，完整成员在下拉框/Inspector 中查看。
+    // 历史共享节点：header 只展示计数，完整成员在 Inspector 中查看。
     expect(wrapper.find('[data-test="shared-membership"]').text()).toContain('共享 · 2 条路线')
     expect(wrapper.findAll('.graph-route-chip')).toHaveLength(0)
+  })
+
+  it('真正歧义（多归属都可见且无 Focus）时保留显式选择器', async () => {
+    const wrapper = mountNode(
+      historicalData({
+        readingRouteId: null,
+        routeMembership: [
+          { routeId: 'r1', label: 'Initial', lifecycleStatus: 'open', isActive: true },
+          { routeId: 'r2', label: 'Route-B', lifecycleStatus: 'open', isActive: false },
+        ],
+      }),
+      { selected: true },
+    )
+    expect(wrapper.find('[data-test="reading-route-resolved"]').exists()).toBe(false)
+    const selector = wrapper.find('[data-test="reading-route-select"]')
+    expect(selector.exists()).toBe(true)
+    expect((selector.element as HTMLSelectElement).value).toBe('')
+    await selector.setValue('r2')
+    expect(wrapper.emitted('focus-route')?.[0]).toEqual(['r2'])
   })
 
   it('renders runtime state on a pending projection and exposes retry', async () => {

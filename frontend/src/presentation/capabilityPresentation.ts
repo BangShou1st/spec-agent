@@ -18,6 +18,7 @@ const REGISTRY: Record<string, CapabilityPresentation> = {
   'project.search': { actionLabel: '搜索项目', resultKind: 'PROJECT_LIST' },
   'project.list_recent': { actionLabel: '查看最近项目', resultKind: 'PROJECT_LIST' },
   'project.get_summary': { actionLabel: '读取项目概要', resultKind: 'PROJECT' },
+  'skill.import': { actionLabel: '获取 Skill', resultKind: null },
 };
 
 const FALLBACK: CapabilityPresentation = { actionLabel: '执行操作', resultKind: null };

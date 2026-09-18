@@ -87,18 +87,35 @@ public class DecisionCycleService {
      * policy/execution chain.
      */
     public DecisionCycleResult draftQuestion(AgentRun run) {
-        Route route = loadDraftTargetRoute(run);
+        return draftQuestion(run, null);
+    }
+
+    /**
+     * Question draft with an optional EXPLICIT target route.
+     *
+     * <p>With {@code explicitRouteId != null} the run drafts on its own route
+     * (context built per-route, Active-equality skipped in the guard), which is
+     * what lets route B keep generating while route A is the Active route.
+     * {@code null} keeps the original Active-route behaviour exactly.
+     */
+    public DecisionCycleResult draftQuestion(AgentRun run, UUID explicitRouteId) {
+        Route route = loadDraftTargetRoute(run, explicitRouteId);
+        boolean explicitRoute = explicitRouteId != null;
         String trace = "created";
         try {
             trace = appendTrace(trace, "context_built");
-            ContextSnapshot snapshot = contextBuilder.buildFromActiveRoute(
-                    run.projectId(), run.id(), ContextOperationType.NORMAL);
+            ContextSnapshot snapshot = explicitRoute
+                    ? contextBuilder.buildForRoute(
+                            run.projectId(), route.id(), route.tipNodeId(), run.id(),
+                            ContextOperationType.NORMAL)
+                    : contextBuilder.buildFromActiveRoute(
+                            run.projectId(), run.id(), ContextOperationType.NORMAL);
             agentRunService.attachContext(run.id(), snapshot.id(), trace);
             eventService.append(run.id(), AgentRunPhase.SNAPSHOT_BUILT, "SNAPSHOT_BUILT", Map.of(
                     "snapshotId", snapshot.id().toString(),
                     "contextHash", snapshot.contextHash()));
 
-            if (!contextGuard.validate(snapshot).accepted()) {
+            if (!contextGuard.validate(snapshot, explicitRoute).accepted()) {
                 throw new ModelContractException("Context guard rejected agent run");
             }
 
@@ -127,24 +144,36 @@ public class DecisionCycleService {
     }
 
     /**
-     * Loads and validates the run's draft target: the run's route must still
-     * be the active route and the tip recorded at enqueue time must still be
-     * the tip. Both may be null together (root draft on an empty route).
+     * Loads and validates the run's draft target: the tip recorded at enqueue
+     * time must still be the route's tip. Both may be null together (root
+     * draft on an empty route).
+     *
+     * <p>In Active mode (the default) the run's route must ALSO still be the
+     * project Active route. In explicit mode that equality is deliberately not
+     * required — the run owns its route — while ownership and OPEN-ness are
+     * still enforced by {@code RunService.resolveTargetRoute} at enqueue time
+     * and re-validated here through the route lookup.
      */
-    private Route loadDraftTargetRoute(AgentRun run) {
-        Project project = projectRepository.findById(run.projectId())
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Project not found: " + run.projectId()));
-        if (!project.activeRouteId().equals(run.routeId())) {
-            throw new IllegalStateException(
-                    "Draft target route is no longer the active route: " + run.routeId());
+    private Route loadDraftTargetRoute(AgentRun run, UUID explicitRouteId) {
+        if (explicitRouteId == null) {
+            Project project = projectRepository.findById(run.projectId())
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "Project not found: " + run.projectId()));
+            if (!project.activeRouteId().equals(run.routeId())) {
+                throw new IllegalStateException(
+                        "Draft target route is no longer the active route: " + run.routeId());
+            }
         }
         Route route = routeRepository.findById(run.routeId())
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Route not found: " + run.routeId()));
-        if (!Objects.equals(run.inputNodeId(), route.tipNodeId())) {
+        if (explicitRouteId == null && !Objects.equals(run.inputNodeId(), route.tipNodeId())) {
             throw new IllegalStateException(
                     "Draft target is no longer the active route tip: " + run.inputNodeId());
+        }
+        if (explicitRouteId != null && !Objects.equals(run.inputNodeId(), route.tipNodeId())) {
+            throw new IllegalStateException(
+                    "Draft target is not the tip of route " + run.routeId() + ": " + run.inputNodeId());
         }
         return route;
     }

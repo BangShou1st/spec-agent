@@ -20,3 +20,8 @@ export function saveOpenCode(apiKey: string, selectedModel: string): Promise<Ope
 export function saveOpenCodeModel(selectedModel: string): Promise<OpenCodeSettingsStatus> {
   return apiClient.put<OpenCodeSettingsStatus>('/settings/opencode/model', { selectedModel })
 }
+
+/** Explicit reachability test on the stored key + model; never mutates settings. */
+export function validateOpenCode(): Promise<OpenCodeSettingsStatus> {
+  return apiClient.post<OpenCodeSettingsStatus>('/settings/opencode/validate')
+}

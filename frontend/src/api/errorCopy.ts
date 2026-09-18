@@ -1,27 +1,29 @@
 /** Stable product copy for safe API error codes. Provider payloads and raw
  * backend messages never become user-facing text through this mapper. */
 const ERROR_COPY: Record<string, string> = {
-  NOT_CONFIGURED: '尚未配置模型，请前往模型设置。',
-  AUTHENTICATION: '当前 API Key 已失效，请更换 API Key。',
-  RATE_LIMITED: '模型服务当前请求较多，请稍后再试。',
-  TIMEOUT: '模型服务响应超时，请稍后再试。',
-  CONNECTION: '无法连接到 OpenCode，请检查网络后重试。',
-  NETWORK_ERROR: '无法连接到 OpenCode，请检查网络后重试。',
-  SERVER_ERROR: '模型服务暂时不可用，请稍后再试。',
-  INVALID_MODEL: '当前模型已不可用，请重新选择。',
-  INVALID_RESPONSE: '模型返回了无法识别的结果，请重新请求。',
-  EMPTY_CONTENT: '模型没有返回可用内容，请重新请求。',
-  MODEL_CONTRACT_REJECTED: '模型输出未通过校验，请重新请求。',
-  ACTIVE_ROUTE_REQUIRED: '当前没有可用路线，无法起草问题。请刷新状态后重试。',
-  PENDING_NODE_QUERY_NOT_ALLOWED: '临时运行卡片不是可查询的节点，请选择真实节点。',
-  UNKNOWN_ERROR: '操作失败，请稍后重试。',
-  INTERNAL_ERROR: '操作失败，请稍后重试。',
-  INTERNAL_INVARIANT_VIOLATION: '工作区状态出现异常，请刷新状态。',
-  SKILL_IMPORT_REJECTED: 'Skill 导入被拒绝，请检查文件或地址后重试。',
-  SKILL_RESOURCE_REJECTED: 'Skill 资源无法读取，请稍后再试。',
-  CONNECTION_COMMAND_REJECTED: '连接操作失败，请稍后再试。',
-  CONNECTION_NOT_FOUND: '该连接不存在，可能已被删除。',
-  VALIDATION_ERROR: '输入有误，请检查后重试。',
+  NOT_CONFIGURED: '尚未配置模型，请前往模型设置',
+  AUTHENTICATION: '当前 API Key 已失效，请更换 API Key',
+  RATE_LIMITED: '模型服务当前请求较多，请稍后再试',
+  TIMEOUT: '模型服务响应超时，请稍后再试',
+  CONNECTION: '无法连接到 OpenCode，请检查网络后重试',
+  NETWORK_ERROR: '无法连接到 OpenCode，请检查网络后重试',
+  SERVER_ERROR: '模型服务暂时不可用，请稍后再试',
+  INVALID_MODEL: '当前模型已不可用，请重新选择',
+  INVALID_RESPONSE: '模型返回了无法识别的结果，请重新请求',
+  EMPTY_CONTENT: '模型没有返回可用内容，请重新请求',
+  MODEL_CONTRACT_REJECTED: '模型输出未通过校验，请重新请求',
+  ACTIVE_ROUTE_REQUIRED: '当前没有可用路线，无法起草问题。请刷新状态后重试',
+  PENDING_NODE_QUERY_NOT_ALLOWED: '临时运行卡片不是可查询的节点，请选择真实节点',
+  UNKNOWN_ERROR: '操作失败，请稍后重试',
+  INTERNAL_ERROR: '操作失败，请稍后重试',
+  INTERNAL_INVARIANT_VIOLATION: '工作区状态出现异常，请刷新状态',
+  SKILL_IMPORT_REJECTED: 'Skill 导入被拒绝，请检查文件或地址后重试',
+  SKILL_RESOURCE_REJECTED: 'Skill 资源无法读取，请稍后再试',
+  CONNECTION_COMMAND_REJECTED: '连接操作失败，请稍后再试',
+  CONNECTION_NOT_FOUND: '该连接不存在，可能已被删除',
+  VALIDATION_ERROR: '输入有误，请检查后重试',
+  PROJECT_TITLE_ALREADY_EXISTS: '已存在同名项目，请换一个名称',
+  PROJECT_NOT_FOUND: '该项目不存在，可能已被删除',
 }
 
 function stableCode(code: string): string {
@@ -43,7 +45,7 @@ function stableCode(code: string): string {
 }
 
 export function productErrorMessage(code: string, _safeFallback?: string): string {
-  return ERROR_COPY[stableCode(code)] ?? '操作失败，请稍后重试。'
+  return ERROR_COPY[stableCode(code)] ?? '操作失败，请稍后重试'
 }
 
 export function managementErrorMessage(code: string, safeBackendMessage?: string): string {
@@ -59,6 +61,20 @@ export function managementErrorMessage(code: string, safeBackendMessage?: string
     }
   }
   return productErrorMessage(code)
+}
+
+/**
+ * Copy for the projects page. Backend messages are English by contract, so the
+ * codes this page can surface are mapped to product copy here; anything else
+ * keeps the backend message rather than being flattened into a generic one.
+ */
+export function projectErrorMessage(code: string, backendMessage: string): string {
+  const normalized = code.toUpperCase()
+  const copy = ERROR_COPY[normalized]
+  if (normalized === 'PROJECT_TITLE_ALREADY_EXISTS' || normalized === 'PROJECT_NOT_FOUND') {
+    return copy
+  }
+  return backendMessage
 }
 
 export function requiresModelSettings(code: string): boolean {

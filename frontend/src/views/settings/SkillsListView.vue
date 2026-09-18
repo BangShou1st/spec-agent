@@ -26,6 +26,7 @@ onMounted(() => {
 
 function openImport(): void {
   store.clearError()
+  store.resetGitDiscovery()
   importOpen.value = true
 }
 
@@ -38,13 +39,18 @@ async function submitZip(file: File): Promise<void> {
   }
 }
 
-async function submitGit(url: string, ref?: string): Promise<void> {
-  const ok = await store.stageGit(url, ref)
+async function submitGit(url: string, ref?: string, subPath?: string): Promise<void> {
+  const ok = await store.stageGit(url, ref, subPath)
   if (ok && store.lastStaged) {
     importOpen.value = false
     reviewId.value = store.lastStaged.stagedImportId
     void store.loadStagedDetail(store.lastStaged.stagedImportId)
   }
+}
+
+/** Read-only repository inspection: fills the candidate list, stages nothing. */
+async function discoverGit(url: string, ref?: string): Promise<void> {
+  await store.discoverGit(url, ref)
 }
 
 function openReview(id: string): void {
@@ -96,7 +102,7 @@ function retry(): void {
     <header class="mgmt-head">
       <div>
         <h2>Skills</h2>
-        <p class="muted">安装与管理可用的 Skill，扩展代理的能力边界。</p>
+        <p class="muted">安装与管理可用的 Skill，扩展代理的能力边界</p>
       </div>
       <button type="button" class="btn btn-primary" data-test="add-skill" @click="openImport">+ 添加 Skill</button>
     </header>
@@ -107,7 +113,7 @@ function retry(): void {
     </p>
 
     <div v-if="store.listLoading" class="muted" data-test="skills-loading">加载中…</div>
-    <p v-else-if="!store.list.length && !store.error" class="mgmt-empty" data-test="skills-empty">还没有安装 Skill，点击右上角添加。</p>
+    <p v-else-if="!store.list.length && !store.error" class="mgmt-empty" data-test="skills-empty">还没有安装 Skill，点击右上角添加</p>
     <SkillsList
       v-else
       :skills="store.list"
@@ -137,9 +143,12 @@ function retry(): void {
       :open="importOpen"
       :staging="store.actionLoading"
       :error="store.error"
+      :discovering="store.gitDiscovering"
+      :candidates="store.gitCandidates"
       @close="importOpen = false"
       @submit-zip="submitZip"
       @submit-git="submitGit"
+      @discover-git="discoverGit"
     />
     <SkillImportReview
       :open="reviewId !== null"

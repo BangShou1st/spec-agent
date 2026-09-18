@@ -50,6 +50,10 @@ export interface OpenCodeSettingsStatus {
 }
 
 export interface OpenCodeProbeResponse {
+  /** Every model id the provider currently exposes (free and paid).
+   *  Older backends omit this field; stores fall back to freeModels. */
+  allModels?: string[]
+  /** Free subset; always present. */
   freeModels: string[]
 }
 
@@ -162,6 +166,14 @@ export interface DraftQuestionResponse {
 export interface SubmitAnswerRequest {
   selectedOptionId?: string | null
   freeText?: string | null
+  /**
+   * 显式回答目标（可选）：回答哪个节点、答案写入哪条路线。
+   *
+   * 聚焦一条**非运行**路线的末端时前端会带上它们 —— 后端据此把 run 绑定到该
+   * 路线（多路线各自独立生成/回答）。缺省时仍走运行路线的当前节点（原语义）。
+   */
+  nodeId?: string | null
+  routeId?: string | null
 }
 
 export interface RequirementClaimView {

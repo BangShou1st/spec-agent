@@ -87,12 +87,12 @@ async function remove(): Promise<void> {
       />
       <section class="danger-zone" data-test="danger-zone">
         <h3>危险操作</h3>
-        <p class="muted">禁用随时可恢复。删除会移除连接及其发现缓存，且不可撤销。</p>
+        <p class="muted">禁用随时可恢复。删除会移除连接及其发现缓存，且不可撤销</p>
         <div class="danger-row">
           <button v-if="store.detail.enabled" type="button" class="btn" data-test="connection-disable" :disabled="store.actionLoading" @click="store.disable(props.connectionId)">禁用</button>
           <button v-if="!confirmingDelete" type="button" class="btn" data-test="connection-delete" :disabled="store.actionLoading" @click="confirmingDelete = true">删除</button>
           <span v-else class="delete-confirm">
-            <span>删除该连接及其发现缓存？此操作不可撤销。</span>
+            <span>删除该连接及其发现缓存？此操作不可撤销</span>
             <button type="button" class="btn btn-danger" data-test="connection-delete-confirm" :disabled="store.actionLoading" @click="remove">确认删除</button>
             <button type="button" class="btn" data-test="connection-delete-cancel" @click="confirmingDelete = false">取消</button>
           </span>

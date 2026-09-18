@@ -64,10 +64,88 @@ describe('graph layout', () => {
     expect(occupied).toEqual(occupiedBefore)
   })
 
+  it('placeNewNode skips a slot that a tall neighbour would visually cover', () => {
+    const parent: GraphPosition = { x: 100, y: 200 }
+    // 上一张卡实测 600px 高：y=200（正对）与 y=460（±1 槽）都会被它盖住，
+    // 旧的中心距离规则（< VERTICAL_GAP*0.5 = 130）会误判 260 为可用。
+    const occupied = [{ x: 460, y: 200, height: 600 }]
+    const pos = placeNewNode(parent, occupied, { height: 150 })
+    // 不重叠要求 |dy| >= (150 + 600) / 2 = 375
+    expect(Math.abs(pos.y - 200)).toBeGreaterThanOrEqual(375)
+  })
+
+  it('placeNewNode keeps the tight slot for uniformly short cards', () => {
+    const parent: GraphPosition = { x: 100, y: 200 }
+    const occupied = [{ x: 460, y: 200, height: 120 }]
+    const pos = placeNewNode(parent, occupied, { height: 120 })
+    // 短卡之间仍用最近的一个垂直槽位（与旧行为一致）。
+    expect(pos).toEqual({ x: 460, y: 200 + VERTICAL_GAP })
+  })
+
   it('handles missing parents defensively without throwing', () => {
     const nodes = [{ id: 'orphan', parentNodeId: 'ghost' }]
     const positions = computeInitialLayout(nodes, {})
     expect(positions.orphan.x).toBe(0)
+  })
+
+  it('keeps the legacy fixed pitch when no measured height is known', () => {
+    const nodes = [
+      { id: 'a', parentNodeId: null },
+      { id: 'b1', parentNodeId: 'a' },
+      { id: 'b2', parentNodeId: 'a' },
+      { id: 'b3', parentNodeId: 'a' },
+    ]
+    const positions = computeInitialLayout(nodes, {})
+    expect(positions.b1.y).toBe(0)
+    expect(positions.b2.y).toBe(VERTICAL_GAP)
+    expect(positions.b3.y).toBe(VERTICAL_GAP * 2)
+  })
+
+  it('runs a card that grows with content past its measured height', () => {
+    const nodes = [
+      { id: 'a', parentNodeId: null },
+      { id: 'longNote', parentNodeId: 'a' },
+      { id: 'shortNote', parentNodeId: 'a' },
+    ]
+    // 长笔记实测 900px 高：下一张卡必须落在 900 以下，否则会被覆盖。
+    const heights: Record<string, number> = { longNote: 900, shortNote: 120 }
+    const positions = computeInitialLayout(nodes, {}, {
+      heightOf: (id) => heights[id],
+    })
+    expect(positions.longNote.y).toBe(0)
+    expect(positions.shortNote.y).toBe(900 + VERTICAL_GAP)
+    expect(positions.shortNote.y).toBeGreaterThan(900)
+  })
+
+  it('ignores unusable measured heights and keeps columns independent', () => {
+    const nodes = [
+      { id: 'a', parentNodeId: null },
+      { id: 'tall', parentNodeId: 'a' },
+      { id: 'next', parentNodeId: 'a' },
+      { id: 'childOfTall', parentNodeId: 'tall' },
+    ]
+    const positions = computeInitialLayout(nodes, {}, {
+      // NaN/0/负数 都不可用 -> 退回固定行距
+      heightOf: (id) => ({ tall: Number.NaN, next: 0, childOfTall: -50 } as Record<string, number>)[id],
+    })
+    expect(positions.tall.y).toBe(0)
+    expect(positions.next.y).toBe(VERTICAL_GAP)
+    // 另一列（depth 2）从 0 起算，不受 depth 1 的高度影响。
+    expect(positions.childOfTall.y).toBe(0)
+    expect(positions.childOfTall.x).toBe(HORIZONTAL_GAP * 2)
+  })
+
+  it('still lets saved coordinates win when measured heights are supplied', () => {
+    const nodes = [
+      { id: 'a', parentNodeId: null },
+      { id: 'b', parentNodeId: 'a' },
+    ]
+    const positions = computeInitialLayout(
+      nodes,
+      { a: { x: 7, y: 8 } },
+      { heightOf: () => 500 },
+    )
+    expect(positions.a).toEqual({ x: 7, y: 8 })
   })
 })
 

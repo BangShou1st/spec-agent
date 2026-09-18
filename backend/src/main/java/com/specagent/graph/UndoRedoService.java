@@ -148,12 +148,60 @@ public class UndoRedoService {
         switch (operation.type()) {
             case CREATE_DRAFT_NODE, APPEND_CONTINUATION, ATTACH_RESOURCE -> compensateNodeCreation(operation);
             case CREATE_BRANCH_AND_APPEND -> compensateBranchCreation(operation);
+            case CONNECT_FLOATING_NODE -> compensateConnect(operation);
+            case DISCONNECT_NODE -> compensateDisconnect(operation);
             case EDIT_DRAFT_NODE -> compensateDraftEdit(operation);
             case CREATE_SEMANTIC_RELATION -> compensateRelation(operation);
             case SET_KNOWLEDGE_STATUS -> compensateKnowledgeStatus(operation);
             case ACCEPT_AGENT_PROPOSAL ->
                     throw new IllegalStateException("接受的提案操作不在可撤销范围内: " + operation.id());
         }
+    }
+
+    /**
+     * Undo of "connect a floating node": the node is detached again — it keeps
+     * existing with its content, it only loses route membership. Legal only
+     * while nothing was appended after it, so lineage history is never orphaned.
+     */
+    private void compensateConnect(GraphOperation operation) {
+        UUID nodeId = requireUuid(operation.afterRefs(), "nodeId");
+        UUID routeId = requireUuid(operation.afterRefs(), "routeId");
+        Node node = requireActiveNode(operation.projectId(), nodeId);
+        nodeRepository.lockById(nodeId);
+        Route route = routeRepository.findById(routeId)
+                .orElseThrow(() -> new IllegalStateException("Route missing during undo: " + routeId));
+        if (route.tipNodeId() == null || !route.tipNodeId().equals(nodeId)) {
+            throw new IllegalStateException("路线末端已变化，无法撤销这次接入");
+        }
+        if (nodeRepository.existsActiveByParentNodeId(nodeId)) {
+            throw new IllegalStateException("节点已有后续内容，请先处理其下游节点");
+        }
+        UUID previousTipNodeId = optionalUuid(operation.beforeRefs(), "previousTipNodeId");
+        Instant now = Instant.now();
+        nodeRepository.updateParent(nodeId, null, now);
+        if (previousTipNodeId == null) {
+            routeRepository.clearTipAndRoot(routeId, now);
+        } else {
+            routeRepository.updateTipAndRoot(routeId, previousTipNodeId, route.rootNodeId(), now);
+        }
+    }
+
+    /** Undo of "detach": the node is re-attached as the route tip it was. */
+    private void compensateDisconnect(GraphOperation operation) {
+        UUID nodeId = requireUuid(operation.afterRefs(), "nodeId");
+        UUID routeId = requireUuid(operation.afterRefs(), "routeId");
+        UUID parentId = optionalUuid(operation.beforeRefs(), "parentId");
+        Node node = requireActiveNode(operation.projectId(), nodeId);
+        nodeRepository.lockById(nodeId);
+        Route route = routeRepository.findById(routeId)
+                .orElseThrow(() -> new IllegalStateException("Route missing during undo: " + routeId));
+        if (!java.util.Objects.equals(route.tipNodeId(), parentId)) {
+            throw new IllegalStateException("路线末端已变化，无法撤销这次断开");
+        }
+        Instant now = Instant.now();
+        nodeRepository.updateParent(nodeId, parentId, now);
+        routeRepository.updateTipAndRoot(routeId, nodeId,
+                route.rootNodeId() != null ? route.rootNodeId() : nodeId, now);
     }
 
     private void compensateNodeCreation(GraphOperation operation) {
@@ -246,11 +294,61 @@ public class UndoRedoService {
         switch (operation.type()) {
             case CREATE_DRAFT_NODE, APPEND_CONTINUATION, ATTACH_RESOURCE -> replayNodeCreation(operation);
             case CREATE_BRANCH_AND_APPEND -> replayBranchCreation(operation);
+            case CONNECT_FLOATING_NODE -> replayConnect(operation);
+            case DISCONNECT_NODE -> replayDisconnect(operation);
             case EDIT_DRAFT_NODE -> replayDraftEdit(operation);
             case CREATE_SEMANTIC_RELATION -> replayRelation(operation);
             case SET_KNOWLEDGE_STATUS -> replayKnowledgeStatus(operation);
             case ACCEPT_AGENT_PROPOSAL ->
                     throw new IllegalStateException("接受的提案操作无法重放: " + operation.id());
+        }
+    }
+
+    /**
+     * Redo of a connect: re-attach the same node as the tip, but only while
+     * the route still sits exactly where the undo left it — intervening work
+     * fails closed instead of silently rebasing the lineage.
+     */
+    private void replayConnect(GraphOperation operation) {
+        UUID nodeId = requireUuid(operation.afterRefs(), "nodeId");
+        UUID routeId = requireUuid(operation.afterRefs(), "routeId");
+        UUID parentId = optionalUuid(operation.afterRefs(), "parentId");
+        UUID previousTipNodeId = optionalUuid(operation.beforeRefs(), "previousTipNodeId");
+        Node node = requireActiveNode(operation.projectId(), nodeId);
+        if (node.parentNodeId() != null) {
+            throw new IllegalStateException("节点已接入路线，无法重复恢复");
+        }
+        Route route = routeRepository.findById(routeId)
+                .orElseThrow(() -> new IllegalStateException("Route missing during redo: " + routeId));
+        if (!java.util.Objects.equals(route.tipNodeId(), previousTipNodeId)) {
+            throw new IllegalStateException("路线末端已变化，无法恢复这次接入");
+        }
+        Instant now = Instant.now();
+        nodeRepository.updateParent(nodeId, parentId, now);
+        routeRepository.updateTipAndRoot(routeId, nodeId,
+                route.rootNodeId() != null ? route.rootNodeId() : nodeId, now);
+    }
+
+    /** Redo of a detach: detach again, requiring the same tip state. */
+    private void replayDisconnect(GraphOperation operation) {
+        UUID nodeId = requireUuid(operation.afterRefs(), "nodeId");
+        UUID routeId = requireUuid(operation.afterRefs(), "routeId");
+        UUID parentId = optionalUuid(operation.beforeRefs(), "parentId");
+        Node node = requireActiveNode(operation.projectId(), nodeId);
+        if (!java.util.Objects.equals(node.parentNodeId(), parentId)) {
+            throw new IllegalStateException("节点已浮动，无法重复断开");
+        }
+        Route route = routeRepository.findById(routeId)
+                .orElseThrow(() -> new IllegalStateException("Route missing during redo: " + routeId));
+        if (route.tipNodeId() == null || !route.tipNodeId().equals(nodeId)) {
+            throw new IllegalStateException("路线末端已变化，无法恢复这次断开");
+        }
+        Instant now = Instant.now();
+        nodeRepository.updateParent(nodeId, null, now);
+        if (parentId == null) {
+            routeRepository.clearTipAndRoot(routeId, now);
+        } else {
+            routeRepository.updateTipAndRoot(routeId, parentId, route.rootNodeId(), now);
         }
     }
 
@@ -486,6 +584,8 @@ public class UndoRedoService {
             case EDIT_DRAFT_NODE -> "已撤销：编辑草稿节点";
             case APPEND_CONTINUATION -> "已撤销：继续探索";
             case ATTACH_RESOURCE -> "已撤销：添加资源";
+            case CONNECT_FLOATING_NODE -> "已撤销：接入路线";
+            case DISCONNECT_NODE -> "已撤销：断开路线";
             case CREATE_BRANCH_AND_APPEND -> "已撤销：新建分支";
             case CREATE_SEMANTIC_RELATION -> "已撤销：添加语义关系";
             case SET_KNOWLEDGE_STATUS -> "已撤销：知识状态变更";
@@ -499,6 +599,8 @@ public class UndoRedoService {
             case EDIT_DRAFT_NODE -> "已恢复：编辑草稿节点";
             case APPEND_CONTINUATION -> "已恢复：继续探索";
             case ATTACH_RESOURCE -> "已恢复：添加资源";
+            case CONNECT_FLOATING_NODE -> "已恢复：接入路线";
+            case DISCONNECT_NODE -> "已恢复：断开路线";
             case CREATE_BRANCH_AND_APPEND -> "已恢复：新建分支";
             case CREATE_SEMANTIC_RELATION -> "已恢复：添加语义关系";
             case SET_KNOWLEDGE_STATUS -> "已恢复：知识状态变更";

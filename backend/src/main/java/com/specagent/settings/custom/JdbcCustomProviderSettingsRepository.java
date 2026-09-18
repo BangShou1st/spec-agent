@@ -19,6 +19,7 @@ public class JdbcCustomProviderSettingsRepository implements CustomProviderSetti
             rs.getString("masked_suffix"),
             rs.getString("selected_model"),
             readModelSource(rs),
+            rs.getString("display_name"),
             rs.getLong("config_revision"),
             rs.getObject("validated_revision") == null ? null : rs.getLong("validated_revision"),
             rs.getTimestamp("created_at").toInstant(),
@@ -53,9 +54,9 @@ public class JdbcCustomProviderSettingsRepository implements CustomProviderSetti
         Instant now = settings.updatedAt() == null ? Instant.now() : settings.updatedAt();
         jdbc.update("""
                 INSERT INTO custom_provider_settings (singleton_id, api_format, base_url, api_key, masked_suffix,
-                    selected_model, model_source, config_revision, validated_revision, created_at, updated_at, validated_at)
+                    selected_model, model_source, display_name, config_revision, validated_revision, created_at, updated_at, validated_at)
                 VALUES (1, :apiFormat, :baseUrl, :apiKey, :maskedSuffix, :selectedModel,
-                    :modelSource, :configRevision, :validatedRevision, :createdAt, :updatedAt, :validatedAt)
+                    :modelSource, :displayName, :configRevision, :validatedRevision, :createdAt, :updatedAt, :validatedAt)
                 ON CONFLICT (singleton_id) DO UPDATE SET
                     api_format = EXCLUDED.api_format,
                     base_url = EXCLUDED.base_url,
@@ -63,6 +64,7 @@ public class JdbcCustomProviderSettingsRepository implements CustomProviderSetti
                     masked_suffix = EXCLUDED.masked_suffix,
                     selected_model = EXCLUDED.selected_model,
                     model_source = EXCLUDED.model_source,
+                    display_name = EXCLUDED.display_name,
                     config_revision = EXCLUDED.config_revision,
                     validated_revision = EXCLUDED.validated_revision,
                     updated_at = EXCLUDED.updated_at,
@@ -74,6 +76,7 @@ public class JdbcCustomProviderSettingsRepository implements CustomProviderSetti
                 "maskedSuffix", settings.maskedSuffix(),
                 "selectedModel", settings.selectedModel(),
                 "modelSource", settings.modelSource() == null ? "DISCOVERED" : settings.modelSource(),
+                "displayName", settings.displayName(),
                 "configRevision", settings.configRevision(),
                 "validatedRevision", settings.validatedRevision(),
                 "createdAt", Timestamp.from(settings.createdAt() == null ? now : settings.createdAt()),

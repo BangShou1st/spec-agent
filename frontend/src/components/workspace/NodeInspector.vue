@@ -107,7 +107,7 @@ const queryResult = computed(() => {
     question: '',
     runId: pending.runId ?? '',
     status: 'AWAITING_APPROVAL',
-    message: 'AI 提出了一个候选动作，等待你确认。',
+    message: 'AI 提出了一个候选动作，等待你确认',
     proposalId: pending.proposalId,
     proposalStatus: pending.status,
     actionFamily: pending.actionFamily,
@@ -243,7 +243,7 @@ function relationDirectionLabel(relation: {
           <span v-if="data.primaryAnswer.selectedOptionLabel" class="badge badge-open">{{ data.primaryAnswer.selectedOptionLabel }}</span>
           <p v-if="data.primaryAnswer.freeText" class="graph-answer-text">{{ data.primaryAnswer.freeText }}</p>
         </div>
-        <p v-else class="muted" data-test="node-detail-no-answer">该节点还没有回答。</p>
+        <p v-else class="muted" data-test="node-detail-no-answer">该节点还没有回答</p>
       </section>
 
       <section class="node-inspector__section" data-test="inspector-section-agent">
@@ -284,22 +284,22 @@ function relationDirectionLabel(relation: {
             </div>
           </template>
           <template v-else-if="queryResult.status === 'ACCEPTED'">
-            <span class="badge badge-open">提案已接受，Graph 已更新。</span>
+            <span class="badge badge-open">提案已接受，Graph 已更新</span>
           </template>
           <template v-else-if="queryResult.status === 'REJECTED'">
-            <span class="badge badge-warn">提案已拒绝，Graph 保持不变。</span>
+            <span class="badge badge-warn">提案已拒绝，Graph 保持不变</span>
           </template>
           <template v-else-if="queryResult.status === 'COMPLETED' && queryResult.message">
             <p class="graph-answer-text">{{ queryResult.message }}</p>
           </template>
           <template v-else-if="queryResult.status === 'COMPLETED'">
-            <span class="badge badge-warn">AI 未返回文字回答（可查看待确认提案）。</span>
+            <span class="badge badge-warn">AI 未返回文字回答（可查看待确认提案）</span>
           </template>
           <template v-else-if="queryResult.status === 'POLICY_DENIED' || queryResult.status === 'NOT_CONFIRMABLE'">
-            <span class="badge badge-warn">{{ queryResult.message || 'AI 查询无法生成可确认提案。' }}</span>
+            <span class="badge badge-warn">{{ queryResult.message || 'AI 查询无法生成可确认提案' }}</span>
           </template>
           <template v-else>
-            <span class="badge badge-warn">查询失败，请稍后重试。</span>
+            <span class="badge badge-warn">查询失败，请稍后重试</span>
           </template>
         </div>
       </div>
@@ -343,7 +343,7 @@ function relationDirectionLabel(relation: {
           </template>
 
           <h4 class="node-inspector__heading">语义关系</h4>
-          <p v-if="relations.length === 0" class="muted" data-test="node-detail-no-relations">暂无语义关系。</p>
+          <p v-if="relations.length === 0" class="muted" data-test="node-detail-no-relations">暂无语义关系</p>
           <ul v-else class="node-inspector__relations" data-test="node-relations">
             <li v-for="relation in relations" :key="relation.id" class="meta-text">
               <span class="badge badge-open">{{ relationTypeLabels[relation.relationType] ?? relation.relationType }}</span>
@@ -369,7 +369,7 @@ function relationDirectionLabel(relation: {
         </button>
       </div>
     </template>
-    <p v-else class="muted" data-test="node-detail-empty">选择一个节点查看详情。</p>
+    <p v-else class="muted" data-test="node-detail-empty">选择一个节点查看详情</p>
   </div>
 </template>
 

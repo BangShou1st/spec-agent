@@ -22,6 +22,8 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
+import java.util.stream.Collectors;
 
 /**
  * HTTPS Git Skill import backed by JGit. The client never runs hooks, never
@@ -44,6 +46,9 @@ public class GitSkillImporter {
 
     private static final String SKILL_MD = "SKILL.md";
 
+    /** Upper bound on Skill directories named in one failure message. */
+    private static final int MAX_REPORTED_SKILL_ROOTS = 5;
+
     private final SkillProperties properties;
     private final OutboundNetworkPolicy policy;
 
@@ -60,6 +65,29 @@ public class GitSkillImporter {
      * @param ref commit-ish (branch/tag/SHA) to pin; blank means remote HEAD
      */
     public ExtractedResult importHttps(String repoUrl, String ref) {
+        return importHttps(repoUrl, ref, null);
+    }
+
+    /**
+     * Imports one Skill package out of the repository. {@code subPath} selects
+     * a nested Skill directory (for example {@code skills/brainstorming});
+     * blank selects the repository root package.
+     */
+    public ExtractedResult importHttps(String repoUrl, String ref, String subPath) {
+        TreeInventory inventory = fetchTree(repoUrl, ref);
+        List<SkillSourceFile> files = SkillPackageLayout.slice(inventory.files(), subPath);
+        long totalBytes = files.stream().mapToLong(f -> f.content().length).sum();
+        SkillSourceFile skillMd = requireRootSkillMarkdown(files, inventory.files(), subPath);
+        return new ExtractedResult(inventory.commitSha(), skillMd.content(), files, totalBytes);
+    }
+
+    /**
+     * Walks the resolved commit's tree without requiring a package shape, so a
+     * repository that holds many Skills can be inspected and offered for
+     * selection instead of failing outright. Rules are identical to extraction:
+     * hidden entries skipped, path containment, file-count and byte bounds.
+     */
+    public TreeInventory fetchTree(String repoUrl, String ref) {
         String url = policy.validateOutboundUrl(repoUrl, properties.getGitMaxRedirects())
                 .toString();
         if (!url.toLowerCase(Locale.ROOT).startsWith("https://")) {
@@ -75,14 +103,68 @@ public class GitSkillImporter {
         }
 
         try {
-            String commitSha = cloneBare(url, pinnedRef, tempDir);
+            GitTransportProxy.Route route = GitTransportProxy.resolve(properties.getGitProxy());
+            String commitSha;
+            try {
+                commitSha = GitTransportProxy.callWith(route,
+                        () -> cloneBare(url, pinnedRef, tempDir));
+            } catch (Exception ex) {
+                throw transportFailure(url, route, ex);
+            }
             return extractTree(tempDir, commitSha);
-        } catch (GitAPIException | IOException ex) {
+        } catch (IOException ex) {
             throw new SkillImportException("Git import failed: "
                     + ex.getClass().getSimpleName(), ex);
         } finally {
             deleteRecursively(tempDir.toFile());
         }
+    }
+
+    /**
+     * A transport failure is reported with its real cause and with the route
+     * that was used, so "TransportException" is never a dead end: the operator
+     * can see whether the JVM went direct while the browser used a proxy, and
+     * which knob changes it.
+     */
+    private SkillImportException transportFailure(String url, GitTransportProxy.Route route,
+                                                  Exception cause) {
+        StringBuilder message = new StringBuilder("Git import failed: ")
+                .append(cause.getClass().getSimpleName())
+                .append(" via ").append(route.description());
+        String causeMessage = rootMessage(cause);
+        if (causeMessage != null && !causeMessage.isBlank()) {
+            message.append(" (").append(bound(causeMessage)).append(')');
+        }
+        message.append(". If this host needs a proxy, set ")
+                .append(GitTransportProxy.PROPERTY_NAME).append("=host:port (or ")
+                .append(GitTransportProxy.MODE_DIRECT).append(" to force a direct connection)");
+        return new SkillImportException(message.toString(), cause);
+    }
+
+    private static String rootMessage(Throwable throwable) {
+        Throwable current = throwable;
+        String message = null;
+        while (current != null) {
+            if (current.getMessage() != null && !current.getMessage().isBlank()) {
+                message = current.getMessage();
+            }
+            current = current.getCause();
+        }
+        return message;
+    }
+
+    private static String bound(String text) {
+        return text.length() <= 300 ? text : text.substring(0, 300) + "…";
+    }
+
+    /**
+     * Walked, validated contents of one resolved commit.
+     *
+     * @param files     package files (hidden entries excluded)
+     * @param manifests marketplace manifests, read for attribution only
+     */
+    public record TreeInventory(String commitSha, List<SkillSourceFile> files, long totalBytes,
+                                List<SkillSourceFile> manifests) {
     }
 
     /**
@@ -125,7 +207,7 @@ public class GitSkillImporter {
         return stripped;
     }
 
-    private ExtractedResult extractTree(Path bareDir, String commitSha) throws IOException {
+    private TreeInventory extractTree(Path bareDir, String commitSha) throws IOException {
         Path gitDir = bareDir.resolve(".git");
         if (!Files.isDirectory(gitDir)) {
             gitDir = bareDir;
@@ -141,6 +223,7 @@ public class GitSkillImporter {
             RevCommit commit = revWalk.parseCommit(commitId);
             RevTree tree = commit.getTree();
             List<SkillSourceFile> files = new ArrayList<>();
+            List<SkillSourceFile> manifests = new ArrayList<>();
             long totalBytes = 0;
             int fileCount = 0;
 
@@ -149,7 +232,12 @@ public class GitSkillImporter {
                 treeWalk.setRecursive(true);
                 while (treeWalk.next()) {
                     String path = treeWalk.getPathString();
-                    if (path.startsWith(".git") || path.startsWith(".github/")) {
+                    // Marketplace manifests are read for attribution only: they
+                    // stay out of the package (they are repository metadata),
+                    // but discovery needs them to know which plugin owns which
+                    // Skill directory.
+                    EntryDisposition disposition = dispositionOf(path);
+                    if (disposition == EntryDisposition.SKIP) {
                         continue;
                     }
                     if (fileCount >= properties.getMaxFiles()) {
@@ -163,6 +251,11 @@ public class GitSkillImporter {
                         throw new SkillImportException("Git package exceeds the "
                                 + properties.getMaxExtractedBytes() + " byte limit");
                     }
+                    if (disposition == EntryDisposition.MANIFEST) {
+                        manifests.add(new SkillSourceFile(path, content,
+                                SkillPackageFile.FileKind.TEXT));
+                        continue;
+                    }
                     String normalized = normalizePath(path);
                     SkillPackageFile.FileKind kind = kindFor(normalized, content);
                     files.add(new SkillSourceFile(normalized, content, kind));
@@ -170,23 +263,112 @@ public class GitSkillImporter {
                 }
             }
 
-            SkillSourceFile skillMd = files.stream()
-                    .filter(f -> SKILL_MD.equals(f.relativePath()))
-                    .findFirst()
-                    .orElseThrow(() -> new SkillImportException(
-                            "Git Skill package is missing SKILL.md at the root"));
-
             files.sort(Comparator.comparing(SkillSourceFile::relativePath));
-            return new ExtractedResult(commitSha, skillMd.content(), files, totalBytes);
+            return new TreeInventory(commitSha, List.copyOf(files), totalBytes,
+                    List.copyOf(manifests));
         } finally {
             repository.close();
         }
     }
 
-    private String normalizePath(String path) {
+    /** What one repository tree entry becomes during an import. */
+    enum EntryDisposition {
+        /** Becomes part of the Skill package. */
+        PACKAGE,
+        /** Read for attribution, never packaged. */
+        MANIFEST,
+        /** Repository metadata: ignored entirely. */
+        SKIP
+    }
+
+    /**
+     * Classifies one tree entry. A marketplace manifest is metadata too, but it
+     * must be readable even though it is never packaged — discovery uses it to
+     * attribute Skill directories to a plugin.
+     */
+    static EntryDisposition dispositionOf(String path) {
+        if (SkillPackageLayout.MARKETPLACE_MANIFESTS.contains(path)) {
+            return EntryDisposition.MANIFEST;
+        }
+        return isHiddenEntry(path) ? EntryDisposition.SKIP : EntryDisposition.PACKAGE;
+    }
+
+    /**
+     * Repository metadata is never Skill content. Hidden entries — {@code .git},
+     * {@code .github/...}, {@code .agents/...}, {@code .claude-plugin/...} and
+     * every other dot-prefixed segment — are skipped exactly like the VCS
+     * bookkeeping always was, so a marketplace-style monorepo carrying dot
+     * directories next to its skills no longer fails the whole import.
+     */
+    static boolean isHiddenEntry(String path) {
+        if (path.startsWith(".")) {
+            return true;
+        }
+        for (int slash = path.indexOf('/'); slash >= 0; slash = path.indexOf('/', slash + 1)) {
+            if (slash + 1 < path.length() && path.charAt(slash + 1) == '.') {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * A Skill package is one Skill: SKILL.md at the package root. When the
+     * selected directory is instead part of a library (a plugin marketplace or
+     * a monorepo), the failure names the Skill directories the repository
+     * actually offers, so the caller can retry with one of them instead of
+     * guessing.
+     *
+     * @param files     the selected package files (already sliced)
+     * @param catalogue every file in the repository, used only to report candidates
+     * @param subPath   the selected subdirectory, "" for the repository root
+     */
+    SkillSourceFile requireRootSkillMarkdown(List<SkillSourceFile> files,
+                                             List<SkillSourceFile> catalogue,
+                                             String subPath) {
+        Optional<SkillSourceFile> atRoot = files.stream()
+                .filter(f -> SKILL_MD.equals(f.relativePath()))
+                .findFirst();
+        if (atRoot.isPresent()) {
+            return atRoot.get();
+        }
+        String selected = subPath == null || subPath.isBlank() ? "" : SkillPackageLayout
+                .normalizeSubPath(subPath);
+        List<String> skillRoots = SkillPackageLayout.discover(
+                        catalogue.stream().map(SkillSourceFile::relativePath).toList(), List.of())
+                .stream()
+                .map(SkillPackageLayout.SkillRoot::path)
+                .filter(path -> !path.isEmpty())
+                .toList();
+        if (skillRoots.isEmpty()) {
+            throw new SkillImportException("Git Skill package is missing SKILL.md at the root");
+        }
+        String sample = skillRoots.stream().limit(MAX_REPORTED_SKILL_ROOTS)
+                .collect(Collectors.joining(", "));
+        String tail = (skillRoots.size() > MAX_REPORTED_SKILL_ROOTS ? ", …" : "");
+        if (selected.isEmpty()) {
+            throw new SkillImportException("Git repository is not a single Skill package:"
+                    + " no SKILL.md at the repository root, but " + skillRoots.size()
+                    + " Skill directories were found (" + sample + tail
+                    + "). Import one of them, for example " + skillRoots.get(0) + ".");
+        }
+        throw new SkillImportException("Selected directory is not a Skill package"
+                + " (no SKILL.md in " + selected + "). The repository offers "
+                + skillRoots.size() + " Skill directories (" + sample + tail
+                + "), for example " + skillRoots.get(0) + ".");
+    }
+
+    /** Overload for the repository-root case. */
+    SkillSourceFile requireRootSkillMarkdown(List<SkillSourceFile> files) {
+        return requireRootSkillMarkdown(files, files, "");
+    }
+
+    /** Package-private for path-rule tests; the containment rule itself is unchanged. */
+    String normalizePath(String path) {
         String normalized = path.replace('\\', '/');
-        if (normalized.startsWith("/") || normalized.contains("..")
-                || normalized.startsWith(".")) {
+        // Hidden entries were already skipped, so every remaining reachable
+        // case here is a genuine escape attempt.
+        if (normalized.startsWith("/") || normalized.contains("..")) {
             throw new SkillImportException("Git package entry escapes the package root: "
                     + path);
         }

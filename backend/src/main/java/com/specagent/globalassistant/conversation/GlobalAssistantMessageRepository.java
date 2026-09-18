@@ -28,7 +28,9 @@ public class GlobalAssistantMessageRepository {
                 rs.getString("content"),
                 rs.getObject("run_id", UUID.class),
                 rs.getTimestamp("created_at").toInstant(),
-                rs.getLong("sequence"));
+                rs.getLong("sequence"),
+                rs.getString("provider_label"),
+                rs.getString("model_id"));
     }
     /**
      * Appends one message with the next per-thread sequence. The thread row
@@ -39,6 +41,13 @@ public class GlobalAssistantMessageRepository {
      */
     @org.springframework.transaction.annotation.Transactional
     public GlobalAssistantMessage append(UUID threadId, GlobalAssistantMessage.Role role, String content, UUID runId) {
+        return append(threadId, role, content, runId, null, null);
+    }
+
+    /** Append with optional model accounting ({@code providerLabel}/{@code modelId}). */
+    @org.springframework.transaction.annotation.Transactional
+    public GlobalAssistantMessage append(UUID threadId, GlobalAssistantMessage.Role role, String content, UUID runId,
+            String providerLabel, String modelId) {
         List<UUID> locked = jdbc.queryForList(
                 "SELECT id FROM global_assistant_threads WHERE id = :threadId FOR UPDATE",
                 Maps.of("threadId", threadId), UUID.class);
@@ -52,10 +61,11 @@ public class GlobalAssistantMessageRepository {
         UUID id = Ids.random();
         Instant now = Instant.now();
         jdbc.update(
-                "INSERT INTO global_assistant_messages (id, thread_id, role, content, run_id, created_at, sequence) VALUES (:id, :threadId, :role, :content, :runId, :now, :sequence)",
+                "INSERT INTO global_assistant_messages (id, thread_id, role, content, run_id, created_at, sequence, provider_label, model_id) VALUES (:id, :threadId, :role, :content, :runId, :now, :sequence, :providerLabel, :modelId)",
                 Maps.of("id", id, "threadId", threadId, "role", role.name(), "content", content, "runId", runId,
-                        "now", Timestamp.from(now), "sequence", next));
-        return new GlobalAssistantMessage(id, threadId, role, content, runId, now, next);
+                        "now", Timestamp.from(now), "sequence", next,
+                        "providerLabel", providerLabel, "modelId", modelId));
+        return new GlobalAssistantMessage(id, threadId, role, content, runId, now, next, providerLabel, modelId);
     }
     /**
      * Canonical conversation order: append sequence only.

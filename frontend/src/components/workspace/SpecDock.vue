@@ -163,7 +163,7 @@ function onSelectSnapshot(event: Event): void {
             </select>
           </label>
         </div>
-        <p v-if="!activeRouteId" class="muted">没有当前路线——无法生成规格。</p>
+        <p v-if="!activeRouteId" class="muted">没有当前路线——无法生成规格</p>
       </div>
 
       <div v-if="selectedSpec" class="spec-dock__detail" data-test="spec-snapshot-detail">
@@ -208,7 +208,7 @@ function onSelectSnapshot(event: Event): void {
           </ul>
         </div>
       </div>
-      <p v-else class="muted">该路线还没有规格快照。</p>
+      <p v-else class="muted">该路线还没有规格快照</p>
     </div>
   </section>
 </template>

@@ -1,0 +1,15 @@
+# 内置 Skill 包索引
+#
+# 每行一个 classpath 相对路径，必须位于 builtin-skills/<包名>/ 之下。
+# 第一段目录名即包名（也是 BUILTIN 的 sourceIdentity）。
+# 每个包必须有 SKILL.md，其余文件作为可读资源。
+#
+# 为什么要显式索引而不是在运行时枚举 classpath 目录：
+# 打包成 jar 后目录枚举依赖具体的 URL 协议（file: / jar:），不同环境下
+# 行为不一致；显式索引在 dev 与 jar 中都走同一条确定的读取路径。
+requirement-intake/SKILL.md
+design-review-checklist/SKILL.md
+design-review-checklist/references/checklist.md
+api-contract-writer/SKILL.md
+api-contract-writer/references/error-codes.md
+changelog-writer/SKILL.md

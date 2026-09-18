@@ -51,7 +51,7 @@ function confidenceText(claim: RequirementClaimView): string {
       当前查看 <strong>{{ routeLabel ?? '未选择路线' }}</strong>
     </p>
     <p v-if="loading" class="muted">正在加载需求状态…</p>
-    <p v-else-if="!requirementState" class="muted">暂无需求状态。</p>
+    <p v-else-if="!requirementState" class="muted">暂无需求状态</p>
     <template v-else>
       <section
         v-for="group in groups"
@@ -70,7 +70,7 @@ function confidenceText(claim: RequirementClaimView): string {
             <p class="requirement-detail__text">{{ claim.text }}</p>
           </li>
         </ul>
-        <p v-if="group.claims.length === 0" class="muted">无。</p>
+        <p v-if="group.claims.length === 0" class="muted">无</p>
       </section>
       <div class="requirement-detail__tech">
         <button

@@ -28,7 +28,7 @@ public class CustomProviderSettingsController {
 
     public record StatusResponse(boolean configured, String apiFormat, String baseUrl, String endpointPreview,
                                  boolean hasKey, String maskedKey, String selectedModel, boolean manualModel,
-                                 long configRevision, boolean validated) {
+                                 String displayName, long configRevision, boolean validated) {
     }
 
     public record DiscoverRequest(String apiFormat, String baseUrl, String apiKey) {
@@ -38,13 +38,13 @@ public class CustomProviderSettingsController {
     }
 
     public record SaveRequest(String apiFormat, String baseUrl, String apiKey, String selectedModel,
-                              String modelSource) {
+                              String modelSource, String displayName) {
     }
 
     private StatusResponse toResponse(CustomProviderSettingsService.Status s) {
         return new StatusResponse(s.configured(), s.apiFormat(), s.baseUrl(), s.endpointPreview(),
                 s.hasKey(), s.maskedKey(), s.selectedModel(), s.manualModel(),
-                s.configRevision(), s.validated());
+                s.displayName(), s.configRevision(), s.validated());
     }
 
     @GetMapping
@@ -85,7 +85,12 @@ public class CustomProviderSettingsController {
         }
         // apiKey null retains the stored key; empty clears; non-empty sets new.
         // modelSource MANUAL persists manual-model mode across reloads.
-        return toResponse(service.save(format, baseUrl, request.apiKey(), model, request.modelSource()));
+        // displayName is the user-facing pill label; null retains the stored one.
+        if (request.displayName() != null && request.displayName().trim().length() > 64) {
+            throw new IllegalArgumentException("Display name must be at most 64 characters");
+        }
+        return toResponse(service.save(format, baseUrl, request.apiKey(), model, request.modelSource(),
+                request.displayName()));
     }
 
     @PostMapping("/validate")

@@ -48,7 +48,7 @@ test('generate and inspect a derived spec snapshot', async ({ page }) => {
  * targets A with an explicit warning, and after generation the reading
  * context follows the returned A artifact.
  */
-test('Active=A Focus=B separates reading context from work context', async ({ page }) => {
+test('Active=A Focus=B separates reading context from work context', async ({ page, request }) => {
   await createProject(page, 'E2E Read Context Flow')
   await buildThreeNodeLineage(page)
   await fitGraph(page)
@@ -64,7 +64,7 @@ test('Active=A Focus=B separates reading context from work context', async ({ pa
   await cardA.getByTestId('activate-route').click()
   // activate 是后端命令：等确认反馈（canonical 刷新完成）后再定位卡片，
   // 避免徽标切换竞态导致后续 locator 指向错误的路线。
-  await expect(page.getByText('已设为当前路线。')).toBeVisible()
+  await expect(page.getByText('已设为当前路线')).toBeVisible()
   await expect(page.getByTestId('active-route')).toHaveCount(1)
 
   // Focus=B（分支成功后已进入浏览上下文；切换 Active 不应清除 Focus）。
@@ -82,8 +82,20 @@ test('Active=A Focus=B separates reading context from work context', async ({ pa
   // 折叠摘要即声明正在查看 B、生成目标 A。
   await expect(page.getByTestId('spec-route-warning')).toContainText('Route-B')
 
-  // 唯一可回答节点仍是 A 上的节点（Focus 不移动工作上下文）。
-  await expect(page.locator('.graph-question-node--current')).toHaveCount(1)
+  const projectId = page.url().split('/projects/')[1].split(/[?#]/)[0] || ''
+  const graph = await (await request.get(`/api/v1/projects/${projectId}/graph`)).json()
+  const routeA = graph.routes.find((route: { id: string }) => route.id === graph.activeRouteId)
+  const activeTipNodeId = routeA.lineageNodeIds[routeA.lineageNodeIds.length - 1] as string
+
+  // 工作上下文不动：A 的末端仍然是可回答节点。
+  await expect(page.locator(`[data-node-id="${activeTipNodeId}"]`)).toHaveClass(
+    /graph-question-node--current/,
+  )
+  // 可回答节点共 2 个：A 的末端（工作上下文）+ B 的末端。
+  // 后者是多路线独立语义：显式 Focus 的那条路线（此处为 B）的末端未答时也可以
+  // 直接回答，答案写进 B，即使运行路线仍是 A。默认视图（无 Focus）下不会多出
+  // 第二个作答入口，所以这里的 2 完全来自 Active=A / Focus=B 的组合。
+  await expect(page.locator('.graph-question-node--current')).toHaveCount(2)
 
   // 生成始终针对当前路线 A，成功后读取上下文跟随返回的 A 产物。
   await page.getByTestId('spec-dock-toggle').click()

@@ -43,3 +43,10 @@ frontend/public/tesseract
 __pycache__/
 *.pyc
 agent-brain/.venv/
+
+# 工具会话的临时备份区(内嵌 git 仓库,不可入库)
+.workbuddy/scratch/
+
+# 工具会话临时产物
+.freebuff/
+.workbuddy/

@@ -43,53 +43,71 @@ test('focus, dim, hide, show-all and active protection on a two-route graph', as
   const cards = page.locator('[data-route-id]')
   await expect(cards).toHaveCount(2)
 
-  // 聚焦非当前路线 A：只改变浏览器阅读上下文。
+  // 浏览非当前路线 A：点击路线卡主体即设置阅读聚焦（定位 + 高亮），
+  // 只改变浏览器阅读上下文，绝不改动运行路线。
   const nonActive = cards.filter({ hasNot: page.getByTestId('active-route') }).first()
-  await openRouteMore(nonActive)
-  await nonActive.getByTestId('focus-route').click()
+  await nonActive.getByTestId('route-primary').click()
   await expect(nonActive).toHaveClass(/route-card--focused/)
   await expect(page.getByTestId('active-route')).toHaveCount(1)
-  await expect(nonActive.getByTestId('focus-route')).toHaveText('取消浏览聚焦')
-
-  // 弱化：路线保留可见但视觉降权。
-  await nonActive.getByTestId('dim-route').click()
-  await expect(nonActive).toHaveClass(/route-card--dimmed/)
   await expect(page.locator('.graph-question-node')).toHaveCount(4)
 
-  // 隐藏非当前路线：只移除该路线专属元素，共享节点保留。
-  await nonActive.getByTestId('hide-route').click()
-  await expect(nonActive).toHaveClass(/route-card--hidden/)
-  await expect(page.locator('.graph-question-node--historical')).toHaveCount(2)
-
-  // Focus A → Hide A：Focus 自动清除，焦点不再指向隐藏路线。
-  await expect(nonActive).not.toHaveClass(/route-card--focused/)
-
-  // 当前路线不可隐藏：按钮禁用。
+  // 当前路线仍不可通过筛选被隐藏：运行路线永远可见。
   const active = cards.filter({ has: page.getByTestId('active-route') }).first()
   await openRouteMore(active)
-  await expect(active.getByTestId('hide-route')).toBeDisabled()
+  await expect(active.getByTestId('archive-route')).toBeVisible()
 
-  // 显示全部路线：清空手工 dim/hide；此前因隐藏 Focus A 已自动清除。
+  // 显示全部路线：清空手工 display state。
   // show-all 在 toolbar 溢出菜单中。
   await openToolbarMore(page)
   await page.getByTestId('show-all').click()
-  await expect(nonActive).not.toHaveClass(/route-card--focused/)
-  await expect(nonActive).not.toHaveClass(/route-card--dimmed/)
-  await expect(nonActive).not.toHaveClass(/route-card--hidden/)
-  await expect(page.locator('.graph-question-node--historical')).toHaveCount(3)
+  // 共享节点 a、b 是历史节点；A 的末端 c 与被聚焦路线一样仍可回答
+  // （Q1：canAnswer 放宽到"用户显式聚焦路线的末端未答"），因此 c 渲染为
+  // 当前节点而不是历史节点 → 历史节点为 2 而非 3。
+  await expect(page.locator('.graph-question-node--historical')).toHaveCount(2)
 
-  // 生命周期筛选：归档有专属节点的非当前路线 A（其专属节点 c）后再筛选
-  // “已归档” → A 从图上消失，共享节点保留；B 的当前节点 b 不受影响。
-  // （当前路线 B 与 A 共享 a/b，本身没有专属节点，归档它无法演示筛选。）
+  // 归档非当前路线 A（其专属节点 c）：归档默认隐藏 → A 从图上消失，共享节点保留；
+  // 勾选「已归档」筛选后可只读找回，取消勾选再次隐藏。
   await openRouteMore(nonActive)
   await nonActive.getByTestId('archive-route').click()
   await page.getByTestId('confirm-route-action').click()
-  await expect(page.getByText('已归档路线。')).toBeVisible()
-  await openRouteFilters(page)
-  await page.getByTestId('filter-archived').uncheck()
+  await expect(page.getByText('已归档路线')).toBeVisible()
   await expect(page.locator('.graph-question-node--historical')).toHaveCount(2)
+  await openRouteFilters(page)
   await page.getByTestId('filter-archived').check()
   await expect(page.locator('.graph-question-node--historical')).toHaveCount(3)
+  await page.getByTestId('filter-archived').uncheck()
+  await expect(page.locator('.graph-question-node--historical')).toHaveCount(2)
+})
+
+test('只看这条路线 连续两次都生效，且可一键退出', async ({ page }) => {
+  await createProject(page, 'E2E Isolate Route')
+  await buildThreeNodeLineage(page)
+  await fitGraph(page)
+  // Fork 出第二条路线：B 成为运行路线，A 保持 OPEN 非运行。
+  await forkFromNode(page, 1, 'Route-B')
+  const cards = page.locator('[data-route-id]')
+  await expect(cards).toHaveCount(2)
+  const active = cards.filter({ has: page.getByTestId('active-route') }).first()
+  const nonActive = cards.filter({ hasNot: page.getByTestId('active-route') }).first()
+
+  // 第一次：只看运行路线 → 非运行路线的专属节点离开画布。
+  await openRouteMore(active)
+  await active.getByTestId('isolate-route').click()
+  await expect(page.getByTestId('isolate-chip-label')).toBeVisible()
+  await expect(nonActive.getByTestId('isolate-route-label')).toHaveCount(0)
+
+  // 第二次：只看另一条路线 —— 回归点：运行路线必须一起离开画布。
+  await openRouteMore(nonActive)
+  await nonActive.getByTestId('isolate-route').click()
+  await expect(nonActive.getByTestId('isolate-route-label')).toBeVisible()
+  await expect(page.getByTestId('isolate-chip-label')).toHaveText(/只看：/)
+  await expect(page.getByTestId('active-route')).toHaveCount(1)
+
+  // 一键退出：镜头状态从画布与侧栏同时消失，运行路线回到画布。
+  await page.getByTestId('isolate-chip-exit').click()
+  await expect(page.getByTestId('isolate-chip')).toHaveCount(0)
+  await expect(nonActive.getByTestId('isolate-route-label')).toHaveCount(0)
+  await expect(page.getByTestId('active-route')).toHaveCount(1)
 })
 
 test('fixed route sidebar navigates without changing runtime active', async ({ page }) => {

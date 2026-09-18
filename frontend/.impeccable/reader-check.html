@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>reader harness</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module">
+      import { createApp, h, ref, computed } from 'vue'
+      import '/src/style.css'
+      import FilePreviewDialog from '/src/components/FilePreviewDialog.vue'
+
+      const params = new URLSearchParams(location.search)
+      const kind = params.get('kind') ?? 'md'
+
+      const IMAGE_SIZE = params.get('size') ?? '1600x1000'
+      const [iw, ih] = IMAGE_SIZE.split('x').map(Number)
+      const svg = encodeURIComponent(
+        `<svg xmlns="http://www.w3.org/2000/svg" width="${iw}" height="${ih}">` +
+        `<rect width="${iw}" height="${ih}" fill="#eef3ff"/>` +
+        `<rect x="4" y="4" width="${iw - 8}" height="${ih - 8}" fill="none" stroke="#3b6cf0" stroke-width="8"/>` +
+        `<circle cx="${iw / 2}" cy="${ih / 2}" r="${Math.min(iw, ih) / 3}" fill="#3b6cf0" opacity="0.25"/>` +
+        `<text x="20" y="${Math.min(140, ih / 2)}" font-size="${Math.max(24, Math.round(iw / 20))}" fill="#1f2a44">${iw} x ${ih}</text>` +
+        `</svg>`,
+      )
+
+      const MD = [
+        '# 本地部署说明',
+        '',
+        '这是一段用于验证阅读器缩放的中文正文。整行长度足够，用来观察放大之后行宽与折行是否一起变化。',
+        '',
+        '- 第一步：准备环境',
+        '- 第二步：执行迁移',
+        '',
+        '```bash',
+        'npm run dev',
+        '```',
+        '',
+        '| 项 | 值 |',
+        '| --- | --- |',
+        '| 端口 | 5173 |',
+      ].join('\n')
+
+      createApp({
+        setup() {
+          const open = ref(true)
+          const CODE = [
+            'export function attach(node: Node): Result {',
+            '  // 这一行故意写得很长，用来观察「折行」开关是否真的生效：abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+            '  const resolved = resolve(natural, box, zoom)',
+            '  return { ok: true, resolved }',
+            '}',
+          ].join('\n')
+
+          const config = computed(() => (kind === 'image'
+            ? {
+              fileName: '截图-1600x1000.png',
+              dataUrl: `data:image/svg+xml;charset=utf-8,${svg}`,
+              kind: 'image',
+              extractedText: '',
+            }
+            : kind === 'code'
+              ? {
+                fileName: 'attach.ts',
+                dataUrl: 'data:text/plain;base64,QQ==',
+                kind: 'text',
+                extractedText: CODE,
+              }
+              : {
+                fileName: 'README-使用说明.md',
+                dataUrl: 'data:text/markdown;base64,QQ==',
+                kind: 'text',
+                extractedText: MD,
+              }))
+          return () => h('div', [
+            h(FilePreviewDialog, {
+              open: open.value,
+              fileName: config.value.fileName,
+              dataUrl: config.value.dataUrl,
+              kind: config.value.kind,
+              extractedText: config.value.extractedText,
+              onClose: () => { open.value = false },
+            }),
+          ])
+        },
+      }).mount('#app')
+
+      window.__harness = { kind }
+    </script>
+  </body>
+</html>

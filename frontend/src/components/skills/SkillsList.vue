@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import AppIcon from '@/components/AppIcon.vue'
+import ToggleSwitch from '@/components/ui/ToggleSwitch.vue'
 import type { SkillSummary } from '@/api/skillTypes'
 
 withDefaults(defineProps<{
@@ -43,57 +45,44 @@ function mark(name: string): string {
           <span class="skills-name">{{ skill.name }}</span>
           <span class="skills-desc">{{ skill.description }}</span>
         </button>
-        <span
-          class="skills-status"
-          :class="skill.enabled ? 'skills-status--on' : 'skills-status--off'"
-          :data-test="`skill-status-${skill.skillId}`"
-        >
-          <span class="skills-status__dot" aria-hidden="true"></span>{{ skill.enabled ? '已启用' : '已禁用' }}</span>
-        <details class="skills-more" :data-test="`skill-more-${skill.skillId}`">
-          <summary aria-label="More actions">...</summary>
-          <div class="skills-more__actions">
-            <button
-              v-if="!skill.enabled"
-              type="button"
-              class="btn"
-              :disabled="busyId === skill.skillId"
-              :data-test="`skill-enable-${skill.skillId}`"
-              @click="emit('enable', skill.skillId)"
-            >启用</button>
-            <button
-              v-else
-              type="button"
-              class="btn"
-              :disabled="busyId === skill.skillId"
-              :data-test="`skill-disable-${skill.skillId}`"
-              @click="emit('disable', skill.skillId)"
-            >禁用</button>
-            <button
-              v-if="confirmingId !== skill.skillId"
-              type="button"
-              class="btn"
-              :disabled="busyId === skill.skillId"
-              :data-test="`skill-delete-${skill.skillId}`"
-              @click="confirmingId = skill.skillId"
-            >删除</button>
-            <span v-else class="skills-confirm">
-              <span>删除该 Skill 及其全部版本？</span>
-              <button
-                type="button"
-                class="btn btn-danger"
-                :disabled="busyId === skill.skillId"
-                :data-test="`skill-delete-confirm-${skill.skillId}`"
-                @click="emit('remove', skill.skillId); confirmingId = null"
-              >确认删除</button>
-              <button
-                type="button"
-                class="btn"
-                :data-test="`skill-delete-cancel-${skill.skillId}`"
-                @click="confirmingId = null"
-              >取消</button>
-            </span>
-          </div>
-        </details>
+
+        <span v-if="confirmingId === skill.skillId" class="skills-confirm">
+          <span class="skills-confirm__text">删除该 Skill 及其全部版本？</span>
+          <button
+            type="button"
+            class="btn btn-danger"
+            :disabled="busyId === skill.skillId"
+            :data-test="`skill-delete-confirm-${skill.skillId}`"
+            @click="emit('remove', skill.skillId); confirmingId = null"
+          >删除</button>
+          <button
+            type="button"
+            class="btn"
+            :data-test="`skill-delete-cancel-${skill.skillId}`"
+            @click="confirmingId = null"
+          >取消</button>
+        </span>
+
+        <template v-else>
+          <ToggleSwitch
+            :checked="skill.enabled"
+            :disabled="busyId === skill.skillId"
+            :title="skill.enabled ? '停用该 Skill' : '启用该 Skill'"
+            :data-test="skill.enabled ? `skill-disable-${skill.skillId}` : `skill-enable-${skill.skillId}`"
+            :status-test-id="`skill-status-${skill.skillId}`"
+            @toggle="skill.enabled ? emit('disable', skill.skillId) : emit('enable', skill.skillId)"
+          />
+          <button
+            type="button"
+            class="skill-icon-btn"
+            :disabled="busyId === skill.skillId"
+            title="删除该 Skill"
+            :data-test="`skill-delete-${skill.skillId}`"
+            @click="confirmingId = skill.skillId"
+          >
+            <AppIcon name="trash" />
+          </button>
+        </template>
       </li>
     </ul>
   </div>
@@ -110,13 +99,12 @@ function mark(name: string): string {
 .skills-main:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: 6px; }
 .skills-name { font-weight: 600; color: var(--color-text); }
 .skills-desc { width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text-secondary); font-size: 13px; }
-.skills-status { flex: none; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; white-space: nowrap; }
-.skills-status--on { color: var(--color-success); }
-.skills-status--off { color: var(--color-text-secondary); }
-.skills-status__dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
-.skills-more { flex: none; position: relative; }
-.skills-more summary { cursor: pointer; list-style: none; padding: 4px 8px; border-radius: 6px; color: var(--color-text-secondary); font-weight: 700; letter-spacing: 0.1em; }
-.skills-more summary:focus-visible { outline: none; box-shadow: var(--focus-ring); }
-.skills-more__actions { position: absolute; right: 0; top: calc(100% + 4px); z-index: 5; display: flex; flex-direction: column; gap: 8px; min-width: 220px; padding: 12px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 10px; box-shadow: var(--shadow-card); }
-.skills-confirm { display: flex; flex-direction: column; gap: 8px; font-size: 13px; color: var(--color-text-secondary); }
+
+.skill-icon-btn { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 8px; background: none; border: 1px solid var(--color-border); color: var(--color-danger); cursor: pointer; transition: background 120ms ease, border-color 120ms ease; }
+.skill-icon-btn:hover:not(:disabled) { border-color: var(--color-danger); background: rgb(220 38 38 / 10%); }
+.skill-icon-btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.skill-icon-btn:disabled { opacity: 0.5; cursor: progress; }
+
+.skills-confirm { flex: none; display: inline-flex; align-items: center; gap: 8px; }
+.skills-confirm__text { font-size: 13px; color: var(--color-danger); white-space: nowrap; }
 </style>

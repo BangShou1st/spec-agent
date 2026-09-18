@@ -33,7 +33,7 @@ public class OpenRouterSettingsController {
     public record ProbeRequest(String apiKey) {
     }
 
-    public record ProbeResponse(List<String> freeModels) {
+    public record ProbeResponse(List<String> allModels, List<String> freeModels) {
     }
 
     public record SaveRequest(String apiKey, String selectedModel) {
@@ -56,12 +56,16 @@ public class OpenRouterSettingsController {
         if (key == null || key.isBlank()) {
             throw new IllegalArgumentException("OpenRouter API key is required");
         }
-        return new ProbeResponse(service.probeCandidate(key));
+        return toModelResponse(service.probeCandidate(key));
     }
 
     @GetMapping("/models")
     public ProbeResponse models() {
-        return new ProbeResponse(service.listSavedKeyModels());
+        return toModelResponse(service.listSavedKeyModels());
+    }
+
+    private static ProbeResponse toModelResponse(OpenRouterSettingsService.CandidateModels models) {
+        return new ProbeResponse(models.allModels(), models.freeModels());
     }
 
     @PutMapping

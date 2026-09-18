@@ -62,6 +62,7 @@ const mockedGetProjectGraph = vi.mocked(getProjectGraph)
 
 const mockedCreateAgentRun = vi.mocked(createAgentRun)
 const mockedGetAgentRun = vi.mocked(getAgentRun)
+const mockedListRouteSpecs = vi.mocked(listRouteSpecs)
 
 /**
  * GraphCanvas stub: real Vue Flow cannot render in jsdom; the shell tests
@@ -194,6 +195,66 @@ describe('WorkspaceView graph shell', () => {
     expect(wrapper.find('[data-test="floating-window-inspector"]').exists()).toBe(false)
   })
 
+  /**
+   * 回归：workspaceStore 是单例，离开工作区后从不清空。若项目身份只在
+   * onMounted 建立，新工作区 setup 期的 immediate watcher 会用上一个项目的
+   * projectId + 上一个项目的路线 id 发请求 —— 上一个项目被删掉时就是
+   * 404 PROJECT_NOT_FOUND，且错误会盖在新项目的工作区上。
+   */
+  it('never reads specs for the previous project after switching workspaces', async () => {
+    mockViews()
+    mockedListRouteSpecs.mockResolvedValue([])
+    const singleRouteView = (projectId: string, routeId: string) =>
+      makeGraphWorkspaceView({
+        projectId,
+        activeRouteId: routeId,
+        routes: [
+          {
+            id: routeId,
+            label: '当前路线',
+            lifecycleStatus: 'open',
+            isActive: true,
+            rootNodeId: 'n1',
+            tipNodeId: 'n2',
+            createdFromNodeId: null,
+            supersedesRouteId: null,
+            replacementOfNodeId: null,
+            lineageNodeIds: ['n1', 'n2'],
+          },
+        ],
+        nodes: [
+          makeNode({ id: 'n1', projectId }),
+          makeNode({ id: 'n2', projectId, parentNodeId: 'n1' }),
+        ],
+        answers: [],
+      })
+    mockedGetProjectGraph.mockResolvedValue(singleRouteView('p1', 'r1'))
+
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const first = mount(WorkspaceView, {
+      props: { projectId: 'p1' },
+      global: { plugins: [pinia], stubs: { GraphCanvas: GraphCanvasStub } },
+    })
+    await flushPromises()
+    expect(mockedListRouteSpecs).toHaveBeenCalledWith('p1', 'r1')
+    first.unmount()
+
+    // 上一个项目此刻已在后端被删除，但前端无从得知：只能靠身份同步建立。
+    mockedListRouteSpecs.mockClear()
+    mockedGetProjectGraph.mockResolvedValue(singleRouteView('p2', 'r9'))
+    const second = mount(WorkspaceView, {
+      props: { projectId: 'p2' },
+      global: { plugins: [pinia], stubs: { GraphCanvas: GraphCanvasStub } },
+    })
+    await flushPromises()
+
+    expect(useWorkspaceStore().projectId).toBe('p2')
+    expect(mockedListRouteSpecs).toHaveBeenCalledWith('p2', 'r9')
+    expect(mockedListRouteSpecs.mock.calls.some(([projectId]) => projectId === 'p1')).toBe(false)
+    second.unmount()
+  })
+
   it('drafts through the canvas draft intent as an async run', async () => {
     mockViews()
     mockedCreateAgentRun.mockResolvedValue({
@@ -217,7 +278,7 @@ describe('WorkspaceView graph shell', () => {
     await wrapper.findComponent(GraphCanvasStub).vm.$emit('draft')
     await flushPromises()
     expect(mockedCreateAgentRun).toHaveBeenCalledWith('p1', { operation: 'DRAFT_QUESTION' })
-    expect(useWorkspaceStore().feedback).toBe('问题已起草。')
+    expect(useWorkspaceStore().feedback).toBe('问题已起草')
   })
 
   it('submits answers through the canvas submit intent as an async run', async () => {
@@ -247,9 +308,10 @@ describe('WorkspaceView graph shell', () => {
       nodeId: 'n2',
       selectedOptionId: null,
       freeText: 'answer',
+      sourceRouteId: null,
       idempotencyKey: expect.any(String),
     })
-    expect(useWorkspaceStore().feedback).toBe('回答已记录。')
+    expect(useWorkspaceStore().feedback).toBe('回答已记录')
   })
 
   it('selects the canonical target and opens the fixed inspector', async () => {
@@ -321,9 +383,8 @@ describe('WorkspaceView graph shell', () => {
   it('focus route changes only the browser reading context', async () => {
     mockViews()
     const { wrapper, graphUi } = await mountWorkspace()
-    const route = wrapper.find('[data-route-id="r2"]')
-    route.get('[data-test="route-more"]').element.setAttribute('open', '')
-    await route.get('[data-test="focus-route"]').trigger('click')
+    // 点击路线卡主体 = 设置阅读聚焦（定位 + 高亮）。
+    await wrapper.find('[data-route-id="r2"] .route-card__label').trigger('click')
     expect(graphUi.focusRouteId).toBe('r2')
     expect(useWorkspaceStore().activeState?.activeRoute?.id).toBe('r1')
   })
@@ -493,12 +554,14 @@ describe('WorkspaceView graph shell', () => {
     expect(text).toContain('运行路线')
     expect(text).toContain('已归档')
     expect(text).toContain('查看完整需求状态')
-    expect(text).toContain('归档')
-    expect(text).toContain('删除路线')
+    expect(text).toContain('归档并隐藏')
     expect(text).toContain('定位路线')
-    expect(text).toContain('浏览此路线')
-    expect(text).toContain('弱化路线')
-    expect(text).toContain('隐藏路线')
+    expect(text).toContain('只看这条路线')
+    // 已移除的视图层/生命周期动作不再存在（结构性断言，避免"已删除"+“路线"
+    // 这类相邻文案拼接造成误判）。
+    for (const removed of ['delete-route', 'focus-route', 'dim-route', 'hide-route']) {
+      expect(wrapper.find(`[data-test="${removed}"]`).exists()).toBe(false)
+    }
     // 后端/用户内容保持原样（verbatim）：路线名不翻译。
     expect(text).toContain('开放分支')
     expect(text).toContain('旧路线')

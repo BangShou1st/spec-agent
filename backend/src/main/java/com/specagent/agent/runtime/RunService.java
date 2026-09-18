@@ -12,6 +12,7 @@ import com.specagent.agent.runevent.AgentRunPhase;
 import com.specagent.project.Project;
 import com.specagent.project.ProjectRepository;
 import com.specagent.route.Route;
+import com.specagent.route.RouteLifecycleStatus;
 import com.specagent.route.RouteRepository;
 import org.springframework.stereotype.Service;
 
@@ -56,14 +57,24 @@ public class RunService {
     public AgentRun createQueuedDraftQuestion(UUID projectId,
                                               String idempotencyKey,
                                               String requestFingerprint) {
-        Project project = projectRepository.findById(projectId)
-                .orElseThrow(() -> new IllegalArgumentException("Project not found: " + projectId));
-        if (project.activeRouteId() == null) {
-            throw new IllegalStateException("Project has no active route: " + projectId);
-        }
-        Route route = routeRepository.findById(project.activeRouteId())
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Active route not found: " + project.activeRouteId()));
+        return createQueuedDraftQuestion(projectId, idempotencyKey, requestFingerprint, null);
+    }
+
+    /**
+     * Queues a question draft on an EXPLICIT route (or on the Active route when
+     * {@code explicitRouteId} is null).
+     *
+     * <p>The explicit mode is what lets several routes draft independently:
+     * the run owns its route for its whole life instead of re-reading the
+     * project's single Active pointer. The route selection is recorded in the
+     * run payload so the worker can rebuild the same decision at execution
+     * time without guessing.
+     */
+    public AgentRun createQueuedDraftQuestion(UUID projectId,
+                                              String idempotencyKey,
+                                              String requestFingerprint,
+                                              UUID explicitRouteId) {
+        Route route = resolveTargetRoute(projectId, explicitRouteId);
 
         var created = agentRunService.createWithIdempotency(
                 projectId, route.id(), AgentRunTriggerType.DECISION_CYCLE,
@@ -72,8 +83,46 @@ public class RunService {
         appendRunCreatedIfInserted(created, Map.of(
                 "triggerType", AgentRunTriggerType.DECISION_CYCLE.code(),
                 "operation", "DRAFT_QUESTION",
-                "routeId", route.id().toString()));
+                "routeId", route.id().toString(),
+                "routeSelection", routeSelection(explicitRouteId)));
         return run;
+    }
+
+    /**
+     * Resolves the route a new run targets.
+     *
+     * <p>{@code explicitRouteId == null} keeps the original semantics exactly:
+     * the project's Active route, failing closed when there is none. An
+     * explicit route must belong to the project and still be OPEN — a run may
+     * never write into an archived/superseded chain.
+     */
+    private Route resolveTargetRoute(UUID projectId, UUID explicitRouteId) {
+        if (explicitRouteId == null) {
+            Project project = projectRepository.findById(projectId)
+                    .orElseThrow(() -> new IllegalArgumentException("Project not found: " + projectId));
+            if (project.activeRouteId() == null) {
+                throw new IllegalStateException("Project has no active route: " + projectId);
+            }
+            return routeRepository.findById(project.activeRouteId())
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "Active route not found: " + project.activeRouteId()));
+        }
+        Route route = routeRepository.findById(explicitRouteId)
+                .orElseThrow(() -> new IllegalArgumentException("Route not found: " + explicitRouteId));
+        if (!route.projectId().equals(projectId)) {
+            throw new IllegalArgumentException(
+                    "Route " + explicitRouteId + " does not belong to project " + projectId);
+        }
+        if (route.lifecycleStatus() != RouteLifecycleStatus.OPEN) {
+            throw new IllegalStateException(
+                    "Route is not open: " + explicitRouteId + " is " + route.lifecycleStatus().code());
+        }
+        return route;
+    }
+
+    /** Payload marker the worker uses to rebuild the route decision. */
+    static String routeSelection(UUID explicitRouteId) {
+        return explicitRouteId == null ? "ACTIVE" : "EXPLICIT";
     }
 
     public UUID createQueuedRunWithInput(UUID projectId,
@@ -152,18 +201,33 @@ public class RunService {
                                                    String idempotencyKey,
                                                    String requestFingerprint,
                                                    AgentEvent.PersistenceIntent persistenceIntent) {
+        return createQueuedRunWithInputResultForRoute(projectId, operation, nodeId, selectedOptionId,
+                freeText, answerId, idempotencyKey, requestFingerprint, persistenceIntent, null);
+    }
+
+    /**
+     * Same as {@link #createQueuedRunWithInputResult} but with an EXPLICIT
+     * target route (null keeps the Active-route behaviour unchanged).
+     *
+     * <p>Several routes can therefore answer independently: the run carries its
+     * own route id, and the execution path resolves the route from the run
+     * instead of re-reading the project's single Active pointer.
+     */
+    public AgentRun createQueuedRunWithInputResultForRoute(UUID projectId,
+                                                           String operation,
+                                                           UUID nodeId,
+                                                           UUID selectedOptionId,
+                                                           String freeText,
+                                                           UUID answerId,
+                                                           String idempotencyKey,
+                                                           String requestFingerprint,
+                                                           AgentEvent.PersistenceIntent persistenceIntent,
+                                                           UUID explicitRouteId) {
         String fingerprint = requestFingerprint != null ? requestFingerprint
                 : AgentRunRequestFingerprint.forClientRequest(
-                projectId, operation, nodeId, null, answerId, selectedOptionId, freeText,
+                projectId, operation, nodeId, explicitRouteId, answerId, selectedOptionId, freeText,
                 persistenceIntent);
-        Project project = projectRepository.findById(projectId)
-                .orElseThrow(() -> new IllegalArgumentException("Project not found: " + projectId));
-        if (project.activeRouteId() == null) {
-            throw new IllegalStateException("Project has no active route: " + projectId);
-        }
-        Route route = routeRepository.findById(project.activeRouteId())
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Active route not found: " + project.activeRouteId()));
+        Route route = resolveTargetRoute(projectId, explicitRouteId);
 
         UUID inputNodeId = nodeId != null ? nodeId : route.tipNodeId();
         var created = agentRunService.createWithIdempotency(
@@ -175,6 +239,7 @@ public class RunService {
         payload.put("triggerType", AgentRunTriggerType.ANSWER_CYCLE.code());
         payload.put("operation", operation != null ? operation : "");
         payload.put("routeId", route.id().toString());
+        payload.put("routeSelection", routeSelection(explicitRouteId));
         if (selectedOptionId != null) payload.put("selectedOptionId", selectedOptionId.toString());
         if (freeText != null) payload.put("freeText", freeText);
         if (answerId != null) payload.put("answerId", answerId.toString());
@@ -224,14 +289,15 @@ public class RunService {
     public AgentRun createQueuedArtifactGeneration(UUID projectId,
                                                    String idempotencyKey,
                                                    String requestFingerprint) {
-        Project project = projectRepository.findById(projectId)
-                .orElseThrow(() -> new IllegalArgumentException("Project not found: " + projectId));
-        if (project.activeRouteId() == null) {
-            throw new IllegalStateException("Project has no active route: " + projectId);
-        }
-        Route route = routeRepository.findById(project.activeRouteId())
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Active route not found: " + project.activeRouteId()));
+        return createQueuedArtifactGeneration(projectId, idempotencyKey, requestFingerprint, null);
+    }
+
+    /** Artifact generation on an EXPLICIT route (null keeps the Active route). */
+    public AgentRun createQueuedArtifactGeneration(UUID projectId,
+                                                   String idempotencyKey,
+                                                   String requestFingerprint,
+                                                   UUID explicitRouteId) {
+        Route route = resolveTargetRoute(projectId, explicitRouteId);
 
         var created = agentRunService.createWithIdempotency(
                 projectId, route.id(), AgentRunTriggerType.GENERATE_SPEC,
@@ -240,7 +306,8 @@ public class RunService {
         appendRunCreatedIfInserted(created, Map.of(
                 "triggerType", AgentRunTriggerType.GENERATE_SPEC.code(),
                 "operation", "GENERATE_ARTIFACT",
-                "routeId", route.id().toString()));
+                "routeId", route.id().toString(),
+                "routeSelection", routeSelection(explicitRouteId)));
         return run;
     }
 
@@ -361,11 +428,25 @@ public class RunService {
         payload.put("triggerType", AgentRunTriggerType.CONTINUE_CYCLE.code());
         payload.put("operation", "CONTINUE");
         payload.put("routeId", route.id().toString());
+        // A continuation child lives on its parent's route. When that route is
+        // not the project Active route, the child is by construction an
+        // EXPLICIT-route run — recording it here keeps the context guard from
+        // rejecting the child of an independently running chain. (The stale
+        // pointer hazard is already covered by the expected-tip check above.)
+        payload.put("routeSelection", routeSelection(
+                route.id().equals(activeRouteIdOrNull(parent.projectId())) ? null : route.id()));
         payload.put("parentRunId", parent.id().toString());
         payload.put("rootRunId", rootId.toString());
         payload.put("cycleIndex", childCycle);
         appendRunCreatedIfInserted(created, payload);
         return created;
+    }
+
+    /** The project's Active route id, or null when the project has none. */
+    public UUID activeRouteIdOrNull(UUID projectId) {
+        return projectRepository.findById(projectId)
+                .map(Project::activeRouteId)
+                .orElse(null);
     }
 
     public UUID getActiveRouteId(UUID projectId) {

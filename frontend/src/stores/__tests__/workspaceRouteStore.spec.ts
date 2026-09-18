@@ -139,7 +139,7 @@ describe('workspaceStore route workspace', () => {
     expect(mockedGetActiveState).toHaveBeenCalledTimes(2)
     expect(mockedGetRequirementState).toHaveBeenCalledTimes(2)
     expect(mockedGetProjectGraph).toHaveBeenCalledTimes(2)
-    expect(store.feedback).toBe('已设为当前路线。')
+    expect(store.feedback).toBe('已设为当前路线')
   })
 
   it('restore sends the command then refreshes canonical reads', async () => {
@@ -161,7 +161,7 @@ describe('workspaceStore route workspace', () => {
 
     expect(ok).toBe(true)
     expect(mockedApiRestoreRoute).toHaveBeenCalledWith('p1', 'r-archived')
-    expect(store.feedback).toBe('已恢复路线。')
+    expect(store.feedback).toBe('已恢复路线')
   })
 
   it('archive sends the command and refreshes canonical reads', async () => {
@@ -175,7 +175,7 @@ describe('workspaceStore route workspace', () => {
     expect(ok).toBe(true)
     expect(mockedApiArchiveRoute).toHaveBeenCalledWith('p1', 'r1')
     expect(mockedGetActiveState).toHaveBeenCalledTimes(2)
-    expect(store.feedback).toBe('已归档路线。')
+    expect(store.feedback).toBe('已归档路线')
   })
 
   it('delete sends the command and refreshes canonical reads', async () => {
@@ -189,7 +189,7 @@ describe('workspaceStore route workspace', () => {
     expect(ok).toBe(true)
     expect(mockedApiDeleteRoute).toHaveBeenCalledWith('p1', 'r1')
     expect(mockedGetActiveState).toHaveBeenCalledTimes(2)
-    expect(store.feedback).toBe('已删除路线。')
+    expect(store.feedback).toBe('已删除路线')
   })
 
   it('fork request carries the explicit source route and user label', async () => {
@@ -258,7 +258,7 @@ describe('workspaceStore route workspace', () => {
     expect(ok).toBe(true)
     expect(mockedGetProjectGraph).toHaveBeenCalledTimes(3)
     expect(store.activeState?.activeRoute?.id).toBe('route-fork')
-    expect(store.feedback).toBe('已创建新分支路线。')
+    expect(store.feedback).toBe('已创建新分支路线')
   })
 
   it('regenerate request passes through without runtime-owned ids', async () => {
@@ -342,7 +342,7 @@ describe('workspaceStore route workspace', () => {
 
     expect(ok).toBe(true)
     expect(store.activeState?.activeRoute?.id).toBe('route-new')
-    expect(store.feedback).toBe('已创建换一个问题路线。')
+    expect(store.feedback).toBe('已创建换一个问题路线')
   })
 
   it('prevents duplicate route commands while one is pending', async () => {
@@ -497,7 +497,7 @@ describe('workspaceStore route workspace', () => {
     expect(mockedListRouteSpecs).toHaveBeenCalledWith('p1', activeRouteId)
     expect(store.selectedSpecIdByRoute[activeRouteId]).toBe('spec-new')
     expect(store.specsByRoute[activeRouteId].map((s) => s.id)).toEqual(['spec-old', 'spec-new'])
-    expect(store.feedback).toBe('已生成规格快照。')
+    expect(store.feedback).toBe('已生成规格快照')
   })
 
   it('cross-route generation selects the returned artifact route cache', async () => {
@@ -538,6 +538,6 @@ describe('workspaceStore route workspace', () => {
     expect(mockedListRouteSpecs).toHaveBeenCalledWith('p1', 'route-B')
     expect(store.selectedSpecIdByRoute['route-B']).toBe('spec-new-B')
     expect(store.selectedSpecForRoute('route-B')?.id).toBe('spec-new-B')
-    expect(store.feedback).toBe('已生成规格快照。')
+    expect(store.feedback).toBe('已生成规格快照')
   })
 })

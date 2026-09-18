@@ -26,7 +26,7 @@ function formatTime(iso: string): string {
 <template>
   <div>
     <p v-if="snapshots.length === 0" class="muted" data-test="specs-empty">
-      该路线还没有规格快照。
+      该路线还没有规格快照
     </p>
     <ul v-else class="snapshot-list" data-test="spec-snapshot-list">
       <li

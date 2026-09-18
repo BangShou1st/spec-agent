@@ -4,6 +4,7 @@ import com.specagent.globalassistant.conversation.GlobalAssistantEventType;
 import com.specagent.globalassistant.conversation.GlobalAssistantRun;
 import com.specagent.globalassistant.conversation.GlobalAssistantRunRepository;
 import com.specagent.globalassistant.conversation.GlobalAssistantRunStatus;
+import com.specagent.globalassistant.model.GlobalAssistantModelTargetResolver;
 import com.specagent.globalassistant.stream.GlobalAssistantRunEventService;
 import com.specagent.globalassistant.turn.RunTerminalEvent;
 import java.util.Map;
@@ -22,14 +23,17 @@ public class GlobalAssistantRunLifecycleService {
     private final GlobalAssistantRunRepository runs;
     private final GlobalAssistantConversationService conversations;
     private final GlobalAssistantRunEventService events;
+    private final GlobalAssistantModelTargetResolver modelTarget;
     private final ApplicationEventPublisher publisher;
     public GlobalAssistantRunLifecycleService(GlobalAssistantRunRepository runs,
             GlobalAssistantConversationService conversations,
             GlobalAssistantRunEventService events,
+            GlobalAssistantModelTargetResolver modelTarget,
             ApplicationEventPublisher publisher) {
         this.runs = runs;
         this.conversations = conversations;
         this.events = events;
+        this.modelTarget = modelTarget;
         this.publisher = publisher;
     }
     @Transactional
@@ -45,12 +49,24 @@ public class GlobalAssistantRunLifecycleService {
     public void completeWithAssistant(UUID threadId, UUID runId, String text) {
         completeWithAssistantAndUiAction(threadId, runId, text, null, null);
     }
+    /** Completion with the request-time provider/model snapshot from the run. */
+    @Transactional
+    public void completeWithAssistant(UUID threadId, UUID runId, String text,
+            String providerLabel, String modelId) {
+        completeWithAssistantAndUiAction(threadId, runId, text, null, null, providerLabel, modelId);
+    }
     @Transactional
     public void completeWithAssistantAndUiAction(UUID threadId, UUID runId, String text,
             String uiDestination, String uiResourceId) {
+        completeWithAssistantAndUiAction(threadId, runId, text, uiDestination, uiResourceId,
+                attributionProvider(), attributionModel());
+    }
+    @Transactional
+    public void completeWithAssistantAndUiAction(UUID threadId, UUID runId, String text,
+            String uiDestination, String uiResourceId, String providerLabel, String modelId) {
         // The authoritative message is persisted exactly once. User-visible prose
         // already streamed as ANSWER_DELTA transients; no full-text delta here.
-        conversations.appendAssistantMessage(threadId, text, runId);
+        conversations.appendAssistantMessage(threadId, text, runId, providerLabel, modelId);
         events.append(runId, GlobalAssistantEventType.ASSISTANT_COMPLETED, Map.of());
         if (uiDestination != null) {
             if (uiResourceId != null) {
@@ -66,8 +82,13 @@ public class GlobalAssistantRunLifecycleService {
     }
     @Transactional
     public void completeForClarification(UUID threadId, UUID runId, String question) {
+        completeForClarification(threadId, runId, question, attributionProvider(), attributionModel());
+    }
+    @Transactional
+    public void completeForClarification(UUID threadId, UUID runId, String question,
+            String providerLabel, String modelId) {
         // Question prose already streamed as ANSWER_DELTA transients, if any.
-        conversations.appendAssistantMessage(threadId, question, runId);
+        conversations.appendAssistantMessage(threadId, question, runId, providerLabel, modelId);
         events.append(runId, GlobalAssistantEventType.ASSISTANT_COMPLETED, Map.of());
         events.append(runId, GlobalAssistantEventType.USER_INPUT_REQUIRED, Map.of("question", question));
         events.append(runId, GlobalAssistantEventType.RUN_COMPLETED, Map.of());
@@ -76,7 +97,13 @@ public class GlobalAssistantRunLifecycleService {
     }
     @Transactional
     public void failWithAssistant(UUID threadId, UUID runId, String text, String errorCode, String reason) {
-        conversations.appendAssistantMessage(threadId, text, runId);
+        failWithAssistant(threadId, runId, text, errorCode, reason,
+                attributionProvider(), attributionModel());
+    }
+    @Transactional
+    public void failWithAssistant(UUID threadId, UUID runId, String text, String errorCode, String reason,
+            String providerLabel, String modelId) {
+        conversations.appendAssistantMessage(threadId, text, runId, providerLabel, modelId);
         events.append(runId, GlobalAssistantEventType.ASSISTANT_DELTA, Map.of("text", text));
         events.append(runId, GlobalAssistantEventType.ASSISTANT_COMPLETED, Map.of());
         events.append(runId, GlobalAssistantEventType.RUN_FAILED,
@@ -102,5 +129,14 @@ public class GlobalAssistantRunLifecycleService {
     }
     private void publishTerminal(UUID threadId, UUID runId, String status) {
         publisher.publishEvent(new RunTerminalEvent(threadId, runId, status));
+    }
+
+    /** Cosmetic attribution; resolved at persist time, never breaks the transition. */
+    private String attributionProvider() {
+        return modelTarget.resolveActive().providerLabel();
+    }
+
+    private String attributionModel() {
+        return modelTarget.resolveActive().modelId();
     }
 }

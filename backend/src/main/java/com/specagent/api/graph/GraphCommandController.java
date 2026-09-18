@@ -7,6 +7,7 @@ import com.specagent.graph.NodeRelationType;
 import com.specagent.graph.UndoRedoService;
 import com.specagent.node.KnowledgeStatus;
 import com.specagent.node.Node;
+import com.specagent.node.NodeKind;
 import com.specagent.readmodel.graph.GraphWorkspaceRelationView;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -60,13 +61,43 @@ public class GraphCommandController {
      * response shape uses {@code routeId = null} so the client never sees
      * the floating node as belonging to any route. The creation context
      * route id is recorded in the operation log by the command service.
+     *
+     * <p>{@code kind} is optional and defaults to KNOWLEDGE; resources
+     * ({@code kind = RESOURCE}) start floating the same way, which is what
+     * makes "先添加资源、再自己连线接入路线" possible.
      */
     @PostMapping("/floating-nodes")
     public ResponseEntity<NodeResponse> createFloatingDraftNode(@PathVariable UUID projectId,
                                                                  @RequestBody CreateDraftNodeRequest request) {
         Node node = com.specagent.api.common.CommandExecution.execute(() -> commandService.createFloatingDraftNode(
-                projectId, request.routeId(), request.subtype(), request.content()));
+                projectId, request.routeId(), request.resolveNodeKind(), request.subtype(), request.content()));
         return ResponseEntity.status(HttpStatus.CREATED).body(NodeResponse.fromFloating(node));
+    }
+
+    /**
+     * Connects an existing floating node into a route as its new tip — the
+     * "自己连线" half of resource attachment. Only the current tip may take a
+     * new lineage child, so a hand-drawn connection can never insert into
+     * history. The node's id, kind and content are untouched.
+     */
+    @PostMapping("/nodes/{nodeId}/connect")
+    public ResponseEntity<NodeResponse> connectFloatingNode(@PathVariable UUID projectId,
+                                                            @PathVariable UUID nodeId,
+                                                            @RequestBody ConnectNodeRequest request) {
+        Node node = com.specagent.api.common.CommandExecution.execute(
+                () -> commandService.connectFloatingNodeToRoute(
+                        projectId, request.routeId(), nodeId, request.parentNodeId()));
+        return ResponseEntity.ok(NodeResponse.from(node, request.routeId(), false));
+    }
+
+    /** Detaches the current tip from its route, restoring a floating node. */
+    @PostMapping("/nodes/{nodeId}/disconnect")
+    public ResponseEntity<NodeResponse> disconnectNode(@PathVariable UUID projectId,
+                                                       @PathVariable UUID nodeId,
+                                                       @RequestBody DisconnectNodeRequest request) {
+        Node node = com.specagent.api.common.CommandExecution.execute(
+                () -> commandService.detachNodeFromRoute(projectId, request.routeId(), nodeId));
+        return ResponseEntity.ok(NodeResponse.fromFloating(node));
     }
 
     /**
@@ -216,7 +247,30 @@ public class GraphCommandController {
         }
     }
 
-    public record CreateDraftNodeRequest(UUID routeId, String subtype, Map<String, Object> content) {
+    /**
+     * Draft-node creation payload.
+     *
+     * <p>{@code nodeKind} is OPTIONAL and only honoured by the floating-node
+     * endpoint (default KNOWLEDGE): /nodes and /nodes/{id}/continuation keep
+     * their fixed kinds so an existing flow can never be turned into a
+     * resource by a stray field.
+     */
+    public record CreateDraftNodeRequest(UUID routeId,
+                                         String subtype,
+                                         Map<String, Object> content,
+                                         String nodeKind) {
+
+        NodeKind resolveNodeKind() {
+            return nodeKind == null || nodeKind.isBlank()
+                    ? NodeKind.KNOWLEDGE
+                    : NodeKind.fromCode(nodeKind);
+        }
+    }
+
+    public record ConnectNodeRequest(UUID routeId, UUID parentNodeId) {
+    }
+
+    public record DisconnectNodeRequest(UUID routeId) {
     }
 
     public record ReviseDraftRequest(String subtype, Map<String, Object> content) {

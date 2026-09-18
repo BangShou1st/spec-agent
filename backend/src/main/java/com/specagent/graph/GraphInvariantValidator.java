@@ -64,9 +64,34 @@ public class GraphInvariantValidator {
      * gain a lineage child. Unanswered Questions must stay route tips — no
      * line advancing command may cross them. Non-question parents (knowledge,
      * resource, artifact) are always valid continuation points.
+     *
+     * <p>Strict form: the child kind is unknown, so the guard applies in full.
      */
     public void validateQuestionCanHaveChild(UUID projectId, UUID routeId, UUID parentNodeId) {
+        validateQuestionCanHaveChild(projectId, routeId, parentNodeId, null);
+    }
+
+    /**
+     * Kind-aware form used when the caller already knows what is being
+     * attached. A non-interaction child (resource / knowledge / artifact)
+     * carries no answerable question of its own, so hanging it off the
+     * current tip never skips a question the user still has to answer —
+     * it only supplies material for the question that is already pending.
+     * Rejecting those attachments would make the tip permanently
+     * unattachable, because a route tip is by construction the newest
+     * unanswered question.
+     *
+     * <p>{@code childKind == null} means "unknown" and falls back to the
+     * strict behaviour, so existing call sites keep their semantics.
+     */
+    public void validateQuestionCanHaveChild(UUID projectId,
+                                             UUID routeId,
+                                             UUID parentNodeId,
+                                             NodeKind childKind) {
         if (parentNodeId == null) {
+            return;
+        }
+        if (childKind != null && childKind != NodeKind.INTERACTION) {
             return;
         }
         Node parent = nodeRepository.findById(parentNodeId)
