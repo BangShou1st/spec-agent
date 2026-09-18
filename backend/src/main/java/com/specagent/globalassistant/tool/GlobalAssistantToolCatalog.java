@@ -18,8 +18,11 @@ public final class GlobalAssistantToolCatalog {
             ProjectCreateCapability.CAPABILITY_ID,
             ProjectSearchCapability.CAPABILITY_ID,
             ProjectListRecentCapability.CAPABILITY_ID,
-            ProjectGetSummaryCapability.CAPABILITY_ID);
-    public static final String FINGERPRINT = "ga-v1:project.create,project.search,project.list_recent,project.get_summary";
+            ProjectGetSummaryCapability.CAPABILITY_ID,
+            SkillImportCapability.CAPABILITY_ID,
+            SkillDiscoverCapability.CAPABILITY_ID);
+    public static final String FINGERPRINT = "ga-v1:project.create,project.search,"
+            + "project.list_recent,project.get_summary,skill.import,skill.import.discover";
     public static boolean isAllowed(String capabilityId) {
         return TOOL_IDS.contains(capabilityId);
     }
@@ -40,6 +43,15 @@ public final class GlobalAssistantToolCatalog {
         }
         if (ProjectGetSummaryCapability.CAPABILITY_ID.equals(capabilityId)) {
             return java.util.Set.of("projectId");
+        }
+        // skill.import stages a reviewable import row; it is not one of the Skill
+        // Runtime host tools (skill.activate / skill.search / skill.read_resource),
+        // which must stay unreachable from the model-facing GA catalog.
+        if (SkillImportCapability.CAPABILITY_ID.equals(capabilityId)) {
+            return java.util.Set.of("url", "ref", "skill");
+        }
+        if (SkillDiscoverCapability.CAPABILITY_ID.equals(capabilityId)) {
+            return java.util.Set.of("url", "ref");
         }
         return null;
     }

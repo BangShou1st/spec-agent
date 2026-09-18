@@ -50,6 +50,47 @@ class ObservationView(StrictModel):
     conflicts: List[str] = []
     risks: List[str] = []
 
+    @field_validator("known", "unknowns", "conflicts", "risks", mode="before")
+    @classmethod
+    def _coerce_entries_to_strings(cls, value: Any) -> Any:
+        """Tolerate model shape drift on reflection entries.
+
+        With longer contexts the model sometimes mimics the observation
+        entries it was shown and emits objects (``{"sourceRef": ...,
+        "excerpt": ...}``) instead of plain strings. These entries are
+        model-authored reflection text, not a trust boundary, so a
+        deterministic stringification is safer than failing the whole
+        DECISION cycle (which surfaced as an opaque brain_unavailable).
+        """
+        if isinstance(value, list):
+            return [_coerce_observation_entry(item) for item in value]
+        return value
+
+
+_OBSERVATION_TEXT_KEYS = ("text", "content", "excerpt", "note", "question",
+                          "detail", "summary", "value", "observation")
+
+
+def _coerce_observation_entry(value: Any) -> Any:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        ref = value.get("sourceRef") or value.get("source") or value.get("ref")
+        for key in _OBSERVATION_TEXT_KEYS:
+            text = value.get(key)
+            if isinstance(text, str) and text.strip():
+                if isinstance(ref, str) and ref.strip():
+                    return f"{ref}: {text.strip()}"
+                return text.strip()
+        if isinstance(ref, str) and ref.strip():
+            return ref.strip()
+        parts = [f"{key}: {item}" for key, item in value.items()
+                 if isinstance(item, str) and item.strip()]
+        if parts:
+            return "; ".join(parts)
+        raise ValueError("observation entry object carries no text content")
+    raise ValueError("observation entry must be a string")
+
 
 class ActionProposal(StrictModel):
     action_family: str

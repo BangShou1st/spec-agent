@@ -100,6 +100,11 @@ spec:
       git-clone-bytes: ${SPEC_AGENT_SKILL_GIT_CLONE_BYTES:10485760}
       git-timeout-seconds: ${SPEC_AGENT_SKILL_GIT_TIMEOUT_SECONDS:30}
       git-max-redirects: ${SPEC_AGENT_SKILL_GIT_MAX_REDIRECTS:3}
+      # DB-authoritative local mirror of installed packages (builtin, git and
+      # uploaded alike) so users can browse/backup their skills on disk. The
+      # database is never read back from this tree; missing files self-heal.
+      local-mirror-enabled: ${SPEC_AGENT_SKILL_LOCAL_MIRROR_ENABLED:true}
+      local-mirror-root: ${SPEC_AGENT_SKILL_LOCAL_MIRROR_ROOT:${user.home}/.spec-agent/skills}
     mcp:
       # Remote MCP runtime bounds. Model output can never change these.
       discovery-timeout-ms: ${SPEC_AGENT_MCP_DISCOVERY_TIMEOUT_MS:10000}

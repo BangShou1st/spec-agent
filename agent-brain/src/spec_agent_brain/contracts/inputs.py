@@ -155,16 +155,30 @@ class AvailableSkillView(StrictModel):
     compatibility_hint: Optional[str] = None
 
 
+class UserRequiredSkillView(StrictModel):
+    """A Skill the user explicitly bound to a graph node (" /" picker).
+
+    This is a user directive, not a catalog suggestion: the decision cycle
+    must activate this skill. Java only sets it when the bound id is present
+    in the discovered enabled catalog.
+    """
+
+    skill_id: str
+    name: str = ""
+
+
 class SkillCatalogView(StrictModel):
     """Bounded Skill catalog with replay evidence.
 
     ``fingerprint`` plus ``truncated`` let replay verify the model saw the
-    same catalog; entry order is stable.
+    same catalog; entry order is stable. ``user_required`` carries the
+    user's explicit skill directive for this context when one exists.
     """
 
     skills: List[AvailableSkillView] = Field(default_factory=list)
     truncated: bool = False
     fingerprint: str = ""
+    user_required: Optional[UserRequiredSkillView] = None
 
 
 class RelationView(StrictModel):

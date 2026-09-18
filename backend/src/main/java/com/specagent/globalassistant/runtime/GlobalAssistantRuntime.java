@@ -13,6 +13,8 @@ import com.specagent.globalassistant.model.GlobalAssistantBrain;
 import com.specagent.globalassistant.model.GlobalAssistantDecision;
 import com.specagent.globalassistant.model.GlobalAssistantModelException;
 import com.specagent.globalassistant.stream.GlobalAssistantRunEventService;
+import com.specagent.globalassistant.tool.SkillDiscoverCapability;
+import com.specagent.globalassistant.tool.SkillImportCapability;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
@@ -42,6 +44,7 @@ public class GlobalAssistantRuntime {
     private final GlobalAssistantRunEventService runEvents;
     private final GlobalAssistantUiActionValidator uiValidator;
     private final com.specagent.globalassistant.model.GlobalAssistantSummaryService summaries;
+    private final com.specagent.globalassistant.model.GlobalAssistantModelTargetResolver modelTargets;
     private static final Logger log = LoggerFactory.getLogger(GlobalAssistantRuntime.class);
     public GlobalAssistantRuntime(GlobalAssistantConversationService conversations,
             GlobalAssistantContextBuilder contextBuilder, GlobalAssistantBrain brain,
@@ -49,7 +52,8 @@ public class GlobalAssistantRuntime {
             GlobalAssistantToolArgumentCanonicalizer canonicalizer,
             GlobalAssistantRuntimeProperties budgets, GlobalAssistantRunLifecycleService lifecycle,
             GlobalAssistantRunEventService runEvents, GlobalAssistantUiActionValidator uiValidator,
-            com.specagent.globalassistant.model.GlobalAssistantSummaryService summaries) {
+            com.specagent.globalassistant.model.GlobalAssistantSummaryService summaries,
+            com.specagent.globalassistant.model.GlobalAssistantModelTargetResolver modelTargets) {
         this.conversations = conversations;
         this.contextBuilder = contextBuilder;
         this.brain = brain;
@@ -61,6 +65,7 @@ public class GlobalAssistantRuntime {
         this.runEvents = runEvents;
         this.uiValidator = uiValidator;
         this.summaries = summaries;
+        this.modelTargets = modelTargets;
     }
     /**
      * Executes one user turn synchronously. The run row already exists;
@@ -89,6 +94,12 @@ public class GlobalAssistantRuntime {
             } finally {
                 queueMs = (System.nanoTime() - queueStart) / 1_000_000;
             }
+        // Snapshot the provider/model actually serving THIS run's inference
+        // requests, taken once at request time. Messages persist this exact
+        // attribution, so later provider switches never mislabel old answers.
+        var attribution = modelTargets.resolveActive();
+        var attributionProvider = attribution.providerLabel();
+        var attributionModel = attribution.modelId();
         List<Map<String, Object>> observations = new ArrayList<>();
         List<GlobalAssistantObservation> typedObservations = new ArrayList<>();
         String lastCapability = null;
@@ -103,7 +114,7 @@ public class GlobalAssistantRuntime {
             }
             if (steps >= budgets.maxSteps()) {
                 failRun(threadId, runId, GlobalAssistantErrorCode.RUN_STEP_LIMIT,
-                        "Step budget exhausted", observations);
+                        "Step budget exhausted", observations, attributionProvider, attributionModel);
                 return;
             }
             GlobalAssistantContext context;
@@ -116,7 +127,7 @@ public class GlobalAssistantRuntime {
                 }
             } catch (IllegalStateException ex) {
                 failRun(threadId, runId, GlobalAssistantErrorCode.TOOL_EXECUTION_FAILED,
-                        "Working-state storage is corrupt", observations);
+                        "Working-state storage is corrupt", observations, attributionProvider, attributionModel);
                 return;
             }
             GlobalAssistantDecision decision;
@@ -142,11 +153,11 @@ public class GlobalAssistantRuntime {
                     return;
                 }
                 failRun(threadId, runId, GlobalAssistantErrorCode.MODEL_UNAVAILABLE,
-                        "Model stream interrupted", observations);
+                        "Model stream interrupted", observations, attributionProvider, attributionModel);
                 return;
             } catch (GlobalAssistantModelException ex) {
                 if (!GlobalAssistantErrorCode.MODEL_INVALID_RESPONSE.equals(ex.errorCode())) {
-                    failRun(threadId, runId, ex.errorCode(), ex.getMessage(), observations);
+                    failRun(threadId, runId, ex.errorCode(), ex.getMessage(), observations, attributionProvider, attributionModel);
                     return;
                 }
                 if (isCancelRequested(runId)) {
@@ -173,14 +184,14 @@ public class GlobalAssistantRuntime {
                         return;
                     }
                     failRun(threadId, runId, GlobalAssistantErrorCode.MODEL_UNAVAILABLE,
-                            "Model stream interrupted", observations);
+                            "Model stream interrupted", observations, attributionProvider, attributionModel);
                     return;
                 } catch (GlobalAssistantModelException repairEx) {
-                    failRun(threadId, runId, repairEx.errorCode(), repairEx.getMessage(), observations);
+                    failRun(threadId, runId, repairEx.errorCode(), repairEx.getMessage(), observations, attributionProvider, attributionModel);
                     return;
                 } catch (RuntimeException repairEx) {
                     failRun(threadId, runId, GlobalAssistantErrorCode.MODEL_UNAVAILABLE,
-                            "Model unavailable", observations);
+                            "Model unavailable", observations, attributionProvider, attributionModel);
                     return;
                 }
                 if (isCancelRequested(runId)) {
@@ -189,7 +200,7 @@ public class GlobalAssistantRuntime {
                 }
             } catch (RuntimeException ex) {
                 failRun(threadId, runId, GlobalAssistantErrorCode.MODEL_UNAVAILABLE,
-                        "Model unavailable", observations);
+                        "Model unavailable", observations, attributionProvider, attributionModel);
                 return;
             }
             incrementStep(runId);
@@ -200,13 +211,13 @@ public class GlobalAssistantRuntime {
             }
             if (decision.kind() == null) {
                 failRun(threadId, runId, GlobalAssistantErrorCode.MODEL_INVALID_RESPONSE,
-                        "Missing decision kind", observations);
+                        "Missing decision kind", observations, attributionProvider, attributionModel);
                 return;
             }
             if (decision.kind() == GlobalAssistantDecision.DecisionKind.TOOL) {
                 if (toolCalls >= budgets.maxToolCalls()) {
                     failRun(threadId, runId, GlobalAssistantErrorCode.RUN_STEP_LIMIT,
-                            "Tool budget exhausted", observations);
+                            "Tool budget exhausted", observations, attributionProvider, attributionModel);
                     return;
                 }
                 String canonicalArgs = canonicalizer.canonicalize(decision.toolRequest().arguments());
@@ -216,7 +227,7 @@ public class GlobalAssistantRuntime {
                     if (currentFingerprint == observationFingerprint) {
                         summaryMs += finishSuccessfully(threadId, runId, userMessage,
                                 "The same lookup was already tried without new results, so I stopped here.",
-                                null, null);
+                                null, null, attributionProvider, attributionModel);
                         return;
                     }
                 }
@@ -238,12 +249,17 @@ public class GlobalAssistantRuntime {
                         toolExecutionMs += (System.nanoTime() - t0) / 1_000_000;
                     }
                 } catch (RuntimeException ex) {
+                    // Never swallow silently: the TOOL_FAILED copy is generic,
+                    // so the log is the only place the real cause survives.
+                    log.warn("GA tool execution failed: runId={} capabilityId={} error={}",
+                            runId, decision.toolRequest().capabilityId(),
+                            ex.getClass().getSimpleName(), ex);
                     runEvents.append(runId, GlobalAssistantEventType.TOOL_FAILED, Map.of(
                             "capabilityId", decision.toolRequest().capabilityId(),
                             "errorCode", GlobalAssistantErrorCode.TOOL_EXECUTION_FAILED,
                             "reason", "Tool execution failed"));
                     failRun(threadId, runId, GlobalAssistantErrorCode.TOOL_EXECUTION_FAILED,
-                            "Tool execution failed", observations);
+                            "Tool execution failed", observations, attributionProvider, attributionModel);
                     return;
                 }
                 toolCalls++;
@@ -261,8 +277,15 @@ public class GlobalAssistantRuntime {
                     completedPayload.put("summary", toolSummary(decision.toolRequest().capabilityId(), result));
                     completedPayload.put("resourceRefs", refs);
                     completedPayload.put("resultCount", refs.size());
-                    completedPayload.put("resultKind", com.specagent.globalassistant.tool.GlobalAssistantToolPresentation
-                            .resultKind(decision.toolRequest().capabilityId()));
+                    // resultKind is null for capabilities without a list/kind
+                    // mapping (skill.import): absence of the key is the honest
+                    // signal. A null value here would kill the whole run —
+                    // Map.copyOf in the event repository rejects null values.
+                    String resultKind = com.specagent.globalassistant.tool.GlobalAssistantToolPresentation
+                            .resultKind(decision.toolRequest().capabilityId());
+                    if (resultKind != null) {
+                        completedPayload.put("resultKind", resultKind);
+                    }
                     runEvents.append(runId, GlobalAssistantEventType.TOOL_COMPLETED, completedPayload);
                     // Real phase transition, not a timer: the tool finished and the
                     // final model round starts now. Keeps the UI truthful during
@@ -275,7 +298,7 @@ public class GlobalAssistantRuntime {
                             "errorCode", GlobalAssistantErrorCode.TOOL_EXECUTION_FAILED,
                             "reason", "Tool is still running; stopping the loop honestly."));
                     failRun(threadId, runId, GlobalAssistantErrorCode.TOOL_EXECUTION_FAILED,
-                            "Tool still in progress", observations);
+                            "Tool still in progress", observations, attributionProvider, attributionModel);
                     return;
                 } else {
                     String errorCode = isNotFound(result)
@@ -301,14 +324,15 @@ public class GlobalAssistantRuntime {
                     rememberClarification(threadId, question);
                 } catch (IllegalStateException ex) {
                     failRun(threadId, runId, GlobalAssistantErrorCode.TOOL_EXECUTION_FAILED,
-                            "Working-state storage is corrupt", observations);
+                            "Working-state storage is corrupt", observations, attributionProvider, attributionModel);
                     return;
                 }
                 if (isCancelRequested(runId)) {
                     lifecycle.cancelAndTerminalize(runId);
                     return;
                 }
-                lifecycle.completeForClarification(threadId, runId, question);
+                lifecycle.completeForClarification(threadId, runId, question,
+                        attributionProvider, attributionModel);
                 refreshSummaryBestEffort(threadId, runId);
                 return;
             }
@@ -328,7 +352,7 @@ public class GlobalAssistantRuntime {
                             || decision.uiAction().resourceId().isBlank() ? null
                             : uiValidator.requireExistingProject(decision.uiAction().resourceId());
                 } catch (GlobalAssistantModelException ex) {
-                    failRun(threadId, runId, ex.errorCode(), ex.getMessage(), observations);
+                    failRun(threadId, runId, ex.errorCode(), ex.getMessage(), observations, attributionProvider, attributionModel);
                     return;
                 }
                 if (isCancelRequested(runId)) {
@@ -341,7 +365,8 @@ public class GlobalAssistantRuntime {
                     lifecycle.cancelAndTerminalize(runId);
                     return;
                 }
-                summaryMs += finishSuccessfully(threadId, runId, userMessage, text, uiDestination, uiResourceId);
+                summaryMs += finishSuccessfully(threadId, runId, userMessage, text, uiDestination, uiResourceId,
+                        attributionProvider, attributionModel);
                 return;
             }
             if (decision.kind() == GlobalAssistantDecision.DecisionKind.FINAL) {
@@ -354,11 +379,12 @@ public class GlobalAssistantRuntime {
                     lifecycle.cancelAndTerminalize(runId);
                     return;
                 }
-                summaryMs += finishSuccessfully(threadId, runId, userMessage, text, null, null);
+                summaryMs += finishSuccessfully(threadId, runId, userMessage, text, null, null,
+                        attributionProvider, attributionModel);
                 return;
             }
             failRun(threadId, runId, GlobalAssistantErrorCode.MODEL_INVALID_RESPONSE,
-                    "Unknown decision kind", observations);
+                    "Unknown decision kind", observations, attributionProvider, attributionModel);
             return;
         }
         } finally {
@@ -427,15 +453,17 @@ public class GlobalAssistantRuntime {
         String bounded = question.length() <= 500 ? question : question.substring(0, 500);
         updateWorkingStateRetrying(threadId, current -> new GlobalAssistantWorkingState(
                 current.goal(), current.candidateProjects(), bounded,
-                current.lastResolvedProjectId(), current.lastToolResultRefs()));
+                current.lastResolvedProjectId(), current.lastToolResultRefs(),
+                current.lastSkillDiscovery()));
     }
     private long finishSuccessfully(UUID threadId, UUID runId, String userMessage, String text,
-            String uiDestination, String uiResourceId) {
+            String uiDestination, String uiResourceId, String providerLabel, String modelId) {
         settleWorkingStateOnCompletion(threadId, userMessage);
         if (uiDestination != null) {
-            lifecycle.completeWithAssistantAndUiAction(threadId, runId, text, uiDestination, uiResourceId);
+            lifecycle.completeWithAssistantAndUiAction(threadId, runId, text, uiDestination, uiResourceId,
+                    providerLabel, modelId);
         } else {
-            lifecycle.completeWithAssistant(threadId, runId, text);
+            lifecycle.completeWithAssistant(threadId, runId, text, providerLabel, modelId);
         }
         return refreshSummaryBestEffort(threadId, runId);
     }
@@ -453,7 +481,8 @@ public class GlobalAssistantRuntime {
         updateWorkingStateRetrying(threadId, current -> {
             String goal = current.waitingFor() != null ? current.goal() : boundedGoal(userMessage, current.goal());
             return new GlobalAssistantWorkingState(goal, java.util.List.of(), null,
-                    current.lastResolvedProjectId(), current.lastToolResultRefs());
+                    current.lastResolvedProjectId(), current.lastToolResultRefs(),
+                    current.lastSkillDiscovery());
         });
     }
     private String boundedGoal(String userMessage, String fallback) {
@@ -471,6 +500,19 @@ public class GlobalAssistantRuntime {
             return current;
         }
         Map<String, Object> content = result.content();
+        // Skill repository discovery is not project-shaped: its candidate list
+        // is persisted verbatim as continuity state so the next turn can still
+        // see which skills the tool actually returned.
+        if (SkillDiscoverCapability.CAPABILITY_ID.equals(capabilityId)) {
+            List<String> discoverRefs = new ArrayList<>(current.lastToolResultRefs());
+            discoverRefs.add(capabilityId + ":" + content.get("candidateCount"));
+            if (discoverRefs.size() > 20) {
+                discoverRefs = discoverRefs.subList(discoverRefs.size() - 20, discoverRefs.size());
+            }
+            return new GlobalAssistantWorkingState(current.goal(), current.candidateProjects(),
+                    current.waitingFor(), current.lastResolvedProjectId(), discoverRefs,
+                    skillDiscoveryFrom(content));
+        }
         List<Map<String, String>> candidates = new ArrayList<>(current.candidateProjects());
         UUID resolved = current.lastResolvedProjectId();
         List<String> refs = new ArrayList<>(current.lastToolResultRefs());
@@ -506,7 +548,41 @@ public class GlobalAssistantRuntime {
         if (refs.size() > 20) {
             refs = refs.subList(refs.size() - 20, refs.size());
         }
-        return new GlobalAssistantWorkingState(current.goal(), candidates, current.waitingFor(), resolved, refs);
+        return new GlobalAssistantWorkingState(current.goal(), candidates, current.waitingFor(),
+                resolved, refs, current.lastSkillDiscovery());
+    }
+    /**
+     * Projects a successful skill.import.discover result into bounded
+     * continuity state: only parseable candidates survive, bounded to the
+     * same 20-candidate cap the capability reports.
+     */
+    private GlobalAssistantWorkingState.SkillDiscovery skillDiscoveryFrom(Map<String, Object> content) {
+        List<Map<String, String>> candidates = new ArrayList<>();
+        Object raw = content.get("candidates");
+        if (raw instanceof List<?> list) {
+            for (Object item : list) {
+                if (!(item instanceof Map<?, ?> m)) {
+                    continue;
+                }
+                if (!Boolean.TRUE.equals(m.get("parseable"))) {
+                    continue;
+                }
+                Map<String, String> entry = new LinkedHashMap<>();
+                entry.put("path", String.valueOf(m.get("path")));
+                entry.put("name", String.valueOf(m.get("name")));
+                candidates.add(entry);
+                if (candidates.size() >= 20) {
+                    break;
+                }
+            }
+        }
+        String url = content.get("url") instanceof String s ? s : null;
+        String ref = content.get("ref") instanceof String s ? s : null;
+        String suggested = content.get("suggestedPath") instanceof String s ? s : null;
+        if (url == null) {
+            return null;
+        }
+        return new GlobalAssistantWorkingState.SkillDiscovery(url, ref, suggested, candidates);
     }
     private int workingStateFingerprint(UUID threadId) {
         return conversations.readWorkingState(threadId).hashCode();
@@ -534,27 +610,50 @@ public class GlobalAssistantRuntime {
         return com.specagent.globalassistant.tool.GlobalAssistantToolPresentation.runningMessage(capabilityId);
     }
     private String toolSummary(String capabilityId, CapabilityResult result) {
+        // Skill import result shapes live here: requiresChoice means the model
+        // must ask the user to pick one, stagedImportId means one package was
+        // staged for review. Nothing about the import is executed or installed.
+        if (SkillDiscoverCapability.CAPABILITY_ID.equals(capabilityId)) {
+            Object candidateCount = result.content().get("candidateCount");
+            return "仓库中共发现 " + candidateCount + " 个 Skill 候选";
+        }
+        if (SkillImportCapability.CAPABILITY_ID.equals(capabilityId)) {
+            Object requiresChoice = result.content().get("requiresChoice");
+            if (Boolean.TRUE.equals(requiresChoice)) {
+                Object candidateCount = result.content().get("candidateCount");
+                return "仓库中发现 " + candidateCount + " 个 Skill，等待选择";
+            }
+            if (result.content().containsKey("stagedImportId")) {
+                return "Skill 已暂存，待你在 Skills 页面安装";
+            }
+            return "已完成";
+        }
         Object candidates = result.content().get("candidates");
         if (candidates instanceof List<?> list) {
-            return "Found " + list.size() + " candidate(s)";
+            return "找到 " + list.size() + " 个候选项目";
         }
         Object projects = result.content().get("projects");
         if (projects instanceof List<?> list) {
-            return "Found " + list.size() + " recent project(s)";
+            return "找到 " + list.size() + " 个最近项目";
         }
         Object title = result.content().get("title");
         if (title != null) {
             return String.valueOf(title);
         }
-        return "Done";
+        return "已完成";
     }
+    /**
+     * Fallback answer for a navigation-only decision (the model produced no
+     * text of its own). Product copy lives in the UI language like every other
+     * assistant-facing string, never in the wire language.
+     */
     private String defaultNavigationText(GlobalAssistantDecision.UiAction uiAction) {
         return switch (uiAction.destination()) {
-            case PROJECT -> "Opening the project now.";
-            case PROJECTS -> "Showing your projects now.";
-            case SKILLS -> "Opening skills now.";
-            case CONNECTIONS -> "Opening connections now.";
-            case SETTINGS -> "Opening settings now.";
+            case PROJECT -> "正在为你打开该项目…";
+            case PROJECTS -> "正在打开项目列表…";
+            case SKILLS -> "正在打开 Skills 设置页…";
+            case CONNECTIONS -> "正在打开连接设置页…";
+            case SETTINGS -> "正在打开设置页…";
         };
     }
     public void incrementStep(UUID runId) {
@@ -576,14 +675,15 @@ public class GlobalAssistantRuntime {
         return collapsed.length() <= 300 ? collapsed : collapsed.substring(0, 300);
     }
     private void failRun(UUID threadId, UUID runId, String errorCode, String reason,
-            List<Map<String, Object>> observations) {
+            List<Map<String, Object>> observations, String providerLabel, String modelId) {
         String text = "I couldn't complete that step (" + errorCode + ").";
         if (GlobalAssistantErrorCode.RUN_STEP_LIMIT.equals(errorCode)) {
             text = "That needed more steps than I can take in one go, so I stopped here.";
         } else if (GlobalAssistantErrorCode.PROJECT_NOT_FOUND.equals(errorCode)) {
             text = "I couldn't find that project.";
         }
-        lifecycle.failWithAssistant(threadId, runId, text, errorCode, truncate(reason));
+        lifecycle.failWithAssistant(threadId, runId, text, errorCode, truncate(reason),
+                providerLabel, modelId);
     }
     private String truncate(String value) {
         if (value == null) {

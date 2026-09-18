@@ -35,6 +35,11 @@ frontend/playwright-report
 frontend/test-results
 *.tsbuildinfo
 
+# OCR runtime (vendored from node_modules by `npm run vendor:ocr`, ~7MB WASM).
+# The language models in frontend/public/tessdata ARE committed: nothing ships them.
+frontend/public/tesseract
+
 # Python cache
 __pycache__/
 *.pyc
+agent-brain/.venv/

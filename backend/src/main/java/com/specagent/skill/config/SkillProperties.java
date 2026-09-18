@@ -1,5 +1,6 @@
 package com.specagent.skill.config;
 
+import com.specagent.skill.importing.GitTransportProxy;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
@@ -34,6 +35,24 @@ public class SkillProperties {
     private long gitCloneBytes = 10_485_760;         // 10 MiB
     private int gitTimeoutSeconds = 30;
     private int gitMaxRedirects = 3;
+    /**
+     * Outbound route for the Skill git import: AUTO (default — proxy env var,
+     * else a listening local proxy, else direct), DIRECT, or host:port. The JVM
+     * does not inherit the OS/browser proxy on its own, which is why a clone can
+     * fail even when the browser reaches the same host.
+     */
+    private String gitProxy = GitTransportProxy.MODE_AUTO;
+
+    // ---- local mirror ---------------------------------------------------
+    /**
+     * DB-authoritative local mirror of installed packages. The database stays
+     * the only activation-time authority; the mirror lets users browse, back
+     * up and version their skills on disk. Null root resolves to
+     * {@code ~/.spec-agent/skills} at use time so tests can stay hermetic by
+     * disabling the mirror or pointing it at a temp dir.
+     */
+    private boolean localMirrorEnabled = true;
+    private String localMirrorRoot;
 
     // ---- public accessors ----------------------------------------------
     public long getMaxArchiveBytes() { return maxArchiveBytes; }
@@ -80,6 +99,15 @@ public class SkillProperties {
 
     public int getGitMaxRedirects() { return gitMaxRedirects; }
     public void setGitMaxRedirects(int v) { gitMaxRedirects = v; }
+
+    public String getGitProxy() { return gitProxy; }
+    public void setGitProxy(String v) { gitProxy = v; }
+
+    public boolean isLocalMirrorEnabled() { return localMirrorEnabled; }
+    public void setLocalMirrorEnabled(boolean v) { localMirrorEnabled = v; }
+
+    public String getLocalMirrorRoot() { return localMirrorRoot; }
+    public void setLocalMirrorRoot(String v) { localMirrorRoot = v; }
 
     public static SkillProperties defaults() {
         return new SkillProperties();

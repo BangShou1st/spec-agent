@@ -10,8 +10,10 @@ import com.specagent.skill.domain.SkillVersion;
 import com.specagent.skill.importing.GitSkillImporter;
 import com.specagent.skill.importing.SafeZipExtractor;
 import com.specagent.skill.importing.SkillImportException;
+import com.specagent.skill.importing.SkillPackageLayout;
 import com.specagent.skill.importing.SkillSourceFile;
 import com.specagent.skill.domain.SkillManifest;
+import com.specagent.skill.filesystem.SkillLocalMirror;
 import com.specagent.skill.parser.SkillMarkdownParser;
 import com.specagent.skill.persistence.SkillRepository;
 import org.springframework.stereotype.Service;
@@ -19,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -40,17 +43,20 @@ public class SkillImportService {
     private final SafeZipExtractor zipExtractor;
     private final GitSkillImporter gitImporter;
     private final Json json;
+    private final SkillLocalMirror localMirror;
 
     public SkillImportService(SkillRepository repository,
                               SkillMarkdownParser parser,
                               SafeZipExtractor zipExtractor,
                               GitSkillImporter gitImporter,
-                              Json json) {
+                              Json json,
+                              SkillLocalMirror localMirror) {
         this.repository = repository;
         this.parser = parser;
         this.zipExtractor = zipExtractor;
         this.gitImporter = gitImporter;
         this.json = json;
+        this.localMirror = localMirror;
     }
 
     // ---- staging ---------------------------------------------------------
@@ -71,14 +77,92 @@ public class SkillImportService {
 
     /**
      * Stages an HTTPS git import for review. The resolved commit becomes the
-     * immutable source identity.
+     * immutable source identity; {@code subPath} selects one Skill directory
+     * inside a larger repository (blank = the repository root package).
      */
     @Transactional
-    public StagedResult stageGit(String repoUrl, String ref) {
-        GitSkillImporter.ExtractedResult extracted = gitImporter.importHttps(repoUrl, ref);
-        return persistStaged(SkillSourceKind.GIT_HTTPS, "git:" + extracted.commitSha(),
+    public StagedResult stageGit(String repoUrl, String ref, String subPath) {
+        String path = SkillPackageLayout.normalizeSubPath(subPath);
+        GitSkillImporter.ExtractedResult extracted =
+                gitImporter.importHttps(repoUrl, ref, path);
+        return persistStaged(SkillSourceKind.GIT_HTTPS, gitIdentity(extracted.commitSha(), path),
                 new String(extracted.skillMarkdown(), StandardCharsets.UTF_8),
                 extracted.files(), extracted.totalBytes());
+    }
+
+    /** Stages the repository-root Skill package (no subdirectory selected). */
+    @Transactional
+    public StagedResult stageGit(String repoUrl, String ref) {
+        return stageGit(repoUrl, ref, null);
+    }
+
+    /**
+     * Lists the Skill packages a repository offers, without staging anything.
+     * A repository holding one Skill returns exactly one candidate; a library
+     * or marketplace returns its Skill directories so one can be chosen.
+     */
+    public DiscoveryResult discoverGit(String repoUrl, String ref) {
+        GitSkillImporter.TreeInventory inventory = gitImporter.fetchTree(repoUrl, ref);
+        List<String> declared = declaredPluginSources(inventory.manifests());
+        List<SkillPackageLayout.SkillRoot> roots = SkillPackageLayout.discover(
+                inventory.files().stream().map(SkillSourceFile::relativePath).toList(), declared);
+        List<DiscoveryCandidate> candidates = new ArrayList<>();
+        for (SkillPackageLayout.SkillRoot root : roots) {
+            List<SkillSourceFile> files =
+                    SkillPackageLayout.slice(inventory.files(), root.path());
+            Optional<SkillSourceFile> skillMd = files.stream()
+                    .filter(f -> "SKILL.md".equals(f.relativePath()))
+                    .findFirst();
+            String name = root.path().isEmpty() ? "SKILL.md" : root.path();
+            String description = "";
+            boolean parseable = false;
+            if (skillMd.isPresent()) {
+                try {
+                    SkillManifest manifest = parser.parse(
+                            new String(skillMd.get().content(), StandardCharsets.UTF_8));
+                    name = manifest.name();
+                    description = manifest.description();
+                    parseable = true;
+                } catch (RuntimeException ignored) {
+                    // A malformed SKILL.md is reported as an unusable candidate
+                    // instead of failing discovery for the whole repository.
+                }
+            }
+            candidates.add(new DiscoveryCandidate(root.path(), name, description,
+                    root.kind().name(), root.declaredBy(), files.size(), parseable));
+        }
+        String suggested = candidates.stream()
+                .filter(DiscoveryCandidate::parseable)
+                .findFirst()
+                .map(DiscoveryCandidate::path)
+                .orElse(candidates.isEmpty() ? null : candidates.get(0).path());
+        return new DiscoveryResult(inventory.commitSha(), suggested, candidates);
+    }
+
+    private String gitIdentity(String commitSha, String subPath) {
+        return subPath.isEmpty() ? "git:" + commitSha : "git:" + commitSha + "#" + subPath;
+    }
+
+    /**
+     * Plugin source prefixes declared by the repository's marketplace
+     * manifests. Attribution only: an unreadable manifest is ignored, it never
+     * widens what may be imported and never fails the discovery.
+     */
+    private List<String> declaredPluginSources(List<SkillSourceFile> manifests) {
+        List<String> declared = new ArrayList<>();
+        for (SkillSourceFile manifest : manifests) {
+            try {
+                Map<String, Object> parsed = json.read(
+                        new String(manifest.content(), StandardCharsets.UTF_8),
+                        new com.fasterxml.jackson.core.type.TypeReference<
+                                Map<String, Object>>() {
+                        });
+                declared.addAll(SkillPackageLayout.declaredPluginSources(parsed));
+            } catch (RuntimeException ignored) {
+                // Ignored by design: see javadoc.
+            }
+        }
+        return declared;
     }
 
     @Transactional
@@ -195,6 +279,9 @@ public class SkillImportService {
                 SkillStagedImport.Status.INSTALLED, null);
         // Staged file bytes are no longer needed after a successful install.
         repository.deleteStagedFiles(stagedImportId);
+        // Best-effort local mirror (DB stays authoritative); also re-projects
+        // an already-known version whose files were lost on disk.
+        localMirror.mirrorVersion(skill.skillId(), version.versionNo(), files);
         return new InstalledResult(skill.skillId(), skill.id(), version.id(),
                 existing.isPresent() ? nextVersion - 1 : nextVersion);
     }
@@ -230,8 +317,11 @@ public class SkillImportService {
 
     @Transactional
     public void delete(UUID skillRowId) {
+        Skill skill = repository.findSkillById(skillRowId)
+                .orElseThrow(() -> new SkillImportException("Skill not found: " + skillRowId));
         repository.deleteVersionsAndFiles(skillRowId);
         repository.deleteSkill(skillRowId);
+        localMirror.removeSkill(skill.skillId());
     }
 
     @Transactional
@@ -303,6 +393,27 @@ public class SkillImportService {
 
     public record StagedResult(UUID stagedImportId, String name, String description,
                                String contentHash, int fileCount, long totalBytes) {
+    }
+
+    /**
+     * One Skill package found inside a repository.
+     *
+     * @param path      repository-relative directory ("" = repository root)
+     * @param parseable whether its SKILL.md could be parsed as a manifest
+     */
+    public record DiscoveryCandidate(String path, String name, String description,
+                                     String kind, String declaredBy, int fileCount,
+                                     boolean parseable) {
+    }
+
+    /**
+     * Repository inventory for choosing a Skill package.
+     *
+     * @param suggestedPath path of the first usable candidate, or null when the
+     *                      repository holds no Skill package at all
+     */
+    public record DiscoveryResult(String commitSha, String suggestedPath,
+                                  List<DiscoveryCandidate> candidates) {
     }
 
     public record InstalledResult(String skillId, UUID skillRowId, UUID versionId,

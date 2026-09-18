@@ -15,13 +15,31 @@ public record GlobalAssistantWorkingState(
         List<Map<String, String>> candidateProjects,
         String waitingFor,
         UUID lastResolvedProjectId,
-        List<String> lastToolResultRefs) {
+        List<String> lastToolResultRefs,
+        SkillDiscovery lastSkillDiscovery) {
+
+    /**
+     * The most recent read-only skill repository discovery. Persists the
+     * tool-observed candidate list across turns so multi-turn skill selection
+     * stays grounded in what skill.import.discover actually returned instead
+     * of drifting back to model memory.
+     */
+    public record SkillDiscovery(String url, String ref, String suggestedPath,
+                                 List<Map<String, String>> candidates) {
+        public SkillDiscovery {
+            candidates = candidates == null ? List.of() : List.copyOf(candidates);
+        }
+    }
+
+    private static final int MAX_CANDIDATES = 20;
+    private static final int MAX_VALUE_CHARS = 300;
+
     public GlobalAssistantWorkingState {
         candidateProjects = candidateProjects == null ? List.of() : List.copyOf(candidateProjects);
         lastToolResultRefs = lastToolResultRefs == null ? List.of() : List.copyOf(lastToolResultRefs);
     }
     public static GlobalAssistantWorkingState empty() {
-        return new GlobalAssistantWorkingState(null, List.of(), null, null, List.of());
+        return new GlobalAssistantWorkingState(null, List.of(), null, null, List.of(), null);
     }
     public Map<String, Object> toMap() {
         Map<String, Object> map = new LinkedHashMap<>();
@@ -39,6 +57,9 @@ public record GlobalAssistantWorkingState(
         }
         if (!lastToolResultRefs.isEmpty()) {
             map.put("lastToolResultRefs", new ArrayList<>(lastToolResultRefs));
+        }
+        if (lastSkillDiscovery != null) {
+            map.put("lastSkillDiscovery", skillDiscoveryToMap(lastSkillDiscovery));
         }
         return map;
     }
@@ -86,6 +107,55 @@ public record GlobalAssistantWorkingState(
                 }
             }
         }
-        return new GlobalAssistantWorkingState(goal, candidates, waitingFor, lastResolved, refs);
+        return new GlobalAssistantWorkingState(goal, candidates, waitingFor, lastResolved, refs,
+                skillDiscoveryFromMap(map.get("lastSkillDiscovery")));
+    }
+    private static Map<String, Object> skillDiscoveryToMap(SkillDiscovery discovery) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        if (discovery.url() != null) {
+            map.put("url", bounded(discovery.url()));
+        }
+        if (discovery.ref() != null) {
+            map.put("ref", bounded(discovery.ref()));
+        }
+        if (discovery.suggestedPath() != null) {
+            map.put("suggestedPath", bounded(discovery.suggestedPath()));
+        }
+        if (!discovery.candidates().isEmpty()) {
+            map.put("candidates", new ArrayList<>(discovery.candidates()));
+        }
+        return map;
+    }
+    private static SkillDiscovery skillDiscoveryFromMap(Object raw) {
+        if (!(raw instanceof Map<?, ?> m)) {
+            return null;
+        }
+        List<Map<String, String>> candidates = new ArrayList<>();
+        Object rawCandidates = m.get("candidates");
+        if (rawCandidates instanceof List<?> list) {
+            for (Object item : list) {
+                if (item instanceof Map<?, ?> entry) {
+                    Map<String, String> copy = new LinkedHashMap<>();
+                    entry.forEach((k, v) -> copy.put(String.valueOf(k),
+                            v == null ? null : bounded(String.valueOf(v))));
+                    if (!copy.isEmpty()) {
+                        candidates.add(copy);
+                    }
+                }
+                if (candidates.size() >= MAX_CANDIDATES) {
+                    break;
+                }
+            }
+        }
+        String url = m.get("url") instanceof String s ? bounded(s) : null;
+        if (url == null && candidates.isEmpty()) {
+            return null;
+        }
+        String ref = m.get("ref") instanceof String s ? bounded(s) : null;
+        String suggested = m.get("suggestedPath") instanceof String s ? bounded(s) : null;
+        return new SkillDiscovery(url, ref, suggested, candidates);
+    }
+    private static String bounded(String value) {
+        return value.length() <= MAX_VALUE_CHARS ? value : value.substring(0, MAX_VALUE_CHARS);
     }
 }

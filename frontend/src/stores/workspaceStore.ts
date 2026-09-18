@@ -13,9 +13,11 @@ import {
   acceptProposal,
   appendContinuation,
   attachResource as attachResourceCommand,
+  connectFloatingNode as connectFloatingNodeCommand,
   createFloatingDraftNode,
   createRelation,
   createNodeQuery,
+  disconnectNode as disconnectNodeCommand,
   getNodeQueryResult,
   getUndoRedoAvailability,
   listProposals,
@@ -181,6 +183,14 @@ export const useWorkspaceStore = defineStore('workspace', {
     answerRunStatus: null as GraphRuntimeStatus | null,
     /** Last payload handed to submitAnswer; used only for proven-safe resubmit. */
     lastSubmittedAnswerPayload: null as SubmitAnswerRequest | null,
+    /**
+     * Routes with an answer run currently in flight.
+     *
+     * The lock is PER ROUTE, not global: independent routes must not block one
+     * another, while the same route can never run two competing answer cycles.
+     * `submitting` is the derived "any route is busy" flag kept for the UI.
+     */
+    answerRunsInFlight: [] as string[],
     manualModelRetry: null as ManualModelRetryIntent | null,
     focusAfterMutation: null as MutationFocusTarget | null,
 
@@ -248,11 +258,28 @@ export const useWorkspaceStore = defineStore('workspace', {
     },
   },
   actions: {
-    async loadWorkspace(projectId: string): Promise<void> {
+    /**
+     * Establishes the project identity SYNCHRONOUSLY.
+     *
+     * The store is a singleton and outlives the workspace component. When the
+     * user leaves one workspace and enters another, every `{ immediate: true }`
+     * watcher of the new component runs during setup — i.e. BEFORE `onMounted`
+     * — and would otherwise read the PREVIOUS project's `projectId` and
+     * `graphView`, issuing a cross-project read (404 PROJECT_NOT_FOUND when
+     * that previous project has since been deleted). Clearing the identity
+     * during setup, not during mount, makes such a read impossible.
+     *
+     * Locks and in-flight flags are deliberately preserved: this never hides
+     * work that is already running.
+     */
+    beginProject(projectId: string): void {
       this.projectId = projectId
-      this.loading = true
-      this.error = null
+      this.project = null
+      this.routes = []
+      this.activeState = null
+      this.requirementState = null
       this.feedback = null
+      this.error = null
       this.repairableAnswerId = null
       this.resubmitAnswerPayload = null
       this.pendingAnswerNodeId = null
@@ -261,10 +288,26 @@ export const useWorkspaceStore = defineStore('workspace', {
       this.answerRunPhase = null
       this.answerRunStatus = null
       this.lastSubmittedAnswerPayload = null
+      this.answerRunsInFlight = []
       this.manualModelRetry = null
       this.forkDraftRetryRouteId = null
       this.pendingRouteProjection = null
+      this.pendingDraftRespondMessage = null
       this.focusAfterMutation = null
+      this.submittedRouteIdForCleanup = null
+      this.graphView = null
+      this.requirementStatesByRoute = {}
+      this.loadingRequirementRouteId = null
+      this.selectedSpecIdByRoute = {}
+      this.specsByRoute = {}
+      this.nodeQuery = null
+      this.nodeQueryProposals = []
+      this.undoRedo = { canUndo: false, canRedo: false }
+    },
+
+    async loadWorkspace(projectId: string): Promise<void> {
+      this.beginProject(projectId)
+      this.loading = true
       try {
         const [project, activeState, routes, requirementState, graphView, proposals] = await Promise.all([
           getProject(projectId),
@@ -338,7 +381,7 @@ export const useWorkspaceStore = defineStore('workspace', {
       if (!current || current.runId !== view.runId) return
       const routeId = typeof view.routeId === 'string' ? view.routeId.trim() : ''
       if (!routeId) {
-        this.markPendingRouteFailed('运行结果缺少路线标识，已停止显示临时卡片。', true)
+        this.markPendingRouteFailed('运行结果缺少路线标识，已停止显示临时卡片', true)
         return
       }
       const status: GraphPendingProjection['status'] = view.status === 'failed'
@@ -385,7 +428,7 @@ export const useWorkspaceStore = defineStore('workspace', {
       if (!beforeRouteId) {
         this.error = {
           code: 'ACTIVE_ROUTE_REQUIRED',
-          message: '当前没有可用路线，无法起草问题。',
+          message: '当前没有可用路线，无法起草问题',
         }
         this.manualModelRetry = null
         this.pendingRouteProjection = null
@@ -406,7 +449,7 @@ export const useWorkspaceStore = defineStore('workspace', {
         if (outcome === 'completed') {
           // A terminal RESPOND leaf carries the user-visible message; a
           // graph-mutation leaf keeps the existing draft confirmation copy.
-          this.feedback = this.pendingDraftRespondMessage ?? '问题已起草。'
+          this.feedback = this.pendingDraftRespondMessage ?? '问题已起草'
           const refreshed = await this.refreshWorkspace()
           if (refreshed) this.pendingRouteProjection = null
           this.manualModelRetry = null
@@ -426,14 +469,14 @@ export const useWorkspaceStore = defineStore('workspace', {
           this.manualModelRetry = null
           this.pendingRouteProjection = null
           this.error = null
-          this.feedback = '问题已起草。'
+          this.feedback = '问题已起草'
           return true
         }
         this.error = {
           code: outcome === 'failed' ? 'AGENT_RUN_FAILED' : 'AGENT_RUN_OUTCOME_UNKNOWN',
           message: outcome === 'failed'
-            ? '起草问题的运行失败，请重试。'
-            : '起草结果未知，已按最新状态核对。请重试。',
+            ? '起草问题的运行失败，请重试'
+            : '起草结果未知，已按最新状态核对。请重试',
         }
         this.manualModelRetry = {
           kind: 'draft',
@@ -441,7 +484,7 @@ export const useWorkspaceStore = defineStore('workspace', {
           beforeTipNodeId,
           state: outcome === 'failed' ? 'ready' : 'needs_reconcile',
         } as ManualModelRetryIntent
-        this.markPendingRouteFailed('起草问题的运行失败，请重试。', outcome === 'failed')
+        this.markPendingRouteFailed('起草问题的运行失败，请重试', outcome === 'failed')
         return false
       } catch (err) {
         // The create-run request itself failed; the run may or may not exist.
@@ -458,7 +501,7 @@ export const useWorkspaceStore = defineStore('workspace', {
           this.manualModelRetry = null
           this.pendingRouteProjection = null
           this.error = null
-          this.feedback = '问题已起草。'
+          this.feedback = '问题已起草'
           return true
         }
         const disposition = classifyModelFailure(safeError.code, safeError.status)
@@ -578,23 +621,38 @@ export const useWorkspaceStore = defineStore('workspace', {
      * the backend after a terminal state — never patched locally.
      */
     async submitAnswer(payload: SubmitAnswerRequest): Promise<boolean> {
-      if (!this.projectId || this.submitting || this.routeCommandPending) {
+      if (!this.projectId || this.routeCommandPending) {
         return false
       }
-      const answeringNodeId = this.activeState?.activeNode?.id
+      // Target resolution: an explicit target (the tip of the route the user
+      // is reading) wins; otherwise the Active route's current node — the
+      // original behaviour, unchanged.
+      const activeRouteId = this.activeState?.activeRoute?.id ?? null
+      const answeringNodeId = payload.nodeId
+        ?? this.activeState?.activeNode?.id
         ?? this.activeState?.activeRoute?.tipNodeId
         ?? null
+      const submittedRouteId = payload.routeId ?? activeRouteId
+      // One in-flight answer run PER ROUTE: another route's chain must never
+      // block this one (that is the whole point of independent routes), while
+      // the same route can never have two competing answer cycles.
+      if (!answeringNodeId || (submittedRouteId !== null
+        && this.answerRunsInFlight.includes(submittedRouteId))) {
+        return false
+      }
       // Submission identity is fixed when the user action starts: the node
       // being answered and its route at that moment. Success cleanup uses
       // exactly these — never produced ids or post-refresh route pointers.
       const submittedNodeId = answeringNodeId
-      const submittedRouteId = this.activeState?.activeRoute?.id ?? null
       // One stable idempotency identity per user action attempt: unknown-
       // outcome retries (create request lost, response lost) reuse the same
       // key so the backend returns the already-created run.
       const clientRequestId = crypto.randomUUID()
 
       this.submitting = true
+      if (submittedRouteId !== null) {
+        this.answerRunsInFlight = [...this.answerRunsInFlight, submittedRouteId]
+      }
       this.error = null
       this.repairableAnswerId = null
       this.resubmitAnswerPayload = null
@@ -611,9 +669,16 @@ export const useWorkspaceStore = defineStore('workspace', {
         // The backend routes an ANSWER_TIP whose node already carries a
         // persisted Answer to RESUME_ANSWER itself; the frontend never
         // guesses which one applies.
+        //
+        // EXPLICIT route mode is requested ONLY when the target is not the
+        // Active route: that keeps the Active path's fail-closed guarantee
+        // (a run whose Active pointer moved must still fail) untouched.
         const run = await createAgentRun(this.projectId, {
           operation: 'ANSWER_TIP',
           nodeId: submittedNodeId,
+          sourceRouteId: submittedRouteId !== null && submittedRouteId !== activeRouteId
+            ? submittedRouteId
+            : null,
           selectedOptionId: payload.selectedOptionId ?? null,
           freeText: payload.freeText ?? null,
           idempotencyKey: clientRequestId,
@@ -648,10 +713,10 @@ export const useWorkspaceStore = defineStore('workspace', {
               // surface repair instead.
               if (this.activeState?.activeRoute?.tipNodeId === answeringNodeId) {
                 this.repairableAnswerId = answerId
-                this.feedback = '回答已保存，后续生成未完成。'
+                this.feedback = '回答已保存，后续生成未完成'
               } else {
                 this.pendingAnswerNodeId = null
-                this.feedback = '回答已记录。'
+                this.feedback = '回答已记录'
                 this.error = null
                 canonicalMutationCompleted = true
               }
@@ -674,17 +739,20 @@ export const useWorkspaceStore = defineStore('workspace', {
           return false
         }
         const answerId = this.findFinalizedAnswerForNode(this.pendingAnswerNodeId)
-        if (answerId && this.activeState?.activeRoute?.tipNodeId === this.pendingAnswerNodeId) {
+        if (answerId && this.answerTargetRouteTip() === this.pendingAnswerNodeId) {
           this.repairableAnswerId = answerId
           this.resubmitAnswerPayload = null
-          this.feedback = '回答已保存，后续生成未完成。'
+          this.feedback = '回答已保存，后续生成未完成'
         } else {
           this.answerOutcomeUnknown = true
         }
         this.error = safeError
         return false
       } finally {
-        this.submitting = false
+        if (submittedRouteId !== null) {
+          this.answerRunsInFlight = this.answerRunsInFlight.filter((id) => id !== submittedRouteId)
+        }
+        this.submitting = this.answerRunsInFlight.length > 0
       }
     },
 
@@ -751,7 +819,7 @@ export const useWorkspaceStore = defineStore('workspace', {
       const answeredNodeId = this.pendingAnswerNodeId
       const submittedRouteId = this.submittedRouteIdForCleanup ?? null
       const leafMessage = view.respondMessage ?? null
-      this.feedback = leafMessage ?? '回答已记录。'
+      this.feedback = leafMessage ?? '回答已记录'
       await this.refreshWorkspace()
       this.manualModelRetry = null
       this.repairableAnswerId = null
@@ -783,17 +851,17 @@ export const useWorkspaceStore = defineStore('workspace', {
       }
       const answerId = this.findFinalizedAnswerForNode(this.pendingAnswerNodeId)
       if (answerId) {
-        if (this.activeState?.activeRoute?.tipNodeId === this.pendingAnswerNodeId) {
+        if (this.answerTargetRouteTip() === this.pendingAnswerNodeId) {
           this.repairableAnswerId = answerId
           this.resubmitAnswerPayload = null
-          this.feedback = '回答已保存，后续生成未完成。'
+          this.feedback = '回答已保存，后续生成未完成'
         } else {
           // The tip moved past the answered node: the mutation completed
           // despite the failure report. Never offer resubmit or repair.
           this.repairableAnswerId = null
           this.resubmitAnswerPayload = null
           this.pendingAnswerNodeId = null
-          this.feedback = '回答已记录。'
+          this.feedback = '回答已记录'
         }
       } else {
         this.resubmitAnswerPayload = this.lastSubmittedAnswerPayload
@@ -815,15 +883,15 @@ export const useWorkspaceStore = defineStore('workspace', {
       const answerId = this.findFinalizedAnswerForNode(this.pendingAnswerNodeId)
       if (answerId) {
         this.answerOutcomeUnknown = false
-        if (this.activeState?.activeRoute?.tipNodeId === this.pendingAnswerNodeId) {
+        if (this.answerTargetRouteTip() === this.pendingAnswerNodeId) {
           this.repairableAnswerId = answerId
           this.resubmitAnswerPayload = null
-          this.feedback = '回答已保存，后续生成未完成。'
+          this.feedback = '回答已保存，后续生成未完成'
         } else {
           this.repairableAnswerId = null
           this.resubmitAnswerPayload = null
           this.pendingAnswerNodeId = null
-          this.feedback = '回答已记录。'
+          this.feedback = '回答已记录'
         }
       }
       // Without a persisted Answer the run may still be executing server
@@ -845,15 +913,15 @@ export const useWorkspaceStore = defineStore('workspace', {
       const answerId = this.findFinalizedAnswerForNode(this.pendingAnswerNodeId)
       this.answerOutcomeUnknown = false
       if (answerId) {
-        if (this.activeState?.activeRoute?.tipNodeId === this.pendingAnswerNodeId) {
+        if (this.answerTargetRouteTip() === this.pendingAnswerNodeId) {
           this.repairableAnswerId = answerId
           this.resubmitAnswerPayload = null
-          this.feedback = '回答已保存，后续生成未完成。'
+          this.feedback = '回答已保存，后续生成未完成'
         } else {
           this.repairableAnswerId = null
           this.resubmitAnswerPayload = null
           this.pendingAnswerNodeId = null
-          this.feedback = '回答已记录。'
+          this.feedback = '回答已记录'
         }
       } else {
         this.repairableAnswerId = null
@@ -887,7 +955,7 @@ export const useWorkspaceStore = defineStore('workspace', {
             GENERIC_ERROR_MESSAGE, 'UNKNOWN_ERROR', 0))
           return false
         }
-        this.feedback = '已重新请求后续生成。'
+        this.feedback = '已重新请求后续生成'
         return true
       } catch (err) {
         const safeError = toDisplayError(err)
@@ -922,14 +990,32 @@ export const useWorkspaceStore = defineStore('workspace', {
     },
 
     findFinalizedAnswerForNode(nodeId: string | null): string | null {
-      const activeRoute = this.activeState?.activeRoute
-      if (!activeRoute || !nodeId) return null
+      // The answer is looked up on the route it was submitted to. Under
+      // multi-route work that route is NOT the Active route, so searching the
+      // Active route's answers would report "nothing landed" and offer a
+      // resubmit for an answer that already exists.
+      const routeId = this.submittedRouteIdForCleanup ?? this.activeState?.activeRoute?.id ?? null
+      if (!routeId || !nodeId) return null
       return this.graphView?.answers.find((answer) =>
-        answer.routeId === activeRoute.id
+        answer.routeId === routeId
         && answer.nodeId === nodeId
         && answer.inherited === false
-        && answer.ownerRouteId === activeRoute.id,
+        && answer.ownerRouteId === routeId,
       )?.id ?? null
+    },
+
+    /**
+     * Live tip of the route the in-flight answer was submitted to, read from
+     * the canonical graph.
+     *
+     * Never the Active pointer: it may have moved on, or — under multi-route
+     * work — may name a completely different route than the one being
+     * answered.
+     */
+    answerTargetRouteTip(): string | null {
+      const routeId = this.submittedRouteIdForCleanup
+      if (!routeId) return null
+      return this.graphView?.routes.find((route) => route.id === routeId)?.tipNodeId ?? null
     },
 
     findForkDraftRetryRouteId(): string | null {
@@ -992,7 +1078,7 @@ export const useWorkspaceStore = defineStore('workspace', {
           ) {
             this.manualModelRetry = null
             this.error = null
-            this.feedback = '问题已起草。'
+            this.feedback = '问题已起草'
             return true
           }
           this.manualModelRetry = { ...intent, state: 'ready' }
@@ -1028,7 +1114,7 @@ export const useWorkspaceStore = defineStore('workspace', {
       if (matchingRoutes.length === 1 && activeRouteId === matchingRoutes[0].id) {
         this.manualModelRetry = null
         this.error = null
-        this.feedback = '已创建换一个问题路线。'
+        this.feedback = '已创建换一个问题路线'
         this.setFocusAfterMutation({
           routeId: matchingRoutes[0].id,
           nodeId: matchingRoutes[0].tipNodeId,
@@ -1043,7 +1129,7 @@ export const useWorkspaceStore = defineStore('workspace', {
       this.manualModelRetry = { ...intent, state: 'ambiguous' }
       this.error = {
         code: 'RECOVERY_AMBIGUOUS',
-        message: '请求结果无法安全确认，请刷新状态后人工核对。',
+        message: '请求结果无法安全确认，请刷新状态后人工核对',
       }
       return false
     },
@@ -1059,7 +1145,7 @@ export const useWorkspaceStore = defineStore('workspace', {
         this.manualModelRetry = { ...intent, state: 'ambiguous' }
         this.error = {
           code: 'RECOVERY_AMBIGUOUS',
-          message: '请求结果无法安全确认，请刷新状态后人工核对。',
+          message: '请求结果无法安全确认，请刷新状态后人工核对',
         }
         return false
       }
@@ -1079,7 +1165,7 @@ export const useWorkspaceStore = defineStore('workspace', {
         }
         this.manualModelRetry = null
         this.error = null
-        this.feedback = '已生成规格快照。'
+        this.feedback = '已生成规格快照'
         return true
       }
       if (newSpecs.length === 0) {
@@ -1090,7 +1176,7 @@ export const useWorkspaceStore = defineStore('workspace', {
       this.manualModelRetry = { ...intent, state: 'ambiguous' }
       this.error = {
         code: 'RECOVERY_AMBIGUOUS',
-        message: '请求结果无法安全确认，请刷新状态后人工核对。',
+        message: '请求结果无法安全确认，请刷新状态后人工核对',
       }
       return false
     },
@@ -1107,7 +1193,7 @@ export const useWorkspaceStore = defineStore('workspace', {
       try {
         await activateRoute(this.projectId, routeId)
         await this.refreshWorkspace()
-        this.feedback = '已设为当前路线。'
+        this.feedback = '已设为当前路线'
         return true
       } catch (err) {
         this.error = toDisplayError(err)
@@ -1128,7 +1214,7 @@ export const useWorkspaceStore = defineStore('workspace', {
       try {
         await restoreRoute(this.projectId, routeId)
         await this.refreshWorkspace()
-        this.feedback = '已恢复路线。'
+        this.feedback = '已恢复路线'
         return true
       } catch (err) {
         this.error = toDisplayError(err)
@@ -1149,7 +1235,7 @@ export const useWorkspaceStore = defineStore('workspace', {
       try {
         await archiveRoute(this.projectId, routeId)
         await this.refreshWorkspace()
-        this.feedback = '已归档路线。'
+        this.feedback = '已归档路线'
         return true
       } catch (err) {
         this.error = toDisplayError(err)
@@ -1170,7 +1256,7 @@ export const useWorkspaceStore = defineStore('workspace', {
       try {
         await deleteRoute(this.projectId, routeId)
         await this.refreshWorkspace()
-        this.feedback = '已删除路线。'
+        this.feedback = '已删除路线'
         return true
       } catch (err) {
         this.error = toDisplayError(err)
@@ -1191,7 +1277,7 @@ export const useWorkspaceStore = defineStore('workspace', {
         return false
       }
       if (!sourceRouteId) {
-        this.error = { code: 'SOURCE_ROUTE_REQUIRED', message: '请选择明确的来源路线。' }
+        this.error = { code: 'SOURCE_ROUTE_REQUIRED', message: '请选择明确的来源路线' }
         return false
       }
       this.routeCommandPending = true
@@ -1215,14 +1301,14 @@ export const useWorkspaceStore = defineStore('workspace', {
             routeId: result.route.id,
             nodeId: this.activeState?.activeRoute?.tipNodeId ?? result.route.tipNodeId,
           })
-          this.feedback = '分支已创建，但首个后续问题起草失败，可重试。'
+          this.feedback = '分支已创建，但首个后续问题起草失败，可重试'
           return false
         }
         this.setFocusAfterMutation({
           routeId: result.route.id,
           nodeId: this.activeState?.activeRoute?.tipNodeId ?? result.route.tipNodeId,
         })
-        this.feedback = '已创建新分支路线。'
+        this.feedback = '已创建新分支路线'
         return true
       } catch (err) {
         this.error = toDisplayError(err)
@@ -1243,7 +1329,7 @@ export const useWorkspaceStore = defineStore('workspace', {
       if (activeRoute?.id !== retryRouteId || retryRoute?.lifecycleStatus !== 'open') {
         this.error = {
           code: 'FORK_DRAFT_RETRY_REQUIRES_ACTIVE_ROUTE',
-          message: '请先将该分支设为当前路线，再重试起草。',
+          message: '请先将该分支设为当前路线，再重试起草',
         }
         return false
       }
@@ -1256,7 +1342,7 @@ export const useWorkspaceStore = defineStore('workspace', {
           routeId: retryRouteId,
           nodeId: this.activeState?.activeRoute?.tipNodeId ?? null,
         })
-        this.feedback = '已起草分支的首个后续问题。'
+        this.feedback = '已起草分支的首个后续问题'
       }
       return drafted
     },
@@ -1281,7 +1367,7 @@ export const useWorkspaceStore = defineStore('workspace', {
       try {
         await reanswerNode(this.projectId, nodeId, { sourceRouteId, label: label ?? null })
         await this.refreshWorkspace()
-        this.feedback = '已创建重新回答路线。'
+        this.feedback = '已创建重新回答路线'
         return true
       } catch (err) {
         this.error = toDisplayError(err)
@@ -1323,7 +1409,7 @@ export const useWorkspaceStore = defineStore('workspace', {
           // locally. A RESPOND leaf message wins over the default copy.
           const replacementNodeId = outcome.producedNodeId
           await this.refreshWorkspace()
-          this.feedback = outcome.respondMessage ?? '已创建换一个问题路线。'
+          this.feedback = outcome.respondMessage ?? '已创建换一个问题路线'
           this.manualModelRetry = null
           const focusRouteId = this.activeState?.activeRoute?.id
           if (focusRouteId) {
@@ -1353,7 +1439,7 @@ export const useWorkspaceStore = defineStore('workspace', {
         }
         this.error = {
           code: 'AGENT_RUN_FAILED',
-          message: '换一个问法的运行失败，请重试。',
+          message: '换一个问法的运行失败，请重试',
         }
         this.manualModelRetry = intent
         return false
@@ -1499,7 +1585,7 @@ export const useWorkspaceStore = defineStore('workspace', {
           }
           this.error = {
             code: 'AGENT_RUN_FAILED',
-            message: '生成规格快照的运行失败，请重试。',
+            message: '生成规格快照的运行失败，请重试',
           }
           this.manualModelRetry = intent
           return false
@@ -1513,7 +1599,7 @@ export const useWorkspaceStore = defineStore('workspace', {
         if (!produced) {
           this.error = {
             code: 'SPEC_SNAPSHOT_NOT_FOUND',
-            message: '生成的规格快照无法读取。',
+            message: '生成的规格快照无法读取',
           }
           return false
         }
@@ -1521,7 +1607,7 @@ export const useWorkspaceStore = defineStore('workspace', {
           ...this.selectedSpecIdByRoute,
           [routeId]: produced.id,
         }
-        this.feedback = '已生成规格快照。'
+        this.feedback = '已生成规格快照'
         this.manualModelRetry = null
         return true
       } catch (err) {
@@ -1582,7 +1668,7 @@ export const useWorkspaceStore = defineStore('workspace', {
           subtype: 'IDEA',
           content: {},
         })
-        this.feedback = '已创建想法，双击卡片直接编辑。'
+        this.feedback = '已创建想法，双击卡片直接编辑'
         await this.refreshWorkspace()
         await this.refreshUndoRedoAvailability()
         return created.id
@@ -1608,7 +1694,7 @@ export const useWorkspaceStore = defineStore('workspace', {
           subtype: 'NOTE',
           content: {},
         })
-        this.feedback = created.branched ? '已从该节点创建探索分支。' : '已在当前路线继续。'
+        this.feedback = created.branched ? '已从该节点创建探索分支' : '已在当前路线继续'
         await this.refreshWorkspace()
         await this.refreshUndoRedoAvailability()
         return true
@@ -1621,25 +1707,26 @@ export const useWorkspaceStore = defineStore('workspace', {
     },
 
     /**
-     * Attaches a resource node (root of an empty route, or appended at the
-     * current tip). Resources are capability context sources, not claims.
+     * 添加资源 = 先创建一个**独立（浮动）资源节点**，不属于任何路线。
+     *
+     * 这是"资源独立、由用户自己连线"的落地方式：内容先落盘（零模型调用、
+     * 不依赖 Active 路线），路线归属是之后在画布上把连线拖到路线末端 tip 时
+     * 才发生的独立动作（见 connectFloatingNode）。因此这里不再需要 Active 路线。
      */
-    async attachResource(
+    async createFloatingResource(
       subtype: 'TEXT' | 'URL' | 'FILE' | 'IMAGE' | 'REPOSITORY' | 'API_DOCUMENTATION',
       content: Record<string, unknown>,
     ): Promise<boolean> {
       if (!this.projectId || this.graphCommandPending) return false
-      const route = this.activeRoute
-      if (!route) {
-        this.error = { code: 'NO_ACTIVE_ROUTE', message: '当前项目没有活动路线。' }
-        return false
-      }
-      const tipNodeId = route.tipNodeId ?? null
       this.graphCommandPending = true
       this.error = null
       try {
-        await attachResourceCommand(this.projectId, route.id, tipNodeId, subtype, content)
-        this.feedback = '已添加资源节点。'
+        await createFloatingDraftNode(this.projectId, this.activeRoute?.id ?? null, {
+          subtype,
+          content,
+          nodeKind: 'RESOURCE',
+        })
+        this.feedback = '已添加独立资源节点，连线到路线末端即可接入'
         await this.refreshWorkspace()
         await this.refreshUndoRedoAvailability()
         return true
@@ -1651,17 +1738,104 @@ export const useWorkspaceStore = defineStore('workspace', {
       }
     },
 
-    /** Saves an in-place edit of a still-editable user draft. */
-    async reviseDraft(nodeId: string, subtype: string, text: string): Promise<boolean> {
+    /**
+     * Attaches a resource node directly at the current tip (root of an empty
+     * route, or tip append). Resources are capability context sources, not
+     * claims. Kept for the direct-attach path; the dialog now creates a
+     * floating resource instead.
+     */
+    async attachResource(
+      subtype: 'TEXT' | 'URL' | 'FILE' | 'IMAGE' | 'REPOSITORY' | 'API_DOCUMENTATION',
+      content: Record<string, unknown>,
+    ): Promise<boolean> {
+      if (!this.projectId || this.graphCommandPending) return false
+      const route = this.activeRoute
+      if (!route) {
+        this.error = { code: 'NO_ACTIVE_ROUTE', message: '当前项目没有活动路线' }
+        return false
+      }
+      const tipNodeId = route.tipNodeId ?? null
+      this.graphCommandPending = true
+      this.error = null
+      try {
+        await attachResourceCommand(this.projectId, route.id, tipNodeId, subtype, content)
+        this.feedback = '已添加资源节点'
+        await this.refreshWorkspace()
+        await this.refreshUndoRedoAvailability()
+        return true
+      } catch (err) {
+        this.error = toDisplayError(err)
+        return false
+      } finally {
+        this.graphCommandPending = false
+      }
+    },
+
+    /**
+     * 把浮动节点接入一条路线（成为该路线的新末端）。后端只接受"当前 tip"
+     * 作为父节点，且不接受未答题的父节点 —— 手画的一条线不会改写历史。
+     */
+    async connectFloatingNode(
+      nodeId: string,
+      routeId: string,
+      parentNodeId: string | null,
+    ): Promise<boolean> {
       if (!this.projectId || this.graphCommandPending) return false
       this.graphCommandPending = true
       this.error = null
       try {
+        await connectFloatingNodeCommand(this.projectId, nodeId, routeId, parentNodeId)
+        this.feedback = '已接入路线'
+        await this.refreshWorkspace()
+        await this.refreshUndoRedoAvailability()
+        return true
+      } catch (err) {
+        this.error = toDisplayError(err)
+        return false
+      } finally {
+        this.graphCommandPending = false
+      }
+    },
+
+    /** 把路线末端节点断开为浮动节点（内容保留，只解除归属）。 */
+    async disconnectNode(nodeId: string, routeId: string): Promise<boolean> {
+      if (!this.projectId || this.graphCommandPending) return false
+      this.graphCommandPending = true
+      this.error = null
+      try {
+        await disconnectNodeCommand(this.projectId, nodeId, routeId)
+        this.feedback = '已断开该节点，它现在是独立节点'
+        await this.refreshWorkspace()
+        await this.refreshUndoRedoAvailability()
+        return true
+      } catch (err) {
+        this.error = toDisplayError(err)
+        return false
+      } finally {
+        this.graphCommandPending = false
+      }
+    },
+
+    /**
+     * Saves an in-place edit of a still-editable user draft. `skillId` is the
+     * optional "/" picker binding: it rides in the open content map as
+     * metadata next to the visible text, and null clears an existing binding.
+     */
+    async reviseDraft(nodeId: string, subtype: string, text: string,
+                      skillId: string | null = null): Promise<boolean> {
+      if (!this.projectId || this.graphCommandPending) return false
+      this.graphCommandPending = true
+      this.error = null
+      try {
+        const content: Record<string, unknown> = text.trim() ? { text: text.trim() } : {}
+        if (skillId) {
+          content.skillId = skillId
+        }
         await reviseDraftNode(this.projectId, nodeId, {
           subtype,
-          content: text.trim() ? { text: text.trim() } : {},
+          content,
         })
-        this.feedback = '草稿已保存。'
+        this.feedback = '草稿已保存'
         await this.refreshWorkspace()
         await this.refreshUndoRedoAvailability()
         return true
@@ -1680,7 +1854,7 @@ export const useWorkspaceStore = defineStore('workspace', {
       this.error = null
       try {
         await setKnowledgeStatus(this.projectId, nodeId, 'CONFIRMED')
-        this.feedback = '已确认该内容。'
+        this.feedback = '已确认该内容'
         await this.refreshWorkspace()
         await this.refreshUndoRedoAvailability()
         return true
@@ -1703,7 +1877,7 @@ export const useWorkspaceStore = defineStore('workspace', {
       this.error = null
       try {
         await createRelation(this.projectId, sourceNodeId, targetNodeId, relationType)
-        this.feedback = '已添加语义关系。'
+        this.feedback = '已添加语义关系'
         await this.refreshWorkspace()
         await this.refreshUndoRedoAvailability()
         return true
@@ -1764,7 +1938,7 @@ export const useWorkspaceStore = defineStore('workspace', {
       if (nodeId.startsWith('pending:')) {
         this.error = {
           code: 'PENDING_NODE_QUERY_NOT_ALLOWED',
-          message: '临时运行卡片不是可查询的 canonical Node。',
+          message: '临时运行卡片不是可查询的 canonical Node',
         }
         return false
       }
@@ -1777,7 +1951,7 @@ export const useWorkspaceStore = defineStore('workspace', {
         if (membership.length > 1) {
           this.error = {
             code: 'SHARED_NODE_REQUIRES_ROUTE',
-            message: '共享节点请先选择一条查看路线，再询问 AI。',
+            message: '共享节点请先选择一条查看路线，再询问 AI',
           }
           return false
         }
@@ -1869,7 +2043,7 @@ export const useWorkspaceStore = defineStore('workspace', {
       }
       if (this.nodeQuery && this.nodeQuery.runId === runId) {
         this.nodeQuery = { ...this.nodeQuery, status: 'FAILED' }
-        this.error = { code: 'QUERY_TIMEOUT', message: 'AI 查询超时，请稍后重试。' }
+        this.error = { code: 'QUERY_TIMEOUT', message: 'AI 查询超时，请稍后重试' }
       }
     },
 
@@ -1924,7 +2098,7 @@ export const useWorkspaceStore = defineStore('workspace', {
         if (this.nodeQuery && this.nodeQuery.proposalId === proposalId) {
           this.nodeQuery = { ...this.nodeQuery, status: 'ACCEPTED', proposalStatus: 'ACCEPTED' }
         }
-        this.feedback = leafMessage ?? '已接受提案，Graph 已更新。'
+        this.feedback = leafMessage ?? '已接受提案，Graph 已更新'
         return true
       } catch (err) {
         this.error = toDisplayError(err)
@@ -1947,7 +2121,7 @@ export const useWorkspaceStore = defineStore('workspace', {
         if (this.nodeQuery && this.nodeQuery.proposalId === proposalId) {
           this.nodeQuery = { ...this.nodeQuery, status: 'REJECTED', proposalStatus: 'REJECTED' }
         }
-        this.feedback = '已拒绝提案，Graph 保持不变。'
+        this.feedback = '已拒绝提案，Graph 保持不变'
         return true
       } catch (err) {
         this.error = toDisplayError(err)

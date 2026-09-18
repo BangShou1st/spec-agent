@@ -22,7 +22,9 @@ public final class GlobalAssistantToolPresentation {
             "project.create", new Presentation("Creating project", "PROJECT"),
             "project.search", new Presentation("Searching projects", "PROJECT_LIST"),
             "project.list_recent", new Presentation("Listing recent projects", "PROJECT_LIST"),
-            "project.get_summary", new Presentation("Reading project summary", "PROJECT"));
+            "project.get_summary", new Presentation("Reading project summary", "PROJECT"),
+            "skill.import", new Presentation("Staging skill import", null),
+            "skill.import.discover", new Presentation("Inspecting skill repository", null));
 
     private static final Presentation FALLBACK = new Presentation("Working", null);
 

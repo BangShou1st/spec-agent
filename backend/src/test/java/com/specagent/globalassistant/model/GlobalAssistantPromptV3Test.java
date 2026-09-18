@@ -14,12 +14,12 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Prompt V2 shape tests: principles, not full-string snapshots.
+ * Prompt V3 shape tests: principles, not full-string snapshots.
  */
 @SpringBootTest
 @ActiveProfiles("test")
 @Transactional
-class GlobalAssistantPromptV2Test {
+class GlobalAssistantPromptV3Test {
     @Autowired GlobalAssistantPromptRenderer renderer;
     @Autowired GlobalAssistantConversationService conversations;
     @Autowired GlobalAssistantContextBuilder contextBuilder;
@@ -32,8 +32,16 @@ class GlobalAssistantPromptV2Test {
     }
 
     @Test
-    void promptVersionIsV2() {
-        assertThat(GlobalAssistantPromptRenderer.PROMPT_VERSION).isEqualTo("v2");
+    void promptVersionIsV3() {
+        assertThat(GlobalAssistantPromptRenderer.PROMPT_VERSION).isEqualTo("v3");
+    }
+
+    @Test
+    void skillFactsRequireToolGrounding() {
+        String prompt = systemPrompt();
+        assertThat(prompt).contains("such questions from memory");
+        assertThat(prompt).contains("skill.import.discover");
+        assertThat(prompt).contains("read-only and stages nothing");
     }
 
     @Test

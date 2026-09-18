@@ -159,6 +159,8 @@ public class GlobalAssistantDecisionValidator {
                             "project.get_summary projectId is not a valid UUID");
                 }
             }
+            case "skill.import" -> validateSkillImportArguments(args);
+            case "skill.import.discover" -> validateSkillDiscoverArguments(args);
             default -> throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
                     "Unknown tool: " + capabilityId);
         }
@@ -167,6 +169,59 @@ public class GlobalAssistantDecisionValidator {
         if (!GlobalAssistantToolCatalog.isValidLimit(raw)) {
             throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
                     "limit must be an integer between 1 and 10");
+        }
+    }
+    /**
+     * Bounds-only shape validation for skill.import arguments: url is a
+     * required bounded string, ref/skill are optional bounded strings. The
+     * value rules (HTTPS, private-host rejection, ref syntax) stay in the
+     * capability/adapter, which fails as a tool execution result rather than
+     * as a contract rejection — the model can correct those and retry.
+     */
+    private void validateSkillImportArguments(Map<String, Object> args) {
+        Object url = args.get("url");
+        if (!(url instanceof String s) || s.isBlank()) {
+            throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
+                    "skill.import requires a non-blank url");
+        }
+        if (s.trim().length() > 500) {
+            throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
+                    "skill.import url must be at most 500 chars");
+        }
+        requireOptionalBoundedString(args, "ref", 200, "skill.import ref");
+        requireOptionalBoundedString(args, "skill", 512, "skill.import skill");
+    }
+    /**
+     * Bounds-only shape validation for skill.import.discover arguments: url is
+     * a required bounded string, ref is an optional bounded string. Same
+     * policy as skill.import: value rules (HTTPS, private-host rejection)
+     * stay in the capability and fail as tool execution results.
+     */
+    private void validateSkillDiscoverArguments(Map<String, Object> args) {
+        Object url = args.get("url");
+        if (!(url instanceof String s) || s.isBlank()) {
+            throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
+                    "skill.import.discover requires a non-blank url");
+        }
+        if (s.trim().length() > 500) {
+            throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
+                    "skill.import.discover url must be at most 500 chars");
+        }
+        requireOptionalBoundedString(args, "ref", 200, "skill.import.discover ref");
+    }
+    private void requireOptionalBoundedString(Map<String, Object> args, String key,
+            int maxChars, String label) {
+        Object raw = args.get(key);
+        if (raw == null) {
+            return;
+        }
+        if (!(raw instanceof String s) || s.isBlank()) {
+            throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
+                    label + " must be a non-blank string when present");
+        }
+        if (s.trim().length() > maxChars) {
+            throw new GlobalAssistantModelException("MODEL_INVALID_RESPONSE",
+                    label + " must be at most " + maxChars + " chars");
         }
     }
     private void validateUiAction(GlobalAssistantDecision.UiAction uiAction) {

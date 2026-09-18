@@ -112,7 +112,8 @@ class GlobalAssistantHardeningMiscTest {
                 .isGreaterThan(32);
         var ids = catalog.modelCatalog().stream().map(CapabilityDescriptor::capabilityId).toList();
         assertThat(ids).containsExactlyInAnyOrder(
-                "project.create", "project.search", "project.list_recent", "project.get_summary");
+                "project.create", "project.search", "project.list_recent", "project.get_summary",
+                "skill.import", "skill.import.discover");
     }
     @Test
     void toolDescriptorsProjectStructuredSchemas() {
