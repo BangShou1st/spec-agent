@@ -1,9 +1,10 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { defineComponent, h } from 'vue'
+import { defineComponent, h, nextTick, reactive } from 'vue'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
+import { useInputDraftStore } from '@/stores/inputDraftStore'
 import GraphQuestionNode from '@/components/graph/GraphQuestionNode.vue'
 import type { SpecAgentGraphNodeData, GraphAnswerPresentation } from '@/graph/graphProjection'
 import type { GraphWorkspaceNodeView, GraphWorkspaceOptionView } from '@/api/types'
@@ -255,6 +256,73 @@ describe('graph question node', () => {
     await wrapper.find('[data-test="free-text"]').setValue('stale draft')
     await wrapper.setProps({ data: currentData({ node: nodeData({ id: 'n2' }) }) })
     expect((wrapper.find('[data-test="free-text"]').element as HTMLTextAreaElement).value).toBe('')
+  })
+
+  it('keeps text and selections isolated when one mounted node changes reading route', async () => {
+    const data = reactive(currentData())
+    const wrapper = mountNode(data)
+    const viewRoute = async (routeId: string) => {
+      data.readingRouteId = routeId
+      await nextTick()
+    }
+    const text = () => wrapper.get<HTMLTextAreaElement>('[data-test="free-text"]')
+    await text().setValue('路线一草稿')
+    await wrapper.get('input[value="opt-a"]').setValue()
+
+    // Same node and canAnswer; only the reading route changes.
+    await viewRoute('r2')
+    expect(text().element.value).toBe('')
+    expect(wrapper.get<HTMLInputElement>('input[value="opt-a"]').element.checked).toBe(false)
+    await text().setValue('路线二草稿')
+    await wrapper.get('input[value="opt-b"]').setValue()
+
+    await viewRoute('r1')
+    expect(text().element.value).toBe('路线一草稿')
+    expect(wrapper.get<HTMLInputElement>('input[value="opt-a"]').element.checked).toBe(true)
+    await viewRoute('r3')
+    expect(text().element.value).toBe('')
+    await viewRoute('r2')
+    expect(text().element.value).toBe('路线二草稿')
+    expect(wrapper.get<HTMLInputElement>('input[value="opt-b"]').element.checked).toBe(true)
+    expect(wrapper.emitted('submit-answer')).toBeUndefined()
+    expect(useInputDraftStore().getDraft('p1', 'n1', 'r1')?.freeText).toBe('路线一草稿')
+  })
+
+  it('switches drafts by project even if the node and route ids are unchanged', async () => {
+    const data = reactive(currentData())
+    const wrapper = mountNode(data)
+    await wrapper.get('[data-test="free-text"]').setValue('project one')
+    data.projectId = 'p2'
+    await nextTick()
+    expect(wrapper.get<HTMLTextAreaElement>('[data-test="free-text"]').element.value).toBe('')
+    await wrapper.get('[data-test="free-text"]').setValue('project two')
+    data.projectId = 'p1'
+    await nextTick()
+    expect(wrapper.get<HTMLTextAreaElement>('[data-test="free-text"]').element.value).toBe('project one')
+  })
+
+  it('restores both route drafts after remount with a fresh Pinia (page reload)', async () => {
+    const wrapper = mountNode(currentData())
+    await wrapper.get('[data-test="free-text"]').setValue('first route')
+    await wrapper.setProps({ data: currentData({ readingRouteId: 'r2' }) })
+    await wrapper.get('[data-test="free-text"]').setValue('second route')
+    wrapper.unmount()
+    const reloaded = mountNode(currentData())
+    expect(reloaded.get<HTMLTextAreaElement>('[data-test="free-text"]').element.value).toBe('first route')
+    await reloaded.setProps({ data: currentData({ readingRouteId: 'r2' }) })
+    expect(reloaded.get<HTMLTextAreaElement>('[data-test="free-text"]').element.value).toBe('second route')
+  })
+
+  it('uses canonical identity for cleanup and never recreates a cleared draft on render', async () => {
+    const data = currentData({ canonicalNodeId: 'canonical-n1' })
+    const wrapper = mountNode(data)
+    await wrapper.get('[data-test="free-text"]').setValue('answer draft')
+    const drafts = useInputDraftStore()
+    expect(drafts.getDraft('p1', 'canonical-n1', 'r1')?.freeText).toBe('answer draft')
+    drafts.clearDraft('p1', 'canonical-n1', 'r1')
+    await wrapper.setProps({ data: { ...data } })
+    expect(wrapper.get<HTMLTextAreaElement>('[data-test="free-text"]').element.value).toBe('')
+    expect(drafts.getDraft('p1', 'canonical-n1', 'r1')).toBeUndefined()
   })
 
   it('historical node has no answer inputs and stays compact; full answer lives in Inspector', () => {

@@ -8,10 +8,10 @@ export default { components: { GraphNodeShell, GraphRunProcessPanel } }
 </script>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, useId } from 'vue'
 import type { SubmitAnswerRequest } from '@/api/types'
 import type { SpecAgentGraphNodeData } from '@/graph/graphProjection'
-import { useInputDraftStore } from '@/stores/inputDraftStore'
+import { useInputDraftStore, type InputDraft } from '@/stores/inputDraftStore'
 import { actionsFor, type NodeAction } from '@/graph/nodeActions'
 import RichAssistantText from '@/components/common/RichAssistantText.vue'
 
@@ -55,13 +55,36 @@ const emit = defineEmits<{
 
 const inputDraftStore = useInputDraftStore()
 
-// Local refs backed by the draft store. The store survives remounts,
-// drags, and focus changes.
-// selectedOptionIds 是唯一权威状态：单选题约束为 0..1 项，多选题 0..N 项；
-// selectedOptionId 只作为草稿持久化的首选项别名保留。
-const selectedOptionIds = ref<string[]>([])
+// Read directly from the complete draft identity. Vue Flow can update route
+// context in place without replacing the node or remounting its textarea.
+// Only input events write drafts: focus/render changes never copy an old
+// local value into a new route, nor recreate a draft cleared after success.
+const draftNodeId = computed(() => props.data.canonicalNodeId ?? props.data.node.id)
+const draft = computed(() => inputDraftStore.getDraft(
+  props.data.projectId, draftNodeId.value, props.data.readingRouteId,
+))
+function updateDraft(changes: Partial<InputDraft>): void {
+  if (!props.data.canAnswer) return
+  inputDraftStore.setDraft(props.data.projectId, draftNodeId.value, {
+    selectedOptionId: null,
+    freeText: '',
+    ...draft.value,
+    ...changes,
+  }, props.data.readingRouteId)
+}
+const selectedOptionIds = computed<string[]>({
+  get: () => draft.value?.selectedOptionIds?.length
+    ? [...draft.value.selectedOptionIds]
+    : draft.value?.selectedOptionId ? [draft.value.selectedOptionId] : [],
+  set: (ids) => updateDraft({ selectedOptionId: ids[0] ?? null, selectedOptionIds: [...ids] }),
+})
 const selectedOptionId = computed(() => selectedOptionIds.value[0] ?? null)
-const freeText = ref('')
+const freeText = computed({
+  get: () => draft.value?.freeText ?? '',
+  set: (text: string) => updateDraft({ freeText: text }),
+})
+// Independent visible cards must not belong to the same native radio group.
+const answerOptionGroup = useId()
 
 function isSelected(optionId: string): boolean {
   return selectedOptionIds.value.includes(optionId)
@@ -76,46 +99,6 @@ function toggleOption(optionId: string, checked: boolean): void {
     selectedOptionIds.value = checked ? [optionId] : []
   }
 }
-
-// Load draft from store when node identity changes; never clear existing input.
-watch(
-  () => [props.data.node.id, props.data.canAnswer] as const,
-  () => {
-    const draft = inputDraftStore.getDraft(
-      props.data.projectId,
-      props.data.node.id,
-      props.data.readingRouteId,
-    )
-    if (draft) {
-      selectedOptionIds.value = draft.selectedOptionIds?.length
-        ? [...draft.selectedOptionIds]
-        : draft.selectedOptionId
-          ? [draft.selectedOptionId]
-          : []
-      freeText.value = draft.freeText
-    } else {
-      selectedOptionIds.value = []
-      freeText.value = ''
-    }
-  },
-  { immediate: true },
-)
-
-// Persist draft to store on every change.
-watch([selectedOptionIds, freeText], () => {
-  if (props.data.canAnswer) {
-    inputDraftStore.setDraft(
-      props.data.projectId,
-      props.data.node.id,
-      {
-        selectedOptionId: selectedOptionId.value,
-        selectedOptionIds: selectedOptionIds.value,
-        freeText: freeText.value,
-      },
-      props.data.readingRouteId,
-    )
-  }
-})
 
 const node = computed(() => props.data.node)
 const primary = computed(() => props.data.primaryAnswer)
@@ -432,7 +415,7 @@ function setReadingRoute(event: Event): void {
         >
           <input
             :type="node.allowMultiSelect ? 'checkbox' : 'radio'"
-            name="graph-answer-option"
+            :name="answerOptionGroup"
             :value="option.id"
             :checked="isSelected(option.id)"
             class="nodrag"
