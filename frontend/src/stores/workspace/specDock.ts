@@ -15,43 +15,78 @@ import { downloadSpecMarkdown, listRouteSpecs } from '@/api/spec'
 import type { SpecExportVariant } from '@/api/spec'
 import type { RequirementStateView, SpecSnapshotResponse } from '@/api/types'
 import { useRunRegistryStore } from '@/stores/runRegistryStore'
-import type { WorkspaceStore } from '../workspaceStore'
+import type { SpecDockSlice } from './slices'
 import type { ManualModelRetryIntent } from './types'
+import { captureProjectSession } from './shared'
+
+/**
+ * Per-store request-generation counters for route-scoped reads.
+ *
+ * Session identity alone cannot resolve ownership WITHIN one project:
+ * two overlapping reads of the same route must not let the OLDER response
+ * overwrite the newer one or release the newer request's loading marker.
+ * The latest generation per route owns the cache write, the error write,
+ * and the marker release.
+ */
+const requirementLoadGenerations = new WeakMap<object, Map<string, number>>()
+const specListGenerations = new WeakMap<object, Map<string, number>>()
+/** Monotonic token for the single-slot `loadingSpecs` flag. */
+const specListFlagTokens = new WeakMap<object, { token: number }>()
 
 /**
  * Loads (and caches) the requirement state for an explicit route. The
  * cache is indexed by route id; no global selection decides ownership.
+ * The response is validated against the project session before the cache
+ * write: a slow read must not poison a newer project era's cache.
  */
 export async function ensureRequirementStateAction(
-  store: WorkspaceStore,
+  store: SpecDockSlice,
   routeId: string,
 ): Promise<RequirementStateView | null> {
   if (!store.projectId) {
     return null
   }
+  const { projectId, isCurrent } = captureProjectSession(store)
   const cached = store.requirementStatesByRoute[routeId]
   if (cached) {
     return cached
   }
+  // Request identity: the latest generation of THIS route decides who may
+  // write the cache, the error, and the loading marker.
+  const generations = requirementLoadGenerations.get(store) ?? new Map<string, number>()
+  requirementLoadGenerations.set(store, generations)
+  const myGeneration = (generations.get(routeId) ?? 0) + 1
+  generations.set(routeId, myGeneration)
+  const isLatestForRoute = (): boolean => generations.get(routeId) === myGeneration
   store.loadingRequirementRouteId = routeId
   try {
-    const state = await getRouteRequirementState(store.projectId, routeId)
+    const state = await getRouteRequirementState(projectId, routeId)
+    if (!isCurrent() || !isLatestForRoute()) return state
     store.requirementStatesByRoute = {
       ...store.requirementStatesByRoute,
       [routeId]: state,
     }
     return state
   } catch (err) {
+    if (!isCurrent() || !isLatestForRoute()) return null
     store.error = toDisplayError(err)
     return null
   } finally {
-    store.loadingRequirementRouteId = null
+    // Release the marker only for the still-current session AND only when
+    // no newer request of the same route (or another route) owns it now.
+    if (
+      isCurrent()
+      && isLatestForRoute()
+      && store.loadingRequirementRouteId === routeId
+    ) {
+      store.loadingRequirementRouteId = null
+    }
   }
 }
 
 /** Selects the displayed spec snapshot for one explicit route. */
 export function selectSpecForRouteAction(
-  store: WorkspaceStore,
+  store: SpecDockSlice,
   routeId: string,
   snapshotId: string | null,
 ): void {
@@ -62,18 +97,36 @@ export function selectSpecForRouteAction(
 }
 
 /** Loads the snapshot list for a route from the backend. */
-export async function loadRouteSpecsAction(store: WorkspaceStore, routeId: string): Promise<void> {
+export async function loadRouteSpecsAction(store: SpecDockSlice, routeId: string): Promise<void> {
   if (!store.projectId) {
     return
   }
+  const { projectId, isCurrent } = captureProjectSession(store)
+  const generations = specListGenerations.get(store) ?? new Map<string, number>()
+  specListGenerations.set(store, generations)
+  const myGeneration = (generations.get(routeId) ?? 0) + 1
+  generations.set(routeId, myGeneration)
+  const isLatestForRoute = (): boolean => generations.get(routeId) === myGeneration
+  const flags = specListFlagTokens.get(store) ?? { token: 0 }
+  specListFlagTokens.set(store, flags)
+  flags.token += 1
+  const myToken = flags.token
   store.loadingSpecs = true
   try {
-    const specs = await listRouteSpecs(store.projectId, routeId)
+    const specs = await listRouteSpecs(projectId, routeId)
+    if (!isCurrent() || !isLatestForRoute()) return
     store.specsByRoute = { ...store.specsByRoute, [routeId]: specs }
   } catch (err) {
+    if (!isCurrent() || !isLatestForRoute()) return
     store.error = toDisplayError(err)
   } finally {
-    store.loadingSpecs = false
+    // Session guard: a stale load's cleanup must not release the NEW
+    // session's flag (beginProject already reset it there). Token guard:
+    // within one session, an older concurrent load must not release the
+    // flag of a newer one.
+    if (isCurrent() && flags.token === myToken) {
+      store.loadingSpecs = false
+    }
   }
 }
 
@@ -84,7 +137,7 @@ export async function loadRouteSpecsAction(store: WorkspaceStore, routeId: strin
  * synthesizes a spec locally and never sets Focus here. Returns whether
  * a new snapshot landed on this route.
  */
-export async function generateSpecAction(store: WorkspaceStore): Promise<boolean> {
+export async function generateSpecAction(store: SpecDockSlice): Promise<boolean> {
   if (!store.projectId || store.generatingSpec || store.routeCommandPending) {
     return false
   }
@@ -99,22 +152,31 @@ export async function generateSpecAction(store: WorkspaceStore): Promise<boolean
   store.generatingSpec = true
   store.error = null
   const routeId = activeRoute.id
+  const { projectId, isCurrent } = captureProjectSession(store)
+  // ONE try/catch/finally covers the WHOLE generation flow — including the
+  // baseline read. A baseline failure returns through this finally, so the
+  // generation lock is always released for the owning session and later
+  // generations of the same session are never blocked by residue.
   let baselineSpecs: SpecSnapshotResponse[]
+  let beforeSpecIds: string[] = []
   try {
-    // This read is the mutation baseline. If it fails, do not start a
-    // generation request whose outcome could no longer be reconciled.
-    baselineSpecs = await listRouteSpecs(store.projectId, routeId)
+    try {
+      // This read is the mutation baseline. If it fails, do not start a
+      // generation request whose outcome could no longer be reconciled.
+      baselineSpecs = await listRouteSpecs(projectId, routeId)
+    } catch (err) {
+      if (!isCurrent()) return false
+      store.error = toDisplayError(err)
+      store.manualModelRetry = null
+      return false
+    }
+    if (!isCurrent()) return false
     store.specsByRoute = { ...store.specsByRoute, [routeId]: baselineSpecs }
-  } catch (err) {
-    store.error = toDisplayError(err)
-    store.manualModelRetry = null
-    return false
-  }
-  const beforeSpecIds = baselineSpecs.map((snapshot) => snapshot.id)
-  try {
-    const created = await createAgentRun(store.projectId, {
+    beforeSpecIds = baselineSpecs.map((snapshot) => snapshot.id)
+    const created = await createAgentRun(projectId, {
       operation: 'GENERATE_ARTIFACT',
     })
+    if (!isCurrent()) return false
     useRunRegistryStore().register({
       runId: created.runId,
       operation: 'GENERATE_ARTIFACT',
@@ -122,6 +184,7 @@ export async function generateSpecAction(store: WorkspaceStore): Promise<boolean
       sourceNodeId: activeRoute.tipNodeId ?? null,
     })
     const outcome = await store.pollRunChainToTerminal(created.runId)
+    if (!isCurrent()) return false
     if (outcome === 'unknown' || outcome === 'failed') {
       // FAILED or outcome unknown: reconcile canonical reads through the
       // shared fail-closed reconciliation (exactly-one-new-snapshot rule).
@@ -147,7 +210,8 @@ export async function generateSpecAction(store: WorkspaceStore): Promise<boolean
     // COMPLETED: select the produced snapshot from the canonical backend
     // list — never built up locally.
     const producedId = outcome.producedSpecSnapshotId
-    const specs = await listRouteSpecs(store.projectId, routeId)
+    const specs = await listRouteSpecs(projectId, routeId)
+    if (!isCurrent()) return false
     store.specsByRoute = { ...store.specsByRoute, [routeId]: specs }
     const produced = specs.find((snapshot) => snapshot.id === producedId)
     if (!produced) {
@@ -167,6 +231,7 @@ export async function generateSpecAction(store: WorkspaceStore): Promise<boolean
   } catch (err) {
     // The create-run request itself failed or its outcome is unknown;
     // reconcile canonical reads before any retry affordance.
+    if (!isCurrent()) return false
     const safeError = toDisplayError(err)
     store.error = safeError
     const disposition = classifyModelFailure(safeError.code, safeError.status)
@@ -187,7 +252,11 @@ export async function generateSpecAction(store: WorkspaceStore): Promise<boolean
     }
     return false
   } finally {
-    store.generatingSpec = false
+    // Only the owning session releases the generation lock: a stale
+    // generation's cleanup must not release the NEW session's flag.
+    if (isCurrent()) {
+      store.generatingSpec = false
+    }
   }
 }
 
@@ -197,32 +266,41 @@ export async function generateSpecAction(store: WorkspaceStore): Promise<boolean
  * the pending/error/feedback state around the download.
  */
 export async function exportSpecMarkdownAction(
-  store: WorkspaceStore,
+  store: SpecDockSlice,
   snapshotId: string,
   variant: SpecExportVariant,
 ): Promise<boolean> {
   if (store.exportingSpec) return false
+  const { isCurrent } = captureProjectSession(store)
   store.exportingSpec = true
   store.error = null
   try {
     await downloadSpecMarkdown(snapshotId, variant)
+    if (!isCurrent()) return false
     store.feedback =
       variant === 'delivery' ? '已导出开发需求文档' : '已导出规格快照 Markdown'
     return true
   } catch (err) {
+    if (!isCurrent()) return false
     store.error = toDisplayError(err)
     return false
   } finally {
-    store.exportingSpec = false
+    // Only the owning session releases the flag; beginProject resets it
+    // on switch so the new project is never frozen by the old export.
+    if (isCurrent()) {
+      store.exportingSpec = false
+    }
   }
 }
 
 export async function reconcileSpecRetryAction(
-  store: WorkspaceStore,
+  store: SpecDockSlice,
   intent: Extract<ManualModelRetryIntent, { kind: 'spec' }>,
 ): Promise<boolean> {
+  const { projectId, isCurrent } = captureProjectSession(store)
   const previousError = store.error
   const reconciled = await store.refreshWorkspace()
+  if (!isCurrent()) return false
   if (!reconciled) {
     store.error = previousError
     return false
@@ -237,11 +315,13 @@ export async function reconcileSpecRetryAction(
   }
   let specs: SpecSnapshotResponse[]
   try {
-    specs = await listRouteSpecs(store.projectId!, intent.routeId)
+    specs = await listRouteSpecs(projectId, intent.routeId)
   } catch {
+    if (!isCurrent()) return false
     store.error = previousError
     return false
   }
+  if (!isCurrent()) return false
   store.specsByRoute = { ...store.specsByRoute, [intent.routeId]: specs }
   const newSpecs = specs.filter((snapshot) => !intent.beforeSpecIds.includes(snapshot.id))
   if (newSpecs.length === 1) {

@@ -16,7 +16,7 @@ import {
 } from '@/api/graphCommands'
 import { listProposals } from '@/api/graphCommands'
 import { sleep } from '@/composables/timing'
-import type { WorkspaceStore } from '../workspaceStore'
+import type { ProposalSlice } from './slices'
 import { NODE_QUERY_TRIGGER } from './shared'
 
 /**
@@ -24,12 +24,16 @@ import { NODE_QUERY_TRIGGER } from './shared'
  * single DECISION call finishes. The query has no graph side effects.
  */
 export async function askNodeAIAction(
-  store: WorkspaceStore,
+  store: ProposalSlice,
   nodeId: string,
   routeId: string | null,
   question: string,
 ): Promise<boolean> {
   if (!store.projectId || !question.trim()) return false
+  const projectId = store.projectId
+  const session = store.projectSessionId
+  const isCurrent = (): boolean =>
+    store.projectSessionId === session && store.projectId === projectId
   if (nodeId.startsWith('pending:')) {
     store.error = {
       code: 'PENDING_NODE_QUERY_NOT_ALLOWED',
@@ -53,7 +57,8 @@ export async function askNodeAIAction(
   }
   store.error = null
   try {
-    const created = await createNodeQuery(store.projectId, nodeId, routeId, question.trim())
+    const created = await createNodeQuery(projectId, nodeId, routeId, question.trim())
+    if (!isCurrent()) return false
     // Capture the immutable query identity once. The poll loop carries
     // this snapshot and must never borrow the routeId/question of a newer
     // query that replaced nodeQuery.
@@ -71,6 +76,7 @@ export async function askNodeAIAction(
     await store.pollNodeQuery(querySnapshot)
     return true
   } catch (err) {
+    if (!isCurrent()) return false
     store.error = toDisplayError(err)
     if (store.nodeQuery) store.nodeQuery = { ...store.nodeQuery, status: 'FAILED' }
     return false
@@ -78,7 +84,7 @@ export async function askNodeAIAction(
 }
 
 export async function pollNodeQueryAction(
-  store: WorkspaceStore,
+  store: ProposalSlice,
   query: {
     runId: string
     nodeId: string
@@ -87,16 +93,22 @@ export async function pollNodeQueryAction(
   },
 ): Promise<void> {
   if (!store.projectId) return
+  const projectId = store.projectId
+  const session = store.projectSessionId
+  const isCurrent = (): boolean =>
+    store.projectSessionId === session && store.projectId === projectId
   const { runId, nodeId, routeId, question } = query
   const maxAttempts = 40
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     await sleep(1500)
-    // Stale poll guard: a newer query may have replaced nodeQuery. If the
-    // global nodeQuery no longer belongs to THIS poll run, abandon it so a
-    // slow response can never overwrite the latest query's state.
+    // Stale poll guards: a newer query may have replaced nodeQuery, AND a
+    // project switch invalidates the whole poll — both checks run after
+    // every await, never only before the next one.
+    if (!isCurrent()) return
     if (store.nodeQuery && store.nodeQuery.runId !== runId) return
     try {
-      const result = await getNodeQueryResult(store.projectId, nodeId, runId)
+      const result = await getNodeQueryResult(projectId, nodeId, runId)
+      if (!isCurrent()) return
       // Only the real terminal outcome statuses stop the poll. The result
       // API reports intermediate run lifecycle phases (CONTEXT_BUILT,
       // MODEL_CALLED, ...) verbatim — treating them as terminal would
@@ -126,10 +138,11 @@ export async function pollNodeQueryAction(
     } catch {
       // Transient poll failures fall through to the next attempt, but a
       // stale poll must still bail out instead of clobbering the latest.
+      if (!isCurrent()) return
       if (store.nodeQuery && store.nodeQuery.runId !== runId) return
     }
   }
-  if (store.nodeQuery && store.nodeQuery.runId === runId) {
+  if (isCurrent() && store.nodeQuery && store.nodeQuery.runId === runId) {
     store.nodeQuery = { ...store.nodeQuery, status: 'FAILED' }
     store.error = { code: 'QUERY_TIMEOUT', message: 'AI 查询超时，请稍后重试' }
   }
@@ -142,19 +155,25 @@ export async function pollNodeQueryAction(
  * (inputNodeId) so the Inspector on that node exposes it even when the
  * in-memory `nodeQuery` was reset or replaced by a newer query.
  */
-export async function loadNodeQueryProposalsAction(store: WorkspaceStore): Promise<void> {
-  if (!store.projectId) {
+export async function loadNodeQueryProposalsAction(store: ProposalSlice): Promise<void> {
+  const projectId = store.projectId
+  if (!projectId) {
     store.nodeQueryProposals = []
     return
   }
+  const session = store.projectSessionId
   try {
-    store.nodeQueryProposals = await listProposals(store.projectId, 'PROPOSED', {
+    const proposals = await listProposals(projectId, 'PROPOSED', {
       triggerTypes: [NODE_QUERY_TRIGGER],
     })
+    // A stale proposal read must never overwrite the new era's list.
+    if (store.projectSessionId !== session || store.projectId !== projectId) return
+    store.nodeQueryProposals = proposals
   } catch {
     // A failed proposal-list read must not fail the whole workspace load;
     // keep the last known list and let the UI surface loading errors as
     // usual. Pending proposals remain discoverable on the next refresh.
+    if (store.projectSessionId !== session || store.projectId !== projectId) return
     store.nodeQueryProposals = store.nodeQueryProposals ?? []
   }
 }
@@ -170,10 +189,14 @@ export async function loadNodeQueryProposalsAction(store: WorkspaceStore): Promi
  * the UI never settles on an intermediate COMPLETED parent.
  */
 export async function acceptNodeQueryProposalAction(
-  store: WorkspaceStore,
+  store: ProposalSlice,
   proposalId: string,
 ): Promise<boolean> {
   if (!store.projectId) return false
+  const projectId = store.projectId
+  const session = store.projectSessionId
+  const isCurrent = (): boolean =>
+    store.projectSessionId === session && store.projectId === projectId
   store.error = null
   try {
     const accepted = await acceptProposal(proposalId)
@@ -186,12 +209,14 @@ export async function acceptNodeQueryProposalAction(
     }
     await store.refreshWorkspace()
     await store.loadNodeQueryProposals()
+    if (!isCurrent()) return false
     if (store.nodeQuery && store.nodeQuery.proposalId === proposalId) {
       store.nodeQuery = { ...store.nodeQuery, status: 'ACCEPTED', proposalStatus: 'ACCEPTED' }
     }
     store.feedback = leafMessage ?? '已接受提案，Graph 已更新'
     return true
   } catch (err) {
+    if (!isCurrent()) return false
     store.error = toDisplayError(err)
     return false
   }
@@ -203,10 +228,14 @@ export async function acceptNodeQueryProposalAction(
  * 撤销历史永久封锁，这是设计上的保护而非缺陷。
  */
 export async function acceptConfirmableProposalAction(
-  store: WorkspaceStore,
+  store: ProposalSlice,
   proposalId: string,
 ): Promise<boolean> {
   if (!store.projectId) return false
+  const projectId = store.projectId
+  const session = store.projectSessionId
+  const isCurrent = (): boolean =>
+    store.projectSessionId === session && store.projectId === projectId
   store.error = null
   try {
     await acceptProposal(proposalId)
@@ -214,11 +243,13 @@ export async function acceptConfirmableProposalAction(
     // 接受会写入不可撤销 barrier（ACCEPT_AGENT_PROPOSAL），撤销可用性
     // 必须重新读取：refreshWorkspace 本身不刷新这组按钮。
     await store.refreshUndoRedoAvailability()
+    if (!isCurrent()) return false
     store.pendingConfirmableProposals = store.pendingConfirmableProposals
       .filter((proposal) => proposal.proposalId !== proposalId)
     store.feedback = '已接受提案，Graph 已更新'
     return true
   } catch (err) {
+    if (!isCurrent()) return false
     store.error = toDisplayError(err)
     return false
   }
@@ -226,19 +257,25 @@ export async function acceptConfirmableProposalAction(
 
 /** 拒绝一个待确认提案：图保持不变，提案进入 REJECTED 终态。 */
 export async function rejectConfirmableProposalAction(
-  store: WorkspaceStore,
+  store: ProposalSlice,
   proposalId: string,
 ): Promise<boolean> {
   if (!store.projectId) return false
+  const projectId = store.projectId
+  const session = store.projectSessionId
+  const isCurrent = (): boolean =>
+    store.projectSessionId === session && store.projectId === projectId
   store.error = null
   try {
     await rejectProposal(proposalId)
     await store.refreshWorkspace()
+    if (!isCurrent()) return false
     store.pendingConfirmableProposals = store.pendingConfirmableProposals
       .filter((proposal) => proposal.proposalId !== proposalId)
     store.feedback = '已拒绝提案，Graph 保持不变'
     return true
   } catch (err) {
+    if (!isCurrent()) return false
     store.error = toDisplayError(err)
     return false
   }
@@ -251,20 +288,26 @@ export async function rejectConfirmableProposalAction(
  * proposal A.
  */
 export async function rejectNodeQueryProposalAction(
-  store: WorkspaceStore,
+  store: ProposalSlice,
   proposalId: string,
 ): Promise<boolean> {
   if (!store.projectId) return false
+  const projectId = store.projectId
+  const session = store.projectSessionId
+  const isCurrent = (): boolean =>
+    store.projectSessionId === session && store.projectId === projectId
   store.error = null
   try {
     await rejectProposal(proposalId)
     await store.loadNodeQueryProposals()
+    if (!isCurrent()) return false
     if (store.nodeQuery && store.nodeQuery.proposalId === proposalId) {
       store.nodeQuery = { ...store.nodeQuery, status: 'REJECTED', proposalStatus: 'REJECTED' }
     }
     store.feedback = '已拒绝提案，Graph 保持不变'
     return true
   } catch (err) {
+    if (!isCurrent()) return false
     store.error = toDisplayError(err)
     return false
   }

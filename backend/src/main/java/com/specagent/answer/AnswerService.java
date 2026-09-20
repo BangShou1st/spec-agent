@@ -4,7 +4,6 @@ import com.specagent.common.Ids;
 import com.specagent.common.SharedQuestionStatePort;
 import com.specagent.node.Node;
 import com.specagent.node.NodeRepository;
-import com.specagent.project.ProjectRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,16 +32,16 @@ public class AnswerService {
     private final AnswerRepository answerRepository;
     private final NodeRepository nodeRepository;
     private final SharedQuestionStatePort sharedQuestionStatePort;
-    private final ProjectRepository projectRepository;
+    private final ProjectRowLockPort projectRowLock;
 
     public AnswerService(AnswerRepository answerRepository,
                          NodeRepository nodeRepository,
                          SharedQuestionStatePort sharedQuestionStatePort,
-                         ProjectRepository projectRepository) {
+                         ProjectRowLockPort projectRowLock) {
         this.answerRepository = answerRepository;
         this.nodeRepository = nodeRepository;
         this.sharedQuestionStatePort = sharedQuestionStatePort;
-        this.projectRepository = projectRepository;
+        this.projectRowLock = projectRowLock;
     }
 
     /**
@@ -85,7 +84,7 @@ public class AnswerService {
         // project -> node order) so the answer INSERT's foreign-key key-share
         // on the project row can never deadlock against an Undo that holds the
         // project lock while waiting for this node.
-        projectRepository.lockById(projectId);
+        projectRowLock.lockProject(projectId);
         // Serialize concurrent finalization of the same canonical node: after
         // this lock the node-wide existence check below is authoritative.
         nodeRepository.lockById(nodeId);

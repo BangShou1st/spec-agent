@@ -123,9 +123,18 @@ describe('WorkspaceView unified center status', () => {
   it('renders only the reconcile CTA for an unknown outcome', async () => {
     mockViews()
     const { wrapper, store } = await mountWorkspace()
-    store.answerOutcomeUnknown = true
-    store.repairableAnswerId = 'a1'
-    store.resubmitAnswerPayload = { selectedOptionId: null, freeText: 'x' }
+    store.answerRunSessions.push({
+      clientRequestId: 'req-1',
+      projectId: 'p1',
+      routeId: 'r1',
+      nodeId: 'n2',
+      payload: { selectedOptionId: null, freeText: 'x' },
+      runId: 'run-1',
+      phase: null,
+      runStatus: 'FAILED',
+      status: 'UNKNOWN',
+      repairableAnswerId: null,
+    })
     await flushPromises()
 
     expect(wrapper.find('[data-test="recovery-notice"]').exists()).toBe(true)
@@ -141,8 +150,18 @@ describe('WorkspaceView unified center status', () => {
   it('renders resume CTA and never resubmit when the answer is saved', async () => {
     mockViews()
     const { wrapper, store } = await mountWorkspace()
-    store.repairableAnswerId = 'a1'
-    store.resubmitAnswerPayload = { selectedOptionId: null, freeText: 'x' }
+    store.answerRunSessions.push({
+      clientRequestId: 'req-1',
+      projectId: 'p1',
+      routeId: 'r1',
+      nodeId: 'n2',
+      payload: { selectedOptionId: null, freeText: 'x' },
+      runId: 'run-1',
+      phase: null,
+      runStatus: 'FAILED',
+      status: 'REPAIRABLE',
+      repairableAnswerId: 'a1',
+    })
     await flushPromises()
 
     expect(wrapper.text()).toContain('回答已经保存')
@@ -191,10 +210,19 @@ describe('WorkspaceView unified center status', () => {
   it('hides the one-line status once the run reaches a terminal phase', async () => {
     mockViews()
     const { wrapper, store } = await mountWorkspace()
-    // 成功链终态：即使 answerRunId 仍保留，也不常驻“已完成”。
-    store.answerRunId = 'run-done'
-    store.answerRunStatus = 'SUCCEEDED'
-    store.answerRunPhase = 'COMPLETED'
+    // 成功链终态：即使 run 记录仍保留，也不常驻“已完成”。
+    store.answerRunSessions.push({
+      clientRequestId: 'req-1',
+      projectId: 'p1',
+      routeId: 'r1',
+      nodeId: 'n2',
+      payload: { selectedOptionId: null, freeText: null },
+      runId: 'run-done',
+      phase: 'COMPLETED',
+      runStatus: 'SUCCEEDED',
+      status: 'RUNNING',
+      repairableAnswerId: null,
+    })
     await flushPromises()
     expect(wrapper.find('[data-test="agent-status"]').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('已完成')

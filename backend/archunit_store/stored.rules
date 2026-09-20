@@ -1,3 +1,3 @@
 #
-#Sun Sep 20 03:19:10 CST 2026
-slices\ matching\ 'com.specagent.(*)..'\ should\ be\ free\ of\ cycles,\ because\ package-level\ cycles\ must\ be\ broken\ explicitly;\ the\ 7\ historical\ cycles\ are\ frozen\ in\ archunit_store\ and\ any\ newly\ introduced\ cycle\ fails\ this\ rule=a5f48322-70a8-4486-b6de-e18c401ac182
+#Sun Sep 20 15:43:15 CST 2026
+slices\ matching\ 'com.specagent.(*)..'\ should\ be\ free\ of\ cycles,\ because\ package-level\ cycles\ must\ be\ broken\ explicitly;\ the\ 7\ historical\ cycles\ are\ frozen\ in\ archunit_store\ and\ any\ newly\ introduced\ cycle\ fails\ this\ rule=ddf8282f-847c-401a-b8a7-780d3a2706ed

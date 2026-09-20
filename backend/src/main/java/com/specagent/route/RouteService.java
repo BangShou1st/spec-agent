@@ -1,14 +1,11 @@
 package com.specagent.route;
 
 import com.specagent.common.Ids;
-import com.specagent.graph.GraphOperation;
 import com.specagent.node.Node;
 import com.specagent.node.NodeKind;
 import com.specagent.node.NodeOption;
 import com.specagent.node.NodeRepository;
 import com.specagent.node.NodeService;
-import com.specagent.project.Project;
-import com.specagent.project.ProjectRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,27 +30,24 @@ import java.util.UUID;
 public class RouteService {
 
     private final RouteRepository routeRepository;
-    private final ProjectRepository projectRepository;
+    private final ProjectActiveRoutePort projectPort;
     private final NodeRepository nodeRepository;
     private final NodeService nodeService;
     private final RouteHistoryResolver routeHistoryResolver;
-    private final com.specagent.graph.GraphOperationRepository graphOperationRepository;
-    private final com.specagent.graph.GraphInvariantValidator graphInvariantValidator;
+    private final RouteGraphSupportPort graphSupport;
 
     public RouteService(RouteRepository routeRepository,
-                        ProjectRepository projectRepository,
+                        ProjectActiveRoutePort projectPort,
                         NodeRepository nodeRepository,
                         NodeService nodeService,
                         RouteHistoryResolver routeHistoryResolver,
-                        com.specagent.graph.GraphOperationRepository graphOperationRepository,
-                        com.specagent.graph.GraphInvariantValidator graphInvariantValidator) {
+                        RouteGraphSupportPort graphSupport) {
         this.routeRepository = routeRepository;
-        this.projectRepository = projectRepository;
+        this.projectPort = projectPort;
         this.nodeRepository = nodeRepository;
         this.nodeService = nodeService;
         this.routeHistoryResolver = routeHistoryResolver;
-        this.graphOperationRepository = graphOperationRepository;
-        this.graphInvariantValidator = graphInvariantValidator;
+        this.graphSupport = graphSupport;
     }
 
     public Route createRoute(UUID projectId, RouteLifecycleStatus status, String label) {
@@ -83,7 +77,7 @@ public class RouteService {
      */
     @Transactional
     public void transitionLifecycle(UUID projectId, UUID routeId, RouteLifecycleStatus target) {
-        projectRepository.lockById(projectId);
+        projectPort.lockProject(projectId);
         Route route = requireRouteInProject(projectId, routeId);
         requireTransition(route, target);
         routeRepository.updateLifecycle(routeId, target, Instant.now());
@@ -92,8 +86,8 @@ public class RouteService {
     /** Active-route pointer restore used by undo/redo compensations. */
     @Transactional
     public void setActiveRoutePointer(UUID projectId, UUID routeId) {
-        projectRepository.lockById(projectId);
-        projectRepository.updateActiveRoute(projectId, routeId, Instant.now());
+        projectPort.lockProject(projectId);
+        projectPort.updateActiveRoute(projectId, routeId, Instant.now());
         assertActiveRouteInvariant(projectId);
     }
 
@@ -123,14 +117,14 @@ public class RouteService {
      */
     @Transactional
     public void setActiveRoute(UUID projectId, UUID routeId) {
-        projectRepository.lockById(projectId);
+        projectPort.lockProject(projectId);
         Route route = requireRouteInProject(projectId, routeId);
         if (route.lifecycleStatus() != RouteLifecycleStatus.OPEN) {
             throw new IllegalStateException(
                     "Only an OPEN route can become active: " + routeId
                             + " is " + route.lifecycleStatus().code());
         }
-        projectRepository.updateActiveRoute(projectId, routeId, Instant.now());
+        projectPort.updateActiveRoute(projectId, routeId, Instant.now());
         assertActiveRouteInvariant(projectId);
     }
 
@@ -141,7 +135,7 @@ public class RouteService {
      */
     @Transactional
     public void archiveRoute(UUID projectId, UUID routeId) {
-        projectRepository.lockById(projectId);
+        projectPort.lockProject(projectId);
         Route route = requireRouteInProject(projectId, routeId);
         requireTransition(route, RouteLifecycleStatus.ARCHIVED);
         UUID previousActiveRouteId = currentActiveRouteId(projectId);
@@ -159,7 +153,7 @@ public class RouteService {
      */
     @Transactional
     public void softDeleteRoute(UUID projectId, UUID routeId) {
-        projectRepository.lockById(projectId);
+        projectPort.lockProject(projectId);
         Route route = requireRouteInProject(projectId, routeId);
         requireTransition(route, RouteLifecycleStatus.DELETED);
         UUID previousActiveRouteId = currentActiveRouteId(projectId);
@@ -176,28 +170,25 @@ public class RouteService {
      */
     @Transactional
     public void restoreRoute(UUID projectId, UUID routeId) {
-        projectRepository.lockById(projectId);
+        projectPort.lockProject(projectId);
         Route route = requireRouteInProject(projectId, routeId);
         requireTransition(route, RouteLifecycleStatus.OPEN);
         UUID previousActiveRouteId = currentActiveRouteId(projectId);
         transitionLifecycle(projectId, routeId, RouteLifecycleStatus.OPEN);
-        projectRepository.updateActiveRoute(projectId, routeId, Instant.now());
+        projectPort.updateActiveRoute(projectId, routeId, Instant.now());
         assertActiveRouteInvariant(projectId);
         appendLifecycleOperation(projectId, routeId, route.lifecycleStatus(),
                 previousActiveRouteId);
     }
 
     private UUID currentActiveRouteId(UUID projectId) {
-        return projectRepository.findById(projectId)
-                .map(Project::activeRouteId)
-                .orElse(null);
+        return projectPort.findActiveRouteId(projectId).orElse(null);
     }
 
     private void appendLifecycleOperation(UUID projectId, UUID routeId,
                                           RouteLifecycleStatus fromStatus,
                                           UUID previousActiveRouteId) {
-        graphOperationRepository.append(projectId, GraphOperation.Actor.USER,
-                GraphOperation.Type.ROUTE_LIFECYCLE, List.of(routeId),
+        graphSupport.appendRouteOperation(projectId, RouteOperationKind.ROUTE_LIFECYCLE, List.of(routeId),
                 Map.of("routeId", routeId.toString(),
                        "fromStatus", fromStatus.code(),
                        "previousActiveRouteId",
@@ -225,7 +216,7 @@ public class RouteService {
         // reads the source route lifecycle and creates a new Active route, so
         // it must hold the project-row lock before any state read (order:
         // project → node/route → mutation).
-        projectRepository.lockById(projectId);
+        projectPort.lockProject(projectId);
         Node sourceNode = nodeRepository.findById(sourceNodeId)
                 .orElseThrow(() -> new IllegalArgumentException("Node not found: " + sourceNodeId));
         if (!sourceNode.projectId().equals(projectId)) {
@@ -234,7 +225,7 @@ public class RouteService {
         }
 
         Route sourceRoute = requireExplorationSource(projectId, sourceRouteId);
-        graphInvariantValidator.validateRouteProvenance(sourceRouteId);
+        graphSupport.validateRouteProvenance(sourceRouteId);
         List<UUID> sourceLineage = routeHistoryResolver.resolveLineage(sourceRoute.tipNodeId());
         // 分支点必须是本路线的成员:谱系上的节点,或挂在谱系节点下的派生
         // 知识/资源(它们不出现在 tip 父链上,但属于本路线)。
@@ -259,9 +250,8 @@ public class RouteService {
         routeRepository.save(forkRoute);
         routeHistoryResolver.snapshotInheritedPrefix(routeId, sourceRouteId, sourceNodeId, true);
         UUID previousActiveRouteId = currentActiveRouteId(projectId);
-        projectRepository.updateActiveRoute(projectId, routeId, now);
-        graphOperationRepository.append(projectId, GraphOperation.Actor.USER,
-                GraphOperation.Type.ROUTE_FORK, List.of(routeId),
+        projectPort.updateActiveRoute(projectId, routeId, now);
+        graphSupport.appendRouteOperation(projectId, RouteOperationKind.ROUTE_FORK, List.of(routeId),
                 Map.of("routeId", routeId.toString(),
                        "sourceRouteId", sourceRouteId.toString(),
                        "previousActiveRouteId",
@@ -284,7 +274,7 @@ public class RouteService {
     @Transactional
     public Route startRouteFromNode(UUID projectId, UUID nodeId, String label) {
         // Serialize like fork: project lock before any read/mutation.
-        projectRepository.lockById(projectId);
+        projectPort.lockProject(projectId);
         Node node = nodeRepository.findById(nodeId)
                 .orElseThrow(() -> new IllegalArgumentException("Node not found: " + nodeId));
         if (!node.projectId().equals(projectId)) {
@@ -312,9 +302,8 @@ public class RouteService {
                 null, null, null, null, now, now);
         routeRepository.save(route);
         UUID previousActiveRouteId = currentActiveRouteId(projectId);
-        projectRepository.updateActiveRoute(projectId, routeId, now);
-        graphOperationRepository.append(projectId, GraphOperation.Actor.USER,
-                GraphOperation.Type.ROUTE_START, List.of(routeId),
+        projectPort.updateActiveRoute(projectId, routeId, now);
+        graphSupport.appendRouteOperation(projectId, RouteOperationKind.ROUTE_START, List.of(routeId),
                 Map.of("routeId", routeId.toString(),
                        "previousActiveRouteId",
                        previousActiveRouteId == null ? "" : previousActiveRouteId.toString()),
@@ -337,7 +326,7 @@ public class RouteService {
                                   UUID sourceRouteId,
                                   UUID targetNodeId,
                                   String label) {
-        projectRepository.lockById(projectId);
+        projectPort.lockProject(projectId);
         Node targetNode = requireNodeInProject(projectId, targetNodeId);
         Route sourceRoute = requireExplorationSource(projectId, sourceRouteId);
         List<UUID> sourceLineage = routeHistoryResolver.resolveLineage(sourceRoute.tipNodeId());
@@ -346,7 +335,7 @@ public class RouteService {
                 .noneMatch(answer -> answer.nodeId().equals(targetNodeId))) {
             throw new IllegalStateException("Re-answer target has no finalized answer: " + targetNodeId);
         }
-        graphInvariantValidator.validateRouteProvenance(sourceRouteId);
+        graphSupport.validateRouteProvenance(sourceRouteId);
 
         UUID routeId = Ids.random();
         Instant now = Instant.now();
@@ -369,9 +358,8 @@ public class RouteService {
                 targetNode.question(), targetNode.purpose(), targetNode.options(),
                 targetNode.allowFreeAnswer(), targetNode.allowMultiSelect());
         UUID previousActiveRouteId = currentActiveRouteId(projectId);
-        projectRepository.updateActiveRoute(projectId, routeId, now);
-        graphOperationRepository.append(projectId, GraphOperation.Actor.USER,
-                GraphOperation.Type.ROUTE_REANSWER, List.of(routeId, clonedNode.id()),
+        projectPort.updateActiveRoute(projectId, routeId, now);
+        graphSupport.appendRouteOperation(projectId, RouteOperationKind.ROUTE_REANSWER, List.of(routeId, clonedNode.id()),
                 Map.of("routeId", routeId.toString(),
                        "sourceRouteId", sourceRouteId.toString(),
                        "previousActiveRouteId",
@@ -427,13 +415,13 @@ public class RouteService {
         // project-row lock is taken before any state read. The stale-tip check
         // happens under this lock, so a concurrent continuation can never
         // advance the source tip between the decision and the commit.
-        projectRepository.lockById(projectId);
+        projectPort.lockProject(projectId);
         Node targetNode = requireNodeInProject(projectId, targetNodeId);
         if (targetNode.parentNodeId() == null) {
             throw new IllegalStateException("Root node replacement is not supported");
         }
         Route sourceRoute = requireExplorationSource(projectId, sourceRouteId);
-        graphInvariantValidator.validateRouteProvenance(sourceRouteId);
+        graphSupport.validateRouteProvenance(sourceRouteId);
         // Re-verify under the project lock that the source has not moved since
         // the frozen decision: the tip must still be exactly the expected one,
         // and the target must still sit on that exact source lineage.
@@ -483,11 +471,11 @@ public class RouteService {
         if (sourceRoute.lifecycleStatus() == RouteLifecycleStatus.OPEN) {
             markRouteSuperseded(sourceRouteId);
         }
-        projectRepository.updateActiveRoute(projectId, replacementRouteId, now);
+        projectPort.updateActiveRoute(projectId, replacementRouteId, now);
 
-        graphOperationRepository.append(projectId, GraphOperation.Actor.USER,
-                GraphOperation.Type.ROUTE_REGENERATE, List.of(replacementRouteId, replacementNode.id()),
-                Map.of("routeId", replacementRouteId.toString(),
+        graphSupport.appendRouteOperation(projectId, RouteOperationKind.ROUTE_REGENERATE,
+                List.of(replacementRouteId, replacementNode.id()),
+                Map.<String, Object>of("routeId", replacementRouteId.toString(),
                        "sourceRouteId", sourceRouteId.toString(),
                        "sourceWasOpen", sourceWasOpen,
                        "previousActiveRouteId",
@@ -502,7 +490,7 @@ public class RouteService {
                 .orElseThrow(() -> new IllegalStateException("Source route not found after replacement"));
         Route updatedReplacement = routeRepository.findById(replacementRouteId)
                 .orElseThrow(() -> new IllegalStateException("Replacement route not found after commit"));
-        return new RegenerateResult(updatedSource, updatedReplacement, replacementNode, null);
+        return new RegenerateResult(updatedSource, updatedReplacement, replacementNode);
     }
 
     /**
@@ -599,10 +587,11 @@ public class RouteService {
     }
 
     private void clearActiveRouteIfMatches(UUID projectId, UUID routeId) {
-        Project project = projectRepository.findById(projectId)
-                .orElseThrow(() -> new IllegalArgumentException("Project not found: " + projectId));
-        if (project.activeRouteId() != null && project.activeRouteId().equals(routeId)) {
-            projectRepository.updateActiveRoute(projectId, null, Instant.now());
+        // Port contract: a missing project throws inside the port; an existing
+        // project without an active route yields null here (original semantics).
+        UUID activeRouteId = projectPort.findActiveRouteId(projectId).orElse(null);
+        if (activeRouteId != null && activeRouteId.equals(routeId)) {
+            projectPort.updateActiveRoute(projectId, null, Instant.now());
         }
     }
 
@@ -618,9 +607,9 @@ public class RouteService {
      * corruption, and is surfaced as a stable {@code IllegalStateException}.
      */
     private void assertActiveRouteInvariant(UUID projectId) {
-        Project project = projectRepository.findById(projectId)
-                .orElseThrow(() -> new IllegalArgumentException("Project not found: " + projectId));
-        UUID activeRouteId = project.activeRouteId();
+        // Port contract: a missing project throws inside the port; an existing
+        // project without an active route yields null here (original semantics).
+        UUID activeRouteId = projectPort.findActiveRouteId(projectId).orElse(null);
         if (activeRouteId == null) {
             return;
         }

@@ -1,6 +1,8 @@
 package com.specagent.project;
 
 import com.specagent.common.Maps;
+import com.specagent.answer.ProjectRowLockPort;
+import com.specagent.route.ProjectActiveRoutePort;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -12,8 +14,14 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * Implements the route-side {@link ProjectActiveRoutePort} so the route domain
+ * can serialize on the project row and maintain the active-route pointer
+ * without depending on this package (dependency inversion; the route side of
+ * project &lt;-&gt; route stays acyclic).
+ */
 @Repository
-public class ProjectRepository {
+public class ProjectRepository implements ProjectActiveRoutePort, ProjectRowLockPort {
 
     private final NamedParameterJdbcTemplate jdbcTemplate;
     private final RowMapper<Project> rowMapper;
@@ -85,6 +93,20 @@ public class ProjectRepository {
         if (locked.isEmpty()) {
             throw new IllegalArgumentException("Project not found: " + id);
         }
+    }
+
+    @Override
+    public void lockProject(UUID projectId) {
+        lockById(projectId);
+    }
+
+    @Override
+    public Optional<UUID> findActiveRouteId(UUID projectId) {
+        // Contract: a missing PROJECT still throws (matching findById-based
+        // callers); an existing project without an active route yields empty.
+        Project project = findById(projectId)
+                .orElseThrow(() -> new IllegalArgumentException("Project not found: " + projectId));
+        return Optional.ofNullable(project.activeRouteId());
     }
 
     /**

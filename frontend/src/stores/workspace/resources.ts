@@ -6,6 +6,10 @@
  * Every function is the verbatim action body lifted out of `workspaceStore.ts`
  * with `this` replaced by the store instance passed in as the first argument.
  * The store keeps the action names and delegates, so no caller changes.
+ *
+ * Every async response is validated against the project session captured at
+ * start (see `captureProjectSession`): a slow command must never write its
+ * feedback or error into a different project era.
  */
 import {
   appendContinuation,
@@ -18,7 +22,8 @@ import {
 } from '@/api/graphCommands'
 import { toDisplayError } from '@/api/displayError'
 import { startRouteFromNode } from '@/api/routes'
-import type { WorkspaceStore } from '../workspaceStore'
+import type { ResourceSlice } from './slices'
+import { captureProjectSession } from './shared'
 
 /**
  * Adds a user-authored idea as a standalone (floating) draft — zero
@@ -27,25 +32,34 @@ import type { WorkspaceStore } from '../workspaceStore'
  * context route id is optional (null context is legal). Returns the
  * created node id, or null on failure.
  */
-export async function createIdeaAction(store: WorkspaceStore): Promise<string | null> {
+export async function createIdeaAction(store: ResourceSlice): Promise<string | null> {
   if (!store.projectId || store.graphCommandPending) return null
   const activeRouteId = store.activeState?.activeRoute?.id ?? null
+  const { projectId, isCurrent } = captureProjectSession(store)
   store.graphCommandPending = true
   store.error = null
   try {
-    const created = await createFloatingDraftNode(store.projectId, activeRouteId, {
+    const created = await createFloatingDraftNode(projectId, activeRouteId, {
       subtype: 'IDEA',
       content: {},
     })
+    if (!isCurrent()) return null
     store.feedback = '已创建想法，双击卡片直接编辑'
     await store.refreshWorkspace()
+    if (!isCurrent()) return null
     await store.refreshUndoRedoAvailability()
     return created.id
   } catch (err) {
+    if (!isCurrent()) return null
     store.error = toDisplayError(err)
     return null
   } finally {
-    store.graphCommandPending = false
+    // Only the owning session releases the lock: a stale command's cleanup
+    // must not release the NEW session's graph-command lock (beginProject
+    // has already reset it on switch).
+    if (isCurrent()) {
+      store.graphCommandPending = false
+    }
   }
 }
 
@@ -55,27 +69,36 @@ export async function createIdeaAction(store: WorkspaceStore): Promise<string | 
  * pretends history was rewritten.
  */
 export async function continueFromNodeAction(
-  store: WorkspaceStore,
+  store: ResourceSlice,
   nodeId: string,
   routeId: string,
 ): Promise<boolean> {
   if (!store.projectId || store.graphCommandPending) return false
+  const { projectId, isCurrent } = captureProjectSession(store)
   store.graphCommandPending = true
   store.error = null
   try {
-    const created = await appendContinuation(store.projectId, nodeId, routeId, {
+    const created = await appendContinuation(projectId, nodeId, routeId, {
       subtype: 'NOTE',
       content: {},
     })
+    if (!isCurrent()) return false
     store.feedback = created.branched ? '已从该节点创建探索分支' : '已在当前路线继续'
     await store.refreshWorkspace()
+    if (!isCurrent()) return false
     await store.refreshUndoRedoAvailability()
     return true
   } catch (err) {
+    if (!isCurrent()) return false
     store.error = toDisplayError(err)
     return false
   } finally {
-    store.graphCommandPending = false
+    // Only the owning session releases the lock: a stale command's cleanup
+    // must not release the NEW session's graph-command lock (beginProject
+    // has already reset it on switch).
+    if (isCurrent()) {
+      store.graphCommandPending = false
+    }
   }
 }
 
@@ -89,7 +112,7 @@ export async function continueFromNodeAction(
  * （见 connectFloatingNode / 画布 connect-floating 事件）。
  */
 export async function draftQuestionFromNodeAction(
-  store: WorkspaceStore,
+  store: ResourceSlice,
   nodeId: string,
   readingRouteId?: string | null,
 ): Promise<boolean> {
@@ -101,14 +124,18 @@ export async function draftQuestionFromNodeAction(
     .map((route) => route.id)
   if (membershipRouteIds.length === 0) {
     // 浮动节点：开新独立路线并起草（新路线已是 Active 路线）。
+    const { projectId, isCurrent } = captureProjectSession(store)
     store.graphCommandPending = true
     store.error = null
     try {
-      const result = await startRouteFromNode(store.projectId, nodeId, null)
+      const result = await startRouteFromNode(projectId, nodeId, null)
+      if (!isCurrent()) return false
       store.feedback = `已创建「${result.route.label ?? '新路线'}」，正在起草第一个问题…`
       await store.refreshWorkspace()
+      if (!isCurrent()) return false
       store.graphCommandPending = false
       const drafted = await store.draftQuestion()
+      if (!isCurrent()) return false
       if (drafted) {
         store.setFocusAfterMutation({
           routeId: result.route.id,
@@ -117,6 +144,7 @@ export async function draftQuestionFromNodeAction(
       }
       return drafted
     } catch (err) {
+      if (!isCurrent()) return false
       store.error = toDisplayError(err)
       return false
     } finally {
@@ -144,28 +172,37 @@ export async function draftQuestionFromNodeAction(
  * 才发生的独立动作（见 connectFloatingNode）。因此这里不再需要 Active 路线。
  */
 export async function createFloatingResourceAction(
-  store: WorkspaceStore,
+  store: ResourceSlice,
   subtype: 'TEXT' | 'URL' | 'FILE' | 'IMAGE' | 'REPOSITORY' | 'API_DOCUMENTATION',
   content: Record<string, unknown>,
 ): Promise<boolean> {
   if (!store.projectId || store.graphCommandPending) return false
+  const { projectId, isCurrent } = captureProjectSession(store)
   store.graphCommandPending = true
   store.error = null
   try {
-    await createFloatingDraftNode(store.projectId, store.activeRoute?.id ?? null, {
+    await createFloatingDraftNode(projectId, store.activeRoute?.id ?? null, {
       subtype,
       content,
       nodeKind: 'RESOURCE',
     })
+    if (!isCurrent()) return false
     store.feedback = '已添加独立资源节点，连线到路线末端即可接入'
     await store.refreshWorkspace()
+    if (!isCurrent()) return false
     await store.refreshUndoRedoAvailability()
     return true
   } catch (err) {
+    if (!isCurrent()) return false
     store.error = toDisplayError(err)
     return false
   } finally {
-    store.graphCommandPending = false
+    // Only the owning session releases the lock: a stale command's cleanup
+    // must not release the NEW session's graph-command lock (beginProject
+    // has already reset it on switch).
+    if (isCurrent()) {
+      store.graphCommandPending = false
+    }
   }
 }
 
@@ -174,48 +211,66 @@ export async function createFloatingResourceAction(
  * 作为父节点，且不接受未答题的父节点 —— 手画的一条线不会改写历史。
  */
 export async function connectFloatingNodeAction(
-  store: WorkspaceStore,
+  store: ResourceSlice,
   nodeId: string,
   routeId: string,
   parentNodeId: string | null,
 ): Promise<boolean> {
   if (!store.projectId || store.graphCommandPending) return false
+  const { projectId, isCurrent } = captureProjectSession(store)
   store.graphCommandPending = true
   store.error = null
   try {
-    await connectFloatingNodeCommand(store.projectId, nodeId, routeId, parentNodeId)
+    await connectFloatingNodeCommand(projectId, nodeId, routeId, parentNodeId)
+    if (!isCurrent()) return false
     store.feedback = '已接入路线'
     await store.refreshWorkspace()
+    if (!isCurrent()) return false
     await store.refreshUndoRedoAvailability()
     return true
   } catch (err) {
+    if (!isCurrent()) return false
     store.error = toDisplayError(err)
     return false
   } finally {
-    store.graphCommandPending = false
+    // Only the owning session releases the lock: a stale command's cleanup
+    // must not release the NEW session's graph-command lock (beginProject
+    // has already reset it on switch).
+    if (isCurrent()) {
+      store.graphCommandPending = false
+    }
   }
 }
 
 /** 把路线末端节点断开为浮动节点（内容保留，只解除归属）。 */
 export async function disconnectNodeAction(
-  store: WorkspaceStore,
+  store: ResourceSlice,
   nodeId: string,
   routeId: string,
 ): Promise<boolean> {
   if (!store.projectId || store.graphCommandPending) return false
+  const { projectId, isCurrent } = captureProjectSession(store)
   store.graphCommandPending = true
   store.error = null
   try {
-    await disconnectNodeCommand(store.projectId, nodeId, routeId)
+    await disconnectNodeCommand(projectId, nodeId, routeId)
+    if (!isCurrent()) return false
     store.feedback = '已断开该节点，它现在是独立节点'
     await store.refreshWorkspace()
+    if (!isCurrent()) return false
     await store.refreshUndoRedoAvailability()
     return true
   } catch (err) {
+    if (!isCurrent()) return false
     store.error = toDisplayError(err)
     return false
   } finally {
-    store.graphCommandPending = false
+    // Only the owning session releases the lock: a stale command's cleanup
+    // must not release the NEW session's graph-command lock (beginProject
+    // has already reset it on switch).
+    if (isCurrent()) {
+      store.graphCommandPending = false
+    }
   }
 }
 
@@ -225,13 +280,14 @@ export async function disconnectNodeAction(
  * metadata next to the visible text, and null clears an existing binding.
  */
 export async function reviseDraftAction(
-  store: WorkspaceStore,
+  store: ResourceSlice,
   nodeId: string,
   subtype: string,
   text: string,
   skillId: string | null = null,
 ): Promise<boolean> {
   if (!store.projectId || store.graphCommandPending) return false
+  const { projectId, isCurrent } = captureProjectSession(store)
   store.graphCommandPending = true
   store.error = null
   try {
@@ -239,64 +295,90 @@ export async function reviseDraftAction(
     if (skillId) {
       content.skillId = skillId
     }
-    await reviseDraftNode(store.projectId, nodeId, {
+    await reviseDraftNode(projectId, nodeId, {
       subtype,
       content,
     })
+    if (!isCurrent()) return false
     store.feedback = '草稿已保存'
     await store.refreshWorkspace()
+    if (!isCurrent()) return false
     await store.refreshUndoRedoAvailability()
     return true
   } catch (err) {
+    if (!isCurrent()) return false
     store.error = toDisplayError(err)
     return false
   } finally {
-    store.graphCommandPending = false
+    // Only the owning session releases the lock: a stale command's cleanup
+    // must not release the NEW session's graph-command lock (beginProject
+    // has already reset it on switch).
+    if (isCurrent()) {
+      store.graphCommandPending = false
+    }
   }
 }
 
 /** Confirms claim-like knowledge content (PROPOSED -> CONFIRMED). */
 export async function confirmKnowledgeAction(
-  store: WorkspaceStore,
+  store: ResourceSlice,
   nodeId: string,
 ): Promise<boolean> {
   if (!store.projectId || store.graphCommandPending) return false
+  const { projectId, isCurrent } = captureProjectSession(store)
   store.graphCommandPending = true
   store.error = null
   try {
-    await setKnowledgeStatus(store.projectId, nodeId, 'CONFIRMED')
+    await setKnowledgeStatus(projectId, nodeId, 'CONFIRMED')
+    if (!isCurrent()) return false
     store.feedback = '已确认该内容'
     await store.refreshWorkspace()
+    if (!isCurrent()) return false
     await store.refreshUndoRedoAvailability()
     return true
   } catch (err) {
+    if (!isCurrent()) return false
     store.error = toDisplayError(err)
     return false
   } finally {
-    store.graphCommandPending = false
+    // Only the owning session releases the lock: a stale command's cleanup
+    // must not release the NEW session's graph-command lock (beginProject
+    // has already reset it on switch).
+    if (isCurrent()) {
+      store.graphCommandPending = false
+    }
   }
 }
 
 /** Creates an explicit user semantic relation through the Runtime command. */
 export async function createSemanticRelationAction(
-  store: WorkspaceStore,
+  store: ResourceSlice,
   sourceNodeId: string,
   targetNodeId: string,
   relationType: 'RELATED_TO' | 'DEPENDS_ON' | 'DERIVED_FROM' | 'CONFLICTS_WITH' | 'SUPPORTS',
 ): Promise<boolean> {
   if (!store.projectId || store.graphCommandPending || sourceNodeId === targetNodeId) return false
+  const { projectId, isCurrent } = captureProjectSession(store)
   store.graphCommandPending = true
   store.error = null
   try {
-    await createRelation(store.projectId, sourceNodeId, targetNodeId, relationType)
+    await createRelation(projectId, sourceNodeId, targetNodeId, relationType)
+    if (!isCurrent()) return false
     store.feedback = '已添加语义关系'
     await store.refreshWorkspace()
+    if (!isCurrent()) return false
     await store.refreshUndoRedoAvailability()
     return true
   } catch (err) {
+    if (!isCurrent()) return false
     store.error = toDisplayError(err)
     return false
   } finally {
-    store.graphCommandPending = false
+    // Only the owning session releases the lock: a stale command's cleanup
+    // must not release the NEW session's graph-command lock (beginProject
+    // has already reset it on switch).
+    if (isCurrent()) {
+      store.graphCommandPending = false
+    }
   }
 }

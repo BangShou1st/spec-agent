@@ -21,7 +21,6 @@ import com.specagent.agent.runevent.AgentRunEventService;
 import com.specagent.agent.runevent.AgentRunPhase;
 import com.specagent.agent.runevent.RunProgressRecorder;
 import com.specagent.context.ContextSnapshot;
-import com.specagent.trace.SemanticTraceRecorder;
 import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
@@ -60,7 +59,7 @@ public class DecisionExecutionService {
     private final AgentRunEventService eventService;
     private final StaleContextChecker staleContextChecker;
     private final ActionEligibilityGate actionEligibilityGate;
-    private final SemanticTraceRecorder semanticTraceRecorder;
+    private final AgentTracePort semanticTraceRecorder;
     private final RunProgressRecorder progressRecorder;
 
     public DecisionExecutionService(AgentDecisionEngine decisionEngine,
@@ -71,7 +70,7 @@ public class DecisionExecutionService {
                                     AgentRunEventService eventService,
                                     StaleContextChecker staleContextChecker,
                                     ActionEligibilityGate actionEligibilityGate,
-                                    SemanticTraceRecorder semanticTraceRecorder,
+                                    AgentTracePort semanticTraceRecorder,
                                     RunProgressRecorder progressRecorder) {
         this.decisionEngine = decisionEngine;
         this.policyEngine = policyEngine;

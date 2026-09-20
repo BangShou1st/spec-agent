@@ -511,18 +511,23 @@ describe('workspaceStore', () => {
       operation: 'ANSWER_TIP',
       phase: 'CREATED',
     })
-    mockedGetAgentRun.mockResolvedValue(completedRunView())
+    let resolveRun: (v: AgentRunView) => void = () => undefined
+    mockedGetAgentRun.mockReturnValue(
+      new Promise((resolve) => {
+        resolveRun = resolve
+      }),
+    )
     const store = useWorkspaceStore()
     await store.loadWorkspace('p1')
 
-    const ok = await store.submitAnswer({
+    const pending = store.submitAnswer({
       selectedOptionId: 'opt-a',
           selectedOptionIds: null,
       nodeId: 'node-other-route',
       routeId: 'r2',
     })
+    await vi.waitFor(() => expect(mockedCreateAgentRun).toHaveBeenCalledTimes(1))
 
-    expect(ok).toBe(true)
     // 目标不是运行路线 → sourceRouteId 必须显式带上（后端据此把 run 绑到 r2）。
     expect(mockedCreateAgentRun).toHaveBeenCalledWith('p1', {
       operation: 'ANSWER_TIP',
@@ -533,7 +538,12 @@ describe('workspaceStore', () => {
       sourceRouteId: 'r2',
       idempotencyKey: expect.any(String),
     })
+    // 运行期间，清理身份固定为提交时的显式路线 r2。
     expect(store.submittedRouteIdForCleanup).toBe('r2')
+
+    resolveRun(completedRunView({ runId: 'run-1', routeId: 'r2' }))
+    expect(await pending).toBe(true)
+    expect(store.submittedRouteIdForCleanup).toBeNull()
   })
 
   it('一条路线的运行不会挡住另一条路线（按路线加锁）', async () => {
@@ -1420,27 +1430,78 @@ describe('workspaceStore', () => {
     mockBackendViews(makeActiveState(), makeRequirementState())
     const store = useWorkspaceStore()
     await store.loadWorkspace('p1')
-    store.resubmitAnswerPayload = { freeText: 'retry me' }
-    store.submitting = true
+    // Seed a settled session carrying the failed attempt's resubmit payload.
+    store.answerRunSessions.push({
+      clientRequestId: 'req-resubmit-guard',
+      projectId: 'p1',
+      routeId: store.activeState?.activeRoute?.id ?? null,
+      nodeId: 'n1',
+      payload: { freeText: 'retry me' },
+      runId: null,
+      phase: null,
+      runStatus: 'FAILED',
+      status: 'RESUBMITTABLE',
+      repairableAnswerId: null,
+    })
+    store.routeCommandPending = true
 
     expect(await store.resubmitFailedAnswer()).toBe(false)
     expect(store.resubmitAnswerPayload).toEqual({ freeText: 'retry me' })
     expect(mockedCreateAgentRun).not.toHaveBeenCalled()
   })
 
-  it('does not start spec generation when its baseline read fails', async () => {
+  it('does not start spec generation when its baseline read fails, releases the lock, and can generate afterwards', async () => {
     const active = makeActiveState({
       project: makeProject({ id: 'p1', activeRouteId: 'r1' }),
       activeRoute: makeRoute({ id: 'r1', projectId: 'p1', tipNodeId: 'n1', isActive: true }),
     })
+    const oldSnapshot = makeSpecSnapshot({ id: 'spec-old', routeId: 'r1' })
+    const newSnapshot = makeSpecSnapshot({ id: 'spec-new', routeId: 'r1' })
     mockBackendViews(active, makeRequirementState())
-    mockedListRouteSpecs.mockRejectedValue(new ApiError('read failed', 'NETWORK_ERROR', 0))
+    // FIRST generation: the baseline read fails.
+    mockedListRouteSpecs.mockRejectedValueOnce(new ApiError('read failed', 'NETWORK_ERROR', 0))
     const store = useWorkspaceStore()
     await store.loadWorkspace('p1')
 
     expect(await store.generateSpec()).toBe(false)
+
     expect(mockedCreateAgentRun).not.toHaveBeenCalled()
     expect(store.manualModelRetry).toBeNull()
+    // The failure path released its own generation lock: a later
+    // generation of the SAME session must not be blocked by residue.
+    expect(store.generatingSpec).toBe(false)
+    expect(store.error).not.toBeNull()
+
+    // SECOND generation (recovery): baseline read succeeds and the run
+    // completes — the lock residue must not block it.
+    mockedListRouteSpecs
+      .mockResolvedValueOnce([oldSnapshot])
+      .mockResolvedValueOnce([oldSnapshot, newSnapshot])
+    mockedCreateAgentRun.mockResolvedValue({
+      runId: 'run-spec',
+      operation: 'GENERATE_ARTIFACT',
+      phase: 'CREATED',
+    })
+    mockedGetAgentRun.mockResolvedValue({
+      runId: 'run-spec',
+      projectId: 'p1',
+      routeId: 'r1',
+      operation: 'GENERATE_ARTIFACT',
+      status: 'completed',
+      phase: 'COMPLETED',
+      producedNodeId: null,
+      producedAnswerId: null,
+      producedPatchId: null,
+      producedSpecSnapshotId: 'spec-new',
+    })
+
+    expect(await store.generateSpec()).toBe(true)
+
+    expect(mockedCreateAgentRun).toHaveBeenCalledTimes(1)
+    expect(store.generatingSpec).toBe(false)
+    expect(store.selectedSpecIdByRoute['r1']).toBe('spec-new')
+    expect(store.feedback).toBe('已生成规格快照')
+    expect(store.error).toBeNull()
   })
 
   it('does not create a model retry intent for deterministic non-model failures', async () => {

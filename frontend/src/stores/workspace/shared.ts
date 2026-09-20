@@ -8,6 +8,31 @@
 import type { DisplayError } from '@/api/displayError'
 import { listProposals } from '@/api/graphCommands'
 import type { ProjectProposalSummary } from '@/api/graphCommands'
+import type { ProjectSessionSlice } from './slices'
+
+/**
+ * Captures the project-session identity of the store at the moment an async
+ * action starts. `isCurrent()` must be called after EVERY `await` and before
+ * any store write (including catch/finally paths): it validates BOTH the
+ * project-session counter and the project id, so a slow response for project
+ * A can never write state, feedback, or errors into project B — including
+ * A→B→A switches and same-project reloads, which only the counter
+ * distinguishes.
+ */
+export function captureProjectSession(store: ProjectSessionSlice): {
+  projectId: string
+  isCurrent: () => boolean
+} {
+  const projectId = store.projectId ?? ''
+  const session = store.projectSessionId
+  return {
+    projectId,
+    isCurrent: () =>
+      store.projectSessionId === session
+      && store.projectId === projectId
+      && projectId !== '',
+  }
+}
 
 /**
  * The trigger type that marks a proposal as contextual "Ask AI" output of the

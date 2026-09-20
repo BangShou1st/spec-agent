@@ -71,10 +71,31 @@ public class AnswerCycleRunCommandService {
     public ResponseEntity<AcceptedRunView> createRun(UUID projectId, CreateRunRequest request) {
         String operation = request.operation();
         String idempotencyKey = request.idempotencyKey();
+        // The FULL multi-select list is part of the logical request identity:
+        // two requests that agree only on the first option but differ in the
+        // rest of the selection are different answers and must conflict on
+        // the same idempotency key instead of silently replaying.
+        //
+        // Normalization (mirrors the execution semantics in RunService, where
+        // selectedOptionIds is the authoritative selection in user order and
+        // selectedOptionId stays the legacy first-selection field):
+        // - selectedOptionIds present and non-empty  → used verbatim (user order).
+        // - otherwise selectedOptionId != null       → single-select, [selectedOptionId]
+        //   (same derivation the legacy fingerprint overload always applied, so
+        //   persisted single-select runs keep replaying).
+        // - both absent                              → null (free-text / no selection).
+        // An empty selectedOptionIds list carries no selection semantics and is
+        // normalized to null.
+        List<UUID> effectiveOptionIds =
+                request.selectedOptionIds() != null && !request.selectedOptionIds().isEmpty()
+                        ? request.selectedOptionIds()
+                        : (request.selectedOptionId() != null
+                                ? List.of(request.selectedOptionId())
+                                : null);
         String requestFingerprint = AgentRunRequestFingerprint.forClientRequest(
                 projectId, operation, request.nodeId(), request.sourceRouteId(),
-                request.answerId(), request.selectedOptionId(), request.freeText(),
-                request.persistenceIntent());
+                request.answerId(), request.selectedOptionId(), effectiveOptionIds,
+                request.freeText(), request.persistenceIntent());
 
         var replay = agentRunService.findIdempotentReplay(
                 projectId, idempotencyKey, requestFingerprint);

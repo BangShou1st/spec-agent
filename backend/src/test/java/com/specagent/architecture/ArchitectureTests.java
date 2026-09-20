@@ -441,20 +441,33 @@ class ArchitectureTests {
         // below com.specagent, so a dependency from route.. to node.. and back
         // is reported as the route <-> node cycle.
         //
-        // The repository currently carries 34 slice-cycle violations. They are
-        // the concrete multi-party paths of the 7 package groups the
-        // 2026-09-19 audit documented as known and accepted:
-        //   model <-> settings, model <-> globalassistant, answer <-> graph,
-        //   node <-> route, project <-> route, context <-> route,
-        //   connection <-> mcp
-        // (each pair also participates in larger cycles such as
-        // answer -> graph -> node -> route -> answer, plus the
-        // agent -> model -> globalassistant -> api -> agent cycle created by
-        // GlobalAssistantApplicationService importing api.common.ApiException).
-        // They were left in place by the audit because breaking each one needs
-        // an interface sink or dependency inversion inside a behaviour-sensitive
-        // area (see docs/AUDIT-2026-09-19.md, section "遗留说明" item 3). They
-        // are frozen here so the state cannot silently get worse: this rule
+        // The repository currently carries 2 slice-cycle violations, the
+        // concrete paths of 2 package groups:
+        //   model <-> settings, connection <-> mcp
+        //
+        // History: the 2026-09-19 audit froze 34 violation lines covering 7
+        // package groups (model <-> settings, model <-> globalassistant,
+        // answer <-> graph, node <-> route, project <-> route, context <->
+        // route, connection <-> mcp). The 2026-09-20 pass broke 5 of them by
+        // port sinking / dead-field removal (dependency direction now flows
+        // one way; see AgentTracePort, CompatibilityDecisionSemantics,
+        // RouteGraphSupportPort, ProjectActiveRoutePort, ProjectRowLockPort,
+        // and the RegenerateResult cleanup), shrinking the frozen baseline to
+        // the 2 remaining paths.
+        //
+        // model <-> settings: the inference gateways read settings services
+        // (legitimate read direction), while settings depends on the
+        // model.provider protocol library (adapters, catalogs, probe).
+        // Breaking it needs the provider protocol library extracted into a
+        // neutral package — a wide, behaviour-sensitive move, deferred.
+        //
+        // connection <-> mcp: ConnectionLifecycleService drives McpDiscovery
+        // (legitimate direction), while the MCP runtime reads connection
+        // persistence (ConnectionRepository, McpDiscoveryCacheRepository,
+        // SecretStore). Breaking it needs a connection-store port plus moving
+        // the MCP discovery cache out of connection.persistence — deferred.
+        //
+        // The freeze guarantees neither can silently get worse: this rule
         // fails on any NEW package cycle.
         //
         // ARCHUNIT STORE: violations live in backend/archunit_store. That

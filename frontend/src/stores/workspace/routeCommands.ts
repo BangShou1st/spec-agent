@@ -20,108 +20,131 @@ import {
 } from '@/api/routes'
 import type { RegenerateNodeRequest } from '@/api/types'
 import { useRunRegistryStore } from '@/stores/runRegistryStore'
-import type { WorkspaceStore } from '../workspaceStore'
+import type { RouteCommandSlice } from './slices'
 import type { ManualModelRetryIntent } from './types'
-import { withAnswerableNodeHint } from './shared'
+import { captureProjectSession, withAnswerableNodeHint } from './shared'
 
 export async function activateRouteAction(
-  store: WorkspaceStore,
+  store: RouteCommandSlice,
   routeId: string,
 ): Promise<boolean> {
   if (!store.projectId || store.routeCommandPending || store.submitting || store.drafting) {
     return false
   }
+  const { projectId, isCurrent } = captureProjectSession(store)
   store.routeCommandPending = true
   store.pendingRouteCommand = 'activate'
   store.error = null
   try {
-    await activateRoute(store.projectId, routeId)
+    await activateRoute(projectId, routeId)
     await store.refreshWorkspace()
+    if (!isCurrent()) return false
     store.feedback = '已设为当前路线'
     return true
   } catch (err) {
+    if (!isCurrent()) return false
     store.error = withAnswerableNodeHint(
       toDisplayError(err),
       store.activeState?.activeNode?.question ?? null,
     )
     return false
   } finally {
-    store.routeCommandPending = false
-    store.pendingRouteCommand = null
+    // Only the owning session releases the lock: a stale command's cleanup
+    // must not release the NEW session's route-command lock (beginProject
+    // has already reset it on switch).
+    if (isCurrent()) {
+      store.routeCommandPending = false
+      store.pendingRouteCommand = null
+    }
   }
 }
 
 export async function restoreRouteAction(
-  store: WorkspaceStore,
+  store: RouteCommandSlice,
   routeId: string,
 ): Promise<boolean> {
   if (!store.projectId || store.routeCommandPending || store.submitting || store.drafting) {
     return false
   }
+  const { projectId, isCurrent } = captureProjectSession(store)
   store.routeCommandPending = true
   store.pendingRouteCommand = 'restore'
   store.error = null
   try {
-    await restoreRoute(store.projectId, routeId)
+    await restoreRoute(projectId, routeId)
     await store.refreshWorkspace()
+    if (!isCurrent()) return false
     // 后端 restoreRoute 会无条件把恢复的路线设为运行路线，这里如实告知，
     // 避免用户以为只是"取消归档"而不知道激活标记已被切换。
     store.feedback = '已恢复路线，并已设为运行路线'
     return true
   } catch (err) {
+    if (!isCurrent()) return false
     store.error = toDisplayError(err)
     return false
   } finally {
-    store.routeCommandPending = false
-    store.pendingRouteCommand = null
+    if (isCurrent()) {
+      store.routeCommandPending = false
+      store.pendingRouteCommand = null
+    }
   }
 }
 
 export async function archiveRouteAction(
-  store: WorkspaceStore,
+  store: RouteCommandSlice,
   routeId: string,
 ): Promise<boolean> {
   if (!store.projectId || store.routeCommandPending || store.submitting || store.drafting) {
     return false
   }
+  const { projectId, isCurrent } = captureProjectSession(store)
   store.routeCommandPending = true
   store.pendingRouteCommand = 'archive'
   store.error = null
   try {
-    await archiveRoute(store.projectId, routeId)
+    await archiveRoute(projectId, routeId)
     await store.refreshWorkspace()
+    if (!isCurrent()) return false
     store.feedback = '已归档路线'
     return true
   } catch (err) {
+    if (!isCurrent()) return false
     store.error = toDisplayError(err)
     return false
   } finally {
-    store.routeCommandPending = false
-    store.pendingRouteCommand = null
+    if (isCurrent()) {
+      store.routeCommandPending = false
+      store.pendingRouteCommand = null
+    }
   }
 }
 
 export async function deleteRouteAction(
-  store: WorkspaceStore,
+  store: RouteCommandSlice,
   routeId: string,
 ): Promise<boolean> {
   if (!store.projectId || store.routeCommandPending || store.submitting || store.drafting) {
     return false
   }
+  const { projectId, isCurrent } = captureProjectSession(store)
   store.routeCommandPending = true
   store.pendingRouteCommand = 'delete'
   store.error = null
   try {
-    await deleteRoute(store.projectId, routeId)
+    await deleteRoute(projectId, routeId)
     await store.refreshWorkspace()
+    if (!isCurrent()) return false
     store.feedback = '已删除路线'
     return true
   } catch (err) {
+    if (!isCurrent()) return false
     store.error = toDisplayError(err)
     return false
   } finally {
-    store.routeCommandPending = false
-    store.pendingRouteCommand = null
+    if (isCurrent()) {
+      store.routeCommandPending = false
+      store.pendingRouteCommand = null
+    }
   }
 }
 
@@ -131,7 +154,7 @@ export async function deleteRouteAction(
  * reads and never guesses the new route id.
  */
 export async function forkNodeAction(
-  store: WorkspaceStore,
+  store: RouteCommandSlice,
   nodeId: string,
   sourceRouteId: string,
   label?: string | null,
@@ -143,21 +166,24 @@ export async function forkNodeAction(
     store.error = { code: 'SOURCE_ROUTE_REQUIRED', message: '请选择明确的来源路线' }
     return false
   }
+  const { projectId, isCurrent } = captureProjectSession(store)
   store.routeCommandPending = true
   store.pendingRouteCommand = 'fork'
   store.error = null
   store.forkDraftRetryRouteId = null
   try {
-    const result = await forkNode(store.projectId, nodeId, {
+    const result = await forkNode(projectId, nodeId, {
       sourceRouteId,
       label: label ?? null,
     })
     await store.refreshWorkspace()
+    if (!isCurrent()) return false
     // Fork and first-child Draft are separate Runtime commands. The
     // route is intentionally preserved if Draft fails.
     store.routeCommandPending = false
     store.pendingRouteCommand = null
     const drafted = await store.draftQuestion()
+    if (!isCurrent()) return false
     if (!drafted) {
       store.forkDraftRetryRouteId = result.route.id
       store.setFocusAfterMutation({
@@ -174,16 +200,19 @@ export async function forkNodeAction(
     store.feedback = '已创建新分支路线'
     return true
   } catch (err) {
+    if (!isCurrent()) return false
     store.error = toDisplayError(err)
     return false
   } finally {
-    store.routeCommandPending = false
-    store.pendingRouteCommand = null
+    if (isCurrent()) {
+      store.routeCommandPending = false
+      store.pendingRouteCommand = null
+    }
   }
 }
 
 export async function reanswerNodeAction(
-  store: WorkspaceStore,
+  store: RouteCommandSlice,
   nodeId: string,
   sourceRouteId: string,
   label?: string | null,
@@ -191,20 +220,25 @@ export async function reanswerNodeAction(
   if (!store.projectId || store.routeCommandPending || store.submitting || store.drafting) {
     return false
   }
+  const { projectId, isCurrent } = captureProjectSession(store)
   store.routeCommandPending = true
   store.pendingRouteCommand = 'reanswer'
   store.error = null
   try {
-    await reanswerNode(store.projectId, nodeId, { sourceRouteId, label: label ?? null })
+    await reanswerNode(projectId, nodeId, { sourceRouteId, label: label ?? null })
     await store.refreshWorkspace()
+    if (!isCurrent()) return false
     store.feedback = '已创建重新回答路线'
     return true
   } catch (err) {
+    if (!isCurrent()) return false
     store.error = toDisplayError(err)
     return false
   } finally {
-    store.routeCommandPending = false
-    store.pendingRouteCommand = null
+    if (isCurrent()) {
+      store.routeCommandPending = false
+      store.pendingRouteCommand = null
+    }
   }
 }
 
@@ -215,13 +249,14 @@ export async function reanswerNodeAction(
  * reconstructing the transition locally.
  */
 export async function regenerateNodeAction(
-  store: WorkspaceStore,
+  store: RouteCommandSlice,
   nodeId: string,
   payload: RegenerateNodeRequest,
 ): Promise<boolean> {
   if (!store.projectId || store.routeCommandPending || store.submitting || store.drafting) {
     return false
   }
+  const { projectId, isCurrent } = captureProjectSession(store)
   store.routeCommandPending = true
   store.pendingRouteCommand = 'regenerate'
   store.error = null
@@ -230,12 +265,13 @@ export async function regenerateNodeAction(
   // The integrated dialog supplies the explicit sourceRouteId required by
   // the Runtime contract; no compatibility payload is synthesized here.
   try {
-    const run = await createAgentRun(store.projectId, {
+    const run = await createAgentRun(projectId, {
       operation: 'REGENERATE_NODE',
       nodeId,
       sourceRouteId: payload.sourceRouteId,
       freeText: payload.instruction ?? null,
     })
+    if (!isCurrent()) return false
     useRunRegistryStore().register({
       runId: run.runId,
       operation: 'REGENERATE_NODE',
@@ -243,12 +279,14 @@ export async function regenerateNodeAction(
       sourceNodeId: nodeId,
     })
     const outcome = await store.pollRunChainToTerminal(run.runId)
+    if (!isCurrent()) return false
     if (outcome !== 'unknown' && outcome !== 'failed') {
       // Terminal chain leaf: the replacement route is now the active
       // route; the canonical refresh owns every id — never reconstructed
       // locally. A RESPOND leaf message wins over the default copy.
       const replacementNodeId = outcome.producedNodeId
       await store.refreshWorkspace()
+      if (!isCurrent()) return false
       store.feedback = outcome.respondMessage ?? '已创建换一个问题路线'
       store.manualModelRetry = null
       const focusRouteId = store.activeState?.activeRoute?.id
@@ -286,6 +324,7 @@ export async function regenerateNodeAction(
   } catch (err) {
     // Create-run request itself failed; reconcile canonical reads before
     // any retry affordance.
+    if (!isCurrent()) return false
     const safeError = toDisplayError(err)
     store.error = safeError
     const disposition = classifyModelFailure(safeError.code, safeError.status)
@@ -308,17 +347,21 @@ export async function regenerateNodeAction(
     }
     return false
   } finally {
-    store.routeCommandPending = false
-    store.pendingRouteCommand = null
+    if (isCurrent()) {
+      store.routeCommandPending = false
+      store.pendingRouteCommand = null
+    }
   }
 }
 
 export async function reconcileRegenerateRetryAction(
-  store: WorkspaceStore,
+  store: RouteCommandSlice,
   intent: Extract<ManualModelRetryIntent, { kind: 'regenerate' }>,
 ): Promise<boolean> {
+  const { isCurrent } = captureProjectSession(store)
   const previousError = store.error
   const reconciled = await store.refreshWorkspace()
+  if (!isCurrent()) return false
   if (!reconciled) {
     store.error = previousError
     return false

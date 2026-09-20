@@ -87,12 +87,15 @@ import {
   rejectNodeQueryProposalAction,
 } from '@/stores/workspace/proposals'
 import type {
+  AnswerRunSessionState,
   ManualModelRetryIntent,
   MutationFocusTarget,
   PendingRouteCommand,
 } from '@/stores/workspace/types'
 
 export type {
+  AnswerRunSessionState,
+  AnswerRunSessionStatus,
   ManualModelRetryIntent,
   MutationFocusTarget,
   PendingRouteCommand,
@@ -119,6 +122,15 @@ export type {
 export const useWorkspaceStore = defineStore('workspace', {
   state: () => ({
     projectId: null as string | null,
+    /**
+     * Project-session counter, bumped by `beginProject`. Every async action
+     * captures it (plus `projectId`) when it starts and re-validates after
+     * each `await`, BEFORE writing store state — a slow request for project A
+     * must never overwrite project B's canonical state, error, or flags, and
+     * must not release B's loading/locks. `projectId` alone is not enough:
+     * A→B→A and same-project reloads are only distinguished by the counter.
+     */
+    projectSessionId: 0,
     project: null as ProjectResponse | null,
     routes: [] as RouteResponse[],
     activeState: null as ActiveProjectStateResponse | null,
@@ -126,37 +138,26 @@ export const useWorkspaceStore = defineStore('workspace', {
     loading: false,
     refreshing: false,
     drafting: false,
-    submitting: false,
     repairingAnswer: false,
     feedback: null as string | null,
     error: null as DisplayError | null,
-    repairableAnswerId: null as string | null,
-    resubmitAnswerPayload: null as SubmitAnswerRequest | null,
-    pendingAnswerNodeId: null as string | null,
-    answerOutcomeUnknown: false,
-    /** In-flight answer run (async Runtime); null when no run is being polled. */
-    answerRunId: null as string | null,
     /**
-     * Submission identity captured when the answer action started: the route
-     * the answered node belonged to at submission time. Success cleanup clears
-     * the draft under THIS route identity even if the runtime created or
-     * switched routes before completion.
+     * Per-answer-run sessions (one entry per submit attempt), keyed by the
+     * client request id on the session itself. ALL answer-run lifecycle
+     * state (pending node, run id/phase/status, unknown outcome, repair and
+     * resubmit affordances, cleanup identity) lives on the session — the
+     * single-value fields below are read-only derived views. Concurrent
+     * answers on different routes therefore never overwrite or clear each
+     * other's state; see `AnswerRunSessionState`.
      */
-    submittedRouteIdForCleanup: null as string | null,
-    /** Latest observed phase of the in-flight answer run. */
-    answerRunPhase: null as string | null,
-    /** Runtime status is kept separate from immutable answer/knowledge state. */
-    answerRunStatus: null as GraphRuntimeStatus | null,
-    /** Last payload handed to submitAnswer; used only for proven-safe resubmit. */
-    lastSubmittedAnswerPayload: null as SubmitAnswerRequest | null,
+    answerRunSessions: [] as AnswerRunSessionState[],
     /**
-     * Routes with an answer run currently in flight.
-     *
-     * The lock is PER ROUTE, not global: independent routes must not block one
-     * another, while the same route can never run two competing answer cycles.
-     * `submitting` is the derived "any route is busy" flag kept for the UI.
+     * Reload-derived repair checkpoint: an owned Answer on the Active route
+     * tip whose follow-up generation never finished. Rebuilt from canonical
+     * reads on every load/refresh; run-scoped repair affordances live on the
+     * sessions and take precedence in the `repairableAnswerId` getter.
      */
-    answerRunsInFlight: [] as string[],
+    canonicalRepairableAnswerId: null as string | null,
     manualModelRetry: null as ManualModelRetryIntent | null,
     focusAfterMutation: null as MutationFocusTarget | null,
 
@@ -215,6 +216,84 @@ export const useWorkspaceStore = defineStore('workspace', {
     activeRoute(state): RouteResponse | null {
       return state.activeState?.activeRoute ?? null
     },
+    /**
+     * The session the single-value views below resolve to.
+     *
+     * A session that needs the user's decision (unknown outcome, repair, or
+     * resubmit) wins — latest first; otherwise the most recently started
+     * live session is shown. This is presentation focus ONLY: every action
+     * reads and writes its own session object directly, never this getter.
+     */
+    focusedAnswerSession(state): AnswerRunSessionState | null {
+      const live = state.answerRunSessions
+      for (let i = live.length - 1; i >= 0; i -= 1) {
+        const session = live[i]
+        if (
+          session.status === 'UNKNOWN'
+          || session.status === 'REPAIRABLE'
+          || session.status === 'RESUBMITTABLE'
+        ) {
+          return session
+        }
+      }
+      return live.length > 0 ? live[live.length - 1] : null
+    },
+    /** Node whose answer run is being observed (derived, read-only). */
+    pendingAnswerNodeId(): string | null {
+      return this.focusedAnswerSession?.nodeId ?? null
+    },
+    /** In-flight answer run (async Runtime); null when no run is being polled. */
+    answerRunId(): string | null {
+      return this.focusedAnswerSession?.runId ?? null
+    },
+    /** Latest observed phase of the in-flight answer run. */
+    answerRunPhase(): string | null {
+      return this.focusedAnswerSession?.phase ?? null
+    },
+    /** Runtime status is kept separate from immutable answer/knowledge state. */
+    answerRunStatus(): GraphRuntimeStatus | null {
+      return this.focusedAnswerSession?.runStatus ?? null
+    },
+    answerOutcomeUnknown(): boolean {
+      return this.focusedAnswerSession?.status === 'UNKNOWN'
+    },
+    /**
+     * Repair affordance: a run-scoped repairable session wins; otherwise the
+     * reload-derived canonical checkpoint (Active-route tip answer).
+     */
+    repairableAnswerId(): string | null {
+      return this.focusedAnswerSession?.repairableAnswerId ?? this.canonicalRepairableAnswerId
+    },
+    /** Provably-safe one-shot resubmit payload of the focused session. */
+    resubmitAnswerPayload(): SubmitAnswerRequest | null {
+      const session = this.focusedAnswerSession
+      return session !== null && session.status === 'RESUBMITTABLE'
+        ? { ...session.payload }
+        : null
+    },
+    /**
+     * Submission identity of the focused session: the route the answered node
+     * belonged to at submission time. Success cleanup clears the draft under
+     * THIS route identity even if the runtime created or switched routes.
+     */
+    submittedRouteIdForCleanup(): string | null {
+      return this.focusedAnswerSession?.routeId ?? null
+    },
+    /**
+     * Routes with an answer run currently in flight.
+     *
+     * The lock is PER ROUTE, not global: independent routes must not block one
+     * another, while the same route can never run two competing answer cycles.
+     * `submitting` is the derived "any route is busy" flag kept for the UI.
+     */
+    answerRunsInFlight(): string[] {
+      return this.answerRunSessions
+        .filter((session) => session.status === 'RUNNING' && session.routeId !== null)
+        .map((session) => session.routeId as string)
+    },
+    submitting(): boolean {
+      return this.answerRunSessions.some((session) => session.status === 'RUNNING')
+    },
     /** Resolves the selected snapshot for one explicit route. */
     selectedSpecForRoute(): (routeId: string) => SpecSnapshotResponse | null {
       return (routeId: string) => {
@@ -257,17 +336,23 @@ export const useWorkspaceStore = defineStore('workspace', {
     },
     async submitAnswer(payload: SubmitAnswerRequest): Promise<boolean> { return submitAnswerAction(this, payload) },
     async pollAnswerRun(runId: string): Promise<void> { return pollAnswerRunAction(this, runId) },
-    async finishSuccessfulAnswerRun(view: AgentRunView): Promise<void> { return finishSuccessfulAnswerRunAction(this, view) },
-    async reconcileFailedAnswerRun(): Promise<void> { return reconcileFailedAnswerRunAction(this) },
-    async reconcileUnknownAnswerOutcome(): Promise<void> { return reconcileUnknownAnswerOutcomeAction(this) },
+    async finishSuccessfulAnswerRun(view: AgentRunView, session?: AnswerRunSessionState): Promise<void> {
+      return finishSuccessfulAnswerRunAction(this, view, session)
+    },
+    async reconcileFailedAnswerRun(session?: AnswerRunSessionState): Promise<void> {
+      return reconcileFailedAnswerRunAction(this, session)
+    },
+    async reconcileUnknownAnswerOutcome(session?: AnswerRunSessionState): Promise<void> {
+      return reconcileUnknownAnswerOutcomeAction(this, session)
+    },
     async reconcileAnswerOutcome(): Promise<boolean> { return reconcileAnswerOutcomeAction(this) },
     async repairAnswerForActiveFlow(answerId: string): Promise<boolean> {
       return repairAnswerForActiveFlowAction(this, answerId)
     },
     async resubmitFailedAnswer(): Promise<boolean> { return resubmitFailedAnswerAction(this) },
     findFinalizedAnswerForActiveTip(): string | null { return findFinalizedAnswerForActiveTipAction(this) },
-    findFinalizedAnswerForNode(nodeId: string | null): string | null {
-      return findFinalizedAnswerForNodeAction(this, nodeId)
+    findFinalizedAnswerForNode(nodeId: string | null, routeId?: string | null): string | null {
+      return findFinalizedAnswerForNodeAction(this, nodeId, routeId)
     },
     answerTargetRouteTip(): string | null { return answerTargetRouteTipAction(this) },
     findForkDraftRetryRouteId(): string | null { return findForkDraftRetryRouteIdAction(this) },

@@ -2,6 +2,7 @@ package com.specagent.model.provider;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.specagent.globalassistant.model.GlobalAssistantDecisionParser;
+import com.specagent.globalassistant.model.GlobalAssistantDecisionSemanticsAdapter;
 import com.specagent.globalassistant.model.GlobalAssistantDecisionValidator;
 import com.specagent.model.inference.ModelInferenceMessage;
 import com.specagent.model.inference.ModelInferenceRequest;
@@ -47,8 +48,8 @@ class AnthropicFailClosedTest {
                         new ChatCompletionsProtocolAdapter(),
                         new ResponsesProtocolAdapter(),
                         new AnthropicMessagesProtocolAdapter())),
-                new GlobalAssistantDecisionParser(new ObjectMapper()),
-                new GlobalAssistantDecisionValidator());
+                new GlobalAssistantDecisionSemanticsAdapter(new GlobalAssistantDecisionParser(new ObjectMapper()),
+                        new GlobalAssistantDecisionValidator()));
         assertThatThrownBy(() -> probe.probeCustom(
                 CustomApiFormat.ANTHROPIC_MESSAGES, "https://gateway.example/v1", null, "m"))
                 .isInstanceOf(ModelProviderException.class);

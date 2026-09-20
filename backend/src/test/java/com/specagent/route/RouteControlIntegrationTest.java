@@ -87,11 +87,15 @@ class RouteControlIntegrationTest {
                 question, purpose, options, true);
     }
 
-    private RegenerateResult replacementWithContext(Fixture fixture,
-                                                    String instruction,
-                                                    String question,
-                                                    String purpose,
-                                                    List<NodeOption> options) {
+    /** Result + the frozen regenerate context the test builds itself (the
+     * production commit never populates a snapshot). */
+    private record RegenOutcome(RegenerateResult result, ContextSnapshot context) {}
+
+    private RegenOutcome replacementWithContext(Fixture fixture,
+                                                String instruction,
+                                                String question,
+                                                String purpose,
+                                                List<NodeOption> options) {
         // The fixture's route tip is the child node; the replacement freezes it
         // so a concurrent continuation can never advance it mid-commit.
         RegenerateResult committed = commitReplacement(
@@ -101,9 +105,10 @@ class RouteControlIntegrationTest {
                 fixture.project().id(), fixture.routeId(), fixture.child().id(),
                 committed.replacementRoute().id(), committed.replacementNode().id(),
                 instruction);
-        return new RegenerateResult(
-                committed.oldRoute(), committed.replacementRoute(),
-                committed.replacementNode(), context);
+        return new RegenOutcome(
+                new RegenerateResult(committed.oldRoute(), committed.replacementRoute(),
+                        committed.replacementNode()),
+                context);
     }
 
     @Test
@@ -258,41 +263,41 @@ class RouteControlIntegrationTest {
     @Test
     void regenerateContextIncludesOldQuestionText() {
         Fixture f = createFixture();
-        RegenerateResult result = replacementWithContext(
+        RegenOutcome outcome = replacementWithContext(
                 f, "Make it clearer", "Better child question", "Better purpose", List.of());
-        assertThat(result.contextSnapshot().specialInputs()).contains("Who is the first user?");
+        assertThat(outcome.context().specialInputs()).contains("Who is the first user?");
     }
 
     @Test
     void regenerateContextIncludesUserInstruction() {
         Fixture f = createFixture();
-        RegenerateResult result = replacementWithContext(
+        RegenOutcome outcome = replacementWithContext(
                 f, "Make it clearer", "Better child question", "Better purpose", List.of());
-        assertThat(result.contextSnapshot().specialInputs()).contains("Make it clearer");
+        assertThat(outcome.context().specialInputs()).contains("Make it clearer");
     }
 
     @Test
     void regenerateContextExcludesOldAnswer() {
         Fixture f = createFixture();
-        RegenerateResult result = replacementWithContext(
+        RegenOutcome outcome = replacementWithContext(
                 f, "Make it clearer", "Better child question", "Better purpose", List.of());
-        assertThat(result.contextSnapshot().includedAnswerIds()).doesNotContain(f.a2().id());
+        assertThat(outcome.context().includedAnswerIds()).doesNotContain(f.a2().id());
     }
 
     @Test
     void regenerateContextExcludesOldPatch() {
         Fixture f = createFixture();
-        RegenerateResult result = replacementWithContext(
+        RegenOutcome outcome = replacementWithContext(
                 f, "Make it clearer", "Better child question", "Better purpose", List.of());
-        assertThat(result.contextSnapshot().includedPatchIds()).doesNotContain(f.p2().id());
+        assertThat(outcome.context().includedPatchIds()).doesNotContain(f.p2().id());
     }
 
     @Test
     void regenerateContextExcludesOldChildSubtree() {
         Fixture f = createFixture();
-        RegenerateResult result = replacementWithContext(
+        RegenOutcome outcome = replacementWithContext(
                 f, "Make it clearer", "Better child question", "Better purpose", List.of());
-        assertThat(result.contextSnapshot().includedNodeIds()).doesNotContain(f.child().id());
+        assertThat(outcome.context().includedNodeIds()).doesNotContain(f.child().id());
     }
 
     @Test
@@ -336,14 +341,15 @@ class RouteControlIntegrationTest {
         assertThatThrownBy(() -> routeService.restoreRoute(f.project().id(), f.routeId()))
                 .isInstanceOf(IllegalStateException.class);
 
-        RegenerateResult regen = replacementWithContext(
+        RegenOutcome regenOutcome = replacementWithContext(
                 f, "Make it clearer", "Better child question", "Better purpose", List.of());
+        RegenerateResult regen = regenOutcome.result();
         assertThat(routeService.getRoute(f.routeId()).orElseThrow().lifecycleStatus())
                 .isEqualTo(RouteLifecycleStatus.SUPERSEDED);
         assertThat(projectService.getProject(f.project().id()).orElseThrow().activeRouteId())
                 .isEqualTo(regen.replacementRoute().id());
-        assertThat(regen.contextSnapshot().includedAnswerIds()).doesNotContain(f.a2().id());
-        assertThat(regen.contextSnapshot().includedPatchIds()).doesNotContain(f.p2().id());
+        assertThat(regenOutcome.context().includedAnswerIds()).doesNotContain(f.a2().id());
+        assertThat(regenOutcome.context().includedPatchIds()).doesNotContain(f.p2().id());
 
         routeService.restoreRoute(f.project().id(), f.routeId());
         ContextSnapshot restoredCtx = contextBuilder.buildFromActiveRoute(
@@ -381,14 +387,14 @@ class RouteControlIntegrationTest {
     @Test
     void regenerateContextHashChangesWhenUserInstructionChanges() {
         Fixture f1 = createFixture();
-        RegenerateResult result1 = replacementWithContext(
+        RegenOutcome outcome1 = replacementWithContext(
                 f1, "First instruction", "Better child question", "Better purpose", List.of());
-        String hash1 = result1.contextSnapshot().contextHash();
+        String hash1 = outcome1.context().contextHash();
 
         Fixture f2 = createFixture();
-        RegenerateResult result2 = replacementWithContext(
+        RegenOutcome outcome2 = replacementWithContext(
                 f2, "Different instruction", "Better child question", "Better purpose", List.of());
-        String hash2 = result2.contextSnapshot().contextHash();
+        String hash2 = outcome2.context().contextHash();
 
         assertThat(hash1).isNotEqualTo(hash2);
     }
@@ -479,7 +485,7 @@ class RouteControlIntegrationTest {
                 project.id(), originalRouteId, child.id(), committed.replacementRoute().id(),
                 committed.replacementNode().id(), "Regenerate middle node");
         RegenerateResult result = new RegenerateResult(
-                committed.oldRoute(), committed.replacementRoute(), committed.replacementNode(), context);
+                committed.oldRoute(), committed.replacementRoute(), committed.replacementNode());
 
         assertThat(result.oldRoute().lifecycleStatus()).isEqualTo(RouteLifecycleStatus.SUPERSEDED);
         assertThat(result.replacementRoute().lifecycleStatus()).isEqualTo(RouteLifecycleStatus.OPEN);
@@ -489,8 +495,8 @@ class RouteControlIntegrationTest {
         assertThat(projectService.getProject(project.id()).orElseThrow().activeRouteId())
                 .isEqualTo(result.replacementRoute().id());
 
-        assertThat(result.contextSnapshot().includedNodeIds()).containsExactly(root.id());
-        assertThat(result.contextSnapshot().includedNodeIds())
+        assertThat(context.includedNodeIds()).containsExactly(root.id());
+        assertThat(context.includedNodeIds())
                 .doesNotContain(child.id(), grandchild.id(), result.replacementNode().id());
 
         // The old route keeps its original tip; regeneration never repoints it.

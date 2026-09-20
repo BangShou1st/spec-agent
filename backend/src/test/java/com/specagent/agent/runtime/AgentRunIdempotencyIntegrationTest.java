@@ -233,6 +233,127 @@ class AgentRunIdempotencyIntegrationTest {
         assertThat(runCount(sharedKey)).isEqualTo(1);
     }
 
+    // ---- Multi-select fingerprints (HTTP entry, not just the hash utility) ----
+
+    @Test
+    void multiSelectSameSelectionReplaysSameRun() throws Exception {
+        Project project = projectService.createProject("Idem multi replay " + UUID.randomUUID());
+        var root = nodeService.createRootNode(project.id(), project.activeRouteId(), "Root?", null, List.of(), true);
+        String sharedKey = key("multi-replay");
+        UUID optionA = UUID.randomUUID();
+        UUID optionB = UUID.randomUUID();
+        UUID first = createMultiSelectRunViaHttp(project.id(), sharedKey, "ANSWER_TIP", root.id(),
+                List.of(optionA, optionB), null);
+        UUID second = createMultiSelectRunViaHttp(project.id(), sharedKey, "ANSWER_TIP", root.id(),
+                List.of(optionA, optionB), null);
+        assertThat(second).isEqualTo(first);
+        assertThat(runCount(sharedKey)).isEqualTo(1);
+        assertThat(runCreatedEventCount(sharedKey)).isEqualTo(1);
+    }
+
+    @Test
+    void multiSelectSameFirstOptionDifferentRestConflicts() throws Exception {
+        Project project = projectService.createProject("Idem multi conflict " + UUID.randomUUID());
+        var root = nodeService.createRootNode(project.id(), project.activeRouteId(), "Root?", null, List.of(), true);
+        String sharedKey = key("multi-conflict");
+        UUID optionA = UUID.randomUUID();
+        UUID optionB = UUID.randomUUID();
+        UUID optionC = UUID.randomUUID();
+        createMultiSelectRunViaHttp(project.id(), sharedKey, "ANSWER_TIP", root.id(),
+                List.of(optionA, optionB), null);
+        // Same first option, different rest of the selection: a DIFFERENT
+        // answer, so the idempotency key must conflict instead of replaying.
+        mockMvc.perform(post("/api/v1/projects/{projectId}/agent-runs", project.id())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(multiSelectPayload("ANSWER_TIP", root.id(),
+                                List.of(optionA, optionC), null, sharedKey)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("IDEMPOTENCY_KEY_REUSED"));
+        assertThat(runCount(sharedKey)).isEqualTo(1);
+    }
+
+    @Test
+    void multiSelectDifferentOrderIsADifferentRequest() throws Exception {
+        Project project = projectService.createProject("Idem multi order " + UUID.randomUUID());
+        var root = nodeService.createRootNode(project.id(), project.activeRouteId(), "Root?", null, List.of(), true);
+        String sharedKey = key("multi-order");
+        UUID optionA = UUID.randomUUID();
+        UUID optionB = UUID.randomUUID();
+        createMultiSelectRunViaHttp(project.id(), sharedKey, "ANSWER_TIP", root.id(),
+                List.of(optionA, optionB), null);
+        // User order is part of the selection semantics: swapping the order is
+        // a different request and must conflict on the same key.
+        mockMvc.perform(post("/api/v1/projects/{projectId}/agent-runs", project.id())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(multiSelectPayload("ANSWER_TIP", root.id(),
+                                List.of(optionB, optionA), null, sharedKey)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("IDEMPOTENCY_KEY_REUSED"));
+        assertThat(runCount(sharedKey)).isEqualTo(1);
+    }
+
+    @Test
+    void legacySingleSelectReplayIsUnaffectedByMultiSelectSupport() throws Exception {
+        Project project = projectService.createProject("Idem single compat " + UUID.randomUUID());
+        var root = nodeService.createRootNode(project.id(), project.activeRouteId(), "Root?", null, List.of(), true);
+        String sharedKey = key("single-compat");
+        UUID optionA = UUID.randomUUID();
+        // Old client shape: selectedOptionId only, no selectedOptionIds field.
+        UUID first = createRunViaHttp(project.id(), sharedKey, "ANSWER_TIP", root.id(), optionA, "single");
+        UUID second = createRunViaHttp(project.id(), sharedKey, "ANSWER_TIP", root.id(), optionA, "single");
+        assertThat(second).isEqualTo(first);
+        assertThat(runCount(sharedKey)).isEqualTo(1);
+        // And a single-select still conflicts against a multi-select that
+        // names the same option plus one more.
+        mockMvc.perform(post("/api/v1/projects/{projectId}/agent-runs", project.id())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(multiSelectPayload("ANSWER_TIP", root.id(),
+                                List.of(optionA, UUID.randomUUID()), null, sharedKey)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("IDEMPOTENCY_KEY_REUSED"));
+    }
+
+    @Test
+    void multiSelectFullListIsPersistedIntoTheRunPayload() throws Exception {
+        Project project = projectService.createProject("Idem multi payload " + UUID.randomUUID());
+        var root = nodeService.createRootNode(project.id(), project.activeRouteId(), "Root?", null, List.of(), true);
+        String sharedKey = key("multi-payload");
+        UUID optionA = UUID.randomUUID();
+        UUID optionB = UUID.randomUUID();
+        createMultiSelectRunViaHttp(project.id(), sharedKey, "ANSWER_TIP", root.id(),
+                List.of(optionA, optionB), null);
+        // The full selection (not just the first option) must reach the
+        // runtime: the RUN_CREATED payload is what the worker replays.
+        String payload = jdbcTemplate.queryForObject(
+                "SELECT e.payload FROM agent_run_events e JOIN agent_runs r ON r.id = e.run_id "
+                        + "WHERE r.idempotency_key = ? AND e.event_type = 'RUN_CREATED'",
+                String.class, sharedKey);
+        assertThat(payload).contains(optionA.toString()).contains(optionB.toString());
+    }
+
+    private UUID createMultiSelectRunViaHttp(UUID projectId, String idempotencyKey,
+                                             String operation, UUID nodeId,
+                                             List<UUID> selectedOptionIds, String freeText) throws Exception {
+        return performCreate(projectId, multiSelectPayload(operation, nodeId, selectedOptionIds, freeText, idempotencyKey));
+    }
+
+    private String multiSelectPayload(String operation, UUID nodeId, List<UUID> selectedOptionIds,
+                                      String freeText, String idempotencyKey) {
+        String optionIds = selectedOptionIds == null ? "null"
+                : selectedOptionIds.stream().map(UUID::toString)
+                        .map(id -> "\"" + id + "\"")
+                        .collect(java.util.stream.Collectors.joining(",", "[", "]"));
+        return """
+                {"operation": %s,
+                 "nodeId": %s,
+                 "selectedOptionId": null,
+                 "selectedOptionIds": %s,
+                 "freeText": %s,
+                 "idempotencyKey": %s}
+                """.formatted(jsonString(operation), jsonUuid(nodeId), optionIds,
+                jsonString(freeText), jsonString(idempotencyKey));
+    }
+
     private UUID createRunViaHttp(UUID projectId, String idempotencyKey,
                                   String operation, UUID nodeId,
                                   UUID selectedOptionId, String freeText) throws Exception {

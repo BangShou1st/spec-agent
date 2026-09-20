@@ -14,7 +14,6 @@ import com.specagent.agent.runevent.AgentRunEventService;
 import com.specagent.agent.runevent.AgentRunPhase;
 import com.specagent.agent.runevent.RunProgressRecorder;
 import com.specagent.agent.snapshot.AgentInputSnapshotBuilder;
-import com.specagent.trace.SemanticTraceRecorder;
 import com.specagent.answer.Answer;
 import com.specagent.answer.AnswerService;
 import com.specagent.context.ContextBuilder;
@@ -78,7 +77,7 @@ public class AnswerCycleService {
     private final ContextSnapshotRepository contextSnapshotRepository;
     private final com.specagent.agent.snapshot.AgentInputProjectionRepository projectionRepository;
     private final ActionEligibilityGate actionEligibilityGate;
-    private final SemanticTraceRecorder semanticTraceRecorder;
+    private final AgentTracePort semanticTraceRecorder;
     private final RunProgressRecorder progressRecorder;
 
     public AnswerCycleService(AgentRunService agentRunService,
@@ -96,7 +95,7 @@ public class AnswerCycleService {
                               com.specagent.project.ProjectRepository projectRepository,
                               ContextSnapshotRepository contextSnapshotRepository,
                               com.specagent.agent.snapshot.AgentInputProjectionRepository projectionRepository,
-                              SemanticTraceRecorder semanticTraceRecorder,
+                              AgentTracePort semanticTraceRecorder,
                               ActionEligibilityGate actionEligibilityGate,
                               RunProgressRecorder progressRecorder) {
         this.agentRunService = agentRunService;
