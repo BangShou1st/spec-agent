@@ -12,8 +12,8 @@ import com.specagent.agent.snapshot.LegacyFrozenInputUnavailableException;
 import com.specagent.agent.runevent.AgentRunEvent;
 import com.specagent.agent.runevent.AgentRunEventService;
 import com.specagent.agent.runevent.AgentRunPhase;
+import com.specagent.agent.runevent.RunProgressRecorder;
 import com.specagent.agent.snapshot.AgentInputSnapshotBuilder;
-import com.specagent.trace.SemanticTraceRecorder;
 import com.specagent.answer.Answer;
 import com.specagent.answer.AnswerService;
 import com.specagent.context.ContextBuilder;
@@ -77,7 +77,8 @@ public class AnswerCycleService {
     private final ContextSnapshotRepository contextSnapshotRepository;
     private final com.specagent.agent.snapshot.AgentInputProjectionRepository projectionRepository;
     private final ActionEligibilityGate actionEligibilityGate;
-    private final SemanticTraceRecorder semanticTraceRecorder;
+    private final AgentTracePort semanticTraceRecorder;
+    private final RunProgressRecorder progressRecorder;
 
     public AnswerCycleService(AgentRunService agentRunService,
                               AgentRunFailureService agentRunFailureService,
@@ -94,8 +95,9 @@ public class AnswerCycleService {
                               com.specagent.project.ProjectRepository projectRepository,
                               ContextSnapshotRepository contextSnapshotRepository,
                               com.specagent.agent.snapshot.AgentInputProjectionRepository projectionRepository,
-                              SemanticTraceRecorder semanticTraceRecorder,
-                              ActionEligibilityGate actionEligibilityGate) {
+                              AgentTracePort semanticTraceRecorder,
+                              ActionEligibilityGate actionEligibilityGate,
+                              RunProgressRecorder progressRecorder) {
         this.agentRunService = agentRunService;
         this.agentRunFailureService = agentRunFailureService;
         this.contextBuilder = contextBuilder;
@@ -113,6 +115,7 @@ public class AnswerCycleService {
         this.projectionRepository = projectionRepository;
         this.semanticTraceRecorder = semanticTraceRecorder;
         this.actionEligibilityGate = actionEligibilityGate;
+        this.progressRecorder = progressRecorder;
     }
 
     /**
@@ -131,9 +134,45 @@ public class AnswerCycleService {
     public AnswerCycleResult submitAnswer(AgentRun run, UUID projectId,
                                           UUID selectedOptionId, String freeText,
                                           AgentEvent.PersistenceIntent persistenceIntent) {
-        Route route = loadActiveRoute(projectId);
+        return submitAnswer(run, projectId, selectedOptionId, freeText, persistenceIntent, null);
+    }
+
+    /**
+     * Same as above, but the run may target an EXPLICIT route
+     * ({@code explicitRouteId != null}) instead of the project's Active route.
+     *
+     * <p>This is what makes several routes independent: route B keeps
+     * answering while route A is the Active route, because the run resolves its
+     * target from itself instead of re-reading the single Active pointer. The
+     * tip/staleness checks are unchanged — they just run against the resolved
+     * route — and with {@code explicitRouteId == null} the behaviour is
+     * byte-identical to the Active-route path.
+     */
+    public AnswerCycleResult submitAnswer(AgentRun run, UUID projectId,
+                                          UUID selectedOptionId, String freeText,
+                                          AgentEvent.PersistenceIntent persistenceIntent,
+                                          UUID explicitRouteId) {
+        return submitAnswer(run, projectId,
+                selectedOptionId == null ? List.of() : List.of(selectedOptionId),
+                freeText, persistenceIntent, explicitRouteId);
+    }
+
+    /**
+     * Multi-select submission: {@code selectedOptionIds} is the FULL selection
+     * in user order. Multiple entries are only accepted when the answering
+     * node carries {@code allowMultiSelect}; the first entry mirrors the
+     * legacy single-selection semantics across the whole pipeline.
+     */
+    public AnswerCycleResult submitAnswer(AgentRun run, UUID projectId,
+                                          List<UUID> selectedOptionIds, String freeText,
+                                          AgentEvent.PersistenceIntent persistenceIntent,
+                                          UUID explicitRouteId) {
+        Route route = resolveRunRoute(projectId, explicitRouteId);
+        boolean explicitRoute = explicitRouteId != null;
         if (route.tipNodeId() == null) {
-            throw new IllegalStateException("Active route has no tip node");
+            throw new IllegalStateException(explicitRoute
+                    ? "Route has no tip node: " + route.id()
+                    : "Active route has no tip node");
         }
         Node tipNode = nodeService.getNode(route.tipNodeId())
                 .orElseThrow(() -> new IllegalStateException(
@@ -143,23 +182,29 @@ public class AnswerCycleService {
         // moved on before the worker claimed the run, fail instead of
         // answering a different node than the user was looking at.
         if (run.inputNodeId() != null && !run.inputNodeId().equals(route.tipNodeId())) {
-            throw new IllegalStateException(
-                    "Answer target is no longer the active route tip: " + run.inputNodeId());
+            throw new IllegalStateException(explicitRoute
+                    ? "Answer target is not the tip of route " + route.id() + ": " + run.inputNodeId()
+                    : "Answer target is no longer the active route tip: " + run.inputNodeId());
         }
 
-        String selectedOption = validateSelectedOption(tipNode, selectedOptionId);
+        List<String> selectedOptions = validateSelectedOptions(tipNode, selectedOptionIds);
+        String selectedOption = selectedOptions.isEmpty() ? null : selectedOptions.get(0);
+        UUID selectedOptionId = selectedOptions.isEmpty() ? null
+                : UUID.fromString(selectedOptions.get(0));
         String normalizedFreeText = normalizeFreeText(freeText);
         validateAnswerInput(tipNode, selectedOption, normalizedFreeText);
 
         String trace = "created";
         try {
             trace = appendTrace(trace, "context_built");
-            ContextSnapshot snapshot = buildAndValidateContext(run, projectId, trace);
+            ContextSnapshot snapshot = explicitRoute
+                    ? buildAndValidateContextForRoute(run, projectId, route, trace)
+                    : buildAndValidateContext(run, projectId, trace);
 
             // Persist immutable Answer BEFORE any model call.
-            Answer answer = answerService.finalizeAnswer(
+            Answer answer = answerService.finalizeAnswerWithSelections(
                     projectId, route.id(), route.tipNodeId(),
-                    selectedOption, normalizedFreeText, "user");
+                    selectedOptions, normalizedFreeText, "user");
             trace = appendTrace(trace, "persisted_answer");
             agentRunService.markPersistedAnswer(run.id(), answer.id(), trace);
 
@@ -197,6 +242,13 @@ public class AnswerCycleService {
 
     public AnswerCycleResult resumeAnswer(AgentRun run, UUID projectId, UUID answerId,
                                           AgentEvent.PersistenceIntent persistenceIntent) {
+        return resumeAnswer(run, projectId, answerId, persistenceIntent, null);
+    }
+
+    /** Resume with an EXPLICIT route (see {@link #submitAnswer} for the mode). */
+    public AnswerCycleResult resumeAnswer(AgentRun run, UUID projectId, UUID answerId,
+                                          AgentEvent.PersistenceIntent persistenceIntent,
+                                          UUID explicitRouteId) {
         Answer answer = answerService.getAnswer(answerId)
                 .orElseThrow(() -> new IllegalArgumentException("Answer not found: " + answerId));
         if (!answer.projectId().equals(projectId)) {
@@ -204,12 +256,17 @@ public class AnswerCycleService {
                     "Answer does not belong to project: " + projectId);
         }
 
-        Route route = loadActiveRoute(projectId);
+        Route route = resolveRunRoute(projectId, explicitRouteId);
+        boolean explicitRoute = explicitRouteId != null;
         if (!answer.routeId().equals(route.id())) {
-            throw new IllegalStateException("Answer does not belong to active route");
+            throw new IllegalStateException(explicitRoute
+                    ? "Answer does not belong to route " + route.id()
+                    : "Answer does not belong to active route");
         }
         if (!answer.nodeId().equals(route.tipNodeId())) {
-            throw new IllegalStateException("Answer node is not the active route tip");
+            throw new IllegalStateException(explicitRoute
+                    ? "Answer node is not the tip of route " + route.id()
+                    : "Answer node is not the active route tip");
         }
 
         failIfLegacyReplay(answer.id());
@@ -224,7 +281,9 @@ public class AnswerCycleService {
             // original snapshot is undiscoverable builds a fresh context.
             ContextSnapshot snapshot = resolveOriginalPreAnswerSnapshot(projectId, answer)
                     .map(original -> attachSnapshot(run, original, traceAfterBuild))
-                    .orElseGet(() -> buildAndValidateContext(run, projectId, traceAfterBuild));
+                    .orElseGet(() -> explicitRoute
+                            ? buildAndValidateContextForRoute(run, projectId, route, traceAfterBuild)
+                            : buildAndValidateContext(run, projectId, traceAfterBuild));
 
             trace = appendTrace(trace, "persisted_answer");
             agentRunService.markPersistedAnswer(run.id(), answer.id(), trace);
@@ -350,6 +409,11 @@ public class AnswerCycleService {
                             "claimCount", stateUpdateResponse.stateUpdate() == null
                                     ? 0 : stateUpdateResponse.stateUpdate().claims().size()));
 
+            List<ProposedClaim> proposedClaims = stateUpdateResponse.stateUpdate().claims();
+            progressRecorder.noteWithItems(run.id(), AgentRunPhase.STATE_UPDATED,
+                    "需求要点整理完成，共 " + proposedClaims.size() + " 条",
+                    proposedClaims.stream().map(ProposedClaim::text).toList());
+
             List<Claim> groundedClaims = groundClaims(
                     stateUpdateResponse.stateUpdate().claims(),
                     route.tipNodeId(), answer.id());
@@ -411,6 +475,30 @@ public class AnswerCycleService {
                         "Selected option id does not belong to the active node"));
     }
 
+    /**
+     * Validates the FULL client selection against the exact answering node.
+     * Multiple entries are only legal on a multi-select question; duplicates
+     * are collapsed while preserving user order, and every id must be a
+     * runtime-owned option of this node.
+     */
+    private List<String> validateSelectedOptions(Node tipNode, List<UUID> selectedOptionIds) {
+        if (selectedOptionIds == null || selectedOptionIds.isEmpty()) {
+            return List.of();
+        }
+        if (selectedOptionIds.size() > 1 && !tipNode.allowMultiSelect()) {
+            throw new IllegalArgumentException(
+                    "This node does not allow multiple selected options");
+        }
+        List<String> result = new ArrayList<>();
+        for (UUID optionId : selectedOptionIds) {
+            String matched = validateSelectedOption(tipNode, optionId);
+            if (matched != null && !result.contains(matched)) {
+                result.add(matched);
+            }
+        }
+        return result;
+    }
+
     private String normalizeFreeText(String freeText) {
         return (freeText == null || freeText.isBlank()) ? null : freeText;
     }
@@ -440,9 +528,43 @@ public class AnswerCycleService {
                         "Active route not found: " + project.activeRouteId()));
     }
 
+    /**
+     * The route an answer cycle writes to. Without an explicit route this is
+     * the project Active route (unchanged, still fail-closed when the pointer
+     * moved); with one, the route must belong to the project and be OPEN.
+     */
+    private Route resolveRunRoute(UUID projectId, UUID explicitRouteId) {
+        if (explicitRouteId == null) {
+            return loadActiveRoute(projectId);
+        }
+        Route route = routeRepository.findById(explicitRouteId)
+                .orElseThrow(() -> new IllegalArgumentException("Route not found: " + explicitRouteId));
+        if (!route.projectId().equals(projectId)) {
+            throw new IllegalArgumentException(
+                    "Route " + explicitRouteId + " does not belong to project " + projectId);
+        }
+        if (route.lifecycleStatus() != com.specagent.route.RouteLifecycleStatus.OPEN) {
+            throw new IllegalStateException(
+                    "Route is not open: " + explicitRouteId
+                            + " is " + route.lifecycleStatus().code());
+        }
+        return route;
+    }
+
     private ContextSnapshot buildAndValidateContext(AgentRun run, UUID projectId, String trace) {
         ContextSnapshot snapshot = contextBuilder.buildFromActiveRoute(
                 projectId, run.id(), ContextOperationType.NORMAL);
+        return attachSnapshot(run, snapshot, trace);
+    }
+
+    /**
+     * Explicit-route context: built from the run's own route instead of the
+     * Active pointer, so an independently running chain reads its own lineage.
+     */
+    private ContextSnapshot buildAndValidateContextForRoute(AgentRun run, UUID projectId,
+                                                            Route route, String trace) {
+        ContextSnapshot snapshot = contextBuilder.buildForRoute(
+                projectId, route.id(), route.tipNodeId(), run.id(), ContextOperationType.NORMAL);
         return attachSnapshot(run, snapshot, trace);
     }
 

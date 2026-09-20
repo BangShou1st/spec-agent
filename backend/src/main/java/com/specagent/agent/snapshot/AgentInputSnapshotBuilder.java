@@ -24,6 +24,7 @@ import com.specagent.agent.contract.RelationView;
 import com.specagent.agent.contract.PatchView;
 import com.specagent.agent.contract.RouteContextView;
 import com.specagent.agent.contract.SnapshotMetadata;
+import com.specagent.agent.contract.UserRequiredSkillView;
 import com.specagent.context.ContextRelation;
 import com.specagent.agent.AgentRunRepository;
 import com.specagent.answer.Answer;
@@ -481,7 +482,47 @@ public class AgentInputSnapshotBuilder {
                 .map(this::toSkillView)
                 .toList();
         return new SkillCatalogView(skills, projection.truncated(),
-                projection.fingerprint());
+                projection.fingerprint(), userRequiredSkill(lineageNodes, relatedNodes, skills));
+    }
+
+    /**
+     * The user's explicit skill directive for this context, or null. Nodes
+     * edited through the "/" skill picker persist the picked skill under the
+     * {@code skillId} content key; the directive only survives into the wire
+     * snapshot when that id is present in the discovered (enabled) catalog,
+     * so a disabled or removed skill is silently downgraded to absent instead
+     * of reaching the model as an unenforceable instruction. Lineage nodes
+     * win over related nodes; among several bound nodes the first in
+     * deterministic lineage order wins.
+     */
+    private UserRequiredSkillView userRequiredSkill(List<Node> lineageNodes,
+                                                    List<Node> relatedNodes,
+                                                    List<AvailableSkillView> skills) {
+        for (Node node : lineageNodes) {
+            UserRequiredSkillView directive = boundDirective(node, skills);
+            if (directive != null) {
+                return directive;
+            }
+        }
+        for (Node node : relatedNodes) {
+            UserRequiredSkillView directive = boundDirective(node, skills);
+            if (directive != null) {
+                return directive;
+            }
+        }
+        return null;
+    }
+
+    private UserRequiredSkillView boundDirective(Node node, List<AvailableSkillView> skills) {
+        Object raw = node.content().get("skillId");
+        if (!(raw instanceof String skillId) || skillId.isBlank()) {
+            return null;
+        }
+        return skills.stream()
+                .filter(skill -> skill.skillId().equalsIgnoreCase(skillId.strip()))
+                .findFirst()
+                .map(skill -> new UserRequiredSkillView(skill.skillId(), skill.name()))
+                .orElse(null);
     }
 
     private AvailableSkillView toSkillView(SkillCatalogEntry entry) {

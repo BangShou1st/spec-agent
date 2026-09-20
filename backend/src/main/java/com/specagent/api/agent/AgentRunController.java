@@ -2,7 +2,7 @@ package com.specagent.api.agent;
 
 import com.specagent.agent.AgentRun;
 import com.specagent.agent.AgentRunService;
-import com.specagent.api.common.ApiException;
+import com.specagent.common.ApiException;
 import com.specagent.project.ProjectService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;

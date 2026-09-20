@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>ga-toggle icon check</title>
+<style>
+  :root {
+    --color-surface: #ffffff;
+    --color-border: #dde2ea;
+    --color-border-strong: #c6cdda;
+    --color-text: #171c28;
+    --color-text-secondary: #576071;
+    --color-accent-soft: #eef3ff;
+    --color-accent: #3b6fe0;
+    --color-accent-strong: #2a56b8;
+  }
+  body { margin: 0; padding: 24px; background: #f7f8fb; font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; }
+  .row { display: flex; align-items: center; gap: 18px; margin-bottom: 18px; }
+  .tag { font-size: 11px; color: #8a92a4; width: 74px; }
+  .zoom { display: flex; gap: 18px; align-items: center; }
+
+  /* shipped styles, copied from GlobalAssistantShell.vue */
+  .ga-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 1px solid var(--color-border); border-radius: 999px; background: var(--color-surface); color: var(--color-text-secondary); font-size: 13px; line-height: 1; }
+  .ga-toggle__label { line-height: 1; }
+  .app-icon { display: block; flex: none; }
+
+  /* magnified copies for pixel inspection (zoom, not transform: layout follows) */
+  .x6 { zoom: 6; }
+  .x6 .ga-toggle { background: #fff; }
+</style>
+</head>
+<body>
+  <div class="row">
+    <span class="tag">新（当前实现）</span>
+    <button class="ga-toggle" type="button">
+      <svg class="app-icon" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <g><path d="M8 2.6C8.5 6.7 9.3 7.5 13.4 8 9.3 8.5 8.5 9.3 8 13.4 7.5 9.3 6.7 8.5 2.6 8 6.7 7.5 7.5 6.7 8 2.6Z" fill="currentColor" stroke="none" /></g>
+      </svg>
+      <span class="ga-toggle__label">助手</span>
+    </button>
+  </div>
+
+  <div class="row">
+    <span class="tag">旧（改前）</span>
+    <button class="ga-toggle" type="button">
+      <svg class="app-icon" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <g><path d="M8 2.2c.7 2.3 1.6 3.2 3.9 3.9-2.3.7-3.2 1.6-3.9 3.9-.7-2.3-1.6-3.2-3.9-3.9 2.3-.7 3.2-1.6 3.9-3.9Z" /></g>
+      </svg>
+      <span class="ga-toggle__label">助手</span>
+    </button>
+  </div>
+
+  <div class="row" style="align-items:flex-start">
+    <span class="tag">放大 6×</span>
+    <div class="zoom">
+      <div class="x6">
+        <div class="ga-toggle" style="background:#fff">
+          <svg class="app-icon" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <g><path d="M8 2.6C8.5 6.7 9.3 7.5 13.4 8 9.3 8.5 8.5 9.3 8 13.4 7.5 9.3 6.7 8.5 2.6 8 6.7 7.5 7.5 6.7 8 2.6Z" fill="currentColor" stroke="none" /></g>
+          </svg>
+          <span class="ga-toggle__label">助手</span>
+        </div>
+      </div>
+      <div class="x6">
+        <div class="ga-toggle" style="background:#fff">
+          <svg class="app-icon" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <g><path d="M8 2.2c.7 2.3 1.6 3.2 3.9 3.9-2.3.7-3.2 1.6-3.9 3.9-.7-2.3-1.6-3.2-3.9-3.9 2.3-.7 3.2-1.6 3.9-3.9Z" /></g>
+          </svg>
+          <span class="ga-toggle__label">助手</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

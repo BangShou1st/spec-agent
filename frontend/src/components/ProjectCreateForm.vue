@@ -48,7 +48,6 @@ function submit(): void {
         <span>{{ creating ? '正在创建…' : '创建项目' }}</span>
       </button>
     </div>
-    <p class="form-helper">输入标题后回车即可创建，创建后直接进入工作区。</p>
-    <p v-if="touched && blank()" class="form-error" role="alert">请输入项目标题以创建项目。</p>
+    <p v-if="touched && blank()" class="form-error" role="alert">请输入项目标题以创建项目</p>
   </form>
 </template>

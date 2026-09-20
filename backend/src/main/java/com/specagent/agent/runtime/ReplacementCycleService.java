@@ -18,6 +18,7 @@ import com.specagent.agent.decision.AgentDecisionEngine;
 import com.specagent.agent.gates.ContextGuard;
 import com.specagent.agent.runevent.AgentRunEventService;
 import com.specagent.agent.runevent.AgentRunPhase;
+import com.specagent.agent.runevent.RunProgressRecorder;
 import com.specagent.agent.snapshot.AgentInputSnapshotBuilder;
 import com.specagent.context.ContextBuilder;
 import com.specagent.context.ContextOperationType;
@@ -66,6 +67,7 @@ public class ReplacementCycleService {
     private final NodeService nodeService;
     private final RouteRepository routeRepository;
     private final RouteService routeService;
+    private final RunProgressRecorder progressRecorder;
 
     public ReplacementCycleService(AgentRunService agentRunService,
                                    AgentRunFailureService agentRunFailureService,
@@ -77,7 +79,8 @@ public class ReplacementCycleService {
                                    StaleContextChecker staleContextChecker,
                                    NodeService nodeService,
                                    RouteRepository routeRepository,
-                                   RouteService routeService) {
+                                   RouteService routeService,
+                                   RunProgressRecorder progressRecorder) {
         this.agentRunService = agentRunService;
         this.agentRunFailureService = agentRunFailureService;
         this.contextBuilder = contextBuilder;
@@ -89,6 +92,7 @@ public class ReplacementCycleService {
         this.nodeService = nodeService;
         this.routeRepository = routeRepository;
         this.routeService = routeService;
+        this.progressRecorder = progressRecorder;
     }
 
     /**
@@ -131,6 +135,7 @@ public class ReplacementCycleService {
 
             trace = appendTrace(trace, "deciding");
             eventService.append(run.id(), AgentRunPhase.DECIDING, "DECISION_STARTED", Map.of());
+            progressRecorder.note(run.id(), AgentRunPhase.DECIDING, "正在重新生成该节点的问题");
             AgentResponseEnvelope response = decisionEngine.runDecision(envelope);
             AgentBrainResponseValidator.validateDecision(envelope, response);
             ActionProposal proposal = response.actionProposal();
@@ -149,6 +154,7 @@ public class ReplacementCycleService {
             String question = stringOrNull(payload.get("questionText"));
             String purpose = stringOrNull(payload.get("purpose"));
             boolean allowFreeAnswer = payload.get("allowFreeAnswer") instanceof Boolean b && b;
+            boolean allowMultiSelect = payload.get("allowMultiSelect") instanceof Boolean b && b;
             List<NodeOption> options = parseOptions(payload.get("options"));
 
             if (question == null || question.isBlank()) {
@@ -188,7 +194,7 @@ public class ReplacementCycleService {
             // read and the topology mutation).
             RegenerateResult result = routeService.commitReplacementFromNode(
                     projectId, sourceRouteId, targetNodeId, sourceRoute.tipNodeId(),
-                    null, question, purpose, options, allowFreeAnswer);
+                    null, question, purpose, options, allowFreeAnswer, allowMultiSelect);
 
             // Freeze the durable regenerate context onto the replacement
             // route (parent lineage only, target excluded) — the same record
@@ -219,7 +225,9 @@ public class ReplacementCycleService {
         List<NodeOption> options = new ArrayList<>();
         for (Object item : optionList) {
             if (item instanceof Map<?, ?> map && map.get("label") instanceof String label) {
-                options.add(NodeOption.of(label, stringOrNull(map.get("impact"))));
+                boolean recommended = map.get("recommended") instanceof Boolean b && b;
+                options.add(new NodeOption(java.util.UUID.randomUUID(), label,
+                        stringOrNull(map.get("impact")), recommended));
             }
         }
         return options;

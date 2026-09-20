@@ -29,6 +29,7 @@ function nodeData(overrides: Partial<SpecAgentGraphNodeData> = {}): SpecAgentGra
     node: {
       id: 'n1', projectId: 'p1', parentNodeId: null, supersedesNodeId: null,
       question: 'Q?', purpose: null, options: [], allowFreeAnswer: true,
+    allowMultiSelect: false,
       createdAt: '2026-01-01T00:00:00Z', kind: 'INTERACTION', subtype: 'QUESTION',
       content: {}, authorKind: 'AGENT', knowledgeStatus: null, userEditableDraft: false,
     },
@@ -68,6 +69,7 @@ describe('node inspector information hierarchy', () => {
           primaryAnswer: {
             routeId: 'rA',
             selectedOptionId: null,
+          selectedOptionIds: null,
             selectedOptionLabel: null,
             freeText: '已确认的回答',
             isPrimary: true,

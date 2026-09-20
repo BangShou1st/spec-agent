@@ -52,7 +52,9 @@ class GlobalAssistantSliceCDTest {
                 new GlobalAssistantContextBuilder.UiRequest("PROJECTS", null));
         // No summary yet: every message is unsummarized remainder inside the hard bound.
         assertThat(context.recentConversation()).hasSizeLessThanOrEqualTo(33);
-        assertThat(context.toolDescriptors()).hasSize(4);
+        // Six V1 tools: the four project tools plus the read-only skill
+        // discovery and the staging-only skill import.
+        assertThat(context.toolDescriptors()).hasSize(6);
         assertThat(context.recentProjectHints()).hasSizeLessThanOrEqualTo(5);
         for (GlobalAssistantContext.ConversationTurn turn : context.recentConversation()) {
             assertThat(turn.content().length()).isLessThanOrEqualTo(2001);
@@ -106,6 +108,60 @@ class GlobalAssistantSliceCDTest {
         assertThatThrownBy(() -> validator.validate(decision))
                 .isInstanceOf(GlobalAssistantModelException.class);
     }
+    @Test
+    void validatorAcceptsSkillImportDecision() {
+        // The documented V1 contract: the assistant may stage a Skill import.
+        // Regression guard for the incident where the catalog advertised
+        // skill.import but the decision validator rejected it as unknown,
+        // surfacing as MODEL_INVALID_RESPONSE on every install attempt.
+        GlobalAssistantDecision decision = new GlobalAssistantDecision(
+                GlobalAssistantDecision.DecisionKind.TOOL, null,
+                new GlobalAssistantDecision.ToolRequest("skill.import",
+                        Map.of("url", "https://github.com/obra/superpowers",
+                                "skill", "skills/brainstorming")),
+                null);
+        validator.validate(decision);
+    }
+    @Test
+    void validatorRejectsSkillImportWithoutUrl() {
+        GlobalAssistantDecision decision = new GlobalAssistantDecision(
+                GlobalAssistantDecision.DecisionKind.TOOL, null,
+                new GlobalAssistantDecision.ToolRequest("skill.import",
+                        Map.of("skill", "skills/brainstorming")),
+                null);
+        assertThatThrownBy(() -> validator.validate(decision))
+                .isInstanceOf(GlobalAssistantModelException.class)
+                .hasMessageContaining("url");
+    }
+    @Test
+    void validatorRejectsSkillImportUnknownArgument() {
+        GlobalAssistantDecision decision = new GlobalAssistantDecision(
+                GlobalAssistantDecision.DecisionKind.TOOL, null,
+                new GlobalAssistantDecision.ToolRequest("skill.import",
+                        Map.of("url", "https://github.com/obra/superpowers",
+                                "path", "skills/brainstorming")),
+                null);
+        assertThatThrownBy(() -> validator.validate(decision))
+                .isInstanceOf(GlobalAssistantModelException.class)
+                .hasMessageContaining("Unknown argument");
+    }
+    @Test
+    void promptOffersTheSkillImportToolToTheModel() {
+        GlobalAssistantThread thread = conversations.createThread();
+        GlobalAssistantContext context = contextBuilder.build(thread.id(), "install a skill",
+                new GlobalAssistantContextBuilder.UiRequest("SKILLS", null));
+        String tools = renderer.render(context, List.of()).get(1).content();
+
+        // The new tool must actually reach the model, with its arguments and its
+        // side-effect class, or the assistant still cannot start an import.
+        assertThat(tools).contains("skill.import");
+        assertThat(tools).contains("\"url\"");
+        assertThat(tools).contains("\"ref\"");
+        assertThat(tools).contains("\"skill\"");
+        assertThat(tools).contains("sideEffectClass=LOCAL_DURABLE");
+        assertThat(tools).contains("stagedImportId");
+    }
+
     @Test
     void promptHasNoBenchmarkPhraseRouting() {
         GlobalAssistantThread thread = conversations.createThread();

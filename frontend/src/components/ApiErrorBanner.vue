@@ -19,9 +19,8 @@ const emit = defineEmits<{
 <template>
   <div class="error-banner" role="alert">
     <div>
-      <strong v-if="code">{{ code }}</strong>
-      <span v-if="code"> — </span>
-      {{ message }}
+      <strong>{{ message }}</strong>
+      <code v-if="code" class="error-banner__code" :title="`错误码：${code}`">{{ code }}</code>
     </div>
     <button
       v-if="retryLabel"

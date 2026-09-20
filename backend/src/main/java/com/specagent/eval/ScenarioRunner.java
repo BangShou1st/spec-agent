@@ -400,7 +400,7 @@ public class ScenarioRunner {
             return;
         }
         answerService.finalizeAnswer(projectId, routeId, nodeId,
-                null, "eval setup answer", "user");
+                (String) null, "eval setup answer", "user");
     }
 
     // -- drive -------------------------------------------------------------------
@@ -438,8 +438,10 @@ public class ScenarioRunner {
                     project.id(), "ANSWER_TIP", route.tipNodeId(), null, freeText, null,
                     answer.persistenceIntent());
             try {
-                AgentRun claimed = runService.claimNextAnswerCycle()
-                        .orElseThrow(() -> new IllegalStateException("No queued answer-cycle run"));
+                AgentRun claimed = runService.claimAnswerCycleRun(queued)
+                        .orElseThrow(() -> new IllegalStateException(
+                                "Enqueued answer-cycle run is not claimable: " + queued
+                                        + " (" + describeRun(queued) + ")"));
                 runWorker.executeRun(claimed);
             } catch (RuntimeException ex) {
                 throw new DriveFailure(queued, ex);
@@ -457,8 +459,10 @@ public class ScenarioRunner {
             UUID queued = runService.createQueuedRunWithInput(
                     project.id(), "ANSWER_TIP", targetId, null, freeText, null);
             try {
-                AgentRun claimed = runService.claimNextAnswerCycle()
-                        .orElseThrow(() -> new IllegalStateException("No queued answer-cycle run"));
+                AgentRun claimed = runService.claimAnswerCycleRun(queued)
+                        .orElseThrow(() -> new IllegalStateException(
+                                "Enqueued answer-cycle run is not claimable: " + queued
+                                        + " (" + describeRun(queued) + ")"));
                 runWorker.executeRun(claimed);
             } catch (RuntimeException ex) {
                 throw new DriveFailure(queued, ex);
@@ -466,6 +470,13 @@ public class ScenarioRunner {
             return new DriveResult(queued);
         }
         throw new IllegalArgumentException("Unknown user event: " + event);
+    }
+
+    /** Runs are claimed by id, so the failing state names itself in the error. */
+    private String describeRun(UUID runId) {
+        return runService.getRun(runId)
+                .map(run -> "status=" + run.status().code() + ", trigger=" + run.triggerType().code())
+                .orElse("row missing");
     }
 
     // -- observe -------------------------------------------------------------------

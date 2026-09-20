@@ -1,41 +1,19 @@
 <script lang="ts">
-// Registered through the options `components` block (not a script-setup
-// import) so the template resolves <Handle> by name; unit tests can then
-// stub it, while the real app renders Vue Flow's Handle as usual.
-import { Handle } from '@vue-flow/core'
-export default { components: { Handle } }
+// The shared node chassis (edge anchors, drag header, action rail) lives in
+// GraphNodeShell; this card only contributes question-specific content.
+import GraphNodeShell from '@/components/graph/GraphNodeShell.vue'
+import GraphRunProcessPanel from '@/components/graph/GraphRunProcessPanel.vue'
+import { runtimeStatusLabel as runtimeStatusCopy } from '@/presentation/statusCopy'
+export default { components: { GraphNodeShell, GraphRunProcessPanel } }
 </script>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { Position } from '@vue-flow/core'
+import { computed, useId } from 'vue'
 import type { SubmitAnswerRequest } from '@/api/types'
 import type { SpecAgentGraphNodeData } from '@/graph/graphProjection'
-import { useInputDraftStore } from '@/stores/inputDraftStore'
-import { phaseToCopy } from '@/graph/phaseCopy'
-
-/**
- * Four-side edge anchors for adaptive routing. Every side carries one
- * source handle and one invisible-until-hover target handle at its midpoint;
- * lineage/replacement edges pick one pair per connection through the pure
- * selectEdgeHandles geometry rule (see graph/graphEdgeRouting.ts). Source
- * handles accept manual drag-connections (semantic relations between nodes);
- * the flow still forbids connecting anything to question-option slots.
- */
-const ANCHOR_SIDES: Position[] = [
-  Position.Left,
-  Position.Right,
-  Position.Top,
-  Position.Bottom,
-]
-const SOURCE_ANCHORS = ANCHOR_SIDES.map((side) => ({
-  id: 'source-' + side,
-  position: side,
-}))
-const TARGET_ANCHORS = ANCHOR_SIDES.map((side) => ({
-  id: 'target-' + side,
-  position: side,
-}))
+import { useInputDraftStore, type InputDraft } from '@/stores/inputDraftStore'
+import { actionsFor, type NodeAction } from '@/graph/nodeActions'
+import RichAssistantText from '@/components/common/RichAssistantText.vue'
 
 const props = defineProps<{
   data: SpecAgentGraphNodeData
@@ -53,6 +31,10 @@ const emit = defineEmits<{
   'contextual-ai': [nodeId: string]
   'retry-pending': []
   'activate-route': [routeId: string]
+  /** 已回答的路线末端：让 AI 在这条路线起草下一个问题（显式路线模式）。 */
+  'draft-next': [routeId: string]
+  /** 当前路线末端节点断开为独立节点（内容保留）。 */
+  disconnect: [nodeId: string]
 }>()
 
 /**
@@ -60,9 +42,10 @@ const emit = defineEmits<{
  *
  * Only the backend Active node without a finalized answer is answerable;
  * answer inputs live directly inside the node. Historical nodes are
- * read-only: they show only the primary/current reading answer preview.
- * Full route membership, answer history, and provenance remain in the
- * Inspector.
+ * read-only: selected (clicked) historical nodes show the complete question
+ * and answer at the same fidelity as the current node; unselected ones stay
+ * a compact navigation card so a long history never buries the canvas.
+ * Route-by-route answer history and provenance remain in the Inspector.
  *
  * Drag safety: only the header drags. Interactive body controls (options,
  * textarea, buttons) stop click propagation so they neither drag
@@ -72,42 +55,50 @@ const emit = defineEmits<{
 
 const inputDraftStore = useInputDraftStore()
 
-// Local refs backed by the draft store. The store survives remounts,
-// drags, and focus changes.
-const selectedOptionId = ref<string | null>(null)
-const freeText = ref('')
-
-// Load draft from store when node identity changes; never clear existing input.
-watch(
-  () => [props.data.node.id, props.data.canAnswer] as const,
-  () => {
-    const draft = inputDraftStore.getDraft(
-      props.data.projectId,
-      props.data.node.id,
-      props.data.readingRouteId,
-    )
-    if (draft) {
-      selectedOptionId.value = draft.selectedOptionId
-      freeText.value = draft.freeText
-    } else {
-      selectedOptionId.value = null
-      freeText.value = ''
-    }
-  },
-  { immediate: true },
-)
-
-// Persist draft to store on every change.
-watch([selectedOptionId, freeText], () => {
-  if (props.data.canAnswer) {
-    inputDraftStore.setDraft(
-      props.data.projectId,
-      props.data.node.id,
-      { selectedOptionId: selectedOptionId.value, freeText: freeText.value },
-      props.data.readingRouteId,
-    )
-  }
+// Read directly from the complete draft identity. Vue Flow can update route
+// context in place without replacing the node or remounting its textarea.
+// Only input events write drafts: focus/render changes never copy an old
+// local value into a new route, nor recreate a draft cleared after success.
+const draftNodeId = computed(() => props.data.canonicalNodeId ?? props.data.node.id)
+const draft = computed(() => inputDraftStore.getDraft(
+  props.data.projectId, draftNodeId.value, props.data.readingRouteId,
+))
+function updateDraft(changes: Partial<InputDraft>): void {
+  if (!props.data.canAnswer) return
+  inputDraftStore.setDraft(props.data.projectId, draftNodeId.value, {
+    selectedOptionId: null,
+    freeText: '',
+    ...draft.value,
+    ...changes,
+  }, props.data.readingRouteId)
+}
+const selectedOptionIds = computed<string[]>({
+  get: () => draft.value?.selectedOptionIds?.length
+    ? [...draft.value.selectedOptionIds]
+    : draft.value?.selectedOptionId ? [draft.value.selectedOptionId] : [],
+  set: (ids) => updateDraft({ selectedOptionId: ids[0] ?? null, selectedOptionIds: [...ids] }),
 })
+const selectedOptionId = computed(() => selectedOptionIds.value[0] ?? null)
+const freeText = computed({
+  get: () => draft.value?.freeText ?? '',
+  set: (text: string) => updateDraft({ freeText: text }),
+})
+// Independent visible cards must not belong to the same native radio group.
+const answerOptionGroup = useId()
+
+function isSelected(optionId: string): boolean {
+  return selectedOptionIds.value.includes(optionId)
+}
+
+function toggleOption(optionId: string, checked: boolean): void {
+  if (props.data.node.allowMultiSelect) {
+    selectedOptionIds.value = checked
+      ? [...selectedOptionIds.value, optionId]
+      : selectedOptionIds.value.filter((id) => id !== optionId)
+  } else {
+    selectedOptionIds.value = checked ? [optionId] : []
+  }
+}
 
 const node = computed(() => props.data.node)
 const primary = computed(() => props.data.primaryAnswer)
@@ -117,12 +108,24 @@ const isPendingCard = computed(() =>
   && props.data.runtimeStatus != null,
 )
 
+/**
+ * In-flight run overlay on a real (already persisted) node: only while the
+ * run is pending/running or just failed, never after success — a succeeded
+ * run's outcome is the canonical content itself.
+ */
+const showNodeRuntimePanel = computed(() =>
+  !isPendingCard.value
+  && props.data.runtimeStatus != null
+  && props.data.runtimeStatus !== 'SUCCEEDED'
+  && props.data.runtimeProgress != null,
+)
+
 /** 单一产品化节点状态：卡片只展示这一个状态徽标，不为每个 Runtime
- * phase 单独加 badge。生成中/待处理的解释文案仍由 phaseToCopy()
- * 在 pending 内容区承担。 */
+ * phase 单独加 badge。生成中/待处理的解释文案由 GraphRunProcessPanel
+ * 在内容区承担。 */
 const presentationState = computed(() => {
-  if (props.data.runtimeStatus === 'FAILED') return { label: '需处理', className: 'badge-danger' }
-  if (props.data.runtimeStatus === 'RUNNING') return { label: '生成中', className: 'badge-open' }
+  if (props.data.runtimeStatus === 'FAILED') return { label: runtimeStatusCopy(props.data.runtimeStatus), className: 'badge-danger' }
+  if (props.data.runtimeStatus === 'RUNNING') return { label: runtimeStatusCopy(props.data.runtimeStatus), className: 'badge-open' }
   if (isPendingCard.value || props.data.runtimeStatus === 'PENDING') return { label: '待处理', className: 'badge-warn' }
   if (props.data.canAnswer) return { label: '就绪', className: 'badge-ready' }
   if (props.data.primaryAnswer) return { label: '已确认', className: 'badge-confirmed' }
@@ -154,35 +157,110 @@ const unansweredReadingTipLabel = computed(() => {
 
 const canSubmit = computed(() => {
   if (!props.data.canAnswer || props.submitting) return false
-  const optionChosen = props.data.node.options.length > 0 && selectedOptionId.value !== null
+  const optionChosen = props.data.node.options.length > 0 && selectedOptionIds.value.length > 0
   const textGiven = props.data.node.allowFreeAnswer && freeText.value.trim().length > 0
   return optionChosen || textGiven
 })
 
 function submit(): void {
   if (!canSubmit.value) return
+  const multi = props.data.node.allowMultiSelect && selectedOptionIds.value.length > 0
   emit('submit-answer', {
     selectedOptionId: selectedOptionId.value ?? null,
+    // 多选题携带全量选择（用户顺序）；单选题只走 selectedOptionId。
+    selectedOptionIds: multi ? [...selectedOptionIds.value] : null,
     freeText: props.data.node.allowFreeAnswer && freeText.value.trim().length > 0
       ? freeText.value.trim()
       : null,
+    // Explicit target: when this card is the tip of the route the user is
+    // reading (e.g. a non-Active route), the answer must be written to THAT
+    // route instead of whatever route happens to be Active.
+    nodeId: props.data.canonicalNodeId ?? props.data.node.id,
+    routeId: props.data.readingRouteId,
   })
 }
 
-function forkNode(): void {
-  emit('fork', props.data.node.id)
+// 操作按钮统一来自 nodeActions 配置表（见 onAction），不再各自硬编码。
+
+/**
+ * 对话尾部/卡住时的继续入口：已回答的路线末端不再只提供 fork/重答 ——
+ * 还能沿原路线向前走。显式传阅读路线 id，绝不回落 Active。
+ */
+const railActions = computed(() =>
+  actionsFor(props.data, { runPending: props.pending }),
+)
+
+function onAction(action: NodeAction): void {
+  switch (action.id) {
+    case 'draft-next-question':
+      if (props.data.readingRouteId) emit('draft-next', props.data.readingRouteId)
+      break
+    case 'fork-node':
+      emit('fork', props.data.node.id)
+      break
+    case 'reanswer-node':
+      emit('reanswer', props.data.node.id)
+      break
+    case 'regenerate-node':
+      emit('regenerate', props.data.node.id)
+      break
+    case 'disconnect-node':
+      emit('disconnect', props.data.node.id)
+      break
+    case 'contextual-ai':
+      emit('contextual-ai', props.data.node.id)
+      break
+  }
 }
 
-function regenerateNode(): void {
-  emit('regenerate', props.data.node.id)
-}
-
-function reanswerNode(): void {
-  emit('reanswer', props.data.node.id)
-}
-
-const isRootNode = computed(() => props.data.node.parentNodeId === null)
 const readingRouteOptions = computed(() => props.data.routeMembership ?? [])
+
+/**
+ * 当前查看 = 已确定时只展示（默认由 Focus / 只看这条路线 / 唯一可见归属填满），
+ * 真正歧义时（多归属且都可见且无 Focus）才给出选择器。
+ * 只有一条候选时选择器没有可选项意义 —— 那就是"下拉碍事"的来源。
+ */
+const readingRouteLabel = computed<string | null>(() => {
+  const routeId = props.data.readingRouteId
+  if (!routeId) return null
+  const membership = readingRouteOptions.value.find((option) => option.routeId === routeId)
+  return membership?.label ?? '已选路线'
+})
+const needsReadingRouteChoice = computed(() =>
+  props.data.readingRouteId === null && readingRouteOptions.value.length > 1,
+)
+
+/**
+ * 被选中的历史节点展开为"完整问答"：与当前问题节点同等规格地展示完整问题、
+ * 目的、全部选项（标出实际选择）与自由文本回答（富文本渲染）。
+ *
+ * 未选中时仍保持紧凑导航卡，避免画布被长文本铺满；逐路线的回答历史继续留在
+ * Inspector 中（那里才是多路线事实的唯一权威视图）。
+ */
+const showFullHistory = computed(() => props.selected === true)
+
+/** 全部选项 + 该项是否在实际提交的选择里（只读展示；多选题可命中多项）。 */
+const historyOptions = computed(() => {
+  const chosenIds = new Set(
+    primary.value?.selectedOptionIds?.length
+      ? primary.value.selectedOptionIds
+      : primary.value?.selectedOptionId
+        ? [primary.value.selectedOptionId]
+        : [],
+  )
+  return node.value.options.map((option) => ({ option, chosen: chosenIds.has(option.id) }))
+})
+
+/** 历史答案的选择文案：多选题把全部命中选项连接展示。 */
+const historicalChoiceLabel = computed(() => {
+  const p = primary.value
+  if (!p) return null
+  const ids = p.selectedOptionIds?.length ? p.selectedOptionIds : p.selectedOptionId ? [p.selectedOptionId] : []
+  const labels = ids
+    .map((id) => node.value.options.find((option) => option.id === id)?.label ?? null)
+    .filter((label): label is string => label !== null)
+  return labels.length > 0 ? labels.join('、') : null
+})
 
 function setReadingRoute(event: Event): void {
   const value = (event.target as HTMLSelectElement).value
@@ -192,49 +270,21 @@ function setReadingRoute(event: Event): void {
 </script>
 
 <template>
-  <article
+  <GraphNodeShell
+    :show-actions="!isPendingCard && !data.canAnswer"
     :class="[
-      'graph-question-node',
       {
         'graph-question-node--current': data.canAnswer,
         'graph-question-node--historical': !data.canAnswer,
         'graph-question-node--shared': data.isShared,
         'graph-question-node--selected': selected === true,
+        'graph-question-node--detailed': !data.canAnswer && showFullHistory,
       },
     ]"
     data-test="graph-question-node"
-    data-layout-role="graph-node"
     :data-node-id="data.node.id"
   >
-
-    <!-- Adaptive edge anchors: one source + one target handle per side.
-         Source handles accept manual drag-connections; target handles accept
-         incoming ones. Invisible until node hover (style.css). -->
-    <Handle
-      v-for="anchor in SOURCE_ANCHORS"
-      :key="anchor.id"
-      :id="anchor.id"
-      type="source"
-      :position="anchor.position"
-      class="graph-question-node__handle graph-question-node__handle--source"
-      :connectable="true"
-      :connectable-start="true"
-      :connectable-end="true"
-      aria-hidden="true"
-    />
-    <Handle
-      v-for="anchor in TARGET_ANCHORS"
-      :key="anchor.id"
-      :id="anchor.id"
-      type="target"
-      :position="anchor.position"
-      class="graph-question-node__handle graph-question-node__handle--target"
-      :connectable="true"
-      :connectable-start="false"
-      :connectable-end="true"
-      aria-hidden="true"
-    />
-    <header class="graph-question-node__header" data-test="node-drag-handle" title="拖动标题栏移动节点">
+    <template #header>
       <span class="graph-question-node__identity">
         <span v-if="data.qLabel" class="graph-question-node__q-label">
           {{ data.qLabel }}
@@ -276,7 +326,7 @@ function setReadingRoute(event: Event): void {
       >
         {{ presentationState.label }}
       </span>
-    </header>
+    </template>
 
     <div class="graph-question-node__body nodrag" data-test="node-body">
       <div
@@ -285,10 +335,15 @@ function setReadingRoute(event: Event): void {
         data-test="shared-reading-route"
         @click.stop
       >
-        <label class="graph-reading-route__label" :for="'shared-reading-route-select-' + data.visualNodeKey">
-          当前查看
-        </label>
+        <span class="graph-reading-route__label">当前查看</span>
+        <span
+          v-if="!needsReadingRouteChoice"
+          class="graph-reading-route__value"
+          data-test="reading-route-resolved"
+          :title="readingRouteLabel ?? '未选择'"
+        >{{ readingRouteLabel ?? '未选择' }}</span>
         <select
+          v-else
           :id="'shared-reading-route-select-' + data.visualNodeKey"
           class="graph-reading-route__select nodrag"
           data-test="reading-route-select"
@@ -312,7 +367,14 @@ function setReadingRoute(event: Event): void {
       <template v-if="isPendingCard">
         <div class="graph-runtime-state" data-test="pending-card">
           <p class="graph-node-question">{{ node.question }}</p>
-          <p class="graph-runtime-copy">{{ phaseToCopy(data.runtimePhase) }}</p>
+          <GraphRunProcessPanel
+            class="graph-runtime-state__panel"
+            :phase="data.runtimePhase"
+            :summary="data.runtimeProgress?.summary ?? null"
+            :steps="data.runtimeProgress?.steps ?? []"
+            :running="data.runtimeStatus !== 'FAILED'"
+            compact
+          />
           <p v-if="data.runtimeMessage" class="graph-runtime-error">{{ data.runtimeMessage }}</p>
           <button
             v-if="data.runtimeStatus === 'FAILED'"
@@ -325,8 +387,22 @@ function setReadingRoute(event: Event): void {
         </div>
       </template>
 
-      <!-- Current answerable node: direct answer interaction -->
-      <template v-else-if="data.canAnswer">
+      <!-- In-flight run on an existing node: a slim process strip under the
+           regular content. Never blocks answering; progress only. -->
+      <GraphRunProcessPanel
+        v-if="showNodeRuntimePanel && data.runtimeProgress"
+        class="graph-runtime-state__panel graph-runtime-state__panel--inline nodrag"
+        :phase="data.runtimePhase"
+        :summary="data.runtimeProgress.summary"
+        :steps="data.runtimeProgress.steps"
+        :running="data.runtimeStatus !== 'FAILED'"
+        compact
+      />
+
+      <!-- Current answerable node: direct answer interaction.
+           !isPendingCard 守卫:pending 投影已在上方完整渲染,此模板链对
+           pending 卡片必须整体短路,否则紧凑历史分支会再渲染一次问题标题。 -->
+      <template v-if="!isPendingCard && data.canAnswer">
         <h3 class="graph-node-question" data-test="question">{{ node.question }}</h3>
         <p v-if="node.purpose" class="graph-node-purpose">{{ node.purpose }}</p>
 
@@ -334,18 +410,20 @@ function setReadingRoute(event: Event): void {
           v-for="option in node.options"
           :key="option.id"
           class="graph-option nodrag"
-          :class="{ 'graph-option--selected': selectedOptionId === option.id }"
+          :class="{ 'graph-option--selected': isSelected(option.id) }"
           @click.stop
         >
           <input
-            type="radio"
-            name="graph-answer-option"
+            :type="node.allowMultiSelect ? 'checkbox' : 'radio'"
+            :name="answerOptionGroup"
             :value="option.id"
-            v-model="selectedOptionId"
+            :checked="isSelected(option.id)"
             class="nodrag"
             data-test="option"
+            @change="toggleOption(option.id, ($event.target as HTMLInputElement).checked)"
           />
           <span class="graph-option-label">{{ option.label }}</span>
+          <span v-if="option.recommended" class="badge badge-open" data-test="option-recommended">推荐</span>
           <span v-if="option.impact" class="graph-option-impact">{{ option.impact }}</span>
         </label>
 
@@ -369,8 +447,78 @@ function setReadingRoute(event: Event): void {
 
       </template>
 
-      <!-- Historical node: compact navigation card; full answer stays in Inspector. -->
-      <template v-else>
+      <!-- 选中的历史节点：完整问答（与当前问题节点同规格）。点击节点即展开，
+           取消选择恢复紧凑导航卡。逐路线历史仍在 Inspector 中查看。 -->
+      <template v-else-if="!isPendingCard && showFullHistory">
+        <h3 class="graph-node-question" data-test="historical-question">
+          {{ node.question }}
+        </h3>
+        <p v-if="node.purpose" class="graph-node-purpose">
+          {{ node.purpose }}
+        </p>
+
+        <div v-if="primary" class="graph-history-answer" data-test="historical-answer">
+          <p class="graph-history-answer__head">
+            <span class="badge badge-confirmed">回答</span>
+            <span v-if="primary.routeLabel" class="graph-history-answer__route">
+              {{ primary.routeLabel }}
+            </span>
+          </p>
+          <p
+            v-if="historicalChoiceLabel"
+            class="graph-history-answer__choice"
+            data-test="historical-answer-option"
+          >
+            {{ historicalChoiceLabel }}
+          </p>
+          <RichAssistantText
+            v-if="primary.freeText"
+            class="graph-history-answer__text"
+            data-test="historical-answer-text"
+            :content="primary.freeText"
+          />
+          <p v-if="primary.inherited" class="meta-text">该回答继承自来源路线</p>
+        </div>
+
+        <!-- 阅读路线 tip 的 canonical 未答 Question：显示等待 + 激活所属路线
+             即可回答（route count 不变，不创建 RESUME 分支）。 -->
+        <div
+          v-else-if="unansweredReadingTip"
+          class="graph-answer-summary"
+          data-test="waiting-summary"
+        >
+          <span class="badge badge-warn">{{ unansweredReadingTipLabel }} · 等待回答</span>
+          <button
+            v-if="data.readingRouteId"
+            class="btn btn-primary graph-wake-answer nodrag"
+            type="button"
+            data-test="answer-this-question"
+            @click.stop="emit('activate-route', data.readingRouteId)"
+          >
+            回答这个问题
+          </button>
+        </div>
+
+        <p v-else class="meta-text" data-test="waiting-plain">等待回答</p>
+
+        <!-- 完整选项列表：只读，标出实际提交的那一项。 -->
+        <ul v-if="historyOptions.length > 0" class="graph-history-options" data-test="historical-options">
+          <li
+            v-for="entry in historyOptions"
+            :key="entry.option.id"
+            class="graph-history-option"
+            :class="{ 'graph-history-option--chosen': entry.chosen }"
+          >
+            <span class="graph-history-option__mark" aria-hidden="true">{{ entry.chosen ? '✓' : '·' }}</span>
+            <span class="graph-option-label">{{ entry.option.label }}</span>
+            <span v-if="entry.option.impact" class="graph-option-impact">{{ entry.option.impact }}</span>
+          </li>
+        </ul>
+      </template>
+
+      <!-- 未选中的历史节点：紧凑导航卡；点击（选中）后展开完整信息。
+           pending 投影卡不进入此分支（上方已完整渲染）。 -->
+      <template v-else-if="!isPendingCard">
         <h4 class="graph-node-question graph-node-question--compact" data-test="historical-question">
           {{ node.question }}
         </h4>
@@ -387,10 +535,6 @@ function setReadingRoute(event: Event): void {
           data-test="waiting-summary"
         >
           <span class="badge badge-warn">{{ unansweredReadingTipLabel }} · 等待回答</span>
-          <h4 class="graph-node-question graph-node-question--compact" data-test="waiting-question">
-            {{ node.question }}
-          </h4>
-          <p v-if="node.purpose" class="graph-node-purpose">{{ node.purpose }}</p>
           <button
             v-if="data.readingRouteId"
             class="btn btn-primary graph-wake-answer nodrag"
@@ -410,51 +554,24 @@ function setReadingRoute(event: Event): void {
           class="meta-text graph-node-question--compact"
           data-test="waiting-plain"
         >等待回答</p>
+        <p v-else class="meta-text graph-node-expand-hint" data-test="expand-hint">点击查看完整回答</p>
       </template>
     </div>
 
-    <!-- 操作轨道：悬浮在节点右侧外缘竖排（不在卡片内占位，left:100%），
-         悬停或键盘聚焦节点时出现。仅历史节点提供；当前节点直接在卡片内作答。 -->
-    <div
-      v-if="!isPendingCard && !data.canAnswer"
-      class="graph-node-actions graph-node-actions--toolbar"
-      tabindex="0"
-      role="toolbar"
-      aria-label="节点操作"
-    >
+    <!-- 操作轨道按钮：统一来自 nodeActions 配置表；轨道容器与显隐在
+         GraphNodeShell 中。仅历史节点提供，当前节点直接在卡片内作答。 -->
+    <template #actions>
       <button
+        v-for="action in railActions"
+        :key="action.id"
         class="btn graph-action nodrag"
-        data-test="fork-node"
-        title="我接受现在，换未来。"
-        @click.stop="forkNode"
+        :data-test="action.id"
+        :title="action.title"
+        :disabled="action.disabled === true"
+        @click.stop="onAction(action)"
       >
-        从这里开新路线
+        {{ action.label }}
       </button>
-      <button
-        class="btn graph-action nodrag"
-        data-test="reanswer-node"
-        title="问题没错，答案换一个。"
-        @click.stop="reanswerNode"
-      >
-        重新选择答案
-      </button>
-      <button
-        class="btn graph-action nodrag"
-        data-test="regenerate-node"
-        :disabled="isRootNode || pending"
-        title="问题本身换掉。"
-        @click.stop="regenerateNode"
-      >
-        换一个问题
-      </button>
-      <button
-        class="btn graph-action nodrag"
-        data-test="contextual-ai"
-        title="在检查器中询问 AI"
-        @click.stop="emit('contextual-ai', data.node.id)"
-      >
-        问 AI
-      </button>
-    </div>
-  </article>
+    </template>
+  </GraphNodeShell>
 </template>

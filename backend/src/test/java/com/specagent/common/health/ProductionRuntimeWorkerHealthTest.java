@@ -21,10 +21,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 class ProductionRuntimeWorkerHealthTest {
 
+    // Same isolation rule as DraftQuestionAsyncPollerIntegrationTest: this is
+    // the other context that starts the real @Scheduled RunWorkerPoller against
+    // the shared test database, so it must not stay cached (and polling) for
+    // the rest of the JVM after the class finishes.
     @SpringBootTest
     @AutoConfigureMockMvc
     @ActiveProfiles("test")
     @TestPropertySource(properties = "spec.agent.brain.worker.enabled=true")
+    @org.springframework.test.annotation.DirtiesContext(
+            classMode = org.springframework.test.annotation.DirtiesContext.ClassMode.AFTER_CLASS)
     static class WorkerEnabled {
 
         @Autowired

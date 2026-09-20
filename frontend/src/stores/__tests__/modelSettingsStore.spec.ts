@@ -29,11 +29,11 @@ describe('model settings store', () => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
     mockedGet.mockResolvedValue({ configured: false, maskedKey: null, selectedModel: null })
-    mockedList.mockResolvedValue({ freeModels: [] })
+    mockedList.mockResolvedValue({ allModels: [], freeModels: [] })
   })
 
   it('keeps probe model selection explicit and commits only after save succeeds', async () => {
-    mockedProbe.mockResolvedValue({ freeModels: ['alpha-free', 'beta-free'] })
+    mockedProbe.mockResolvedValue({ allModels: ['alpha-free', 'beta-free'], freeModels: ['alpha-free', 'beta-free'] })
     mockedSave.mockResolvedValue({ configured: true, maskedKey: '…1234', selectedModel: 'beta-free' })
     const store = useModelSettingsStore()
 
@@ -43,7 +43,11 @@ describe('model settings store', () => {
     store.selectedModel = 'beta-free'
     await expect(store.save(' key ', 'beta-free')).resolves.toBe(true)
     expect(store.status?.selectedModel).toBe('beta-free')
-    expect(store.freeModels).toEqual([])
+    // 列表来自保存后的重新拉取，而不是 probe 结果：probe 发现的 alpha-free 不该留下。
+    expect(store.allModels).not.toContain('alpha-free')
+    // 但已保存的选中项必须保持可见 —— 否则刷新期间界面会闪出「暂无可用模型」
+    // 并把选择框置灰。这是与 OpenRouter 卡对齐的那条规则。
+    expect(store.allModels).toContain('beta-free')
     expect(mockedSave).toHaveBeenCalledWith('key', 'beta-free')
   })
 
@@ -59,7 +63,7 @@ describe('model settings store', () => {
 
   it('loads saved-key models and switches model without a key in the request', async () => {
     mockedGet.mockResolvedValue({ configured: true, maskedKey: '••••1234', selectedModel: 'alpha-free' })
-    mockedList.mockResolvedValue({ freeModels: ['alpha-free', 'beta-free'] })
+    mockedList.mockResolvedValue({ allModels: ['alpha-free', 'beta-free'], freeModels: ['alpha-free', 'beta-free'] })
     mockedSaveModel.mockResolvedValue({ configured: true, maskedKey: '••••1234', selectedModel: 'beta-free' })
     const store = useModelSettingsStore()
 

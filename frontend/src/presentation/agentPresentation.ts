@@ -56,3 +56,36 @@ export function agentActionLabel(actionFamily: string | null | undefined): strin
   if (!actionFamily) return UNKNOWN_ACTION_LABEL
   return ACTION_LABELS[actionFamily] ?? UNKNOWN_ACTION_LABEL
 }
+
+/** 后端 run operation → pending 卡的进行中文案。 */
+const OPERATION_PROGRESS_LABELS: Record<string, string> = {
+  DRAFT_QUESTION: '正在生成下一步问题…',
+  ANSWER_TIP: '正在生成回答…',
+  RESUME_ANSWER: '正在生成回答…',
+  REGENERATE_NODE: '正在重新生成该节点的问题…',
+  GENERATE_ARTIFACT: '正在生成规格文档…',
+}
+
+/** 未知 operation 回退：固定文案，不拼接 raw operation。 */
+export const UNKNOWN_OPERATION_PROGRESS_LABEL = '正在处理…'
+
+export function agentOperationProgressLabel(operation: string | null | undefined): string {
+  if (!operation) return OPERATION_PROGRESS_LABELS.DRAFT_QUESTION
+  return OPERATION_PROGRESS_LABELS[operation] ?? UNKNOWN_OPERATION_PROGRESS_LABEL
+}
+
+/** run operation → pending 卡的失败文案。 */
+const OPERATION_FAILURE_LABELS: Record<string, string> = {
+  DRAFT_QUESTION: '下一步问题生成失败',
+  ANSWER_TIP: '回答生成失败',
+  RESUME_ANSWER: '回答生成失败',
+  REGENERATE_NODE: '重新生成失败',
+  GENERATE_ARTIFACT: '规格文档生成失败',
+}
+
+export const UNKNOWN_OPERATION_FAILURE_LABEL = '生成失败，请重试'
+
+export function agentOperationFailureLabel(operation: string | null | undefined): string {
+  if (!operation) return OPERATION_FAILURE_LABELS.DRAFT_QUESTION
+  return OPERATION_FAILURE_LABELS[operation] ?? UNKNOWN_OPERATION_FAILURE_LABEL
+}

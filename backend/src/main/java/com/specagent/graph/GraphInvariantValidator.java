@@ -1,6 +1,6 @@
 package com.specagent.graph;
 
-import com.specagent.answer.AnswerRepository;
+import com.specagent.common.AnswerExistencePort;
 import com.specagent.node.Node;
 import com.specagent.node.NodeKind;
 import com.specagent.node.NodeRepository;
@@ -43,18 +43,18 @@ public class GraphInvariantValidator {
     private final NodeRepository nodeRepository;
     private final RouteRepository routeRepository;
     private final RouteHistoryResolver routeHistoryResolver;
-    private final AnswerRepository answerRepository;
+    private final AnswerExistencePort answerExistencePort;
     private final NodeRelationRepository relationRepository;
 
     public GraphInvariantValidator(NodeRepository nodeRepository,
                                    RouteRepository routeRepository,
                                    RouteHistoryResolver routeHistoryResolver,
-                                   AnswerRepository answerRepository,
+                                   AnswerExistencePort answerExistencePort,
                                    NodeRelationRepository relationRepository) {
         this.nodeRepository = nodeRepository;
         this.routeRepository = routeRepository;
         this.routeHistoryResolver = routeHistoryResolver;
-        this.answerRepository = answerRepository;
+        this.answerExistencePort = answerExistencePort;
         this.relationRepository = relationRepository;
     }
 
@@ -64,9 +64,34 @@ public class GraphInvariantValidator {
      * gain a lineage child. Unanswered Questions must stay route tips — no
      * line advancing command may cross them. Non-question parents (knowledge,
      * resource, artifact) are always valid continuation points.
+     *
+     * <p>Strict form: the child kind is unknown, so the guard applies in full.
      */
     public void validateQuestionCanHaveChild(UUID projectId, UUID routeId, UUID parentNodeId) {
+        validateQuestionCanHaveChild(projectId, routeId, parentNodeId, null);
+    }
+
+    /**
+     * Kind-aware form used when the caller already knows what is being
+     * attached. A non-interaction child (resource / knowledge / artifact)
+     * carries no answerable question of its own, so hanging it off the
+     * current tip never skips a question the user still has to answer —
+     * it only supplies material for the question that is already pending.
+     * Rejecting those attachments would make the tip permanently
+     * unattachable, because a route tip is by construction the newest
+     * unanswered question.
+     *
+     * <p>{@code childKind == null} means "unknown" and falls back to the
+     * strict behaviour, so existing call sites keep their semantics.
+     */
+    public void validateQuestionCanHaveChild(UUID projectId,
+                                             UUID routeId,
+                                             UUID parentNodeId,
+                                             NodeKind childKind) {
         if (parentNodeId == null) {
+            return;
+        }
+        if (childKind != null && childKind != NodeKind.INTERACTION) {
             return;
         }
         Node parent = nodeRepository.findById(parentNodeId)
@@ -83,10 +108,10 @@ public class GraphInvariantValidator {
             // only guards unanswered crossing on the advancing lineage.
             return;
         }
-        boolean answered = routeHistoryResolver.resolveEffectiveAnswers(routeId, lineage).stream()
-                .anyMatch(answer -> answer.nodeId().equals(parentNodeId));
+        boolean answered = routeHistoryResolver.resolveEffectiveAnswerRefs(routeId, lineage).stream()
+                .anyMatch(ref -> ref.nodeId().equals(parentNodeId));
         if (!answered) {
-            throw new IllegalStateException(
+            throw new GraphRuleViolationException("UNANSWERED_QUESTION_HAS_CHILD",
                     "UNANSWERED_QUESTION_HAS_CHILD: Question " + parentNodeId
                             + " has no finalized effective answer and cannot gain a lineage child");
         }
@@ -104,7 +129,7 @@ public class GraphInvariantValidator {
         if (node.kind() != NodeKind.INTERACTION) {
             return;
         }
-        if (answerRepository.existsByNodeId(nodeId)) {
+        if (answerExistencePort.nodeHasFinalizedAnswer(nodeId)) {
             throw new IllegalStateException(
                     "SHARED_STATE_DIVERGENCE: canonical Question " + nodeId
                             + " already has an immutable Answer identity; re-answer must create a new Question Node");
@@ -216,7 +241,7 @@ public class GraphInvariantValidator {
                     .add(relation.targetNodeId());
         }
         if (reaches(adjacency, targetNodeId, sourceNodeId)) {
-            throw new IllegalStateException(
+            throw new GraphRuleViolationException("RELATION_DEPENDENCY_CYCLE",
                     "RELATION_DEPENDENCY_CYCLE: " + addedType.code()
                             + " would create a causal/provenance cycle between "
                             + sourceNodeId + " and " + targetNodeId);

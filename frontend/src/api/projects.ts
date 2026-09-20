@@ -1,8 +1,9 @@
 import { apiClient } from './client'
 import type { CreateProjectRequest, ProjectResponse, ProjectSummaryResponse } from './types'
 
-export function listProjects(): Promise<ProjectSummaryResponse[]> {
-  return apiClient.get<ProjectSummaryResponse[]>('/projects')
+export function listProjects(title?: string): Promise<ProjectSummaryResponse[]> {
+  const path = title ? `/projects?title=${encodeURIComponent(title)}` : '/projects'
+  return apiClient.get<ProjectSummaryResponse[]>(path)
 }
 
 export function createProject(title: string): Promise<ProjectResponse> {
@@ -12,6 +13,10 @@ export function createProject(title: string): Promise<ProjectResponse> {
 
 export function getProject(projectId: string): Promise<ProjectResponse> {
   return apiClient.get<ProjectResponse>(`/projects/${projectId}`)
+}
+
+export function renameProject(projectId: string, title: string): Promise<ProjectResponse> {
+  return apiClient.put<ProjectResponse>(`/projects/${projectId}/title`, { title })
 }
 
 export function deleteProject(projectId: string): Promise<void> {

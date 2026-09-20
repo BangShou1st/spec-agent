@@ -1,6 +1,8 @@
 package com.specagent.agent.action;
 
 import com.specagent.graph.GraphInvariantValidator;
+import com.specagent.graph.GraphOperation;
+import com.specagent.graph.GraphOperationRepository;
 import com.specagent.node.KnowledgeStatus;
 import com.specagent.node.Node;
 import com.specagent.node.NodeAuthorKind;
@@ -61,7 +63,8 @@ public class AgentGraphMutationService {
     public record InteractionNode(String questionText,
                                   String purpose,
                                   List<NodeOption> options,
-                                  boolean allowFreeAnswer) implements NodeCreation {
+                                  boolean allowFreeAnswer,
+                                  boolean allowMultiSelect) implements NodeCreation {
     }
 
     /** A generic workspace node (CREATE_NODE with a non-INTERACTION kind). */
@@ -74,15 +77,18 @@ public class AgentGraphMutationService {
     private final RouteRepository routeRepository;
     private final NodeService nodeService;
     private final GraphInvariantValidator invariantValidator;
+    private final GraphOperationRepository operationRepository;
 
     public AgentGraphMutationService(ProjectRepository projectRepository,
                                      RouteRepository routeRepository,
                                      NodeService nodeService,
-                                     GraphInvariantValidator invariantValidator) {
+                                     GraphInvariantValidator invariantValidator,
+                                     GraphOperationRepository operationRepository) {
         this.projectRepository = projectRepository;
         this.routeRepository = routeRepository;
         this.nodeService = nodeService;
         this.invariantValidator = invariantValidator;
+        this.operationRepository = operationRepository;
     }
 
     /**
@@ -90,40 +96,67 @@ public class AgentGraphMutationService {
      * the anchor the model decided against (the route tip at decision time, or
      * null for an empty-route root). Node insert and route tip/root advancement
      * commit together.
+     *
+     * <p>{@code causedBy} records the proposal/run provenance on the appended
+     * {@link com.specagent.graph.GraphOperation} — agent creations are
+     * user-visible durable mutations and MUST enter the same undo log as user
+     * commands (actor AGENT), or the undo stack drifts away from the real
+     * graph.
      */
     @Transactional
     public Node executeNodeCreation(UUID projectId,
                                     UUID routeId,
                                     UUID expectedTipNodeId,
                                     NodeCreation creation) {
+        return executeNodeCreation(projectId, routeId, expectedTipNodeId, creation, null);
+    }
+
+    /** Same as above with operation-log provenance (e.g. {@code proposal:<id>}). */
+    @Transactional
+    public Node executeNodeCreation(UUID projectId,
+                                    UUID routeId,
+                                    UUID expectedTipNodeId,
+                                    NodeCreation creation,
+                                    String causedBy) {
         // Lock order: project -> route/node -> graph write.
         projectRepository.lockById(projectId);
         Route route = requireOpenRouteInProject(projectId, routeId);
         verifyAnchorIsCurrentTip(route, expectedTipNodeId);
 
+        Node node;
         if (expectedTipNodeId == null) {
             // Empty-route root: the anchor was null and the route still has no
             // tip, so the new node becomes both root and tip.
-            return switch (creation) {
-                case InteractionNode node -> nodeService.createRootNode(
-                        projectId, routeId, node.questionText(), node.purpose(),
-                        node.options(), node.allowFreeAnswer());
-                case WorkspaceNode node -> nodeService.createWorkspaceNode(
-                        projectId, routeId, null, node.kind(), node.subtype(),
-                        node.content(), NodeAuthorKind.AGENT, KnowledgeStatus.PROPOSED);
+            node = switch (creation) {
+                case InteractionNode n -> nodeService.createRootNode(
+                        projectId, routeId, n.questionText(), n.purpose(),
+                        n.options(), n.allowFreeAnswer(), n.allowMultiSelect());
+                case WorkspaceNode n -> nodeService.createWorkspaceNode(
+                        projectId, routeId, null, n.kind(), n.subtype(),
+                        n.content(), NodeAuthorKind.AGENT, KnowledgeStatus.PROPOSED);
+            };
+        } else {
+            requireNodeInProject(projectId, expectedTipNodeId);
+            invariantValidator.validateQuestionCanHaveChild(projectId, routeId, expectedTipNodeId);
+            node = switch (creation) {
+                case InteractionNode n -> nodeService.createChildNode(
+                        projectId, routeId, expectedTipNodeId, n.questionText(),
+                        n.purpose(), n.options(), n.allowFreeAnswer(),
+                        n.allowMultiSelect());
+                case WorkspaceNode n -> nodeService.createWorkspaceNode(
+                        projectId, routeId, expectedTipNodeId, n.kind(), n.subtype(),
+                        n.content(), NodeAuthorKind.AGENT, KnowledgeStatus.PROPOSED);
             };
         }
-
-        requireNodeInProject(projectId, expectedTipNodeId);
-        invariantValidator.validateQuestionCanHaveChild(projectId, routeId, expectedTipNodeId);
-        return switch (creation) {
-            case InteractionNode node -> nodeService.createChildNode(
-                    projectId, routeId, expectedTipNodeId, node.questionText(),
-                    node.purpose(), node.options(), node.allowFreeAnswer());
-            case WorkspaceNode node -> nodeService.createWorkspaceNode(
-                    projectId, routeId, expectedTipNodeId, node.kind(), node.subtype(),
-                    node.content(), NodeAuthorKind.AGENT, KnowledgeStatus.PROPOSED);
-        };
+        operationRepository.append(projectId, GraphOperation.Actor.AGENT,
+                GraphOperation.Type.CREATE_DRAFT_NODE, List.of(node.id()),
+                Map.of("routeId", routeId.toString()),
+                Map.of("routeId", routeId.toString(),
+                       "nodeId", node.id().toString(),
+                       "parentId", expectedTipNodeId == null ? "" : expectedTipNodeId.toString(),
+                       "authorKind", NodeAuthorKind.AGENT.code()),
+                causedBy);
+        return node;
     }
 
     /**

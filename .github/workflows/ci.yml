@@ -2,7 +2,10 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      # Active development branch: direct pushes must run the full CI too.
+      - system-bugfix-v1
   pull_request:
 
 permissions:
@@ -77,6 +80,97 @@ jobs:
           name: eval-baseline
           path: backend/build/eval-baseline/
           if-no-files-found: error
+
+  # Deterministic Python brain unit tests. The suite is offline-safe: model
+  # behavior comes from recorded fixtures and fake responses, never a paid
+  # provider. Also validates the shared contracts/fixtures corpus on the
+  # Python side (test_contracts.py).
+  brain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: agent-brain/pyproject.toml
+      - name: Install the brain package with dev dependencies
+        working-directory: agent-brain
+        run: pip install -e '.[dev]'
+      - name: Run Python brain unit tests (deterministic, no paid model)
+        working-directory: agent-brain
+        run: pytest -q
+
+  # Cross-language contract validation (the Java <-> Python exit gate):
+  # a broker-mode agent-brain dials back into the test process's fake
+  # model-inference broker, so the round trip never touches a paid provider.
+  cross-language:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: spec_agent_test
+          POSTGRES_USER: spec_agent
+          POSTGRES_PASSWORD: spec_agent_dev
+        ports:
+          - 5434:5432
+        options: >-
+          --health-cmd "pg_isready -U spec_agent -d spec_agent_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: agent-brain/pyproject.toml
+      - name: Install the brain package
+        working-directory: agent-brain
+        run: pip install -e .
+      - name: Start the broker-mode brain (callbacks hit the fake gateway)
+        working-directory: agent-brain
+        env:
+          SPEC_AGENT_BRAIN_MODEL_MODE: broker
+          SPEC_AGENT_INTERNAL_BROKER_URL: http://localhost:8099/internal/v1/model-inference
+          # Must match the Spring test default (SPEC_AGENT_BRAIN_INTERNAL_SECRET:
+          # dev-internal-secret). The brain defaults to an EMPTY secret when the
+          # variable is unset, and the broker then rejects every inference call
+          # with 401 (surfaced as brain_unavailable).
+          SPEC_AGENT_BRAIN_INTERNAL_SECRET: dev-internal-secret
+        run: |
+          nohup uvicorn spec_agent_brain.app:app --host 127.0.0.1 --port 8100 > ../brain-ci.log 2>&1 &
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://localhost:8100/health > /dev/null; then
+              echo "Brain is ready"
+              break
+            fi
+            sleep 1
+          done
+          if ! curl --fail --silent http://localhost:8100/health > /dev/null; then
+            echo "Brain did not become ready"
+            cat ../brain-ci.log
+            exit 1
+          fi
+      - name: Run the cross-language contract exit gate
+        working-directory: backend
+        env:
+          SPRING_PROFILES_ACTIVE: test
+          SPEC_AGENT_MODEL_GATEWAY: fake
+          SPEC_AGENT_CROSS_LANG_PORT: 8099
+        run: |
+          if ! bash gradlew testCrossLanguage; then
+            echo "--- agent-brain log ---"
+            cat ../brain-ci.log
+            exit 1
+          fi
 
   frontend:
     runs-on: ubuntu-latest

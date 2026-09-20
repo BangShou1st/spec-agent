@@ -59,34 +59,34 @@ public class OpenCodeSettingsService {
     }
 
     /** Probes a candidate in memory. This method never writes the repository. */
-    public List<String> probe(String apiKey) {
+    public OpenCodeCandidateModels probe(String apiKey) {
         String candidate = requireKey(apiKey);
-        List<String> freeModels = currentFreeModels(candidate);
-        // A probe validates credential reachability using one currently allowed
-        // free model, but does not choose or persist a working model.
-        transport.validateCredential(candidate, freeModels.get(0));
-        return List.copyOf(freeModels);
+        OpenCodeCandidateModels models = currentCandidateModels(candidate);
+        // A probe validates credential reachability using one currently
+        // available model, but does not choose or persist a working model.
+        transport.validateCredential(candidate, models.recommendedProbeModel());
+        return models;
     }
 
     /**
-     * Lists current free models with the already persisted credential. The
-     * key is resolved explicitly from storage; an empty request key is never
+     * Lists current models with the already persisted credential. The key is
+     * resolved explicitly from storage; an empty request key is never
      * interpreted as "reuse the old key".
      */
-    public List<String> listSavedKeyModels() {
+    public OpenCodeCandidateModels listSavedKeyModels() {
         OpenCodeSettings settings = requireStoredSettings();
-        return List.copyOf(currentFreeModels(settings.apiKey()));
+        return currentCandidateModels(settings.apiKey());
     }
 
     /** Revalidates the complete candidate configuration before one upsert. */
     public OpenCodeSettingsStatus save(String apiKey, String selectedModel) {
         String candidate = requireKey(apiKey);
         if (selectedModel == null || selectedModel.isBlank()) {
-            throw new IllegalArgumentException("A free model must be selected");
+            throw new IllegalArgumentException("A model must be selected");
         }
         String model = selectedModel.trim();
-        List<String> freeModels = currentFreeModels(candidate);
-        if (!model.endsWith("-free") || !freeModels.contains(model)) {
+        OpenCodeCandidateModels models = currentCandidateModels(candidate);
+        if (!models.allModels().contains(model)) {
             throw new OpenCodeModelException(OpenCodeModelErrorCategory.INVALID_MODEL,
                     "Selected OpenCode model is not currently available");
         }
@@ -105,8 +105,8 @@ public class OpenCodeSettingsService {
     public OpenCodeSettingsStatus changeModel(String selectedModel) {
         OpenCodeSettings current = requireStoredSettings();
         String model = requireModel(selectedModel);
-        List<String> freeModels = currentFreeModels(current.apiKey());
-        if (!model.endsWith("-free") || !freeModels.contains(model)) {
+        OpenCodeCandidateModels models = currentCandidateModels(current.apiKey());
+        if (!models.allModels().contains(model)) {
             throw new OpenCodeModelException(OpenCodeModelErrorCategory.INVALID_MODEL,
                     "Selected OpenCode model is not currently available");
         }
@@ -115,6 +115,23 @@ public class OpenCodeSettingsService {
         repository.upsert(new OpenCodeSettings(
                 current.apiKey(), current.maskedSuffix(), model,
                 current.createdAt(), Instant.now()));
+        return status();
+    }
+
+    /**
+     * Revalidates the persisted configuration without writing anything.
+     * Mirrors the OpenRouter contract: the reachability check runs against the
+     * model that is actually stored, so a settings card can offer an explicit
+     * "test again" action that never mutates the saved pair.
+     */
+    public OpenCodeSettingsStatus validate() {
+        OpenCodeSettings current = requireStoredSettings();
+        OpenCodeCandidateModels models = currentCandidateModels(current.apiKey());
+        if (!models.allModels().contains(current.selectedModel())) {
+            throw new OpenCodeModelException(OpenCodeModelErrorCategory.INVALID_MODEL,
+                    "Selected OpenCode model is not currently available");
+        }
+        transport.validateCredential(current.apiKey(), current.selectedModel());
         return status();
     }
 
@@ -133,10 +150,9 @@ public class OpenCodeSettingsService {
             throw new OpenCodeModelException(OpenCodeModelErrorCategory.NOT_CONFIGURED,
                     "OpenCode settings are not configured");
         }
-        if (!settings.selectedModel().endsWith("-free")) {
-            throw new OpenCodeModelException(OpenCodeModelErrorCategory.INVALID_MODEL,
-                    "Configured OpenCode model is not currently allowed");
-        }
+        // Model selection is gated at save/changeModel time against the live
+        // provider list (free or paid); the runtime path itself stays
+        // policy-free and never re-imposes a cost filter.
         return new RuntimeOpenCodeSettings(settings.apiKey(), settings.selectedModel(),
                 "database:opencode_settings");
     }
@@ -154,22 +170,35 @@ public class OpenCodeSettingsService {
                             + "SPEC_AGENT_EVAL_OPENCODE_KEY and "
                             + "SPEC_AGENT_EVAL_OPENCODE_MODEL; test database settings are not used");
         }
-        // Product settings remain free-only, but the explicitly isolated live
-        // evaluation source may select any exact model exposed by the
-        // provider (including paid/non-free reference models). Qualification
-        // validates reachability and schema compliance before a model is used
-        // as a reference; it must not be constrained by product cost policy.
+        // Product settings follow the same live-list policy as any other
+        // provider: the explicitly isolated live evaluation source may select
+        // any exact model exposed by the provider. Qualification validates
+        // reachability and schema compliance before a model is used as a
+        // reference; it must not be constrained by product cost policy.
         return new RuntimeOpenCodeSettings(externalApiKey.trim(), externalSelectedModel.trim(),
                 EXTERNAL_CREDENTIAL_SOURCE);
     }
 
-    private List<String> currentFreeModels(String apiKey) {
-        List<String> models = catalog.listFreeModels(apiKey);
-        if (models.isEmpty()) {
+    /** Full provider catalog plus the free subset, from one live call. */
+    private OpenCodeCandidateModels currentCandidateModels(String apiKey) {
+        List<String> allModels = catalog.listAllModels(apiKey);
+        if (allModels.isEmpty()) {
             throw new OpenCodeModelException(OpenCodeModelErrorCategory.INVALID_MODEL,
-                    "OpenCode has no currently available free models");
+                    "OpenCode has no currently available models");
         }
-        return models;
+        List<String> freeModels = allModels.stream()
+                .filter(OpenCodeModelCatalog::isFreeModel)
+                .toList();
+        // Reachability probe prefers a free model so the credential check
+        // never spends credit; any exposed model is an acceptable fallback.
+        String probeModel = !freeModels.isEmpty() ? freeModels.get(0) : allModels.get(0);
+        return new OpenCodeCandidateModels(allModels, freeModels, probeModel);
+    }
+
+    /** One probe/list result: everything exposed, the free subset, and the
+     * model a reachability check should run against. */
+    public record OpenCodeCandidateModels(List<String> allModels, List<String> freeModels,
+                                          String recommendedProbeModel) {
     }
 
     private OpenCodeSettings requireStoredSettings() {
@@ -180,7 +209,7 @@ public class OpenCodeSettingsService {
 
     private static String requireModel(String selectedModel) {
         if (selectedModel == null || selectedModel.isBlank()) {
-            throw new IllegalArgumentException("A free model must be selected");
+            throw new IllegalArgumentException("A model must be selected");
         }
         return selectedModel.trim();
     }

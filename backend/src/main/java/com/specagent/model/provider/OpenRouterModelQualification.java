@@ -78,6 +78,20 @@ public final class OpenRouterModelQualification {
 
     /** Qualified ids from a raw model list payload, sorted and bounded. */
     public static List<String> qualifiedIds(JsonNode root, String context) {
+        return qualifiedModelIds(root, context).qualified();
+    }
+
+    /** Full qualification result: displayable ids plus the free subset. */
+    public record QualifiedModelIds(List<String> all, List<String> qualified) {
+    }
+
+    /**
+     * Extracts every displayable model id (free and paid) plus the free
+     * qualified subset from one raw {@code GET /models} payload. The paid
+     * entries skip metadata capability filtering: showing them is a display
+     * concern, while save/validate still gate on the real probe.
+     */
+    public static QualifiedModelIds qualifiedModelIds(JsonNode root, String context) {
         if (root == null || !root.isObject()) {
             throw ModelProviderException.invalidResponse(context, "OpenRouter model list must be an object");
         }
@@ -85,16 +99,31 @@ public final class OpenRouterModelQualification {
         if (data == null || !data.isArray()) {
             throw ModelProviderException.invalidResponse(context, "OpenRouter model list has no data array");
         }
-        List<String> ids = new ArrayList<>();
+        List<String> all = new ArrayList<>();
+        List<String> qualified = new ArrayList<>();
         for (JsonNode item : data) {
+            if (item == null || !item.isObject()) {
+                continue;
+            }
+            JsonNode idNode = item.get("id");
+            if (idNode == null || !idNode.isTextual()) {
+                continue;
+            }
+            String id = idNode.asText().trim();
+            if (id.isEmpty() || id.length() > ProviderUrlSecurity.MAX_MODEL_ID_LENGTH || all.contains(id)) {
+                continue;
+            }
+            all.add(id);
             if (isQualified(item)) {
-                String id = item.get("id").asText().trim();
-                if (id.length() <= ProviderUrlSecurity.MAX_MODEL_ID_LENGTH && !ids.contains(id)) {
-                    ids.add(id);
-                }
+                qualified.add(id);
             }
         }
-        ids.sort(String::compareTo);
+        all.sort(String::compareTo);
+        qualified.sort(String::compareTo);
+        return new QualifiedModelIds(bound(all), bound(qualified));
+    }
+
+    private static List<String> bound(List<String> ids) {
         return ids.size() > 500 ? ids.subList(0, 500) : ids;
     }
 }

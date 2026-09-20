@@ -6,6 +6,7 @@ import com.specagent.agent.contract.AgentRequestEnvelope;
 import com.specagent.agent.contract.AgentResponseEnvelope;
 import com.specagent.agent.policy.PolicyDecision;
 import com.specagent.agent.eligibility.ActionEligibilityGate;
+import com.specagent.agent.runtime.AgentTracePort;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -22,9 +23,13 @@ import java.util.Objects;
  * Optional, in-process diagnostic recorder used by the evaluation plumbing.
  * It is off by default, never writes to the inference request, and keeps one
  * immutable snapshot per attempt until the evaluation runner takes it.
+ *
+ * <p>Implements the agent-side write port {@link AgentTracePort} so the agent
+ * layer can record traces without depending on this package (the read/take
+ * side stays on the concrete type for the evaluation plumbing).
  */
 @Service
-public class SemanticTraceRecorder {
+public class SemanticTraceRecorder implements AgentTracePort {
 
     private final AtomicBoolean enabled;
     private final Map<UUID, SemanticTrace> traces = new ConcurrentHashMap<>();

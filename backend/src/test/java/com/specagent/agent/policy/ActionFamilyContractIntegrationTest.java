@@ -143,10 +143,12 @@ class ActionFamilyContractIntegrationTest {
         assertThat(result.actionFamily()).isEqualTo("INVOKE_CAPABILITY");
         assertThat(proposalService.getProposal(pending.id()).orElseThrow().status())
                 .isEqualTo(ProposalStatus.ACCEPTED);
-        assertThat(commandService.listOperations(project.id())).anySatisfy(op -> {
-            assertThat(op.type()).isEqualTo(GraphOperation.Type.ACCEPT_AGENT_PROPOSAL);
-            assertThat(op.causedBy()).isEqualTo("proposal:" + pending.id());
-        });
+        // An effect-free capability acceptance must NOT record the
+        // non-reversible ACCEPT_AGENT_PROPOSAL barrier — it has no graph
+        // effect, so it must never lock the undo history.
+        assertThat(commandService.listOperations(project.id()))
+                .noneSatisfy(op -> assertThat(op.type())
+                        .isEqualTo(GraphOperation.Type.ACCEPT_AGENT_PROPOSAL));
     }
 
     @Test

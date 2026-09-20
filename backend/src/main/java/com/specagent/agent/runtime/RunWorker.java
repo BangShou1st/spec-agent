@@ -160,12 +160,25 @@ public class RunWorker {
     private void executeDecisionCycle(AgentRun run) {
         UUID runId = run.id();
         try {
-            decisionCycleService.draftQuestion(run);
+            decisionCycleService.draftQuestion(run, explicitRouteIdOf(runId, run));
             evaluateContinuationAfterTerminal(runId);
         } catch (RuntimeException ex) {
             failIfNotTerminal(runId, ex);
             throw ex;
         }
+    }
+
+    /**
+     * Rebuilds the route selection recorded at enqueue time.
+     *
+     * <p>Returns the run's own route id when the client asked for an explicit
+     * route (multi-route work), and null when the run follows the project
+     * Active route — the historical behaviour, including failing closed if the
+     * Active pointer moved in between.
+     */
+    private UUID explicitRouteIdOf(UUID runId, AgentRun run) {
+        Map<String, Object> input = readRunInput(runId);
+        return "EXPLICIT".equals(input.get("routeSelection")) ? run.routeId() : null;
     }
 
     /**
@@ -180,24 +193,40 @@ public class RunWorker {
             String operation = run.operation() != null ? run.operation() : "ANSWER_TIP";
             UUID selectedOptionId = input.containsKey("selectedOptionId")
                     ? UUID.fromString((String) input.get("selectedOptionId")) : null;
+            // Multi-select answers carry the FULL selection; fall back to the
+            // legacy single id so pre-multi-select runs keep working.
+            List<UUID> selectedOptionIds = readSelectedOptionIds(input, selectedOptionId);
             String freeText = (String) input.get("freeText");
             UUID answerId = input.containsKey("answerId")
                     ? UUID.fromString((String) input.get("answerId")) : null;
             AgentEvent.PersistenceIntent persistenceIntent = input.containsKey("persistenceIntent")
                     ? AgentEvent.PersistenceIntent.valueOf((String) input.get("persistenceIntent"))
                     : null;
+            UUID explicitRouteId = "EXPLICIT".equals(input.get("routeSelection")) ? run.routeId() : null;
 
             if ("RESUME_ANSWER".equals(operation) && answerId != null) {
-                answerCycleService.resumeAnswer(run, run.projectId(), answerId, persistenceIntent);
+                answerCycleService.resumeAnswer(run, run.projectId(), answerId, persistenceIntent,
+                        explicitRouteId);
             } else {
-                answerCycleService.submitAnswer(run, run.projectId(), selectedOptionId, freeText,
-                        persistenceIntent);
+                answerCycleService.submitAnswer(run, run.projectId(), selectedOptionIds, freeText,
+                        persistenceIntent, explicitRouteId);
             }
             evaluateContinuationAfterTerminal(runId);
         } catch (RuntimeException ex) {
             failIfNotTerminal(runId, ex);
             throw ex;
         }
+    }
+
+    /** Payload list first; null/absent falls back to the legacy single id. */
+    private List<UUID> readSelectedOptionIds(Map<String, Object> input, UUID selectedOptionId) {
+        Object raw = input.get("selectedOptionIds");
+        if (raw instanceof List<?> list && !list.isEmpty()) {
+            return list.stream()
+                    .map(item -> UUID.fromString(String.valueOf(item)))
+                    .toList();
+        }
+        return selectedOptionId == null ? List.of() : List.of(selectedOptionId);
     }
 
     /**

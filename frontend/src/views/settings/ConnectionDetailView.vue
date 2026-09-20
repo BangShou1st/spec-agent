@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { managementErrorMessage } from '@/api/errorCopy'
 import BackLink from '@/components/BackLink.vue'
+import ApiErrorBanner from '@/components/ApiErrorBanner.vue'
 import ConnectionLifecycleAction from '@/components/connections/ConnectionLifecycleAction.vue'
 import ConnectionCapabilityBrowser from '@/components/connections/ConnectionCapabilityBrowser.vue'
 import ConnectionEditDialog from '@/components/connections/ConnectionEditDialog.vue'
@@ -54,10 +55,13 @@ async function remove(): Promise<void> {
   <section class="mgmt-page" data-test="connection-detail-page">
     <BackLink to="/settings/connections" label="返回 Connections" test-id="back-to-connections" />
     <p v-if="store.detailLoading" class="muted" data-test="connection-detail-loading">加载中…</p>
-    <p v-else-if="store.error && !store.detail" class="error-banner" data-test="connection-detail-error">
-      <span>{{ managementErrorMessage(store.error.code, store.error.message) }}</span>
-      <button type="button" class="btn" data-test="connection-detail-retry" @click="load">重试</button>
-    </p>
+    <ApiErrorBanner
+      v-else-if="store.error && !store.detail"
+      :message="managementErrorMessage(store.error.code, store.error.message)"
+      retry-label="重试"
+      data-test="connection-detail-error"
+      @retry="load"
+    />
     <template v-else-if="store.detail">
       <header class="detail-head">
         <div><h2 data-test="connection-detail-name">{{ store.detail.name }}</h2>
@@ -87,12 +91,12 @@ async function remove(): Promise<void> {
       />
       <section class="danger-zone" data-test="danger-zone">
         <h3>危险操作</h3>
-        <p class="muted">禁用随时可恢复。删除会移除连接及其发现缓存，且不可撤销。</p>
+        <p class="muted">禁用随时可恢复。删除会移除连接及其发现缓存，且不可撤销</p>
         <div class="danger-row">
           <button v-if="store.detail.enabled" type="button" class="btn" data-test="connection-disable" :disabled="store.actionLoading" @click="store.disable(props.connectionId)">禁用</button>
           <button v-if="!confirmingDelete" type="button" class="btn" data-test="connection-delete" :disabled="store.actionLoading" @click="confirmingDelete = true">删除</button>
           <span v-else class="delete-confirm">
-            <span>删除该连接及其发现缓存？此操作不可撤销。</span>
+            <span>删除该连接及其发现缓存？此操作不可撤销</span>
             <button type="button" class="btn btn-danger" data-test="connection-delete-confirm" :disabled="store.actionLoading" @click="remove">确认删除</button>
             <button type="button" class="btn" data-test="connection-delete-cancel" @click="confirmingDelete = false">取消</button>
           </span>
@@ -104,7 +108,6 @@ async function remove(): Promise<void> {
 </template>
 
 <style scoped>
-.mgmt-page { width: 100%; max-width: 880px; margin: 0 auto; padding: 8px 0 48px; }
 .detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .detail-head h2 { margin: 0; font-size: 24px; }
 .detail-head .muted { margin: 4px 0 0; word-break: break-all; }
@@ -112,7 +115,6 @@ async function remove(): Promise<void> {
 .detail-meta div { display: grid; grid-template-columns: 72px 1fr; gap: 8px; }
 .detail-meta dt { color: var(--color-text-muted); font-size: 12px; }
 .detail-meta dd { margin: 0; font-size: 13px; word-break: break-all; }
-.error-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .danger-zone { margin-top: 28px; padding-top: 18px; border-top: 1px solid var(--color-border); }
 .danger-zone h3 { margin: 0 0 4px; font-size: 14px; }
 .danger-zone .muted { margin: 0 0 12px; font-size: 13px; }

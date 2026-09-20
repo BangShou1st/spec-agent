@@ -25,6 +25,8 @@ export interface CustomStatus {
   maskedKey: string | null
   selectedModel: string
   manualModel: boolean
+  /** User-facing pill label; backend falls back to 'Custom' for legacy rows. */
+  displayName: string | null
   configRevision: number
   validated: boolean
 }
@@ -41,12 +43,12 @@ export function getOpenRouterStatus(): Promise<OpenRouterStatus> {
   return apiClient.get<OpenRouterStatus>('/settings/openrouter')
 }
 
-export function probeOpenRouter(apiKey: string): Promise<{ freeModels: string[] }> {
-  return apiClient.post<{ freeModels: string[] }>('/settings/openrouter/probe', { apiKey })
+export function probeOpenRouter(apiKey: string): Promise<{ allModels?: string[]; freeModels: string[] }> {
+  return apiClient.post<{ allModels?: string[]; freeModels: string[] }>('/settings/openrouter/probe', { apiKey })
 }
 
-export function listOpenRouterModels(): Promise<{ freeModels: string[] }> {
-  return apiClient.get<{ freeModels: string[] }>('/settings/openrouter/models')
+export function listOpenRouterModels(): Promise<{ allModels?: string[]; freeModels: string[] }> {
+  return apiClient.get<{ allModels?: string[]; freeModels: string[] }>('/settings/openrouter/models')
 }
 
 export function saveOpenRouter(apiKey: string | null, selectedModel: string): Promise<OpenRouterStatus> {
@@ -69,11 +71,12 @@ export function saveCustom(apiFormat: CustomApiFormat, baseUrl: string, apiKey: 
   return saveCustomWithSource(apiFormat, baseUrl, apiKey, selectedModel, undefined)
 }
 
-export function saveCustomWithSource(apiFormat: CustomApiFormat, baseUrl: string, apiKey: string | null | undefined, selectedModel: string, modelSource: 'DISCOVERED' | 'MANUAL' | undefined): Promise<CustomStatus> {
+export function saveCustomWithSource(apiFormat: CustomApiFormat, baseUrl: string, apiKey: string | null | undefined, selectedModel: string, modelSource: 'DISCOVERED' | 'MANUAL' | undefined, displayName?: string | null): Promise<CustomStatus> {
   // undefined = retain stored key; null/empty = clear; non-empty = new key.
   // JSON omits undefined, so retain semantics survive the wire.
   // modelSource persists manual-model mode across reloads.
-  return apiClient.put<CustomStatus>('/settings/custom', { apiFormat, baseUrl, apiKey, selectedModel, modelSource })
+  // displayName names the provider pill; undefined retains the stored name.
+  return apiClient.put<CustomStatus>('/settings/custom', { apiFormat, baseUrl, apiKey, selectedModel, modelSource, displayName })
 }
 
 export function validateCustom(): Promise<CustomStatus> {

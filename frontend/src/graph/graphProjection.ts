@@ -7,6 +7,7 @@ import type {
   GraphWorkspaceView,
   RouteLifecycleStatus,
 } from '@/api/types'
+import type { RunProgressStep } from '@/api/agentRuns'
 import type { GraphPosition, GraphRouteDisplayState } from './graphTypes'
 import { placeNewNode, resolvePositions, HORIZONTAL_GAP, VERTICAL_GAP } from './graphLayout'
 import {
@@ -19,11 +20,22 @@ import {
   buildVisualInstances,
   type GraphVisualInstance,
 } from './graphVisualIdentity'
+import { resolveReadingRouteId } from './graphInteraction'
+import {
+  agentOperationFailureLabel,
+  agentOperationProgressLabel,
+} from '@/presentation/agentPresentation'
 
 export type GraphVisualWeight = 'active' | 'focus' | 'normal' | 'dimmed'
 
 /** Runtime progress is projected separately from knowledge status. */
 export type GraphRuntimeStatus = 'PENDING' | 'RUNNING' | 'SUCCEEDED' | 'FAILED'
+
+/** Whitelisted process content shown inside an executing node card. */
+export interface GraphRunProgress {
+  summary: string | null
+  steps: RunProgressStep[]
+}
 
 /** A browser-only card projected from an in-flight AgentRun. */
 export interface GraphPendingProjection {
@@ -33,6 +45,15 @@ export interface GraphPendingProjection {
   status: GraphRuntimeStatus
   phase: string | null
   message: string | null
+  operation?: string | null
+  progress?: GraphRunProgress | null
+}
+
+/** Runtime overlay projected onto an existing canonical node. */
+export interface GraphNodeRuntimeState {
+  status: GraphRuntimeStatus | null
+  phase: string | null
+  progress: GraphRunProgress | null
 }
 
 /**
@@ -50,6 +71,8 @@ export interface GraphAnswerPresentation {
   routeLabel?: string
   selectedOptionId: string | null
   selectedOptionLabel: string | null
+  /** 多选题的全量选择（用户顺序）；单选答案为 null。 */
+  selectedOptionIds: string[] | null
   freeText: string | null
   isPrimary: boolean
   inherited?: boolean
@@ -111,6 +134,8 @@ export interface SpecAgentGraphNodeData {
   runtimeStatus?: GraphRuntimeStatus | null
   runtimePhase?: string | null
   runtimeMessage?: string | null
+  /** Process content (steps + summaries) for an in-flight run on this node. */
+  runtimeProgress?: GraphRunProgress | null
 }
 
 export interface SpecAgentGraphEdgeData {
@@ -129,6 +154,10 @@ export interface GraphProjectionInput {
     lifecycleFilters: Record<RouteLifecycleStatus, boolean>
     routeDisplayStates: Record<string, GraphRouteDisplayState>
     expandedNodeIds: string[]
+    /** Ephemeral "只看这条路线" lens: when set, this route is the ONLY visible
+     * one. Explicit per-route intent, so it outranks lifecycle filters, manual
+     * dim/hide AND the Active-route force-visible rule. Never persisted. */
+    isolatedRouteId?: string | null
     /** Default false. Inspector remains the canonical relations viewer. */
     showRelationLayer?: boolean
     /** Selected node ids (visual keys): their direct 1-hop relations project
@@ -136,12 +165,10 @@ export interface GraphProjectionInput {
     selectedNodeIds?: string[]
   }
   savedPositions: Record<string, GraphPosition>
-  runtime?: {
-    nodeId: string | null
-    status: GraphRuntimeStatus | null
-    phase: string | null
-  }
-  pending?: GraphPendingProjection | null
+  /** Per-canonical-node runtime overlays for in-flight runs on existing nodes. */
+  runtimeByNode?: Record<string, GraphNodeRuntimeState>
+  /** Browser-only cards for runs whose target node does not exist yet. */
+  pendings?: GraphPendingProjection[]
 }
 
 export interface GraphProjectionResult {
@@ -155,11 +182,23 @@ export interface LineageEdgeMembership {
   routeIds: string[]
 }
 
+/**
+ * A route is visible when the isolate lens (if any) selects it, or — with no
+ * lens — when it is the Active route or passes the lifecycle filter and is not
+ * manually hidden.
+ *
+ * The isolate lens is checked FIRST and wins outright: it is one explicit
+ * per-route user command, so it may hide the Active route. Everything weaker
+ * (lifecycle filter, manual dim/hide, Active force-visible) only applies
+ * without a lens. Before this rule, "只看这条路线" on a non-Active route always
+ * kept the running route on the canvas, so a second isolate looked like a no-op.
+ */
 function routeVisible(
   route: Pick<GraphWorkspaceRouteView, 'id' | 'lifecycleStatus'>,
   activeRouteId: string | null,
-  uiState: Pick<GraphProjectionInput['uiState'], 'lifecycleFilters' | 'routeDisplayStates'>,
+  uiState: Pick<GraphProjectionInput['uiState'], 'lifecycleFilters' | 'routeDisplayStates' | 'isolatedRouteId'>,
 ): boolean {
+  if (uiState.isolatedRouteId) return route.id === uiState.isolatedRouteId
   if (route.id === activeRouteId) return true
   if (uiState.lifecycleFilters[route.lifecycleStatus] !== true) return false
   return uiState.routeDisplayStates[route.id] !== 'hidden'
@@ -167,7 +206,7 @@ function routeVisible(
 
 export function getVisibleRouteIds(
   view: Pick<GraphWorkspaceView, 'routes' | 'activeRouteId'>,
-  uiState: Pick<GraphProjectionInput['uiState'], 'lifecycleFilters' | 'routeDisplayStates'>,
+  uiState: Pick<GraphProjectionInput['uiState'], 'lifecycleFilters' | 'routeDisplayStates' | 'isolatedRouteId'>,
 ): Set<string> {
   const visible = new Set<string>()
   for (const route of view.routes) {
@@ -292,6 +331,7 @@ function buildAnswerPresentations(view: GraphWorkspaceView): Map<string, GraphAn
       routeLabel: routeLabel(view.routes.find((route) => route.id === answer.routeId)),
       selectedOptionId: answer.selectedOptionId,
       selectedOptionLabel: option?.label ?? null,
+      selectedOptionIds: answer.selectedOptionIds,
       freeText: answer.freeText,
       isPrimary: false,
       inherited: answer.inherited,
@@ -317,10 +357,72 @@ function computePositions(
   instances: GraphVisualInstance[],
   savedPositions: Record<string, GraphPosition>,
 ): Record<string, GraphPosition> {
+  const heightByKey = new Map<string, number>()
+  for (const instance of instances) {
+    heightByKey.set(instance.visualNodeKey, estimateNodeCardHeight(instance.node))
+  }
   return resolvePositions(
     instances.map((instance) => ({ id: instance.visualNodeKey, parentNodeId: instance.parentVisualNodeKey })),
     savedPositions,
+    { heightOf: (id) => heightByKey.get(id) },
   )
+}
+
+/**
+ * Deterministic card-height estimate, used ONLY while a card has never been
+ * measured (Vue Flow reports real heights one frame later; 重新自动布局 then
+ * uses the measured values).
+ *
+ * Why it is needed: a card sizes to its content, so a fixed row pitch piles a
+ * long note on top of the next card. The first layout runs before any
+ * measurement exists, and its result is persisted immediately — so without an
+ * estimate the very first layout of a project with long notes overlaps.
+ *
+ * Calibration (measured on the real canvas): a 320px knowledge card with
+ * 482 chars / 20 newlines renders 802px tall; a 320px interaction card with a
+ * 148-char question, a 40-char purpose and a free-text box renders 463px.
+ * Constants are deliberately tuned to OVER-estimate slightly: extra space is
+ * cosmetic, too little space is a visible overlap.
+ */
+export function estimateNodeCardHeight(node: GraphWorkspaceNodeView): number {
+  const BASE = 76
+  const QUESTION_CHARS_PER_LINE = 18
+  const QUESTION_LINE_HEIGHT = 25
+  const PURPOSE_CHARS_PER_LINE = 24
+  const PURPOSE_LINE_HEIGHT = 19
+  const CONTENT_CHARS_PER_LINE = 24
+  const CONTENT_LINE_HEIGHT = 20
+  const OPTION_ROW_HEIGHT = 30
+  const SUBMIT_RESERVE = 34
+  const FREE_ANSWER_RESERVE = 124
+  const MIN_HEIGHT = 110
+  const MAX_HEIGHT = 1400
+
+  /** Rendered lines of a text block: explicit breaks plus soft wrapping. */
+  const renderedLines = (text: string | null | undefined, charsPerLine: number): number => {
+    if (!text) return 0
+    const trimmed = text.trim()
+    if (!trimmed) return 0
+    const explicit = (trimmed.match(/\n/g) ?? []).length
+    return explicit + Math.max(1, Math.ceil(trimmed.length / charsPerLine))
+  }
+
+  const clamp = (value: number): number => Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, Math.round(value)))
+
+  if (node.kind === 'INTERACTION') {
+    const questionLines = renderedLines(node.question, QUESTION_CHARS_PER_LINE)
+    const purposeLines = renderedLines(node.purpose, PURPOSE_CHARS_PER_LINE)
+    return clamp(
+      BASE
+      + questionLines * QUESTION_LINE_HEIGHT
+      + purposeLines * PURPOSE_LINE_HEIGHT
+      + node.options.length * OPTION_ROW_HEIGHT
+      + SUBMIT_RESERVE
+      + (node.allowFreeAnswer ? FREE_ANSWER_RESERVE : 0),
+    )
+  }
+  const text = typeof node.content?.text === 'string' ? node.content.text : ''
+  return clamp(BASE + renderedLines(text, CONTENT_CHARS_PER_LINE) * CONTENT_LINE_HEIGHT)
 }
 
 function selectHandlesFor(sourceId: string, targetId: string, positions: Record<string, GraphPosition>): EdgeHandles {
@@ -355,17 +457,17 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
   }
   const answersByCanonicalNode = buildAnswerPresentations(view)
 
-  // Compute Q labels: topological order across all visible nodes.
-  const nodeOrder = new Map<string, number>()
-  let qCounter = 1
+  // Compute Q labels: 节点不再编号（Q1/Q2 的序号随路线增删漂移，没有稳定
+  // 含义），路线上的 INTERACTION 节点统一展示"问题"身份标签。
+  const labeledQuestionNodes = new Set<string>()
   for (const route of view.routes) {
     if (!visibleRouteIds.has(route.id)) continue
     for (const nodeId of route.lineageNodeIds ?? []) {
       const inst = visibleInstances.find(
         (i) => i.canonicalNodeId === nodeId && i.routeIds.includes(route.id),
       )
-      if (inst && !nodeOrder.has(inst.visualNodeKey)) {
-        nodeOrder.set(inst.visualNodeKey, qCounter++)
+      if (inst && inst.node.kind === 'INTERACTION') {
+        labeledQuestionNodes.add(inst.visualNodeKey)
       }
     }
   }
@@ -380,9 +482,11 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
     const routeIds = instance.routeIds
     const answers = (answersByCanonicalNode.get(instance.canonicalNodeId) ?? [])
       .filter((answer) => routeIds.includes(answer.routeId))
-    const readingRouteId = uiState.focusRouteId && routeIds.includes(uiState.focusRouteId)
-      ? uiState.focusRouteId
-      : routeIds.length === 1 ? routeIds[0] : null
+    const readingRouteId = resolveReadingRouteId({
+      membershipRouteIds: routeIds,
+      visibleRouteIds,
+      focusRouteId: uiState.focusRouteId,
+    })
     const rawPrimary = selectPrimaryAnswer(
       instance.canonicalNodeId,
       answers,
@@ -392,7 +496,28 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
     )
     const primary = rawPrimary
     const isCurrent = activeNodeId === instance.canonicalNodeId && activeRouteId !== null && routeIds.includes(activeRouteId)
-    const canAnswer = isCurrent && !answers.some((answer) => answer.routeId === activeRouteId)
+    const isTipOfReadingRoute = readingRouteId != null
+      && view.routes.some((route) => route.id === readingRouteId
+        && route.tipNodeId === instance.canonicalNodeId)
+    const readingRouteAnswer = readingRouteId === null
+      ? undefined
+      : answers.find((answer) => answer.routeId === readingRouteId) ?? null
+    /**
+     * 可回答 = (a) 运行路线的当前节点未答（原语义，逐字未变），或
+     *         (b) 用户**显式聚焦**的那条路线（Focus / 只看这条路线）的末端未答。
+     *
+     * (b) 是多路线独立的那一半：聚焦 B 的末端时可以直接回答 B，即使运行路线仍是
+     * A —— 答案写入 B（提交时带显式路线），A 的链完全不受影响。
+     *
+     * 门槛故意收紧到"显式 Focus"：默认视图（无 Focus）下可回答节点仍然只有运行
+     * 路线的当前节点，绝不会因为某条分支刚好只有一个归属就冒出第二个作答入口。
+     */
+    const canAnswer = (isCurrent && !answers.some((answer) => answer.routeId === activeRouteId))
+      || (readingRouteId !== null
+        && readingRouteId !== activeRouteId
+        && uiState.focusRouteId === readingRouteId
+        && isTipOfReadingRoute
+        && readingRouteAnswer === null)
     // 浮动想法不属于任何路线：聚焦/弱化语义都不适用，保持常规视觉权重，
     // 保证新建后立即可读可编辑。
     const visualWeight = routeIds.length === 0
@@ -436,9 +561,7 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
         primaryAnswer: primary,
         answerPresentationMode: answerPresentation.mode,
         readingRouteId,
-        isTipOfReadingRoute: readingRouteId != null
-          && view.routes.some((route) => route.id === readingRouteId
-            && route.tipNodeId === instance.canonicalNodeId),
+        isTipOfReadingRoute,
         isCurrent,
         canAnswer,
         isExpanded: uiState.expandedNodeIds.includes(instance.visualNodeKey)
@@ -447,17 +570,13 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
         isLatest: instance.canonicalNodeId === activeTipNodeId
           && !activeTipHasAnswer
           && routeIds.includes(activeRouteId ?? ''),
-        qLabel: nodeOrder.has(instance.visualNodeKey)
-          ? 'Q' + nodeOrder.get(instance.visualNodeKey) : null,
+        qLabel: labeledQuestionNodes.has(instance.visualNodeKey) ? '问题' : null,
         routeMembership,
         visualWeight,
-        runtimeStatus: input.runtime?.nodeId === instance.canonicalNodeId
-          ? input.runtime.status
-          : null,
-        runtimePhase: input.runtime?.nodeId === instance.canonicalNodeId
-          ? input.runtime.phase
-          : null,
+        runtimeStatus: input.runtimeByNode?.[instance.canonicalNodeId]?.status ?? null,
+        runtimePhase: input.runtimeByNode?.[instance.canonicalNodeId]?.phase ?? null,
         runtimeMessage: null,
+        runtimeProgress: input.runtimeByNode?.[instance.canonicalNodeId]?.progress ?? null,
       },
       dragHandle: '.graph-question-node__header',
       class: [
@@ -469,32 +588,32 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
   })
   const edges: Edge<SpecAgentGraphEdgeData>[] = []
 
-  // A pending card is a presentation projection of an AgentRun. It is never
-  // added to the canonical GraphWorkspaceView and is replaced by the real
-  // persisted node after the run completes.
-  const pending = input.pending
-  const pendingRoute = pending
-    ? view.routes.find((route) => route.id === pending.routeId)
-    : undefined
-  if (pending && pendingRoute && visibleRouteIds.has(pending.routeId)) {
+  // Pending cards are presentation projections of in-flight AgentRuns. They
+  // are never added to the canonical GraphWorkspaceView and are replaced by
+  // the real persisted nodes after their runs complete.
+  const pendings = input.pendings ?? []
+  for (const pending of pendings) {
+    const pendingRoute = view.routes.find((route) => route.id === pending.routeId)
+    if (!pendingRoute || !visibleRouteIds.has(pending.routeId)) continue
     const pendingId = `pending:${pending.runId}`
     const parentInstance = visibleInstances.find((instance) =>
       instance.canonicalNodeId === pending.sourceNodeId
       && instance.routeIds.includes(pending.routeId),
     )
     const parentKey = parentInstance?.visualNodeKey ?? null
-    const pendingPosition = savedPositions[pendingId]
-      ?? placeNewNode(parentKey ? positions[parentKey] ?? null : null, Object.values(positions))
     const pendingLabel = routeLabel(pendingRoute)
     const pendingNode: GraphWorkspaceNodeView = {
       id: pendingId,
       projectId: view.projectId,
       parentNodeId: pending.sourceNodeId,
       supersedesNodeId: null,
-      question: pending.status === 'FAILED' ? '下一步问题生成失败' : '正在生成下一步问题…',
+      question: pending.status === 'FAILED'
+        ? agentOperationFailureLabel(pending.operation)
+        : agentOperationProgressLabel(pending.operation),
       purpose: null,
       options: [],
       allowFreeAnswer: false,
+      allowMultiSelect: false,
       createdAt: '1970-01-01T00:00:00.000Z',
       kind: 'INTERACTION',
       subtype: 'QUESTION',
@@ -503,6 +622,14 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
       knowledgeStatus: null,
       userEditableDraft: false,
     }
+    const pendingPosition = savedPositions[pendingId]
+      ?? placeNewNode(parentKey ? positions[parentKey] ?? null : null, Object.values(positions), {
+        // Pending 卡在问题卡之上还渲染运行过程面板，实际高度远大于默认
+        // 声明盒；碰撞检查按真实高度走，两张并发/连续失败卡才不会叠放。
+        height: estimateNodeCardHeight(pendingNode) + 180,
+      })
+    // Register the slot so a second concurrent card never overlaps the first.
+    positions[pendingId] = pendingPosition
     nodes.push({
       id: pendingId,
       type: 'question',
@@ -540,6 +667,7 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
         runtimeStatus: pending.status,
         runtimePhase: pending.phase,
         runtimeMessage: pending.message,
+        runtimeProgress: pending.progress ?? null,
       },
       dragHandle: '.graph-question-node__header',
       class: [

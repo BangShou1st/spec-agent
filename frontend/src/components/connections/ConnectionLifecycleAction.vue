@@ -29,11 +29,11 @@ const phase = computed<Phase>(() => {
 
 const hint = computed(() => {
   switch (phase.value) {
-    case 'created': return '尚未测试，先验证这个连接是否可用。'
-    case 'tested': return '测试通过，现在可以建立连接。'
-    case 'connected': return '连接成功，启用后 Agent 才可以使用。'
-    case 'enabled': return 'Agent 已经可以使用这个连接。'
-    case 'failed': return props.detail.lastError ? props.detail.lastError : '连接失败，请重新测试。'
+    case 'created': return '尚未测试，先验证这个连接是否可用'
+    case 'tested': return '测试通过，现在可以建立连接'
+    case 'connected': return '连接成功，启用后 Agent 才可以使用'
+    case 'enabled': return 'Agent 已经可以使用这个连接'
+    case 'failed': return props.detail.lastError ? props.detail.lastError : '连接失败，请重新测试'
   }
 })
 </script>
@@ -59,8 +59,6 @@ const hint = computed(() => {
 .lifecycle-hint { margin: 0 0 10px; color: var(--color-text-secondary); font-size: 13px; }
 .lifecycle-row { display: flex; }
 .enabled-line { display: inline-flex; align-items: center; gap: 12px; }
-.st { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; }
-.st--on { color: var(--color-success); }
-.st__dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.st { font-size: 13px; font-weight: 700; }
 .lifecycle-error { margin: 10px 0 0; color: var(--color-danger); font-size: 13px; }
 </style>

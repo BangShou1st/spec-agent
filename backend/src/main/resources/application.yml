@@ -57,6 +57,10 @@ spec:
       # deployments that intentionally run API-only pods.
       enabled: ${SPEC_AGENT_BRAIN_ENABLED:true}
       base-url: ${SPEC_AGENT_BRAIN_BASE_URL:http://localhost:8100}
+      # One brain inference call may legitimately take minutes on slow
+      # provider days; killing it early wastes the completed model response.
+      connect-timeout-ms: ${SPEC_AGENT_BRAIN_CONNECT_TIMEOUT_MS:2000}
+      read-timeout-seconds: ${SPEC_AGENT_BRAIN_READ_TIMEOUT_SECONDS:300}
       internal-secret: ${SPEC_AGENT_BRAIN_INTERNAL_SECRET:dev-internal-secret}
       engine: ${SPEC_AGENT_BRAIN_ENGINE:remote-python}
       worker:
@@ -100,6 +104,14 @@ spec:
       git-clone-bytes: ${SPEC_AGENT_SKILL_GIT_CLONE_BYTES:10485760}
       git-timeout-seconds: ${SPEC_AGENT_SKILL_GIT_TIMEOUT_SECONDS:30}
       git-max-redirects: ${SPEC_AGENT_SKILL_GIT_MAX_REDIRECTS:3}
+      # DB-authoritative local mirror of installed packages (builtin, git and
+      # uploaded alike) so users can browse/backup their skills on disk. The
+      # database is never read back from this tree; missing files self-heal.
+      # Default keeps the mirror INSIDE the project tree: relative to the
+      # backend working directory (backend/data/skills in dev). Override with
+      # SPEC_AGENT_SKILL_LOCAL_MIRROR_ROOT to point it anywhere else.
+      local-mirror-enabled: ${SPEC_AGENT_SKILL_LOCAL_MIRROR_ENABLED:true}
+      local-mirror-root: ${SPEC_AGENT_SKILL_LOCAL_MIRROR_ROOT:./data/skills}
     mcp:
       # Remote MCP runtime bounds. Model output can never change these.
       discovery-timeout-ms: ${SPEC_AGENT_MCP_DISCOVERY_TIMEOUT_MS:10000}

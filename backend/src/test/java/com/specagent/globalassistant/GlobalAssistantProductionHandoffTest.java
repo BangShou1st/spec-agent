@@ -6,7 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 
-import com.specagent.globalassistant.api.GlobalAssistantApplicationService;
+import com.specagent.globalassistant.application.GlobalAssistantApplicationService;
 import com.specagent.globalassistant.context.GlobalAssistantContextBuilder;
 import com.specagent.globalassistant.conversation.GlobalAssistantConversationService;
 import com.specagent.globalassistant.conversation.GlobalAssistantMessage;

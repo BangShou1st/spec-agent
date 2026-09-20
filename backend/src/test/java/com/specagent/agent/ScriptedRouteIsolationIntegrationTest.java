@@ -207,17 +207,17 @@ class ScriptedRouteIsolationIntegrationTest {
                 REGEN_INSTRUCTION);
         RegenerateResult regen = new RegenerateResult(
                 committed.oldRoute(), committed.replacementRoute(),
-                committed.replacementNode(), context);
+                committed.replacementNode());
 
         // The frozen regenerate context carries only the shared parent lineage,
         // old question text and the user instruction.
-        assertThat(regen.contextSnapshot().includedNodeIds())
+        assertThat(context.includedNodeIds())
                 .contains(root.id())
                 .doesNotContain(target.id())
                 .doesNotContain(child.id());
-        assertThat(regen.contextSnapshot().includedAnswerIds())
+        assertThat(context.includedAnswerIds())
                 .doesNotContain(targetRun.answerId());
-        assertThat(regen.contextSnapshot().includedPatchIds())
+        assertThat(context.includedPatchIds())
                 .doesNotContain(targetRun.patchId());
 
         // The regenerated route is open, active, and points at a fresh node.

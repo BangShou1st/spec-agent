@@ -232,11 +232,9 @@ class AnswerCycleRunApiIntegrationTest {
                 .andExpect(status().isAccepted());
 
         // ...then advance the graph before the worker claims the run.
-        nodeService.createWorkspaceNode(project.id(), project.activeRouteId(), staleTipId,
-                com.specagent.node.NodeKind.KNOWLEDGE, "NOTE",
-                java.util.Map.of("text", "user moved on"),
-                com.specagent.node.NodeAuthorKind.USER,
-                com.specagent.node.KnowledgeStatus.PROPOSED);
+        // 派生知识不再顶掉问题 tip,用真正的新问题把 tip 推走。
+        nodeService.createChildNode(project.id(), project.activeRouteId(), staleTipId,
+                "A newer question", null, List.of(), true);
 
         var claimed = runService.claimNextAnswerCycle().orElseThrow();
         try {

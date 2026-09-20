@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import UiDialogShell from './UiDialogShell.vue'
-defineProps<{ open: boolean; title: string; description: string; confirmLabel?: string; cancelLabel?: string; loading?: boolean; error?: string | null; testId?: string }>()
+defineProps<{ open: boolean; title: string; description: string; confirmLabel?: string; cancelLabel?: string; loading?: boolean; error?: string | null; testId?: string; zIndex?: number; confirmTestId?: string; cancelTestId?: string }>()
 const emit = defineEmits<{ (e: 'cancel'): void; (e: 'confirm'): void }>()
 </script>
 <template>
-  <UiDialogShell :open="open" :title="title" :description="description" :test-id="testId ?? 'ui-confirm'" @close="emit('cancel')">
+  <UiDialogShell :open="open" :title="title" :description="description" :test-id="testId ?? 'ui-confirm'" :z-index="zIndex" @close="emit('cancel')">
+    <slot />
     <template #actions>
-      <button type="button" class="btn btn-secondary" data-test="ui-confirm-cancel" :disabled="loading" @click="emit('cancel')">{{ cancelLabel ?? '取消' }}</button>
-      <button type="button" class="btn btn-danger btn-danger--solid" data-test="ui-confirm-ok" :disabled="loading" @click="emit('confirm')">{{ loading ? '处理中…' : (confirmLabel ?? '确认') }}</button>
+      <button type="button" class="btn btn-secondary" :data-test="cancelTestId ?? 'ui-confirm-cancel'" :disabled="loading" @click="emit('cancel')">{{ cancelLabel ?? '取消' }}</button>
+      <button type="button" class="btn btn-danger btn-danger--solid" :data-test="confirmTestId ?? 'ui-confirm-ok'" :disabled="loading" @click="emit('confirm')">{{ loading ? '处理中…' : (confirmLabel ?? '确认') }}</button>
     </template>
     <template v-if="error" #footer><p class="ui-confirm__error" role="alert">{{ error }}</p></template>
   </UiDialogShell>

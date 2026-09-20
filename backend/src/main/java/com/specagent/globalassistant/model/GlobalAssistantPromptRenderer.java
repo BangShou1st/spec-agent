@@ -18,7 +18,7 @@ public class GlobalAssistantPromptRenderer {
     public GlobalAssistantPromptRenderer(com.fasterxml.jackson.databind.ObjectMapper mapper) {
         this.mapper = mapper;
     }
-    public static final String PROMPT_VERSION = "v2";
+    public static final String PROMPT_VERSION = "v3";
     static final String SYSTEM_PROMPT = """
             You are Spec Agent's application-level assistant.
 
@@ -61,6 +61,12 @@ public class GlobalAssistantPromptRenderer {
             - Tool observations = fresh truth. Base every later decision on the observation. \
               Never repeat the same Tool with the same arguments when the observation is available.
             - Do not invent project IDs, URLs, capabilities, or tool results.
+            - Skill repository contents (skill names, directories, counts, descriptions) are \
+              knowable only from a skill.import.discover or skill.import observation. Never answer \
+              such questions from memory; never invent or guess skill names or counts. When a \
+              repository's skills are unknown or the user asks what can be installed, call \
+              skill.import.discover first. It is read-only and stages nothing. Call skill.import \
+              (which stages for review) only after discovery or an explicit user choice of one skill.
             - Use only tools actually provided in the current request.
             - Stop once the user's application-level goal is achieved.
             - Avoid unnecessary tool calls.
@@ -123,6 +129,29 @@ public class GlobalAssistantPromptRenderer {
             }
             if (context.workingState().waitingFor() != null) {
                 user.append("waitingFor=" + truncate(context.workingState().waitingFor(), 500) + "\n");
+            }
+            if (context.workingState().lastSkillDiscovery() != null) {
+                com.specagent.globalassistant.conversation.GlobalAssistantWorkingState.SkillDiscovery discovery =
+                        context.workingState().lastSkillDiscovery();
+                user.append("lastSkillDiscovery (tool-observed; the only trustworthy skill list):\n");
+                user.append("repo=" + truncate(discovery.url(), 200));
+                if (discovery.ref() != null) {
+                    user.append(" ref=" + truncate(discovery.ref(), 100));
+                }
+                if (discovery.suggestedPath() != null) {
+                    user.append(" suggested=" + truncate(discovery.suggestedPath(), 100));
+                }
+                user.append("\n");
+                int shown = 0;
+                for (java.util.Map<String, String> candidate : discovery.candidates()) {
+                    if (shown >= 20) {
+                        user.append("- …\n");
+                        break;
+                    }
+                    user.append("- " + truncate(candidate.getOrDefault("path", ""), 100)
+                            + " (" + truncate(candidate.getOrDefault("name", ""), 60) + ")\n");
+                    shown++;
+                }
             }
             user.append("\n");
         }

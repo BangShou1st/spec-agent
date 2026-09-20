@@ -49,7 +49,8 @@ class GraphOperationApiIntegrationTest {
 
         mockMvc.perform(post("/api/v1/projects/{projectId}/nodes", projectId)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"routeId\":\"" + routeId + "\",\"subtype\":\"NOTE\",\"content\":{}}"))
+                        .content("{\"routeId\":\"" + routeId
+                                + "\",\"subtype\":\"NOTE\",\"content\":{\"text\":\"待撤销的草稿节点\"}}"))
                 .andExpect(status().isCreated());
 
         mockMvc.perform(get("/api/v1/projects/{projectId}/graph-operations", projectId))
@@ -65,6 +66,10 @@ class GraphOperationApiIntegrationTest {
                 .andExpect(jsonPath("$.operation.type").value("CREATE_DRAFT_NODE"))
                 .andExpect(jsonPath("$.operation.status").value("UNDONE"))
                 .andExpect(jsonPath("$.description").isNotEmpty())
+                // The feedback must name WHAT was undone, not only the
+                // operation type: an undo can compensate a node the agent just
+                // produced, which the user cannot recognize from "创建草稿节点".
+                .andExpect(jsonPath("$.targetTitle").value("待撤销的草稿节点"))
                 .andReturn();
 
         mockMvc.perform(get("/api/v1/projects/{projectId}/graph-operations/availability", projectId))
@@ -75,6 +80,7 @@ class GraphOperationApiIntegrationTest {
         mockMvc.perform(post("/api/v1/projects/{projectId}/graph-operations/redo", projectId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.operation.status").value("ACTIVE"))
-                .andExpect(jsonPath("$.description").isNotEmpty());
+                .andExpect(jsonPath("$.description").isNotEmpty())
+                .andExpect(jsonPath("$.targetTitle").value("待撤销的草稿节点"));
     }
 }

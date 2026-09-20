@@ -47,6 +47,14 @@ class GlobalAssistantDecisionContractParityTest {
                         """
                         {"kind":"TOOL","toolRequest":{"capabilityId":"project.get_summary","arguments":{"projectId":"00000000-0000-0000-0000-000000000001"}}}
                         """, true),
+                new ParityRow("TOOL skill.import url only",
+                        """
+                        {"kind":"TOOL","toolRequest":{"capabilityId":"skill.import","arguments":{"url":"https://github.com/obra/superpowers"}}}
+                        """, true),
+                new ParityRow("TOOL skill.import full args",
+                        """
+                        {"kind":"TOOL","toolRequest":{"capabilityId":"skill.import","arguments":{"url":"https://github.com/obra/superpowers","ref":"main","skill":"skills/brainstorming"}}}
+                        """, true),
                 new ParityRow("CLARIFY",
                         """
                         {"kind":"CLARIFY","assistantText":"Which project did you mean?"}
@@ -103,6 +111,14 @@ class GlobalAssistantDecisionContractParityTest {
                 new ParityRow("TOOL create extra arg",
                         """
                         {"kind":"TOOL","toolRequest":{"capabilityId":"project.create","arguments":{"title":"T","mode":"fast"}}}
+                        """, false),
+                new ParityRow("TOOL skill.import missing url",
+                        """
+                        {"kind":"TOOL","toolRequest":{"capabilityId":"skill.import","arguments":{"skill":"skills/brainstorming"}}}
+                        """, false),
+                new ParityRow("TOOL skill.import extra arg",
+                        """
+                        {"kind":"TOOL","toolRequest":{"capabilityId":"skill.import","arguments":{"url":"https://github.com/obra/superpowers","path":"skills/brainstorming"}}}
                         """, false),
                 new ParityRow("CLARIFY + uiAction",
                         """
@@ -176,7 +192,7 @@ class GlobalAssistantDecisionContractParityTest {
             GlobalAssistantDecision decision = parser.parse(row.json());
             validator.validate(decision);
         }
-        assertThat(rows).hasSize(12);
+        assertThat(rows).hasSize(14);
     }
 
     private boolean expectedSchemaValid(String name) {
@@ -191,6 +207,8 @@ class GlobalAssistantDecisionContractParityTest {
             case "TOOL invalid args" -> "wrong Tool argument shape (empty title)";
             case "TOOL extra field" -> "extra properties";
             case "TOOL create extra arg" -> "wrong Tool argument shape (unknown arg)";
+            case "TOOL skill.import missing url" -> "missing required field (url)";
+            case "TOOL skill.import extra arg" -> "wrong Tool argument shape (unknown arg)";
             case "CLARIFY + uiAction" -> "wrong kind fields";
             case "CLARIFY + tool" -> "wrong kind fields";
             case "CLARIFY blank text" -> "whitespace-only text (trimmed blank)";
@@ -247,9 +265,9 @@ class GlobalAssistantDecisionContractParityTest {
                     + " | " + (!schemaOk) + " | " + (!parsed) + " | " + (parsed && !validated)
                     + " | " + expressible + " | " + validatorOnly);
         }
-        assertThat(schemaRejected).isEqualTo(20);
-        assertThat(parserRejected + validatorRejected).isGreaterThanOrEqualTo(21);
-        System.out.println("Parity illegal matrix: total=21 schemaRejected=20 parserRejected="
+        assertThat(schemaRejected).isEqualTo(22);
+        assertThat(parserRejected + validatorRejected).isGreaterThanOrEqualTo(23);
+        System.out.println("Parity illegal matrix: total=23 schemaRejected=22 parserRejected="
                 + parserRejected + " validatorRejected=" + validatorRejected);
     }
 

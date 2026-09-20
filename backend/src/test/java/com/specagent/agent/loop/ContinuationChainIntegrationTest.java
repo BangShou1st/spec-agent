@@ -989,13 +989,11 @@ class ContinuationChainIntegrationTest {
 
         // The active route switches while the child waits — but the old tip
         // is untouched, so the stale-anchor check alone would still pass. The
-        // shared ContextGuard (active-route match) must reject instead. The
-        // fork branch point needs a finalized answer, so answer the child's
-        // produced tip first (it is the live tip after the root run).
+        // shared ContextGuard (active-route match) must reject instead.
+        // 派生知识 tip 语义下,live tip 就是那个已回答的问题本身(笔记只是
+        // 挂靠在其下),fork 分支点已有 finalized answer,直接分叉即可。
         UUID liveTip = routeRepository.findById(project.activeRouteId())
                 .orElseThrow().tipNodeId();
-        answerService.finalizeAnswer(project.id(), project.activeRouteId(),
-                liveTip, null, "answered for fork", "test-user");
         var forked = routeService.forkFromNode(project.id(), project.activeRouteId(),
                 liveTip, "switched");
         assertThat(projectService.getProject(project.id()).orElseThrow().activeRouteId())

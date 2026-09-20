@@ -17,6 +17,7 @@ import com.specagent.agent.gates.SpecGroundingGate;
 import com.specagent.agent.gates.SpecSourceReferenceGuard;
 import com.specagent.agent.runevent.AgentRunEventService;
 import com.specagent.agent.runevent.AgentRunPhase;
+import com.specagent.agent.runevent.RunProgressRecorder;
 import com.specagent.agent.snapshot.AgentInputSnapshotBuilder;
 import com.specagent.context.ContextBuilder;
 import com.specagent.context.ContextOperationType;
@@ -67,6 +68,7 @@ public class ArtifactCycleService {
     private final AgentRunEventService eventService;
     private final RouteRepository routeRepository;
     private final com.specagent.project.ProjectRepository projectRepository;
+    private final RunProgressRecorder progressRecorder;
 
     public ArtifactCycleService(AgentRunService agentRunService,
                                 AgentRunFailureService agentRunFailureService,
@@ -79,7 +81,8 @@ public class ArtifactCycleService {
                                 SpecSnapshotService specSnapshotService,
                                 AgentRunEventService eventService,
                                 RouteRepository routeRepository,
-                                com.specagent.project.ProjectRepository projectRepository) {
+                                com.specagent.project.ProjectRepository projectRepository,
+                                RunProgressRecorder progressRecorder) {
         this.agentRunService = agentRunService;
         this.agentRunFailureService = agentRunFailureService;
         this.contextBuilder = contextBuilder;
@@ -92,6 +95,7 @@ public class ArtifactCycleService {
         this.eventService = eventService;
         this.routeRepository = routeRepository;
         this.projectRepository = projectRepository;
+        this.progressRecorder = progressRecorder;
     }
 
     /**
@@ -108,8 +112,7 @@ public class ArtifactCycleService {
      * user switched the active route while this run was queued, the run fails
      * closed (STALE) instead of generating a mixed or outdated spec.
      */
-    public SpecGenerationOutcome generateSpec(AgentRun run) {
-        Route route = routeRepository.findById(run.routeId())
+    public SpecGenerationOutcome generateSpec(AgentRun run) {        Route route = routeRepository.findById(run.routeId())
                 .orElseThrow(() -> new IllegalStateException(
                         "Route not found: " + run.routeId()));
         if (!route.projectId().equals(run.projectId())) {
@@ -128,7 +131,12 @@ public class ArtifactCycleService {
         com.specagent.project.Project project = projectRepository.findById(run.projectId())
                 .orElseThrow(() -> new IllegalStateException(
                         "Project not found: " + run.projectId()));
-        if (!java.util.Objects.equals(project.activeRouteId(), run.routeId())) {
+        boolean explicitRoute = isExplicitRouteRun(run);
+        // Active mode keeps the original fail-closed guarantee: a spec is never
+        // generated for a route the user stopped working on. Explicit-route
+        // runs target their own route instead (its OPEN-ness and tip are still
+        // checked above).
+        if (!explicitRoute && !java.util.Objects.equals(project.activeRouteId(), run.routeId())) {
             throw new StaleRunTargetException(
                     "Active route changed while artifact run was queued: run route "
                             + run.routeId() + ", active route " + project.activeRouteId());
@@ -151,7 +159,7 @@ public class ArtifactCycleService {
                     "snapshotId", snapshot.id().toString(),
                     "contextHash", snapshot.contextHash()));
 
-            if (!contextGuard.validate(snapshot).accepted()) {
+            if (!contextGuard.validate(snapshot, explicitRoute).accepted()) {
                 throw new ModelContractException("Context guard rejected agent run");
             }
 
@@ -164,6 +172,8 @@ public class ArtifactCycleService {
             trace = appendTrace(trace, "artifact_generating");
             eventService.append(run.id(), AgentRunPhase.ARTIFACT_GENERATING,
                     "ARTIFACT_GENERATION_STARTED", Map.of());
+            progressRecorder.note(run.id(), AgentRunPhase.ARTIFACT_GENERATING,
+                    "正在基于当前需求状态生成规格文档");
             AgentArtifactResponse response = decisionEngine.runArtifactGeneration(envelope);
             AgentArtifactResponse.ArtifactGenerationResult result = response.artifact();
 
@@ -213,6 +223,8 @@ public class ArtifactCycleService {
                     "markdown", sections, unresolvedItems, sourceRefs, run.id());
             trace = appendTrace(trace, "persisted_spec_snapshot");
             agentRunService.markPersistedSpecSnapshot(run.id(), persisted.id(), trace);
+            progressRecorder.note(run.id(), AgentRunPhase.ARTIFACT_GENERATING,
+                    "规格文档已生成，共 " + sections.size() + " 个章节");
             trace = appendTrace(trace, "completed");
             agentRunService.complete(run.id(), AgentRunStatus.COMPLETED, trace);
             eventService.append(run.id(), AgentRunPhase.COMPLETED, "RUN_COMPLETED",
@@ -255,6 +267,20 @@ public class ArtifactCycleService {
                     section.sourceRefs() == null ? List.of() : section.sourceRefs());
         }
         return new SpecDraft(sections, result.unresolvedItems(), refsBySection);
+    }
+
+    /**
+     * Whether this run was queued against an EXPLICIT route (recorded in its
+     * RUN_CREATED payload by {@code RunService}). Only then may the artifact
+     * run skip the Active-equality rule; Active-mode runs keep failing closed.
+     */
+    private boolean isExplicitRouteRun(AgentRun run) {
+        return eventService.findByRunId(run.id()).stream()
+                .filter(event -> "RUN_CREATED".equals(event.eventType()))
+                .map(com.specagent.agent.runevent.AgentRunEvent::payload)
+                .findFirst()
+                .map(payload -> "EXPLICIT".equals(payload.get("routeSelection")))
+                .orElse(false);
     }
 
     private void failIfNotTerminal(UUID runId, String trace, RuntimeException ex) {

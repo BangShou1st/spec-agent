@@ -50,6 +50,7 @@ import org.springframework.transaction.annotation.Transactional;
 @ActiveProfiles("test")
 @Transactional
 class GlobalAssistantCanonicalUiTest {
+    @Autowired com.specagent.globalassistant.model.GlobalAssistantModelTargetResolver modelTargets;
     @Autowired GlobalAssistantConversationService conversations;
     @Autowired GlobalAssistantContextBuilder contextBuilder;
     @Autowired GlobalAssistantPromptRenderer renderer;
@@ -74,7 +75,7 @@ class GlobalAssistantCanonicalUiTest {
         ModelInferenceGateway stub = request -> new ModelInferenceResponse(scripts.poll(), "stop", 0, 0);
         GlobalAssistantBrain brain = new GlobalAssistantBrain(renderer, stub, parser, validator);
         return new GlobalAssistantRuntime(conversations, contextBuilder, brain, runtime,
-                runs, canonicalizer, budgets, lifecycle, runEvents, uiValidator, summaries);
+                runs, canonicalizer, budgets, lifecycle, runEvents, uiValidator, summaries, modelTargets);
     }
     @Test
     void randomProjectNavigationIsRejectedWithoutEmit() {

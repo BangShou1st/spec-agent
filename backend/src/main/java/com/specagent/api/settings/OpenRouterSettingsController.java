@@ -1,12 +1,8 @@
 package com.specagent.api.settings;
 
-import com.specagent.api.common.ApiErrorResponse;
 import com.specagent.settings.openrouter.OpenRouterSettingsService;
 import com.specagent.settings.provider.ModelProviderSettingsService;
 import java.util.List;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -33,7 +29,7 @@ public class OpenRouterSettingsController {
     public record ProbeRequest(String apiKey) {
     }
 
-    public record ProbeResponse(List<String> freeModels) {
+    public record ProbeResponse(List<String> allModels, List<String> freeModels) {
     }
 
     public record SaveRequest(String apiKey, String selectedModel) {
@@ -56,12 +52,16 @@ public class OpenRouterSettingsController {
         if (key == null || key.isBlank()) {
             throw new IllegalArgumentException("OpenRouter API key is required");
         }
-        return new ProbeResponse(service.probeCandidate(key));
+        return toModelResponse(service.probeCandidate(key));
     }
 
     @GetMapping("/models")
     public ProbeResponse models() {
-        return new ProbeResponse(service.listSavedKeyModels());
+        return toModelResponse(service.listSavedKeyModels());
+    }
+
+    private static ProbeResponse toModelResponse(OpenRouterSettingsService.CandidateModels models) {
+        return new ProbeResponse(models.allModels(), models.freeModels());
     }
 
     @PutMapping
@@ -77,13 +77,5 @@ public class OpenRouterSettingsController {
     @PostMapping("/validate")
     public StatusResponse validate() {
         return toResponse(service.validate());
-    }
-
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<ApiErrorResponse> handleBadRequest(IllegalArgumentException ex) {
-        String msg = ex.getMessage() == null || ex.getMessage().isBlank()
-                ? "Request validation failed" : ex.getMessage();
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(ApiErrorResponse.of("VALIDATION_ERROR", msg));
     }
 }

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import ApiErrorBanner from '@/components/ApiErrorBanner.vue'
 import { useRouter } from 'vue-router'
 import { managementErrorMessage } from '@/api/errorCopy'
 import SkillsList from '@/components/skills/SkillsList.vue'
@@ -26,6 +27,7 @@ onMounted(() => {
 
 function openImport(): void {
   store.clearError()
+  store.resetGitDiscovery()
   importOpen.value = true
 }
 
@@ -38,13 +40,18 @@ async function submitZip(file: File): Promise<void> {
   }
 }
 
-async function submitGit(url: string, ref?: string): Promise<void> {
-  const ok = await store.stageGit(url, ref)
+async function submitGit(url: string, ref?: string, subPath?: string): Promise<void> {
+  const ok = await store.stageGit(url, ref, subPath)
   if (ok && store.lastStaged) {
     importOpen.value = false
     reviewId.value = store.lastStaged.stagedImportId
     void store.loadStagedDetail(store.lastStaged.stagedImportId)
   }
+}
+
+/** Read-only repository inspection: fills the candidate list, stages nothing. */
+async function discoverGit(url: string, ref?: string): Promise<void> {
+  await store.discoverGit(url, ref)
 }
 
 function openReview(id: string): void {
@@ -96,18 +103,21 @@ function retry(): void {
     <header class="mgmt-head">
       <div>
         <h2>Skills</h2>
-        <p class="muted">安装与管理可用的 Skill，扩展代理的能力边界。</p>
+        <p class="muted">安装与管理可用的 Skill，扩展代理的能力边界</p>
       </div>
       <button type="button" class="btn btn-primary" data-test="add-skill" @click="openImport">+ 添加 Skill</button>
     </header>
 
-    <p v-if="store.error && !store.list.length && !store.listLoading" class="error-banner" data-test="skills-error">
-      <span>{{ managementErrorMessage(store.error.code, store.error.message) }}</span>
-      <button type="button" class="btn" data-test="skills-retry" @click="retry">重试</button>
-    </p>
+    <ApiErrorBanner
+      v-if="store.error && !store.list.length && !store.listLoading"
+      :message="managementErrorMessage(store.error.code, store.error.message)"
+      retry-label="重试"
+      data-test="skills-error"
+      @retry="retry"
+    />
 
     <div v-if="store.listLoading" class="muted" data-test="skills-loading">加载中…</div>
-    <p v-else-if="!store.list.length && !store.error" class="mgmt-empty" data-test="skills-empty">还没有安装 Skill，点击右上角添加。</p>
+    <p v-else-if="!store.list.length && !store.error" class="mgmt-empty" data-test="skills-empty">还没有安装 Skill，点击右上角添加</p>
     <SkillsList
       v-else
       :skills="store.list"
@@ -137,9 +147,12 @@ function retry(): void {
       :open="importOpen"
       :staging="store.actionLoading"
       :error="store.error"
+      :discovering="store.gitDiscovering"
+      :candidates="store.gitCandidates"
       @close="importOpen = false"
       @submit-zip="submitZip"
       @submit-git="submitGit"
+      @discover-git="discoverGit"
     />
     <SkillImportReview
       :open="reviewId !== null"
@@ -155,13 +168,6 @@ function retry(): void {
 </template>
 
 <style scoped>
-.mgmt-page { width: 100%; max-width: 880px; margin: 0 auto; padding: 8px 0 48px; }
-.mgmt-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
-.mgmt-head h2 { margin: 0; font-size: 24px; }
-.mgmt-head .muted { margin: 6px 0 0; }
-.mgmt-empty { padding: 28px; text-align: center; color: var(--color-text-secondary); background: var(--color-surface); border: 1px dashed var(--color-border-strong); border-radius: 12px; }
-.mgmt-inline-error { color: var(--color-danger); font-size: 13px; }
-.error-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .staged { margin-top: 28px; }
 .staged h3 { font-size: 15px; margin: 0 0 10px; }
 .staged ul { list-style: none; margin: 0; padding: 0; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 12px; }

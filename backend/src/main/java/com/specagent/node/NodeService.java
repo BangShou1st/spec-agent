@@ -1,8 +1,6 @@
 package com.specagent.node;
 
 import com.specagent.common.Ids;
-import com.specagent.route.Route;
-import com.specagent.route.RouteRepository;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -26,11 +24,11 @@ import java.util.UUID;
 public class NodeService {
 
     private final NodeRepository nodeRepository;
-    private final RouteRepository routeRepository;
+    private final RouteTipPort routeTipPort;
 
-    public NodeService(NodeRepository nodeRepository, RouteRepository routeRepository) {
+    public NodeService(NodeRepository nodeRepository, RouteTipPort routeTipPort) {
         this.nodeRepository = nodeRepository;
-        this.routeRepository = routeRepository;
+        this.routeTipPort = routeTipPort;
     }
 
     public Node createRootNode(UUID projectId,
@@ -39,7 +37,17 @@ public class NodeService {
                                String purpose,
                                List<NodeOption> options,
                                boolean allowFreeAnswer) {
-        return createNode(projectId, routeId, null, null, question, purpose, options, allowFreeAnswer);
+        return createRootNode(projectId, routeId, question, purpose, options, allowFreeAnswer, false);
+    }
+
+    public Node createRootNode(UUID projectId,
+                               UUID routeId,
+                               String question,
+                               String purpose,
+                               List<NodeOption> options,
+                               boolean allowFreeAnswer,
+                               boolean allowMultiSelect) {
+        return createNode(projectId, routeId, null, null, question, purpose, options, allowFreeAnswer, allowMultiSelect);
     }
 
     public Node createChildNode(UUID projectId,
@@ -49,10 +57,21 @@ public class NodeService {
                                 String purpose,
                                 List<NodeOption> options,
                                 boolean allowFreeAnswer) {
+        return createChildNode(projectId, routeId, parentNodeId, question, purpose, options, allowFreeAnswer, false);
+    }
+
+    public Node createChildNode(UUID projectId,
+                                UUID routeId,
+                                UUID parentNodeId,
+                                String question,
+                                String purpose,
+                                List<NodeOption> options,
+                                boolean allowFreeAnswer,
+                                boolean allowMultiSelect) {
         if (parentNodeId == null) {
             throw new IllegalArgumentException("Child node requires a parent node id");
         }
-        return createNode(projectId, routeId, parentNodeId, null, question, purpose, options, allowFreeAnswer);
+        return createNode(projectId, routeId, parentNodeId, null, question, purpose, options, allowFreeAnswer, allowMultiSelect);
     }
 
     /**
@@ -70,8 +89,21 @@ public class NodeService {
                                    String purpose,
                                    List<NodeOption> options,
                                    boolean allowFreeAnswer) {
+        return createReanswerNode(projectId, routeId, parentNodeId, question, purpose,
+                options, allowFreeAnswer, false);
+    }
+
+    /** Multi-select-aware re-answer creation (copies the source question's flag). */
+    public Node createReanswerNode(UUID projectId,
+                                   UUID routeId,
+                                   UUID parentNodeId,
+                                   String question,
+                                   String purpose,
+                                   List<NodeOption> options,
+                                   boolean allowFreeAnswer,
+                                   boolean allowMultiSelect) {
         return createNode(projectId, routeId, parentNodeId, null,
-                question, purpose, options, allowFreeAnswer);
+                question, purpose, options, allowFreeAnswer, allowMultiSelect);
     }
 
     /**
@@ -88,11 +120,25 @@ public class NodeService {
                                       String purpose,
                                       List<NodeOption> options,
                                       boolean allowFreeAnswer) {
+        return createReplacementNode(projectId, routeId, parentNodeId, supersedesNodeId,
+                question, purpose, options, allowFreeAnswer, false);
+    }
+
+    /** Multi-select-aware replacement creation (copies the replaced question's flag). */
+    public Node createReplacementNode(UUID projectId,
+                                      UUID routeId,
+                                      UUID parentNodeId,
+                                      UUID supersedesNodeId,
+                                      String question,
+                                      String purpose,
+                                      List<NodeOption> options,
+                                      boolean allowFreeAnswer,
+                                      boolean allowMultiSelect) {
         if (supersedesNodeId == null) {
             throw new IllegalArgumentException("Replacement node requires a superseded node id");
         }
         return createNode(projectId, routeId, parentNodeId, supersedesNodeId,
-                question, purpose, options, allowFreeAnswer);
+                question, purpose, options, allowFreeAnswer, allowMultiSelect);
     }
 
     /**
@@ -208,14 +254,15 @@ public class NodeService {
                             String question,
                             String purpose,
                             List<NodeOption> options,
-                            boolean allowFreeAnswer) {
+                            boolean allowFreeAnswer,
+                            boolean allowMultiSelect) {
         if (question == null || question.isBlank()) {
             throw new IllegalArgumentException("Node question must not be blank");
         }
         UUID nodeId = Ids.random();
         Instant now = Instant.now();
         Node node = new Node(nodeId, projectId, parentNodeId, null, supersedesNodeId,
-                question, purpose, options, allowFreeAnswer, now,
+                question, purpose, options, allowFreeAnswer, allowMultiSelect, now,
                 NodeKind.INTERACTION, "QUESTION", Map.of(),
                 NodeAuthorKind.AGENT, null, null, now);
         nodeRepository.save(node);
@@ -223,13 +270,33 @@ public class NodeService {
         return node;
     }
 
-    private void advanceRouteTip(UUID routeId, Node node) {
+    /**
+     * Advances the route tip to the new node.
+     *
+     * <p>Tip semantics: the tip must always land on (or stay at) the
+     * answerable INTERACTION chain. A knowledge/resource node may hang off the
+     * current tip for provenance and layout, but it never SKIPS a question the
+     * user still has to answer — advancing the tip onto it would bury the
+     * pending question and make the route un-answerable. A non-interaction
+     * node therefore advances the tip only when there is no INTERACTION tip to
+     * displace (an empty route, or a knowledge-only head).
+     *
+     * <p>This is THE single tip-advancement semantic for every lineage
+     * writer (creation, connect, attach); callers must never update
+     * tip/root directly, or the two behaviors drift apart again.
+     */
+    public void advanceRouteTip(UUID routeId, Node node) {
+        RouteTipPort.RouteTip routeTip = routeTipPort.findTip(routeId);
+        if (node.kind() != NodeKind.INTERACTION && routeTip.tipNodeId() != null) {
+            Node tip = nodeRepository.findById(routeTip.tipNodeId()).orElse(null);
+            if (tip != null && tip.kind() == NodeKind.INTERACTION) {
+                return;
+            }
+        }
         // Preserve the route's existing root node when updating tip.
         // If the route has no root yet, set root to the new node.
-        Route route = routeRepository.findById(routeId)
-                .orElseThrow(() -> new IllegalArgumentException("Route not found: " + routeId));
-        UUID rootNodeId = route.rootNodeId() != null ? route.rootNodeId() : node.id();
-        routeRepository.updateTipAndRoot(routeId, node.id(), rootNodeId, Instant.now());
+        UUID rootNodeId = routeTip.rootNodeId() != null ? routeTip.rootNodeId() : node.id();
+        routeTipPort.advanceTipAndRoot(routeId, node.id(), rootNodeId, Instant.now());
     }
 
     private Node requireNodeInProject(UUID projectId, UUID nodeId) {

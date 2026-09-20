@@ -323,6 +323,20 @@ public class AgentRunRepository {
     }
 
     /**
+     * All non-terminal runs of a project, in creation order. Backs the
+     * workspace "active runs" read that lets the frontend rebuild its
+     * in-flight run registry after a page reload.
+     */
+    public List<AgentRun> findActiveByProject(UUID projectId) {
+        String sql = """
+                SELECT * FROM agent_runs
+                WHERE project_id = :projectId AND status NOT IN ('completed', 'failed')
+                ORDER BY created_at
+                """;
+        return jdbcTemplate.query(sql, Maps.of("projectId", projectId), rowMapper);
+    }
+
+    /**
      * All runs that persisted the given Answer, in creation order. Used by
      * answer repair/resume to discover the ORIGINAL attempt's frozen context
      * snapshots (pre-answer via {@code context_snapshot_id}, post-state via
@@ -375,6 +389,28 @@ public class AgentRunRepository {
                 """;
         return jdbcTemplate.query(sql, Maps.of(
                         "running", AgentRunStatus.RUNNING.code(),
+                        "trigger", AgentRunTriggerType.ANSWER_CYCLE.code(),
+                        "created", AgentRunStatus.CREATED.code()),
+                rowMapper).stream().findFirst();
+    }
+
+    /**
+     * Atomically claims one specific queued answer-cycle run by id. The claim
+     * stays conditional on the CREATED status, so a run already claimed (or
+     * executed) by anyone else is never claimed twice. Callers that enqueued a
+     * run themselves use this instead of {@link #claimNextAnswerCycleRun()}:
+     * the queue is shared, so the oldest queued run is not necessarily theirs.
+     */
+    public Optional<AgentRun> claimAnswerCycleRun(UUID runId) {
+        String sql = """
+                UPDATE agent_runs SET status = :running
+                WHERE id = CAST(:id AS uuid)
+                  AND trigger_type = :trigger AND status = :created
+                RETURNING *
+                """;
+        return jdbcTemplate.query(sql, Maps.of(
+                        "running", AgentRunStatus.RUNNING.code(),
+                        "id", runId.toString(),
                         "trigger", AgentRunTriggerType.ANSWER_CYCLE.code(),
                         "created", AgentRunStatus.CREATED.code()),
                 rowMapper).stream().findFirst();

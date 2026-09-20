@@ -209,4 +209,43 @@ class ProjectDeletionIntegrationTest {
         assertThat(count("SELECT COUNT(*) FROM projects WHERE id = :projectId", p.id())).isOne();
         assertThat(count("SELECT COUNT(*) FROM routes WHERE project_id = :projectId", p.id())).isPositive();
     }
+
+    /**
+     * Covers the FK traps that a bare project-creation test misses: an agent_run that
+     * produced an answer and a patch (produced_answer_id / produced_patch_id point at rows
+     * deleted earlier in the old ordering) and a continuation chain whose child links back
+     * to its root via the agent_runs self-FKs (parent_run_id / root_run_id). Deleting the
+     * project must not raise a foreign-key violation.
+     */
+    @Test
+    void deleteSucceedsWithProducedAnswerPatchAndContinuationChain() {
+        var p = projects.createProject("Produced-answer project");
+        UUID route = p.activeRouteId();
+        UUID node = UUID.randomUUID();
+        UUID answer = UUID.randomUUID();
+        UUID patch = UUID.randomUUID();
+        UUID rootRun = UUID.randomUUID();
+        UUID childRun = UUID.randomUUID();
+        jdbc.update("INSERT INTO nodes (id, project_id, question) VALUES (:id, :projectId, 'q')",
+                Map.of("id", node, "projectId", p.id()));
+        jdbc.update("INSERT INTO answers (id, project_id, route_id, node_id) VALUES (:id, :projectId, :route, :node)",
+                Map.of("id", answer, "projectId", p.id(), "route", route, "node", node));
+        jdbc.update("INSERT INTO answer_patches (id, project_id, route_id, source_node_id, source_answer_id) VALUES (:id, :projectId, :route, :node, :answer)",
+                Map.of("id", patch, "projectId", p.id(), "route", route, "node", node, "answer", answer));
+        jdbc.update("INSERT INTO agent_runs (id, project_id, route_id, trigger_type, status, produced_answer_id, produced_patch_id, trace, created_at) " +
+                        "VALUES (:id, :projectId, :route, 'MANUAL', 'COMPLETED', :answer, :patch, '{}', NOW())",
+                Map.of("id", rootRun, "projectId", p.id(), "route", route, "answer", answer, "patch", patch));
+        jdbc.update("INSERT INTO agent_runs (id, project_id, route_id, trigger_type, status, parent_run_id, root_run_id, trace, created_at) " +
+                        "VALUES (:id, :projectId, :route, 'MANUAL', 'COMPLETED', :parent, :root, '{}', NOW())",
+                Map.of("id", childRun, "projectId", p.id(), "route", route, "parent", rootRun, "root", rootRun));
+        jdbc.update("INSERT INTO agent_run_events (id, run_id, sequence, phase, event_type) VALUES (:id, :run, 1, 'TEST', 'TESTED')",
+                Map.of("id", UUID.randomUUID(), "run", childRun));
+        jdbc.update("INSERT INTO agent_run_continuation_checks (run_id) VALUES (:run)",
+                Map.of("run", childRun));
+        deletion.deleteProject(p.id());
+        assertThat(count("SELECT COUNT(*) FROM projects WHERE id = :projectId", p.id())).isZero();
+        assertThat(count("SELECT COUNT(*) FROM agent_runs WHERE project_id = :projectId", p.id())).isZero();
+        assertThat(count("SELECT COUNT(*) FROM answers WHERE project_id = :projectId", p.id())).isZero();
+        assertThat(count("SELECT COUNT(*) FROM answer_patches WHERE project_id = :projectId", p.id())).isZero();
+    }
 }

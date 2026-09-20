@@ -44,6 +44,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional
 class GlobalAssistantStreamingIntegrationTest {
 
+    @Autowired com.specagent.globalassistant.model.GlobalAssistantModelTargetResolver modelTargets;
     @Autowired GlobalAssistantConversationService conversations;
     @Autowired GlobalAssistantContextBuilder contextBuilder;
     @Autowired GlobalAssistantPromptRenderer renderer;
@@ -97,7 +98,7 @@ class GlobalAssistantStreamingIntegrationTest {
     private GlobalAssistantRuntime runtimeWith(ScriptedGateway gateway) {
         GlobalAssistantBrain brain = new GlobalAssistantBrain(renderer, gateway, parser, validator);
         return new GlobalAssistantRuntime(conversations, contextBuilder, brain, capabilities,
-                runs, canonicalizer, budgets, lifecycle, runEvents, uiValidator, summaries);
+                runs, canonicalizer, budgets, lifecycle, runEvents, uiValidator, summaries, modelTargets);
     }
 
     private static GlobalAssistantThread newThread(GlobalAssistantConversationService conversations) {

@@ -50,7 +50,9 @@ public class RouteHistoryResolver {
         Route sourceRoute = routeRepository.findById(sourceRouteId)
                 .orElseThrow(() -> new IllegalArgumentException("Source route not found: " + sourceRouteId));
         List<UUID> lineage = resolveLineage(throughNodeId);
-        if (!containsNode(resolveLineage(sourceRoute.tipNodeId()), throughNodeId)) {
+        // 分支点必须属于本路线:tip 谱系上的节点,或挂在谱系下的派生
+        // 知识/资源(它们自身就是一条到根的完整父链,如 "派生知识分叉")。
+        if (!belongsToRoute(sourceRoute, throughNodeId)) {
             throw new IllegalArgumentException("Branch node is not on source route: " + throughNodeId);
         }
         if (!includeThroughNode && !lineage.isEmpty()) {
@@ -134,6 +136,33 @@ public class RouteHistoryResolver {
         }
         java.util.Collections.reverse(reverse);
         return List.copyOf(reverse);
+    }
+
+    /**
+     * True when {@code nodeId} belongs to the route's material: it sits on the
+     * tip lineage itself, or it is derived material hanging under a lineage
+     * node (knowledge/resource children never enter the answerable chain but
+     * still belong to exactly this route). Detached/floating nodes are "no".
+     */
+    public boolean belongsToRoute(Route route, UUID nodeId) {
+        if (nodeId == null || route.tipNodeId() == null) {
+            return false;
+        }
+        Set<UUID> lineage = new HashSet<>(resolveLineage(route.tipNodeId()));
+        UUID current = nodeId;
+        Set<UUID> seen = new HashSet<>();
+        while (current != null && seen.add(current)) {
+            if (lineage.contains(current)) {
+                return true;
+            }
+            Node node = nodeRepository.findById(current)
+                    .orElse(null);
+            if (node == null) {
+                return false;
+            }
+            current = node.parentNodeId();
+        }
+        return false;
     }
 
     private boolean containsNode(List<UUID> lineage, UUID nodeId) {

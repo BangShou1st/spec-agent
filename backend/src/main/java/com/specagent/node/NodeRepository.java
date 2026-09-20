@@ -41,6 +41,7 @@ public class NodeRepository {
                 rs.getString("purpose"),
                 json.readList(rs.getString("options"), NODE_OPTION_LIST),
                 rs.getBoolean("allow_free_answer"),
+                rs.getBoolean("allow_multi_select"),
                 rs.getTimestamp("created_at").toInstant(),
                 NodeKind.fromCode(rs.getString("kind")),
                 rs.getString("subtype"),
@@ -54,11 +55,11 @@ public class NodeRepository {
     public void save(Node node) {
         String sql = """
                 INSERT INTO nodes (id, project_id, parent_node_id, created_by_run_id, supersedes_node_id,
-                                   question, purpose, options, allow_free_answer, created_at,
+                                   question, purpose, options, allow_free_answer, allow_multi_select, created_at,
                                    kind, subtype, content, author_kind, knowledge_status,
                                    retracted_at, updated_at)
                 VALUES (:id, :projectId, :parentNodeId, :createdByRunId, :supersedesNodeId,
-                        :question, :purpose, CAST(:options AS jsonb), :allowFreeAnswer, :createdAt,
+                        :question, :purpose, CAST(:options AS jsonb), :allowFreeAnswer, :allowMultiSelect, :createdAt,
                         :kind, :subtype, CAST(:content AS jsonb), :authorKind, :knowledgeStatus,
                         :retractedAt, :updatedAt)
                 """;
@@ -118,6 +119,26 @@ public class NodeRepository {
                 "updatedAt", Timestamp.from(updatedAt)));
     }
 
+    /**
+     * Sets (or clears) a node's single parent — i.e. its lineage membership.
+     *
+     * <p>Only the explicit connect/disconnect commands use this: a node's
+     * belonging is expressed by the {@code parent_node_id} chain plus the
+     * owning route's tip, never by a {@code node_route} join table. Callers
+     * must therefore update the route tip in the same transaction.
+     */
+    public void updateParent(UUID nodeId, UUID parentNodeId, Instant updatedAt) {
+        String sql = """
+                UPDATE nodes
+                SET parent_node_id = :parentNodeId, updated_at = :updatedAt
+                WHERE id = :id
+                """;
+        jdbcTemplate.update(sql, Maps.of(
+                "id", nodeId,
+                "parentNodeId", parentNodeId,
+                "updatedAt", Timestamp.from(updatedAt)));
+    }
+
     public void updateRetracted(UUID nodeId, Instant retractedAt) {
         String sql = """
                 UPDATE nodes
@@ -157,6 +178,7 @@ public class NodeRepository {
         params.put("purpose", node.purpose());
         params.put("options", json.writeList(node.options()));
         params.put("allowFreeAnswer", node.allowFreeAnswer());
+        params.put("allowMultiSelect", node.allowMultiSelect());
         params.put("createdAt", Timestamp.from(node.createdAt()));
         params.put("kind", node.kind().code());
         params.put("subtype", node.subtype());

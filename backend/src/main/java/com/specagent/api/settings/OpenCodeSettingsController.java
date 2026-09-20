@@ -26,12 +26,17 @@ public class OpenCodeSettingsController {
 
     @PostMapping("/probe")
     public OpenCodeProbeResponse probe(@Valid @RequestBody OpenCodeProbeRequest request) {
-        return new OpenCodeProbeResponse(service.probe(request.apiKey()));
+        return toModelResponse(service.probe(request.apiKey()));
     }
 
     @GetMapping("/models")
     public OpenCodeProbeResponse models() {
-        return new OpenCodeProbeResponse(service.listSavedKeyModels());
+        return toModelResponse(service.listSavedKeyModels());
+    }
+
+    private static OpenCodeProbeResponse toModelResponse(
+            OpenCodeSettingsService.OpenCodeCandidateModels models) {
+        return new OpenCodeProbeResponse(models.allModels(), models.freeModels());
     }
 
     @PutMapping
@@ -43,5 +48,11 @@ public class OpenCodeSettingsController {
     public OpenCodeSettingsResponse changeModel(
             @Valid @RequestBody OpenCodeModelChangeRequest request) {
         return OpenCodeSettingsResponse.from(service.changeModel(request.selectedModel()));
+    }
+
+    /** Explicit reachability test on the stored pair; never mutates settings. */
+    @PostMapping("/validate")
+    public OpenCodeSettingsResponse validate() {
+        return OpenCodeSettingsResponse.from(service.validate());
     }
 }

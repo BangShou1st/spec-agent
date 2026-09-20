@@ -48,9 +48,13 @@ tasks.withType<Test> {
 // The default `test` task never runs live-provider suites. Live behavior is
 // recorded only through the explicit evalLive* tasks, so ordinary PR runs
 // and local `./gradlew test` invocations stay deterministic and offline-safe.
+// The Python brain cross-language exit gate is excluded too: it needs a real
+// broker-mode agent-brain dialing back into THIS process's port, which an
+// offline (or dev-brain-occupied) machine cannot satisfy — see testCrossLanguage.
 tasks.named<Test>("test") {
     filter {
         excludeTestsMatching("com.specagent.eval.EvalLive*")
+        excludeTestsMatching("com.specagent.agent.runtime.PythonBrainCrossLanguageIntegrationTest")
     }
 }
 
@@ -75,10 +79,42 @@ tasks.register<Test>("evalBFast") {
 
 tasks.register<Test>("testNonLive") {
     group = "verification"
-    description = "Runs the complete backend test suite except explicit live-provider suites."
+    description = "Runs the complete backend test suite except explicit live-provider suites and the cross-language exit gate."
     useJUnitPlatform()
     filter {
         excludeTestsMatching("com.specagent.eval.EvalLive*")
+        excludeTestsMatching("com.specagent.agent.runtime.PythonBrainCrossLanguageIntegrationTest")
+    }
+}
+
+// Cross-language exit gate (Java broker <-> real Python agent-brain). It is a
+// separate task because it cannot be verified offline and is environment
+// coupled: the brain must run in broker mode and dial back into THIS test
+// process, so a dev brain already listening on 8100 answers instead and the
+// assertions fail with 502s. The suite is therefore excluded from `test` and
+// `testNonLive` and must be run explicitly against a dedicated brain:
+//
+//   1. pick a fixed rendezvous port for the test process (the class reads it):
+//        set SPEC_AGENT_CROSS_LANG_PORT=8099
+//   2. start a dedicated brain pointed at that port:
+//        cd agent-brain
+//        set SPEC_AGENT_BRAIN_MODEL_MODE=broker
+//        set SPEC_AGENT_INTERNAL_BROKER_URL=http://localhost:8099/internal/v1/model-inference
+//        .venv/Scripts/uvicorn spec_agent_brain.app:app --port 8100
+//   3. run: backend> gradlew.bat testCrossLanguage
+//
+// See the test class javadoc for the full contract. When no brain is running
+// the test still skips instead of failing.
+tasks.register<Test>("testCrossLanguage") {
+    group = "verification"
+    description = "Runs the Python brain cross-language exit gate (requires a broker-mode agent-brain on localhost:8100)."
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching("com.specagent.agent.runtime.PythonBrainCrossLanguageIntegrationTest")
+    }
+    testLogging {
+        events("failed", "skipped")
+        showStandardStreams = true
     }
 }
 

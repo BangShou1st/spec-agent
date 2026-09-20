@@ -28,6 +28,8 @@ import java.util.List;
 
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -145,5 +147,52 @@ class SpecApiIntegrationTest {
                         project.id(), Ids.random()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("ROUTE_NOT_FOUND"));
+    }
+
+    @Test
+    void exportDeliveryMarkdown() throws Exception {
+        SpecFixture fixture = createProjectWithSnapshot();
+
+        mockMvc.perform(get("/api/v1/specs/{snapshotId}/export.md", fixture.snapshot().id())
+                        .queryParam("variant", "delivery"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("text/markdown"))
+                .andExpect(header().string("Content-Disposition",
+                        org.hamcrest.Matchers.containsString("attachment")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "# Spec reading project · 开发需求文档")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("## Goals")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("## 未决问题")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("## 来源与追溯")));
+    }
+
+    @Test
+    void exportSnapshotMarkdownResolvesNodeRefAndKeepsMetadata() throws Exception {
+        SpecFixture fixture = createProjectWithSnapshot();
+
+        mockMvc.perform(get("/api/v1/specs/{snapshotId}/export.md", fixture.snapshot().id())
+                        .queryParam("variant", "snapshot"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "# Spec reading project · 需求规格快照")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "node:" + fixture.route().rootNodeId() + "（What are you clarifying?）")));
+    }
+
+    @Test
+    void exportWithUnknownVariantIsRejected() throws Exception {
+        SpecFixture fixture = createProjectWithSnapshot();
+
+        mockMvc.perform(get("/api/v1/specs/{snapshotId}/export.md", fixture.snapshot().id())
+                        .queryParam("variant", "pdf"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("SPEC_EXPORT_VARIANT_INVALID"));
+    }
+
+    @Test
+    void exportUnknownSnapshotReturnsNotFound() throws Exception {
+        mockMvc.perform(get("/api/v1/specs/{snapshotId}/export.md", Ids.random()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("SPEC_NOT_FOUND"));
     }
 }

@@ -38,7 +38,6 @@ vi.mock('@/api/routes', () => ({
 vi.mock('@/api/graphCommands', () => ({
   acceptProposal: vi.fn(),
   appendContinuation: vi.fn(),
-  attachResource: vi.fn(),
   createFloatingDraftNode: vi.fn(),
   createNodeQuery: vi.fn(),
   createRelation: vi.fn(),
@@ -124,9 +123,18 @@ describe('WorkspaceView unified center status', () => {
   it('renders only the reconcile CTA for an unknown outcome', async () => {
     mockViews()
     const { wrapper, store } = await mountWorkspace()
-    store.answerOutcomeUnknown = true
-    store.repairableAnswerId = 'a1'
-    store.resubmitAnswerPayload = { selectedOptionId: null, freeText: 'x' }
+    store.answerRunSessions.push({
+      clientRequestId: 'req-1',
+      projectId: 'p1',
+      routeId: 'r1',
+      nodeId: 'n2',
+      payload: { selectedOptionId: null, freeText: 'x' },
+      runId: 'run-1',
+      phase: null,
+      runStatus: 'FAILED',
+      status: 'UNKNOWN',
+      repairableAnswerId: null,
+    })
     await flushPromises()
 
     expect(wrapper.find('[data-test="recovery-notice"]').exists()).toBe(true)
@@ -142,8 +150,18 @@ describe('WorkspaceView unified center status', () => {
   it('renders resume CTA and never resubmit when the answer is saved', async () => {
     mockViews()
     const { wrapper, store } = await mountWorkspace()
-    store.repairableAnswerId = 'a1'
-    store.resubmitAnswerPayload = { selectedOptionId: null, freeText: 'x' }
+    store.answerRunSessions.push({
+      clientRequestId: 'req-1',
+      projectId: 'p1',
+      routeId: 'r1',
+      nodeId: 'n2',
+      payload: { selectedOptionId: null, freeText: 'x' },
+      runId: 'run-1',
+      phase: null,
+      runStatus: 'FAILED',
+      status: 'REPAIRABLE',
+      repairableAnswerId: 'a1',
+    })
     await flushPromises()
 
     expect(wrapper.text()).toContain('回答已经保存')
@@ -161,30 +179,15 @@ describe('WorkspaceView unified center status', () => {
     }
     await flushPromises()
 
-    const status = wrapper.find('[data-test="agent-status"]')
-    expect(status.exists()).toBe(true)
-    expect(status.text()).toContain('正在规划下一步')
-  })
-
-  it('renders a generic fallback without the raw phase code', async () => {
-    mockViews()
-    const { wrapper, store } = await mountWorkspace()
-    store.pendingRouteProjection = {
-      routeId: 'r1', sourceNodeId: null, runId: 'run-1',
-      status: 'RUNNING', phase: 'SOME_NEW_INTERNAL_PHASE', message: null,
-    }
-    await flushPromises()
-
-    const status = wrapper.find('[data-test="agent-status"]')
-    expect(status.exists()).toBe(true)
-    expect(status.text()).toContain('处理中…')
-    expect(status.text()).not.toContain('SOME_NEW_INTERNAL_PHASE')
+    // 中央一行状态已删除：运行进度收敛到画布节点内，中央不再渲染
+    // agent-status 元素。
+    expect(wrapper.find('[data-test="agent-status"]').exists()).toBe(false)
   })
 
   it('keeps an ordinary error banner when no recovery model applies', async () => {
     mockViews()
     const { wrapper, store } = await mountWorkspace()
-    store.error = { code: 'UNKNOWN_ERROR', message: '操作失败，请稍后重试。' }
+    store.error = { code: 'UNKNOWN_ERROR', message: '操作失败，请稍后重试' }
     await flushPromises()
 
     expect(wrapper.find('[data-test="recovery-notice"]').exists()).toBe(false)
@@ -200,38 +203,28 @@ describe('WorkspaceView unified center status', () => {
     }
     await flushPromises()
 
-    expect(wrapper.findAll('[data-test="agent-status"]')).toHaveLength(1)
+    expect(wrapper.find('[data-test="agent-status"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="runtime-phase"]').exists()).toBe(false)
-    // “正在规划下一步”在中央只出现一次（无重复渲染）。
-    const occurrences = wrapper.text().split('正在规划下一步').length - 1
-    expect(occurrences).toBe(1)
   })
 
   it('hides the one-line status once the run reaches a terminal phase', async () => {
     mockViews()
     const { wrapper, store } = await mountWorkspace()
-    // 成功链终态：即使 answerRunId 仍保留，也不常驻“已完成”。
-    store.answerRunId = 'run-done'
-    store.answerRunStatus = 'SUCCEEDED'
-    store.answerRunPhase = 'COMPLETED'
+    // 成功链终态：即使 run 记录仍保留，也不常驻“已完成”。
+    store.answerRunSessions.push({
+      clientRequestId: 'req-1',
+      projectId: 'p1',
+      routeId: 'r1',
+      nodeId: 'n2',
+      payload: { selectedOptionId: null, freeText: null },
+      runId: 'run-done',
+      phase: 'COMPLETED',
+      runStatus: 'SUCCEEDED',
+      status: 'RUNNING',
+      repairableAnswerId: null,
+    })
     await flushPromises()
     expect(wrapper.find('[data-test="agent-status"]').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('已完成')
-  })
-
-  it('renders the unknown fallback exactly once without the raw phase', async () => {
-    mockViews()
-    const { wrapper, store } = await mountWorkspace()
-    store.pendingRouteProjection = {
-      routeId: 'r1', sourceNodeId: null, runId: 'run-1',
-      status: 'RUNNING', phase: 'SOME_NEW_INTERNAL_PHASE', message: null,
-    }
-    await flushPromises()
-
-    expect(wrapper.findAll('[data-test="agent-status"]')).toHaveLength(1)
-    expect(wrapper.find('[data-test="runtime-phase"]').exists()).toBe(false)
-    const occurrences = wrapper.text().split('处理中…').length - 1
-    expect(occurrences).toBe(1)
-    expect(wrapper.text()).not.toContain('SOME_NEW_INTERNAL_PHASE')
   })
 })

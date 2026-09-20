@@ -23,6 +23,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
 import java.util.Objects;
@@ -77,6 +78,34 @@ public class ContextBuilder {
                     NodeRelationType.DERIVED_FROM, NodeRelationType.CONFLICTS_WITH,
                     NodeRelationType.SUPPORTS);
 
+    /**
+     * Derived working material of one route: non-interaction nodes (knowledge
+     * drafts, requirements, resources) that hang under a lineage node as a
+     * provenance parent. They never displace the answerable tip, so they are
+     * folded into the route's context here — visible and citable, without
+     * entering the answerable chain. Nodes claimed by another route's lineage
+     * (branch/forbidden material of a sibling route) are excluded.
+     */
+    private List<UUID> derivedMaterial(UUID projectId, UUID routeId, List<UUID> lineage) {
+        Set<UUID> lineageIds = Set.copyOf(lineage);
+        Set<UUID> claimedByOtherRoutes = new java.util.HashSet<>();
+        for (Route other : routeRepository.findByProject(projectId)) {
+            if (other.id().equals(routeId)) {
+                continue;
+            }
+            claimedByOtherRoutes.addAll(resolveLineage(other.tipNodeId()));
+        }
+        return nodeRepository.findByProject(projectId).stream()
+                .filter(node -> !node.isRetracted())
+                .filter(node -> node.kind() != com.specagent.node.NodeKind.INTERACTION)
+                .filter(node -> node.parentNodeId() != null
+                        && lineageIds.contains(node.parentNodeId()))
+                .filter(node -> !lineageIds.contains(node.id()))
+                .filter(node -> !claimedByOtherRoutes.contains(node.id()))
+                .map(com.specagent.node.Node::id)
+                .toList();
+    }
+
     public ContextSnapshot buildFromActiveRoute(UUID projectId, UUID agentRunId, ContextOperationType operationType) {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new IllegalArgumentException("Project not found: " + projectId));
@@ -98,6 +127,11 @@ public class ContextBuilder {
         // to the replacement route's lineage and never enter this chain.
         List<UUID> lineage = resolveLineage(activeRoute.tipNodeId());
         List<UUID> includedNodeIds = new ArrayList<>(lineage);
+        // Derived knowledge hanging under the chain is working material of
+        // THIS route: knowledge/resource nodes may attach to a lineage node
+        // without displacing the answerable tip, so they are added here to
+        // stay visible and citable for the model.
+        includedNodeIds.addAll(derivedMaterial(projectId, activeRouteId, includedNodeIds));
 
         List<UUID> includedAnswerIds = routeHistoryResolver
                 .resolveEffectiveAnswers(activeRouteId, includedNodeIds)
@@ -165,6 +199,8 @@ public class ContextBuilder {
         // to the replacement route's lineage and never enter this chain.
         List<UUID> lineage = resolveLineage(route.tipNodeId());
         List<UUID> includedNodeIds = new ArrayList<>(lineage);
+        // Derived knowledge hanging under the chain (see buildFromActiveRoute).
+        includedNodeIds.addAll(derivedMaterial(projectId, routeId, includedNodeIds));
 
         List<UUID> includedAnswerIds = routeHistoryResolver
                 .resolveEffectiveAnswers(routeId, includedNodeIds)

@@ -1,5 +1,5 @@
 import { apiClient } from './client'
-import type { InstalledSkillResult, SkillDetail, SkillResourceRead, SkillResourceSummary, SkillSummary, SkillVersionView, StagedImportDetail, StagedImportView } from './skillTypes'
+import type { GitSkillDiscovery, InstalledSkillResult, SkillDetail, SkillResourceRead, SkillResourceSummary, SkillSummary, SkillVersionView, StagedImportDetail, StagedImportView } from './skillTypes'
 
 /**
  * Skill management API wrappers. Backend SkillController is authority.
@@ -32,8 +32,13 @@ export function stageSkillZip(file: File): Promise<StagedImportView> {
   return apiClient.postForm<StagedImportView>('/skills/imports/zip', form)
 }
 
-export function stageSkillGit(url: string, ref?: string): Promise<StagedImportView> {
-  return apiClient.post<StagedImportView>('/skills/imports/git', { url, ref })
+export function stageSkillGit(url: string, ref?: string, subPath?: string): Promise<StagedImportView> {
+  return apiClient.post<StagedImportView>('/skills/imports/git', { url, ref, subPath })
+}
+
+/** Lists the Skill packages a repository offers; stages nothing. */
+export function discoverSkillGit(url: string, ref?: string): Promise<GitSkillDiscovery> {
+  return apiClient.post<GitSkillDiscovery>('/skills/imports/git/discover', { url, ref })
 }
 
 export function listStagedImports(): Promise<StagedImportDetail[]> {

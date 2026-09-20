@@ -23,8 +23,9 @@ describe('provider settings orchestration', () => {
     const store = useProviderSettingsStore()
     await store.loadActive()
     expect(store.activeProvider).toBe('OPENCODE_ZEN')
-    store.view('CUSTOM')
-    expect(store.viewing).toBe('CUSTOM')
+    expect(store.viewing).toBe('OPENCODE_ZEN') // 默认看第一个预设 Tab
+    store.view('OPENCODE_ZEN')
+    expect(store.viewing).toBe('OPENCODE_ZEN')
     expect(store.activeProvider).toBe('OPENCODE_ZEN')
     expect(api.activateProvider).not.toHaveBeenCalled()
   })
@@ -47,5 +48,23 @@ describe('provider settings orchestration', () => {
     expect(store.activeProvider).toBe('OPENROUTER')
     store.view('OPENROUTER')
     expect(store.activeProvider).toBe('OPENROUTER')
+  })
+
+  it('entering the page shows the currently active provider, not always OpenCode', async () => {
+    vi.mocked(api.getActiveProvider).mockResolvedValue({ activeProvider: 'OPENROUTER' })
+    const store = useProviderSettingsStore()
+    await store.loadActive()
+    expect(store.viewing).toBe('OPENROUTER')
+  })
+
+  it('stops auto-focusing the active provider once the user picked a tab manually', async () => {
+    vi.mocked(api.getActiveProvider).mockResolvedValue({ activeProvider: 'CUSTOM' })
+    const store = useProviderSettingsStore()
+    await store.loadActive()
+    expect(store.viewing).toBe('CUSTOM')
+    store.view('OPENCODE_ZEN')
+    // 用户手动切走后，再次进入设置页保持用户的选择。
+    await store.loadActive()
+    expect(store.viewing).toBe('OPENCODE_ZEN')
   })
 })

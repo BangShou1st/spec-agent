@@ -6,7 +6,7 @@ import { RouterLink, RouterView } from 'vue-router'
   <section class="settings-shell" data-test="settings-shell">
     <header class="settings-shell__heading">
       <h1>设置</h1>
-      <p class="page-desc">管理模型、Skills 和连接，配置 Spec Agent 的工作方式。</p>
+      <p class="page-desc">管理模型、Skills 和连接，配置 Spec Agent 的工作方式</p>
     </header>
     <nav class="settings-shell__nav" aria-label="Settings sections" data-test="settings-nav">
       <RouterLink to="/settings/models" data-test="settings-nav-models">模型</RouterLink>

@@ -63,6 +63,23 @@ export interface StagedImportDetail {
   createdAt: string
 }
 
+/** One Skill package a git repository offers. path '' means the repository root. */
+export interface GitSkillCandidate {
+  path: string
+  name: string
+  description: string
+  kind: string
+  declaredBy: string | null
+  fileCount: number
+  parseable: boolean
+}
+
+export interface GitSkillDiscovery {
+  commitSha: string
+  suggestedPath: string | null
+  candidates: GitSkillCandidate[]
+}
+
 export interface SkillResourceRead {
   relativePath: string
   content: string

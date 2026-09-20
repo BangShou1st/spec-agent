@@ -61,3 +61,13 @@ spec:
     mcp:
       # Fake in-process MCP servers live on 127.0.0.1 in tests.
       allow-localhost-http: true
+    skill:
+      builtin:
+        # Built-in skill packages are shipped for product/testing use, but the
+        # skill integration tests assert exact catalog states (empty before
+        # install, one entry after), so they must not be seeded into the test DB.
+        seed-enabled: false
+      # Flat keys on purpose: SkillProperties binds flat localMirrorEnabled /
+      # localMirrorRoot, a nested `local-mirror.enabled` block would silently
+      # not bind. Tests stay hermetic: no writes under the real user home.
+      local-mirror-enabled: false

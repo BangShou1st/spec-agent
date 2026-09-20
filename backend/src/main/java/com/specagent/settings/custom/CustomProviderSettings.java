@@ -9,6 +9,7 @@ public record CustomProviderSettings(
         String maskedSuffix,
         String selectedModel,
         String modelSource,
+        String displayName,
         long configRevision,
         Long validatedRevision,
         Instant createdAt,

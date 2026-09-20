@@ -31,7 +31,7 @@ function toggleTool(name: string): void {
       <button type="button" role="tab" :aria-selected="tab === 'prompts'" :class="{ active: tab === 'prompts' }" data-test="cap-tab-prompts" @click="tab = 'prompts'">Prompts ({{ prompts.length }})</button>
     </div>
     <div v-if="tab === 'tools'" data-test="cap-tools">
-      <p v-if="!tools.length" class="muted">暂无工具。先完成测试与连接，工具会出现在这里。</p>
+      <p v-if="!tools.length" class="muted">暂无工具。先完成测试与连接，工具会出现在这里</p>
       <ul v-else class="cap-list">
         <li v-for="t in tools" :key="t.name" :data-test="`cap-tool-${t.name}`">
           <button type="button" class="cap-row" :data-test="`cap-tool-toggle-${t.name}`" @click="toggleTool(t.name)">
@@ -46,7 +46,7 @@ function toggleTool(name: string): void {
       </ul>
     </div>
     <div v-else-if="tab === 'resources'" data-test="cap-resources">
-      <p v-if="!resources.length" class="muted">暂无资源。</p>
+      <p v-if="!resources.length" class="muted">暂无资源</p>
       <ul v-else class="cap-list">
         <li v-for="r in resources" :key="r.uri" :data-test="`cap-resource-${r.uri}`">
           <button type="button" class="cap-row" :data-test="`cap-resource-read-${r.uri}`" @click="emit('read-resource', r.uri)">
@@ -61,7 +61,7 @@ function toggleTool(name: string): void {
       </div>
     </div>
     <div v-else data-test="cap-prompts">
-      <p v-if="!prompts.length" class="muted">暂无 prompt。</p>
+      <p v-if="!prompts.length" class="muted">暂无 prompt</p>
       <ul v-else class="cap-list">
         <li v-for="p in prompts" :key="p.name" :data-test="`cap-prompt-${p.name}`">
           <span class="cap-name">{{ p.name }}</span>

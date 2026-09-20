@@ -72,13 +72,11 @@ class FakeFullLoopFailureIntegrationTest {
 
         // The stale-target scenario drives the same fail-closed path a
         // provider failure takes: nothing persists after the failure point.
+        // 派生知识不再顶掉问题 tip,所以用新问题子节点把 tip 真正推走。
         UUID runId = runService.createQueuedRunWithInput(
                 project.id(), "ANSWER_TIP", tip.id(), null, "clarified", null);
-        nodeService.createWorkspaceNode(project.id(), project.activeRouteId(), tip.id(),
-                com.specagent.node.NodeKind.KNOWLEDGE, "NOTE",
-                Map.of("text", "graph moved on"),
-                com.specagent.node.NodeAuthorKind.USER,
-                com.specagent.node.KnowledgeStatus.PROPOSED);
+        nodeService.createChildNode(project.id(), project.activeRouteId(), tip.id(),
+                "A later question", null, List.of(), true);
 
         assertThatThrownBy(() -> worker.executeRun(runService.claimNextAnswerCycle().orElseThrow()))
                 .isInstanceOf(RuntimeException.class);

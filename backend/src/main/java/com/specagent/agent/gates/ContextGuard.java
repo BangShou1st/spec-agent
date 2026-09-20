@@ -40,7 +40,27 @@ public class ContextGuard {
         this.routeRepository = routeRepository;
     }
 
+    /**
+     * Default validation: the context route must be the project's Active route.
+     * Kept as the single-argument entry point so every existing caller and the
+     * whole active-route invariant suite is unaffected.
+     */
     public ReflectionResult validate(ContextSnapshot snapshot) {
+        return validate(snapshot, false);
+    }
+
+    /**
+     * Validates a context snapshot.
+     *
+     * @param explicitRoute true when the run was created against an EXPLICIT
+     *        route instead of the project Active route. Multi-route work
+     *        (answering or drafting on a route that is not Active) is legal
+     *        only in this mode, and even then the route must still belong to
+     *        the project and be OPEN — the Active-equality check is the only
+     *        rule that is skipped, never the lifecycle/ownership ones. Without
+     *        an explicit route the behaviour is byte-identical to before.
+     */
+    public ReflectionResult validate(ContextSnapshot snapshot, boolean explicitRoute) {
         List<String> errors = new ArrayList<>();
 
         if (snapshot == null) {
@@ -84,7 +104,7 @@ public class ContextGuard {
             }
         }
 
-        if (snapshot.operationType() != ContextOperationType.REGENERATE) {
+        if (snapshot.operationType() != ContextOperationType.REGENERATE && !explicitRoute) {
             if (project != null) {
                 if (project.activeRouteId() == null) {
                     errors.add("Normal context requires project active route");

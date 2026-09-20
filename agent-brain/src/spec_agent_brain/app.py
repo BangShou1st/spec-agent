@@ -14,6 +14,7 @@ Java validates fail-closed before any persistence.
 """
 
 import hmac
+import logging
 from threading import Lock
 from typing import Annotated, Any, Dict
 
@@ -34,6 +35,23 @@ from .decision import handle_decision
 from .model_client import BrokerModelClient, FakeModelClient, ModelClient, ModelClientError
 from .state_update import BrainContractError as StateUpdateBrainContractError
 from .state_update import handle_state_update
+
+logger = logging.getLogger("spec_agent_brain")
+
+
+def _fail(reason: Exception, run_id: Any, operation: str) -> HTTPException:
+    """Logs the real reason before collapsing it into the 502 status.
+
+    Only the exception class used to survive the HTTP boundary, so six very
+    different causes (budget exhausted, model emitted non-JSON, contract
+    violation, broker unreachable, ...) all surfaced to Java as the same
+    opaque "brain_unavailable" run failure. The status code and the detail
+    shape are unchanged; the diagnosis now lands in the service log.
+    """
+    logger.warning("%s failed run=%s: %s: %s",
+                   operation, run_id, type(reason).__name__, reason)
+    return HTTPException(status_code=502,
+                         detail=f"brain_failure:{type(reason).__name__}")
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -101,7 +119,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             response = handle_state_update(envelope, model_client())
         except (StateUpdateBrainContractError, ModelClientError) as exc:
-            raise HTTPException(status_code=502, detail=f"brain_failure:{type(exc).__name__}")
+            raise _fail(exc, envelope.run_id, "STATE_UPDATE") from exc
         return _dump(response)
 
     @app.post("/v1/decisions", dependencies=[Depends(require_internal_token)])
@@ -111,9 +129,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             response = handle_decision(envelope, model_client())
         except ActionIneligibleBrainError as exc:
+            logger.info("DECISION ineligible run=%s: %s", envelope.run_id, exc)
             raise HTTPException(status_code=409, detail="ACTION_INELIGIBLE") from exc
         except (DecisionBrainContractError, ModelClientError) as exc:
-            raise HTTPException(status_code=502, detail=f"brain_failure:{type(exc).__name__}")
+            raise _fail(exc, envelope.run_id, "DECISION") from exc
         return _dump(response)
 
     @app.post("/v1/artifacts", dependencies=[Depends(require_internal_token)])
@@ -122,7 +141,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             response = handle_artifact(envelope, model_client())
         except (ArtifactBrainContractError, ModelClientError) as exc:
-            raise HTTPException(status_code=502, detail=f"brain_failure:{type(exc).__name__}")
+            raise _fail(exc, envelope.run_id, "ARTIFACT") from exc
         data = response.model_dump(mode="json", by_alias=True)
         data["protocolVersion"] = ARTIFACT_PROTOCOL_VERSION
         return data

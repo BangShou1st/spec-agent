@@ -1,6 +1,6 @@
 package com.specagent.web;
 
-import com.specagent.api.common.ApiErrorResponse;
+import com.specagent.common.ApiErrorResponse;
 import com.specagent.model.gateway.ModelGatewayErrorCategory;
 import com.specagent.model.gateway.ModelGatewayException;
 import org.slf4j.Logger;

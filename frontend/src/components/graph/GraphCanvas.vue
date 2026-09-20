@@ -15,6 +15,7 @@ import {
   type EdgeMouseEvent,
 } from '@vue-flow/core'
 import AdaptiveGraphEdge from '@/components/graph/AdaptiveGraphEdge.vue'
+import UiConfirmDialog from '@/components/ui/UiConfirmDialog.vue'
 import GraphKnowledgeNode from '@/components/graph/GraphKnowledgeNode.vue'
 import GraphQuestionNode from '@/components/graph/GraphQuestionNode.vue'
 import GraphStartPlaceholder from '@/components/graph/GraphStartPlaceholder.vue'
@@ -35,8 +36,8 @@ import {
 import type { GraphPosition } from '@/graph/graphTypes'
 import type {
   ContextualAiTarget,
+  GraphNodeRuntimeState,
   GraphPendingProjection,
-  GraphRuntimeStatus,
 } from '@/graph/graphProjection'
 import { useGraphUiStore } from '@/stores/graphUiStore'
 import type { GraphWorkspaceView, SubmitAnswerRequest } from '@/api/types'
@@ -63,10 +64,10 @@ const props = defineProps<{
   submitting: boolean
   drafting: boolean
   pending: boolean
-  runtimeNodeId?: string | null
-  runtimeStatus?: GraphRuntimeStatus | null
-  runtimePhase?: string | null
-  pendingProjection?: GraphPendingProjection | null
+  /** Per-node runtime overlays for in-flight runs on existing nodes. */
+  runtimeByNode?: Record<string, GraphNodeRuntimeState>
+  /** Browser-only cards for runs whose target node does not exist yet. */
+  pendings?: GraphPendingProjection[]
   safeRegion?: import('@/graph/graphViewport').FitViewportRegion | null
 }>()
 
@@ -76,16 +77,21 @@ const emit = defineEmits<{
   fork: [nodeId: string]
   reanswer: [nodeId: string]
   regenerate: [nodeId: string]
+  disconnect: [nodeId: string]
   'add-idea': []
   'add-resource': []
   'contextual-ai': [target: ContextualAiTarget]
   'retry-pending': []
   'viewport-settled': []
   'activate-route': [routeId: string]
+  /** 已回答的路线末端：沿该路线起草下一个问题（显式路线模式）。 */
+  'draft-next': [routeId: string]
   // A canvas drag (source handle → target handle) only raises a PENDING
   // relation proposal; nothing is persisted until the user confirms a type
   // and direction. This replaced the old "drag => immediate RELATED_TO".
-  'relation-proposal': [payload: { sourceNodeId: string; targetNodeId: string }]
+  'relation-proposal': [payload: { sourceNodeId: string; targetNodeId: string }],
+  /** Drag between a floating node and a routed node: attach intent. */
+  'connect-floating': [payload: { floatingNodeId: string; anchorNodeId: string }]
   // Vue Flow forwards the raw 'connect' event through <VueFlow @connect>;
   // declaring it here silences the Vue "neither declared in the emits option
   // nor as an onConnect prop" warning and documents the bridge.
@@ -144,17 +150,14 @@ const projection = computed(() => {
       focusRouteId: graphUi.focusRouteId,
       lifecycleFilters: graphUi.lifecycleFilters,
       routeDisplayStates: graphUi.routeDisplayStates,
+      isolatedRouteId: graphUi.isolatedRouteId,
       expandedNodeIds: graphUi.expandedNodeIds,
       showRelationLayer: graphUi.showRelationLayer,
       selectedNodeIds: graphUi.selectedNodeIds,
     },
     savedPositions: graphUi.nodePositions,
-    runtime: {
-      nodeId: props.runtimeNodeId ?? null,
-      status: props.runtimeStatus ?? null,
-      phase: props.runtimePhase ?? null,
-    },
-    pending: props.pendingProjection ?? null,
+    runtimeByNode: props.runtimeByNode,
+    pendings: props.pendings,
   })
 })
 
@@ -524,21 +527,22 @@ function maybeRevalidatePendingFit(): void {
   if (!intent) {
     return
   }
-  const current = props.pendingProjection
+  const pendings = props.pendings ?? []
+  const sameRun = pendings.find((entry) => entry.runId === intent.runId) ?? null
   // The fitted pending run is still in flight: keep the intent armed.
-  if (current && current.runId === intent.runId && current.status !== 'FAILED') {
+  if (sameRun && sameRun.status !== 'FAILED') {
     return
   }
   // Any live pending (a different run, or the same run re-polled) means the
   // replacement has not completed: expire only if it can never match again.
   // A FAILED run without replacement expires the intent with no revalidation.
-  if (current && current.status !== 'FAILED') {
-    if (current.runId !== intent.runId) {
+  if (pendings.some((entry) => entry.status !== 'FAILED')) {
+    if (!sameRun) {
       pendingFitIntent = null
     }
     return
   }
-  if (current) {
+  if (pendings.length > 0) {
     pendingFitIntent = null
     return
   }
@@ -558,8 +562,8 @@ function maybeRevalidatePendingFit(): void {
 function manualFitView(): void {
   clearActiveNodeFitTimer()
   performFitView()
-  const pending = props.pendingProjection
-  if (pending && pending.status !== 'FAILED') {
+  const pending = (props.pendings ?? []).find((entry) => entry.status !== 'FAILED') ?? null
+  if (pending) {
     pendingFitIntent = { runId: pending.runId, activeNodeIdAtFit: props.activeNodeId }
   } else {
     clearPendingFitIntent()
@@ -774,26 +778,46 @@ function onPaneClick(event?: MouseEvent): void {
 
 /**
  * Manual node-to-node connection (drag from a source handle to a target
- * handle). The drop ONLY creates a pending relation proposal: the backend is
- * not called, no GraphOperation is appended, and no relation is persisted
- * until the user confirms a specific type and direction in the proposal
- * chooser. Lineage is never rewritten by hand. Pending projection cards and
- * self-connections are ignored.
+ * handle). Two intents are distinguished:
+ *
+ *  - floating ↔ routed: connecting a standalone node into a lineage. The
+ *    canvas only reports the pair; the workspace resolves the explicit route
+ *    (never Active/first/latest) and runs the Runtime connect command. A
+ *    dropped connection is NEVER persisted on its own.
+ *  - routed ↔ routed: a relation proposal. No relation is persisted until the
+ *    user confirms a type and direction in the proposal chooser.
+ *
+ * Cancel/Esc/click-away clears a pending proposal with zero backend calls.
+ * Pending projection cards and self-connections are ignored.
  */
 function onConnect(connection: Connection): void {
-  const canonicalOf = (flowNodeId: string | null | undefined): string | null => {
+  const endpointOf = (
+    flowNodeId: string | null | undefined,
+  ): { canonicalNodeId: string; floating: boolean } | null => {
     if (!flowNodeId) return null
     const node = flowNodes.value.find((candidate) => candidate.id === flowNodeId)
-    const canonical = (node?.data as { canonicalNodeId?: string } | undefined)?.canonicalNodeId
+    const data = node?.data as { canonicalNodeId?: string; routeIds?: string[] } | undefined
+    const canonical = data?.canonicalNodeId
     if (!canonical || canonical.startsWith('pending:')) return null
-    return canonical
+    return { canonicalNodeId: canonical, floating: (data?.routeIds?.length ?? 0) === 0 }
   }
-  const sourceNodeId = canonicalOf(connection.source)
-  const targetNodeId = canonicalOf(connection.target)
-  if (!sourceNodeId || !targetNodeId || sourceNodeId === targetNodeId) {
+  const source = endpointOf(connection.source)
+  const target = endpointOf(connection.target)
+  if (!source || !target || source.canonicalNodeId === target.canonicalNodeId) {
     return
   }
-  emit('relation-proposal', { sourceNodeId, targetNodeId })
+  if (source.floating !== target.floating) {
+    // Exactly one side belongs to a route: this drag means "接入路线".
+    emit('connect-floating', {
+      floatingNodeId: source.floating ? source.canonicalNodeId : target.canonicalNodeId,
+      anchorNodeId: source.floating ? target.canonicalNodeId : source.canonicalNodeId,
+    })
+    return
+  }
+  emit('relation-proposal', {
+    sourceNodeId: source.canonicalNodeId,
+    targetNodeId: target.canonicalNodeId,
+  })
 }
 
 function emitContextualAi(nodeId: string, visualNodeKey?: string): void {
@@ -867,16 +891,18 @@ async function fitView(): Promise<void> {
  * user's manual layout. Runtime history never changes. The follow-up fit is
  * computed from the fresh positions, never from Vue Flow measurements.
  */
+/** 确认弹窗状态：用站内 UiConfirmDialog 取代原生 window.confirm。 */
+const autoLayoutConfirmOpen = ref(false)
+
+function requestAutoLayout(): void {
+  autoLayoutConfirmOpen.value = true
+}
+
 async function autoLayout(): Promise<void> {
+  autoLayoutConfirmOpen.value = false
   clearActiveNodeFitTimer()
   clearPendingFitIntent()
   if (!props.view) {
-    return
-  }
-  const confirmed = window.confirm(
-    '重新自动布局将覆盖当前项目手工调整过的节点位置。Runtime 历史不会改变。',
-  )
-  if (!confirmed) {
     return
   }
   const visibleIds = new Set<string>()
@@ -892,7 +918,12 @@ async function autoLayout(): Promise<void> {
   const nodes = projected.nodes
     .filter((node) => visibleIds.has(node.id))
     .map((node) => ({ id: node.id, parentNodeId: parentByVisualKey.get(node.id) ?? null }))
-  const positions = computeInitialLayout(nodes, {})
+  // 传入已测量高度：卡片高度由内容决定（长笔记可能是短问题的数倍），
+  // 固定行距会让长卡压住下一张卡。测量值缺失时退回旧的字距行为。
+  const measured = measuredSizeById()
+  const positions = computeInitialLayout(nodes, {}, {
+    heightOf: (nodeId) => measured.get(nodeId)?.height,
+  })
   graphUi.setNodePositions(positions)
 
   const canvasWidth = vf.dimensions.value.width
@@ -914,8 +945,22 @@ function showAll(): void {
   graphUi.showAll()
 }
 
+/**
+ * "只看这条路线" is a modal view state: every other route is off-canvas, so the
+ * canvas must say which route is isolated and offer a one-click way out.
+ * Rendered here (not in the toolbar) because the toolbar is a narrow rail.
+ */
+const isolatedRouteLabel = computed<string | null>(() => {
+  const routeId = graphUi.isolatedRouteId
+  if (!routeId) return null
+  const route = props.view?.routes.find((candidate) => candidate.id === routeId)
+  return route?.label?.trim() || '所选路线'
+})
+
 const isEmptyProject = computed(() =>
-  props.view !== null && props.view.nodes.length === 0 && !props.pendingProjection,
+  props.view !== null
+  && props.view.nodes.length === 0
+  && (props.pendings?.length ?? 0) === 0,
 )
 </script>
 
@@ -925,7 +970,7 @@ const isEmptyProject = computed(() =>
       @zoom-in="zoomIn"
       @zoom-out="zoomOut"
       @fit-view="fitView"
-      @auto-layout="autoLayout"
+      @auto-layout="requestAutoLayout"
       @show-all="showAll"
       @add-idea="emit('add-idea')"
       @add-resource="emit('add-resource')"
@@ -933,7 +978,22 @@ const isEmptyProject = computed(() =>
       @redo="emit('redo')"
     />
 
+    <div v-if="isolatedRouteLabel" class="graph-canvas__isolate-chip" data-test="isolate-chip">
+      <span class="graph-canvas__isolate-text" data-test="isolate-chip-label">只看：{{ isolatedRouteLabel }}</span>
+      <button
+        class="graph-canvas__isolate-exit"
+        data-test="isolate-chip-exit"
+        title="退出只看，恢复全部路线"
+        @click="showAll"
+      >显示全部</button>
+    </div>
+
     <div v-if="view && !isEmptyProject" class="graph-canvas__flow">
+      <!-- delete-key-code=null：Runtime 里没有"删除单个节点"的命令，节点只能
+           通过路线归档/项目删除消失。Vue Flow 默认把 Backspace 绑定为
+           removeSelectedNodes，那只删浏览器内存里的 flow 节点（v-model 同步），
+           看起来"节点被删了"，但任何 canonical 刷新都会把它重建回来
+           （刷新后节点回来）。这里显式关闭，避免制造一个假的删除能力。 -->
       <VueFlow
         v-model:nodes="flowNodes"
         v-model:edges="flowEdges"
@@ -944,6 +1004,7 @@ const isEmptyProject = computed(() =>
         :pan-on-drag="true"
         :min-zoom="0.15"
         :max-zoom="2.5"
+        :delete-key-code="null"
         data-test="graph-flow"
         @init="onInit"
          @nodes-change="onNodesChange"
@@ -972,9 +1033,11 @@ const isEmptyProject = computed(() =>
             @fork="(id) => emit('fork', id)"
             @reanswer="(id) => emit('reanswer', id)"
             @regenerate="(id) => emit('regenerate', id)"
+            @disconnect="(id) => emit('disconnect', id)"
             @contextual-ai="(id) => emitContextualAi(id, nodeProps.data.visualNodeKey)"
             @retry-pending="emit('retry-pending')"
             @activate-route="(routeId) => emit('activate-route', routeId)"
+            @draft-next="(routeId) => emit('draft-next', routeId)"
           />
         </template>
         <template #node-knowledge="nodeProps: NodeProps<SpecAgentGraphNodeData>">
@@ -995,5 +1058,15 @@ const isEmptyProject = computed(() =>
     />
 
     <p v-if="!view" class="muted graph-canvas__loading">正在加载工作区…</p>
+
+    <UiConfirmDialog
+      :open="autoLayoutConfirmOpen"
+      title="重新自动布局"
+      description="重新自动布局将覆盖当前项目手工调整过的节点位置。Runtime 历史不会改变"
+      confirm-label="重新布局"
+      test-id="auto-layout-confirm"
+      @confirm="autoLayout"
+      @cancel="autoLayoutConfirmOpen = false"
+    />
   </div>
 </template>

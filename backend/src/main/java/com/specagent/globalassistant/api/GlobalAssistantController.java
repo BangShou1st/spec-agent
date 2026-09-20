@@ -1,8 +1,8 @@
 package com.specagent.globalassistant.api;
 
+import com.specagent.globalassistant.application.GlobalAssistantApplicationService;
 import com.specagent.globalassistant.conversation.GlobalAssistantMessage;
 import com.specagent.globalassistant.conversation.GlobalAssistantRun;
-import com.specagent.globalassistant.conversation.GlobalAssistantRunEventRepository;
 import com.specagent.globalassistant.conversation.GlobalAssistantThread;
 import com.specagent.globalassistant.conversation.GlobalAssistantThreadListItem;
 import com.specagent.globalassistant.context.GlobalAssistantContextBuilder;
@@ -31,12 +31,10 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 @RequestMapping("/api/v1/global-assistant")
 public class GlobalAssistantController {
     private final GlobalAssistantApplicationService application;
-    private final GlobalAssistantRunEventRepository events;
     private final GlobalAssistantStreamService streams;
     public GlobalAssistantController(GlobalAssistantApplicationService application,
-            GlobalAssistantRunEventRepository events, GlobalAssistantStreamService streams) {
+            GlobalAssistantStreamService streams) {
         this.application = application;
-        this.events = events;
         this.streams = streams;
     }
     public record CreateThreadResponse(String threadId) {
@@ -53,7 +51,7 @@ public class GlobalAssistantController {
             int workingStateVersion, String createdAt, String updatedAt) {
     }
     public record MessageResponse(String id, String threadId, String role, String content,
-            String runId, String createdAt) {
+            String runId, String createdAt, String providerLabel, String modelId) {
     }
     public record RunResponse(String runId, String threadId, String status, int stepCount,
             String cancelRequestedAt, String startedAt, String completedAt, String errorCode) {
@@ -107,7 +105,8 @@ public class GlobalAssistantController {
         List<GlobalAssistantMessage> stored = application.listMessages(threadId);
         return stored.stream().map(m -> new MessageResponse(m.id().toString(),
                 m.threadId().toString(), m.role().name(), m.content(),
-                m.runId() == null ? null : m.runId().toString(), m.createdAt().toString())).toList();
+                m.runId() == null ? null : m.runId().toString(), m.createdAt().toString(),
+                m.providerLabel(), m.modelId())).toList();
     }
     @GetMapping("/runs/{runId}")
     public RunResponse getRun(@PathVariable UUID runId) {

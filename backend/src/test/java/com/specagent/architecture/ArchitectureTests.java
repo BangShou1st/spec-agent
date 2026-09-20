@@ -1,9 +1,13 @@
 package com.specagent.architecture;
 
+import com.specagent.common.PreciseConflictException;
+import com.tngtech.archunit.base.DescribedPredicate;
+import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.lang.ArchRule;
+import com.tngtech.archunit.library.freeze.FreezingArchRule;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -12,7 +16,9 @@ import java.nio.file.Path;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
+import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.slices;
 
 class ArchitectureTests {
 
@@ -224,7 +230,8 @@ class ArchitectureTests {
     @Test
     void apiMustNotDependOnRepositoryClasses() {
         ArchRule rule = noClasses()
-            .that().resideInAPackage("com.specagent.api..")
+            .that().resideInAnyPackage("com.specagent.api..", "com.specagent.globalassistant.api..")
+            .and().haveSimpleNameEndingWith("Controller")
             .should().dependOnClassesThat()
             .haveSimpleNameEndingWith("Repository")
             .because("API controllers and DTOs must go through the service boundary; "
@@ -249,7 +256,7 @@ class ArchitectureTests {
         ArchRule rule = noClasses()
             .that().resideInAPackage("com.specagent.api..")
             .should().dependOnClassesThat()
-            .resideInAnyPackage("com.specagent.context..", "com.specagent.credential..")
+            .resideInAnyPackage("com.specagent.context..", "com.specagent.connection.credentials..")
             .because("API must never expose a raw ContextSnapshot or credential material");
 
         rule.check(CLASSES);
@@ -281,8 +288,7 @@ class ArchitectureTests {
     }
 
     @Test
-    void readModelMustNotDependOnApi() {
-        ArchRule rule = noClasses()
+    void readModelMustNotDependOnApi() {        ArchRule rule = noClasses()
             .that().resideInAPackage("com.specagent.readmodel..")
             .should().dependOnClassesThat()
             .resideInAPackage("com.specagent.api..")
@@ -294,9 +300,38 @@ class ArchitectureTests {
     }
 
     @Test
-    void controllersMustNotDependOnModelGateway() {
+    void applicationLayerMustNotDependOnApi() {
         ArchRule rule = noClasses()
-            .that().resideInAPackage("com.specagent.api..")
+            .that().resideInAPackage("com.specagent.application..")
+            .should().dependOnClassesThat()
+            .resideInAPackage("com.specagent.api..")
+            .because("Use-case orchestration lives below the HTTP boundary; "
+                    + "the application layer owns its own view models, so "
+                    + "dependencies only flow api -> application");
+
+        rule.check(CLASSES);
+    }
+
+    @Test
+    void errorKernelMustNotDependOnApi() {
+        ArchRule rule = noClasses()
+            .that().resideInAPackage("com.specagent.common..")
+            .should().dependOnClassesThat()
+            .resideInAPackage("com.specagent.api..")
+            .because("The shared error kernel (ApiException, ApiErrorResponse, "
+                    + "ApiFieldError, PreciseConflictException) is consumed by the "
+                    + "application and runtime layers, so it must never reach up "
+                    + "into the HTTP boundary");
+
+        rule.check(CLASSES);
+    }
+
+    @Test
+    void controllersMustNotDependOnModelGateway() {
+        // The internal model-inference broker endpoint is deliberately excluded:
+        // it IS the model wire contract served to the Python brain.
+        ArchRule rule = noClasses()
+            .that().resideInAnyPackage("com.specagent.api..", "com.specagent.globalassistant.api..")
             .and().haveSimpleNameEndingWith("Controller")
             .should().dependOnClassesThat()
             .resideInAnyPackage("com.specagent.model.gateway..", "com.specagent.model.provider..")
@@ -330,6 +365,50 @@ class ArchitectureTests {
     }
 
     @Test
+    void conflictExceptionsMustCarryThePreciseConflictMarker() {
+        // Guard for the CommandExecution trap: that wrapper rethrows a single
+        // PreciseConflictException and otherwise degrades every
+        // IllegalStateException to 409/RUNTIME_CONFLICT. A new precise
+        // conflict exception that forgot the marker would therefore lose its
+        // stable code silently.
+        //
+        // Approximation (documented): ArchUnit cannot see "is actually thrown
+        // through CommandExecution.execute", so the rule keys on the
+        // production naming convention for precise conflicts
+        // (*ConflictException / *RuleViolationException) combined with the
+        // IllegalStateException supertype. The Global Assistant package is
+        // excluded on purpose: GlobalAssistantVersionConflictException is an
+        // internal optimistic-concurrency retry signal caught and retried
+        // inside GlobalAssistantRuntime, so it never crosses the HTTP
+        // boundary and must not join this family.
+        DescribedPredicate<JavaClass> preciseConflictByName = JavaClass.Predicates
+                .assignableTo(IllegalStateException.class)
+                .and(new DescribedPredicate<>("named *ConflictException or *RuleViolationException") {
+                    @Override
+                    public boolean test(JavaClass javaClass) {
+                        String name = javaClass.getSimpleName();
+                        return name.endsWith("ConflictException")
+                                || name.endsWith("RuleViolationException");
+                    }
+                })
+                .and(new DescribedPredicate<>("outside com.specagent.globalassistant..") {
+                    @Override
+                    public boolean test(JavaClass javaClass) {
+                        return !javaClass.getPackageName().startsWith("com.specagent.globalassistant");
+                    }
+                });
+
+        ArchRule rule = classes()
+                .that(preciseConflictByName)
+                .should().beAssignableTo(PreciseConflictException.class)
+                .because("state-conflict exceptions that carry a precise reason code must "
+                        + "extend PreciseConflictException, otherwise CommandExecution "
+                        + "degrades their 409 code to RUNTIME_CONFLICT");
+
+        rule.check(CLASSES);
+    }
+
+    @Test
     void sharedDecisionExecutionCoreStaysCycleNeutral() {
         // Slice 3A: DecisionExecutionService executes an already-prepared
         // DECISION only. Cycle preparation (context building, Answer/Patch
@@ -352,6 +431,56 @@ class ArchitectureTests {
             .because("The shared DECISION execution core must stay cycle-neutral: "
                 + "no context building, no Answer/Patch reads, no route loading, "
                 + "no trigger dispatch, no continuation");
+
+        rule.check(CLASSES);
+    }
+
+    @Test
+    void packagesAreFreeOfCycles() {
+        // Package-cycle freeze. Slice granularity is the first package segment
+        // below com.specagent, so a dependency from route.. to node.. and back
+        // is reported as the route <-> node cycle.
+        //
+        // The repository currently carries 2 slice-cycle violations, the
+        // concrete paths of 2 package groups:
+        //   model <-> settings, connection <-> mcp
+        //
+        // History: the 2026-09-19 audit froze 34 violation lines covering 7
+        // package groups (model <-> settings, model <-> globalassistant,
+        // answer <-> graph, node <-> route, project <-> route, context <->
+        // route, connection <-> mcp). The 2026-09-20 pass broke 5 of them by
+        // port sinking / dead-field removal (dependency direction now flows
+        // one way; see AgentTracePort, CompatibilityDecisionSemantics,
+        // RouteGraphSupportPort, ProjectActiveRoutePort, ProjectRowLockPort,
+        // and the RegenerateResult cleanup), shrinking the frozen baseline to
+        // the 2 remaining paths.
+        //
+        // model <-> settings: the inference gateways read settings services
+        // (legitimate read direction), while settings depends on the
+        // model.provider protocol library (adapters, catalogs, probe).
+        // Breaking it needs the provider protocol library extracted into a
+        // neutral package — a wide, behaviour-sensitive move, deferred.
+        //
+        // connection <-> mcp: ConnectionLifecycleService drives McpDiscovery
+        // (legitimate direction), while the MCP runtime reads connection
+        // persistence (ConnectionRepository, McpDiscoveryCacheRepository,
+        // SecretStore). Breaking it needs a connection-store port plus moving
+        // the MCP discovery cache out of connection.persistence — deferred.
+        //
+        // The freeze guarantees neither can silently get worse: this rule
+        // fails on any NEW package cycle.
+        //
+        // ARCHUNIT STORE: violations live in backend/archunit_store. That
+        // archive is committed on purpose. When a cycle is actually removed
+        // (dependency inverted, port introduced, ...) the store must be
+        // regenerated (rerun this test, inspect the archunit_store diff, commit
+        // the shrunken store) so the rule starts guarding the new baseline.
+        ArchRule rule = FreezingArchRule.freeze(slices()
+                .matching("com.specagent.(*)..")
+                .should().beFreeOfCycles()
+                .because("package-level cycles must be broken explicitly; the 7 "
+                        + "historical cycles are frozen in archunit_store and any "
+                        + "newly introduced cycle fails this rule"));
 
         rule.check(CLASSES);
     }

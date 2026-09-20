@@ -43,6 +43,20 @@ describe('ga run projection', () => {
     expect(projection.activities[0].summary).toContain('工具执行失败')
   })
 
+  it('marks network tool failures with the real cause, not generic copy', () => {
+    const projection = new GaRunProjection()
+    projection.apply(envelope(1, 'TOOL_STARTED', { capabilityId: 'skill.import', arguments: { url: 'https://github.com/obra/superpowers' } }))
+    projection.apply(envelope(2, 'TOOL_FAILED', {
+      capabilityId: 'skill.import',
+      errorCode: 'TOOL_EXECUTION_FAILED',
+      reason: 'Git import failed: TransportException via direct (no proxy configured or detected) (Connection timed out)',
+    }))
+    expect(projection.activities[0].state).toBe('failure')
+    expect(projection.activities[0].summary).toContain('网络连接失败')
+    expect(projection.activities[0].summary).toContain('TransportException')
+    expect(projection.activities[0].summary).not.toContain('工具执行失败，请稍后再试')
+  })
+
   it('handles clarification, ui action and terminal states', () => {
     const projection = new GaRunProjection()
     projection.apply(envelope(1, 'USER_INPUT_REQUIRED', { question: '哪一个项目？' }))

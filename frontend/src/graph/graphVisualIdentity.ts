@@ -92,15 +92,59 @@ export function buildVisualInstances(view: GraphWorkspaceView): GraphVisualInsta
     }
   }
 
-  // Floating drafts (user ideas) belong to no route lineage: they are
-  // standalone graph content until manually connected. They project as
-  // route-less instances keyed by their canonical id so they stay visible
-  // and editable on the canvas.
+  // Provenance children (knowledge/resources hung below a lineage node by the
+  // kind-aware connect) are route members without being ON the parent chain:
+  // the backend counts them as route members (see RouteHistoryResolver
+  // .belongsToRoute), so the projection must too — otherwise a connected idea
+  // still shows the "独立节点" badge, draws no lineage edge to its parent and
+  // loses its route actions. Membership (and the visual parent edge) is
+  // inherited transitively from the parent instance.
   const lineagedNodeIds = new Set(
     view.routes.flatMap((route) => route.lineageNodeIds ?? []),
   )
+  const orphans: typeof view.nodes = []
   for (const node of view.nodes) {
     if (lineagedNodeIds.has(node.id) || byKey.has(node.id)) continue
+    const parentNodeId = node.parentNodeId
+    const parentInstance = parentNodeId ? byKey.get(parentNodeId) : undefined
+    if (!parentInstance) {
+      orphans.push(node)
+      continue
+    }
+    byKey.set(node.id, {
+      visualNodeKey: node.id,
+      canonicalNodeId: node.id,
+      node,
+      routeIds: [...parentInstance.routeIds],
+      parentVisualNodeKey: parentInstance.visualNodeKey,
+    })
+  }
+  // Transitively attach deeper provenance chains (child of a child), if any.
+  let pending = orphans
+  while (pending.length > 0) {
+    const remaining: typeof view.nodes = []
+    for (const node of pending) {
+      const parentInstance = node.parentNodeId ? byKey.get(node.parentNodeId) : undefined
+      if (!parentInstance) {
+        remaining.push(node)
+        continue
+      }
+      byKey.set(node.id, {
+        visualNodeKey: node.id,
+        canonicalNodeId: node.id,
+        node,
+        routeIds: [...parentInstance.routeIds],
+        parentVisualNodeKey: parentInstance.visualNodeKey,
+      })
+    }
+    if (remaining.length === pending.length) break
+    pending = remaining
+  }
+  // Genuinely floating drafts (user ideas) belong to no route lineage: they
+  // are standalone graph content until manually connected. They project as
+  // route-less instances keyed by their canonical id so they stay visible
+  // and editable on the canvas.
+  for (const node of pending) {
     byKey.set(node.id, {
       visualNodeKey: node.id,
       canonicalNodeId: node.id,

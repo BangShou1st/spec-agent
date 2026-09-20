@@ -77,6 +77,9 @@ class ScriptedModelGatewayFullLoopIntegrationTest {
         jdbcTemplate.update("DELETE FROM context_snapshots WHERE project_id = ?", project.id());
         jdbcTemplate.update("DELETE FROM answer_patches WHERE project_id = ?", project.id());
         jdbcTemplate.update("DELETE FROM answers WHERE project_id = ?", project.id());
+        // Agent graph mutations now enter the operation log; the rows hold a
+        // project FK and must go before the project itself.
+        jdbcTemplate.update("DELETE FROM graph_operations WHERE project_id = ?", project.id());
         jdbcTemplate.update("DELETE FROM nodes WHERE project_id = ?", project.id());
         jdbcTemplate.update("DELETE FROM routes WHERE project_id = ?", project.id());
         jdbcTemplate.update("DELETE FROM projects WHERE id = ?", project.id());
@@ -93,13 +96,12 @@ class ScriptedModelGatewayFullLoopIntegrationTest {
                 "What is the primary outcome?", "Clarify the outcome", List.of(), true);
 
         // Enqueue the answer run, then move the graph on before it is claimed.
+        // 派生知识节点不再顶掉问题 tip,所以用一个新问题子节点把 tip 真正
+        // 推走,制造"run 的目标已不是路线 tip"的过期场景。
         UUID queuedRunId = answerDriver.enqueueOnly(project.id(), "ANSWER_TIP",
                 rootNode.id(), null, "clarified", null);
-        nodeService.createWorkspaceNode(project.id(), project.activeRouteId(),
-                rootNode.id(), com.specagent.node.NodeKind.KNOWLEDGE, "NOTE",
-                Map.of("text", "A later question"),
-                com.specagent.node.NodeAuthorKind.USER,
-                com.specagent.node.KnowledgeStatus.PROPOSED);
+        nodeService.createChildNode(project.id(), project.activeRouteId(),
+                rootNode.id(), "A later question", null, List.of(), true);
 
         var claimed = answerCycleClaim(queuedRunId);
         assertThatThrownBy(() -> worker.executeRun(claimed))

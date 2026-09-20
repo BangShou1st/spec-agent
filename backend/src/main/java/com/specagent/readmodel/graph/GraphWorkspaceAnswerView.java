@@ -3,6 +3,7 @@ package com.specagent.readmodel.graph;
 import com.specagent.answer.Answer;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -19,6 +20,7 @@ public record GraphWorkspaceAnswerView(
         boolean inherited,
         UUID nodeId,
         String selectedOptionId,
+        List<String> selectedOptionIds,
         String freeText,
         Instant createdAt) {
 
@@ -31,6 +33,7 @@ public record GraphWorkspaceAnswerView(
                                                 boolean inherited) {
         return new GraphWorkspaceAnswerView(
                 answer.id(), traversingRouteId, answer.routeId(), inherited, answer.nodeId(),
-                answer.selectedOptionId(), answer.freeText(), answer.createdAt());
+                answer.selectedOptionId(), answer.selectedOptionIds(), answer.freeText(),
+                answer.createdAt());
     }
 }

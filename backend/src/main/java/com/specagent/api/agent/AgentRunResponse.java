@@ -1,6 +1,7 @@
 package com.specagent.api.agent;
 
 import com.specagent.agent.AgentRun;
+import com.specagent.agent.runevent.RunProgressView;
 
 import java.time.Instant;
 import java.util.List;
@@ -29,10 +30,16 @@ public record AgentRunResponse(
         UUID producedSpecSnapshotId,
         String status,
         List<String> traceSteps,
+        RunProgressView progress,
         Instant createdAt,
         Instant completedAt) {
 
     public static AgentRunResponse from(AgentRun run, List<String> traceSteps) {
+        return from(run, traceSteps, null);
+    }
+
+    public static AgentRunResponse from(AgentRun run, List<String> traceSteps,
+                                        RunProgressView progress) {
         return new AgentRunResponse(
                 run.id(),
                 run.projectId(),
@@ -46,6 +53,7 @@ public record AgentRunResponse(
                 run.producedSpecSnapshotId(),
                 run.status().code(),
                 traceSteps,
+                progress,
                 run.createdAt(),
                 run.completedAt());
     }

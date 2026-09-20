@@ -1,5 +1,7 @@
 package com.specagent.api.route;
 
+import com.specagent.application.route.RouteCommandService;
+import com.specagent.application.route.RouteMutationResponse;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -63,5 +65,15 @@ public class RouteCommandController {
                                           @Valid @RequestBody ReanswerRouteRequest request) {
         return routeCommandService.reanswer(projectId, nodeId,
                 request.sourceRouteId(), request.label());
+    }
+
+    /** Starts a NEW standalone route from a floating knowledge/resource node
+     * ("想法继续生成问题"): the node becomes the route's root+tip and the
+     * next question draft anchors there. */
+    @PostMapping("/nodes/{nodeId}/start-route")
+    public RouteMutationResponse startRoute(@PathVariable UUID projectId,
+                                            @PathVariable UUID nodeId,
+                                            @Valid @RequestBody StartRouteFromNodeRequest request) {
+        return routeCommandService.startRouteFromNode(projectId, nodeId, request.label());
     }
 }

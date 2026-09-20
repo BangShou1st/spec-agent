@@ -14,7 +14,6 @@ vi.mock('@/api/agentRuns', async () => ({
 vi.mock('@/api/graphCommands', () => ({
   acceptProposal: vi.fn(),
   appendContinuation: vi.fn(),
-  attachResource: vi.fn(),
   createFloatingDraftNode: vi.fn(),
   createRelation: vi.fn(),
   createNodeQuery: vi.fn(),
@@ -108,7 +107,19 @@ describe('autonomous run chain polling (Closure B)', () => {
     const store = useWorkspaceStore()
     store.projectId = 'p1'
     store.refreshWorkspace = vi.fn().mockResolvedValue(true) as never
-    store.pendingAnswerNodeId = 'q3'
+    // Seed the answer session that pollAnswerRun resolves by run id.
+    store.answerRunSessions.push({
+      clientRequestId: 'req-f4',
+      projectId: 'p1',
+      routeId: 'r1',
+      nodeId: 'q3',
+      payload: { selectedOptionId: null, freeText: 'seeded' },
+      runId: 'run-1',
+      phase: null,
+      runStatus: 'RUNNING',
+      status: 'RUNNING',
+      repairableAnswerId: null,
+    })
     const finishSpy = vi.spyOn(store, 'finishSuccessfulAnswerRun')
     mockedGetAgentRun.mockImplementation(async (_projectId: string, runId: string) => {
       if (runId === 'run-1') return chainRunView({ runId: 'run-1', childRunId: 'run-2' })
@@ -117,6 +128,8 @@ describe('autonomous run chain polling (Closure B)', () => {
     await store.pollAnswerRun('run-1')
     expect(finishSpy).toHaveBeenCalledTimes(1)
     expect(store.feedback).toBe('chain answer')
+    // The settled session is removed, so no pending answer node remains.
+    expect(store.answerRunSessions).toHaveLength(0)
     expect(store.pendingAnswerNodeId).toBeNull()
   })
 

@@ -27,6 +27,9 @@ application-local.yml
 docker-compose.override.yml
 backend/.local-secrets.env
 
+# Skill 本地镜像(运行时数据,DB 才是权威源,不入库)
+backend/data/
+
 # Frontend
 frontend/node_modules
 frontend/dist
@@ -35,6 +38,21 @@ frontend/playwright-report
 frontend/test-results
 *.tsbuildinfo
 
+# 命令行重定向产生的临时输出(如 vitest-out.txt),不属于仓库内容
+frontend/*-out.txt
+
+# OCR runtime (vendored from node_modules by `npm run vendor:ocr`, ~7MB WASM).
+# The language models in frontend/public/tessdata ARE committed: nothing ships them.
+frontend/public/tesseract
+
 # Python cache
 __pycache__/
 *.pyc
+agent-brain/.venv/
+
+# 工具会话的临时备份区(内嵌 git 仓库,不可入库)
+.workbuddy/scratch/
+
+# 工具会话临时产物
+.freebuff/
+.workbuddy/

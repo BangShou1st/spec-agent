@@ -235,7 +235,7 @@ must never be used in production.
 |---|---|---|---|
 | `SPEC_AGENT_MODEL_GATEWAY` | Gateway selector: `fake` (default) or `opencode` | No (default fake) | **Must be `opencode`** |
 | `SPEC_AGENT_OPENCODE_KEY` | OpenCode Zen API key | No | **Required** |
-| `SPEC_AGENT_OPENCODE_MODEL` | Selected model id (must end with `-free`) | No | No (default `mimo-v2.5-free`) |
+| `SPEC_AGENT_OPENCODE_MODEL` | Selected model id (must exist in the provider's live model list) | No | No (default `mimo-v2.5-free`) |
 | `SPEC_AGENT_CREDENTIAL_MASTER_KEY` | Credential encryption master key (test profile uses fixed test-only key) | No | No (test profile) |
 
 ### B-live evaluation configuration
@@ -247,7 +247,7 @@ and reads only these process environment variables:
 | Variable | Purpose | Required |
 |---|---|---|
 | `SPEC_AGENT_EVAL_OPENCODE_KEY` | OpenCode Zen API key for the live evaluation process | **Yes** |
-| `SPEC_AGENT_EVAL_OPENCODE_MODEL` | Current OpenCode free model id | **Yes** |
+| `SPEC_AGENT_EVAL_OPENCODE_MODEL` | Current OpenCode model id (from the live provider list) | **Yes** |
 
 The endpoint is pinned to `https://opencode.ai/zen/v1` by the live suite. No
 default model is applied in this mode. Missing or invalid values fail before

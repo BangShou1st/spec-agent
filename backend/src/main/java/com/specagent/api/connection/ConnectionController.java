@@ -48,20 +48,17 @@ public class ConnectionController {
     private final McpResourceProvider resourceProvider;
     private final McpPromptAssetProvider promptAssetProvider;
     private final McpDiscoveryService discoveryService;
-    private final com.specagent.connection.credentials.SecretStore secretStore;
     private final ObjectMapper objectMapper;
 
     public ConnectionController(ConnectionLifecycleService lifecycleService,
                                 McpResourceProvider resourceProvider,
                                 McpPromptAssetProvider promptAssetProvider,
                                 McpDiscoveryService discoveryService,
-                                com.specagent.connection.credentials.SecretStore secretStore,
                                 ObjectMapper objectMapper) {
         this.lifecycleService = lifecycleService;
         this.resourceProvider = resourceProvider;
         this.promptAssetProvider = promptAssetProvider;
         this.discoveryService = discoveryService;
-        this.secretStore = secretStore;
         this.objectMapper = objectMapper;
     }
 
@@ -206,10 +203,7 @@ public class ConnectionController {
     }
 
     private String maskedSuffix(Connection connection) {
-        if (connection.credentialRef() == null || connection.credentialRef().isBlank()) {
-            return null;
-        }
-        return secretStore.maskedSuffix(connection.credentialRef());
+        return lifecycleService.maskedSuffix(connection);
     }
 
     // ---- DTOs ------------------------------------------------------------

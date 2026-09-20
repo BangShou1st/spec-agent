@@ -1,9 +1,6 @@
 package com.specagent.model.provider;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.specagent.globalassistant.model.GlobalAssistantDecision;
-import com.specagent.globalassistant.model.GlobalAssistantDecisionParser;
-import com.specagent.globalassistant.model.GlobalAssistantDecisionValidator;
 import com.specagent.model.inference.ModelInferenceMessage;
 import com.specagent.model.inference.ModelInferenceRequest;
 import com.specagent.model.inference.ModelOutputContract;
@@ -27,17 +24,14 @@ public class CompatibilityProbeService {
 
     private final ObjectMapper mapper;
     private final ProtocolAdapterRegistry registry;
-    private final GlobalAssistantDecisionParser parser;
-    private final GlobalAssistantDecisionValidator validator;
+    private final CompatibilityDecisionSemantics decisionSemantics;
     private final HttpClient client;
 
     public CompatibilityProbeService(ObjectMapper mapper, ProtocolAdapterRegistry registry,
-                                     GlobalAssistantDecisionParser parser,
-                                     GlobalAssistantDecisionValidator validator) {
+                                     CompatibilityDecisionSemantics decisionSemantics) {
         this.mapper = mapper;
         this.registry = registry;
-        this.parser = parser;
-        this.validator = validator;
+        this.decisionSemantics = decisionSemantics;
         this.client = ProviderHttpSupport.newClient(Duration.ofSeconds(10));
     }
 
@@ -82,20 +76,20 @@ public class CompatibilityProbeService {
         if (response.content() == null || response.content().isBlank()) {
             throw ModelProviderException.invalidResponse(context, "Compatibility probe returned empty content");
         }
-        GlobalAssistantDecision decision;
+        Object decision;
         try {
-            decision = parser.parse(response.content());
+            decision = decisionSemantics.parseDecision(response.content());
         } catch (Exception ex) {
             throw ModelProviderException.invalidResponse(context,
                     "Compatibility probe did not return a valid FINAL decision: " + ex.getMessage());
         }
         try {
-            validator.validate(decision);
+            decisionSemantics.validateDecision(decision);
         } catch (Exception ex) {
             throw ModelProviderException.invalidResponse(context,
                     "Compatibility probe output rejected by authoritative validation: " + ex.getMessage());
         }
-        if (decision.kind() != GlobalAssistantDecision.DecisionKind.FINAL) {
+        if (!decisionSemantics.isFinal(decision)) {
             throw ModelProviderException.invalidResponse(context, "Compatibility probe must return FINAL");
         }
     }

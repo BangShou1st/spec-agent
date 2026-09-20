@@ -109,11 +109,12 @@ test('toolbar zoom/fit and auto-layout stay browser-only', async ({ page }) => {
   // 自动布局需要确认（覆盖手工位置），Runtime 历史不变。
   // auto-layout 与 show-all 在 toolbar 溢出菜单中。
   await openToolbarMore(page)
-  page.once('dialog', (dialog) => {
-    expect(dialog.message()).toContain('重新自动布局将覆盖当前项目手工调整过的节点位置')
-    void dialog.accept()
-  })
   await page.getByTestId('auto-layout').click()
+  // 站内确认弹窗（不再使用原生 window.confirm）。
+  const confirmDialog = page.getByTestId('auto-layout-confirm')
+  await expect(confirmDialog).toBeVisible()
+  await expect(confirmDialog).toContainText('重新自动布局将覆盖当前项目手工调整过的节点位置')
+  await page.getByTestId('ui-confirm-ok').click()
   await expect(page.locator('.graph-question-node')).toHaveCount(3)
 
   // 显示全部路线：清空 focus/dim/hide，保留生命周期筛选。

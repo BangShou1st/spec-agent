@@ -37,6 +37,8 @@ export interface UndoRedoResult {
     status: string
   }
   description: string
+  /** Display title of the compensated node when it is still resolvable. */
+  targetTitle: string | null
 }
 
 export interface NodeQueryRunCreated {
@@ -94,13 +96,34 @@ export interface ProjectProposalSummary {
   decidedBy: string | null
 }
 
+/**
+ * Optional server-side trigger-type narrowing of the shared proposal list.
+ * Both fields are lists of AgentRunTriggerType codes (e.g. "node_query") and
+ * are sent comma-separated; an absent/empty list means "no filter", so the
+ * call stays backward compatible with the unfiltered list.
+ */
+export interface ProposalTriggerFilter {
+  /** Keep only proposals whose producing run has one of these trigger types. */
+  triggerTypes?: string[] | null
+  /** Drop proposals whose producing run has one of these trigger types. */
+  excludeTriggerTypes?: string[] | null
+}
+
 /** Lists durable proposals of a project, defaulting to the pending ones. */
 export function listProposals(
   projectId: string,
   status = 'PROPOSED',
+  filter: ProposalTriggerFilter = {},
 ): Promise<ProjectProposalSummary[]> {
+  const params = new URLSearchParams({ status })
+  if (filter.triggerTypes?.length) {
+    params.set('triggerType', filter.triggerTypes.join(','))
+  }
+  if (filter.excludeTriggerTypes?.length) {
+    params.set('excludeTriggerType', filter.excludeTriggerTypes.join(','))
+  }
   return apiClient.get<ProjectProposalSummary[]>(
-    `/projects/${projectId}/proposals?status=${encodeURIComponent(status)}`,
+    `/projects/${projectId}/proposals?${params.toString()}`,
   )
 }
 
@@ -117,15 +140,49 @@ export function createRootDraftNode(
 
 /** Creates a standalone (floating) draft that starts disconnected from every
  * lineage. The creation-context route id is optional — a floating node may be
- * created with no Active route (routeId=null is legal). */
+ * created with no Active route (routeId=null is legal).
+ *
+ * `nodeKind` selects the node's semantics: KNOWLEDGE (default, "+ 想法") or
+ * RESOURCE (attached documents). A floating resource is authored first and
+ * connected to a route later via {@link connectFloatingNode}. */
 export function createFloatingDraftNode(
   projectId: string,
   routeId: string | null,
-  payload: DraftNodePayload,
+  payload: DraftNodePayload & { nodeKind?: 'KNOWLEDGE' | 'RESOURCE' },
 ): Promise<CreatedNodeResponse> {
   return apiClient.post<CreatedNodeResponse>(
     `/projects/${projectId}/floating-nodes`,
     { routeId, ...payload },
+  )
+}
+
+/**
+ * Connects a floating node into a route as its new tip. The backend only
+ * accepts the route's current tip (never a historical insert) and rejects an
+ * unanswered question as parent, so a hand-drawn connection cannot rewrite
+ * lineage. The node keeps its id, kind and content.
+ */
+export function connectFloatingNode(
+  projectId: string,
+  nodeId: string,
+  routeId: string,
+  parentNodeId: string | null,
+): Promise<CreatedNodeResponse> {
+  return apiClient.post<CreatedNodeResponse>(
+    `/projects/${projectId}/nodes/${nodeId}/connect`,
+    { routeId, parentNodeId },
+  )
+}
+
+/** Detaches the current tip from its route, restoring a floating node. */
+export function disconnectNode(
+  projectId: string,
+  nodeId: string,
+  routeId: string,
+): Promise<CreatedNodeResponse> {
+  return apiClient.post<CreatedNodeResponse>(
+    `/projects/${projectId}/nodes/${nodeId}/disconnect`,
+    { routeId },
   )
 }
 
@@ -164,22 +221,6 @@ export function setKnowledgeStatus(
 }
 
 export type ResourceSubtype = 'TEXT' | 'URL' | 'FILE' | 'IMAGE' | 'REPOSITORY' | 'API_DOCUMENTATION'
-
-/** Attaches a user-authored resource node (root of empty route or tip append). */
-export function attachResource(
-  projectId: string,
-  routeId: string,
-  parentNodeId: string | null,
-  subtype: ResourceSubtype,
-  content: Record<string, unknown>,
-): Promise<CreatedNodeResponse> {
-  return apiClient.post<CreatedNodeResponse>(`/projects/${projectId}/resources`, {
-    routeId,
-    parentNodeId,
-    subtype,
-    content,
-  })
-}
 
 export function listRelations(projectId: string): Promise<GraphWorkspaceRelationView[]> {
   return apiClient.get<GraphWorkspaceRelationView[]>(`/projects/${projectId}/relations`)

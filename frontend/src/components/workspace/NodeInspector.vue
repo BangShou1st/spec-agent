@@ -1,7 +1,11 @@
 <script setup lang="ts">
+import { formatShanghaiDateTime as formatTime } from '@/presentation/formatTime'
+import { relationTypeLabel } from '@/presentation/routePresentation'
 import { computed, ref, watch } from 'vue'
 import AgentProposalCard from '@/components/workspace/AgentProposalCard.vue'
+import GraphRunProcessPanel from '@/components/graph/GraphRunProcessPanel.vue'
 import type { SpecAgentGraphNodeData } from '@/graph/graphProjection'
+import { actionsFor, type NodeAction, type NodeActionId } from '@/graph/nodeActions'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
 
 /**
@@ -35,9 +39,6 @@ const kindLabel = computed(() => {
   return `${props.data.node.kind} · ${props.data.node.subtype}`
 })
 
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleString()
-}
 
 function branchLabel(branchType: string | null | undefined): string {
   return {
@@ -52,6 +53,45 @@ function membershipLabel(data: SpecAgentGraphNodeData, routeId: string): string 
   return data.routeMembership?.find((membership) => membership.routeId === routeId)?.label
     || data.routeStates.find((state) => state.routeId === routeId)?.routeLabel
     || '路线'
+}
+
+// ---- 历史动作（与画布节点卡共用 nodeActions 配置表）-----------------------
+// 检查器只保留 fork / 重答 / 换题三个动作；可见性与禁用条件（例如根节点不能
+// 换题）统一由 actionsFor 计算，这里不再硬编码第二套分支。
+
+const INSPECTOR_ACTION_IDS: NodeActionId[] = ['fork-node', 'reanswer-node', 'regenerate-node']
+
+const INSPECTOR_ACTION_TEST_IDS: Record<NodeActionId, string> = {
+  'fork-node': 'inspector-fork',
+  'reanswer-node': 'inspector-reanswer',
+  'regenerate-node': 'inspector-regenerate',
+  'draft-next-question': 'inspector-draft-next',
+  'draft-from-node': 'inspector-draft-from-node',
+  'edit-draft': 'inspector-edit-draft',
+  'confirm-knowledge': 'inspector-confirm-knowledge',
+  'continue-node': 'inspector-continue-node',
+  'disconnect-node': 'inspector-disconnect-node',
+  'contextual-ai': 'inspector-contextual-ai',
+}
+
+const inspectorActions = computed(() => {
+  if (!props.data || props.data.node.kind !== 'INTERACTION') return []
+  return actionsFor(props.data).filter((action) => INSPECTOR_ACTION_IDS.includes(action.id))
+})
+
+function onInspectorAction(action: NodeAction): void {
+  if (!props.data) return
+  switch (action.id) {
+    case 'fork-node':
+      emit('fork', props.data.node.id)
+      break
+    case 'reanswer-node':
+      emit('reanswer', props.data.node.id)
+      break
+    case 'regenerate-node':
+      emit('regenerate', props.data.node.id)
+      break
+  }
 }
 
 // ---- Contextual AI query -------------------------------------------------
@@ -107,7 +147,7 @@ const queryResult = computed(() => {
     question: '',
     runId: pending.runId ?? '',
     status: 'AWAITING_APPROVAL',
-    message: 'AI 提出了一个候选动作，等待你确认。',
+    message: 'AI 提出了一个候选动作，等待你确认',
     proposalId: pending.proposalId,
     proposalStatus: pending.status,
     actionFamily: pending.actionFamily,
@@ -175,14 +215,6 @@ const relations = computed(() => {
     .filter((relation) => relation.sourceNodeId === nodeId || relation.targetNodeId === nodeId)
 })
 
-const relationTypeLabels: Record<string, string> = {
-  RELATED_TO: '相关',
-  DEPENDS_ON: '依赖',
-  DERIVED_FROM: '派生自',
-  CONFLICTS_WITH: '冲突',
-  SUPPORTS: '支持',
-}
-
 function relationNodeLabel(nodeId: string): string {
   const node = workspace.graphView?.nodes.find((candidate) => candidate.id === nodeId)
   if (!node) return nodeId.slice(0, 8)
@@ -235,6 +267,14 @@ function relationDirectionLabel(relation: {
             </li>
           </ul>
         </template>
+        <GraphRunProcessPanel
+          v-if="data.runtimeStatus && data.runtimeStatus !== 'SUCCEEDED' && data.runtimeProgress"
+          class="graph-runtime-state__panel--inline"
+          :phase="data.runtimePhase"
+          :summary="data.runtimeProgress.summary"
+          :steps="data.runtimeProgress.steps"
+          :running="data.runtimeStatus !== 'FAILED'"
+        />
       </section>
 
       <section v-if="data.node.kind === 'INTERACTION'" class="node-inspector__section" data-test="inspector-section-answer">
@@ -243,7 +283,7 @@ function relationDirectionLabel(relation: {
           <span v-if="data.primaryAnswer.selectedOptionLabel" class="badge badge-open">{{ data.primaryAnswer.selectedOptionLabel }}</span>
           <p v-if="data.primaryAnswer.freeText" class="graph-answer-text">{{ data.primaryAnswer.freeText }}</p>
         </div>
-        <p v-else class="muted" data-test="node-detail-no-answer">该节点还没有回答。</p>
+        <p v-else class="muted" data-test="node-detail-no-answer">该节点还没有回答</p>
       </section>
 
       <section class="node-inspector__section" data-test="inspector-section-agent">
@@ -284,22 +324,22 @@ function relationDirectionLabel(relation: {
             </div>
           </template>
           <template v-else-if="queryResult.status === 'ACCEPTED'">
-            <span class="badge badge-open">提案已接受，Graph 已更新。</span>
+            <span class="badge badge-open">提案已接受，Graph 已更新</span>
           </template>
           <template v-else-if="queryResult.status === 'REJECTED'">
-            <span class="badge badge-warn">提案已拒绝，Graph 保持不变。</span>
+            <span class="badge badge-warn">提案已拒绝，Graph 保持不变</span>
           </template>
           <template v-else-if="queryResult.status === 'COMPLETED' && queryResult.message">
             <p class="graph-answer-text">{{ queryResult.message }}</p>
           </template>
           <template v-else-if="queryResult.status === 'COMPLETED'">
-            <span class="badge badge-warn">AI 未返回文字回答（可查看待确认提案）。</span>
+            <span class="badge badge-warn">AI 未返回文字回答（可查看待确认提案）</span>
           </template>
           <template v-else-if="queryResult.status === 'POLICY_DENIED' || queryResult.status === 'NOT_CONFIRMABLE'">
-            <span class="badge badge-warn">{{ queryResult.message || 'AI 查询无法生成可确认提案。' }}</span>
+            <span class="badge badge-warn">{{ queryResult.message || 'AI 查询无法生成可确认提案' }}</span>
           </template>
           <template v-else>
-            <span class="badge badge-warn">查询失败，请稍后重试。</span>
+            <span class="badge badge-warn">查询失败，请稍后重试</span>
           </template>
         </div>
       </div>
@@ -343,10 +383,10 @@ function relationDirectionLabel(relation: {
           </template>
 
           <h4 class="node-inspector__heading">语义关系</h4>
-          <p v-if="relations.length === 0" class="muted" data-test="node-detail-no-relations">暂无语义关系。</p>
+          <p v-if="relations.length === 0" class="muted" data-test="node-detail-no-relations">暂无语义关系</p>
           <ul v-else class="node-inspector__relations" data-test="node-relations">
             <li v-for="relation in relations" :key="relation.id" class="meta-text">
-              <span class="badge badge-open">{{ relationTypeLabels[relation.relationType] ?? relation.relationType }}</span>
+              <span class="badge badge-open">{{ relationTypeLabel(relation.relationType) }}</span>
               {{ relationDirectionLabel(relation) }}
               <span v-if="relation.origin === 'AGENT'" class="meta-text">（AI 建议）</span>
             </li>
@@ -355,21 +395,22 @@ function relationDirectionLabel(relation: {
       </details>
 
       <!-- 历史节点才提供 Fork / Regenerate；当前待回答节点保持只读详情，
-           回答只发生在 Graph 节点内部。 -->
-      <div v-if="!data.canAnswer && data.node.kind === 'INTERACTION'" class="node-inspector__actions">
-        <button class="btn btn-small" data-test="inspector-fork" @click="emit('fork', data.node.id)">从这里开新路线</button>
-        <button class="btn btn-small" data-test="inspector-reanswer" @click="emit('reanswer', data.node.id)">重新选择答案</button>
+           回答只发生在 Graph 节点内部。动作可见性/禁用来自 nodeActions 配置表。 -->
+      <div v-if="!data.canAnswer && data.node.kind === 'INTERACTION' && inspectorActions.length" class="node-inspector__actions">
         <button
+          v-for="action in inspectorActions"
+          :key="action.id"
           class="btn btn-small"
-          data-test="inspector-regenerate"
-          :disabled="data.node.parentNodeId === null"
-          @click="emit('regenerate', data.node.id)"
+          :data-test="INSPECTOR_ACTION_TEST_IDS[action.id]"
+          :title="action.title"
+          :disabled="action.disabled === true"
+          @click="onInspectorAction(action)"
         >
-          换一个问题
+          {{ action.label }}
         </button>
       </div>
     </template>
-    <p v-else class="muted" data-test="node-detail-empty">选择一个节点查看详情。</p>
+    <p v-else class="muted" data-test="node-detail-empty">选择一个节点查看详情</p>
   </div>
 </template>
 

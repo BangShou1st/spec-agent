@@ -1,14 +1,10 @@
 package com.specagent.api.settings;
 
-import com.specagent.api.common.ApiErrorResponse;
 import com.specagent.settings.custom.CustomProviderSettingsService;
 import com.specagent.settings.openrouter.OpenRouterSettingsService;
 import com.specagent.settings.opencode.OpenCodeSettingsService;
 import com.specagent.settings.provider.ModelProviderSettingsService;
 import java.util.Set;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -40,7 +36,7 @@ public class ModelProviderSettingsController {
         this.custom = custom;
     }
 
-    public record ActiveResponse(String activeProvider) {
+    public record ActiveResponse(String activeProvider, String activeProviderId) {
     }
 
     public record ActivateRequest(String provider) {
@@ -48,7 +44,9 @@ public class ModelProviderSettingsController {
 
     @GetMapping("/active")
     public ActiveResponse active() {
-        return new ActiveResponse(providerSettings.activeProviderCode());
+        return new ActiveResponse(providerSettings.activeProviderCode(),
+                providerSettings.activeProviderId() == null
+                        ? null : providerSettings.activeProviderId().toString());
     }
 
     @PostMapping("/activate")
@@ -65,14 +63,6 @@ public class ModelProviderSettingsController {
             default -> throw new IllegalArgumentException("Unknown provider");
         }
         providerSettings.setActiveProviderByCode(target);
-        return new ActiveResponse(target);
-    }
-
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<ApiErrorResponse> handleBadRequest(IllegalArgumentException ex) {
-        String msg = ex.getMessage() == null || ex.getMessage().isBlank()
-                ? "Request validation failed" : ex.getMessage();
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(ApiErrorResponse.of("VALIDATION_ERROR", msg));
+        return new ActiveResponse(target, null);
     }
 }

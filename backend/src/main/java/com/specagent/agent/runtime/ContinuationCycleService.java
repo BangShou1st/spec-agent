@@ -108,10 +108,12 @@ public class ContinuationCycleService {
 
             // Route/tip re-anchor above pins the execution target; the shared
             // guard re-validates the fresh snapshot (route exists, OPEN,
-            // still the active route, hash present). No guard logic is copied
-            // here — an active-route switch after child creation rejects here
-            // with zero model calls, zero actions, zero children.
-            if (!contextGuard.validate(snapshot).accepted()) {
+            // still the active route, hash present). An Active-mode child
+            // rejects here on an active-route switch with zero model calls,
+            // zero actions, zero children; a child that was created against an
+            // EXPLICIT route (its chain runs independently of the Active
+            // pointer) keeps its own route instead.
+            if (!contextGuard.validate(snapshot, isExplicitRouteRun(run)).accepted()) {
                 throw new ModelContractException("Context guard rejected continuation run");
             }
 
@@ -166,6 +168,24 @@ public class ContinuationCycleService {
                             + " but live tip is " + route.tipNodeId());
         }
         return route;
+    }
+
+    /**
+     * Whether this run's own payload marked it as an EXPLICIT-route run.
+     *
+     * <p>Recorded at creation ({@code RunService.createContinueRun}) for
+     * children whose parent chain runs on a route that is not the project
+     * Active route. Only such a child may skip the guard's Active-equality
+     * rule — an Active-mode child keeps failing closed when the Active pointer
+     * moves, exactly as before.
+     */
+    private boolean isExplicitRouteRun(AgentRun run) {
+        return eventService.findByRunId(run.id()).stream()
+                .filter(event -> "RUN_CREATED".equals(event.eventType()))
+                .map(com.specagent.agent.runevent.AgentRunEvent::payload)
+                .findFirst()
+                .map(payload -> "EXPLICIT".equals(payload.get("routeSelection")))
+                .orElse(false);
     }
 
     private void failIfNotTerminal(UUID runId, String trace, RuntimeException ex) {

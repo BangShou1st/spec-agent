@@ -23,8 +23,8 @@ interface GraphViewShape {
   relations?: Array<Record<string, unknown>>
 }
 
-async function askOnNode(page: Page, request: APIRequestContext, question: string) {
-  await createProject(page, 'E2E NodeQuery Proposal')
+async function askOnNode(page: Page, request: APIRequestContext, question: string, title: string) {
+  await createProject(page, title)
   await buildThreeNodeLineage(page)
   await closeFloatingWorkspaceWindows(page)
   await fitGraph(page)
@@ -98,6 +98,7 @@ test('NodeQuery proposal → Accept refreshes the graph', async ({ page, request
     page,
     request,
     '请为这个节点和它的子节点建立语义关联。',
+    'E2E NodeQuery Accept',
   )
   // Deterministic fake 对该输入稳定产出 CONNECT_NODE → AWAITING_APPROVAL。
   expect(status).toBe('AWAITING_APPROVAL')
@@ -130,6 +131,7 @@ test('NodeQuery proposal → Reject leaves the graph unchanged', async ({ page, 
     page,
     request,
     '请为这个节点和它的子节点建立语义关联。',
+    'E2E NodeQuery Reject',
   )
   expect(status).toBe('AWAITING_APPROVAL')
 

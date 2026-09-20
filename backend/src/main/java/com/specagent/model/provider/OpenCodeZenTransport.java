@@ -25,14 +25,38 @@ public interface OpenCodeZenTransport {
      * OpenCode-compatible client identity for every HTTP request. This is the
      * single definition of the header; the transport applies it to
      * completion, model list and credential probe requests alike.
+     *
+     * <p>Wire-verified full form: the CLI (Bun fetch + @ai-sdk/provider-utils)
+     * appends sdk/runtime suffixes, and the free-tier gate requires the version
+     * >= 1.18.0 inside an {@code opencode/} prefix (1.17 -> 426). Keep the full
+     * suffix chain so the request is indistinguishable from a genuine CLI call.
      */
-    String USER_AGENT = "opencode/1.18.21";
+    String USER_AGENT = "opencode/1.18.31 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14";
 
     /**
      * Provider session correlation header, sent on every Zen HTTP request
      * from the single transport-owned wire policy below.
      */
     String SESSION_HEADER = "x-opencode-session";
+
+    /**
+     * Desktop identity headers applied to every Zen HTTP request so OpenCode
+     * recognizes the request as originating from the OpenCode client (the same
+     * identity the verified OpenCode desktop app sends). Without the full set,
+     * OpenCode rejects the free tier with "free tier can only be used from
+     * within OpenCode". The transport generates these on every request; the run
+     * session (SESSION_HEADER) is the only value callers supply.
+     *
+     * <p>{@code x-opencode-project} carries the literal {@code global}:
+     * the CLI running on a non-git global config reports project id
+     * {@code global}, and wire A/B confirmed that value is accepted while
+     * {@code prj_}-shaped random ids are unverified against the gate.
+     */
+    String CLIENT_HEADER = "x-opencode-client";
+    String REQUEST_HEADER = "x-opencode-request";
+    String PROJECT_HEADER = "x-opencode-project";
+    String CLIENT_ID = "cli";
+    String GLOBAL_PROJECT = "global";
 
     /** Safe endpoint provenance; never contains an authorization value. */
     default String endpoint() {

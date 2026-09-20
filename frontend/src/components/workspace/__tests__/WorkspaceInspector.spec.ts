@@ -28,7 +28,6 @@ vi.mock('@/api/graph', () => ({ getProjectGraph: vi.fn() }))
 vi.mock('@/api/graphCommands', () => ({
   acceptProposal: vi.fn(),
   appendContinuation: vi.fn(),
-  attachResource: vi.fn(),
   createFloatingDraftNode: vi.fn(),
   createNodeQuery: vi.fn(),
   createRelation: vi.fn(),

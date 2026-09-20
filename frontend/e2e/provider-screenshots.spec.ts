@@ -8,20 +8,20 @@ test.describe('provider settings screenshots', () => {
       active: 'OPENCODE_ZEN',
       openrouter: { configured: false, maskedKey: null as string | null, selectedModel: null as string | null, configRevision: 0, validated: false },
       openrouterModels: [] as string[],
-      custom: { configured: false, apiFormat: 'CHAT_COMPLETIONS', baseUrl: '', endpointPreview: null as string | null, hasKey: false, maskedKey: null as string | null, selectedModel: '', configRevision: 0, validated: false },
+      custom: { configured: false, apiFormat: 'CHAT_COMPLETIONS', baseUrl: '', endpointPreview: null as string | null, hasKey: false, maskedKey: null as string | null, selectedModel: '', configRevision: 0, validated: false, displayName: null as string | null },
       customDiscover: { models: [] as string[], manualModel: false, endpointPreview: null as string | null, failAuth: false },
     }
     let statusManual = false
     const statusBody = () => ({ ...state.custom, manualModel: statusManual })
 
     await page.route('**/api/v1/settings/providers/active', async (route) => {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ activeProvider: state.active }) })
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ activeProvider: state.active, activeProviderId: null }) })
     })
     await page.route('**/api/v1/settings/opencode', async (route) => {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ configured: true, maskedKey: '••••zen1', selectedModel: 'zen-model-free' }) })
     })
     await page.route('**/api/v1/settings/opencode/models', async (route) => {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ freeModels: ['zen-model-free'] }) })
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ allModels: ['zen-model-free'], freeModels: ['zen-model-free'] }) })
     })
     await page.route('**/api/v1/settings/openrouter', async (route) => {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...state.openrouter, active: state.active === 'OPENROUTER' }) })
@@ -70,7 +70,7 @@ test.describe('provider settings screenshots', () => {
       state.active = 'OPENCODE_ZEN'
       state.openrouter = { configured: false, maskedKey: null, selectedModel: null, configRevision: 0, validated: false }
       state.openrouterModels = []
-      state.custom = { configured: false, apiFormat: 'CHAT_COMPLETIONS', baseUrl: '', endpointPreview: null, hasKey: false, maskedKey: null, selectedModel: '', configRevision: 0, validated: false }
+      state.custom = { configured: false, apiFormat: 'CHAT_COMPLETIONS', baseUrl: '', endpointPreview: null, hasKey: false, maskedKey: null, selectedModel: '', configRevision: 0, validated: false, displayName: null }
       state.customDiscover = { models: [], manualModel: false, endpointPreview: null, failAuth: false }
       statusManual = false
       await page.goto('/settings')
@@ -101,48 +101,70 @@ test.describe('provider settings screenshots', () => {
       ] as const
       for (const f of formats) {
         state.customDiscover = { models: ['custom-model-a', 'custom-model-with-a-very-long-id-that-tests-ellipsis-behavior-in-dropdowns'], manualModel: false, endpointPreview: f.preview, failAuth: false }
-        await page.getByTestId('provider-tab-custom').click()
-        await expect(page.getByTestId('custom-card')).toBeVisible()
+        // 未配置的 Custom 通过 "+" 弹窗进入；弹窗不再内嵌卡片，字段一路平铺。
+        await page.getByTestId('provider-add-custom').click()
+        await expect(page.getByTestId('custom-create-dialog')).toBeVisible()
+        await page.getByTestId('custom-display-name').fill('Local Gateway')
+        // 弹窗里不存在卡片页头/状态胶囊，即不再被 Custom 分隔块切开。
+        await expect(page.getByTestId('custom-title')).toHaveCount(0)
         await page.getByTestId('custom-format').selectOption(f.v)
         await page.getByTestId('custom-base-url').fill(f.base)
         await page.getByTestId('custom-discover').click()
         await expect(page.getByTestId('custom-model')).toBeVisible()
         await page.screenshot({ path: SHOTS + '/settings-custom-' + f.shot + '-' + suffix + '.png', fullPage: true })
+        await page.getByTestId('ui-dialog-close').click()
+        await expect(page.getByTestId('custom-create-dialog')).toHaveCount(0)
       }
 
       state.customDiscover = { models: [], manualModel: true, endpointPreview: 'http://localhost:11434/v1/chat/completions', failAuth: false }
-      await page.getByTestId('provider-tab-custom').click()
+      await page.getByTestId('provider-add-custom').click()
+      await expect(page.getByTestId('custom-create-dialog')).toBeVisible()
+      await page.getByTestId('custom-display-name').fill('Local Gateway')
       await page.getByTestId('custom-base-url').fill('http://localhost:11434/v1')
       await page.getByTestId('custom-discover').click()
       await expect(page.getByTestId('custom-model-id')).toBeVisible()
       await page.screenshot({ path: SHOTS + '/settings-custom-manual-' + suffix + '.png', fullPage: true })
+      await page.getByTestId('ui-dialog-close').click()
+      await expect(page.getByTestId('custom-create-dialog')).toHaveCount(0)
 
-      state.custom = { configured: true, apiFormat: 'CHAT_COMPLETIONS', baseUrl: 'https://gateway.example/v1', endpointPreview: 'https://gateway.example/v1/chat/completions', hasKey: true, maskedKey: '••••9999', selectedModel: 'custom-model-a', configRevision: 3, validated: false }
+      // 已配置：卡片只展示当前配置摘要 + 设置/重新测试/设为当前 Provider。
+      state.custom = { configured: true, apiFormat: 'CHAT_COMPLETIONS', baseUrl: 'https://gateway.example/v1', endpointPreview: 'https://gateway.example/v1/chat/completions', hasKey: true, maskedKey: '••••9999', selectedModel: 'custom-model-a', configRevision: 3, validated: false, displayName: 'Local Gateway' }
       state.customDiscover = { models: [], manualModel: false, endpointPreview: null, failAuth: true }
-      await page.getByTestId('custom-base-url').fill('https://gateway.example/v1')
+      await page.goto('/settings')
+      await page.getByTestId('provider-tab-custom').click()
+      await expect(page.getByTestId('custom-card')).toBeVisible()
+      await expect(page.getByTestId('custom-current-model')).toContainText('custom-model-a')
+      await page.screenshot({ path: SHOTS + '/settings-custom-card-configured-' + suffix + '.png', fullPage: true })
+
+      // 编辑已配置项：设置按钮打开同一个弹窗，全部字段可改（含显示名称）。
+      await page.getByTestId('custom-settings').click()
+      await expect(page.getByTestId('custom-provider-dialog')).toBeVisible()
+      await expect(page.getByTestId('custom-display-name')).toHaveValue('Local Gateway')
       await page.getByTestId('custom-discover').click()
-      await expect(page.getByTestId('custom-error')).toBeVisible()
+      // 错误条在弹窗内（卡片区也有一处同名 custom-error，必须限定到弹窗）。
+      await expect(page.getByTestId('custom-provider-dialog').getByTestId('custom-error')).toBeVisible()
       await page.screenshot({ path: SHOTS + '/settings-custom-error-' + suffix + '.png', fullPage: true })
+      await page.getByTestId('ui-dialog-close').click()
 
       state.customDiscover.failAuth = false
-      state.custom = { configured: true, apiFormat: 'RESPONSES', baseUrl: 'https://gateway.example/v1', endpointPreview: 'https://gateway.example/v1/responses', hasKey: false, maskedKey: null, selectedModel: 'custom-model-a', configRevision: 4, validated: true }
+      state.custom = { configured: true, apiFormat: 'RESPONSES', baseUrl: 'https://gateway.example/v1', endpointPreview: 'https://gateway.example/v1/responses', hasKey: false, maskedKey: null, selectedModel: 'custom-model-a', configRevision: 4, validated: true, displayName: 'Local Gateway' }
       await page.goto('/settings')
       await page.getByTestId('provider-tab-custom').click()
       await expect(page.getByTestId('custom-state')).toContainText('配置有效')
       await page.screenshot({ path: SHOTS + '/settings-custom-validated-inactive-' + suffix + '.png', fullPage: true })
 
-      state.custom = { configured: true, apiFormat: 'CHAT_COMPLETIONS', baseUrl: 'http://localhost:11434/v1', endpointPreview: 'http://localhost:11434/v1/chat/completions', hasKey: false, maskedKey: null, selectedModel: 'custom-model-a', configRevision: 2, validated: false }
+      state.custom = { configured: true, apiFormat: 'CHAT_COMPLETIONS', baseUrl: 'http://localhost:11434/v1', endpointPreview: 'http://localhost:11434/v1/chat/completions', hasKey: false, maskedKey: null, selectedModel: 'custom-model-a', configRevision: 2, validated: false, displayName: 'Local Gateway' }
       statusManual = false
       await page.goto('/settings')
       await page.getByTestId('provider-tab-custom').click()
-      await expect(page.getByTestId('custom-model')).toHaveValue('custom-model-a')
+      await expect(page.getByTestId('custom-current-model')).toContainText('custom-model-a')
       await page.screenshot({ path: SHOTS + '/settings-custom-persisted-' + suffix + '.png', fullPage: true })
 
-      state.custom = { configured: true, apiFormat: 'CHAT_COMPLETIONS', baseUrl: 'http://localhost:11434/v1', endpointPreview: 'http://localhost:11434/v1/chat/completions', hasKey: false, maskedKey: null, selectedModel: 'typed-model', configRevision: 3, validated: true }
+      state.custom = { configured: true, apiFormat: 'CHAT_COMPLETIONS', baseUrl: 'http://localhost:11434/v1', endpointPreview: 'http://localhost:11434/v1/chat/completions', hasKey: false, maskedKey: null, selectedModel: 'typed-model', configRevision: 3, validated: true, displayName: 'Local Gateway' }
       statusManual = true
       await page.goto('/settings')
       await page.getByTestId('provider-tab-custom').click()
-      await expect(page.getByTestId('custom-model-id')).toHaveValue('typed-model')
+      await expect(page.getByTestId('custom-current-model')).toContainText('typed-model')
       await page.screenshot({ path: SHOTS + '/settings-custom-manual-persisted-' + suffix + '.png', fullPage: true })
 
       state.active = 'CUSTOM'

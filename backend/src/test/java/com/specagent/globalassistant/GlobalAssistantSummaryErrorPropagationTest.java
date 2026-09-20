@@ -32,6 +32,7 @@ import org.springframework.transaction.annotation.Transactional;
 @ActiveProfiles("test")
 @Transactional
 class GlobalAssistantSummaryErrorPropagationTest {
+    @Autowired com.specagent.globalassistant.model.GlobalAssistantModelTargetResolver modelTargets;
     @Autowired GlobalAssistantConversationService conversations;
     @Autowired GlobalAssistantContextBuilder contextBuilder;
     @Autowired GlobalAssistantPromptRenderer renderer;
@@ -67,7 +68,7 @@ class GlobalAssistantSummaryErrorPropagationTest {
                 new ModelInferenceResponse("{\"kind\":\"FINAL\",\"assistantText\":\"ok\"}", "stop", 0, 0);
         GlobalAssistantBrain brain = new GlobalAssistantBrain(renderer, stub, parser, validator);
         GlobalAssistantRuntime runtime = new GlobalAssistantRuntime(conversations, contextBuilder, brain, capabilities,
-                runs, canonicalizer, budgets, lifecycle, runEvents, uiValidator, summaries);
+                runs, canonicalizer, budgets, lifecycle, runEvents, uiValidator, summaries, modelTargets);
         assertThatThrownBy(() -> runtime.executeRun(thread.id(), run.id(), "hi",
                 new GlobalAssistantContextBuilder.UiRequest("PROJECTS", null)))
                 .isInstanceOf(AssertionError.class)

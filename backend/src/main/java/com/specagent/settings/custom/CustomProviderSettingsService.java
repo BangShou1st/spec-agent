@@ -34,7 +34,7 @@ public class CustomProviderSettingsService {
 
     public record Status(boolean configured, String apiFormat, String baseUrl, String endpointPreview,
                          boolean hasKey, String maskedKey, String selectedModel, boolean manualModel,
-                         long configRevision, boolean validated) {
+                         String displayName, long configRevision, boolean validated) {
     }
 
     public record Discovery(List<String> models, boolean manualModel) {
@@ -55,10 +55,10 @@ public class CustomProviderSettingsService {
                     return new Status(true, s.apiFormat(), s.baseUrl(), preview,
                             s.apiKey() != null && !s.apiKey().isBlank(),
                             mask(s.maskedSuffix()), s.selectedModel(), "MANUAL".equals(s.modelSource()),
-                            s.configRevision(), validated);
+                            normalizeDisplayName(s.displayName()), s.configRevision(), validated);
                 })
                 .orElseGet(() -> new Status(false, CustomApiFormat.CHAT_COMPLETIONS.name(),
-                        "", null, false, null, "", false, 0, false));
+                        "", null, false, null, "", false, null, 0, false));
     }
 
     /**
@@ -103,11 +103,27 @@ public class CustomProviderSettingsService {
      */
     public Status save(String formatCode, String baseUrlInput, String apiKeyInput, String modelInput,
                        String modelSourceInput) {
+        return save(formatCode, baseUrlInput, apiKeyInput, modelInput, modelSourceInput, null);
+    }
+
+    /**
+     * Save with an explicit display name. {@code displayNameInput} null
+     * retains the stored name; blank falls back to the default label.
+     */
+    public Status save(String formatCode, String baseUrlInput, String apiKeyInput, String modelInput,
+                       String modelSourceInput, String displayNameInput) {
         CustomApiFormat format = CustomApiFormat.fromCode(formatCode);
         String normalized = ProviderUrlSecurity.validateAndNormalizeBaseUrl(baseUrlInput);
         String model = ProviderUrlSecurity.normalizeModelId(modelInput);
         String modelSource = "MANUAL".equals(modelSourceInput) ? "MANUAL" : "DISCOVERED";
         CustomProviderSettings existing = repository.find().orElse(null);
+        String displayName;
+        if (displayNameInput == null) {
+            displayName = existing == null ? null : existing.displayName();
+        } else {
+            String trimmed = displayNameInput.trim();
+            displayName = trimmed.isEmpty() ? null : trimmed;
+        }
         String resolvedKey;
         String masked;
         if (apiKeyInput == null) {
@@ -125,12 +141,13 @@ public class CustomProviderSettingsService {
                 && existing.baseUrl().equals(normalized)
                 && equalsNullable(existing.apiKey(), resolvedKey)
                 && existing.selectedModel().equals(model)
-                && modelSource.equals(existing.modelSource() == null ? "DISCOVERED" : existing.modelSource())) {
+                && modelSource.equals(existing.modelSource() == null ? "DISCOVERED" : existing.modelSource())
+                && equalsNullable(existing.displayName(), displayName)) {
             return status();
         }
         long nextRevision = existing == null ? 1 : existing.configRevision() + 1;
         repository.upsert(new CustomProviderSettings(format.name(), normalized, resolvedKey, masked, model, modelSource,
-                nextRevision, null, existing == null ? now : existing.createdAt(), now, null));
+                displayName, nextRevision, null, existing == null ? now : existing.createdAt(), now, null));
         return status();
     }
 
@@ -192,6 +209,14 @@ public class CustomProviderSettingsService {
             return false;
         }
         return a.equals(b);
+    }
+
+    /** Pill label fallback; keeps the UI contract total for legacy rows. */
+    private static String normalizeDisplayName(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return "Custom";
+        }
+        return raw.trim();
     }
 
     static String suffix(String key) {

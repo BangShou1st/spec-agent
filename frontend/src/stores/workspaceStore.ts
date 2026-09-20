@@ -1,43 +1,7 @@
 import { defineStore } from 'pinia'
-import { ApiError, GENERIC_ERROR_MESSAGE } from '@/api/client'
-import { classifyModelFailure } from '@/api/errorCopy'
-import {
-  AGENT_RUN_MAX_POLLS,
-  AGENT_RUN_POLL_INTERVAL_MS,
-  createAgentRun,
-  getAgentRun,
-  isTerminalRunStatus,
-} from '@/api/agentRuns'
+import type { DisplayError } from '@/api/displayError'
 import type { AgentRunView } from '@/api/agentRuns'
-import {
-  acceptProposal,
-  appendContinuation,
-  attachResource as attachResourceCommand,
-  createFloatingDraftNode,
-  createRelation,
-  createNodeQuery,
-  getNodeQueryResult,
-  getUndoRedoAvailability,
-  listProposals,
-  redoGraphOperation,
-  rejectProposal,
-  reviseDraftNode,
-  setKnowledgeStatus,
-  undoGraphOperation,
-} from '@/api/graphCommands'
-import type { ProjectProposalSummary } from '@/api/graphCommands'
-import { getProjectGraph } from '@/api/graph'
-import { getProject } from '@/api/projects'
-import { getRequirementState, getRouteRequirementState } from '@/api/requirementState'
-import {
-  activateRoute,
-  archiveRoute,
-  deleteRoute,
-  forkNode,
-  reanswerNode,
-  restoreRoute,
-} from '@/api/routes'
-import { listRouteSpecs } from '@/api/spec'
+import type { SpecExportVariant } from '@/api/spec'
 import type {
   ActiveProjectStateResponse,
   GraphWorkspaceView,
@@ -49,90 +13,93 @@ import type {
   SubmitAnswerRequest,
 } from '@/api/types'
 import type { GraphPendingProjection, GraphRuntimeStatus } from '@/graph/graphProjection'
+import type { ProjectProposalSummary } from '@/api/graphCommands'
 import {
-  getActiveState,
-  listRoutes,
-} from '@/api/workspace'
-import { useInputDraftStore } from '@/stores/inputDraftStore'
+  beginProjectAction,
+  loadWorkspaceAction,
+  nodeRouteIdsAction,
+  rebuildRunRegistryAction,
+  refreshWorkspaceAction,
+  restoreCanonicalRecoveryCheckpointsAction,
+} from '@/stores/workspace/workspaceLoader'
+import {
+  answerTargetRouteTipAction,
+  consumeFocusAfterMutationAction,
+  draftQuestionAction,
+  findFinalizedAnswerForActiveTipAction,
+  findFinalizedAnswerForNodeAction,
+  findForkDraftRetryRouteIdAction,
+  finishSuccessfulAnswerRunAction,
+  markPendingRouteFailedAction,
+  pollAnswerRunAction,
+  pollDraftRunAction,
+  pollRunChainToTerminalAction,
+  pollRunToTerminalAction,
+  reconcileAnswerOutcomeAction,
+  reconcileFailedAnswerRunAction,
+  reconcileUnknownAnswerOutcomeAction,
+  repairAnswerForActiveFlowAction,
+  resubmitFailedAnswerAction,
+  retryForkDraftAction,
+  retryManualModelOperationAction,
+  retryPendingAgentRunAction,
+  setFocusAfterMutationAction,
+  submitAnswerAction,
+  updatePendingRouteProjectionAction,
+} from '@/stores/workspace/workspaceRuns'
+import {
+  activateRouteAction,
+  archiveRouteAction,
+  deleteRouteAction,
+  forkNodeAction,
+  reanswerNodeAction,
+  reconcileRegenerateRetryAction,
+  regenerateNodeAction,
+  restoreRouteAction,
+} from '@/stores/workspace/routeCommands'
+import {
+  ensureRequirementStateAction,
+  exportSpecMarkdownAction,
+  generateSpecAction,
+  loadRouteSpecsAction,
+  reconcileSpecRetryAction,
+  selectSpecForRouteAction,
+} from '@/stores/workspace/specDock'
+import {
+  confirmKnowledgeAction,
+  connectFloatingNodeAction,
+  continueFromNodeAction,
+  createFloatingResourceAction,
+  createIdeaAction,
+  createSemanticRelationAction,
+  disconnectNodeAction,
+  draftQuestionFromNodeAction,
+  reviseDraftAction,
+} from '@/stores/workspace/resources'
+import { redoGraphAction, refreshUndoRedoAvailabilityAction, undoGraphAction } from '@/stores/workspace/graphUndo'
+import {
+  acceptConfirmableProposalAction,
+  acceptNodeQueryProposalAction,
+  askNodeAIAction,
+  loadNodeQueryProposalsAction,
+  pollNodeQueryAction,
+  rejectConfirmableProposalAction,
+  rejectNodeQueryProposalAction,
+} from '@/stores/workspace/proposals'
+import type {
+  AnswerRunSessionState,
+  ManualModelRetryIntent,
+  MutationFocusTarget,
+  PendingRouteCommand,
+} from '@/stores/workspace/types'
 
-export interface DisplayError {
-  code: string
-  message: string
-  status?: number
-}
-
-/** Precise route command in flight, used for pending labels and lockouts. */
-export type PendingRouteCommand =
-  | 'activate'
-  | 'restore'
-  | 'archive'
-  | 'delete'
-  | 'fork'
-  | 'reanswer'
-  | 'regenerate'
-  | null
-
-type RetryState = 'ready' | 'needs_reconcile' | 'ambiguous'
-
-type ManualModelRetryIntent =
-  | {
-      kind: 'draft'
-      beforeRouteId: string | null
-      beforeTipNodeId: string | null
-      state: RetryState
-    }
-  | {
-      kind: 'spec'
-      routeId: string
-      beforeSpecIds: string[]
-      state: RetryState
-    }
-  | {
-      kind: 'regenerate'
-      nodeId: string
-      payload: RegenerateNodeRequest
-      beforeRouteIds: string[]
-      beforeActiveRouteId: string | null
-      state: RetryState
-    }
-
-type MutationFocusTarget = {
-  routeId: string
-  nodeId: string | null
-}
-
-function toDisplayError(err: unknown): DisplayError {
-  if (err instanceof ApiError) {
-    return { code: err.code, message: err.message, status: err.status }
-  }
-  return { code: 'UNKNOWN_ERROR', message: GENERIC_ERROR_MESSAGE }
-}
-
-/**
- * Keeps only the NodeQuery proposals of a durable proposal list. The proposal
- * list API is shared by every run type; recovery must never infer the query
- * origin from inputNodeId (every run type carries one). The explicit
- * triggerType (derived from the proposal's AgentRun) is the only safe filter:
- * Answer/Decision PROPOSED proposals must never surface in the NodeInspector
- * as contextual Ask-AI proposals.
- */
-function keepNodeQueryProposals(proposals: ProjectProposalSummary[]): ProjectProposalSummary[] {
-  return proposals.filter((proposal) => proposal.triggerType === 'node_query')
-}
-
-/**
- * Reads the durable PROPOSED NodeQuery proposals for one project, fail-soft:
- * a failed proposal-list read must never fail the workspace load or refresh
- * (pending proposals remain discoverable on the next successful load). The
- * pure-function shape lets loadWorkspace/refreshWorkspace fetch it in the same
- * Promise.all as the canonical reads, so the workspace critical path and its
- * load/layout timing are unchanged.
- */
-function loadNodeQueryProposalsSafely(projectId: string): Promise<ProjectProposalSummary[]> {
-  return listProposals(projectId, 'PROPOSED')
-    .then(keepNodeQueryProposals)
-    .catch(() => [])
-}
+export type {
+  AnswerRunSessionState,
+  AnswerRunSessionStatus,
+  ManualModelRetryIntent,
+  MutationFocusTarget,
+  PendingRouteCommand,
+} from '@/stores/workspace/types'
 
 /**
  * Workspace application state (canonical server state + Runtime commands).
@@ -147,10 +114,23 @@ function loadNodeQueryProposalsSafely(projectId: string): Promise<ProjectProposa
  * lives in `graphUiStore`; this store never imports it and never lets Focus
  * change command targeting — draft/submit/spec generation always target the
  * backend Active route.
+ *
+ * Every action name stays here with its original signature; the body lives in
+ * the per-domain module under `stores/workspace/` and is called through `this`,
+ * so an action may call an action of any domain without a module cycle.
  */
 export const useWorkspaceStore = defineStore('workspace', {
   state: () => ({
     projectId: null as string | null,
+    /**
+     * Project-session counter, bumped by `beginProject`. Every async action
+     * captures it (plus `projectId`) when it starts and re-validates after
+     * each `await`, BEFORE writing store state — a slow request for project A
+     * must never overwrite project B's canonical state, error, or flags, and
+     * must not release B's loading/locks. `projectId` alone is not enough:
+     * A→B→A and same-project reloads are only distinguished by the counter.
+     */
+    projectSessionId: 0,
     project: null as ProjectResponse | null,
     routes: [] as RouteResponse[],
     activeState: null as ActiveProjectStateResponse | null,
@@ -158,29 +138,26 @@ export const useWorkspaceStore = defineStore('workspace', {
     loading: false,
     refreshing: false,
     drafting: false,
-    submitting: false,
     repairingAnswer: false,
     feedback: null as string | null,
     error: null as DisplayError | null,
-    repairableAnswerId: null as string | null,
-    resubmitAnswerPayload: null as SubmitAnswerRequest | null,
-    pendingAnswerNodeId: null as string | null,
-    answerOutcomeUnknown: false,
-    /** In-flight answer run (async Runtime); null when no run is being polled. */
-    answerRunId: null as string | null,
     /**
-     * Submission identity captured when the answer action started: the route
-     * the answered node belonged to at submission time. Success cleanup clears
-     * the draft under THIS route identity even if the runtime created or
-     * switched routes before completion.
+     * Per-answer-run sessions (one entry per submit attempt), keyed by the
+     * client request id on the session itself. ALL answer-run lifecycle
+     * state (pending node, run id/phase/status, unknown outcome, repair and
+     * resubmit affordances, cleanup identity) lives on the session — the
+     * single-value fields below are read-only derived views. Concurrent
+     * answers on different routes therefore never overwrite or clear each
+     * other's state; see `AnswerRunSessionState`.
      */
-    submittedRouteIdForCleanup: null as string | null,
-    /** Latest observed phase of the in-flight answer run. */
-    answerRunPhase: null as string | null,
-    /** Runtime status is kept separate from immutable answer/knowledge state. */
-    answerRunStatus: null as GraphRuntimeStatus | null,
-    /** Last payload handed to submitAnswer; used only for proven-safe resubmit. */
-    lastSubmittedAnswerPayload: null as SubmitAnswerRequest | null,
+    answerRunSessions: [] as AnswerRunSessionState[],
+    /**
+     * Reload-derived repair checkpoint: an owned Answer on the Active route
+     * tip whose follow-up generation never finished. Rebuilt from canonical
+     * reads on every load/refresh; run-scoped repair affordances live on the
+     * sessions and take precedence in the `repairableAnswerId` getter.
+     */
+    canonicalRepairableAnswerId: null as string | null,
     manualModelRetry: null as ManualModelRetryIntent | null,
     focusAfterMutation: null as MutationFocusTarget | null,
 
@@ -205,6 +182,7 @@ export const useWorkspaceStore = defineStore('workspace', {
 
     // Spec snapshots per route (backend-derived, never authored here).
     generatingSpec: false,
+    exportingSpec: false,
     loadingSpecs: false,
     specsByRoute: {} as Record<string, SpecSnapshotResponse[]>,
 
@@ -231,10 +209,90 @@ export const useWorkspaceStore = defineStore('workspace', {
      * Inspector on that node still exposes the pending proposal.
      */
     nodeQueryProposals: [] as ProjectProposalSummary[],
+    /** 回答/决策周期的待确认提案（意图变更，需用户显式接受/拒绝）。 */
+    pendingConfirmableProposals: [] as ProjectProposalSummary[],
   }),
   getters: {
     activeRoute(state): RouteResponse | null {
       return state.activeState?.activeRoute ?? null
+    },
+    /**
+     * The session the single-value views below resolve to.
+     *
+     * A session that needs the user's decision (unknown outcome, repair, or
+     * resubmit) wins — latest first; otherwise the most recently started
+     * live session is shown. This is presentation focus ONLY: every action
+     * reads and writes its own session object directly, never this getter.
+     */
+    focusedAnswerSession(state): AnswerRunSessionState | null {
+      const live = state.answerRunSessions
+      for (let i = live.length - 1; i >= 0; i -= 1) {
+        const session = live[i]
+        if (
+          session.status === 'UNKNOWN'
+          || session.status === 'REPAIRABLE'
+          || session.status === 'RESUBMITTABLE'
+        ) {
+          return session
+        }
+      }
+      return live.length > 0 ? live[live.length - 1] : null
+    },
+    /** Node whose answer run is being observed (derived, read-only). */
+    pendingAnswerNodeId(): string | null {
+      return this.focusedAnswerSession?.nodeId ?? null
+    },
+    /** In-flight answer run (async Runtime); null when no run is being polled. */
+    answerRunId(): string | null {
+      return this.focusedAnswerSession?.runId ?? null
+    },
+    /** Latest observed phase of the in-flight answer run. */
+    answerRunPhase(): string | null {
+      return this.focusedAnswerSession?.phase ?? null
+    },
+    /** Runtime status is kept separate from immutable answer/knowledge state. */
+    answerRunStatus(): GraphRuntimeStatus | null {
+      return this.focusedAnswerSession?.runStatus ?? null
+    },
+    answerOutcomeUnknown(): boolean {
+      return this.focusedAnswerSession?.status === 'UNKNOWN'
+    },
+    /**
+     * Repair affordance: a run-scoped repairable session wins; otherwise the
+     * reload-derived canonical checkpoint (Active-route tip answer).
+     */
+    repairableAnswerId(): string | null {
+      return this.focusedAnswerSession?.repairableAnswerId ?? this.canonicalRepairableAnswerId
+    },
+    /** Provably-safe one-shot resubmit payload of the focused session. */
+    resubmitAnswerPayload(): SubmitAnswerRequest | null {
+      const session = this.focusedAnswerSession
+      return session !== null && session.status === 'RESUBMITTABLE'
+        ? { ...session.payload }
+        : null
+    },
+    /**
+     * Submission identity of the focused session: the route the answered node
+     * belonged to at submission time. Success cleanup clears the draft under
+     * THIS route identity even if the runtime created or switched routes.
+     */
+    submittedRouteIdForCleanup(): string | null {
+      return this.focusedAnswerSession?.routeId ?? null
+    },
+    /**
+     * Routes with an answer run currently in flight.
+     *
+     * The lock is PER ROUTE, not global: independent routes must not block one
+     * another, while the same route can never run two competing answer cycles.
+     * `submitting` is the derived "any route is busy" flag kept for the UI.
+     */
+    answerRunsInFlight(): string[] {
+      return this.answerRunSessions
+        .filter((session) => session.status === 'RUNNING' && session.routeId !== null)
+        .map((session) => session.routeId as string)
+    },
+    submitting(): boolean {
+      return this.answerRunSessions.some((session) => session.status === 'RUNNING')
     },
     /** Resolves the selected snapshot for one explicit route. */
     selectedSpecForRoute(): (routeId: string) => SpecSnapshotResponse | null {
@@ -248,1711 +306,176 @@ export const useWorkspaceStore = defineStore('workspace', {
     },
   },
   actions: {
-    async loadWorkspace(projectId: string): Promise<void> {
-      this.projectId = projectId
-      this.loading = true
-      this.error = null
-      this.feedback = null
-      this.repairableAnswerId = null
-      this.resubmitAnswerPayload = null
-      this.pendingAnswerNodeId = null
-      this.answerOutcomeUnknown = false
-      this.answerRunId = null
-      this.answerRunPhase = null
-      this.answerRunStatus = null
-      this.lastSubmittedAnswerPayload = null
-      this.manualModelRetry = null
-      this.forkDraftRetryRouteId = null
-      this.pendingRouteProjection = null
-      this.focusAfterMutation = null
-      try {
-        const [project, activeState, routes, requirementState, graphView, proposals] = await Promise.all([
-          getProject(projectId),
-          getActiveState(projectId),
-          listRoutes(projectId),
-          getRequirementState(projectId),
-          getProjectGraph(projectId),
-          loadNodeQueryProposalsSafely(projectId),
-        ])
-        this.project = project
-        this.activeState = activeState
-        this.routes = routes
-        this.requirementState = requirementState
-        this.graphView = graphView
-        this.nodeQueryProposals = proposals ?? []
-        this.restoreCanonicalRecoveryCheckpoints()
-        this.requirementStatesByRoute = {}
-        this.specsByRoute = {}
-        this.selectedSpecIdByRoute = {}
-      } catch (err) {
-        this.error = toDisplayError(err)
-      } finally {
-        this.loading = false
-      }
-    },
+    // ---- Workspace loader: stores/workspace/workspaceLoader.ts ----
+    beginProject(projectId: string): void { beginProjectAction(this, projectId) },
+    async loadWorkspace(projectId: string): Promise<void> { return loadWorkspaceAction(this, projectId) },
+    async refreshWorkspace(): Promise<boolean> { return refreshWorkspaceAction(this) },
+    restoreCanonicalRecoveryCheckpoints(): void { restoreCanonicalRecoveryCheckpointsAction(this) },
+    async rebuildRunRegistry(): Promise<void> { return rebuildRunRegistryAction(this) },
 
-    /** Re-reads canonical backend-derived workspace views after a command. */
-    async refreshWorkspace(): Promise<boolean> {
-      if (!this.projectId || this.refreshing) {
-        return false
-      }
-      this.refreshing = true
-      this.error = null
-      try {
-        const [project, activeState, routes, requirementState, graphView, proposals] = await Promise.all([
-          getProject(this.projectId),
-          getActiveState(this.projectId),
-          listRoutes(this.projectId),
-          getRequirementState(this.projectId),
-          getProjectGraph(this.projectId),
-          loadNodeQueryProposalsSafely(this.projectId),
-        ])
-        this.project = project
-        this.activeState = activeState
-        this.routes = routes
-        this.requirementState = requirementState
-        this.graphView = graphView
-        this.nodeQueryProposals = proposals ?? []
-        this.restoreCanonicalRecoveryCheckpoints()
-        // RequirementState is derived and answers/patches change it: drop the
-        // route-scoped cache on every canonical refresh so the reading UI
-        // reloads it from the backend.
-        this.requirementStatesByRoute = {}
-        return true
-      } catch (err) {
-        this.error = toDisplayError(err)
-        return false
-      } finally {
-        this.refreshing = false
-      }
-    },
-
-    /** Rebuilds recovery affordances from canonical reads after reload/refresh. */
-    restoreCanonicalRecoveryCheckpoints(): void {
-      this.repairableAnswerId = this.findFinalizedAnswerForActiveTip()
-      this.forkDraftRetryRouteId = this.findForkDraftRetryRouteId()
-    },
-
-    updatePendingRouteProjection(view: AgentRunView): void {
-      const current = this.pendingRouteProjection
-      if (!current || current.runId !== view.runId) return
-      const routeId = typeof view.routeId === 'string' ? view.routeId.trim() : ''
-      if (!routeId) {
-        this.markPendingRouteFailed('运行结果缺少路线标识，已停止显示临时卡片。', true)
-        return
-      }
-      const status: GraphPendingProjection['status'] = view.status === 'failed'
-        ? 'FAILED'
-        : view.status === 'completed'
-          ? 'SUCCEEDED'
-          : view.status === 'created'
-            ? 'PENDING'
-            : 'RUNNING'
-      this.pendingRouteProjection = {
-        ...current,
-        routeId,
-        status,
-        phase: view.phase || current.phase,
-      }
-    },
-
+    // ---- Async runs: stores/workspace/workspaceRuns.ts ----
+    updatePendingRouteProjection(view: AgentRunView): void { updatePendingRouteProjectionAction(this, view) },
     markPendingRouteFailed(message: string, terminal: boolean): void {
-      const current = this.pendingRouteProjection
-      if (!current) return
-      this.pendingRouteProjection = {
-        ...current,
-        status: terminal ? 'FAILED' : current.status,
-        phase: terminal ? 'FAILED' : current.phase,
-        message,
-      }
+      markPendingRouteFailedAction(this, message, terminal)
     },
-
-    /**
-     * Drafts the next question through the async Agent Runtime. Explicit user
-     * action only; a fresh project enqueues no run until this fires.
-     */
-    async draftQuestion(): Promise<boolean> {
-      if (!this.projectId || this.drafting || this.routeCommandPending) {
-        return false
-      }
-      this.drafting = true
-      this.error = null
-      this.pendingDraftRespondMessage = null
-      const beforeRouteId = this.activeState?.activeRoute?.id
-        ?? this.project?.activeRouteId
-        ?? null
-      const beforeTipNodeId = this.activeState?.activeRoute?.tipNodeId ?? null
-      if (!beforeRouteId) {
-        this.error = {
-          code: 'ACTIVE_ROUTE_REQUIRED',
-          message: '当前没有可用路线，无法起草问题。',
-        }
-        this.manualModelRetry = null
-        this.pendingRouteProjection = null
-        this.drafting = false
-        return false
-      }
-      try {
-        const run = await createAgentRun(this.projectId, { operation: 'DRAFT_QUESTION' })
-        this.pendingRouteProjection = {
-          routeId: beforeRouteId,
-          sourceNodeId: beforeTipNodeId,
-          runId: run.runId,
-          status: run.phase === 'CREATED' ? 'PENDING' : 'RUNNING',
-          phase: run.phase || 'CREATED',
-          message: null,
-        }
-        const outcome = await this.pollDraftRun(run.runId)
-        if (outcome === 'completed') {
-          // A terminal RESPOND leaf carries the user-visible message; a
-          // graph-mutation leaf keeps the existing draft confirmation copy.
-          this.feedback = this.pendingDraftRespondMessage ?? '问题已起草。'
-          const refreshed = await this.refreshWorkspace()
-          if (refreshed) this.pendingRouteProjection = null
-          this.manualModelRetry = null
-          return true
-        }
-        // FAILED or outcome unknown: reconcile against canonical reads, then
-        // surface the retry affordance keyed to the pre-draft graph state.
-        const reconciled = await this.refreshWorkspace()
-        const afterRouteId = this.activeState?.activeRoute?.id ?? null
-        const afterTipNodeId = this.activeState?.activeRoute?.tipNodeId ?? null
-        if (
-          reconciled
-            && (afterRouteId !== beforeRouteId || afterTipNodeId !== beforeTipNodeId)
-        ) {
-          // The draft actually landed (e.g. the run finished after the last
-          // poll); never offer a retry that would double-draft.
-          this.manualModelRetry = null
-          this.pendingRouteProjection = null
-          this.error = null
-          this.feedback = '问题已起草。'
-          return true
-        }
-        this.error = {
-          code: outcome === 'failed' ? 'AGENT_RUN_FAILED' : 'AGENT_RUN_OUTCOME_UNKNOWN',
-          message: outcome === 'failed'
-            ? '起草问题的运行失败，请重试。'
-            : '起草结果未知，已按最新状态核对。请重试。',
-        }
-        this.manualModelRetry = {
-          kind: 'draft',
-          beforeRouteId,
-          beforeTipNodeId,
-          state: outcome === 'failed' ? 'ready' : 'needs_reconcile',
-        } as ManualModelRetryIntent
-        this.markPendingRouteFailed('起草问题的运行失败，请重试。', outcome === 'failed')
-        return false
-      } catch (err) {
-        // The create-run request itself failed; the run may or may not exist.
-        // Reconcile canonical state before allowing a retry.
-        const safeError = toDisplayError(err)
-        this.error = safeError
-        const reconciled = await this.refreshWorkspace()
-        const afterRouteId = this.activeState?.activeRoute?.id ?? null
-        const afterTipNodeId = this.activeState?.activeRoute?.tipNodeId ?? null
-        if (
-          reconciled
-          && (afterRouteId !== beforeRouteId || afterTipNodeId !== beforeTipNodeId)
-        ) {
-          this.manualModelRetry = null
-          this.pendingRouteProjection = null
-          this.error = null
-          this.feedback = '问题已起草。'
-          return true
-        }
-        const disposition = classifyModelFailure(safeError.code, safeError.status)
-        this.manualModelRetry = disposition === 'none' ? null : {
-          kind: 'draft',
-          beforeRouteId,
-          beforeTipNodeId,
-          state: disposition === 'unknown' ? 'needs_reconcile' : 'ready',
-        } as ManualModelRetryIntent
-        if (disposition !== 'none') {
-          this.markPendingRouteFailed(safeError.message, disposition === 'retryable')
-        }
-        return false
-      } finally {
-        this.drafting = false
-      }
-    },
-
-    /**
-     * Polls one run to its terminal state and returns the final read view
-     * (with the produced record ids), 'failed' for a FAILED terminal status,
-     * or 'unknown' when no terminal read happened within the budget. Stops
-     * observing when the project switches.
-     */
+    async draftQuestion(explicitRouteId?: string): Promise<boolean> { return draftQuestionAction(this, explicitRouteId) },
     async pollRunToTerminal(
       runId: string,
       onView?: (view: AgentRunView) => void,
     ): Promise<AgentRunView | 'failed' | 'unknown'> {
-      const projectId = this.projectId
-      if (!projectId) return 'unknown'
-      for (let attempt = 0; attempt < AGENT_RUN_MAX_POLLS; attempt += 1) {
-        if (attempt > 0) {
-          await new Promise((resolve) => setTimeout(resolve, AGENT_RUN_POLL_INTERVAL_MS))
-          if (projectId !== this.projectId) {
-            return 'unknown'
-          }
-        }
-        try {
-          const view = await getAgentRun(projectId, runId)
-          onView?.(view)
-          if (!isTerminalRunStatus(view.status)) continue
-          return view.status === 'completed' ? view : 'failed'
-        } catch {
-          // Transient poll failure: keep polling within budget.
-        }
-      }
-      return 'unknown'
+      return pollRunToTerminalAction(this, runId, onView)
     },
-
-    /**
-     * Follows one autonomous run chain to its terminal leaf. A COMPLETED run
-     * with a childRunId continues on the child; a COMPLETED run with no
-     * child but a pending continuation check keeps polling the same run
-     * until the dispatcher/recovery creates the child. The poll budget is
-     * shared across the whole chain so a long chain cannot poll forever.
-     * Returns the terminal leaf view, 'failed' for a FAILED leaf, or
-     * 'unknown' when the budget ran out or the project switched.
-     */
     async pollRunChainToTerminal(
       rootRunId: string,
       onView?: (view: AgentRunView) => void,
     ): Promise<AgentRunView | 'failed' | 'unknown'> {
-      const projectId = this.projectId
-      if (!projectId) return 'unknown'
-      let currentRunId = rootRunId
-      for (let attempt = 0; attempt < AGENT_RUN_MAX_POLLS; attempt += 1) {
-        if (attempt > 0) {
-          await new Promise((resolve) => setTimeout(resolve, AGENT_RUN_POLL_INTERVAL_MS))
-          if (projectId !== this.projectId) {
-            return 'unknown'
-          }
-        }
-        try {
-          const view = await getAgentRun(projectId, currentRunId)
-          onView?.(view)
-          if (!isTerminalRunStatus(view.status)) continue
-          if (view.status === 'failed') return 'failed'
-          if (view.childRunId) {
-            currentRunId = view.childRunId
-            continue
-          }
-          if (view.continuationPending) continue
-          return view
-        } catch {
-          // Transient poll failure: keep polling within budget.
-        }
-      }
-      return 'unknown'
+      return pollRunChainToTerminalAction(this, rootRunId, onView)
     },
-
-    /**
-     * Polls one question-draft run chain to a terminal leaf. Drafting has no
-     * immutable-input concerns: 'completed' refreshes canonical state in the
-     * caller, anything else reconciles.
-     */
     async pollDraftRun(runId: string): Promise<'completed' | 'failed' | 'unknown'> {
-      const outcome = await this.pollRunChainToTerminal(
-        runId,
-        (view) => this.updatePendingRouteProjection(view),
-      )
-      if (outcome === 'unknown' || outcome === 'failed') return outcome
-      if (outcome.respondMessage) {
-        this.pendingDraftRespondMessage = outcome.respondMessage
-      }
-      return 'completed'
+      return pollDraftRunAction(this, runId)
     },
-
-    /**
-     * Submits an answer through the async Agent Runtime.
-     *
-     * The HTTP command returns immediately with a runId (202); the model
-     * workflow runs in the background worker. `submitting` therefore means
-     * "a run is in flight for this node", never "an HTTP request is blocked".
-     * While the run is pending only the answering node is locked; pan, zoom,
-     * inspect and route navigation stay available. Completion is observed by
-     * polling the run read endpoint; the canonical graph is refreshed from
-     * the backend after a terminal state — never patched locally.
-     */
-    async submitAnswer(payload: SubmitAnswerRequest): Promise<boolean> {
-      if (!this.projectId || this.submitting || this.routeCommandPending) {
-        return false
-      }
-      const answeringNodeId = this.activeState?.activeNode?.id
-        ?? this.activeState?.activeRoute?.tipNodeId
-        ?? null
-      // Submission identity is fixed when the user action starts: the node
-      // being answered and its route at that moment. Success cleanup uses
-      // exactly these — never produced ids or post-refresh route pointers.
-      const submittedNodeId = answeringNodeId
-      const submittedRouteId = this.activeState?.activeRoute?.id ?? null
-      // One stable idempotency identity per user action attempt: unknown-
-      // outcome retries (create request lost, response lost) reuse the same
-      // key so the backend returns the already-created run.
-      const clientRequestId = crypto.randomUUID()
-
-      this.submitting = true
-      this.error = null
-      this.repairableAnswerId = null
-      this.resubmitAnswerPayload = null
-      this.pendingAnswerNodeId = answeringNodeId
-      this.answerRunId = null
-      this.answerRunPhase = null
-      this.answerRunStatus = null
-      this.answerOutcomeUnknown = false
-      this.lastSubmittedAnswerPayload = { ...payload }
-      this.submittedRouteIdForCleanup = submittedRouteId
-
-      let created = false
-      try {
-        // The backend routes an ANSWER_TIP whose node already carries a
-        // persisted Answer to RESUME_ANSWER itself; the frontend never
-        // guesses which one applies.
-        const run = await createAgentRun(this.projectId, {
-          operation: 'ANSWER_TIP',
-          nodeId: submittedNodeId,
-          selectedOptionId: payload.selectedOptionId ?? null,
-          freeText: payload.freeText ?? null,
-          idempotencyKey: clientRequestId,
-        })
-        created = true
-        this.answerRunId = run.runId
-        this.answerRunStatus = 'RUNNING'
-        await this.pollAnswerRun(run.runId)
-        if (this.answerOutcomeUnknown) {
-          // Polling ended without a terminal read (network loss beyond the
-          // budget). Reconcile canonical state; never auto-resubmit.
-          await this.reconcileUnknownAnswerOutcome()
-          return false
-        }
-        return this.pendingAnswerNodeId === null
-      } catch (err) {
-        const safeError = toDisplayError(err)
-        if (!created) {
-          // The create-run request itself failed or its outcome is unknown.
-          // Reconcile against canonical reads before ever allowing a second
-          // mutation: only a proven absent Answer + no run may resubmit.
-          const reconciled = await this.refreshWorkspace()
-          let canonicalMutationCompleted = false
-          if (!reconciled) {
-            this.answerOutcomeUnknown = true
-            this.resubmitAnswerPayload = { ...payload }
-          } else {
-            const answerId = this.findFinalizedAnswerForNode(answeringNodeId)
-            if (answerId) {
-              // An Answer was already persisted (the create request may have
-              // landed even though its response was lost). Never resubmit —
-              // surface repair instead.
-              if (this.activeState?.activeRoute?.tipNodeId === answeringNodeId) {
-                this.repairableAnswerId = answerId
-                this.feedback = '回答已保存，后续生成未完成。'
-              } else {
-                this.pendingAnswerNodeId = null
-                this.feedback = '回答已记录。'
-                this.error = null
-                canonicalMutationCompleted = true
-              }
-              this.resubmitAnswerPayload = null
-            } else {
-              // Canonical reads prove: no Answer, and the run was never
-              // created. A one-shot resubmit is now provably safe.
-              this.resubmitAnswerPayload = { ...payload }
-            }
-          }
-          if (!canonicalMutationCompleted) this.error = safeError
-          return false
-        }
-        // Run was created but polling ended without a terminal read (budget
-        // exhausted on network loss). Do NOT resubmit: reconcile instead.
-        const reconciled = await this.refreshWorkspace()
-        if (!reconciled) {
-          this.answerOutcomeUnknown = true
-          this.error = safeError
-          return false
-        }
-        const answerId = this.findFinalizedAnswerForNode(this.pendingAnswerNodeId)
-        if (answerId && this.activeState?.activeRoute?.tipNodeId === this.pendingAnswerNodeId) {
-          this.repairableAnswerId = answerId
-          this.resubmitAnswerPayload = null
-          this.feedback = '回答已保存，后续生成未完成。'
-        } else {
-          this.answerOutcomeUnknown = true
-        }
-        this.error = safeError
-        return false
-      } finally {
-        this.submitting = false
-      }
+    async submitAnswer(payload: SubmitAnswerRequest): Promise<boolean> { return submitAnswerAction(this, payload) },
+    async pollAnswerRun(runId: string): Promise<void> { return pollAnswerRunAction(this, runId) },
+    async finishSuccessfulAnswerRun(view: AgentRunView, session?: AnswerRunSessionState): Promise<void> {
+      return finishSuccessfulAnswerRunAction(this, view, session)
     },
-
-    /**
-     * Polls one answer run chain to its terminal leaf. One loop per call —
-     * the same run never gets two timers because submit guards on
-     * `submitting`. Network failures inside the loop keep polling within the
-     * shared chain attempt budget; exhausting it surfaces an unknown outcome
-     * for reconciliation instead of re-submitting anything. Stops observing
-     * when the project switches. Only the terminal leaf decides success:
-     * an intermediate COMPLETED parent with a child must never finish early.
-     */
-    async pollAnswerRun(runId: string): Promise<void> {
-      const projectId = this.projectId
-      if (!projectId) return
-      let currentRunId = runId
-      for (let attempt = 0; attempt < AGENT_RUN_MAX_POLLS; attempt += 1) {
-        if (attempt > 0) {
-          await new Promise((resolve) => setTimeout(resolve, AGENT_RUN_POLL_INTERVAL_MS))
-          if (projectId !== this.projectId) {
-            // Project switched away: stop observing the old project's run.
-            return
-          }
-        }
-        try {
-          const view = await getAgentRun(projectId, currentRunId)
-          this.answerRunPhase = view.phase
-          this.answerRunStatus = view.status === 'failed'
-            ? 'FAILED'
-            : view.status === 'completed'
-              ? 'SUCCEEDED'
-              : view.status === 'created'
-                ? 'PENDING'
-                : 'RUNNING'
-          if (!isTerminalRunStatus(view.status)) continue
-          if (view.status === 'failed') {
-            // FAILED run: the Answer may or may not be persisted. Canonical
-            // reads decide between repair and resubmit affordances.
-            await this.reconcileFailedAnswerRun()
-            return
-          }
-          if (view.childRunId) {
-            currentRunId = view.childRunId
-            continue
-          }
-          if (view.continuationPending) continue
-          await this.finishSuccessfulAnswerRun(view)
-          return
-        } catch {
-          // Transient poll failure: keep polling within budget.
-        }
-      }
-      // Budget exhausted with no terminal read: treat as outcome unknown.
-      this.answerOutcomeUnknown = true
+    async reconcileFailedAnswerRun(session?: AnswerRunSessionState): Promise<void> {
+      return reconcileFailedAnswerRunAction(this, session)
     },
-
-    /** Terminal chain leaf: refresh canonical state and clear pending affordances. */
-    async finishSuccessfulAnswerRun(
-      view: Awaited<ReturnType<typeof getAgentRun>>,
-    ): Promise<void> {
-      // Cleanup identity is the SUBMITTED answer target captured when the
-      // user action started — never producedNodeId, which names the NEXT node
-      // the runtime generated, and never a route id re-read after refresh.
-      const answeredNodeId = this.pendingAnswerNodeId
-      const submittedRouteId = this.submittedRouteIdForCleanup ?? null
-      const leafMessage = view.respondMessage ?? null
-      this.feedback = leafMessage ?? '回答已记录。'
-      await this.refreshWorkspace()
-      this.manualModelRetry = null
-      this.repairableAnswerId = null
-      this.resubmitAnswerPayload = null
-      this.pendingAnswerNodeId = null
-      this.answerOutcomeUnknown = false
-      this.answerRunId = null
-      this.answerRunPhase = null
-      this.answerRunStatus = null
-      if (answeredNodeId) {
-        useInputDraftStore().clearDraft(
-          this.projectId ?? '',
-          answeredNodeId,
-          submittedRouteId,
-        )
-      }
+    async reconcileUnknownAnswerOutcome(session?: AnswerRunSessionState): Promise<void> {
+      return reconcileUnknownAnswerOutcomeAction(this, session)
     },
-
-    /**
-     * FAILED run reconciliation: canonical reads decide whether the Answer
-     * persisted (→ repair affordance, never a second submission) or nothing
-     * landed (→ explicit one-shot resubmit payload).
-     */
-    async reconcileFailedAnswerRun(): Promise<void> {
-      const reconciled = await this.refreshWorkspace()
-      if (!reconciled) {
-        this.answerOutcomeUnknown = true
-        return
-      }
-      const answerId = this.findFinalizedAnswerForNode(this.pendingAnswerNodeId)
-      if (answerId) {
-        if (this.activeState?.activeRoute?.tipNodeId === this.pendingAnswerNodeId) {
-          this.repairableAnswerId = answerId
-          this.resubmitAnswerPayload = null
-          this.feedback = '回答已保存，后续生成未完成。'
-        } else {
-          // The tip moved past the answered node: the mutation completed
-          // despite the failure report. Never offer resubmit or repair.
-          this.repairableAnswerId = null
-          this.resubmitAnswerPayload = null
-          this.pendingAnswerNodeId = null
-          this.feedback = '回答已记录。'
-        }
-      } else {
-        this.resubmitAnswerPayload = this.lastSubmittedAnswerPayload
-      }
-    },
-
-    /**
-     * Reconciliation after the run could not be observed to a terminal state
-     * (poll network loss beyond the budget). Canonical reads decide between
-     * repair (Answer persisted), completed-anyway (tip advanced), and an
-     * explicit unknown-outcome affordance. Never resubmits by itself.
-     */
-    async reconcileUnknownAnswerOutcome(): Promise<void> {
-      const reconciled = await this.refreshWorkspace()
-      if (!reconciled) {
-        this.answerOutcomeUnknown = true
-        return
-      }
-      const answerId = this.findFinalizedAnswerForNode(this.pendingAnswerNodeId)
-      if (answerId) {
-        this.answerOutcomeUnknown = false
-        if (this.activeState?.activeRoute?.tipNodeId === this.pendingAnswerNodeId) {
-          this.repairableAnswerId = answerId
-          this.resubmitAnswerPayload = null
-          this.feedback = '回答已保存，后续生成未完成。'
-        } else {
-          this.repairableAnswerId = null
-          this.resubmitAnswerPayload = null
-          this.pendingAnswerNodeId = null
-          this.feedback = '回答已记录。'
-        }
-      }
-      // Without a persisted Answer the run may still be executing server
-      // side: keep answerOutcomeUnknown so the user reconciles instead of
-      // creating a second mutation.
-    },
-
-    /** Reconciles canonical state before allowing a failed submit to mutate again. */
-    async reconcileAnswerOutcome(): Promise<boolean> {
-      const payload = this.resubmitAnswerPayload
-      if (!payload && !this.answerOutcomeUnknown) return false
-      const previousError = this.error
-      const reconciled = await this.refreshWorkspace()
-      if (!reconciled) {
-        this.answerOutcomeUnknown = true
-        this.error = previousError
-        return false
-      }
-      const answerId = this.findFinalizedAnswerForNode(this.pendingAnswerNodeId)
-      this.answerOutcomeUnknown = false
-      if (answerId) {
-        if (this.activeState?.activeRoute?.tipNodeId === this.pendingAnswerNodeId) {
-          this.repairableAnswerId = answerId
-          this.resubmitAnswerPayload = null
-          this.feedback = '回答已保存，后续生成未完成。'
-        } else {
-          this.repairableAnswerId = null
-          this.resubmitAnswerPayload = null
-          this.pendingAnswerNodeId = null
-          this.feedback = '回答已记录。'
-        }
-      } else {
-        this.repairableAnswerId = null
-        this.resubmitAnswerPayload = payload
-      }
-      this.error = previousError
-      return true
-    },
-
-    /**
-     * Repairs an existing answer checkpoint through a RESUME_ANSWER run. The
-     * backend replays the original ANSWER_SUBMITTED semantics from the
-     * persisted Answer, so this never creates a second Answer and the
-     * frontend never re-sends its guessed copy of the user input.
-     */
+    async reconcileAnswerOutcome(): Promise<boolean> { return reconcileAnswerOutcomeAction(this) },
     async repairAnswerForActiveFlow(answerId: string): Promise<boolean> {
-      if (!this.projectId || this.repairingAnswer || this.routeCommandPending) return false
-      this.repairingAnswer = true
-      this.error = null
-      try {
-        const run = await createAgentRun(this.projectId, {
-          operation: 'RESUME_ANSWER',
-          nodeId: this.activeState?.activeRoute?.tipNodeId ?? null,
-          answerId,
-        })
-        this.answerRunId = run.runId
-        this.answerRunPhase = run.phase
-        await this.pollAnswerRun(run.runId)
-        if (this.answerOutcomeUnknown) {
-          this.error = toDisplayError(new ApiError(
-            GENERIC_ERROR_MESSAGE, 'UNKNOWN_ERROR', 0))
-          return false
-        }
-        this.feedback = '已重新请求后续生成。'
-        return true
-      } catch (err) {
-        const safeError = toDisplayError(err)
-        const reconciled = await this.refreshWorkspace()
-        if (reconciled) {
-          this.repairableAnswerId = this.findFinalizedAnswerForActiveTip()
-        }
-        this.error = safeError
-        return false
-      } finally {
-        this.repairingAnswer = false
-      }
+      return repairAnswerForActiveFlowAction(this, answerId)
+    },
+    async resubmitFailedAnswer(): Promise<boolean> { return resubmitFailedAnswerAction(this) },
+    findFinalizedAnswerForActiveTip(): string | null { return findFinalizedAnswerForActiveTipAction(this) },
+    findFinalizedAnswerForNode(nodeId: string | null, routeId?: string | null): string | null {
+      return findFinalizedAnswerForNodeAction(this, nodeId, routeId)
+    },
+    answerTargetRouteTip(): string | null { return answerTargetRouteTipAction(this) },
+    findForkDraftRetryRouteId(): string | null { return findForkDraftRetryRouteIdAction(this) },
+    setFocusAfterMutation(target: MutationFocusTarget | null): void { setFocusAfterMutationAction(this, target) },
+    consumeFocusAfterMutation(): MutationFocusTarget | null { return consumeFocusAfterMutationAction(this) },
+    async retryManualModelOperation(): Promise<boolean> { return retryManualModelOperationAction(this) },
+    async reconcileRegenerateRetry(
+      intent: Extract<ManualModelRetryIntent, { kind: 'regenerate' }>,
+    ): Promise<boolean> {
+      return reconcileRegenerateRetryAction(this, intent)
+    },
+    async reconcileSpecRetry(
+      intent: Extract<ManualModelRetryIntent, { kind: 'spec' }>,
+    ): Promise<boolean> {
+      return reconcileSpecRetryAction(this, intent)
     },
 
-    /** Re-submits only after reconciliation proved that the Answer was absent. */
-    async resubmitFailedAnswer(): Promise<boolean> {
-      const payload = this.resubmitAnswerPayload
-      if (!payload || !this.projectId || this.submitting || this.routeCommandPending) return false
-      return this.submitAnswer(payload)
-    },
-
-    findFinalizedAnswerForActiveTip(): string | null {
-      const activeRoute = this.activeState?.activeRoute
-      const tipNodeId = activeRoute?.tipNodeId
-      if (!activeRoute || !tipNodeId) return null
-      return this.graphView?.answers.find((answer) =>
-        answer.nodeId === tipNodeId
-        && answer.routeId === activeRoute.id
-        && answer.inherited === false
-        && answer.ownerRouteId === activeRoute.id,
-      )?.id ?? null
-    },
-
-    findFinalizedAnswerForNode(nodeId: string | null): string | null {
-      const activeRoute = this.activeState?.activeRoute
-      if (!activeRoute || !nodeId) return null
-      return this.graphView?.answers.find((answer) =>
-        answer.routeId === activeRoute.id
-        && answer.nodeId === nodeId
-        && answer.inherited === false
-        && answer.ownerRouteId === activeRoute.id,
-      )?.id ?? null
-    },
-
-    findForkDraftRetryRouteId(): string | null {
-      const activeRoute = this.activeState?.activeRoute
-      const graphRoute = activeRoute
-        ? this.graphView?.routes.find((route) => route.id === activeRoute.id)
-        : null
-      const tipNodeId = graphRoute?.tipNodeId ?? activeRoute?.tipNodeId
-      if (
-        !activeRoute
-        || !graphRoute
-        || graphRoute.branchType !== 'fork'
-        || !tipNodeId
-        || graphRoute.branchAtNodeId !== tipNodeId
-      ) {
-        return null
-      }
-      const tipAnswers = this.graphView?.answers.filter((answer) =>
-        answer.routeId === graphRoute.id && answer.nodeId === tipNodeId,
-      ) ?? []
-      return tipAnswers.length === 1
-        && tipAnswers[0].inherited === true
-        && tipAnswers[0].ownerRouteId !== graphRoute.id
-        ? graphRoute.id
-        : null
-    },
-
-    setFocusAfterMutation(target: MutationFocusTarget | null): void {
-      this.focusAfterMutation = target
-    },
-
-    consumeFocusAfterMutation(): MutationFocusTarget | null {
-      const target = this.focusAfterMutation
-      this.focusAfterMutation = null
-      return target
-    },
-
-    async retryManualModelOperation(): Promise<boolean> {
-      const intent = this.manualModelRetry
-      if (!intent) return false
-      if (intent.state === 'ambiguous') {
-        const previousError = this.error
-        await this.refreshWorkspace()
-        this.error = previousError
-        return false
-      }
-      if (intent.state === 'needs_reconcile') {
-        const previousError = this.error
-        if (intent.kind === 'draft') {
-          const reconciled = await this.refreshWorkspace()
-          const afterRouteId = this.activeState?.activeRoute?.id ?? null
-          const afterTipNodeId = this.activeState?.activeRoute?.tipNodeId ?? null
-          if (!reconciled) {
-            this.error = previousError
-            return false
-          }
-          if (
-            afterRouteId !== intent.beforeRouteId
-            || afterTipNodeId !== intent.beforeTipNodeId
-          ) {
-            this.manualModelRetry = null
-            this.error = null
-            this.feedback = '问题已起草。'
-            return true
-          }
-          this.manualModelRetry = { ...intent, state: 'ready' }
-          this.error = previousError
-          return false
-        }
-        if (intent.kind === 'spec') return this.reconcileSpecRetry(intent)
-        return this.reconcileRegenerateRetry(intent)
-      }
-      if (intent.kind === 'draft') return this.draftQuestion()
-      if (intent.kind === 'spec') {
-        return await this.generateSpec()
-      }
-      return this.regenerateNode(intent.nodeId, intent.payload)
-    },
-
-    async reconcileRegenerateRetry(intent: Extract<ManualModelRetryIntent, { kind: 'regenerate' }>): Promise<boolean> {
-      const previousError = this.error
-      const reconciled = await this.refreshWorkspace()
-      if (!reconciled) {
-        this.error = previousError
-        return false
-      }
-      const afterRoutes = this.graphView?.routes ?? []
-      const newRoutes = afterRoutes.filter((route) => !intent.beforeRouteIds.includes(route.id))
-      const matchingRoutes = newRoutes.filter((route) =>
-        route.branchType === 'regenerate'
-        && route.sourceRouteId === intent.payload.sourceRouteId
-        && route.branchAtNodeId === intent.nodeId
-        && route.replacementOfNodeId === intent.nodeId,
-      )
-      const activeRouteId = this.activeState?.activeRoute?.id ?? null
-      if (matchingRoutes.length === 1 && activeRouteId === matchingRoutes[0].id) {
-        this.manualModelRetry = null
-        this.error = null
-        this.feedback = '已创建换一个问题路线。'
-        this.setFocusAfterMutation({
-          routeId: matchingRoutes[0].id,
-          nodeId: matchingRoutes[0].tipNodeId,
-        })
-        return true
-      }
-      if (matchingRoutes.length === 0 && activeRouteId === intent.beforeActiveRouteId) {
-        this.manualModelRetry = { ...intent, state: 'ready' }
-        this.error = previousError
-        return false
-      }
-      this.manualModelRetry = { ...intent, state: 'ambiguous' }
-      this.error = {
-        code: 'RECOVERY_AMBIGUOUS',
-        message: '请求结果无法安全确认，请刷新状态后人工核对。',
-      }
-      return false
-    },
-
-    async reconcileSpecRetry(intent: Extract<ManualModelRetryIntent, { kind: 'spec' }>): Promise<boolean> {
-      const previousError = this.error
-      const reconciled = await this.refreshWorkspace()
-      if (!reconciled) {
-        this.error = previousError
-        return false
-      }
-      if (this.activeState?.activeRoute?.id !== intent.routeId) {
-        this.manualModelRetry = { ...intent, state: 'ambiguous' }
-        this.error = {
-          code: 'RECOVERY_AMBIGUOUS',
-          message: '请求结果无法安全确认，请刷新状态后人工核对。',
-        }
-        return false
-      }
-      let specs: SpecSnapshotResponse[]
-      try {
-        specs = await listRouteSpecs(this.projectId!, intent.routeId)
-      } catch {
-        this.error = previousError
-        return false
-      }
-      this.specsByRoute = { ...this.specsByRoute, [intent.routeId]: specs }
-      const newSpecs = specs.filter((snapshot) => !intent.beforeSpecIds.includes(snapshot.id))
-      if (newSpecs.length === 1) {
-        this.selectedSpecIdByRoute = {
-          ...this.selectedSpecIdByRoute,
-          [intent.routeId]: newSpecs[0].id,
-        }
-        this.manualModelRetry = null
-        this.error = null
-        this.feedback = '已生成规格快照。'
-        return true
-      }
-      if (newSpecs.length === 0) {
-        this.manualModelRetry = { ...intent, state: 'ready' }
-        this.error = previousError
-        return false
-      }
-      this.manualModelRetry = { ...intent, state: 'ambiguous' }
-      this.error = {
-        code: 'RECOVERY_AMBIGUOUS',
-        message: '请求结果无法安全确认，请刷新状态后人工核对。',
-      }
-      return false
-    },
-
-    // ---------------- Route commands ----------------
-
-    async activateRoute(routeId: string): Promise<boolean> {
-      if (!this.projectId || this.routeCommandPending || this.submitting || this.drafting) {
-        return false
-      }
-      this.routeCommandPending = true
-      this.pendingRouteCommand = 'activate'
-      this.error = null
-      try {
-        await activateRoute(this.projectId, routeId)
-        await this.refreshWorkspace()
-        this.feedback = '已设为当前路线。'
-        return true
-      } catch (err) {
-        this.error = toDisplayError(err)
-        return false
-      } finally {
-        this.routeCommandPending = false
-        this.pendingRouteCommand = null
-      }
-    },
-
-    async restoreRoute(routeId: string): Promise<boolean> {
-      if (!this.projectId || this.routeCommandPending || this.submitting || this.drafting) {
-        return false
-      }
-      this.routeCommandPending = true
-      this.pendingRouteCommand = 'restore'
-      this.error = null
-      try {
-        await restoreRoute(this.projectId, routeId)
-        await this.refreshWorkspace()
-        this.feedback = '已恢复路线。'
-        return true
-      } catch (err) {
-        this.error = toDisplayError(err)
-        return false
-      } finally {
-        this.routeCommandPending = false
-        this.pendingRouteCommand = null
-      }
-    },
-
-    async archiveRoute(routeId: string): Promise<boolean> {
-      if (!this.projectId || this.routeCommandPending || this.submitting || this.drafting) {
-        return false
-      }
-      this.routeCommandPending = true
-      this.pendingRouteCommand = 'archive'
-      this.error = null
-      try {
-        await archiveRoute(this.projectId, routeId)
-        await this.refreshWorkspace()
-        this.feedback = '已归档路线。'
-        return true
-      } catch (err) {
-        this.error = toDisplayError(err)
-        return false
-      } finally {
-        this.routeCommandPending = false
-        this.pendingRouteCommand = null
-      }
-    },
-
-    async deleteRoute(routeId: string): Promise<boolean> {
-      if (!this.projectId || this.routeCommandPending || this.submitting || this.drafting) {
-        return false
-      }
-      this.routeCommandPending = true
-      this.pendingRouteCommand = 'delete'
-      this.error = null
-      try {
-        await deleteRoute(this.projectId, routeId)
-        await this.refreshWorkspace()
-        this.feedback = '已删除路线。'
-        return true
-      } catch (err) {
-        this.error = toDisplayError(err)
-        return false
-      } finally {
-        this.routeCommandPending = false
-        this.pendingRouteCommand = null
-      }
-    },
-
-    /**
-     * Forks a new route from a historical node. The runtime creates the new
-     * route id and makes it active; the frontend then refreshes canonical
-     * reads and never guesses the new route id.
-     */
+    // ---- Route commands: stores/workspace/routeCommands.ts ----
+    async activateRoute(routeId: string): Promise<boolean> { return activateRouteAction(this, routeId) },
+    async restoreRoute(routeId: string): Promise<boolean> { return restoreRouteAction(this, routeId) },
+    async archiveRoute(routeId: string): Promise<boolean> { return archiveRouteAction(this, routeId) },
+    async deleteRoute(routeId: string): Promise<boolean> { return deleteRouteAction(this, routeId) },
     async forkNode(nodeId: string, sourceRouteId: string, label?: string | null): Promise<boolean> {
-      if (!this.projectId || this.routeCommandPending || this.submitting || this.drafting) {
-        return false
-      }
-      if (!sourceRouteId) {
-        this.error = { code: 'SOURCE_ROUTE_REQUIRED', message: '请选择明确的来源路线。' }
-        return false
-      }
-      this.routeCommandPending = true
-      this.pendingRouteCommand = 'fork'
-      this.error = null
-      this.forkDraftRetryRouteId = null
-      try {
-        const result = await forkNode(this.projectId, nodeId, {
-          sourceRouteId,
-          label: label ?? null,
-        })
-        await this.refreshWorkspace()
-        // Fork and first-child Draft are separate Runtime commands. The
-        // route is intentionally preserved if Draft fails.
-        this.routeCommandPending = false
-        this.pendingRouteCommand = null
-        const drafted = await this.draftQuestion()
-        if (!drafted) {
-          this.forkDraftRetryRouteId = result.route.id
-          this.setFocusAfterMutation({
-            routeId: result.route.id,
-            nodeId: this.activeState?.activeRoute?.tipNodeId ?? result.route.tipNodeId,
-          })
-          this.feedback = '分支已创建，但首个后续问题起草失败，可重试。'
-          return false
-        }
-        this.setFocusAfterMutation({
-          routeId: result.route.id,
-          nodeId: this.activeState?.activeRoute?.tipNodeId ?? result.route.tipNodeId,
-        })
-        this.feedback = '已创建新分支路线。'
-        return true
-      } catch (err) {
-        this.error = toDisplayError(err)
-        return false
-      } finally {
-        this.routeCommandPending = false
-        this.pendingRouteCommand = null
-      }
+      return forkNodeAction(this, nodeId, sourceRouteId, label)
     },
-
-    async retryForkDraft(): Promise<boolean> {
-      const retryRouteId = this.forkDraftRetryRouteId
-      if (!retryRouteId || this.routeCommandPending || this.drafting) {
-        return false
-      }
-      const activeRoute = this.activeState?.activeRoute
-      const retryRoute = this.graphView?.routes.find((route) => route.id === retryRouteId)
-      if (activeRoute?.id !== retryRouteId || retryRoute?.lifecycleStatus !== 'open') {
-        this.error = {
-          code: 'FORK_DRAFT_RETRY_REQUIRES_ACTIVE_ROUTE',
-          message: '请先将该分支设为当前路线，再重试起草。',
-        }
-        return false
-      }
-      const drafted = this.manualModelRetry?.kind === 'draft'
-        ? await this.retryManualModelOperation()
-        : await this.draftQuestion()
-      if (drafted) {
-        this.forkDraftRetryRouteId = null
-        this.setFocusAfterMutation({
-          routeId: retryRouteId,
-          nodeId: this.activeState?.activeRoute?.tipNodeId ?? null,
-        })
-        this.feedback = '已起草分支的首个后续问题。'
-      }
-      return drafted
-    },
-
-    /** Retry the visible pending projection without inventing a provider or
-     * issuing a second mutation unless Runtime recovery has proven it safe. */
-    async retryPendingAgentRun(): Promise<boolean> {
-      if (this.forkDraftRetryRouteId) return this.retryForkDraft()
-      if (this.manualModelRetry?.kind === 'draft') {
-        return this.retryManualModelOperation()
-      }
-      return this.draftQuestion()
-    },
-
+    async retryForkDraft(): Promise<boolean> { return retryForkDraftAction(this) },
+    async retryPendingAgentRun(): Promise<boolean> { return retryPendingAgentRunAction(this) },
     async reanswerNode(nodeId: string, sourceRouteId: string, label?: string | null): Promise<boolean> {
-      if (!this.projectId || this.routeCommandPending || this.submitting || this.drafting) {
-        return false
-      }
-      this.routeCommandPending = true
-      this.pendingRouteCommand = 'reanswer'
-      this.error = null
-      try {
-        await reanswerNode(this.projectId, nodeId, { sourceRouteId, label: label ?? null })
-        await this.refreshWorkspace()
-        this.feedback = '已创建重新回答路线。'
-        return true
-      } catch (err) {
-        this.error = toDisplayError(err)
-        return false
-      } finally {
-        this.routeCommandPending = false
-        this.pendingRouteCommand = null
-      }
+      return reanswerNodeAction(this, nodeId, sourceRouteId, label)
     },
-
-    /**
-     * Deterministically regenerates a historical node. Old route becomes
-     * SUPERSEDED and the replacement route becomes OPEN + active via the
-     * runtime; the frontend refreshes canonical reads instead of
-     * reconstructing the transition locally.
-     */
     async regenerateNode(nodeId: string, payload: RegenerateNodeRequest): Promise<boolean> {
-      if (!this.projectId || this.routeCommandPending || this.submitting || this.drafting) {
-        return false
-      }
-      this.routeCommandPending = true
-      this.pendingRouteCommand = 'regenerate'
-      this.error = null
-      const beforeRouteIds = this.graphView?.routes.map((route) => route.id) ?? []
-      const beforeActiveRouteId = this.activeState?.activeRoute?.id ?? null
-      // The integrated dialog supplies the explicit sourceRouteId required by
-      // the Runtime contract; no compatibility payload is synthesized here.
-      try {
-        const run = await createAgentRun(this.projectId, {
-          operation: 'REGENERATE_NODE',
-          nodeId,
-          sourceRouteId: payload.sourceRouteId,
-          freeText: payload.instruction ?? null,
-        })
-        const outcome = await this.pollRunChainToTerminal(run.runId)
-        if (outcome !== 'unknown' && outcome !== 'failed') {
-          // Terminal chain leaf: the replacement route is now the active
-          // route; the canonical refresh owns every id — never reconstructed
-          // locally. A RESPOND leaf message wins over the default copy.
-          const replacementNodeId = outcome.producedNodeId
-          await this.refreshWorkspace()
-          this.feedback = outcome.respondMessage ?? '已创建换一个问题路线。'
-          this.manualModelRetry = null
-          const focusRouteId = this.activeState?.activeRoute?.id
-          if (focusRouteId) {
-            this.setFocusAfterMutation({
-              routeId: focusRouteId,
-              nodeId: replacementNodeId ?? null,
-            })
-          }
-          return true
-        }
-        // FAILED or unknown: reconcile canonical reads through the shared
-        // fail-closed reconciliation (a completed-after-poll transition shows
-        // up as a brand-new active replacement route).
-        const intent: Extract<ManualModelRetryIntent, { kind: 'regenerate' }> = {
-          kind: 'regenerate',
-          nodeId,
-          payload: { ...payload },
-          beforeRouteIds,
-          beforeActiveRouteId,
-          state: outcome === 'failed' ? 'ready' : 'needs_reconcile',
-        }
-        if (outcome === 'unknown') {
-          this.manualModelRetry = intent
-          const recovered = await this.reconcileRegenerateRetry(intent)
-          if (recovered) return true
-          return false
-        }
-        this.error = {
-          code: 'AGENT_RUN_FAILED',
-          message: '换一个问法的运行失败，请重试。',
-        }
-        this.manualModelRetry = intent
-        return false
-      } catch (err) {
-        // Create-run request itself failed; reconcile canonical reads before
-        // any retry affordance.
-        const safeError = toDisplayError(err)
-        this.error = safeError
-        const disposition = classifyModelFailure(safeError.code, safeError.status)
-        if (disposition === 'none') {
-          this.manualModelRetry = null
-          return false
-        }
-        const intent: Extract<ManualModelRetryIntent, { kind: 'regenerate' }> = {
-          kind: 'regenerate',
-          nodeId,
-          payload: { ...payload },
-          beforeRouteIds,
-          beforeActiveRouteId,
-          state: disposition === 'unknown' ? 'needs_reconcile' : 'ready',
-        }
-        this.manualModelRetry = intent
-        if (intent.state === 'needs_reconcile') {
-          const recovered = await this.reconcileRegenerateRetry(intent)
-          if (recovered) return true
-        }
-        return false
-      } finally {
-        this.routeCommandPending = false
-        this.pendingRouteCommand = null
-      }
+      return regenerateNodeAction(this, nodeId, payload)
     },
 
-    // ---------------- Route-scoped reads ----------------
-
-    /**
-     * Loads (and caches) the requirement state for an explicit route. The
-     * cache is indexed by route id; no global selection decides ownership.
-     */
+    // ---- Route-scoped reads + spec dock: stores/workspace/specDock.ts ----
     async ensureRequirementState(routeId: string): Promise<RequirementStateView | null> {
-      if (!this.projectId) {
-        return null
-      }
-      const cached = this.requirementStatesByRoute[routeId]
-      if (cached) {
-        return cached
-      }
-      this.loadingRequirementRouteId = routeId
-      try {
-        const state = await getRouteRequirementState(this.projectId, routeId)
-        this.requirementStatesByRoute = {
-          ...this.requirementStatesByRoute,
-          [routeId]: state,
-        }
-        return state
-      } catch (err) {
-        this.error = toDisplayError(err)
-        return null
-      } finally {
-        this.loadingRequirementRouteId = null
-      }
+      return ensureRequirementStateAction(this, routeId)
     },
-
-    /** Selects the displayed spec snapshot for one explicit route. */
     selectSpecForRoute(routeId: string, snapshotId: string | null): void {
-      this.selectedSpecIdByRoute = {
-        ...this.selectedSpecIdByRoute,
-        [routeId]: snapshotId,
-      }
+      selectSpecForRouteAction(this, routeId, snapshotId)
+    },
+    async loadRouteSpecs(routeId: string): Promise<void> { return loadRouteSpecsAction(this, routeId) },
+    async generateSpec(): Promise<boolean> { return generateSpecAction(this) },
+    async exportSpecMarkdown(snapshotId: string, variant: SpecExportVariant): Promise<boolean> {
+      return exportSpecMarkdownAction(this, snapshotId, variant)
     },
 
-    // ---------------- Spec snapshots ----------------
-
-    /** Loads the snapshot list for a route from the backend. */
-    async loadRouteSpecs(routeId: string): Promise<void> {
-      if (!this.projectId) {
-        return
-      }
-      this.loadingSpecs = true
-      try {
-        const specs = await listRouteSpecs(this.projectId, routeId)
-        this.specsByRoute = { ...this.specsByRoute, [routeId]: specs }
-      } catch (err) {
-        this.error = toDisplayError(err)
-      } finally {
-        this.loadingSpecs = false
-      }
-    },
-
-    /**
-     * Generates a spec snapshot for the ACTIVE route through the backend.
-     * After success the canonical snapshot list is reloaded and the new
-     * snapshot is selected in that route's cache; the frontend never
-     * synthesizes a spec locally and never sets Focus here. Returns whether
-     * a new snapshot landed on this route.
-     */
-    async generateSpec(): Promise<boolean> {
-      if (!this.projectId || this.generatingSpec || this.routeCommandPending) {
-        return false
-      }
-      const activeRoute = this.activeState?.activeRoute
-      if (!activeRoute || !activeRoute.tipNodeId) {
-        this.error = {
-          code: 'NO_ACTIVE_TIP_NODE',
-          message: 'The active route has no tip node to generate a spec from.',
-        }
-        return false
-      }
-      this.generatingSpec = true
-      this.error = null
-      const routeId = activeRoute.id
-      let baselineSpecs: SpecSnapshotResponse[]
-      try {
-        // This read is the mutation baseline. If it fails, do not start a
-        // generation request whose outcome could no longer be reconciled.
-        baselineSpecs = await listRouteSpecs(this.projectId, routeId)
-        this.specsByRoute = { ...this.specsByRoute, [routeId]: baselineSpecs }
-      } catch (err) {
-        this.error = toDisplayError(err)
-        this.manualModelRetry = null
-        return false
-      }
-      const beforeSpecIds = baselineSpecs.map((snapshot) => snapshot.id)
-      try {
-        const created = await createAgentRun(this.projectId, {
-          operation: 'GENERATE_ARTIFACT',
-        })
-        const outcome = await this.pollRunChainToTerminal(created.runId)
-        if (outcome === 'unknown' || outcome === 'failed') {
-          // FAILED or outcome unknown: reconcile canonical reads through the
-          // shared fail-closed reconciliation (exactly-one-new-snapshot rule).
-          const intent: Extract<ManualModelRetryIntent, { kind: 'spec' }> = {
-            kind: 'spec',
-            routeId,
-            beforeSpecIds,
-            state: outcome === 'failed' ? 'ready' : 'needs_reconcile',
-          }
-          if (outcome === 'unknown') {
-            this.manualModelRetry = intent
-            const recovered = await this.reconcileSpecRetry(intent)
-            if (recovered) return true
-            return false
-          }
-          this.error = {
-            code: 'AGENT_RUN_FAILED',
-            message: '生成规格快照的运行失败，请重试。',
-          }
-          this.manualModelRetry = intent
-          return false
-        }
-        // COMPLETED: select the produced snapshot from the canonical backend
-        // list — never built up locally.
-        const producedId = outcome.producedSpecSnapshotId
-        const specs = await listRouteSpecs(this.projectId, routeId)
-        this.specsByRoute = { ...this.specsByRoute, [routeId]: specs }
-        const produced = specs.find((snapshot) => snapshot.id === producedId)
-        if (!produced) {
-          this.error = {
-            code: 'SPEC_SNAPSHOT_NOT_FOUND',
-            message: '生成的规格快照无法读取。',
-          }
-          return false
-        }
-        this.selectedSpecIdByRoute = {
-          ...this.selectedSpecIdByRoute,
-          [routeId]: produced.id,
-        }
-        this.feedback = '已生成规格快照。'
-        this.manualModelRetry = null
-        return true
-      } catch (err) {
-        // The create-run request itself failed or its outcome is unknown;
-        // reconcile canonical reads before any retry affordance.
-        const safeError = toDisplayError(err)
-        this.error = safeError
-        const disposition = classifyModelFailure(safeError.code, safeError.status)
-        if (disposition === 'none') {
-          this.manualModelRetry = null
-          return false
-        }
-        const intent: Extract<ManualModelRetryIntent, { kind: 'spec' }> = {
-          kind: 'spec',
-          routeId,
-          beforeSpecIds,
-          state: disposition === 'unknown' ? 'needs_reconcile' : 'ready',
-        }
-        this.manualModelRetry = intent
-        if (intent.state === 'needs_reconcile') {
-          const recovered = await this.reconcileSpecRetry(intent)
-          if (recovered) return true
-        }
-        return false
-      } finally {
-        this.generatingSpec = false
-      }
-    },
-
-    // ----------------------------------------------------------------
-    // Graph workspace commands (zero model calls on this path)
-    // ----------------------------------------------------------------
-
-    /** Refreshes Undo/Redo availability from the operation log. */
-    async refreshUndoRedoAvailability(): Promise<void> {
-      if (!this.projectId) return
-      try {
-        this.undoRedo = await getUndoRedoAvailability(this.projectId)
-      } catch {
-        // Availability is a UI affordance; failures keep the last state.
-      }
-    },
-
-    /**
-     * Adds a user-authored idea as a standalone (floating) draft — zero
-     * model calls, never connected to any node. The user connects it
-     * manually on the canvas. No Active Route is required: the creation
-     * context route id is optional (null context is legal). Returns the
-     * created node id, or null on failure.
-     */
-    async createIdea(): Promise<string | null> {
-      if (!this.projectId || this.graphCommandPending) return null
-      const activeRouteId = this.activeState?.activeRoute?.id ?? null
-      this.graphCommandPending = true
-      this.error = null
-      try {
-        const created = await createFloatingDraftNode(this.projectId, activeRouteId, {
-          subtype: 'IDEA',
-          content: {},
-        })
-        this.feedback = '已创建想法，双击卡片直接编辑。'
-        await this.refreshWorkspace()
-        await this.refreshUndoRedoAvailability()
-        return created.id
-      } catch (err) {
-        this.error = toDisplayError(err)
-        return null
-      } finally {
-        this.graphCommandPending = false
-      }
-    },
-
-    /**
-     * Continues from a node on an explicit route. The backend appends at the
-     * tip or creates an explicit branch from a historical node — the UI never
-     * pretends history was rewritten.
-     */
+    // ---- Graph authoring commands: stores/workspace/resources.ts ----
+    async createIdea(): Promise<string | null> { return createIdeaAction(this) },
     async continueFromNode(nodeId: string, routeId: string): Promise<boolean> {
-      if (!this.projectId || this.graphCommandPending) return false
-      this.graphCommandPending = true
-      this.error = null
-      try {
-        const created = await appendContinuation(this.projectId, nodeId, routeId, {
-          subtype: 'NOTE',
-          content: {},
-        })
-        this.feedback = created.branched ? '已从该节点创建探索分支。' : '已在当前路线继续。'
-        await this.refreshWorkspace()
-        await this.refreshUndoRedoAvailability()
-        return true
-      } catch (err) {
-        this.error = toDisplayError(err)
-        return false
-      } finally {
-        this.graphCommandPending = false
-      }
+      return continueFromNodeAction(this, nodeId, routeId)
     },
-
-    /**
-     * Attaches a resource node (root of an empty route, or appended at the
-     * current tip). Resources are capability context sources, not claims.
-     */
-    async attachResource(
+    async draftQuestionFromNode(nodeId: string, readingRouteId?: string | null): Promise<boolean> {
+      return draftQuestionFromNodeAction(this, nodeId, readingRouteId)
+    },
+    async createFloatingResource(
       subtype: 'TEXT' | 'URL' | 'FILE' | 'IMAGE' | 'REPOSITORY' | 'API_DOCUMENTATION',
       content: Record<string, unknown>,
     ): Promise<boolean> {
-      if (!this.projectId || this.graphCommandPending) return false
-      const route = this.activeRoute
-      if (!route) {
-        this.error = { code: 'NO_ACTIVE_ROUTE', message: '当前项目没有活动路线。' }
-        return false
-      }
-      const tipNodeId = route.tipNodeId ?? null
-      this.graphCommandPending = true
-      this.error = null
-      try {
-        await attachResourceCommand(this.projectId, route.id, tipNodeId, subtype, content)
-        this.feedback = '已添加资源节点。'
-        await this.refreshWorkspace()
-        await this.refreshUndoRedoAvailability()
-        return true
-      } catch (err) {
-        this.error = toDisplayError(err)
-        return false
-      } finally {
-        this.graphCommandPending = false
-      }
+      return createFloatingResourceAction(this, subtype, content)
     },
-
-    /** Saves an in-place edit of a still-editable user draft. */
-    async reviseDraft(nodeId: string, subtype: string, text: string): Promise<boolean> {
-      if (!this.projectId || this.graphCommandPending) return false
-      this.graphCommandPending = true
-      this.error = null
-      try {
-        await reviseDraftNode(this.projectId, nodeId, {
-          subtype,
-          content: text.trim() ? { text: text.trim() } : {},
-        })
-        this.feedback = '草稿已保存。'
-        await this.refreshWorkspace()
-        await this.refreshUndoRedoAvailability()
-        return true
-      } catch (err) {
-        this.error = toDisplayError(err)
-        return false
-      } finally {
-        this.graphCommandPending = false
-      }
+    async connectFloatingNode(
+      nodeId: string,
+      routeId: string,
+      parentNodeId: string | null,
+    ): Promise<boolean> {
+      return connectFloatingNodeAction(this, nodeId, routeId, parentNodeId)
     },
-
-    /** Confirms claim-like knowledge content (PROPOSED -> CONFIRMED). */
-    async confirmKnowledge(nodeId: string): Promise<boolean> {
-      if (!this.projectId || this.graphCommandPending) return false
-      this.graphCommandPending = true
-      this.error = null
-      try {
-        await setKnowledgeStatus(this.projectId, nodeId, 'CONFIRMED')
-        this.feedback = '已确认该内容。'
-        await this.refreshWorkspace()
-        await this.refreshUndoRedoAvailability()
-        return true
-      } catch (err) {
-        this.error = toDisplayError(err)
-        return false
-      } finally {
-        this.graphCommandPending = false
-      }
+    async disconnectNode(nodeId: string, routeId: string): Promise<boolean> {
+      return disconnectNodeAction(this, nodeId, routeId)
     },
-
-    /** Creates an explicit user semantic relation through the Runtime command. */
+    async reviseDraft(nodeId: string, subtype: string, text: string,
+                      skillId: string | null = null): Promise<boolean> {
+      return reviseDraftAction(this, nodeId, subtype, text, skillId)
+    },
+    async confirmKnowledge(nodeId: string): Promise<boolean> { return confirmKnowledgeAction(this, nodeId) },
     async createSemanticRelation(
       sourceNodeId: string,
       targetNodeId: string,
       relationType: 'RELATED_TO' | 'DEPENDS_ON' | 'DERIVED_FROM' | 'CONFLICTS_WITH' | 'SUPPORTS',
     ): Promise<boolean> {
-      if (!this.projectId || this.graphCommandPending || sourceNodeId === targetNodeId) return false
-      this.graphCommandPending = true
-      this.error = null
-      try {
-        await createRelation(this.projectId, sourceNodeId, targetNodeId, relationType)
-        this.feedback = '已添加语义关系。'
-        await this.refreshWorkspace()
-        await this.refreshUndoRedoAvailability()
-        return true
-      } catch (err) {
-        this.error = toDisplayError(err)
-        return false
-      } finally {
-        this.graphCommandPending = false
-      }
+      return createSemanticRelationAction(this, sourceNodeId, targetNodeId, relationType)
     },
 
-    /** Undo via operation-specific compensation; never destructive. */
-    async undoGraph(): Promise<boolean> {
-      if (!this.projectId || this.graphCommandPending) return false
-      this.graphCommandPending = true
-      this.error = null
-      try {
-        const result = await undoGraphOperation(this.projectId)
-        this.feedback = result.description
-        await this.refreshWorkspace()
-        await this.refreshUndoRedoAvailability()
-        return true
-      } catch (err) {
-        this.error = toDisplayError(err)
-        await this.refreshUndoRedoAvailability()
-        return false
-      } finally {
-        this.graphCommandPending = false
-      }
-    },
+    // ---- Undo / redo: stores/workspace/graphUndo.ts ----
+    async refreshUndoRedoAvailability(): Promise<void> { return refreshUndoRedoAvailabilityAction(this) },
+    async undoGraph(): Promise<boolean> { return undoGraphAction(this) },
+    async redoGraph(): Promise<boolean> { return redoGraphAction(this) },
 
-    /** Redo only while preconditions still hold. */
-    async redoGraph(): Promise<boolean> {
-      if (!this.projectId || this.graphCommandPending) return false
-      this.graphCommandPending = true
-      this.error = null
-      try {
-        const result = await redoGraphOperation(this.projectId)
-        this.feedback = result.description
-        await this.refreshWorkspace()
-        await this.refreshUndoRedoAvailability()
-        return true
-      } catch (err) {
-        this.error = toDisplayError(err)
-        await this.refreshUndoRedoAvailability()
-        return false
-      } finally {
-        this.graphCommandPending = false
-      }
-    },
-
-    /**
-     * Asks AI about a node: enqueues an async query run and polls until the
-     * single DECISION call finishes. The query has no graph side effects.
-     */
+    // ---- Node query + proposals: stores/workspace/proposals.ts ----
     async askNodeAI(nodeId: string, routeId: string | null, question: string): Promise<boolean> {
-      if (!this.projectId || !question.trim()) return false
-      if (nodeId.startsWith('pending:')) {
-        this.error = {
-          code: 'PENDING_NODE_QUERY_NOT_ALLOWED',
-          message: '临时运行卡片不是可查询的 canonical Node。',
-        }
-        return false
-      }
-      // Route semantics: a shared route node (referenced by more than one
-      // route) MUST supply an explicit read route as the query context; we
-      // must not silently fall back to routeId=null. A floating node (no
-      // route membership) is allowed to query with routeId=null.
-      if (routeId == null) {
-        const membership = this.nodeRouteIds(nodeId)
-        if (membership.length > 1) {
-          this.error = {
-            code: 'SHARED_NODE_REQUIRES_ROUTE',
-            message: '共享节点请先选择一条查看路线，再询问 AI。',
-          }
-          return false
-        }
-      }
-      this.error = null
-      try {
-        const created = await createNodeQuery(this.projectId, nodeId, routeId, question.trim())
-        // Capture the immutable query identity once. The poll loop carries
-        // this snapshot and must never borrow the routeId/question of a newer
-        // query that replaced nodeQuery.
-        const querySnapshot = {
-          nodeId,
-          routeId,
-          question: question.trim(),
-          runId: created.runId,
-        }
-        this.nodeQuery = {
-          ...querySnapshot,
-          status: 'RUNNING',
-          message: null,
-        }
-        await this.pollNodeQuery(querySnapshot)
-        return true
-      } catch (err) {
-        this.error = toDisplayError(err)
-        if (this.nodeQuery) this.nodeQuery = { ...this.nodeQuery, status: 'FAILED' }
-        return false
-      }
+      return askNodeAIAction(this, nodeId, routeId, question)
     },
-
     /** Resolves the route memberships of a canonical node from the graph read. */
-    nodeRouteIds(nodeId: string): string[] {
-      const routes = this.graphView?.routes ?? []
-      const ids = new Set<string>()
-      for (const route of routes) {
-        if (route.lineageNodeIds.includes(nodeId)) ids.add(route.id)
-      }
-      return [...ids]
-    },
-
+    nodeRouteIds(nodeId: string): string[] { return nodeRouteIdsAction(this, nodeId) },
     async pollNodeQuery(query: {
       runId: string
       nodeId: string
       routeId: string | null
       question: string
     }): Promise<void> {
-      if (!this.projectId) return
-      const { runId, nodeId, routeId, question } = query
-      const maxAttempts = 40
-      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-        await new Promise((resolve) => setTimeout(resolve, 1500))
-        // Stale poll guard: a newer query may have replaced nodeQuery. If the
-        // global nodeQuery no longer belongs to THIS poll run, abandon it so a
-        // slow response can never overwrite the latest query's state.
-        if (this.nodeQuery && this.nodeQuery.runId !== runId) return
-        try {
-          const result = await getNodeQueryResult(this.projectId, nodeId, runId)
-          // Only the real terminal outcome statuses stop the poll. The result
-          // API reports intermediate run lifecycle phases (CONTEXT_BUILT,
-          // MODEL_CALLED, ...) verbatim — treating them as terminal would
-          // show a spurious query failure whenever a tick lands mid-run.
-          const terminal = result.status === 'COMPLETED'
-            || result.status === 'FAILED'
-            || result.status === 'AWAITING_APPROVAL'
-            || result.status === 'ACCEPTED'
-            || result.status === 'REJECTED'
-            || result.status === 'POLICY_DENIED'
-            || result.status === 'NOT_CONFIRMABLE'
-          if (!terminal) continue
-          if (this.nodeQuery && this.nodeQuery.runId !== runId) return
-          this.nodeQuery = {
-            nodeId,
-            routeId,
-            question,
-            runId,
-            status: result.status === 'FAILED' ? 'FAILED'
-              : (result.status as 'RUNNING' | 'COMPLETED' | 'FAILED' | 'AWAITING_APPROVAL' | 'ACCEPTED' | 'REJECTED' | 'POLICY_DENIED' | 'NOT_CONFIRMABLE'),
-            message: result.message,
-            proposalId: result.proposalId ?? null,
-            proposalStatus: result.proposalStatus ?? null,
-            actionFamily: result.actionFamily ?? null,
-          }
-          return
-        } catch {
-          // Transient poll failures fall through to the next attempt, but a
-          // stale poll must still bail out instead of clobbering the latest.
-          if (this.nodeQuery && this.nodeQuery.runId !== runId) return
-        }
-      }
-      if (this.nodeQuery && this.nodeQuery.runId === runId) {
-        this.nodeQuery = { ...this.nodeQuery, status: 'FAILED' }
-        this.error = { code: 'QUERY_TIMEOUT', message: 'AI 查询超时，请稍后重试。' }
-      }
+      return pollNodeQueryAction(this, query)
     },
-
-    /**
-     * Reloads the durable PROPOSED NodeQuery proposals from the backend
-     * proposal list API. This is what makes a pending proposal survive a page
-     * reload: the list is keyed to each proposal's canonical anchor node
-     * (inputNodeId) so the Inspector on that node exposes it even when the
-     * in-memory `nodeQuery` was reset or replaced by a newer query.
-     */
-    async loadNodeQueryProposals(): Promise<void> {
-      if (!this.projectId) {
-        this.nodeQueryProposals = []
-        return
-      }
-      try {
-        this.nodeQueryProposals = keepNodeQueryProposals(
-          await listProposals(this.projectId, 'PROPOSED'),
-        )
-      } catch {
-        // A failed proposal-list read must not fail the whole workspace load;
-        // keep the last known list and let the UI surface loading errors as
-        // usual. Pending proposals remain discoverable on the next refresh.
-        this.nodeQueryProposals = this.nodeQueryProposals ?? []
-      }
-    },
-
-    /**
-     * Accepts a pending NodeQuery proposal. The backend returns the confirmed
-     * proposal; the canonical graph is refreshed so any produced node/relation
-     * becomes visible. The in-memory nodeQuery lifecycle is only mutated when
-     * the proposal being accepted IS the current query's own proposal —
-     * handling a durable proposal must never mark an unrelated in-memory query
-     * as accepted. When the accept reopens an autonomous continuation chain,
-     * the origin run is followed to its terminal leaf before the refresh so
-     * the UI never settles on an intermediate COMPLETED parent.
-     */
+    async loadNodeQueryProposals(): Promise<void> { return loadNodeQueryProposalsAction(this) },
     async acceptNodeQueryProposal(proposalId: string): Promise<boolean> {
-      if (!this.projectId) return false
-      this.error = null
-      try {
-        const accepted = await acceptProposal(proposalId)
-        let leafMessage: string | null = null
-        if (accepted.originRunId) {
-          const leaf = await this.pollRunChainToTerminal(accepted.originRunId)
-          if (leaf !== 'unknown' && leaf !== 'failed') {
-            leafMessage = leaf.respondMessage ?? null
-          }
-        }
-        await this.refreshWorkspace()
-        await this.loadNodeQueryProposals()
-        if (this.nodeQuery && this.nodeQuery.proposalId === proposalId) {
-          this.nodeQuery = { ...this.nodeQuery, status: 'ACCEPTED', proposalStatus: 'ACCEPTED' }
-        }
-        this.feedback = leafMessage ?? '已接受提案，Graph 已更新。'
-        return true
-      } catch (err) {
-        this.error = toDisplayError(err)
-        return false
-      }
+      return acceptNodeQueryProposalAction(this, proposalId)
     },
-
-    /**
-     * Rejects a pending NodeQuery proposal. The graph is left unchanged; only
-     * the matching in-memory query (same proposal identity) is marked REJECTED
-     * — an unrelated current query B is never touched when rejecting a durable
-     * proposal A.
-     */
+    async acceptConfirmableProposal(proposalId: string): Promise<boolean> {
+      return acceptConfirmableProposalAction(this, proposalId)
+    },
+    async rejectConfirmableProposal(proposalId: string): Promise<boolean> {
+      return rejectConfirmableProposalAction(this, proposalId)
+    },
     async rejectNodeQueryProposal(proposalId: string): Promise<boolean> {
-      if (!this.projectId) return false
-      this.error = null
-      try {
-        await rejectProposal(proposalId)
-        await this.loadNodeQueryProposals()
-        if (this.nodeQuery && this.nodeQuery.proposalId === proposalId) {
-          this.nodeQuery = { ...this.nodeQuery, status: 'REJECTED', proposalStatus: 'REJECTED' }
-        }
-        this.feedback = '已拒绝提案，Graph 保持不变。'
-        return true
-      } catch (err) {
-        this.error = toDisplayError(err)
-        return false
-      }
+      return rejectNodeQueryProposalAction(this, proposalId)
     },
   },
 })
+
+/**
+ * Public store type. The per-domain modules under `stores/workspace/` receive
+ * the store instance and declare it with this type, which they import as a
+ * `import type` — so there is no runtime module cycle between the store and its
+ * domain modules.
+ */
+export type WorkspaceStore = ReturnType<typeof useWorkspaceStore>

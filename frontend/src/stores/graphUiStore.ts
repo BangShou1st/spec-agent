@@ -18,10 +18,18 @@ import type {
 } from '@/graph/graphTypes'
 import { buildVisualInstances } from '@/graph/graphVisualIdentity'
 
+/**
+ * Default lifecycle visibility.
+ *
+ * `archived` is OFF by default: 归档 is the single "put this route away" action
+ * (the separate soft-delete action was removed), so archiving must actually
+ * remove the route from the default view. Users who want to inspect or restore
+ * an archived route tick the 已归档 filter in the Route sidebar.
+ */
 const DEFAULT_FILTERS: Record<RouteLifecycleStatus, boolean> = {
   open: true,
   superseded: true,
-  archived: true,
+  archived: false,
   deleted: false,
 }
 
@@ -36,9 +44,14 @@ const DEFAULT_FILTERS: Record<RouteLifecycleStatus, boolean> = {
  * Focus Route is the only explicit browser reading context. It never changes
  * the Active route and shared nodes never infer a route from Active.
  *
+ * 只看这条路线 is an ephemeral single-route lens on top of Focus: it narrows the
+ * canvas to one route without touching Focus, Active or the persisted display
+ * states, and it is the only view state that may hide the Active route
+ * (the running route stays reachable through the 显示全部路线 escape hatch).
+ *
  * Persisted locally: per-project node positions + route display states,
  * and the global sidebar open/width preferences. Never persisted:
- * selection, expanded nodes, focus, pan/zoom.
+ * selection, expanded nodes, focus, the isolate lens, pan/zoom.
  */
 export const useGraphUiStore = defineStore('graphUi', {
   state: () => {
@@ -54,6 +67,22 @@ export const useGraphUiStore = defineStore('graphUi', {
       selectedEdgeId: null as string | null,
       selectedSharedEdgeRouteIds: [] as string[],
       focusRouteId: null as string | null,
+      /**
+       * Ephemeral "只看这条路线" lens: the single route the canvas renders.
+       *
+       * Deliberately NOT modelled with `routeDisplayStates`. That map is
+       * persisted per project, and the Active route is force-visible there
+       * (`routeVisible`) and repaired by `reconcile`, so hiding routes through
+       * it could never hide the running route: "只看这条路线" on a non-active
+       * route left the running route on the canvas — the second isolate looked
+       * like it silently did nothing.
+       *
+       * The lens is browser-only and never persisted: leaving it (显示全部路线,
+       * 退出只看, or clicking another route card) restores the previous view
+       * exactly, with no stale hidden state after a reload or an Active-route
+       * change.
+       */
+      isolatedRouteId: null as string | null,
       // Pending relation proposal from a canvas drag (source handle → target
       // handle). No relation is persisted until the user confirms a type and
       // direction in the proposal chooser; Cancel/Esc/click-away clears it
@@ -94,6 +123,7 @@ export const useGraphUiStore = defineStore('graphUi', {
       this.selectedNodeIds = []
       this.primarySelectedNodeId = null
       this.focusRouteId = null
+      this.isolatedRouteId = null
       this.expandedNodeIds = []
       const v2 = loadProjectGraphPreferencesV2(projectId)
       this.nodePositions = { ...v2.nodePositions }
@@ -171,6 +201,27 @@ export const useGraphUiStore = defineStore('graphUi', {
       this.focusRouteId = routeId
     },
 
+    /**
+     * "只看这条路线": renders exactly one route on the canvas.
+     *
+     * Explicit per-route intent beats every weaker view signal (lifecycle
+     * filters, manual dim/hide, Active), so the lens also hides the running
+     * route — that is the whole point of the command. It is reversible in one
+     * click (显示全部路线 / 退出只看), never persisted, and it always carries
+     * the reading Focus with it: Focus must never point at an invisible route
+     * (an unreachable Focus dims every visible node, which reads as "the view
+     * broke").
+     */
+    isolateRoute(routeId: string): void {
+      this.isolatedRouteId = routeId
+      this.focusRouteId = routeId
+    },
+
+    /** Leaves the isolate lens. Focus and display states are preserved. */
+    clearIsolation(): void {
+      this.isolatedRouteId = null
+    },
+
     /** Toggles the optional semantic-relation layer on the canvas. */
     setShowRelationLayer(visible: boolean): void {
       this.showRelationLayer = visible
@@ -205,6 +256,9 @@ export const useGraphUiStore = defineStore('graphUi', {
       if (routeId === this.focusRouteId) {
         this.focusRouteId = null
       }
+      if (routeId === this.isolatedRouteId) {
+        this.isolatedRouteId = null
+      }
       this.setRouteDisplayState(routeId, 'hidden')
     },
 
@@ -222,30 +276,23 @@ export const useGraphUiStore = defineStore('graphUi', {
       this.persistProjectState()
     },
 
-    /** Clears isolate/manual dim/hide but preserves Focus and lifecycle filters. */
+    /**
+     * Clears the isolate lens and manual dim/hide but preserves Focus and
+     * lifecycle filters. This is the canonical "回到全视图" escape hatch.
+     */
     showAll(): void {
+      this.isolatedRouteId = null
       this.routeDisplayStates = {}
       this.persistProjectState()
     },
 
-    /** Separate visibility-only isolate mode; it never changes Focus or Active. */
-    isolateRoute(routeId: string, routeIds: string[]): void {
-      const next: Record<string, GraphRouteDisplayState> = {}
-      for (const candidate of routeIds) {
-        if (candidate !== routeId && candidate !== this.activeRouteId) {
-          next[candidate] = 'hidden'
-        }
-      }
-      this.routeDisplayStates = next
-      this.persistProjectState()
-    },
-
     /**
-     * Restores the full default view: clears Focus, manual display state and
-     * resets lifecycle filters to their defaults.
+     * Restores the full default view: clears Focus, the isolate lens, manual
+     * display state and resets lifecycle filters to their defaults.
      */
     resetView(): void {
       this.focusRouteId = null
+      this.isolatedRouteId = null
       this.routeDisplayStates = {}
       this.lifecycleFilters = { ...DEFAULT_FILTERS }
       this.persistProjectState()
@@ -282,9 +329,9 @@ export const useGraphUiStore = defineStore('graphUi', {
 
     /**
      * Reconciles browser-only view state against the canonical graph after
-     * every refresh: drops stale selections, clears Focus on routes that are
-     * no longer visible, and repairs any persisted hidden state on the
-     * Active route.
+     * every refresh: drops stale selections, clears the isolate lens when its
+     * route disappears, clears Focus on routes that are no longer visible, and
+     * repairs any persisted hidden state on the Active route.
      */
     reconcile(view: {
       activeRouteId: string | null
@@ -309,12 +356,25 @@ export const useGraphUiStore = defineStore('graphUi', {
         this.primarySelectedNodeId = this.selectedNodeIds[0] ?? null
       }
 
+      // An isolate lens is explicit per-route intent: it survives lifecycle
+      // filter changes and the Active-route repair below. It is dropped only
+      // when the route itself is gone from the workspace.
+      if (
+        this.isolatedRouteId &&
+        !view.routes.some((route) => route.id === this.isolatedRouteId)
+      ) {
+        this.isolatedRouteId = null
+      }
+
       if (this.focusRouteId) {
         const focusRoute = view.routes.find((route) => route.id === this.focusRouteId)
+        const keptVisibleByLens =
+          this.isolatedRouteId !== null && this.isolatedRouteId === this.focusRouteId
         const visible =
           focusRoute !== undefined &&
-          this.lifecycleFilters[focusRoute.lifecycleStatus] === true &&
-          this.routeDisplayStates[focusRoute.id] !== 'hidden'
+          (keptVisibleByLens ||
+            (this.lifecycleFilters[focusRoute.lifecycleStatus] === true &&
+              this.routeDisplayStates[focusRoute.id] !== 'hidden'))
         if (!visible) {
           this.focusRouteId = null
         }

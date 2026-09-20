@@ -162,11 +162,19 @@ public class ProposalAcceptanceService {
         List<UUID> producedRefs = result.producedNodeId() != null
                 ? List.of(result.producedNodeId())
                 : result.relationId() != null ? List.of(result.relationId()) : List.of();
-        operationRepository.append(stored.projectId(), GraphOperation.Actor.AGENT,
-                GraphOperation.Type.ACCEPT_AGENT_PROPOSAL,
-                producedRefs,
-                Map.of(), Map.of("actionFamily", stored.actionFamily()),
-                "proposal:" + proposalId);
+        // Only an acceptance with a REAL graph effect is recorded as the
+        // non-reversible ACCEPT_AGENT_PROPOSAL barrier. An effect-free
+        // acceptance (e.g. INVOKE_CAPABILITY) must not lock the whole undo
+        // history — the graph mutations it may have triggered (agent node /
+        // relation creation) already entered the log as their own reversible
+        // AGENT operations.
+        if (!producedRefs.isEmpty()) {
+            operationRepository.append(stored.projectId(), GraphOperation.Actor.AGENT,
+                    GraphOperation.Type.ACCEPT_AGENT_PROPOSAL,
+                    producedRefs,
+                    Map.of(), Map.of("actionFamily", stored.actionFamily()),
+                    "proposal:" + proposalId);
+        }
 
         // Slice 6: the originating run gains the durable effect reference
         // (status/trace untouched — it already terminalized) plus an

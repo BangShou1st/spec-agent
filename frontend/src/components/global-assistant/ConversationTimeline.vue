@@ -4,6 +4,7 @@ import AssistantMessage from './AssistantMessage.vue'
 import ToolActivityItem from './ToolActivityItem.vue'
 import type { GaMessage } from '@/api/globalAssistant'
 import type { GaToolActivity } from '@/stores/globalAssistantStore'
+import { GA_EMPTY_SUGGESTIONS } from '@/presentation/globalAssistantPresentation'
 
 const props = defineProps<{
   messages: GaMessage[]
@@ -15,6 +16,8 @@ const props = defineProps<{
   pendingSteer?: { id: string; message: string; status: string } | null
   stoppedNotice?: boolean
 }>()
+
+const emit = defineEmits<{ (e: 'suggestion', prompt: string): void }>()
 
 const scrollRef = ref<HTMLElement | null>(null)
 const nearBottom = ref(true)
@@ -43,7 +46,7 @@ function jumpToLatest(): void {
 }
 
 watch(
-  () => [props.messages.length, props.activities.length, props.streamingText, props.currentStatus],
+  () => [props.messages.length, props.activities.length, props.streamingText, props.currentStatus, props.waitingQuestion],
   async () => {
     if (nearBottom.value) {
       await nextTick()
@@ -62,11 +65,20 @@ watch(
         <div class="ga-empty__glow" aria-hidden="true" />
         <p class="ga-empty__eyebrow">SPEC AGENT · 全局助手</p>
         <p class="ga-empty__title">在 Spec Agent 里直接提问</p>
-        <p class="ga-empty__desc">我会真实执行项目查找、概要读取与页面导航，并在时间线里展示每一步。运行中也可以继续输入调整方向。</p>
+        <p class="ga-empty__desc">我会真实执行项目查找、概要读取与页面导航，并在时间线里展示每一步。运行中也可以继续输入调整方向</p>
         <div class="ga-empty__chips">
-          <span class="ga-empty__chip">找项目</span>
-          <span class="ga-empty__chip">读概要</span>
-          <span class="ga-empty__chip">去页面</span>
+          <button
+            v-for="suggestion in GA_EMPTY_SUGGESTIONS"
+            :key="suggestion.label"
+            type="button"
+            class="ga-empty__chip"
+            data-test="ga-empty-chip"
+            :aria-label="'填入提问：' + suggestion.prompt"
+            :title="suggestion.prompt"
+            @click="emit('suggestion', suggestion.prompt)"
+          >
+            {{ suggestion.label }}
+          </button>
         </div>
       </div>
       <AssistantMessage
@@ -75,9 +87,15 @@ watch(
         :role="message.role"
         :content="message.content"
         :created-at="message.createdAt"
+        :provider-label="message.providerLabel"
+        :model-id="message.modelId"
       />
       <div v-if="props.activities.length > 0" class="ga-activity-group" data-test="ga-activity-group">
         <ToolActivityItem v-for="activity in props.activities" :key="activity.key" :activity="activity" />
+      </div>
+      <div v-if="props.waitingQuestion" class="ga-clarify" data-test="ga-clarification" role="status">
+        <p class="ga-clarify__label">需要你补充信息</p>
+        <p class="ga-clarify__q">{{ props.waitingQuestion }}</p>
       </div>
       <div v-if="props.pendingSteer" class="ga-steer" data-test="ga-steer-pending" role="status">
         <span class="ga-steer__dot" aria-hidden="true" />
@@ -90,7 +108,7 @@ watch(
         <span class="ga-status__spinner" aria-hidden="true" />
         <span>{{ props.currentStatus }}</span>
       </div>
-      <p v-if="props.stoppedNotice && !props.running" class="ga-stopped" data-test="ga-stopped">已停止，可继续输入以换一种方式继续。</p>
+      <p v-if="props.stoppedNotice && !props.running" class="ga-stopped" data-test="ga-stopped">已停止，可继续输入以换一种方式继续</p>
       <div v-if="props.streamingText" class="ga-streaming" data-test="ga-streaming">
         <AssistantMessage role="ASSISTANT" :content="props.streamingText" />
       </div>
@@ -116,7 +134,9 @@ watch(
 .ga-empty__title { position: relative; margin: 0 0 6px; font-weight: 750; font-size: 16px; letter-spacing: -0.01em; }
 .ga-empty__desc { position: relative; margin: 0; font-size: 12.5px; color: var(--color-text-secondary); line-height: 1.65; }
 .ga-empty__chips { position: relative; display: flex; gap: 6px; margin-top: 12px; }
-.ga-empty__chip { font-size: 12px; padding: 4px 10px; border-radius: 999px; background: rgba(255,255,255,0.85); border: 1px solid var(--color-border); color: var(--color-text-secondary); box-shadow: 0 4px 12px -8px rgba(30,40,90,0.4); }
+.ga-empty__chip { font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 999px; background: rgba(255,255,255,0.85); border: 1px solid var(--color-border); color: var(--color-text-secondary); box-shadow: 0 4px 12px -8px rgba(30,40,90,0.4); cursor: pointer; }
+.ga-empty__chip:hover { color: var(--color-accent-strong); border-color: var(--color-accent); background: #fff; }
+.ga-empty__chip:focus-visible { outline: none; box-shadow: var(--focus-ring); border-color: var(--color-focus); }
 .ga-steer { display: flex; gap: 10px; margin: 10px 0; padding: 12px; border-radius: 14px; background: linear-gradient(135deg, var(--color-accent-soft), rgba(255,255,255,0.8)); border: 1px solid var(--color-accent); box-shadow: 0 10px 26px -14px rgba(90,70,200,0.5); }
 .ga-steer__dot { width: 10px; height: 10px; margin-top: 4px; border-radius: 999px; background: var(--color-accent); box-shadow: 0 0 0 5px var(--color-accent-soft); flex: none; animation: ga-pulse 1.6s ease-in-out infinite; }
 .ga-steer__body { min-width: 0; }
@@ -124,6 +144,9 @@ watch(
 .ga-steer__msg { margin: 0; font-size: 13px; color: var(--color-text); line-height: 1.55; word-break: break-word; }
 .ga-stopped { margin: 10px 0 0; padding: 8px 12px; font-size: 12.5px; color: var(--color-text-secondary); background: var(--color-surface-subtle); border: 1px solid var(--color-border); border-radius: 999px; text-align: center; }
 .ga-activity-group { margin: 4px 0; }
+.ga-clarify { margin: 10px 0 4px; padding: 10px 12px; border-radius: 12px; background: linear-gradient(135deg, var(--color-focus-soft), rgba(255,255,255,0.6)); border: 1px solid var(--color-focus); line-height: 1.55; box-shadow: 0 4px 16px -8px rgba(90,70,180,0.25); }
+.ga-clarify__label { margin: 0 0 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; color: var(--color-focus-strong); }
+.ga-clarify__q { margin: 0; font-size: 13px; color: var(--color-text); word-break: break-word; }
 .ga-status { display: flex; align-items: center; gap: 8px; margin: 8px 0; font-size: 13px; color: var(--color-text-secondary); animation: ga-fade 0.18s ease-out; }
 .ga-status__spinner { width: 14px; height: 14px; border-radius: 999px; border: 2px solid var(--color-accent-soft); border-top-color: var(--color-accent); animation: ga-spin 0.9s linear infinite; flex: none; }
 .ga-streaming { margin-top: 4px; }

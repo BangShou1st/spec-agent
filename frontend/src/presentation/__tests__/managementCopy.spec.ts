@@ -13,6 +13,10 @@ describe('managementCopy', () => {
   it('formats sizes and datetimes deterministically', () => {
     expect(formatBytes(0)).toBe('0 B')
     expect(formatBytes(2048)).toBe('2.0 KB')
+    // Zone-less input is interpreted as Asia/Shanghai wall time.
     expect(formatDateTime('2026-01-03T14:20:00')).toBe('2026-01-03 14:20')
+    // UTC instant from the backend renders in Shanghai (+8).
+    expect(formatDateTime('2026-01-03T14:20:00Z')).toBe('2026-01-03 22:20')
+    expect(formatDateTime('2026-01-03T14:20:00+08:00')).toBe('2026-01-03 14:20')
   })
 })

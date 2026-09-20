@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ApiError, GENERIC_ERROR_MESSAGE } from '@/api/client'
+import { toDisplayError } from '@/api/displayError'
 import { connectConnection, createConnection, deleteConnection, disableConnection, enableConnection, getConnection, listConnectionPrompts, listConnectionResources, listConnectionTools, listConnections, readConnectionResource, refreshConnection, testConnection, updateConnection } from '@/api/connections'
 import type { ConnectionDetail, ConnectionPromptView, ConnectionResourceContent, ConnectionResourceView, ConnectionSummary, ConnectionToolView, CreateConnectionRequest, UpdateConnectionRequest } from '@/api/connectionTypes'
 
@@ -8,12 +8,7 @@ export interface ConnectionsStoreError {
   message: string
 }
 
-function displayError(err: unknown): ConnectionsStoreError {
-  if (err instanceof ApiError) {
-    return { code: err.code, message: err.message }
-  }
-  return { code: 'UNKNOWN_ERROR', message: GENERIC_ERROR_MESSAGE }
-}
+const displayError: (err: unknown) => ConnectionsStoreError = toDisplayError
 
 /**
  * Saved Connection and MCP primitive reads. Never touches workspace or skills.

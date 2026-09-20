@@ -130,16 +130,16 @@ function edgeRouteLabel(routeId: string): string {
             : selectedEdge.kind === 'relation' ? '语义关系' : '共享路线边' }}
         </h3>
         <p v-if="selectedEdge.kind === 'relation'" class="meta-text">
-          手动创建的节点连接（可在图上拖线新增，撤销可移除）。
+          手动创建的节点连接（可在图上拖线新增，撤销可移除）
         </p>
-        <p v-else class="meta-text">该物理边不会自动猜测或切换聚焦路线。</p>
+        <p v-else class="meta-text">该物理边不会自动猜测或切换聚焦路线</p>
         <template v-if="selectedEdge.kind !== 'relation'">
           <h4 class="node-inspector__heading">路线成员</h4>
           <ul class="node-inspector__options">
             <li v-for="routeId in selectedEdge.routeIds" :key="routeId" class="node-inspector__option">
               {{ edgeRouteLabel(routeId) }}
             </li>
-            <li v-if="selectedEdge.routeIds.length === 0" class="muted">暂无路线成员。</li>
+            <li v-if="selectedEdge.routeIds.length === 0" class="muted">暂无路线成员</li>
           </ul>
         </template>
         <details class="node-inspector__secondary">

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useGraphUiStore } from '@/stores/graphUiStore'
+import { getVisibleRouteIds } from '@/graph/graphProjection'
 import type { GraphWorkspaceView } from '@/api/types'
 
 const PROJECT_ID = 'p1'
@@ -59,6 +60,7 @@ function graphView(overrides: Partial<GraphWorkspaceView> = {}): GraphWorkspaceV
         purpose: null,
         options: [],
         allowFreeAnswer: true,
+    allowMultiSelect: false,
         createdAt: '2026-08-18T00:00:00Z',
         kind: 'INTERACTION',
         subtype: 'QUESTION',
@@ -76,6 +78,7 @@ function graphView(overrides: Partial<GraphWorkspaceView> = {}): GraphWorkspaceV
         purpose: null,
         options: [],
         allowFreeAnswer: true,
+    allowMultiSelect: false,
         createdAt: '2026-08-18T00:00:00Z',
         kind: 'INTERACTION',
         subtype: 'QUESTION',
@@ -93,6 +96,7 @@ function graphView(overrides: Partial<GraphWorkspaceView> = {}): GraphWorkspaceV
         purpose: null,
         options: [],
         allowFreeAnswer: true,
+    allowMultiSelect: false,
         createdAt: '2026-08-18T00:00:00Z',
         kind: 'INTERACTION',
         subtype: 'QUESTION',
@@ -110,6 +114,7 @@ function graphView(overrides: Partial<GraphWorkspaceView> = {}): GraphWorkspaceV
         purpose: null,
         options: [],
         allowFreeAnswer: true,
+    allowMultiSelect: false,
         createdAt: '2026-08-18T00:00:00Z',
         kind: 'INTERACTION',
         subtype: 'QUESTION',
@@ -207,26 +212,93 @@ describe('graph ui store', () => {
     expect(store.lifecycleFilters.archived).toBe(false)
   })
 
-  it('isolate is visibility-only and show all preserves the explicit Focus route', () => {
+  it('isolate 只看这条路线 只显示这一条路线（连运行路线一起隐藏）', () => {
+    const store = useGraphUiStore()
+    store.reconcile(graphView())
+    store.isolateRoute('rFocus')
+    // 镜头是显式单路线意图：它压过 Active 的强制可见，也压过生命周期筛选。
+    expect(store.isolatedRouteId).toBe('rFocus')
+    expect(getVisibleRouteIds(graphView(), store)).toEqual(new Set(['rFocus']))
+    // 镜头不写持久化的 display state：退出时视图精确还原。
+    expect(store.routeDisplayStates).toEqual({})
+  })
+
+  it('isolate 连续两次都生效（第二次不再被运行路线挡住）', () => {
+    const store = useGraphUiStore()
+    const view = graphView()
+    store.reconcile(view)
+
+    store.isolateRoute(ACTIVE_ROUTE_ID)
+    expect(getVisibleRouteIds(view, store)).toEqual(new Set([ACTIVE_ROUTE_ID]))
+
+    // 旧实现把 active 排除在隐藏之外 → 第二次只看一条非运行路线时，
+    // 运行路线仍留在画布上，看起来"没生效"。
+    store.isolateRoute('rFocus')
+    expect(getVisibleRouteIds(view, store)).toEqual(new Set(['rFocus']))
+    expect(store.focusRouteId).toBe('rFocus')
+  })
+
+  it('isolate 带走阅读聚焦，绝不留下指向不可见路线的 Focus', () => {
+    const store = useGraphUiStore()
+    store.reconcile(graphView())
+    store.setFocusRoute(ACTIVE_ROUTE_ID)
+    store.isolateRoute('rFocus')
+    expect(store.focusRouteId).toBe('rFocus')
+    // 运行路线此时不可见，但 store.activeRouteId（Runtime 事实）不受影响。
+    expect(store.activeRouteId).toBe(ACTIVE_ROUTE_ID)
+  })
+
+  it('退出镜头：clearIsolation 只清镜头，showAll 顺带清手工 dim/hide', () => {
     const store = useGraphUiStore()
     store.reconcile(graphView())
     store.setFocusRoute('rFocus')
-    store.isolateRoute('rFocus', [ACTIVE_ROUTE_ID, 'rFocus', 'rArchived'])
+    store.isolateRoute('rFocus')
+    store.clearIsolation()
+    expect(store.isolatedRouteId).toBeNull()
     expect(store.focusRouteId).toBe('rFocus')
-    expect(store.routeDisplayStates[ACTIVE_ROUTE_ID]).toBeUndefined()
-    expect(store.routeDisplayStates.rArchived).toBe('hidden')
+
+    store.isolateRoute('rFocus')
+    store.dimRoute('rArchived')
     store.showAll()
-    expect(store.focusRouteId).toBe('rFocus')
+    expect(store.isolatedRouteId).toBeNull()
     expect(store.routeDisplayStates).toEqual({})
+    expect(store.focusRouteId).toBe('rFocus')
+  })
+
+  it('reconcile 只在路线真的消失时清掉镜头，不因筛选而清', () => {
+    const store = useGraphUiStore()
+    store.reconcile(graphView())
+    store.isolateRoute('rFocus')
+    store.setLifecycleFilter('archived', true)
+    store.reconcile(graphView())
+    expect(store.isolatedRouteId).toBe('rFocus')
+    // 镜头中的路线即使被筛选关闭，Focus 也由镜头保住（用户明确要求看它）。
+    expect(store.focusRouteId).toBe('rFocus')
+
+    store.reconcile({
+      activeRouteId: ACTIVE_ROUTE_ID,
+      routes: graphView().routes.filter((route) => route.id !== 'rFocus'),
+      nodes: graphView().nodes,
+    })
+    expect(store.isolatedRouteId).toBeNull()
+    expect(store.focusRouteId).toBeNull()
+  })
+
+  it('切换项目清掉镜头', () => {
+    const store = useGraphUiStore()
+    store.isolateRoute('rFocus')
+    store.initProject('p2')
+    expect(store.isolatedRouteId).toBeNull()
   })
 
   it('reset view restores lifecycle filter defaults too', () => {
     const store = useGraphUiStore()
-    store.setLifecycleFilter('archived', false)
+    store.setLifecycleFilter('archived', true)
     store.setLifecycleFilter('deleted', true)
     store.dimRoute('rArchived')
     store.resetView()
-    expect(store.lifecycleFilters.archived).toBe(true)
+    // 归档现在是"收起路线"的唯一动作 → 默认隐藏。
+    expect(store.lifecycleFilters.archived).toBe(false)
     expect(store.lifecycleFilters.deleted).toBe(false)
     expect(store.focusRouteId).toBeNull()
     expect(store.routeDisplayStates).toEqual({})

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { buildThreeNodeLineage, closeFloatingWorkspaceWindows, createProject, fitGraph, forkFromNode, openRouteMore } from './helpers'
+import { buildThreeNodeLineage, closeFloatingWorkspaceWindows, createProject, fitGraph, forkFromNode } from './helpers'
 
 test('fork from a focused visual node has no route picker and preserves history', async ({ page }) => {
   await createProject(page, 'E2E Fork Graph Flow')
@@ -43,8 +43,8 @@ test('shared-node fork requires Focus and never renders a source picker', async 
 
   const cards = page.locator('[data-route-id]')
   const nonActive = cards.filter({ hasNot: page.getByTestId('active-route') }).first()
-  await openRouteMore(nonActive)
-  await nonActive.getByTestId('focus-route').click()
+  // 点击路线卡主体即设置阅读聚焦（阅读上下文 = 该路线）。
+  await nonActive.getByTestId('route-primary').click()
   await closeFloatingWorkspaceWindows(page)
   await fitGraph(page)
 
@@ -69,9 +69,9 @@ test('ambiguous shared-node fork is blocked until Current View is selected', asy
 
   const cards = page.locator('[data-route-id]')
   const nonActive = cards.filter({ hasNot: page.getByTestId('active-route') }).first()
-  await openRouteMore(nonActive)
-  await nonActive.getByTestId('focus-route').click()
-  await nonActive.getByTestId('focus-route').click()
+  // 先聚焦再清除：点击画布空白处清除阅读聚焦，使共享节点的来源路线再次变得不明确。
+  await nonActive.getByTestId('route-primary').click()
+  await page.locator('.vue-flow__pane').dispatchEvent('click')
   await closeFloatingWorkspaceWindows(page)
   await fitGraph(page)
   const firstNode = page.locator('[data-test="graph-question-node"]').first()

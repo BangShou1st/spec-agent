@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { projectGraph, getNodeRouteMembership, getLineageEdgeMembership, selectPrimaryAnswer, getVisibleRouteIds } from '@/graph/graphProjection'
+import { projectGraph, getNodeRouteMembership, getLineageEdgeMembership, selectPrimaryAnswer, getVisibleRouteIds, estimateNodeCardHeight } from '@/graph/graphProjection'
 import type { GraphWorkspaceNodeView, GraphWorkspaceRelationView, GraphWorkspaceView, RouteLifecycleStatus } from '@/api/types'
 import { HORIZONTAL_GAP, VERTICAL_GAP } from '@/graph/graphLayout'
 import type { GraphPosition } from '@/graph/graphTypes'
@@ -21,6 +21,7 @@ function node(id: string, parentNodeId: string | null, supersedesNodeId: string 
     purpose: null,
     options: [],
     allowFreeAnswer: true,
+    allowMultiSelect: false,
     createdAt: '2026-08-18T00:00:00Z',
     kind: 'INTERACTION' as const,
     subtype: 'QUESTION',
@@ -52,6 +53,7 @@ function answer(routeId: string, nodeId: string, freeText = 'answer ' + routeId 
     routeId,
     nodeId,
     selectedOptionId: null,
+          selectedOptionIds: null,
     freeText,
     createdAt: '2026-08-18T00:00:00Z',
   }
@@ -102,6 +104,7 @@ function uiState(overrides: Partial<{
   focusRouteId: string | null
   lifecycleFilters: Record<RouteLifecycleStatus, boolean>
   routeDisplayStates: Record<string, 'normal' | 'dimmed' | 'hidden'>
+  isolatedRouteId: string | null
   expandedNodeIds: string[]
   showRelationLayer: boolean
 }> = {}) {
@@ -109,6 +112,7 @@ function uiState(overrides: Partial<{
     focusRouteId: null,
     lifecycleFilters: { ...DEFAULT_FILTERS },
     routeDisplayStates: {},
+    isolatedRouteId: null,
     expandedNodeIds: [],
     showRelationLayer: false,
     ...overrides,
@@ -143,20 +147,88 @@ describe('graph projection', () => {
       activeNodeId: 'c',
       uiState: uiState(),
       savedPositions: {},
-      pending: {
+      pendings: [{
         routeId: ACTIVE_ROUTE_ID,
         sourceNodeId: 'c',
         runId: 'run-pending',
         status: 'RUNNING',
         phase: 'DECIDING',
         message: null,
-      },
+      }],
     })
     const pending = result.nodes.find((candidate) => candidate.id === 'pending:run-pending')
     expect(pending).toBeDefined()
     expect((pending?.data as SpecAgentGraphNodeData).runtimeStatus).toBe('RUNNING')
     expect((pending?.data as SpecAgentGraphNodeData).isLatest).toBe(true)
     expect(result.edges.find((edge) => edge.id === 'c->pending:run-pending')).toBeDefined()
+  })
+
+  it('projects several concurrent runs as separate pending cards', () => {
+    const result = projectGraph({
+      view: fixture(),
+      activeNodeId: 'c',
+      uiState: uiState(),
+      savedPositions: {},
+      pendings: [
+        {
+          routeId: ACTIVE_ROUTE_ID,
+          sourceNodeId: 'c',
+          runId: 'run-a',
+          status: 'RUNNING',
+          phase: 'STATE_UPDATING',
+          message: null,
+          operation: 'DRAFT_QUESTION',
+        },
+        {
+          routeId: ROUTE_B_ID,
+          sourceNodeId: null,
+          runId: 'run-b',
+          status: 'RUNNING',
+          phase: 'DECIDING',
+          message: null,
+          operation: 'REGENERATE_NODE',
+        },
+      ],
+    })
+    const ids = result.nodes.map((node) => node.id)
+    expect(ids).toContain('pending:run-a')
+    expect(ids).toContain('pending:run-b')
+    // Each card carries its own runtime snapshot.
+    const cardA = result.nodes.find((node) => node.id === 'pending:run-a')
+    const cardB = result.nodes.find((node) => node.id === 'pending:run-b')
+    expect((cardA?.data as SpecAgentGraphNodeData).runtimePhase).toBe('STATE_UPDATING')
+    expect((cardB?.data as SpecAgentGraphNodeData).runtimePhase).toBe('DECIDING')
+  })
+
+  it('overlays runtime progress onto an existing canonical node', () => {
+    const result = projectGraph({
+      view: fixture(),
+      activeNodeId: 'c',
+      uiState: uiState(),
+      savedPositions: {},
+      runtimeByNode: {
+        c: {
+          status: 'RUNNING',
+          phase: 'STATE_UPDATED',
+          progress: {
+            summary: '需求要点整理完成，共 2 条',
+            steps: [{
+              sequence: 1,
+              phase: 'STATE_UPDATED',
+              event: 'PROCESS_NOTE',
+              summary: '需求要点整理完成，共 2 条',
+              items: ['要点一'],
+              at: '2026-01-01T00:00:00.000Z',
+            }],
+          },
+        },
+      },
+    })
+    const node = result.nodes.find((candidate) => candidate.id === 'c')
+    const data = node?.data as SpecAgentGraphNodeData
+    expect(data.runtimeStatus).toBe('RUNNING')
+    expect(data.runtimeProgress?.summary).toBe('需求要点整理完成，共 2 条')
+    expect(data.runtimeProgress?.steps[0].items).toEqual(['要点一'])
   })
 
   it('renders the a->b lineage edge once with route memberships A/B/C', () => {
@@ -318,8 +390,8 @@ describe('graph projection', () => {
 
   it('selectPrimaryAnswer: canonical Answer is stable across focus routes (never route-specific selection)', () => {
     const answers = [
-      { nodeId: 'x', routeId: ACTIVE_ROUTE_ID, selectedOptionId: null, selectedOptionLabel: null, freeText: 'shared', isPrimary: false },
-      { nodeId: 'x', routeId: ROUTE_B_ID, selectedOptionId: null, selectedOptionLabel: null, freeText: 'shared', isPrimary: false },
+      { nodeId: 'x', routeId: ACTIVE_ROUTE_ID, selectedOptionId: null, selectedOptionLabel: null, selectedOptionIds: null, freeText: 'shared', isPrimary: false },
+      { nodeId: 'x', routeId: ROUTE_B_ID, selectedOptionId: null, selectedOptionLabel: null, selectedOptionIds: null, freeText: 'shared', isPrimary: false },
     ]
     // 不管 focus 在哪条路线，返回的始终是同一个 canonical 内容。
     expect(selectPrimaryAnswer('x', answers, ROUTE_B_ID, ACTIVE_ROUTE_ID, [])?.freeText).toBe('shared')
@@ -329,8 +401,8 @@ describe('graph projection', () => {
 
   it('selectPrimaryAnswer: returns the single canonical Answer identity, ignoring the focus route', () => {
     const answers = [
-      { nodeId: 'x', routeId: ACTIVE_ROUTE_ID, selectedOptionId: null, selectedOptionLabel: null, freeText: 'canonical', isPrimary: false },
-      { nodeId: 'x', routeId: ROUTE_B_ID, selectedOptionId: null, selectedOptionLabel: null, freeText: 'other', isPrimary: false },
+      { nodeId: 'x', routeId: ACTIVE_ROUTE_ID, selectedOptionId: null, selectedOptionLabel: null, selectedOptionIds: null, freeText: 'canonical', isPrimary: false },
+      { nodeId: 'x', routeId: ROUTE_B_ID, selectedOptionId: null, selectedOptionLabel: null, selectedOptionIds: null, freeText: 'other', isPrimary: false },
     ]
     // 即使 focus=B，返回的仍是同一 canonical 内容（全局唯一不可变身份）。
     expect(selectPrimaryAnswer('x', answers, ROUTE_B_ID, ACTIVE_ROUTE_ID, [])?.freeText).toBe('canonical')
@@ -339,7 +411,7 @@ describe('graph projection', () => {
 
   it('selectPrimaryAnswer: single-route (non-shared) returns the route answer even without focus', () => {
     const answers = [
-      { nodeId: 'x', routeId: ACTIVE_ROUTE_ID, selectedOptionId: 'opt-a', selectedOptionLabel: 'A', freeText: null, isPrimary: false },
+      { nodeId: 'x', routeId: ACTIVE_ROUTE_ID, selectedOptionId: 'opt-a', selectedOptionLabel: 'A', selectedOptionIds: null, freeText: null, isPrimary: false },
     ]
     // 唯一 route，no focus → primary 来自该 route，不借用 active fallback。
     const primary = selectPrimaryAnswer('x', answers, null, ACTIVE_ROUTE_ID, [])
@@ -350,8 +422,8 @@ describe('graph projection', () => {
     // 最终模型：一个 canonical Question 全局只有一个 immutable Answer，
     // 多条 route 的引用享有同一内容。无 focus 时直接展示首个引用。
     const answers = [
-      { nodeId: 'x', routeId: ACTIVE_ROUTE_ID, selectedOptionId: 'opt-a', selectedOptionLabel: 'A', freeText: 'same', isPrimary: false },
-      { nodeId: 'x', routeId: ROUTE_B_ID, selectedOptionId: 'opt-a', selectedOptionLabel: 'A', freeText: 'same', isPrimary: false },
+      { nodeId: 'x', routeId: ACTIVE_ROUTE_ID, selectedOptionId: 'opt-a', selectedOptionLabel: 'A', selectedOptionIds: null, freeText: 'same', isPrimary: false },
+      { nodeId: 'x', routeId: ROUTE_B_ID, selectedOptionId: 'opt-a', selectedOptionLabel: 'A', selectedOptionIds: null, freeText: 'same', isPrimary: false },
     ]
     const primary = selectPrimaryAnswer('x', answers, null, ACTIVE_ROUTE_ID, [])
     expect(primary?.routeId).toBe(ACTIVE_ROUTE_ID)
@@ -391,6 +463,7 @@ describe('graph projection', () => {
       purpose: null,
       options: [],
       allowFreeAnswer: false,
+    allowMultiSelect: false,
       createdAt: '2026-01-01T00:00:00Z',
       kind: 'KNOWLEDGE',
       subtype: 'IDEA',
@@ -517,6 +590,32 @@ describe('graph projection', () => {
     expect(rel).toBeUndefined()
   })
 
+  it('聚焦另一条路线时，它的未答末端也可直接回答（多路线独立）', () => {
+    // 默认视图（无 Focus）：可回答节点仍然只有运行路线的当前节点。
+    const plain = project()
+    expect(plain.nodes.find((node) => node.id === 'c')?.data?.canAnswer).toBe(true)
+    expect(plain.nodes.find((node) => node.id === 'd')?.data?.canAnswer).toBe(false)
+
+    // 显式聚焦 B：B 的未答末端 d 变成可回答，答案写入 B（提交带显式路线）。
+    const focused = project({ uiState: uiState({ focusRouteId: ROUTE_B_ID }) })
+    const d = focused.nodes.find((node) => node.id === 'd')
+    expect(d?.data?.canAnswer).toBe(true)
+    expect(d?.data?.readingRouteId).toBe(ROUTE_B_ID)
+    expect(d?.data?.isTipOfReadingRoute).toBe(true)
+    // 运行路线的当前节点语义不受影响。
+    expect(focused.nodes.find((node) => node.id === 'c')?.data?.canAnswer).toBe(true)
+  })
+
+  it('已答的聚焦末端不再可回答，绝不制造第二个作答入口', () => {
+    // B 的末端 d 已被回答（写入 B）后，聚焦 B 也不应再出现作答表单。
+    const view = project({ uiState: uiState({ focusRouteId: ROUTE_B_ID }) })
+    const answered = project({
+      uiState: uiState({ focusRouteId: ROUTE_B_ID }),
+    })
+    expect(answered.nodes.find((node) => node.id === 'b')?.data?.canAnswer).toBe(false)
+    expect(view.nodes.find((node) => node.id === 'b')?.data?.isTipOfReadingRoute).toBe(false)
+  })
+
   it('getVisibleRouteIds honors lifecycle filters and manual hide', () => {
     const view = fixture()
     const visible = getVisibleRouteIds(view, {
@@ -526,6 +625,63 @@ describe('graph projection', () => {
     expect(visible.has(ACTIVE_ROUTE_ID)).toBe(true)
     expect(visible.has(ROUTE_B_ID)).toBe(false)
     expect(visible.has(ROUTE_C_ID)).toBe(false)
+  })
+})
+
+/**
+ * 只看这条路线（isolate lens）。
+ *
+ * 回归点：旧实现把"运行路线永不被隐藏"当成了硬规则，于是对非运行路线做
+ * "只看"，运行路线的节点依然留在画布上 —— 连续第二次"只看"看起来毫无效果。
+ */
+describe('只看这条路线 (isolate lens)', () => {
+  it('renders exactly one route and removes the running route from the canvas', () => {
+    const result = project({ uiState: uiState({ isolatedRouteId: ROUTE_B_ID }) })
+    const ids = result.nodes.map((node) => node.id).sort()
+    // rB = a -> b -> d：共享前缀 a/b 保留，只有 rB 的 d 保留。
+    expect(ids).toEqual(['a', 'b', 'd'])
+    // 运行路线 rA 的独占节点 c 必须离开画布。
+    expect(ids).not.toContain('c')
+    expect(result.nodes.find((node) => node.id === 'a')?.data?.visibleRouteIds).toEqual([ROUTE_B_ID])
+  })
+
+  it('switching the lens from the running route to another route actually switches', () => {
+    const view = fixture()
+    const runningRouteLens = getVisibleRouteIds(view, {
+      lifecycleFilters: { ...DEFAULT_FILTERS },
+      routeDisplayStates: {},
+      isolatedRouteId: ACTIVE_ROUTE_ID,
+    })
+    expect([...runningRouteLens]).toEqual([ACTIVE_ROUTE_ID])
+
+    const secondLens = getVisibleRouteIds(view, {
+      lifecycleFilters: { ...DEFAULT_FILTERS },
+      routeDisplayStates: {},
+      isolatedRouteId: ROUTE_B_ID,
+    })
+    expect([...secondLens]).toEqual([ROUTE_B_ID])
+  })
+
+  it('the lens is explicit intent: it outranks lifecycle filters and manual hide', () => {
+    const view = fixture()
+    const visible = getVisibleRouteIds(view, {
+      lifecycleFilters: { ...DEFAULT_FILTERS, archived: false },
+      routeDisplayStates: { [ROUTE_C_ID]: 'hidden' },
+      isolatedRouteId: ROUTE_C_ID,
+    })
+    expect([...visible]).toEqual([ROUTE_C_ID])
+  })
+
+  it('without a lens every previous visibility rule still holds', () => {
+    const view = fixture()
+    const visible = getVisibleRouteIds(view, {
+      lifecycleFilters: { ...DEFAULT_FILTERS },
+      routeDisplayStates: {},
+      isolatedRouteId: null,
+    })
+    expect(visible.has(ACTIVE_ROUTE_ID)).toBe(true)
+    expect(visible.has(ROUTE_B_ID)).toBe(true)
+    expect(visible.has(ROUTE_D_ID)).toBe(true)
   })
 })
 
@@ -791,5 +947,94 @@ describe('adaptive edge routing in the canonical projection', () => {
     const bToD = result.edges.find((e) => e.id === 'b->d')!
     expect(bToD.sourceHandle).toBe('source-top')
     expect(bToD.targetHandle).toBe('target-bottom')
+  })
+})
+
+describe('estimateNodeCardHeight (first-layout fallback before measurement)', () => {
+  it('grows with the rendered line count of a note', () => {
+    const short = estimateNodeCardHeight(node('n1', null))
+    const long = estimateNodeCardHeight({
+      ...node('n2', null),
+      kind: 'KNOWLEDGE' as const,
+      subtype: 'NOTE',
+      question: '',
+      purpose: null,
+      content: { text: '内容'.repeat(300) },
+    })
+    expect(long).toBeGreaterThan(short)
+    expect(long).toBeGreaterThan(500)
+  })
+
+  it('stays in the measured ballpark for a real long note', () => {
+    // 实测样本：482 字 / 20 个换行的笔记在 320px 卡里渲染 802px 高。
+    const text = Array.from({ length: 20 }, (_, i) =>
+      `第 ${i + 1} 行说明：这是一段用于校准估算的笔记内容`).join('\n')
+    const estimate = estimateNodeCardHeight({
+      ...node('n3', null),
+      kind: 'KNOWLEDGE' as const,
+      subtype: 'NOTE',
+      question: '',
+      purpose: null,
+      content: { text },
+    })
+    expect(estimate).toBeGreaterThan(802 * 0.7)
+    expect(estimate).toBeLessThan(802 * 1.35)
+  })
+
+  it('counts explicit line breaks, not just character count', () => {
+    const flat = estimateNodeCardHeight({
+      ...node('n1', null),
+      kind: 'KNOWLEDGE' as const,
+      subtype: 'NOTE',
+      question: '',
+      purpose: null,
+      content: { text: 'a'.repeat(120) },
+    })
+    const broken = estimateNodeCardHeight({
+      ...node('n2', null),
+      kind: 'KNOWLEDGE' as const,
+      subtype: 'NOTE',
+      question: '',
+      purpose: null,
+      content: { text: Array.from({ length: 12 }, () => 'a'.repeat(10)).join('\n') },
+    })
+    expect(broken).toBeGreaterThan(flat)
+  })
+
+  it('reserves room for options and the free-answer box on interaction nodes', () => {
+    const bare = estimateNodeCardHeight(node('n1', null))
+    const withInputs = estimateNodeCardHeight({
+      ...node('n2', null),
+      allowFreeAnswer: true,
+    allowMultiSelect: false,
+      options: [
+        { id: 'o1', label: 'A', impact: null, recommended: false },
+        { id: 'o2', label: 'B', impact: null, recommended: false },
+        { id: 'o3', label: 'C', impact: null, recommended: false },
+      ],
+    })
+    expect(withInputs).toBeGreaterThan(bare)
+    expect(withInputs - bare).toBeGreaterThanOrEqual(90)
+  })
+
+  it('stays within sane bounds for empty and huge content', () => {
+    const empty = estimateNodeCardHeight({
+      ...node('n1', null),
+      kind: 'KNOWLEDGE' as const,
+      subtype: 'NOTE',
+      question: '',
+      purpose: null,
+      content: {},
+    })
+    const huge = estimateNodeCardHeight({
+      ...node('n2', null),
+      kind: 'KNOWLEDGE' as const,
+      subtype: 'NOTE',
+      question: '',
+      purpose: null,
+      content: { text: 'x'.repeat(50000) },
+    })
+    expect(empty).toBeGreaterThanOrEqual(110)
+    expect(huge).toBeLessThanOrEqual(1400)
   })
 })

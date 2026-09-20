@@ -71,10 +71,22 @@ class GlobalAssistantSliceAIntegrationTest {
         assertThat(stored.get(2).content()).isEqualTo("second");
     }
     @Test
+    void assistantMessageCarriesModelAttribution() {
+        GlobalAssistantThread thread = conversations.createThread();
+        conversations.appendAssistantMessage(thread.id(), "attributed", null, "OpenCode Zen", "mimo-v2.5-free");
+        conversations.appendAssistantMessage(thread.id(), "legacy", null);
+        List<GlobalAssistantMessage> stored = conversations.listMessages(thread.id());
+        assertThat(stored.get(0).providerLabel()).isEqualTo("OpenCode Zen");
+        assertThat(stored.get(0).modelId()).isEqualTo("mimo-v2.5-free");
+        // Legacy path and user messages stay un-attributed.
+        assertThat(stored.get(1).providerLabel()).isNull();
+        assertThat(stored.get(1).modelId()).isNull();
+    }
+    @Test
     void workingStateCasFailsClosedOnConflict() {
         GlobalAssistantThread thread = conversations.createThread();
         conversations.writeWorkingState(thread.id(),
-                new GlobalAssistantWorkingState("find mail", List.of(), null, null, List.of()), 0);
+                new GlobalAssistantWorkingState("find mail", List.of(), null, null, List.of(), null), 0);
         assertThat(conversations.readWorkingState(thread.id()).goal()).isEqualTo("find mail");
         assertThatThrownBy(() -> conversations.writeWorkingState(thread.id(),
                         GlobalAssistantWorkingState.empty(), 0))

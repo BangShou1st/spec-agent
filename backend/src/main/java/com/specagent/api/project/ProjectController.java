@@ -1,6 +1,10 @@
 package com.specagent.api.project;
 
-import com.specagent.api.common.ApiException;
+import com.specagent.application.project.ActiveProjectStateResponse;
+import com.specagent.application.project.ProjectResponse;
+import com.specagent.application.project.ProjectRuntimeQueryService;
+import com.specagent.common.ApiException;
+import com.specagent.project.DuplicateProjectTitleException;
 import com.specagent.project.Project;
 import com.specagent.project.ProjectDeletionService;
 import com.specagent.project.ProjectService;
@@ -10,8 +14,10 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -42,8 +48,27 @@ public class ProjectController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ProjectResponse createProject(@Valid @RequestBody CreateProjectRequest request) {
-        Project project = projectService.createProject(request.title());
-        return ProjectResponse.from(project);
+        try {
+            projectService.requireTitleAvailable(request.title());
+            Project project = projectService.createProject(request.title());
+            return ProjectResponse.from(project);
+        } catch (DuplicateProjectTitleException ex) {
+            throw ApiException.conflict("PROJECT_TITLE_ALREADY_EXISTS", "Project title already exists");
+        }
+    }
+
+    /** Renames a project; route state, answers and history stay untouched. */
+    @PutMapping("/{projectId}/title")
+    public ProjectResponse renameProject(@PathVariable UUID projectId,
+                                         @Valid @RequestBody RenameProjectRequest request) {
+        try {
+            projectService.requireTitleAvailable(request.title(), projectId);
+            return ProjectResponse.from(projectService.renameProject(projectId, request.title()));
+        } catch (DuplicateProjectTitleException ex) {
+            throw ApiException.conflict("PROJECT_TITLE_ALREADY_EXISTS", "Project title already exists");
+        } catch (IllegalArgumentException ex) {
+            throw ApiException.notFound("PROJECT_NOT_FOUND", "Project not found");
+        }
     }
 
     @GetMapping("/{projectId}")
@@ -54,8 +79,9 @@ public class ProjectController {
     }
 
     @GetMapping
-    public List<ProjectSummaryResponse> listProjects() {
-        return projectService.listProjects().stream()
+    public List<ProjectSummaryResponse> listProjects(
+            @RequestParam(name = "title", required = false) String title) {
+        return projectService.listProjects(title).stream()
                 .map(ProjectSummaryResponse::from)
                 .toList();
     }

@@ -14,6 +14,7 @@ from pydantic import ValidationError
 from spec_agent_brain.contracts.decisions import (
     AgentV2ResponseEnvelope,
     AgentV3ResponseEnvelope,
+    ObservationView,
     validate_v3_response_for_request,
 )
 from spec_agent_brain.contracts.inputs import parse_request_envelope
@@ -243,6 +244,32 @@ def test_fake_model_constants_match_golden_fixtures():
     assert json.loads(DECISION_OUTPUT) == _load("fake-model-decision-output.json")
     assert json.loads(ARTIFACT_GENERATION_OUTPUT) == _load(
         "fake-model-artifact-output.json")
+
+
+def test_observation_entries_shaped_like_objects_are_coerced_to_strings():
+    # With longer contexts the model sometimes mimics the observation entries
+    # it was shown and emits objects instead of strings. Reflection entries
+    # are not a trust boundary, so the contract coerces them deterministically
+    # instead of failing the whole DECISION cycle as brain_unavailable.
+    view = ObservationView.model_validate({
+        "known": [
+            {"sourceRef": "answer:28f1", "excerpt": "用户要做技术设计评审"},
+            {"source": "snapshot.availableSkills（truncated: false）"},
+            "plain string stays untouched",
+        ],
+        "unknowns": [{"question": "用户想要哪种承载形式？"}],
+        "conflicts": [],
+        "risks": [],
+    })
+    assert view.known[0] == "answer:28f1: 用户要做技术设计评审"
+    assert view.known[1] == "snapshot.availableSkills（truncated: false）"
+    assert view.known[2] == "plain string stays untouched"
+    assert view.unknowns[0] == "用户想要哪种承载形式？"
+
+
+def test_observation_entry_object_without_text_content_is_rejected():
+    with pytest.raises(ValidationError):
+        ObservationView.model_validate({"known": [{"unrelated": 1}]})
 
 
 # ---------------------------------------------------------------------------

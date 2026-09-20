@@ -52,6 +52,7 @@ vi.mock('@/api/routes', () => ({
   getRouteLineage: vi.fn(),
   regenerateNode: vi.fn(),
   restoreRoute: vi.fn(),
+  startRouteFromNode: vi.fn(),
 }))
 
 vi.mock('@/api/spec', () => ({
@@ -62,11 +63,12 @@ vi.mock('@/api/spec', () => ({
 vi.mock('@/api/graphCommands', () => ({
   acceptProposal: vi.fn(),
   appendContinuation: vi.fn(),
-  attachResource: vi.fn(),
+  connectFloatingNode: vi.fn(),
   createFloatingDraftNode: vi.fn(),
   createRelation: vi.fn(),
   createNodeQuery: vi.fn(),
   createRootDraftNode: vi.fn(),
+  disconnectNode: vi.fn(),
   getNodeQueryResult: vi.fn(),
   getUndoRedoAvailability: vi.fn(),
   listProposals: vi.fn(),
@@ -95,6 +97,7 @@ import {
   forkNode as apiForkNode,
   getRouteLineage,
   reanswerNode as apiReanswerNode,
+  startRouteFromNode as apiStartRouteFromNode,
 } from '@/api/routes'
 import { listRouteSpecs } from '@/api/spec'
 import {
@@ -108,6 +111,7 @@ import {
   getUndoRedoAvailability,
   listProposals as apiListProposals,
   rejectProposal as apiRejectProposal,
+  undoGraphOperation as apiUndoGraphOperation,
 } from '@/api/graphCommands'
 
 const mockedGetProject = vi.mocked(getProject)
@@ -122,6 +126,7 @@ const mockedGetRouteLineage = vi.mocked(getRouteLineage)
 const mockedActivateRoute = vi.mocked(apiActivateRoute)
 const mockedForkNode = vi.mocked(apiForkNode)
 const mockedReanswerNode = vi.mocked(apiReanswerNode)
+const mockedStartRouteFromNode = vi.mocked(apiStartRouteFromNode)
 const mockedListRouteSpecs = vi.mocked(listRouteSpecs)
 const mockedAppendContinuation = vi.mocked(apiAppendContinuation)
 const mockedCreateRootDraftNode = vi.mocked(createRootDraftNode)
@@ -133,6 +138,7 @@ const mockedGetNodeQueryResult = vi.mocked(apiGetNodeQueryResult)
 const mockedAcceptProposal = vi.mocked(apiAcceptProposal)
 const mockedRejectProposal = vi.mocked(apiRejectProposal)
 const mockedListProposals = vi.mocked(apiListProposals)
+const mockedUndoGraphOperation = vi.mocked(apiUndoGraphOperation)
 
 describe('workspaceStore', () => {
   beforeEach(() => {
@@ -214,6 +220,15 @@ describe('workspaceStore', () => {
     mockedGetAgentRun.mockResolvedValue(view)
   }
 
+  /** GraphWorkspaceRouteView fixture built on the shared route factory. */
+  function graphRoute(overrides: Partial<GraphWorkspaceRouteView>): GraphWorkspaceRouteView {
+    return {
+      ...makeRoute(),
+      ...overrides,
+      lineageNodeIds: overrides.lineageNodeIds ?? [],
+    } as GraphWorkspaceRouteView
+  }
+
   /** Wires the run mocks so one draft run reaches 'failed'. */
   function mockDraftRunFailure(): void {
     mockedCreateAgentRun.mockResolvedValue({
@@ -283,10 +298,10 @@ describe('workspaceStore', () => {
     const ok = await store.draftQuestion()
 
     expect(ok).toBe(true)
-    expect(mockedCreateAgentRun).toHaveBeenCalledWith('p1', { operation: 'DRAFT_QUESTION' })
+    expect(mockedCreateAgentRun).toHaveBeenCalledWith('p1', { operation: 'DRAFT_QUESTION', sourceRouteId: null })
     expect(mockedGetActiveState.mock.calls.length).toBe(readCallsBefore + 1)
     expect(store.activeState?.activeNode?.question).toBe('First drafted question')
-    expect(store.feedback).toBe('问题已起草。')
+    expect(store.feedback).toBe('问题已起草')
   })
 
   it('keeps an in-flight draft projection bound to a real active route', async () => {
@@ -338,6 +353,93 @@ describe('workspaceStore', () => {
     expect(store.error).toMatchObject({ code: 'ACTIVE_ROUTE_REQUIRED' })
   })
 
+  it('drafts on an explicit route by binding the run to that route', async () => {
+    // 显式路线不是 Active：run 必须携带 sourceRouteId，整个生命周期绑定 r2。
+    mockBackendViews(makeActiveState(), makeRequirementState())
+    mockedGetProjectGraph.mockResolvedValue(makeGraphWorkspaceView({
+      routes: [graphRoute({ id: 'r2', tipNodeId: 'tip-2' })],
+    }))
+    mockDraftRunSuccess(draftRunView({ producedNodeId: 'drafted-node' }))
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+
+    const ok = await store.draftQuestion('r2')
+
+    expect(ok).toBe(true)
+    expect(mockedCreateAgentRun).toHaveBeenCalledWith('p1', {
+      operation: 'DRAFT_QUESTION',
+      sourceRouteId: 'r2',
+    })
+  })
+
+  it('a floating idea starts a NEW standalone route and drafts its first question', async () => {
+    // "继续生成问题"（浮动）：想法成为新路线的根+tip，起草锚定该路线。
+    mockBackendViews(makeActiveState(), makeRequirementState())
+    mockedGetProjectGraph.mockResolvedValue(makeGraphWorkspaceView({
+      routes: [graphRoute({ id: 'r2', tipNodeId: 'tip-2' })],
+    }))
+    mockedStartRouteFromNode.mockResolvedValue({
+      projectId: 'p1',
+      route: makeRoute({ id: 'r-idea', label: '想法路线 1', tipNodeId: 'idea-1' }),
+      activeRouteId: 'r-idea',
+    })
+    mockDraftRunSuccess(draftRunView({ producedNodeId: 'drafted-node' }))
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+
+    const ok = await store.draftQuestionFromNode('idea-1')
+
+    expect(ok).toBe(true)
+    expect(mockedStartRouteFromNode).toHaveBeenCalledWith('p1', 'idea-1', null)
+    expect(mockedForkNode).not.toHaveBeenCalled()
+    // 新路线是 Active 路线：起草走缺省（Active）语义。
+    expect(mockedCreateAgentRun).toHaveBeenCalledWith('p1', {
+      operation: 'DRAFT_QUESTION',
+      sourceRouteId: null,
+    })
+  })
+
+  it('an attached idea continues via a fork branch on its explicit route', async () => {
+    mockBackendViews(makeActiveState(), makeRequirementState())
+    mockedGetProjectGraph.mockResolvedValue(makeGraphWorkspaceView({
+      routes: [graphRoute({ id: 'r1', lineageNodeIds: ['root-1', 'idea-1'] })],
+    }))
+    mockedForkNode.mockResolvedValue({
+      projectId: 'p1',
+      route: makeRoute({ id: 'r-fork', label: '分支路线 1' }),
+      activeRouteId: 'r-fork',
+    })
+    mockDraftRunSuccess(draftRunView({ producedNodeId: 'drafted-node' }))
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+
+    const ok = await store.draftQuestionFromNode('idea-1')
+
+    expect(ok).toBe(true)
+    expect(mockedStartRouteFromNode).not.toHaveBeenCalled()
+    expect(mockedForkNode).toHaveBeenCalledWith('p1', 'idea-1', {
+      sourceRouteId: 'r1',
+      label: null,
+    })
+  })
+
+  it('a shared attached idea without a reading route refuses to guess', async () => {
+    mockBackendViews(makeActiveState(), makeRequirementState())
+    mockedGetProjectGraph.mockResolvedValue(makeGraphWorkspaceView({
+      routes: [
+        graphRoute({ id: 'r1', lineageNodeIds: ['root-1', 'idea-1'] }),
+        graphRoute({ id: 'r2', lineageNodeIds: ['root-1', 'idea-1'] }),
+      ],
+    }))
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+
+    expect(await store.draftQuestionFromNode('idea-1')).toBe(false)
+    expect(mockedForkNode).not.toHaveBeenCalled()
+    expect(mockedStartRouteFromNode).not.toHaveBeenCalled()
+    expect(store.error).toMatchObject({ code: 'SOURCE_ROUTE_REQUIRED' })
+  })
+
   it('creates an ANSWER_TIP run and returns pending immediately', async () => {
     mockBackendViews(makeActiveState(), makeRequirementState())
     let resolveRun: (v: ReturnType<typeof completedRunView>) => void = () => undefined
@@ -363,7 +465,9 @@ describe('workspaceStore', () => {
       operation: 'ANSWER_TIP',
       nodeId: store.pendingAnswerNodeId,
       selectedOptionId: null,
+          selectedOptionIds: null,
       freeText: 'async answer',
+      sourceRouteId: null,
       idempotencyKey: expect.any(String),
     })
     expect(store.submitting).toBe(true)
@@ -393,9 +497,85 @@ describe('workspaceStore', () => {
       operation: 'ANSWER_TIP',
       nodeId: expect.any(String),
       selectedOptionId: 'opt-a',
+          selectedOptionIds: null,
       freeText: null,
+      sourceRouteId: null,
       idempotencyKey: expect.any(String),
     })
+  })
+
+  it('回答聚焦的非运行路线末端时带上显式路线（多路线独立）', async () => {
+    mockBackendViews(makeActiveState(), makeRequirementState())
+    mockedCreateAgentRun.mockResolvedValue({
+      runId: 'run-1',
+      operation: 'ANSWER_TIP',
+      phase: 'CREATED',
+    })
+    let resolveRun: (v: AgentRunView) => void = () => undefined
+    mockedGetAgentRun.mockReturnValue(
+      new Promise((resolve) => {
+        resolveRun = resolve
+      }),
+    )
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+
+    const pending = store.submitAnswer({
+      selectedOptionId: 'opt-a',
+          selectedOptionIds: null,
+      nodeId: 'node-other-route',
+      routeId: 'r2',
+    })
+    await vi.waitFor(() => expect(mockedCreateAgentRun).toHaveBeenCalledTimes(1))
+
+    // 目标不是运行路线 → sourceRouteId 必须显式带上（后端据此把 run 绑到 r2）。
+    expect(mockedCreateAgentRun).toHaveBeenCalledWith('p1', {
+      operation: 'ANSWER_TIP',
+      nodeId: 'node-other-route',
+      selectedOptionId: 'opt-a',
+          selectedOptionIds: null,
+      freeText: null,
+      sourceRouteId: 'r2',
+      idempotencyKey: expect.any(String),
+    })
+    // 运行期间，清理身份固定为提交时的显式路线 r2。
+    expect(store.submittedRouteIdForCleanup).toBe('r2')
+
+    resolveRun(completedRunView({ runId: 'run-1', routeId: 'r2' }))
+    expect(await pending).toBe(true)
+    expect(store.submittedRouteIdForCleanup).toBeNull()
+  })
+
+  it('一条路线的运行不会挡住另一条路线（按路线加锁）', async () => {
+    mockBackendViews(makeActiveState(), makeRequirementState())
+    mockedCreateAgentRun.mockResolvedValue({
+      runId: 'run-1',
+      operation: 'ANSWER_TIP',
+      phase: 'CREATED',
+    })
+    // 轮询永不返回终态：两条路线的 run 都停在"进行中"。
+    mockedGetAgentRun.mockReturnValue(new Promise(() => undefined))
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+    const activeRouteId = store.activeState?.activeRoute?.id ?? null
+
+    void store.submitAnswer({ selectedOptionId: 'opt-a' })
+    await vi.waitFor(() => expect(store.answerRunsInFlight).toEqual([activeRouteId]))
+    expect(store.submitting).toBe(true)
+
+    // 同一条路线：拒绝并发（一个节点永远只能有一个答题周期）。
+    expect(await store.submitAnswer({ selectedOptionId: 'opt-b' })).toBe(false)
+
+    // 另一条路线：不受影响 —— 这就是"链路互不影响"。
+    void store.submitAnswer({
+      selectedOptionId: 'opt-b',
+          selectedOptionIds: null,
+      nodeId: 'node-other-route',
+      routeId: 'r2',
+    })
+    await vi.waitFor(() => expect(store.answerRunsInFlight).toContain('r2'))
+    expect(mockedCreateAgentRun).toHaveBeenCalledTimes(2)
+    expect(store.answerRunsInFlight).toContain(activeRouteId)
   })
 
   it('submits a free-text-only answer payload', async () => {
@@ -415,7 +595,9 @@ describe('workspaceStore', () => {
       operation: 'ANSWER_TIP',
       nodeId: expect.any(String),
       selectedOptionId: null,
+          selectedOptionIds: null,
       freeText: 'We need a single-user tool',
+      sourceRouteId: null,
       idempotencyKey: expect.any(String),
     })
   })
@@ -437,7 +619,9 @@ describe('workspaceStore', () => {
       operation: 'ANSWER_TIP',
       nodeId: expect.any(String),
       selectedOptionId: 'opt-a',
+          selectedOptionIds: null,
       freeText: 'explanation text',
+      sourceRouteId: null,
       idempotencyKey: expect.any(String),
     })
   })
@@ -535,7 +719,7 @@ describe('workspaceStore', () => {
     expect(mockedGetRequirementState).toHaveBeenCalledTimes(2)
     expect(store.requirementState?.confirmed[0].text).toBe('Backend-derived confirmed claim')
     expect(store.activeState?.activeNode?.question).toBe('Drafted next question')
-    expect(store.feedback).toBe('回答已记录。')
+    expect(store.feedback).toBe('回答已记录')
   })
 
   it('surfaces a provider-neutral rate-limit error safely when the run fails', async () => {
@@ -577,6 +761,7 @@ describe('workspaceStore', () => {
       nodes: [makeNode({ id: 'node-1', projectId: 'p1' })],
       answers: [{
         id: 'answer-1', routeId: 'r1', nodeId: 'node-1', selectedOptionId: null,
+          selectedOptionIds: null,
         freeText: 'answer', createdAt: '2026-01-01T00:00:00Z',
         ownerRouteId: 'r1', inherited: false,
       }],
@@ -761,7 +946,7 @@ describe('workspaceStore', () => {
       sourceRouteId: 'r1',
       label: 'future branch',
     })
-    expect(mockedCreateAgentRun).toHaveBeenCalledWith('p1', { operation: 'DRAFT_QUESTION' })
+    expect(mockedCreateAgentRun).toHaveBeenCalledWith('p1', { operation: 'DRAFT_QUESTION', sourceRouteId: null })
     expect(store.forkDraftRetryRouteId).toBe('forked')
     expect(store.feedback).toContain('分支已创建')
   })
@@ -890,7 +1075,7 @@ describe('workspaceStore', () => {
       routes: [{ ...forkRoute, rootNodeId: 'n1', lineageNodeIds: ['n1'] }],
       answers: [{
         id: 'inherited-answer', routeId: 'forked', ownerRouteId: 'r1', inherited: true,
-        nodeId: 'n1', selectedOptionId: null, freeText: 'source answer',
+        nodeId: 'n1', selectedOptionId: null, selectedOptionIds: null, freeText: 'source answer',
         createdAt: '2026-01-01T00:00:00Z',
       }],
     })
@@ -922,7 +1107,41 @@ describe('workspaceStore', () => {
     expect(store.forkDraftRetryRouteId).toBeNull()
     expect(store.manualModelRetry).toBeNull()
     expect(store.error).toBeNull()
-    expect(store.feedback).toBe('已创建新分支路线。')
+    expect(store.feedback).toBe('已创建新分支路线')
+  })
+
+  it('names the compensated node in the undo feedback', async () => {
+    mockBackendViews(makeActiveState(), makeRequirementState())
+    mockedGetUndoRedoAvailability.mockResolvedValue({ canUndo: true, canRedo: false })
+    mockedUndoGraphOperation.mockResolvedValue({
+      operation: { id: 'op-1', type: 'CREATE_DRAFT_NODE', status: 'UNDONE' },
+      description: '已撤销：创建草稿节点',
+      targetTitle: 'Agent 生成的节点标题',
+    })
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+
+    expect(await store.undoGraph()).toBe(true)
+
+    // The user must be able to tell WHICH node the undo compensated, not only
+    // which operation type it was.
+    expect(store.feedback).toBe('已撤销「Agent 生成的节点标题」')
+  })
+
+  it('falls back to the operation description when the undo target has no title', async () => {
+    mockBackendViews(makeActiveState(), makeRequirementState())
+    mockedGetUndoRedoAvailability.mockResolvedValue({ canUndo: true, canRedo: false })
+    mockedUndoGraphOperation.mockResolvedValue({
+      operation: { id: 'op-2', type: 'CREATE_SEMANTIC_RELATION', status: 'UNDONE' },
+      description: '已撤销：添加语义关系',
+      targetTitle: null,
+    })
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+
+    expect(await store.undoGraph()).toBe(true)
+
+    expect(store.feedback).toBe('已撤销：添加语义关系')
   })
 
   it('reload restores an owned active-tip Answer as the repair target', async () => {
@@ -948,6 +1167,7 @@ describe('workspaceStore', () => {
         inherited: false,
         nodeId: 'n1',
         selectedOptionId: null,
+          selectedOptionIds: null,
         freeText: 'saved answer',
         createdAt: '2026-01-01T00:00:00Z',
       }],
@@ -982,6 +1202,7 @@ describe('workspaceStore', () => {
         inherited: true,
         nodeId: 'n1',
         selectedOptionId: null,
+          selectedOptionIds: null,
         freeText: 'inherited answer',
         createdAt: '2026-01-01T00:00:00Z',
       }],
@@ -1017,7 +1238,7 @@ describe('workspaceStore', () => {
       nodes: [makeNode({ id: 'n1', projectId: 'p1' })],
       answers: [{
         id: 'answer-inherited', routeId: 'r-fork', ownerRouteId: 'r-source', inherited: true,
-        nodeId: 'n1', selectedOptionId: null, freeText: 'source answer',
+        nodeId: 'n1', selectedOptionId: null, selectedOptionIds: null, freeText: 'source answer',
         createdAt: '2026-01-01T00:00:00Z',
       }],
     }))
@@ -1209,27 +1430,78 @@ describe('workspaceStore', () => {
     mockBackendViews(makeActiveState(), makeRequirementState())
     const store = useWorkspaceStore()
     await store.loadWorkspace('p1')
-    store.resubmitAnswerPayload = { freeText: 'retry me' }
-    store.submitting = true
+    // Seed a settled session carrying the failed attempt's resubmit payload.
+    store.answerRunSessions.push({
+      clientRequestId: 'req-resubmit-guard',
+      projectId: 'p1',
+      routeId: store.activeState?.activeRoute?.id ?? null,
+      nodeId: 'n1',
+      payload: { freeText: 'retry me' },
+      runId: null,
+      phase: null,
+      runStatus: 'FAILED',
+      status: 'RESUBMITTABLE',
+      repairableAnswerId: null,
+    })
+    store.routeCommandPending = true
 
     expect(await store.resubmitFailedAnswer()).toBe(false)
     expect(store.resubmitAnswerPayload).toEqual({ freeText: 'retry me' })
     expect(mockedCreateAgentRun).not.toHaveBeenCalled()
   })
 
-  it('does not start spec generation when its baseline read fails', async () => {
+  it('does not start spec generation when its baseline read fails, releases the lock, and can generate afterwards', async () => {
     const active = makeActiveState({
       project: makeProject({ id: 'p1', activeRouteId: 'r1' }),
       activeRoute: makeRoute({ id: 'r1', projectId: 'p1', tipNodeId: 'n1', isActive: true }),
     })
+    const oldSnapshot = makeSpecSnapshot({ id: 'spec-old', routeId: 'r1' })
+    const newSnapshot = makeSpecSnapshot({ id: 'spec-new', routeId: 'r1' })
     mockBackendViews(active, makeRequirementState())
-    mockedListRouteSpecs.mockRejectedValue(new ApiError('read failed', 'NETWORK_ERROR', 0))
+    // FIRST generation: the baseline read fails.
+    mockedListRouteSpecs.mockRejectedValueOnce(new ApiError('read failed', 'NETWORK_ERROR', 0))
     const store = useWorkspaceStore()
     await store.loadWorkspace('p1')
 
     expect(await store.generateSpec()).toBe(false)
+
     expect(mockedCreateAgentRun).not.toHaveBeenCalled()
     expect(store.manualModelRetry).toBeNull()
+    // The failure path released its own generation lock: a later
+    // generation of the SAME session must not be blocked by residue.
+    expect(store.generatingSpec).toBe(false)
+    expect(store.error).not.toBeNull()
+
+    // SECOND generation (recovery): baseline read succeeds and the run
+    // completes — the lock residue must not block it.
+    mockedListRouteSpecs
+      .mockResolvedValueOnce([oldSnapshot])
+      .mockResolvedValueOnce([oldSnapshot, newSnapshot])
+    mockedCreateAgentRun.mockResolvedValue({
+      runId: 'run-spec',
+      operation: 'GENERATE_ARTIFACT',
+      phase: 'CREATED',
+    })
+    mockedGetAgentRun.mockResolvedValue({
+      runId: 'run-spec',
+      projectId: 'p1',
+      routeId: 'r1',
+      operation: 'GENERATE_ARTIFACT',
+      status: 'completed',
+      phase: 'COMPLETED',
+      producedNodeId: null,
+      producedAnswerId: null,
+      producedPatchId: null,
+      producedSpecSnapshotId: 'spec-new',
+    })
+
+    expect(await store.generateSpec()).toBe(true)
+
+    expect(mockedCreateAgentRun).toHaveBeenCalledTimes(1)
+    expect(store.generatingSpec).toBe(false)
+    expect(store.selectedSpecIdByRoute['r1']).toBe('spec-new')
+    expect(store.feedback).toBe('已生成规格快照')
+    expect(store.error).toBeNull()
   })
 
   it('does not create a model retry intent for deterministic non-model failures', async () => {
@@ -1351,6 +1623,7 @@ describe('workspaceStore', () => {
         nodes: [makeNode({ id: 'node-1', projectId: 'p1' })],
         answers: [{
           id: 'answer-1', routeId: 'r1', nodeId: 'node-1', selectedOptionId: null,
+          selectedOptionIds: null,
           freeText: 'answer', createdAt: '2026-01-01T00:00:00Z',
           ownerRouteId: 'r1', inherited: false,
         }],
@@ -1399,6 +1672,7 @@ describe('workspaceStore', () => {
     const nodeId = store.activeState?.activeNode?.id ?? 'node-1'
     useInputDraftStore().setDraft('p1', nodeId, {
       selectedOptionId: null,
+          selectedOptionIds: null,
       freeText: 'draft being typed',
     })
 
@@ -1840,36 +2114,30 @@ describe('node query (ask AI) semantics and polling', () => {
     }]
     mockedListProposals.mockResolvedValue(pending)
     await store.loadNodeQueryProposals()
-    expect(mockedListProposals).toHaveBeenCalledWith('p1', 'PROPOSED')
+    expect(mockedListProposals).toHaveBeenCalledWith('p1', 'PROPOSED', {
+      triggerTypes: ['node_query'],
+    })
     // The pending proposal is discoverable by its canonical anchor node.
     expect(store.nodeQueryProposals).toHaveLength(1)
     expect(store.nodeQueryProposals[0].inputNodeId).toBe('n1')
   })
 
-  it('proposal recovery keeps only NODE_QUERY proposals, never Answer/Decision ones', async () => {
+  it('proposal recovery asks the server for NODE_QUERY proposals only', async () => {
     const store = useWorkspaceStore()
     store.projectId = 'p1'
-    mockedListProposals.mockResolvedValue([
-      {
-        proposalId: 'prop-query', runId: 'run-query', triggerType: 'node_query',
-        inputNodeId: 'n1', routeId: 'r1', actionFamily: 'CREATE_NODE',
-        status: 'PROPOSED', createdAt: 'now', decidedAt: null, decidedBy: null,
-      },
-      {
-        proposalId: 'prop-answer', runId: 'run-answer', triggerType: 'answer_cycle',
-        inputNodeId: 'n1', routeId: 'r1', actionFamily: 'CREATE_NODE',
-        status: 'PROPOSED', createdAt: 'now', decidedAt: null, decidedBy: null,
-      },
-      {
-        proposalId: 'prop-decision', runId: 'run-decision', triggerType: 'decision_cycle',
-        inputNodeId: 'n2', routeId: 'r1', actionFamily: 'REQUEST_USER_INPUT',
-        status: 'PROPOSED', createdAt: 'now', decidedAt: null, decidedBy: null,
-      },
-    ])
+    // The triggerType narrowing is a server-side filter: the store must request
+    // it explicitly instead of downloading the shared list and post-filtering.
+    // Answer/Decision proposals share the anchor-node shape (inputNodeId) but
+    // must never surface as contextual Ask-AI proposals in the NodeInspector.
+    mockedListProposals.mockResolvedValue([{
+      proposalId: 'prop-query', runId: 'run-query', triggerType: 'node_query',
+      inputNodeId: 'n1', routeId: 'r1', actionFamily: 'CREATE_NODE',
+      status: 'PROPOSED', createdAt: 'now', decidedAt: null, decidedBy: null,
+    }])
     await store.loadNodeQueryProposals()
-    // Only the NODE_QUERY proposal survives; Answer/Decision proposals share
-    // the anchor-node shape (inputNodeId) but must never surface as
-    // contextual Ask-AI proposals in the NodeInspector.
+    expect(mockedListProposals).toHaveBeenCalledWith('p1', 'PROPOSED', {
+      triggerTypes: ['node_query'],
+    })
     expect(store.nodeQueryProposals).toHaveLength(1)
     expect(store.nodeQueryProposals[0].proposalId).toBe('prop-query')
   })

@@ -61,6 +61,10 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
                 "server.port=${SPEC_AGENT_CROSS_LANG_PORT:0}",
                 "spec.agent.brain.engine=remote-python",
                 "spec.agent.brain.base-url=http://localhost:8100",
+                // The dev brain runs with SPEC_AGENT_BRAIN_INTERNAL_SECRET set
+                // (see start-dev.bat); present the same secret. Overridable via
+                // the env var, matching application.yml and the eval suites.
+                "spec.agent.brain.internal-secret=${SPEC_AGENT_BRAIN_INTERNAL_SECRET:dev-internal-secret}",
                 "spec.agent.action-eligibility.mode=enforced"
         })
 @ActiveProfiles("test")
@@ -110,10 +114,14 @@ class PythonBrainCrossLanguageIntegrationTest {
 
         List<AgentRunEvent> events = eventRepository.findByRunId(run.id());
 
-        // Worker lifecycle events record the exact phase progression. A pure
+        // Worker lifecycle events record the exact phase progression. Display
+        // events are not part of the lifecycle contract: MODEL_INFERENCE is the
+        // broker wire detail (asserted separately below), PROCESS_NOTE is the
+        // user-readable progress note emitted by RunProgressRecorder. A pure
         // continuation is ONE DECISION — no STATE_UPDATE phase on this path.
         List<String> lifecycle = events.stream()
                 .filter(event -> !event.eventType().equals("MODEL_INFERENCE"))
+                .filter(event -> !event.eventType().equals("PROCESS_NOTE"))
                 .map(AgentRunEvent::eventType).toList();
         assertThat(lifecycle).containsExactly(
                 "RUN_CREATED",

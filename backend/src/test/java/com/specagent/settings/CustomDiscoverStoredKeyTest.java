@@ -8,6 +8,7 @@ import com.specagent.model.provider.CompatibilityProbeService;
 import com.specagent.model.provider.ProtocolAdapterRegistry;
 import com.specagent.model.provider.ResponsesProtocolAdapter;
 import com.specagent.globalassistant.model.GlobalAssistantDecisionParser;
+import com.specagent.globalassistant.model.GlobalAssistantDecisionSemanticsAdapter;
 import com.specagent.globalassistant.model.GlobalAssistantDecisionValidator;
 import com.specagent.settings.custom.CustomProviderSettings;
 import com.specagent.settings.custom.CustomProviderSettingsRepository;
@@ -71,8 +72,8 @@ class CustomDiscoverStoredKeyTest {
                 new AnthropicMessagesProtocolAdapter()));
         svc = new CustomProviderSettingsService(repo, mapper, reg,
                 new CompatibilityProbeService(mapper, reg,
-                        new GlobalAssistantDecisionParser(mapper),
-                        new GlobalAssistantDecisionValidator()));
+                        new GlobalAssistantDecisionSemanticsAdapter(new GlobalAssistantDecisionParser(mapper),
+                                new GlobalAssistantDecisionValidator())));
     }
 
     @AfterEach void stop() {
@@ -85,7 +86,7 @@ class CustomDiscoverStoredKeyTest {
     private void storeKey(String key) {
         Instant now = Instant.now();
         repo.stored = new CustomProviderSettings("CHAT_COMPLETIONS", baseUrl, key,
-                key == null ? null : "KEY1", "m1", "DISCOVERED", 1, null, now, now, null);
+                key == null ? null : "KEY1", "m1", "DISCOVERED", null, 1, null, now, now, null);
     }
 
     @Test void storedKeyUsedWhenNull() {

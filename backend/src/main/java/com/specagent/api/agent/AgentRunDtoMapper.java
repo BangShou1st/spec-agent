@@ -1,6 +1,8 @@
 package com.specagent.api.agent;
 
 import com.specagent.agent.AgentRun;
+import com.specagent.agent.runevent.RunProgressAssembler;
+import com.specagent.agent.runevent.RunProgressView;
 import com.specagent.common.Json;
 import org.springframework.stereotype.Component;
 
@@ -9,7 +11,7 @@ import java.util.List;
 
 /**
  * Maps {@link AgentRun} to its safe API representation, including the
- * sanitized trace-step list.
+ * sanitized trace-step list and the whitelisted run progress view.
  *
  * <p>The trace is stored as a JSON string through a JSONB column, so the
  * read-back value is a JSON string literal (outer quotes, escaped newlines).
@@ -21,13 +23,16 @@ import java.util.List;
 public class AgentRunDtoMapper {
 
     private final Json json;
+    private final RunProgressAssembler runProgressAssembler;
 
-    public AgentRunDtoMapper(Json json) {
+    public AgentRunDtoMapper(Json json, RunProgressAssembler runProgressAssembler) {
         this.json = json;
+        this.runProgressAssembler = runProgressAssembler;
     }
 
     public AgentRunResponse from(AgentRun run) {
-        return AgentRunResponse.from(run, traceSteps(run.trace()));
+        RunProgressView progress = runProgressAssembler.assemble(run.id());
+        return AgentRunResponse.from(run, traceSteps(run.trace()), progress);
     }
 
     private List<String> traceSteps(String rawTrace) {

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { buildThreeNodeLineage, closeFloatingWorkspaceWindows, createProject, fitGraph, forkFromNode, hoverNode, openRouteMore } from './helpers'
+import { buildThreeNodeLineage, closeFloatingWorkspaceWindows, createProject, fitGraph, forkFromNode, hoverNode } from './helpers'
 
 test('shared node current-reading selector changes Focus without activating a route', async ({ page }) => {
   await createProject(page, 'E2E Shared Focus Flow')
@@ -18,17 +18,18 @@ test('shared node current-reading selector changes Focus without activating a ro
   const oldRouteId = await oldCard.getAttribute('data-route-id')
   expect(oldRouteId).not.toBeNull()
 
-  // Clear the browser-only Focus. Active remains the runtime working route.
-  // Focus controls live behind the per-route overflow menu.
-  await openRouteMore(activeCard)
-  await activeCard.getByTestId('focus-route').click()
+  // Clear the browser-only Focus (点击画布空白处即清除阅读聚焦).
+  // Active remains the runtime working route.
+  await page.locator('.vue-flow__pane').dispatchEvent('click')
   await expect(activeCard).not.toHaveClass(/route-card--focused/)
   await expect(activeCard.getByTestId('active-route')).toBeVisible()
   await closeFloatingWorkspaceWindows(page)
   await fitGraph(page)
   await expect(page.locator('.graph-node--neutral')).toHaveCount(2)
+  // 定位共享节点时用「当前查看」容器而不是下拉本身：下拉只在真歧义时存在，
+  // 选定后会被只读徽标替换（Q2-D），用它做 filter 会让后续步骤定位不到节点。
   const sharedNode = page.locator('[data-test="graph-question-node"]').filter({
-    has: page.getByTestId('reading-route-select'),
+    has: page.getByTestId('shared-reading-route'),
   }).first()
   const selector = sharedNode.getByTestId('reading-route-select')
   await expect(selector).toHaveValue('')
@@ -37,7 +38,10 @@ test('shared node current-reading selector changes Focus without activating a ro
   // Choose the historical route from the actual node control. This writes
   // Focus only; it does not activate the selected route.
   await selector.selectOption(oldRouteId!)
-  await expect(selector).toHaveValue(oldRouteId!)
+  // Q2-D：阅读路线一经确定就渲染为只读徽标，下拉随之消失。
+  await expect(sharedNode.getByTestId('reading-route-select')).toHaveCount(0)
+  await expect(sharedNode.getByTestId('reading-route-resolved')).toBeVisible()
+  await expect(sharedNode.getByTestId('reading-route-resolved')).not.toHaveText('未选择')
   // Route sidebar is a fixed region: no floating window to open or close.
   await expect(page.getByTestId('left-sidebar')).toBeVisible()
   const activeCardAfterFocus = page.locator(`[data-route-id="${activeRouteId}"]`)

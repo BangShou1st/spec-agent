@@ -1,4 +1,5 @@
 import { isGaTerminalEventType, type GaEventEnvelope } from './globalAssistant'
+import { API_BASE_URL } from './client'
 
 /** Focused fetch-stream SSE transport for Global Assistant runs. */
 
@@ -7,8 +8,6 @@ export interface GaStreamHandlers {
   onError?: (err: Error) => void
   onClose?: () => void
 }
-
-const API_BASE = (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_API_BASE_URL ?? '/api/v1'
 
 export interface ParsedSse {
   events: Array<{ id: string; name: string; data: string }>
@@ -80,7 +79,7 @@ export function openGaEventStream(
   const done = (async (): Promise<void> => {
     let response: Response
     try {
-      response = await fetch(API_BASE + '/global-assistant/runs/' + runId + '/events', {
+      response = await fetch(API_BASE_URL + '/global-assistant/runs/' + runId + '/events', {
         method: 'GET',
         headers: { Accept: 'text/event-stream', 'Last-Event-ID': String(Math.max(0, fromSequence)) },
         signal: controller.signal,

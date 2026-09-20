@@ -31,6 +31,9 @@ export interface GaMessage {
   content: string
   runId: string | null
   createdAt: string
+  /** Model accounting attribution; only assistant messages carry it. */
+  providerLabel?: string | null
+  modelId?: string | null
 }
 
 export type GaRunStatus = 'CREATED' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED'

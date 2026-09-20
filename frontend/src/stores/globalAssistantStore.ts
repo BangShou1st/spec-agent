@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { readStored, writeStored } from '@/util/safeStorage'
 import { ApiError } from '@/api/client'
 import {
   createGaRun,
@@ -235,7 +236,7 @@ export class GaRunProjection {
         const capabilityId = typeof payload.capabilityId === 'string' ? payload.capabilityId : 'unknown'
         const errorCode = typeof payload.errorCode === 'string' ? payload.errorCode : null
         const reason = typeof payload.reason === 'string' ? payload.reason : null
-        const summary = errorCode ? gaErrorMessage(errorCode, reason ?? undefined) : (reason ?? '工具执行失败，请稍后再试。')
+        const summary = errorCode ? gaErrorMessage(errorCode, reason ?? undefined) : (reason ?? '工具执行失败，请稍后再试')
         const target = findRunningActivity(this.activities, capabilityId)
         if (target) {
           target.state = 'failure'
@@ -315,24 +316,6 @@ function diffMs(startedAt: string, endedAt: string | null): number | null {
   if (Number.isNaN(start) || Number.isNaN(end)) return null
   const diff = end - start
   return diff >= 0 ? Math.round(diff) : null
-}
-
-function readStored(key: string): string | null {
-  try {
-    const value = localStorage.getItem(key)
-    return value && value.length > 0 ? value : null
-  } catch {
-    return null
-  }
-}
-
-function writeStored(key: string, value: string | null): void {
-  try {
-    if (value === null) localStorage.removeItem(key)
-    else localStorage.setItem(key, value)
-  } catch {
-    /* storage unavailable: backend remains canonical */
-  }
 }
 
 export const useGlobalAssistantStore = defineStore('globalAssistant', {
@@ -552,7 +535,7 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
           await getGaThread(threadId)
         } catch (err) {
           if (err instanceof ApiError && err.code === 'THREAD_NOT_FOUND') {
-            this.error = { code: 'THREAD_NOT_FOUND', message: '该会话已不存在，已为你保留当前会话。' }
+            this.error = { code: 'THREAD_NOT_FOUND', message: '该会话已不存在，已为你保留当前会话' }
             await this.loadThreads()
             return
           }
@@ -1111,7 +1094,7 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
         await this.refreshActivity()
       } catch (err) {
         if (err instanceof ApiError && err.code === 'THREAD_NOT_FOUND') {
-          this.error = { code: 'THREAD_NOT_FOUND', message: '该会话已不存在，已为你保留当前会话。' }
+          this.error = { code: 'THREAD_NOT_FOUND', message: '该会话已不存在，已为你保留当前会话' }
           await this.loadThreads()
         } else if (err instanceof ApiError) {
           this.error = { code: err.code, message: gaErrorMessage(err.code, err.message) }

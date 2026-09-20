@@ -46,15 +46,22 @@ public class RunDispatcher {
         try {
             runtime.getObject().executeRun(threadId, runId, message, uiRequest);
         } catch (Exception ex) {
-            log.warn("Global assistant run failed unexpectedly: runId={} error={}", runId, ex.getClass().getSimpleName());
+            // Full stack trace is mandatory here: this catch is the last
+            // terminalization net, and without it a runtime bug (e.g. an NPE
+            // after a tool result) is invisible — the user only sees a generic
+            // failure and the log only a class name.
+            log.warn("Global assistant run failed unexpectedly: runId={} error={}",
+                    runId, ex.getClass().getSimpleName(), ex);
             try {
                 var run = runs.findById(runId);
                 if (run.isPresent() && run.get().status().isActive()) {
                     lifecycle.failWithAssistant(threadId, runId, "I couldn't complete that step.",
-                            GlobalAssistantErrorCode.TOOL_EXECUTION_FAILED, "Unexpected execution failure");
+                            GlobalAssistantErrorCode.TOOL_EXECUTION_FAILED,
+                            "Unexpected execution failure: " + ex.getClass().getSimpleName());
                 }
             } catch (Exception terminalEx) {
-                log.warn("Global assistant run terminalization failed: runId={} error={}", runId, terminalEx.getClass().getSimpleName());
+                log.warn("Global assistant run terminalization failed: runId={} error={}",
+                        runId, terminalEx.getClass().getSimpleName());
             }
         }
     }

@@ -53,6 +53,20 @@ export function forkNode(
   )
 }
 
+/** Starts a NEW standalone route from a floating knowledge/resource node:
+ * the node becomes the route's root+tip; the next question draft anchors
+ * there. The node keeps its id, kind and content. */
+export function startRouteFromNode(
+  projectId: string,
+  nodeId: string,
+  label?: string | null,
+): Promise<RouteMutationResponse> {
+  return apiClient.post<RouteMutationResponse>(
+    `/projects/${projectId}/nodes/${nodeId}/start-route`,
+    { label: label ?? null },
+  )
+}
+
 export function reanswerNode(
   projectId: string,
   nodeId: string,

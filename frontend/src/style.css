@@ -52,14 +52,16 @@
   box-sizing: border-box;
 }
 
-html {
-  scrollbar-gutter: stable;
-}
 html,
 body {
   margin: 0;
   padding: 0;
   height: 100%;
+}
+
+/* 长页面滚动条出现/消失时避免内容横移；短页面不受影响，右侧不再常驻空槽。 */
+html {
+  overflow-y: scroll;
 }
 
 body {
@@ -98,7 +100,10 @@ textarea {
 .app-header {
   background: var(--color-surface);
   border-bottom: 1px solid var(--color-border);
-  padding: 10px var(--space);
+  /* 全站统一顶栏高度：普通页与工作区同高，切换页面不再变高变矮。 */
+  height: 44px;
+  min-height: 44px;
+  padding: 0 var(--space);
   display: flex;
   align-items: center;
   gap: 16px;
@@ -126,10 +131,9 @@ textarea {
   margin: 0 auto;
 }
 
+/* 全站顶栏统一节奏：普通页与工作区同高（44px），切换页面不再变高变矮。
+   工作区保留半透明底色沉浸样式。 */
 .app-header--workspace {
-  height: 36px;
-  min-height: 36px;
-  padding: 6px 12px;
   background: rgb(255 255 255 / 82%);
   position: relative;
   z-index: 20;
@@ -138,7 +142,7 @@ textarea {
 .page--workspace {
   flex: 1 1 auto;
   max-width: none;
-  height: calc(100vh - 36px);
+  height: calc(100vh - 44px);
   min-height: 0;
   padding: 0;
   overflow: hidden;
@@ -312,6 +316,13 @@ textarea {
   border-color: var(--color-accent);
 }
 
+/* 状态点(连接生命周期状态):全局共用,组件可按需覆盖字号字重。 */
+.st { flex: none; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.st--on { color: var(--color-success); }
+.st--fail { color: var(--color-danger); }
+.st--off { color: var(--color-text-secondary); }
+.st__dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+
 /* ---------- Errors / feedback ---------- */
 
 .error-banner {
@@ -325,6 +336,18 @@ textarea {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.error-banner__code {
+  margin-left: 8px;
+  font-size: 11px;
+  font-weight: normal;
+  color: var(--color-text-muted);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  vertical-align: middle;
 }
 
 .feedback-line {
@@ -450,9 +473,12 @@ textarea {
 
 .create-form {
   display: flex;
+  align-items: center;
   gap: 8px;
   margin-bottom: 16px;
 }
+
+.create-form .form-helper { margin: 0; }
 
 .create-form input {
   flex: 1;
@@ -487,6 +513,56 @@ textarea {
   flex: 1;
   min-height: 0;
   position: relative;
+}
+
+/* 只看这条路线 is a modal view state — every other route is off-canvas — so the
+   isolated route is named on the canvas with a one-click exit. Indigo = reading
+   context (Focus), deliberately not the blue runtime-Active colour. */
+.graph-canvas__isolate-chip {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(420px, 70%);
+  padding: 4px 5px 4px 11px;
+  border: 1px solid var(--color-focus);
+  border-radius: 999px;
+  background: var(--color-focus-soft);
+  box-shadow: var(--shadow-card);
+  transform: translateX(-50%);
+}
+
+.graph-canvas__isolate-text {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-focus-strong);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graph-canvas__isolate-exit {
+  flex-shrink: 0;
+  padding: 2px 9px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--color-focus);
+  color: #ffffff;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.graph-canvas__isolate-exit:hover {
+  background: var(--color-focus-strong);
+}
+
+.graph-canvas__isolate-exit:focus-visible {
+  outline: 2px solid var(--color-focus-strong);
+  outline-offset: 1px;
 }
 
 .graph-canvas__flow .vue-flow {
@@ -634,6 +710,82 @@ textarea {
 .graph-start-placeholder__hint {
   margin: 0 0 8px;
   color: var(--color-text-secondary);
+}
+
+.graph-start-placeholder__actions {
+  display: flex;
+  gap: 14px;
+}
+
+/* ---- 文件资源卡：图标 + 文件名 + 上传时间，点击看原件 ---- */
+
+.graph-file-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface-subtle);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--motion-fast) ease, background var(--motion-fast) ease;
+}
+.graph-file-card:hover { border-color: var(--color-accent); background: var(--color-accent-soft); }
+.graph-file-card:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.graph-file-card__icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  overflow: hidden;
+}
+.graph-file-card__icon img { width: 100%; height: 100%; object-fit: cover; }
+.graph-file-card__icon-text { font-size: 9px; font-weight: 700; letter-spacing: 0.02em; color: var(--color-text-secondary); }
+.graph-file-card__icon[data-file-kind='pdf'] .graph-file-card__icon-text { color: #c0392b; }
+.graph-file-card__icon[data-file-kind='word'] .graph-file-card__icon-text { color: #2b579a; }
+.graph-file-card__icon[data-file-kind='excel'] .graph-file-card__icon-text { color: #1e7145; }
+.graph-file-card__info { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.graph-file-card__name { font-size: 13px; font-weight: 600; color: var(--color-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.graph-file-card__time { margin: 0; }
+
+/* ---- 对话框基础层（全局唯一定义）----
+   这三条必须是全局规则。它们曾经只写在个别组件的 <style scoped> 里，
+   于是任何没抄那一份的调用方都会得到一个「没有遮罩、没有卡片、
+   按钮还贴死」的弹窗——ProjectsView 的重命名弹窗就是这样坏掉的。
+   组件里不要再复制这三条；需要不同层级时只覆盖 z-index。 */
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 80px 16px;
+  background: rgb(23 28 40 / 30%);
+}
+.dialog {
+  width: 100%;
+  max-width: 520px;
+  padding: 18px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgb(15 20 30 / 25%);
+}
+/* 按钮组统一间距：主按钮与次要按钮不完全贴在一起。 */
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 14px;
 }
 
 /* ---- question node ---- */
@@ -789,6 +941,21 @@ textarea {
   color: var(--color-text);
 }
 
+/* 当前查看已确定（Focus / 只看这条路线 / 唯一可见归属）：只读展示，
+   不再要求用户在共享节点上做一次多余的选择。 */
+.graph-reading-route__value {
+  overflow: hidden;
+  padding: 3px 8px;
+  border: 1px solid var(--color-focus);
+  border-radius: 999px;
+  background: var(--color-focus-soft);
+  color: var(--color-focus-strong);
+  font-size: 11.5px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .graph-reading-route__select:focus {
   outline: 2px solid var(--color-accent-soft);
   border-color: var(--color-accent);
@@ -874,12 +1041,23 @@ textarea {
   pointer-events: none;
 }
 
+/* Question / purpose text keeps the model's own line structure.
+
+   The model returns a `questionText` that legitimately spans several lines
+   ("请问：\n1. …\n2. …") and the backend stores it verbatim (no cleaning, no
+   length cap). HTML collapses raw newlines by default, which is what turned
+   those structured questions into one dense paragraph on the card — the AI
+   assistant panel never had that problem because it renders markdown.
+   `pre-wrap` preserves the intended lines without inventing a markdown
+   interpretation for text that is not markdown. */
 .graph-node-question {
   margin: 0 0 8px;
   font-size: 17px;
   font-weight: 650;
   line-height: 1.45;
   letter-spacing: -0.01em;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .graph-node-question--compact {
@@ -897,6 +1075,8 @@ textarea {
   margin: 0 0 10px;
   color: var(--color-text-secondary);
   font-size: 12.5px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .graph-node-purpose--compact {
@@ -961,6 +1141,83 @@ textarea {
 }
 
 /* ---- historical answer summary ---- */
+
+/* `.graph-question-node--detailed` 是"历史节点已展开为完整问答"的 DOM 状态标记，
+   刻意不带任何宽度覆盖：节点间距（360px）必须还能容纳悬浮操作轨道（约 120px），
+   把卡片加宽到当前节点的 320px 会让轨道侵入下一个节点的点击区域 —— 点邻节点
+   反而触发本节点的轨道动作（e2e graph-node-visibility 已复现）。完整信息靠
+   "不截断 + 富文本排版"实现，而不是靠加宽。 */
+.graph-node-expand-hint {
+  margin: 4px 0 0;
+  font-size: 12px;
+}
+
+.graph-history-answer {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface-subtle);
+}
+
+.graph-history-answer__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 6px;
+}
+
+.graph-history-answer__route {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.graph-history-answer__choice {
+  margin: 0 0 6px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.graph-history-answer__text {
+  margin: 0;
+}
+
+.graph-history-options {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.graph-history-option {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: start;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text-secondary);
+  font-size: 12.5px;
+}
+
+/* 实际提交的那一项在只读列表里也要一眼可辨。 */
+.graph-history-option--chosen {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+  color: var(--color-text);
+}
+
+.graph-history-option__mark {
+  color: var(--color-text-muted);
+  font-weight: 700;
+}
+
+.graph-history-option--chosen .graph-history-option__mark {
+  color: var(--color-accent);
+}
 
 .graph-answer-summary {
   font-size: 13px;
@@ -1059,16 +1316,41 @@ textarea {
   outline: none;
   z-index: 2;
 }
+/* 知识/资源卡与问题卡共用同一动作栏显隐规则：两类卡片根类不同
+   （graph-knowledge-node / graph-question-node），漏掉任何一个都会让
+   该类卡片的操作按钮永远无法通过悬停出现。 */
 .graph-question-node:hover .graph-node-actions--toolbar,
 .graph-question-node--selected .graph-node-actions--toolbar,
+.graph-knowledge-node:hover .graph-node-actions--toolbar,
+.graph-knowledge-node--selected .graph-node-actions--toolbar,
 .graph-node-actions--toolbar:focus-within,
-.graph-question-node:focus-within .graph-node-actions--toolbar {
+.graph-question-node:focus-within .graph-node-actions--toolbar,
+.graph-knowledge-node:focus-within .graph-node-actions--toolbar {
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
 }
 .graph-node-actions--toolbar .btn {
   pointer-events: auto;
+}
+
+/* Hovered / keyboard-focused node paints ABOVE every sibling card, so its
+   action rail (which floats outside the card at left:100%) can never be
+   covered by a neighbouring node. Vue Flow writes an inline `z-index` on
+   `.vue-flow__node`, hence the !important. The value stays below the canvas
+   toolbar (40) and the status/toast overlays (45), which are app chrome rather
+   than graph content.
+ *
+ * Deliberately NOT keyed off mere selection (`.graph-question-node--selected`):
+ * a selected-but-unhovered node keeps its rail visible, and elevating it would
+ * let that rail silently cover — and steal clicks from — an adjacent card
+ * (clicking a neighbour would fire the selected node's rail action). Elevating
+ * on :hover is sufficient: the pointer has to be over the card (or over the
+ * rail, which is its descendant) to press a rail button, and that hover is
+ * exactly what raises the card. */
+.vue-flow__node.graph-node:hover,
+.vue-flow__node.graph-node:focus-within {
+  z-index: 12 !important;
 }
 
 /* Keyboard-visible focus for hover/contextual actions and form controls. */
@@ -1154,7 +1436,6 @@ input:focus-visible,
   justify-content: center;
 }
 
-.graph-runtime-copy,
 .graph-runtime-error {
   margin: 0;
   color: var(--color-text-secondary);
@@ -1162,6 +1443,83 @@ input:focus-visible,
 
 .graph-runtime-error {
   color: var(--color-danger);
+}
+
+/* ---- run process panel (in-node progress) ---- */
+
+.run-process-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+}
+
+.run-process-panel__phase {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.run-process-panel__spinner {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--color-border, #d8dbe2);
+  border-top-color: var(--color-accent, #3b82f6);
+  border-radius: 50%;
+  animation: run-process-spin 0.8s linear infinite;
+}
+
+@keyframes run-process-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.run-process-panel--failed .run-process-panel__phase {
+  color: var(--color-danger);
+}
+
+.run-process-panel__summary {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-text);
+}
+
+.run-process-panel__steps {
+  margin: 0;
+  padding: 0 0 0 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.run-process-panel__step {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.run-process-panel__step--latest {
+  color: var(--color-text);
+}
+
+.run-process-panel__items {
+  margin: 2px 0 0;
+  padding: 0 0 0 12px;
+  list-style: disc;
+}
+
+.run-process-panel__items li {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.graph-runtime-state__panel--inline {
+  padding-top: 6px;
+  border-top: 1px dashed var(--color-border, #d8dbe2);
 }
 
 /* ---- visual weight (Focus/Dim semantics) ---- */
@@ -1634,6 +1992,31 @@ input:focus-visible,
   box-shadow: 0 0 0 2px var(--color-focus-soft);
 }
 
+/* 只看这条路线: same indigo family as Focus but a heavier ring + hollow dot, so
+   "只看中" and "正在浏览" never read as the same badge. */
+.route-card--isolated {
+  border-color: var(--color-focus-strong);
+  box-shadow: 0 0 0 2px var(--color-focus);
+}
+
+.route-isolate-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--color-focus-strong);
+  white-space: nowrap;
+}
+
+.route-isolate-indicator__dot {
+  width: 7px;
+  height: 7px;
+  border: 2px solid var(--color-focus);
+  border-radius: 50%;
+  background: var(--color-surface);
+}
+
 /* Runtime Active route: a single small blue dot + label, quieter than a
    filled badge, and never equal to the indigo reading-Focus label. */
 .route-active-indicator {
@@ -1838,7 +2221,7 @@ h3 { font-size: var(--type-panel); line-height: 1.45; margin: 0 0 6px; font-weig
 .eyebrow { font-size: var(--type-label); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-text-muted); }
 
 /* ---------- App shell ---------- */
-.app-header { gap: 12px; min-height: 48px; }
+.app-header { gap: 12px; }
 .app-header .app-name { font-size: var(--type-app-name); font-weight: 700; letter-spacing: 0.01em; }
 .app-header nav, .app-header .app-nav { display: flex; align-items: center; gap: 2px; }
 .app-header a { position: relative; padding: 6px 10px; border-radius: 8px; font-size: 13.5px; }
@@ -1895,8 +2278,8 @@ input[aria-invalid='true'], textarea[aria-invalid='true'] { border-color: var(--
 .projects-page { max-width: 880px; margin: 0 auto; padding: 28px 0 48px; }
 .projects-page__heading h1 { margin-bottom: 4px; }
 .projects-page__heading p { margin: 0 0 16px; font-size: var(--type-page-desc); color: var(--color-text-secondary); max-width: 62ch; }
-.projects-create { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 12px; padding: 12px; margin-bottom: 18px; }
-.projects-create__label { font-size: var(--type-label); font-weight: 600; color: var(--color-text-secondary); margin-bottom: 8px; display: block; }
+.projects-create { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 12px; padding: 14px; margin-bottom: 18px; }
+.projects-create__label { font-size: var(--type-section); font-weight: 650; color: var(--color-text); margin-bottom: 10px; display: block; }
 .project-row { border-radius: 12px; padding: 12px 14px; align-items: center; transition: border-color var(--motion-fast) ease, background var(--motion-fast) ease; }
 .project-row:hover { border-color: var(--color-border-strong); background: var(--color-surface); }
 .project-row__main { min-width: 0; flex: 1; }
@@ -1942,14 +2325,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 @media (max-width: 1024px) {
   .page { padding: 12px; }
   .projects-page { padding: 20px 0 32px; }
-  .app-header { gap: 8px; padding: 8px 12px; }
+  .app-header { gap: 8px; padding: 0 12px; }
   .ga-drawer { width: min(420px, 100vw); }
 }
 
 .projects-create__form { margin: 0; }
+.projects-create__form .form-error { margin-top: 8px; }
  .projects-create__row { display: flex; gap: 8px; align-items: center; }
  .projects-create__row input { flex: 1; min-width: 0; }
- .projects-create__row .btn { flex: none; }
+ .projects-create__row .btn { flex: none; min-width: 108px; }
  @media (max-width: 640px) {
    .projects-create__row { flex-direction: column; }
 }
@@ -1974,4 +2358,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
  .secret-row { display: flex; gap: 8px; align-items: center; }
  .secret-row .settings-control { flex: 1; min-width: 0; }
  .secret-row .btn { flex: none; }
- .mgmt-page, .settings-shell, .projects-page { scrollbar-gutter: auto; }
+/* 设置三个子页与项目页内容高度不同，切换时滚动条出现/消失会导致整页横移。
+   常驻滚动条槽位，任何页面切换都不再引起水平跳动。 */
+ .mgmt-page, .settings-shell, .projects-page { scrollbar-gutter: stable; }
+
+

@@ -26,9 +26,54 @@ public class GraphOperation {
         APPEND_CONTINUATION(true),
         CREATE_BRANCH_AND_APPEND(true),
         ATTACH_RESOURCE(true),
+        /**
+         * A floating (route-less) node is attached to a route tip. Undo
+         * detaches it again (the node keeps existing, disconnected) instead of
+         * retracting it — the user's content survives a connect/undo cycle.
+         */
+        CONNECT_FLOATING_NODE(true),
+        /**
+         * A node is detached from its route and becomes floating again. The
+         * node's content is never touched; redo re-attaches it to the tip it
+         * came from.
+         */
+        DISCONNECT_NODE(true),
         CREATE_SEMANTIC_RELATION(true),
         SET_KNOWLEDGE_STATUS(true),
-        ACCEPT_AGENT_PROPOSAL(false);
+        ACCEPT_AGENT_PROPOSAL(false),
+        /**
+         * A new branch route was forked from a historical node of an existing
+         * route (the fork shares the source lineage, nothing is copied). Undo
+         * soft-deletes the fork route (only while it has not been continued)
+         * and restores the previous active-route pointer.
+         */
+        ROUTE_FORK(true),
+        /**
+         * A re-answer route was created with a cloned question node. Undo
+         * retracts the clone and soft-deletes the route while it still sits
+         * at the clone.
+         */
+        ROUTE_REANSWER(true),
+        /**
+         * A replacement (regenerate) route was committed: the replacement
+         * question node was created and the source route superseded. Undo
+         * retracts the replacement, soft-deletes its route, and reopens the
+         * source route.
+         */
+        ROUTE_REGENERATE(true),
+        /**
+         * A floating knowledge/resource node started a new standalone route.
+         * The node itself is untouched; undo soft-deletes the route while it
+         * still only contains that node.
+         */
+        ROUTE_START(true),
+        /**
+         * An explicit route lifecycle transition (archive / soft-delete /
+         * restore). Undo applies the reverse transition and restores the
+         * recorded active-route pointer, fail-closed against the transition
+         * state machine.
+         */
+        ROUTE_LIFECYCLE(true);
 
         private final boolean reversibleByDefault;
 

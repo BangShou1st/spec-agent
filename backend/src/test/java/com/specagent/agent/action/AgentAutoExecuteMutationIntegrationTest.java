@@ -174,13 +174,18 @@ class AgentAutoExecuteMutationIntegrationTest {
         Route routeNow = routeRepository.findById(route.id()).orElseThrow();
 
         if (auto.success()) {
-            // The agent append committed first: the undo of the root draft
-            // must be rejected (the agent node is a live child), and nothing
-            // is half-applied.
-            assertThat(attempts[1].error()).as("undo must be rejected while a live child exists")
-                    .isInstanceOf(IllegalStateException.class);
+            // The agent append committed first: its own CREATE_DRAFT_NODE
+            // (AGENT) is now the top of the operation log, so undo
+            // compensates THE AGENT NODE (retract + tip rollback) — the old
+            // "live child rejects undo" premise predates agent mutations
+            // entering the log. The root draft itself stays intact and
+            // nothing is half-applied.
+            assertThat(attempts[1].error()).as("undo compensates the latest (agent) operation")
+                    .isNull();
             assertThat(rootNow.isRetracted()).isFalse();
-            assertThat(routeNow.tipNodeId()).isEqualTo(auto.producedNodeId());
+            Node agentNode = nodeService.getNode(auto.producedNodeId()).orElseThrow();
+            assertThat(agentNode.isRetracted()).isTrue();
+            assertThat(routeNow.tipNodeId()).isEqualTo(tip.id());
         } else {
             // The undo committed first (root retracted, route cleared): the
             // agent append must fail closed as stale and insert nothing.

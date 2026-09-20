@@ -76,6 +76,13 @@ function handleCancel(): void {
   void store.cancelActiveRun()
 }
 
+/** A starter chip fills the composer and takes focus; sending stays explicit. */
+function handleSuggestion(prompt: string): void {
+  if (switchGuard.value) return
+  composerText.value = prompt
+  composerRef.value?.focusComposer()
+}
+
 function handleNewConversation(): void {
   if (switchGuard.value) return
   void store.startNewConversation()
@@ -156,7 +163,7 @@ function handleClose(): void {
       <span>连接已断开，任务仍在后台继续</span>
       <button class="ga-panel__reconnect" type="button" data-test="ga-reconnect" @click="handleReconnect">重新连接</button>
     </div>
-    <div v-if="store.approvalRequired" class="ga-panel__approval" data-test="ga-approval">该步骤需要批准，当前版本暂不支持审批操作。</div>
+    <div v-if="store.approvalRequired" class="ga-panel__approval" data-test="ga-approval">该步骤需要批准，当前版本暂不支持审批操作</div>
 
     <div v-if="store.error" class="ga-panel__error" role="alert" data-test="ga-error">
       <span>{{ store.error.message }}</span>
@@ -198,6 +205,7 @@ function handleClose(): void {
       :waiting-question="store.waitingQuestion"
       :pending-steer="pendingSteer"
       :stopped-notice="stoppedNotice"
+      @suggestion="handleSuggestion"
     />
 
     <AssistantComposer
