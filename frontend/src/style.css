@@ -316,6 +316,13 @@ textarea {
   border-color: var(--color-accent);
 }
 
+/* 状态点(连接生命周期状态):全局共用,组件可按需覆盖字号字重。 */
+.st { flex: none; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.st--on { color: var(--color-success); }
+.st--fail { color: var(--color-danger); }
+.st--off { color: var(--color-text-secondary); }
+.st__dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+
 /* ---------- Errors / feedback ---------- */
 
 .error-banner {
@@ -329,6 +336,18 @@ textarea {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.error-banner__code {
+  margin-left: 8px;
+  font-size: 11px;
+  font-weight: normal;
+  color: var(--color-text-muted);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  vertical-align: middle;
 }
 
 .feedback-line {
@@ -1297,10 +1316,16 @@ textarea {
   outline: none;
   z-index: 2;
 }
+/* 知识/资源卡与问题卡共用同一动作栏显隐规则：两类卡片根类不同
+   （graph-knowledge-node / graph-question-node），漏掉任何一个都会让
+   该类卡片的操作按钮永远无法通过悬停出现。 */
 .graph-question-node:hover .graph-node-actions--toolbar,
 .graph-question-node--selected .graph-node-actions--toolbar,
+.graph-knowledge-node:hover .graph-node-actions--toolbar,
+.graph-knowledge-node--selected .graph-node-actions--toolbar,
 .graph-node-actions--toolbar:focus-within,
-.graph-question-node:focus-within .graph-node-actions--toolbar {
+.graph-question-node:focus-within .graph-node-actions--toolbar,
+.graph-knowledge-node:focus-within .graph-node-actions--toolbar {
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
@@ -1411,7 +1436,6 @@ input:focus-visible,
   justify-content: center;
 }
 
-.graph-runtime-copy,
 .graph-runtime-error {
   margin: 0;
   color: var(--color-text-secondary);
@@ -1419,6 +1443,83 @@ input:focus-visible,
 
 .graph-runtime-error {
   color: var(--color-danger);
+}
+
+/* ---- run process panel (in-node progress) ---- */
+
+.run-process-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+}
+
+.run-process-panel__phase {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.run-process-panel__spinner {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--color-border, #d8dbe2);
+  border-top-color: var(--color-accent, #3b82f6);
+  border-radius: 50%;
+  animation: run-process-spin 0.8s linear infinite;
+}
+
+@keyframes run-process-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.run-process-panel--failed .run-process-panel__phase {
+  color: var(--color-danger);
+}
+
+.run-process-panel__summary {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-text);
+}
+
+.run-process-panel__steps {
+  margin: 0;
+  padding: 0 0 0 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.run-process-panel__step {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.run-process-panel__step--latest {
+  color: var(--color-text);
+}
+
+.run-process-panel__items {
+  margin: 2px 0 0;
+  padding: 0 0 0 12px;
+  list-style: disc;
+}
+
+.run-process-panel__items li {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.graph-runtime-state__panel--inline {
+  padding-top: 6px;
+  border-top: 1px dashed var(--color-border, #d8dbe2);
 }
 
 /* ---- visual weight (Focus/Dim semantics) ---- */

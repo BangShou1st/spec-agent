@@ -161,7 +161,7 @@ class GlobalAssistantHardeningMiscTest {
         org.springframework.beans.factory.ObjectProvider<com.specagent.globalassistant.runtime.GlobalAssistantRuntime> provider =
                 Mockito.mock(org.springframework.beans.factory.ObjectProvider.class);
         var dispatcher = new com.specagent.globalassistant.turn.RunDispatcher(rejecting, provider, runLifecycle, runRepository);
-        var service = new com.specagent.globalassistant.api.GlobalAssistantApplicationService(
+        var service = new com.specagent.globalassistant.application.GlobalAssistantApplicationService(
                 conversations, runRepository, runLifecycle, handoff, activitySvc, deletes, dispatcher);
         GlobalAssistantThread thread = conversations.createThread();
         var first = service.createRun(thread.id(), "hello",

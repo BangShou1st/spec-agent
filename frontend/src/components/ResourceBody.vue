@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import RichAssistantText from '@/components/global-assistant/RichAssistantText.vue'
+import RichAssistantText from '@/components/common/RichAssistantText.vue'
 import { resourceKindOf } from '@/presentation/resourceKind'
 
 /**

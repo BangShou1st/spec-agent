@@ -59,7 +59,7 @@ describe('RelationProposalDialog', () => {
 
   it('Escape on the backdrop emits cancel', async () => {
     const wrapper = mountDialog()
-    await wrapper.find(byTestId('relation-proposal')).trigger('keydown', { key: 'Escape' })
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
     expect(wrapper.emitted('cancel')).toBeTruthy()
   })
 })

@@ -87,6 +87,24 @@ class AgentRunIdempotencyIntegrationTest {
         Project project = projectService.createProject("Idem draft replay " + UUID.randomUUID());
         var root = nodeService.createRootNode(project.id(), project.activeRouteId(), "Root?", null, List.of(), true);
         String sharedKey = key("draft-tip");
+
+        // Fail-fast contract (new): DRAFT_QUESTION on a route whose tip is still
+        // an unanswered question is rejected up-front with 409
+        // UNANSWERED_QUESTION_HAS_CHILD. The decision append would violate the
+        // UNANSWERED_QUESTION_HAS_CHILD graph invariant anyway, so the API no
+        // longer enqueues a run that is doomed to fail. The eligibility check
+        // runs only for NEW requests: an idempotent replay is matched by
+        // fingerprint before the check and keeps returning the original run.
+        mockMvc.perform(post("/api/v1/projects/{projectId}/agent-runs", project.id())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestPayload("DRAFT_QUESTION", null, null, null, sharedKey)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("UNANSWERED_QUESTION_HAS_CHILD"));
+
+        // Once the tip question is answered the draft is accepted; the idempotent
+        // replay must still return the original run even though the tip moved.
+        answerService.finalizeAnswer(project.id(), project.activeRouteId(), root.id(), null,
+                "answered before drafting", "test-user");
         UUID first = createRunViaHttp(project.id(), sharedKey, "DRAFT_QUESTION", null, null, null);
         nodeService.createChildNode(project.id(), project.activeRouteId(), root.id(), "Changed tip?", null, List.of(), true);
         UUID replayed = createRunViaHttp(project.id(), sharedKey, "DRAFT_QUESTION", null, null, null);

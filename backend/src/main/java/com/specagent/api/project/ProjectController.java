@@ -1,6 +1,9 @@
 package com.specagent.api.project;
 
-import com.specagent.api.common.ApiException;
+import com.specagent.application.project.ActiveProjectStateResponse;
+import com.specagent.application.project.ProjectResponse;
+import com.specagent.application.project.ProjectRuntimeQueryService;
+import com.specagent.common.ApiException;
 import com.specagent.project.DuplicateProjectTitleException;
 import com.specagent.project.Project;
 import com.specagent.project.ProjectDeletionService;

@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.specagent.capability.CapabilityRuntime;
-import com.specagent.globalassistant.api.GlobalAssistantApplicationService;
+import com.specagent.globalassistant.application.GlobalAssistantApplicationService;
 import com.specagent.globalassistant.context.GlobalAssistantContextBuilder;
 import com.specagent.globalassistant.conversation.GlobalAssistantConversationService;
 import com.specagent.globalassistant.conversation.GlobalAssistantMessage;
@@ -250,8 +250,8 @@ class GlobalAssistantFinalInteractionTest {
         GlobalAssistantThread thread = conversations.createThread();
         conversations.createRunWithUserMessage(thread.id(), "running", "v1", "v1", "fp");
         assertThatThrownBy(() -> application.deleteThread(thread.id()))
-                .isInstanceOf(com.specagent.api.common.ApiException.class)
-                .matches(ex -> "GLOBAL_ASSISTANT_THREAD_ACTIVE".equals(((com.specagent.api.common.ApiException) ex).code()));
+                .isInstanceOf(com.specagent.common.ApiException.class)
+                .matches(ex -> "GLOBAL_ASSISTANT_THREAD_ACTIVE".equals(((com.specagent.common.ApiException) ex).code()));
     }
 
     @Test

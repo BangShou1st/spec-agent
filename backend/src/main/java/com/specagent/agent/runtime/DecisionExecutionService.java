@@ -19,6 +19,7 @@ import com.specagent.agent.policy.PolicyDecision;
 import com.specagent.agent.policy.ProposalStatus;
 import com.specagent.agent.runevent.AgentRunEventService;
 import com.specagent.agent.runevent.AgentRunPhase;
+import com.specagent.agent.runevent.RunProgressRecorder;
 import com.specagent.context.ContextSnapshot;
 import com.specagent.trace.SemanticTraceRecorder;
 import org.springframework.stereotype.Service;
@@ -60,6 +61,7 @@ public class DecisionExecutionService {
     private final StaleContextChecker staleContextChecker;
     private final ActionEligibilityGate actionEligibilityGate;
     private final SemanticTraceRecorder semanticTraceRecorder;
+    private final RunProgressRecorder progressRecorder;
 
     public DecisionExecutionService(AgentDecisionEngine decisionEngine,
                                     AdvisorPolicyEngine policyEngine,
@@ -69,7 +71,8 @@ public class DecisionExecutionService {
                                     AgentRunEventService eventService,
                                     StaleContextChecker staleContextChecker,
                                     ActionEligibilityGate actionEligibilityGate,
-                                    SemanticTraceRecorder semanticTraceRecorder) {
+                                    SemanticTraceRecorder semanticTraceRecorder,
+                                    RunProgressRecorder progressRecorder) {
         this.decisionEngine = decisionEngine;
         this.policyEngine = policyEngine;
         this.actionExecutor = actionExecutor;
@@ -79,6 +82,7 @@ public class DecisionExecutionService {
         this.staleContextChecker = staleContextChecker;
         this.actionEligibilityGate = actionEligibilityGate;
         this.semanticTraceRecorder = semanticTraceRecorder;
+        this.progressRecorder = progressRecorder;
     }
 
     /**
@@ -143,6 +147,7 @@ public class DecisionExecutionService {
         eventService.append(runId, AgentRunPhase.PROPOSAL_CREATED, "PROPOSAL_CREATED", Map.of(
                 "actionFamily", proposal.actionFamily(),
                 "proposalId", proposal.proposalId().toString()));
+        progressRecorder.note(runId, AgentRunPhase.PROPOSAL_CREATED, "已确定下一步动作");
 
         PolicyDecision policyDecision = policyEngine.evaluate(proposal, execContext);
 
@@ -172,6 +177,7 @@ public class DecisionExecutionService {
             AgentProposal agentProposal = proposalService.createProposal(
                     proposal, runId, projectId, routeId);
             trace = appendTrace(trace, "awaiting_approval:" + agentProposal.id(), traceSeparator);
+            progressRecorder.note(runId, AgentRunPhase.AWAITING_APPROVAL, "提案已提交，等待你的确认");
             terminalizationService.completeWithEvent(runId, AgentRunStatus.COMPLETED, trace,
                     AgentRunPhase.AWAITING_APPROVAL, "AWAITING_APPROVAL", Map.of(
                             "proposalId", agentProposal.id().toString()));
@@ -185,6 +191,7 @@ public class DecisionExecutionService {
         trace = appendTrace(trace, "executing", traceSeparator);
         eventService.append(runId, AgentRunPhase.EXECUTING,
                 "EXECUTING", Map.of("actionFamily", proposal.actionFamily()));
+        progressRecorder.note(runId, AgentRunPhase.EXECUTING, "正在执行变更");
 
         ActionResult execResult = actionExecutor.execute(proposal, execContext);
         trace = appendTrace(trace, "completed", traceSeparator);

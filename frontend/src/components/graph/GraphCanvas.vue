@@ -15,6 +15,7 @@ import {
   type EdgeMouseEvent,
 } from '@vue-flow/core'
 import AdaptiveGraphEdge from '@/components/graph/AdaptiveGraphEdge.vue'
+import UiConfirmDialog from '@/components/ui/UiConfirmDialog.vue'
 import GraphKnowledgeNode from '@/components/graph/GraphKnowledgeNode.vue'
 import GraphQuestionNode from '@/components/graph/GraphQuestionNode.vue'
 import GraphStartPlaceholder from '@/components/graph/GraphStartPlaceholder.vue'
@@ -35,8 +36,8 @@ import {
 import type { GraphPosition } from '@/graph/graphTypes'
 import type {
   ContextualAiTarget,
+  GraphNodeRuntimeState,
   GraphPendingProjection,
-  GraphRuntimeStatus,
 } from '@/graph/graphProjection'
 import { useGraphUiStore } from '@/stores/graphUiStore'
 import type { GraphWorkspaceView, SubmitAnswerRequest } from '@/api/types'
@@ -63,10 +64,10 @@ const props = defineProps<{
   submitting: boolean
   drafting: boolean
   pending: boolean
-  runtimeNodeId?: string | null
-  runtimeStatus?: GraphRuntimeStatus | null
-  runtimePhase?: string | null
-  pendingProjection?: GraphPendingProjection | null
+  /** Per-node runtime overlays for in-flight runs on existing nodes. */
+  runtimeByNode?: Record<string, GraphNodeRuntimeState>
+  /** Browser-only cards for runs whose target node does not exist yet. */
+  pendings?: GraphPendingProjection[]
   safeRegion?: import('@/graph/graphViewport').FitViewportRegion | null
 }>()
 
@@ -76,12 +77,15 @@ const emit = defineEmits<{
   fork: [nodeId: string]
   reanswer: [nodeId: string]
   regenerate: [nodeId: string]
+  disconnect: [nodeId: string]
   'add-idea': []
   'add-resource': []
   'contextual-ai': [target: ContextualAiTarget]
   'retry-pending': []
   'viewport-settled': []
   'activate-route': [routeId: string]
+  /** 已回答的路线末端：沿该路线起草下一个问题（显式路线模式）。 */
+  'draft-next': [routeId: string]
   // A canvas drag (source handle → target handle) only raises a PENDING
   // relation proposal; nothing is persisted until the user confirms a type
   // and direction. This replaced the old "drag => immediate RELATED_TO".
@@ -152,12 +156,8 @@ const projection = computed(() => {
       selectedNodeIds: graphUi.selectedNodeIds,
     },
     savedPositions: graphUi.nodePositions,
-    runtime: {
-      nodeId: props.runtimeNodeId ?? null,
-      status: props.runtimeStatus ?? null,
-      phase: props.runtimePhase ?? null,
-    },
-    pending: props.pendingProjection ?? null,
+    runtimeByNode: props.runtimeByNode,
+    pendings: props.pendings,
   })
 })
 
@@ -527,21 +527,22 @@ function maybeRevalidatePendingFit(): void {
   if (!intent) {
     return
   }
-  const current = props.pendingProjection
+  const pendings = props.pendings ?? []
+  const sameRun = pendings.find((entry) => entry.runId === intent.runId) ?? null
   // The fitted pending run is still in flight: keep the intent armed.
-  if (current && current.runId === intent.runId && current.status !== 'FAILED') {
+  if (sameRun && sameRun.status !== 'FAILED') {
     return
   }
   // Any live pending (a different run, or the same run re-polled) means the
   // replacement has not completed: expire only if it can never match again.
   // A FAILED run without replacement expires the intent with no revalidation.
-  if (current && current.status !== 'FAILED') {
-    if (current.runId !== intent.runId) {
+  if (pendings.some((entry) => entry.status !== 'FAILED')) {
+    if (!sameRun) {
       pendingFitIntent = null
     }
     return
   }
-  if (current) {
+  if (pendings.length > 0) {
     pendingFitIntent = null
     return
   }
@@ -561,8 +562,8 @@ function maybeRevalidatePendingFit(): void {
 function manualFitView(): void {
   clearActiveNodeFitTimer()
   performFitView()
-  const pending = props.pendingProjection
-  if (pending && pending.status !== 'FAILED') {
+  const pending = (props.pendings ?? []).find((entry) => entry.status !== 'FAILED') ?? null
+  if (pending) {
     pendingFitIntent = { runId: pending.runId, activeNodeIdAtFit: props.activeNodeId }
   } else {
     clearPendingFitIntent()
@@ -890,16 +891,18 @@ async function fitView(): Promise<void> {
  * user's manual layout. Runtime history never changes. The follow-up fit is
  * computed from the fresh positions, never from Vue Flow measurements.
  */
+/** 确认弹窗状态：用站内 UiConfirmDialog 取代原生 window.confirm。 */
+const autoLayoutConfirmOpen = ref(false)
+
+function requestAutoLayout(): void {
+  autoLayoutConfirmOpen.value = true
+}
+
 async function autoLayout(): Promise<void> {
+  autoLayoutConfirmOpen.value = false
   clearActiveNodeFitTimer()
   clearPendingFitIntent()
   if (!props.view) {
-    return
-  }
-  const confirmed = window.confirm(
-    '重新自动布局将覆盖当前项目手工调整过的节点位置。Runtime 历史不会改变',
-  )
-  if (!confirmed) {
     return
   }
   const visibleIds = new Set<string>()
@@ -955,7 +958,9 @@ const isolatedRouteLabel = computed<string | null>(() => {
 })
 
 const isEmptyProject = computed(() =>
-  props.view !== null && props.view.nodes.length === 0 && !props.pendingProjection,
+  props.view !== null
+  && props.view.nodes.length === 0
+  && (props.pendings?.length ?? 0) === 0,
 )
 </script>
 
@@ -965,7 +970,7 @@ const isEmptyProject = computed(() =>
       @zoom-in="zoomIn"
       @zoom-out="zoomOut"
       @fit-view="fitView"
-      @auto-layout="autoLayout"
+      @auto-layout="requestAutoLayout"
       @show-all="showAll"
       @add-idea="emit('add-idea')"
       @add-resource="emit('add-resource')"
@@ -1028,9 +1033,11 @@ const isEmptyProject = computed(() =>
             @fork="(id) => emit('fork', id)"
             @reanswer="(id) => emit('reanswer', id)"
             @regenerate="(id) => emit('regenerate', id)"
+            @disconnect="(id) => emit('disconnect', id)"
             @contextual-ai="(id) => emitContextualAi(id, nodeProps.data.visualNodeKey)"
             @retry-pending="emit('retry-pending')"
             @activate-route="(routeId) => emit('activate-route', routeId)"
+            @draft-next="(routeId) => emit('draft-next', routeId)"
           />
         </template>
         <template #node-knowledge="nodeProps: NodeProps<SpecAgentGraphNodeData>">
@@ -1051,5 +1058,15 @@ const isEmptyProject = computed(() =>
     />
 
     <p v-if="!view" class="muted graph-canvas__loading">正在加载工作区…</p>
+
+    <UiConfirmDialog
+      :open="autoLayoutConfirmOpen"
+      title="重新自动布局"
+      description="重新自动布局将覆盖当前项目手工调整过的节点位置。Runtime 历史不会改变"
+      confirm-label="重新布局"
+      test-id="auto-layout-confirm"
+      @confirm="autoLayout"
+      @cancel="autoLayoutConfirmOpen = false"
+    />
   </div>
 </template>

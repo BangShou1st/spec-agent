@@ -16,8 +16,8 @@ import java.util.List;
 
 /**
  * DB-authoritative local mirror of installed Skill packages under
- * {@code ~/.spec-agent/skills} (configurable via
- * {@code spec.agent.skill.local-mirror.root}).
+ * {@code ./data/skills} relative to the backend working directory
+ * (configurable via {@code spec.agent.skill.local-mirror-root}).
  *
  * <p>The database stays the only activation-time authority — activation,
  * discovery and resource reads never touch this tree. The mirror exists so
@@ -40,8 +40,10 @@ public class SkillLocalMirror {
     public SkillLocalMirror(SkillProperties properties) {
         this.properties = properties;
         String configured = properties.getLocalMirrorRoot();
+        // Relative default keeps the mirror inside the project tree (the
+        // backend working directory in dev); toAbsolutePath anchors it here.
         this.root = Path.of(configured == null || configured.isBlank()
-                ? System.getProperty("user.home") + "/.spec-agent/skills"
+                ? "./data/skills"
                 : configured).toAbsolutePath().normalize();
     }
 

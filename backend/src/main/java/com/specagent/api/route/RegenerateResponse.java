@@ -1,6 +1,7 @@
 package com.specagent.api.route;
 
-import com.specagent.api.node.NodeResponse;
+import com.specagent.application.node.NodeResponse;
+import com.specagent.application.route.RouteResponse;
 
 import java.util.UUID;
 

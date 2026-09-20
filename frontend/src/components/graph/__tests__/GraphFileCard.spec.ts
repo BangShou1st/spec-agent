@@ -27,6 +27,7 @@ function mountNode(content: Record<string, unknown>) {
     purpose: null,
     options: [],
     allowFreeAnswer: false,
+    allowMultiSelect: false,
     createdAt: '2026-09-16T08:30:00Z',
     kind: 'RESOURCE',
     subtype: 'FILE',

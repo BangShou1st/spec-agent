@@ -15,6 +15,7 @@ const node = (id: string, parentNodeId: string | null) => ({
   purpose: null,
   options: [],
   allowFreeAnswer: true,
+    allowMultiSelect: false,
   createdAt: '2026-08-19T00:00:00Z',
   kind: 'INTERACTION' as const,
   subtype: 'QUESTION',

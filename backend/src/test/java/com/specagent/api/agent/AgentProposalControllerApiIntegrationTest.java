@@ -171,8 +171,87 @@ class AgentProposalControllerApiIntegrationTest {
                 .isEqualTo(anchor.id().toString());
     }
 
-    private JsonNode findSummary(JsonNode list, String proposalId) {
-        for (JsonNode node : list) {
+    /**
+     * Server-side triggerType filtering: the shared proposal list can be
+     * narrowed to a single trigger type, which is what lets the workspace stop
+     * fetching the full list and post-filtering it in the browser.
+     */
+    @Test
+    void triggerTypeFilterKeepsOnlyProposalsOfThatRunType() throws Exception {
+        UUID nodeQueryRunId = runService.createQueuedNodeQuery(
+                project.id(), routeId, anchor.id(), "锚点问题？");
+        AgentRun answerRun = runService.createQueuedRunWithInputResult(
+                project.id(), "ANSWER_TIP", anchor.id(), null, "补充说明", null, null);
+        createRiskProposal(nodeQueryRunId, "q");
+        createRiskProposal(answerRun.id(), "a");
+
+        MvcResult result = mockMvc.perform(get("/api/v1/projects/{projectId}/proposals",
+                        project.id())
+                        .param("triggerType", "node_query"))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode body = new ObjectMapper().readTree(result.getResponse().getContentAsString());
+        assertThat(body).hasSize(1);
+        assertThat(body.get(0).get("triggerType").asText()).isEqualTo("node_query");
+    }
+
+    /**
+     * The complementary exclusion filter. It exists because the workspace's two
+     * loaders are "only NodeQuery" and "everything except NodeQuery"; exclusion
+     * keeps the second one correct even when a new trigger type is introduced.
+     */
+    @Test
+    void excludeTriggerTypeFilterDropsProposalsOfThatRunType() throws Exception {
+        UUID nodeQueryRunId = runService.createQueuedNodeQuery(
+                project.id(), routeId, anchor.id(), "锚点问题？");
+        AgentRun answerRun = runService.createQueuedRunWithInputResult(
+                project.id(), "ANSWER_TIP", anchor.id(), null, "补充说明", null, null);
+        createRiskProposal(nodeQueryRunId, "q");
+        var confirmable = createRiskProposal(answerRun.id(), "a");
+
+        MvcResult result = mockMvc.perform(get("/api/v1/projects/{projectId}/proposals",
+                        project.id())
+                        .param("excludeTriggerType", "node_query"))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode body = new ObjectMapper().readTree(result.getResponse().getContentAsString());
+        assertThat(body).hasSize(1);
+        assertThat(body.get(0).get("proposalId").asText())
+                .isEqualTo(confirmable.id().toString());
+        assertThat(body.get(0).get("triggerType").asText()).isEqualTo("answer_cycle");
+    }
+
+    /** No filter parameter still returns the unfiltered list (backward compatible). */
+    @Test
+    void omittedTriggerTypeFilterReturnsEveryProposal() throws Exception {
+        UUID nodeQueryRunId = runService.createQueuedNodeQuery(
+                project.id(), routeId, anchor.id(), "锚点问题？");
+        AgentRun answerRun = runService.createQueuedRunWithInputResult(
+                project.id(), "ANSWER_TIP", anchor.id(), null, "补充说明", null, null);
+        createRiskProposal(nodeQueryRunId, "q");
+        createRiskProposal(answerRun.id(), "a");
+
+        MvcResult result = mockMvc.perform(get("/api/v1/projects/{projectId}/proposals",
+                        project.id()))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode body = new ObjectMapper().readTree(result.getResponse().getContentAsString());
+        assertThat(body).hasSize(2);
+    }
+
+    private com.specagent.agent.policy.AgentProposal createRiskProposal(UUID runId, String idempotencySuffix) {
+        return proposalService.createProposal(
+                new ActionProposal("CREATE_NODE", Map.of(
+                        "kind", "KNOWLEDGE", "subtype", "RISK",
+                        "content", Map.of("text", "结论")),
+                        UUID.randomUUID(), "hash-" + UUID.randomUUID(),
+                        List.of(), UUID.randomUUID(),
+                        "idem-" + idempotencySuffix + "-" + UUID.randomUUID(),
+                        List.of()),
+                runId, project.id(), routeId);
+    }
+
+    private JsonNode findSummary(JsonNode list, String proposalId) {        for (JsonNode node : list) {
             if (proposalId.equals(node.get("proposalId").asText())) {
                 return node;
             }

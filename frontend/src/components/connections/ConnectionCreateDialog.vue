@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, toRef } from 'vue'
+import { useDialogReset } from '@/composables/useDialogForm'
+import ApiErrorBanner from '@/components/ApiErrorBanner.vue'
 import UiDialogShell from '@/components/ui/UiDialogShell.vue'
 import UiFormField from '@/components/ui/UiFormField.vue'
 import { managementErrorMessage } from '@/api/errorCopy'
@@ -10,7 +12,12 @@ const name = ref('')
 const serverUrl = ref('')
 const secret = ref('')
 const showSecret = ref(false)
-watch(() => props.open, (v) => { if (v) { name.value = ''; serverUrl.value = ''; secret.value = ''; showSecret.value = false } })
+useDialogReset(toRef(props, 'open'), () => {
+  name.value = ''
+  serverUrl.value = ''
+  secret.value = ''
+  showSecret.value = false
+})
 const valid = () => name.value.trim().length > 0 && serverUrl.value.trim().length > 0
 function submit(): void { if (!valid() || props.saving) return; const s = secret.value; emit('create', { name: name.value.trim(), serverUrl: serverUrl.value.trim(), secret: s ? s : undefined }) }
 </script>
@@ -28,13 +35,11 @@ function submit(): void { if (!valid() || props.saving) return; const s = secret
         <button type="button" class="btn btn-secondary" data-test="toggle-secret" @click="showSecret = !showSecret">{{ showSecret ? '隐藏' : '显示' }}</button>
       </span>
     </UiFormField>
-    <p v-if="error" class="error-banner" data-test="create-error">{{ managementErrorMessage(error.code, error.message) }}</p>
+    <ApiErrorBanner v-if="error" :message="managementErrorMessage(error.code, error.message)" data-test="create-error" />
     <template #actions>
       <button type="button" class="btn btn-secondary" data-test="close-create" @click="emit('close')">取消</button>
       <button type="button" class="btn btn-primary" data-test="submit-create" :disabled="!valid() || saving" @click="submit">{{ saving ? '创建中…' : '创建并查看' }}</button>
     </template>
   </UiDialogShell>
 </template>
-<style scoped>
-.error-banner { margin: 0; }
-</style>
+

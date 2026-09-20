@@ -14,7 +14,6 @@ vi.mock('@/api/agentRuns', async () => ({
 vi.mock('@/api/graphCommands', () => ({
   acceptProposal: vi.fn(),
   appendContinuation: vi.fn(),
-  attachResource: vi.fn(),
   createFloatingDraftNode: vi.fn(),
   createRelation: vi.fn(),
   createNodeQuery: vi.fn(),

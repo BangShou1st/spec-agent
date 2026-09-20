@@ -242,6 +242,11 @@ public class AgentRunService {
         return agentRunRepository.findByProject(projectId);
     }
 
+    /** All non-terminal runs of a project, in creation order. */
+    public java.util.List<AgentRun> listActiveByProject(UUID projectId) {
+        return agentRunRepository.findActiveByProject(projectId);
+    }
+
     /** All runs that persisted the given Answer, in creation order. */
     public java.util.List<AgentRun> findByProducedAnswerId(UUID answerId) {
         return agentRunRepository.findByProducedAnswerId(answerId);

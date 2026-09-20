@@ -61,6 +61,10 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
                 "server.port=${SPEC_AGENT_CROSS_LANG_PORT:0}",
                 "spec.agent.brain.engine=remote-python",
                 "spec.agent.brain.base-url=http://localhost:8100",
+                // The dev brain runs with SPEC_AGENT_BRAIN_INTERNAL_SECRET set
+                // (see start-dev.bat); present the same secret. Overridable via
+                // the env var, matching application.yml and the eval suites.
+                "spec.agent.brain.internal-secret=${SPEC_AGENT_BRAIN_INTERNAL_SECRET:dev-internal-secret}",
                 "spec.agent.action-eligibility.mode=enforced"
         })
 @ActiveProfiles("test")

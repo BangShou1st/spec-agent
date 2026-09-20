@@ -24,7 +24,14 @@ public class AgentBrainProperties {
 
     private int connectTimeoutMs = 2000;
 
-    private int readTimeoutSeconds = 120;
+    /**
+     * Read timeout for one brain inference call. Must cover the SLOWEST real
+     * model round-trip the provider can produce, not the typical one: a run
+     * killed here wastes a completed (and billed) inference. 120s was
+     * routinely exceeded by slow provider days (observed 128–208s), so the
+     * default is 300s and it stays env-overridable.
+     */
+    private int readTimeoutSeconds = 300;
 
     private final Broker broker = new Broker();
 

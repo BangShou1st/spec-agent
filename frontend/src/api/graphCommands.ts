@@ -37,6 +37,8 @@ export interface UndoRedoResult {
     status: string
   }
   description: string
+  /** Display title of the compensated node when it is still resolvable. */
+  targetTitle: string | null
 }
 
 export interface NodeQueryRunCreated {
@@ -94,13 +96,34 @@ export interface ProjectProposalSummary {
   decidedBy: string | null
 }
 
+/**
+ * Optional server-side trigger-type narrowing of the shared proposal list.
+ * Both fields are lists of AgentRunTriggerType codes (e.g. "node_query") and
+ * are sent comma-separated; an absent/empty list means "no filter", so the
+ * call stays backward compatible with the unfiltered list.
+ */
+export interface ProposalTriggerFilter {
+  /** Keep only proposals whose producing run has one of these trigger types. */
+  triggerTypes?: string[] | null
+  /** Drop proposals whose producing run has one of these trigger types. */
+  excludeTriggerTypes?: string[] | null
+}
+
 /** Lists durable proposals of a project, defaulting to the pending ones. */
 export function listProposals(
   projectId: string,
   status = 'PROPOSED',
+  filter: ProposalTriggerFilter = {},
 ): Promise<ProjectProposalSummary[]> {
+  const params = new URLSearchParams({ status })
+  if (filter.triggerTypes?.length) {
+    params.set('triggerType', filter.triggerTypes.join(','))
+  }
+  if (filter.excludeTriggerTypes?.length) {
+    params.set('excludeTriggerType', filter.excludeTriggerTypes.join(','))
+  }
   return apiClient.get<ProjectProposalSummary[]>(
-    `/projects/${projectId}/proposals?status=${encodeURIComponent(status)}`,
+    `/projects/${projectId}/proposals?${params.toString()}`,
   )
 }
 
@@ -198,22 +221,6 @@ export function setKnowledgeStatus(
 }
 
 export type ResourceSubtype = 'TEXT' | 'URL' | 'FILE' | 'IMAGE' | 'REPOSITORY' | 'API_DOCUMENTATION'
-
-/** Attaches a user-authored resource node (root of empty route or tip append). */
-export function attachResource(
-  projectId: string,
-  routeId: string,
-  parentNodeId: string | null,
-  subtype: ResourceSubtype,
-  content: Record<string, unknown>,
-): Promise<CreatedNodeResponse> {
-  return apiClient.post<CreatedNodeResponse>(`/projects/${projectId}/resources`, {
-    routeId,
-    parentNodeId,
-    subtype,
-    content,
-  })
-}
 
 export function listRelations(projectId: string): Promise<GraphWorkspaceRelationView[]> {
   return apiClient.get<GraphWorkspaceRelationView[]>(`/projects/${projectId}/relations`)

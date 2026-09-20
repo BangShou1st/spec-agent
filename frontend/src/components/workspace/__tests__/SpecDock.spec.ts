@@ -13,6 +13,7 @@ function mountDock(overrides: Record<string, unknown> = {}) {
       snapshots: [],
       selectedSpecId: null,
       generating: false,
+      exporting: false,
       commandPending: false,
       ...overrides,
     },
@@ -91,6 +92,32 @@ describe('SpecDock expanded state', () => {
     await wrapper.find('[data-test="spec-dock-toggle"]').trigger('click')
     expect(wrapper.find('[data-test="spec-dock"]').attributes('data-state')).toBe('collapsed')
     expect(wrapper.emitted('select-snapshot')).toBeUndefined()
+  })
+})
+
+describe('SpecDock export', () => {
+  it('emits export-spec with the selected snapshot id and variant', async () => {
+    const wrapper = mountDock({
+      snapshots: [makeSpecSnapshot({ id: 'spec-1', routeId: 'r1' })],
+      selectedSpecId: 'spec-1',
+    })
+    await wrapper.find('[data-test="spec-dock-toggle"]').trigger('click')
+    await wrapper.find('[data-test="export-delivery-md"]').trigger('click')
+    await wrapper.find('[data-test="export-snapshot-md"]').trigger('click')
+    expect(wrapper.emitted('export-spec')).toEqual([
+      ['spec-1', 'delivery'],
+      ['spec-1', 'snapshot'],
+    ])
+  })
+
+  it('disables export while an export is in flight', async () => {
+    const wrapper = mountDock({
+      snapshots: [makeSpecSnapshot({ id: 'spec-1', routeId: 'r1' })],
+      selectedSpecId: 'spec-1',
+      exporting: true,
+    })
+    await wrapper.find('[data-test="spec-dock-toggle"]').trigger('click')
+    expect(wrapper.find('[data-test="export-delivery-md"]').attributes('disabled')).toBeDefined()
   })
 })
 

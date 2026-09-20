@@ -59,8 +59,6 @@ const hint = computed(() => {
 .lifecycle-hint { margin: 0 0 10px; color: var(--color-text-secondary); font-size: 13px; }
 .lifecycle-row { display: flex; }
 .enabled-line { display: inline-flex; align-items: center; gap: 12px; }
-.st { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; }
-.st--on { color: var(--color-success); }
-.st__dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.st { font-size: 13px; font-weight: 700; }
 .lifecycle-error { margin: 10px 0 0; color: var(--color-danger); font-size: 13px; }
 </style>

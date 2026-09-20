@@ -27,7 +27,7 @@ function mark(name: string): string {
 
 <template>
   <div class="skills-list" data-test="skills-list">
-    <p v-if="loading" class="muted" data-test="skills-loading">Loading skills...</p>
+    <p v-if="loading" class="muted" data-test="skills-loading">加载中…</p>
     <ul v-else class="skills-rows">
       <li
         v-for="skill in skills"

@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { readStored, writeStored } from '@/util/safeStorage'
 import { ApiError } from '@/api/client'
 import {
   createGaRun,
@@ -315,24 +316,6 @@ function diffMs(startedAt: string, endedAt: string | null): number | null {
   if (Number.isNaN(start) || Number.isNaN(end)) return null
   const diff = end - start
   return diff >= 0 ? Math.round(diff) : null
-}
-
-function readStored(key: string): string | null {
-  try {
-    const value = localStorage.getItem(key)
-    return value && value.length > 0 ? value : null
-  } catch {
-    return null
-  }
-}
-
-function writeStored(key: string, value: string | null): void {
-  try {
-    if (value === null) localStorage.removeItem(key)
-    else localStorage.setItem(key, value)
-  } catch {
-    /* storage unavailable: backend remains canonical */
-  }
 }
 
 export const useGlobalAssistantStore = defineStore('globalAssistant', {

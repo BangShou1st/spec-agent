@@ -21,6 +21,7 @@ function node(id: string, parentNodeId: string | null, supersedesNodeId: string 
     purpose: null,
     options: [],
     allowFreeAnswer: true,
+    allowMultiSelect: false,
     createdAt: '2026-08-18T00:00:00Z',
     kind: 'INTERACTION' as const,
     subtype: 'QUESTION',
@@ -52,6 +53,7 @@ function answer(routeId: string, nodeId: string, freeText = 'answer ' + routeId 
     routeId,
     nodeId,
     selectedOptionId: null,
+          selectedOptionIds: null,
     freeText,
     createdAt: '2026-08-18T00:00:00Z',
   }
@@ -145,20 +147,88 @@ describe('graph projection', () => {
       activeNodeId: 'c',
       uiState: uiState(),
       savedPositions: {},
-      pending: {
+      pendings: [{
         routeId: ACTIVE_ROUTE_ID,
         sourceNodeId: 'c',
         runId: 'run-pending',
         status: 'RUNNING',
         phase: 'DECIDING',
         message: null,
-      },
+      }],
     })
     const pending = result.nodes.find((candidate) => candidate.id === 'pending:run-pending')
     expect(pending).toBeDefined()
     expect((pending?.data as SpecAgentGraphNodeData).runtimeStatus).toBe('RUNNING')
     expect((pending?.data as SpecAgentGraphNodeData).isLatest).toBe(true)
     expect(result.edges.find((edge) => edge.id === 'c->pending:run-pending')).toBeDefined()
+  })
+
+  it('projects several concurrent runs as separate pending cards', () => {
+    const result = projectGraph({
+      view: fixture(),
+      activeNodeId: 'c',
+      uiState: uiState(),
+      savedPositions: {},
+      pendings: [
+        {
+          routeId: ACTIVE_ROUTE_ID,
+          sourceNodeId: 'c',
+          runId: 'run-a',
+          status: 'RUNNING',
+          phase: 'STATE_UPDATING',
+          message: null,
+          operation: 'DRAFT_QUESTION',
+        },
+        {
+          routeId: ROUTE_B_ID,
+          sourceNodeId: null,
+          runId: 'run-b',
+          status: 'RUNNING',
+          phase: 'DECIDING',
+          message: null,
+          operation: 'REGENERATE_NODE',
+        },
+      ],
+    })
+    const ids = result.nodes.map((node) => node.id)
+    expect(ids).toContain('pending:run-a')
+    expect(ids).toContain('pending:run-b')
+    // Each card carries its own runtime snapshot.
+    const cardA = result.nodes.find((node) => node.id === 'pending:run-a')
+    const cardB = result.nodes.find((node) => node.id === 'pending:run-b')
+    expect((cardA?.data as SpecAgentGraphNodeData).runtimePhase).toBe('STATE_UPDATING')
+    expect((cardB?.data as SpecAgentGraphNodeData).runtimePhase).toBe('DECIDING')
+  })
+
+  it('overlays runtime progress onto an existing canonical node', () => {
+    const result = projectGraph({
+      view: fixture(),
+      activeNodeId: 'c',
+      uiState: uiState(),
+      savedPositions: {},
+      runtimeByNode: {
+        c: {
+          status: 'RUNNING',
+          phase: 'STATE_UPDATED',
+          progress: {
+            summary: '需求要点整理完成，共 2 条',
+            steps: [{
+              sequence: 1,
+              phase: 'STATE_UPDATED',
+              event: 'PROCESS_NOTE',
+              summary: '需求要点整理完成，共 2 条',
+              items: ['要点一'],
+              at: '2026-01-01T00:00:00.000Z',
+            }],
+          },
+        },
+      },
+    })
+    const node = result.nodes.find((candidate) => candidate.id === 'c')
+    const data = node?.data as SpecAgentGraphNodeData
+    expect(data.runtimeStatus).toBe('RUNNING')
+    expect(data.runtimeProgress?.summary).toBe('需求要点整理完成，共 2 条')
+    expect(data.runtimeProgress?.steps[0].items).toEqual(['要点一'])
   })
 
   it('renders the a->b lineage edge once with route memberships A/B/C', () => {
@@ -320,8 +390,8 @@ describe('graph projection', () => {
 
   it('selectPrimaryAnswer: canonical Answer is stable across focus routes (never route-specific selection)', () => {
     const answers = [
-      { nodeId: 'x', routeId: ACTIVE_ROUTE_ID, selectedOptionId: null, selectedOptionLabel: null, freeText: 'shared', isPrimary: false },
-      { nodeId: 'x', routeId: ROUTE_B_ID, selectedOptionId: null, selectedOptionLabel: null, freeText: 'shared', isPrimary: false },
+      { nodeId: 'x', routeId: ACTIVE_ROUTE_ID, selectedOptionId: null, selectedOptionLabel: null, selectedOptionIds: null, freeText: 'shared', isPrimary: false },
+      { nodeId: 'x', routeId: ROUTE_B_ID, selectedOptionId: null, selectedOptionLabel: null, selectedOptionIds: null, freeText: 'shared', isPrimary: false },
     ]
     // 不管 focus 在哪条路线，返回的始终是同一个 canonical 内容。
     expect(selectPrimaryAnswer('x', answers, ROUTE_B_ID, ACTIVE_ROUTE_ID, [])?.freeText).toBe('shared')
@@ -331,8 +401,8 @@ describe('graph projection', () => {
 
   it('selectPrimaryAnswer: returns the single canonical Answer identity, ignoring the focus route', () => {
     const answers = [
-      { nodeId: 'x', routeId: ACTIVE_ROUTE_ID, selectedOptionId: null, selectedOptionLabel: null, freeText: 'canonical', isPrimary: false },
-      { nodeId: 'x', routeId: ROUTE_B_ID, selectedOptionId: null, selectedOptionLabel: null, freeText: 'other', isPrimary: false },
+      { nodeId: 'x', routeId: ACTIVE_ROUTE_ID, selectedOptionId: null, selectedOptionLabel: null, selectedOptionIds: null, freeText: 'canonical', isPrimary: false },
+      { nodeId: 'x', routeId: ROUTE_B_ID, selectedOptionId: null, selectedOptionLabel: null, selectedOptionIds: null, freeText: 'other', isPrimary: false },
     ]
     // 即使 focus=B，返回的仍是同一 canonical 内容（全局唯一不可变身份）。
     expect(selectPrimaryAnswer('x', answers, ROUTE_B_ID, ACTIVE_ROUTE_ID, [])?.freeText).toBe('canonical')
@@ -341,7 +411,7 @@ describe('graph projection', () => {
 
   it('selectPrimaryAnswer: single-route (non-shared) returns the route answer even without focus', () => {
     const answers = [
-      { nodeId: 'x', routeId: ACTIVE_ROUTE_ID, selectedOptionId: 'opt-a', selectedOptionLabel: 'A', freeText: null, isPrimary: false },
+      { nodeId: 'x', routeId: ACTIVE_ROUTE_ID, selectedOptionId: 'opt-a', selectedOptionLabel: 'A', selectedOptionIds: null, freeText: null, isPrimary: false },
     ]
     // 唯一 route，no focus → primary 来自该 route，不借用 active fallback。
     const primary = selectPrimaryAnswer('x', answers, null, ACTIVE_ROUTE_ID, [])
@@ -352,8 +422,8 @@ describe('graph projection', () => {
     // 最终模型：一个 canonical Question 全局只有一个 immutable Answer，
     // 多条 route 的引用享有同一内容。无 focus 时直接展示首个引用。
     const answers = [
-      { nodeId: 'x', routeId: ACTIVE_ROUTE_ID, selectedOptionId: 'opt-a', selectedOptionLabel: 'A', freeText: 'same', isPrimary: false },
-      { nodeId: 'x', routeId: ROUTE_B_ID, selectedOptionId: 'opt-a', selectedOptionLabel: 'A', freeText: 'same', isPrimary: false },
+      { nodeId: 'x', routeId: ACTIVE_ROUTE_ID, selectedOptionId: 'opt-a', selectedOptionLabel: 'A', selectedOptionIds: null, freeText: 'same', isPrimary: false },
+      { nodeId: 'x', routeId: ROUTE_B_ID, selectedOptionId: 'opt-a', selectedOptionLabel: 'A', selectedOptionIds: null, freeText: 'same', isPrimary: false },
     ]
     const primary = selectPrimaryAnswer('x', answers, null, ACTIVE_ROUTE_ID, [])
     expect(primary?.routeId).toBe(ACTIVE_ROUTE_ID)
@@ -393,6 +463,7 @@ describe('graph projection', () => {
       purpose: null,
       options: [],
       allowFreeAnswer: false,
+    allowMultiSelect: false,
       createdAt: '2026-01-01T00:00:00Z',
       kind: 'KNOWLEDGE',
       subtype: 'IDEA',
@@ -935,10 +1006,11 @@ describe('estimateNodeCardHeight (first-layout fallback before measurement)', ()
     const withInputs = estimateNodeCardHeight({
       ...node('n2', null),
       allowFreeAnswer: true,
+    allowMultiSelect: false,
       options: [
-        { id: 'o1', label: 'A', impact: null },
-        { id: 'o2', label: 'B', impact: null },
-        { id: 'o3', label: 'C', impact: null },
+        { id: 'o1', label: 'A', impact: null, recommended: false },
+        { id: 'o2', label: 'B', impact: null, recommended: false },
+        { id: 'o3', label: 'C', impact: null, recommended: false },
       ],
     })
     expect(withInputs).toBeGreaterThan(bare)

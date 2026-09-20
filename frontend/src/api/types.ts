@@ -84,6 +84,8 @@ export interface NodeOptionResponse {
   id: string
   label: string
   impact: string | null
+  /** 模型基于上下文的推荐（只是建议，绝不预选中）。 */
+  recommended: boolean
 }
 
 export interface NodeResponse {
@@ -95,6 +97,7 @@ export interface NodeResponse {
   purpose: string | null
   options: NodeOptionResponse[]
   allowFreeAnswer: boolean
+  allowMultiSelect: boolean
   createdAt: string
 }
 
@@ -165,6 +168,8 @@ export interface DraftQuestionResponse {
 /** Answer request: both inputs optional at the API, at least one required. */
 export interface SubmitAnswerRequest {
   selectedOptionId?: string | null
+  /** 多选题的全量选择（用户顺序）；单选题不传，走 selectedOptionId。 */
+  selectedOptionIds?: string[] | null
   freeText?: string | null
   /**
    * 显式回答目标（可选）：回答哪个节点、答案写入哪条路线。
@@ -302,6 +307,8 @@ export interface GraphWorkspaceOptionView {
   id: string
   label: string
   impact: string | null
+  /** 模型基于上下文的推荐（只是建议，绝不预选中）。 */
+  recommended: boolean
 }
 
 /** Stable outer node kind; subtypes refine it (no per-business node types). */
@@ -317,6 +324,7 @@ export interface GraphWorkspaceNodeView {
   purpose: string | null
   options: GraphWorkspaceOptionView[]
   allowFreeAnswer: boolean
+  allowMultiSelect: boolean
   createdAt: string
   kind: GraphNodeKind
   subtype: string
@@ -334,6 +342,8 @@ export interface GraphWorkspaceAnswerView {
   inherited?: boolean
   nodeId: string
   selectedOptionId: string | null
+  /** 多选题的全量选择（用户顺序）；单选答案为 null 或单元素。 */
+  selectedOptionIds: string[] | null
   freeText: string | null
   createdAt: string
 }

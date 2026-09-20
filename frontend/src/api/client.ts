@@ -22,7 +22,8 @@ export class ApiError extends Error {
 
 export const GENERIC_ERROR_MESSAGE = '操作失败，请稍后重试'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api/v1'
+/** Single API base authority shared by the typed client and the SSE stream. */
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api/v1'
 
 /**
  * One typed HTTP client for the Phase 6 API. Every response is parsed against

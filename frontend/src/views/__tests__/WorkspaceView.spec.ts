@@ -139,6 +139,7 @@ function graphView(): GraphWorkspaceView {
         routeId: 'r1',
         nodeId: 'n1',
         selectedOptionId: null,
+          selectedOptionIds: null,
         freeText: 'confirmed answer',
         createdAt: '2026-01-01T00:00:00Z',
       },
@@ -277,7 +278,7 @@ describe('WorkspaceView graph shell', () => {
     const { wrapper } = await mountWorkspace()
     await wrapper.findComponent(GraphCanvasStub).vm.$emit('draft')
     await flushPromises()
-    expect(mockedCreateAgentRun).toHaveBeenCalledWith('p1', { operation: 'DRAFT_QUESTION' })
+    expect(mockedCreateAgentRun).toHaveBeenCalledWith('p1', { operation: 'DRAFT_QUESTION', sourceRouteId: null })
     expect(useWorkspaceStore().feedback).toBe('问题已起草')
   })
 
@@ -307,6 +308,7 @@ describe('WorkspaceView graph shell', () => {
       operation: 'ANSWER_TIP',
       nodeId: 'n2',
       selectedOptionId: null,
+          selectedOptionIds: null,
       freeText: 'answer',
       sourceRouteId: null,
       idempotencyKey: expect.any(String),

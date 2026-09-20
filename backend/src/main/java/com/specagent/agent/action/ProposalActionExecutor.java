@@ -91,6 +91,7 @@ public class ProposalActionExecutor implements ActionExecutor {
         String questionText = asString(payload.get("questionText"), "questionText");
         String purpose = asString(payload.get("purpose"), "purpose");
         boolean allowFreeAnswer = payload.get("allowFreeAnswer") instanceof Boolean b && b;
+        boolean allowMultiSelect = payload.get("allowMultiSelect") instanceof Boolean b && b;
         List<NodeOption> options = parseOptions(payload.get("options"));
 
         // The anchor is the route tip the model decided against (null on an
@@ -100,7 +101,8 @@ public class ProposalActionExecutor implements ActionExecutor {
         Node node = agentGraphMutationService.executeNodeCreation(
                 context.projectId(), context.routeId(), context.anchorNodeId(),
                 new AgentGraphMutationService.InteractionNode(
-                        questionText, purpose, options, allowFreeAnswer));
+                        questionText, purpose, options, allowFreeAnswer, allowMultiSelect),
+                "proposal:" + proposal.proposalId());
 
         return new ActionResult("REQUEST_USER_INPUT", node.id(), null, null);
     }
@@ -121,7 +123,8 @@ public class ProposalActionExecutor implements ActionExecutor {
                     context.projectId(), context.routeId(), context.anchorNodeId(),
                     new AgentGraphMutationService.WorkspaceNode(
                             com.specagent.node.NodeKind.fromCode(kind),
-                            subtype, content));
+                            subtype, content),
+                    "proposal:" + proposal.proposalId());
             return new ActionResult("CREATE_NODE", node.id(), null, null);
         }
 
@@ -131,12 +134,14 @@ public class ProposalActionExecutor implements ActionExecutor {
                 ? q : asString(payload.get("question"), "question");
         String purpose = asString(payload.get("purpose"), "purpose");
         boolean allowFreeAnswer = payload.get("allowFreeAnswer") instanceof Boolean b && b;
+        boolean allowMultiSelect = payload.get("allowMultiSelect") instanceof Boolean b && b;
         List<NodeOption> options = parseOptions(payload.get("options"));
 
         Node node = agentGraphMutationService.executeNodeCreation(
                 context.projectId(), context.routeId(), context.anchorNodeId(),
                 new AgentGraphMutationService.InteractionNode(
-                        questionText, purpose, options, allowFreeAnswer));
+                        questionText, purpose, options, allowFreeAnswer, allowMultiSelect),
+                "proposal:" + proposal.proposalId());
 
         return new ActionResult("CREATE_NODE", node.id(), null, null);
     }
@@ -171,7 +176,10 @@ public class ProposalActionExecutor implements ActionExecutor {
         for (Object item : optionList) {
             if (item instanceof Map<?, ?> map) {
                 String label = asString(map.get("label"), "option.label");
-                result.add(new NodeOption(UUID.randomUUID(), label, null));
+                // recommended: the model's context-based suggestion, shown as a
+                // badge in the UI; it is advice only, never a pre-selected answer.
+                boolean recommended = map.get("recommended") instanceof Boolean b && b;
+                result.add(new NodeOption(UUID.randomUUID(), label, null, recommended));
             }
         }
         return result;

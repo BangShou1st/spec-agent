@@ -79,6 +79,7 @@ watch(
       window.removeEventListener('keydown', onDocumentKeydown)
     }
   },
+  { immediate: true },
 )
 
 onBeforeUnmount(() => {
@@ -135,12 +136,6 @@ function confirm(): void {
   })
 }
 
-function handleKeydown(event: KeyboardEvent): void {
-  if (event.key === 'Escape') {
-    emit('cancel')
-  }
-}
-
 function handleBackdrop(event: MouseEvent): void {
   if (event.target === event.currentTarget) {
     emit('cancel')
@@ -155,8 +150,6 @@ function handleBackdrop(event: MouseEvent): void {
       class="relation-proposal-backdrop"
       data-test="relation-proposal"
       @mousedown="handleBackdrop"
-      @keydown="handleKeydown"
-      tabindex="-1"
     >
       <div
         class="relation-proposal-dialog"

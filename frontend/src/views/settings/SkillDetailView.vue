@@ -4,8 +4,10 @@ import { useRouter } from 'vue-router'
 import { managementErrorMessage } from '@/api/errorCopy'
 import AppIcon from '@/components/AppIcon.vue'
 import BackLink from '@/components/BackLink.vue'
+import ApiErrorBanner from '@/components/ApiErrorBanner.vue'
 import SkillResourceViewer from '@/components/skills/SkillResourceViewer.vue'
 import ToggleSwitch from '@/components/ui/ToggleSwitch.vue'
+import UiConfirmDialog from '@/components/ui/UiConfirmDialog.vue'
 import { formatBytes, formatDateTime, skillSourceLabel } from '@/presentation/managementCopy'
 import { useSkillsStore } from '@/stores/skillsStore'
 
@@ -55,10 +57,13 @@ async function remove(): Promise<void> {
   <section class="mgmt-page" data-test="skill-detail-page">
     <BackLink to="/settings/skills" label="返回 Skills" test-id="back-to-skills" />
     <p v-if="store.detailLoading" class="muted" data-test="skill-detail-loading">加载中…</p>
-    <p v-else-if="store.error && !store.detail" class="error-banner" data-test="skill-detail-error">
-      <span>{{ managementErrorMessage(store.error.code, store.error.message) }}</span>
-      <button type="button" class="btn" data-test="skill-detail-retry" @click="load">重试</button>
-    </p>
+    <ApiErrorBanner
+      v-else-if="store.error && !store.detail"
+      :message="managementErrorMessage(store.error.code, store.error.message)"
+      retry-label="重试"
+      data-test="skill-detail-error"
+      @retry="load"
+    />
     <template v-else-if="store.detail">
       <header class="detail-head">
         <div class="detail-title">
@@ -79,16 +84,23 @@ async function remove(): Promise<void> {
             status-test-id="skill-detail-status"
             @toggle="toggle"
           />
-          <template v-if="confirmingDelete">
-            <button type="button" class="btn btn-danger" data-test="skill-detail-delete-confirm" :disabled="working" @click="remove">确认删除</button>
-            <button type="button" class="btn" data-test="skill-detail-delete-cancel" @click="confirmingDelete = false">取消</button>
-          </template>
-          <button v-else type="button" class="icon-btn" title="删除该 Skill" data-test="skill-detail-delete" :disabled="working" @click="confirmingDelete = true">
+          <button type="button" class="icon-btn" title="删除该 Skill" data-test="skill-detail-delete" :disabled="working" @click="confirmingDelete = true">
             <AppIcon name="trash" />
           </button>
         </div>
       </header>
-      <p v-if="confirmingDelete" class="delete-warning">删除该 Skill 及其全部版本？此操作不可撤销</p>
+      <UiConfirmDialog
+        :open="confirmingDelete"
+        title="删除该 Skill？"
+        description="删除该 Skill 及其全部版本？此操作不可撤销"
+        confirm-label="确认删除"
+        :loading="working"
+        test-id="skill-detail-delete-dialog"
+        confirm-test-id="skill-detail-delete-confirm"
+        cancel-test-id="skill-detail-delete-cancel"
+        @confirm="remove"
+        @cancel="confirmingDelete = false"
+      />
       <p v-if="store.error" class="mgmt-inline-error" data-test="skill-detail-action-error">{{ managementErrorMessage(store.error.code, store.error.message) }}</p>
 
       <section class="detail-section">
@@ -142,7 +154,6 @@ async function remove(): Promise<void> {
 </template>
 
 <style scoped>
-.mgmt-page { width: 100%; max-width: 880px; margin: 0 auto; padding: 8px 0 48px; }
 .detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .detail-title { min-width: 0; }
 .detail-title h2 { margin: 0; font-size: 24px; }
@@ -155,8 +166,6 @@ async function remove(): Promise<void> {
 .icon-btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .icon-btn:disabled { opacity: 0.5; cursor: progress; }
 .delete-warning { margin: 10px 0 0; color: var(--color-danger); font-size: 13px; }
-.mgmt-inline-error { color: var(--color-danger); font-size: 13px; }
-.error-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .detail-section { margin-top: 24px; }
 .detail-section h3 { font-size: 15px; margin: 0 0 10px; }
 .res-list, .ver-list { list-style: none; margin: 0; padding: 0; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 12px; }

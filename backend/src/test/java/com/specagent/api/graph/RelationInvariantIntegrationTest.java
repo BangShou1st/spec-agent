@@ -115,7 +115,8 @@ class RelationInvariantIntegrationTest {
         mockMvc.perform(post("/api/v1/projects/{pid}/relations", project.id())
                         .contentType("application/json")
                         .content(relBody(c.id().toString(), a.id().toString(), "DEPENDS_ON")))
-                .andExpect(status().isConflict());
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("RELATION_DEPENDENCY_CYCLE"));
     }
 
     @Test
@@ -149,7 +150,7 @@ class RelationInvariantIntegrationTest {
         assertThatThrownBy(() -> commandService.createSemanticRelation(
                 project.id(), c.id(), a.id(), NodeRelationType.DEPENDS_ON,
                 NodeRelation.Origin.USER, null, null))
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(com.specagent.graph.GraphRuleViolationException.class)
                 .hasMessageContaining("RELATION_DEPENDENCY_CYCLE");
     }
 

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { connectionStatusText as connectionStatusCopy } from '@/presentation/statusCopy'
 import { connectionKindLabel } from '@/presentation/managementCopy'
 import type { ConnectionSummary } from '@/api/connectionTypes'
 
@@ -24,10 +25,7 @@ function endpointOf(c: ConnectionSummary): string {
 }
 
 function statusText(c: ConnectionSummary): string {
-  if (c.enabled) return '已启用'
-  if (c.status === 'FAILED') return '连接失败'
-  if (c.status === 'CREATED') return '未测试'
-  return '已禁用'
+  return connectionStatusCopy(c.enabled, c.status)
 }
 
 function statusClass(c: ConnectionSummary): string {
@@ -39,7 +37,7 @@ function statusClass(c: ConnectionSummary): string {
 
 <template>
   <div class="conns-list" data-test="connections-list">
-    <p v-if="loading" class="muted" data-test="connections-loading">Loading connections...</p>
+    <p v-if="loading" class="muted" data-test="connections-loading">加载中…</p>
     <ul v-else class="conns-rows">
       <li v-for="c in connections" :key="c.connectionId" class="conns-row" :data-test="`connection-row-${c.connectionId}`">
         <button type="button" class="conns-main" :data-test="`connection-select-${c.connectionId}`" @click="emit('select', c.connectionId)">
@@ -76,11 +74,6 @@ function statusClass(c: ConnectionSummary): string {
 .conns-main:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: 6px; }
 .conns-name { font-weight: 600; }
 .conns-endpoint { width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text-secondary); font-size: 13px; }
-.st { flex: none; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; white-space: nowrap; }
-.st--on { color: var(--color-success); }
-.st--fail { color: var(--color-danger); }
-.st--off { color: var(--color-text-secondary); }
-.st__dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .conns-more { flex: none; position: relative; }
 .conns-more summary { cursor: pointer; list-style: none; padding: 4px 8px; border-radius: 6px; color: var(--color-text-secondary); font-weight: 700; letter-spacing: 0.1em; }
 .conns-more summary:focus-visible { outline: none; box-shadow: var(--focus-ring); }

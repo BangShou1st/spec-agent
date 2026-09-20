@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, watch } from 'vue'
-const props = defineProps<{ open: boolean; title: string; description?: string | null; testId?: string; labelledBy?: string }>()
+import AppIcon from '@/components/AppIcon.vue'
+const props = defineProps<{ open: boolean; title: string; description?: string | null; testId?: string; labelledBy?: string; zIndex?: number; maxWidth?: number }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
 const cardEl = ref<HTMLElement | null>(null)
 const titleId = 'ui-dlg-title'
@@ -13,14 +14,14 @@ onMounted(() => { if (props.open) window.addEventListener('keydown', onKey) })
 onUnmounted(() => window.removeEventListener('keydown', onKey))
 </script>
 <template>
-  <div v-if="open" class="ui-veil" :data-test="testId ?? 'ui-dialog'">
-    <div ref="cardEl" class="ui-card" role="dialog" aria-modal="true" :aria-label="title" :aria-describedby="description ? 'ui-dlg-desc' : undefined">
+  <div v-if="open" class="ui-veil" :style="zIndex ? { zIndex } : undefined" :data-test="testId ?? 'ui-dialog'">
+    <div ref="cardEl" class="ui-card" :style="maxWidth ? { maxWidth: maxWidth + 'px' } : undefined" role="dialog" aria-modal="true" :aria-label="title" :aria-describedby="description ? 'ui-dlg-desc' : undefined">
       <header class="ui-card__head">
         <div class="ui-card__titles">
           <h3 :id="titleId" class="ui-card__title">{{ title }}</h3>
           <p v-if="description" id="ui-dlg-desc" class="ui-card__desc">{{ description }}</p>
         </div>
-        <button type="button" class="icon-btn" aria-label="关闭" data-test="ui-dialog-close" @click="emit('close')"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+        <button type="button" class="icon-btn" aria-label="关闭" data-test="ui-dialog-close" @click="emit('close')"><AppIcon name="close" /></button>
       </header>
       <div class="ui-card__body"><slot /></div>
       <div v-if="$slots.actions" class="ui-card__actions"><slot name="actions" /></div>

@@ -1,18 +1,18 @@
 <script lang="ts">
-// Registered through the options `components` block (not a script-setup
-// import) so the template resolves <Handle> by name; unit tests can then
-// stub it, while the real app renders Vue Flow's Handle as usual.
-import { Handle } from '@vue-flow/core'
-export default { components: { Handle } }
+// The shared node chassis (edge anchors, drag header, action rail) lives in
+// GraphNodeShell; this card only contributes content-specific behaviour.
+import GraphNodeShell from '@/components/graph/GraphNodeShell.vue'
+export default { components: { GraphNodeShell } }
 </script>
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { Position } from '@vue-flow/core'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
+import { knowledgeStatusLabel as knowledgeStatusCopy } from '@/presentation/statusCopy'
 import { useGraphUiStore } from '@/stores/graphUiStore'
 import type { SpecAgentGraphNodeData } from '@/graph/graphProjection'
-import RichAssistantText from '@/components/global-assistant/RichAssistantText.vue'
+import { actionsFor, type NodeAction } from '@/graph/nodeActions'
+import RichAssistantText from '@/components/common/RichAssistantText.vue'
 import FilePreviewDialog from '@/components/FilePreviewDialog.vue'
 import SkillSlashMenu from '@/components/graph/SkillSlashMenu.vue'
 import { useSkillSlashPicker } from '@/composables/useSkillSlashPicker'
@@ -28,10 +28,6 @@ import type { SkillSummary } from '@/api/skillTypes'
  * transitions, revision, and branches — never silent rewrites. Double-click
  * (or a pending edit request right after creation) opens the editor.
  */
-const ANCHOR_SIDES: Position[] = [Position.Left, Position.Right, Position.Top, Position.Bottom]
-const SOURCE_ANCHORS = ANCHOR_SIDES.map((side) => ({ id: 'source-' + side, position: side }))
-const TARGET_ANCHORS = ANCHOR_SIDES.map((side) => ({ id: 'target-' + side, position: side }))
-
 const props = defineProps<{
   data: SpecAgentGraphNodeData
   selected?: boolean
@@ -115,25 +111,59 @@ const subtypeLabel = computed(() => {
  */
 const isFloating = computed(() => (props.data.routeIds?.length ?? 0) === 0)
 
-/** 能断开为独立节点的前提：它就是当前阅读路线的末端。 */
-const canDetach = computed(() =>
-  props.data.isTipOfReadingRoute === true && props.data.readingRouteId !== null,
+// ------------------------------------------------------------------
+// 浮动节点不再提供"接入"按钮（接入只允许用户手动拖连线）；统一入口是
+// "继续生成问题"：浮动 = 开新独立路线，已接入 = 开新分支。操作按钮统一
+// 来自 nodeActions 配置表（见 onAction）。
+// ------------------------------------------------------------------
+
+const railActions = computed(() =>
+  actionsFor(props.data, {
+    graphCommandPending: workspace.graphCommandPending,
+    drafting: workspace.drafting,
+  }),
 )
 
-async function detachFromRoute(): Promise<void> {
+/** "继续生成问题"：浮动 = 开新独立路线；已接入 = 开新分支（含自动起草）。 */
+async function draftFromNode(): Promise<void> {
+  await workspace.draftQuestionFromNode(node.value.id, props.data.readingRouteId)
+}
+
+async function onAction(action: NodeAction): Promise<void> {
+  switch (action.id) {
+    case 'edit-draft':
+      startEditing()
+      break
+    case 'confirm-knowledge':
+      await confirmContent()
+      break
+    case 'draft-from-node':
+      await draftFromNode()
+      break
+    case 'continue-node':
+      await continueFromHere()
+      break
+    case 'draft-next-question':
+      await draftNextHere()
+      break
+    case 'disconnect-node':
+      if (props.data.readingRouteId) {
+        await workspace.disconnectNode(props.data.node.id, props.data.readingRouteId)
+      }
+      break
+    case 'contextual-ai':
+      emit('contextual-ai', props.data.node.id)
+      break
+  }
+}
+
+async function draftNextHere(): Promise<void> {
   const routeId = props.data.readingRouteId
   if (!routeId) return
-  await workspace.disconnectNode(node.value.id, routeId)
+  await workspace.draftQuestion(routeId)
 }
-const knowledgeStatusLabel = computed(() => {
-  switch (node.value.knowledgeStatus) {
-    case 'PROPOSED': return '待确认'
-    case 'CONFIRMED': return '已确认'
-    case 'CHALLENGED': return '有质疑'
-    case 'SUPERSEDED': return '已替代'
-    default: return null
-  }
-})
+const knowledgeStatusLabel = computed(() =>
+  knowledgeStatusCopy(node.value.knowledgeStatus))
 
 // Draft editing state: local until saved; cancels restore the server value.
 const editing = ref(false)
@@ -292,43 +322,18 @@ async function confirmContent(): Promise<void> {
 </script>
 
 <template>
-  <article
-    class="graph-question-node graph-knowledge-node"
+  <GraphNodeShell
+    class="graph-knowledge-node"
+    :show-actions="!editing"
     :class="{
       'graph-question-node--shared': data.isShared,
       'graph-question-node--selected': selected === true,
     }"
     data-test="graph-knowledge-node"
-    data-layout-role="graph-node"
     :data-node-id="data.node.id"
     @dblclick="onCardDblClick"
   >
-    <Handle
-      v-for="anchor in SOURCE_ANCHORS"
-      :key="anchor.id"
-      :id="anchor.id"
-      type="source"
-      :position="anchor.position"
-      class="graph-question-node__handle graph-question-node__handle--source"
-      :connectable="true"
-      :connectable-start="true"
-      :connectable-end="true"
-      aria-hidden="true"
-    />
-    <Handle
-      v-for="anchor in TARGET_ANCHORS"
-      :key="anchor.id"
-      :id="anchor.id"
-      type="target"
-      :position="anchor.position"
-      class="graph-question-node__handle graph-question-node__handle--target"
-      :connectable="true"
-      :connectable-start="false"
-      :connectable-end="true"
-      aria-hidden="true"
-    />
-
-    <header class="graph-question-node__header" data-test="node-drag-handle" title="拖动标题栏移动节点">
+    <template #header>
       <span class="graph-knowledge-node__kind badge" data-test="kind-badge">{{ subtypeLabel }}</span>
       <span v-if="isFloating" class="graph-knowledge-node__floating badge badge-warn" data-test="floating-badge">
         独立节点
@@ -352,7 +357,7 @@ async function confirmContent(): Promise<void> {
           {{ membership.label }}
         </span>
       </span>
-    </header>
+    </template>
 
     <div class="graph-question-node__body nodrag" data-test="node-body">
       <!-- 文件资源卡：图标+文件名+上传时间，点击查看原件（弹窗）。 -->
@@ -435,66 +440,25 @@ async function confirmContent(): Promise<void> {
       </template>
 
       <p v-if="isFloating" class="meta-text" data-test="floating-hint">
-        还没接入任何路线：把卡片侧面的连线拖到一条路线的末端节点即可接入（AI 只有接入后才读得到它）
+        还没接入任何路线：把卡片侧面的连线拖到路线末端即可接入（AI 只有接入后才读得到它）；也可以直接"继续生成问题"开一条新路线
       </p>
     </div>
 
-    <!-- 操作轨道：与问题节点一致，悬浮在节点右侧外缘竖排（left:100%），
-         悬停或键盘聚焦节点时出现；编辑态使用卡片内的保存/取消表单按钮。 -->
-    <div
-      v-if="!editing"
-      class="graph-node-actions graph-node-actions--toolbar"
-      tabindex="0"
-      role="toolbar"
-      aria-label="节点操作"
-    >
+    <!-- 操作轨道按钮：统一来自 nodeActions 配置表；轨道容器与显隐在
+         GraphNodeShell 中。编辑态使用卡片内的保存/取消表单按钮。 -->
+    <template #actions>
       <button
-        v-if="isDraft"
+        v-for="action in railActions"
+        :key="action.id"
         class="btn graph-action nodrag"
-        data-test="edit-draft"
-        :disabled="workspace.graphCommandPending"
-        @click.stop="startEditing"
+        :data-test="action.id"
+        :title="action.title"
+        :disabled="action.disabled === true"
+        @click.stop="onAction(action)"
       >
-        编辑
+        {{ action.label }}
       </button>
-      <button
-        v-if="isDraft && node.knowledgeStatus === 'PROPOSED' && contentText"
-        class="btn graph-action nodrag"
-        data-test="confirm-knowledge"
-        :disabled="workspace.graphCommandPending"
-        @click.stop="confirmContent"
-      >
-        确认内容
-      </button>
-      <button
-        v-if="!isFloating"
-        class="btn graph-action nodrag"
-        data-test="continue-node"
-        :disabled="!data.readingRouteId || workspace.graphCommandPending"
-        :title="data.readingRouteId ? '从该节点继续探索（历史节点将创建探索分支）' : '共享节点请先在上方选择查看路线'"
-        @click.stop="continueFromHere"
-      >
-        从这里继续
-      </button>
-      <button
-        v-if="canDetach"
-        class="btn graph-action nodrag"
-        data-test="detach-node"
-        title="从当前路线断开，变成独立节点（内容保留）"
-        :disabled="workspace.graphCommandPending"
-        @click.stop="detachFromRoute"
-      >
-        断开路线
-      </button>
-      <button
-        class="btn graph-action nodrag"
-        data-test="contextual-ai"
-        title="在检查器中询问 AI"
-        @click.stop="emit('contextual-ai', data.node.id)"
-      >
-        问 AI
-      </button>
-    </div>
+    </template>
 
     <FilePreviewDialog
       :open="previewOpen"
@@ -523,7 +487,7 @@ async function confirmContent(): Promise<void> {
         @press="onMenuPress"
       />
     </Teleport>
-  </article>
+  </GraphNodeShell>
 </template>
 
 <style scoped>

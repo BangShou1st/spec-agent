@@ -38,7 +38,6 @@ vi.mock('@/api/routes', () => ({
 vi.mock('@/api/graphCommands', () => ({
   acceptProposal: vi.fn(),
   appendContinuation: vi.fn(),
-  attachResource: vi.fn(),
   createFloatingDraftNode: vi.fn(),
   createNodeQuery: vi.fn(),
   createRelation: vi.fn(),
@@ -161,24 +160,9 @@ describe('WorkspaceView unified center status', () => {
     }
     await flushPromises()
 
-    const status = wrapper.find('[data-test="agent-status"]')
-    expect(status.exists()).toBe(true)
-    expect(status.text()).toContain('正在规划下一步')
-  })
-
-  it('renders a generic fallback without the raw phase code', async () => {
-    mockViews()
-    const { wrapper, store } = await mountWorkspace()
-    store.pendingRouteProjection = {
-      routeId: 'r1', sourceNodeId: null, runId: 'run-1',
-      status: 'RUNNING', phase: 'SOME_NEW_INTERNAL_PHASE', message: null,
-    }
-    await flushPromises()
-
-    const status = wrapper.find('[data-test="agent-status"]')
-    expect(status.exists()).toBe(true)
-    expect(status.text()).toContain('处理中…')
-    expect(status.text()).not.toContain('SOME_NEW_INTERNAL_PHASE')
+    // 中央一行状态已删除：运行进度收敛到画布节点内，中央不再渲染
+    // agent-status 元素。
+    expect(wrapper.find('[data-test="agent-status"]').exists()).toBe(false)
   })
 
   it('keeps an ordinary error banner when no recovery model applies', async () => {
@@ -200,11 +184,8 @@ describe('WorkspaceView unified center status', () => {
     }
     await flushPromises()
 
-    expect(wrapper.findAll('[data-test="agent-status"]')).toHaveLength(1)
+    expect(wrapper.find('[data-test="agent-status"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="runtime-phase"]').exists()).toBe(false)
-    // “正在规划下一步”在中央只出现一次（无重复渲染）。
-    const occurrences = wrapper.text().split('正在规划下一步').length - 1
-    expect(occurrences).toBe(1)
   })
 
   it('hides the one-line status once the run reaches a terminal phase', async () => {
@@ -217,21 +198,5 @@ describe('WorkspaceView unified center status', () => {
     await flushPromises()
     expect(wrapper.find('[data-test="agent-status"]').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('已完成')
-  })
-
-  it('renders the unknown fallback exactly once without the raw phase', async () => {
-    mockViews()
-    const { wrapper, store } = await mountWorkspace()
-    store.pendingRouteProjection = {
-      routeId: 'r1', sourceNodeId: null, runId: 'run-1',
-      status: 'RUNNING', phase: 'SOME_NEW_INTERNAL_PHASE', message: null,
-    }
-    await flushPromises()
-
-    expect(wrapper.findAll('[data-test="agent-status"]')).toHaveLength(1)
-    expect(wrapper.find('[data-test="runtime-phase"]').exists()).toBe(false)
-    const occurrences = wrapper.text().split('处理中…').length - 1
-    expect(occurrences).toBe(1)
-    expect(wrapper.text()).not.toContain('SOME_NEW_INTERNAL_PHASE')
   })
 })

@@ -3,6 +3,8 @@
  * Backend enums stay untouched; only the rendered text is mapped here.
  */
 
+import { formatShanghaiDateTime } from '@/presentation/formatTime'
+
 const SKILL_SOURCE_LABELS: Record<string, string> = {
   BUILTIN: '内置',
   GIT: 'Git',
@@ -31,8 +33,6 @@ export function formatBytes(bytes: number): string {
 }
 
 export function formatDateTime(value: string): string {
-  if (!value) return '—'
-  const t = value.replace('T', ' ').slice(0, 16)
-  return t || value
+  return formatShanghaiDateTime(value)
 }
 

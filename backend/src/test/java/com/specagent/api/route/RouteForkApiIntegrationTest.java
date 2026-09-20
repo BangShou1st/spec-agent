@@ -184,4 +184,40 @@ class RouteForkApiIntegrationTest {
         assertThat(nodeRepository.findById(siblingA.id())).isPresent();
         assertThat(fork.tipNodeId()).isNotEqualTo(siblingA.id());
     }
+
+    /**
+     * A fork route's tip is answered through an inherited reference, not an
+     * Answer row of its own. The DRAFT_QUESTION pre-check must read effective
+     * answers (own + inherited), otherwise a Follower-mode Draft on a freshly
+     * forked route is rejected with a false UNANSWERED_QUESTION_HAS_CHILD and
+     * the UI falls back to "branch created, first question failed".
+     */
+    @Test
+    void draftOnForkedRouteAcceptsInheritedTipAnswer() throws Exception {
+        Project project = projectService.createProject("Fork draft project");
+        Node root = nodeService.createRootNode(project.id(), project.activeRouteId(),
+                "Root question", null, List.of(), true);
+        UUID sourceRouteId = project.activeRouteId();
+        answerService.finalizeAnswer(project.id(), sourceRouteId, root.id(), null,
+                "Root answer", "user");
+
+        mockMvc.perform(post("/api/v1/projects/{projectId}/nodes/{nodeId}/fork", project.id(), root.id())
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"sourceRouteId\": \"" + sourceRouteId
+                                + "\", \"label\": \"Forked draft\"}"))
+                .andExpect(status().isOk());
+
+        Route fork = routeService.getRoute(
+                projectService.getProject(project.id()).orElseThrow().activeRouteId()).orElseThrow();
+        assertThat(fork.tipNodeId()).isEqualTo(root.id());
+        // Inherited only: the fork route owns no Answer row for its tip.
+        assertThat(answerRepository.findByRouteAndNodeIds(fork.id(), List.of(root.id()))).isEmpty();
+
+        // No sourceRouteId: the target route is the Active pointer (the fork).
+        mockMvc.perform(post("/api/v1/projects/{projectId}/agent-runs", project.id())
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"operation\": \"DRAFT_QUESTION\"}"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.operation").value("DRAFT_QUESTION"));
+    }
 }

@@ -3,7 +3,9 @@ package com.specagent.agent;
 import com.specagent.agent.contract.AgentEvent;
 import com.specagent.common.Hashes;
 
+import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * Stable logical identity for a client-driven agent-run create request.
@@ -42,6 +44,29 @@ public final class AgentRunRequestFingerprint {
                                           UUID selectedOptionId,
                                           String freeText,
                                           AgentEvent.PersistenceIntent persistenceIntent) {
+        return forClientRequest(projectId, operation, nodeId, sourceRouteId, answerId,
+                selectedOptionId,
+                selectedOptionId == null ? null : List.of(selectedOptionId),
+                freeText, persistenceIntent);
+    }
+
+    /**
+     * Multi-select variant: the FULL option selection (user order) is part of
+     * the logical request identity; the single-id overload above delegates with
+     * a one-element list, producing the same fingerprint as this method for
+     * single-select answers.
+     */
+    public static String forClientRequest(UUID projectId,
+                                          String operation,
+                                          UUID nodeId,
+                                          UUID sourceRouteId,
+                                          UUID answerId,
+                                          UUID selectedOptionId,
+                                          List<UUID> selectedOptionIds,
+                                          String freeText,
+                                          AgentEvent.PersistenceIntent persistenceIntent) {
+        String optionsField = selectedOptionIds == null ? null
+                : selectedOptionIds.stream().map(UUID::toString).collect(Collectors.joining(","));
         String canonical = String.join("|",
                 field("projectId", projectId),
                 field("operation", operation),
@@ -49,6 +74,7 @@ public final class AgentRunRequestFingerprint {
                 field("sourceRouteId", sourceRouteId),
                 field("answerId", answerId),
                 field("selectedOptionId", selectedOptionId),
+                field("selectedOptionIds", optionsField),
                 field("freeText", freeText),
                 field("persistenceIntent", persistenceIntent));
         return Hashes.sha256Hex(canonical);

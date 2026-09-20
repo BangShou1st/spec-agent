@@ -15,6 +15,10 @@ rem  Ports (optional overrides):
 rem    set SPEC_AGENT_BACKEND_PORT=xxxx    (default 8080, auto-advances if busy)
 rem    set SPEC_AGENT_FRONTEND_PORT=xxxx   (default 5173, auto-advances if busy)
 rem
+rem  PREVIOUS INSTANCES ARE CLOSED FIRST: anything still LISTENING on the
+rem  backend / frontend / brain ports is killed before new consoles start,
+rem  so a rerun restarts the stack instead of drifting to new ports.
+rem
 rem  BACKEND_PORT is the single runtime authority: it is propagated both to
 rem  the Vite proxy target and to Spring SERVER_PORT so they always agree.
 rem
@@ -44,6 +48,24 @@ if not exist "%~dp0backend\gradlew.bat" (
     pause
     exit /b 1
 )
+
+rem ============================================================
+rem  Step 0: Close previous instances so a rerun restarts cleanly
+rem  instead of drifting to the next port. Anything LISTENING on
+rem  the service ports (explicit or default) is killed first.
+rem ============================================================
+if defined SPEC_AGENT_BACKEND_PORT (set "KILL_BACKEND=%SPEC_AGENT_BACKEND_PORT%") else (set "KILL_BACKEND=8080")
+if defined SPEC_AGENT_FRONTEND_PORT (set "KILL_FRONTEND=%SPEC_AGENT_FRONTEND_PORT%") else (set "KILL_FRONTEND=5173")
+if defined SPEC_AGENT_BRAIN_PORT (set "KILL_BRAIN=%SPEC_AGENT_BRAIN_PORT%") else (set "KILL_BRAIN=8100")
+echo [0/3] Closing previous instances: backend !KILL_BACKEND!, frontend !KILL_FRONTEND!, brain !KILL_BRAIN! ...
+call :killPort !KILL_BACKEND!
+call :killPort !KILL_FRONTEND!
+call :killPort !KILL_BRAIN!
+rem taskkill returns before Windows releases the socket; wait each port out
+rem (max ~10s) or the picker below would drift to the next port.
+call :waitForPortFree !KILL_BACKEND!
+call :waitForPortFree !KILL_FRONTEND!
+call :waitForPortFree !KILL_BRAIN!
 
 rem ============================================================
 rem  Step 1: Pick ports.
@@ -145,7 +167,7 @@ if "!WITH_BRAIN!"=="1" (
                 "%~dp0agent-brain\.venv\Scripts\python.exe" -m pip install --quiet -e "%~dp0agent-brain"
             )
             echo [2/3] Starting agent-brain locally [broker -^> backend !BACKEND_PORT!] ...
-            start "Spec Agent Brain" /d "%~dp0agent-brain" cmd /k "set SPEC_AGENT_INTERNAL_BROKER_URL=http://localhost:!BACKEND_PORT!/internal/v1/model-inference && set SPEC_AGENT_BRAIN_INTERNAL_SECRET=dev-internal-secret && set SPEC_AGENT_BRAIN_MODEL_MODE=broker && .venv\Scripts\python.exe -m uvicorn spec_agent_brain.app:app --host 0.0.0.0 --port !BRAIN_PORT!"
+            start "Spec Agent Brain" /d "%~dp0agent-brain" cmd /k "set "SPEC_AGENT_INTERNAL_BROKER_URL=http://localhost:!BACKEND_PORT!/internal/v1/model-inference" && set "SPEC_AGENT_BRAIN_INTERNAL_SECRET=dev-internal-secret" && set "SPEC_AGENT_BRAIN_MODEL_MODE=broker" && .venv\Scripts\python.exe -m uvicorn spec_agent_brain.app:app --host 0.0.0.0 --port !BRAIN_PORT!"
             set "BRAIN_STATUS=starting"
         )
     )
@@ -197,6 +219,30 @@ set "PORT_BUSY=0"
 netstat -ano -p tcp | findstr /R /C:":%1 " | findstr /C:"LISTENING" >nul 2>&1
 if not errorlevel 1 set "PORT_BUSY=1"
 exit /b 0
+
+:killPort
+rem %1 = port -> kill every process LISTENING on it (previous instance,
+rem including any child tree). Nothing happens when the port is free.
+for /f "tokens=5" %%P in ('netstat -ano -p tcp ^| findstr /R /C:":%1 " ^| findstr /C:"LISTENING"') do (
+    echo        Killing PID %%P listening on port %1
+    taskkill /F /T /PID %%P >nul 2>&1
+)
+exit /b 0
+
+:waitForPortFree
+rem %1 = port -> block until nothing LISTENING on it (max ~10s), then give
+rem up with a warning. Prevents the port picker from drifting after a kill.
+set /a WFP_COUNT=0
+:waitForPortFreeLoop
+call :portBusy %1
+if "!PORT_BUSY!"=="0" exit /b 0
+set /a WFP_COUNT+=1
+if !WFP_COUNT! geq 10 (
+    echo [WARN] Port %1 still busy after 10s - continuing anyway.
+    exit /b 0
+)
+ping -n 2 127.0.0.1 >nul
+goto waitForPortFreeLoop
 
 :nextFreePort
 rem %1 = preferred port -> NFP_RESULT = first free port at or above it

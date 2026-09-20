@@ -70,13 +70,16 @@ class RunWorkerIntegrationTest {
         List<String> lifecycle = eventRepository.findByRunId(run.id()).stream()
                 .map(event -> event.eventType())
                 .collect(Collectors.toList());
-        // Pure continuation: one DECISION, no STATE_UPDATE phase.
+        // Pure continuation: one DECISION, no STATE_UPDATE phase. PROCESS_NOTE
+        // entries are the user-facing progress notes (decision + executing).
         assertThat(lifecycle).containsExactly(
                 "RUN_CREATED",
                 "SNAPSHOT_BUILT",
                 "DECISION_STARTED",
                 "PROPOSAL_CREATED",
+                "PROCESS_NOTE",
                 "EXECUTING",
+                "PROCESS_NOTE",
                 "RUN_COMPLETED");
     }
 

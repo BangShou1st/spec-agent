@@ -10,6 +10,8 @@ import { ref, computed } from 'vue'
 
 export interface InputDraft {
   selectedOptionId: string | null
+  /** 多选题的全量选择（用户顺序）；单选题为 null。 */
+  selectedOptionIds?: string[] | null
   freeText: string
 }
 

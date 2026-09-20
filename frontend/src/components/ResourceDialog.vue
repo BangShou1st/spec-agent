@@ -6,6 +6,7 @@ import {
   extensionOf,
   type ExtractKind,
 } from '@/util/documentText'
+import UiDialogShell from '@/components/ui/UiDialogShell.vue'
 
 /**
  * 添加资源节点对话框。资源是能力的上下文来源（AI 通过能力读取有界摘录），
@@ -182,13 +183,11 @@ function submit(): void {
 </script>
 
 <template>
-  <div v-if="open" class="dialog-backdrop" data-test="resource-dialog">
-    <div class="dialog" role="dialog" aria-modal="true" aria-label="添加资源">
-      <h3 style="margin-top: 0">添加资源</h3>
-      <p class="muted" style="margin-top: 0">
-        资源先作为<strong>独立节点</strong>存在，不挂到任何路线上；之后在画布上把它的连线拖到某条路线的末端节点即可接入。
-        AI 只有接入后才读得到它的有界摘录（带来源引用），资源本身不是已确认的需求
-      </p>
+  <UiDialogShell :open="open" title="添加资源" test-id="resource-dialog" @close="emit('close')">
+    <p>
+      资源先作为<strong>独立节点</strong>存在，不挂到任何路线上；之后在画布上把它的连线拖到某条路线的末端节点即可接入。
+      AI 只有接入后才读得到它的有界摘录（带来源引用），资源本身不是已确认的需求
+    </p>
 
       <label class="secondary field-label">
         <span>资源类型</span>
@@ -246,19 +245,16 @@ function submit(): void {
         ></textarea>
       </label>
 
-      <div class="dialog-actions">
-        <button class="btn btn-primary" type="button" data-test="resource-submit" :disabled="!canSubmit" @click="submit">
-          {{ pending ? '正在添加…' : (reading ? '正在解析…' : '添加资源') }}
-        </button>
-        <button class="btn" type="button" data-test="resource-cancel" :disabled="pending" @click="emit('close')">取消</button>
-      </div>
-    </div>
-  </div>
+    <template #actions>
+      <button class="btn btn-primary" type="button" data-test="resource-submit" :disabled="!canSubmit" @click="submit">
+        {{ pending ? '正在添加…' : (reading ? '正在解析…' : '添加资源') }}
+      </button>
+      <button class="btn" type="button" data-test="resource-cancel" :disabled="pending" @click="emit('close')">取消</button>
+    </template>
+  </UiDialogShell>
 </template>
 
 <style scoped>
-.dialog-backdrop { position: fixed; inset: 0; background: rgba(15, 20, 30, 0.45); display: flex; align-items: flex-start; justify-content: center; padding: 80px 16px; z-index: 40; }
-.dialog { background: var(--color-surface); border-radius: var(--radius); padding: 18px; width: 100%; max-width: 520px; box-shadow: 0 12px 32px rgba(15, 20, 30, 0.25); }
 .field-label { display: block; margin-top: 12px; font-size: 13px; }
 .field-label input, .field-label textarea, .field-label select { display: block; margin-top: 4px; width: 100%; box-sizing: border-box; }
 .dialog-actions { margin-top: 14px; }

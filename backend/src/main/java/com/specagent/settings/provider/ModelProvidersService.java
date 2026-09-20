@@ -29,13 +29,16 @@ public class ModelProvidersService {
     private final ModelProviderRepository repository;
     private final ProviderModelCatalogService catalog;
     private final CompatibilityProbeService probe;
+    private final ModelProviderSettingsService active;
 
     public ModelProvidersService(ModelProviderRepository repository,
                                  ProviderModelCatalogService catalog,
-                                 CompatibilityProbeService probe) {
+                                 CompatibilityProbeService probe,
+                                 ModelProviderSettingsService active) {
         this.repository = repository;
         this.catalog = catalog;
         this.probe = probe;
+        this.active = active;
     }
 
     /**
@@ -191,6 +194,11 @@ public class ModelProvidersService {
         probe.probeCustom(format, normalized, record.apiKey(), model);
         repository.markValidated(record.id(), record.configRevision());
         return require(id);
+    }
+
+    /** Marks a configured row as the active model target for new runs. */
+    public void activate(ModelProviderRecord record) {
+        active.setActiveTarget(record.preset().name(), record.id());
     }
 
     /** Activation gate: a row must be configured and tested at its current revision. */

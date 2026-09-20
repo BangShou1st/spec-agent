@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ApiError, GENERIC_ERROR_MESSAGE } from '@/api/client'
+import { toDisplayError } from '@/api/displayError'
 import { activateProvider, getActiveProvider, type ModelProvider } from '@/api/modelProviders'
 
 export interface ProviderSettingsError {
@@ -7,12 +7,7 @@ export interface ProviderSettingsError {
   message: string
 }
 
-function displayError(err: unknown): ProviderSettingsError {
-  if (err instanceof ApiError) {
-    return { code: err.code, message: err.message }
-  }
-  return { code: 'UNKNOWN_ERROR', message: GENERIC_ERROR_MESSAGE }
-}
+const displayError: (err: unknown) => ProviderSettingsError = toDisplayError
 
 export const useProviderSettingsStore = defineStore('providerSettings', {
   state: () => ({

@@ -1,11 +1,14 @@
 <script setup lang="ts">
+import { formatShanghaiDateTime as formatTime } from '@/presentation/formatTime'
 import { computed, ref } from 'vue'
+import type { SpecExportVariant } from '@/api/spec'
 import type { SpecSnapshotResponse } from '@/api/types'
+import { sortSnapshotsDesc, resolveSelectedSpec, dedupeSourceRefs } from '@/presentation/specPresentation'
 
 /**
  * Graph 中央 Spec Dock：默认折叠（约 48px），展开约占中央区 40%（上限 45%）。
- * Graph 始终挂载可见；Dock 只发 generate-spec / select-snapshot 意图，
- * 绝不改变 Focus / Active 路线。
+ * Graph 始终挂载可见；Dock 只发 generate-spec / export-spec / select-snapshot
+ * 意图，绝不改变 Focus / Active 路线。
  */
 const props = defineProps<{
   readingRouteId: string | null
@@ -15,11 +18,13 @@ const props = defineProps<{
   snapshots: SpecSnapshotResponse[]
   selectedSpecId: string | null
   generating: boolean
+  exporting: boolean
   commandPending: boolean
 }>()
 
 const emit = defineEmits<{
   'generate-spec': []
+  'export-spec': [snapshotId: string, variant: SpecExportVariant]
   'select-snapshot': [snapshotId: string]
   'expanded-change': [expanded: boolean]
 }>()
@@ -27,16 +32,10 @@ const emit = defineEmits<{
 const expanded = ref(false)
 const provenanceOpen = ref(false)
 
-const sortedSnapshots = computed(() =>
-  [...props.snapshots].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
-)
+const sortedSnapshots = computed(() => sortSnapshotsDesc(props.snapshots))
 
-const selectedSpec = computed<SpecSnapshotResponse | null>(() => {
-  if (props.selectedSpecId) {
-    return props.snapshots.find((snapshot) => snapshot.id === props.selectedSpecId) ?? null
-  }
-  return sortedSnapshots.value[0] ?? null
-})
+const selectedSpec = computed<SpecSnapshotResponse | null>(() =>
+  resolveSelectedSpec(props.snapshots, props.selectedSpecId))
 
 const sectionCount = computed(() => selectedSpec.value?.sections.length ?? 0)
 const unresolvedCount = computed(() => selectedSpec.value?.unresolvedItems.length ?? 0)
@@ -53,19 +52,16 @@ const canGenerate = computed(() =>
   !props.generating && !props.commandPending && props.activeRouteId !== null,
 )
 
-const displaySourceRefs = computed(() => {
-  const seen = new Set<string>()
-  return (selectedSpec.value?.sourceRefs ?? []).filter((ref) => {
-    const key = `${ref.kind}:${ref.refId}`
-    if (seen.has(key)) return false
-    seen.add(key)
-    return true
-  })
-})
+const canExport = computed(() => !props.exporting && selectedSpec.value !== null)
 
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleString()
+function onExportSpec(variant: SpecExportVariant): void {
+  if (!selectedSpec.value) return
+  emit('export-spec', selectedSpec.value.id, variant)
 }
+
+const displaySourceRefs = computed(() =>
+  dedupeSourceRefs(selectedSpec.value?.sourceRefs ?? []))
+
 
 function toggle(): void {
   expanded.value = !expanded.value
@@ -170,6 +166,26 @@ function onSelectSnapshot(event: Event): void {
         <div class="spec-dock__detail-head">
           <span class="badge badge-open" data-test="derived-label">派生产物——不是权威来源</span>
           <span class="meta-text">创建于 {{ formatTime(selectedSpec.createdAt) }}</span>
+          <span class="spec-dock__export">
+            <button
+              class="btn btn-small"
+              type="button"
+              data-test="export-delivery-md"
+              :disabled="!canExport"
+              @click="onExportSpec('delivery')"
+            >
+              {{ exporting ? '导出中…' : '导出开发需求文档' }}
+            </button>
+            <button
+              class="btn btn-small"
+              type="button"
+              data-test="export-snapshot-md"
+              :disabled="!canExport"
+              @click="onExportSpec('snapshot')"
+            >
+              导出快照 md
+            </button>
+          </span>
         </div>
 
         <section
@@ -342,6 +358,13 @@ function onSelectSnapshot(event: Event): void {
   align-items: center;
   gap: 8px;
   margin-bottom: 8px;
+}
+
+.spec-dock__export {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 .spec-dock__section {

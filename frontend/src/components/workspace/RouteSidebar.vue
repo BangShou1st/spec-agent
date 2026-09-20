@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { ROUTE_LIFECYCLE_META, routeDisplayName, routeLifecycleLabel } from '@/presentation/routePresentation'
 import type { GraphWorkspaceRouteView, RouteLifecycleStatus } from '@/api/types'
 import { useGraphUiStore } from '@/stores/graphUiStore'
 import type { GraphRouteDisplayState } from '@/graph/graphTypes'
@@ -27,6 +28,8 @@ const props = defineProps<{
   activeRouteId: string | null
   commandPending: boolean
   pendingRouteCommand: string | null
+  /** tip 为"未回答问题"的路线：起草下一个问题注定被不变式拒绝，入口置灰。 */
+  draftBlockedRouteIds?: string[]
 }>()
 
 const emit = defineEmits<{
@@ -34,23 +37,17 @@ const emit = defineEmits<{
   activate: [routeId: string]
   restore: [routeId: string]
   archive: [routeId: string]
+  /** 在这条 OPEN 路线上起草下一个问题（显式路线 run，不改 Active 指针）。 */
+  'draft-next': [routeId: string]
 }>()
 
 const graphUi = useGraphUiStore()
 
-const lifecycleLabels: Record<RouteLifecycleStatus, string> = {
-  open: '开放',
-  superseded: '已替代',
-  archived: '已归档',
-  deleted: '已删除',
+function routeBadgeClass(status: RouteLifecycleStatus): string {
+  return ROUTE_LIFECYCLE_META.find((meta) => meta.status === status)?.badgeClass ?? 'badge-neutral'
 }
 
-const filterOptions: { status: RouteLifecycleStatus; label: string }[] = [
-  { status: 'open', label: '开放' },
-  { status: 'superseded', label: '已替代' },
-  { status: 'archived', label: '已归档' },
-  { status: 'deleted', label: '已删除' },
-]
+const filterOptions = ROUTE_LIFECYCLE_META.map(({ status, label }) => ({ status, label }))
 
 const sortedRoutes = computed(() => props.routes)
 
@@ -83,17 +80,6 @@ function isolateRoute(route: GraphWorkspaceRouteView): void {
     return
   }
   graphUi.isolateRoute(route.id)
-}
-
-/** Human-readable route name. Never falls back to a raw id slice: an
- * unlabeled route is described by its branch origin, then by whether it
- * is the Active route. */
-function routeLabel(route: GraphWorkspaceRouteView): string {
-  if (route.label?.trim()) return route.label.trim()
-  if (route.branchType === 'fork') return '分支路线'
-  if (route.branchType === 'reanswer') return '重新回答路线'
-  if (route.branchType === 'regenerate') return '换题路线'
-  return route.isActive ? '主路线' : '路线'
 }
 
 /**
@@ -147,14 +133,14 @@ function openRoute(route: GraphWorkspaceRouteView): void {
          :data-route-id="route.id"
          tabindex="0"
          :aria-current="isFocused(route.id) ? 'location' : undefined"
-         :aria-label="`${routeLabel(route)}${isFocused(route.id) ? '（正在浏览）' : ''}${route.id === activeRouteId ? '（运行路线）' : ''}`"
+         :aria-label="`${routeDisplayName(route)}${isFocused(route.id) ? '（正在浏览）' : ''}${route.id === activeRouteId ? '（运行路线）' : ''}`"
          @click="openRoute(route)"
          @keydown.enter.self.prevent="openRoute(route)"
          @keydown.space.self.prevent="openRoute(route)"
       >
         <div class="route-card__primary" data-test="route-primary">
           <div class="route-card__identity">
-            <strong class="route-card__label" :title="routeLabel(route)">{{ routeLabel(route) }}</strong>
+            <strong class="route-card__label" :title="routeDisplayName(route)">{{ routeDisplayName(route) }}</strong>
             <span class="meta-text">{{ route.lineageNodeIds.length }} 个节点</span>
           </div>
           <div class="route-card__state">
@@ -170,9 +156,9 @@ function openRoute(route: GraphWorkspaceRouteView): void {
             <span
               v-else-if="route.lifecycleStatus !== 'open'"
               class="badge"
-              :class="`badge-${route.lifecycleStatus}`"
+              :class="routeBadgeClass(route.lifecycleStatus)"
             >
-              {{ lifecycleLabels[route.lifecycleStatus] }}
+              {{ routeLifecycleLabel(route.lifecycleStatus) }}
             </span>
           </div>
         </div>
@@ -187,6 +173,7 @@ function openRoute(route: GraphWorkspaceRouteView): void {
             </div>
 
             <div class="route-card__group" data-test="runtime-actions-group">
+              <button v-if="route.lifecycleStatus === 'open'" class="route-card__menu-item" data-test="draft-next-route" :disabled="commandPending || (props.draftBlockedRouteIds ?? []).includes(route.id)" :title="(props.draftBlockedRouteIds ?? []).includes(route.id) ? '当前问题还没有回答，请先回答后再起草下一个问题' : '让 AI 在这条路线起草下一个问题'" @click="emit('draft-next', route.id)">起草下一个问题</button>
               <button v-if="route.lifecycleStatus === 'open' && !route.isActive" class="route-card__menu-item" data-test="activate-route" :disabled="commandPending" @click="emit('activate', route.id)">设为运行路线</button>
               <button v-if="route.lifecycleStatus !== 'open'" class="route-card__menu-item" data-test="restore-route" :disabled="commandPending" @click="emit('restore', route.id)">恢复路线</button>
               <button v-if="route.lifecycleStatus !== 'archived'" class="route-card__menu-item" data-test="archive-route" title="归档后会从默认视图中隐藏，可在「已归档」筛选中找回" :disabled="commandPending" @click="emit('archive', route.id)">归档并隐藏</button>

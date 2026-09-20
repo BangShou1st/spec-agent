@@ -7,6 +7,7 @@ import type {
   GraphWorkspaceView,
   RouteLifecycleStatus,
 } from '@/api/types'
+import type { RunProgressStep } from '@/api/agentRuns'
 import type { GraphPosition, GraphRouteDisplayState } from './graphTypes'
 import { placeNewNode, resolvePositions, HORIZONTAL_GAP, VERTICAL_GAP } from './graphLayout'
 import {
@@ -20,11 +21,21 @@ import {
   type GraphVisualInstance,
 } from './graphVisualIdentity'
 import { resolveReadingRouteId } from './graphInteraction'
+import {
+  agentOperationFailureLabel,
+  agentOperationProgressLabel,
+} from '@/presentation/agentPresentation'
 
 export type GraphVisualWeight = 'active' | 'focus' | 'normal' | 'dimmed'
 
 /** Runtime progress is projected separately from knowledge status. */
 export type GraphRuntimeStatus = 'PENDING' | 'RUNNING' | 'SUCCEEDED' | 'FAILED'
+
+/** Whitelisted process content shown inside an executing node card. */
+export interface GraphRunProgress {
+  summary: string | null
+  steps: RunProgressStep[]
+}
 
 /** A browser-only card projected from an in-flight AgentRun. */
 export interface GraphPendingProjection {
@@ -34,6 +45,15 @@ export interface GraphPendingProjection {
   status: GraphRuntimeStatus
   phase: string | null
   message: string | null
+  operation?: string | null
+  progress?: GraphRunProgress | null
+}
+
+/** Runtime overlay projected onto an existing canonical node. */
+export interface GraphNodeRuntimeState {
+  status: GraphRuntimeStatus | null
+  phase: string | null
+  progress: GraphRunProgress | null
 }
 
 /**
@@ -51,6 +71,8 @@ export interface GraphAnswerPresentation {
   routeLabel?: string
   selectedOptionId: string | null
   selectedOptionLabel: string | null
+  /** 多选题的全量选择（用户顺序）；单选答案为 null。 */
+  selectedOptionIds: string[] | null
   freeText: string | null
   isPrimary: boolean
   inherited?: boolean
@@ -112,6 +134,8 @@ export interface SpecAgentGraphNodeData {
   runtimeStatus?: GraphRuntimeStatus | null
   runtimePhase?: string | null
   runtimeMessage?: string | null
+  /** Process content (steps + summaries) for an in-flight run on this node. */
+  runtimeProgress?: GraphRunProgress | null
 }
 
 export interface SpecAgentGraphEdgeData {
@@ -141,12 +165,10 @@ export interface GraphProjectionInput {
     selectedNodeIds?: string[]
   }
   savedPositions: Record<string, GraphPosition>
-  runtime?: {
-    nodeId: string | null
-    status: GraphRuntimeStatus | null
-    phase: string | null
-  }
-  pending?: GraphPendingProjection | null
+  /** Per-canonical-node runtime overlays for in-flight runs on existing nodes. */
+  runtimeByNode?: Record<string, GraphNodeRuntimeState>
+  /** Browser-only cards for runs whose target node does not exist yet. */
+  pendings?: GraphPendingProjection[]
 }
 
 export interface GraphProjectionResult {
@@ -309,6 +331,7 @@ function buildAnswerPresentations(view: GraphWorkspaceView): Map<string, GraphAn
       routeLabel: routeLabel(view.routes.find((route) => route.id === answer.routeId)),
       selectedOptionId: answer.selectedOptionId,
       selectedOptionLabel: option?.label ?? null,
+      selectedOptionIds: answer.selectedOptionIds,
       freeText: answer.freeText,
       isPrimary: false,
       inherited: answer.inherited,
@@ -434,17 +457,17 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
   }
   const answersByCanonicalNode = buildAnswerPresentations(view)
 
-  // Compute Q labels: topological order across all visible nodes.
-  const nodeOrder = new Map<string, number>()
-  let qCounter = 1
+  // Compute Q labels: 节点不再编号（Q1/Q2 的序号随路线增删漂移，没有稳定
+  // 含义），路线上的 INTERACTION 节点统一展示"问题"身份标签。
+  const labeledQuestionNodes = new Set<string>()
   for (const route of view.routes) {
     if (!visibleRouteIds.has(route.id)) continue
     for (const nodeId of route.lineageNodeIds ?? []) {
       const inst = visibleInstances.find(
         (i) => i.canonicalNodeId === nodeId && i.routeIds.includes(route.id),
       )
-      if (inst && !nodeOrder.has(inst.visualNodeKey)) {
-        nodeOrder.set(inst.visualNodeKey, qCounter++)
+      if (inst && inst.node.kind === 'INTERACTION') {
+        labeledQuestionNodes.add(inst.visualNodeKey)
       }
     }
   }
@@ -547,17 +570,13 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
         isLatest: instance.canonicalNodeId === activeTipNodeId
           && !activeTipHasAnswer
           && routeIds.includes(activeRouteId ?? ''),
-        qLabel: nodeOrder.has(instance.visualNodeKey)
-          ? 'Q' + nodeOrder.get(instance.visualNodeKey) : null,
+        qLabel: labeledQuestionNodes.has(instance.visualNodeKey) ? '问题' : null,
         routeMembership,
         visualWeight,
-        runtimeStatus: input.runtime?.nodeId === instance.canonicalNodeId
-          ? input.runtime.status
-          : null,
-        runtimePhase: input.runtime?.nodeId === instance.canonicalNodeId
-          ? input.runtime.phase
-          : null,
+        runtimeStatus: input.runtimeByNode?.[instance.canonicalNodeId]?.status ?? null,
+        runtimePhase: input.runtimeByNode?.[instance.canonicalNodeId]?.phase ?? null,
         runtimeMessage: null,
+        runtimeProgress: input.runtimeByNode?.[instance.canonicalNodeId]?.progress ?? null,
       },
       dragHandle: '.graph-question-node__header',
       class: [
@@ -569,32 +588,32 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
   })
   const edges: Edge<SpecAgentGraphEdgeData>[] = []
 
-  // A pending card is a presentation projection of an AgentRun. It is never
-  // added to the canonical GraphWorkspaceView and is replaced by the real
-  // persisted node after the run completes.
-  const pending = input.pending
-  const pendingRoute = pending
-    ? view.routes.find((route) => route.id === pending.routeId)
-    : undefined
-  if (pending && pendingRoute && visibleRouteIds.has(pending.routeId)) {
+  // Pending cards are presentation projections of in-flight AgentRuns. They
+  // are never added to the canonical GraphWorkspaceView and are replaced by
+  // the real persisted nodes after their runs complete.
+  const pendings = input.pendings ?? []
+  for (const pending of pendings) {
+    const pendingRoute = view.routes.find((route) => route.id === pending.routeId)
+    if (!pendingRoute || !visibleRouteIds.has(pending.routeId)) continue
     const pendingId = `pending:${pending.runId}`
     const parentInstance = visibleInstances.find((instance) =>
       instance.canonicalNodeId === pending.sourceNodeId
       && instance.routeIds.includes(pending.routeId),
     )
     const parentKey = parentInstance?.visualNodeKey ?? null
-    const pendingPosition = savedPositions[pendingId]
-      ?? placeNewNode(parentKey ? positions[parentKey] ?? null : null, Object.values(positions))
     const pendingLabel = routeLabel(pendingRoute)
     const pendingNode: GraphWorkspaceNodeView = {
       id: pendingId,
       projectId: view.projectId,
       parentNodeId: pending.sourceNodeId,
       supersedesNodeId: null,
-      question: pending.status === 'FAILED' ? '下一步问题生成失败' : '正在生成下一步问题…',
+      question: pending.status === 'FAILED'
+        ? agentOperationFailureLabel(pending.operation)
+        : agentOperationProgressLabel(pending.operation),
       purpose: null,
       options: [],
       allowFreeAnswer: false,
+      allowMultiSelect: false,
       createdAt: '1970-01-01T00:00:00.000Z',
       kind: 'INTERACTION',
       subtype: 'QUESTION',
@@ -603,6 +622,14 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
       knowledgeStatus: null,
       userEditableDraft: false,
     }
+    const pendingPosition = savedPositions[pendingId]
+      ?? placeNewNode(parentKey ? positions[parentKey] ?? null : null, Object.values(positions), {
+        // Pending 卡在问题卡之上还渲染运行过程面板，实际高度远大于默认
+        // 声明盒；碰撞检查按真实高度走，两张并发/连续失败卡才不会叠放。
+        height: estimateNodeCardHeight(pendingNode) + 180,
+      })
+    // Register the slot so a second concurrent card never overlaps the first.
+    positions[pendingId] = pendingPosition
     nodes.push({
       id: pendingId,
       type: 'question',
@@ -640,6 +667,7 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
         runtimeStatus: pending.status,
         runtimePhase: pending.phase,
         runtimeMessage: pending.message,
+        runtimeProgress: pending.progress ?? null,
       },
       dragHandle: '.graph-question-node__header',
       class: [

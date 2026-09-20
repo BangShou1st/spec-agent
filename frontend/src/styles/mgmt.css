@@ -1,0 +1,13 @@
+/*
+ * Settings 管理页(mgmt-*)的共享骨架样式。
+ * 原先在 SkillsListView / ConnectionsListView / SkillDetailView /
+ * ConnectionDetailView 四个组件的 scoped 里逐字重复,统一收口于此。
+ * 命名空间前缀 mgmt- 避免与全局样式冲突。
+ */
+
+.mgmt-page { width: 100%; max-width: 880px; margin: 0 auto; padding: 8px 0 48px; }
+.mgmt-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+.mgmt-head h2 { margin: 0; font-size: 24px; }
+.mgmt-head .muted { margin: 6px 0 0; }
+.mgmt-empty { padding: 28px; text-align: center; color: var(--color-text-secondary); background: var(--color-surface); border: 1px dashed var(--color-border-strong); border-radius: 12px; }
+.mgmt-inline-error { color: var(--color-danger); font-size: 13px; }

@@ -161,7 +161,8 @@ describe('workspaceStore route workspace', () => {
 
     expect(ok).toBe(true)
     expect(mockedApiRestoreRoute).toHaveBeenCalledWith('p1', 'r-archived')
-    expect(store.feedback).toBe('已恢复路线')
+    // 恢复会把路线重新设为运行路线（后端语义），反馈必须如实说明。
+    expect(store.feedback).toBe('已恢复路线，并已设为运行路线')
   })
 
   it('archive sends the command and refreshes canonical reads', async () => {

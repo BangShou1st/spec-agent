@@ -125,7 +125,7 @@ class RelationCreationConcurrencyIntegrationTest {
             // The loser is rejected as a cycle — it observed the winner's edge.
             Attempt loser = attemptA.success ? attemptB : attemptA;
             assertThat(loser.error)
-                    .isInstanceOf(IllegalStateException.class)
+                    .isInstanceOf(com.specagent.graph.GraphRuleViolationException.class)
                     .hasMessageContaining("RELATION_DEPENDENCY_CYCLE");
 
             // Never two edges; the active causal DAG is a single acyclic edge.

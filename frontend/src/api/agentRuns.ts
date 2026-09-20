@@ -73,12 +73,33 @@ export interface AgentRunView {
   continuationPending?: boolean
   /** Latest durable RESPOND_MESSAGE text; absent when the run never responded. */
   respondMessage?: string | null
+  /** Whitelisted progress read model; absent on older payloads. */
+  progress?: RunProgressView | null
+}
+
+/** One whitelisted progress step (backend RunProgressView.Step). */
+export interface RunProgressStep {
+  sequence: number
+  phase: string
+  event: string
+  summary: string | null
+  items: string[] | null
+  at: string
+}
+
+/** Whitelisted run progress: composed summaries only, never raw payloads. */
+export interface RunProgressView {
+  phase: string | null
+  summary: string | null
+  steps: RunProgressStep[]
 }
 
 export interface CreateAgentRunPayload {
   operation: AgentRunOperation
   /** Node being answered/regenerated; backend falls back to the active route tip when omitted. */
   nodeId?: string | null
+  /** 多选题的全量选择（用户顺序）；单选题仍走 selectedOptionId。 */
+  selectedOptionIds?: string[] | null
   /**
    * Explicit route of this run.
    *
@@ -113,6 +134,7 @@ export function createAgentRun(
     nodeId: payload.nodeId ?? null,
     sourceRouteId: payload.sourceRouteId ?? null,
     selectedOptionId: payload.selectedOptionId ?? null,
+    selectedOptionIds: payload.selectedOptionIds ?? null,
     freeText: payload.freeText ?? null,
     answerId: payload.answerId ?? null,
     idempotencyKey: payload.idempotencyKey ?? null,
@@ -121,6 +143,12 @@ export function createAgentRun(
 
 export function getAgentRun(projectId: string, runId: string): Promise<AgentRunView> {
   return apiClient.get<AgentRunView>(`/projects/${projectId}/agent-runs/${runId}`)
+}
+
+/** All non-terminal runs of the project; used to rebuild the in-flight run
+ * registry after a page reload. */
+export function listActiveRuns(projectId: string): Promise<AgentRunView[]> {
+  return apiClient.get<AgentRunView[]>(`/projects/${projectId}/agent-runs/active`)
 }
 
 export function isTerminalRunStatus(status: string): boolean {

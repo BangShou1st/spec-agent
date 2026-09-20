@@ -2,6 +2,10 @@ package com.specagent.api.common;
 
 import com.specagent.agent.ModelContractException;
 import com.specagent.agent.IdempotencyKeyReusedException;
+import com.specagent.common.ApiErrorResponse;
+import com.specagent.common.ApiException;
+import com.specagent.common.ApiFieldError;
+import com.specagent.agent.runtime.RouteTargetConflictException;
 import com.specagent.agent.runtime.StaleRunTargetException;
 import com.specagent.agent.policy.ProposalAlreadyDecidedException;
 import com.specagent.readmodel.graph.GraphWorkspaceQueryException;
@@ -110,6 +114,36 @@ public class ApiExceptionHandler {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(ApiErrorResponse.of("AGENT_RUN_TARGET_STALE",
                         "The queued agent run's target is no longer current"));
+    }
+
+    /**
+     * A new run (draft question / answer / artifact) cannot target its route:
+     * the project has no active route pointer, or the requested route is no
+     * longer OPEN. Expected business outcome: deterministic conflict with a
+     * precise code, never a generic runtime-conflict 409.
+     */
+    @ExceptionHandler(RouteTargetConflictException.class)
+    public ResponseEntity<ApiErrorResponse> handleRouteTargetConflict(RouteTargetConflictException ex) {
+        return switch (ex.reason()) {
+            case NO_ACTIVE_ROUTE -> ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(ApiErrorResponse.of("NO_ACTIVE_ROUTE",
+                            "The project has no active route to target"));
+            case ROUTE_NOT_OPEN -> ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(ApiErrorResponse.of("ROUTE_NOT_OPEN",
+                            "The requested route is no longer open"));
+        };
+    }
+
+    /**
+     * A graph mutation violated a topology/state rule the user can act on
+     * (dependency cycle, detach or connect at a non-tip node). Deterministic
+     * 409 with the precise rule code, never a generic runtime conflict.
+     */
+    @ExceptionHandler(com.specagent.graph.GraphRuleViolationException.class)
+    public ResponseEntity<ApiErrorResponse> handleGraphRuleViolation(
+            com.specagent.graph.GraphRuleViolationException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiErrorResponse.of(ex.code(), ex.getMessage()));
     }
 
     /**

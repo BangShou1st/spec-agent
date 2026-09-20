@@ -8,6 +8,7 @@ import com.specagent.graph.UndoRedoService;
 import com.specagent.node.KnowledgeStatus;
 import com.specagent.node.Node;
 import com.specagent.node.NodeKind;
+import com.specagent.node.NodeService;
 import com.specagent.readmodel.graph.GraphWorkspaceRelationView;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -20,6 +21,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -39,18 +41,21 @@ public class GraphCommandController {
 
     private final GraphCommandService commandService;
     private final UndoRedoService undoRedoService;
+    private final NodeService nodeService;
 
     public GraphCommandController(GraphCommandService commandService,
-                                  UndoRedoService undoRedoService) {
+                                  UndoRedoService undoRedoService,
+                                  NodeService nodeService) {
         this.commandService = commandService;
         this.undoRedoService = undoRedoService;
+        this.nodeService = nodeService;
     }
 
     /** Creates the first (root) draft node on an empty route. Zero model calls. */
     @PostMapping("/nodes")
     public ResponseEntity<NodeResponse> createRootDraftNode(@PathVariable UUID projectId,
                                                              @RequestBody CreateDraftNodeRequest request) {
-        Node node = com.specagent.api.common.CommandExecution.execute(() -> commandService.createRootDraftNode(
+        Node node = com.specagent.application.support.CommandExecution.execute(() -> commandService.createRootDraftNode(
                 projectId, request.routeId(), request.subtype(), request.content()));
         return ResponseEntity.status(HttpStatus.CREATED).body(NodeResponse.from(node, request.routeId(), false));
     }
@@ -69,7 +74,7 @@ public class GraphCommandController {
     @PostMapping("/floating-nodes")
     public ResponseEntity<NodeResponse> createFloatingDraftNode(@PathVariable UUID projectId,
                                                                  @RequestBody CreateDraftNodeRequest request) {
-        Node node = com.specagent.api.common.CommandExecution.execute(() -> commandService.createFloatingDraftNode(
+        Node node = com.specagent.application.support.CommandExecution.execute(() -> commandService.createFloatingDraftNode(
                 projectId, request.routeId(), request.resolveNodeKind(), request.subtype(), request.content()));
         return ResponseEntity.status(HttpStatus.CREATED).body(NodeResponse.fromFloating(node));
     }
@@ -84,7 +89,7 @@ public class GraphCommandController {
     public ResponseEntity<NodeResponse> connectFloatingNode(@PathVariable UUID projectId,
                                                             @PathVariable UUID nodeId,
                                                             @RequestBody ConnectNodeRequest request) {
-        Node node = com.specagent.api.common.CommandExecution.execute(
+        Node node = com.specagent.application.support.CommandExecution.execute(
                 () -> commandService.connectFloatingNodeToRoute(
                         projectId, request.routeId(), nodeId, request.parentNodeId()));
         return ResponseEntity.ok(NodeResponse.from(node, request.routeId(), false));
@@ -95,7 +100,7 @@ public class GraphCommandController {
     public ResponseEntity<NodeResponse> disconnectNode(@PathVariable UUID projectId,
                                                        @PathVariable UUID nodeId,
                                                        @RequestBody DisconnectNodeRequest request) {
-        Node node = com.specagent.api.common.CommandExecution.execute(
+        Node node = com.specagent.application.support.CommandExecution.execute(
                 () -> commandService.detachNodeFromRoute(projectId, request.routeId(), nodeId));
         return ResponseEntity.ok(NodeResponse.fromFloating(node));
     }
@@ -109,7 +114,7 @@ public class GraphCommandController {
     public ResponseEntity<NodeResponse> appendContinuation(@PathVariable UUID projectId,
                                                            @PathVariable UUID nodeId,
                                                            @RequestBody CreateDraftNodeRequest request) {
-        GraphCommandService.ContinuationResult result = com.specagent.api.common.CommandExecution.execute(
+        GraphCommandService.ContinuationResult result = com.specagent.application.support.CommandExecution.execute(
                 () -> commandService.appendContinuation(
                         projectId, request.routeId(), nodeId, request.subtype(), request.content()));
         return ResponseEntity.status(HttpStatus.CREATED).body(
@@ -143,7 +148,7 @@ public class GraphCommandController {
     @PostMapping("/resources")
     public ResponseEntity<NodeResponse> attachResource(@PathVariable UUID projectId,
                                                        @RequestBody AttachResourceRequest request) {
-        Node node = com.specagent.api.common.CommandExecution.execute(() -> commandService.attachResource(
+        Node node = com.specagent.application.support.CommandExecution.execute(() -> commandService.attachResource(
                 projectId, request.routeId(), request.parentNodeId(),
                 request.subtype(), request.content()));
         return ResponseEntity.status(HttpStatus.CREATED).body(
@@ -162,7 +167,7 @@ public class GraphCommandController {
     @PostMapping("/relations")
     public ResponseEntity<GraphWorkspaceRelationView> createRelation(@PathVariable UUID projectId,
                                                                      @RequestBody CreateRelationRequest request) {
-        NodeRelation relation = com.specagent.api.common.CommandExecution.execute(() -> commandService.createSemanticRelation(
+        NodeRelation relation = com.specagent.application.support.CommandExecution.execute(() -> commandService.createSemanticRelation(
                 projectId,
                 request.sourceNodeId(),
                 request.targetNodeId(),
@@ -190,20 +195,55 @@ public class GraphCommandController {
 
     @PostMapping("/graph-operations/undo")
     public Map<String, Object> undo(@PathVariable UUID projectId) {
-        UndoRedoService.UndoRedoResult result = com.specagent.api.common.CommandExecution.execute(
+        UndoRedoService.UndoRedoResult result = com.specagent.application.support.CommandExecution.execute(
                 () -> undoRedoService.undo(projectId));
-        return Map.of(
-                "operation", GraphOperationResponse.from(result.operation()),
-                "description", result.description());
+        return undoRedoBody(result);
     }
 
     @PostMapping("/graph-operations/redo")
     public Map<String, Object> redo(@PathVariable UUID projectId) {
-        UndoRedoService.UndoRedoResult result = com.specagent.api.common.CommandExecution.execute(
+        UndoRedoService.UndoRedoResult result = com.specagent.application.support.CommandExecution.execute(
                 () -> undoRedoService.redo(projectId));
-        return Map.of(
-                "operation", GraphOperationResponse.from(result.operation()),
-                "description", result.description());
+        return undoRedoBody(result);
+    }
+
+    /**
+     * Undo/redo response. {@code targetTitle} names the compensated node so the
+     * client can say WHICH node was undone ("已撤销「…」") instead of only the
+     * operation type — an undo can compensate a node the agent just produced,
+     * which the user cannot otherwise recognize. The title is read here at the
+     * API edge from the operation's primary target; the compensation logic in
+     * {@link UndoRedoService} stays untouched.
+     */
+    private Map<String, Object> undoRedoBody(UndoRedoService.UndoRedoResult result) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("operation", GraphOperationResponse.from(result.operation()));
+        body.put("description", result.description());
+        body.put("targetTitle", targetTitle(result.operation()));
+        return body;
+    }
+
+    /** Display title of the operation's primary target node, or null. */
+    private String targetTitle(GraphOperation operation) {
+        UUID nodeId = operation.targetNodeId();
+        if (nodeId == null) {
+            return null;
+        }
+        return nodeService.getNode(nodeId).map(GraphCommandController::displayTitle).orElse(null);
+    }
+
+    /**
+     * A question node is titled by its question; every other node by its
+     * primary text payload (what the user actually wrote/attached).
+     */
+    private static String displayTitle(Node node) {
+        if (node.kind() == NodeKind.INTERACTION) {
+            String question = node.question();
+            return question == null || question.isBlank() ? null : question;
+        }
+        String text = node.contentText();
+        return text != null ? text : (node.question() == null || node.question().isBlank()
+                ? null : node.question());
     }
 
     // ------------------------------------------------------------------

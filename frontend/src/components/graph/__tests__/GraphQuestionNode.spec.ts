@@ -34,7 +34,7 @@ function mountNode(data: SpecAgentGraphNodeData, extra: Record<string, unknown> 
 }
 
 function option(id: string, label: string, impact: string | null): GraphWorkspaceOptionView {
-  return { id, label, impact }
+  return { id, label, impact, recommended: false }
 }
 
 function nodeData(overrides: Partial<GraphWorkspaceNodeView> = {}): GraphWorkspaceNodeView {
@@ -50,6 +50,7 @@ function nodeData(overrides: Partial<GraphWorkspaceNodeView> = {}): GraphWorkspa
       option('opt-b', 'Engineering team', null),
     ],
     allowFreeAnswer: true,
+    allowMultiSelect: false,
     createdAt: '2026-08-18T00:00:00Z',
     kind: 'INTERACTION',
     subtype: 'QUESTION',
@@ -65,6 +66,7 @@ function answer(routeId: string, overrides: Partial<GraphAnswerPresentation> = {
   return {
     routeId,
     selectedOptionId: null,
+          selectedOptionIds: null,
     selectedOptionLabel: null,
     freeText: 'answer text',
     isPrimary: false,
@@ -110,6 +112,7 @@ function historicalData(overrides: Partial<SpecAgentGraphNodeData> = {}): SpecAg
         answer: {
           routeId: 'r1',
           selectedOptionId: 'opt-a',
+          selectedOptionIds: null,
           selectedOptionLabel: 'Product team',
           freeText: 'Keep this exact user answer.',
           isPrimary: true,
@@ -120,6 +123,7 @@ function historicalData(overrides: Partial<SpecAgentGraphNodeData> = {}): SpecAg
         answer: {
           routeId: 'r2',
           selectedOptionId: null,
+          selectedOptionIds: null,
           selectedOptionLabel: null,
           freeText: 'Second route answer.',
           isPrimary: false,
@@ -129,6 +133,7 @@ function historicalData(overrides: Partial<SpecAgentGraphNodeData> = {}): SpecAg
     primaryAnswer: {
       routeId: 'r1',
       selectedOptionId: 'opt-a',
+          selectedOptionIds: null,
       selectedOptionLabel: 'Product team',
       freeText: 'Keep this exact user answer.',
       isPrimary: true,
@@ -182,14 +187,14 @@ describe('graph question node', () => {
     const wrapper = mountNode(currentData())
     await wrapper.find('input[type=radio][value="opt-b"]').setValue()
     await wrapper.find('[data-test="submit-answer"]').trigger('click')
-    expect(wrapper.emitted('submit-answer')?.[0]).toEqual([{ selectedOptionId: 'opt-b', freeText: null, nodeId: 'n1', routeId: 'r1' }])
+    expect(wrapper.emitted('submit-answer')?.[0]).toEqual([{ selectedOptionId: 'opt-b', selectedOptionIds: null, freeText: null, nodeId: 'n1', routeId: 'r1' }])
   })
 
   it('submits a free-text-only payload', async () => {
     const wrapper = mountNode(currentData())
     await wrapper.find('[data-test="free-text"]').setValue('free text answer')
     await wrapper.find('[data-test="submit-answer"]').trigger('click')
-    expect(wrapper.emitted('submit-answer')?.[0]).toEqual([{ selectedOptionId: null, freeText: 'free text answer', nodeId: 'n1', routeId: 'r1' }])
+    expect(wrapper.emitted('submit-answer')?.[0]).toEqual([{ selectedOptionId: null, selectedOptionIds: null, freeText: 'free text answer', nodeId: 'n1', routeId: 'r1' }])
   })
 
   it('submits combined option + free text payload', async () => {
@@ -198,8 +203,37 @@ describe('graph question node', () => {
     await wrapper.find('[data-test="free-text"]').setValue('with explanation')
     await wrapper.find('[data-test="submit-answer"]').trigger('click')
     expect(wrapper.emitted('submit-answer')?.[0]).toEqual([
-      { selectedOptionId: 'opt-a', freeText: 'with explanation', nodeId: 'n1', routeId: 'r1' },
+      { selectedOptionId: 'opt-a', selectedOptionIds: null, freeText: 'with explanation', nodeId: 'n1', routeId: 'r1' },
     ])
+  })
+
+  it('multi-select questions render checkboxes, mark recommended options, and submit the full selection', async () => {
+    const wrapper = mountNode(currentData({
+      node: nodeData({
+        allowMultiSelect: true,
+        options: [
+          option('opt-a', 'Product team', 'Fastest value'),
+          option('opt-b', 'Engineering team', null),
+          { ...option('opt-c', 'Both teams', null), recommended: true },
+        ],
+      }),
+    }))
+    // 多选题:渲染 checkbox,且 recommended 选项带「推荐」标记。
+    expect(wrapper.find('input[type=checkbox][value="opt-a"]').exists()).toBe(true)
+    const badges = wrapper.findAll('[data-test="option-recommended"]')
+    expect(badges).toHaveLength(1)
+    expect(badges[0].text()).toBe('推荐')
+
+    await wrapper.find('input[type=checkbox][value="opt-a"]').setValue()
+    await wrapper.find('input[type=checkbox][value="opt-c"]').setValue()
+    await wrapper.find('[data-test="submit-answer"]').trigger('click')
+    expect(wrapper.emitted('submit-answer')?.[0]).toEqual([{
+      selectedOptionId: 'opt-a',
+      selectedOptionIds: ['opt-a', 'opt-c'],
+      freeText: null,
+      nodeId: 'n1',
+      routeId: 'r1',
+    }])
   })
 
   it('disables submit with no input and while submitting', async () => {
@@ -337,6 +371,28 @@ describe('graph question node', () => {
     await wrapper.find('[data-test="regenerate-node"]').trigger('click')
     expect(wrapper.emitted('fork')?.[0]).toEqual(['n1'])
     expect(wrapper.emitted('regenerate')?.[0]).toEqual(['n1'])
+  })
+
+  it('answered reading-route tip offers 起草下一个问题 and emits the explicit route id', async () => {
+    const wrapper = mountNode(historicalData({ isTipOfReadingRoute: true }))
+    const button = wrapper.find('[data-test="draft-next-question"]')
+    expect(button.exists()).toBe(true)
+    await button.trigger('click')
+    expect(wrapper.emitted('draft-next')?.[0]).toEqual(['r1'])
+  })
+
+  it('a mid-route answered node (not the tip) never offers drafting next', () => {
+    const wrapper = mountNode(historicalData())
+    expect(wrapper.find('[data-test="draft-next-question"]').exists()).toBe(false)
+  })
+
+  it('an unanswered tip keeps the activate affordance and offers no draft-next', () => {
+    const wrapper = mountNode(historicalData({
+      answers: [],
+      primaryAnswer: null,
+      isTipOfReadingRoute: true,
+    }))
+    expect(wrapper.find('[data-test="draft-next-question"]').exists()).toBe(false)
   })
 
   it('当前查看已确定时只读展示，不再要求用户选一次', async () => {

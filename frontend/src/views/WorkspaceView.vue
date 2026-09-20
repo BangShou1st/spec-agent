@@ -2,12 +2,12 @@
 import { computed, inject, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { routerKey } from 'vue-router'
 import ApiErrorBanner from '@/components/ApiErrorBanner.vue'
+import AgentProposalCard from '@/components/workspace/AgentProposalCard.vue'
 import RecoveryNotice from '@/components/workspace/RecoveryNotice.vue'
 import SpecDock from '@/components/workspace/SpecDock.vue'
 import ConfirmRouteActionDialog from '@/components/ConfirmRouteActionDialog.vue'
-import ForkRouteDialog from '@/components/ForkRouteDialog.vue'
+import RouteActionDialog from '@/components/RouteActionDialog.vue'
 import ResourceDialog from '@/components/ResourceDialog.vue'
-import ReanswerRouteDialog from '@/components/ReanswerRouteDialog.vue'
 import RegenerateNodeDialog from '@/components/RegenerateNodeDialog.vue'
 import GraphCanvas from '@/components/graph/GraphCanvas.vue'
 import RelationProposalDialog from '@/components/graph/RelationProposalDialog.vue'
@@ -18,10 +18,12 @@ import {
   projectGraph,
   getVisibleRouteIds,
   type ContextualAiTarget,
+  type GraphNodeRuntimeState,
+  type GraphPendingProjection,
+  type GraphRunProgress,
   type SpecAgentGraphNodeData,
 } from '@/graph/graphProjection'
 import { resolveReadingRouteId } from '@/graph/graphInteraction'
-import { agentPhaseLabel } from '@/presentation/agentPresentation'
 import {
   recoveryNoticeFromState,
   type RecoveryAction,
@@ -29,7 +31,9 @@ import {
 } from '@/presentation/recoveryPresentation'
 import { productErrorMessage, requiresModelSettings } from '@/api/errorCopy'
 import { useGraphUiStore } from '@/stores/graphUiStore'
+import { useRunRegistryStore, type RunRegistryEntry } from '@/stores/runRegistryStore'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
+import type { SpecExportVariant } from '@/api/spec'
 import type { RegenerateNodeRequest, SubmitAnswerRequest } from '@/api/types'
 
 /**
@@ -45,6 +49,7 @@ const props = defineProps<{ projectId: string }>()
 
 const store = useWorkspaceStore()
 const graphUi = useGraphUiStore()
+const runRegistry = useRunRegistryStore()
 const router = inject(routerKey, null)
 const canvasRef = ref<InstanceType<typeof GraphCanvas> | null>(null)
 
@@ -73,7 +78,35 @@ onMounted(() => {
   void store.loadWorkspace(props.projectId).then(() => {
     void store.refreshUndoRedoAvailability()
   })
+  window.addEventListener('keydown', handleGlobalKeydown)
 })
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleGlobalKeydown)
+})
+
+/**
+ * 全局撤销/重做快捷键（Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y）。输入框、下拉等
+ * 可编辑元素聚焦时不劫持——文本编辑的原生撤销优先于图撤销。
+ */
+function handleGlobalKeydown(event: KeyboardEvent): void {
+  if (!(event.ctrlKey || event.metaKey) || event.altKey) return
+  const target = event.target as HTMLElement | null
+  if (target
+    && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA'
+      || target.tagName === 'SELECT' || target.isContentEditable)) {
+    return
+  }
+  const key = event.key.toLowerCase()
+  if (key === 'z') {
+    event.preventDefault()
+    if (event.shiftKey) void store.redoGraph()
+    else void store.undoGraph()
+  } else if (key === 'y') {
+    event.preventDefault()
+    void store.redoGraph()
+  }
+}
 
 // 每次 canonical 刷新后，浏览器视图状态与后端 graph 对齐。
 watch(
@@ -170,7 +203,7 @@ const forkSourceRoute = computed(() => sourceRouteForNode(forkNodeId.value))
 const reanswerSourceRoute = computed(() => sourceRouteForNode(reanswerNodeId.value))
 const regenerateSourceRoute = computed(() => sourceRouteForNode(regenerateNodeId.value))
 const workspaceErrorMessage = computed(() =>
-  productErrorMessage(store.error?.code ?? 'UNKNOWN_ERROR'),
+  productErrorMessage(store.error?.code ?? 'UNKNOWN_ERROR', store.error?.message),
 )
 const workspaceRetryLabel = computed(() => {
   if (store.error && requiresModelSettings(store.error.code)) return '前往模型设置'
@@ -201,28 +234,125 @@ const recoveryModel = computed<RecoveryNoticeModel | null>(() => {
   })
 })
 
+/**
+ * 恢复提示与错误条各自独立渲染：恢复提示描述"待恢复的旧状态"（如可重试的
+ * 失败运行），错误条描述"用户最新一次操作的失败"。历史行为是恢复提示独占
+ * 状态层，导致用户后续任何操作失败（拖线被拒、路线命令 409 等）完全无反馈，
+ * 表现为"点了没反应"。
+ */
 const showPlainErrorBanner = computed(() =>
-  store.error !== null && recoveryModel.value === null,
+  store.error !== null && !requiresModelSettings(store.error.code),
 )
 
-/** 中央一句话 Agent 状态：仅运行时显示产品化文案，未知 phase 只回退通用语。
- * 终态（成功/失败）不常驻：成功由 toast 承担，失败由 Recovery/横幅承担。 */
-const agentStatusCopy = computed(() => {
-  if (store.pendingRouteProjection) {
-    if (store.pendingRouteProjection.status === 'SUCCEEDED'
-      || store.pendingRouteProjection.status === 'FAILED') {
-      return null
-    }
-    return agentPhaseLabel(store.pendingRouteProjection.phase)
+/** 待确认提案的节点上下文：来源问题的可读标题（截断）。 */
+const confirmingProposalId = ref<string | null>(null)
+const confirmableNodeContext = (inputNodeId: string | null): string | null => {
+  if (!inputNodeId) return null
+  const node = store.graphView?.nodes.find((candidate) => candidate.id === inputNodeId)
+  const raw: unknown = node?.question ?? node?.content?.text
+  const title = typeof raw === 'string' ? raw : null
+  return title ? title.slice(0, 30) : null
+}
+async function handleAcceptConfirmable(proposalId: string): Promise<void> {
+  confirmingProposalId.value = proposalId
+  try {
+    await store.acceptConfirmableProposal(proposalId)
+  } finally {
+    confirmingProposalId.value = null
   }
-  if (store.answerRunStatus === 'SUCCEEDED' || store.answerRunStatus === 'FAILED') {
-    return null
+}
+async function handleRejectConfirmable(proposalId: string): Promise<void> {
+  confirmingProposalId.value = proposalId
+  try {
+    await store.rejectConfirmableProposal(proposalId)
+  } finally {
+    confirmingProposalId.value = null
   }
-  if (store.answerRunId || store.answerRunStatus) {
-    return agentPhaseLabel(store.answerRunPhase)
-  }
-  return null
+}
+
+/**
+ * tip 是"未回答问题"的路线集合：在这些路线上起草下一个问题注定被后端
+ * UNANSWERED_QUESTION_HAS_CHILD 不变式拒绝，入口必须前置置灰（D1）。
+ * 判定与后端一致：tip 存在、是问题节点、且该路线上没有它的已确认回答。
+ */
+const draftBlockedRouteIds = computed<string[]>(() => {
+  const view = store.graphView
+  if (!view) return []
+  const answeredNodeIds = new Set(
+    view.answers.map((answer) => `${answer.routeId}:${answer.nodeId}`),
+  )
+  return view.routes
+    .filter((route) => {
+      if (!route.tipNodeId) return false
+      const tip = view.nodes.find((node) => node.id === route.tipNodeId)
+      if (!tip || tip.kind !== 'INTERACTION') return false
+      return !answeredNodeIds.has(`${route.id}:${route.tipNodeId}`)
+    })
+    .map((route) => route.id)
 })
+
+/** Registry 条目的白名单过程内容（summary + steps）。 */
+function runProgressOf(entry: RunRegistryEntry | undefined): GraphRunProgress | null {
+  if (!entry) return null
+  return { summary: entry.summary, steps: entry.steps }
+}
+
+/**
+ * 画布 pending 卡列表：run 注册表是唯一权威来源；draft 流程的
+ * pendingRouteProjection（带失败文案等临时状态）优先生效，其余未绑定到
+ * 具体节点的 in-flight run（重新起草、后台续跑、刷新后重建等）各自成卡。
+ * 多条路线并发生成时每条路线一张卡。
+ */
+const pendingProjections = computed<GraphPendingProjection[]>(() => {
+  const projections: GraphPendingProjection[] = []
+  const seen = new Set<string>()
+  const legacy = store.pendingRouteProjection
+  if (legacy) {
+    seen.add(legacy.runId)
+    projections.push({
+      ...legacy,
+      operation: 'DRAFT_QUESTION',
+      progress: runProgressOf(runRegistry.runs[legacy.runId]),
+    })
+  }
+  for (const entry of runRegistry.list) {
+    if (seen.has(entry.runId)) continue
+    if (entry.status === 'SUCCEEDED') continue
+    if (entry.sourceNodeId) continue // 绑定到既有节点：走 runtimeByNode 叠加
+    if (!entry.routeId) continue
+    projections.push({
+      routeId: entry.routeId,
+      sourceNodeId: entry.sourceNodeId,
+      runId: entry.runId,
+      status: entry.status,
+      phase: entry.phase,
+      message: null,
+      operation: entry.operation,
+      progress: runProgressOf(entry),
+    })
+  }
+  return projections
+})
+
+/** 既有节点上的运行时叠加：源节点已知的 in-flight run（回答/重生成/续修）。 */
+const runtimeByNode = computed<Record<string, GraphNodeRuntimeState>>(() => {
+  const map: Record<string, GraphNodeRuntimeState> = {}
+  for (const entry of runRegistry.list) {
+    if (!entry.sourceNodeId || entry.status === 'SUCCEEDED') continue
+    map[entry.sourceNodeId] = {
+      status: entry.status,
+      phase: entry.phase,
+      progress: runProgressOf(entry),
+    }
+  }
+  return map
+})
+
+/**
+ * 中央一行状态已移除：过程展示收敛到画布节点内（pending 卡与既有节点的
+ * runtime 叠加，见 pendingProjections / runtimeByNode），中央不再有第二个
+ * 并行的过程展示面。终态反馈仍由 toast / Recovery / 横幅承担。
+ */
 
 const forkFinalizedRouteIds = computed(() => {
   if (!forkNodeId.value || !store.graphView) return []
@@ -270,6 +400,10 @@ async function handleGenerateSpec(): Promise<void> {
   if (generated) {
     graphUi.setFocusRoute(store.activeRoute?.id ?? null)
   }
+}
+
+async function handleExportSpec(snapshotId: string, variant: SpecExportVariant): Promise<void> {
+  await store.exportSpecMarkdown(snapshotId, variant)
 }
 
 function handleSelectSpec(snapshotId: string): void {
@@ -381,6 +515,11 @@ async function focusAfterMutation(): Promise<void> {
 
 async function handleDraft(): Promise<void> {
   await store.draftQuestion()
+}
+
+/** 显式路线的"起草下一个问题"：路线卡菜单 / 已回答末端节点 / 末端知识卡发起。 */
+async function handleDraftNext(routeId: string): Promise<void> {
+  await store.draftQuestion(routeId)
 }
 
 /** "+ 想法"：创建独立想法（不与任何节点连接），聚焦并直接进入编辑。 */
@@ -504,6 +643,43 @@ function handleFork(nodeId: string): void {
 function handleReanswer(nodeId: string): void {
   reanswerNodeId.value = nodeId
   reanswerDialogOpen.value = true
+}
+
+/**
+ * 断开接入：路线末端或挂在谱系下的出处节点都可断开（后端同规则校验）。
+ * 归属路线沿 parentNodeId 向上解析（出处子节点不在 lineageNodeIds 父链上）；
+ * 多条路线共享时要求先选定查看路线，绝不猜测。
+ */
+async function handleDisconnect(nodeId: string): Promise<void> {
+  const view = store.graphView
+  if (!view) return
+  const node = view.nodes.find((candidate) => candidate.id === nodeId)
+  const ancestors = new Set<string>()
+  let parent = node?.parentNodeId ?? null
+  while (parent != null && !ancestors.has(parent)) {
+    ancestors.add(parent)
+    parent = view.nodes.find((candidate) => candidate.id === parent)?.parentNodeId ?? null
+  }
+  const candidates = view.routes.filter(
+    (route) => route.lifecycleStatus === 'open'
+      && ((route.lineageNodeIds ?? []).includes(nodeId)
+        || (route.lineageNodeIds ?? []).some((id) => ancestors.has(id))),
+  )
+  if (candidates.length === 0) {
+    store.error = {
+      code: 'DISCONNECT_REQUIRES_ROUTE_TIP',
+      message: '只有已接入路线的节点可以断开',
+    }
+    return
+  }
+  if (candidates.length > 1) {
+    store.error = {
+      code: 'SOURCE_ROUTE_REQUIRED',
+      message: '该节点属于多条路线：请先在「当前查看路线」中选择要断开的那条',
+    }
+    return
+  }
+  await store.disconnectNode(nodeId, candidates[0]!.id)
 }
 
 function handleRegenerate(nodeId: string): void {
@@ -650,10 +826,12 @@ async function confirmDestructive(): Promise<void> {
           :active-route-id="store.activeRoute?.id ?? null"
           :command-pending="store.routeCommandPending"
           :pending-route-command="store.pendingRouteCommand"
+          :draft-blocked-route-ids="draftBlockedRouteIds"
           @locate-route="handleLocateRoute"
           @activate="store.activateRoute($event)"
           @restore="store.restoreRoute($event)"
           @archive="openConfirm('archive', $event)"
+          @draft-next="handleDraftNext"
         />
       </ResizableSidebar>
 
@@ -669,12 +847,25 @@ async function confirmDestructive(): Promise<void> {
             @action="handleRecoveryAction"
           />
           <ApiErrorBanner
-            v-else-if="showPlainErrorBanner"
+            v-if="showPlainErrorBanner"
             :message="workspaceErrorMessage"
             :code="store.error!.code"
             :retry-label="workspaceRetryLabel"
             :retrying="workspaceRetrying"
             @retry="retry"
+          />
+          <!-- D2：回答/决策周期的"待确认提案"全局呈现面。没有它，策略层
+               要求确认的意图变更对用户完全不可见，提案只能永远挂在库里。 -->
+          <AgentProposalCard
+            v-for="proposal in store.pendingConfirmableProposals"
+            :key="proposal.proposalId"
+            :action-family="proposal.actionFamily"
+            :message="null"
+            :node-context="confirmableNodeContext(proposal.inputNodeId)"
+            :accepting="confirmingProposalId === proposal.proposalId"
+            :rejecting="confirmingProposalId === proposal.proposalId"
+            @accept="handleAcceptConfirmable(proposal.proposalId)"
+            @reject="handleRejectConfirmable(proposal.proposalId)"
           />
         </div>
 
@@ -687,15 +878,15 @@ async function confirmDestructive(): Promise<void> {
             :submitting="store.submitting"
             :drafting="store.drafting"
             :pending="store.routeCommandPending"
-            :runtime-node-id="store.pendingAnswerNodeId"
-            :runtime-status="store.answerRunStatus"
-            :runtime-phase="store.answerRunPhase"
-            :pending-projection="store.pendingRouteProjection"
+            :runtime-by-node="runtimeByNode"
+            :pendings="pendingProjections"
             @draft="handleDraft"
+            @draft-next="handleDraftNext"
             @submit-answer="handleAnswer"
             @fork="handleFork"
             @reanswer="handleReanswer"
             @regenerate="handleRegenerate"
+            @disconnect="handleDisconnect"
             @activate-route="handleActivateRouteForAnswer"
             @contextual-ai="handleContextualAi"
             @retry-pending="store.retryPendingAgentRun"
@@ -707,9 +898,6 @@ async function confirmDestructive(): Promise<void> {
             @redo="store.redoGraph"
           />
           <div class="workspace-shell__toast-layer">
-            <p v-if="agentStatusCopy" class="muted workspace-shell__runtime-phase" data-test="agent-status">
-              {{ agentStatusCopy }}
-            </p>
             <p v-if="store.refreshing" class="muted workspace-shell__refreshing" data-test="refreshing">
               正在刷新工作区…
             </p>
@@ -726,8 +914,10 @@ async function confirmDestructive(): Promise<void> {
           :snapshots="specSnapshots"
           :selected-spec-id="specSelectedId"
           :generating="store.generatingSpec"
+          :exporting="store.exportingSpec"
           :command-pending="store.routeCommandPending"
           @generate-spec="handleGenerateSpec"
+          @export-spec="handleExportSpec"
           @select-snapshot="handleSelectSpec"
           @expanded-change="handleSpecDockExpandedChange"
         />
@@ -762,7 +952,8 @@ async function confirmDestructive(): Promise<void> {
       @submit="handleCreateFloatingResource"
     />
 
-    <ForkRouteDialog
+    <RouteActionDialog
+      mode="fork"
       :open="forkDialogOpen"
       :node="forkNodeData"
       :source-route="forkSourceRoute"
@@ -782,7 +973,8 @@ async function confirmDestructive(): Promise<void> {
       @submit="handleRegenerateSubmit"
       />
 
-    <ReanswerRouteDialog
+    <RouteActionDialog
+      mode="reanswer"
       :open="reanswerDialogOpen"
       :node="reanswerNodeData"
       :source-route="reanswerSourceRoute"

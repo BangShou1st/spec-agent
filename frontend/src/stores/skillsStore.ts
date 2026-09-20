@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
-import { ApiError, GENERIC_ERROR_MESSAGE } from '@/api/client'
+import { toDisplayError } from '@/api/displayError'
+import { createLoadToken } from '@/stores/raceGuard'
 import { deleteSkill, deleteStagedImport, disableSkill, discoverSkillGit, enableSkill, getSkill, getStagedImport, installStagedImport, listSkillResources, listSkills, listSkillVersions, listStagedImports, readSkillResource, rejectStagedImport, stageSkillGit, stageSkillZip } from '@/api/skills'
 import type { GitSkillCandidate, SkillDetail, SkillResourceRead, SkillResourceSummary, SkillSummary, SkillVersionView, StagedImportDetail, StagedImportView } from '@/api/skillTypes'
 
@@ -8,17 +9,14 @@ export interface SkillsStoreError {
   message: string
 }
 
-function displayError(err: unknown): SkillsStoreError {
-  if (err instanceof ApiError) {
-    return { code: err.code, message: err.message }
-  }
-  return { code: 'UNKNOWN_ERROR', message: GENERIC_ERROR_MESSAGE }
-}
+const displayError: (err: unknown) => SkillsStoreError = toDisplayError
 
 /**
  * Installed Skill and staged-import state. Never touches workspace or connections.
  * No semantic routing: explicit user selections only.
  */
+const listLoadToken = createLoadToken()
+
 export const useSkillsStore = defineStore('skills', {
   state: () => ({
     list: [] as SkillSummary[],
@@ -39,14 +37,22 @@ export const useSkillsStore = defineStore('skills', {
   }),
   actions: {
     async loadList(): Promise<void> {
+      const token = listLoadToken.next()
       this.listLoading = true
       this.error = null
       try {
-        this.list = await listSkills()
+        const list = await listSkills()
+        if (listLoadToken.isCurrent(token)) {
+          this.list = list
+        }
       } catch (err) {
-        this.error = displayError(err)
+        if (listLoadToken.isCurrent(token)) {
+          this.error = displayError(err)
+        }
       } finally {
-        this.listLoading = false
+        if (listLoadToken.isCurrent(token)) {
+          this.listLoading = false
+        }
       }
     },
     async loadDetail(skillId: string): Promise<void> {

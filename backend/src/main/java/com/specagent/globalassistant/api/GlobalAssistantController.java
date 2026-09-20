@@ -1,8 +1,8 @@
 package com.specagent.globalassistant.api;
 
+import com.specagent.globalassistant.application.GlobalAssistantApplicationService;
 import com.specagent.globalassistant.conversation.GlobalAssistantMessage;
 import com.specagent.globalassistant.conversation.GlobalAssistantRun;
-import com.specagent.globalassistant.conversation.GlobalAssistantRunEventRepository;
 import com.specagent.globalassistant.conversation.GlobalAssistantThread;
 import com.specagent.globalassistant.conversation.GlobalAssistantThreadListItem;
 import com.specagent.globalassistant.context.GlobalAssistantContextBuilder;
@@ -31,12 +31,10 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 @RequestMapping("/api/v1/global-assistant")
 public class GlobalAssistantController {
     private final GlobalAssistantApplicationService application;
-    private final GlobalAssistantRunEventRepository events;
     private final GlobalAssistantStreamService streams;
     public GlobalAssistantController(GlobalAssistantApplicationService application,
-            GlobalAssistantRunEventRepository events, GlobalAssistantStreamService streams) {
+            GlobalAssistantStreamService streams) {
         this.application = application;
-        this.events = events;
         this.streams = streams;
     }
     public record CreateThreadResponse(String threadId) {

@@ -9,6 +9,7 @@ import com.specagent.project.ProjectService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 
@@ -27,10 +28,20 @@ import static org.assertj.core.api.Assertions.assertThat;
  * lets the production {@link RunWorker} poller claim + execute it, then asserts
  * the run reaches COMPLETED with a produced node. No {@code @Transactional} so
  * the run is committed and visible to the background poller thread.
+ *
+ * <p><b>Isolation.</b> This is the only suite that runs the real
+ * {@code RunWorkerPoller} against the shared test database. Spring caches the
+ * test ApplicationContext, so without closing it here the {@code @Scheduled}
+ * poller would keep running for the rest of the JVM and could claim/execute
+ * runs enqueued by unrelated tests (and commit {@code context_snapshots} rows
+ * while those tests clean their projects up — observed as a flaky foreign-key
+ * violation inside eval cleanup). {@code @DirtiesContext} AFTER_CLASS shuts the
+ * context (and its scheduler) down as soon as this class is done.
  */
 @SpringBootTest
 @ActiveProfiles("test")
 @TestPropertySource(properties = "spec.agent.brain.worker.enabled=true")
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class DraftQuestionAsyncPollerIntegrationTest {
 
     @Autowired

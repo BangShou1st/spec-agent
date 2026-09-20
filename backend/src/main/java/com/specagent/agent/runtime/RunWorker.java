@@ -193,6 +193,9 @@ public class RunWorker {
             String operation = run.operation() != null ? run.operation() : "ANSWER_TIP";
             UUID selectedOptionId = input.containsKey("selectedOptionId")
                     ? UUID.fromString((String) input.get("selectedOptionId")) : null;
+            // Multi-select answers carry the FULL selection; fall back to the
+            // legacy single id so pre-multi-select runs keep working.
+            List<UUID> selectedOptionIds = readSelectedOptionIds(input, selectedOptionId);
             String freeText = (String) input.get("freeText");
             UUID answerId = input.containsKey("answerId")
                     ? UUID.fromString((String) input.get("answerId")) : null;
@@ -205,7 +208,7 @@ public class RunWorker {
                 answerCycleService.resumeAnswer(run, run.projectId(), answerId, persistenceIntent,
                         explicitRouteId);
             } else {
-                answerCycleService.submitAnswer(run, run.projectId(), selectedOptionId, freeText,
+                answerCycleService.submitAnswer(run, run.projectId(), selectedOptionIds, freeText,
                         persistenceIntent, explicitRouteId);
             }
             evaluateContinuationAfterTerminal(runId);
@@ -213,6 +216,17 @@ public class RunWorker {
             failIfNotTerminal(runId, ex);
             throw ex;
         }
+    }
+
+    /** Payload list first; null/absent falls back to the legacy single id. */
+    private List<UUID> readSelectedOptionIds(Map<String, Object> input, UUID selectedOptionId) {
+        Object raw = input.get("selectedOptionIds");
+        if (raw instanceof List<?> list && !list.isEmpty()) {
+            return list.stream()
+                    .map(item -> UUID.fromString(String.valueOf(item)))
+                    .toList();
+        }
+        return selectedOptionId == null ? List.of() : List.of(selectedOptionId);
     }
 
     /**

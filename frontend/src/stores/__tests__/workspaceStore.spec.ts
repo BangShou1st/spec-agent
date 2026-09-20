@@ -52,6 +52,7 @@ vi.mock('@/api/routes', () => ({
   getRouteLineage: vi.fn(),
   regenerateNode: vi.fn(),
   restoreRoute: vi.fn(),
+  startRouteFromNode: vi.fn(),
 }))
 
 vi.mock('@/api/spec', () => ({
@@ -62,11 +63,12 @@ vi.mock('@/api/spec', () => ({
 vi.mock('@/api/graphCommands', () => ({
   acceptProposal: vi.fn(),
   appendContinuation: vi.fn(),
-  attachResource: vi.fn(),
+  connectFloatingNode: vi.fn(),
   createFloatingDraftNode: vi.fn(),
   createRelation: vi.fn(),
   createNodeQuery: vi.fn(),
   createRootDraftNode: vi.fn(),
+  disconnectNode: vi.fn(),
   getNodeQueryResult: vi.fn(),
   getUndoRedoAvailability: vi.fn(),
   listProposals: vi.fn(),
@@ -95,6 +97,7 @@ import {
   forkNode as apiForkNode,
   getRouteLineage,
   reanswerNode as apiReanswerNode,
+  startRouteFromNode as apiStartRouteFromNode,
 } from '@/api/routes'
 import { listRouteSpecs } from '@/api/spec'
 import {
@@ -108,6 +111,7 @@ import {
   getUndoRedoAvailability,
   listProposals as apiListProposals,
   rejectProposal as apiRejectProposal,
+  undoGraphOperation as apiUndoGraphOperation,
 } from '@/api/graphCommands'
 
 const mockedGetProject = vi.mocked(getProject)
@@ -122,6 +126,7 @@ const mockedGetRouteLineage = vi.mocked(getRouteLineage)
 const mockedActivateRoute = vi.mocked(apiActivateRoute)
 const mockedForkNode = vi.mocked(apiForkNode)
 const mockedReanswerNode = vi.mocked(apiReanswerNode)
+const mockedStartRouteFromNode = vi.mocked(apiStartRouteFromNode)
 const mockedListRouteSpecs = vi.mocked(listRouteSpecs)
 const mockedAppendContinuation = vi.mocked(apiAppendContinuation)
 const mockedCreateRootDraftNode = vi.mocked(createRootDraftNode)
@@ -133,6 +138,7 @@ const mockedGetNodeQueryResult = vi.mocked(apiGetNodeQueryResult)
 const mockedAcceptProposal = vi.mocked(apiAcceptProposal)
 const mockedRejectProposal = vi.mocked(apiRejectProposal)
 const mockedListProposals = vi.mocked(apiListProposals)
+const mockedUndoGraphOperation = vi.mocked(apiUndoGraphOperation)
 
 describe('workspaceStore', () => {
   beforeEach(() => {
@@ -214,6 +220,15 @@ describe('workspaceStore', () => {
     mockedGetAgentRun.mockResolvedValue(view)
   }
 
+  /** GraphWorkspaceRouteView fixture built on the shared route factory. */
+  function graphRoute(overrides: Partial<GraphWorkspaceRouteView>): GraphWorkspaceRouteView {
+    return {
+      ...makeRoute(),
+      ...overrides,
+      lineageNodeIds: overrides.lineageNodeIds ?? [],
+    } as GraphWorkspaceRouteView
+  }
+
   /** Wires the run mocks so one draft run reaches 'failed'. */
   function mockDraftRunFailure(): void {
     mockedCreateAgentRun.mockResolvedValue({
@@ -283,7 +298,7 @@ describe('workspaceStore', () => {
     const ok = await store.draftQuestion()
 
     expect(ok).toBe(true)
-    expect(mockedCreateAgentRun).toHaveBeenCalledWith('p1', { operation: 'DRAFT_QUESTION' })
+    expect(mockedCreateAgentRun).toHaveBeenCalledWith('p1', { operation: 'DRAFT_QUESTION', sourceRouteId: null })
     expect(mockedGetActiveState.mock.calls.length).toBe(readCallsBefore + 1)
     expect(store.activeState?.activeNode?.question).toBe('First drafted question')
     expect(store.feedback).toBe('问题已起草')
@@ -338,6 +353,93 @@ describe('workspaceStore', () => {
     expect(store.error).toMatchObject({ code: 'ACTIVE_ROUTE_REQUIRED' })
   })
 
+  it('drafts on an explicit route by binding the run to that route', async () => {
+    // 显式路线不是 Active：run 必须携带 sourceRouteId，整个生命周期绑定 r2。
+    mockBackendViews(makeActiveState(), makeRequirementState())
+    mockedGetProjectGraph.mockResolvedValue(makeGraphWorkspaceView({
+      routes: [graphRoute({ id: 'r2', tipNodeId: 'tip-2' })],
+    }))
+    mockDraftRunSuccess(draftRunView({ producedNodeId: 'drafted-node' }))
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+
+    const ok = await store.draftQuestion('r2')
+
+    expect(ok).toBe(true)
+    expect(mockedCreateAgentRun).toHaveBeenCalledWith('p1', {
+      operation: 'DRAFT_QUESTION',
+      sourceRouteId: 'r2',
+    })
+  })
+
+  it('a floating idea starts a NEW standalone route and drafts its first question', async () => {
+    // "继续生成问题"（浮动）：想法成为新路线的根+tip，起草锚定该路线。
+    mockBackendViews(makeActiveState(), makeRequirementState())
+    mockedGetProjectGraph.mockResolvedValue(makeGraphWorkspaceView({
+      routes: [graphRoute({ id: 'r2', tipNodeId: 'tip-2' })],
+    }))
+    mockedStartRouteFromNode.mockResolvedValue({
+      projectId: 'p1',
+      route: makeRoute({ id: 'r-idea', label: '想法路线 1', tipNodeId: 'idea-1' }),
+      activeRouteId: 'r-idea',
+    })
+    mockDraftRunSuccess(draftRunView({ producedNodeId: 'drafted-node' }))
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+
+    const ok = await store.draftQuestionFromNode('idea-1')
+
+    expect(ok).toBe(true)
+    expect(mockedStartRouteFromNode).toHaveBeenCalledWith('p1', 'idea-1', null)
+    expect(mockedForkNode).not.toHaveBeenCalled()
+    // 新路线是 Active 路线：起草走缺省（Active）语义。
+    expect(mockedCreateAgentRun).toHaveBeenCalledWith('p1', {
+      operation: 'DRAFT_QUESTION',
+      sourceRouteId: null,
+    })
+  })
+
+  it('an attached idea continues via a fork branch on its explicit route', async () => {
+    mockBackendViews(makeActiveState(), makeRequirementState())
+    mockedGetProjectGraph.mockResolvedValue(makeGraphWorkspaceView({
+      routes: [graphRoute({ id: 'r1', lineageNodeIds: ['root-1', 'idea-1'] })],
+    }))
+    mockedForkNode.mockResolvedValue({
+      projectId: 'p1',
+      route: makeRoute({ id: 'r-fork', label: '分支路线 1' }),
+      activeRouteId: 'r-fork',
+    })
+    mockDraftRunSuccess(draftRunView({ producedNodeId: 'drafted-node' }))
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+
+    const ok = await store.draftQuestionFromNode('idea-1')
+
+    expect(ok).toBe(true)
+    expect(mockedStartRouteFromNode).not.toHaveBeenCalled()
+    expect(mockedForkNode).toHaveBeenCalledWith('p1', 'idea-1', {
+      sourceRouteId: 'r1',
+      label: null,
+    })
+  })
+
+  it('a shared attached idea without a reading route refuses to guess', async () => {
+    mockBackendViews(makeActiveState(), makeRequirementState())
+    mockedGetProjectGraph.mockResolvedValue(makeGraphWorkspaceView({
+      routes: [
+        graphRoute({ id: 'r1', lineageNodeIds: ['root-1', 'idea-1'] }),
+        graphRoute({ id: 'r2', lineageNodeIds: ['root-1', 'idea-1'] }),
+      ],
+    }))
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+
+    expect(await store.draftQuestionFromNode('idea-1')).toBe(false)
+    expect(mockedForkNode).not.toHaveBeenCalled()
+    expect(mockedStartRouteFromNode).not.toHaveBeenCalled()
+    expect(store.error).toMatchObject({ code: 'SOURCE_ROUTE_REQUIRED' })
+  })
+
   it('creates an ANSWER_TIP run and returns pending immediately', async () => {
     mockBackendViews(makeActiveState(), makeRequirementState())
     let resolveRun: (v: ReturnType<typeof completedRunView>) => void = () => undefined
@@ -363,6 +465,7 @@ describe('workspaceStore', () => {
       operation: 'ANSWER_TIP',
       nodeId: store.pendingAnswerNodeId,
       selectedOptionId: null,
+          selectedOptionIds: null,
       freeText: 'async answer',
       sourceRouteId: null,
       idempotencyKey: expect.any(String),
@@ -394,6 +497,7 @@ describe('workspaceStore', () => {
       operation: 'ANSWER_TIP',
       nodeId: expect.any(String),
       selectedOptionId: 'opt-a',
+          selectedOptionIds: null,
       freeText: null,
       sourceRouteId: null,
       idempotencyKey: expect.any(String),
@@ -413,6 +517,7 @@ describe('workspaceStore', () => {
 
     const ok = await store.submitAnswer({
       selectedOptionId: 'opt-a',
+          selectedOptionIds: null,
       nodeId: 'node-other-route',
       routeId: 'r2',
     })
@@ -423,6 +528,7 @@ describe('workspaceStore', () => {
       operation: 'ANSWER_TIP',
       nodeId: 'node-other-route',
       selectedOptionId: 'opt-a',
+          selectedOptionIds: null,
       freeText: null,
       sourceRouteId: 'r2',
       idempotencyKey: expect.any(String),
@@ -453,6 +559,7 @@ describe('workspaceStore', () => {
     // 另一条路线：不受影响 —— 这就是"链路互不影响"。
     void store.submitAnswer({
       selectedOptionId: 'opt-b',
+          selectedOptionIds: null,
       nodeId: 'node-other-route',
       routeId: 'r2',
     })
@@ -478,6 +585,7 @@ describe('workspaceStore', () => {
       operation: 'ANSWER_TIP',
       nodeId: expect.any(String),
       selectedOptionId: null,
+          selectedOptionIds: null,
       freeText: 'We need a single-user tool',
       sourceRouteId: null,
       idempotencyKey: expect.any(String),
@@ -501,6 +609,7 @@ describe('workspaceStore', () => {
       operation: 'ANSWER_TIP',
       nodeId: expect.any(String),
       selectedOptionId: 'opt-a',
+          selectedOptionIds: null,
       freeText: 'explanation text',
       sourceRouteId: null,
       idempotencyKey: expect.any(String),
@@ -642,6 +751,7 @@ describe('workspaceStore', () => {
       nodes: [makeNode({ id: 'node-1', projectId: 'p1' })],
       answers: [{
         id: 'answer-1', routeId: 'r1', nodeId: 'node-1', selectedOptionId: null,
+          selectedOptionIds: null,
         freeText: 'answer', createdAt: '2026-01-01T00:00:00Z',
         ownerRouteId: 'r1', inherited: false,
       }],
@@ -826,7 +936,7 @@ describe('workspaceStore', () => {
       sourceRouteId: 'r1',
       label: 'future branch',
     })
-    expect(mockedCreateAgentRun).toHaveBeenCalledWith('p1', { operation: 'DRAFT_QUESTION' })
+    expect(mockedCreateAgentRun).toHaveBeenCalledWith('p1', { operation: 'DRAFT_QUESTION', sourceRouteId: null })
     expect(store.forkDraftRetryRouteId).toBe('forked')
     expect(store.feedback).toContain('分支已创建')
   })
@@ -955,7 +1065,7 @@ describe('workspaceStore', () => {
       routes: [{ ...forkRoute, rootNodeId: 'n1', lineageNodeIds: ['n1'] }],
       answers: [{
         id: 'inherited-answer', routeId: 'forked', ownerRouteId: 'r1', inherited: true,
-        nodeId: 'n1', selectedOptionId: null, freeText: 'source answer',
+        nodeId: 'n1', selectedOptionId: null, selectedOptionIds: null, freeText: 'source answer',
         createdAt: '2026-01-01T00:00:00Z',
       }],
     })
@@ -990,6 +1100,40 @@ describe('workspaceStore', () => {
     expect(store.feedback).toBe('已创建新分支路线')
   })
 
+  it('names the compensated node in the undo feedback', async () => {
+    mockBackendViews(makeActiveState(), makeRequirementState())
+    mockedGetUndoRedoAvailability.mockResolvedValue({ canUndo: true, canRedo: false })
+    mockedUndoGraphOperation.mockResolvedValue({
+      operation: { id: 'op-1', type: 'CREATE_DRAFT_NODE', status: 'UNDONE' },
+      description: '已撤销：创建草稿节点',
+      targetTitle: 'Agent 生成的节点标题',
+    })
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+
+    expect(await store.undoGraph()).toBe(true)
+
+    // The user must be able to tell WHICH node the undo compensated, not only
+    // which operation type it was.
+    expect(store.feedback).toBe('已撤销「Agent 生成的节点标题」')
+  })
+
+  it('falls back to the operation description when the undo target has no title', async () => {
+    mockBackendViews(makeActiveState(), makeRequirementState())
+    mockedGetUndoRedoAvailability.mockResolvedValue({ canUndo: true, canRedo: false })
+    mockedUndoGraphOperation.mockResolvedValue({
+      operation: { id: 'op-2', type: 'CREATE_SEMANTIC_RELATION', status: 'UNDONE' },
+      description: '已撤销：添加语义关系',
+      targetTitle: null,
+    })
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+
+    expect(await store.undoGraph()).toBe(true)
+
+    expect(store.feedback).toBe('已撤销：添加语义关系')
+  })
+
   it('reload restores an owned active-tip Answer as the repair target', async () => {
     const active = makeActiveState({
       project: makeProject({ id: 'p1', activeRouteId: 'r1' }),
@@ -1013,6 +1157,7 @@ describe('workspaceStore', () => {
         inherited: false,
         nodeId: 'n1',
         selectedOptionId: null,
+          selectedOptionIds: null,
         freeText: 'saved answer',
         createdAt: '2026-01-01T00:00:00Z',
       }],
@@ -1047,6 +1192,7 @@ describe('workspaceStore', () => {
         inherited: true,
         nodeId: 'n1',
         selectedOptionId: null,
+          selectedOptionIds: null,
         freeText: 'inherited answer',
         createdAt: '2026-01-01T00:00:00Z',
       }],
@@ -1082,7 +1228,7 @@ describe('workspaceStore', () => {
       nodes: [makeNode({ id: 'n1', projectId: 'p1' })],
       answers: [{
         id: 'answer-inherited', routeId: 'r-fork', ownerRouteId: 'r-source', inherited: true,
-        nodeId: 'n1', selectedOptionId: null, freeText: 'source answer',
+        nodeId: 'n1', selectedOptionId: null, selectedOptionIds: null, freeText: 'source answer',
         createdAt: '2026-01-01T00:00:00Z',
       }],
     }))
@@ -1416,6 +1562,7 @@ describe('workspaceStore', () => {
         nodes: [makeNode({ id: 'node-1', projectId: 'p1' })],
         answers: [{
           id: 'answer-1', routeId: 'r1', nodeId: 'node-1', selectedOptionId: null,
+          selectedOptionIds: null,
           freeText: 'answer', createdAt: '2026-01-01T00:00:00Z',
           ownerRouteId: 'r1', inherited: false,
         }],
@@ -1464,6 +1611,7 @@ describe('workspaceStore', () => {
     const nodeId = store.activeState?.activeNode?.id ?? 'node-1'
     useInputDraftStore().setDraft('p1', nodeId, {
       selectedOptionId: null,
+          selectedOptionIds: null,
       freeText: 'draft being typed',
     })
 
@@ -1905,36 +2053,30 @@ describe('node query (ask AI) semantics and polling', () => {
     }]
     mockedListProposals.mockResolvedValue(pending)
     await store.loadNodeQueryProposals()
-    expect(mockedListProposals).toHaveBeenCalledWith('p1', 'PROPOSED')
+    expect(mockedListProposals).toHaveBeenCalledWith('p1', 'PROPOSED', {
+      triggerTypes: ['node_query'],
+    })
     // The pending proposal is discoverable by its canonical anchor node.
     expect(store.nodeQueryProposals).toHaveLength(1)
     expect(store.nodeQueryProposals[0].inputNodeId).toBe('n1')
   })
 
-  it('proposal recovery keeps only NODE_QUERY proposals, never Answer/Decision ones', async () => {
+  it('proposal recovery asks the server for NODE_QUERY proposals only', async () => {
     const store = useWorkspaceStore()
     store.projectId = 'p1'
-    mockedListProposals.mockResolvedValue([
-      {
-        proposalId: 'prop-query', runId: 'run-query', triggerType: 'node_query',
-        inputNodeId: 'n1', routeId: 'r1', actionFamily: 'CREATE_NODE',
-        status: 'PROPOSED', createdAt: 'now', decidedAt: null, decidedBy: null,
-      },
-      {
-        proposalId: 'prop-answer', runId: 'run-answer', triggerType: 'answer_cycle',
-        inputNodeId: 'n1', routeId: 'r1', actionFamily: 'CREATE_NODE',
-        status: 'PROPOSED', createdAt: 'now', decidedAt: null, decidedBy: null,
-      },
-      {
-        proposalId: 'prop-decision', runId: 'run-decision', triggerType: 'decision_cycle',
-        inputNodeId: 'n2', routeId: 'r1', actionFamily: 'REQUEST_USER_INPUT',
-        status: 'PROPOSED', createdAt: 'now', decidedAt: null, decidedBy: null,
-      },
-    ])
+    // The triggerType narrowing is a server-side filter: the store must request
+    // it explicitly instead of downloading the shared list and post-filtering.
+    // Answer/Decision proposals share the anchor-node shape (inputNodeId) but
+    // must never surface as contextual Ask-AI proposals in the NodeInspector.
+    mockedListProposals.mockResolvedValue([{
+      proposalId: 'prop-query', runId: 'run-query', triggerType: 'node_query',
+      inputNodeId: 'n1', routeId: 'r1', actionFamily: 'CREATE_NODE',
+      status: 'PROPOSED', createdAt: 'now', decidedAt: null, decidedBy: null,
+    }])
     await store.loadNodeQueryProposals()
-    // Only the NODE_QUERY proposal survives; Answer/Decision proposals share
-    // the anchor-node shape (inputNodeId) but must never surface as
-    // contextual Ask-AI proposals in the NodeInspector.
+    expect(mockedListProposals).toHaveBeenCalledWith('p1', 'PROPOSED', {
+      triggerTypes: ['node_query'],
+    })
     expect(store.nodeQueryProposals).toHaveLength(1)
     expect(store.nodeQueryProposals[0].proposalId).toBe('prop-query')
   })

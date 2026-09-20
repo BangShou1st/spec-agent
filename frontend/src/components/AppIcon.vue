@@ -19,6 +19,7 @@ const props = defineProps<{
     | 'send'
     | 'stop'
     | 'alert'
+    | 'arrow-left'
 }>()
 </script>
 
@@ -67,6 +68,7 @@ const props = defineProps<{
       <rect x="3.6" y="3.6" width="8.8" height="8.8" rx="1.6" fill="currentColor" stroke="none" />
     </g>
     <g v-else-if="props.name === 'alert'"><path d="M8 2.5L14.5 13.5H1.5L8 2.5Z" /><path d="M8 6.5v3.2" /><circle cx="8" cy="11.6" r="0.9" fill="currentColor" stroke="none" /></g>
+    <g v-else-if="props.name === 'arrow-left'"><path d="M10 3 5 8l5 5" /></g>
     <!-- spark: the union above is exhaustive, so this branch is 'spark'.
          Solid fill keeps the four-point star crisp at 16px (a 1.7px stroke
          closes up at the concave waist), and the 2.6..13.4 span is symmetric

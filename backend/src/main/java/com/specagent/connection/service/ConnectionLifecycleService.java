@@ -43,6 +43,14 @@ public class ConnectionLifecycleService {
         this.discoveryService = discoveryService;
     }
 
+    /** Masked credential suffix for API responses; null when no credential is stored. */
+    public String maskedSuffix(Connection connection) {
+        if (connection.credentialRef() == null || connection.credentialRef().isBlank()) {
+            return null;
+        }
+        return secretStore.maskedSuffix(connection.credentialRef());
+    }
+
     /** Creates a saved Connection row (no network activity). */
     @Transactional
     public Connection create(ConnectionKind kind, String name, Map<String, Object> config,

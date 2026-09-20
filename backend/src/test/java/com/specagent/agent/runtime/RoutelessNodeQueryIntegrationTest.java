@@ -122,8 +122,12 @@ class RoutelessNodeQueryIntegrationTest {
         assertThat(countNodes(project.id())).isEqualTo(nodesBefore);
         assertThat(countAnswers(project.id())).isEqualTo(answersBefore);
         assertThat(countRelations(project.id())).isEqualTo(relationsBefore);
-        // Only the floating-node creation operation exists in the log.
-        assertThat(commandService.listOperations(project.id())).hasSize(1);
+        // The query run itself must not touch the operation log: the logged
+        // operations all predate it (setup archived the active route and
+        // created the floating draft — both now enter the log by design).
+        int operationsBeforeRun = commandService.listOperations(project.id()).size();
+        assertThat(operationsBeforeRun).isEqualTo(2);
+        assertThat(commandService.listOperations(project.id())).hasSize(operationsBeforeRun);
     }
 
     private long countRoutes(UUID projectId) {

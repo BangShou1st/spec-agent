@@ -1,19 +1,7 @@
 import { defineStore } from 'pinia'
 import { createProject, deleteProject, listProjects, renameProject } from '@/api/projects'
-import { ApiError, GENERIC_ERROR_MESSAGE } from '@/api/client'
+import { toDisplayError, type DisplayError } from '@/api/displayError'
 import type { ProjectResponse, ProjectSummaryResponse } from '@/api/types'
-
-export interface DisplayError {
-  code: string
-  message: string
-}
-
-function toDisplayError(err: unknown): DisplayError {
-  if (err instanceof ApiError) {
-    return { code: err.code, message: err.message }
-  }
-  return { code: 'UNKNOWN_ERROR', message: GENERIC_ERROR_MESSAGE }
-}
 
 // Module-level monotonically increasing token for loadProjects race safety.
 let loadToken = 0

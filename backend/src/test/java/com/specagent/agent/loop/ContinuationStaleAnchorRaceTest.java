@@ -174,10 +174,10 @@ class ContinuationStaleAnchorRaceTest {
     }
 
     private void moveTip(UUID currentTip) {
-        var moved = graphCommandService.appendContinuation(
-                project.id(), project.activeRouteId(), currentTip,
-                "NOTE", Map.of("text", "external move"));
-        assertThat(moved.branched()).isFalse();
+        // 派生知识节点不再顶掉问题 tip,所以这里用真正的新问题推进 tip,
+        // 模拟"外部把图推进了"的场景(两种 tip 形态下问题子节点都会推进 tip)。
+        nodeService.createChildNode(project.id(), project.activeRouteId(), currentTip,
+                "A newer question after external move", null, List.of(), true);
         UUID liveTip = routeRepository.findById(project.activeRouteId())
                 .orElseThrow().tipNodeId();
         assertThat(liveTip).isNotEqualTo(currentTip);

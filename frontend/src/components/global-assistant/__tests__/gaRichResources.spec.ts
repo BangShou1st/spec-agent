@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createRouter, createWebHistory } from 'vue-router'
-import RichAssistantText from '../RichAssistantText.vue'
+import RichAssistantText from '@/components/common/RichAssistantText.vue'
 import ProjectResourceList from '../ProjectResourceList.vue'
 import { sanitizeGaResourceRefs } from '@/stores/globalAssistantStore'
 

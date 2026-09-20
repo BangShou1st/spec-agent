@@ -106,6 +106,21 @@ local main ↔ remote main
 
 Do not create feature branches unless the project owner explicitly changes this rule. Keep `main` healthy with small commits, tests, and documentation updates.
 
+```bash
+cd backend
+./gradlew testNonLive                       # full backend suite, offline-safe, must be 0 failures
+./gradlew testCrossLanguage                 # Python brain exit gate (needs a broker-mode brain)
+```
+
+`./gradlew test` and `./gradlew testNonLive` are deterministic and offline:
+they exclude the live-provider `evalLive*` suites and the Python brain
+cross-language exit gate. That gate needs a real `agent-brain` in broker mode
+dialing back into the test process, so it runs only through
+`./gradlew testCrossLanguage`; set `SPEC_AGENT_CROSS_LANG_PORT` to a fixed
+rendezvous port and start a dedicated brain against it (see the task comment in
+`backend/build.gradle.kts` and the test class javadoc). It skips — rather than
+fails — when no brain is reachable.
+
 ## Agent Evaluation Harness (P2, deterministic B-fast)
 
 ```bash

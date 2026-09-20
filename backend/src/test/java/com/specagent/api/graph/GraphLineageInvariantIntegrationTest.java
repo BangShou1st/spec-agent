@@ -30,7 +30,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * Write-time lineage invariants: an unanswered Question may never gain a
- * lineage child (it must stay a route tip), lineage must be acyclic, and
+ * lineage (chain) child — knowledge/resources may hang below it as provenance,
+ * but it stays the route tip until answered — lineage must be acyclic, and
  * {@code sourceRouteId} ancestry must be acyclic.
  */
 @SpringBootTest
@@ -81,12 +82,18 @@ class GraphLineageInvariantIntegrationTest {
         Node root = nodeService.createRootNode(project.id(), routeId, "未答问题", "P0",
                 List.of(NodeOption.of("A", "a")), true);
 
+        // A RESOURCE may hang off an unanswered question tip (kind-aware
+        // rule), but it must stay a provenance child: the question remains
+        // the route tip and keeps its answer inputs.
         mockMvc.perform(post("/api/v1/projects/{pid}/resources", project.id())
                         .contentType(APPLICATION_JSON)
                         .content("{\"routeId\":\"" + routeId + "\"," +
                                 "\"parentNodeId\":\"" + root.id() + "\"," +
                                 "\"subtype\":\"TEXT\",\"content\":{\"text\":\"attachment\"}}"))
-                .andExpect(status().isConflict());
+                .andExpect(status().isCreated());
+
+        Route route = routeService.getRoute(routeId).orElseThrow();
+        assertThat(route.tipNodeId()).isEqualTo(root.id());
     }
 
     @Test

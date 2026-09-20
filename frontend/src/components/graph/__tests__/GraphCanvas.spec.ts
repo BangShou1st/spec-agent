@@ -412,19 +412,19 @@ describe('graph canvas', () => {
   })
 
   it('auto-layout after confirm replaces all positions, persists them and fits via setViewport', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
     const wrapper = mountCanvas(viewWithNodes())
     const vf = useVueFlow('spec-agent-graph-canvas')
     setCanvasSize(vf)
     const setViewport = vi.spyOn(vf, 'setViewport').mockResolvedValue(true)
     const fitViewSpy = vi.spyOn(vf, 'fitView')
     await wrapper.find('[data-test="auto-layout"]').trigger('click')
+    const confirmDialog = wrapper.find('[data-test="auto-layout-confirm"]')
+    expect(confirmDialog.exists()).toBe(true)
+    expect(confirmDialog.text()).toContain('重新自动布局将覆盖当前项目手工调整过的节点位置')
+    await wrapper.find('[data-test="ui-confirm-ok"]').trigger('click')
     const ui = useGraphUiStore()
     expect(ui.nodePositions.n1).toBeDefined()
     expect(ui.nodePositions.n2).toBeDefined()
-    expect(window.confirm).toHaveBeenCalledWith(
-      '重新自动布局将覆盖当前项目手工调整过的节点位置。Runtime 历史不会改变',
-    )
     expect(fitViewSpy).not.toHaveBeenCalled()
     expect(setViewport).toHaveBeenCalledWith(
       expect.objectContaining({ x: 652 - ((320 + HORIZONTAL_GAP) / 2), y: 312, zoom: 1 }),
@@ -632,14 +632,14 @@ describe('GraphCanvas onConnect (connection affordance)', () => {
 
   it('connection originating from a pending projection card is ignored', async () => {
     const wrapper = mountCanvas(viewWithNodes(), {
-      pendingProjection: {
+      pendings: [{
         routeId: ACTIVE_ROUTE,
         sourceNodeId: 'n1',
         runId: 'run-x',
         status: 'PENDING',
         phase: 'DECIDING',
         message: null,
-      },
+      }],
     })
     const flow = wrapper.findComponent(VueFlowStub)
     await flow.vm.$emit('connect', {
@@ -929,7 +929,7 @@ describe('GraphCanvas one-shot explicit fit revalidation', () => {
         submitting: false,
         drafting: false,
         pending: false,
-        pendingProjection: pendingOf(runId),
+        pendings: [pendingOf(runId)],
       },
       global: {
         stubs: { VueFlow: VueFlowStub },
@@ -978,7 +978,7 @@ describe('GraphCanvas one-shot explicit fit revalidation', () => {
     // Pending disappears; the real canonical node appears with measured size.
     const d2 = deferred<boolean>()
     setViewport.mockReturnValue(d2.promise as unknown as ReturnType<typeof vf.setViewport>)
-    await wrapper.setProps({ view: viewWithRealNode(), pendingProjection: null, activeNodeId: 'n1' })
+    await wrapper.setProps({ view: viewWithRealNode(), pendings: [], activeNodeId: 'n1' })
     await nextTick()
     await reportMeasured(wrapper, 'n1', 320, 286)
     await nextTick()
@@ -1014,7 +1014,7 @@ describe('GraphCanvas one-shot explicit fit revalidation', () => {
     // intent stays armed.
     const dLater = deferred<boolean>()
     setViewport.mockReturnValue(dLater.promise as unknown as ReturnType<typeof vf.setViewport>)
-    await wrapper.setProps({ view: viewWithRealNode(), pendingProjection: null, activeNodeId: 'n1' })
+    await wrapper.setProps({ view: viewWithRealNode(), pendings: [], activeNodeId: 'n1' })
     await nextTick()
     await nextTick()
     expect(setViewport).toHaveBeenCalledTimes(1)
@@ -1050,7 +1050,7 @@ describe('GraphCanvas one-shot explicit fit revalidation', () => {
     await wrapper.find('[data-test="zoom-in"]').trigger('click')
     expect(zoomIn).toHaveBeenCalledTimes(1)
 
-    await wrapper.setProps({ view: viewWithRealNode(), pendingProjection: null, activeNodeId: 'n1' })
+    await wrapper.setProps({ view: viewWithRealNode(), pendings: [], activeNodeId: 'n1' })
     await nextTick()
     await reportMeasured(wrapper, 'n1', 320, 286)
     await nextTick()
@@ -1079,7 +1079,7 @@ describe('GraphCanvas one-shot explicit fit revalidation', () => {
     flow.vm.$emit('viewport-change-end')
     await nextTick()
 
-    await wrapper.setProps({ view: viewWithRealNode(), pendingProjection: null, activeNodeId: 'n1' })
+    await wrapper.setProps({ view: viewWithRealNode(), pendings: [], activeNodeId: 'n1' })
     await nextTick()
     await reportMeasured(wrapper, 'n1', 320, 286)
     await nextTick()
@@ -1105,7 +1105,7 @@ describe('GraphCanvas one-shot explicit fit revalidation', () => {
 
     const d2 = deferred<boolean>()
     setViewport.mockReturnValue(d2.promise as unknown as ReturnType<typeof vf.setViewport>)
-    await wrapper.setProps({ view: viewWithRealNode(), pendingProjection: null, activeNodeId: 'n1' })
+    await wrapper.setProps({ view: viewWithRealNode(), pendings: [], activeNodeId: 'n1' })
     await nextTick()
     await reportMeasured(wrapper, 'n1', 320, 286)
     await nextTick()

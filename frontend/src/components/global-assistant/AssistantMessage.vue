@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import RichAssistantText from './RichAssistantText.vue'
+import RichAssistantText from '@/components/common/RichAssistantText.vue'
 import { gaMessageTimeLabel } from '@/presentation/globalAssistantPresentation'
 const props = defineProps<{
   role: 'USER' | 'ASSISTANT'

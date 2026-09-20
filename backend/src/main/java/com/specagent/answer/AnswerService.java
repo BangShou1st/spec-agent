@@ -1,7 +1,7 @@
 package com.specagent.answer;
 
 import com.specagent.common.Ids;
-import com.specagent.graph.GraphInvariantValidator;
+import com.specagent.common.SharedQuestionStatePort;
 import com.specagent.node.Node;
 import com.specagent.node.NodeRepository;
 import com.specagent.project.ProjectRepository;
@@ -25,23 +25,23 @@ import java.util.UUID;
  * finalized Answer for the node, no other route may finalize a second Answer
  * on the same canonical node — branches reference the same Answer through
  * inherited refs, and re-answering creates a new Question Node (see
- * {@link GraphInvariantValidator#validateSharedQuestionState}).
+ * {@link SharedQuestionStatePort#validateSharedQuestionState}).
  */
 @Service
 public class AnswerService {
 
     private final AnswerRepository answerRepository;
     private final NodeRepository nodeRepository;
-    private final GraphInvariantValidator invariantValidator;
+    private final SharedQuestionStatePort sharedQuestionStatePort;
     private final ProjectRepository projectRepository;
 
     public AnswerService(AnswerRepository answerRepository,
                          NodeRepository nodeRepository,
-                         GraphInvariantValidator invariantValidator,
+                         SharedQuestionStatePort sharedQuestionStatePort,
                          ProjectRepository projectRepository) {
         this.answerRepository = answerRepository;
         this.nodeRepository = nodeRepository;
-        this.invariantValidator = invariantValidator;
+        this.sharedQuestionStatePort = sharedQuestionStatePort;
         this.projectRepository = projectRepository;
     }
 
@@ -53,7 +53,7 @@ public class AnswerService {
      * canonical node row is locked ({@code SELECT ... FOR UPDATE}) before the
      * node-wide existence re-check, so exactly one concurrent transaction wins
      * and every later one observes the persisted Answer through the
-     * {@link GraphInvariantValidator#validateSharedQuestionState} conflict
+     * {@link SharedQuestionStatePort#validateSharedQuestionState} conflict
      * path instead of inserting a second Answer identity.
      */
     @Transactional
@@ -63,6 +63,19 @@ public class AnswerService {
                                  String selectedOptionId,
                                  String freeText,
                                  String createdByUser) {
+        return finalizeAnswerWithSelections(projectId, routeId, nodeId,
+                selectedOptionId == null ? List.<String>of() : List.of(selectedOptionId),
+                freeText, createdByUser);
+    }
+
+    /** Multi-select variant: {@code selectedOptionIds} is the FULL selection in user order. */
+    @Transactional
+    public Answer finalizeAnswerWithSelections(UUID projectId,
+                                               UUID routeId,
+                                               UUID nodeId,
+                                               List<String> selectedOptionIds,
+                                               String freeText,
+                                               String createdByUser) {
         if (answerRepository.existsByRouteAndNode(routeId, nodeId)) {
             throw new IllegalStateException(
                     "Answer already finalized for node " + nodeId + " in route " + routeId);
@@ -88,11 +101,15 @@ public class AnswerService {
             throw new IllegalStateException(
                     "RETRACTED_NODE_REFERENCE: cannot finalize an immutable Answer on a retracted node " + nodeId);
         }
-        invariantValidator.validateSharedQuestionState(projectId, nodeId);
+        sharedQuestionStatePort.validateSharedQuestionState(projectId, nodeId);
         UUID answerId = Ids.random();
         Instant now = Instant.now();
+        // The legacy column keeps the FIRST selected option so every existing
+        // single-selection consumer reads the same value it always has.
+        String firstSelectedOptionId = selectedOptionIds == null || selectedOptionIds.isEmpty()
+                ? null : selectedOptionIds.get(0);
         Answer answer = new Answer(answerId, projectId, routeId, nodeId,
-                selectedOptionId, freeText, createdByUser, now);
+                firstSelectedOptionId, selectedOptionIds, freeText, createdByUser, now);
         answerRepository.save(answer);
         return answer;
     }

@@ -29,6 +29,7 @@ public class Node {
     private final String purpose;
     private final List<NodeOption> options;
     private final boolean allowFreeAnswer;
+    private final boolean allowMultiSelect;
     private final Instant createdAt;
     private final NodeKind kind;
     private final String subtype;
@@ -49,7 +50,7 @@ public class Node {
                 boolean allowFreeAnswer,
                 Instant createdAt) {
         this(id, projectId, parentNodeId, createdByRunId, supersedesNodeId,
-                question, purpose, options, allowFreeAnswer, createdAt,
+                question, purpose, options, allowFreeAnswer, false, createdAt,
                 NodeKind.INTERACTION, "QUESTION", Map.of(),
                 NodeAuthorKind.AGENT, null, null, createdAt);
     }
@@ -71,6 +72,30 @@ public class Node {
                 KnowledgeStatus knowledgeStatus,
                 Instant retractedAt,
                 Instant updatedAt) {
+        this(id, projectId, parentNodeId, createdByRunId, supersedesNodeId,
+                question, purpose, options, allowFreeAnswer, false, createdAt,
+                kind, subtype, content, authorKind, knowledgeStatus, retractedAt,
+                updatedAt);
+    }
+
+    public Node(UUID id,
+                UUID projectId,
+                UUID parentNodeId,
+                UUID createdByRunId,
+                UUID supersedesNodeId,
+                String question,
+                String purpose,
+                List<NodeOption> options,
+                boolean allowFreeAnswer,
+                boolean allowMultiSelect,
+                Instant createdAt,
+                NodeKind kind,
+                String subtype,
+                Map<String, Object> content,
+                NodeAuthorKind authorKind,
+                KnowledgeStatus knowledgeStatus,
+                Instant retractedAt,
+                Instant updatedAt) {
         this.id = id;
         this.projectId = projectId;
         this.parentNodeId = parentNodeId;
@@ -80,6 +105,7 @@ public class Node {
         this.purpose = purpose;
         this.options = options == null ? List.of() : List.copyOf(options);
         this.allowFreeAnswer = allowFreeAnswer;
+        this.allowMultiSelect = allowMultiSelect;
         this.createdAt = createdAt;
         this.kind = kind;
         this.subtype = subtype;
@@ -128,6 +154,11 @@ public class Node {
 
     public boolean allowFreeAnswer() {
         return allowFreeAnswer;
+    }
+
+    /** 多选题标记:答案可以同时选中多个选项(不改变 question 的不可变语义)。 */
+    public boolean allowMultiSelect() {
+        return allowMultiSelect;
     }
 
     public Instant createdAt() {

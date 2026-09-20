@@ -48,8 +48,9 @@ public class SkillProperties {
      * DB-authoritative local mirror of installed packages. The database stays
      * the only activation-time authority; the mirror lets users browse, back
      * up and version their skills on disk. Null root resolves to
-     * {@code ~/.spec-agent/skills} at use time so tests can stay hermetic by
-     * disabling the mirror or pointing it at a temp dir.
+     * {@code ./data/skills} (relative to the backend working directory) at
+     * use time so tests can stay hermetic by disabling the mirror or pointing
+     * it at a temp dir.
      */
     private boolean localMirrorEnabled = true;
     private String localMirrorRoot;

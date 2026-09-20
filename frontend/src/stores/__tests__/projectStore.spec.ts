@@ -43,7 +43,7 @@ describe('projectStore', () => {
     await store.loadProjects()
 
     expect(store.loading).toBe(false)
-    expect(store.error).toEqual({ code: 'PROJECT_NOT_FOUND', message: 'Project not found' })
+    expect(store.error).toEqual({ code: 'PROJECT_NOT_FOUND', message: 'Project not found', status: 404 })
   })
 
   it('creates a project with only a title and appends it to the list', async () => {

@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, toRef } from 'vue'
+import { useDialogReset } from '@/composables/useDialogForm'
+import ApiErrorBanner from '@/components/ApiErrorBanner.vue'
 import UiDialogShell from '@/components/ui/UiDialogShell.vue'
 import UiFormField from '@/components/ui/UiFormField.vue'
 import UiFilePicker from '@/components/ui/UiFilePicker.vue'
@@ -25,7 +27,14 @@ const gitRef = ref('')
 const gitSubPath = ref('')
 let picked: File | null = null
 const pickedName = ref('')
-watch(() => props.open, (v) => { if (v) { mode.value = 'zip'; gitUrl.value = ''; gitRef.value = ''; gitSubPath.value = ''; picked = null; pickedName.value = '' } })
+useDialogReset(toRef(props, 'open'), () => {
+  mode.value = 'zip'
+  gitUrl.value = ''
+  gitRef.value = ''
+  gitSubPath.value = ''
+  picked = null
+  pickedName.value = ''
+})
 function onPick(f: File): void { picked = f; pickedName.value = f.name }
 function submitZip(): void { if (picked) emit('submit-zip', picked) }
 function submitGit(): void {
@@ -93,7 +102,7 @@ function pickCandidate(candidate: GitSkillCandidate): void {
         </li>
       </ul>
     </div>
-    <p v-if="error" class="error-banner" data-test="import-error">{{ managementErrorMessage(error.code, error.message) }}</p>
+    <ApiErrorBanner v-if="error" :message="managementErrorMessage(error.code, error.message)" data-test="import-error" />
     <template #actions>
       <button type="button" class="btn btn-secondary" data-test="close-import" @click="emit('close')">取消</button>
       <button v-if="mode === 'zip'" type="button" class="btn btn-primary" data-test="stage-zip" :disabled="!picked || staging" @click="submitZip">{{ staging ? '正在解析…' : '解析并暂存' }}</button>
@@ -116,6 +125,5 @@ function pickCandidate(candidate: GitSkillCandidate): void {
 .candidate:disabled { opacity: 0.6; cursor: not-allowed; }
 .candidate__name { font-size: 13px; color: var(--color-text); overflow-wrap: anywhere; }
 .candidate__path { font-size: 11.5px; color: var(--color-text-muted); overflow-wrap: anywhere; }
-.error-banner { margin: 0; }
 .muted { color: var(--color-text-muted); font-size: 13px; margin: 8px 0 0; overflow-wrap: anywhere; }
 </style>

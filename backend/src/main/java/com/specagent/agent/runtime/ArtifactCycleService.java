@@ -17,6 +17,7 @@ import com.specagent.agent.gates.SpecGroundingGate;
 import com.specagent.agent.gates.SpecSourceReferenceGuard;
 import com.specagent.agent.runevent.AgentRunEventService;
 import com.specagent.agent.runevent.AgentRunPhase;
+import com.specagent.agent.runevent.RunProgressRecorder;
 import com.specagent.agent.snapshot.AgentInputSnapshotBuilder;
 import com.specagent.context.ContextBuilder;
 import com.specagent.context.ContextOperationType;
@@ -67,6 +68,7 @@ public class ArtifactCycleService {
     private final AgentRunEventService eventService;
     private final RouteRepository routeRepository;
     private final com.specagent.project.ProjectRepository projectRepository;
+    private final RunProgressRecorder progressRecorder;
 
     public ArtifactCycleService(AgentRunService agentRunService,
                                 AgentRunFailureService agentRunFailureService,
@@ -79,7 +81,8 @@ public class ArtifactCycleService {
                                 SpecSnapshotService specSnapshotService,
                                 AgentRunEventService eventService,
                                 RouteRepository routeRepository,
-                                com.specagent.project.ProjectRepository projectRepository) {
+                                com.specagent.project.ProjectRepository projectRepository,
+                                RunProgressRecorder progressRecorder) {
         this.agentRunService = agentRunService;
         this.agentRunFailureService = agentRunFailureService;
         this.contextBuilder = contextBuilder;
@@ -92,6 +95,7 @@ public class ArtifactCycleService {
         this.eventService = eventService;
         this.routeRepository = routeRepository;
         this.projectRepository = projectRepository;
+        this.progressRecorder = progressRecorder;
     }
 
     /**
@@ -168,6 +172,8 @@ public class ArtifactCycleService {
             trace = appendTrace(trace, "artifact_generating");
             eventService.append(run.id(), AgentRunPhase.ARTIFACT_GENERATING,
                     "ARTIFACT_GENERATION_STARTED", Map.of());
+            progressRecorder.note(run.id(), AgentRunPhase.ARTIFACT_GENERATING,
+                    "正在基于当前需求状态生成规格文档");
             AgentArtifactResponse response = decisionEngine.runArtifactGeneration(envelope);
             AgentArtifactResponse.ArtifactGenerationResult result = response.artifact();
 
@@ -217,6 +223,8 @@ public class ArtifactCycleService {
                     "markdown", sections, unresolvedItems, sourceRefs, run.id());
             trace = appendTrace(trace, "persisted_spec_snapshot");
             agentRunService.markPersistedSpecSnapshot(run.id(), persisted.id(), trace);
+            progressRecorder.note(run.id(), AgentRunPhase.ARTIFACT_GENERATING,
+                    "规格文档已生成，共 " + sections.size() + " 个章节");
             trace = appendTrace(trace, "completed");
             agentRunService.complete(run.id(), AgentRunStatus.COMPLETED, trace);
             eventService.append(run.id(), AgentRunPhase.COMPLETED, "RUN_COMPLETED",

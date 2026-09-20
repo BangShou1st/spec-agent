@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
 import AppIcon from '@/components/AppIcon.vue'
 
@@ -24,6 +25,30 @@ defineEmits<{
   undo: []
   redo: []
 }>()
+
+// 原生 details/summary 不会因外部点击或 Esc 收起，菜单会一直挂在画布上。
+const moreMenu = ref<HTMLDetailsElement | null>(null)
+
+function closeMoreMenu(event: Event): void {
+  if (!moreMenu.value?.open) return
+  if (event instanceof KeyboardEvent) {
+    // Esc 无论焦点在不在菜单内都应收起;其他按键不处理。
+    if (event.key === 'Escape') moreMenu.value.open = false
+    return
+  }
+  const target = event.target as Node | null
+  if (target && moreMenu.value.contains(target)) return
+  moreMenu.value.open = false
+}
+
+onMounted(() => {
+  document.addEventListener('pointerdown', closeMoreMenu, true)
+  document.addEventListener('keydown', closeMoreMenu)
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', closeMoreMenu, true)
+  document.removeEventListener('keydown', closeMoreMenu)
+})
 </script>
 
 <template>
@@ -41,7 +66,7 @@ defineEmits<{
       <button class="btn graph-toolbar__icon-btn" data-test="fit-view" aria-label="适应视图" title="适应视图" @click="$emit('fit-view')"><AppIcon name="fit" /></button>
     </div>
 
-    <details class="graph-toolbar__more" data-test="toolbar-more">
+    <details ref="moreMenu" class="graph-toolbar__more" data-test="toolbar-more">
       <summary class="btn graph-toolbar__icon-btn" aria-label="更多图操作" title="更多图操作"><AppIcon name="more" /></summary>
       <div class="graph-toolbar__menu">
         <button class="graph-toolbar__menu-item" data-test="add-resource" title="添加资源节点（文本/链接/文件），AI 可读取有界摘录" @click="$emit('add-resource')">添加资源</button>

@@ -12,6 +12,7 @@ import com.specagent.agent.snapshot.LegacyFrozenInputUnavailableException;
 import com.specagent.agent.runevent.AgentRunEvent;
 import com.specagent.agent.runevent.AgentRunEventService;
 import com.specagent.agent.runevent.AgentRunPhase;
+import com.specagent.agent.runevent.RunProgressRecorder;
 import com.specagent.agent.snapshot.AgentInputSnapshotBuilder;
 import com.specagent.trace.SemanticTraceRecorder;
 import com.specagent.answer.Answer;
@@ -78,6 +79,7 @@ public class AnswerCycleService {
     private final com.specagent.agent.snapshot.AgentInputProjectionRepository projectionRepository;
     private final ActionEligibilityGate actionEligibilityGate;
     private final SemanticTraceRecorder semanticTraceRecorder;
+    private final RunProgressRecorder progressRecorder;
 
     public AnswerCycleService(AgentRunService agentRunService,
                               AgentRunFailureService agentRunFailureService,
@@ -95,7 +97,8 @@ public class AnswerCycleService {
                               ContextSnapshotRepository contextSnapshotRepository,
                               com.specagent.agent.snapshot.AgentInputProjectionRepository projectionRepository,
                               SemanticTraceRecorder semanticTraceRecorder,
-                              ActionEligibilityGate actionEligibilityGate) {
+                              ActionEligibilityGate actionEligibilityGate,
+                              RunProgressRecorder progressRecorder) {
         this.agentRunService = agentRunService;
         this.agentRunFailureService = agentRunFailureService;
         this.contextBuilder = contextBuilder;
@@ -113,6 +116,7 @@ public class AnswerCycleService {
         this.projectionRepository = projectionRepository;
         this.semanticTraceRecorder = semanticTraceRecorder;
         this.actionEligibilityGate = actionEligibilityGate;
+        this.progressRecorder = progressRecorder;
     }
 
     /**
@@ -149,6 +153,21 @@ public class AnswerCycleService {
                                           UUID selectedOptionId, String freeText,
                                           AgentEvent.PersistenceIntent persistenceIntent,
                                           UUID explicitRouteId) {
+        return submitAnswer(run, projectId,
+                selectedOptionId == null ? List.of() : List.of(selectedOptionId),
+                freeText, persistenceIntent, explicitRouteId);
+    }
+
+    /**
+     * Multi-select submission: {@code selectedOptionIds} is the FULL selection
+     * in user order. Multiple entries are only accepted when the answering
+     * node carries {@code allowMultiSelect}; the first entry mirrors the
+     * legacy single-selection semantics across the whole pipeline.
+     */
+    public AnswerCycleResult submitAnswer(AgentRun run, UUID projectId,
+                                          List<UUID> selectedOptionIds, String freeText,
+                                          AgentEvent.PersistenceIntent persistenceIntent,
+                                          UUID explicitRouteId) {
         Route route = resolveRunRoute(projectId, explicitRouteId);
         boolean explicitRoute = explicitRouteId != null;
         if (route.tipNodeId() == null) {
@@ -169,7 +188,10 @@ public class AnswerCycleService {
                     : "Answer target is no longer the active route tip: " + run.inputNodeId());
         }
 
-        String selectedOption = validateSelectedOption(tipNode, selectedOptionId);
+        List<String> selectedOptions = validateSelectedOptions(tipNode, selectedOptionIds);
+        String selectedOption = selectedOptions.isEmpty() ? null : selectedOptions.get(0);
+        UUID selectedOptionId = selectedOptions.isEmpty() ? null
+                : UUID.fromString(selectedOptions.get(0));
         String normalizedFreeText = normalizeFreeText(freeText);
         validateAnswerInput(tipNode, selectedOption, normalizedFreeText);
 
@@ -181,9 +203,9 @@ public class AnswerCycleService {
                     : buildAndValidateContext(run, projectId, trace);
 
             // Persist immutable Answer BEFORE any model call.
-            Answer answer = answerService.finalizeAnswer(
+            Answer answer = answerService.finalizeAnswerWithSelections(
                     projectId, route.id(), route.tipNodeId(),
-                    selectedOption, normalizedFreeText, "user");
+                    selectedOptions, normalizedFreeText, "user");
             trace = appendTrace(trace, "persisted_answer");
             agentRunService.markPersistedAnswer(run.id(), answer.id(), trace);
 
@@ -388,6 +410,11 @@ public class AnswerCycleService {
                             "claimCount", stateUpdateResponse.stateUpdate() == null
                                     ? 0 : stateUpdateResponse.stateUpdate().claims().size()));
 
+            List<ProposedClaim> proposedClaims = stateUpdateResponse.stateUpdate().claims();
+            progressRecorder.noteWithItems(run.id(), AgentRunPhase.STATE_UPDATED,
+                    "需求要点整理完成，共 " + proposedClaims.size() + " 条",
+                    proposedClaims.stream().map(ProposedClaim::text).toList());
+
             List<Claim> groundedClaims = groundClaims(
                     stateUpdateResponse.stateUpdate().claims(),
                     route.tipNodeId(), answer.id());
@@ -447,6 +474,30 @@ public class AnswerCycleService {
                 .map(option -> option.id().toString())
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Selected option id does not belong to the active node"));
+    }
+
+    /**
+     * Validates the FULL client selection against the exact answering node.
+     * Multiple entries are only legal on a multi-select question; duplicates
+     * are collapsed while preserving user order, and every id must be a
+     * runtime-owned option of this node.
+     */
+    private List<String> validateSelectedOptions(Node tipNode, List<UUID> selectedOptionIds) {
+        if (selectedOptionIds == null || selectedOptionIds.isEmpty()) {
+            return List.of();
+        }
+        if (selectedOptionIds.size() > 1 && !tipNode.allowMultiSelect()) {
+            throw new IllegalArgumentException(
+                    "This node does not allow multiple selected options");
+        }
+        List<String> result = new ArrayList<>();
+        for (UUID optionId : selectedOptionIds) {
+            String matched = validateSelectedOption(tipNode, optionId);
+            if (matched != null && !result.contains(matched)) {
+                result.add(matched);
+            }
+        }
+        return result;
     }
 
     private String normalizeFreeText(String freeText) {

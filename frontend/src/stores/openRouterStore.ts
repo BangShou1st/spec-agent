@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ApiError, GENERIC_ERROR_MESSAGE } from '@/api/client'
+import { toDisplayError } from '@/api/displayError'
 import {
   getOpenRouterStatus,
   listOpenRouterModels,
@@ -18,12 +18,7 @@ export interface ProviderError {
   message: string
 }
 
-function displayError(err: unknown): ProviderError {
-  if (err instanceof ApiError) {
-    return { code: err.code, message: err.message }
-  }
-  return { code: 'UNKNOWN_ERROR', message: GENERIC_ERROR_MESSAGE }
-}
+const displayError: (err: unknown) => ProviderError = toDisplayError
 
 export const useOpenRouterStore = defineStore('openRouter', {
   state: () => ({

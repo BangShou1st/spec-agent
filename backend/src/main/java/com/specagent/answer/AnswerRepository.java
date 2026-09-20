@@ -1,5 +1,7 @@
 package com.specagent.answer;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.specagent.common.Json;
 import com.specagent.common.Maps;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -15,28 +17,42 @@ import java.util.UUID;
 @Repository
 public class AnswerRepository {
 
+    private static final TypeReference<List<String>> STRING_LIST =
+            new TypeReference<>() {
+            };
+
     private final NamedParameterJdbcTemplate jdbcTemplate;
+    private final Json json;
     private final RowMapper<Answer> rowMapper;
 
-    public AnswerRepository(NamedParameterJdbcTemplate jdbcTemplate) {
+    public AnswerRepository(NamedParameterJdbcTemplate jdbcTemplate, Json json) {
         this.jdbcTemplate = jdbcTemplate;
-        this.rowMapper = (rs, rowNum) -> new Answer(
-                rs.getObject("id", UUID.class),
-                rs.getObject("project_id", UUID.class),
-                rs.getObject("route_id", UUID.class),
-                rs.getObject("node_id", UUID.class),
-                rs.getString("selected_option_id"),
-                rs.getString("free_text"),
-                rs.getString("created_by_user"),
-                rs.getTimestamp("created_at").toInstant());
+        this.json = json;
+        this.rowMapper = (rs, rowNum) -> {
+            String selectedOptionId = rs.getString("selected_option_id");
+            String selectedOptionIdsJson = rs.getString("selected_option_ids");
+            List<String> selectedOptionIds = selectedOptionIdsJson == null
+                    ? (selectedOptionId == null ? List.of() : List.of(selectedOptionId))
+                    : json.readList(selectedOptionIdsJson, STRING_LIST);
+            return new Answer(
+                    rs.getObject("id", UUID.class),
+                    rs.getObject("project_id", UUID.class),
+                    rs.getObject("route_id", UUID.class),
+                    rs.getObject("node_id", UUID.class),
+                    selectedOptionId,
+                    selectedOptionIds,
+                    rs.getString("free_text"),
+                    rs.getString("created_by_user"),
+                    rs.getTimestamp("created_at").toInstant());
+        };
     }
 
     public void save(Answer answer) {
         String sql = """
                 INSERT INTO answers (id, project_id, route_id, node_id, selected_option_id,
-                                     free_text, created_by_user, created_at)
+                                     selected_option_ids, free_text, created_by_user, created_at)
                 VALUES (:id, :projectId, :routeId, :nodeId, :selectedOptionId,
-                        :freeText, :createdByUser, :createdAt)
+                        CAST(:selectedOptionIds AS jsonb), :freeText, :createdByUser, :createdAt)
                 """;
         jdbcTemplate.update(sql, Maps.of(
                 "id", answer.id(),
@@ -44,6 +60,7 @@ public class AnswerRepository {
                 "routeId", answer.routeId(),
                 "nodeId", answer.nodeId(),
                 "selectedOptionId", answer.selectedOptionId(),
+                "selectedOptionIds", json.writeList(answer.selectedOptionIds()),
                 "freeText", answer.freeText(),
                 "createdByUser", answer.createdByUser(),
                 "createdAt", Timestamp.from(answer.createdAt())));

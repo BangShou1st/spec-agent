@@ -360,9 +360,10 @@ class RouteActivePointerConcurrencyIntegrationTest {
         UUID frozenTip = child.id();
 
         // A continuation advances the tip to a new node BEFORE the commit.
-        Node advanced = commandService.appendContinuation(
-                project.id(), routeId, child.id(), "NOTE",
-                Map.of("text", "advanced")).node();
+        // 派生知识不再顶掉问题 tip,这里用真正的新问题推进 tip。
+        Node advanced = nodeService.createChildNode(
+                project.id(), routeId, child.id(),
+                "Advanced question", null, List.of(), true);
         assertThat(advanced.id()).isNotEqualTo(frozenTip);
 
         // The stale commit must be rejected: the frozen tip no longer matches.

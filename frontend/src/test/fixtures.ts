@@ -96,6 +96,7 @@ export function makeNode(overrides: Partial<NodeFixture> = {}): NodeFixture {
     authorKind: 'AGENT',
     knowledgeStatus: null,
     userEditableDraft: false,
+    allowMultiSelect: false,
     ...overrides,
   }
 }

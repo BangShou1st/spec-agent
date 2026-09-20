@@ -1,12 +1,8 @@
 package com.specagent.api.settings;
 
-import com.specagent.api.common.ApiErrorResponse;
 import com.specagent.settings.openrouter.OpenRouterSettingsService;
 import com.specagent.settings.provider.ModelProviderSettingsService;
 import java.util.List;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -81,13 +77,5 @@ public class OpenRouterSettingsController {
     @PostMapping("/validate")
     public StatusResponse validate() {
         return toResponse(service.validate());
-    }
-
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<ApiErrorResponse> handleBadRequest(IllegalArgumentException ex) {
-        String msg = ex.getMessage() == null || ex.getMessage().isBlank()
-                ? "Request validation failed" : ex.getMessage();
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(ApiErrorResponse.of("VALIDATION_ERROR", msg));
     }
 }
