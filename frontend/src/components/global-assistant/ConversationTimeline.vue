@@ -46,7 +46,7 @@ function jumpToLatest(): void {
 }
 
 watch(
-  () => [props.messages.length, props.activities.length, props.streamingText, props.currentStatus],
+  () => [props.messages.length, props.activities.length, props.streamingText, props.currentStatus, props.waitingQuestion],
   async () => {
     if (nearBottom.value) {
       await nextTick()
@@ -92,6 +92,10 @@ watch(
       />
       <div v-if="props.activities.length > 0" class="ga-activity-group" data-test="ga-activity-group">
         <ToolActivityItem v-for="activity in props.activities" :key="activity.key" :activity="activity" />
+      </div>
+      <div v-if="props.waitingQuestion" class="ga-clarify" data-test="ga-clarification" role="status">
+        <p class="ga-clarify__label">需要你补充信息</p>
+        <p class="ga-clarify__q">{{ props.waitingQuestion }}</p>
       </div>
       <div v-if="props.pendingSteer" class="ga-steer" data-test="ga-steer-pending" role="status">
         <span class="ga-steer__dot" aria-hidden="true" />
@@ -140,6 +144,9 @@ watch(
 .ga-steer__msg { margin: 0; font-size: 13px; color: var(--color-text); line-height: 1.55; word-break: break-word; }
 .ga-stopped { margin: 10px 0 0; padding: 8px 12px; font-size: 12.5px; color: var(--color-text-secondary); background: var(--color-surface-subtle); border: 1px solid var(--color-border); border-radius: 999px; text-align: center; }
 .ga-activity-group { margin: 4px 0; }
+.ga-clarify { margin: 10px 0 4px; padding: 10px 12px; border-radius: 12px; background: linear-gradient(135deg, var(--color-focus-soft), rgba(255,255,255,0.6)); border: 1px solid var(--color-focus); line-height: 1.55; box-shadow: 0 4px 16px -8px rgba(90,70,180,0.25); }
+.ga-clarify__label { margin: 0 0 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; color: var(--color-focus-strong); }
+.ga-clarify__q { margin: 0; font-size: 13px; color: var(--color-text); word-break: break-word; }
 .ga-status { display: flex; align-items: center; gap: 8px; margin: 8px 0; font-size: 13px; color: var(--color-text-secondary); animation: ga-fade 0.18s ease-out; }
 .ga-status__spinner { width: 14px; height: 14px; border-radius: 999px; border: 2px solid var(--color-accent-soft); border-top-color: var(--color-accent); animation: ga-spin 0.9s linear infinite; flex: none; }
 .ga-streaming { margin-top: 4px; }

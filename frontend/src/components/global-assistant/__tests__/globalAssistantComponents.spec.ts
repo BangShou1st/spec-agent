@@ -142,6 +142,23 @@ describe('conversation timeline', () => {
     expect(full.find('[data-test="ga-tool-activity"]').exists()).toBe(true)
     expect(full.find('[data-test="ga-status"]').exists()).toBe(true)
   })
+
+  it('renders the waiting clarification question when the run asks for input', () => {
+    const wrapper = mount(ConversationTimeline, {
+      props: {
+        messages: [{ id: 'm-1', threadId: 't-1', role: 'USER', content: '找项目', runId: 'r-1', createdAt: '2026-01-01T00:00:00Z' }],
+        activities: [],
+        streamingText: '',
+        currentStatus: null,
+        running: false,
+        waitingQuestion: '你指的是哪个项目？请补充说明。',
+      },
+    })
+    expect(wrapper.find('[data-test="ga-clarification"]').text()).toContain('你指的是哪个项目？请补充说明。')
+
+    const none = mount(ConversationTimeline, { props: { messages: [], activities: [], streamingText: '', currentStatus: null, running: false, waitingQuestion: null } })
+    expect(none.find('[data-test="ga-clarification"]').exists()).toBe(false)
+  })
 });
 
 describe('assistant panel open and failed states', () => {

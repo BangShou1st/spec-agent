@@ -140,6 +140,11 @@ jobs:
         env:
           SPEC_AGENT_BRAIN_MODEL_MODE: broker
           SPEC_AGENT_INTERNAL_BROKER_URL: http://localhost:8099/internal/v1/model-inference
+          # Must match the Spring test default (SPEC_AGENT_BRAIN_INTERNAL_SECRET:
+          # dev-internal-secret). The brain defaults to an EMPTY secret when the
+          # variable is unset, and the broker then rejects every inference call
+          # with 401 (surfaced as brain_unavailable).
+          SPEC_AGENT_BRAIN_INTERNAL_SECRET: dev-internal-secret
         run: |
           nohup uvicorn spec_agent_brain.app:app --host 127.0.0.1 --port 8100 > ../brain-ci.log 2>&1 &
           for attempt in $(seq 1 30); do
@@ -160,7 +165,12 @@ jobs:
           SPRING_PROFILES_ACTIVE: test
           SPEC_AGENT_MODEL_GATEWAY: fake
           SPEC_AGENT_CROSS_LANG_PORT: 8099
-        run: bash gradlew testCrossLanguage
+        run: |
+          if ! bash gradlew testCrossLanguage; then
+            echo "--- agent-brain log ---"
+            cat ../brain-ci.log
+            exit 1
+          fi
 
   frontend:
     runs-on: ubuntu-latest

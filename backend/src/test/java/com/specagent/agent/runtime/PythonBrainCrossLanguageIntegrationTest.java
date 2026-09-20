@@ -114,10 +114,14 @@ class PythonBrainCrossLanguageIntegrationTest {
 
         List<AgentRunEvent> events = eventRepository.findByRunId(run.id());
 
-        // Worker lifecycle events record the exact phase progression. A pure
+        // Worker lifecycle events record the exact phase progression. Display
+        // events are not part of the lifecycle contract: MODEL_INFERENCE is the
+        // broker wire detail (asserted separately below), PROCESS_NOTE is the
+        // user-readable progress note emitted by RunProgressRecorder. A pure
         // continuation is ONE DECISION — no STATE_UPDATE phase on this path.
         List<String> lifecycle = events.stream()
                 .filter(event -> !event.eventType().equals("MODEL_INFERENCE"))
+                .filter(event -> !event.eventType().equals("PROCESS_NOTE"))
                 .map(AgentRunEvent::eventType).toList();
         assertThat(lifecycle).containsExactly(
                 "RUN_CREATED",

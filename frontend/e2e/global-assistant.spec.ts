@@ -119,6 +119,10 @@ test('clarification keeps composer usable and reuses the same thread', async ({ 
   })
   await page.goto('/projects')
   await page.getByTestId('ga-toggle').click()
+  // Wait for the thread bootstrap (POST /threads -> thread loaded) to settle
+  // before typing: the panel resets the composer draft when bootstrap lands,
+  // so a send raced against it would silently drop the message.
+  await expect(page.getByTestId('ga-empty')).toBeVisible()
   await page.getByTestId('ga-composer-input').fill('找项目')
   await page.getByTestId('ga-send').click()
   await expect(page.getByTestId('ga-clarification')).toContainText('哪个项目')
