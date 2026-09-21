@@ -446,7 +446,7 @@ SPRING_PROFILES_ACTIVE=test SPEC_AGENT_MODEL_GATEWAY=fake SPEC_AGENT_MODEL_INFER
 - `branchCanGenerateOnceEveryInheritedAnswerIsProcessed`：分支生成先被继承回答门禁阻止；通过正式恢复入口处理所属路线后，重复恢复只记录 `STATE_UPDATE_SKIPPED`，不产生第二 Answer/Patch 或图变更，分支规格生成成功。
 - `unrelatedSiblingRouteWithUnprocessedAnswerDoesNotBlock`：兄弟路线欠处理不阻塞目标路线。
 
-同轮保留并通过了回答内容不一致 409、多选守卫、严格 sourceRefs kind/refId、路线绑定和 broker 超时分类回归。规格正文和来源链沿用既有 fake 验收：正文按人类可读文本检查“会议不超过45分钟”，引用按实际 `kind/refId` 检查合法继承前缀与兄弟路线隔离，不以整段 JSON 搜数字。
+同轮保留并通过了回答内容不一致 409、多选守卫、严格 sourceRefs kind/refId、路线绑定和 broker 超时分类回归。**规格正文口径更正（2026-09-22）**：此前本节声称"正文按人类可读文本检查'会议不超过45分钟'"，该说法**不成立**，本仓库中不存在任何这样的断言。确定性引擎（`LocalDeterministicDecisionEngine.runArtifactGeneration`，与 Python fake client 共享同一份 `contracts/fixtures/fake-model-artifact-output.json`）返回的是**固定文案**，其 Overview / Open Questions 两节内容与回答文本无关，因此在不调用真实模型的配置下，**用户约束永远不可能出现在规格正文里**。约束保留的正确可验证位置是：Answer 行本身（canonical 读模型 + Inspector「当前回答」），以及 Patch 的 claim 文本。引用（sourceRefs）仍按实际 `kind/refId` 逐条解析校验，不以整段 JSON 搜数字。
 
 ### 13.4 实际执行命令与结果
 
@@ -500,60 +500,74 @@ P1 相关源码：`backend/src/main/java/com/specagent/application/agent/AnswerC
 
 ---
 
-## 15. 正式 Playwright E2E 回归（2026-09-21 补充）
+## 15. 正式 Playwright E2E 回归（2026-09-22 重写）
 
 ### 15.1 测试文件
 
-`frontend/e2e/historical-answer-recovery.spec.ts`（2 个用例）
+`frontend/e2e/historical-answer-recovery.spec.ts`（1 个用例）
 
-### 15.2 用例名称与覆盖范围
+### 15.2 覆盖链路
 
-| 用例 | 覆盖范围 |
-|------|----------|
-| `branch inherits answer and generates spec successfully` | 创建项目 → 起草问题 → 回答 → 分支 → 分支继承回答 → 生成规格 → 验证规格生成成功、无错误、有派生产物标签 |
-| `multiple routes can generate specs independently` | 创建项目 → 起草问题 → 回答 → 分支 → 在分支路线生成规格 → 验证多路线独立规格生成 |
+`recovers a saved-but-unprocessed answer after a failure, then generates the spec`
 
-### 15.3 执行环境
+真实浏览器 + 真实后端（test profile）+ 真实 PostgreSQL。每一步都断言浏览器可见行为，并与 canonical 读模型交叉核对：
 
-- 后端：`SPRING_PROFILES_ACTIVE=test SPEC_AGENT_MODEL_GATEWAY=fake SPEC_AGENT_MODEL_INFERENCE=fake SPEC_AGENT_BRAIN_WORKER_ENABLED=true`，端口 8080
-- 前端：Vite dev server，端口 5173
-- Brain：broker 模式，端口 8100
-- 数据库：`spec_agent_test`（Docker PostgreSQL 5434→5432）
-- 模型网关：fake（零真实模型调用）
+| 步骤 | 断言 |
+|------|------|
+| 1. 提交回答，其处理失败 | 回答**已落库**（`GET /graph` 读模型：该节点恰 1 条 Answer，`freeText` 含"会议不超过45分钟"）；UI 反馈"回答已保存"，不要求重填 |
+| 2. 生成规格被门禁拒绝 | `recovery-notice` 标题为 **"历史回答需要恢复"**、正文含该问题文本、动作为"恢复该回答"；尚无快照 |
+| 3. 首次恢复**失败** | 反馈"历史回答恢复未完成，请重试恢复"；提示仍在、仍可重试；仍无快照 |
+| 3'. 失败不得产生第二条回答 | `GET /graph` 中该节点 Answer 仍恰为 1 条 |
+| 4. 重试**成功** | 提示**消失**；无错误横幅；`GET /graph` 中该路线 tip 已前移（回答环真的跑完）；该节点 Answer 仍恰 1 条 |
+| 5. 约束保留 | 选中该节点，Inspector 的 canonical 回答仍含"会议不超过45分钟" |
+| 6. 同一次生成动作**成功** | `spec-snapshot-detail` 可见、`derived-label` 为"派生产物"、恰 2 个章节且正文为确定性引擎的派生文案、无错误横幅 |
+| 7. 引用正确 | UI「来源与追溯」列表与该快照 canonical `sourceRefs` **逐条一致**（`kind：refId` 文本相等）；每条 kind ∈ {context, answer, node, patch}、refId 为 UUID |
 
-### 15.4 执行命令与结果
+第 4 步的"提示消失"本身就是**恢复真的写入了 checkpoint** 的证据：`finishSuccessfulAnswerRun` 对历史恢复会话要求终态 run 报告 `producedPatchId`，仅"完成"状态不足以清除提示（见 `workspaceRuns.ts`）。
+
+### 15.3 故障注入（本轮新增，替代此前的"不适用"）
+
+要走到第 1 步，必须先造出"回答已落库、但其 STATE_UPDATE checkpoint 缺失"这一状态。该状态**无法通过产品 UI/API 造出**：DRAFT 路径按设计拒绝跨过未处理回答，而确定性 fake 模型从不失败。因此这次失败被**显式声明**：
+
+- 回答正文末尾携带 `[[fail-state-update:N]]`（用例中 N=2）；
+- 注入点是仅在 `spec.agent.brain.engine=fake` 时才注册的 `DeterministicEngineFaultPlan`（`backend/src/main/java/com/specagent/agent/decision/`）；普通产品配置（`remote-python`）永远不会创建它；
+- 作用域：只对该回答所属节点生效、只失败声明的次数，因此"提交失败 → 首次恢复失败 → 重试成功"是确定性的，同一 JVM 内其他用例完全不受影响；
+- 除"STATE_UPDATE 的结果"外没有任何东西被伪造：Answer 行、失败 run 记录、门禁拒绝、恢复 run、AnswerPatch、规格快照全部由正式运行时产生。
+
+该机制先由后端集成测试 `HistoricalRecoveryFaultInjectionIntegrationTest`（2 例）在 HTTP 层验证，再由本 E2E 在浏览器层验证。
+
+### 15.4 执行环境
+
+- 后端：`SPRING_PROFILES_ACTIVE=test`、`SPEC_AGENT_MODEL_GATEWAY=fake`、`SPEC_AGENT_MODEL_INFERENCE=fake`、`SPEC_AGENT_BRAIN_ENGINE=fake`、`SPEC_AGENT_BRAIN_ENABLED=true`、`SPEC_AGENT_BRAIN_WORKER_ENABLED=true`
+- 前端：Vite dev server（由 Playwright `webServer` 自启）
+- 数据库：`spec_agent_test`（Docker PostgreSQL 5434→5432；跑前 `DROP SCHEMA public CASCADE` 重置）
+- 模型：确定性 fake —— **0 次真实模型调用**
+
+### 15.5 执行命令与结果
 
 ```bash
 cd frontend
-PLAYWRIGHT_PORT=5173 PLAYWRIGHT_BACKEND_PORT=8080 npx playwright test e2e/historical-answer-recovery.spec.ts --reporter=list
-# Running 2 tests using 1 worker
-# ok 1 historical-answer-recovery.spec.ts:20:3 › branch inherits answer and generates spec successfully (13.5s)
-# ok 2 historical-answer-recovery.spec.ts:66:3 › multiple routes can generate specs independently (10.6s)
-# 2 passed (24.8s)
+node node_modules/@playwright/test/cli.js test e2e/historical-answer-recovery.spec.ts --workers=1
+# Running 1 test using 1 worker
+# ok 1 e2e\historical-answer-recovery.spec.ts:81:3 › Historical answer recovery ›
+#      recovers a saved-but-unprocessed answer after a failure, then generates the spec (18.5s)
 ```
 
-### 15.5 测试真实性说明
-
-- 使用真实前端（Vite dev server）、真实后端（Spring Boot）、真实数据库（PostgreSQL）
-- 模型网关为 fake，完成 STATE_UPDATE 和 DECISION 的处理逻辑走真实代码路径，但模型推理返回预设响应
-- 测试通过 UI 交互验证完整链路：创建项目 → 起草问题 → 提交回答 → 分支 → 生成规格
-- 故障注入方式：不适用（本测试验证 happy path；历史恢复的失败/重试场景由后端集成测试覆盖）
-- 不拦截或伪造 API 响应；所有操作通过真实 UI 和 API 执行
+本机实证通过（18.5s）。CI 由 `e2e` 作业执行同一文件。
 
 ### 15.6 证据层级
 
-| 层级 | 覆盖内容 | 测试类型 |
-|------|----------|----------|
-| L1: 后端集成测试 | 回答内容守卫、历史恢复门禁、Claim/Patch/Answer 来源校验、类型化失败分类、broker 超时分类、会话清理 | `InheritedAnswerArtifactGateIntegrationTest` (9例)、`AnswerSubmissionGuardIntegrationTest` (10例)、`TypedRunFailureIntegrationTest` (7例) 等 |
-| L2: 前端单元测试 | 恢复展示逻辑、错误文案、store 状态管理 | `recoveryPresentation.spec.ts`、`workspaceStore.spec.ts`、`errorCopy.spec.ts` |
-| L3: Playwright E2E | 完整 UI 链路：创建项目 → 起草 → 回答 → 分支 → 规格生成 | `historical-answer-recovery.spec.ts` (2例) |
+| 层级 | 覆盖内容 | 测试 |
+|------|----------|------|
+| L1 后端 HTTP 集成 | 注入失败→回答保留→门禁 409 带边界身份→首次恢复失败→重试写出 Patch→生成成功；无指令时行为不变 | `HistoricalRecoveryFaultInjectionIntegrationTest` (2)、`InheritedAnswerArtifactGateIntegrationTest` (9)、`AnswerSubmissionGuardIntegrationTest` (10)、`TypedRunFailureIntegrationTest` (7) |
+| L2 前端单测 | 恢复展示优先级、错误文案、store 会话保留/清理 | `recoveryPresentation.spec.ts`、`workspaceStore.spec.ts`、`errorCopy.spec.ts` |
+| L3 Playwright E2E | §15.2 的 1–7 全链路（浏览器可见行为 + canonical 读模型交叉核对） | `historical-answer-recovery.spec.ts` (1) |
 
-### 15.7 未覆盖边界（由 L1/L2 佐证）
+### 15.7 明确的未覆盖边界
 
-- 历史回答恢复的失败→重试→成功流程：由 `InheritedAnswerArtifactGateIntegrationTest.nonTipUnprocessedAnswerCanBeRecoveredThroughTheFormalEntryPoint` 等覆盖
-- ANSWER_CYCLE_INCOMPLETE 门禁的具体错误消息和 details 结构：由 `AnswerSubmissionGuardIntegrationTest` 覆盖
-- 恢复成功后旧会话清理：由 `workspaceStore.spec.ts` 的 recovery 相关用例覆盖
-- 规格正文包含具体约束（如"会议不超过45分钟"）：由后端 `InheritedAnswerArtifactGateIntegrationTest` 的 fake 规格生成覆盖，E2E 层验证规格生成流程本身正常
+- **规格正文不含用户约束（硬约束，非疏漏）**：确定性引擎的制品输出是**固定文案**（`LocalDeterministicDecisionEngine.runArtifactGeneration`，与 `contracts/fixtures/fake-model-artifact-output.json` 共享同一份输出），正文与回答文本无关。要在正文里断言"45 分钟"必须调用**真实模型**，超出本 PR "0 次真实模型调用" 的声明范围。因此约束保留改在 Answer 行与 Inspector 上断言（§15.2 第 5 步），并在 L1 断言 Answer/Patch 的来源身份。
+- **"非 tip 的未处理历史回答"分支仍由 L1 覆盖**：产品已无法通过 UI 造出该状态（需要后续节点先存在），由 `InheritedAnswerArtifactGateIntegrationTest.nonTipUnprocessedAnswerCanBeRecoveredThroughTheFormalEntryPoint` 等用例用直接服务调用构造。
+- **`ANSWER_ALREADY_FINALIZED`、原快照缺失导致的失败关闭**：L1 覆盖，无浏览器用例。
 
 ---
 
@@ -563,10 +577,10 @@ PLAYWRIGHT_PORT=5173 PLAYWRIGHT_BACKEND_PORT=8080 npx playwright test e2e/histor
 
 | 测试类型 | 用例数 | 结果 |
 |----------|--------|------|
-| 后端集成测试 | 1511 | BUILD SUCCESSFUL |
+| 后端集成测试 | 1517 | BUILD SUCCESSFUL（246 套件，0 失败 0 跳过） |
 | Python 单元测试 | 134 | 134 passed |
 | 前端单元测试 | 821 | 821 passed |
-| Playwright E2E | 2 | 2 passed |
+| Playwright E2E | 1 | 1 passed |
 
 ### 16.2 真实模型调用统计
 
@@ -585,3 +599,58 @@ PLAYWRIGHT_PORT=5173 PLAYWRIGHT_BACKEND_PORT=8080 npx playwright test e2e/histor
 | 前端 5173 | 运行中（Vite dev server） |
 | 数据库 | `spec_agent_test` 正常，未清库 |
 | git | 分支 `codex/acceptance-fixes`，HEAD `091dae9` |
+
+---
+
+## 17. CI 失败归因更正与网络策略测试确定性修复（2026-09-22）
+
+### 17.1 更正：backend 作业失败的真实原因
+
+此前记录的"CI 因两个数据库唯一约束冲突失败"**与日志不符**，予以更正。以 `gh run view --job 106409269236` 实拉日志为准：
+
+```text
+OutboundNetworkPolicyTest > httpsPublicUrlsAreAllowed() FAILED
+    java.lang.AssertionError at OutboundNetworkPolicyTest.java:21
+OutboundNetworkPolicyTest > redirectLocationIsRevalidatedAgainstPolicy() FAILED
+    java.lang.AssertionError at OutboundNetworkPolicyTest.java:79
+1511 tests completed, 2 failed
+BUILD FAILED in 1m 29s
+```
+
+日志中确实出现过 `duplicate key value violates unique constraint "uq_ga_pending_single_unresolved"`，但它出现在 `Stop containers` 步骤回显的 **Postgres 容器日志**里（停容器时 dump 的负例报错），**未计入失败用例**——失败数恰好只有 2 例，且都是上述网络策略测试。
+
+### 17.2 根因：两条用例隐藏依赖公网 DNS
+
+`OutboundNetworkPolicyTest` 是全仓库唯一需要**真实公网 DNS** 的测试类：类内 10 条用例里，只有 `httpsPublicUrlsAreAllowed` 与 `redirectLocationIsRevalidatedAgainstPolicy` 走 `doesNotThrowAnyException`，即必须成功解析 `github.com`；其余用例要么用字面私网 IP（`10.0.0.5` 等，不触发 DNS），要么命中 `BLOCKED_HOSTS` 名称黑名单、在解析前就抛错。因此只有这两条把单元测试绑在运行器的 DNS/出网状态上。
+
+**并非本 PR 引入**：`OutboundNetworkPolicy` 与其测试均由 `a9f3adf`（PR #10，2026-09-09 合入 main）引入，本 PR 未改动 `com.specagent.common.network` 下任何文件。决定性对照（同一份后端源码）：
+
+| run | 提交 | 改动范围 | backend 作业 |
+|---|---|---|---|
+| 35617859513 | `091dae9` | PR 主体 | ✅ success |
+| 35622655893 | `476e7f9` | 仅 `docs/*.md` + e2e spec | ❌ failure（上述 2 例） |
+
+### 17.3 修复：注入主机解析端口（保留全部网络校验）
+
+`OutboundNetworkPolicy` 新增 `HostResolver` 函数式接口（生产默认 `InetAddress::getAllByName`，`@Component` 无参构造不变），`validateHost` 改走该端口。测试注入确定性桩解析器，**每一条校验都保留**并补强：
+
+- 原两条改为经桩解析器断言"公网主机名解析为公网地址 → 放行"，仍覆盖"主机名 → 地址"这一段；
+- 新增 `publicNameResolvingToPrivateAddressIsRejected`（DNS-rebinding 形态）、`unresolvableHostIsRejected`（解析失败分支）、`httpsPublicIpv6HostIsAllowed`（IPv6 分支不得过度拦截）、`redirectToMetadataEndpointIsRejected`；
+- `invalidRedirectLimitIsRejected` 改用可解析主机，使其真正命中重定向上限分支，而不是被解析失败掩盖。
+
+结果：`OutboundNetworkPolicyTest` 由 10 例增至 14 例，**0 失败**，且不再需要公网。
+
+### 17.4 新增机制：确定性引擎故障注入
+
+见 §15.3。新增 `DeterministicEngineFaultPlan`（仅 `spec.agent.brain.engine=fake` 注册，产品配置永不创建），使浏览器回归能够真实地造出"回答已落库但处理失败"这一产品自身已无法产生的状态；配套后端集成测试 `HistoricalRecoveryFaultInjectionIntegrationTest`（2 例）在 HTTP 层验证该机制。
+
+### 17.5 本轮本地验证结果（2026-09-22）
+
+| 项 | 命令 | 结果 |
+|---|---|---|
+| 后端全量 | `cd backend && SPRING_PROFILES_ACTIVE=test SPEC_AGENT_MODEL_GATEWAY=fake SPEC_AGENT_MODEL_INFERENCE=fake ./gradlew.bat cleanTest test` | **246 套件 / 1517 用例 / 0 失败 / 0 错误 / 0 跳过**，BUILD SUCCESSFUL（2m36s） |
+| 网络策略 | `cleanTest test --tests com.specagent.common.network.OutboundNetworkPolicyTest` | 14 用例 / 0 失败（无公网） |
+| 故障注入机制 | `cleanTest test --tests com.specagent.api.agent.HistoricalRecoveryFaultInjectionIntegrationTest` | 2 用例 / 0 失败 |
+| 浏览器回归 | `node node_modules/@playwright/test/cli.js test e2e/historical-answer-recovery.spec.ts --workers=1` | 1 用例 / 1 passed（18.5s） |
+
+注：本地全量套件**不得**传 `SPEC_AGENT_BRAIN_WORKER_ENABLED=true`（会打开后台轮询器与测试驱动器争抢共享队列，导致随机失败）；CI 的 backend 作业同样不传。

@@ -1,6 +1,7 @@
 package com.specagent.eval;
 
 import com.specagent.agent.decision.AgentDecisionEngine;
+import com.specagent.agent.decision.DeterministicEngineFaultPlan;
 import com.specagent.agent.decision.LocalDeterministicDecisionEngine;
 import com.specagent.agent.decision.RemotePythonDecisionEngine;
 import com.specagent.agent.runtime.AgentBrainProperties;
@@ -31,7 +32,7 @@ class LiveExecutionGuardTest {
     @Test
     void javaFakeEngineIsRejectedAsLive() {
         assertThatThrownBy(() -> LiveExecutionGuard.requireRemoteProvider(
-                new LocalDeterministicDecisionEngine(), realProvider, null))
+                new LocalDeterministicDecisionEngine(new DeterministicEngineFaultPlan()), realProvider, null))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("AgentDecisionEngine")
                 .hasMessageContaining("RemotePythonDecisionEngine");
