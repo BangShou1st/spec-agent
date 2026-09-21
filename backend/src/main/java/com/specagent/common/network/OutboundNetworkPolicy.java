@@ -39,14 +39,35 @@ public class OutboundNetworkPolicy {
     private static final String IPV6_LINK_LOCAL = "fe80";
     private static final String IPV6_ULA = "fc";
 
+    /**
+     * Host-name resolution seam.
+     *
+     * <p>Production always resolves through the JVM resolver
+     * ({@link InetAddress#getAllByName(String)}). Tests inject a deterministic
+     * stub so the address-based SSRF checks can be exercised without depending
+     * on live public DNS: the policy's contract is "would this host be
+     * allowed", not "is the public internet reachable from this machine".
+     */
+    @FunctionalInterface
+    public interface HostResolver {
+        InetAddress[] resolve(String host) throws UnknownHostException;
+    }
+
     private final boolean allowLocalhostHttp;
+    private final HostResolver hostResolver;
 
     public OutboundNetworkPolicy() {
-        this(false);
+        this(false, InetAddress::getAllByName);
     }
 
     public OutboundNetworkPolicy(boolean allowLocalhostHttp) {
+        this(allowLocalhostHttp, InetAddress::getAllByName);
+    }
+
+    /** Test seam only: production code uses the JVM resolver (see above). */
+    public OutboundNetworkPolicy(boolean allowLocalhostHttp, HostResolver hostResolver) {
         this.allowLocalhostHttp = allowLocalhostHttp;
+        this.hostResolver = hostResolver;
     }
 
     /**
@@ -128,7 +149,7 @@ public class OutboundNetworkPolicy {
             return;
         }
         try {
-            InetAddress[] addresses = InetAddress.getAllByName(host);
+            InetAddress[] addresses = hostResolver.resolve(host);
             boolean anyResolved = false;
             for (InetAddress address : addresses) {
                 anyResolved = true;

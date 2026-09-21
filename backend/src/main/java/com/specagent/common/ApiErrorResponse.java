@@ -2,6 +2,8 @@ package com.specagent.common;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
+import com.fasterxml.jackson.annotation.JsonInclude;
 
 /**
  * Stable API error contract.
@@ -20,13 +22,18 @@ public record ApiErrorResponse(
         String code,
         String message,
         String timestamp,
-        List<ApiFieldError> errors) {
+        List<ApiFieldError> errors,
+        @JsonInclude(JsonInclude.Include.NON_EMPTY) Map<String, String> details) {
 
     public static ApiErrorResponse of(String code, String message) {
-        return new ApiErrorResponse(code, message, Instant.now().toString(), List.of());
+        return new ApiErrorResponse(code, message, Instant.now().toString(), List.of(), Map.of());
     }
 
     public static ApiErrorResponse of(String code, String message, List<ApiFieldError> errors) {
-        return new ApiErrorResponse(code, message, Instant.now().toString(), errors);
+        return new ApiErrorResponse(code, message, Instant.now().toString(), errors, Map.of());
+    }
+
+    public static ApiErrorResponse of(String code, String message, Map<String, String> details) {
+        return new ApiErrorResponse(code, message, Instant.now().toString(), List.of(), details);
     }
 }

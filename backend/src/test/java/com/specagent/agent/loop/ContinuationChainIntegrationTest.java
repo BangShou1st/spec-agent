@@ -23,6 +23,7 @@ import com.specagent.context.ContextBuilder;
 import com.specagent.context.ContextOperationType;
 import com.specagent.graph.GraphCommandService;
 import com.specagent.node.NodeService;
+import com.specagent.patch.AnswerPatchService;
 import com.specagent.project.Project;
 import com.specagent.project.ProjectService;
 import com.specagent.route.RouteRepository;
@@ -78,6 +79,7 @@ class ContinuationChainIntegrationTest {
     @Autowired private LoopProperties loopProperties;
     @Autowired private JdbcTemplate jdbcTemplate;
     @Autowired private com.specagent.answer.AnswerService answerService;
+    @Autowired private AnswerPatchService answerPatchService;
     @Autowired private com.specagent.agent.policy.AgentProposalService proposalService;
     @Autowired private com.specagent.agent.policy.ProposalAcceptanceService acceptanceService;
     @SpyBean
@@ -296,8 +298,7 @@ class ContinuationChainIntegrationTest {
         // An unanswered question cannot gain a lineage child: answer the
         // root first so the stubbed CREATE_NODE may append.
         var routeBefore = routeRepository.findById(project.activeRouteId()).orElseThrow();
-        answerService.finalizeAnswer(project.id(), project.activeRouteId(),
-                routeBefore.tipNodeId(), null, "answered for append", "test-user");
+        finalizeAndCheckpoint(project, routeBefore.tipNodeId(), "answered for append");
         withMaxCycles(5);
         AtomicInteger decisions = new AtomicInteger();
         Answer<Object> forward = invocation -> {
@@ -375,8 +376,7 @@ class ContinuationChainIntegrationTest {
         // An unanswered question cannot gain a lineage child: answer the
         // root first so the accepted CREATE_NODE may append.
         var routeBefore = routeRepository.findById(project.activeRouteId()).orElseThrow();
-        answerService.finalizeAnswer(project.id(), project.activeRouteId(),
-                routeBefore.tipNodeId(), null, "answered for append", "test-user");
+        finalizeAndCheckpoint(project, routeBefore.tipNodeId(), "answered for append");
         withMaxCycles(5);
         AtomicInteger decisions = new AtomicInteger();
         Answer<Object> forward = invocation -> {
@@ -467,8 +467,7 @@ class ContinuationChainIntegrationTest {
         // Same answer-first fixture as the accept test: the accepted
         // CREATE_NODE must have a lineage parent.
         var routeBeforeRecover = routeRepository.findById(project.activeRouteId()).orElseThrow();
-        answerService.finalizeAnswer(project.id(), project.activeRouteId(),
-                routeBeforeRecover.tipNodeId(), null, "answered for append", "test-user");
+        finalizeAndCheckpoint(project, routeBeforeRecover.tipNodeId(), "answered for append");
         withMaxCycles(5);
         AtomicInteger decisions = new AtomicInteger();
         Answer<Object> forward = invocation -> {
@@ -656,8 +655,7 @@ class ContinuationChainIntegrationTest {
         // An unanswered question cannot gain a lineage child: answer the
         // root first so the stubbed CREATE_NODE may append.
         var routeBefore = routeRepository.findById(project.activeRouteId()).orElseThrow();
-        answerService.finalizeAnswer(project.id(), project.activeRouteId(),
-                routeBefore.tipNodeId(), null, "answered for append", "test-user");
+        finalizeAndCheckpoint(project, routeBefore.tipNodeId(), "answered for append");
         withMaxCycles(5);
         AtomicInteger decisions = new AtomicInteger();
         Answer<Object> forward = invocation -> {
@@ -968,8 +966,7 @@ class ContinuationChainIntegrationTest {
     void activeRouteSwitchFailsContinuationClosedWithoutModelCall() {
         Project project = newProjectWithResource("chain-route-switch");
         var routeBefore = routeRepository.findById(project.activeRouteId()).orElseThrow();
-        answerService.finalizeAnswer(project.id(), project.activeRouteId(),
-                routeBefore.tipNodeId(), null, "answered for append", "test-user");
+        finalizeAndCheckpoint(project, routeBefore.tipNodeId(), "answered for append");
         withMaxCycles(5);
         AtomicInteger decisions = new AtomicInteger();
         org.mockito.stubbing.Answer<Object> forward = invocation -> {
@@ -1047,6 +1044,14 @@ class ContinuationChainIntegrationTest {
         Project project = projectService.createProject(name + "-" + UUID.randomUUID());
         projectIds.add(project.id());
         return project;
+    }
+
+    /** Direct fixture answer with its completed STATE_UPDATE checkpoint. */
+    private void finalizeAndCheckpoint(Project project, UUID nodeId, String freeText) {
+        var answer = answerService.finalizeAnswer(project.id(), project.activeRouteId(),
+                nodeId, null, freeText, "test-user");
+        answerPatchService.save(project.id(), project.activeRouteId(), nodeId,
+                answer.id(), List.of(), null);
     }
 
     private void withMaxCycles(int maxCycles) {

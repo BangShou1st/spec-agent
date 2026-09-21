@@ -4,6 +4,7 @@ import com.specagent.answer.AnswerService;
 import com.specagent.common.Ids;
 import com.specagent.node.Node;
 import com.specagent.node.NodeService;
+import com.specagent.patch.AnswerPatchService;
 import com.specagent.project.Project;
 import com.specagent.project.ProjectRepository;
 import com.specagent.project.ProjectService;
@@ -44,6 +45,15 @@ class QuestionDraftIntegrationTest {
     private NodeService nodeService;
     @Autowired
     private AnswerService answerService;
+    @Autowired
+    private AnswerPatchService answerPatchService;
+
+    private void finalizeAndCheckpoint(Project project, Node node, String freeText) {
+        var answer = answerService.finalizeAnswer(project.id(), project.activeRouteId(),
+                node.id(), null, freeText, "test-user");
+        answerPatchService.save(project.id(), project.activeRouteId(), node.id(),
+                answer.id(), java.util.List.of(), null);
+    }
 
     @Test
     void draftCreatesAgentRunAndNode() {
@@ -127,8 +137,7 @@ class QuestionDraftIntegrationTest {
 
         // An unanswered Question must remain the route tip; drafting a follow-up
         // requires the tip Question to be answered first.
-        answerService.finalizeAnswer(project.id(), project.activeRouteId(),
-                firstNode.id(), null, "answered first question", "test-user");
+        finalizeAndCheckpoint(project, firstNode, "answered first question");
 
         // Second run must create a child of the route tip, not a new root.
         AgentRun second = draftDriver.draftQuestion(project.id());
@@ -148,8 +157,7 @@ class QuestionDraftIntegrationTest {
         // The deterministic fake advances past the answered question (repeating
         // it would trip the enforced RESOLVED_BLOCKER rule), so the follow-up
         // is the second rung of the clarification ladder.
-        answerService.finalizeAnswer(project.id(), project.activeRouteId(),
-                draft1.id(), null, "answered for determinism check", "test-user");
+        finalizeAndCheckpoint(project, draft1, "answered for determinism check");
         Node draft2 = nodeService.getNode(
                 draftDriver.draftQuestion(project.id()).producedNodeId()).orElseThrow();
 

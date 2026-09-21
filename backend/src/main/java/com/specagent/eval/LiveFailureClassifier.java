@@ -77,6 +77,16 @@ public final class LiveFailureClassifier {
                 violation.failureClass() == FailureClass.BRAIN_SCHEMA)) {
             return true;
         }
+        String result = observation.executionResult();
+        if (result != null) {
+            String detail = result.toLowerCase(Locale.ROOT);
+            // Typed brain/model-output codes are schema failures, never
+            // infrastructure: the service worked and rejected the output.
+            if (detail.contains("model_contract_violation")
+                    || detail.contains("model_ungrounded_reference")) {
+                return true;
+            }
+        }
         return observation.semanticTrace().stages().values().stream()
                 .map(stage -> stage.get("error_type"))
                 .filter(value -> value != null)

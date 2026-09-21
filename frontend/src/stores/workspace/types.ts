@@ -92,4 +92,6 @@ export interface AnswerRunSessionState {
   status: AnswerRunSessionStatus
   /** Set when the Answer persisted but follow-up generation did not finish. */
   repairableAnswerId: string | null
+  /** True when this session repairs a historical checkpoint, not a live tip. */
+  historicalRecovery?: boolean
 }

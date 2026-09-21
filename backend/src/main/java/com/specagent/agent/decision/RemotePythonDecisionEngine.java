@@ -13,8 +13,13 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.HttpStatusCodeException;
 import com.specagent.agent.eligibility.ActionEligibilityReasonCode;
 import com.specagent.agent.eligibility.ActionIneligibleException;
+
+import java.net.SocketTimeoutException;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Default decision engine: the remote Python {@code agent-brain} service.
@@ -28,6 +33,15 @@ import com.specagent.agent.eligibility.ActionIneligibleException;
 @Component
 @ConditionalOnProperty(name = "spec.agent.brain.engine", havingValue = "remote-python")
 public class RemotePythonDecisionEngine implements AgentDecisionEngine {
+
+    /** The brain's typed detail prefix: {@code brain_failure:<ErrorType>}. */
+    static final String BRAIN_FAILURE_MARKER = "brain_failure:";
+
+    /** Brain error types that mean "the model output violated a contract". */
+    private static final java.util.List<String> BRAIN_CONTRACT_ERROR_TYPES = java.util.List.of(
+            "Contract",
+            "AmbiguousSourceRefs",
+            "ConflictSurfacing");
 
     private final RestClient restClient;
 
@@ -62,9 +76,10 @@ public class RemotePythonDecisionEngine implements AgentDecisionEngine {
                     .body(AgentContracts.write(request))
                     .retrieve()
                     .body(String.class);
+        } catch (HttpServerErrorException ex) {
+            throw brainFailure("/v1/artifacts", ex);
         } catch (RestClientException ex) {
-            throw new AgentBrainUnavailableException(
-                    "Agent brain call failed: /v1/artifacts", ex);
+            throw brainFailure("/v1/artifacts", ex);
         }
         if (responseJson == null || responseJson.isBlank()) {
             throw new AgentBrainUnavailableException(
@@ -74,6 +89,83 @@ public class RemotePythonDecisionEngine implements AgentDecisionEngine {
                 AgentContracts.read(responseJson, AgentArtifactResponse.class);
         AgentBrainResponseValidator.validateArtifact(request, response);
         return response;
+    }
+
+    /** Typed 5xx/409 failure: the code comes from the brain's own detail. */
+    private static AgentBrainUnavailableException brainFailure(
+            String path, HttpStatusCodeException ex) {
+        return new AgentBrainUnavailableException(
+                "Agent brain call failed: " + path, ex,
+                classifyBrainFailureDetail(ex.getResponseBodyAsString()));
+    }
+
+    /**
+     * Typed transport failure: a real timeout is not "the brain is down".
+     *
+     * <p>A read timeout does not always arrive as
+     * {@code ResourceAccessException} — the response-extraction path wraps
+     * {@link SocketTimeoutException} in a plain {@code RestClientException} —
+     * so the timeout is detected from the cause chain instead of the type.
+     */
+    private static AgentBrainUnavailableException brainFailure(
+            String path, RestClientException ex) {
+        return new AgentBrainUnavailableException(
+                "Agent brain call failed: " + path, ex,
+                isTimeout(ex) ? BrainFailureCode.BRAIN_TIMEOUT
+                        : BrainFailureCode.BRAIN_UNAVAILABLE);
+    }
+
+    /**
+     * Maps the brain's typed failure detail onto a failure code.
+     *
+     * <p>Only the error type the brain actually named is classified; an absent
+     * or unrecognized detail stays the historical opaque code, so the engine
+     * never invents a cause it cannot prove.
+     */
+    static BrainFailureCode classifyBrainFailureDetail(String responseBody) {
+        if (responseBody == null) {
+            return BrainFailureCode.BRAIN_UNAVAILABLE;
+        }
+        int marker = responseBody.indexOf(BRAIN_FAILURE_MARKER);
+        if (marker < 0) {
+            return BrainFailureCode.BRAIN_UNAVAILABLE;
+        }
+        String errorType = responseBody.substring(marker + BRAIN_FAILURE_MARKER.length())
+                .split("[^A-Za-z0-9_]", 2)[0];
+        if (errorType.contains("UngroundedReference")) {
+            return BrainFailureCode.MODEL_UNGROUNDED_REFERENCE;
+        }
+        if (errorType.contains("ModelClientError")) {
+            return BrainFailureCode.MODEL_PROVIDER_FAILURE;
+        }
+        if (errorType.contains("BrokerTimeoutError")) {
+            return BrainFailureCode.BRAIN_TIMEOUT;
+        }
+        // Explicit allow-list of the brain's own output-contract error types:
+        // only a type the brain can actually raise is classified, so a rename or
+        // a new type degrades to the opaque code instead of a wrong diagnosis.
+        for (String contractError : BRAIN_CONTRACT_ERROR_TYPES) {
+            if (errorType.contains(contractError)) {
+                return BrainFailureCode.MODEL_CONTRACT_VIOLATION;
+            }
+        }
+        return BrainFailureCode.BRAIN_UNAVAILABLE;
+    }
+
+    private static boolean isTimeout(Throwable failure) {
+        Throwable cause = failure;
+        while (cause != null) {
+            if (cause instanceof SocketTimeoutException
+                    || cause instanceof TimeoutException
+                    || cause.getClass().getSimpleName().contains("Timeout")) {
+                return true;
+            }
+            if (cause.getCause() == cause) {
+                break;
+            }
+            cause = cause.getCause();
+        }
+        return false;
     }
 
     private AgentResponseEnvelope call(AgentRequestEnvelope request,
@@ -92,11 +184,11 @@ public class RemotePythonDecisionEngine implements AgentDecisionEngine {
                 throw new ActionIneligibleException(
                         ActionEligibilityReasonCode.FAMILY_NOT_ELIGIBLE);
             }
-            throw new AgentBrainUnavailableException(
-                    "Agent brain call failed: " + path, ex);
+            throw brainFailure(path, ex);
+        } catch (HttpServerErrorException ex) {
+            throw brainFailure(path, ex);
         } catch (RestClientException ex) {
-            throw new AgentBrainUnavailableException(
-                    "Agent brain call failed: " + path, ex);
+            throw brainFailure(path, ex);
         }
         if (responseJson == null || responseJson.isBlank()) {
             throw new AgentBrainUnavailableException(

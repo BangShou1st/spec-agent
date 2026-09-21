@@ -28,6 +28,7 @@ import com.specagent.patch.Claim;
 import com.specagent.patch.ClaimKind;
 import com.specagent.patch.ClaimStatus;
 import com.specagent.route.Route;
+import com.specagent.route.RouteHistoryResolver;
 import com.specagent.route.RouteRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -79,6 +80,7 @@ public class AnswerCycleService {
     private final ActionEligibilityGate actionEligibilityGate;
     private final AgentTracePort semanticTraceRecorder;
     private final RunProgressRecorder progressRecorder;
+    private final RouteHistoryResolver routeHistoryResolver;
 
     public AnswerCycleService(AgentRunService agentRunService,
                               AgentRunFailureService agentRunFailureService,
@@ -97,7 +99,8 @@ public class AnswerCycleService {
                               com.specagent.agent.snapshot.AgentInputProjectionRepository projectionRepository,
                               AgentTracePort semanticTraceRecorder,
                               ActionEligibilityGate actionEligibilityGate,
-                              RunProgressRecorder progressRecorder) {
+                              RunProgressRecorder progressRecorder,
+                              RouteHistoryResolver routeHistoryResolver) {
         this.agentRunService = agentRunService;
         this.agentRunFailureService = agentRunFailureService;
         this.contextBuilder = contextBuilder;
@@ -116,6 +119,7 @@ public class AnswerCycleService {
         this.semanticTraceRecorder = semanticTraceRecorder;
         this.actionEligibilityGate = actionEligibilityGate;
         this.progressRecorder = progressRecorder;
+        this.routeHistoryResolver = routeHistoryResolver;
     }
 
     /**
@@ -263,10 +267,19 @@ public class AnswerCycleService {
                     ? "Answer does not belong to route " + route.id()
                     : "Answer does not belong to active route");
         }
-        if (!answer.nodeId().equals(route.tipNodeId())) {
+        if (route.tipNodeId() == null
+                || !routeHistoryResolver.resolveLineage(route.tipNodeId()).contains(answer.nodeId())) {
             throw new IllegalStateException(explicitRoute
-                    ? "Answer node is not the tip of route " + route.id()
-                    : "Answer node is not the active route tip");
+                    ? "Answer node is not part of route " + route.id()
+                    : "Answer node is not part of the active route history");
+        }
+
+        // A non-tip answer can only be repaired at its checkpoint boundary.
+        // Never replay a later DECISION against the current tip, and never
+        // require a legacy post-state projection that is irrelevant to this
+        // checkpoint-only recovery.
+        if (!answer.nodeId().equals(route.tipNodeId())) {
+            return recoverHistoricalAnswer(run, projectId, route, answer, persistenceIntent);
         }
 
         failIfLegacyReplay(answer.id());
@@ -303,6 +316,64 @@ public class AnswerCycleService {
             return completeCycle(run, projectId, route, snapshot, envelope,
                     answer, selectedOptionId, freeText, trace);
 
+        } catch (RuntimeException ex) {
+            failIfNotTerminal(run.id(), trace, ex);
+            throw ex;
+        }
+    }
+
+    /**
+     * Compatibility recovery for an answer that is already historical on its
+     * owning route. Only the missing STATE_UPDATE checkpoint is executed. A
+     * persisted patch makes the operation an idempotent no-op; no DECISION,
+     * node creation, or route-tip mutation is allowed in either case.
+     */
+    private AnswerCycleResult recoverHistoricalAnswer(
+            AgentRun run, UUID projectId, Route route, Answer answer,
+            AgentEvent.PersistenceIntent persistenceIntent) {
+        String trace = "created";
+        try {
+            trace = appendTrace(trace, "historical_recovery");
+            agentRunService.markPersistedAnswer(run.id(), answer.id(), trace);
+
+            AnswerPatch patch = answerPatchService.findBySourceAnswerId(answer.id()).orElse(null);
+            if (patch == null) {
+                ContextSnapshot original = resolveOriginalPreAnswerSnapshot(projectId, answer)
+                        .orElseThrow(() -> new LegacyFrozenInputUnavailableException(
+                                "LEGACY_FROZEN_INPUT_UNAVAILABLE: historical answer "
+                                        + answer.id() + " has no original pre-answer ContextSnapshot; "
+                                        + "checkpoint-only recovery cannot use current route context"));
+                trace = appendTrace(trace, "context_reused:" + original.id());
+                attachSnapshot(run, original, trace);
+                UUID selectedOptionId = answer.selectedOptionId() == null
+                        ? null : UUID.fromString(answer.selectedOptionId());
+                AgentEvent event = new AgentEvent(
+                        "ANSWER_SUBMITTED", answer.nodeId(), selectedOptionId,
+                        answer.freeText(), persistenceIntent);
+                AgentRequestEnvelope envelope = snapshotBuilder.buildEnvelope(
+                        run.id(), original, event, new DecisionBudget(1));
+                patch = runStateUpdate(run, projectId, route, envelope, answer, trace);
+                trace = appendTrace(trace, "persisted_patch");
+            } else {
+                trace = appendTrace(trace, "reused_persisted_patch:" + patch.id());
+                validatePatchSources(patch, route, answer);
+                agentRunService.markPersistedAnswerPatch(run.id(), patch.id(), trace);
+                eventService.append(run.id(), AgentRunPhase.STATE_UPDATED,
+                        "STATE_UPDATE_SKIPPED", Map.of("reason", "patch_exists"));
+            }
+
+            trace = appendTrace(trace, "historical_recovery_complete");
+            agentRunService.complete(run.id(), AgentRunStatus.COMPLETED, trace);
+            eventService.append(run.id(), AgentRunPhase.COMPLETED, "HISTORICAL_ANSWER_RECOVERED",
+                    Map.of("answerId", answer.id().toString(),
+                           "patchId", patch.id().toString(),
+                           "graphMutation", "none"));
+            eventService.append(run.id(), AgentRunPhase.COMPLETED, "RUN_COMPLETED",
+                    Map.of("producedAnswerId", answer.id().toString(),
+                           "producedPatchId", patch.id().toString(),
+                           "historicalRecovery", true));
+            return new AnswerCycleResult(run.id(), answer.id(), patch.id(), null,
+                    "historical_recovery");
         } catch (RuntimeException ex) {
             failIfNotTerminal(run.id(), trace, ex);
             throw ex;
@@ -416,7 +487,8 @@ public class AnswerCycleService {
 
             List<Claim> groundedClaims = groundClaims(
                     stateUpdateResponse.stateUpdate().claims(),
-                    route.tipNodeId(), answer.id());
+                    answer.nodeId(), answer.id());
+            validateClaimSources(groundedClaims, answer);
 
             ReflectionResult patchReflection = patchReflectionGate.validate(
                     new com.specagent.agent.contracts.AnswerPatchDraft(groundedClaims));
@@ -429,9 +501,10 @@ public class AnswerCycleService {
                         "Patch reflection rejected: " + patchReflection.errors());
             }
 
-            AnswerPatch patch = answerPatchService.save(
-                    projectId, route.id(), route.tipNodeId(), answer.id(),
+            AnswerPatch patch = answerPatchService.saveOrReuse(
+                    projectId, route.id(), answer.nodeId(), answer.id(),
                     groundedClaims, run.id());
+            validatePatchSources(patch, route, answer);
             agentRunService.markPersistedAnswerPatch(run.id(), patch.id(), trace);
             return patch;
         } catch (RuntimeException ex) {
@@ -455,6 +528,41 @@ public class AnswerCycleService {
             }
         }
         return grounded;
+    }
+
+    /**
+     * A confirmed Claim is evidence about this immutable Answer. Its source
+     * identity must therefore remain anchored to the Answer's own node, even
+     * when recovery is running after the route tip has moved forward.
+     */
+    private void validateClaimSources(List<Claim> claims, Answer answer) {
+        for (Claim claim : claims) {
+            boolean hasSourceNode = claim.sourceNodeId() != null;
+            boolean hasSourceAnswer = claim.sourceAnswerId() != null;
+            if (hasSourceNode != hasSourceAnswer) {
+                throw new ModelContractException(
+                        "Claim provenance must contain both sourceNodeId and sourceAnswerId");
+            }
+            if (hasSourceAnswer && !answer.id().equals(claim.sourceAnswerId())) {
+                throw new ModelContractException(
+                        "Claim sourceAnswerId does not match the recovered Answer");
+            }
+            if (hasSourceNode && !answer.nodeId().equals(claim.sourceNodeId())) {
+                throw new ModelContractException(
+                        "Claim sourceNodeId does not match the recovered Answer node");
+            }
+        }
+    }
+
+    /** The persisted Patch must carry the same source identity as its Answer. */
+    private void validatePatchSources(AnswerPatch patch, Route route, Answer answer) {
+        if (!answer.id().equals(patch.sourceAnswerId())
+                || !answer.nodeId().equals(patch.sourceNodeId())
+                || !route.id().equals(patch.routeId())) {
+            throw new IllegalStateException(
+                    "AnswerPatch source identity does not match its Answer and route");
+        }
+        validateClaimSources(patch.claims(), answer);
     }
 
     /**
@@ -580,9 +688,11 @@ public class AnswerCycleService {
     /**
      * Frozen-input replay for a STATE_UPDATE rerun: the ORIGINAL attempt's
      * pre-answer snapshot, discovered through the persisted answer's first
-     * producing run. Undiscoverable (no prior run recorded one) resolves to
-     * empty and the caller builds a fresh context; an inconsistent discovered
-     * snapshot fails closed instead of silently rebuilding.
+     * producing run. An undiscoverable snapshot is returned as empty only for
+     * the still-tip compatibility path, where a fresh context is an explicit
+     * legacy fallback; historical checkpoint-only recovery rejects that empty
+     * result. An inconsistent discovered snapshot always fails closed instead
+     * of silently rebuilding.
      */
     private java.util.Optional<ContextSnapshot> resolveOriginalPreAnswerSnapshot(
             UUID projectId, Answer answer) {
@@ -708,11 +818,10 @@ public class AnswerCycleService {
                 && latest.status() != AgentRunStatus.COMPLETED) {
             String persisted = latest.trace();
             String base = (persisted == null || persisted.isBlank()) ? trace : persisted;
-            String step = ex instanceof com.specagent.agent.decision.AgentBrainUnavailableException
-                    ? "brain_unavailable" : ex.getClass().getSimpleName();
-            agentRunFailureService.fail(runId, appendTrace(base, "failed:" + step));
+            String reason = RunFailureReasons.reasonCode(ex);
+            agentRunFailureService.fail(runId, appendTrace(base, "failed:" + reason));
             eventService.append(runId, AgentRunPhase.FAILED,
-                    "RUN_FAILED", Map.of("reason", step));
+                    "RUN_FAILED", RunFailureReasons.payload(reason));
         }
     }
 

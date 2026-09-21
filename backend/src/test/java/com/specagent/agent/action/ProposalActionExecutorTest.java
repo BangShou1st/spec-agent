@@ -5,6 +5,7 @@ import com.specagent.answer.AnswerService;
 import com.specagent.node.Node;
 import com.specagent.node.NodeOption;
 import com.specagent.node.NodeService;
+import com.specagent.patch.AnswerPatchService;
 import com.specagent.project.Project;
 import com.specagent.project.ProjectService;
 import com.specagent.route.Route;
@@ -38,6 +39,8 @@ class ProposalActionExecutorTest {
     private AnswerService answerService;
     @Autowired
     private RouteRepository routeRepository;
+    @Autowired
+    private AnswerPatchService answerPatchService;
 
     private Project project;
     private Route route;
@@ -55,8 +58,9 @@ class ProposalActionExecutorTest {
     void requestUserInputCreatesChildNode() {
         // An unanswered INTERACTION Question must remain the route tip; answer
         // it before an agent REQUEST_USER_INPUT child can be appended.
-        answerService.finalizeAnswer(project.id(), route.id(), rootNode.id(),
+        var answer = answerService.finalizeAnswer(project.id(), route.id(), rootNode.id(),
                 null, "answered root", "test-user");
+        answerPatchService.save(project.id(), route.id(), rootNode.id(), answer.id(), List.of(), null);
 
         ActionProposal proposal = proposal("REQUEST_USER_INPUT", Map.of(
                 "questionText", "你的首要目标是什么？",
@@ -78,8 +82,9 @@ class ProposalActionExecutorTest {
 
     @Test
     void createNodeCreatesChildNode() {
-        answerService.finalizeAnswer(project.id(), route.id(), rootNode.id(),
+        var answer = answerService.finalizeAnswer(project.id(), route.id(), rootNode.id(),
                 null, "answered root", "test-user");
+        answerPatchService.save(project.id(), route.id(), rootNode.id(), answer.id(), List.of(), null);
 
         ActionProposal proposal = proposal("CREATE_NODE", Map.of(
                 "question", "风险评估节点",

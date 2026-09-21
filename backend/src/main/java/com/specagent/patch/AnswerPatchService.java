@@ -1,6 +1,7 @@
 package com.specagent.patch;
 
 import com.specagent.common.Ids;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -41,6 +42,29 @@ public class AnswerPatchService {
                 sourceAnswerId, claims, createdByRunId, now);
         answerPatchRepository.save(patch);
         return patch;
+    }
+
+    /**
+     * Idempotent checkpoint write for concurrent recovery attempts. The
+     * unique source-answer constraint arbitrates the race; the loser reuses
+     * the winner's immutable patch instead of producing a second side effect.
+     */
+    public AnswerPatch saveOrReuse(UUID projectId,
+                                   UUID routeId,
+                                   UUID sourceNodeId,
+                                   UUID sourceAnswerId,
+                                   List<Claim> claims,
+                                   UUID createdByRunId) {
+        Optional<AnswerPatch> existing = findBySourceAnswerId(sourceAnswerId);
+        if (existing.isPresent()) {
+            return existing.get();
+        }
+        try {
+            return save(projectId, routeId, sourceNodeId, sourceAnswerId, claims, createdByRunId);
+        } catch (DuplicateKeyException race) {
+            return findBySourceAnswerId(sourceAnswerId)
+                    .orElseThrow(() -> race);
+        }
     }
 
     public List<AnswerPatch> findByRoute(UUID routeId) {

@@ -11,13 +11,16 @@ import com.specagent.patch.AnswerPatchRepository;
 import com.specagent.route.Route;
 import com.specagent.route.RouteLifecycleStatus;
 import com.specagent.route.RouteRepository;
+import com.specagent.route.RouteHistoryResolver;
 import com.specagent.spec.SourceKind;
 import com.specagent.spec.SourceReference;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * Deterministic guard that verifies every spec source reference points at a
@@ -35,15 +38,18 @@ public class SpecSourceReferenceGuard {
     private final NodeRepository nodeRepository;
     private final AnswerRepository answerRepository;
     private final AnswerPatchRepository answerPatchRepository;
+    private final RouteHistoryResolver routeHistoryResolver;
 
     public SpecSourceReferenceGuard(RouteRepository routeRepository,
                                     NodeRepository nodeRepository,
                                     AnswerRepository answerRepository,
-                                    AnswerPatchRepository answerPatchRepository) {
+                                    AnswerPatchRepository answerPatchRepository,
+                                    RouteHistoryResolver routeHistoryResolver) {
         this.routeRepository = routeRepository;
         this.nodeRepository = nodeRepository;
         this.answerRepository = answerRepository;
         this.answerPatchRepository = answerPatchRepository;
+        this.routeHistoryResolver = routeHistoryResolver;
     }
 
     public ReflectionResult validate(UUID projectId,
@@ -70,8 +76,24 @@ public class SpecSourceReferenceGuard {
             }
         }
 
+        // Answers inherited from the route this one branched off are part of
+        // THIS route's effective history (see {@code route_inherited_answers})
+        // and were frozen into the snapshot by the ContextBuilder, so the
+        // branch route may legitimately cite them. Ancestor answers the
+        // snapshot did NOT include stay rejected.
+        Set<UUID> citableInheritedAnswers = contextSnapshot == null ? Set.of()
+                : routeHistoryResolver.resolveEffectiveAnswers(routeId,
+                        contextSnapshot.includedNodeIds()).stream()
+                        .map(Answer::id)
+                        .collect(Collectors.toSet());
+        Set<UUID> citableInheritedPatches = citableInheritedAnswers.isEmpty() ? Set.of()
+                : answerPatchRepository.findBySourceAnswerIds(citableInheritedAnswers.stream().toList())
+                        .stream().map(AnswerPatch::id)
+                        .collect(Collectors.toSet());
+
         for (SourceReference ref : sourceRefs) {
-            validateRef(projectId, routeId, contextSnapshot, ref, errors);
+            validateRef(projectId, routeId, contextSnapshot, ref, errors,
+                    citableInheritedAnswers, citableInheritedPatches);
         }
 
         if (errors.isEmpty()) {
@@ -84,7 +106,9 @@ public class SpecSourceReferenceGuard {
                              UUID routeId,
                              ContextSnapshot contextSnapshot,
                              SourceReference ref,
-                             List<String> errors) {
+                             List<String> errors,
+                             Set<UUID> citableInheritedAnswers,
+                             Set<UUID> citableInheritedPatches) {
         if (contextSnapshot == null) {
             return;
         }
@@ -137,7 +161,12 @@ public class SpecSourceReferenceGuard {
                     if (!answer.projectId().equals(projectId)) {
                         errors.add("Answer source reference does not belong to project " + projectId);
                     }
-                    if (!answer.routeId().equals(routeId)) {
+                    // Route-local answers must belong to the current route;
+                    // inherited answers must be part of this route's effective
+                    // (branched-off) history. Both must be in the frozen
+                    // context, so a sibling or foreign route can never be cited.
+                    if (!answer.routeId().equals(routeId)
+                            && !citableInheritedAnswers.contains(ref.refId())) {
                         errors.add("Answer source reference does not belong to route " + routeId);
                     }
                     if (!contextSnapshot.includedAnswerIds().contains(ref.refId())) {
@@ -153,7 +182,8 @@ public class SpecSourceReferenceGuard {
                     if (!patch.projectId().equals(projectId)) {
                         errors.add("Patch source reference does not belong to project " + projectId);
                     }
-                    if (!patch.routeId().equals(routeId)) {
+                    if (!patch.routeId().equals(routeId)
+                            && !citableInheritedPatches.contains(ref.refId())) {
                         errors.add("Patch source reference does not belong to route " + routeId);
                     }
                     if (!contextSnapshot.includedPatchIds().contains(ref.refId())) {

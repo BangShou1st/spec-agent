@@ -7,7 +7,9 @@ refs; Java re-validates everything fail-closed anyway.
 """
 
 import json
+import logging
 import uuid
+from typing import Any
 
 from ..diagnostics import semantic_diagnostics
 from ..contracts.decisions import (
@@ -24,8 +26,35 @@ from ..model_client import ChatMessage, ModelClient
 from ..prompts import decision as decision_prompt
 
 
+logger = logging.getLogger("spec_agent_brain")
+
+# The one documented model deviation the parse layer normalizes: the model
+# occasionally hoists this field out of ``action`` to the top level of its own
+# JSON object, where the contract has no such field.
+TOP_LEVEL_SOURCE_REFS = "sourceRefs"
+
+
 class BrainContractError(RuntimeError):
     """Raised when a model output violates the brain's own output contract."""
+
+
+class UngroundedReferenceError(BrainContractError):
+    """The output cited a ref outside the frozen snapshot's allowed refs.
+
+    A distinct type because the Runtime reports it separately: an
+    out-of-range citation is the route/branch grounding gate doing its job,
+    not a malformed model response, and collapsing the two into one opaque
+    failure hides which side failed.
+    """
+
+
+class AmbiguousSourceRefsError(BrainContractError):
+    """The output carried two *different* sourceRefs lists.
+
+    The parse layer resolves only provably equivalent shapes. Two different
+    lists have no defined merge semantics, so they are rejected instead of
+    being silently overwritten or unioned.
+    """
 
 
 class ConflictSurfacingError(BrainContractError):
@@ -162,17 +191,132 @@ def _parse_model_output(content: str) -> ModelDecisionOutput:
         raw = json.loads(content)
     except json.JSONDecodeError as exc:
         raise BrainContractError("model output is not valid JSON") from exc
+    raw = _normalize_stray_source_refs(raw)
     try:
         return ModelDecisionOutput.model_validate(raw)
     except Exception as exc:  # pydantic ValidationError -> typed brain failure
-        raise BrainContractError(f"model output violates the DECISION contract: {exc}") from exc
+        raise BrainContractError(
+            "model output violates the DECISION contract: "
+            f"{exc} [{_output_layout(content)}]") from exc
+
+
+def _normalize_stray_source_refs(raw: Any) -> Any:
+    """Compatibility shim for exactly one documented DECISION deviation.
+
+    The model sometimes emits ``sourceRefs`` as a *top-level* field of its JSON
+    object instead of inside ``action``. Exactly two shapes are resolved, and
+    both are provably equivalent to the model having used the documented layout:
+
+    - the action *omits* the field and the top level carries a legal ref list:
+      the value is relocated into ``action.sourceRefs``, the field's only
+      defined home;
+    - both places carry the *same* legal ref list: the top-level copy is a pure
+      duplicate and is dropped.
+
+    Which shape applies is decided by key *presence*, never by truthiness: an
+    action that already defines the field is never treated as if it had omitted
+    it, so a present-but-illegal value (``null``, ``false``, ``0``, ``""``, a
+    non-string array) is never repaired by the top-level copy.
+
+    Everything else fails closed exactly as before:
+
+    - two *different* legal lists — including an empty action list against a
+      non-empty top level — have no defined merge semantics (neither
+      overwriting, nor unioning, nor preferring the longer one is acceptable) and
+      are rejected;
+    - an action field that is present but not a legal ref list is left untouched
+      for the strict contract to reject;
+    - any other unknown field is still rejected by the strict contract, and a
+      relocated list is not trusted — it still runs through the full schema, the
+      allowed-refs whitelist and every action/eligibility check downstream.
+
+    No ref is ever invented, dropped or rewritten, and unknown keys are never
+    stripped. If equivalence cannot be shown, the brain keeps rejecting.
+    """
+    if not isinstance(raw, dict) or TOP_LEVEL_SOURCE_REFS not in raw:
+        return raw
+    stray = raw[TOP_LEVEL_SOURCE_REFS]
+    action = raw.get("action")
+    if not _is_source_ref_list(stray) or not isinstance(action, dict):
+        # Not the documented shape: leave it for the strict contract to reject.
+        return raw
+    if TOP_LEVEL_SOURCE_REFS in action:
+        action_refs = action[TOP_LEVEL_SOURCE_REFS]
+        if _is_source_ref_list(action_refs):
+            if list(action_refs) == list(stray):
+                raw.pop(TOP_LEVEL_SOURCE_REFS)
+                logger.info(
+                    "DECISION dropped duplicate top-level sourceRefs (%d refs)", len(stray))
+                return raw
+            raise AmbiguousSourceRefsError(
+                "model output carries two different sourceRefs lists: "
+                f"action={_bounded_refs(action_refs)} topLevel={_bounded_refs(stray)}")
+        # The action defines the field with something that is not a ref list.
+        # That is an illegal value, not a missing one: never patch it with the
+        # top-level copy — the strict contract rejects it as it always did.
+        return raw
+    action[TOP_LEVEL_SOURCE_REFS] = list(stray)
+    raw.pop(TOP_LEVEL_SOURCE_REFS)
+    logger.info(
+        "DECISION relocated top-level sourceRefs into action (%d refs)", len(stray))
+    return raw
+
+
+def _is_source_ref_list(value: Any) -> bool:
+    """True only for a JSON array of strings — the declared ``List[str]`` shape."""
+    return isinstance(value, list) and all(isinstance(item, str) for item in value)
+
+
+def _output_layout(content: str) -> str:
+    """Bounded layout diagnostic for a rejected DECISION output.
+
+    Records only the key layout and the two sourceRefs lists — enough to prove
+    how the model misplaced the field and to reproduce the rejection offline —
+    never the rest of the model output, so user content does not leak into logs.
+    """
+    try:
+        raw = json.loads(content)
+    except json.JSONDecodeError:
+        return "layout=<not json>"
+    if not isinstance(raw, dict):
+        return f"layout=<{type(raw).__name__}>"
+    action = raw.get("action")
+    action_refs = action.get(TOP_LEVEL_SOURCE_REFS) if isinstance(action, dict) else None
+    return ("layout=keys(" + ",".join(sorted(str(key) for key in raw.keys())) + ")"
+            + " topLevelSourceRefs=" + _bounded_refs(raw.get(TOP_LEVEL_SOURCE_REFS))
+            + " actionSourceRefs=" + _bounded_refs(action_refs))
+
+
+# Diagnostics render model-emitted refs, which are model output: bound both the
+# number of entries and the characters, so a malformed output cannot stream an
+# unbounded payload into the log line or the typed error detail.
+REF_ENTRY_MAX_CHARS = 120
+REF_RENDER_MAX_CHARS = 400
+
+
+def _bounded_refs(value: Any) -> str:
+    """Bounded rendering of a refs value: at most five entries, capped length."""
+    if value is None:
+        return "<absent>"
+    if not isinstance(value, list):
+        return f"<{type(value).__name__}>"
+    head = json.dumps(
+        [_truncate(str(item), REF_ENTRY_MAX_CHARS) for item in value[:5]],
+        ensure_ascii=False)
+    if len(value) > 5:
+        head = f"{head}+{len(value) - 5}"
+    return _truncate(head, REF_RENDER_MAX_CHARS)
+
+
+def _truncate(text: str, limit: int) -> str:
+    return text if len(text) <= limit else text[:limit] + "..."
 
 
 def _check_source_refs(output: ModelDecisionOutput, request: AgentV2RequestEnvelope) -> None:
     allowed = set(request.snapshot.allowed_source_refs)
     for ref in output.action.source_refs:
         if ref not in allowed:
-            raise BrainContractError(
+            raise UngroundedReferenceError(
                 f"model referenced a source outside the allowed snapshot refs: {ref}")
 
 

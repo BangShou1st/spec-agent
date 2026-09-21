@@ -57,7 +57,7 @@ public class ApiExceptionHandler {
     @ExceptionHandler(ApiException.class)
     public ResponseEntity<ApiErrorResponse> handleApiException(ApiException ex) {
         return ResponseEntity.status(ex.status())
-                .body(ApiErrorResponse.of(ex.code(), ex.getMessage()));
+                .body(ApiErrorResponse.of(ex.code(), ex.getMessage(), ex.details()));
     }
 
     @ExceptionHandler(RequirementStateQueryException.class)

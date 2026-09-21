@@ -3,6 +3,7 @@ package com.specagent.agent.eligibility;
 import com.specagent.agent.contract.ActionProposal;
 import com.specagent.agent.contract.AgentContracts;
 import com.specagent.agent.contract.AgentRequestEnvelope;
+import com.specagent.agent.decision.DeterministicEngineFaultPlan;
 import com.specagent.agent.decision.LocalDeterministicDecisionEngine;
 import com.specagent.agent.decision.AgentBrainResponseValidator;
 import org.junit.jupiter.api.Test;
@@ -80,7 +81,8 @@ class ActionEligibilityGateTest {
         ActionEligibilityGate gate = gate(ActionEligibilityGate.Mode.ENFORCED);
         AgentRequestEnvelope prepared = gate.prepareDecisionRequest(request());
 
-        var response = new LocalDeterministicDecisionEngine().runDecision(prepared);
+        var response = new LocalDeterministicDecisionEngine(new DeterministicEngineFaultPlan())
+                .runDecision(prepared);
 
         assertThat(response.protocolVersion()).isEqualTo("agent-decision.v3");
         assertThat(response.selectedEligibilityBasisHash())

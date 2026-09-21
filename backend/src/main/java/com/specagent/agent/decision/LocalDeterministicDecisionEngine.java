@@ -34,8 +34,17 @@ import java.util.UUID;
 @ConditionalOnProperty(name = "spec.agent.brain.engine", havingValue = "fake")
 public class LocalDeterministicDecisionEngine implements AgentDecisionEngine {
 
+    private final DeterministicEngineFaultPlan faultPlan;
+
+    public LocalDeterministicDecisionEngine(DeterministicEngineFaultPlan faultPlan) {
+        this.faultPlan = faultPlan;
+    }
+
     @Override
     public AgentResponseEnvelope runStateUpdate(AgentRequestEnvelope request) {
+        // Declared test-only failure hook: inert unless the submitted answer
+        // text carries a directive (see DeterministicEngineFaultPlan).
+        faultPlan.failStateUpdateIfDirected(request);
         AgentResponseEnvelope response = new AgentResponseEnvelope(
                 AgentProtocol.DECISION_PROTOCOL_VERSION,
                 request.runId(),

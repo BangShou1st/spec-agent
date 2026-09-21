@@ -31,6 +31,10 @@ const ERROR_COPY: Record<string, string> = {
   ROUTE_NOT_ACTIVATABLE: '该路线已被更新的路线接替，无法切换为当前路线。请在画布上找到最新的待回答问题节点直接作答',
   NO_ACTIVE_TIP_NODE: '当前路线没有可回答的问题节点，无法生成规格。请先在路线末尾回答一个问题',
   ANSWER_ALREADY_FINALIZED: '该问题已有确认的回答，不能重复作答。可在节点详情中查看历史回答',
+  ANSWER_CONTENT_MISMATCH:
+    '该问题已保存过回答，本次提交的内容与之不同，不会被覆盖。可直接重试已保存的回答，或继续回答下一个问题',
+  ANSWER_CYCLE_INCOMPLETE:
+    '该问题已保存回答，但后续处理尚未完成，无法生成规格。请先重试该回答，再生成规格',
   AGENT_RUN_TARGET_STALE: '操作目标已过期：画布在此期间发生了变化。请刷新画布后针对最新的问题节点重试',
   AGENT_RUN_FAILED: '本次生成未完成。请查看对应节点的运行状态后重试',
   REGENERATE_TARGET_REQUIRED: '换一个问法需要指定来源路线和节点，请从具体问题节点的操作中发起',

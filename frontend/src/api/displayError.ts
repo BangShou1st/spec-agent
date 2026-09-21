@@ -8,11 +8,12 @@ export interface DisplayError {
   code: string
   message: string
   status?: number
+  details?: Record<string, string>
 }
 
 export function toDisplayError(err: unknown): DisplayError {
   if (err instanceof ApiError) {
-    return { code: err.code, message: err.message, status: err.status }
+    return { code: err.code, message: err.message, status: err.status, details: err.details }
   }
   return { code: 'UNKNOWN_ERROR', message: GENERIC_ERROR_MESSAGE }
 }

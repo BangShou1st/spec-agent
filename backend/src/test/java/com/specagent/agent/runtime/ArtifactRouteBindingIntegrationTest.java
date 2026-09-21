@@ -53,6 +53,8 @@ class ArtifactRouteBindingIntegrationTest {
     private com.specagent.spec.SpecSnapshotRepository specSnapshotRepository;
     @Autowired
     private com.specagent.answer.AnswerService answerService;
+    @Autowired
+    private com.specagent.patch.AnswerPatchService answerPatchService;
     @SpyBean
     private AgentDecisionEngine decisionEngine;
 
@@ -60,9 +62,18 @@ class ArtifactRouteBindingIntegrationTest {
         Project project = projectService.createProject("Route binding " + UUID.randomUUID());
         var root = nodeService.createRootNode(project.id(), project.activeRouteId(),
                 "Root?", null, List.of(), true);
-        // Fork requires a finalized answer at the branch point.
-        answerService.finalizeAnswer(project.id(), project.activeRouteId(), root.id(),
-                null, "seed answer", "user");
+        // Fork requires a finalized answer at the branch point. The seed answer
+        // carries its STATE_UPDATE checkpoint, because a route tip whose answer
+        // never completed its state update is refused by the artifact gate (see
+        // ArtifactGenerationAnswerGateIntegrationTest) — this fixture is about
+        // route binding, not about that gate.
+        var seedAnswer = answerService.finalizeAnswer(project.id(), project.activeRouteId(),
+                root.id(), null, "seed answer", "user");
+        answerPatchService.save(project.id(), project.activeRouteId(), root.id(),
+                seedAnswer.id(), List.of(new com.specagent.patch.Claim(null,
+                        com.specagent.patch.ClaimKind.fromCode("goal"), "seed claim",
+                        com.specagent.patch.ClaimStatus.fromCode("confirmed"), 0.9,
+                        root.id(), seedAnswer.id())), null);
         return project;
     }
 
@@ -131,7 +142,8 @@ class ArtifactRouteBindingIntegrationTest {
                 org.mockito.Mockito.mock(com.specagent.route.RouteRepository.class),
                 org.mockito.Mockito.mock(com.specagent.node.NodeRepository.class),
                 org.mockito.Mockito.mock(com.specagent.answer.AnswerRepository.class),
-                org.mockito.Mockito.mock(com.specagent.patch.AnswerPatchRepository.class));
+                org.mockito.Mockito.mock(com.specagent.patch.AnswerPatchRepository.class),
+                org.mockito.Mockito.mock(com.specagent.route.RouteHistoryResolver.class));
 
         UUID projectId = UUID.randomUUID();
         UUID routeA = UUID.randomUUID();

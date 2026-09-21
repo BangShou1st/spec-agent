@@ -59,6 +59,7 @@ public class DecisionCycleService {
     private final ProjectRepository projectRepository;
     private final RouteRepository routeRepository;
     private final ActionEligibilityGate actionEligibilityGate;
+    private final AnswerProcessingGate answerProcessingGate;
 
     public DecisionCycleService(AgentRunService agentRunService,
                                 AgentRunFailureService agentRunFailureService,
@@ -69,7 +70,8 @@ public class DecisionCycleService {
                                 AgentRunEventService eventService,
                                 ProjectRepository projectRepository,
                                 RouteRepository routeRepository,
-                                ActionEligibilityGate actionEligibilityGate) {
+                                ActionEligibilityGate actionEligibilityGate,
+                                AnswerProcessingGate answerProcessingGate) {
         this.agentRunService = agentRunService;
         this.agentRunFailureService = agentRunFailureService;
         this.contextBuilder = contextBuilder;
@@ -80,6 +82,7 @@ public class DecisionCycleService {
         this.projectRepository = projectRepository;
         this.routeRepository = routeRepository;
         this.actionEligibilityGate = actionEligibilityGate;
+        this.answerProcessingGate = answerProcessingGate;
     }
 
     /**
@@ -103,6 +106,17 @@ public class DecisionCycleService {
         boolean explicitRoute = explicitRouteId != null;
         String trace = "created";
         try {
+            // DRAFT_QUESTION advances the route tip. Re-check immediately
+            // before building/calling the model so a run queued while the
+            // answer was still complete cannot cross a newly visible missing
+            // STATE_UPDATE checkpoint.
+            answerProcessingGate.firstUnprocessedAnswer(route.id(), route.tipNodeId())
+                    .ifPresent(pending -> {
+                        throw new IncompleteAnswerCycleException(
+                                "Answer " + pending.id() + " on route "
+                                        + pending.routeId() + " has no processed state update",
+                                pending.id(), pending.routeId(), pending.nodeId());
+                    });
             trace = appendTrace(trace, "context_built");
             ContextSnapshot snapshot = explicitRoute
                     ? contextBuilder.buildForRoute(
@@ -183,9 +197,10 @@ public class DecisionCycleService {
         AgentRun latest = agentRunService.getRun(runId).orElse(null);
         if (latest != null && latest.status() != AgentRunStatus.FAILED
                 && latest.status() != AgentRunStatus.COMPLETED) {
-            agentRunFailureService.fail(runId, appendTrace(trace, "failed"));
+            String reason = RunFailureReasons.reasonCode(ex);
+            agentRunFailureService.fail(runId, appendTrace(trace, "failed:" + reason));
             eventService.append(runId, AgentRunPhase.FAILED, "RUN_FAILED",
-                    Map.of("reason", ex.getClass().getSimpleName()));
+                    RunFailureReasons.payload(ex));
         }
     }
 

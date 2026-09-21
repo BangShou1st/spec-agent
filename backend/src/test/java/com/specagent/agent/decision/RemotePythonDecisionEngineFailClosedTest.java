@@ -18,14 +18,19 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 /**
  * Fail-closed behavior of the remote Python decision engine: unknown protocol
  * versions, wrong run ids, invented source refs, and unreachable brains all
- * produce typed failures. No retry, no fallback.
+ * produce typed failures. No retry, no fallback. The failure *code* keeps the
+ * causes apart: a malformed model output and an out-of-range citation are not
+ * "the brain is down", and a slow brain is not an unreachable one.
  */
 class RemotePythonDecisionEngineFailClosedTest {
 
@@ -35,11 +40,15 @@ class RemotePythonDecisionEngineFailClosedTest {
     private RemotePythonDecisionEngine engine;
     private final AtomicReference<String> responseBody = new AtomicReference<>("{}");
     private final AtomicReference<Integer> status = new AtomicReference<>(200);
+    private final AtomicReference<Long> latencyMillis = new AtomicReference<>(0L);
+    private final AtomicInteger requests = new AtomicInteger();
 
     @BeforeEach
     void startStubBrain() throws IOException {
         server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
         server.createContext("/v1/decisions", exchange -> {
+            requests.incrementAndGet();
+            sleepIfSlow();
             byte[] body = responseBody.get().getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "application/json");
             exchange.sendResponseHeaders(status.get(), body.length);
@@ -55,6 +64,18 @@ class RemotePythonDecisionEngineFailClosedTest {
         engine = new RemotePythonDecisionEngine(properties);
     }
 
+    private void sleepIfSlow() {
+        long latency = latencyMillis.get();
+        if (latency <= 0) {
+            return;
+        }
+        try {
+            Thread.sleep(latency);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
     @AfterEach
     void stopStubBrain() {
         server.stop(0);
@@ -64,6 +85,14 @@ class RemotePythonDecisionEngineFailClosedTest {
         return AgentContracts.read(
                 Files.readString(FIXTURES.resolve("agent-input-valid.json")),
                 AgentRequestEnvelope.class);
+    }
+
+    private BrainFailureCode failureCodeOf(String body, int httpStatus) throws Exception {
+        status.set(httpStatus);
+        responseBody.set(body);
+        Throwable failure = catchThrowable(() -> engine.runDecision(request()));
+        assertThat(failure).isInstanceOf(AgentBrainUnavailableException.class);
+        return ((AgentBrainUnavailableException) failure).failureCode();
     }
 
     @Test
@@ -112,17 +141,69 @@ class RemotePythonDecisionEngineFailClosedTest {
         properties.setConnectTimeoutMs(200);
         properties.setReadTimeoutSeconds(1);
         RemotePythonDecisionEngine isolated = new RemotePythonDecisionEngine(properties);
-        assertThatThrownBy(() -> isolated.runDecision(request()))
-                .isInstanceOf(AgentBrainUnavailableException.class);
+        Throwable failure = catchThrowable(() -> isolated.runDecision(request()));
+
+        assertThat(failure).isInstanceOf(AgentBrainUnavailableException.class);
+        assertThat(((AgentBrainUnavailableException) failure).failureCode())
+                .isEqualTo(BrainFailureCode.BRAIN_UNAVAILABLE);
     }
 
     @Test
     void providerUnavailableResponseBecomesExplicitRemoteFailure() throws Exception {
-        status.set(502);
-        responseBody.set("{\"error\":\"provider unavailable\"}");
+        // An untyped 5xx keeps the historical opaque code: the engine only
+        // classifies a cause the brain actually named.
+        assertThat(failureCodeOf("{\"error\":\"provider unavailable\"}", 502))
+                .isEqualTo(BrainFailureCode.BRAIN_UNAVAILABLE);
+    }
 
-        assertThatThrownBy(() -> engine.runDecision(request()))
-                .isInstanceOf(AgentBrainUnavailableException.class);
+    @Test
+    void modelOutputContractViolationIsClassifiedAndNeverRetried() throws Exception {
+        assertThat(failureCodeOf("{\"detail\":\"brain_failure:BrainContractError\"}", 502))
+                .isEqualTo(BrainFailureCode.MODEL_CONTRACT_VIOLATION);
+        // A deterministic contract violation is never retried by the engine.
+        assertThat(requests.get()).isEqualTo(1);
+    }
+
+    @Test
+    void ambiguousSourceRefsIsAlsoAContractViolation() throws Exception {
+        assertThat(failureCodeOf("{\"detail\":\"brain_failure:AmbiguousSourceRefsError\"}", 502))
+                .isEqualTo(BrainFailureCode.MODEL_CONTRACT_VIOLATION);
+    }
+
+    @Test
+    void ungroundedReferenceIsClassifiedSeparatelyFromAMalformedOutput() throws Exception {
+        assertThat(failureCodeOf("{\"detail\":\"brain_failure:UngroundedReferenceError\"}", 502))
+                .isEqualTo(BrainFailureCode.MODEL_UNGROUNDED_REFERENCE);
+    }
+
+    @Test
+    void artifactUngroundedReferenceIsClassifiedToo() throws Exception {
+        assertThat(failureCodeOf("{\"detail\":\"brain_failure:UngroundedReferenceError\"}", 502))
+                .isEqualTo(BrainFailureCode.MODEL_UNGROUNDED_REFERENCE);
+    }
+
+    @Test
+    void providerCallFailureInsideTheBrainIsItsOwnCode() throws Exception {
+        assertThat(failureCodeOf("{\"detail\":\"brain_failure:ModelClientError\"}", 502))
+                .isEqualTo(BrainFailureCode.MODEL_PROVIDER_FAILURE);
+    }
+
+    @Test
+    void slowBrainIsReportedAsATimeoutNotAsAnUnreachableBrain() throws Exception {
+        AgentBrainProperties properties = new AgentBrainProperties();
+        properties.setBaseUrl("http://localhost:" + server.getAddress().getPort());
+        properties.setInternalSecret("test-secret");
+        properties.setConnectTimeoutMs(500);
+        properties.setReadTimeoutSeconds(1);
+        RemotePythonDecisionEngine impatient = new RemotePythonDecisionEngine(properties);
+        latencyMillis.set(5_000L);
+        responseBody.set(Files.readString(FIXTURES.resolve("decision-response-valid.json")));
+
+        Throwable failure = catchThrowable(() -> impatient.runDecision(request()));
+
+        assertThat(failure).isInstanceOf(AgentBrainUnavailableException.class);
+        assertThat(((AgentBrainUnavailableException) failure).failureCode())
+                .isEqualTo(BrainFailureCode.BRAIN_TIMEOUT);
     }
 
     @Test
@@ -133,5 +214,39 @@ class RemotePythonDecisionEngineFailClosedTest {
         assertThatThrownBy(() -> engine.runDecision(request()))
                 .isInstanceOf(ActionIneligibleException.class)
                 .hasMessageContaining("ACTION_INELIGIBLE");
+    }
+
+    @Test
+    void brainFailureDetailClassificationIsExplicit() {
+        assertThat(RemotePythonDecisionEngine.classifyBrainFailureDetail(
+                "{\"detail\":\"brain_failure:BrainContractError\"}"))
+                .isEqualTo(BrainFailureCode.MODEL_CONTRACT_VIOLATION);
+        assertThat(RemotePythonDecisionEngine.classifyBrainFailureDetail(
+                "{\"detail\":\"brain_failure:ArtifactBrainContractError\"}"))
+                .isEqualTo(BrainFailureCode.MODEL_CONTRACT_VIOLATION);
+        assertThat(RemotePythonDecisionEngine.classifyBrainFailureDetail(
+                "{\"detail\":\"brain_failure:UngroundedReferenceError\"}"))
+                .isEqualTo(BrainFailureCode.MODEL_UNGROUNDED_REFERENCE);
+        assertThat(RemotePythonDecisionEngine.classifyBrainFailureDetail(
+                "{\"detail\":\"brain_failure:ModelClientError\"}"))
+                .isEqualTo(BrainFailureCode.MODEL_PROVIDER_FAILURE);
+        assertThat(RemotePythonDecisionEngine.classifyBrainFailureDetail(
+                "{\"detail\":\"brain_failure:BrokerTimeoutError\"}"))
+                .isEqualTo(BrainFailureCode.BRAIN_TIMEOUT);
+        assertThat(RemotePythonDecisionEngine.classifyBrainFailureDetail(
+                "{\"detail\":\"brain_failure:ActionIneligibleBrainError\"}"))
+                .isEqualTo(BrainFailureCode.BRAIN_UNAVAILABLE);
+        assertThat(RemotePythonDecisionEngine.classifyBrainFailureDetail(null))
+                .isEqualTo(BrainFailureCode.BRAIN_UNAVAILABLE);
+        assertThat(RemotePythonDecisionEngine.classifyBrainFailureDetail("{} "))
+                .isEqualTo(BrainFailureCode.BRAIN_UNAVAILABLE);
+    }
+
+    @Test
+    void brokerTimeoutCallIsReportedAsATimeoutNotAsProviderFailure() throws Exception {
+        // A broker timeout from the brain must map to BRAIN_TIMEOUT, not
+        // MODEL_PROVIDER_FAILURE, so the user sees the right diagnosis.
+        assertThat(failureCodeOf("{\"detail\":\"brain_failure:BrokerTimeoutError\"}", 502))
+                .isEqualTo(BrainFailureCode.BRAIN_TIMEOUT);
     }
 }

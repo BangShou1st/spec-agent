@@ -41,6 +41,10 @@ export interface RecoveryPresentationInput {
   errorCode?: string | null
   /** 需要前往模型设置时，前端仍走普通错误条，不进恢复提示。 */
   requiresModelSettings?: boolean
+  historicalAnswerRecovery?: {
+    routeLabel: string
+    question: string
+  } | null
 }
 
 const POLICY_BLOCKED_CODES = new Set([
@@ -63,6 +67,15 @@ export function recoveryNoticeFromState(input: RecoveryPresentationInput): Recov
       message: '为了避免重复操作，请先同步最新状态',
       action: 'reconcile-answer',
       actionLabel: '同步状态',
+    }
+  }
+  if (input.historicalAnswerRecovery) {
+    return {
+      kind: 'saved',
+      title: '历史回答需要恢复',
+      message: `回答“${input.historicalAnswerRecovery.question}”已保存在路线“${input.historicalAnswerRecovery.routeLabel}”，请先恢复该回答，再生成规格`,
+      action: 'resume-answer',
+      actionLabel: '恢复该回答',
     }
   }
   if (input.repairableAnswerId) {

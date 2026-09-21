@@ -54,6 +54,35 @@ function removeAnswerSession(store: AnswerRunSlice, session: AnswerRunSessionSta
   if (index >= 0) store.answerRunSessions.splice(index, 1)
 }
 
+/**
+ * A successful recovery supersedes only stale sessions for the exact answer
+ * target. Other answers/routes remain visible, and a separate run that is
+ * still in flight is never cancelled by another run's terminal observation.
+ */
+function removeCompletedAnswerRecoverySessions(
+  store: AnswerRunSlice,
+  target: AnswerRunSessionState,
+  answerId: string | null,
+): void {
+  const targetRouteId = target.routeId ?? null
+  for (let index = store.answerRunSessions.length - 1; index >= 0; index -= 1) {
+    const candidate = store.answerRunSessions[index]
+    if (candidate === target) {
+      store.answerRunSessions.splice(index, 1)
+      continue
+    }
+    if (!answerId
+      || candidate.status === 'RUNNING'
+      || candidate.projectId !== target.projectId
+      || (candidate.routeId ?? null) !== targetRouteId
+      || candidate.nodeId !== target.nodeId
+      || candidate.repairableAnswerId !== answerId) {
+      continue
+    }
+    store.answerRunSessions.splice(index, 1)
+  }
+}
+
 /** Live tip of one explicit route, read from the canonical graph. Never the
  * Active pointer: under multi-route work it may name a different route. */
 function routeTipOf(store: AnswerRunSlice, routeId: string | null): string | null {
@@ -83,6 +112,24 @@ function findFinalizedAnswerForSession(
     && answer.inherited === false
     && answer.ownerRouteId === routeId,
   )?.id ?? null
+}
+
+function historicalRecoveryAnswerId(
+  store: AnswerRunSlice,
+  session: AnswerRunSessionState,
+): string | null {
+  return findFinalizedAnswerForSession(store, session)
+    ?? (session.historicalRecovery ? session.repairableAnswerId : null)
+}
+
+function retainHistoricalRecovery(
+  store: AnswerRunSlice,
+  session: AnswerRunSessionState,
+  answerId: string | null,
+): void {
+  if (answerId) session.repairableAnswerId = answerId
+  session.status = 'REPAIRABLE'
+  store.feedback = '历史回答恢复未完成，请重试恢复'
 }
 
 export function updatePendingRouteProjectionAction(store: AnswerRunSlice, view: AgentRunView): void {
@@ -635,6 +682,13 @@ export async function pollAnswerRunAction(store: AnswerRunSlice, runId: string):
         continue
       }
       if (view.continuationPending) continue
+      if (session.historicalRecovery && !view.producedPatchId) {
+        // A historical checkpoint is successful only when the terminal run
+        // reports the Patch it was meant to recover. A completed status alone
+        // must not erase the retry affordance.
+        await store.reconcileFailedAnswerRun(session)
+        return
+      }
       await store.finishSuccessfulAnswerRun(view, session)
       return
     } catch {
@@ -667,6 +721,10 @@ export async function finishSuccessfulAnswerRunAction(
   // Session guard BEFORE the first write: if the project already switched,
   // this terminal leaf must not write its feedback into the new era.
   if (!isSessionTracked(store, target)) return
+  if (target.historicalRecovery && !view.producedPatchId) {
+    retainHistoricalRecovery(store, target, historicalRecoveryAnswerId(store, target))
+    return
+  }
   store.feedback = leafMessage ?? '回答已记录'
   await store.refreshWorkspace()
   if (!isSessionTracked(store, target)) return
@@ -683,7 +741,11 @@ export async function finishSuccessfulAnswerRunAction(
       store.manualModelRetry = null
     }
   }
-  removeAnswerSession(store, target)
+  removeCompletedAnswerRecoverySessions(
+    store,
+    target,
+    view.producedAnswerId ?? historicalRecoveryAnswerId(store, target),
+  )
   useInputDraftStore().clearDraft(
     target.projectId,
     target.nodeId,
@@ -708,9 +770,11 @@ export async function reconcileFailedAnswerRunAction(
     target.status = 'UNKNOWN'
     return
   }
-  const answerId = findFinalizedAnswerForSession(store, target)
+  const answerId = historicalRecoveryAnswerId(store, target)
   if (answerId) {
-    if (routeTipOf(store, target.routeId) === target.nodeId) {
+    if (target.historicalRecovery) {
+      retainHistoricalRecovery(store, target, answerId)
+    } else if (routeTipOf(store, target.routeId) === target.nodeId) {
       target.status = 'REPAIRABLE'
       target.repairableAnswerId = answerId
       store.feedback = '回答已保存，后续生成未完成'
@@ -720,6 +784,8 @@ export async function reconcileFailedAnswerRunAction(
       removeAnswerSession(store, target)
       store.feedback = '回答已记录'
     }
+  } else if (target.historicalRecovery) {
+    target.status = 'UNKNOWN'
   } else {
     target.status = 'RESUBMITTABLE'
   }
@@ -744,9 +810,11 @@ export async function reconcileUnknownAnswerOutcomeAction(
     target.status = 'UNKNOWN'
     return
   }
-  const answerId = findFinalizedAnswerForSession(store, target)
+  const answerId = historicalRecoveryAnswerId(store, target)
   if (answerId) {
-    if (routeTipOf(store, target.routeId) === target.nodeId) {
+    if (target.historicalRecovery) {
+      retainHistoricalRecovery(store, target, answerId)
+    } else if (routeTipOf(store, target.routeId) === target.nodeId) {
       target.status = 'REPAIRABLE'
       target.repairableAnswerId = answerId
       store.feedback = '回答已保存，后续生成未完成'
@@ -780,9 +848,11 @@ export async function reconcileAnswerOutcomeAction(store: AnswerRunSlice): Promi
     store.error = previousError
     return false
   }
-  const answerId = findFinalizedAnswerForSession(store, session)
+  const answerId = historicalRecoveryAnswerId(store, session)
   if (answerId) {
-    if (routeTipOf(store, session.routeId) === session.nodeId) {
+    if (session.historicalRecovery) {
+      retainHistoricalRecovery(store, session, answerId)
+    } else if (routeTipOf(store, session.routeId) === session.nodeId) {
       session.status = 'REPAIRABLE'
       session.repairableAnswerId = answerId
       store.feedback = '回答已保存，后续生成未完成'
@@ -790,6 +860,8 @@ export async function reconcileAnswerOutcomeAction(store: AnswerRunSlice): Promi
       removeAnswerSession(store, session)
       store.feedback = '回答已记录'
     }
+  } else if (session.historicalRecovery) {
+    session.status = 'UNKNOWN'
   } else {
     session.repairableAnswerId = null
     session.status = 'RESUBMITTABLE'
@@ -808,32 +880,40 @@ export async function reconcileAnswerOutcomeAction(store: AnswerRunSlice): Promi
 export async function repairAnswerForActiveFlowAction(
   store: AnswerRunSlice,
   answerId: string,
+  recoveryRouteId?: string | null,
+  recoveryNodeId?: string | null,
 ): Promise<boolean> {
   if (!store.projectId || store.repairingAnswer || store.routeCommandPending) return false
   const projectId = store.projectId
   const projectSessionId = store.projectSessionId
   const isCurrent = (): boolean =>
     store.projectSessionId === projectSessionId && store.projectId === projectId
+  const historicalRecovery = recoveryRouteId != null || recoveryNodeId != null
   store.repairingAnswer = true
   store.error = null
   const session = reactive<AnswerRunSessionState>({
     clientRequestId: crypto.randomUUID(),
     projectId,
-    routeId: store.activeState?.activeRoute?.id ?? null,
-    nodeId: store.activeState?.activeRoute?.tipNodeId ?? '',
+    routeId: recoveryRouteId ?? store.activeState?.activeRoute?.id ?? null,
+    nodeId: recoveryNodeId ?? store.activeState?.activeRoute?.tipNodeId ?? '',
     payload: { freeText: null, selectedOptionId: null },
     runId: null,
     phase: null,
     runStatus: 'PENDING',
     status: 'RUNNING',
-    repairableAnswerId: null,
+    repairableAnswerId: historicalRecovery ? answerId : null,
+    historicalRecovery,
   })
   store.answerRunSessions.push(session)
   try {
+    const sourceRouteId = session.routeId !== store.activeState?.activeRoute?.id
+      ? session.routeId
+      : null
     const run = await createAgentRun(projectId, {
       operation: 'RESUME_ANSWER',
       nodeId: session.nodeId || null,
       answerId,
+      ...(sourceRouteId ? { sourceRouteId } : {}),
     })
     if (!isSessionTracked(store, session)) return false
     session.runId = run.runId
@@ -850,13 +930,39 @@ export async function repairAnswerForActiveFlowAction(
         GENERIC_ERROR_MESSAGE, 'UNKNOWN_ERROR', 0))
       return false
     }
+    if (isSessionTracked(store, session)
+      && (session.status === 'REPAIRABLE' || session.status === 'RESUBMITTABLE')) {
+      return false
+    }
     if (isCurrent()) {
       store.feedback = '已重新请求后续生成'
     }
     return true
   } catch (err) {
     const safeError = toDisplayError(err)
-    const reconciled = await store.refreshWorkspace()
+    let reconciled = false
+    try {
+      reconciled = await store.refreshWorkspace()
+    } catch {
+      // The command outcome is now unknown; preserve the historical target
+      // until a later explicit reconciliation can establish the checkpoint.
+      reconciled = false
+    }
+    if (isSessionTracked(store, session) && historicalRecovery) {
+      if (!reconciled) {
+        session.status = 'UNKNOWN'
+      } else {
+        retainHistoricalRecovery(
+          store,
+          session,
+          historicalRecoveryAnswerId(store, session),
+        )
+      }
+      if (isCurrent()) {
+        store.error = safeError
+      }
+      return false
+    }
     if (isSessionTracked(store, session) && reconciled) {
       // The answer still needs repair; refresh the canonical checkpoint.
       store.canonicalRepairableAnswerId = store.findFinalizedAnswerForActiveTip()

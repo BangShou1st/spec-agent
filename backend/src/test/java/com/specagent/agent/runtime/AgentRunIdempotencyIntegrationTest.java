@@ -2,6 +2,7 @@ package com.specagent.agent.runtime;
 
 import com.specagent.answer.AnswerService;
 import com.specagent.node.NodeService;
+import com.specagent.patch.AnswerPatchService;
 import com.specagent.project.Project;
 import com.specagent.project.ProjectService;
 import com.specagent.route.RouteService;
@@ -39,6 +40,7 @@ class AgentRunIdempotencyIntegrationTest {
     @Autowired private NodeService nodeService;
     @Autowired private AnswerService answerService;
     @Autowired private RouteService routeService;
+    @Autowired private AnswerPatchService answerPatchService;
     @Autowired private JdbcTemplate jdbcTemplate;
 
     private String key(String label) { return "idem-" + label + "-" + UUID.randomUUID(); }
@@ -103,8 +105,10 @@ class AgentRunIdempotencyIntegrationTest {
 
         // Once the tip question is answered the draft is accepted; the idempotent
         // replay must still return the original run even though the tip moved.
-        answerService.finalizeAnswer(project.id(), project.activeRouteId(), root.id(), null,
+        var answer = answerService.finalizeAnswer(project.id(), project.activeRouteId(), root.id(), null,
                 "answered before drafting", "test-user");
+        answerPatchService.save(project.id(), project.activeRouteId(), root.id(),
+                answer.id(), List.of(), null);
         UUID first = createRunViaHttp(project.id(), sharedKey, "DRAFT_QUESTION", null, null, null);
         nodeService.createChildNode(project.id(), project.activeRouteId(), root.id(), "Changed tip?", null, List.of(), true);
         UUID replayed = createRunViaHttp(project.id(), sharedKey, "DRAFT_QUESTION", null, null, null);

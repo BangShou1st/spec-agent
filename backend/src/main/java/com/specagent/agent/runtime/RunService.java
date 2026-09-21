@@ -530,6 +530,7 @@ public class RunService {
 
     public Optional<AgentRun> claimNext() { return agentRunRepository.claimNextDecisionCycleRun(); }
     public Optional<AgentRun> claimNextArtifact() { return agentRunRepository.claimNextArtifactRun(); }
+    public Optional<AgentRun> claimArtifactRun(UUID runId) { return agentRunRepository.claimArtifactRun(runId); }
     public Optional<AgentRun> claimNextRegenerate() { return agentRunRepository.claimNextRegenerateRun(); }
     public Optional<AgentRun> claimDecisionCycleRun(UUID runId) { return agentRunRepository.claimDecisionCycleRun(runId); }
     public Optional<AgentRun> claimNextAnswerCycle() { return agentRunRepository.claimNextAnswerCycleRun(); }

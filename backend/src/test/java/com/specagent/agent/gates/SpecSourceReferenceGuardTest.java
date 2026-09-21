@@ -9,6 +9,8 @@ import com.specagent.node.NodeRepository;
 import com.specagent.patch.AnswerPatch;
 import com.specagent.patch.AnswerPatchRepository;
 import com.specagent.route.Route;
+import com.specagent.route.RouteHistoryResolver;
+import com.specagent.route.RouteInheritedAnswer;
 import com.specagent.route.RouteLifecycleStatus;
 import com.specagent.route.RouteRepository;
 import com.specagent.spec.SourceKind;
@@ -30,8 +32,10 @@ class SpecSourceReferenceGuardTest {
     private final NodeRepository nodeRepository = mock(NodeRepository.class);
     private final AnswerRepository answerRepository = mock(AnswerRepository.class);
     private final AnswerPatchRepository answerPatchRepository = mock(AnswerPatchRepository.class);
+    private final RouteHistoryResolver routeHistoryResolver = mock(RouteHistoryResolver.class);
     private final SpecSourceReferenceGuard guard = new SpecSourceReferenceGuard(
-            routeRepository, nodeRepository, answerRepository, answerPatchRepository);
+            routeRepository, nodeRepository, answerRepository, answerPatchRepository,
+            routeHistoryResolver);
 
     private final UUID projectId = UUID.randomUUID();
     private final UUID routeId = UUID.randomUUID();
@@ -140,5 +144,93 @@ class SpecSourceReferenceGuardTest {
         assertThat(result.accepted()).isFalse();
         assertThat(result.errors())
                 .anyMatch(e -> e.contains("does not belong to project"));
+    }
+
+    /**
+     * A branch route's spec may cite the answers it inherited from the route it
+     * forked off: the ContextBuilder freezes those answers into the branch's
+     * snapshot (via {@code route_inherited_answers}), so rejecting them made
+     * every spec on a forked route fail deterministically.
+     */
+    @Test
+    void acceptsInheritedAnswerFromTheForkedOffRoute() {
+        UUID ownerRouteId = UUID.randomUUID();
+        UUID inheritedAnswerId = UUID.randomUUID();
+        Answer inherited = new Answer(inheritedAnswerId, projectId, ownerRouteId,
+                nodeId, null, "inherited answer", "user", now);
+        when(answerRepository.findById(inheritedAnswerId)).thenReturn(Optional.of(inherited));
+        when(routeHistoryResolver.resolveEffectiveAnswers(routeId, List.of(nodeId)))
+                .thenReturn(List.of(inherited));
+        ContextSnapshot snapshot = contextSnapshot(List.of(inheritedAnswerId), List.of());
+
+        ReflectionResult result = guard.validate(projectId, routeId, snapshot,
+                List.of(SourceReference.of(SourceKind.ANSWER, inheritedAnswerId)));
+
+        assertThat(result.accepted()).isTrue();
+    }
+
+    /** An inherited answer the snapshot did NOT include is still rejected. */
+    @Test
+    void rejectsInheritedAnswerThatIsNotInTheFrozenContext() {
+        UUID ownerRouteId = UUID.randomUUID();
+        UUID foreignAnswerId = UUID.randomUUID();
+        Answer foreign = new Answer(foreignAnswerId, projectId, ownerRouteId,
+                nodeId, null, "foreign answer", "user", now);
+        when(answerRepository.findById(foreignAnswerId)).thenReturn(Optional.of(foreign));
+        when(routeHistoryResolver.resolveEffectiveAnswers(routeId, List.of(nodeId)))
+                .thenReturn(List.of());
+        ContextSnapshot snapshot = contextSnapshot(List.of(), List.of());
+
+        ReflectionResult result = guard.validate(projectId, routeId, snapshot,
+                List.of(SourceReference.of(SourceKind.ANSWER, foreignAnswerId)));
+
+        assertThat(result.accepted()).isFalse();
+        assertThat(result.errors())
+                .anyMatch(e -> e.contains("does not belong to route"))
+                .anyMatch(e -> e.contains("not in the run context"));
+    }
+
+    @Test
+    void acceptsInheritedPatchFromTheForkedOffRoute() {
+        UUID ownerRouteId = UUID.randomUUID();
+        UUID inheritedAnswerId = UUID.randomUUID();
+        UUID inheritedPatchId = UUID.randomUUID();
+        Answer inherited = new Answer(inheritedAnswerId, projectId, ownerRouteId,
+                nodeId, null, "inherited answer", "user", now);
+        AnswerPatch inheritedPatch = new AnswerPatch(inheritedPatchId, projectId,
+                ownerRouteId, nodeId, inheritedAnswerId,
+                List.of(), null, now);
+        when(answerPatchRepository.findById(inheritedPatchId))
+                .thenReturn(Optional.of(inheritedPatch));
+        when(routeHistoryResolver.resolveEffectiveAnswers(routeId, List.of(nodeId)))
+                .thenReturn(List.of(inherited));
+        when(answerPatchRepository.findBySourceAnswerIds(List.of(inheritedAnswerId)))
+                .thenReturn(List.of(inheritedPatch));
+        ContextSnapshot snapshot = contextSnapshot(List.of(inheritedAnswerId),
+                List.of(inheritedPatchId));
+
+        ReflectionResult result = guard.validate(projectId, routeId, snapshot,
+                List.of(SourceReference.of(SourceKind.PATCH, inheritedPatchId)));
+
+        assertThat(result.accepted()).isTrue();
+    }
+
+    /** A sibling route's answer (same project, not on this route's history) is rejected. */
+    @Test
+    void rejectsSiblingRouteAnswerEvenIfProjectMatches() {
+        UUID siblingRouteId = UUID.randomUUID();
+        when(routeHistoryResolver.resolveEffectiveAnswers(routeId, List.of(nodeId)))
+                .thenReturn(List.of());
+        Answer sibling = new Answer(answerId, projectId, siblingRouteId,
+                nodeId, null, "sibling answer", "user", now);
+        when(answerRepository.findById(answerId)).thenReturn(Optional.of(sibling));
+        ContextSnapshot snapshot = contextSnapshot(List.of(), List.of());
+
+        ReflectionResult result = guard.validate(projectId, routeId, snapshot,
+                List.of(SourceReference.of(SourceKind.ANSWER, answerId)));
+
+        assertThat(result.accepted()).isFalse();
+        assertThat(result.errors())
+                .anyMatch(e -> e.contains("does not belong to route"));
     }
 }

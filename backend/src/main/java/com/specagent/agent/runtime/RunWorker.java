@@ -7,7 +7,6 @@ import com.specagent.agent.AgentRunStatus;
 import com.specagent.agent.AgentRunTriggerType;
 import com.specagent.agent.ModelContractException;
 import com.specagent.agent.contract.AgentEvent;
-import com.specagent.agent.decision.AgentBrainUnavailableException;
 import com.specagent.agent.loop.ContinuationDispatchService;
 import com.specagent.agent.runevent.AgentRunEvent;
 import com.specagent.agent.runevent.AgentRunEventService;
@@ -204,14 +203,20 @@ public class RunWorker {
                     : null;
             UUID explicitRouteId = "EXPLICIT".equals(input.get("routeSelection")) ? run.routeId() : null;
 
+            AnswerCycleResult result;
             if ("RESUME_ANSWER".equals(operation) && answerId != null) {
-                answerCycleService.resumeAnswer(run, run.projectId(), answerId, persistenceIntent,
-                        explicitRouteId);
+                result = answerCycleService.resumeAnswer(run, run.projectId(), answerId,
+                        persistenceIntent, explicitRouteId);
             } else {
-                answerCycleService.submitAnswer(run, run.projectId(), selectedOptionIds, freeText,
+                result = answerCycleService.submitAnswer(run, run.projectId(), selectedOptionIds, freeText,
                         persistenceIntent, explicitRouteId);
             }
-            evaluateContinuationAfterTerminal(runId);
+            // Historical checkpoint recovery deliberately produces no new
+            // graph fact. Do not create an autonomous continuation after a
+            // recovery-only run; the route already contains the later tip.
+            if (!"historical_recovery".equals(result.status())) {
+                evaluateContinuationAfterTerminal(runId);
+            }
         } catch (RuntimeException ex) {
             failIfNotTerminal(runId, ex);
             throw ex;
@@ -334,20 +339,19 @@ public class RunWorker {
     }
 
     private void failIfNotTerminal(UUID runId, RuntimeException ex) {
-        String step = failureStepFor(ex);
-        LOG.warn("Agent run {} failed: {}", runId, step);
+        String reason = failureStepFor(ex);
+        LOG.warn("Agent run {} failed: {}", runId, reason);
         AgentRun latest = agentRunService.getRun(runId).orElse(null);
         if (latest != null && latest.status() != AgentRunStatus.FAILED
                 && latest.status() != AgentRunStatus.COMPLETED) {
-            agentRunFailureService.fail(runId, "failed:" + step);
-            eventService.append(runId, AgentRunPhase.FAILED, "RUN_FAILED", Map.of("reason", step));
+            agentRunFailureService.fail(runId, "failed:" + reason);
+            eventService.append(runId, AgentRunPhase.FAILED, "RUN_FAILED",
+                    RunFailureReasons.payload(reason));
         }
     }
 
+    /** Stable failure code for a run that never reached a terminal state. */
     private String failureStepFor(RuntimeException ex) {
-        if (ex instanceof AgentBrainUnavailableException) {
-            return "brain_unavailable";
-        }
-        return ex.getClass().getSimpleName();
+        return RunFailureReasons.reasonCode(ex);
     }
 }

@@ -421,6 +421,22 @@ public class AgentRunRepository {
         return claimNextByTrigger(AgentRunTriggerType.GENERATE_SPEC);
     }
 
+    /** Atomically claims one specific queued artifact-generation run by id. */
+    public Optional<AgentRun> claimArtifactRun(UUID runId) {
+        String sql = """
+                UPDATE agent_runs SET status = :running
+                WHERE id = CAST(:id AS uuid)
+                  AND trigger_type = :trigger AND status = :created
+                RETURNING *
+                """;
+        return jdbcTemplate.query(sql, Maps.of(
+                        "running", AgentRunStatus.RUNNING.code(),
+                        "id", runId.toString(),
+                        "trigger", AgentRunTriggerType.GENERATE_SPEC.code(),
+                        "created", AgentRunStatus.CREATED.code()),
+                rowMapper).stream().findFirst();
+    }
+
     /** Atomically claims the oldest queued autonomous continuation run. */
     public Optional<AgentRun> claimNextContinueRun() {
         return claimNextByTrigger(AgentRunTriggerType.CONTINUE_CYCLE);

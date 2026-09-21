@@ -51,6 +51,29 @@ describe('api client', () => {
     expect(err.status).toBe(404)
   })
 
+  it('preserves bounded recovery identity details without exposing raw payloads', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse(
+          {
+            code: 'ANSWER_CYCLE_INCOMPLETE',
+            message: '请先恢复未完成回答',
+            details: {
+              answerId: 'a1',
+              routeId: 'r-source',
+              nodeId: 'n-root',
+            },
+          },
+          409,
+        ),
+      ),
+    )
+    const err = (await apiClient.get('/x').catch((e: unknown) => e)) as ApiError
+    expect(err.details).toEqual({ answerId: 'a1', routeId: 'r-source', nodeId: 'n-root' })
+    expect(err.message).toBe('请先恢复未完成回答')
+  })
+
   it('falls back to the generic message when the body is an HTML error page', async () => {
     vi.stubGlobal(
       'fetch',

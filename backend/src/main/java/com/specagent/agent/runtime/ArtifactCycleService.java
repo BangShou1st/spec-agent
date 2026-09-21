@@ -19,9 +19,12 @@ import com.specagent.agent.runevent.AgentRunEventService;
 import com.specagent.agent.runevent.AgentRunPhase;
 import com.specagent.agent.runevent.RunProgressRecorder;
 import com.specagent.agent.snapshot.AgentInputSnapshotBuilder;
+import com.specagent.answer.Answer;
+import com.specagent.answer.AnswerService;
 import com.specagent.context.ContextBuilder;
 import com.specagent.context.ContextOperationType;
 import com.specagent.context.ContextSnapshot;
+import com.specagent.patch.AnswerPatchService;
 import com.specagent.project.ProjectRepository;
 import com.specagent.route.Route;
 import com.specagent.route.RouteRepository;
@@ -69,6 +72,8 @@ public class ArtifactCycleService {
     private final RouteRepository routeRepository;
     private final com.specagent.project.ProjectRepository projectRepository;
     private final RunProgressRecorder progressRecorder;
+    private final AnswerService answerService;
+    private final AnswerProcessingGate answerProcessingGate;
 
     public ArtifactCycleService(AgentRunService agentRunService,
                                 AgentRunFailureService agentRunFailureService,
@@ -82,7 +87,9 @@ public class ArtifactCycleService {
                                 AgentRunEventService eventService,
                                 RouteRepository routeRepository,
                                 com.specagent.project.ProjectRepository projectRepository,
-                                RunProgressRecorder progressRecorder) {
+                                RunProgressRecorder progressRecorder,
+                                AnswerService answerService,
+                                AnswerProcessingGate answerProcessingGate) {
         this.agentRunService = agentRunService;
         this.agentRunFailureService = agentRunFailureService;
         this.contextBuilder = contextBuilder;
@@ -96,6 +103,8 @@ public class ArtifactCycleService {
         this.routeRepository = routeRepository;
         this.projectRepository = projectRepository;
         this.progressRecorder = progressRecorder;
+        this.answerService = answerService;
+        this.answerProcessingGate = answerProcessingGate;
     }
 
     /**
@@ -146,6 +155,7 @@ public class ArtifactCycleService {
                     "Run input node is no longer the target route tip: " + run.inputNodeId()
                             + " (current tip: " + route.tipNodeId() + ")");
         }
+        failIfTipAnswerUnprocessed(route);
 
         String trace = "created";
         try {
@@ -283,14 +293,41 @@ public class ArtifactCycleService {
                 .orElse(false);
     }
 
+    /**
+     * Refuses to derive an artifact from a state that is missing an answer the
+     * user already gave.
+     *
+     * <p>The judge is the shared {@link AnswerProcessingGate} over the route's
+     * effective answer history — route-local answers plus the frozen inherited
+     * prefix, exactly what {@code ContextBuilder} folds into the spec context.
+     * The previous route-local tip-only lookup assumed an inherited answer is
+     * always already processed; that assumption is false, so forking from an
+     * answered node whose STATE_UPDATE never completed let this gate pass and
+     * the spec silently omitted the inherited answer. The command surface
+     * rejects the same state before queueing; this gate covers a run that was
+     * queued first.
+     */
+    private void failIfTipAnswerUnprocessed(Route route) {
+        answerProcessingGate.firstUnprocessedAnswer(route.id(), route.tipNodeId())
+                .ifPresent(pending -> {
+                    throw new IncompleteAnswerCycleException(
+                            "Answer " + pending.id() + " (saved on route "
+                                    + pending.routeId() + ") has no processed state"
+                                    + " update; retry that answer on its route before"
+                                    + " generating an incomplete spec",
+                            pending.id(), pending.routeId(), pending.nodeId());
+                });
+    }
+
     private void failIfNotTerminal(UUID runId, String trace, RuntimeException ex) {
         LOG.warn("Agent run {} failed at {}: {}", runId, trace, ex.getMessage());
         AgentRun latest = agentRunService.getRun(runId).orElse(null);
         if (latest != null && latest.status() != AgentRunStatus.FAILED
                 && latest.status() != AgentRunStatus.COMPLETED) {
-            agentRunFailureService.fail(runId, appendTrace(trace, "failed"));
+            String reason = RunFailureReasons.reasonCode(ex);
+            agentRunFailureService.fail(runId, appendTrace(trace, "failed:" + reason));
             eventService.append(runId, AgentRunPhase.FAILED, "RUN_FAILED",
-                    Map.of("reason", ex.getClass().getSimpleName()));
+                    RunFailureReasons.payload(ex));
         }
     }
 

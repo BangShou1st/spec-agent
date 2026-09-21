@@ -13,6 +13,7 @@ import com.specagent.agent.contract.NodeBodyView;
 import com.specagent.agent.contract.NodeView;
 import com.specagent.agent.contract.RouteContextView;
 import com.specagent.agent.contract.SnapshotMetadata;
+import com.specagent.agent.decision.DeterministicEngineFaultPlan;
 import com.specagent.agent.decision.LocalDeterministicDecisionEngine;
 import org.junit.jupiter.api.Test;
 
@@ -36,7 +37,8 @@ class DeterministicFakeClarificationTest {
     static final String Q2 = "What is the next most important outcome?";
     static final String Q3 = "What scope boundaries must be confirmed?";
 
-    private final LocalDeterministicDecisionEngine engine = new LocalDeterministicDecisionEngine();
+    private final LocalDeterministicDecisionEngine engine =
+            new LocalDeterministicDecisionEngine(new DeterministicEngineFaultPlan());
     private final ActionEligibilityGate enforcedGate = new ActionEligibilityGate(
             new ActionEligibilityEvaluator(), new ActionEligibilityValidator(),
             ActionEligibilityGate.Mode.ENFORCED);

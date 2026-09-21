@@ -10,13 +10,21 @@ export class ApiError extends Error {
   readonly code: string
   readonly status: number
   readonly errors?: ApiFieldError[]
+  readonly details?: Record<string, string>
 
-  constructor(message: string, code: string, status: number, errors?: ApiFieldError[]) {
+  constructor(
+    message: string,
+    code: string,
+    status: number,
+    errors?: ApiFieldError[],
+    details?: Record<string, string>,
+  ) {
     super(message)
     this.name = 'ApiError'
     this.code = code
     this.status = status
     this.errors = errors
+    this.details = details
   }
 }
 
@@ -136,7 +144,13 @@ class ApiClient {
     }
 
     if (payload) {
-      return new ApiError(payload.message, payload.code, response.status, payload.errors)
+      return new ApiError(
+        payload.message,
+        payload.code,
+        response.status,
+        payload.errors,
+        payload.details,
+      )
     }
     return new ApiError(GENERIC_ERROR_MESSAGE, 'UNKNOWN_ERROR', response.status)
   }
