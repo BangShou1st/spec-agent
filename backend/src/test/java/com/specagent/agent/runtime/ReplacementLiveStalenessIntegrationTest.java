@@ -41,8 +41,6 @@ class ReplacementLiveStalenessIntegrationTest {
     private StaleContextChecker staleContextChecker;
     @Autowired
     private RouteRepository routeRepository;
-    @Autowired
-    private RunService runService;
 
     /**
      * The deterministic precondition seam: expected tip = tip at snapshot
@@ -51,10 +49,8 @@ class ReplacementLiveStalenessIntegrationTest {
     @Test
     void replacementRejectsSourceRouteMutationAfterSnapshot() {
         Project project = projectService.createProject("Stale regen " + UUID.randomUUID());
-        // Drain any queued answer-cycle runs left by other fixtures so the
-        // driver claims exactly the run this test enqueues.
-        while (runService.claimNextAnswerCycle().isPresent()) {
-        }
+        // No queue drain needed: the answer-cycle driver claims the exact run
+        // it enqueued, so runs left queued by other fixtures cannot interfere.
         var draftRun = draftDriver.draftQuestion(project.id());
         var answerRun = answerDriver.submitFreeText(project.id(), "first answer");
         UUID sourceRouteId = answerRun.run().routeId();
