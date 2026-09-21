@@ -11,6 +11,15 @@ import java.util.UUID;
  * synchronously through the worker. Replaces the retired synchronous
  * the synchronous answer commands in test fixtures so
  * recovery/isolation suites exercise exactly the production answer path.
+ *
+ * <p><b>Claim ownership.</b> The driver always claims the exact run it
+ * enqueued ({@link RunService#claimAnswerCycleRun(java.util.UUID)}), never the
+ * queue head ({@code claimNextAnswerCycle}). The ANSWER_CYCLE queue is shared
+ * with the production {@code RunWorker} poller and with every other fixture in
+ * the same database, so a queue-wide claim can hand this driver an unrelated
+ * queued run (and execute it) or hide its own run behind another test's
+ * ordering. If a competing consumer already claimed the run, the by-id claim
+ * returns empty and the driver fails closed instead of executing a foreign run.
  */
 @Component
 public class AnswerCycleTestDriver {
@@ -51,11 +60,11 @@ public class AnswerCycleTestDriver {
                                    UUID nodeId, String freeText, UUID answerId) {
         UUID runId = runService.createQueuedRunWithInput(
                 projectId, operation, nodeId, null, freeText, answerId);
-        var claimed = runService.claimNextAnswerCycle()
-                .orElseThrow(() -> new IllegalStateException("No queued answer-cycle run"));
-        if (!claimed.id().equals(runId)) {
-            throw new IllegalStateException("Claimed a different run than was enqueued");
-        }
+        // Claim exactly the run this driver enqueued: the ANSWER_CYCLE queue is
+        // shared, so "oldest queued run" is not necessarily ours.
+        var claimed = runService.claimAnswerCycleRun(runId)
+                .orElseThrow(() -> new IllegalStateException(
+                        "Enqueued answer-cycle run is not claimable: " + runId));
         worker.executeRun(claimed);
         AgentRun run = runService.getRun(runId)
                 .orElseThrow(() -> new IllegalStateException("Run disappeared: " + runId));
