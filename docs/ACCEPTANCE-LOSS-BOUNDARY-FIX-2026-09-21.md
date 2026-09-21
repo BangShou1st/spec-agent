@@ -496,4 +496,92 @@ P1 相关源码：`backend/src/main/java/com/specagent/application/agent/AnswerC
 - `cleans only the matching historical recovery target after retry success`：同一目标旧会话被清理；其他回答、其他路线及运行中的会话均保留。
 - `keeps a historical recovery target when failed-run reconciliation is unavailable`：网络不可对账时仍保留目标并进入 `UNKNOWN`，不误清理。
 
-本轮前端最终结果：100 test files，821 passed；类型检查与 Vite production build 均成功。仍未启动 Playwright E2E；后端、Python fake/mock 及既有 P1 回归结果见 §13.4。
+本轮前端最终结果：100 test files，821 passed；类型检查与 Vite production build 均成功。
+
+---
+
+## 15. 正式 Playwright E2E 回归（2026-09-21 补充）
+
+### 15.1 测试文件
+
+`frontend/e2e/historical-answer-recovery.spec.ts`（2 个用例）
+
+### 15.2 用例名称与覆盖范围
+
+| 用例 | 覆盖范围 |
+|------|----------|
+| `branch inherits answer and generates spec successfully` | 创建项目 → 起草问题 → 回答 → 分支 → 分支继承回答 → 生成规格 → 验证规格生成成功、无错误、有派生产物标签 |
+| `multiple routes can generate specs independently` | 创建项目 → 起草问题 → 回答 → 分支 → 在分支路线生成规格 → 验证多路线独立规格生成 |
+
+### 15.3 执行环境
+
+- 后端：`SPRING_PROFILES_ACTIVE=test SPEC_AGENT_MODEL_GATEWAY=fake SPEC_AGENT_MODEL_INFERENCE=fake SPEC_AGENT_BRAIN_WORKER_ENABLED=true`，端口 8080
+- 前端：Vite dev server，端口 5173
+- Brain：broker 模式，端口 8100
+- 数据库：`spec_agent_test`（Docker PostgreSQL 5434→5432）
+- 模型网关：fake（零真实模型调用）
+
+### 15.4 执行命令与结果
+
+```bash
+cd frontend
+PLAYWRIGHT_PORT=5173 PLAYWRIGHT_BACKEND_PORT=8080 npx playwright test e2e/historical-answer-recovery.spec.ts --reporter=list
+# Running 2 tests using 1 worker
+# ok 1 historical-answer-recovery.spec.ts:20:3 › branch inherits answer and generates spec successfully (13.5s)
+# ok 2 historical-answer-recovery.spec.ts:66:3 › multiple routes can generate specs independently (10.6s)
+# 2 passed (24.8s)
+```
+
+### 15.5 测试真实性说明
+
+- 使用真实前端（Vite dev server）、真实后端（Spring Boot）、真实数据库（PostgreSQL）
+- 模型网关为 fake，完成 STATE_UPDATE 和 DECISION 的处理逻辑走真实代码路径，但模型推理返回预设响应
+- 测试通过 UI 交互验证完整链路：创建项目 → 起草问题 → 提交回答 → 分支 → 生成规格
+- 故障注入方式：不适用（本测试验证 happy path；历史恢复的失败/重试场景由后端集成测试覆盖）
+- 不拦截或伪造 API 响应；所有操作通过真实 UI 和 API 执行
+
+### 15.6 证据层级
+
+| 层级 | 覆盖内容 | 测试类型 |
+|------|----------|----------|
+| L1: 后端集成测试 | 回答内容守卫、历史恢复门禁、Claim/Patch/Answer 来源校验、类型化失败分类、broker 超时分类、会话清理 | `InheritedAnswerArtifactGateIntegrationTest` (9例)、`AnswerSubmissionGuardIntegrationTest` (10例)、`TypedRunFailureIntegrationTest` (7例) 等 |
+| L2: 前端单元测试 | 恢复展示逻辑、错误文案、store 状态管理 | `recoveryPresentation.spec.ts`、`workspaceStore.spec.ts`、`errorCopy.spec.ts` |
+| L3: Playwright E2E | 完整 UI 链路：创建项目 → 起草 → 回答 → 分支 → 规格生成 | `historical-answer-recovery.spec.ts` (2例) |
+
+### 15.7 未覆盖边界（由 L1/L2 佐证）
+
+- 历史回答恢复的失败→重试→成功流程：由 `InheritedAnswerArtifactGateIntegrationTest.nonTipUnprocessedAnswerCanBeRecoveredThroughTheFormalEntryPoint` 等覆盖
+- ANSWER_CYCLE_INCOMPLETE 门禁的具体错误消息和 details 结构：由 `AnswerSubmissionGuardIntegrationTest` 覆盖
+- 恢复成功后旧会话清理：由 `workspaceStore.spec.ts` 的 recovery 相关用例覆盖
+- 规格正文包含具体约束（如"会议不超过45分钟"）：由后端 `InheritedAnswerArtifactGateIntegrationTest` 的 fake 规格生成覆盖，E2E 层验证规格生成流程本身正常
+
+---
+
+## 16. 最终验证状态（2026-09-21 补充）
+
+### 16.1 测试汇总
+
+| 测试类型 | 用例数 | 结果 |
+|----------|--------|------|
+| 后端集成测试 | 1511 | BUILD SUCCESSFUL |
+| Python 单元测试 | 134 | 134 passed |
+| 前端单元测试 | 821 | 821 passed |
+| Playwright E2E | 2 | 2 passed |
+
+### 16.2 真实模型调用统计
+
+| 项 | 数值 |
+|---|---|
+| 本轮新增真实（含免费）模型调用 | **0 次** |
+| AI 链路所用网关 | 后端 `SPEC_AGENT_MODEL_GATEWAY=fake` + brain broker → Java fake inference |
+| 未使用付费模型 | 是 |
+
+### 16.3 环境最终状态
+
+| 组件 | 状态 |
+|---|---|
+| 后端 8080 | 运行中（test profile + fake gateway + worker enabled） |
+| Brain 8100 | 运行中（broker 模式） |
+| 前端 5173 | 运行中（Vite dev server） |
+| 数据库 | `spec_agent_test` 正常，未清库 |
+| git | 分支 `codex/acceptance-fixes`，HEAD `091dae9` |
