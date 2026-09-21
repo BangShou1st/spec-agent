@@ -130,6 +130,34 @@ class FailureTaxonomyTest {
         assertThat(LiveFailureClassifier.isInfrastructureFailure(observation)).isFalse();
     }
 
+    @Test
+    void typedModelOutputFailuresAreSchemaFailuresNotInfrastructure() {
+        // The service worked and rejected the output: that is a model-output
+        // defect, not a reliability incident.
+        ObservationEnvelope contract = providerFailureWithResult("failed:model_contract_violation");
+        assertThat(LiveFailureClassifier.isSchemaFailure(contract)).isTrue();
+        assertThat(LiveFailureClassifier.isInfrastructureFailure(contract)).isFalse();
+        assertThat(LiveFailureClassifier.classify(contract)).isNull();
+
+        ObservationEnvelope ungrounded =
+                providerFailureWithResult("failed:model_ungrounded_reference");
+        assertThat(LiveFailureClassifier.isSchemaFailure(ungrounded)).isTrue();
+        assertThat(LiveFailureClassifier.isInfrastructureFailure(ungrounded)).isFalse();
+    }
+
+    @Test
+    void timeoutsAndProviderFailuresKeepTheirReliabilityClasses() {
+        ObservationEnvelope timeout = providerFailureWithResult("failed:brain_timeout");
+        assertThat(LiveFailureClassifier.isInfrastructureFailure(timeout)).isTrue();
+        assertThat(LiveFailureClassifier.classify(timeout))
+                .isEqualTo(ProviderFailureClass.TIMEOUT);
+
+        ObservationEnvelope provider =
+                providerFailureWithResult("failed:model_provider_failure");
+        assertThat(LiveFailureClassifier.isInfrastructureFailure(provider)).isTrue();
+        assertThat(LiveFailureClassifier.isSchemaFailure(provider)).isFalse();
+    }
+
     private static ObservationEnvelope providerFailure(String scenario, String variant) {
         return ObservationEnvelope.builder(scenario, variant, "hash",
                         EvaluationProfile.LIVE_PROVIDER)

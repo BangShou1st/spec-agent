@@ -4,6 +4,7 @@ import com.specagent.common.AnswerExistencePort;
 import com.specagent.node.Node;
 import com.specagent.node.NodeKind;
 import com.specagent.node.NodeRepository;
+import com.specagent.patch.AnswerPatchRepository;
 import com.specagent.route.Route;
 import com.specagent.route.RouteHistoryResolver;
 import com.specagent.route.RouteRepository;
@@ -44,17 +45,20 @@ public class GraphInvariantValidator {
     private final RouteRepository routeRepository;
     private final RouteHistoryResolver routeHistoryResolver;
     private final AnswerExistencePort answerExistencePort;
+    private final AnswerPatchRepository answerPatchRepository;
     private final NodeRelationRepository relationRepository;
 
     public GraphInvariantValidator(NodeRepository nodeRepository,
                                    RouteRepository routeRepository,
                                    RouteHistoryResolver routeHistoryResolver,
                                    AnswerExistencePort answerExistencePort,
+                                   AnswerPatchRepository answerPatchRepository,
                                    NodeRelationRepository relationRepository) {
         this.nodeRepository = nodeRepository;
         this.routeRepository = routeRepository;
         this.routeHistoryResolver = routeHistoryResolver;
         this.answerExistencePort = answerExistencePort;
+        this.answerPatchRepository = answerPatchRepository;
         this.relationRepository = relationRepository;
     }
 
@@ -114,6 +118,19 @@ public class GraphInvariantValidator {
             throw new GraphRuleViolationException("UNANSWERED_QUESTION_HAS_CHILD",
                     "UNANSWERED_QUESTION_HAS_CHILD: Question " + parentNodeId
                             + " has no finalized effective answer and cannot gain a lineage child");
+        }
+
+        // A finalized Answer without its STATE_UPDATE checkpoint must remain
+        // recoverable at the original answer boundary. Do not let an agent
+        // graph mutation advance the route over it, including a run that was
+        // queued before the checkpoint became missing/visible to the worker.
+        for (var answer : routeHistoryResolver.resolveEffectiveAnswers(routeId, lineage)) {
+            if (answerPatchRepository.findBySourceAnswerId(answer.id()).isEmpty()) {
+                throw new GraphRuleViolationException(
+                        "ANSWER_CYCLE_INCOMPLETE",
+                        "ANSWER_CYCLE_INCOMPLETE: answer " + answer.id()
+                                + " has no STATE_UPDATE checkpoint; recover it before advancing the route");
+            }
         }
     }
 

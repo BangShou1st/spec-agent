@@ -815,6 +815,231 @@ describe('workspaceStore', () => {
     expect(mockedGetAgentRun).toHaveBeenCalledWith('p1', 'resume-run-1')
   })
 
+  it('keeps a historical recovery target when RESUME_ANSWER fails after the tip already moved', async () => {
+    const active = makeActiveState({
+      project: makeProject({ id: 'p1', activeRouteId: 'r1' }),
+      activeRoute: makeRoute({ id: 'r1', projectId: 'p1', tipNodeId: 'node-next', isActive: true }),
+      activeNode: makeNode({ id: 'node-next', projectId: 'p1' }),
+    })
+    mockBackendViews(active, makeRequirementState())
+    mockedGetProjectGraph.mockResolvedValue(makeGraphWorkspaceView({
+      projectId: 'p1',
+      activeRouteId: 'r1',
+      routes: [{
+        ...makeRoute({ id: 'r1', projectId: 'p1', tipNodeId: 'node-next', isActive: true }),
+        rootNodeId: 'node-1',
+        lineageNodeIds: ['node-1', 'node-next'],
+      }],
+      nodes: [
+        makeNode({ id: 'node-1', projectId: 'p1', question: '历史问题' }),
+        makeNode({ id: 'node-next', projectId: 'p1', parentNodeId: 'node-1' }),
+      ],
+      answers: [{
+        id: 'answer-1',
+        routeId: 'r1',
+        ownerRouteId: 'r1',
+        inherited: false,
+        nodeId: 'node-1',
+        selectedOptionId: null,
+        selectedOptionIds: null,
+        freeText: '历史回答',
+        createdAt: '2026-01-01T00:00:00Z',
+      }],
+    }))
+    mockedCreateAgentRun.mockResolvedValueOnce({
+      runId: 'historical-resume-1',
+      operation: 'RESUME_ANSWER',
+      phase: 'CREATED',
+    }).mockResolvedValue({
+      runId: 'historical-resume-2',
+      operation: 'RESUME_ANSWER',
+      phase: 'CREATED',
+    })
+    mockedGetAgentRun.mockResolvedValue(completedRunView({
+      runId: 'historical-resume-1',
+      operation: 'RESUME_ANSWER',
+      status: 'failed',
+      phase: 'FAILED',
+      producedNodeId: null,
+      producedAnswerId: 'answer-1',
+      producedPatchId: null,
+    }))
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+
+    expect(await store.repairAnswerForActiveFlow('answer-1', 'r1', 'node-1')).toBe(false)
+    const session = store.answerRunSessions[0]
+    expect(session).toMatchObject({
+      routeId: 'r1',
+      nodeId: 'node-1',
+      repairableAnswerId: 'answer-1',
+      historicalRecovery: true,
+      status: 'REPAIRABLE',
+    })
+    expect(store.feedback).toContain('历史回答恢复未完成')
+    expect(store.answerRunSessions).toHaveLength(1)
+
+    // Unknown-result reconciliation must use the saved historical identity,
+    // not the already-advanced route tip, and must keep the same retry target.
+    session.status = 'UNKNOWN'
+    expect(await store.reconcileAnswerOutcome()).toBe(true)
+    expect(session.status).toBe('REPAIRABLE')
+    expect(session.repairableAnswerId).toBe('answer-1')
+
+    // The first failed session is still present; a successful retry must
+    // remove both it and the new session so the recovery prompt disappears.
+    mockedGetAgentRun.mockResolvedValue(completedRunView({
+      runId: 'historical-resume-2',
+      operation: 'RESUME_ANSWER',
+      status: 'completed',
+      phase: 'COMPLETED',
+      producedNodeId: null,
+      producedAnswerId: 'answer-1',
+      producedPatchId: 'patch-1',
+    }))
+    expect(await store.repairAnswerForActiveFlow('answer-1', 'r1', 'node-1')).toBe(true)
+    expect(store.answerRunSessions).toHaveLength(0)
+    expect(store.repairableAnswerId).toBeNull()
+  })
+
+  it('keeps a historical recovery target when failed-run reconciliation is unavailable', async () => {
+    const active = makeActiveState({
+      project: makeProject({ id: 'p1', activeRouteId: 'r1' }),
+      activeRoute: makeRoute({ id: 'r1', projectId: 'p1', tipNodeId: 'node-next', isActive: true }),
+      activeNode: makeNode({ id: 'node-next', projectId: 'p1' }),
+    })
+    mockBackendViews(active, makeRequirementState())
+    mockedCreateAgentRun.mockResolvedValue({
+      runId: 'historical-resume-network-1',
+      operation: 'RESUME_ANSWER',
+      phase: 'CREATED',
+    })
+    mockedGetAgentRun.mockResolvedValue(completedRunView({
+      runId: 'historical-resume-network-1',
+      operation: 'RESUME_ANSWER',
+      status: 'failed',
+      phase: 'FAILED',
+      producedNodeId: null,
+      producedAnswerId: 'answer-1',
+      producedPatchId: null,
+    }))
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+    mockedGetProjectGraph.mockRejectedValueOnce(new Error('network unavailable'))
+
+    expect(await store.repairAnswerForActiveFlow('answer-1', 'r1', 'node-1')).toBe(false)
+    expect(store.answerRunSessions[0]).toMatchObject({
+      routeId: 'r1',
+      nodeId: 'node-1',
+      repairableAnswerId: 'answer-1',
+      historicalRecovery: true,
+      status: 'UNKNOWN',
+    })
+    expect(store.answerRunSessions).toHaveLength(1)
+  })
+
+  it('cleans only the matching historical recovery target after retry success', async () => {
+    const active = makeActiveState({
+      project: makeProject({ id: 'p1', activeRouteId: 'r1' }),
+      activeRoute: makeRoute({ id: 'r1', projectId: 'p1', tipNodeId: 'node-next', isActive: true }),
+      activeNode: makeNode({ id: 'node-next', projectId: 'p1' }),
+    })
+    mockBackendViews(active, makeRequirementState())
+    mockedGetProjectGraph.mockResolvedValue(makeGraphWorkspaceView({
+      projectId: 'p1',
+      activeRouteId: 'r1',
+      routes: [{
+        ...makeRoute({ id: 'r1', projectId: 'p1', tipNodeId: 'node-next', isActive: true }),
+        rootNodeId: 'node-1',
+        lineageNodeIds: ['node-1', 'node-next'],
+      }],
+      nodes: [
+        makeNode({ id: 'node-1', projectId: 'p1', question: '历史问题' }),
+        makeNode({ id: 'node-next', projectId: 'p1', parentNodeId: 'node-1' }),
+      ],
+      answers: [{
+        id: 'answer-1',
+        routeId: 'r1',
+        ownerRouteId: 'r1',
+        inherited: false,
+        nodeId: 'node-1',
+        selectedOptionId: null,
+        selectedOptionIds: null,
+        freeText: '历史回答',
+        createdAt: '2026-01-01T00:00:00Z',
+      }],
+    }))
+    mockedCreateAgentRun.mockResolvedValueOnce({
+      runId: 'historical-retry-cleanup-1',
+      operation: 'RESUME_ANSWER',
+      phase: 'CREATED',
+    }).mockResolvedValue({
+      runId: 'historical-retry-cleanup-2',
+      operation: 'RESUME_ANSWER',
+      phase: 'CREATED',
+    })
+    mockedGetAgentRun.mockResolvedValueOnce(completedRunView({
+      runId: 'historical-retry-cleanup-1',
+      operation: 'RESUME_ANSWER',
+      status: 'failed',
+      phase: 'FAILED',
+      producedNodeId: null,
+      producedAnswerId: 'answer-1',
+      producedPatchId: null,
+    })).mockResolvedValue(completedRunView({
+      runId: 'historical-retry-cleanup-2',
+      operation: 'RESUME_ANSWER',
+      status: 'completed',
+      phase: 'COMPLETED',
+      producedNodeId: null,
+      producedAnswerId: 'answer-1',
+      producedPatchId: 'patch-1',
+    }))
+    const store = useWorkspaceStore()
+    await store.loadWorkspace('p1')
+
+    expect(await store.repairAnswerForActiveFlow('answer-1', 'r1', 'node-1')).toBe(false)
+    const stale = store.answerRunSessions[0]
+    expect(stale.status).toBe('REPAIRABLE')
+    store.answerRunSessions.push(
+      {
+        clientRequestId: 'other-route-running',
+        projectId: 'p1',
+        routeId: 'r2',
+        nodeId: 'other-node',
+        payload: { freeText: null, selectedOptionId: null },
+        runId: 'other-run',
+        phase: null,
+        runStatus: 'RUNNING',
+        status: 'RUNNING',
+        repairableAnswerId: 'other-answer',
+        historicalRecovery: true,
+      },
+      {
+        clientRequestId: 'other-answer',
+        projectId: 'p1',
+        routeId: 'r1',
+        nodeId: 'other-node',
+        payload: { freeText: null, selectedOptionId: null },
+        runId: 'other-answer-run',
+        phase: null,
+        runStatus: 'FAILED',
+        status: 'REPAIRABLE',
+        repairableAnswerId: 'other-answer',
+        historicalRecovery: true,
+      },
+    )
+
+    expect(await store.repairAnswerForActiveFlow('answer-1', 'r1', 'node-1')).toBe(true)
+    const remaining = store.answerRunSessions
+    expect(remaining.map((session) => session.repairableAnswerId)).toEqual(
+      expect.arrayContaining(['other-answer', 'other-answer']),
+    )
+    expect(remaining.some((session) => session.repairableAnswerId === 'answer-1')).toBe(false)
+    expect(remaining.some((session) => session.runId === 'other-run')).toBe(true)
+    expect(remaining.some((session) => session.runId === 'other-answer-run')).toBe(true)
+  })
+
   it('keeps routes visible after a refresh with a changeset', async () => {
     const active = makeActiveState({
       activeRoute: makeRoute({ id: 'r1', isActive: true }),

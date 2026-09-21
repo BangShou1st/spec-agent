@@ -7,6 +7,7 @@ import com.specagent.graph.UndoRedoService;
 import com.specagent.node.Node;
 import com.specagent.node.NodeOption;
 import com.specagent.node.NodeService;
+import com.specagent.patch.AnswerPatchService;
 import com.specagent.project.Project;
 import com.specagent.project.ProjectService;
 import com.specagent.route.Route;
@@ -57,6 +58,7 @@ class AgentAutoExecuteMutationIntegrationTest {
     @Autowired private RouteService routeService;
     @Autowired private NodeService nodeService;
     @Autowired private AnswerService answerService;
+    @Autowired private AnswerPatchService answerPatchService;
     @Autowired private JdbcTemplate jdbcTemplate;
     @Autowired private TransactionTemplate transactionTemplate;
 
@@ -379,6 +381,7 @@ class AgentAutoExecuteMutationIntegrationTest {
         jdbcTemplate.update("DELETE FROM agent_runs WHERE project_id = ?", p.id());
         jdbcTemplate.update("DELETE FROM graph_operations WHERE project_id = ?", p.id());
         jdbcTemplate.update("DELETE FROM node_relations WHERE project_id = ?", p.id());
+        jdbcTemplate.update("DELETE FROM answer_patches WHERE project_id = ?", p.id());
         jdbcTemplate.update("DELETE FROM answers WHERE project_id = ?", p.id());
         jdbcTemplate.update("DELETE FROM route_inherited_answers WHERE branch_route_id IN (SELECT id FROM routes WHERE project_id = ?)", p.id());
         jdbcTemplate.update("DELETE FROM routes WHERE project_id = ?", p.id());
@@ -392,7 +395,9 @@ class AgentAutoExecuteMutationIntegrationTest {
         Node q1 = q1Box[0];
         Route r = routeRepository.findById(p.activeRouteId()).orElseThrow();
 
-        answerService.finalizeAnswer(p.id(), r.id(), q1.id(), null, "已回答 Q1", "test-user");
+        var answer = answerService.finalizeAnswer(
+                p.id(), r.id(), q1.id(), null, "已回答 Q1", "test-user");
+        answerPatchService.save(p.id(), r.id(), q1.id(), answer.id(), List.of(), null);
 
         ActionProposal proposal = new ActionProposal(
                 "REQUEST_USER_INPUT",
@@ -421,6 +426,7 @@ class AgentAutoExecuteMutationIntegrationTest {
         jdbcTemplate.update("DELETE FROM agent_runs WHERE project_id = ?", p.id());
         jdbcTemplate.update("DELETE FROM graph_operations WHERE project_id = ?", p.id());
         jdbcTemplate.update("DELETE FROM node_relations WHERE project_id = ?", p.id());
+        jdbcTemplate.update("DELETE FROM answer_patches WHERE project_id = ?", p.id());
         jdbcTemplate.update("DELETE FROM answers WHERE project_id = ?", p.id());
         jdbcTemplate.update("DELETE FROM route_inherited_answers WHERE branch_route_id IN (SELECT id FROM routes WHERE project_id = ?)", p.id());
         jdbcTemplate.update("DELETE FROM routes WHERE project_id = ?", p.id());

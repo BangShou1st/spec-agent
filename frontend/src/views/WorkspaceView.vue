@@ -220,6 +220,46 @@ const workspaceRetrying = computed(() => store.loading || store.refreshing
   || store.routeCommandPending || store.generatingSpec)
 
 /**
+ * The artifact gate supplies a bounded recovery identity. Resolve it against
+ * the canonical graph so the user sees the actual question and owning route,
+ * not an opaque UUID and not the currently active branch by assumption.
+ */
+const historicalAnswerRecoveryTarget = computed(() => {
+  const error = store.error
+  const details = error?.details
+  const session = store.focusedAnswerSession
+  const sessionRecovery = session?.historicalRecovery === true
+    && session.status === 'REPAIRABLE'
+    && session.routeId
+    && session.nodeId
+    && session.repairableAnswerId
+  const answerId = error?.code === 'ANSWER_CYCLE_INCOMPLETE'
+    && details?.answerId
+    ? details.answerId
+    : sessionRecovery ? session.repairableAnswerId : null
+  const routeId = error?.code === 'ANSWER_CYCLE_INCOMPLETE'
+    && details?.routeId
+    ? details.routeId
+    : sessionRecovery ? session.routeId : null
+  const nodeId = error?.code === 'ANSWER_CYCLE_INCOMPLETE'
+    && details?.nodeId
+    ? details.nodeId
+    : sessionRecovery ? session.nodeId : null
+  if (!answerId || !routeId || !nodeId) {
+    return null
+  }
+  const route = store.graphView?.routes.find((candidate) => candidate.id === routeId)
+  const node = store.graphView?.nodes.find((candidate) => candidate.id === nodeId)
+  return {
+    answerId,
+    routeId,
+    nodeId,
+    routeLabel: route?.label?.trim() || `路线 ${routeId.slice(0, 8)}`,
+    question: node?.question?.trim() || '该历史回答',
+  }
+})
+
+/**
  * 统一恢复提示：一次最多一个。model settings 错误仍走普通错误条；
  * 已被恢复模型覆盖的状态不再渲染旧的三块恢复按钮。
  */
@@ -231,6 +271,7 @@ const recoveryModel = computed<RecoveryNoticeModel | null>(() => {
     resubmitAnswerPayload: store.resubmitAnswerPayload,
     manualRetryState: store.manualModelRetry?.state ?? null,
     errorCode: store.error?.code ?? null,
+    historicalAnswerRecovery: historicalAnswerRecoveryTarget.value,
   })
 })
 
@@ -467,7 +508,12 @@ async function handleRecoveryAction(action: RecoveryAction): Promise<void> {
   if (action === 'reconcile-answer') {
     await store.reconcileAnswerOutcome()
   } else if (action === 'resume-answer') {
-    if (store.repairableAnswerId) {
+    const historical = historicalAnswerRecoveryTarget.value
+    if (historical) {
+      await store.repairAnswerForActiveFlow(
+        historical.answerId, historical.routeId, historical.nodeId,
+      )
+    } else if (store.repairableAnswerId) {
       await store.repairAnswerForActiveFlow(store.repairableAnswerId)
     }
   } else if (action === 'resubmit-answer') {
@@ -489,7 +535,14 @@ async function retry(): Promise<void> {
   } else if (store.answerOutcomeUnknown) {
     await store.reconcileAnswerOutcome()
   } else if (store.repairableAnswerId) {
-    await store.repairAnswerForActiveFlow(store.repairableAnswerId)
+    const historical = historicalAnswerRecoveryTarget.value
+    if (historical) {
+      await store.repairAnswerForActiveFlow(
+        historical.answerId, historical.routeId, historical.nodeId,
+      )
+    } else {
+      await store.repairAnswerForActiveFlow(store.repairableAnswerId)
+    }
   } else if (store.resubmitAnswerPayload) {
     await store.resubmitFailedAnswer()
   } else if (store.manualModelRetry) {

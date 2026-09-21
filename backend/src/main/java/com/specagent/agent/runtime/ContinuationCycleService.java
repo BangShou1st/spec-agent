@@ -193,9 +193,10 @@ public class ContinuationCycleService {
         AgentRun latest = agentRunService.getRun(runId).orElse(null);
         if (latest != null && latest.status() != AgentRunStatus.FAILED
                 && latest.status() != AgentRunStatus.COMPLETED) {
-            agentRunFailureService.fail(runId, appendTrace(trace, "failed"));
+            String reason = RunFailureReasons.reasonCode(ex);
+            agentRunFailureService.fail(runId, appendTrace(trace, "failed:" + reason));
             eventService.append(runId, AgentRunPhase.FAILED, "RUN_FAILED",
-                    Map.of("reason", ex.getClass().getSimpleName()));
+                    RunFailureReasons.payload(reason));
         }
     }
 

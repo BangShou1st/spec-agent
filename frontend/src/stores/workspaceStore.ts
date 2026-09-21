@@ -346,8 +346,12 @@ export const useWorkspaceStore = defineStore('workspace', {
       return reconcileUnknownAnswerOutcomeAction(this, session)
     },
     async reconcileAnswerOutcome(): Promise<boolean> { return reconcileAnswerOutcomeAction(this) },
-    async repairAnswerForActiveFlow(answerId: string): Promise<boolean> {
-      return repairAnswerForActiveFlowAction(this, answerId)
+    async repairAnswerForActiveFlow(
+      answerId: string,
+      routeId?: string | null,
+      nodeId?: string | null,
+    ): Promise<boolean> {
+      return repairAnswerForActiveFlowAction(this, answerId, routeId, nodeId)
     },
     async resubmitFailedAnswer(): Promise<boolean> { return resubmitFailedAnswerAction(this) },
     findFinalizedAnswerForActiveTip(): string | null { return findFinalizedAnswerForActiveTipAction(this) },

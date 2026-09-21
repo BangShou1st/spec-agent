@@ -167,8 +167,9 @@ class RouteForkApiIntegrationTest {
         Node siblingA = nodeService.createChildNode(project.id(), project.activeRouteId(), root.id(),
                 "Sibling branch question", null, List.of(), true);
         UUID sourceRouteId = project.activeRouteId();
-        answerService.finalizeAnswer(project.id(), sourceRouteId, root.id(), null,
+        var answer = answerService.finalizeAnswer(project.id(), sourceRouteId, root.id(), null,
                 "Root answer", "user");
+        answerPatchService.save(project.id(), sourceRouteId, root.id(), answer.id(), List.of(), null);
 
         mockMvc.perform(post("/api/v1/projects/{projectId}/nodes/{nodeId}/fork", project.id(), root.id())
                         .contentType(APPLICATION_JSON)
@@ -198,8 +199,9 @@ class RouteForkApiIntegrationTest {
         Node root = nodeService.createRootNode(project.id(), project.activeRouteId(),
                 "Root question", null, List.of(), true);
         UUID sourceRouteId = project.activeRouteId();
-        answerService.finalizeAnswer(project.id(), sourceRouteId, root.id(), null,
+        var answer = answerService.finalizeAnswer(project.id(), sourceRouteId, root.id(), null,
                 "Root answer", "user");
+        answerPatchService.save(project.id(), sourceRouteId, root.id(), answer.id(), List.of(), null);
 
         mockMvc.perform(post("/api/v1/projects/{projectId}/nodes/{nodeId}/fork", project.id(), root.id())
                         .contentType(APPLICATION_JSON)

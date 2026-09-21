@@ -174,7 +174,7 @@ class AnswerCycleRunApiIntegrationTest {
                         .content("{\"operation\": \"ANSWER_TIP\", \"nodeId\": \"" + tipNodeId
                                 + "\", \"freeText\": \"duplicate attempt\"}"))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("ANSWER_ALREADY_FINALIZED"));
+                .andExpect(jsonPath("$.code").value("ANSWER_CONTENT_MISMATCH"));
 
         List<Answer> answers = answerRepository.findByRouteAndNodeIds(
                 project.activeRouteId(), List.of(tipNodeId));
@@ -195,13 +195,13 @@ class AnswerCycleRunApiIntegrationTest {
                 project.id(), project.activeRouteId(), tipNodeId, null,
                 "saved but unfinished", "user");
 
-        // Re-submission of the still-current answered tip routes to
-        // RESUME_ANSWER so the cycle resumes instead of failing.
+        // Re-submitting the SAME answer routes to RESUME_ANSWER so the cycle
+        // resumes from its own checkpoint instead of failing.
         MvcResult second = mockMvc.perform(
                         post("/api/v1/projects/{projectId}/agent-runs", project.id())
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"operation\": \"ANSWER_TIP\", \"nodeId\": \"" + tipNodeId
-                                        + "\", \"freeText\": \"duplicate attempt\"}"))
+                                        + "\", \"freeText\": \"saved but unfinished\"}"))
                 .andExpect(status().isAccepted())
                 .andReturn();
         assertThat(extractString(second.getResponse().getContentAsString(), "operation"))
@@ -213,6 +213,33 @@ class AnswerCycleRunApiIntegrationTest {
                 project.activeRouteId(), List.of(tipNodeId));
         assertThat(answers).hasSize(1);
         assertThat(answers.get(0).id()).isEqualTo(answer.id());
+    }
+
+    @Test
+    void resubmittingDifferentContentIsRejectedInsteadOfSilentlyResuming() throws Exception {
+        Project project = projectService.createProject("Resume content guard project");
+        nodeService.createRootNode(project.id(), project.activeRouteId(),
+                "Question?", null, List.of(), true);
+        UUID tipNodeId = routeService.getRoute(project.activeRouteId()).orElseThrow().tipNodeId();
+        var answer = answerService.finalizeAnswer(
+                project.id(), project.activeRouteId(), tipNodeId, null,
+                "saved but unfinished", "user");
+
+        // Newly supplied content would be discarded by a resume (the cycle
+        // replays the persisted answer), so it must fail closed instead.
+        mockMvc.perform(post("/api/v1/projects/{projectId}/agent-runs", project.id())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"operation\": \"ANSWER_TIP\", \"nodeId\": \"" + tipNodeId
+                                + "\", \"freeText\": \"a different answer\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("ANSWER_CONTENT_MISMATCH"));
+
+        List<Answer> answers = answerRepository.findByRouteAndNodeIds(
+                project.activeRouteId(), List.of(tipNodeId));
+        assertThat(answers).hasSize(1);
+        assertThat(answers.get(0).id()).isEqualTo(answer.id());
+        assertThat(answers.get(0).freeText()).isEqualTo("saved but unfinished");
+        assertThat(runService.claimNextAnswerCycle()).isEmpty();
     }
 
     @Test

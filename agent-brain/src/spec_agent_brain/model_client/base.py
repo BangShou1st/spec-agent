@@ -25,6 +25,14 @@ class ModelClientError(RuntimeError):
     """Raised when model inference fails; never carries provider payloads."""
 
 
+class BrokerTimeoutError(ModelClientError):
+    """Raised when the broker call times out (connect or read).
+
+    Carries the same contract as ModelClientError but lets the HTTP boundary
+    classify a timeout differently from an ordinary provider failure.
+    """
+
+
 class ModelClient(Protocol):
     def complete(
         self,

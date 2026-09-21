@@ -78,3 +78,11 @@ def test_respond_to_user_requires_sufficient_state():
         "不需要新的用户信息、不需要新的 Graph mutation、不需要 capability、也不需要等待",
         "resolved 且没有新的 durable Graph 工作时，直接使用 RESPOND_TO_USER",
     )
+
+
+def test_source_refs_belongs_inside_the_action():
+    _assert_prompt_contains(
+        "sourceRefs 只能引用输入中 allowedSourceRefs 列出的引用",
+        "sourceRefs 是 action 的内部字段",
+        "绝不在 JSON 顶层另外再写一个 sourceRefs",
+    )

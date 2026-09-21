@@ -122,9 +122,8 @@ class ScriptedModelGatewayFullLoopIntegrationTest {
 
     /**
      * A completed cycle keeps every artifact it persisted, and a subsequent
-     * resume against the already-completed cycle fails closed without
-     * duplicating any of them. Once the tip advanced past the answered node,
-     * the repair window is over — the resume guard rejects it.
+     * resume against the historical answer is an idempotent checkpoint-only
+     * recovery without duplicating any of them.
      */
     @Test
     void completedCycleArtifactsSurviveAFailedFollowup() {
@@ -140,16 +139,15 @@ class ScriptedModelGatewayFullLoopIntegrationTest {
         assertThat(answerService.getAnswer(first.answerId())).isPresent();
         assertThat(answerPatchService.findByRoute(project.activeRouteId())).hasSize(1);
 
-        // A follow-up resume against the now-stale answered node fails closed
-        // without touching the completed cycle's artifacts.
+        // A follow-up resume against the now-historical answered node is a
+        // checkpoint-only no-op: it must not replay the later decision or
+        // touch the completed cycle's artifacts.
         UUID followupRunId = answerDriver.enqueueOnly(project.id(), "RESUME_ANSWER",
                 null, null, null, first.answerId());
         var followup = answerCycleClaim(followupRunId);
-        assertThatThrownBy(() -> worker.executeRun(followup))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("not the active route tip");
-        AgentRun failed = agentRunService.getRun(followupRunId).orElseThrow();
-        assertThat(failed.status()).isEqualTo(AgentRunStatus.FAILED);
+        worker.executeRun(followup);
+        AgentRun recovered = agentRunService.getRun(followupRunId).orElseThrow();
+        assertThat(recovered.status()).isEqualTo(AgentRunStatus.COMPLETED);
 
         // Exactly one answer and one patch remain.
         assertThat(answerRepository.findByRouteAndNodeIds(
@@ -157,10 +155,20 @@ class ScriptedModelGatewayFullLoopIntegrationTest {
         assertThat(answerPatchService.findByRoute(project.activeRouteId())).hasSize(1);
     }
 
+    /**
+     * Claims exactly the run this fixture enqueued.
+     *
+     * <p>The ANSWER_CYCLE queue is shared with every other fixture in the same
+     * database, so "the oldest queued run" is not necessarily ours: a queue-wide
+     * claim can be handed an unrelated run and then fail its own identity check
+     * depending on execution order. Claiming by id is the contract the
+     * production path and {@code AnswerCycleTestDriver} already use (see
+     * {@code AnswerCycleClaimOwnershipIntegrationTest}).
+     */
     private AgentRun answerCycleClaim(UUID expectedRunId) {
-        return runService.claimNextAnswerCycle()
-                .filter(run -> run.id().equals(expectedRunId))
+        return runService.claimAnswerCycleRun(expectedRunId)
                 .orElseThrow(() -> new IllegalStateException(
-                        "Expected queued answer-cycle run " + expectedRunId));
+                        "Expected queued answer-cycle run " + expectedRunId
+                                + " to be claimable"));
     }
 }

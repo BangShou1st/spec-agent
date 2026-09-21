@@ -5,6 +5,7 @@ import com.specagent.agent.AgentRunStatus;
 import com.specagent.answer.AnswerService;
 import com.specagent.node.Node;
 import com.specagent.node.NodeService;
+import com.specagent.patch.AnswerPatchService;
 import com.specagent.project.Project;
 import com.specagent.project.ProjectService;
 import org.junit.jupiter.api.Test;
@@ -36,6 +37,8 @@ class RunWorkerIntegrationTest {
     private NodeService nodeService;
     @Autowired
     private AnswerService answerService;
+    @Autowired
+    private AnswerPatchService answerPatchService;
     @Autowired
     private com.specagent.route.RouteService routeService;
     @Autowired
@@ -90,8 +93,10 @@ class RunWorkerIntegrationTest {
                 "谁是最主要的用户？", null, List.of(), true);
         // An unanswered Question must remain the route tip; answer it before
         // the next draft can append a child.
-        answerService.finalizeAnswer(project.id(), project.activeRouteId(),
+        var answer = answerService.finalizeAnswer(project.id(), project.activeRouteId(),
                 root.id(), null, "answered root", "test-user");
+        answerPatchService.save(project.id(), project.activeRouteId(), root.id(),
+                answer.id(), List.of(), null);
 
         AgentRun run = runService.createQueuedDraftQuestion(project.id());
         AgentRun claimed = runService.claimDecisionCycleRun(run.id())

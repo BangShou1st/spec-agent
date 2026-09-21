@@ -399,8 +399,13 @@ public class ScenarioRunner {
         if (answerRepository.existsByRouteAndNode(routeId, nodeId)) {
             return;
         }
-        answerService.finalizeAnswer(projectId, routeId, nodeId,
+        Answer answer = answerService.finalizeAnswer(projectId, routeId, nodeId,
                 (String) null, "eval setup answer", "user");
+        // Setup answers model a completed user cycle. Keep the fixture legal
+        // under the route-advancement invariant: an Answer without its
+        // STATE_UPDATE checkpoint is intentionally recoverable, not a normal
+        // precondition for later graph setup.
+        answerPatchService.save(projectId, routeId, nodeId, answer.id(), List.of(), null);
     }
 
     // -- drive -------------------------------------------------------------------

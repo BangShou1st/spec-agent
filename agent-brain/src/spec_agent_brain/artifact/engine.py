@@ -24,6 +24,15 @@ class ArtifactBrainContractError(RuntimeError):
     """Raised when a model output violates the brain's own output contract."""
 
 
+class UngroundedReferenceError(ArtifactBrainContractError):
+    """A section cited a ref outside the frozen snapshot's allowed refs.
+
+    Reported separately from a malformed response: this is the route
+    isolation/grounding gate rejecting a cross-route citation, which the
+    Runtime must be able to tell apart from a broken model output.
+    """
+
+
 def handle_artifact(request: AgentV2RequestEnvelope, client: ModelClient) -> AgentArtifactResponse:
     completion = client.complete(
         run_id=str(request.run_id),
@@ -69,5 +78,5 @@ def _check_section_source_refs(output: ModelArtifactOutput,
                 f"artifact section requires source references: {section.title}")
         for ref in section.source_refs:
             if ref not in allowed:
-                raise ArtifactBrainContractError(
+                raise UngroundedReferenceError(
                     "model referenced a source outside the allowed snapshot refs: " + ref)

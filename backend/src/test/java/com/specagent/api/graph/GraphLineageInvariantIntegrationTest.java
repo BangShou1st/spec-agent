@@ -4,6 +4,7 @@ import com.specagent.answer.AnswerService;
 import com.specagent.node.Node;
 import com.specagent.node.NodeOption;
 import com.specagent.node.NodeService;
+import com.specagent.patch.AnswerPatchService;
 import com.specagent.project.Project;
 import com.specagent.project.ProjectService;
 import com.specagent.route.Route;
@@ -50,6 +51,8 @@ class GraphLineageInvariantIntegrationTest {
     private AnswerService answerService;
     @Autowired
     private RouteService routeService;
+    @Autowired
+    private AnswerPatchService answerPatchService;
     @Autowired
     private NamedParameterJdbcTemplate jdbc;
 
@@ -102,7 +105,8 @@ class GraphLineageInvariantIntegrationTest {
         UUID routeId = project.activeRouteId();
         Node root = nodeService.createRootNode(project.id(), routeId, "已答问题", "P0",
                 List.of(NodeOption.of("A", "a")), true);
-        answerService.finalizeAnswer(project.id(), routeId, root.id(), null, "answer", "user");
+        var answer = answerService.finalizeAnswer(project.id(), routeId, root.id(), null, "answer", "user");
+        answerPatchService.save(project.id(), routeId, root.id(), answer.id(), List.of(), null);
 
         mockMvc.perform(post("/api/v1/projects/{pid}/nodes/{nid}/continuation",
                         project.id(), root.id())

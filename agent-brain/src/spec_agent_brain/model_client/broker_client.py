@@ -9,7 +9,7 @@ from typing import Optional, Sequence
 
 import httpx
 
-from .base import ChatMessage, Completion, ModelClientError, require_call_type, require_roles
+from .base import BrokerTimeoutError, ChatMessage, Completion, ModelClientError, require_call_type, require_roles
 
 
 class BrokerModelClient:
@@ -43,6 +43,9 @@ class BrokerModelClient:
         headers = {"X-Spec-Agent-Internal-Token": self._internal_secret}
         try:
             response = self._client.post(self._broker_url, json=payload, headers=headers)
+        except httpx.TimeoutException as exc:
+            raise BrokerTimeoutError(
+                f"inference broker timeout: {type(exc).__name__}") from exc
         except httpx.HTTPError as exc:
             raise ModelClientError(
                 f"inference broker unreachable: {type(exc).__name__}") from exc

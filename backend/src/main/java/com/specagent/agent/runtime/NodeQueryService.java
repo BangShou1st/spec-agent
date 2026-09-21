@@ -15,7 +15,6 @@ import com.specagent.agent.contract.AgentRequestEnvelope;
 import com.specagent.agent.contract.AgentResponseEnvelope;
 import com.specagent.agent.contract.DecisionBudget;
 import com.specagent.agent.decision.AgentBrainResponseValidator;
-import com.specagent.agent.decision.AgentBrainUnavailableException;
 import com.specagent.agent.decision.AgentDecisionEngine;
 import com.specagent.agent.policy.AdvisorPolicyEngine;
 import com.specagent.agent.policy.AgentProposal;
@@ -195,14 +194,14 @@ public class NodeQueryService {
     }
 
     private void failIfNotTerminal(UUID runId, RuntimeException ex) {
-        String step = ex instanceof AgentBrainUnavailableException
-                ? "brain_unavailable" : ex.getClass().getSimpleName();
-        LOG.warn("Node query run {} failed: {}", runId, step);
+        String reason = RunFailureReasons.reasonCode(ex);
+        LOG.warn("Node query run {} failed: {}", runId, reason);
         AgentRun latest = agentRunService.getRun(runId).orElse(null);
         if (latest != null && latest.status() != AgentRunStatus.FAILED
                 && latest.status() != AgentRunStatus.COMPLETED) {
-            agentRunFailureService.fail(runId, "failed:" + step);
-            eventService.append(runId, AgentRunPhase.FAILED, "RUN_FAILED", Map.of("reason", step));
+            agentRunFailureService.fail(runId, "failed:" + reason);
+            eventService.append(runId, AgentRunPhase.FAILED, "RUN_FAILED",
+                    RunFailureReasons.payload(reason));
         }
     }
 }

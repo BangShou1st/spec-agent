@@ -20,6 +20,8 @@ export interface ApiErrorPayload {
   message: string
   timestamp?: string
   errors?: ApiFieldError[]
+  /** Bounded, non-sensitive recovery identity for actionable conflicts. */
+  details?: Record<string, string>
 }
 
 export interface ProjectSummaryResponse {

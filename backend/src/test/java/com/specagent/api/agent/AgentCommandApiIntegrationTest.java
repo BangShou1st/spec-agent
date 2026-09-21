@@ -5,6 +5,7 @@ import com.specagent.agent.AgentRunStatus;
 import com.specagent.answer.AnswerService;
 import com.specagent.node.Node;
 import com.specagent.node.NodeService;
+import com.specagent.patch.AnswerPatchService;
 import com.specagent.project.Project;
 import com.specagent.project.ProjectService;
 import org.junit.jupiter.api.Test;
@@ -45,6 +46,8 @@ class AgentCommandApiIntegrationTest {
     private ProjectService projectService;
     @Autowired
     private NodeService nodeService;
+    @Autowired
+    private AnswerPatchService answerPatchService;
     @Autowired
     private AnswerService answerService;
     @Autowired
@@ -112,8 +115,10 @@ class AgentCommandApiIntegrationTest {
                 "Root question", null, List.of(), true);
         // An unanswered Question must remain the route tip; answer it before
         // the next draft can append a child.
-        answerService.finalizeAnswer(project.id(), project.activeRouteId(),
+        var answer = answerService.finalizeAnswer(project.id(), project.activeRouteId(),
                 root.id(), null, "answered root", "test-user");
+        answerPatchService.save(project.id(), project.activeRouteId(), root.id(),
+                answer.id(), List.of(), null);
 
         String runId = enqueueDraft(project);
         var claimed = runService.claimNext().orElseThrow();

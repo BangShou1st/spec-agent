@@ -2,6 +2,8 @@ package com.specagent.common;
 
 import org.springframework.http.HttpStatus;
 
+import java.util.Map;
+
 /**
  * Explicit application-level failure with a stable error code and HTTP status.
  *
@@ -21,11 +23,18 @@ public class ApiException extends RuntimeException {
 
     private final HttpStatus status;
     private final String code;
+    private final Map<String, String> details;
 
     private ApiException(HttpStatus status, String code, String message) {
+        this(status, code, message, Map.of());
+    }
+
+    private ApiException(HttpStatus status, String code, String message,
+                         Map<String, String> details) {
         super(message);
         this.status = status;
         this.code = code;
+        this.details = details == null ? Map.of() : Map.copyOf(details);
     }
 
     public static ApiException notFound(String code, String message) {
@@ -34,6 +43,11 @@ public class ApiException extends RuntimeException {
 
     public static ApiException conflict(String code, String message) {
         return new ApiException(HttpStatus.CONFLICT, code, message);
+    }
+
+    public static ApiException conflict(String code, String message,
+                                        Map<String, String> details) {
+        return new ApiException(HttpStatus.CONFLICT, code, message, details);
     }
 
     public static ApiException badRequest(String code, String message) {
@@ -50,5 +64,9 @@ public class ApiException extends RuntimeException {
 
     public String code() {
         return code;
+    }
+
+    public Map<String, String> details() {
+        return details;
     }
 }

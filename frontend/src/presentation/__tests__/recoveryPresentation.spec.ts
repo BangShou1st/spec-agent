@@ -37,6 +37,22 @@ describe('recoveryNoticeFromState', () => {
     })
   })
 
+  it('identifies the owning route when an inherited historical answer blocks generation', () => {
+    const model = recoveryNoticeFromState({
+      historicalAnswerRecovery: {
+        routeLabel: '源路线',
+        question: '会议最长多久？',
+      },
+    })
+    expect(model).toMatchObject({
+      kind: 'saved',
+      title: '历史回答需要恢复',
+      message: '回答“会议最长多久？”已保存在路线“源路线”，请先恢复该回答，再生成规格',
+      action: 'resume-answer',
+      actionLabel: '恢复该回答',
+    })
+  })
+
   it('offers safe resubmit only when no answer was saved', () => {
     const model = recoveryNoticeFromState({
       resubmitAnswerPayload: { selectedOptionId: 'o1', freeText: null },

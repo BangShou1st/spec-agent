@@ -37,6 +37,14 @@ describe('stable model error classifier and product copy', () => {
     expect(requiresModelSettings('INVALID_MODEL')).toBe(true)
   })
 
+  it('explains an already-answered submission without falling back to English', () => {
+    expect(productErrorMessage('ANSWER_CONTENT_MISMATCH')).toContain('不会被覆盖')
+    expect(productErrorMessage('ANSWER_CYCLE_INCOMPLETE')).toContain('请先重试该回答')
+    expect(productErrorMessage('ANSWER_CONTENT_MISMATCH', 'raw backend sentence')).not.toContain(
+      'raw backend sentence',
+    )
+  })
+
   it('prefers safe backend messages for management actions', () => {
     expect(managementErrorMessage('CONNECTION_COMMAND_REJECTED', 'bad server')).toBe('bad server')
     expect(managementErrorMessage('VALIDATION_ERROR', '')).toBe(productErrorMessage('VALIDATION_ERROR'))
