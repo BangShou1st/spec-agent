@@ -23,12 +23,11 @@ public class RetrievalIndexRebuilder {
         projector.rebuildProject(projectId);
     }
 
-    /** Source rebuild currently uses the same deterministic project rebuild. */
     public void rebuildSource(UUID projectId, String sourceRef) {
         if (sourceRef == null || sourceRef.isBlank()) {
             throw new IllegalArgumentException("sourceRef is required");
         }
-        projector.rebuildProject(projectId);
+        projector.rebuildSource(projectId, sourceRef);
     }
 
     public void rebuildAll() {

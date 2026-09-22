@@ -72,6 +72,9 @@ public class RetrievalEntryRepository {
                     content = EXCLUDED.content,
                     content_hash = EXCLUDED.content_hash,
                     metadata = EXCLUDED.metadata,
+                    embedding = CASE
+                        WHEN retrieval_entries.content_hash <> EXCLUDED.content_hash
+                        THEN NULL ELSE retrieval_entries.embedding END,
                     embedding_model = CASE
                         WHEN retrieval_entries.content_hash <> EXCLUDED.content_hash
                         THEN NULL ELSE retrieval_entries.embedding_model END,
@@ -108,6 +111,107 @@ public class RetrievalEntryRepository {
                 Map.of("projectId", projectId));
     }
 
+    public void deleteSource(UUID projectId, String sourceRef) {
+        jdbcTemplate.update("""
+                DELETE FROM retrieval_entries
+                WHERE project_id = :projectId AND source_ref = :sourceRef
+                """, Maps.of("projectId", projectId, "sourceRef", sourceRef));
+    }
+
+    public void deleteSourcePrefix(UUID projectId, String sourceRefPrefix) {
+        jdbcTemplate.update("""
+                DELETE FROM retrieval_entries
+                WHERE project_id = :projectId AND source_ref LIKE :sourceRefPrefix
+                """, Maps.of("projectId", projectId,
+                "sourceRefPrefix", sourceRefPrefix + "%"));
+    }
+
+    /** Retraction keeps the derived audit row but removes it from retrieval. */
+    public void retractSource(UUID projectId, String sourceRef) {
+        jdbcTemplate.update("""
+                UPDATE retrieval_entries
+                SET retracted_at = COALESCE(retracted_at, NOW()),
+                    embedding = NULL,
+                    embedding_model = NULL,
+                    embedding_dimensions = NULL,
+                    embedding_status = 'UNAVAILABLE',
+                    updated_at = NOW()
+                WHERE project_id = :projectId AND source_ref = :sourceRef
+                """, Maps.of("projectId", projectId, "sourceRef", sourceRef));
+    }
+
+    public void retractSourcePrefix(UUID projectId, String sourceRefPrefix) {
+        jdbcTemplate.update("""
+                UPDATE retrieval_entries
+                SET retracted_at = COALESCE(retracted_at, NOW()),
+                    embedding = NULL,
+                    embedding_model = NULL,
+                    embedding_dimensions = NULL,
+                    embedding_status = 'UNAVAILABLE',
+                    updated_at = NOW()
+                WHERE project_id = :projectId AND source_ref LIKE :sourceRefPrefix
+                """, Maps.of("projectId", projectId,
+                "sourceRefPrefix", sourceRefPrefix + "%"));
+    }
+
+    public List<RetrievalEntry> findPending(UUID projectId, int limit) {
+        String sql = """
+                SELECT * FROM retrieval_entries
+                WHERE project_id = :projectId AND retracted_at IS NULL
+                  AND embedding_status = 'PENDING'
+                ORDER BY updated_at, source_ref
+                LIMIT :limit
+                """;
+        return jdbcTemplate.query(sql, Maps.of("projectId", projectId,
+                "limit", Math.max(1, Math.min(limit, 512))), rowMapper);
+    }
+
+    public Optional<RetrievalEntry> findBySourceRef(UUID projectId, String sourceRef) {
+        return jdbcTemplate.query("""
+                SELECT * FROM retrieval_entries
+                WHERE project_id = :projectId AND source_ref = :sourceRef
+                """, Maps.of("projectId", projectId, "sourceRef", sourceRef), rowMapper)
+                .stream().findFirst();
+    }
+
+    public List<RetrievalEntry> findByProject(UUID projectId) {
+        return jdbcTemplate.query("""
+                SELECT * FROM retrieval_entries
+                WHERE project_id = :projectId
+                ORDER BY source_ref
+                """, Maps.of("projectId", projectId), rowMapper);
+    }
+
+    public void markEmbeddingReady(UUID id, String contentHash,
+                                   EmbeddingGateway.Embedding embedding) {
+        jdbcTemplate.update("""
+                UPDATE retrieval_entries
+                SET embedding = CAST(:embedding AS vector),
+                    embedding_model = :embeddingModel,
+                    embedding_dimensions = :embeddingDimensions,
+                    embedding_status = 'READY',
+                    updated_at = NOW()
+                WHERE id = :id AND content_hash = :contentHash
+                  AND retracted_at IS NULL
+                """, Maps.of("id", id, "contentHash", contentHash,
+                "embedding", vectorLiteral(embedding.values()),
+                "embeddingModel", embedding.model(),
+                "embeddingDimensions", embedding.dimensions()));
+    }
+
+    public void markEmbeddingStatus(UUID id, String contentHash, String status) {
+        jdbcTemplate.update("""
+                UPDATE retrieval_entries
+                SET embedding = NULL,
+                    embedding_model = NULL,
+                    embedding_dimensions = NULL,
+                    embedding_status = :status,
+                    updated_at = NOW()
+                WHERE id = :id AND content_hash = :contentHash
+                  AND retracted_at IS NULL
+                """, Maps.of("id", id, "contentHash", contentHash, "status", status));
+    }
+
     public List<RetrievalEntry> lexical(UUID projectId, String queryText, int limit,
                                         String sourceKind, List<String> sourceRefs) {
         if (queryText == null || queryText.isBlank()) {
@@ -135,13 +239,15 @@ public class RetrievalEntryRepository {
         StringBuilder sql = new StringBuilder("""
                 SELECT * FROM retrieval_entries
                 WHERE project_id = :projectId AND retracted_at IS NULL
-                  AND similarity(content, :queryText) > 0.05
+                  AND (similarity(content, :queryText) > 0.15
+                       OR word_similarity(:queryText, content) > 0.15)
                 """);
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("projectId", projectId);
         params.put("queryText", queryText);
         appendFilters(sql, params, sourceKind, sourceRefs);
-        sql.append(" ORDER BY similarity(content, :queryText) DESC, updated_at DESC LIMIT :limit");
+        sql.append(" ORDER BY GREATEST(similarity(content, :queryText), "
+                + "word_similarity(:queryText, content)) DESC, updated_at DESC LIMIT :limit");
         params.put("limit", Math.max(1, limit));
         return jdbcTemplate.query(sql.toString(), params, rowMapper);
     }

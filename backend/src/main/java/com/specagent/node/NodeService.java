@@ -25,10 +25,14 @@ public class NodeService {
 
     private final NodeRepository nodeRepository;
     private final RouteTipPort routeTipPort;
+    private final NodeIndexPort nodeIndexPort;
 
-    public NodeService(NodeRepository nodeRepository, RouteTipPort routeTipPort) {
+    public NodeService(NodeRepository nodeRepository,
+                       RouteTipPort routeTipPort,
+                       NodeIndexPort nodeIndexPort) {
         this.nodeRepository = nodeRepository;
         this.routeTipPort = routeTipPort;
+        this.nodeIndexPort = nodeIndexPort;
     }
 
     public Node createRootNode(UUID projectId,
@@ -167,6 +171,7 @@ public class NodeService {
                 kind, normalizedSubtype, content, authorKind, knowledgeStatus, null, now);
         nodeRepository.save(node);
         advanceRouteTip(routeId, node);
+        nodeIndexPort.index(node);
         return node;
     }
 
@@ -191,6 +196,7 @@ public class NodeService {
                 null, null, List.of(), false, Instant.now(),
                 kind, normalizedSubtype, content, authorKind, knowledgeStatus, null, Instant.now());
         nodeRepository.save(node);
+        nodeIndexPort.index(node);
         return node;
     }
 
@@ -220,8 +226,10 @@ public class NodeService {
         }
         String normalizedSubtype = NodeSubtypes.requireAllowed(node.kind(), subtype);
         nodeRepository.updateDraft(nodeId, normalizedSubtype, content, Instant.now());
-        return nodeRepository.findById(nodeId)
+        Node updated = nodeRepository.findById(nodeId)
                 .orElseThrow(() -> new IllegalStateException("Draft node missing after edit: " + nodeId));
+        nodeIndexPort.index(updated);
+        return updated;
     }
 
     /** Applies an explicit knowledge-state transition to a claim-like node. */
@@ -234,8 +242,10 @@ public class NodeService {
             return node;
         }
         nodeRepository.updateKnowledgeStatus(nodeId, status, Instant.now());
-        return nodeRepository.findById(nodeId)
+        Node updated = nodeRepository.findById(nodeId)
                 .orElseThrow(() -> new IllegalStateException("Node missing after status update: " + nodeId));
+        nodeIndexPort.index(updated);
+        return updated;
     }
 
     /**
@@ -245,6 +255,7 @@ public class NodeService {
      */
     public void setRetracted(UUID nodeId, boolean retracted) {
         nodeRepository.updateRetracted(nodeId, retracted ? Instant.now() : null);
+        nodeRepository.findById(nodeId).ifPresent(nodeIndexPort::index);
     }
 
     private Node createNode(UUID projectId,
@@ -267,6 +278,7 @@ public class NodeService {
                 NodeAuthorKind.AGENT, null, null, now);
         nodeRepository.save(node);
         advanceRouteTip(routeId, node);
+        nodeIndexPort.index(node);
         return node;
     }
 

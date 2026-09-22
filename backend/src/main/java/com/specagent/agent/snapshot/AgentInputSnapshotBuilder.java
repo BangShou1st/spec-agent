@@ -28,6 +28,7 @@ import com.specagent.agent.contract.UserRequiredSkillView;
 import com.specagent.retrieval.api.RetrievedContextItem;
 import com.specagent.retrieval.context.RetrievalContextService;
 import com.specagent.context.ContextRelation;
+import com.specagent.context.ContextOperationType;
 import com.specagent.agent.AgentRunRepository;
 import com.specagent.answer.Answer;
 import com.specagent.answer.AnswerRepository;
@@ -123,6 +124,7 @@ public class AgentInputSnapshotBuilder {
     private final MutableSourceFingerprinter fingerprinter;
     private final Json json;
     private final RetrievalContextService retrievalContextService;
+    private final WorkingContextSelector workingContextSelector;
 
     public AgentInputSnapshotBuilder(NodeRepository nodeRepository,
                                      AnswerRepository answerRepository,
@@ -138,7 +140,8 @@ public class AgentInputSnapshotBuilder {
                                      AgentInputProjectionRepository projectionRepository,
                                      MutableSourceFingerprinter fingerprinter,
                                      Json json,
-                                     RetrievalContextService retrievalContextService) {
+                                     RetrievalContextService retrievalContextService,
+                                     WorkingContextSelector workingContextSelector) {
         this.nodeRepository = nodeRepository;
         this.answerRepository = answerRepository;
         this.answerPatchRepository = answerPatchRepository;
@@ -154,6 +157,7 @@ public class AgentInputSnapshotBuilder {
         this.fingerprinter = fingerprinter;
         this.json = json;
         this.retrievalContextService = retrievalContextService;
+        this.workingContextSelector = workingContextSelector;
     }
 
     /**
@@ -275,6 +279,7 @@ public class AgentInputSnapshotBuilder {
         // Related nodes that are already in lineage are not double-counted.
         java.util.Set<UUID> lineageIds = lineageNodes.stream().map(Node::id)
                 .collect(java.util.stream.Collectors.toSet());
+        lineageNodes = workingContextSelector.select(lineageNodes);
         List<Node> relatedNodes = new ArrayList<>();
         for (UUID relatedId : snapshot.relatedNodeIds()) {
             if (lineageIds.contains(relatedId)) {
@@ -296,6 +301,7 @@ public class AgentInputSnapshotBuilder {
                 .map(optional -> optional.orElseThrow(() -> new IllegalStateException(
                         "Context snapshot included missing node")))
                 .toList();
+        List<Node> workingLineageNodes = workingContextSelector.select(lineageNodes);
         List<Node> relatedNodes = loadRelatedNodes(snapshot, lineageNodes);
         List<RelatedNodeRef> relatedRefs = relatedNodeRefs(snapshot, relatedNodes);
         // One Skill discovery projection per first-freeze build: the same
@@ -303,7 +309,7 @@ public class AgentInputSnapshotBuilder {
         // gate, so the two can never disagree (and a future heavier retriever
         // cannot produce two different catalogs for one frozen snapshot).
         SkillCatalogView skillCatalog =
-                availableSkills(snapshot, lineageNodes, relatedNodes);
+                availableSkills(snapshot, workingLineageNodes, relatedNodes);
         List<ClaimView> effectiveClaims = effectiveClaims(snapshot);
         String retrievalQueryText = retrievalQueryText(snapshot, lineageNodes, effectiveClaims);
         Set<String> mandatoryRetrievalRefs = new HashSet<>();
@@ -324,11 +330,12 @@ public class AgentInputSnapshotBuilder {
                 snapshot.routeId(),
                 snapshot.tipNodeId(),
                 routeContext(snapshot),
-                lineage(snapshot, lineageNodes),
+                lineage(snapshot, workingLineageNodes),
                 effectiveClaims,
                 metadata(snapshot),
-                allowedSourceRefs(snapshot, relatedRefs, retrievedContext),
-                visibleCapabilityDescriptors(snapshot, lineageNodes, relatedNodes, skillCatalog),
+                allowedSourceRefs(snapshot, workingLineageNodes, effectiveClaims,
+                        relatedRefs, retrievedContext),
+                visibleCapabilityDescriptors(snapshot, workingLineageNodes, relatedNodes, skillCatalog),
                 skillCatalog,
                 capabilityResults(snapshot),
                 relations(snapshot),
@@ -342,6 +349,7 @@ public class AgentInputSnapshotBuilder {
                                       List<Node> lineageNodes,
                                       List<ClaimView> claims) {
         List<String> parts = new ArrayList<>();
+        List<String> explicitUserQueries = new ArrayList<>();
         if (snapshot.specialInputs() != null && !snapshot.specialInputs().isBlank()) {
             Map<String, Object> inputs = json.read(snapshot.specialInputs(), Map.class);
             if (inputs != null) {
@@ -349,9 +357,20 @@ public class AgentInputSnapshotBuilder {
                     Object value = inputs.get(key);
                     if (value instanceof String text && !text.isBlank()) {
                         parts.add(text);
+                        if (snapshot.operationType() == ContextOperationType.NODE_QUERY) {
+                            explicitUserQueries.add(text);
+                        }
                     }
                 }
             }
+        }
+        // A NODE_QUERY's explicit question is the retrieval intent. Appending
+        // the current tip body to that text can dilute pg_trgm word similarity
+        // enough to hide an older matching fact, while the tip remains present
+        // in mandatory working context already.
+        if (snapshot.operationType() == ContextOperationType.NODE_QUERY
+                && !explicitUserQueries.isEmpty()) {
+            return String.join("\n", explicitUserQueries);
         }
         if (snapshot.tipNodeId() != null) {
             lineageNodes.stream()
@@ -683,12 +702,31 @@ public class AgentInputSnapshotBuilder {
     }
 
     private List<String> allowedSourceRefs(ContextSnapshot snapshot,
+                                           List<Node> workingLineageNodes,
+                                           List<ClaimView> effectiveClaims,
                                            List<RelatedNodeRef> relatedRefs,
                                            List<RetrievedContextItem> retrievedContext) {
         List<String> refs = new ArrayList<>();
-        snapshot.includedNodeIds().forEach(id -> refs.add("node:" + id));
-        snapshot.includedAnswerIds().forEach(id -> refs.add("answer:" + id));
-        snapshot.includedPatchIds().forEach(id -> refs.add("patch:" + id));
+        Set<UUID> workingNodeIds = workingLineageNodes.stream()
+                .map(Node::id).collect(java.util.stream.Collectors.toSet());
+        Map<UUID, Answer> answersByNodeId = new HashMap<>();
+        for (Answer answer : loadAnswers(snapshot)) {
+            if (workingNodeIds.contains(answer.nodeId())) {
+                refs.add("answer:" + answer.id());
+                answersByNodeId.put(answer.nodeId(), answer);
+            }
+        }
+        Map<UUID, List<AnswerPatch>> patchesByAnswerId = groupPatchesByAnswer(snapshot);
+        workingLineageNodes.forEach(node -> refs.add("node:" + node.id()));
+        answersByNodeId.values().stream()
+                .flatMap(answer -> patchesByAnswerId.getOrDefault(answer.id(), List.of()).stream())
+                .map(patch -> "patch:" + patch.id())
+                .forEach(refs::add);
+        effectiveClaims.stream().flatMap(claim -> java.util.stream.Stream.of(
+                        claim.sourceNodeId() == null ? null : "node:" + claim.sourceNodeId(),
+                        claim.sourceAnswerId() == null ? null : "answer:" + claim.sourceAnswerId()))
+                .filter(java.util.Objects::nonNull)
+                .forEach(refs::add);
         // Related nodes are first-class source refs too: a model may ground on
         // their body content or reference them in a CONNECT_NODE proposal
         // (e.g. relating the anchor to a directly-visible related node).

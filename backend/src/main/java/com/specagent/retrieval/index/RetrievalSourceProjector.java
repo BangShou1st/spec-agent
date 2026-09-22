@@ -9,7 +9,10 @@ import com.specagent.node.Node;
 import com.specagent.node.NodeAuthorKind;
 import com.specagent.node.NodeKind;
 import com.specagent.node.NodeRepository;
+import com.specagent.node.NodeIndexPort;
+import com.specagent.answer.AnswerIndexPort;
 import com.specagent.patch.AnswerPatch;
+import com.specagent.patch.AnswerPatchIndexPort;
 import com.specagent.patch.AnswerPatchRepository;
 import com.specagent.patch.Claim;
 import com.specagent.patch.ClaimStatus;
@@ -31,7 +34,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-/** Rebuilds retrieval rows from canonical Runtime records only. */
+/** Projects canonical Runtime records into the rebuildable retrieval index. */
 @Service
 public class RetrievalSourceProjector {
 
@@ -67,34 +70,128 @@ public class RetrievalSourceProjector {
     public void rebuildProject(UUID projectId) {
         entryRepository.deleteProject(projectId);
         for (Node node : nodeRepository.findByProject(projectId)) {
-            if (!sourcePolicy.allow(node)) {
-                continue;
-            }
-            if (node.kind() == NodeKind.RESOURCE) {
-                projectResource(projectId, node);
-            } else {
-                projectNode(projectId, node);
-            }
+            indexNode(node);
         }
         for (Answer answer : answerRepository.findByProject(projectId)) {
-            projectAnswer(answer);
+            indexAnswer(answer);
         }
         for (AnswerPatch patch : answerPatchRepository.findByProject(projectId)) {
-            projectPatch(patch);
+            indexPatch(patch);
         }
+    }
+
+    @Transactional
+    public void rebuildSource(UUID projectId, String sourceRef) {
+        if (sourceRef == null || sourceRef.isBlank()) {
+            throw new IllegalArgumentException("sourceRef is required");
+        }
+        if (sourceRef.startsWith("node:")) {
+            UUID id = parseRef(sourceRef, "node:");
+            nodeRepository.findById(id).filter(node -> node.projectId().equals(projectId))
+                    .ifPresent(this::indexNode);
+            return;
+        }
+        if (sourceRef.startsWith("resource-chunk:")) {
+            String[] parts = sourceRef.split(":");
+            if (parts.length < 2) {
+                throw new IllegalArgumentException("Malformed resource sourceRef");
+            }
+            UUID id = UUID.fromString(parts[1]);
+            nodeRepository.findById(id).filter(node -> node.projectId().equals(projectId))
+                    .ifPresent(this::indexNode);
+            return;
+        }
+        if (sourceRef.startsWith("answer:")) {
+            UUID id = parseRef(sourceRef, "answer:");
+            answerRepository.findById(id).filter(answer -> answer.projectId().equals(projectId))
+                    .ifPresent(this::indexAnswer);
+            return;
+        }
+        if (sourceRef.startsWith("claim:")) {
+            UUID claimId = parseRef(sourceRef, "claim:");
+            answerPatchRepository.findByProject(projectId).stream()
+                    .filter(patch -> patch.claims().stream().anyMatch(claim -> claimId.equals(claim.id())))
+                    .findFirst()
+                    .ifPresent(this::indexPatch);
+            return;
+        }
+        throw new IllegalArgumentException("Unsupported retrieval sourceRef: " + sourceRef);
+    }
+
+    private UUID parseRef(String sourceRef, String prefix) {
+        try {
+            return UUID.fromString(sourceRef.substring(prefix.length()));
+        } catch (RuntimeException ex) {
+            throw new IllegalArgumentException("Malformed retrieval sourceRef: " + sourceRef, ex);
+        }
+    }
+
+    /** Incrementally projects one canonical Node without touching other rows. */
+    @Transactional
+    public void indexNode(Node node) {
+        if (node == null) {
+            return;
+        }
+        UUID projectId = node.projectId();
+        entryRepository.deleteSourcePrefix(projectId, "resource-chunk:" + node.id() + ":");
+        entryRepository.deleteSource(projectId, "node:" + node.id());
+        if (!sourcePolicy.allow(node)) {
+            return;
+        }
+        if (node.kind() == NodeKind.RESOURCE) {
+            projectResource(projectId, node);
+        } else {
+            projectNode(projectId, node);
+        }
+    }
+
+    /** Incrementally projects one immutable canonical Answer. */
+    @Transactional
+    public void indexAnswer(Answer answer) {
+        if (answer == null) {
+            return;
+        }
+        entryRepository.deleteSource(answer.projectId(), "answer:" + answer.id());
+        projectAnswer(answer);
+    }
+
+    /** Incrementally projects all claims in one immutable AnswerPatch. */
+    @Transactional
+    public void indexPatch(AnswerPatch patch) {
+        if (patch == null) {
+            return;
+        }
+        int claimOrdinal = 0;
+        for (Claim claim : patch.claims()) {
+            UUID claimId = claim.id() == null
+                    ? UUID.nameUUIDFromBytes((patch.id() + ":claim:" + claimOrdinal)
+                            .getBytes(StandardCharsets.UTF_8))
+                    : claim.id();
+            entryRepository.deleteSource(patch.projectId(), "claim:" + claimId);
+            claimOrdinal++;
+        }
+        projectPatch(patch);
+    }
+
+    /** Retraction is durable in the projection; the canonical source remains. */
+    @Transactional
+    public void retractSource(UUID projectId, String sourceRef) {
+        entryRepository.retractSource(projectId, sourceRef);
     }
 
     private void projectNode(UUID projectId, Node node) {
         String text = joinText(node.question(), node.purpose(), node.contentText());
-        if (text.isBlank() || !sourcePolicy.allowText(text)) {
+        Map<String, Object> metadata = Map.of(
+                "nodeId", node.id().toString(),
+                "kind", node.kind().code(),
+                "subtype", node.subtype() == null ? "" : node.subtype());
+        if (text.isBlank() || !sourcePolicy.allowText(text)
+                || !sourcePolicy.allowMetadata(metadata)) {
             return;
         }
         entryRepository.upsert(newEntry(projectId, null, RetrievalSourceKind.NODE,
                 node.id(), "node:" + node.id(), RetrievalScope.PROJECT,
-                nodeAuthority(node), text, Map.of(
-                        "nodeId", node.id().toString(),
-                        "kind", node.kind().code(),
-                        "subtype", node.subtype() == null ? "" : node.subtype()),
+                nodeAuthority(node), text, metadata,
                 node.retractedAt()));
     }
 
@@ -118,6 +215,9 @@ public class RetrievalSourceProjector {
             if (url instanceof String value && !value.isBlank()) {
                 metadata.put("url", value);
             }
+            if (!sourcePolicy.allowMetadata(metadata)) {
+                continue;
+            }
             entryRepository.upsert(newEntry(projectId, null, RetrievalSourceKind.RESOURCE_CHUNK,
                     node.id(), sourceRef, RetrievalScope.RESOURCE,
                     MemoryAuthority.EXTERNAL_EVIDENCE, chunk.content(), metadata,
@@ -127,13 +227,15 @@ public class RetrievalSourceProjector {
 
     private void projectAnswer(Answer answer) {
         String text = joinText(answer.freeText(), answer.selectedOptionId());
-        if (text.isBlank()) {
+        Map<String, Object> metadata = Map.of(
+                "nodeId", answer.nodeId().toString(), "routeId", answer.routeId().toString());
+        if (text.isBlank() || !sourcePolicy.allowText(text)
+                || !sourcePolicy.allowMetadata(metadata)) {
             return;
         }
         entryRepository.upsert(newEntry(answer.projectId(), answer.routeId(), RetrievalSourceKind.ANSWER,
                 answer.id(), "answer:" + answer.id(), RetrievalScope.ROUTE,
-                MemoryAuthority.USER_AUTHORED, text,
-                Map.of("nodeId", answer.nodeId().toString(), "routeId", answer.routeId().toString()), null));
+                MemoryAuthority.USER_AUTHORED, text, metadata, null));
     }
 
     private void projectPatch(AnswerPatch patch) {
@@ -154,6 +256,10 @@ public class RetrievalSourceProjector {
             metadata.put("sourceNodeId", patch.sourceNodeId().toString());
             metadata.put("sourceAnswerId", patch.sourceAnswerId().toString());
             metadata.put("kind", claim.kind() == null ? "other" : claim.kind().code());
+            if (!sourcePolicy.allowMetadata(metadata)) {
+                claimOrdinal++;
+                continue;
+            }
             entryRepository.upsert(newEntry(patch.projectId(), patch.routeId(), RetrievalSourceKind.CLAIM,
                     claimId, sourceRef, RetrievalScope.ROUTE,
                     claimAuthority(claim.status()), claim.text(), metadata, null));

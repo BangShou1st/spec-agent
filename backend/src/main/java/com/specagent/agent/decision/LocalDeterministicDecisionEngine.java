@@ -5,6 +5,7 @@ import com.specagent.agent.contract.AgentArtifactResponse;
 import com.specagent.agent.contract.AgentProtocol;
 import com.specagent.agent.contract.AgentRequestEnvelope;
 import com.specagent.agent.contract.AgentResponseEnvelope;
+import com.specagent.agent.contract.CapabilityDescriptor;
 import com.specagent.agent.contract.ObservationView;
 import com.specagent.agent.contract.ProposedClaim;
 import com.specagent.agent.contract.StateUpdateResult;
@@ -65,36 +66,6 @@ public class LocalDeterministicDecisionEngine implements AgentDecisionEngine {
     @Override
     public AgentResponseEnvelope runDecision(AgentRequestEnvelope request) {
         UUID snapshotId = UUID.fromString(request.snapshot().snapshotId());
-        // Deterministic capability path: when the runtime exposed any
-        // capability descriptors, the fake engine invokes the first visible
-        // one against the first non-interaction lineage node. Fully generic
-        // — no capability id or node kind is hardcoded here.
-        if (!request.snapshot().availableCapabilities().isEmpty()) {
-            String capabilityId = request.snapshot().availableCapabilities().get(0).id();
-            String nodeRef = request.snapshot().lineage().stream()
-                    .filter(entry -> !"INTERACTION".equals(entry.node().kind()))
-                    .map(entry -> "node:" + entry.node().id())
-                    .findFirst()
-                    .orElse(null);
-            if (nodeRef != null) {
-                AgentResponseEnvelope invoke = decisionResponse(request,
-                        new ObservationView(
-                                List.of("A resource is available in the lineage."),
-                                List.of(), List.of(), List.of()),
-                        new ActionProposal(
-                                "INVOKE_CAPABILITY",
-                                Map.of("capabilityId", capabilityId,
-                                       "arguments", Map.of("nodeRef", nodeRef)),
-                                snapshotId,
-                                request.snapshot().contextHash(),
-                                List.of(),
-                                UUID.randomUUID(),
-                                request.runId().toString(),
-                                List.of()));
-                AgentBrainResponseValidator.validateDecision(request, invoke);
-                return invoke;
-            }
-        }
         if ("NODE_QUERY".equals(request.event().kind())) {
             // Deterministic E2E mutation path: an explicit "建立语义关联"
             // instruction yields a confirmable CONNECT_NODE proposal between
@@ -147,6 +118,43 @@ public class LocalDeterministicDecisionEngine implements AgentDecisionEngine {
             AgentBrainResponseValidator.validateDecision(request, respond);
             return respond;
         }
+        // Deterministic capability path: choose a capability whose declared
+        // context support matches the projected lineage. Workspace-level
+        // retrieval capabilities intentionally have no node-kind support and
+        // require a real query argument, so they are not guessed by this
+        // fixture engine for an ordinary answer cycle.
+        CapabilityDescriptor candidate = request.snapshot().availableCapabilities().stream()
+                .filter(descriptor -> supportsLineage(descriptor, request))
+                .findFirst()
+                .orElseGet(() -> request.snapshot().availableCapabilities().stream()
+                        .filter(descriptor -> !requiresQuery(descriptor))
+                        .findFirst()
+                        .orElse(null));
+        if (candidate != null) {
+            String nodeRef = request.snapshot().lineage().stream()
+                    .filter(entry -> !"INTERACTION".equals(entry.node().kind()))
+                    .map(entry -> "node:" + entry.node().id())
+                    .findFirst()
+                    .orElse(null);
+            if (nodeRef != null) {
+                AgentResponseEnvelope invoke = decisionResponse(request,
+                        new ObservationView(
+                                List.of("A resource is available in the lineage."),
+                                List.of(), List.of(), List.of()),
+                        new ActionProposal(
+                                "INVOKE_CAPABILITY",
+                                Map.of("capabilityId", candidate.id(),
+                                       "arguments", Map.of("nodeRef", nodeRef)),
+                                snapshotId,
+                                request.snapshot().contextHash(),
+                                List.of(),
+                                UUID.randomUUID(),
+                                request.runId().toString(),
+                                List.of()));
+                AgentBrainResponseValidator.validateDecision(request, invoke);
+                return invoke;
+            }
+        }
         // A CONTINUE event carrying free text is a directed revision (e.g.
         // replacement): the deterministic proposal reflects the direction with
         // a distinct question instead of the canonical draft question.
@@ -192,6 +200,32 @@ public class LocalDeterministicDecisionEngine implements AgentDecisionEngine {
                         List.of()));
         AgentBrainResponseValidator.validateDecision(request, response);
         return response;
+    }
+
+    private boolean supportsLineage(CapabilityDescriptor descriptor,
+                                    AgentRequestEnvelope request) {
+        if (descriptor.supports().isEmpty()) {
+            return false;
+        }
+        return descriptor.supports().stream().anyMatch(support ->
+                request.snapshot().lineage().stream()
+                        .anyMatch(entry -> supportMatches(support, entry.node().kind())));
+    }
+
+    private boolean supportMatches(String support, String contextKind) {
+        int separator = support.indexOf(':');
+        String supportKind = separator < 0 ? support : support.substring(0, separator);
+        return supportKind.equalsIgnoreCase(contextKind);
+    }
+
+    private boolean requiresQuery(CapabilityDescriptor descriptor) {
+        Object properties = descriptor.inputSchema().get("properties");
+        if (!(properties instanceof Map<?, ?> propertyMap)) {
+            return false;
+        }
+        return propertyMap.containsKey("query")
+                && descriptor.inputSchema().get("required") instanceof List<?> required
+                && required.stream().anyMatch("query"::equals);
     }
 
     /**

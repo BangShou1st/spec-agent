@@ -125,13 +125,17 @@ class CapabilityIntegrationTest {
                 .extracting(com.specagent.agent.contract.CapabilityDescriptor::id)
                 .contains(ResourceExtractTextCapability.CAPABILITY_ID);
 
-        // A project without RESOURCE nodes sees no resource capability:
-        // irrelevant capabilities are not exposed (and thus never called).
+        // A project without RESOURCE nodes still sees the workspace-level
+        // memory search capability, while the resource-specific capability
+        // remains hidden because no RESOURCE context is available.
         Project plain = projectService.createProject("无资源项目");
         ContextSnapshot withoutResource = contextBuilder.buildFromActiveRoute(
                 plain.id(), UUID.randomUUID(), ContextOperationType.NORMAL);
         AgentInputSnapshot snapshotWithout = snapshotBuilder.build(withoutResource);
-        assertThat(snapshotWithout.availableCapabilities()).isEmpty();
+        assertThat(snapshotWithout.availableCapabilities())
+                .extracting(com.specagent.agent.contract.CapabilityDescriptor::id)
+                .contains(com.specagent.capability.MemorySearchCapability.CAPABILITY_ID)
+                .doesNotContain(ResourceExtractTextCapability.CAPABILITY_ID);
     }
 
     @Test

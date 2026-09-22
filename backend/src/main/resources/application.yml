@@ -84,6 +84,11 @@ spec:
       max-visible: ${SPEC_AGENT_CAPABILITY_CATALOG_MAX_VISIBLE:32}
       max-descriptor-bytes: ${SPEC_AGENT_CAPABILITY_CATALOG_MAX_DESCRIPTOR_BYTES:2048}
       max-description-chars: ${SPEC_AGENT_CAPABILITY_CATALOG_MAX_DESCRIPTION_CHARS:320}
+    retrieval:
+      # Vector enrichment is optional; lexical/trigram/graph retrieval remains
+      # the correctness path when no provider is configured.
+      embedding:
+        provider: ${SPEC_AGENT_EMBEDDING_PROVIDER:noop}
     skill:
       # Skill import security bounds (ZIP/git). Conservative by default;
       # scripts and dependency installation never run during validate/install.

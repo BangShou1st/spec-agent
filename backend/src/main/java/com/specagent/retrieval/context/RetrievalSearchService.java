@@ -5,7 +5,6 @@ import com.specagent.node.NodeRepository;
 import com.specagent.retrieval.api.RetrievalQuery;
 import com.specagent.retrieval.api.RetrievalScope;
 import com.specagent.retrieval.api.RetrievedContextItem;
-import com.specagent.retrieval.index.RetrievalSourceProjector;
 import com.specagent.retrieval.persistence.RetrievalEntry;
 import com.specagent.retrieval.persistence.RetrievalEntryRepository;
 import com.specagent.retrieval.search.HybridRetriever;
@@ -25,18 +24,15 @@ import java.util.UUID;
 @Service
 public class RetrievalSearchService {
 
-    private final RetrievalSourceProjector projector;
     private final HybridRetriever retriever;
     private final RetrievalEntryRepository entryRepository;
     private final RouteRepository routeRepository;
     private final NodeRepository nodeRepository;
 
-    public RetrievalSearchService(RetrievalSourceProjector projector,
-                                  HybridRetriever retriever,
+    public RetrievalSearchService(HybridRetriever retriever,
                                   RetrievalEntryRepository entryRepository,
                                   RouteRepository routeRepository,
                                   NodeRepository nodeRepository) {
-        this.projector = projector;
         this.retriever = retriever;
         this.entryRepository = entryRepository;
         this.routeRepository = routeRepository;
@@ -51,7 +47,6 @@ public class RetrievalSearchService {
         if (scope == RetrievalScope.ROUTE) {
             validateRoute(projectId, routeId);
         }
-        projector.rebuildProject(projectId);
         Set<String> routeRefs = scope == RetrievalScope.ROUTE
                 ? sourceRefsForRoute(projectId, routeId) : Set.of();
         Set<UUID> graphNodes = new LinkedHashSet<>();
