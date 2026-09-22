@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-26.04
     services:
       postgres:
-        image: postgres:17-alpine
+        image: pgvector/pgvector:pg17
         env:
           POSTGRES_DB: spec_agent_test
           POSTGRES_USER: spec_agent
@@ -60,7 +60,7 @@ jobs:
     runs-on: ubuntu-26.04
     services:
       postgres:
-        image: postgres:17-alpine
+        image: pgvector/pgvector:pg17
         env:
           POSTGRES_DB: spec_agent_test
           POSTGRES_USER: spec_agent
@@ -88,11 +88,19 @@ jobs:
           SPRING_PROFILES_ACTIVE: test
           SPEC_AGENT_MODEL_GATEWAY: fake
         run: bash gradlew evalBFast
+      - name: Run deterministic Memory + RAG retrieval gate
+        working-directory: backend
+        env:
+          SPRING_PROFILES_ACTIVE: test
+          SPEC_AGENT_MODEL_GATEWAY: fake
+        run: bash gradlew evalRetrievalFast
       - name: Upload baseline artifacts
         uses: actions/upload-artifact@v7
         with:
           name: eval-baseline
-          path: backend/build/eval-baseline/
+          path: |
+            backend/build/eval-baseline/
+            backend/build/eval-retrieval/
           if-no-files-found: error
 
   # Deterministic Python brain unit tests. The suite is offline-safe: model
@@ -122,7 +130,7 @@ jobs:
     runs-on: ubuntu-26.04
     services:
       postgres:
-        image: postgres:17-alpine
+        image: pgvector/pgvector:pg17
         env:
           POSTGRES_DB: spec_agent_test
           POSTGRES_USER: spec_agent
@@ -212,7 +220,7 @@ jobs:
     runs-on: ubuntu-26.04
     services:
       postgres:
-        image: postgres:17-alpine
+        image: pgvector/pgvector:pg17
         env:
           POSTGRES_DB: spec_agent_test
           POSTGRES_USER: spec_agent
