@@ -110,7 +110,7 @@ Unknown reduction is valuable only if it comes from grounded confirmation, not u
 Persist:
 
 - authoritative Graph mutations;
-- the `AgentInputSnapshot` as a durable frozen projection per `ContextSnapshot` (immutable payload + durable projection schema version `agent-input-projection.v1` + payload hash + mutable-source fingerprint set; first projection freezes, later projections replay — see `AGENT_MEMORY_AND_CONTEXT.md` §11; `LEGACY_FROZEN_INPUT_UNAVAILABLE` fail-closed for pre-contract replay gaps);
+- the `AgentInputSnapshot` as a durable frozen projection per `ContextSnapshot` (immutable payload + durable projection schema version `agent-input-projection.v2` + payload hash + mutable-source fingerprint set; first projection freezes, later projections replay — see `AGENT_MEMORY_AND_CONTEXT.md` §11; `agent-input-projection.v1` and legacy `agent-input.v2` rows remain readable; `LEGACY_FROZEN_INPUT_UNAVAILABLE` fail-closed for pre-contract replay gaps);
 - AgentRun lifecycle (including the snapshot identity behind each DECISION call);
 - structured action proposal/policy outcome references needed for traceability;
 - user approval/rejection feedback.

@@ -10,6 +10,7 @@ import com.specagent.answer.AnswerService;
 import com.specagent.context.ContextBuilder;
 import com.specagent.context.ContextOperationType;
 import com.specagent.context.ContextSnapshot;
+import com.specagent.graph.GraphCommandService;
 import com.specagent.node.Node;
 import com.specagent.node.NodeService;
 import com.specagent.patch.AnswerPatch;
@@ -19,6 +20,8 @@ import com.specagent.patch.ClaimKind;
 import com.specagent.patch.ClaimStatus;
 import com.specagent.project.Project;
 import com.specagent.project.ProjectService;
+import com.specagent.retrieval.api.RetrievalScope;
+import com.specagent.retrieval.api.RetrievalSourceKind;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -26,6 +29,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -49,6 +53,8 @@ class AgentInputSnapshotBuilderIntegrationTest {
     private AnswerService answerService;
     @Autowired
     private AnswerPatchService answerPatchService;
+    @Autowired
+    private GraphCommandService graphCommandService;
     @Autowired
     private ContextBuilder contextBuilder;
     @Autowired
@@ -121,5 +127,33 @@ class AgentInputSnapshotBuilderIntegrationTest {
         // Round-trips through the strict mapper (unknown fields would fail).
         assertThat(AgentContracts.read(wire, AgentRequestEnvelope.class).runId())
                 .isEqualTo(envelope.runId());
+    }
+
+    @Test
+    void resourceRetrievalCarriesChunkProvenanceAndAllowedSourceRef() {
+        Project project = projectService.createProject("资源检索投影");
+        UUID routeId = project.activeRouteId();
+        Node anchor = graphCommandService.createRootDraftNode(
+                project.id(), routeId, "NOTE", Map.of("text", "数据留存要求是什么？"));
+        Node resource = graphCommandService.attachResource(
+                project.id(), routeId, anchor.id(), "TEXT",
+                Map.of("text", "系统数据留存要求为180天，随后按策略安全删除。"));
+
+        ContextSnapshot snapshot = contextBuilder.buildForNodeQuery(
+                project.id(), routeId, anchor.id(), "数据留存要求");
+        var projected = snapshotBuilder.build(snapshot);
+
+        assertThat(projected.retrievedContext()).anySatisfy(item -> {
+            assertThat(item.sourceKind()).isEqualTo(RetrievalSourceKind.RESOURCE_CHUNK);
+            assertThat(item.scope()).isEqualTo(RetrievalScope.RESOURCE);
+            assertThat(item.content()).contains("180天");
+            assertThat(item.sourceRef()).startsWith("resource-chunk:" + resource.id() + ":");
+            assertThat(item.location()).containsEntry("resourceId", resource.id().toString());
+            assertThat(projected.allowedSourceRefs()).contains(item.sourceRef());
+        });
+
+        // Frozen replay must not re-run retrieval or observe a mutable index.
+        assertThat(snapshotBuilder.build(snapshot).retrievedContext())
+                .isEqualTo(projected.retrievedContext());
     }
 }

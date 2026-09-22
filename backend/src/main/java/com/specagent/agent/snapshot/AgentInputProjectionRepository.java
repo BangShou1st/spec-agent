@@ -34,7 +34,9 @@ public class AgentInputProjectionRepository {
      * Durable projection schema version, intentionally independent of the
      * cross-language wire envelope version.
      */
-    public static final String SUPPORTED_PROJECTION_VERSION = "agent-input-projection.v1";
+    public static final String SUPPORTED_PROJECTION_VERSION = "agent-input-projection.v2";
+    /** V1 rows are immutable and remain readable for replay compatibility. */
+    public static final String LEGACY_PROJECTION_VERSION_V1 = "agent-input-projection.v1";
     /** Legacy value shipped in V20 before the review fix. Accepted for reading old rows. */
     private static final String LEGACY_PROJECTION_VERSION = "agent-input.v2";
 

@@ -25,6 +25,8 @@ import com.specagent.agent.contract.PatchView;
 import com.specagent.agent.contract.RouteContextView;
 import com.specagent.agent.contract.SnapshotMetadata;
 import com.specagent.agent.contract.UserRequiredSkillView;
+import com.specagent.retrieval.api.RetrievedContextItem;
+import com.specagent.retrieval.context.RetrievalContextService;
 import com.specagent.context.ContextRelation;
 import com.specagent.agent.AgentRunRepository;
 import com.specagent.answer.Answer;
@@ -57,6 +59,7 @@ import org.springframework.stereotype.Service;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -119,6 +122,7 @@ public class AgentInputSnapshotBuilder {
     private final AgentInputProjectionRepository projectionRepository;
     private final MutableSourceFingerprinter fingerprinter;
     private final Json json;
+    private final RetrievalContextService retrievalContextService;
 
     public AgentInputSnapshotBuilder(NodeRepository nodeRepository,
                                      AnswerRepository answerRepository,
@@ -133,7 +137,8 @@ public class AgentInputSnapshotBuilder {
                                      AgentRunRepository agentRunRepository,
                                      AgentInputProjectionRepository projectionRepository,
                                      MutableSourceFingerprinter fingerprinter,
-                                     Json json) {
+                                     Json json,
+                                     RetrievalContextService retrievalContextService) {
         this.nodeRepository = nodeRepository;
         this.answerRepository = answerRepository;
         this.answerPatchRepository = answerPatchRepository;
@@ -148,6 +153,7 @@ public class AgentInputSnapshotBuilder {
         this.projectionRepository = projectionRepository;
         this.fingerprinter = fingerprinter;
         this.json = json;
+        this.retrievalContextService = retrievalContextService;
     }
 
     /**
@@ -193,6 +199,7 @@ public class AgentInputSnapshotBuilder {
     private AgentInputSnapshot loadFrozen(ContextSnapshot snapshot,
                                           AgentInputProjectionRepository.FrozenInputProjection frozen) {
         boolean versionOk = AgentInputProjectionRepository.SUPPORTED_PROJECTION_VERSION.equals(frozen.projectionVersion())
+                || AgentInputProjectionRepository.LEGACY_PROJECTION_VERSION_V1.equals(frozen.projectionVersion())
                 || "agent-input.v2".equals(frozen.projectionVersion());
         if (!versionOk) {
             throw new FrozenProjectionCorruptedException(
@@ -297,6 +304,19 @@ public class AgentInputSnapshotBuilder {
         // cannot produce two different catalogs for one frozen snapshot).
         SkillCatalogView skillCatalog =
                 availableSkills(snapshot, lineageNodes, relatedNodes);
+        List<ClaimView> effectiveClaims = effectiveClaims(snapshot);
+        String retrievalQueryText = retrievalQueryText(snapshot, lineageNodes, effectiveClaims);
+        Set<String> mandatoryRetrievalRefs = new HashSet<>();
+        effectiveClaims.forEach(claim -> {
+            if (claim.sourceAnswerId() != null) {
+                mandatoryRetrievalRefs.add("answer:" + claim.sourceAnswerId());
+            }
+            if (claim.sourceNodeId() != null) {
+                mandatoryRetrievalRefs.add("node:" + claim.sourceNodeId());
+            }
+        });
+        List<RetrievedContextItem> retrievedContext = retrievalContextService.retrieve(
+                snapshot, mandatoryRetrievalRefs, retrievalQueryText);
         return new AgentInputSnapshot(
                 snapshot.id().toString(),
                 snapshot.contextHash(),
@@ -305,15 +325,49 @@ public class AgentInputSnapshotBuilder {
                 snapshot.tipNodeId(),
                 routeContext(snapshot),
                 lineage(snapshot, lineageNodes),
-                effectiveClaims(snapshot),
+                effectiveClaims,
                 metadata(snapshot),
-                allowedSourceRefs(snapshot, relatedRefs),
+                allowedSourceRefs(snapshot, relatedRefs, retrievedContext),
                 visibleCapabilityDescriptors(snapshot, lineageNodes, relatedNodes, skillCatalog),
                 skillCatalog,
                 capabilityResults(snapshot),
                 relations(snapshot),
                 relatedRefs,
+                retrievedContext,
                 new AutonomyInputs("ADVISOR"));
+    }
+
+    @SuppressWarnings("unchecked")
+    private String retrievalQueryText(ContextSnapshot snapshot,
+                                      List<Node> lineageNodes,
+                                      List<ClaimView> claims) {
+        List<String> parts = new ArrayList<>();
+        if (snapshot.specialInputs() != null && !snapshot.specialInputs().isBlank()) {
+            Map<String, Object> inputs = json.read(snapshot.specialInputs(), Map.class);
+            if (inputs != null) {
+                for (String key : List.of("userQuestion", "userInstruction", "oldQuestion", "oldPurpose")) {
+                    Object value = inputs.get(key);
+                    if (value instanceof String text && !text.isBlank()) {
+                        parts.add(text);
+                    }
+                }
+            }
+        }
+        if (snapshot.tipNodeId() != null) {
+            lineageNodes.stream()
+                    .filter(node -> snapshot.tipNodeId().equals(node.id()))
+                    .findFirst()
+                    .ifPresent(node -> {
+                        if (node.question() != null && !node.question().isBlank()) {
+                            parts.add(node.question());
+                        } else if (node.contentText() != null && !node.contentText().isBlank()) {
+                            parts.add(node.contentText());
+                        }
+                    });
+        }
+        claims.stream().limit(24).map(ClaimView::text)
+                .filter(text -> text != null && !text.isBlank()).forEach(parts::add);
+        return String.join("\n", parts);
     }
 
     /**
@@ -628,7 +682,9 @@ public class AgentInputSnapshotBuilder {
         return new SnapshotMetadata(title instanceof String text && !text.isBlank() ? text : null);
     }
 
-    private List<String> allowedSourceRefs(ContextSnapshot snapshot, List<RelatedNodeRef> relatedRefs) {
+    private List<String> allowedSourceRefs(ContextSnapshot snapshot,
+                                           List<RelatedNodeRef> relatedRefs,
+                                           List<RetrievedContextItem> retrievedContext) {
         List<String> refs = new ArrayList<>();
         snapshot.includedNodeIds().forEach(id -> refs.add("node:" + id));
         snapshot.includedAnswerIds().forEach(id -> refs.add("answer:" + id));
@@ -638,6 +694,10 @@ public class AgentInputSnapshotBuilder {
         // (e.g. relating the anchor to a directly-visible related node).
         relatedRefs.stream().map(RelatedNodeRef::nodeId).distinct()
                 .forEach(id -> refs.add("node:" + id));
+        if (retrievedContext != null) {
+            retrievedContext.stream().map(RetrievedContextItem::sourceRef).distinct()
+                    .forEach(refs::add);
+        }
         refs.add("context:" + snapshot.id());
         if (snapshot.routeId() != null) {
             refs.add("route:" + snapshot.routeId());

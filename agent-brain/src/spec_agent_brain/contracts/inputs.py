@@ -211,6 +211,26 @@ class RelatedNodeRef(StrictModel):
     node: NodeView
 
 
+class RetrievedContextItem(StrictModel):
+    """Runtime-ranked evidence projected into frozen working memory.
+
+    Relevance scores and embedding details are intentionally absent. Scope,
+    authority, content, and provenance are the model-visible boundary.
+    """
+
+    source_ref: str
+    source_kind: str
+    scope: Literal["ROUTE", "PROJECT", "RESOURCE"]
+    origin_route_id: Optional[UUID] = None
+    authority: Literal[
+        "CONFIRMED", "USER_AUTHORED", "EXTERNAL_EVIDENCE", "DERIVED",
+        "ASSUMED", "UNRESOLVED", "REJECTED"]
+    content: str
+    location: Optional[Dict[str, Any]] = None
+    provenance: Dict[str, Any] = Field(default_factory=dict)
+    retrieval_reason: str = ""
+
+
 class AgentInputSnapshot(StrictModel):
     snapshot_id: UUID
     context_hash: str
@@ -233,6 +253,7 @@ class AgentInputSnapshot(StrictModel):
     # Bounded 1-hop semantic context (NODE_QUERY only; empty for other ops).
     relations: List[RelationView] = Field(default_factory=list)
     related_nodes: List[RelatedNodeRef] = Field(default_factory=list)
+    retrieved_context: List[RetrievedContextItem] = Field(default_factory=list)
     autonomy: AutonomyInputs
 
 

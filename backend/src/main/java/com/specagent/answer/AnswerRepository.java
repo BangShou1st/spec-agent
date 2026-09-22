@@ -97,4 +97,12 @@ public class AnswerRepository {
         String sql = "SELECT * FROM answers WHERE id = :id";
         return jdbcTemplate.query(sql, Maps.of("id", id), rowMapper).stream().findFirst();
     }
+
+    /** Canonical project-wide scan used only to rebuild derived retrieval data. */
+    public List<Answer> findByProject(UUID projectId) {
+        String sql = """
+                SELECT * FROM answers WHERE project_id = :projectId ORDER BY created_at, id
+                """;
+        return jdbcTemplate.query(sql, Maps.of("projectId", projectId), rowMapper);
+    }
 }

@@ -97,6 +97,19 @@ fields contain public structured evidence only, never hidden reasoning.
     "allowedSourceRefs": ["node:<uuid>", "answer:<uuid>", "patch:<uuid>", "context:<uuid>", "route:<uuid>"],
     "availableCapabilities": [],
     "capabilityResults": [],
+    "retrievedContext": [
+      {
+        "sourceRef": "resource-chunk:<uuid>:17",
+        "sourceKind": "RESOURCE_CHUNK",
+        "scope": "RESOURCE",
+        "originRouteId": null,
+        "authority": "EXTERNAL_EVIDENCE",
+        "content": "<bounded excerpt>",
+        "location": {"resourceId": "<uuid>", "chunk": 17},
+        "provenance": {"contentHash": "<sha256>"},
+        "retrievalReason": "resource-knowledge"
+      }
+    ],
     "autonomy": {"mode": "ADVISOR"}
   },
   "capabilities": [],
@@ -154,6 +167,10 @@ Rules:
   observations from earlier invocations (external evidence / generated
   summaries with `sourceRefs` + `provenance`) — they are never auto-confirmed
   graph truth.
+- `retrievedContext` is optional for legacy frozen payloads and defaults to an
+  empty list. Every item is Runtime-produced evidence; `scope` and `authority`
+  are independent of retrieval relevance, and resource text is untrusted
+  external content rather than policy.
 - Capability/Dynamic-provider extension: an `availableCapabilities` entry
   carries the bounded planner-facing descriptor shape
   `{id, version, description, inputSchema, readOnly, sideEffectClass, supports}`.

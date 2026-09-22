@@ -2,6 +2,7 @@ package com.specagent.agent.contract;
 
 import java.util.List;
 import java.util.UUID;
+import com.specagent.retrieval.api.RetrievedContextItem;
 
 /**
  * The deterministic, runtime-built, frozen model-facing projection of one
@@ -27,6 +28,7 @@ public record AgentInputSnapshot(String snapshotId,
                                  List<CapabilityResultView> capabilityResults,
                                  List<RelationView> relations,
                                  List<RelatedNodeRef> relatedNodes,
+                                 List<RetrievedContextItem> retrievedContext,
                                  AutonomyInputs autonomy) {
 
     public AgentInputSnapshot {
@@ -41,6 +43,7 @@ public record AgentInputSnapshot(String snapshotId,
                 ? List.of() : List.copyOf(capabilityResults);
         relations = relations == null ? List.of() : List.copyOf(relations);
         relatedNodes = relatedNodes == null ? List.of() : List.copyOf(relatedNodes);
+        retrievedContext = retrievedContext == null ? List.of() : List.copyOf(retrievedContext);
     }
 
     /** Legacy constructor for callers that predate the Skill catalog field. */
@@ -62,6 +65,29 @@ public record AgentInputSnapshot(String snapshotId,
         this(snapshotId, contextHash, projectId, routeId, anchorNodeId,
                 routeContext, lineage, effectiveClaims, metadata, allowedSourceRefs,
                 availableCapabilities, SkillCatalogView.empty(), capabilityResults,
-                relations, relatedNodes, autonomy);
+                relations, relatedNodes, List.of(), autonomy);
+    }
+
+    /** Compatibility constructor for callers that already include Skills. */
+    public AgentInputSnapshot(String snapshotId,
+                              String contextHash,
+                              UUID projectId,
+                              UUID routeId,
+                              UUID anchorNodeId,
+                              RouteContextView routeContext,
+                              List<LineageEntry> lineage,
+                              List<ClaimView> effectiveClaims,
+                              SnapshotMetadata metadata,
+                              List<String> allowedSourceRefs,
+                              List<CapabilityDescriptor> availableCapabilities,
+                              SkillCatalogView availableSkills,
+                              List<CapabilityResultView> capabilityResults,
+                              List<RelationView> relations,
+                              List<RelatedNodeRef> relatedNodes,
+                              AutonomyInputs autonomy) {
+        this(snapshotId, contextHash, projectId, routeId, anchorNodeId, routeContext,
+                lineage, effectiveClaims, metadata, allowedSourceRefs,
+                availableCapabilities, availableSkills, capabilityResults,
+                relations, relatedNodes, List.of(), autonomy);
     }
 }

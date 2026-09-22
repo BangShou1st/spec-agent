@@ -48,6 +48,7 @@ def render_user_prompt(envelope: AgentV2RequestEnvelope) -> str:
                 claim.model_dump(mode="json", by_alias=True)
                 for claim in snapshot.effective_claims
             ],
+            "retrievedContext": [item.model_dump(mode="json", by_alias=True) for item in snapshot.retrieved_context],
             "metadata": snapshot.metadata.model_dump(mode="json", by_alias=True),
         },
     }
