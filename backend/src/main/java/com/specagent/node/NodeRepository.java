@@ -10,6 +10,7 @@ import org.springframework.stereotype.Repository;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -90,6 +91,34 @@ public class NodeRepository {
     public List<Node> findByProject(UUID projectId) {
         String sql = "SELECT * FROM nodes WHERE project_id = :projectId ORDER BY created_at";
         return jdbcTemplate.query(sql, Maps.of("projectId", projectId), rowMapper);
+    }
+
+    /**
+     * Returns the supplied project nodes and all descendants below them. The
+     * recursive query keeps route provenance refresh proportional to the
+     * affected canonical prefix/material instead of scanning the whole
+     * project in the route service.
+     */
+    public List<Node> findDescendants(UUID projectId, Collection<UUID> rootNodeIds) {
+        if (rootNodeIds == null || rootNodeIds.isEmpty()) {
+            return List.of();
+        }
+        return jdbcTemplate.query("""
+                WITH RECURSIVE descendants(id) AS (
+                    SELECT id
+                    FROM nodes
+                    WHERE project_id = :projectId AND id IN (:rootNodeIds)
+                    UNION
+                    SELECT child.id
+                    FROM nodes child
+                    JOIN descendants parent ON child.parent_node_id = parent.id
+                    WHERE child.project_id = :projectId
+                )
+                SELECT * FROM nodes
+                WHERE project_id = :projectId
+                  AND id IN (SELECT id FROM descendants)
+                ORDER BY created_at
+                """, Maps.of("projectId", projectId, "rootNodeIds", rootNodeIds), rowMapper);
     }
 
     /** In-place edit of a still-editable user draft: subtype and content only. */

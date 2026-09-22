@@ -3,6 +3,7 @@ package com.specagent.route;
 import com.specagent.answer.Answer;
 import com.specagent.answer.AnswerRepository;
 import com.specagent.node.Node;
+import com.specagent.node.NodeKind;
 import com.specagent.node.NodeRepository;
 import org.springframework.stereotype.Service;
 
@@ -140,9 +141,11 @@ public class RouteHistoryResolver {
 
     /**
      * True when {@code nodeId} belongs to the route's material: it sits on the
-     * tip lineage itself, or it is derived material hanging under a lineage
-     * node (knowledge/resource children never enter the answerable chain but
-     * still belong to exactly this route). Detached/floating nodes are "no".
+     * tip lineage itself, or it is KNOWLEDGE/RESOURCE derived material hanging
+     * under a node on that lineage. An interaction child after a fork point is
+     * owned by the route whose tip contains that child; it must not leak into a
+     * sibling route merely because its parent is shared. Detached/floating
+     * nodes are "no".
      */
     public boolean belongsToRoute(Route route, UUID nodeId) {
         if (nodeId == null || route.tipNodeId() == null) {
@@ -158,6 +161,9 @@ public class RouteHistoryResolver {
             Node node = nodeRepository.findById(current)
                     .orElse(null);
             if (node == null) {
+                return false;
+            }
+            if (node.kind() == NodeKind.INTERACTION) {
                 return false;
             }
             current = node.parentNodeId();

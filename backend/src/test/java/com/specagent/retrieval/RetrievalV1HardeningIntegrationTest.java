@@ -27,6 +27,7 @@ import com.specagent.retrieval.index.RetrievalIndexRebuilder;
 import com.specagent.retrieval.persistence.RetrievalEntryRepository;
 import com.specagent.retrieval.search.HybridRetriever;
 import com.specagent.route.RouteLifecycleStatus;
+import com.specagent.route.Route;
 import com.specagent.route.RouteService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -91,6 +92,111 @@ class RetrievalV1HardeningIntegrationTest {
         assertThat(snapshot.allowedSourceRefs()).contains("route:" + routeId);
         assertThat(snapshot.lineage()).singleElement()
                 .satisfies(entry -> assertThat(entry.node().id()).isEqualTo(node.id()));
+    }
+
+    @Test
+    void forkRefreshesSharedAncestorRouteProvenanceWithoutRebuild() {
+        Project project = projectService.createProject("fork route provenance refresh");
+        UUID routeA = project.activeRouteId();
+        Node n1 = nodeService.createRootNode(project.id(), routeA,
+                "共享前缀一", null, List.of(), true);
+        Node n2 = nodeService.createChildNode(project.id(), routeA, n1.id(),
+                "共享前缀二", null, List.of(), true);
+        answerService.finalizeAnswer(project.id(), routeA, n2.id(), null, "已确认", "user");
+        Node n3 = nodeService.createChildNode(project.id(), routeA, n2.id(),
+                "仅原路线后续", null, List.of(), true);
+        enrichmentService.enrichPending(project.id());
+
+        String n1Ref = "node:" + n1.id();
+        String n2Ref = "node:" + n2.id();
+        String n3Ref = "node:" + n3.id();
+        var before = entryRepository.findBySourceRef(project.id(), n1Ref).orElseThrow();
+        assertThat(before.metadata().get("originRouteIds")).isEqualTo(List.of(routeA.toString()));
+        assertThat(before.embeddingStatus()).isEqualTo("READY");
+
+        Route fork = routeService.forkFromNode(project.id(), routeA, n2.id(), "共享前缀分支");
+
+        var sharedN1 = entryRepository.findBySourceRef(project.id(), n1Ref).orElseThrow();
+        var sharedN2 = entryRepository.findBySourceRef(project.id(), n2Ref).orElseThrow();
+        var sourceOnlyN3 = entryRepository.findBySourceRef(project.id(), n3Ref).orElseThrow();
+        assertThat(originRouteIds(sharedN1.metadata()))
+                .containsExactlyInAnyOrder(routeA.toString(), fork.id().toString());
+        assertThat(originRouteIds(sharedN2.metadata()))
+                .containsExactlyInAnyOrder(routeA.toString(), fork.id().toString());
+        assertThat(sharedN1.metadata().get("workspaceScoped")).isEqualTo(false);
+        assertThat(sharedN1.routeId()).isNull();
+        assertThat(sourceOnlyN3.metadata().get("originRouteIds"))
+                .isEqualTo(List.of(routeA.toString()));
+        assertThat(sharedN1.embeddingStatus()).isEqualTo("READY");
+        assertThat(sharedN1.embeddingModel()).isEqualTo(FakeEmbeddingGateway.MODEL);
+        assertThat(sharedN1.contentHash()).isEqualTo(before.contentHash());
+
+        var projectSearch = retrievalSearchService.search(
+                project.id(), fork.id(), "共享前缀二", RetrievalScope.PROJECT, 8);
+        assertThat(projectSearch.items())
+                .filteredOn(item -> item.sourceRef().equals(n2Ref))
+                .singleElement()
+                .satisfies(item -> assertThat(originRouteIds(item.provenance()))
+                        .as("PROJECT search must expose refreshed shared provenance")
+                        .contains(fork.id().toString()));
+    }
+
+    @Test
+    void startRouteFromFloatingNodeRefreshesWorkspaceProvenance() {
+        Project project = projectService.createProject("floating route provenance refresh");
+        Node floating = nodeService.createFloatingWorkspaceNode(project.id(), NodeKind.KNOWLEDGE,
+                "NOTE", Map.of("text", "独立知识"), NodeAuthorKind.USER, KnowledgeStatus.PROPOSED);
+        var before = entryRepository.findBySourceRef(project.id(), "node:" + floating.id()).orElseThrow();
+        assertThat(before.metadata().get("originRouteIds")).isEqualTo(List.of());
+        assertThat(before.metadata().get("workspaceScoped")).isEqualTo(true);
+
+        var route = routeService.startRouteFromNode(project.id(), floating.id(), "从知识开始");
+
+        var after = entryRepository.findBySourceRef(project.id(), "node:" + floating.id()).orElseThrow();
+        assertThat(after.metadata().get("originRouteIds")).isEqualTo(List.of(route.id().toString()));
+        assertThat(after.metadata().get("workspaceScoped")).isEqualTo(false);
+        assertThat(after.routeId()).isEqualTo(route.id());
+    }
+
+    @Test
+    void reanswerRefreshesInheritedPrefixButNotReplacedTarget() {
+        Project project = projectService.createProject("reanswer provenance refresh");
+        UUID routeA = project.activeRouteId();
+        Node n1 = nodeService.createRootNode(project.id(), routeA,
+                "前缀问题", null, List.of(), true);
+        Node target = nodeService.createChildNode(project.id(), routeA, n1.id(),
+                "待重新回答问题", null, List.of(), true);
+        answerService.finalizeAnswer(project.id(), routeA, target.id(), null, "旧答案", "user");
+
+        Route reanswer = routeService.reanswerFromNode(project.id(), routeA, target.id(), "重新回答");
+
+        var prefix = entryRepository.findBySourceRef(project.id(), "node:" + n1.id()).orElseThrow();
+        var oldTarget = entryRepository.findBySourceRef(project.id(), "node:" + target.id()).orElseThrow();
+        assertThat(originRouteIds(prefix.metadata()))
+                .containsExactlyInAnyOrder(routeA.toString(), reanswer.id().toString());
+        assertThat(oldTarget.metadata().get("originRouteIds"))
+                .isEqualTo(List.of(routeA.toString()));
+    }
+
+    @Test
+    void regenerateRefreshesInheritedPrefixButNotReplacedTarget() {
+        Project project = projectService.createProject("regenerate provenance refresh");
+        UUID routeA = project.activeRouteId();
+        Node n1 = nodeService.createRootNode(project.id(), routeA,
+                "重生成前缀", null, List.of(), true);
+        Node target = nodeService.createChildNode(project.id(), routeA, n1.id(),
+                "待替换问题", null, List.of(), true);
+
+        var result = routeService.commitReplacementFromNode(
+                project.id(), routeA, target.id(), target.id(), "重生成", "替换后的问题",
+                null, List.of(), true, false);
+
+        var prefix = entryRepository.findBySourceRef(project.id(), "node:" + n1.id()).orElseThrow();
+        var oldTarget = entryRepository.findBySourceRef(project.id(), "node:" + target.id()).orElseThrow();
+        assertThat(originRouteIds(prefix.metadata()))
+                .containsExactlyInAnyOrder(routeA.toString(), result.replacementRoute().id().toString());
+        assertThat(oldTarget.metadata().get("originRouteIds"))
+                .isEqualTo(List.of(routeA.toString()));
     }
 
     @Test
@@ -405,5 +511,13 @@ class RetrievalV1HardeningIntegrationTest {
         var after = entryRepository.findBySourceRef(project.id(), sourceRef).orElseThrow();
         assertThat(after.embeddingStatus()).isEqualTo("READY");
         assertThat(after.embeddingModel()).isEqualTo(FakeEmbeddingGateway.MODEL);
+    }
+
+    private List<String> originRouteIds(Map<String, Object> metadata) {
+        Object raw = metadata.get("originRouteIds");
+        if (!(raw instanceof List<?> values)) {
+            return List.of();
+        }
+        return values.stream().map(String::valueOf).toList();
     }
 }

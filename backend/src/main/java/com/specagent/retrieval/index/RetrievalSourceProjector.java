@@ -23,6 +23,7 @@ import com.specagent.retrieval.persistence.RetrievalEntry;
 import com.specagent.retrieval.persistence.RetrievalEntryRepository;
 import com.specagent.route.Route;
 import com.specagent.route.RouteHistoryResolver;
+import com.specagent.route.RouteMembershipProjectionPort;
 import com.specagent.route.RouteRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,6 +31,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,7 +39,7 @@ import java.util.UUID;
 
 /** Projects canonical Runtime records into the rebuildable retrieval index. */
 @Service
-public class RetrievalSourceProjector {
+public class RetrievalSourceProjector implements RouteMembershipProjectionPort {
 
     private final NodeRepository nodeRepository;
     private final AnswerRepository answerRepository;
@@ -146,6 +148,51 @@ public class RetrievalSourceProjector {
             projectResource(projectId, node);
         } else {
             projectNode(projectId, node);
+        }
+    }
+
+    /**
+     * Refreshes only sources whose membership can change when a route starts
+     * from the supplied canonical prefix. This updates metadata in place and
+     * therefore preserves content hashes and valid embeddings.
+     */
+    @Override
+    @Transactional
+    public void refreshRouteAffectedSources(UUID projectId,
+                                            UUID routeId,
+                                            Collection<UUID> lineageRootNodeIds) {
+        Route route = routeRepository.findById(routeId)
+                .orElseThrow(() -> new IllegalArgumentException("Route not found: " + routeId));
+        for (Node node : nodeRepository.findDescendants(projectId, lineageRootNodeIds)) {
+            if (routeHistoryResolver.belongsToRoute(route, node.id())) {
+                refreshNodeRouteProvenance(projectId, node);
+            }
+        }
+    }
+
+    @Override
+    @Transactional
+    public void refreshNodeRouteProvenance(UUID projectId, Collection<UUID> nodeIds) {
+        if (nodeIds == null) {
+            return;
+        }
+        for (UUID nodeId : nodeIds) {
+            nodeRepository.findById(nodeId)
+                    .filter(node -> projectId.equals(node.projectId()))
+                    .ifPresent(node -> refreshNodeRouteProvenance(projectId, node));
+        }
+    }
+
+    private void refreshNodeRouteProvenance(UUID projectId, Node node) {
+        List<String> routeIds = originRouteIds(projectId, node.id());
+        UUID routeId = routeIdFor(routeIds);
+        boolean workspaceScoped = routeIds.isEmpty();
+        if (node.kind() == NodeKind.RESOURCE) {
+            entryRepository.updateRouteProvenancePrefix(
+                    projectId, "resource-chunk:" + node.id() + ":", routeId, routeIds, workspaceScoped);
+        } else {
+            entryRepository.updateRouteProvenance(
+                    projectId, "node:" + node.id(), routeId, routeIds, workspaceScoped);
         }
     }
 
@@ -292,20 +339,31 @@ public class RetrievalSourceProjector {
      * retain an empty provenance set.
      */
     private void addRouteProvenance(UUID projectId, UUID nodeId,
-                                    Map<String, Object> metadata) {
-        List<String> routeIds = routeRepository.findByProject(projectId).stream()
+                                     Map<String, Object> metadata) {
+        List<String> routeIds = originRouteIds(projectId, nodeId);
+        metadata.put("originRouteIds", routeIds);
+        metadata.put("workspaceScoped", routeIds.isEmpty());
+    }
+
+    private List<String> originRouteIds(UUID projectId, UUID nodeId) {
+        return routeRepository.findByProject(projectId).stream()
                 .filter(route -> route.tipNodeId() != null
                         && routeHistoryResolver.belongsToRoute(route, nodeId))
                 .map(Route::id)
                 .map(UUID::toString)
                 .toList();
-        metadata.put("originRouteIds", routeIds);
-        metadata.put("workspaceScoped", routeIds.isEmpty());
     }
 
     private UUID routeIdFor(Map<String, Object> metadata) {
         Object raw = metadata.get("originRouteIds");
         if (!(raw instanceof List<?> routeIds) || routeIds.size() != 1) {
+            return null;
+        }
+        return routeIdFor(routeIds);
+    }
+
+    private UUID routeIdFor(List<?> routeIds) {
+        if (routeIds == null || routeIds.size() != 1) {
             return null;
         }
         try {

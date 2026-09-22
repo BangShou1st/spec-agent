@@ -251,12 +251,11 @@ class RetrievalFastEvaluationTest {
                         .filter(entry -> entry.routeId() != null
                                 && !scenario.routeId().equals(entry.routeId())))
                 .count();
-        long totalSelectedRefs = scenarios.stream()
-                .flatMap(scenario -> scenario.selectedRefs().stream()).count();
-        long distinctSelectedRefs = scenarios.stream()
-                .flatMap(scenario -> scenario.selectedRefs().stream()).distinct().count();
-        double duplicateRate = totalSelectedRefs == 0 ? 0d
-                : 1d - ((double) distinctSelectedRefs / totalSelectedRefs);
+        List<List<String>> scenarioSelectedRefs = scenarios.stream()
+                .map(ScenarioResult::selectedRefs)
+                .toList();
+        long duplicateOccurrences = RetrievalEvaluationMetrics.duplicateOccurrences(scenarioSelectedRefs);
+        double duplicateRate = RetrievalEvaluationMetrics.duplicateRate(scenarioSelectedRefs);
         int selectedCharsMax = scenarios.stream()
                 .mapToInt(ScenarioResult::selectedChars).max().orElse(0);
         boolean vectorReady = entryRepository.findByProject(vectorProject.id()).stream()
@@ -274,8 +273,9 @@ class RetrievalFastEvaluationTest {
                 + "  \"wrongProjectContamination\": "
                 + format(selectedCount == 0 ? 0d : (double) wrongProjectCount / selectedCount) + ",\n"
                 + "  \"crossRouteContamination\": "
-                + format(routeSelectedCount == 0 ? 0d : (double) crossRouteCount / routeSelectedCount) + ",\n"
+                        + format(routeSelectedCount == 0 ? 0d : (double) crossRouteCount / routeSelectedCount) + ",\n"
                 + "  \"duplicateRate\": " + format(duplicateRate) + ",\n"
+                + "  \"duplicateOccurrences\": " + duplicateOccurrences + ",\n"
                 + "  \"selectedItemCount\": " + selectedCount + ",\n"
                 + "  \"selectedCharsMax\": " + selectedCharsMax + ",\n"
                 + "  \"workingLineageMax\": " + maxWorkingLineage + ",\n"
