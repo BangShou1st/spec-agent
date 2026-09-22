@@ -35,19 +35,22 @@ public class RouteService {
     private final NodeService nodeService;
     private final RouteHistoryResolver routeHistoryResolver;
     private final RouteGraphSupportPort graphSupport;
+    private final RouteMembershipProjectionPort routeMembershipProjection;
 
     public RouteService(RouteRepository routeRepository,
                         ProjectActiveRoutePort projectPort,
-                        NodeRepository nodeRepository,
-                        NodeService nodeService,
-                        RouteHistoryResolver routeHistoryResolver,
-                        RouteGraphSupportPort graphSupport) {
+                         NodeRepository nodeRepository,
+                         NodeService nodeService,
+                         RouteHistoryResolver routeHistoryResolver,
+                         RouteGraphSupportPort graphSupport,
+                         RouteMembershipProjectionPort routeMembershipProjection) {
         this.routeRepository = routeRepository;
         this.projectPort = projectPort;
         this.nodeRepository = nodeRepository;
         this.nodeService = nodeService;
         this.routeHistoryResolver = routeHistoryResolver;
         this.graphSupport = graphSupport;
+        this.routeMembershipProjection = routeMembershipProjection;
     }
 
     public Route createRoute(UUID projectId, RouteLifecycleStatus status, String label) {
@@ -65,6 +68,15 @@ public class RouteService {
 
     private void markRouteSuperseded(UUID routeId) {
         routeRepository.updateLifecycle(routeId, RouteLifecycleStatus.SUPERSEDED, Instant.now());
+    }
+
+    private void refreshRouteAffectedSources(UUID projectId,
+                                             UUID routeId,
+                                             UUID lineageTipNodeId) {
+        List<UUID> lineageRoots = lineageTipNodeId == null
+                ? List.of()
+                : routeHistoryResolver.resolveLineage(lineageTipNodeId);
+        routeMembershipProjection.refreshRouteAffectedSources(projectId, routeId, lineageRoots);
     }
 
     /**
@@ -249,6 +261,7 @@ public class RouteService {
                 RouteBranchType.FORK, sourceRouteId, sourceNodeId, now, now);
         routeRepository.save(forkRoute);
         routeHistoryResolver.snapshotInheritedPrefix(routeId, sourceRouteId, sourceNodeId, true);
+        refreshRouteAffectedSources(projectId, routeId, sourceNodeId);
         UUID previousActiveRouteId = currentActiveRouteId(projectId);
         projectPort.updateActiveRoute(projectId, routeId, now);
         graphSupport.appendRouteOperation(projectId, RouteOperationKind.ROUTE_FORK, List.of(routeId),
@@ -301,6 +314,7 @@ public class RouteService {
                 RouteLifecycleStatus.OPEN, effectiveLabel(projectId, null, label),
                 null, null, null, null, now, now);
         routeRepository.save(route);
+        refreshRouteAffectedSources(projectId, routeId, nodeId);
         UUID previousActiveRouteId = currentActiveRouteId(projectId);
         projectPort.updateActiveRoute(projectId, routeId, now);
         graphSupport.appendRouteOperation(projectId, RouteOperationKind.ROUTE_START, List.of(routeId),
@@ -357,6 +371,7 @@ public class RouteService {
                 projectId, routeId, targetNode.parentNodeId(),
                 targetNode.question(), targetNode.purpose(), targetNode.options(),
                 targetNode.allowFreeAnswer(), targetNode.allowMultiSelect());
+        refreshRouteAffectedSources(projectId, routeId, targetNode.parentNodeId());
         UUID previousActiveRouteId = currentActiveRouteId(projectId);
         projectPort.updateActiveRoute(projectId, routeId, now);
         graphSupport.appendRouteOperation(projectId, RouteOperationKind.ROUTE_REANSWER, List.of(routeId, clonedNode.id()),
@@ -465,6 +480,7 @@ public class RouteService {
                 projectId, replacementRouteId, targetNode.parentNodeId(), targetNodeId,
                 question.trim(), purpose, options == null ? List.of() : options, allowFreeAnswer,
                 allowMultiSelect);
+        refreshRouteAffectedSources(projectId, replacementRouteId, targetNode.parentNodeId());
 
         boolean sourceWasOpen = sourceRoute.lifecycleStatus() == RouteLifecycleStatus.OPEN;
         UUID previousActiveRouteId = currentActiveRouteId(projectId);

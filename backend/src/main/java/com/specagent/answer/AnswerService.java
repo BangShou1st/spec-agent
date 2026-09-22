@@ -33,15 +33,18 @@ public class AnswerService {
     private final NodeRepository nodeRepository;
     private final SharedQuestionStatePort sharedQuestionStatePort;
     private final ProjectRowLockPort projectRowLock;
+    private final AnswerIndexPort answerIndexPort;
 
     public AnswerService(AnswerRepository answerRepository,
                          NodeRepository nodeRepository,
                          SharedQuestionStatePort sharedQuestionStatePort,
-                         ProjectRowLockPort projectRowLock) {
+                         ProjectRowLockPort projectRowLock,
+                         AnswerIndexPort answerIndexPort) {
         this.answerRepository = answerRepository;
         this.nodeRepository = nodeRepository;
         this.sharedQuestionStatePort = sharedQuestionStatePort;
         this.projectRowLock = projectRowLock;
+        this.answerIndexPort = answerIndexPort;
     }
 
     /**
@@ -110,6 +113,7 @@ public class AnswerService {
         Answer answer = new Answer(answerId, projectId, routeId, nodeId,
                 firstSelectedOptionId, selectedOptionIds, freeText, createdByUser, now);
         answerRepository.save(answer);
+        answerIndexPort.index(answer);
         return answer;
     }
 

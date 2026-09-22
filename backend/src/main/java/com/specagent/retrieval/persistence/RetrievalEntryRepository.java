@@ -72,6 +72,9 @@ public class RetrievalEntryRepository {
                     content = EXCLUDED.content,
                     content_hash = EXCLUDED.content_hash,
                     metadata = EXCLUDED.metadata,
+                    embedding = CASE
+                        WHEN retrieval_entries.content_hash <> EXCLUDED.content_hash
+                        THEN NULL ELSE retrieval_entries.embedding END,
                     embedding_model = CASE
                         WHEN retrieval_entries.content_hash <> EXCLUDED.content_hash
                         THEN NULL ELSE retrieval_entries.embedding_model END,
@@ -108,6 +111,164 @@ public class RetrievalEntryRepository {
                 Map.of("projectId", projectId));
     }
 
+    public void deleteSource(UUID projectId, String sourceRef) {
+        jdbcTemplate.update("""
+                DELETE FROM retrieval_entries
+                WHERE project_id = :projectId AND source_ref = :sourceRef
+                """, Maps.of("projectId", projectId, "sourceRef", sourceRef));
+    }
+
+    public void deleteSourcePrefix(UUID projectId, String sourceRefPrefix) {
+        jdbcTemplate.update("""
+                DELETE FROM retrieval_entries
+                WHERE project_id = :projectId AND source_ref LIKE :sourceRefPrefix
+                """, Maps.of("projectId", projectId,
+                "sourceRefPrefix", sourceRefPrefix + "%"));
+    }
+
+    /**
+     * Updates only derived route provenance. Content and embedding columns are
+     * deliberately untouched so a metadata-only route membership change does
+     * not discard a valid READY embedding.
+     */
+    public void updateRouteProvenance(UUID projectId,
+                                      String sourceRef,
+                                      UUID routeId,
+                                      List<String> originRouteIds,
+                                      boolean workspaceScoped) {
+        updateRouteProvenanceWhere(projectId, routeId, originRouteIds, workspaceScoped,
+                "source_ref = :sourceRef", Map.of("sourceRef", sourceRef));
+    }
+
+    /** Updates route provenance for all chunks belonging to one resource. */
+    public void updateRouteProvenancePrefix(UUID projectId,
+                                            String sourceRefPrefix,
+                                            UUID routeId,
+                                            List<String> originRouteIds,
+                                            boolean workspaceScoped) {
+        updateRouteProvenanceWhere(projectId, routeId, originRouteIds, workspaceScoped,
+                "source_ref LIKE :sourceRefPrefix",
+                Map.of("sourceRefPrefix", sourceRefPrefix + "%"));
+    }
+
+    private void updateRouteProvenanceWhere(UUID projectId,
+                                            UUID routeId,
+                                            List<String> originRouteIds,
+                                            boolean workspaceScoped,
+                                            String predicate,
+                                            Map<String, Object> predicateParams) {
+        Map<String, Object> params = new LinkedHashMap<>();
+        params.put("projectId", projectId);
+        params.put("routeId", routeId);
+        params.put("metadataPatch", json.write(Map.of(
+                "originRouteIds", originRouteIds,
+                "workspaceScoped", workspaceScoped)));
+        params.putAll(predicateParams);
+        jdbcTemplate.update("""
+                UPDATE retrieval_entries
+                SET route_id = :routeId,
+                    metadata = metadata || CAST(:metadataPatch AS jsonb),
+                    updated_at = NOW()
+                WHERE project_id = :projectId AND %s
+                """.formatted(predicate), params);
+    }
+
+    /** Retraction keeps the derived audit row but removes it from retrieval. */
+    public void retractSource(UUID projectId, String sourceRef) {
+        jdbcTemplate.update("""
+                UPDATE retrieval_entries
+                SET retracted_at = COALESCE(retracted_at, NOW()),
+                    embedding = NULL,
+                    embedding_model = NULL,
+                    embedding_dimensions = NULL,
+                    embedding_status = 'UNAVAILABLE',
+                    updated_at = NOW()
+                WHERE project_id = :projectId AND source_ref = :sourceRef
+                """, Maps.of("projectId", projectId, "sourceRef", sourceRef));
+    }
+
+    public void retractSourcePrefix(UUID projectId, String sourceRefPrefix) {
+        jdbcTemplate.update("""
+                UPDATE retrieval_entries
+                SET retracted_at = COALESCE(retracted_at, NOW()),
+                    embedding = NULL,
+                    embedding_model = NULL,
+                    embedding_dimensions = NULL,
+                    embedding_status = 'UNAVAILABLE',
+                    updated_at = NOW()
+                WHERE project_id = :projectId AND source_ref LIKE :sourceRefPrefix
+                """, Maps.of("projectId", projectId,
+                "sourceRefPrefix", sourceRefPrefix + "%"));
+    }
+
+    public List<RetrievalEntry> findPending(UUID projectId, int limit) {
+        String sql = """
+                SELECT * FROM retrieval_entries
+                WHERE project_id = :projectId AND retracted_at IS NULL
+                  AND embedding_status = 'PENDING'
+                ORDER BY updated_at, source_ref
+                LIMIT :limit
+                """;
+        return jdbcTemplate.query(sql, Maps.of("projectId", projectId,
+                "limit", Math.max(1, Math.min(limit, 512))), rowMapper);
+    }
+
+    /** Project ids with pending derived work for the background enrichment worker. */
+    public List<UUID> findPendingProjectIds(int limit) {
+        return jdbcTemplate.queryForList("""
+                SELECT DISTINCT project_id FROM retrieval_entries
+                WHERE retracted_at IS NULL AND embedding_status = 'PENDING'
+                ORDER BY project_id
+                LIMIT :limit
+                """, Map.of("limit", Math.max(1, Math.min(limit, 512))), UUID.class);
+    }
+
+    public Optional<RetrievalEntry> findBySourceRef(UUID projectId, String sourceRef) {
+        return jdbcTemplate.query("""
+                SELECT * FROM retrieval_entries
+                WHERE project_id = :projectId AND source_ref = :sourceRef
+                """, Maps.of("projectId", projectId, "sourceRef", sourceRef), rowMapper)
+                .stream().findFirst();
+    }
+
+    public List<RetrievalEntry> findByProject(UUID projectId) {
+        return jdbcTemplate.query("""
+                SELECT * FROM retrieval_entries
+                WHERE project_id = :projectId
+                ORDER BY source_ref
+                """, Maps.of("projectId", projectId), rowMapper);
+    }
+
+    public void markEmbeddingReady(UUID id, String contentHash,
+                                   EmbeddingGateway.Embedding embedding) {
+        jdbcTemplate.update("""
+                UPDATE retrieval_entries
+                SET embedding = CAST(:embedding AS vector),
+                    embedding_model = :embeddingModel,
+                    embedding_dimensions = :embeddingDimensions,
+                    embedding_status = 'READY',
+                    updated_at = NOW()
+                WHERE id = :id AND content_hash = :contentHash
+                  AND retracted_at IS NULL
+                """, Maps.of("id", id, "contentHash", contentHash,
+                "embedding", vectorLiteral(embedding.values()),
+                "embeddingModel", embedding.model(),
+                "embeddingDimensions", embedding.dimensions()));
+    }
+
+    public void markEmbeddingStatus(UUID id, String contentHash, String status) {
+        jdbcTemplate.update("""
+                UPDATE retrieval_entries
+                SET embedding = NULL,
+                    embedding_model = NULL,
+                    embedding_dimensions = NULL,
+                    embedding_status = :status,
+                    updated_at = NOW()
+                WHERE id = :id AND content_hash = :contentHash
+                  AND retracted_at IS NULL
+                """, Maps.of("id", id, "contentHash", contentHash, "status", status));
+    }
+
     public List<RetrievalEntry> lexical(UUID projectId, String queryText, int limit,
                                         String sourceKind, List<String> sourceRefs) {
         if (queryText == null || queryText.isBlank()) {
@@ -135,13 +296,15 @@ public class RetrievalEntryRepository {
         StringBuilder sql = new StringBuilder("""
                 SELECT * FROM retrieval_entries
                 WHERE project_id = :projectId AND retracted_at IS NULL
-                  AND similarity(content, :queryText) > 0.05
+                  AND (similarity(content, :queryText) > 0.15
+                       OR word_similarity(:queryText, content) > 0.15)
                 """);
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("projectId", projectId);
         params.put("queryText", queryText);
         appendFilters(sql, params, sourceKind, sourceRefs);
-        sql.append(" ORDER BY similarity(content, :queryText) DESC, updated_at DESC LIMIT :limit");
+        sql.append(" ORDER BY GREATEST(similarity(content, :queryText), "
+                + "word_similarity(:queryText, content)) DESC, updated_at DESC LIMIT :limit");
         params.put("limit", Math.max(1, limit));
         return jdbcTemplate.query(sql.toString(), params, rowMapper);
     }

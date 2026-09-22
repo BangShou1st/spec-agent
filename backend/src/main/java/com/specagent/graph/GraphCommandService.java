@@ -11,6 +11,7 @@ import com.specagent.route.Route;
 import com.specagent.route.RouteBranchType;
 import com.specagent.route.RouteHistoryResolver;
 import com.specagent.route.RouteLifecycleStatus;
+import com.specagent.route.RouteMembershipProjectionPort;
 import com.specagent.route.RouteRepository;
 import com.specagent.route.RouteService;
 import org.springframework.stereotype.Service;
@@ -48,6 +49,7 @@ public class GraphCommandService {
     private final GraphOperationRepository operationRepository;
     private final GraphInvariantValidator invariantValidator;
     private final ProjectRepository projectRepository;
+    private final RouteMembershipProjectionPort routeMembershipProjection;
 
     public GraphCommandService(NodeService nodeService,
                                NodeRepository nodeRepository,
@@ -57,7 +59,8 @@ public class GraphCommandService {
                                NodeRelationRepository relationRepository,
                                GraphOperationRepository operationRepository,
                                GraphInvariantValidator invariantValidator,
-                               ProjectRepository projectRepository) {
+                               ProjectRepository projectRepository,
+                               RouteMembershipProjectionPort routeMembershipProjection) {
         this.nodeService = nodeService;
         this.nodeRepository = nodeRepository;
         this.routeService = routeService;
@@ -67,6 +70,7 @@ public class GraphCommandService {
         this.operationRepository = operationRepository;
         this.invariantValidator = invariantValidator;
         this.projectRepository = projectRepository;
+        this.routeMembershipProjection = routeMembershipProjection;
     }
 
     /**
@@ -216,6 +220,7 @@ public class GraphCommandService {
         // remains the tip and stays answerable. Advancing unconditionally here
         // buried the pending question and dead-ended the route.
         nodeService.advanceRouteTip(routeId, node);
+        refreshRouteAffectedSources(projectId, routeId);
         boolean tipAdvanced = routeRepository.findById(routeId)
                 .map(r -> nodeId.equals(r.tipNodeId()))
                 .orElse(false);
@@ -282,6 +287,7 @@ public class GraphCommandService {
                 routeRepository.updateTipAndRoot(route.id(), parentId, route.rootNodeId(), now);
             }
         }
+        routeMembershipProjection.refreshNodeRouteProvenance(projectId, List.of(nodeId));
         operationRepository.append(projectId, GraphOperation.Actor.USER,
                 GraphOperation.Type.DISCONNECT_NODE, List.of(nodeId),
                 Map.of("routeId", routeId.toString(),
@@ -518,6 +524,15 @@ public class GraphCommandService {
             throw new IllegalArgumentException(
                     "Node is not on the explicit source route: " + nodeId);
         }
+    }
+
+    private void refreshRouteAffectedSources(UUID projectId, UUID routeId) {
+        Route route = routeRepository.findById(routeId)
+                .orElseThrow(() -> new IllegalStateException("Route missing after graph mutation: " + routeId));
+        List<UUID> lineageRoots = route.tipNodeId() == null
+                ? List.of()
+                : routeHistoryResolver.resolveLineage(route.tipNodeId());
+        routeMembershipProjection.refreshRouteAffectedSources(projectId, routeId, lineageRoots);
     }
 
     private String nextBranchLabel(UUID projectId, String prefix) {

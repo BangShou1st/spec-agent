@@ -2,6 +2,7 @@ package com.specagent.retrieval.search;
 
 import com.specagent.retrieval.api.RetrievalQuery;
 import com.specagent.retrieval.api.RetrievalScope;
+import com.specagent.retrieval.api.MemoryAuthority;
 import com.specagent.retrieval.persistence.RetrievalEntry;
 import com.specagent.retrieval.persistence.RetrievalEntryRepository;
 import org.springframework.stereotype.Service;
@@ -62,9 +63,32 @@ public class HybridRetriever {
         addLane(fused, "vector", vectorCandidateRetriever.retrieve(query));
         return fused.values().stream()
                 .map(CandidateAccumulator::toCandidate)
-                .sorted(Comparator.comparingDouble(Candidate::rankScore).reversed()
+                .sorted(Comparator.comparingInt((Candidate candidate) -> selectionTier(query, candidate.entry()))
+                        .thenComparing(Comparator.comparingDouble(Candidate::rankScore).reversed())
                         .thenComparing(candidate -> candidate.entry().sourceRef()))
                 .toList();
+    }
+
+    /**
+     * RRF fuses relevance lanes; this stable tier applies authority and scope
+     * rules afterwards without inventing weighted similarity magic numbers.
+     */
+    private int selectionTier(RetrievalQuery query, RetrievalEntry entry) {
+        if (entry.authority() == MemoryAuthority.REJECTED) {
+            return 4;
+        }
+        if (query.routeSourceRefs().contains(entry.sourceRef())) {
+            return 0;
+        }
+        if (entry.authority() == MemoryAuthority.CONFIRMED
+                || entry.authority() == MemoryAuthority.USER_AUTHORED) {
+            return 1;
+        }
+        if (entry.scope() == RetrievalScope.PROJECT && entry.routeId() != null
+                && query.routeId() != null && !query.routeId().equals(entry.routeId())) {
+            return 3;
+        }
+        return 2;
     }
 
     private void addLane(Map<String, CandidateAccumulator> fused,

@@ -113,6 +113,43 @@ def test_node_query_semantic_context_fixture_parses_with_bounded_one_hop():
     assert str(envelope.snapshot.lineage[0].node.id) == "05000000-0000-0000-0000-000000000005"
 
 
+def test_retrieved_context_preserves_scope_authority_and_resource_location():
+    payload = copy.deepcopy(_load("agent-input-valid.json"))
+    payload["snapshot"]["retrievedContext"] = [
+        {
+            "sourceRef": "answer:11111111-1111-1111-1111-111111111111",
+            "sourceKind": "ANSWER",
+            "scope": "PROJECT",
+            "originRouteId": "33333333-3333-3333-3333-333333333333",
+            "authority": "CONFIRMED",
+            "content": "另一个路线已经确认企业 SSO。",
+            "location": None,
+            "provenance": {"originRouteId": "33333333-3333-3333-3333-333333333333"},
+            "retrievalReason": "workspace-project-memory",
+        },
+        {
+            "sourceRef": "resource-chunk:44444444-4444-4444-4444-444444444444:17",
+            "sourceKind": "RESOURCE_CHUNK",
+            "scope": "RESOURCE",
+            "authority": "EXTERNAL_EVIDENCE",
+            "content": "系统要求数据留存180天。",
+            "location": {"resourceId": "44444444-4444-4444-4444-444444444444", "chunk": 17, "page": 23},
+            "provenance": {},
+        },
+    ]
+    envelope = parse_request_envelope(payload)
+    items = envelope.snapshot.retrieved_context
+    assert [item.scope for item in items] == ["PROJECT", "RESOURCE"]
+    assert items[0].origin_route_id is not None
+    assert items[0].authority == "CONFIRMED"
+    assert items[1].location["chunk"] == 17
+
+    bad = copy.deepcopy(payload)
+    bad["snapshot"]["retrievedContext"][0]["cosine"] = 0.9
+    with pytest.raises(ValidationError):
+        parse_request_envelope(bad)
+
+
 def test_request_with_unknown_field_is_rejected():
     payload = _load("agent-input-invalid-unknown-field.json")
     with pytest.raises(ValidationError):

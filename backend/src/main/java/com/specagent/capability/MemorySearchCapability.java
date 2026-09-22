@@ -32,7 +32,11 @@ public class MemorySearchCapability implements InternalCapabilityAdapter {
                        "routeRef", Map.of("type", "string"),
                        "maxResults", Map.of("type", "integer", "maximum", 8)),
                 Map.of("items", Map.of("type", "array")), true,
-                SideEffectClass.NONE, List.of(), List.of("MEMORY"));
+                // Workspace-level read-only capability: it is not tied to a
+                // particular Node kind, so an ordinary Decision snapshot can
+                // see it even when its contextKinds list contains no MEMORY
+                // marker.
+                SideEffectClass.NONE, List.of(), List.of());
     }
 
     @Override
@@ -53,6 +57,10 @@ public class MemorySearchCapability implements InternalCapabilityAdapter {
         UUID routeId = null;
         Object rawRouteRef = invocation.arguments().get("routeRef");
         if (rawRouteRef instanceof String routeRef && !routeRef.isBlank()) {
+            if (scope != RetrievalScope.ROUTE) {
+                return CapabilityResult.failed(invocation.invocationId(), invocation.invocationKey(),
+                        CAPABILITY_ID, "arguments.routeRef is only valid for ROUTE scope");
+            }
             if (!routeRef.startsWith("route:")) {
                 return CapabilityResult.failed(invocation.invocationId(), invocation.invocationKey(),
                         CAPABILITY_ID, "arguments.routeRef must be a route: reference");
@@ -63,6 +71,10 @@ public class MemorySearchCapability implements InternalCapabilityAdapter {
                 return CapabilityResult.failed(invocation.invocationId(), invocation.invocationKey(),
                         CAPABILITY_ID, "arguments.routeRef is not a valid route reference");
             }
+        }
+        if (scope == RetrievalScope.ROUTE && routeId == null) {
+            return CapabilityResult.failed(invocation.invocationId(), invocation.invocationKey(),
+                    CAPABILITY_ID, "ROUTE scope requires an allowed routeRef");
         }
         int maxResults = 8;
         Object rawMax = invocation.arguments().get("maxResults");

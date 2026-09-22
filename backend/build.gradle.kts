@@ -77,6 +77,21 @@ tasks.register<Test>("evalBFast") {
     }
 }
 
+tasks.register<Test>("evalRetrievalFast") {
+    group = "verification"
+    description = "Runs the deterministic offline Memory + RAG retrieval evaluation gate."
+    useJUnitPlatform()
+    systemProperty("spec.agent.retrieval.embedding.provider", "fake")
+    filter {
+        includeTestsMatching("com.specagent.retrieval.eval.*")
+        includeTestsMatching("com.specagent.retrieval.RetrievalV1HardeningIntegrationTest")
+    }
+    testLogging {
+        events("passed", "failed", "skipped")
+        showStandardStreams = true
+    }
+}
+
 tasks.register<Test>("testNonLive") {
     group = "verification"
     description = "Runs the complete backend test suite except explicit live-provider suites and the cross-language exit gate."

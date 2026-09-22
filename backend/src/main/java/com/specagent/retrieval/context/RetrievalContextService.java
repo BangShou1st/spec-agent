@@ -1,12 +1,10 @@
 package com.specagent.retrieval.context;
 
 import com.specagent.context.ContextSnapshot;
-import com.specagent.node.Node;
 import com.specagent.retrieval.api.MemoryAuthority;
 import com.specagent.retrieval.api.RetrievalQuery;
 import com.specagent.retrieval.api.RetrievalScope;
 import com.specagent.retrieval.api.RetrievedContextItem;
-import com.specagent.retrieval.index.RetrievalSourceProjector;
 import com.specagent.retrieval.search.HybridRetriever;
 import com.specagent.retrieval.persistence.RetrievalEntry;
 import org.springframework.stereotype.Service;
@@ -27,22 +25,15 @@ public class RetrievalContextService {
     private static final int MAX_ITEMS = 12;
     private static final int MAX_CHARS = 12_000;
 
-    private final RetrievalSourceProjector projector;
     private final HybridRetriever retriever;
 
-    public RetrievalContextService(RetrievalSourceProjector projector,
-                                   HybridRetriever retriever) {
-        this.projector = projector;
+    public RetrievalContextService(HybridRetriever retriever) {
         this.retriever = retriever;
     }
 
     public List<RetrievedContextItem> retrieve(ContextSnapshot snapshot,
                                                Set<String> mandatorySourceRefs,
                                                String queryText) {
-        // Rebuild is safe here because this method runs only on the first
-        // projection of a ContextSnapshot. Frozen replay never enters it.
-        projector.rebuildProject(snapshot.projectId());
-
         Set<String> routeRefs = new LinkedHashSet<>();
         snapshot.includedNodeIds().forEach(id -> routeRefs.add("node:" + id));
         snapshot.includedAnswerIds().forEach(id -> routeRefs.add("answer:" + id));
@@ -63,11 +54,14 @@ public class RetrievalContextService {
         Set<String> mandatory = mandatoryRefs(snapshot, mandatorySourceRefs);
         List<HybridRetriever.Candidate> candidates = retriever.retrieve(query);
         Set<String> selectedRefs = new HashSet<>();
+        Set<String> selectedContentHashes = new HashSet<>();
         List<RetrievedContextItem> result = new ArrayList<>();
         int chars = 0;
         for (HybridRetriever.Candidate candidate : candidates) {
             RetrievalEntry entry = candidate.entry();
-            if (mandatory.contains(entry.sourceRef()) || !selectedRefs.add(entry.sourceRef())) {
+            if (mandatory.contains(entry.sourceRef())
+                    || !selectedRefs.add(entry.sourceRef())
+                    || !selectedContentHashes.add(entry.contentHash())) {
                 continue;
             }
             RetrievedContextItem item = toItem(query, entry, candidate.lanes());
@@ -119,12 +113,27 @@ public class RetrievalContextService {
         provenance.put("contentHash", entry.contentHash());
         provenance.put("sourceKind", entry.sourceKind().name());
         provenance.put("retrievalLanes", lanes);
-        if (entry.routeId() != null) {
-            provenance.put("originRouteId", entry.routeId().toString());
-        }
+        putRouteProvenance(entry, provenance);
         return new RetrievedContextItem(entry.sourceRef(), entry.sourceKind(), scope,
                 originRouteId, entry.authority(), entry.content(),
                 location(entry), provenance, reason);
+    }
+
+    private void putRouteProvenance(RetrievalEntry entry, Map<String, Object> provenance) {
+        Object routeIds = entry.metadata().get("originRouteIds");
+        if (routeIds instanceof List<?> list) {
+            provenance.put("originRouteIds", list.stream().map(String::valueOf).toList());
+        } else if (entry.routeId() != null) {
+            provenance.put("originRouteIds", List.of(entry.routeId().toString()));
+        } else {
+            provenance.put("originRouteIds", List.of());
+        }
+        if (entry.routeId() != null) {
+            provenance.put("originRouteId", entry.routeId().toString());
+        }
+        if (entry.metadata().containsKey("workspaceScoped")) {
+            provenance.put("workspaceScoped", Boolean.TRUE.equals(entry.metadata().get("workspaceScoped")));
+        }
     }
 
     private RetrievalScope classifyScope(RetrievalQuery query, RetrievalEntry entry) {

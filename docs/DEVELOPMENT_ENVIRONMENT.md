@@ -21,7 +21,7 @@ Recommended local service:
 
 ```text
 service name: spec-agent-postgres
-image: postgres:17-alpine
+image: pgvector/pgvector:pg17
 internal port: 5432
 host port: 5434
 initial database: spec_agent
@@ -96,7 +96,7 @@ A future first-version `docker-compose.yml` can be shaped like this:
 ```yaml
 services:
   postgres:
-    image: postgres:17-alpine
+    image: pgvector/pgvector:pg17
     container_name: spec-agent-postgres
     environment:
       POSTGRES_DB: spec_agent

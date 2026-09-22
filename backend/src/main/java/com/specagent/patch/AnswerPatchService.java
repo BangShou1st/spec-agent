@@ -20,9 +20,12 @@ import java.util.UUID;
 public class AnswerPatchService {
 
     private final AnswerPatchRepository answerPatchRepository;
+    private final AnswerPatchIndexPort answerPatchIndexPort;
 
-    public AnswerPatchService(AnswerPatchRepository answerPatchRepository) {
+    public AnswerPatchService(AnswerPatchRepository answerPatchRepository,
+                              AnswerPatchIndexPort answerPatchIndexPort) {
         this.answerPatchRepository = answerPatchRepository;
+        this.answerPatchIndexPort = answerPatchIndexPort;
     }
 
     public AnswerPatch save(UUID projectId,
@@ -41,6 +44,7 @@ public class AnswerPatchService {
         AnswerPatch patch = new AnswerPatch(patchId, projectId, routeId, sourceNodeId,
                 sourceAnswerId, claims, createdByRunId, now);
         answerPatchRepository.save(patch);
+        answerPatchIndexPort.index(patch);
         return patch;
     }
 
