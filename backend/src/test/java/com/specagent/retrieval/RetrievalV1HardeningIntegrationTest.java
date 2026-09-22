@@ -139,7 +139,7 @@ class RetrievalV1HardeningIntegrationTest {
         }
         UUID tipId = tip.id();
         for (int index = 0; index < 24; index++) {
-            nodeService.createWorkspaceNode(project.id(), null, tipId, NodeKind.KNOWLEDGE,
+            nodeService.createWorkspaceNode(project.id(), routeId, tipId, NodeKind.KNOWLEDGE,
                     "NOTE", Map.of("text", "derived material " + index),
                     NodeAuthorKind.USER, KnowledgeStatus.PROPOSED);
         }
