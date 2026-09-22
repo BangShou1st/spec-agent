@@ -1,10 +1,9 @@
 package com.specagent.mcp.provider;
 
-import com.specagent.connection.domain.Connection;
-import com.specagent.connection.service.ConnectionCommandException;
-import com.specagent.connection.persistence.ConnectionRepository;
 import com.specagent.mcp.domain.McpDiscovery;
 import com.specagent.mcp.domain.McpPrompt;
+import com.specagent.mcp.runtime.McpConnectionLookupPort;
+import com.specagent.mcp.runtime.McpConnectionTarget;
 import com.specagent.mcp.runtime.McpDiscoveryService;
 import org.springframework.stereotype.Component;
 
@@ -19,43 +18,29 @@ import java.util.UUID;
 @Component
 public class McpPromptAssetProvider {
 
-    private final ConnectionRepository connectionRepository;
+    private final McpConnectionLookupPort connectionLookup;
     private final McpDiscoveryService discoveryService;
 
-    public McpPromptAssetProvider(ConnectionRepository connectionRepository,
+    public McpPromptAssetProvider(McpConnectionLookupPort connectionLookup,
                                   McpDiscoveryService discoveryService) {
-        this.connectionRepository = connectionRepository;
+        this.connectionLookup = connectionLookup;
         this.discoveryService = discoveryService;
     }
 
     public List<McpPrompt> discoverPrompts(UUID connectionRowId) {
-        Connection connection = requireVisible(connectionRowId);
+        McpConnectionTarget connection = requireVisible(connectionRowId);
         McpDiscovery discovery = discoveryService.discover(connection);
         return discovery.prompts();
     }
 
-    /** Connection-resolved prompts read for the product-level management API. */
-    public List<McpPrompt> discoverPromptsResolved(Connection connection) {
-        requireVisibleResolved(connection);
-        McpDiscovery discovery = discoveryService.discover(connection);
-        return discovery.prompts();
-    }
-
-    private Connection requireVisible(UUID connectionRowId) {
-        Connection connection = connectionRepository.findById(connectionRowId)
-                .orElseThrow(() -> new ConnectionCommandException(
+    private McpConnectionTarget requireVisible(UUID connectionRowId) {
+        McpConnectionTarget connection = connectionLookup.findByRowId(connectionRowId)
+                .orElseThrow(() -> new McpConnectionCommandException(
                         "Connection not found: " + connectionRowId));
         if (!connection.agentVisible()) {
-            throw new ConnectionCommandException(
+            throw new McpConnectionCommandException(
                     "Connection is not agent-visible: " + connection.connectionId());
         }
         return connection;
-    }
-
-    private void requireVisibleResolved(Connection connection) {
-        if (!connection.agentVisible()) {
-            throw new ConnectionCommandException(
-                    "Connection is not agent-visible: " + connection.connectionId());
-        }
     }
 }

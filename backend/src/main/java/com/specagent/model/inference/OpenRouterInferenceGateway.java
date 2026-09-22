@@ -9,8 +9,6 @@ import com.specagent.model.provider.OpenRouterGatewaySupport;
 import com.specagent.model.provider.ProtocolAdapter;
 import com.specagent.model.provider.ProtocolAdapterRegistry;
 import com.specagent.model.provider.ProviderHttpSupport;
-import com.specagent.settings.openrouter.OpenRouterSettings;
-import com.specagent.settings.openrouter.OpenRouterSettingsService;
 import java.net.http.HttpClient;
 import java.time.Duration;
 import java.util.LinkedHashMap;
@@ -26,12 +24,12 @@ import org.springframework.stereotype.Component;
 @ConditionalOnProperty(name = "spec.agent.model.inference", havingValue = "opencode", matchIfMissing = true)
 public class OpenRouterInferenceGateway implements ModelInferenceGateway {
 
-    private final OpenRouterSettingsService settings;
+    private final OpenRouterRuntimeSettingsPort settings;
     private final ProtocolAdapterRegistry registry;
     private final ObjectMapper mapper;
     private final HttpClient client;
 
-    public OpenRouterInferenceGateway(OpenRouterSettingsService settings, ProtocolAdapterRegistry registry,
+    public OpenRouterInferenceGateway(OpenRouterRuntimeSettingsPort settings, ProtocolAdapterRegistry registry,
                                       ObjectMapper mapper) {
         this.settings = settings;
         this.registry = registry;
@@ -41,8 +39,7 @@ public class OpenRouterInferenceGateway implements ModelInferenceGateway {
 
     @Override
     public ModelInferenceResponse complete(ModelInferenceRequest request) {
-        OpenRouterSettings s = settings.requireStored();
-        settings.requireActivatable();
+        RuntimeOpenRouterSettings s = settings.requireRuntimeSettings();
         ProtocolAdapter adapter = registry.require(CustomApiFormat.CHAT_COMPLETIONS);
         String endpoint = OpenRouterGatewaySupport.BASE_URL + "/chat/completions";
         Map<String, Object> body = adapter.buildRequestBody(request, s.selectedModel());
@@ -54,8 +51,7 @@ public class OpenRouterInferenceGateway implements ModelInferenceGateway {
 
     @Override
     public ModelInferenceResponse completeStreaming(ModelInferenceRequest request, FragmentListener listener) {
-        OpenRouterSettings s = settings.requireStored();
-        settings.requireActivatable();
+        RuntimeOpenRouterSettings s = settings.requireRuntimeSettings();
         ProtocolAdapter adapter = registry.require(CustomApiFormat.CHAT_COMPLETIONS);
         String endpoint = OpenRouterGatewaySupport.BASE_URL + "/chat/completions";
         Map<String, Object> body = new LinkedHashMap<>(adapter.buildRequestBody(request, s.selectedModel()));

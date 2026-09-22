@@ -6,12 +6,12 @@ import com.specagent.capability.CapabilityProvider;
 import com.specagent.capability.CapabilityQueryContext;
 import com.specagent.capability.CapabilityResult;
 import com.specagent.capability.SideEffectClass;
-import com.specagent.connection.domain.Connection;
-import com.specagent.connection.persistence.ConnectionRepository;
 import com.specagent.mcp.domain.McpDiscovery;
 import com.specagent.mcp.domain.McpTool;
 import com.specagent.mcp.domain.McpToolResult;
+import com.specagent.mcp.runtime.McpConnectionLookupPort;
 import com.specagent.mcp.runtime.McpConnectionRuntime;
+import com.specagent.mcp.runtime.McpConnectionTarget;
 import com.specagent.mcp.runtime.McpDiscoveryService;
 import org.springframework.stereotype.Component;
 
@@ -40,14 +40,14 @@ import java.util.Optional;
 @Component
 public class McpToolCapabilityProvider implements CapabilityProvider {
 
-    private final ConnectionRepository connectionRepository;
+    private final McpConnectionLookupPort connectionLookup;
     private final McpDiscoveryService discoveryService;
     private final McpConnectionRuntime connectionRuntime;
 
-    public McpToolCapabilityProvider(ConnectionRepository connectionRepository,
+    public McpToolCapabilityProvider(McpConnectionLookupPort connectionLookup,
                                      McpDiscoveryService discoveryService,
                                      McpConnectionRuntime connectionRuntime) {
-        this.connectionRepository = connectionRepository;
+        this.connectionLookup = connectionLookup;
         this.discoveryService = discoveryService;
         this.connectionRuntime = connectionRuntime;
     }
@@ -60,7 +60,7 @@ public class McpToolCapabilityProvider implements CapabilityProvider {
     @Override
     public Collection<CapabilityDescriptor> descriptorsFor(CapabilityQueryContext context) {
         List<CapabilityDescriptor> descriptors = new ArrayList<>();
-        for (Connection connection : connectionRepository.list()) {
+        for (McpConnectionTarget connection : connectionLookup.list()) {
             if (!connection.agentVisible()) {
                 continue;
             }
@@ -125,7 +125,7 @@ public class McpToolCapabilityProvider implements CapabilityProvider {
                 List.of());
     }
 
-    private CapabilityDescriptor toDescriptor(Connection connection, McpTool tool) {
+    private CapabilityDescriptor toDescriptor(McpConnectionTarget connection, McpTool tool) {
         return new CapabilityDescriptor(
                 "mcp." + connection.connectionId() + "." + tool.name(),
                 "1",
@@ -161,7 +161,7 @@ public class McpToolCapabilityProvider implements CapabilityProvider {
         return SideEffectClass.EXTERNAL_REVERSIBLE;
     }
 
-    private McpDiscovery safeDiscovery(Connection connection) {
+    private McpDiscovery safeDiscovery(McpConnectionTarget connection) {
         try {
             return discoveryService.discover(connection);
         } catch (RuntimeException ex) {
@@ -181,11 +181,11 @@ public class McpToolCapabilityProvider implements CapabilityProvider {
         }
         String connectionId = rest.substring(0, dot);
         String toolName = rest.substring(dot + 1);
-        Connection connection = connectionRepository.findById(connectionId).orElse(null);
-        return connection == null ? null
-                : new ResolvedTool(connection, toolName);
+        return connectionLookup.findByConnectionId(connectionId)
+                .map(connection -> new ResolvedTool(connection, toolName))
+                .orElse(null);
     }
 
-    private record ResolvedTool(Connection connection, String toolName) {
+    private record ResolvedTool(McpConnectionTarget connection, String toolName) {
     }
 }

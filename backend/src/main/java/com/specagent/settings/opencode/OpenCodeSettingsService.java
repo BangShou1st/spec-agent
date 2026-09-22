@@ -1,5 +1,7 @@
 package com.specagent.settings.opencode;
 
+import com.specagent.model.inference.OpenCodeRuntimeSettingsPort;
+import com.specagent.model.inference.RuntimeOpenCodeSettings;
 import com.specagent.model.provider.OpenCodeModelCatalog;
 import com.specagent.model.provider.OpenCodeModelErrorCategory;
 import com.specagent.model.provider.OpenCodeModelException;
@@ -13,7 +15,7 @@ import java.util.List;
 
 /** Coordinates probe/save without exposing the working key to the API layer. */
 @Service
-public class OpenCodeSettingsService {
+public class OpenCodeSettingsService implements OpenCodeRuntimeSettingsPort {
 
     static final String DATABASE_SOURCE = "database";
     static final String EXTERNAL_ENVIRONMENT_SOURCE = "external-environment";
@@ -136,6 +138,7 @@ public class OpenCodeSettingsService {
     }
 
     /** The only normal service method that returns the full key to backend code. */
+    @Override
     public RuntimeOpenCodeSettings requireRuntimeSettings() {
         if (EXTERNAL_ENVIRONMENT_SOURCE.equals(runtimeSettingsSource)) {
             return requireExternalRuntimeSettings();

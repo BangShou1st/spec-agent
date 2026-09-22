@@ -282,4 +282,45 @@ class ConnectionControllerIntegrationTest {
         assertThat(tools.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(tools.getBody()).isEmpty();
     }
+
+    /**
+     * Issue #14 error-contract regression: MCP asset access rejections throw
+     * the MCP-owned exception internally, but the public contract must stay
+     * byte-for-byte the historical one — 400 CONNECTION_COMMAND_REJECTED for
+     * not-visible connections and unexposed resources, 404
+     * CONNECTION_NOT_FOUND for unknown connections, never 500/UNKNOWN_ERROR.
+     */
+    @SuppressWarnings("unchecked")
+    @Test
+    void mcpAssetRejectionsKeepTheHistoricalPublicContract() {
+        String connectionId = createConnection("contract-mcp", fakeServerUrl, null);
+
+        // Never tested/connected -> not agent-visible -> 400 rejected.
+        ResponseEntity<Map> resources = rest.getForEntity(
+                "/api/v1/connections/" + connectionId + "/resources", Map.class);
+        assertThat(resources.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(String.valueOf(resources.getBody())).contains("CONNECTION_COMMAND_REJECTED");
+
+        ResponseEntity<Map> prompts = rest.getForEntity(
+                "/api/v1/connections/" + connectionId + "/prompts", Map.class);
+        assertThat(prompts.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(String.valueOf(prompts.getBody())).contains("CONNECTION_COMMAND_REJECTED");
+
+        // Visible after connect+enable: unknown resource URI still fails
+        // closed with the same rejected contract.
+        assertThat(rest.postForEntity("/api/v1/connections/" + connectionId + "/connect", null, Map.class)
+                .getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(rest.postForEntity("/api/v1/connections/" + connectionId + "/enable", null, Void.class)
+                .getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+        ResponseEntity<Map> unknownUri = rest.getForEntity(
+                "/api/v1/connections/" + connectionId + "/resources/read?uri=docs://nope", Map.class);
+        assertThat(unknownUri.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(String.valueOf(unknownUri.getBody())).contains("CONNECTION_COMMAND_REJECTED");
+
+        // Unknown connection stays 404 CONNECTION_NOT_FOUND on every facet.
+        ResponseEntity<Map> unknownRead = rest.getForEntity(
+                "/api/v1/connections/conn_doesnotexist2/resources/read?uri=docs://guide", Map.class);
+        assertThat(unknownRead.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(String.valueOf(unknownRead.getBody())).contains("CONNECTION_NOT_FOUND");
+    }
 }

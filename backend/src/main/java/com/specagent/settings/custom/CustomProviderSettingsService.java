@@ -1,6 +1,8 @@
 package com.specagent.settings.custom;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.specagent.model.inference.CustomRuntimeSettingsPort;
+import com.specagent.model.inference.RuntimeCustomSettings;
 import com.specagent.model.provider.CompatibilityProbeService;
 import com.specagent.model.provider.CustomApiFormat;
 import com.specagent.model.provider.ModelProviderException;
@@ -15,7 +17,7 @@ import java.util.List;
 import org.springframework.stereotype.Service;
 
 @Service
-public class CustomProviderSettingsService {
+public class CustomProviderSettingsService implements CustomRuntimeSettingsPort {
 
     private final CustomProviderSettingsRepository repository;
     private final ObjectMapper mapper;
@@ -188,6 +190,18 @@ public class CustomProviderSettingsService {
     public CustomProviderSettings requireStored() {
         return repository.find()
                 .orElseThrow(() -> ModelProviderException.notConfigured("custom", "Custom provider is not configured"));
+    }
+
+    /**
+     * Inference-port projection: stored settings gated by the activatable
+     * check, fail closed — the historical requireStored + requireActivatable
+     * sequence the gateway ran per request.
+     */
+    @Override
+    public RuntimeCustomSettings requireRuntimeSettings() {
+        CustomProviderSettings s = requireStored();
+        requireActivatable();
+        return new RuntimeCustomSettings(s.apiFormat(), s.baseUrl(), s.apiKey(), s.selectedModel());
     }
 
     /** API-boundary preview so controllers never depend on model packages. */

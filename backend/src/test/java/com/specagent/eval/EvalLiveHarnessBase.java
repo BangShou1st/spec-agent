@@ -2,9 +2,9 @@ package com.specagent.eval;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.specagent.model.inference.RuntimeOpenCodeSettings;
 import com.specagent.model.provider.OpenCodeZenTransport;
 import com.specagent.settings.opencode.OpenCodeSettingsService;
-import com.specagent.settings.opencode.RuntimeOpenCodeSettings;
 import org.junit.jupiter.api.AfterEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;

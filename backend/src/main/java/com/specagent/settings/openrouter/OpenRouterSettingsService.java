@@ -2,6 +2,8 @@ package com.specagent.settings.openrouter;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.specagent.model.inference.OpenRouterRuntimeSettingsPort;
+import com.specagent.model.inference.RuntimeOpenRouterSettings;
 import com.specagent.model.provider.ChatCompletionsProtocolAdapter;
 import com.specagent.model.provider.CustomApiFormat;
 import com.specagent.model.provider.CompatibilityProbeService;
@@ -20,7 +22,7 @@ import java.util.Map;
 import org.springframework.stereotype.Service;
 
 @Service
-public class OpenRouterSettingsService {
+public class OpenRouterSettingsService implements OpenRouterRuntimeSettingsPort {
 
     private final OpenRouterSettingsRepository repository;
     private final ObjectMapper mapper;
@@ -143,6 +145,18 @@ public class OpenRouterSettingsService {
     public OpenRouterSettings requireStored() {
         return repository.find()
                 .orElseThrow(() -> ModelProviderException.notConfigured("openrouter", "OpenRouter is not configured"));
+    }
+
+    /**
+     * Inference-port projection: stored settings gated by the activatable
+     * check, fail closed — the historical requireStored + requireActivatable
+     * sequence the gateway ran per request.
+     */
+    @Override
+    public RuntimeOpenRouterSettings requireRuntimeSettings() {
+        OpenRouterSettings s = requireStored();
+        requireActivatable();
+        return new RuntimeOpenRouterSettings(s.apiKey(), s.selectedModel());
     }
 
     private JsonNode fetchModelRoot(String apiKey, String context) {

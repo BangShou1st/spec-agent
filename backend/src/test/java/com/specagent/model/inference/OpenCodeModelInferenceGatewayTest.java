@@ -3,8 +3,6 @@ package com.specagent.model.inference;
 import com.specagent.model.provider.OpenCodeChatCompletionRequest;
 import com.specagent.model.provider.OpenCodeCompletionResponse;
 import com.specagent.model.provider.OpenCodeZenTransport;
-import com.specagent.settings.opencode.OpenCodeSettingsService;
-import com.specagent.settings.opencode.RuntimeOpenCodeSettings;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -26,7 +24,7 @@ class OpenCodeModelInferenceGatewayTest {
     @Test
     void externalEvaluationMayUseAnExactNonFreeReferenceModel() {
         OpenCodeZenTransport transport = mock(OpenCodeZenTransport.class);
-        OpenCodeSettingsService settings = mock(OpenCodeSettingsService.class);
+        OpenCodeRuntimeSettingsPort settings = mock(OpenCodeRuntimeSettingsPort.class);
         when(settings.requireRuntimeSettings()).thenReturn(new RuntimeOpenCodeSettings(
                 "test-key", "gpt-5.6-terra", EXTERNAL_SOURCE));
         when(transport.complete(eq("test-key"), any(String.class), any(OpenCodeChatCompletionRequest.class)))
@@ -44,7 +42,7 @@ class OpenCodeModelInferenceGatewayTest {
         UUID runId = UUID.randomUUID();
         UUID projectId = UUID.fromString("12345678-1234-1234-1234-123456789abc");
         OpenCodeZenTransport transport = mock(OpenCodeZenTransport.class);
-        OpenCodeSettingsService settings = mock(OpenCodeSettingsService.class);
+        OpenCodeRuntimeSettingsPort settings = mock(OpenCodeRuntimeSettingsPort.class);
         when(settings.requireRuntimeSettings()).thenReturn(new RuntimeOpenCodeSettings(
                 "test-key", "some-free", EXTERNAL_SOURCE));
         when(transport.complete(eq("test-key"), any(String.class),
@@ -67,7 +65,7 @@ class OpenCodeModelInferenceGatewayTest {
     @Test
     void differentProjectsGetDifferentSessions() {
         OpenCodeZenTransport transport = mock(OpenCodeZenTransport.class);
-        OpenCodeSettingsService settings = mock(OpenCodeSettingsService.class);
+        OpenCodeRuntimeSettingsPort settings = mock(OpenCodeRuntimeSettingsPort.class);
         when(settings.requireRuntimeSettings()).thenReturn(new RuntimeOpenCodeSettings(
                 "test-key", "some-free", EXTERNAL_SOURCE));
         when(transport.complete(eq("test-key"), any(String.class),
@@ -88,7 +86,7 @@ class OpenCodeModelInferenceGatewayTest {
     @Test
     void differentRunsGetDifferentSessions() {
         OpenCodeZenTransport transport = mock(OpenCodeZenTransport.class);
-        OpenCodeSettingsService settings = mock(OpenCodeSettingsService.class);
+        OpenCodeRuntimeSettingsPort settings = mock(OpenCodeRuntimeSettingsPort.class);
         when(settings.requireRuntimeSettings()).thenReturn(new RuntimeOpenCodeSettings(
                 "test-key", "some-free", EXTERNAL_SOURCE));
         when(transport.complete(eq("test-key"), any(String.class),
@@ -111,7 +109,7 @@ class OpenCodeModelInferenceGatewayTest {
     @Test
     void databaseSettingsMayUseAnyLiveListQualifiedModel() {
         OpenCodeZenTransport transport = mock(OpenCodeZenTransport.class);
-        OpenCodeSettingsService settings = mock(OpenCodeSettingsService.class);
+        OpenCodeRuntimeSettingsPort settings = mock(OpenCodeRuntimeSettingsPort.class);
         when(settings.requireRuntimeSettings()).thenReturn(new RuntimeOpenCodeSettings(
                 "test-key", "gpt-5.6-terra", "database:opencode_settings"));
         when(transport.complete(eq("test-key"), any(String.class), any(OpenCodeChatCompletionRequest.class)))
@@ -126,7 +124,7 @@ class OpenCodeModelInferenceGatewayTest {
     @Test
     void textContractSendsNoResponseFormat() {
         OpenCodeZenTransport transport = mock(OpenCodeZenTransport.class);
-        OpenCodeSettingsService settings = mock(OpenCodeSettingsService.class);
+        OpenCodeRuntimeSettingsPort settings = mock(OpenCodeRuntimeSettingsPort.class);
         when(settings.requireRuntimeSettings()).thenReturn(new RuntimeOpenCodeSettings(
                 "test-key", "some-free", EXTERNAL_SOURCE));
         when(transport.complete(eq("test-key"), any(String.class), any(OpenCodeChatCompletionRequest.class)))
@@ -146,7 +144,7 @@ class OpenCodeModelInferenceGatewayTest {
     @Test
     void jsonSchemaContractMapsToProviderResponseFormat() {
         OpenCodeZenTransport transport = mock(OpenCodeZenTransport.class);
-        OpenCodeSettingsService settings = mock(OpenCodeSettingsService.class);
+        OpenCodeRuntimeSettingsPort settings = mock(OpenCodeRuntimeSettingsPort.class);
         when(settings.requireRuntimeSettings()).thenReturn(new RuntimeOpenCodeSettings(
                 "test-key", "some-free", EXTERNAL_SOURCE));
         when(transport.complete(eq("test-key"), any(String.class), any(OpenCodeChatCompletionRequest.class)))
@@ -176,7 +174,7 @@ class OpenCodeModelInferenceGatewayTest {
     @Test
     void jsonObjectContractMapsToJsonObjectResponseFormat() {
         OpenCodeZenTransport transport = mock(OpenCodeZenTransport.class);
-        OpenCodeSettingsService settings = mock(OpenCodeSettingsService.class);
+        OpenCodeRuntimeSettingsPort settings = mock(OpenCodeRuntimeSettingsPort.class);
         when(settings.requireRuntimeSettings()).thenReturn(new RuntimeOpenCodeSettings(
                 "test-key", "some-free", EXTERNAL_SOURCE));
         when(transport.complete(eq("test-key"), any(String.class), any(OpenCodeChatCompletionRequest.class)))
@@ -198,7 +196,7 @@ class OpenCodeModelInferenceGatewayTest {
     @Test
     void outputModesDoNotSilentlyFallback() {
         OpenCodeZenTransport transport = mock(OpenCodeZenTransport.class);
-        OpenCodeSettingsService settings = mock(OpenCodeSettingsService.class);
+        OpenCodeRuntimeSettingsPort settings = mock(OpenCodeRuntimeSettingsPort.class);
         when(settings.requireRuntimeSettings()).thenReturn(new RuntimeOpenCodeSettings(
                 "test-key", "some-free", EXTERNAL_SOURCE));
         when(transport.complete(eq("test-key"), any(String.class), any(OpenCodeChatCompletionRequest.class)))

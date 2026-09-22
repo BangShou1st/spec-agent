@@ -3,16 +3,19 @@ package com.specagent.mcp;
 import com.specagent.connection.domain.Connection;
 import com.specagent.connection.domain.ConnectionKind;
 import com.specagent.connection.domain.ConnectionStatus;
+import com.specagent.connection.persistence.ConnectionMcpConnectionLookup;
 import com.specagent.mcp.domain.McpDiscovery;
 import com.specagent.mcp.domain.McpPrompt;
 import com.specagent.mcp.domain.McpResource;
 import com.specagent.mcp.domain.McpResourceContent;
 import com.specagent.mcp.domain.McpTool;
+import com.specagent.mcp.provider.McpConnectionCommandException;
 import com.specagent.mcp.provider.McpPromptAssetProvider;
 import com.specagent.mcp.provider.McpResourceProvider;
+import com.specagent.mcp.runtime.McpConnectionLookupPort;
 import com.specagent.mcp.runtime.McpConnectionRuntime;
+import com.specagent.mcp.runtime.McpConnectionTarget;
 import com.specagent.mcp.runtime.McpDiscoveryService;
-import com.specagent.connection.persistence.ConnectionRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -27,7 +30,6 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
@@ -35,13 +37,15 @@ import static org.mockito.Mockito.when;
  * MCP primitive separation: resources are retrievable evidence with
  * provenance (never tools, never Graph truth); prompts are discoverable
  * assets only (never automatic system policy). Non-visible connections and
- * unknown URIs fail closed.
+ * unknown URIs fail closed. Connections reach the providers only through the
+ * MCP-owned lookup projection; the MCP-owned rejection maps at the API edge
+ * to the historical 400 CONNECTION_COMMAND_REJECTED contract.
  */
 @ExtendWith(MockitoExtension.class)
 class McpResourcePromptSeparationTest {
 
     @Mock
-    private ConnectionRepository connectionRepository;
+    private McpConnectionLookupPort connectionLookup;
     @Mock
     private McpDiscoveryService discoveryService;
     @Mock
@@ -50,20 +54,21 @@ class McpResourcePromptSeparationTest {
     private McpResourceProvider resourceProvider;
     private McpPromptAssetProvider promptAssetProvider;
 
-    private Connection visible;
+    private McpConnectionTarget visible;
     private McpDiscovery discovery;
 
     @BeforeEach
     void setUp() {
-        resourceProvider = new McpResourceProvider(connectionRepository,
+        resourceProvider = new McpResourceProvider(connectionLookup,
                 discoveryService, connectionRuntime);
-        promptAssetProvider = new McpPromptAssetProvider(connectionRepository,
+        promptAssetProvider = new McpPromptAssetProvider(connectionLookup,
                 discoveryService);
         UUID id = UUID.randomUUID();
-        visible = new Connection(id, "conn-res", "res-conn",
+        visible = ConnectionMcpConnectionLookup.toTarget(new Connection(
+                id, "conn-res", "res-conn",
                 ConnectionKind.CUSTOM_MCP, ConnectionStatus.CONNECTED, true,
                 Map.of("serverUrl", "https://mcp.example/conn-res"),
-                null, null, Instant.now(), Instant.now());
+                null, null, Instant.now(), Instant.now()));
         discovery = new McpDiscovery("srv", "v",
                 List.of(new McpTool("reader", "reads things",
                         Map.of("type", "object"), Map.of("readOnlyHint", true))),
@@ -74,7 +79,7 @@ class McpResourcePromptSeparationTest {
 
     @Test
     void resourcesExposeProvenanceAndStaySeparateFromTools() {
-        when(connectionRepository.findById(visible.id()))
+        when(connectionLookup.findByRowId(visible.rowId()))
                 .thenReturn(Optional.of(visible));
         when(discoveryService.discover(visible)).thenReturn(discovery);
         when(connectionRuntime.openAndRead(eq(visible), eq("docs://guide")))
@@ -82,45 +87,54 @@ class McpResourcePromptSeparationTest {
                         "guide body", "text/plain",
                         Map.of("kind", "MCP_RESOURCE", "uri", "docs://guide")));
 
-        assertThat(resourceProvider.discoverResources(visible))
+        assertThat(resourceProvider.discoverResources(visible.rowId()))
                 .extracting(McpResource::uri).containsExactly("docs://guide");
         McpResourceContent content =
-                resourceProvider.read(visible.id(), "docs://guide");
+                resourceProvider.read(visible.rowId(), "docs://guide");
         assertThat(content.provenance()).containsEntry("kind", "MCP_RESOURCE");
         assertThat(content.provenance()).containsEntry("uri", "docs://guide");
     }
 
     @Test
     void unknownResourceUriFailsClosed() {
-        when(connectionRepository.findById(visible.id()))
+        when(connectionLookup.findByRowId(visible.rowId()))
                 .thenReturn(Optional.of(visible));
         when(discoveryService.discover(visible)).thenReturn(discovery);
 
-        assertThatThrownBy(() -> resourceProvider.read(visible.id(), "docs://nope"))
-                .isInstanceOf(com.specagent.connection.service.ConnectionCommandException.class)
+        assertThatThrownBy(() -> resourceProvider.read(visible.rowId(), "docs://nope"))
+                .isInstanceOf(McpConnectionCommandException.class)
                 .hasMessageContaining("not exposed");
     }
 
     @Test
+    void unknownConnectionFailsClosed() {
+        UUID unknown = UUID.randomUUID();
+        when(connectionLookup.findByRowId(unknown)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> resourceProvider.read(unknown, "docs://guide"))
+                .isInstanceOf(McpConnectionCommandException.class)
+                .hasMessageContaining("Connection not found");
+    }
+
+    @Test
     void invisibleConnectionCannotReadResources() {
-        Connection disabled = new Connection(visible.id(), visible.connectionId(),
-                visible.name(), visible.kind(), ConnectionStatus.CONNECTED, false,
-                visible.config(), null, null, visible.createdAt(), visible.updatedAt());
-        when(connectionRepository.findById(visible.id()))
+        McpConnectionTarget disabled = new McpConnectionTarget(visible.rowId(),
+                visible.connectionId(), false, visible.serverUrl(), null);
+        when(connectionLookup.findByRowId(visible.rowId()))
                 .thenReturn(Optional.of(disabled));
 
-        assertThatThrownBy(() -> resourceProvider.read(visible.id(), "docs://guide"))
-                .isInstanceOf(com.specagent.connection.service.ConnectionCommandException.class)
+        assertThatThrownBy(() -> resourceProvider.read(visible.rowId(), "docs://guide"))
+                .isInstanceOf(McpConnectionCommandException.class)
                 .hasMessageContaining("not agent-visible");
     }
 
     @Test
     void promptsAreDiscoverableAssetsOnly() {
-        when(connectionRepository.findById(visible.id()))
+        when(connectionLookup.findByRowId(visible.rowId()))
                 .thenReturn(Optional.of(visible));
         when(discoveryService.discover(visible)).thenReturn(discovery);
 
-        List<McpPrompt> prompts = promptAssetProvider.discoverPrompts(visible.id());
+        List<McpPrompt> prompts = promptAssetProvider.discoverPrompts(visible.rowId());
         assertThat(prompts).extracting(McpPrompt::name).containsExactly("review");
         // Discovery carries names/descriptions/counts only — no prompt text
         // that could be mistaken for system policy.

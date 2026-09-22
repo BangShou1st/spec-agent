@@ -14,6 +14,7 @@ import com.specagent.readmodel.route.RouteLineageQueryException;
 import com.specagent.connection.service.ConnectionCommandException;
 import com.specagent.connection.service.ConnectionNotFoundException;
 import com.specagent.connection.service.ConnectionValidationException;
+import com.specagent.mcp.provider.McpConnectionCommandException;
 import com.specagent.skill.importing.SkillImportException;
 import com.specagent.skill.runtime.SkillResourceRejectedException;
 import org.slf4j.Logger;
@@ -209,6 +210,17 @@ public class ApiExceptionHandler {
     @ExceptionHandler(ConnectionCommandException.class)
     public ResponseEntity<ApiErrorResponse> handleConnectionCommand(
             ConnectionCommandException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiErrorResponse.of("CONNECTION_COMMAND_REJECTED", ex.getMessage()));
+    }
+
+    // The MCP-owned twin of ConnectionCommandException: the mcp package must
+    // not import the connection service package, so MCP asset-access
+    // rejections throw their own typed exception and map to the exact same
+    // public contract here — never to 500/UNKNOWN_ERROR.
+    @ExceptionHandler(McpConnectionCommandException.class)
+    public ResponseEntity<ApiErrorResponse> handleMcpConnectionCommand(
+            McpConnectionCommandException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ApiErrorResponse.of("CONNECTION_COMMAND_REJECTED", ex.getMessage()));
     }

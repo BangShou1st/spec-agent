@@ -8,8 +8,6 @@ import com.specagent.model.provider.ProtocolAdapter;
 import com.specagent.model.provider.ProtocolAdapterRegistry;
 import com.specagent.model.provider.ProviderHttpSupport;
 import com.specagent.model.provider.ProviderUrlSecurity;
-import com.specagent.settings.custom.CustomProviderSettings;
-import com.specagent.settings.custom.CustomProviderSettingsService;
 import java.net.http.HttpClient;
 import java.time.Duration;
 import java.util.LinkedHashMap;
@@ -25,12 +23,12 @@ import org.springframework.stereotype.Component;
 @ConditionalOnProperty(name = "spec.agent.model.inference", havingValue = "opencode", matchIfMissing = true)
 public class CustomInferenceGateway implements ModelInferenceGateway {
 
-    private final CustomProviderSettingsService settings;
+    private final CustomRuntimeSettingsPort settings;
     private final ProtocolAdapterRegistry registry;
     private final ObjectMapper mapper;
     private final HttpClient client;
 
-    public CustomInferenceGateway(CustomProviderSettingsService settings, ProtocolAdapterRegistry registry,
+    public CustomInferenceGateway(CustomRuntimeSettingsPort settings, ProtocolAdapterRegistry registry,
                                   ObjectMapper mapper) {
         this.settings = settings;
         this.registry = registry;
@@ -66,8 +64,7 @@ public class CustomInferenceGateway implements ModelInferenceGateway {
     }
 
     private Resolved resolve() {
-        CustomProviderSettings s = settings.requireStored();
-        settings.requireActivatable();
+        RuntimeCustomSettings s = settings.requireRuntimeSettings();
         CustomApiFormat format = CustomApiFormat.fromCode(s.apiFormat());
         String normalized = ProviderUrlSecurity.validateAndNormalizeBaseUrl(s.baseUrl());
         String endpoint = ProviderUrlSecurity.canonicalEndpoint(normalized, format);

@@ -1,4 +1,4 @@
-package com.specagent.settings.opencode;
+package com.specagent.model.inference;
 
 /** Backend-only projection consumed by the production model gateway. */
 public record RuntimeOpenCodeSettings(String apiKey,

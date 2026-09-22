@@ -1,4 +1,4 @@
-package com.specagent.connection.persistence;
+package com.specagent.mcp.persistence;
 
 import com.specagent.common.Json;
 import org.springframework.jdbc.core.RowMapper;
@@ -15,7 +15,9 @@ import java.util.UUID;
 /**
  * Durable normalized MCP discovery cache per connection. After a successful
  * discovery, tools/resources/prompts are cached here (as normalized JSON) so
- * reconnect does not re-run discovery; refresh invalidates it.
+ * reconnect does not re-run discovery; refresh invalidates it. Semantically
+ * MCP-owned (table {@code mcp_discovery_cache}, keyed by connection row id);
+ * the table schema is unchanged.
  */
 @Repository
 public class McpDiscoveryCacheRepository {

@@ -2,7 +2,6 @@ package com.specagent.model.inference;
 
 import com.specagent.model.provider.FragmentListener;
 import com.specagent.model.provider.ModelProvider;
-import com.specagent.settings.provider.ModelProviderSettingsService;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
@@ -18,12 +17,12 @@ import org.springframework.stereotype.Component;
 @ConditionalOnProperty(name = "spec.agent.model.inference", havingValue = "opencode", matchIfMissing = true)
 public class RoutingModelInferenceGateway implements ModelInferenceGateway {
 
-    private final ModelProviderSettingsService providerSettings;
+    private final ActiveProviderPort providerSettings;
     private final OpenCodeModelInferenceGateway openCode;
     private final OpenRouterInferenceGateway openRouter;
     private final CustomInferenceGateway custom;
 
-    public RoutingModelInferenceGateway(ModelProviderSettingsService providerSettings,
+    public RoutingModelInferenceGateway(ActiveProviderPort providerSettings,
                                         OpenCodeModelInferenceGateway openCode,
                                         OpenRouterInferenceGateway openRouter,
                                         CustomInferenceGateway custom) {

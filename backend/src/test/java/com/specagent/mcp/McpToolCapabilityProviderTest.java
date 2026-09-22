@@ -6,11 +6,13 @@ import com.specagent.capability.SideEffectClass;
 import com.specagent.connection.domain.Connection;
 import com.specagent.connection.domain.ConnectionKind;
 import com.specagent.connection.domain.ConnectionStatus;
-import com.specagent.connection.persistence.ConnectionRepository;
+import com.specagent.connection.persistence.ConnectionMcpConnectionLookup;
 import com.specagent.mcp.domain.McpDiscovery;
 import com.specagent.mcp.domain.McpTool;
 import com.specagent.mcp.provider.McpToolCapabilityProvider;
+import com.specagent.mcp.runtime.McpConnectionLookupPort;
 import com.specagent.mcp.runtime.McpConnectionRuntime;
+import com.specagent.mcp.runtime.McpConnectionTarget;
 import com.specagent.mcp.runtime.McpDiscoveryService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -32,13 +34,14 @@ import static org.mockito.Mockito.when;
 /**
  * Dynamic MCP tool visibility without network: connected+enabled connections
  * expose one descriptor per tool; disabled/disconnected connections expose
- * none. Unknown side effects stay conservative (never NONE).
+ * none. Unknown side effects stay conservative (never NONE). Connections reach
+ * the provider only through the MCP-owned lookup projection.
  */
 @ExtendWith(MockitoExtension.class)
 class McpToolCapabilityProviderTest {
 
     @Mock
-    private ConnectionRepository connectionRepository;
+    private McpConnectionLookupPort connectionLookup;
     @Mock
     private McpDiscoveryService discoveryService;
     @Mock
@@ -48,16 +51,17 @@ class McpToolCapabilityProviderTest {
 
     @BeforeEach
     void setUp() {
-        provider = new McpToolCapabilityProvider(connectionRepository,
+        provider = new McpToolCapabilityProvider(connectionLookup,
                 discoveryService, connectionRuntime);
     }
 
-    private Connection connection(UUID id, String connectionId,
-                                  ConnectionStatus status, boolean enabled) {
-        return new Connection(id, connectionId, "n-" + connectionId,
+    private McpConnectionTarget connection(UUID id, String connectionId,
+                                           ConnectionStatus status, boolean enabled) {
+        Connection connection = new Connection(id, connectionId, "n-" + connectionId,
                 ConnectionKind.CUSTOM_MCP, status, enabled,
                 Map.of("serverUrl", "https://mcp.example/" + connectionId),
                 null, null, Instant.now(), Instant.now());
+        return ConnectionMcpConnectionLookup.toTarget(connection);
     }
 
     private McpDiscovery discovery(String... toolNames) {
@@ -71,9 +75,9 @@ class McpToolCapabilityProviderTest {
     @Test
     void enabledConnectionExposesOneDescriptorPerTool() {
         UUID id = UUID.randomUUID();
-        Connection connection = connection(id, "conn-one",
+        McpConnectionTarget connection = connection(id, "conn-one",
                 ConnectionStatus.CONNECTED, true);
-        when(connectionRepository.list()).thenReturn(List.of(connection));
+        when(connectionLookup.list()).thenReturn(List.of(connection));
         when(discoveryService.discover(any())).thenReturn(
                 discovery("alpha", "beta"));
 
@@ -87,9 +91,9 @@ class McpToolCapabilityProviderTest {
     @Test
     void disabledConnectionExposesNothing() {
         UUID id = UUID.randomUUID();
-        Connection connection = connection(id, "conn-off",
+        McpConnectionTarget connection = connection(id, "conn-off",
                 ConnectionStatus.CONNECTED, false);
-        when(connectionRepository.list()).thenReturn(List.of(connection));
+        when(connectionLookup.list()).thenReturn(List.of(connection));
 
         assertThat(provider.descriptorsFor(CapabilityQueryContext.empty())).isEmpty();
     }
@@ -97,9 +101,9 @@ class McpToolCapabilityProviderTest {
     @Test
     void failedConnectionExposesNothing() {
         UUID id = UUID.randomUUID();
-        Connection connection = connection(id, "conn-bad",
+        McpConnectionTarget connection = connection(id, "conn-bad",
                 ConnectionStatus.FAILED, true);
-        when(connectionRepository.list()).thenReturn(List.of(connection));
+        when(connectionLookup.list()).thenReturn(List.of(connection));
 
         assertThat(provider.descriptorsFor(CapabilityQueryContext.empty())).isEmpty();
     }
@@ -107,9 +111,9 @@ class McpToolCapabilityProviderTest {
     @Test
     void unknownSideEffectDefaultsConservatively() {
         UUID id = UUID.randomUUID();
-        Connection connection = connection(id, "conn-x",
+        McpConnectionTarget connection = connection(id, "conn-x",
                 ConnectionStatus.CONNECTED, true);
-        when(connectionRepository.list()).thenReturn(List.of(connection));
+        when(connectionLookup.list()).thenReturn(List.of(connection));
         when(discoveryService.discover(any())).thenReturn(discovery("mystery"));
 
         CapabilityDescriptor descriptor = provider.descriptorsFor(
@@ -122,9 +126,9 @@ class McpToolCapabilityProviderTest {
     @Test
     void readOnlyHintKeepsNoneSideEffect() {
         UUID id = UUID.randomUUID();
-        Connection connection = connection(id, "conn-ro",
+        McpConnectionTarget connection = connection(id, "conn-ro",
                 ConnectionStatus.CONNECTED, true);
-        when(connectionRepository.list()).thenReturn(List.of(connection));
+        when(connectionLookup.list()).thenReturn(List.of(connection));
         McpDiscovery annotated = new McpDiscovery("srv", "v",
                 List.of(new McpTool("reader", "read-only tool",
                         Map.of("type", "object"), Map.of("readOnlyHint", true))),
@@ -140,9 +144,9 @@ class McpToolCapabilityProviderTest {
     @Test
     void faultedDiscoveryHidesConnectionRatherThanFailing() {
         UUID id = UUID.randomUUID();
-        Connection connection = connection(id, "conn-flaky",
+        McpConnectionTarget connection = connection(id, "conn-flaky",
                 ConnectionStatus.CONNECTED, true);
-        when(connectionRepository.list()).thenReturn(List.of(connection));
+        when(connectionLookup.list()).thenReturn(List.of(connection));
         when(discoveryService.discover(any()))
                 .thenThrow(new RuntimeException("boom"));
 
@@ -152,9 +156,9 @@ class McpToolCapabilityProviderTest {
     @Test
     void descriptorForHonorsAvailability() {
         UUID id = UUID.randomUUID();
-        Connection disabled = connection(id, "conn-d",
+        McpConnectionTarget disabled = connection(id, "conn-d",
                 ConnectionStatus.CONNECTED, false);
-        when(connectionRepository.findById("conn-d"))
+        when(connectionLookup.findByConnectionId("conn-d"))
                 .thenReturn(Optional.of(disabled));
 
         assertThat(provider.descriptorFor("mcp.conn-d.alpha")).isEmpty();

@@ -9,10 +9,10 @@ import com.specagent.model.inference.ModelInferenceGateway;
 import com.specagent.model.inference.ModelInferenceMessage;
 import com.specagent.model.inference.ModelInferenceRequest;
 import com.specagent.model.inference.OpenCodeModelInferenceGateway;
+import com.specagent.model.inference.OpenCodeRuntimeSettingsPort;
 import com.specagent.model.gateway.ModelGatewayErrorCategory;
 import com.specagent.model.provider.OpenCodeModelErrorCategory;
 import com.specagent.model.provider.OpenCodeModelException;
-import com.specagent.settings.opencode.OpenCodeSettingsService;
 import com.specagent.testing.FakeModelInferenceGateway;
 import org.junit.jupiter.api.Test;
 
@@ -75,7 +75,7 @@ class LiveExecutionGuardTest {
 
     @Test
     void missingProviderConfigurationFailsClosedWithoutFakeFallback() {
-        OpenCodeSettingsService settings = mock(OpenCodeSettingsService.class);
+        OpenCodeRuntimeSettingsPort settings = mock(OpenCodeRuntimeSettingsPort.class);
         when(settings.requireRuntimeSettings()).thenThrow(
                 new OpenCodeModelException(OpenCodeModelErrorCategory.NOT_CONFIGURED,
                         "provider is not configured"));

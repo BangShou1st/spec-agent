@@ -227,4 +227,74 @@ class ConnectionMcpIntegrationTest {
         Connection failed = lifecycleService.findByRowId(connection.id()).orElseThrow();
         assertThat(failed.status().code()).isEqualTo("FAILED");
     }
+
+    /**
+     * Issue #14 connection/MCP regression: one full lifecycle keeps the
+     * MCP-owned discovery cache and the credential store consistent at every
+     * step — create, test/discovery writes the cache, enable, secret update
+     * invalidates the cache and rotates the credential, refresh re-discovers
+     * and re-caches, delete removes both rows. The cache table stays
+     * MCP-owned; the connections table stays connection-owned.
+     */
+    @Test
+    void fullLifecycleKeepsDiscoveryCacheAndCredentialsConsistent() {
+        Connection created = lifecycleService.create(ConnectionKind.CUSTOM_MCP,
+                "fake-mcp-lifecycle", Map.of("serverUrl", fakeServerUrl),
+                "lifecycle-secret-1");
+        assertThat(created.status().code()).isEqualTo("CREATED");
+        assertThat(cacheRows()).isZero();
+        assertThat(credentialRows()).isEqualTo(1);
+        String firstCredentialRef = created.credentialRef();
+
+        // test/discovery success -> cache written
+        McpDiscovery testedDiscovery = lifecycleService.test(created.id());
+        assertThat(testedDiscovery.tools()).hasSize(1);
+        assertThat(cacheRows()).isEqualTo(1);
+        assertThat(lifecycleService.findByRowId(created.id()).orElseThrow()
+                .status().code()).isEqualTo("TESTED");
+
+        lifecycleService.connect(created.id());
+        lifecycleService.enable(created.id());
+        assertThat(lifecycleService.findByRowId(created.id()).orElseThrow()
+                .enabled()).isTrue();
+        assertThat(cacheRows()).isEqualTo(1);
+
+        // config+secret update -> cache invalidated, lifecycle reset,
+        // old credential row rotated away
+        Connection updated = lifecycleService.updateByConnectionId(
+                created.connectionId(), null,
+                Map.of("serverUrl", fakeServerUrl + "?v=2"),
+                false, true, true, "lifecycle-secret-2");
+        assertThat(updated.status().code()).isEqualTo("CREATED");
+        assertThat(updated.enabled()).isFalse();
+        assertThat(cacheRows()).isZero();
+        assertThat(credentialRows()).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM connection_credentials WHERE ref = ?",
+                Integer.class, firstCredentialRef)).isZero();
+        assertThat(updated.credentialRef()).isNotEqualTo(firstCredentialRef);
+        assertThat(updated.credentialRef()).doesNotContain("lifecycle-secret-2");
+
+        // refresh -> live re-discovery, cache written again
+        lifecycleService.refresh(updated.id());
+        assertThat(cacheRows()).isEqualTo(1);
+        assertThat(lifecycleService.findByRowId(created.id()).orElseThrow()
+                .status().code()).isEqualTo("CONNECTED");
+
+        // delete -> cache and credential cleanup
+        lifecycleService.delete(updated.id());
+        assertThat(cacheRows()).isZero();
+        assertThat(credentialRows()).isZero();
+        assertThat(lifecycleService.findByRowId(created.id())).isEmpty();
+    }
+
+    private int cacheRows() {
+        return jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM mcp_discovery_cache", Integer.class);
+    }
+
+    private int credentialRows() {
+        return jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM connection_credentials", Integer.class);
+    }
 }

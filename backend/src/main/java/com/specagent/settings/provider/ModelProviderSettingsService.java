@@ -1,5 +1,6 @@
 package com.specagent.settings.provider;
 
+import com.specagent.model.inference.ActiveProviderPort;
 import com.specagent.model.provider.ModelProvider;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -13,7 +14,7 @@ import org.springframework.stereotype.Service;
  * legacy code-only path simply leaves the row id null.
  */
 @Service
-public class ModelProviderSettingsService {
+public class ModelProviderSettingsService implements ActiveProviderPort {
 
     private final ModelProviderSettingsRepository repository;
 
@@ -21,6 +22,7 @@ public class ModelProviderSettingsService {
         this.repository = repository;
     }
 
+    @Override
     public ModelProvider activeProvider() {
         return repository.find()
                 .map(s -> ModelProvider.fromCode(s.activeProvider()))

@@ -7,7 +7,6 @@ import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.lang.ArchRule;
-import com.tngtech.archunit.library.freeze.FreezingArchRule;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -437,50 +436,32 @@ class ArchitectureTests {
 
     @Test
     void packagesAreFreeOfCycles() {
-        // Package-cycle freeze. Slice granularity is the first package segment
+        // Zero-cycle invariant. Slice granularity is the first package segment
         // below com.specagent, so a dependency from route.. to node.. and back
         // is reported as the route <-> node cycle.
         //
-        // The repository currently carries 2 slice-cycle violations, the
-        // concrete paths of 2 package groups:
-        //   model <-> settings, connection <-> mcp
-        //
         // History: the 2026-09-19 audit froze 34 violation lines covering 7
-        // package groups (model <-> settings, model <-> globalassistant,
-        // answer <-> graph, node <-> route, project <-> route, context <->
-        // route, connection <-> mcp). The 2026-09-20 pass broke 5 of them by
-        // port sinking / dead-field removal (dependency direction now flows
-        // one way; see AgentTracePort, CompatibilityDecisionSemantics,
+        // package groups. Five were broken by port sinking / dead-field
+        // removal (AgentTracePort, CompatibilityDecisionSemantics,
         // RouteGraphSupportPort, ProjectActiveRoutePort, ProjectRowLockPort,
-        // and the RegenerateResult cleanup), shrinking the frozen baseline to
-        // the 2 remaining paths.
+        // the RegenerateResult cleanup). The last two — model <-> settings and
+        // connection <-> mcp — were closed by issue #14 through
+        // consumer-owned ports (ActiveProviderPort, the OpenCode/OpenRouter/
+        // Custom runtime-settings ports, McpConnectionLookupPort,
+        // McpCredentialResolver) plus moving McpDiscoveryCacheRepository into
+        // mcp.persistence, leaving settings -> model and connection -> mcp
+        // strictly one-way.
         //
-        // model <-> settings: the inference gateways read settings services
-        // (legitimate read direction), while settings depends on the
-        // model.provider protocol library (adapters, catalogs, probe).
-        // Breaking it needs the provider protocol library extracted into a
-        // neutral package — a wide, behaviour-sensitive move, deferred.
-        //
-        // connection <-> mcp: ConnectionLifecycleService drives McpDiscovery
-        // (legitimate direction), while the MCP runtime reads connection
-        // persistence (ConnectionRepository, McpDiscoveryCacheRepository,
-        // SecretStore). Breaking it needs a connection-store port plus moving
-        // the MCP discovery cache out of connection.persistence — deferred.
-        //
-        // The freeze guarantees neither can silently get worse: this rule
-        // fails on any NEW package cycle.
-        //
-        // ARCHUNIT STORE: violations live in backend/archunit_store. That
-        // archive is committed on purpose. When a cycle is actually removed
-        // (dependency inverted, port introduced, ...) the store must be
-        // regenerated (rerun this test, inspect the archunit_store diff, commit
-        // the shrunken store) so the rule starts guarding the new baseline.
-        ArchRule rule = FreezingArchRule.freeze(slices()
+        // With the real class dependency graph acyclic at the slice level,
+        // there is no frozen baseline anymore: this is a direct zero-tolerance
+        // rule, and ANY package cycle — including a resurrected historical
+        // one — fails the build outright. backend/archunit_store and
+        // archunit.properties were deleted together with the freeze wrapper.
+        ArchRule rule = slices()
                 .matching("com.specagent.(*)..")
                 .should().beFreeOfCycles()
-                .because("package-level cycles must be broken explicitly; the 7 "
-                        + "historical cycles are frozen in archunit_store and any "
-                        + "newly introduced cycle fails this rule"));
+                .because("top-level package slices must stay acyclic; no frozen "
+                        + "baseline exists, so any cycle fails this rule");
 
         rule.check(CLASSES);
     }

@@ -1,5 +1,6 @@
 package com.specagent.settings.opencode;
 
+import com.specagent.model.inference.RuntimeOpenCodeSettings;
 import com.specagent.model.provider.OpenCodeModelCatalog;
 import com.specagent.model.provider.OpenCodeZenTransport;
 import org.junit.jupiter.api.BeforeEach;

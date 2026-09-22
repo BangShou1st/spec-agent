@@ -180,13 +180,13 @@ public class ConnectionController {
     @GetMapping("/{connectionId}/resources")
     public ResponseEntity<List<McpResource>> listResources(@PathVariable String connectionId) {
         Connection connection = lifecycleService.requireByConnectionId(connectionId);
-        return ResponseEntity.ok(resourceProvider.discoverResources(connection));
+        return ResponseEntity.ok(resourceProvider.discoverResources(connection.id()));
     }
 
     @GetMapping("/{connectionId}/prompts")
     public ResponseEntity<List<McpPrompt>> listPrompts(@PathVariable String connectionId) {
         Connection connection = lifecycleService.requireByConnectionId(connectionId);
-        return ResponseEntity.ok(promptAssetProvider.discoverPromptsResolved(connection));
+        return ResponseEntity.ok(promptAssetProvider.discoverPrompts(connection.id()));
     }
 
     @GetMapping("/{connectionId}/resources/read")
@@ -194,7 +194,7 @@ public class ConnectionController {
             @PathVariable String connectionId,
             @RequestParam("uri") String uri) {
         Connection connection = lifecycleService.requireByConnectionId(connectionId);
-        var content = resourceProvider.readResolved(connection, uri);
+        var content = resourceProvider.read(connection.id(), uri);
         return ResponseEntity.ok(Map.of(
                 "uri", content.uri(),
                 "text", content.text(),

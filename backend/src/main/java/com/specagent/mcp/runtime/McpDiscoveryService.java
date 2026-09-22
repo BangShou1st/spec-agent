@@ -2,12 +2,11 @@ package com.specagent.mcp.runtime;
 
 import com.specagent.common.Hashes;
 import com.specagent.common.Json;
-import com.specagent.connection.domain.Connection;
-import com.specagent.connection.persistence.McpDiscoveryCacheRepository;
 import com.specagent.mcp.domain.McpDiscovery;
 import com.specagent.mcp.domain.McpPrompt;
 import com.specagent.mcp.domain.McpResource;
 import com.specagent.mcp.domain.McpTool;
+import com.specagent.mcp.persistence.McpDiscoveryCacheRepository;
 import com.fasterxml.jackson.core.type.TypeReference;
 import org.springframework.stereotype.Service;
 
@@ -46,16 +45,16 @@ public class McpDiscoveryService {
     }
 
     /** Live discovery (test/refresh path). Never writes remotely. */
-    public McpDiscovery discoverLive(Connection connection) {
+    public McpDiscovery discoverLive(McpConnectionTarget connection) {
         McpDiscovery discovery = connectionRuntime.testAndDiscover(connection);
-        persist(connection.id(), discovery);
+        persist(connection.rowId(), discovery);
         return discovery;
     }
 
     /** Cached discovery if present, otherwise live discovery (then cached). */
-    public McpDiscovery discover(Connection connection) {
+    public McpDiscovery discover(McpConnectionTarget connection) {
         Optional<McpDiscoveryCacheRepository.CacheRow> cached =
-                cacheRepository.findByConnection(connection.id());
+                cacheRepository.findByConnection(connection.rowId());
         if (cached.isPresent()) {
             return fromCache(cached.get());
         }

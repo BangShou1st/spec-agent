@@ -3,6 +3,7 @@ package com.specagent.settings.opencode;
 import com.specagent.model.inference.ModelInferenceGateway;
 import com.specagent.model.inference.OpenCodeModelInferenceGateway;
 import com.specagent.model.inference.RoutingModelInferenceGateway;
+import com.specagent.model.inference.RuntimeOpenCodeSettings;
 import com.specagent.model.provider.OpenCodeZenTransport;
 import com.specagent.testing.FakeModelInferenceGateway;
 import org.junit.jupiter.api.Test;

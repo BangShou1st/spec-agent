@@ -5,6 +5,7 @@ import com.specagent.connection.credentials.SecretStore;
 import com.specagent.connection.domain.Connection;
 import com.specagent.connection.domain.ConnectionKind;
 import com.specagent.connection.domain.ConnectionStatus;
+import com.specagent.connection.persistence.ConnectionMcpConnectionLookup;
 import com.specagent.connection.persistence.ConnectionRepository;
 import com.specagent.mcp.domain.McpDiscovery;
 import com.specagent.mcp.runtime.McpDiscoveryService;
@@ -84,7 +85,8 @@ public class ConnectionLifecycleService {
     public McpDiscovery test(UUID connectionId) {
         Connection connection = requireConnection(connectionId);
         try {
-            McpDiscovery discovery = discoveryService.discoverLive(connection);
+            McpDiscovery discovery = discoveryService.discoverLive(
+                    ConnectionMcpConnectionLookup.toTarget(connection));
             markStatus(connection.id(), ConnectionStatus.TESTED, null);
             return discovery;
         } catch (McpTransportException ex) {
@@ -97,7 +99,8 @@ public class ConnectionLifecycleService {
     public McpDiscovery connect(UUID connectionId) {
         Connection connection = requireConnection(connectionId);
         try {
-            McpDiscovery discovery = discoveryService.discoverLive(connection);
+            McpDiscovery discovery = discoveryService.discoverLive(
+                    ConnectionMcpConnectionLookup.toTarget(connection));
             markStatus(connection.id(), ConnectionStatus.CONNECTED, null);
             return discovery;
         } catch (McpTransportException ex) {

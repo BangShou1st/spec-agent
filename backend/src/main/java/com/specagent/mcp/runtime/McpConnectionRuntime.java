@@ -1,7 +1,5 @@
 package com.specagent.mcp.runtime;
 
-import com.specagent.connection.credentials.SecretStore;
-import com.specagent.connection.domain.Connection;
 import com.specagent.mcp.domain.McpDiscovery;
 import com.specagent.mcp.domain.McpToolResult;
 import com.specagent.mcp.transport.McpClientFactory;
@@ -14,7 +12,8 @@ import java.util.Map;
  * Owns the MCP protocol lifecycle for one saved Connection: open -> test ->
  * discover -> close. Connection (product state) and MCP (protocol) stay
  * separate; this class is the bridge that invokes the transport for a
- * connection's configuration and credential reference.
+ * connection's projected configuration and credential reference — it never
+ * sees the connection domain object or the secret store directly.
  *
  * <p>{@code testAndDiscover} never invokes arbitrary write operations: it
  * establishes the protocol, initializes, and discovers primitives only.
@@ -23,19 +22,15 @@ import java.util.Map;
 public class McpConnectionRuntime {
 
     private final McpClientFactory clientFactory;
-    private final SecretStore secretStore;
+    private final McpCredentialResolver credentialResolver;
 
-    public McpConnectionRuntime(McpClientFactory clientFactory, SecretStore secretStore) {
+    public McpConnectionRuntime(McpClientFactory clientFactory,
+                                McpCredentialResolver credentialResolver) {
         this.clientFactory = clientFactory;
-        this.secretStore = secretStore;
+        this.credentialResolver = credentialResolver;
     }
 
-    public String serverUrl(Connection connection) {
-        Object url = connection.config().get("serverUrl");
-        return url instanceof String s ? s : "";
-    }
-
-    public McpDiscovery testAndDiscover(Connection connection) {
+    public McpDiscovery testAndDiscover(McpConnectionTarget connection) {
         try (McpClientFactory.Session session = openSession(connection)) {
             return session.discover();
         } catch (McpTransportException ex) {
@@ -47,12 +42,12 @@ public class McpConnectionRuntime {
     }
 
     /** Opens a live session bound to the connection's config + credential. */
-    public McpClientFactory.Session openSession(Connection connection) {
+    public McpClientFactory.Session openSession(McpConnectionTarget connection) {
         String authHeader = resolveAuthHeader(connection);
-        return clientFactory.open(serverUrl(connection), Map.of(), authHeader);
+        return clientFactory.open(connection.serverUrl(), Map.of(), authHeader);
     }
 
-    public McpToolResult callTool(Connection connection, String toolName,
+    public McpToolResult callTool(McpConnectionTarget connection, String toolName,
                                   Map<String, Object> arguments) {
         try (McpClientFactory.Session session = openSession(connection)) {
             return session.callTool(toolName, arguments == null ? Map.of() : arguments);
@@ -65,7 +60,7 @@ public class McpConnectionRuntime {
     }
 
     /** Reads one resource through a fresh session (stateless, safe). */
-    public com.specagent.mcp.domain.McpResourceContent openAndRead(Connection connection,
+    public com.specagent.mcp.domain.McpResourceContent openAndRead(McpConnectionTarget connection,
                                                                    String uri) {
         try (McpClientFactory.Session session = openSession(connection)) {
             return session.readResource(uri);
@@ -77,13 +72,10 @@ public class McpConnectionRuntime {
         }
     }
 
-    private String resolveAuthHeader(Connection connection) {
-        if (connection.credentialRef() == null || connection.credentialRef().isBlank()) {
-            return null;
-        }
-        if (secretStore.maskedSuffix(connection.credentialRef()) == null) {
-            return null; // credential row gone — treated as unauthenticated
-        }
-        return "Bearer " + secretStore.resolve(connection.credentialRef());
+    private String resolveAuthHeader(McpConnectionTarget connection) {
+        String token = credentialResolver.resolveOrNull(connection.credentialRef());
+        // Missing ref or vanished credential row resolves to null — the
+        // session proceeds unauthenticated, exactly as before.
+        return token == null ? null : "Bearer " + token;
     }
 }

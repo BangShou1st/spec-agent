@@ -7,8 +7,6 @@ import com.specagent.model.provider.OpenCodeModelErrorCategory;
 import com.specagent.model.provider.OpenCodeModelException;
 import com.specagent.model.provider.OpenCodeZenSessionIds;
 import com.specagent.model.provider.OpenCodeZenTransport;
-import com.specagent.settings.opencode.OpenCodeSettingsService;
-import com.specagent.settings.opencode.RuntimeOpenCodeSettings;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
@@ -33,10 +31,10 @@ import java.util.Map;
 public class OpenCodeModelInferenceGateway implements ModelInferenceGateway {
 
     private final OpenCodeZenTransport transport;
-    private final OpenCodeSettingsService settingsService;
+    private final OpenCodeRuntimeSettingsPort settingsService;
 
     public OpenCodeModelInferenceGateway(OpenCodeZenTransport transport,
-                                         OpenCodeSettingsService settingsService) {
+                                         OpenCodeRuntimeSettingsPort settingsService) {
         this.transport = transport;
         this.settingsService = settingsService;
     }

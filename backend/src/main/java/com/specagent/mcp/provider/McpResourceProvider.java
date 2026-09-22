@@ -1,16 +1,14 @@
 package com.specagent.mcp.provider;
 
-import com.specagent.connection.domain.Connection;
-import com.specagent.connection.service.ConnectionCommandException;
-import com.specagent.connection.persistence.ConnectionRepository;
 import com.specagent.mcp.domain.McpDiscovery;
 import com.specagent.mcp.domain.McpResource;
+import com.specagent.mcp.runtime.McpConnectionLookupPort;
 import com.specagent.mcp.runtime.McpConnectionRuntime;
+import com.specagent.mcp.runtime.McpConnectionTarget;
 import com.specagent.mcp.runtime.McpDiscoveryService;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -21,57 +19,46 @@ import java.util.UUID;
 @Component
 public class McpResourceProvider {
 
-    private final ConnectionRepository connectionRepository;
+    private final McpConnectionLookupPort connectionLookup;
     private final McpDiscoveryService discoveryService;
     private final McpConnectionRuntime connectionRuntime;
 
-    public McpResourceProvider(ConnectionRepository connectionRepository,
+    public McpResourceProvider(McpConnectionLookupPort connectionLookup,
                                McpDiscoveryService discoveryService,
                                McpConnectionRuntime connectionRuntime) {
-        this.connectionRepository = connectionRepository;
+        this.connectionLookup = connectionLookup;
         this.discoveryService = discoveryService;
         this.connectionRuntime = connectionRuntime;
     }
 
-    public List<McpResource> discoverResources(Connection connection) {
-        listAgentVisible(connection);
+    /** Lists the resources of an agent-visible connection. */
+    public List<McpResource> discoverResources(UUID connectionRowId) {
+        McpConnectionTarget connection = requireVisible(connectionRowId);
         McpDiscovery discovery = discoveryService.discover(connection);
         return discovery.resources();
     }
 
     /** Reads one resource of an agent-visible connection with provenance. */
     public com.specagent.mcp.domain.McpResourceContent read(UUID connectionRowId, String uri) {
-        Connection connection = connectionRepository.findById(connectionRowId)
-                .orElseThrow(() -> new ConnectionCommandException(
+        McpConnectionTarget connection = requireVisible(connectionRowId);
+        McpDiscovery discovery = discoveryService.discover(connection);
+        boolean known = discovery.resources().stream()
+                .anyMatch(resource -> uri.equals(resource.uri()));
+        if (!known) {
+            throw new McpConnectionCommandException(
+                    "Resource is not exposed by the connected server");
+        }
+        return connectionRuntime.openAndRead(connection, uri);
+    }
+
+    private McpConnectionTarget requireVisible(UUID connectionRowId) {
+        McpConnectionTarget connection = connectionLookup.findByRowId(connectionRowId)
+                .orElseThrow(() -> new McpConnectionCommandException(
                         "Connection not found: " + connectionRowId));
-        listAgentVisible(connection);
-        McpDiscovery discovery = discoveryService.discover(connection);
-        boolean known = discovery.resources().stream()
-                .anyMatch(resource -> uri.equals(resource.uri()));
-        if (!known) {
-            throw new ConnectionCommandException(
-                    "Resource is not exposed by the connected server");
-        }
-        return connectionRuntime.openAndRead(connection, uri);
-    }
-
-    /** Connection-resolved read for the product-level management API. */
-    public com.specagent.mcp.domain.McpResourceContent readResolved(Connection connection, String uri) {
-        listAgentVisible(connection);
-        McpDiscovery discovery = discoveryService.discover(connection);
-        boolean known = discovery.resources().stream()
-                .anyMatch(resource -> uri.equals(resource.uri()));
-        if (!known) {
-            throw new ConnectionCommandException(
-                    "Resource is not exposed by the connected server");
-        }
-        return connectionRuntime.openAndRead(connection, uri);
-    }
-
-    private void listAgentVisible(Connection connection) {
         if (!connection.agentVisible()) {
-            throw new ConnectionCommandException(
+            throw new McpConnectionCommandException(
                     "Connection is not agent-visible: " + connection.connectionId());
         }
+        return connection;
     }
 }
