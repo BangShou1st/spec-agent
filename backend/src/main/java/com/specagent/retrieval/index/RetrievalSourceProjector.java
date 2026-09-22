@@ -22,6 +22,7 @@ import com.specagent.retrieval.api.RetrievalSourceKind;
 import com.specagent.retrieval.persistence.RetrievalEntry;
 import com.specagent.retrieval.persistence.RetrievalEntryRepository;
 import com.specagent.route.Route;
+import com.specagent.route.RouteHistoryResolver;
 import com.specagent.route.RouteRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,6 +43,7 @@ public class RetrievalSourceProjector {
     private final AnswerRepository answerRepository;
     private final AnswerPatchRepository answerPatchRepository;
     private final RouteRepository routeRepository;
+    private final RouteHistoryResolver routeHistoryResolver;
     private final RetrievalEntryRepository entryRepository;
     private final Json json;
     private final ResourceChunker chunker = new ResourceChunker();
@@ -51,12 +53,14 @@ public class RetrievalSourceProjector {
                                     AnswerRepository answerRepository,
                                     AnswerPatchRepository answerPatchRepository,
                                     RouteRepository routeRepository,
+                                    RouteHistoryResolver routeHistoryResolver,
                                     RetrievalEntryRepository entryRepository,
                                     Json json) {
         this.nodeRepository = nodeRepository;
         this.answerRepository = answerRepository;
         this.answerPatchRepository = answerPatchRepository;
         this.routeRepository = routeRepository;
+        this.routeHistoryResolver = routeHistoryResolver;
         this.entryRepository = entryRepository;
         this.json = json;
     }
@@ -181,15 +185,16 @@ public class RetrievalSourceProjector {
 
     private void projectNode(UUID projectId, Node node) {
         String text = joinText(node.question(), node.purpose(), node.contentText());
-        Map<String, Object> metadata = Map.of(
-                "nodeId", node.id().toString(),
-                "kind", node.kind().code(),
-                "subtype", node.subtype() == null ? "" : node.subtype());
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("nodeId", node.id().toString());
+        metadata.put("kind", node.kind().code());
+        metadata.put("subtype", node.subtype() == null ? "" : node.subtype());
+        addRouteProvenance(projectId, node.id(), metadata);
         if (text.isBlank() || !sourcePolicy.allowText(text)
                 || !sourcePolicy.allowMetadata(metadata)) {
             return;
         }
-        entryRepository.upsert(newEntry(projectId, null, RetrievalSourceKind.NODE,
+        entryRepository.upsert(newEntry(projectId, routeIdFor(metadata), RetrievalSourceKind.NODE,
                 node.id(), "node:" + node.id(), RetrievalScope.PROJECT,
                 nodeAuthority(node), text, metadata,
                 node.retractedAt()));
@@ -207,6 +212,7 @@ public class RetrievalSourceProjector {
             metadata.put("chunk", chunk.index());
             metadata.put("lineRange", List.of(chunk.startChar(), chunk.endChar()));
             metadata.put("subtype", node.subtype());
+            addRouteProvenance(projectId, node.id(), metadata);
             Object page = node.content().get("page");
             if (page != null) {
                 metadata.put("page", page);
@@ -218,7 +224,7 @@ public class RetrievalSourceProjector {
             if (!sourcePolicy.allowMetadata(metadata)) {
                 continue;
             }
-            entryRepository.upsert(newEntry(projectId, null, RetrievalSourceKind.RESOURCE_CHUNK,
+            entryRepository.upsert(newEntry(projectId, routeIdFor(metadata), RetrievalSourceKind.RESOURCE_CHUNK,
                     node.id(), sourceRef, RetrievalScope.RESOURCE,
                     MemoryAuthority.EXTERNAL_EVIDENCE, chunk.content(), metadata,
                     node.retractedAt()));
@@ -277,6 +283,36 @@ public class RetrievalSourceProjector {
                 projectId, routeId, kind, sourceId, sourceRef, scope, authority,
                 normalized, Hashes.sha256Hex(normalized), metadata, null, null,
                 retractedAt == null ? "PENDING" : "UNAVAILABLE", retractedAt);
+    }
+
+    /**
+     * Route membership is projection metadata, not canonical Node identity: a
+     * shared Node may be material in several routes. The resolver owns the
+     * route lineage semantics, while floating workspace nodes intentionally
+     * retain an empty provenance set.
+     */
+    private void addRouteProvenance(UUID projectId, UUID nodeId,
+                                    Map<String, Object> metadata) {
+        List<String> routeIds = routeRepository.findByProject(projectId).stream()
+                .filter(route -> route.tipNodeId() != null
+                        && routeHistoryResolver.belongsToRoute(route, nodeId))
+                .map(Route::id)
+                .map(UUID::toString)
+                .toList();
+        metadata.put("originRouteIds", routeIds);
+        metadata.put("workspaceScoped", routeIds.isEmpty());
+    }
+
+    private UUID routeIdFor(Map<String, Object> metadata) {
+        Object raw = metadata.get("originRouteIds");
+        if (!(raw instanceof List<?> routeIds) || routeIds.size() != 1) {
+            return null;
+        }
+        try {
+            return UUID.fromString(String.valueOf(routeIds.get(0)));
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
     }
 
     private MemoryAuthority nodeAuthority(Node node) {

@@ -219,13 +219,24 @@ public class LocalDeterministicDecisionEngine implements AgentDecisionEngine {
     }
 
     private boolean requiresQuery(CapabilityDescriptor descriptor) {
-        Object properties = descriptor.inputSchema().get("properties");
-        if (!(properties instanceof Map<?, ?> propertyMap)) {
-            return false;
+        Map<String, Object> schema = descriptor.inputSchema();
+        Object properties = schema.get("properties");
+        if (properties instanceof Map<?, ?> propertyMap
+                && propertyMap.containsKey("query")
+                && schema.get("required") instanceof List<?> required
+                && required.stream().anyMatch("query"::equals)) {
+            return true;
         }
-        return propertyMap.containsKey("query")
-                && descriptor.inputSchema().get("required") instanceof List<?> required
-                && required.stream().anyMatch("query"::equals);
+        // Runtime capability descriptors also use the compact project shape:
+        // {"query": {"type":"string", "required":true}}. Keep the
+        // fake engine generic so it never invents a nodeRef for a required
+        // argument it cannot safely synthesize.
+        Object queryDefinition = schema.get("query");
+        if (queryDefinition instanceof Map<?, ?> definition) {
+            Object required = definition.get("required");
+            return Boolean.TRUE.equals(required) || "true".equalsIgnoreCase(String.valueOf(required));
+        }
+        return false;
     }
 
     /**

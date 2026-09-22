@@ -113,12 +113,27 @@ public class RetrievalContextService {
         provenance.put("contentHash", entry.contentHash());
         provenance.put("sourceKind", entry.sourceKind().name());
         provenance.put("retrievalLanes", lanes);
-        if (entry.routeId() != null) {
-            provenance.put("originRouteId", entry.routeId().toString());
-        }
+        putRouteProvenance(entry, provenance);
         return new RetrievedContextItem(entry.sourceRef(), entry.sourceKind(), scope,
                 originRouteId, entry.authority(), entry.content(),
                 location(entry), provenance, reason);
+    }
+
+    private void putRouteProvenance(RetrievalEntry entry, Map<String, Object> provenance) {
+        Object routeIds = entry.metadata().get("originRouteIds");
+        if (routeIds instanceof List<?> list) {
+            provenance.put("originRouteIds", list.stream().map(String::valueOf).toList());
+        } else if (entry.routeId() != null) {
+            provenance.put("originRouteIds", List.of(entry.routeId().toString()));
+        } else {
+            provenance.put("originRouteIds", List.of());
+        }
+        if (entry.routeId() != null) {
+            provenance.put("originRouteId", entry.routeId().toString());
+        }
+        if (entry.metadata().containsKey("workspaceScoped")) {
+            provenance.put("workspaceScoped", Boolean.TRUE.equals(entry.metadata().get("workspaceScoped")));
+        }
     }
 
     private RetrievalScope classifyScope(RetrievalQuery query, RetrievalEntry entry) {

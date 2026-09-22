@@ -131,6 +131,29 @@ class ActionEligibilityCharacterizationTest {
     }
 
     @Test
+    void rejectsCapabilityRouteRefOutsideAllowedSourceRefs() throws Exception {
+        AgentRequestEnvelope base = request();
+        AgentInputSnapshot snapshot = base.snapshot();
+        AgentInputSnapshot withCapability = new AgentInputSnapshot(
+                snapshot.snapshotId(), snapshot.contextHash(), snapshot.projectId(),
+                snapshot.routeId(), snapshot.anchorNodeId(), snapshot.routeContext(),
+                snapshot.lineage(), snapshot.effectiveClaims(), snapshot.metadata(),
+                snapshot.allowedSourceRefs(), List.of(new CapabilityDescriptor(
+                        "memory.search", "1", "search memory", Map.of(), true,
+                        "NONE", List.of())), snapshot.capabilityResults(), snapshot.relations(),
+                snapshot.relatedNodes(), snapshot.autonomy());
+        AgentRequestEnvelope request = new AgentRequestEnvelope(
+                base.protocolVersion(), base.runId(), base.event(), withCapability,
+                base.capabilities(), base.decisionBudget());
+        ActionProposal proposal = proposal(request, "INVOKE_CAPABILITY", Map.of(
+                "capabilityId", "memory.search",
+                "arguments", Map.of("query", "收费", "scope", "ROUTE",
+                        "routeRef", "route:ffffffff-ffff-ffff-ffff-ffffffffffff")));
+
+        assertIneligible(request, proposal, "UNGROUNDED_CAPABILITY_ARGUMENT");
+    }
+
+    @Test
     void rejectsRepeatingAnAlreadyAnsweredQuestion() throws Exception {
         AgentRequestEnvelope request = request();
         ActionProposal proposal = proposal(request, "REQUEST_USER_INPUT", Map.of(

@@ -53,6 +53,7 @@ import com.specagent.patch.AnswerPatch;
 import com.specagent.patch.AnswerPatchRepository;
 import com.specagent.patch.Claim;
 import com.specagent.route.Route;
+import com.specagent.route.RouteHistoryResolver;
 import com.specagent.route.RouteRepository;
 import org.springframework.stereotype.Service;
 
@@ -61,6 +62,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -113,6 +115,7 @@ public class AgentInputSnapshotBuilder {
     private final AnswerRepository answerRepository;
     private final AnswerPatchRepository answerPatchRepository;
     private final RouteRepository routeRepository;
+    private final RouteHistoryResolver routeHistoryResolver;
     private final RequirementStateBuilder requirementStateBuilder;
     private final CapabilityRegistry capabilityRegistry;
     private final CapabilityVisibilityService capabilityVisibilityService;
@@ -130,6 +133,7 @@ public class AgentInputSnapshotBuilder {
                                      AnswerRepository answerRepository,
                                      AnswerPatchRepository answerPatchRepository,
                                      RouteRepository routeRepository,
+                                     RouteHistoryResolver routeHistoryResolver,
                                      RequirementStateBuilder requirementStateBuilder,
                                      CapabilityRegistry capabilityRegistry,
                                      CapabilityVisibilityService capabilityVisibilityService,
@@ -146,6 +150,7 @@ public class AgentInputSnapshotBuilder {
         this.answerRepository = answerRepository;
         this.answerPatchRepository = answerPatchRepository;
         this.routeRepository = routeRepository;
+        this.routeHistoryResolver = routeHistoryResolver;
         this.requirementStateBuilder = requirementStateBuilder;
         this.capabilityRegistry = capabilityRegistry;
         this.capabilityVisibilityService = capabilityVisibilityService;
@@ -171,7 +176,7 @@ public class AgentInputSnapshotBuilder {
                 AgentProtocol.INPUT_PROTOCOL_VERSION,
                 runId,
                 event,
-                build(snapshot),
+                build(snapshot, event),
                 List.of(),
                 budget);
     }
@@ -186,10 +191,21 @@ public class AgentInputSnapshotBuilder {
      * index (first-writer-wins); a loser returns the winner's frozen payload.
      */
     public AgentInputSnapshot build(ContextSnapshot snapshot) {
+        return build(snapshot, null);
+    }
+
+    private AgentInputSnapshot build(ContextSnapshot snapshot, AgentEvent event) {
+        Set<UUID> mandatoryNodeIds = new HashSet<>();
+        if (snapshot.tipNodeId() != null) {
+            mandatoryNodeIds.add(snapshot.tipNodeId());
+        }
+        if (event != null && event.anchorNodeId() != null) {
+            mandatoryNodeIds.add(event.anchorNodeId());
+        }
         return projectionRepository.findBySnapshotId(snapshot.id())
                 .<AgentInputSnapshot>map(frozen -> loadFrozen(snapshot, frozen))
                 .orElseGet(() -> {
-                    AgentInputSnapshot projection = buildFromLiveRecords(snapshot);
+                    LiveProjection projection = buildFromLiveRecords(snapshot, mandatoryNodeIds);
                     return freezeOrAdopt(snapshot, projection);
                 });
     }
@@ -239,7 +255,8 @@ public class AgentInputSnapshotBuilder {
      * diverge and never last-writer-win.
      */
     private AgentInputSnapshot freezeOrAdopt(ContextSnapshot snapshot,
-                                             AgentInputSnapshot projection) {
+                                             LiveProjection liveProjection) {
+        AgentInputSnapshot projection = liveProjection.snapshot();
         String payload = AgentContracts.write(projection);
         if (payload.length() > MAX_FROZEN_PAYLOAD_CHARS) {
             throw new FrozenProjectionSizeExceededException(
@@ -247,7 +264,8 @@ public class AgentInputSnapshotBuilder {
                             + MAX_FROZEN_PAYLOAD_CHARS + " char bound for snapshot "
                             + snapshot.id() + ": " + payload.length());
         }
-        List<MutableSourceFingerprint> fingerprints = fingerprintsForSnapshot(snapshot);
+        List<MutableSourceFingerprint> fingerprints = fingerprinter.fingerprintsFor(
+                liveProjection.workingNodes(), liveProjection.relatedNodes());
         boolean won = projectionRepository.insertIfAbsent(
                 new AgentInputProjectionRepository.FrozenInputProjection(
                         UUID.randomUUID(), snapshot.id(),
@@ -265,44 +283,31 @@ public class AgentInputSnapshotBuilder {
     }
 
     /**
-     * Fingerprints the mutable sources that are model-visible for this
-     * snapshot. Delegates to the live Node rows for the same lineage/related
-     * ids that the projection itself reads; disjoint from wire payload but
-     * hashed identically.
-     */
-    private List<MutableSourceFingerprint> fingerprintsForSnapshot(ContextSnapshot snapshot) {
-        List<Node> lineageNodes = snapshot.includedNodeIds().stream()
-                .map(nodeRepository::findById)
-                .map(optional -> optional.orElse(null))
-                .filter(java.util.Objects::nonNull)
-                .toList();
-        // Related nodes that are already in lineage are not double-counted.
-        java.util.Set<UUID> lineageIds = lineageNodes.stream().map(Node::id)
-                .collect(java.util.stream.Collectors.toSet());
-        lineageNodes = workingContextSelector.select(lineageNodes);
-        List<Node> relatedNodes = new ArrayList<>();
-        for (UUID relatedId : snapshot.relatedNodeIds()) {
-            if (lineageIds.contains(relatedId)) {
-                continue;
-            }
-            nodeRepository.findById(relatedId).ifPresent(relatedNodes::add);
-        }
-        return fingerprinter.fingerprintsFor(lineageNodes, relatedNodes);
-    }
-
-    /**
      * Projects exactly the manifest-listed records from the live
      * authoritative stores. Called at most once per snapshot identity — the
      * first freeze — and never again for that snapshot.
      */
-    private AgentInputSnapshot buildFromLiveRecords(ContextSnapshot snapshot) {
-        List<Node> lineageNodes = snapshot.includedNodeIds().stream()
+    private LiveProjection buildFromLiveRecords(ContextSnapshot snapshot,
+                                                Set<UUID> mandatoryNodeIds) {
+        List<Node> manifestNodes = snapshot.includedNodeIds().stream()
                 .map(nodeRepository::findById)
                 .map(optional -> optional.orElseThrow(() -> new IllegalStateException(
                         "Context snapshot included missing node")))
                 .toList();
-        List<Node> workingLineageNodes = workingContextSelector.select(lineageNodes);
-        List<Node> relatedNodes = loadRelatedNodes(snapshot, lineageNodes);
+        List<Answer> answers = loadAnswers(snapshot);
+        Map<UUID, Answer> answersByNodeId = answers.stream()
+                .collect(java.util.stream.Collectors.toMap(Answer::nodeId, answer -> answer,
+                        (left, right) -> right, LinkedHashMap::new));
+        Map<UUID, List<AnswerPatch>> patchesByAnswerId = groupPatchesByAnswer(snapshot);
+        List<Node> workingLineageNodes = selectWorkingNodes(snapshot, manifestNodes,
+                mandatoryNodeIds, answersByNodeId, patchesByAnswerId);
+        List<Node> allContextNodes = new ArrayList<>(manifestNodes);
+        for (Node node : workingLineageNodes) {
+            if (allContextNodes.stream().noneMatch(existing -> existing.id().equals(node.id()))) {
+                allContextNodes.add(node);
+            }
+        }
+        List<Node> relatedNodes = loadRelatedNodes(snapshot, allContextNodes);
         List<RelatedNodeRef> relatedRefs = relatedNodeRefs(snapshot, relatedNodes);
         // One Skill discovery projection per first-freeze build: the same
         // catalog feeds both the wire field and the skill.search visibility
@@ -311,7 +316,7 @@ public class AgentInputSnapshotBuilder {
         SkillCatalogView skillCatalog =
                 availableSkills(snapshot, workingLineageNodes, relatedNodes);
         List<ClaimView> effectiveClaims = effectiveClaims(snapshot);
-        String retrievalQueryText = retrievalQueryText(snapshot, lineageNodes, effectiveClaims);
+        String retrievalQueryText = retrievalQueryText(snapshot, allContextNodes, effectiveClaims);
         Set<String> mandatoryRetrievalRefs = new HashSet<>();
         effectiveClaims.forEach(claim -> {
             if (claim.sourceAnswerId() != null) {
@@ -323,14 +328,14 @@ public class AgentInputSnapshotBuilder {
         });
         List<RetrievedContextItem> retrievedContext = retrievalContextService.retrieve(
                 snapshot, mandatoryRetrievalRefs, retrievalQueryText);
-        return new AgentInputSnapshot(
+        AgentInputSnapshot projection = new AgentInputSnapshot(
                 snapshot.id().toString(),
                 snapshot.contextHash(),
                 snapshot.projectId(),
                 snapshot.routeId(),
                 snapshot.tipNodeId(),
                 routeContext(snapshot),
-                lineage(snapshot, workingLineageNodes),
+                lineage(workingLineageNodes, answersByNodeId, patchesByAnswerId),
                 effectiveClaims,
                 metadata(snapshot),
                 allowedSourceRefs(snapshot, workingLineageNodes, effectiveClaims,
@@ -342,6 +347,67 @@ public class AgentInputSnapshotBuilder {
                 relatedRefs,
                 retrievedContext,
                 new AutonomyInputs("ADVISOR"));
+        return new LiveProjection(projection, workingLineageNodes, relatedNodes);
+    }
+
+    /**
+     * Separates the route's authoritative parent lineage from the manifest's
+     * derived material before applying the working-memory bounds. Route
+     * membership comes from RouteHistoryResolver, never from a parent-chain
+     * guess made by the retrieval projection.
+     */
+    private List<Node> selectWorkingNodes(ContextSnapshot snapshot,
+                                          List<Node> manifestNodes,
+                                          Set<UUID> mandatoryNodeIds,
+                                          Map<UUID, Answer> answersByNodeId,
+                                          Map<UUID, List<AnswerPatch>> patchesByAnswerId) {
+        Map<UUID, Node> allById = new LinkedHashMap<>();
+        manifestNodes.forEach(node -> allById.put(node.id(), node));
+        if (snapshot.tipNodeId() != null) {
+            nodeRepository.findById(snapshot.tipNodeId()).ifPresent(node -> allById.put(node.id(), node));
+        }
+        if (mandatoryNodeIds != null) {
+            for (UUID mandatoryId : mandatoryNodeIds) {
+                if (mandatoryId == null) {
+                    continue;
+                }
+                Node node = nodeRepository.findById(mandatoryId)
+                        .orElseThrow(() -> new IllegalStateException(
+                                "Working context mandatory node is missing: " + mandatoryId));
+                if (!snapshot.projectId().equals(node.projectId())) {
+                    throw new IllegalStateException(
+                            "Working context mandatory node belongs to another project: " + mandatoryId);
+                }
+                allById.put(node.id(), node);
+            }
+        }
+
+        List<Node> canonicalRouteLineage;
+        if (snapshot.tipNodeId() == null) {
+            canonicalRouteLineage = manifestNodes;
+        } else {
+            canonicalRouteLineage = routeHistoryResolver.resolveLineage(snapshot.tipNodeId()).stream()
+                    .map(id -> allById.computeIfAbsent(id, key -> nodeRepository.findById(key)
+                            .orElseThrow(() -> new IllegalStateException(
+                                    "Working context lineage node is missing: " + key))))
+                    .toList();
+        }
+        Set<UUID> canonicalIds = canonicalRouteLineage.stream()
+                .map(Node::id).collect(java.util.stream.Collectors.toSet());
+        List<Node> derivedMaterial = allById.values().stream()
+                .filter(node -> !canonicalIds.contains(node.id()))
+                .toList();
+        return workingContextSelector.select(
+                canonicalRouteLineage,
+                derivedMaterial,
+                mandatoryNodeIds,
+                nodes -> modelFacingLineageChars(nodes, answersByNodeId, patchesByAnswerId));
+    }
+
+    private int modelFacingLineageChars(List<Node> nodes,
+                                        Map<UUID, Answer> answersByNodeId,
+                                        Map<UUID, List<AnswerPatch>> patchesByAnswerId) {
+        return AgentContracts.write(lineage(nodes, answersByNodeId, patchesByAnswerId)).length();
     }
 
     @SuppressWarnings("unchecked")
@@ -664,13 +730,9 @@ public class AgentInputSnapshotBuilder {
         return new RouteContextView(snapshot.routeId(), snapshot.tipNodeId(), label);
     }
 
-    private List<LineageEntry> lineage(ContextSnapshot snapshot, List<Node> lineageNodes) {
-        Map<UUID, Answer> answersByNodeId = new HashMap<>();
-        for (Answer answer : loadAnswers(snapshot)) {
-            answersByNodeId.put(answer.nodeId(), answer);
-        }
-        Map<UUID, List<AnswerPatch>> patchesByAnswerId = groupPatchesByAnswer(snapshot);
-
+    private List<LineageEntry> lineage(List<Node> lineageNodes,
+                                       Map<UUID, Answer> answersByNodeId,
+                                       Map<UUID, List<AnswerPatch>> patchesByAnswerId) {
         List<LineageEntry> lineage = new ArrayList<>();
         for (Node node : lineageNodes) {
             Answer answer = answersByNodeId.get(node.id());
@@ -810,5 +872,14 @@ public class AgentInputSnapshotBuilder {
                 claim.confidence(),
                 claim.sourceNodeId(),
                 claim.sourceAnswerId());
+    }
+
+    private record LiveProjection(AgentInputSnapshot snapshot,
+                                  List<Node> workingNodes,
+                                  List<Node> relatedNodes) {
+        private LiveProjection {
+            workingNodes = workingNodes == null ? List.of() : List.copyOf(workingNodes);
+            relatedNodes = relatedNodes == null ? List.of() : List.copyOf(relatedNodes);
+        }
     }
 }

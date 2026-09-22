@@ -35,6 +35,8 @@ spec:
     retrieval:
       embedding:
         provider: ${SPEC_AGENT_EMBEDDING_PROVIDER:noop}
+        worker:
+          enabled: false
     model:
       gateway: fake
       inference: fake

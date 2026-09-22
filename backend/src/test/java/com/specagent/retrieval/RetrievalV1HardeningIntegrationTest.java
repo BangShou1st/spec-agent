@@ -20,6 +20,8 @@ import com.specagent.project.ProjectService;
 import com.specagent.retrieval.api.RetrievalQuery;
 import com.specagent.retrieval.api.RetrievalScope;
 import com.specagent.retrieval.embedding.EmbeddingEnrichmentService;
+import com.specagent.retrieval.embedding.EmbeddingEnrichmentWorker;
+import com.specagent.retrieval.context.RetrievalSearchService;
 import com.specagent.retrieval.embedding.FakeEmbeddingGateway;
 import com.specagent.retrieval.index.RetrievalIndexRebuilder;
 import com.specagent.retrieval.persistence.RetrievalEntryRepository;
@@ -68,6 +70,8 @@ class RetrievalV1HardeningIntegrationTest {
     private FakeEmbeddingGateway fakeEmbeddingGateway;
     @Autowired
     private HybridRetriever hybridRetriever;
+    @Autowired
+    private RetrievalSearchService retrievalSearchService;
     @Autowired
     private RetrievalIndexRebuilder indexRebuilder;
 
@@ -121,6 +125,68 @@ class RetrievalV1HardeningIntegrationTest {
             assertThat(item.scope()).isIn(RetrievalScope.ROUTE, RetrievalScope.PROJECT);
         });
         assertThat(AgentContracts.write(projected)).hasSizeLessThan(80_000);
+    }
+
+    @Test
+    void workingContextKeepsTipWhenManifestTailIsDerivedMaterial() {
+        Project project = projectService.createProject("derived material cannot evict tip");
+        UUID routeId = project.activeRouteId();
+        Node tip = nodeService.createRootNode(project.id(), routeId,
+                "根问题", null, List.of(), true);
+        for (int index = 1; index < 20; index++) {
+            tip = nodeService.createChildNode(project.id(), routeId, tip.id(),
+                    "路线问题 " + index, null, List.of(), true);
+        }
+        UUID tipId = tip.id();
+        for (int index = 0; index < 24; index++) {
+            nodeService.createWorkspaceNode(project.id(), null, tipId, NodeKind.KNOWLEDGE,
+                    "NOTE", Map.of("text", "derived material " + index),
+                    NodeAuthorKind.USER, KnowledgeStatus.PROPOSED);
+        }
+
+        ContextSnapshot context = contextBuilder.buildFromActiveRoute(
+                project.id(), UUID.randomUUID(), ContextOperationType.NORMAL);
+        var projected = snapshotBuilder.build(context);
+
+        assertThat(context.includedNodeIds()).hasSize(44);
+        assertThat(projected.lineage()).hasSize(12);
+        assertThat(projected.lineage()).anyMatch(entry -> entry.node().id().equals(tipId));
+        assertThat(projected.lineage()).noneMatch(entry ->
+                entry.node().body().text() != null && entry.node().body().text().startsWith("derived material"));
+    }
+
+    @Test
+    void workingContextCountsLongAnswerAndPatchWireContent() {
+        Project project = projectService.createProject("working budget includes answers");
+        UUID routeId = project.activeRouteId();
+        Node tip = nodeService.createRootNode(project.id(), routeId,
+                "历史问题 0", null, List.of(), true);
+        for (int index = 0; index < 12; index++) {
+            if (index > 0) {
+                tip = nodeService.createChildNode(project.id(), routeId, tip.id(),
+                        "历史问题 " + index, null, List.of(), true);
+            }
+            var answer = answerService.finalizeAnswer(project.id(), routeId, tip.id(), null,
+                    "A".repeat(4_100), "user");
+            if (index == 11) {
+                answerPatchService.save(project.id(), routeId, tip.id(), answer.id(),
+                        List.of(Claim.of(ClaimKind.GOAL, "P".repeat(3_000),
+                                ClaimStatus.CONFIRMED, tip.id(), answer.id())), null);
+            }
+        }
+        Node currentTip = nodeService.createChildNode(project.id(), routeId, tip.id(),
+                "当前短问题", null, List.of(), true);
+        ContextSnapshot context = contextBuilder.buildFromActiveRoute(
+                project.id(), UUID.randomUUID(), ContextOperationType.NORMAL);
+        var projected = snapshotBuilder.build(context);
+        int lineageChars = AgentContracts.write(projected.lineage()).length();
+
+        assertThat(projected.lineage()).anyMatch(entry -> entry.node().id().equals(currentTip.id()));
+        assertThat(projected.lineage()).hasSizeLessThanOrEqualTo(12);
+        assertThat(lineageChars).isLessThanOrEqualTo(12_000);
+        assertThat(projected.lineage()).anyMatch(entry -> entry.patches().stream()
+                .flatMap(patch -> patch.claims().stream())
+                .anyMatch(claim -> claim.text().length() >= 3_000));
     }
 
     @Test
@@ -205,6 +271,44 @@ class RetrievalV1HardeningIntegrationTest {
     }
 
     @Test
+    void enrichmentWorkerMovesPendingRowsWithoutSnapshotSideEffects() {
+        Project project = projectService.createProject("vector worker trigger");
+        Node node = nodeService.createFloatingWorkspaceNode(project.id(), NodeKind.KNOWLEDGE,
+                "NOTE", Map.of("text", "worker tick enrichment"), NodeAuthorKind.USER,
+                KnowledgeStatus.PROPOSED);
+        String sourceRef = "node:" + node.id();
+        assertThat(entryRepository.findBySourceRef(project.id(), sourceRef).orElseThrow()
+                .embeddingStatus()).isEqualTo("PENDING");
+
+        new EmbeddingEnrichmentWorker(enrichmentService, entryRepository).tick();
+
+        assertThat(entryRepository.findBySourceRef(project.id(), sourceRef).orElseThrow()
+                .embeddingStatus()).isEqualTo("READY");
+    }
+
+    @Test
+    void nodeOnlyProjectRetrievalDeclaresOriginRouteProvenance() {
+        Project project = projectService.createProject("node provenance");
+        UUID routeA = project.activeRouteId();
+        Node routeAAnchor = nodeService.createRootNode(project.id(), routeA,
+                "内部工具", null, List.of(), true);
+        var routeB = routeService.createRoute(project.id(), RouteLifecycleStatus.OPEN, "外部收费");
+        Node routeBKnowledge = nodeService.createRootNode(project.id(), routeB.id(),
+                "外部客户采用按量收费", null, List.of(), true);
+
+        var result = retrievalSearchService.search(project.id(), routeA, "按量收费",
+                RetrievalScope.PROJECT, 8);
+        assertThat(result.items()).anySatisfy(item -> {
+            assertThat(item.sourceRef()).isEqualTo("node:" + routeBKnowledge.id());
+            assertThat(item.provenance().get("originRouteIds"))
+                    .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.LIST)
+                    .contains(routeB.id().toString());
+        });
+        assertThat(result.items()).noneMatch(item -> item.sourceRef().equals("node:" + routeAAnchor.id())
+                && item.content().contains("按量收费"));
+    }
+
+    @Test
     void resourceMiddleChunkAndProvenanceRemainRetrievable() {
         Project project = projectService.createProject("resource chunks");
         UUID routeId = project.activeRouteId();
@@ -233,6 +337,8 @@ class RetrievalV1HardeningIntegrationTest {
         assertThat(result).anySatisfy(candidate -> {
             assertThat(candidate.entry().content()).contains("180天");
             assertThat(candidate.entry().metadata()).containsKeys("resourceId", "chunk", "lineRange");
+            assertThat(candidate.entry().metadata().get("originRouteIds").toString())
+                    .contains(routeId.toString());
         });
     }
 

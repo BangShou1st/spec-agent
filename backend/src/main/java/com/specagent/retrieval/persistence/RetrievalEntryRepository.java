@@ -166,6 +166,16 @@ public class RetrievalEntryRepository {
                 "limit", Math.max(1, Math.min(limit, 512))), rowMapper);
     }
 
+    /** Project ids with pending derived work for the background enrichment worker. */
+    public List<UUID> findPendingProjectIds(int limit) {
+        return jdbcTemplate.queryForList("""
+                SELECT DISTINCT project_id FROM retrieval_entries
+                WHERE retracted_at IS NULL AND embedding_status = 'PENDING'
+                ORDER BY project_id
+                LIMIT :limit
+                """, Map.of("limit", Math.max(1, Math.min(limit, 512))), UUID.class);
+    }
+
     public Optional<RetrievalEntry> findBySourceRef(UUID projectId, String sourceRef) {
         return jdbcTemplate.query("""
                 SELECT * FROM retrieval_entries

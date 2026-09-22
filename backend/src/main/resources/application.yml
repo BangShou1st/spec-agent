@@ -89,6 +89,9 @@ spec:
       # the correctness path when no provider is configured.
       embedding:
         provider: ${SPEC_AGENT_EMBEDDING_PROVIDER:noop}
+        worker:
+          enabled: ${SPEC_AGENT_EMBEDDING_WORKER_ENABLED:true}
+          interval-ms: ${SPEC_AGENT_EMBEDDING_WORKER_INTERVAL_MS:5000}
     skill:
       # Skill import security bounds (ZIP/git). Conservative by default;
       # scripts and dependency installation never run during validate/install.

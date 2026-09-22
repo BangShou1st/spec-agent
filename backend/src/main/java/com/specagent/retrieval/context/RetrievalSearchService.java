@@ -117,9 +117,7 @@ public class RetrievalSearchService {
         provenance.put("contentHash", entry.contentHash());
         provenance.put("sourceKind", entry.sourceKind().name());
         provenance.put("retrievalLanes", lanes);
-        if (entry.routeId() != null) {
-            provenance.put("originRouteId", entry.routeId().toString());
-        }
+        putRouteProvenance(entry, provenance);
         return new RetrievedContextItem(entry.sourceRef(), entry.sourceKind(), scope,
                 originRoute, entry.authority(), entry.content(),
                 entry.sourceKind().name().equals("RESOURCE_CHUNK") ? entry.metadata() : Map.of(),
@@ -127,7 +125,24 @@ public class RetrievalSearchService {
                     case ROUTE -> "explicit-route-search";
                     case PROJECT -> "explicit-project-search";
                     case RESOURCE -> "explicit-resource-search";
-                });
+                 });
+    }
+
+    private void putRouteProvenance(RetrievalEntry entry, Map<String, Object> provenance) {
+        Object routeIds = entry.metadata().get("originRouteIds");
+        if (routeIds instanceof List<?> list) {
+            provenance.put("originRouteIds", list.stream().map(String::valueOf).toList());
+        } else if (entry.routeId() != null) {
+            provenance.put("originRouteIds", List.of(entry.routeId().toString()));
+        } else {
+            provenance.put("originRouteIds", List.of());
+        }
+        if (entry.routeId() != null) {
+            provenance.put("originRouteId", entry.routeId().toString());
+        }
+        if (entry.metadata().containsKey("workspaceScoped")) {
+            provenance.put("workspaceScoped", Boolean.TRUE.equals(entry.metadata().get("workspaceScoped")));
+        }
     }
 
     public record SearchResult(List<RetrievedContextItem> items, List<String> sourceRefs) {

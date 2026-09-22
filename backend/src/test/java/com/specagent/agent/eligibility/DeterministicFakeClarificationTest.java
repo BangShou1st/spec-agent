@@ -7,6 +7,7 @@ import com.specagent.agent.contract.AgentRequestEnvelope;
 import com.specagent.agent.contract.AgentResponseEnvelope;
 import com.specagent.agent.contract.AnswerView;
 import com.specagent.agent.contract.AutonomyInputs;
+import com.specagent.agent.contract.CapabilityDescriptor;
 import com.specagent.agent.contract.DecisionBudget;
 import com.specagent.agent.contract.LineageEntry;
 import com.specagent.agent.contract.NodeBodyView;
@@ -20,6 +21,7 @@ import org.junit.jupiter.api.Test;
 import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Locale;
 import java.util.UUID;
 
@@ -83,6 +85,20 @@ class DeterministicFakeClarificationTest {
         assertThatEligible(request, response.actionProposal());
     }
 
+    @Test
+    void compactRequiredQuerySchemaPreventsFakeMemorySearchInvocation() {
+        CapabilityDescriptor memorySearch = new CapabilityDescriptor(
+                "memory.search", "1", "search memory",
+                Map.of("query", Map.of("type", "string", "required", true)),
+                true, "READ_ONLY", List.of());
+        AgentRequestEnvelope request = requestWithAnswered(
+                List.of("existing answerable fact"), List.of(memorySearch), "KNOWLEDGE");
+
+        AgentResponseEnvelope response = engine.runDecision(request);
+
+        assertThat(response.actionProposal().actionFamily()).isEqualTo("REQUEST_USER_INPUT");
+    }
+
     private void assertThatEligible(AgentRequestEnvelope request, ActionProposal proposal) {
         AgentRequestEnvelope prepared = enforcedGate.prepareDecisionRequest(request);
         assertThatCode(() -> enforcedGate.enforce(enforcedGate.assess(prepared, proposal)))
@@ -90,11 +106,17 @@ class DeterministicFakeClarificationTest {
     }
 
     private AgentRequestEnvelope requestWithAnswered(List<String> answeredQuestions) {
+        return requestWithAnswered(answeredQuestions, List.of(), "INTERACTION");
+    }
+
+    private AgentRequestEnvelope requestWithAnswered(List<String> answeredQuestions,
+                                                     List<CapabilityDescriptor> capabilities,
+                                                     String kind) {
         List<LineageEntry> lineage = new ArrayList<>();
         for (String question : answeredQuestions) {
             UUID nodeId = UUID.randomUUID();
             lineage.add(new LineageEntry(
-                    new NodeView(nodeId, new NodeBodyView(question, List.of(), true), "INTERACTION"),
+                    new NodeView(nodeId, new NodeBodyView(question, List.of(), true), kind),
                     new AnswerView(UUID.randomUUID(), nodeId, null, "an answer"),
                     List.of()));
         }
@@ -105,7 +127,7 @@ class DeterministicFakeClarificationTest {
         var snapshot = new AgentInputSnapshot(
                 UUID.randomUUID().toString(), "context-hash", projectId, routeId, anchorNodeId,
                 new RouteContextView(routeId, anchorNodeId, null), lineage, List.of(),
-                new SnapshotMetadata("fake regression"), List.of(), List.of(), List.of(),
+                new SnapshotMetadata("fake regression"), List.of(), capabilities, List.of(),
                 List.of(), List.of(), new AutonomyInputs("ADVISOR"));
         return new AgentRequestEnvelope(
                 "agent-input.v2", UUID.randomUUID(),
