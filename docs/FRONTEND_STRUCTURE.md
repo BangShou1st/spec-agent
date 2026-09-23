@@ -91,9 +91,13 @@ has none.
 3. Is it reusable across features with no business meaning (a dialog shell, a
    toggle, a date formatter, a stored-key helper)? → `shared/`.
 4. Is it document parsing/preview/OCR? → `shared/document/`.
-5. Is it a backend DTO that mirrors the frozen HTTP contract? →
-   `shared/contracts/types.ts` (keep it whole; it tracks a frozen API, not a
-   feature).
+5. Is it a backend DTO?
+   * A **new** DTO belongs to the feature that owns the endpoint:
+     `features/<capability>/api/`.
+   * `shared/contracts/types.ts` holds the pre-existing frozen Phase 6 / 7.1
+     contract that predates feature grouping. It stays whole because it tracks
+     one frozen API surface, but it is **not** a dumping ground — do not append
+     unrelated new DTOs to it.
 6. Is it route wiring or a page shell? → `app/`.
 
 Do not create a pass-through component or directory: if a module only re-exports

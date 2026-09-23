@@ -5,6 +5,10 @@ instead of by technical file type. Behaviour, routes, API calls, store identity
 and rendering are unchanged; the placement contract for future code lives in
 `docs/FRONTEND_STRUCTURE.md`.
 
+**Status: structure complete; type check, unit tests, production build and the
+full frontend E2E suite pass.** The architecture gate that enforces the
+dependency rules was corrected during review — see §7.
+
 * Branch: `codex/frontend-structure-refactor`
 * Base commit: `a22ed03`
 * Scope: whole `frontend/` (sources, tests, config references). No backend,
@@ -83,16 +87,22 @@ delta: 821 → 817 tests at move time.
 
 ## 6. Cross-feature dependencies
 
-After the refactor the whole tree has exactly two cross-feature runtime imports,
-both pre-existing and both explicit single-file references:
+After the refactor the whole tree has exactly two cross-feature **runtime**
+imports, both pre-existing and both explicit single-file references:
 
 ```text
 features/workspace/graph/useSkillSlashPicker.ts -> features/skills/state/skillsStore.ts
 features/workspace/state/workspaceLoader.ts     -> features/projects/api/projects.ts
 ```
 
-Type-only cross-feature references (erased at build time) are unchanged in kind
-and are excluded from the runtime cycle check.
+Both are acyclic and load a genuinely needed input (the enabled-skill list; the
+project being opened). This count is verified by the architecture gate using the
+statement-level classifier described in §7 — the five dependencies that gate
+used to miss were all intra-feature, so the cross-feature surface is unchanged.
+
+Feature-to-feature **type-only** references are permitted (they are erased at
+build time and cannot create a runtime cycle). `shared/` is stricter: it may not
+reference `features/` or `app/` at all, types included.
 
 ## 7. Verification
 
@@ -102,49 +112,86 @@ Baseline was captured on `a22ed03` before any edit.
 | --- | --- | --- |
 | `vue-tsc --noEmit` | 0 errors | 0 errors |
 | `vite build` | success | success |
-| `vitest run` | 100 files / 821 tests / 0 failed | 100 files / 820 tests / 0 failed |
-| `e2e/settings.spec.ts` | — | 1 passed (5.2s) |
-| Runtime import cycles | 0 | 0 |
-| `shared/` → `features/`/`app/` | 0 | 0 |
+| `vitest run` | 100 files / 821 tests / 0 failed | 100 files / 821 tests / 0 failed |
+| E2E (whole `e2e/` suite) | — | 30 spec files / 77 tests / 0 failed |
+| Runtime import cycles (418 runtime edges) | 0 | 0 |
+| `shared/` → `features/`/`app/`, types included | 0 | 0 |
 | Stale in-repo specifiers | — | 0 (277 files scanned) |
 
-The only intentional test delta is the removal of the four
-`RequirementStatePanel` tests (-4), offset by the three new
-`architectureBoundaries` tests (+3).
+The unit-test count is unchanged at 821: the four `RequirementStatePanel` tests
+were removed (-4) and four `architectureBoundaries` tests were added (+4).
 
-### E2E status
+### The architecture gate had a classification bug (fixed)
 
-E2E runs against the real local stack (Postgres in Docker, backend on the
-`test` profile with the fake model gateway, Vite dev server started by
-Playwright). One spec was executed and passed end to end:
+`src/test/architectureBoundaries.spec.ts` decides whether an import is a runtime
+dependency. Its first version collected an "erased" set keyed by **specifier
+string**, so in
+
+```ts
+import type { SomeType } from './module'
+import { someFunction } from './module'
+```
+
+the second, real runtime import was skipped, because `./module` was already
+marked erased. Five real runtime dependencies were invisible to the gate:
 
 ```text
-Running 1 test using 1 worker
-[1/1] e2e\settings.spec.ts:3:1 › model settings probes, selects, and saves without exposing the key
-  1 passed (5.2s)
+features/model-settings/components/ProviderStatePill.vue -> .../presentation/providerPresentation
+features/workspace/graph/components/GraphCanvas.vue     -> .../graph/graphProjection
+features/workspace/state/shared.ts                      -> .../api/graphCommands
+features/workspace/state/specDock.ts                    -> .../api/spec
+features/workspace/state/workspaceRuns.ts               -> .../api/agentRuns
 ```
 
-The remaining specs could not be executed in this environment. Two independent
-sandbox constraints block them, both reproducible and unrelated to this change:
+(413 runtime specifiers before the fix, 418 after.) The gate now parses every
+file with the TypeScript compiler (`ts.createSourceFile`, with `<script>` blocks
+extracted first for `.vue`) and classifies **per statement**, so a type-only and
+a value import of the same path can no longer collapse. It also counts
+**type-only** references in the layering rule, so `shared/` cannot reach a
+feature through a type alone, and it carries a regression test for exactly the
+scenario above. With the five recovered edges included there is still no runtime
+cycle: the bug was a blind spot, not a masked cycle.
 
-1. The Playwright CLI empties its output directory (`test-results/`) at startup.
-   The sandbox's safe-delete shim rejects the bulk delete once that directory
-   holds more than 50 entries and aborts the whole CLI. Working around it
-   (`--output=<fresh dir>`) moves the problem rather than removing it, because
-   the fresh directory accumulates the same way.
-2. Browser launch is blocked when the CLI runs under the sandboxed background
-   execution path: no browser process is ever spawned and the run hangs on the
-   first test. The one successful run above executed with the sandbox bypassed.
+### E2E
 
-Consequently the project-management, skills, connections, workspace and
-global-assistant E2E flows are **not** verified here. They should be run in a
-normal shell with:
+E2E runs against the real local stack — Postgres in Docker, the backend on the
+`test` profile with the fake model gateway, and a Vite dev server started by
+Playwright. The **whole** suite was executed:
 
-```bash
-cd frontend
-PLAYWRIGHT_BACKEND_PORT=8080 PLAYWRIGHT_BROWSERS_PATH=<browsers> \
-  node node_modules/@playwright/test/cli.js test e2e/ --reporter=line --workers=1
+```text
+30 spec files / 77 tests / 0 failed
 ```
+
+| Area | Specs | Tests |
+| --- | --- | --- |
+| Settings / providers | `settings`, `provider-screenshots` | 2 |
+| Skills | `skills` | 3 |
+| Connections | `connections`, `connection` | 6 |
+| Global assistant | `global-assistant`, `global-assistant-steer`, `conversation-library`, `contextual-ai` | 12 |
+| Workspace / canvas | `workspace-layout`, `graph-layout`, `graph-node-visibility`, `core-clarification`, `action-rail`, `input-persistence` | 25 |
+| Routes (fork / re-answer / regenerate / lifecycle / resume / shared focus) | `fork`, `reanswer`, `regenerate`, `lifecycle`, `resume-question`, `shared-focus`, `graph-routes`, `shared-answer`, `route-draft-persistence`, `historical-answer-recovery` | 21 |
+| Canvas connections + undo/redo | `floating-resource` | 1 |
+| Spec generation | `spec`, `long-answer`, `node-query-proposal` | 6 |
+| Visual snapshots | `ui-final-screenshots` | 5 |
+
+Project creation through the UI is exercised by every workspace spec, since they
+all enter the workspace via `createProject`.
+
+Two sandbox/tooling constraints had to be worked around to run this; neither is
+a property of the application:
+
+1. The Playwright CLI empties `test-results/` at startup, and the sandbox's
+   safe-delete shim aborts the CLI once that directory holds more than 50
+   entries. Cleared between specs.
+2. The Playwright CLI finishes its work but never exits, so the runner watches
+   the log for the run summary and then kills the process.
+
+**Fixture caveat:** the specs use fixed project titles and never reset the
+database, so re-running a spec against a database that still holds a previous
+run's project fails with `PROJECT_TITLE_ALREADY_EXISTS`. One such failure was
+observed and diagnosed here; with the table cleared the same spec passes
+repeatedly, including with 25 unrelated projects present. Not a regression, but
+the suite is only meaningful against a clean `spec_agent_test` schema.
 
 Interface parity, measured between the pre-refactor worktree and the refactored
 tree:
@@ -156,15 +203,15 @@ tree:
 * The built CSS bundle is **byte-identical** after normalising only Vue's
   path-derived `data-v-*` / `@keyframes` hash suffixes.
 
-The new `src/test/architectureBoundaries.spec.ts` enforces the cycle and
-`shared/` isolation rules against the live source tree, so these cannot silently
-regress.
+`src/test/architectureBoundaries.spec.ts` enforces the cycle and `shared/`
+isolation rules against the live source tree, so these cannot silently regress.
+It is the load-bearing gate here: it, not the parity comparison, is what keeps
+the dependency graph honest going forward.
 
 ## 8. Known gaps
 
-* E2E coverage beyond `settings.spec.ts` could not be executed here; see the E2E
-  status above for the two environment constraints and the command to run them.
-  This is the main outstanding verification for this change.
+* The e2e suite requires a clean `spec_agent_test` schema because the specs use
+  fixed project titles (see the fixture caveat above). This is pre-existing.
 * `providerSettings.css` still carries `.provider-card__free-toggle` rules that
   no template references (pre-existing dead CSS, left untouched to avoid
   changing stylesheet semantics in a structural change).
@@ -174,6 +221,19 @@ regress.
   `features/global-assistant/state/globalAssistantStore.ts` and the global
   `app/styles/style.css` were left intact. These remain the largest files in the
   tree and are the natural next candidates if further decomposition is wanted.
+* The before/after interface comparison was a one-off measurement; only its
+  conclusion is recorded here. Reproducing it needs the pre-refactor commit
+  checked out alongside the refactored tree.
+* **The committed screenshots in `frontend/.impeccable/shots/` are stale.** Running
+  `e2e/provider-screenshots.spec.ts` regenerates them; 45 of the 54 committed
+  files come back pixel-identical, and 9 do not. The 9 all show the API error
+  banner, whose presentation changed in `091dae9` (2026-09-21) — one day *after*
+  those screenshots were committed in `5db9d27` (2026-09-20). This refactor only
+  *moved* `ApiErrorBanner.vue` and `errorCopy.ts` with zero content change
+  (`git diff --stat 23b120e^ 23b120e -- '*ApiErrorBanner*' '*errorCopy*'` shows
+  `0` changed lines), so the drift is pre-existing. The regenerated files were
+  reverted rather than folded into this change; refreshing them is a separate,
+  deliberate commit.
 
 ## 9. Appendices
 
@@ -506,14 +566,26 @@ regress.
 
 ### 9.2 Reproducing the checks
 
-```bash
-# from the repository root
-python scratch/frontend-refactor-map.py            # the mapping (source of truth)
-python scratch/frontend-verify-paths.py            # no stale in-repo specifiers
-python scratch/frontend-dep-graph.py               # cycles + layering + cross-feature edges
-python scratch/ui-surface-fingerprint.py <src> <out.json>
-python scratch/ui-surface-diff.py before.json after.json
+Everything below runs from a clean clone; no uncommitted file is needed.
 
-# from frontend/
-npm run typecheck && npm run test && npm run build
+```bash
+cd frontend
+npm run typecheck     # vue-tsc --noEmit
+npm run test          # vitest run — includes src/test/architectureBoundaries.spec.ts
+npm run build         # vue-tsc --noEmit && vite build
+npm run test:e2e      # needs the local Postgres + backend, see playwright.config.ts
 ```
+
+`src/test/architectureBoundaries.spec.ts` is the executable definition of the
+dependency rules (no runtime cycles; `shared/` never references
+`features/`/`app/`, type-only references included). To run just that gate:
+
+```bash
+cd frontend && npx vitest run src/test/architectureBoundaries.spec.ts
+```
+
+The old→new mapping in §9.1 is reproduced as a table here, so the document does
+not depend on any temporary file. The one-off migration helpers and the
+before/after fingerprint tooling used for the interface comparison were
+deliberately **not** committed: they were single-use, and the rule they verified
+is now enforced by the architecture spec above, which *is* committed.
