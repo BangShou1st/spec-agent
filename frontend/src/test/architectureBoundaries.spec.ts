@@ -6,9 +6,10 @@
  * enforced here:
  *
  *  1. No runtime import cycles between src modules. An edge is a *runtime* edge
- *     only when the statement survives compilation — `import type`, a fully
- *     type-marked named import, and type-position `import('x')` are all erased,
- *     so they cannot close a runtime cycle.
+ *     only when the module is actually loaded — `import type` and
+ *     `export type ... from` are removed outright and so cannot close a cycle;
+ *     everything else (including `import { type T }`, which the compiler keeps
+ *     as `import {} from '...'`) is loaded.
  *  2. `shared/` never reaches into `features/` or `app/`. This rule counts
  *     type-only references too: letting `shared` depend on a business type
  *     drags the bottom layer back up the graph and is the same coupling in a
@@ -17,7 +18,9 @@
  * Classification is done per statement with the TypeScript parser rather than
  * per specifier string: `import type { A } from './m'` followed by
  * `import { b } from './m'` is one erased import and one real runtime import,
- * and a string-keyed "type-only" set would wrongly drop the latter.
+ * and a string-keyed "type-only" set would wrongly drop the latter. What counts
+ * as erased is decided by the same flag the compiler uses, never by the shape of
+ * the binding list — see the emitted-forms table on `importIsErased` below.
  *
  * Test files are excluded from the graph: they import production modules by
  * design and are never part of a shipped bundle.
@@ -87,22 +90,38 @@ interface References {
   erased: string[]
 }
 
-/** An import declaration whose bindings are all type-only is erased entirely. */
+/**
+ * Whether the compiler drops the module specifier entirely — the only condition
+ * under which an import edge does not exist at runtime.
+ *
+ * The naive rules are both wrong. Each form below was emitted with this
+ * repository's own compiler settings (`verbatimModuleSyntax: true`) to record
+ * what actually happens:
+ *
+ *   import type { T } from './m'        -> (nothing)                   erased
+ *   import { type T } from './m'        -> import {} from './m'        runtime
+ *   import value, { type T } from './m' -> import value, {} from './m' runtime
+ *   import * as ns from './m'           -> import * as ns from './m'   runtime
+ *   import './m'                        -> import './m'                runtime
+ *
+ * So "all named bindings are type-marked" does NOT erase the statement (the
+ * module is still loaded), and a default binding is always a value. Reading the
+ * single flag the compiler itself uses removes that whole class of mistake.
+ */
 function importIsErased(node: ts.ImportDeclaration): boolean {
   const clause = node.importClause
   if (clause === undefined) return false // bare `import './x'` is a real side effect
-  if (clause.isTypeOnly) return true
-  const bindings = clause.namedBindings
-  if (bindings === undefined || !ts.isNamedImports(bindings)) return false
-  return bindings.elements.length > 0 && bindings.elements.every((element) => element.isTypeOnly)
+  return clause.isTypeOnly
 }
 
-/** Same rule for `export { ... } from` / `export type { ... } from`. */
+/**
+ * Same question for re-exports. Verified emission:
+ *
+ *   export type { T } from './m' -> export {};               erased
+ *   export { type T } from './m' -> export {} from './m';    runtime
+ */
 function exportIsErased(node: ts.ExportDeclaration): boolean {
-  if (node.isTypeOnly) return true
-  const clause = node.exportClause
-  if (clause === undefined || !ts.isNamedExports(clause)) return false
-  return clause.elements.length > 0 && clause.elements.every((element) => element.isTypeOnly)
+  return node.isTypeOnly
 }
 
 function classify(importer: string, text: string): References {
@@ -237,6 +256,46 @@ describe('frontend structure boundaries', () => {
     const { runtime, erased } = classify('src/__classify_probe__.ts', probe)
     expect(erased).toEqual(['./probe-target'])
     expect(runtime).toEqual(['./probe-target'])
+  })
+
+  it('classifies edges the way the compiler actually emits them', () => {
+    // Each expectation was verified by emitting the form with this repo's
+    // `verbatimModuleSyntax: true`. The two shapes that used to be misread are
+    // the default-binding form and the all-type-marked named form.
+    const cases: Array<[statement: string, expected: 'runtime' | 'erased']> = [
+      ["import type { T } from './m'", 'erased'],
+      ["import type D from './m'", 'erased'],
+      ["import type * as ns from './m'", 'erased'],
+      ["import { type T } from './m'", 'runtime'],
+      ["import value, { type T } from './m'", 'runtime'],
+      ["import value, { type T, type U } from './m'", 'runtime'],
+      ["import value, { real } from './m'", 'runtime'],
+      ["import * as ns from './m'", 'runtime'],
+      ["import './m'", 'runtime'],
+      ["export type { T } from './m'", 'erased'],
+      ["export { type T } from './m'", 'runtime'],
+      ["export { real } from './m'", 'runtime'],
+      ["export * from './m'", 'runtime'],
+    ]
+
+    const mismatches = cases
+      .map(([statement, expected]) => {
+        const { runtime, erased } = classify('src/__classify_probe__.ts', statement)
+        const sawRuntime = runtime.includes('./m')
+        const sawErased = erased.includes('./m')
+        return {
+          statement,
+          expected,
+          actual: sawRuntime ? 'runtime' : 'erased',
+          conflicting: sawRuntime && sawErased,
+        }
+      })
+      .filter((row) => row.actual !== row.expected || row.conflicting)
+      .map((row) =>
+        `${row.statement} => ${row.actual}${row.conflicting ? ' (in BOTH buckets)' : ''}, expected ${row.expected}`,
+      )
+
+    expect(mismatches).toEqual([])
   })
 
   it('has no runtime import cycles', () => {

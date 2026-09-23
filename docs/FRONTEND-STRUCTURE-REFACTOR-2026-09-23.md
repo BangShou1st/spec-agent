@@ -112,14 +112,14 @@ Baseline was captured on `a22ed03` before any edit.
 | --- | --- | --- |
 | `vue-tsc --noEmit` | 0 errors | 0 errors |
 | `vite build` | success | success |
-| `vitest run` | 100 files / 821 tests / 0 failed | 100 files / 821 tests / 0 failed |
+| `vitest run` | 100 files / 821 tests / 0 failed | 100 files / 822 tests / 0 failed |
 | E2E (whole `e2e/` suite) | — | 30 spec files / 77 tests / 0 failed |
-| Runtime import cycles (418 runtime edges) | 0 | 0 |
+| Runtime import cycles | 0 | 0 |
 | `shared/` → `features/`/`app/`, types included | 0 | 0 |
 | Stale in-repo specifiers | — | 0 (277 files scanned) |
 
-The unit-test count is unchanged at 821: the four `RequirementStatePanel` tests
-were removed (-4) and four `architectureBoundaries` tests were added (+4).
+The unit-test count moves 821 → 822: the four `RequirementStatePanel` tests were
+removed (-4) and five `architectureBoundaries` tests were added (+5).
 
 ### The architecture gate had a classification bug (fixed)
 
@@ -143,24 +143,61 @@ features/workspace/state/specDock.ts                    -> .../api/spec
 features/workspace/state/workspaceRuns.ts               -> .../api/agentRuns
 ```
 
-(413 runtime specifiers before the fix, 418 after.) The gate now parses every
-file with the TypeScript compiler (`ts.createSourceFile`, with `<script>` blocks
-extracted first for `.vue`) and classifies **per statement**, so a type-only and
-a value import of the same path can no longer collapse. It also counts
-**type-only** references in the layering rule, so `shared/` cannot reach a
-feature through a type alone, and it carries a regression test for exactly the
-scenario above. With the five recovered edges included there is still no runtime
+The gate now parses every file with the TypeScript compiler
+(`ts.createSourceFile`, with `<script>` blocks extracted first for `.vue`) and
+classifies **per statement**, so a type-only and a value import of the same path
+can no longer collapse. It counts 418 runtime import specifiers, 5 more than
+before (those resolve to 315 internal edges). It also counts **type-only**
+references in the layering rule, so `shared/` cannot reach a feature through a
+type alone. With the five recovered edges included there is still no runtime
 cycle: the bug was a blind spot, not a masked cycle.
+
+A second pass corrected *which* statements are erased at all. Deciding that from
+the shape of the binding list is wrong; each form was emitted with this
+repository's own compiler settings (`verbatimModuleSyntax: true`) to record what
+actually happens:
+
+```text
+import type { T } from './m'        -> (nothing)                    erased
+import { type T } from './m'        -> import {} from './m'         runtime
+import value, { type T } from './m' -> import value, {} from './m'  runtime
+import * as ns from './m'           -> import * as ns from './m'    runtime
+import './m'                        -> import './m'                 runtime
+export type { T } from './m'        -> export {};                   erased
+export { type T } from './m'        -> export {} from './m';        runtime
+```
+
+Two shapes were previously misread: a **default binding** was ignored when the
+named bindings were all type-marked, and an **all-type-marked named import** was
+treated as fully erased even though the compiler keeps it as `import {}`. The
+gate now uses the same single flag the compiler uses (`isTypeOnly`), and a
+table-driven test asserts all seven forms above plus their variants. None of
+these shapes occur in the current sources, so the migration result is unaffected
+— but the gate was unreliable for future code, which is the point of having it.
 
 ### E2E
 
 E2E runs against the real local stack — Postgres in Docker, the backend on the
 `test` profile with the fake model gateway, and a Vite dev server started by
-Playwright. The **whole** suite was executed:
+Playwright. The whole suite was executed: **30 spec files / 77 tests / 0 failed**.
 
-```text
-30 spec files / 77 tests / 0 failed
-```
+**How it was executed.** Not as one command that runs `e2e/` and exits. The
+Playwright CLI in this environment finishes its work but never exits, so each
+spec was run in its own invocation by a wrapper that watches the log for the run
+summary and then kills the process; the per-spec results were then aggregated.
+Every spec has an individual pass record, but there was no single
+`playwright test` run covering the directory. Two further sandbox constraints
+were worked around: the CLI empties `test-results/` at startup and the sandbox's
+safe-delete shim aborts the run once that directory holds more than 50 entries
+(cleared between specs), and browser launch only worked with the sandbox
+bypassed.
+
+**Fixture caveat.** The specs use fixed project titles and never reset the
+database, so re-running a spec against a database that still holds a previous
+run's project fails with `PROJECT_TITLE_ALREADY_EXISTS`. One such failure was
+observed and diagnosed here; with the table cleared the same spec passes
+repeatedly, including with 25 unrelated projects present. Not a regression, but
+the suite is only meaningful against a clean `spec_agent_test` schema.
 
 | Area | Specs | Tests |
 | --- | --- | --- |
@@ -168,30 +205,23 @@ Playwright. The **whole** suite was executed:
 | Skills | `skills` | 3 |
 | Connections | `connections`, `connection` | 6 |
 | Global assistant | `global-assistant`, `global-assistant-steer`, `conversation-library`, `contextual-ai` | 12 |
-| Workspace / canvas | `workspace-layout`, `graph-layout`, `graph-node-visibility`, `core-clarification`, `action-rail`, `input-persistence` | 25 |
-| Routes (fork / re-answer / regenerate / lifecycle / resume / shared focus) | `fork`, `reanswer`, `regenerate`, `lifecycle`, `resume-question`, `shared-focus`, `graph-routes`, `shared-answer`, `route-draft-persistence`, `historical-answer-recovery` | 21 |
+| Workspace / canvas | `workspace-layout`, `graph-layout`, `graph-node-visibility`, `core-clarification`, `action-rail`, `input-persistence` | 24 |
+| Routes (fork / re-answer / regenerate / lifecycle / resume / shared focus) | `fork`, `reanswer`, `regenerate`, `lifecycle`, `resume-question`, `shared-focus`, `graph-routes`, `shared-answer`, `route-draft-persistence`, `historical-answer-recovery` | 18 |
 | Canvas connections + undo/redo | `floating-resource` | 1 |
 | Spec generation | `spec`, `long-answer`, `node-query-proposal` | 6 |
-| Visual snapshots | `ui-final-screenshots` | 5 |
+| Screenshot generation | `ui-final-screenshots` | 5 |
 
 Project creation through the UI is exercised by every workspace spec, since they
 all enter the workspace via `createProject`.
 
-Two sandbox/tooling constraints had to be worked around to run this; neither is
-a property of the application:
-
-1. The Playwright CLI empties `test-results/` at startup, and the sandbox's
-   safe-delete shim aborts the CLI once that directory holds more than 50
-   entries. Cleared between specs.
-2. The Playwright CLI finishes its work but never exits, so the runner watches
-   the log for the run summary and then kills the process.
-
-**Fixture caveat:** the specs use fixed project titles and never reset the
-database, so re-running a spec against a database that still holds a previous
-run's project fails with `PROJECT_TITLE_ALREADY_EXISTS`. One such failure was
-observed and diagnosed here; with the table cleared the same spec passes
-repeatedly, including with 25 unrelated projects present. Not a regression, but
-the suite is only meaningful against a clean `spec_agent_test` schema.
+**What the counts do and do not assert.** The E2E specs assert behaviour —
+navigation, focus, canvas interaction, streaming recovery, route isolation,
+undo/redo. Passing them is the behavioural evidence this change relies on.
+`provider-screenshots` and `ui-final-screenshots` are different: they only prove
+the screenshots were **generated**, not that the rendering matches a baseline.
+`playwright.config.ts` sets no `toHaveScreenshot` comparison, so these two specs
+guarantee nothing about visual regression. The visual evidence for this change
+comes from the separate before/after comparison below, not from those specs.
 
 Interface parity, measured between the pre-refactor worktree and the refactored
 tree:
@@ -575,6 +605,11 @@ npm run test          # vitest run — includes src/test/architectureBoundaries.
 npm run build         # vue-tsc --noEmit && vite build
 npm run test:e2e      # needs the local Postgres + backend, see playwright.config.ts
 ```
+
+`npm run test:e2e` is the intended single-command path for the E2E suite. The run
+recorded in §7 was assembled per spec instead, because this environment's
+sandbox blocks browser launch in ordinary invocations and never lets the CLI
+process exit; see the E2E section for what that means for the claims.
 
 `src/test/architectureBoundaries.spec.ts` is the executable definition of the
 dependency rules (no runtime cycles; `shared/` never references
