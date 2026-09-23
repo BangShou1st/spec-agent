@@ -1,4 +1,4 @@
-package com.specagent.trace;
+package com.specagent.agent.trace;
 
 import com.specagent.agent.protocol.AgentContracts;
 import com.specagent.agent.protocol.AgentInputSnapshot;

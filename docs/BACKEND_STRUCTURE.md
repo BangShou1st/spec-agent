@@ -29,6 +29,7 @@ backend/src/
 │   │   ├── runtime/          #   run 管线：AgentRun*/RunWorker/各 cycle 服务/continuation/提案执行
 │   │   ├── runevent/         #   run 事件流（SSE 进度）
 │   │   ├── snapshot/         #   AgentInput 快照投影（冻结输入构建）
+│   │   ├── trace/            #   语义轨迹记录（AgentTracePort 实现，供评测回放）
 │   │   ├── broker/           #   内部模型推理 broker（Python brain 回拨入口）+ brain 链接配置
 │   │   └── api/              #   Agent run HTTP 面（Controller + 请求/响应 DTO）
 │   ├── assistant/            # 全局助手（原 globalassistant）
@@ -65,6 +66,8 @@ backend/src/
 3. **模型 seam 类型**（中立推理 DTO/端口）→ `model.contract`；任何具体 provider HTTP 细节 →
    `model.provider`。provider 实现禁止反向依赖 agent 协议（架构测试强制）。
 4. **评测代码** → `src/eval/java`（eval source set）。生产 bootRun classpath 永远看不到它；
+   注意：生产运行时需要消费的类型（如 agent/trace 的 AgentTracePort 实现）**必须留在 main**，
+   接口实现不会产生 import，判断归属时要以「谁在运行时消费它」为准；
    评测任务 `evalBFast` / `evalRetrievalFast` / `evalScenario` / `evalLive*` /
    `eligibilityShadowReplay` 均从该 source set 取类。
 5. **测试专用但需在 Spring 启动时可见的 Bean** → `com.specagent.testing`（如

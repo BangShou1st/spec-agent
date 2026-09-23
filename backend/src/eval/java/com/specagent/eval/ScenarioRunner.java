@@ -26,8 +26,8 @@ import com.specagent.workspace.route.Route;
 import com.specagent.workspace.route.RouteRepository;
 import com.specagent.workspace.route.RouteService;
 import com.specagent.workspace.answer.AnswerService;
-import com.specagent.trace.SemanticTrace;
-import com.specagent.trace.SemanticTraceRecorder;
+import com.specagent.agent.trace.SemanticTrace;
+import com.specagent.agent.trace.SemanticTraceRecorder;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 

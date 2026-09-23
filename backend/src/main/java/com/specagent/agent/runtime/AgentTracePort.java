@@ -14,7 +14,7 @@ import java.util.UUID;
  * trace implementation consumes agent contract DTOs, so the natural
  * dependency direction is trace -> agent. This port inverts the write side
  * (agent -> trace) so the package pair stays acyclic. Implemented by
- * {@code com.specagent.trace.SemanticTraceRecorder}; disabled-by-default
+ * {@code com.specagent.agent.trace.SemanticTraceRecorder}; disabled-by-default
  * semantics are the implementation's concern.
  */
 public interface AgentTracePort {

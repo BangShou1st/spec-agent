@@ -1,5 +1,9 @@
 package com.specagent.trace;
 
+import com.specagent.agent.trace.SemanticTrace;
+import com.specagent.agent.trace.SemanticTraceRecorder;
+import com.specagent.agent.trace.SemanticTraceSanitizer;
+
 import com.specagent.agent.protocol.AgentContracts;
 import com.specagent.agent.protocol.AgentEvent;
 import com.specagent.agent.protocol.AgentRequestEnvelope;

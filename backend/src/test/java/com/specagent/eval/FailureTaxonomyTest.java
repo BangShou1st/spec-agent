@@ -121,7 +121,7 @@ class FailureTaxonomyTest {
         ObservationEnvelope observation = ObservationEnvelope.builder(
                         "E01", "base", "hash", EvaluationProfile.LIVE_PROVIDER)
                 .executionResult("failed:ModelContractException")
-                .semanticTrace(com.specagent.trace.SemanticTrace.empty(null)
+                .semanticTrace(com.specagent.agent.trace.SemanticTrace.empty(null)
                         .withStage("DECISION_OUTPUT", Map.of(
                                 "error_type", "ModelContractException")))
                 .build();

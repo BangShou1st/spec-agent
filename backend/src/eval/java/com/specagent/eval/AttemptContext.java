@@ -3,7 +3,7 @@ package com.specagent.eval;
 import com.specagent.agent.runtime.AgentRun;
 import com.specagent.agent.policy.AgentProposal;
 import com.specagent.workspace.context.ContextSnapshot;
-import com.specagent.trace.SemanticTrace;
+import com.specagent.agent.trace.SemanticTrace;
 
 import java.util.List;
 import java.util.Map;

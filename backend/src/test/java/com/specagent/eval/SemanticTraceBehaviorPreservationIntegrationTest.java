@@ -1,6 +1,6 @@
 package com.specagent.eval;
 
-import com.specagent.trace.SemanticTraceRecorder;
+import com.specagent.agent.trace.SemanticTraceRecorder;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

@@ -1,4 +1,4 @@
-package com.specagent.trace;
+package com.specagent.agent.trace;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

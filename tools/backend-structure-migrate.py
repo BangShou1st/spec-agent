@@ -17,6 +17,10 @@ the branch commit messages and docs/BACKEND_STRUCTURE.md:
   - SkillProperties now owns its git-proxy default constant (config no longer
     imports the importing implementation).
   - agent-brain protocol.py doc comment renamed with agent.protocol.
+
+NOTE: com.specagent.trace is PRODUCTION code (SemanticTraceRecorder implements
+the runtime-owned AgentTracePort consumed at boot), so it stays in main —
+moved to agent.trace, not to the eval source set.
 """
 from __future__ import annotations
 

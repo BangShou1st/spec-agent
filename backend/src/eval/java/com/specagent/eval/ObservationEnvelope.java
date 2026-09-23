@@ -1,6 +1,6 @@
 package com.specagent.eval;
 
-import com.specagent.trace.SemanticTrace;
+import com.specagent.agent.trace.SemanticTrace;
 
 import java.time.Instant;
 import java.util.ArrayList;
