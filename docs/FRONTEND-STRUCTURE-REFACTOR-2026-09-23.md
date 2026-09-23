@@ -294,7 +294,8 @@ the dependency graph honest going forward.
   (`git diff --stat 23b120e^ 23b120e -- '*ApiErrorBanner*' '*errorCopy*'` shows
   `0` changed lines), so the drift is pre-existing. The regenerated files were
   reverted rather than folded into this change; refreshing them is a separate,
-  deliberate commit.
+  deliberate commit. The same 9 files (and only those) drift on every run, so the
+  spec itself is deterministic — it is the committed baselines that lag.
 
 ## 9. Appendices
 
