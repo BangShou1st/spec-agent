@@ -1,6 +1,6 @@
 package com.specagent.agent.decision;
 
-import com.specagent.agent.contract.AgentRequestEnvelope;
+import com.specagent.agent.protocol.AgentRequestEnvelope;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 

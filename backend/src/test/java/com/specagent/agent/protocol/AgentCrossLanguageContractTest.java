@@ -1,0 +1,347 @@
+package com.specagent.agent.protocol;
+
+import com.specagent.agent.decision.AgentBrainResponseValidator;
+import com.specagent.agent.protocol.AgentContracts;
+import com.specagent.agent.protocol.AgentContractException;
+import com.specagent.agent.protocol.AgentRequestEnvelope;
+import com.specagent.agent.protocol.AgentResponseEnvelope;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+/**
+ * Golden-fixture contract tests shared with the Python brain. The fixtures
+ * under {@code contracts/fixtures} are the single cross-language authority:
+ * valid ones must parse, invalid ones must be rejected fail-closed.
+ */
+class AgentV2ContractTest {
+
+    private static final Path FIXTURES = Path.of("../contracts/fixtures");
+
+    private String fixture(String name) throws Exception {
+        return Files.readString(FIXTURES.resolve(name));
+    }
+
+    @Test
+    void validRequestFixtureParses() throws Exception {
+        AgentRequestEnvelope envelope =
+                AgentContracts.read(fixture("agent-input-valid.json"), AgentRequestEnvelope.class);
+        assertThat(envelope.runId().toString())
+                .isEqualTo("22222222-2222-2222-2222-222222222222");
+        assertThat(envelope.snapshot().metadata().projectTitle())
+                .isEqualTo("内部工单系统探索");
+        assertThat(envelope.snapshot().lineage()).hasSize(2);
+        // Generic Graph language only: no question-workflow names on the wire.
+        String wire = fixture("agent-input-valid.json");
+        assertThat(wire).doesNotContain("\"question\"");
+        assertThat(wire).doesNotContain("DRAFT_NODE");
+    }
+
+    @Test
+    void v2SerializationOmitsV3EligibilityField() throws Exception {
+        AgentRequestEnvelope envelope = AgentContracts.read(
+                fixture("agent-input-valid.json"), AgentRequestEnvelope.class);
+
+        assertThat(AgentContracts.write(envelope))
+                .doesNotContain("\"actionEligibility\"");
+    }
+
+    @Test
+    void typedPersistenceIntentRoundTripsInStrictEnvelope() throws Exception {
+        String mutated = fixture("agent-input-v3-valid.json");
+        int eventStart = mutated.indexOf("\"event\"");
+        int eventText = mutated.indexOf(
+                "\"freeText\": \"团队需要一个内部工单系统。\"", eventStart);
+        String eventFreeText = "\"freeText\": \"团队需要一个内部工单系统。\"";
+        mutated = mutated.substring(0, eventText)
+                + eventFreeText + ",\"persistenceIntent\": \"RECORD_DECISION_NODE\""
+                + mutated.substring(eventText + eventFreeText.length());
+        AgentRequestEnvelope request = AgentContracts.read(mutated, AgentRequestEnvelope.class);
+
+        assertThat(request.event().persistenceIntent())
+                .isEqualTo(AgentEvent.PersistenceIntent.RECORD_DECISION_NODE);
+        assertThat(AgentContracts.write(request))
+                .contains("\"persistenceIntent\":\"RECORD_DECISION_NODE\"");
+    }
+
+    @Test
+    void unknownRequestFieldIsRejected() throws Exception {
+        assertThatThrownBy(() -> AgentContracts.read(
+                fixture("agent-input-invalid-unknown-field.json"), AgentRequestEnvelope.class))
+                .isInstanceOf(AgentContractException.class);
+    }
+
+    @Test
+    void unknownRequestProtocolVersionIsRejected() throws Exception {
+        assertThatThrownBy(() -> AgentContracts.read(
+                fixture("agent-input-invalid-unknown-version.json"), AgentRequestEnvelope.class))
+                .isInstanceOf(AgentContractException.class);
+    }
+
+    @Test
+    void validDecisionResponseFixtureParses() throws Exception {
+        AgentResponseEnvelope response =
+                AgentContracts.read(fixture("decision-response-valid.json"),
+                        AgentResponseEnvelope.class);
+        assertThat(response.actionProposal().actionFamily()).isEqualTo("REQUEST_USER_INPUT");
+        assertThat(response.observation().known()).isNotEmpty();
+    }
+
+    @Test
+    void validV3EligibilityRequestAndResponsePassStrictValidation() throws Exception {
+        AgentRequestEnvelope request = AgentContracts.read(
+                fixture("agent-input-v3-valid.json"), AgentRequestEnvelope.class);
+        AgentResponseEnvelope response = AgentContracts.read(
+                fixture("decision-response-v3-valid.json"), AgentResponseEnvelope.class);
+
+        assertThat(request.actionEligibility().version()).isEqualTo("action-eligibility.v1");
+        // Frozen principle: unresolved conflict/open_question never denies
+        // CREATE_NODE at the eligibility boundary. The V3 fixture keeps an
+        // unresolved open_question to prove it: CREATE_NODE stays eligible
+        // while objective preconditions (WAIT dependency, capability
+        // visibility) still apply.
+        assertThat(request.actionEligibility().eligibleFamilies())
+                .contains("CREATE_NODE", "REQUEST_USER_INPUT")
+                .doesNotContain("WAIT", "INVOKE_CAPABILITY");
+        assertThatCode(() -> AgentBrainResponseValidator.validateDecision(request, response))
+                .doesNotThrowAnyException();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "agent-input-v3-invalid-family.json",
+            "agent-input-v3-invalid-unknown-field.json",
+            "agent-input-v3-invalid-version.json"
+    })
+    void invalidV3EligibilityRequestsAreRejected(String name) throws Exception {
+        assertThatThrownBy(() -> AgentContracts.read(fixture(name), AgentRequestEnvelope.class))
+                .isInstanceOf(AgentContractException.class);
+    }
+
+    @Test
+    void capabilityDescriptorSchemaFieldsRoundTripStrictly() throws Exception {
+        AgentRequestEnvelope envelope = AgentContracts.read(
+                fixture("agent-input-valid.json"), AgentRequestEnvelope.class);
+        var enriched = new AgentRequestEnvelope(
+                envelope.protocolVersion(), envelope.runId(), envelope.event(),
+                withCapabilities(envelope.snapshot(),
+                        new CapabilityDescriptor("mcp.demo.tool", "1",
+                                "Demo MCP tool",
+                                Map.of("type", "object",
+                                        "properties", Map.of("query",
+                                                Map.of("type", "string"))),
+                                false, "EXTERNAL_REVERSIBLE",
+                                List.of("DOCUMENT", "RESOURCE:FILE"))),
+                envelope.capabilities(), envelope.decisionBudget(), envelope.actionEligibility());
+
+        AgentRequestEnvelope reparsed = AgentContracts.read(
+                AgentContracts.write(enriched), AgentRequestEnvelope.class);
+        CapabilityDescriptor descriptor =
+                reparsed.snapshot().availableCapabilities().get(0);
+        assertThat(descriptor.id()).isEqualTo("mcp.demo.tool");
+        assertThat(descriptor.inputSchema())
+                .containsEntry("type", "object");
+        assertThat(descriptor.supports())
+                .containsExactly("DOCUMENT", "RESOURCE:FILE");
+        // Legacy 5-arg constructor stays wire-equivalent (empty schema/supports).
+        assertThat(AgentContracts.write(new CapabilityDescriptor(
+                "legacy.tool", "1", "legacy", true, "NONE")))
+                .contains("\"inputSchema\":{}")
+                .contains("\"supports\":[]");
+    }
+
+    @Test
+    void legacyFixturesWithoutSchemaFieldsStillParse() throws Exception {
+        // Every existing golden fixture predates inputSchema/supports; they
+        // must keep parsing with empty defaults (replay compatibility).
+        AgentRequestEnvelope envelope = AgentContracts.read(
+                fixture("agent-input-valid.json"), AgentRequestEnvelope.class);
+        assertThat(envelope.snapshot().availableCapabilities()).isEmpty();
+    }
+
+    @Test
+    void skillCatalogRoundTripsStrictlyWithLegacyDefault() throws Exception {
+        // Phase 4: availableSkills is a bounded catalog with fingerprint +
+        // truncation evidence; legacy fixtures without it parse to empty.
+        AgentRequestEnvelope legacy = AgentContracts.read(
+                fixture("agent-input-valid.json"), AgentRequestEnvelope.class);
+        assertThat(legacy.snapshot().availableSkills().skills()).isEmpty();
+        assertThat(legacy.snapshot().availableSkills().truncated()).isFalse();
+
+        AgentInputSnapshot snapshot = legacy.snapshot();
+        AgentInputSnapshot enriched = new AgentInputSnapshot(
+                snapshot.snapshotId(), snapshot.contextHash(), snapshot.projectId(),
+                snapshot.routeId(), snapshot.anchorNodeId(), snapshot.routeContext(),
+                snapshot.lineage(), snapshot.effectiveClaims(), snapshot.metadata(),
+                snapshot.allowedSourceRefs(), snapshot.availableCapabilities(),
+                new SkillCatalogView(
+                        List.of(new AvailableSkillView("sk-1", "migration-safety",
+                                "数据库迁移安全检查", "migration.sql")),
+                        false, "fp-1"),
+                snapshot.capabilityResults(), snapshot.relations(),
+                snapshot.relatedNodes(), snapshot.autonomy());
+        AgentRequestEnvelope reparsed = AgentContracts.read(
+                AgentContracts.write(new AgentRequestEnvelope(
+                        legacy.protocolVersion(), legacy.runId(), legacy.event(),
+                        enriched, legacy.capabilities(), legacy.decisionBudget(),
+                        legacy.actionEligibility())),
+                AgentRequestEnvelope.class);
+        assertThat(reparsed.snapshot().availableSkills().skills())
+                .extracting(AvailableSkillView::skillId).containsExactly("sk-1");
+        assertThat(reparsed.snapshot().availableSkills().fingerprint())
+                .isEqualTo("fp-1");
+        // No full SKILL.md, paths, scores, or DB internals on the wire.
+        assertThat(AgentContracts.write(enriched))
+                .doesNotContain("SKILL.md")
+                .doesNotContain("embedding")
+                .doesNotContain("filesystem");
+    }
+
+    private AgentInputSnapshot withCapabilities(AgentInputSnapshot snapshot,
+                                                 CapabilityDescriptor... descriptors) {
+        return new AgentInputSnapshot(
+                snapshot.snapshotId(), snapshot.contextHash(), snapshot.projectId(),
+                snapshot.routeId(), snapshot.anchorNodeId(), snapshot.routeContext(),
+                snapshot.lineage(), snapshot.effectiveClaims(), snapshot.metadata(),
+                snapshot.allowedSourceRefs(), List.of(descriptors),
+                snapshot.capabilityResults(), snapshot.relations(),
+                snapshot.relatedNodes(), snapshot.autonomy());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "decision-response-v3-invalid-unknown-field.json",
+            "decision-response-v3-invalid-version.json"
+    })
+    void invalidV3DecisionResponseSchemaIsRejected(String name) throws Exception {
+        assertThatThrownBy(() -> AgentContracts.read(fixture(name), AgentResponseEnvelope.class))
+                .isInstanceOf(AgentContractException.class);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "decision-response-v3-invalid-digest.json",
+            "decision-response-v3-invalid-evidence-ref.json"
+    })
+    void invalidV3DecisionResponseSemanticsAreRejected(String name) throws Exception {
+        AgentRequestEnvelope request = AgentContracts.read(
+                fixture("agent-input-v3-valid.json"), AgentRequestEnvelope.class);
+        AgentResponseEnvelope response = AgentContracts.read(
+                fixture(name), AgentResponseEnvelope.class);
+        assertThatThrownBy(() -> AgentBrainResponseValidator.validateDecision(request, response))
+                .isInstanceOf(AgentContractException.class);
+    }
+
+    @Test
+    void v2CannotCarryV3EligibilityFields() throws Exception {
+        String mutated = fixture("agent-input-v3-valid.json")
+                .replace("agent-input.v3", "agent-input.v2");
+        assertThatThrownBy(() -> AgentContracts.read(mutated, AgentRequestEnvelope.class))
+                .isInstanceOf(AgentContractException.class);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "decision-response-invalid-unknown-action-family.json",
+            "decision-response-invalid-invented-source-ref.json",
+            "decision-response-invalid-stale-base-context.json"
+    })
+    void decisionResponseFixturesRoundTripThroughStrictMapper(String name) throws Exception {
+        // Schema-level: these parse (semantic rejection is the validator's job).
+        AgentResponseEnvelope response =
+                AgentContracts.read(fixture(name), AgentResponseEnvelope.class);
+        assertThat(response.actionProposal()).isNotNull();
+    }
+
+    @Test
+    void runtimeOwnedClaimIdInStateUpdateIsRejectedAtSchemaLevel() throws Exception {
+        assertThatThrownBy(() -> AgentContracts.read(
+                fixture("state-update-response-invalid-runtime-owned-id.json"),
+                AgentResponseEnvelope.class))
+                .isInstanceOf(AgentContractException.class);
+    }
+
+    @Test
+    void validStateUpdateFixtureParses() throws Exception {
+        AgentResponseEnvelope response =
+                AgentContracts.read(fixture("state-update-response-valid.json"),
+                        AgentResponseEnvelope.class);
+        assertThat(response.stateUpdate().claims()).hasSize(1);
+        assertThat(response.actionProposal()).isNull();
+    }
+
+    @Test
+    void routelessNodeQueryFixtureParsesWithNullRouteIds() throws Exception {
+        // Stage C NODE_QUERY routeless nullability: a Floating-node NODE_QUERY
+        // is the only semantic flow that may carry null route ids. The
+        // contract is the single cross-language authority: the same fixture
+        // is parsed by both the Java strict mapper and the Python Pydantic
+        // envelope.
+        AgentRequestEnvelope envelope = AgentContracts.read(
+                fixture("agent-input-routeless-node-query-valid.json"),
+                AgentRequestEnvelope.class);
+        assertThat(envelope.snapshot().routeId()).isNull();
+        assertThat(envelope.snapshot().routeContext().routeId()).isNull();
+        assertThat(envelope.event().kind()).isEqualTo("NODE_QUERY");
+        assertThat(envelope.snapshot().anchorNodeId())
+                .isEqualTo(UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"));
+        // The route-bound baseline must keep its route ids.
+        AgentRequestEnvelope baseline = AgentContracts.read(
+                fixture("agent-input-valid.json"), AgentRequestEnvelope.class);
+        assertThat(baseline.snapshot().routeId()).isNotNull();
+        assertThat(baseline.snapshot().routeContext().routeId()).isNotNull();
+    }
+
+    @Test
+    void nodeQuerySemanticContextFixtureCarriesBoundedOneHopBodyAndDirection()
+            throws Exception {
+        // Stage C bounded 1-hop semantic context: relations preserve direction
+        // and relatedNodes carry the actual projected node body (not only
+        // opaque ids), with node:<relatedId> present in allowedSourceRefs and
+        // no second-hop node anywhere on the wire.
+        AgentRequestEnvelope envelope = AgentContracts.read(
+                fixture("agent-input-node-query-semantic-context-valid.json"),
+                AgentRequestEnvelope.class);
+        assertThat(envelope.event().kind()).isEqualTo("NODE_QUERY");
+        assertThat(envelope.snapshot().routeId())
+                .isEqualTo(UUID.fromString("04000000-0000-0000-0000-000000000004"));
+
+        assertThat(envelope.snapshot().relations()).hasSize(1);
+        RelationView relation = envelope.snapshot().relations().get(0);
+        assertThat(relation.sourceNodeId())
+                .isEqualTo(UUID.fromString("05000000-0000-0000-0000-000000000005"));
+        assertThat(relation.targetNodeId())
+                .isEqualTo(UUID.fromString("06000000-0000-0000-0000-000000000006"));
+        assertThat(relation.relationType()).isEqualTo("SUPPORTS");
+
+        assertThat(envelope.snapshot().relatedNodes()).hasSize(1);
+        RelatedNodeRef ref = envelope.snapshot().relatedNodes().get(0);
+        assertThat(ref.nodeId())
+                .isEqualTo(UUID.fromString("06000000-0000-0000-0000-000000000006"));
+        assertThat(ref.relationType()).isEqualTo("SUPPORTS");
+        assertThat(ref.direction()).isEqualTo("OUTGOING");
+        // The related node body content really travels on the wire.
+        assertThat(ref.node().body().text())
+                .contains("离线队列容量上限 2048 条");
+        assertThat(ref.node().kind()).isEqualTo("RESOURCE");
+
+        // The related node is a first-class source ref and stays out of lineage.
+        assertThat(envelope.snapshot().allowedSourceRefs())
+                .contains("node:06000000-0000-0000-0000-000000000006");
+        assertThat(envelope.snapshot().lineage()).hasSize(1);
+        assertThat(envelope.snapshot().lineage().get(0).node().id())
+                .isEqualTo(UUID.fromString("05000000-0000-0000-0000-000000000005"));
+        assertThat(envelope.snapshot().lineage()).noneMatch(entry ->
+                entry.node().id().equals(ref.nodeId()));
+    }
+}

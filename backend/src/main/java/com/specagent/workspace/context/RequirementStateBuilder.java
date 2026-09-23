@@ -1,0 +1,94 @@
+package com.specagent.workspace.context;
+
+import com.specagent.workspace.patch.AnswerPatch;
+import com.specagent.workspace.patch.AnswerPatchRepository;
+import com.specagent.workspace.patch.Claim;
+import com.specagent.workspace.route.Route;
+import com.specagent.workspace.route.RouteHistoryResolver;
+import com.specagent.workspace.route.RouteRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+
+/**
+ * Derives {@link RequirementState} by replaying answer patches.
+ *
+ * <p>RequirementState is derived, not source of truth. It can be cached, but the
+ * immutable lineage, answers, and patches remain authoritative. Replaying the
+ * same patches always yields the same state.
+ */
+@Service
+public class RequirementStateBuilder {
+
+    private final AnswerPatchRepository answerPatchRepository;
+    private final RouteRepository routeRepository;
+    private final RouteHistoryResolver routeHistoryResolver;
+
+    public RequirementStateBuilder(AnswerPatchRepository answerPatchRepository) {
+        this(answerPatchRepository, null, null);
+    }
+
+    @Autowired
+    public RequirementStateBuilder(AnswerPatchRepository answerPatchRepository,
+                                   RouteRepository routeRepository,
+                                   RouteHistoryResolver routeHistoryResolver) {
+        this.answerPatchRepository = answerPatchRepository;
+        this.routeRepository = routeRepository;
+        this.routeHistoryResolver = routeHistoryResolver;
+    }
+
+    /**
+     * Rebuilds requirement state from an explicit ordered list of patches.
+     * Replaying the same patches yields the same state (deterministic, cacheable).
+     */
+    public RequirementState rebuild(List<AnswerPatch> patches) {
+        List<Claim> claims = new ArrayList<>();
+        UUID routeId = null;
+        for (AnswerPatch patch : patches) {
+            if (routeId == null) {
+                routeId = patch.routeId();
+            }
+            claims.addAll(patch.claims());
+        }
+        return new RequirementState(routeId, claims, Instant.now());
+    }
+
+    /**
+     * Builds requirement state for a route by loading that route's answer patches
+     * in creation order and replaying them.
+     */
+    public RequirementState buildForRoute(UUID projectId, UUID routeId) {
+        if (routeHistoryResolver != null && routeRepository != null) {
+            Route route = routeRepository.findById(routeId)
+                    .orElseThrow(() -> new IllegalArgumentException("Route not found: " + routeId));
+            List<UUID> lineage = routeHistoryResolver.resolveLineage(route.tipNodeId());
+            List<UUID> answerIds = routeHistoryResolver.resolveEffectiveAnswerRefs(routeId, lineage)
+                    .stream().map(ref -> ref.answerId()).toList();
+            List<AnswerPatch> effectivePatches = answerPatchRepository.findBySourceAnswerIds(answerIds);
+            java.util.Map<UUID, AnswerPatch> byAnswer = new java.util.HashMap<>();
+            for (AnswerPatch patch : effectivePatches) byAnswer.put(patch.sourceAnswerId(), patch);
+            List<AnswerPatch> ordered = answerIds.stream().map(byAnswer::get).filter(java.util.Objects::nonNull).toList();
+            return rebuild(ordered);
+        }
+        List<AnswerPatch> patches = answerPatchRepository.findByRoute(routeId);
+        return rebuild(patches);
+    }
+
+    /**
+     * Builds requirement state from the patches referenced by a context snapshot.
+     *
+     * <p>Patches are replayed in the explicit order recorded by
+     * {@code snapshot.includedPatchIds()}. Order is authoritative: the same
+     * patches in different order can yield different requirement state, so the
+     * snapshot's patch list is replayed verbatim rather than derived from the
+     * answer list.
+     */
+    public RequirementState buildForContext(ContextSnapshot snapshot) {
+        List<AnswerPatch> patches = answerPatchRepository.findByIdsPreservingOrder(snapshot.includedPatchIds());
+        return rebuild(patches);
+    }
+}

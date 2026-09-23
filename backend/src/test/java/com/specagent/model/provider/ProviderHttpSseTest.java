@@ -1,5 +1,8 @@
 package com.specagent.model.provider;
 
+import com.specagent.model.contract.FragmentListener;
+import com.specagent.model.contract.StreamCancelledException;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
 import java.util.List;

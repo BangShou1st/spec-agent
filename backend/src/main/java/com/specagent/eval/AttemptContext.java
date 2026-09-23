@@ -1,8 +1,8 @@
 package com.specagent.eval;
 
-import com.specagent.agent.AgentRun;
+import com.specagent.agent.runtime.AgentRun;
 import com.specagent.agent.policy.AgentProposal;
-import com.specagent.context.ContextSnapshot;
+import com.specagent.workspace.context.ContextSnapshot;
 import com.specagent.trace.SemanticTrace;
 
 import java.util.List;

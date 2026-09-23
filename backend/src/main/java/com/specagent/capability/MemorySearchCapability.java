@@ -1,7 +1,7 @@
 package com.specagent.capability;
 
-import com.specagent.retrieval.api.RetrievalScope;
-import com.specagent.retrieval.api.RetrievedContextItem;
+import com.specagent.retrieval.RetrievalScope;
+import com.specagent.retrieval.RetrievedContextItem;
 import com.specagent.retrieval.context.RetrievalSearchService;
 import org.springframework.stereotype.Component;
 

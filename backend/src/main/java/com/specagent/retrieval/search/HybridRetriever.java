@@ -1,8 +1,8 @@
 package com.specagent.retrieval.search;
 
-import com.specagent.retrieval.api.RetrievalQuery;
-import com.specagent.retrieval.api.RetrievalScope;
-import com.specagent.retrieval.api.MemoryAuthority;
+import com.specagent.retrieval.RetrievalQuery;
+import com.specagent.retrieval.RetrievalScope;
+import com.specagent.retrieval.MemoryAuthority;
 import com.specagent.retrieval.persistence.RetrievalEntry;
 import com.specagent.retrieval.persistence.RetrievalEntryRepository;
 import org.springframework.stereotype.Service;

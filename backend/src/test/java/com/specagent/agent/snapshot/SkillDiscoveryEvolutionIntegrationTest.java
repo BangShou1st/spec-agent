@@ -1,18 +1,18 @@
 package com.specagent.agent.snapshot;
 
-import com.specagent.agent.contract.AgentInputSnapshot;
+import com.specagent.agent.protocol.AgentInputSnapshot;
 import com.specagent.capability.CapabilityDescriptor;
 import com.specagent.capability.CapabilityInvocation;
 import com.specagent.capability.CapabilityInvocationRecord;
 import com.specagent.capability.CapabilityInvocationRepository;
 import com.specagent.capability.CapabilityResult;
 import com.specagent.common.Ids;
-import com.specagent.context.ContextBuilder;
-import com.specagent.context.ContextOperationType;
-import com.specagent.context.ContextSnapshot;
-import com.specagent.node.NodeService;
-import com.specagent.project.Project;
-import com.specagent.project.ProjectService;
+import com.specagent.workspace.context.ContextBuilder;
+import com.specagent.workspace.context.ContextOperationType;
+import com.specagent.workspace.context.ContextSnapshot;
+import com.specagent.workspace.node.NodeService;
+import com.specagent.workspace.project.Project;
+import com.specagent.workspace.project.ProjectService;
 import com.specagent.skill.registry.SkillImportService;
 import org.apache.commons.compress.archivers.zip.ZipArchiveEntry;
 import org.apache.commons.compress.archivers.zip.ZipArchiveOutputStream;
@@ -143,7 +143,7 @@ class SkillDiscoveryEvolutionIntegrationTest {
 
         assertThat(projected.availableSkills().truncated()).isFalse();
         assertThat(projected.availableCapabilities())
-                .extracting(com.specagent.agent.contract.CapabilityDescriptor::id)
+                .extracting(com.specagent.agent.protocol.CapabilityDescriptor::id)
                 .contains("skill.activate")
                 .doesNotContain("skill.search");
         assertThat(projected.availableSkills().skills()).hasSize(1);
@@ -173,7 +173,7 @@ class SkillDiscoveryEvolutionIntegrationTest {
                 .extracting(skill -> skill.name())
                 .doesNotContain("zzz-postgres-migration-safety");
         assertThat(projected.availableCapabilities())
-                .extracting(com.specagent.agent.contract.CapabilityDescriptor::id)
+                .extracting(com.specagent.agent.protocol.CapabilityDescriptor::id)
                 .contains("skill.search");
 
         // Same frozen snapshot replays catalog + search visibility identically.
@@ -182,7 +182,7 @@ class SkillDiscoveryEvolutionIntegrationTest {
                 .isEqualTo(projected.availableSkills().skills());
         assertThat(replayed.availableSkills().truncated()).isTrue();
         assertThat(replayed.availableCapabilities())
-                .extracting(com.specagent.agent.contract.CapabilityDescriptor::id)
+                .extracting(com.specagent.agent.protocol.CapabilityDescriptor::id)
                 .contains("skill.search");
     }
 

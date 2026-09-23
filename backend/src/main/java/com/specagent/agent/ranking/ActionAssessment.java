@@ -1,6 +1,6 @@
 package com.specagent.agent.ranking;
 
-import com.specagent.agent.contract.ActionFamily;
+import com.specagent.agent.protocol.ActionFamily;
 
 import java.util.HashSet;
 import java.util.List;

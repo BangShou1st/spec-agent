@@ -1,12 +1,12 @@
 package com.specagent.agent.decision;
 
-import com.specagent.agent.runtime.AgentBrainProperties;
-import com.specagent.agent.contract.AgentContracts;
-import com.specagent.agent.contract.AgentContractException;
-import com.specagent.agent.contract.AgentRequestEnvelope;
+import com.specagent.agent.broker.AgentBrainProperties;
+import com.specagent.agent.protocol.AgentContracts;
+import com.specagent.agent.protocol.AgentContractException;
+import com.specagent.agent.protocol.AgentRequestEnvelope;
 import com.specagent.agent.decision.AgentBrainUnavailableException;
 import com.specagent.agent.decision.RemotePythonDecisionEngine;
-import com.specagent.agent.eligibility.ActionIneligibleException;
+import com.specagent.agent.protocol.ActionIneligibleException;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;

@@ -1,7 +1,7 @@
 package com.specagent.retrieval.search;
 
-import com.specagent.retrieval.api.RetrievalQuery;
-import com.specagent.retrieval.embedding.EmbeddingGateway;
+import com.specagent.retrieval.RetrievalQuery;
+import com.specagent.retrieval.EmbeddingGateway;
 import com.specagent.retrieval.persistence.RetrievalEntry;
 import com.specagent.retrieval.persistence.RetrievalEntryRepository;
 import org.springframework.stereotype.Service;
@@ -23,7 +23,7 @@ public class VectorCandidateRetriever {
 
     public List<RetrievalEntry> retrieve(RetrievalQuery query) {
         List<String> routeRefs = query.scopes().size() == 1
-                && query.scopes().contains(com.specagent.retrieval.api.RetrievalScope.ROUTE)
+                && query.scopes().contains(com.specagent.retrieval.RetrievalScope.ROUTE)
                 ? query.routeSourceRefs().stream().toList() : List.of();
         return gateway.embed(query.queryText())
                 .flatMap(embedding -> repository.vector(query.projectId(), embedding,

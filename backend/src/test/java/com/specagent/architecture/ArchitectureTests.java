@@ -28,9 +28,9 @@ class ArchitectureTests {
     @Test
     void runtimePackagesShouldNotDependOnModelPackages() {
         ArchRule rule = noClasses()
-            .that().resideInAnyPackage("com.specagent.project..", "com.specagent.route..",
-                "com.specagent.node..", "com.specagent.answer..", "com.specagent.context..",
-                "com.specagent.patch..", "com.specagent.spec..", "com.specagent.profile..",
+            .that().resideInAnyPackage("com.specagent.workspace.project..", "com.specagent.workspace.route..",
+                "com.specagent.workspace.node..", "com.specagent.workspace.answer..", "com.specagent.workspace.context..",
+                "com.specagent.workspace.patch..", "com.specagent.workspace.spec..", "com.specagent.workspace.profile..",
                 "com.specagent.common..")
             .should().dependOnClassesThat()
             .resideInAnyPackage("com.specagent.model..", "com.specagent.agent..")
@@ -42,7 +42,7 @@ class ArchitectureTests {
     @Test
     void contextBuilderShouldNotDependOnModelGateway() {
         ArchRule rule = noClasses()
-            .that().resideInAPackage("com.specagent.context..")
+            .that().resideInAPackage("com.specagent.workspace.context..")
             .should().dependOnClassesThat()
             .resideInAnyPackage("com.specagent.model..", "com.specagent.agent..")
             .because("ContextBuilder must not call LLM or depend on model gateway")
@@ -132,8 +132,8 @@ class ArchitectureTests {
     @Test
     void routeNodeAnswerPatchShouldNotDependOnModel() {
         ArchRule rule = noClasses()
-            .that().resideInAnyPackage("com.specagent.route..", "com.specagent.node..",
-                "com.specagent.answer..", "com.specagent.patch..")
+            .that().resideInAnyPackage("com.specagent.workspace.route..", "com.specagent.workspace.node..",
+                "com.specagent.workspace.answer..", "com.specagent.workspace.patch..")
             .should().dependOnClassesThat()
             .resideInAnyPackage("com.specagent.model..", "com.specagent.agent..")
             .because("Route, Node, Answer, Patch services must not depend on model packages")
@@ -201,9 +201,9 @@ class ArchitectureTests {
     @Test
     void runtimePackagesContainNoBusinessDomainClasses() {
         ArchRule rule = noClasses()
-            .that().resideInAnyPackage("com.specagent.project..", "com.specagent.route..",
-                "com.specagent.node..", "com.specagent.answer..", "com.specagent.context..",
-                "com.specagent.patch..", "com.specagent.spec..", "com.specagent.profile..",
+            .that().resideInAnyPackage("com.specagent.workspace.project..", "com.specagent.workspace.route..",
+                "com.specagent.workspace.node..", "com.specagent.workspace.answer..", "com.specagent.workspace.context..",
+                "com.specagent.workspace.patch..", "com.specagent.workspace.spec..", "com.specagent.workspace.profile..",
                 "com.specagent.common..")
             .should().haveNameMatching(
                 "(?i).*(software|marketing|ecommerce|startup|student|course|sales|legal|pitch|assignment).*")
@@ -217,9 +217,9 @@ class ArchitectureTests {
         ArchRule rule = noClasses()
             .that().resideInAnyPackage("com.specagent.model..")
             .should().dependOnClassesThat()
-            .resideInAnyPackage("com.specagent.project..", "com.specagent.route..",
-                "com.specagent.node..", "com.specagent.answer..", "com.specagent.context..",
-                "com.specagent.patch..", "com.specagent.spec..", "com.specagent.profile..")
+            .resideInAnyPackage("com.specagent.workspace.project..", "com.specagent.workspace.route..",
+                "com.specagent.workspace.node..", "com.specagent.workspace.answer..", "com.specagent.workspace.context..",
+                "com.specagent.workspace.patch..", "com.specagent.workspace.spec..", "com.specagent.workspace.profile..")
             .because("Model gateway and OpenCode transport must not depend on runtime "
                     + "repositories or services; they only speak HTTP and resolve credentials");
 
@@ -229,7 +229,7 @@ class ArchitectureTests {
     @Test
     void apiMustNotDependOnRepositoryClasses() {
         ArchRule rule = noClasses()
-            .that().resideInAnyPackage("com.specagent.api..", "com.specagent.globalassistant.api..")
+            .that().resideInAnyPackage("com.specagent.api..", "com.specagent.assistant.api..")
             .and().haveSimpleNameEndingWith("Controller")
             .should().dependOnClassesThat()
             .haveSimpleNameEndingWith("Repository")
@@ -255,7 +255,7 @@ class ArchitectureTests {
         ArchRule rule = noClasses()
             .that().resideInAPackage("com.specagent.api..")
             .should().dependOnClassesThat()
-            .resideInAnyPackage("com.specagent.context..", "com.specagent.connection.credentials..")
+            .resideInAnyPackage("com.specagent.workspace.context..", "com.specagent.connection.credentials..")
             .because("API must never expose a raw ContextSnapshot or credential material");
 
         rule.check(CLASSES);
@@ -275,9 +275,9 @@ class ArchitectureTests {
     @Test
     void runtimeKernelMustNotDependOnApi() {
         ArchRule rule = noClasses()
-            .that().resideInAnyPackage("com.specagent.project..", "com.specagent.route..",
-                "com.specagent.node..", "com.specagent.answer..", "com.specagent.context..",
-                "com.specagent.patch..", "com.specagent.spec..", "com.specagent.profile..",
+            .that().resideInAnyPackage("com.specagent.workspace.project..", "com.specagent.workspace.route..",
+                "com.specagent.workspace.node..", "com.specagent.workspace.answer..", "com.specagent.workspace.context..",
+                "com.specagent.workspace.patch..", "com.specagent.workspace.spec..", "com.specagent.workspace.profile..",
                 "com.specagent.common..", "com.specagent.agent..")
             .should().dependOnClassesThat()
             .resideInAPackage("com.specagent.api..")
@@ -330,10 +330,10 @@ class ArchitectureTests {
         // The internal model-inference broker endpoint is deliberately excluded:
         // it IS the model wire contract served to the Python brain.
         ArchRule rule = noClasses()
-            .that().resideInAnyPackage("com.specagent.api..", "com.specagent.globalassistant.api..")
+            .that().resideInAnyPackage("com.specagent.api..", "com.specagent.assistant.api..")
             .and().haveSimpleNameEndingWith("Controller")
             .should().dependOnClassesThat()
-            .resideInAnyPackage("com.specagent.model.gateway..", "com.specagent.model.provider..")
+            .resideInAnyPackage("com.specagent.model.contract..", "com.specagent.model.provider..")
             .because("Controllers must go through the orchestrator, never call the model gateway directly");
 
         rule.check(CLASSES);
@@ -345,7 +345,7 @@ class ArchitectureTests {
             .that().resideInAPackage("com.specagent.api..")
             .and().haveSimpleNameEndingWith("Controller")
             .should().dependOnClassesThat()
-            .resideInAnyPackage("com.specagent.context..")
+            .resideInAnyPackage("com.specagent.workspace.context..")
             .because("Controllers must not build ContextSnapshots manually");
 
         rule.check(CLASSES);
@@ -354,10 +354,10 @@ class ArchitectureTests {
     @Test
     void graphReadModelMustNotDependOnModelProviderCredentialOrContext() {
         ArchRule rule = noClasses()
-            .that().resideInAPackage("com.specagent.readmodel.graph..")
+            .that().resideInAPackage("com.specagent.workspace.graph..")
             .should().dependOnClassesThat()
             .resideInAnyPackage("com.specagent.model..", "com.specagent.credential..",
-                "com.specagent.context..")
+                "com.specagent.workspace.context..")
             .because("GraphWorkspace is a read projection, not a model/provider/context boundary");
 
         rule.check(CLASSES);
@@ -390,10 +390,10 @@ class ArchitectureTests {
                                 || name.endsWith("RuleViolationException");
                     }
                 })
-                .and(new DescribedPredicate<>("outside com.specagent.globalassistant..") {
+                .and(new DescribedPredicate<>("outside com.specagent.assistant..") {
                     @Override
                     public boolean test(JavaClass javaClass) {
-                        return !javaClass.getPackageName().startsWith("com.specagent.globalassistant");
+                        return !javaClass.getPackageName().startsWith("com.specagent.assistant");
                     }
                 });
 

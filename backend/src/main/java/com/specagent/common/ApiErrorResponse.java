@@ -15,7 +15,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  * stack trace, SQL, credentials, raw prompts, or raw model/provider payloads.
  *
  * <p>Wire shape is unchanged; only the package moved (formerly
- * {@code com.specagent.api.common}) so the application layer can raise the same
+ * {@code com.specagent.web}) so the application layer can raise the same
  * errors without depending on the HTTP boundary.
  */
 public record ApiErrorResponse(

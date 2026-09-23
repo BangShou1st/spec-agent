@@ -1,13 +1,13 @@
 package com.specagent.agent.runtime;
 
-import com.specagent.agent.AgentRun;
-import com.specagent.agent.AgentRunStatus;
-import com.specagent.answer.AnswerService;
-import com.specagent.node.Node;
-import com.specagent.node.NodeService;
-import com.specagent.patch.AnswerPatchService;
-import com.specagent.project.Project;
-import com.specagent.project.ProjectService;
+import com.specagent.agent.runtime.AgentRun;
+import com.specagent.agent.runtime.AgentRunStatus;
+import com.specagent.workspace.answer.AnswerService;
+import com.specagent.workspace.node.Node;
+import com.specagent.workspace.node.NodeService;
+import com.specagent.workspace.patch.AnswerPatchService;
+import com.specagent.workspace.project.Project;
+import com.specagent.workspace.project.ProjectService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -40,7 +40,7 @@ class RunWorkerIntegrationTest {
     @Autowired
     private AnswerPatchService answerPatchService;
     @Autowired
-    private com.specagent.route.RouteService routeService;
+    private com.specagent.workspace.route.RouteService routeService;
     @Autowired
     private RunService runService;
     @Autowired

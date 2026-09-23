@@ -1,11 +1,11 @@
 package com.specagent.agent.runtime;
 
-import com.specagent.answer.AnswerService;
-import com.specagent.node.NodeService;
-import com.specagent.patch.AnswerPatchService;
-import com.specagent.project.Project;
-import com.specagent.project.ProjectService;
-import com.specagent.route.RouteService;
+import com.specagent.workspace.answer.AnswerService;
+import com.specagent.workspace.node.NodeService;
+import com.specagent.workspace.patch.AnswerPatchService;
+import com.specagent.workspace.project.Project;
+import com.specagent.workspace.project.ProjectService;
+import com.specagent.workspace.route.RouteService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;

@@ -1,24 +1,30 @@
 package com.specagent.agent;
 
+import com.specagent.agent.runtime.AgentRunStatus;
+
+import com.specagent.agent.FakeFullLoopContextIsolationIntegrationTest;
+
+import com.specagent.agent.runtime.AgentRun;
+
 import com.specagent.agent.AnswerCycleTestDriver;
-import com.specagent.answer.Answer;
-import com.specagent.answer.AnswerService;
-import com.specagent.context.ContextBuilder;
-import com.specagent.context.ContextOperationType;
-import com.specagent.context.ContextSnapshot;
-import com.specagent.node.Node;
-import com.specagent.node.NodeService;
-import com.specagent.patch.AnswerPatch;
-import com.specagent.patch.AnswerPatchService;
-import com.specagent.patch.Claim;
-import com.specagent.patch.ClaimKind;
-import com.specagent.patch.ClaimStatus;
-import com.specagent.project.Project;
-import com.specagent.project.ProjectService;
-import com.specagent.route.RegenerateResult;
-import com.specagent.route.Route;
-import com.specagent.route.RouteLifecycleStatus;
-import com.specagent.route.RouteService;
+import com.specagent.workspace.answer.Answer;
+import com.specagent.workspace.answer.AnswerService;
+import com.specagent.workspace.context.ContextBuilder;
+import com.specagent.workspace.context.ContextOperationType;
+import com.specagent.workspace.context.ContextSnapshot;
+import com.specagent.workspace.node.Node;
+import com.specagent.workspace.node.NodeService;
+import com.specagent.workspace.patch.AnswerPatch;
+import com.specagent.workspace.patch.AnswerPatchService;
+import com.specagent.workspace.patch.Claim;
+import com.specagent.workspace.patch.ClaimKind;
+import com.specagent.workspace.patch.ClaimStatus;
+import com.specagent.workspace.project.Project;
+import com.specagent.workspace.project.ProjectService;
+import com.specagent.workspace.route.RegenerateResult;
+import com.specagent.workspace.route.Route;
+import com.specagent.workspace.route.RouteLifecycleStatus;
+import com.specagent.workspace.route.RouteService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;

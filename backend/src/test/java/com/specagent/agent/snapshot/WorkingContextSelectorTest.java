@@ -1,8 +1,8 @@
 package com.specagent.agent.snapshot;
 
-import com.specagent.node.Node;
-import com.specagent.node.NodeAuthorKind;
-import com.specagent.node.NodeKind;
+import com.specagent.workspace.node.Node;
+import com.specagent.workspace.node.NodeAuthorKind;
+import com.specagent.workspace.node.NodeKind;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;

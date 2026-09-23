@@ -1,7 +1,7 @@
 package com.specagent.agent.ranking;
 
-import com.specagent.agent.contract.ActionFamily;
-import com.specagent.agent.eligibility.ActionEligibility;
+import com.specagent.agent.protocol.ActionFamily;
+import com.specagent.agent.protocol.ActionEligibility;
 
 import java.util.ArrayList;
 import java.util.EnumMap;

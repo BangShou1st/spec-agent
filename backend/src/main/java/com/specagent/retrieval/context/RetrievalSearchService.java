@@ -1,15 +1,15 @@
 package com.specagent.retrieval.context;
 
-import com.specagent.node.Node;
-import com.specagent.node.NodeRepository;
-import com.specagent.retrieval.api.RetrievalQuery;
-import com.specagent.retrieval.api.RetrievalScope;
-import com.specagent.retrieval.api.RetrievedContextItem;
+import com.specagent.workspace.node.Node;
+import com.specagent.workspace.node.NodeRepository;
+import com.specagent.retrieval.RetrievalQuery;
+import com.specagent.retrieval.RetrievalScope;
+import com.specagent.retrieval.RetrievedContextItem;
 import com.specagent.retrieval.persistence.RetrievalEntry;
 import com.specagent.retrieval.persistence.RetrievalEntryRepository;
 import com.specagent.retrieval.search.HybridRetriever;
-import com.specagent.route.Route;
-import com.specagent.route.RouteRepository;
+import com.specagent.workspace.route.Route;
+import com.specagent.workspace.route.RouteRepository;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;

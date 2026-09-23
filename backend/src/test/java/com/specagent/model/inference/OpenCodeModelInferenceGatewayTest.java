@@ -1,5 +1,16 @@
 package com.specagent.model.inference;
 
+import com.specagent.model.contract.ModelOutputContract;
+
+import com.specagent.model.contract.ModelInferenceMessage;
+import com.specagent.model.contract.ModelInferenceResponse;
+import com.specagent.model.contract.OpenCodeRuntimeSettingsPort;
+import com.specagent.model.contract.RuntimeOpenCodeSettings;
+import com.specagent.model.inference.OpenCodeModelInferenceGatewayTest;
+import com.specagent.model.provider.OpenCodeModelInferenceGateway;
+
+import com.specagent.model.contract.ModelInferenceRequest;
+
 import com.specagent.model.provider.OpenCodeChatCompletionRequest;
 import com.specagent.model.provider.OpenCodeCompletionResponse;
 import com.specagent.model.provider.OpenCodeZenTransport;

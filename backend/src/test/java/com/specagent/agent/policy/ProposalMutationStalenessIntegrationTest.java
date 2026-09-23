@@ -1,18 +1,20 @@
 package com.specagent.agent.policy;
 
+import com.specagent.agent.runtime.ProposalAcceptanceService;
+
 import com.specagent.agent.action.StaleProposalException;
-import com.specagent.agent.contract.ActionProposal;
-import com.specagent.context.ContextBuilder;
-import com.specagent.context.ContextSnapshot;
-import com.specagent.graph.GraphCommandService;
-import com.specagent.graph.NodeRelation;
-import com.specagent.graph.NodeRelationRepository;
-import com.specagent.graph.NodeRelationType;
-import com.specagent.node.Node;
-import com.specagent.project.Project;
-import com.specagent.project.ProjectService;
-import com.specagent.route.Route;
-import com.specagent.route.RouteRepository;
+import com.specagent.agent.protocol.ActionProposal;
+import com.specagent.workspace.context.ContextBuilder;
+import com.specagent.workspace.context.ContextSnapshot;
+import com.specagent.workspace.graph.GraphCommandService;
+import com.specagent.workspace.graph.NodeRelation;
+import com.specagent.workspace.graph.NodeRelationRepository;
+import com.specagent.workspace.graph.NodeRelationType;
+import com.specagent.workspace.node.Node;
+import com.specagent.workspace.project.Project;
+import com.specagent.workspace.project.ProjectService;
+import com.specagent.workspace.route.Route;
+import com.specagent.workspace.route.RouteRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -39,7 +41,7 @@ class ProposalMutationStalenessIntegrationTest {
     @Autowired private RouteRepository routeRepository;
     @Autowired private ContextBuilder contextBuilder;
     @Autowired private com.specagent.agent.snapshot.AgentInputSnapshotBuilder snapshotBuilder;
-    @Autowired private com.specagent.agent.action.StaleContextChecker staleContextChecker;
+    @Autowired private com.specagent.agent.snapshot.StaleContextChecker staleContextChecker;
     @Autowired private ProposalAcceptanceService acceptanceService;
     @Autowired private AgentProposalService proposalService;
     @Autowired private NodeRelationRepository nodeRelationRepository;

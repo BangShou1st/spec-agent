@@ -1,5 +1,15 @@
 package com.specagent.agent;
 
+import com.specagent.agent.decision.AgentAction;
+import com.specagent.agent.decision.ModelResponseCorrelation;
+
+import com.specagent.agent.ModelResponseCorrelationTest;
+import com.specagent.agent.protocol.ModelContractException;
+
+import com.specagent.agent.decision.ModelRequest;
+import com.specagent.agent.decision.ModelResponse;
+import com.specagent.agent.decision.AgentTaskType;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;

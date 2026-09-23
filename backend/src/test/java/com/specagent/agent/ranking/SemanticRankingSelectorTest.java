@@ -1,9 +1,10 @@
 package com.specagent.agent.ranking;
 
-import com.specagent.agent.contract.ActionFamily;
-import com.specagent.agent.contract.AgentContracts;
-import com.specagent.agent.eligibility.ActionEligibility;
-import com.specagent.agent.eligibility.ActionEligibilityConstraint;
+import com.specagent.agent.protocol.ActionEligibilityConstraint;
+
+import com.specagent.agent.protocol.ActionFamily;
+import com.specagent.agent.protocol.AgentContracts;
+import com.specagent.agent.protocol.ActionEligibility;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;

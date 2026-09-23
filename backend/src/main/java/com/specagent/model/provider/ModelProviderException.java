@@ -1,7 +1,7 @@
 package com.specagent.model.provider;
 
-import com.specagent.model.gateway.ModelGatewayErrorCategory;
-import com.specagent.model.gateway.ModelGatewayException;
+import com.specagent.model.contract.ModelGatewayErrorCategory;
+import com.specagent.model.contract.ModelGatewayException;
 
 /**
  * Provider-neutral failure for OpenRouter / Custom boundaries.

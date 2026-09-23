@@ -1,9 +1,9 @@
 package com.specagent.model.provider;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.specagent.model.inference.ModelInferenceRequest;
-import com.specagent.model.inference.ModelInferenceResponse;
-import com.specagent.model.inference.ModelOutputContract;
+import com.specagent.model.contract.ModelInferenceRequest;
+import com.specagent.model.contract.ModelInferenceResponse;
+import com.specagent.model.contract.ModelOutputContract;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;

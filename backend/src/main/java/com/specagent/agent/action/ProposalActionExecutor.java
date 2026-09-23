@@ -1,11 +1,11 @@
 package com.specagent.agent.action;
 
-import com.specagent.agent.contract.ActionFamily;
-import com.specagent.agent.contract.ActionProposal;
+import com.specagent.agent.protocol.ActionFamily;
+import com.specagent.agent.protocol.ActionProposal;
 import com.specagent.capability.CapabilityResult;
 import com.specagent.capability.CapabilityRuntime;
-import com.specagent.node.Node;
-import com.specagent.node.NodeOption;
+import com.specagent.workspace.node.Node;
+import com.specagent.workspace.node.NodeOption;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -122,7 +122,7 @@ public class ProposalActionExecutor implements ActionExecutor {
             Node node = agentGraphMutationService.executeNodeCreation(
                     context.projectId(), context.routeId(), context.anchorNodeId(),
                     new AgentGraphMutationService.WorkspaceNode(
-                            com.specagent.node.NodeKind.fromCode(kind),
+                            com.specagent.workspace.node.NodeKind.fromCode(kind),
                             subtype, content),
                     "proposal:" + proposal.proposalId());
             return new ActionResult("CREATE_NODE", node.id(), null, null);

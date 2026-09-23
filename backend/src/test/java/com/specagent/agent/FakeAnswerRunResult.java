@@ -1,9 +1,12 @@
 package com.specagent.agent;
 
-import com.specagent.answer.Answer;
-import com.specagent.context.ContextSnapshot;
-import com.specagent.node.Node;
-import com.specagent.patch.AnswerPatch;
+import com.specagent.agent.decision.ModelResponse;
+import com.specagent.agent.runtime.AgentRun;
+
+import com.specagent.workspace.answer.Answer;
+import com.specagent.workspace.context.ContextSnapshot;
+import com.specagent.workspace.node.Node;
+import com.specagent.workspace.patch.AnswerPatch;
 
 /**
  * Outcome of one fake answer run: the immutable answer, the grounded answer

@@ -1,18 +1,18 @@
 package com.specagent.agent.action;
 
-import com.specagent.graph.GraphInvariantValidator;
-import com.specagent.graph.GraphOperation;
-import com.specagent.graph.GraphOperationRepository;
-import com.specagent.node.KnowledgeStatus;
-import com.specagent.node.Node;
-import com.specagent.node.NodeAuthorKind;
-import com.specagent.node.NodeKind;
-import com.specagent.node.NodeOption;
-import com.specagent.node.NodeService;
-import com.specagent.project.ProjectRepository;
-import com.specagent.route.Route;
-import com.specagent.route.RouteLifecycleStatus;
-import com.specagent.route.RouteRepository;
+import com.specagent.workspace.graph.GraphInvariantValidator;
+import com.specagent.workspace.graph.GraphOperation;
+import com.specagent.workspace.graph.GraphOperationRepository;
+import com.specagent.workspace.node.KnowledgeStatus;
+import com.specagent.workspace.node.Node;
+import com.specagent.workspace.node.NodeAuthorKind;
+import com.specagent.workspace.node.NodeKind;
+import com.specagent.workspace.node.NodeOption;
+import com.specagent.workspace.node.NodeService;
+import com.specagent.workspace.project.ProjectRepository;
+import com.specagent.workspace.route.Route;
+import com.specagent.workspace.route.RouteLifecycleStatus;
+import com.specagent.workspace.route.RouteRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -98,7 +98,7 @@ public class AgentGraphMutationService {
      * commit together.
      *
      * <p>{@code causedBy} records the proposal/run provenance on the appended
-     * {@link com.specagent.graph.GraphOperation} — agent creations are
+     * {@link com.specagent.workspace.graph.GraphOperation} — agent creations are
      * user-visible durable mutations and MUST enter the same undo log as user
      * commands (actor AGENT), or the undo stack drifts away from the real
      * graph.

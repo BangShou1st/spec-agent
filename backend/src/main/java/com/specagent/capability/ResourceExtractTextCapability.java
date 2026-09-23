@@ -1,8 +1,8 @@
 package com.specagent.capability;
 
-import com.specagent.node.Node;
-import com.specagent.node.NodeKind;
-import com.specagent.node.NodeRepository;
+import com.specagent.workspace.node.Node;
+import com.specagent.workspace.node.NodeKind;
+import com.specagent.workspace.node.NodeRepository;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;

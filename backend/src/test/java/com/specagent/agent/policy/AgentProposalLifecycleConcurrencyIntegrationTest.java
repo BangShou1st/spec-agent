@@ -1,12 +1,14 @@
 package com.specagent.agent.policy;
 
-import com.specagent.agent.contract.ActionProposal;
-import com.specagent.graph.GraphCommandService;
-import com.specagent.node.Node;
-import com.specagent.project.Project;
-import com.specagent.project.ProjectService;
-import com.specagent.route.Route;
-import com.specagent.route.RouteRepository;
+import com.specagent.agent.runtime.ProposalAcceptanceService;
+
+import com.specagent.agent.protocol.ActionProposal;
+import com.specagent.workspace.graph.GraphCommandService;
+import com.specagent.workspace.node.Node;
+import com.specagent.workspace.project.Project;
+import com.specagent.workspace.project.ProjectService;
+import com.specagent.workspace.route.Route;
+import com.specagent.workspace.route.RouteRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

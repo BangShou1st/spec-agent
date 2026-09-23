@@ -1,15 +1,15 @@
 package com.specagent.agent.decision;
 
-import com.specagent.agent.contract.ActionProposal;
-import com.specagent.agent.contract.AgentArtifactResponse;
-import com.specagent.agent.contract.AgentProtocol;
-import com.specagent.agent.contract.AgentRequestEnvelope;
-import com.specagent.agent.contract.AgentResponseEnvelope;
-import com.specagent.agent.contract.CapabilityDescriptor;
-import com.specagent.agent.contract.ObservationView;
-import com.specagent.agent.contract.ProposedClaim;
-import com.specagent.agent.contract.StateUpdateResult;
-import com.specagent.agent.contract.UsageView;
+import com.specagent.agent.protocol.ActionProposal;
+import com.specagent.agent.protocol.AgentArtifactResponse;
+import com.specagent.agent.protocol.AgentProtocol;
+import com.specagent.agent.protocol.AgentRequestEnvelope;
+import com.specagent.agent.protocol.AgentResponseEnvelope;
+import com.specagent.agent.protocol.CapabilityDescriptor;
+import com.specagent.agent.protocol.ObservationView;
+import com.specagent.agent.protocol.ProposedClaim;
+import com.specagent.agent.protocol.StateUpdateResult;
+import com.specagent.agent.protocol.UsageView;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 

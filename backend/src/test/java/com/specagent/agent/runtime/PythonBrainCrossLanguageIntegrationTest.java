@@ -1,18 +1,18 @@
 package com.specagent.agent.runtime;
 
-import com.specagent.agent.AgentRun;
-import com.specagent.agent.AgentRunStatus;
+import com.specagent.agent.runtime.AgentRun;
+import com.specagent.agent.runtime.AgentRunStatus;
 import com.specagent.agent.AnswerCycleTestDriver;
-import com.specagent.agent.contract.ActionFamily;
+import com.specagent.agent.protocol.ActionFamily;
 import com.specagent.agent.runevent.AgentRunEvent;
 import com.specagent.agent.runevent.AgentRunPhase;
 import com.specagent.agent.runevent.AgentRunEventRepository;
 import com.specagent.agent.runtime.RunService;
 import com.specagent.agent.runtime.RunWorker;
-import com.specagent.node.Node;
-import com.specagent.node.NodeService;
-import com.specagent.project.Project;
-import com.specagent.project.ProjectService;
+import com.specagent.workspace.node.Node;
+import com.specagent.workspace.node.NodeService;
+import com.specagent.workspace.project.Project;
+import com.specagent.workspace.project.ProjectService;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;

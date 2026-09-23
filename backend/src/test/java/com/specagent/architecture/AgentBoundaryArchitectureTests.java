@@ -25,16 +25,16 @@ class AgentBoundaryArchitectureTests {
     @Test
     void agentContractPackagesAreFreeOfRuntimeDependencies() {
         ArchRule rule = noClasses()
-            .that().resideInAPackage("com.specagent.agent.contract..")
+            .that().resideInAPackage("com.specagent.agent.protocol..")
             .should().dependOnClassesThat()
             .haveSimpleNameEndingWith("Repository")
             .orShould().dependOnClassesThat()
             .haveSimpleNameEndingWith("Service")
             .orShould().dependOnClassesThat()
             .resideInAnyPackage("com.specagent.model..", "com.specagent.api..",
-                "com.specagent.project..", "com.specagent.route..",
-                "com.specagent.node..", "com.specagent.answer..",
-                "com.specagent.patch..", "com.specagent.context..")
+                "com.specagent.workspace.project..", "com.specagent.workspace.route..",
+                "com.specagent.workspace.node..", "com.specagent.workspace.answer..",
+                "com.specagent.workspace.patch..", "com.specagent.workspace.context..")
             .because("Cross-language wire contracts must stay pure DTOs shared with the Python brain");
 
         rule.check(CLASSES);
@@ -97,7 +97,7 @@ class AgentBoundaryArchitectureTests {
         ArchRule rule = noClasses()
             .that().resideInAPackage("com.specagent.model..")
             .should().dependOnClassesThat()
-            .resideInAnyPackage("com.specagent.agent.contract..",
+            .resideInAnyPackage("com.specagent.agent.protocol..",
                 "com.specagent.agent.decision..")
             .because("Provider/model packages may only expose the neutral "
                 + "inference DTO, never Python decision contracts");
@@ -157,10 +157,10 @@ class AgentBoundaryArchitectureTests {
     @Test
     void graphCommandPackageCannotDependOnModelOrAgentBrains() {
         ArchRule rule = noClasses()
-            .that().resideInAPackage("com.specagent.graph..")
+            .that().resideInAPackage("com.specagent.workspace.graph..")
             .should().dependOnClassesThat()
             .resideInAnyPackage("com.specagent.model..", "com.specagent.agent.decision..",
-                "com.specagent.agent.broker..", "com.specagent.model.gateway..",
+                "com.specagent.agent.broker..", "com.specagent.model.contract..",
                 "com.specagent.model.provider..")
             .because("Graph commands are deterministic runtime mutations; they never call models or brains");
 
@@ -170,7 +170,7 @@ class AgentBoundaryArchitectureTests {
     @Test
     void graphCommandPackageCannotCallModelGateways() {
         ArchRule rule = noClasses()
-            .that().resideInAPackage("com.specagent.graph..")
+            .that().resideInAPackage("com.specagent.workspace.graph..")
             .should().dependOnClassesThat()
             .haveSimpleNameEndingWith("Gateway")
             .because("Undo/redo compensation and graph commands must stay provider-free");
@@ -196,7 +196,7 @@ class AgentBoundaryArchitectureTests {
             .should().dependOnClassesThat()
             .haveSimpleNameEndingWith("Gateway")
             .orShould().dependOnClassesThat()
-            .resideInAnyPackage("com.specagent.credential..", "com.specagent.settings..")
+            .resideInAnyPackage("com.specagent.credential..", "com.specagent.modelsettings..")
             .because("Capabilities never touch provider gateways, credentials, or model settings; the host runtime owns them");
 
         rule.check(CLASSES);

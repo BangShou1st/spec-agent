@@ -1,0 +1,544 @@
+package com.specagent.workspace.graph;
+
+import com.specagent.workspace.node.KnowledgeStatus;
+import com.specagent.workspace.node.Node;
+import com.specagent.workspace.node.NodeAuthorKind;
+import com.specagent.workspace.node.NodeKind;
+import com.specagent.workspace.node.NodeRepository;
+import com.specagent.workspace.node.NodeService;
+import com.specagent.workspace.project.ProjectRepository;
+import com.specagent.workspace.route.Route;
+import com.specagent.workspace.route.RouteBranchType;
+import com.specagent.workspace.route.RouteHistoryResolver;
+import com.specagent.workspace.route.RouteLifecycleStatus;
+import com.specagent.workspace.route.RouteMembershipProjectionPort;
+import com.specagent.workspace.route.RouteRepository;
+import com.specagent.workspace.route.RouteService;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+/**
+ * Transactional graph mutation commands for the graph workspace model.
+ *
+ * <p>Every user-visible durable mutation goes through one command method that
+ * (1) validates against graph invariants, (2) performs the mutation, and
+ * (3) appends a typed {@link GraphOperation} in the same transaction. The
+ * external agent action protocol stays generic: {@code CREATE_NODE} /
+ * {@code CONNECT_NODE} map onto these commands after policy approval; no
+ * business-specific command names exist here.
+ *
+ * <p>Invariants enforced: no historical insertion (a continuation from a
+ * non-tip node always creates an explicit branch route), immutable answers are
+ * never mutated or deleted, shared node identity is never cloned, and route
+ * ambiguity is never resolved by falling back to active/first/latest route.
+ */
+@Service
+public class GraphCommandService {
+
+    private final NodeService nodeService;
+    private final NodeRepository nodeRepository;
+    private final RouteService routeService;
+    private final RouteRepository routeRepository;
+    private final RouteHistoryResolver routeHistoryResolver;
+    private final NodeRelationRepository relationRepository;
+    private final GraphOperationRepository operationRepository;
+    private final GraphInvariantValidator invariantValidator;
+    private final ProjectRepository projectRepository;
+    private final RouteMembershipProjectionPort routeMembershipProjection;
+
+    public GraphCommandService(NodeService nodeService,
+                               NodeRepository nodeRepository,
+                               RouteService routeService,
+                               RouteRepository routeRepository,
+                               RouteHistoryResolver routeHistoryResolver,
+                               NodeRelationRepository relationRepository,
+                               GraphOperationRepository operationRepository,
+                               GraphInvariantValidator invariantValidator,
+                               ProjectRepository projectRepository,
+                               RouteMembershipProjectionPort routeMembershipProjection) {
+        this.nodeService = nodeService;
+        this.nodeRepository = nodeRepository;
+        this.routeService = routeService;
+        this.routeRepository = routeRepository;
+        this.routeHistoryResolver = routeHistoryResolver;
+        this.relationRepository = relationRepository;
+        this.operationRepository = operationRepository;
+        this.invariantValidator = invariantValidator;
+        this.projectRepository = projectRepository;
+        this.routeMembershipProjection = routeMembershipProjection;
+    }
+
+    /**
+     * Creates the first (root) draft node on an empty route. This is the
+     * zero-model-call entry into a fresh project: the user authors content
+     * before any agent involvement.
+     */
+    @Transactional
+    public Node createRootDraftNode(UUID projectId,
+                                    UUID routeId,
+                                    String subtype,
+                                    Map<String, Object> content) {
+        // Serialize every project-wide graph mutation writer under the same
+        // project-row lock (order: project → node/route → mutation →
+        // operation log) so a concurrent undo/redo or relation creation never
+        // interleaves into a half-applied graph or operation stack.
+        projectRepository.lockById(projectId);
+        Route route = requireOpenRouteInProject(projectId, routeId);
+        if (route.tipNodeId() != null) {
+            throw new IllegalStateException(
+                    "Route already has content; use a continuation instead of a root node: " + routeId);
+        }
+        Node node = nodeService.createWorkspaceNode(
+                projectId, routeId, null, NodeKind.KNOWLEDGE, subtype, content,
+                NodeAuthorKind.USER, KnowledgeStatus.PROPOSED);
+        operationRepository.append(projectId, GraphOperation.Actor.USER,
+                GraphOperation.Type.CREATE_DRAFT_NODE, List.of(node.id()),
+                Map.of("routeId", routeId.toString()),
+                Map.of("routeId", routeId.toString(),
+                       "nodeId", node.id().toString(),
+                       "subtype", node.subtype()));
+        return node;
+    }
+
+    /**
+     * Creates a standalone (floating) user draft. The node starts
+     * disconnected from every lineage — the route tip is never advanced — so
+     * "+ idea" never silently rewires the graph. The creation context route
+     * id is OPTIONAL: a floating node can be created with no Active route at
+     * all. The route id is recorded in the operation log only as creation
+     * context, never as membership. Undo/redo treat the {@code floating} ref
+     * as "no tip/root side effects".
+     */
+    @Transactional
+    public Node createFloatingDraftNode(UUID projectId,
+                                        UUID routeId,
+                                        String subtype,
+                                        Map<String, Object> content) {
+        return createFloatingDraftNode(projectId, routeId, NodeKind.KNOWLEDGE, subtype, content);
+    }
+
+    /**
+     * Same as {@link #createFloatingDraftNode(UUID, UUID, String, Map)} with an
+     * explicit kind, so a resource can also start detached. Resources are
+     * capability context sources; keeping the kind explicit (instead of
+     * inferring it from the subtype) keeps the node's semantics user-visible
+     * and the subtype whitelist per kind authoritative.
+     */
+    @Transactional
+    public Node createFloatingDraftNode(UUID projectId,
+                                        UUID routeId,
+                                        NodeKind kind,
+                                        String subtype,
+                                        Map<String, Object> content) {
+        projectRepository.lockById(projectId);
+        if (routeId != null) {
+            requireOpenRouteInProject(projectId, routeId);
+        }
+        Node node = nodeService.createFloatingWorkspaceNode(
+                projectId, kind, subtype, content,
+                NodeAuthorKind.USER, kind == NodeKind.RESOURCE ? null : KnowledgeStatus.PROPOSED);
+        // The Node itself carries no routeId (it is route-less). The creation
+        // context route id is recorded only in the operation log, not in the
+        // persisted node row; null context is legal.
+        Map<String, Object> beforeRefs = routeId == null
+                ? Map.of()
+                : Map.of("routeId", routeId.toString());
+        Map<String, Object> afterRefs = new java.util.LinkedHashMap<>();
+        if (routeId != null) {
+            afterRefs.put("routeId", routeId.toString());
+        }
+        afterRefs.put("nodeId", node.id().toString());
+        afterRefs.put("subtype", node.subtype());
+        afterRefs.put("floating", true);
+        operationRepository.append(projectId, GraphOperation.Actor.USER,
+                GraphOperation.Type.CREATE_DRAFT_NODE, List.of(node.id()),
+                beforeRefs, afterRefs);
+        return node;
+    }
+
+    /**
+     * Connects an existing floating (route-less) node into a route by making
+     * it the route's new tip.
+     *
+     * <p>This is the "先浮动、再自己连线" half of resource attachment: content
+     * is authored once, route membership is a separate explicit act. Placement
+     * follows the shared kind-aware tip semantic — the node may hang off an
+     * unanswered question tip (as provenance for the pending question) but the
+     * tip only advances when no answerable question would be buried. The node
+     * keeps its id, kind and content; only {@code parent_node_id} (and, when
+     * the tip advances, the route tip) change, which makes the operation
+     * cleanly reversible (undo detaches).
+     */
+    @Transactional
+    public Node connectFloatingNodeToRoute(UUID projectId,
+                                           UUID routeId,
+                                           UUID nodeId,
+                                           UUID parentNodeId) {
+        projectRepository.lockById(projectId);
+        Route route = requireOpenRouteInProject(projectId, routeId);
+        nodeRepository.lockById(nodeId);
+        Node node = requireNodeInProject(projectId, nodeId);
+        if (node.isRetracted()) {
+            throw new IllegalStateException("Node is retracted and cannot be connected: " + nodeId);
+        }
+        if (node.parentNodeId() != null) {
+            throw new IllegalStateException(
+                    "Node already belongs to a lineage; disconnect it first: " + nodeId);
+        }
+        if (route.tipNodeId() == null) {
+            if (parentNodeId != null) {
+                throw new IllegalStateException(
+                        "Route has no content yet; connect the node as its root instead: " + routeId);
+            }
+        } else {
+            if (parentNodeId == null) {
+                throw new IllegalStateException(
+                        "Route already has content; connect at the current tip instead: " + routeId);
+            }
+            requireNodeInProject(projectId, parentNodeId);
+            if (!route.tipNodeId().equals(parentNodeId)) {
+                throw new GraphRuleViolationException("CONNECT_NOT_AT_TIP",
+                        "Nodes may only be connected at the current tip, never as a historical branch");
+            }
+            // The node being attached is a resource / knowledge node: it is
+            // not answerable, so it may hang off the current tip even when
+            // that tip is still unanswered. See the kind-aware overload.
+            invariantValidator.validateQuestionCanHaveChild(
+                    projectId, routeId, parentNodeId, node.kind());
+        }
+        UUID previousTipNodeId = route.tipNodeId();
+        Instant now = Instant.now();
+        nodeRepository.updateParent(nodeId, parentNodeId, now);
+        // Advance the tip through the SHARED kind-aware semantic (see
+        // NodeService.advanceRouteTip): a knowledge/resource node hung off an
+        // unanswered question stays below it as provenance — the question
+        // remains the tip and stays answerable. Advancing unconditionally here
+        // buried the pending question and dead-ended the route.
+        nodeService.advanceRouteTip(routeId, node);
+        refreshRouteAffectedSources(projectId, routeId);
+        boolean tipAdvanced = routeRepository.findById(routeId)
+                .map(r -> nodeId.equals(r.tipNodeId()))
+                .orElse(false);
+        operationRepository.append(projectId, GraphOperation.Actor.USER,
+                GraphOperation.Type.CONNECT_FLOATING_NODE, List.of(nodeId),
+                Map.of("routeId", routeId.toString(),
+                       "previousTipNodeId", previousTipNodeId == null ? "" : previousTipNodeId.toString(),
+                       "detached", true),
+                Map.of("routeId", routeId.toString(),
+                       "nodeId", nodeId.toString(),
+                       "parentId", parentNodeId == null ? "" : parentNodeId.toString(),
+                       "previousTipNodeId", previousTipNodeId == null ? "" : previousTipNodeId.toString(),
+                       "tipAdvanced", tipAdvanced));
+        return requireNodeInProject(projectId, nodeId);
+    }
+
+    /**
+     * Detaches a node from its route, restoring it to a floating node. Two
+     * detachable shapes exist: the current tip (the tip re-anchors at the
+     * node's parent), and a provenance child hung below the lineage by the
+     * kind-aware connect (its parent pointer alone is cleared — the tip is
+     * untouched). Either way the node must be a leaf: content is never
+     * destroyed, only its membership.
+     */
+    @Transactional
+    public Node detachNodeFromRoute(UUID projectId, UUID routeId, UUID nodeId) {
+        projectRepository.lockById(projectId);
+        Route route = requireOpenRouteInProject(projectId, routeId);
+        nodeRepository.lockById(nodeId);
+        Node node = requireNodeInProject(projectId, nodeId);
+        if (node.parentNodeId() == null) {
+            throw new IllegalStateException("Node is already floating: " + nodeId);
+        }
+        boolean isTip = route.tipNodeId() != null && route.tipNodeId().equals(nodeId);
+        if (!isTip) {
+            // Provenance child (knowledge/resource hung below the lineage by
+            // the kind-aware connect): detachable as long as nothing hangs off
+            // it. INTERACTION nodes are chain members by construction — a
+            // mid-chain question must never be detachable, that would rewrite
+            // answer history. The parent must still sit on this route's
+            // lineage, so a detach can never reach across routes.
+            if (node.kind() == NodeKind.INTERACTION) {
+                throw new GraphRuleViolationException("NODE_NOT_DETACHABLE",
+                        "Only the current tip can be detached: " + nodeId);
+            }
+            List<UUID> lineage = routeHistoryResolver.resolveLineage(route.tipNodeId());
+            if (!lineage.contains(node.parentNodeId())) {
+                throw new GraphRuleViolationException("NODE_NOT_DETACHABLE",
+                        "Only the current tip (or a node attached below the lineage) can be detached: "
+                                + nodeId);
+            }
+        }
+        if (nodeRepository.existsActiveByParentNodeId(nodeId)) {
+            throw new GraphRuleViolationException("NODE_NOT_DETACHABLE",
+                    "Node has live children and cannot be detached: " + nodeId);
+        }
+        UUID parentId = node.parentNodeId();
+        Instant now = Instant.now();
+        nodeRepository.updateParent(nodeId, null, now);
+        if (isTip) {
+            if (parentId == null) {
+                routeRepository.clearTipAndRoot(route.id(), now);
+            } else {
+                routeRepository.updateTipAndRoot(route.id(), parentId, route.rootNodeId(), now);
+            }
+        }
+        routeMembershipProjection.refreshNodeRouteProvenance(projectId, List.of(nodeId));
+        operationRepository.append(projectId, GraphOperation.Actor.USER,
+                GraphOperation.Type.DISCONNECT_NODE, List.of(nodeId),
+                Map.of("routeId", routeId.toString(),
+                       "previousTipNodeId", nodeId.toString(),
+                       "parentId", parentId.toString(),
+                       "tipDetached", isTip),
+                Map.of("routeId", routeId.toString(),
+                       "nodeId", nodeId.toString(),
+                       "detached", true,
+                       "tipDetached", isTip));
+        return requireNodeInProject(projectId, nodeId);
+    }
+
+    /** Result of a continuation command: the new node plus the route it landed on. */
+    public record ContinuationResult(Node node, Route route, boolean branched) {
+    }
+
+    /**
+     * Continues exploration from any node on an explicit route.
+     *
+     * <p>If the source is the route tip, the new node is appended and the tip
+     * advances. If the source is a historical (non-tip) node, an explicit
+     * branch route is created from that point — historical lineage is never
+     * rewritten and nothing is inserted between existing nodes. The effective
+     * answer prefix through the branch point is frozen as immutable inherited
+     * references, exactly like a fork.
+     */
+    @Transactional
+    public ContinuationResult appendContinuation(UUID projectId,
+                                                 UUID routeId,
+                                                 UUID sourceNodeId,
+                                                 String subtype,
+                                                 Map<String, Object> content) {
+        projectRepository.lockById(projectId);
+        Route route = requireOpenRouteInProject(projectId, routeId);
+        Node sourceNode = requireNodeInProject(projectId, sourceNodeId);
+        requireLineageContains(route, sourceNodeId);
+        invariantValidator.validateQuestionCanHaveChild(projectId, routeId, sourceNodeId);
+
+        if (route.tipNodeId().equals(sourceNodeId)) {
+            Node node = nodeService.createWorkspaceNode(
+                    projectId, routeId, sourceNodeId, NodeKind.KNOWLEDGE, subtype, content,
+                    NodeAuthorKind.USER, KnowledgeStatus.PROPOSED);
+            operationRepository.append(projectId, GraphOperation.Actor.USER,
+                    GraphOperation.Type.APPEND_CONTINUATION, List.of(node.id()),
+                    Map.of("routeId", routeId.toString(), "previousTipNodeId", sourceNodeId.toString()),
+                    Map.of("routeId", routeId.toString(),
+                           "nodeId", node.id().toString(),
+                           "parentId", sourceNodeId.toString(),
+                           "subtype", node.subtype()));
+            return new ContinuationResult(node, routeRepository.findById(routeId).orElse(route), false);
+        }
+
+        // Non-tip source: create an explicit branch route; never insert into history.
+        Instant now = Instant.now();
+        UUID branchRouteId = com.specagent.common.Ids.random();
+        invariantValidator.validateRouteProvenance(routeId);
+        Route branchRoute = new Route(branchRouteId, projectId, route.rootNodeId(), sourceNodeId,
+                RouteLifecycleStatus.OPEN, nextBranchLabel(projectId, "探索分支"),
+                sourceNodeId, null, null, null,
+                RouteBranchType.CONTINUATION, routeId, sourceNodeId, now, now);
+        routeRepository.save(branchRoute);
+        routeHistoryResolver.snapshotInheritedPrefix(branchRouteId, routeId, sourceNodeId, true);
+
+        Node node = nodeService.createWorkspaceNode(
+                projectId, branchRouteId, sourceNodeId, NodeKind.KNOWLEDGE, subtype, content,
+                NodeAuthorKind.USER, KnowledgeStatus.PROPOSED);
+        operationRepository.append(projectId, GraphOperation.Actor.USER,
+                GraphOperation.Type.CREATE_BRANCH_AND_APPEND, List.of(node.id()),
+                Map.of("sourceRouteId", routeId.toString(), "branchAtNodeId", sourceNodeId.toString()),
+                Map.of("routeId", branchRouteId.toString(),
+                       "sourceRouteId", routeId.toString(),
+                       "nodeId", node.id().toString(),
+                       "parentId", sourceNodeId.toString(),
+                       "subtype", node.subtype()));
+
+        // The user is now working on the branch; make it the active route.
+        routeService.setActiveRoute(projectId, branchRouteId);
+        return new ContinuationResult(node, routeRepository.findById(branchRouteId).orElse(branchRoute), true);
+    }
+
+    /**
+     * Attaches a resource node (FILE/URL/TEXT/...) authored by the user.
+     *
+     * <p>A resource may become the root of an empty route or be appended at
+     * the current tip — it never branches from a historical node and never
+     * carries knowledge-state semantics. Resources are context sources for
+     * capabilities (bounded excerpts with provenance), not confirmed claims.
+     */
+    @Transactional
+    public Node attachResource(UUID projectId,
+                               UUID routeId,
+                               UUID parentNodeId,
+                               String subtype,
+                               Map<String, Object> content) {
+        projectRepository.lockById(projectId);
+        Route route = requireOpenRouteInProject(projectId, routeId);
+        if (parentNodeId == null) {
+            if (route.tipNodeId() != null) {
+                throw new IllegalStateException(
+                        "Route already has content; attach the resource at the tip instead: " + routeId);
+            }
+        } else {
+            requireNodeInProject(projectId, parentNodeId);
+            if (!route.tipNodeId().equals(parentNodeId)) {
+                throw new IllegalStateException(
+                        "Resources may only be attached at the current tip, never as a historical branch");
+            }
+            // Same kind-aware rule as the hand-drawn connect path: a resource
+            // may hang off an unanswered question tip (it becomes provenance
+            // material for the pending question, never buries it).
+            invariantValidator.validateQuestionCanHaveChild(projectId, routeId, parentNodeId,
+                    NodeKind.RESOURCE);
+        }
+        Node node = nodeService.createWorkspaceNode(
+                projectId, routeId, parentNodeId, NodeKind.RESOURCE, subtype, content,
+                NodeAuthorKind.USER, null);
+        operationRepository.append(projectId, GraphOperation.Actor.USER,
+                GraphOperation.Type.ATTACH_RESOURCE, List.of(node.id()),
+                Map.of("routeId", routeId.toString(),
+                       "previousTipNodeId", parentNodeId == null ? "" : parentNodeId.toString()),
+                Map.of("routeId", routeId.toString(),
+                       "nodeId", node.id().toString(),
+                       "subtype", node.subtype(),
+                       "parentId", parentNodeId == null ? "" : parentNodeId.toString()));
+        return node;
+    }
+
+    /** Edits a still-editable user draft in place, logging the prior state. */
+    @Transactional
+    public Node reviseDraftNode(UUID projectId, UUID nodeId, String subtype, Map<String, Object> content) {
+        projectRepository.lockById(projectId);
+        Node before = requireNodeInProject(projectId, nodeId);
+        if (!before.isUserEditableDraft()) {
+            throw new IllegalStateException("Node is not an editable user draft: " + nodeId);
+        }
+        Node after = nodeService.reviseUserDraft(projectId, nodeId, subtype, content);
+        operationRepository.append(projectId, GraphOperation.Actor.USER,
+                GraphOperation.Type.EDIT_DRAFT_NODE, List.of(nodeId),
+                Map.of("subtype", before.subtype(), "content", before.content()),
+                Map.of("subtype", after.subtype(), "content", after.content()));
+        return after;
+    }
+
+    /**
+     * Creates a semantic relation. Origin records provenance: USER relations
+     * are explicit user operations; AGENT relations arrive here only after an
+     * accepted Advisor proposal ({@code createdByProposalId}).
+     *
+     * <p>Invariants: endpoints must be persisted non-retracted same-project
+     * nodes; symmetric types (RELATED_TO, CONFLICTS_WITH) canonicalize their
+     * endpoint order so both directions are the same fact; DEPENDS_ON and
+     * DERIVED_FROM jointly form an acyclic dependency DAG.
+     */
+    @Transactional
+    public NodeRelation createSemanticRelation(UUID projectId,
+                                               UUID sourceNodeId,
+                                               UUID targetNodeId,
+                                               NodeRelationType type,
+                                               NodeRelation.Origin origin,
+                                               UUID createdByProposalId,
+                                               UUID createdByRunId) {
+        // Serialize semantic-relation creation within this project: the cycle
+        // validation reads the project-wide active relation graph, so two
+        // concurrent transactions must not both decide against the same old
+        // graph (e.g. A DEPENDS_ON B racing B DEPENDS_ON A). Locking only the
+        // project row keeps concurrent unrelated projects independent.
+        projectRepository.lockById(projectId);
+        invariantValidator.validateRelationCreation(projectId, sourceNodeId, targetNodeId, type);
+        GraphInvariantValidator.CanonicalEndpoints endpoints =
+                GraphInvariantValidator.endpointsCanonicalized(sourceNodeId, targetNodeId, type);
+        NodeRelation relation = relationRepository.insertActiveOrThrowDuplicate(
+                projectId, endpoints.sourceNodeId(), endpoints.targetNodeId(), type, origin,
+                createdByProposalId, createdByRunId);
+        operationRepository.append(projectId,
+                origin == NodeRelation.Origin.USER ? GraphOperation.Actor.USER : GraphOperation.Actor.AGENT,
+                GraphOperation.Type.CREATE_SEMANTIC_RELATION, List.of(relation.id()),
+                Map.of(),
+                Map.of("relationId", relation.id().toString(),
+                       "sourceNodeId", endpoints.sourceNodeId().toString(),
+                       "targetNodeId", endpoints.targetNodeId().toString(),
+                       "relationType", type.code()));
+        return relation;
+    }
+
+    /** Applies an explicit knowledge-state transition (e.g. PROPOSED -> CONFIRMED). */
+    @Transactional
+    public Node setKnowledgeStatus(UUID projectId, UUID nodeId, KnowledgeStatus status) {
+        projectRepository.lockById(projectId);
+        Node before = requireNodeInProject(projectId, nodeId);
+        Node after = nodeService.setKnowledgeStatus(projectId, nodeId, status);
+        operationRepository.append(projectId, GraphOperation.Actor.USER,
+                GraphOperation.Type.SET_KNOWLEDGE_STATUS, List.of(nodeId),
+                Map.of("status", before.knowledgeStatus().code()),
+                Map.of("status", after.knowledgeStatus().code()));
+        return after;
+    }
+
+    /** Lists the typed operation log (for UI undo/redo affordances and audits). */
+    public List<GraphOperation> listOperations(UUID projectId) {
+        return operationRepository.findByProject(projectId);
+    }
+
+    /** Lists active semantic relations of the project. */
+    public List<NodeRelation> listRelations(UUID projectId) {
+        return relationRepository.findActiveByProject(projectId);
+    }
+
+    private Route requireOpenRouteInProject(UUID projectId, UUID routeId) {
+        Route route = routeRepository.findById(routeId)
+                .orElseThrow(() -> new IllegalArgumentException("Route not found: " + routeId));
+        if (!route.projectId().equals(projectId)) {
+            throw new IllegalArgumentException(
+                    "Route " + routeId + " does not belong to project " + projectId);
+        }
+        if (route.lifecycleStatus() != RouteLifecycleStatus.OPEN) {
+            throw new IllegalStateException("Route is not open: " + routeId);
+        }
+        return route;
+    }
+
+    private Node requireNodeInProject(UUID projectId, UUID nodeId) {
+        Node node = nodeRepository.findById(nodeId)
+                .orElseThrow(() -> new IllegalArgumentException("Node not found: " + nodeId));
+        if (!node.projectId().equals(projectId)) {
+            throw new IllegalArgumentException(
+                    "Node " + nodeId + " does not belong to project " + projectId);
+        }
+        return node;
+    }
+
+    private void requireLineageContains(Route route, UUID nodeId) {
+        if (!routeHistoryResolver.resolveLineage(route.tipNodeId()).contains(nodeId)) {
+            throw new IllegalArgumentException(
+                    "Node is not on the explicit source route: " + nodeId);
+        }
+    }
+
+    private void refreshRouteAffectedSources(UUID projectId, UUID routeId) {
+        Route route = routeRepository.findById(routeId)
+                .orElseThrow(() -> new IllegalStateException("Route missing after graph mutation: " + routeId));
+        List<UUID> lineageRoots = route.tipNodeId() == null
+                ? List.of()
+                : routeHistoryResolver.resolveLineage(route.tipNodeId());
+        routeMembershipProjection.refreshRouteAffectedSources(projectId, routeId, lineageRoots);
+    }
+
+    private String nextBranchLabel(UUID projectId, String prefix) {
+        long count = routeRepository.findByProject(projectId).stream()
+                .filter(route -> route.branchType() == RouteBranchType.CONTINUATION)
+                .count();
+        return prefix + " " + (count + 1);
+    }
+}

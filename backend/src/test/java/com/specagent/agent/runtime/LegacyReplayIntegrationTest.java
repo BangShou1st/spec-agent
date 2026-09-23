@@ -1,16 +1,16 @@
 package com.specagent.agent.runtime;
 
-import com.specagent.answer.AnswerService;
-import com.specagent.node.Node;
-import com.specagent.node.NodeService;
-import com.specagent.patch.AnswerPatchService;
-import com.specagent.patch.Claim;
-import com.specagent.patch.ClaimKind;
-import com.specagent.patch.ClaimStatus;
-import com.specagent.project.Project;
-import com.specagent.project.ProjectService;
-import com.specagent.route.Route;
-import com.specagent.route.RouteRepository;
+import com.specagent.workspace.answer.AnswerService;
+import com.specagent.workspace.node.Node;
+import com.specagent.workspace.node.NodeService;
+import com.specagent.workspace.patch.AnswerPatchService;
+import com.specagent.workspace.patch.Claim;
+import com.specagent.workspace.patch.ClaimKind;
+import com.specagent.workspace.patch.ClaimStatus;
+import com.specagent.workspace.project.Project;
+import com.specagent.workspace.project.ProjectService;
+import com.specagent.workspace.route.Route;
+import com.specagent.workspace.route.RouteRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -37,7 +37,7 @@ class LegacyReplayIntegrationTest {
     @Autowired private RouteRepository routeRepository;
     @Autowired private AnswerService answerService;
     @Autowired private AnswerPatchService answerPatchService;
-    @Autowired private com.specagent.context.ContextBuilder contextBuilder;
+    @Autowired private com.specagent.workspace.context.ContextBuilder contextBuilder;
     @Autowired private RunService runService;
     @Autowired private RunWorker worker;
     @Autowired private JdbcTemplate jdbcTemplate;
@@ -111,7 +111,7 @@ class LegacyReplayIntegrationTest {
 
     @Test
     void neverConsumedSnapshot_stillFirstFreezeNormally() {
-        var ctx = contextBuilder.buildFromActiveRoute(project.id(), UUID.randomUUID(), com.specagent.context.ContextOperationType.NORMAL);
+        var ctx = contextBuilder.buildFromActiveRoute(project.id(), UUID.randomUUID(), com.specagent.workspace.context.ContextOperationType.NORMAL);
         var snap = snapshotBuilder.build(ctx);
         assertThat(snap.snapshotId()).isEqualTo(ctx.id().toString());
         Integer rows = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM agent_input_projections WHERE snapshot_id = ?", Integer.class, ctx.id());

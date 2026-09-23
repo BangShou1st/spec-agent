@@ -1,7 +1,7 @@
 package com.specagent.connection;
 
 import com.specagent.common.network.OutboundNetworkPolicy;
-import com.specagent.mcp.config.McpProperties;
+import com.specagent.mcp.McpProperties;
 import com.specagent.mcp.transport.McpClientFactory;
 import com.specagent.mcp.transport.McpTransportException;
 import org.junit.jupiter.api.Test;

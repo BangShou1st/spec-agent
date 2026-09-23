@@ -2,8 +2,8 @@ package com.specagent.eval;
 
 import com.specagent.agent.decision.AgentDecisionEngine;
 import com.specagent.agent.decision.RemotePythonDecisionEngine;
-import com.specagent.model.inference.ModelInferenceGateway;
-import com.specagent.model.inference.OpenCodeModelInferenceGateway;
+import com.specagent.model.contract.ModelInferenceGateway;
+import com.specagent.model.provider.OpenCodeModelInferenceGateway;
 
 /**
  * Fail-fast identity guard for the B-live evaluation profile.

@@ -1,12 +1,12 @@
 package com.specagent.agent.snapshot;
 
-import com.specagent.agent.contract.AgentInputSnapshot;
-import com.specagent.context.ContextBuilder;
-import com.specagent.context.ContextSnapshot;
-import com.specagent.graph.GraphCommandService;
-import com.specagent.node.Node;
-import com.specagent.project.Project;
-import com.specagent.project.ProjectService;
+import com.specagent.agent.protocol.AgentInputSnapshot;
+import com.specagent.workspace.context.ContextBuilder;
+import com.specagent.workspace.context.ContextSnapshot;
+import com.specagent.workspace.graph.GraphCommandService;
+import com.specagent.workspace.node.Node;
+import com.specagent.workspace.project.Project;
+import com.specagent.workspace.project.ProjectService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;

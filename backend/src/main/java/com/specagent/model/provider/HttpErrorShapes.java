@@ -1,6 +1,6 @@
 package com.specagent.model.provider;
 
-import com.specagent.model.gateway.ModelGatewayErrorCategory;
+import com.specagent.model.contract.ModelGatewayErrorCategory;
 
 /** Shared HTTP status to neutral-category mapping. No provider names leak to Agent. */
 final class HttpErrorShapes {

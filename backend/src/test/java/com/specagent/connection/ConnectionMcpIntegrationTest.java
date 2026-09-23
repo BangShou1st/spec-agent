@@ -6,9 +6,9 @@ import com.specagent.capability.CapabilityQueryContext;
 import com.specagent.capability.CapabilityRegistry;
 import com.specagent.capability.CapabilityResult;
 import com.specagent.capability.SideEffectClass;
-import com.specagent.connection.domain.Connection;
-import com.specagent.connection.domain.ConnectionKind;
-import com.specagent.connection.service.ConnectionLifecycleService;
+import com.specagent.connection.Connection;
+import com.specagent.connection.ConnectionKind;
+import com.specagent.connection.ConnectionLifecycleService;
 import com.specagent.mcp.domain.McpDiscovery;
 import com.specagent.support.SdkFakeMcpServerConfig;
 import com.specagent.common.Ids;
@@ -223,7 +223,7 @@ class ConnectionMcpIntegrationTest {
                         + "/not-a-mcp-endpoint"), null);
 
         assertThatThrownBy(() -> lifecycleService.test(connection.id()))
-                .isInstanceOf(com.specagent.connection.service.ConnectionCommandException.class);
+                .isInstanceOf(com.specagent.connection.ConnectionCommandException.class);
         Connection failed = lifecycleService.findByRowId(connection.id()).orElseThrow();
         assertThat(failed.status().code()).isEqualTo("FAILED");
     }

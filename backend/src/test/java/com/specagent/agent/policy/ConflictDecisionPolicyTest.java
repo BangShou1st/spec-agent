@@ -1,10 +1,10 @@
 package com.specagent.agent.policy;
 
 import com.specagent.agent.action.ActionExecutionContext;
-import com.specagent.agent.contract.ActionProposal;
+import com.specagent.agent.protocol.ActionProposal;
 import com.specagent.capability.CapabilityRegistry;
-import com.specagent.route.Route;
-import com.specagent.route.RouteRepository;
+import com.specagent.workspace.route.Route;
+import com.specagent.workspace.route.RouteRepository;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -27,8 +27,8 @@ class ConflictDecisionPolicyTest {
     @Test
     void decisionNodeAtCurrentTipRequiresConfirmation() {
         RouteRepository routeRepository = mock(RouteRepository.class);
-        com.specagent.node.NodeRepository nodeRepository =
-                mock(com.specagent.node.NodeRepository.class);
+        com.specagent.workspace.node.NodeRepository nodeRepository =
+                mock(com.specagent.workspace.node.NodeRepository.class);
         AdvisorPolicyEngine engine = new AdvisorPolicyEngine(
                 routeRepository, new CapabilityRegistry(List.of()), nodeRepository);
 

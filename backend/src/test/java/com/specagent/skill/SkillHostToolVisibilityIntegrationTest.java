@@ -1,16 +1,16 @@
 package com.specagent.skill;
 
-import com.specagent.agent.contract.AgentInputSnapshot;
-import com.specagent.agent.contract.CapabilityDescriptor;
+import com.specagent.agent.protocol.AgentInputSnapshot;
+import com.specagent.agent.protocol.CapabilityDescriptor;
 import com.specagent.agent.snapshot.AgentInputSnapshotBuilder;
 import com.specagent.capability.ResourceExtractTextCapability;
-import com.specagent.context.ContextBuilder;
-import com.specagent.context.ContextOperationType;
-import com.specagent.context.ContextSnapshot;
-import com.specagent.node.Node;
-import com.specagent.node.NodeService;
-import com.specagent.project.Project;
-import com.specagent.project.ProjectService;
+import com.specagent.workspace.context.ContextBuilder;
+import com.specagent.workspace.context.ContextOperationType;
+import com.specagent.workspace.context.ContextSnapshot;
+import com.specagent.workspace.node.Node;
+import com.specagent.workspace.node.NodeService;
+import com.specagent.workspace.project.Project;
+import com.specagent.workspace.project.ProjectService;
 import com.specagent.skill.registry.SkillImportService;
 import org.apache.commons.compress.archivers.zip.ZipArchiveEntry;
 import org.apache.commons.compress.archivers.zip.ZipArchiveOutputStream;

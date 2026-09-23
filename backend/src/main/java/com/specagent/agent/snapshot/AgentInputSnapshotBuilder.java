@@ -1,37 +1,36 @@
 package com.specagent.agent.snapshot;
 
-import com.specagent.agent.contract.AgentContractException;
-import com.specagent.agent.contract.AgentContracts;
-import com.specagent.agent.contract.AgentInputSnapshot;
-import com.specagent.agent.contract.AgentEvent;
-import com.specagent.agent.contract.AgentProtocol;
-import com.specagent.agent.contract.AgentRequestEnvelope;
-import com.specagent.agent.contract.AnswerView;
-import com.specagent.agent.contract.AutonomyInputs;
-import com.specagent.agent.contract.AgentInputSnapshot;
-import com.specagent.agent.contract.AvailableSkillView;
-import com.specagent.agent.contract.SkillCatalogView;
-import com.specagent.agent.contract.CapabilityDescriptor;
-import com.specagent.agent.contract.CapabilityResultView;
-import com.specagent.agent.contract.ClaimView;
-import com.specagent.agent.contract.DecisionBudget;
-import com.specagent.agent.contract.LineageEntry;
-import com.specagent.agent.contract.NodeBodyView;
-import com.specagent.agent.contract.NodeView;
-import com.specagent.agent.contract.OptionView;
-import com.specagent.agent.contract.RelatedNodeRef;
-import com.specagent.agent.contract.RelationView;
-import com.specagent.agent.contract.PatchView;
-import com.specagent.agent.contract.RouteContextView;
-import com.specagent.agent.contract.SnapshotMetadata;
-import com.specagent.agent.contract.UserRequiredSkillView;
-import com.specagent.retrieval.api.RetrievedContextItem;
+import com.specagent.agent.protocol.AgentContractException;
+import com.specagent.agent.protocol.AgentContracts;
+import com.specagent.agent.protocol.AgentInputSnapshot;
+import com.specagent.agent.protocol.AgentEvent;
+import com.specagent.agent.protocol.AgentProtocol;
+import com.specagent.agent.protocol.AgentRequestEnvelope;
+import com.specagent.agent.protocol.AnswerView;
+import com.specagent.agent.protocol.AutonomyInputs;
+import com.specagent.agent.protocol.AgentInputSnapshot;
+import com.specagent.agent.protocol.AvailableSkillView;
+import com.specagent.agent.protocol.SkillCatalogView;
+import com.specagent.agent.protocol.CapabilityDescriptor;
+import com.specagent.agent.protocol.CapabilityResultView;
+import com.specagent.agent.protocol.ClaimView;
+import com.specagent.agent.protocol.DecisionBudget;
+import com.specagent.agent.protocol.LineageEntry;
+import com.specagent.agent.protocol.NodeBodyView;
+import com.specagent.agent.protocol.NodeView;
+import com.specagent.agent.protocol.OptionView;
+import com.specagent.agent.protocol.RelatedNodeRef;
+import com.specagent.agent.protocol.RelationView;
+import com.specagent.agent.protocol.PatchView;
+import com.specagent.agent.protocol.RouteContextView;
+import com.specagent.agent.protocol.SnapshotMetadata;
+import com.specagent.agent.protocol.UserRequiredSkillView;
+import com.specagent.retrieval.RetrievedContextItem;
 import com.specagent.retrieval.context.RetrievalContextService;
-import com.specagent.context.ContextRelation;
-import com.specagent.context.ContextOperationType;
-import com.specagent.agent.AgentRunRepository;
-import com.specagent.answer.Answer;
-import com.specagent.answer.AnswerRepository;
+import com.specagent.workspace.context.ContextRelation;
+import com.specagent.workspace.context.ContextOperationType;
+import com.specagent.workspace.answer.Answer;
+import com.specagent.workspace.answer.AnswerRepository;
 import com.specagent.capability.CapabilityInvocationRecord;
 import com.specagent.capability.CapabilityInvocationRepository;
 import com.specagent.capability.CapabilityQueryContext;
@@ -44,17 +43,17 @@ import com.specagent.skill.discovery.SkillHostToolVisibility;
 import com.specagent.skill.runtime.SkillSearchHostTool;
 import com.specagent.common.Hashes;
 import com.specagent.common.Json;
-import com.specagent.context.ContextSnapshot;
-import com.specagent.context.RequirementState;
-import com.specagent.context.RequirementStateBuilder;
-import com.specagent.node.Node;
-import com.specagent.node.NodeRepository;
-import com.specagent.patch.AnswerPatch;
-import com.specagent.patch.AnswerPatchRepository;
-import com.specagent.patch.Claim;
-import com.specagent.route.Route;
-import com.specagent.route.RouteHistoryResolver;
-import com.specagent.route.RouteRepository;
+import com.specagent.workspace.context.ContextSnapshot;
+import com.specagent.workspace.context.RequirementState;
+import com.specagent.workspace.context.RequirementStateBuilder;
+import com.specagent.workspace.node.Node;
+import com.specagent.workspace.node.NodeRepository;
+import com.specagent.workspace.patch.AnswerPatch;
+import com.specagent.workspace.patch.AnswerPatchRepository;
+import com.specagent.workspace.patch.Claim;
+import com.specagent.workspace.route.Route;
+import com.specagent.workspace.route.RouteHistoryResolver;
+import com.specagent.workspace.route.RouteRepository;
 import org.springframework.stereotype.Service;
 
 
@@ -122,7 +121,7 @@ public class AgentInputSnapshotBuilder {
     private final SkillDiscoveryService skillDiscoveryService;
     private final SkillHostToolVisibility skillHostToolVisibility;
     private final CapabilityInvocationRepository capabilityInvocationRepository;
-    private final AgentRunRepository agentRunRepository;
+    private final RunAttributionLookupPort runAttributionLookup;
     private final AgentInputProjectionRepository projectionRepository;
     private final MutableSourceFingerprinter fingerprinter;
     private final Json json;
@@ -140,7 +139,7 @@ public class AgentInputSnapshotBuilder {
                                      SkillDiscoveryService skillDiscoveryService,
                                      SkillHostToolVisibility skillHostToolVisibility,
                                      CapabilityInvocationRepository capabilityInvocationRepository,
-                                     AgentRunRepository agentRunRepository,
+                                     RunAttributionLookupPort runAttributionLookup,
                                      AgentInputProjectionRepository projectionRepository,
                                      MutableSourceFingerprinter fingerprinter,
                                      Json json,
@@ -157,7 +156,7 @@ public class AgentInputSnapshotBuilder {
         this.skillDiscoveryService = skillDiscoveryService;
         this.skillHostToolVisibility = skillHostToolVisibility;
         this.capabilityInvocationRepository = capabilityInvocationRepository;
-        this.agentRunRepository = agentRunRepository;
+        this.runAttributionLookup = runAttributionLookup;
         this.projectionRepository = projectionRepository;
         this.fingerprinter = fingerprinter;
         this.json = json;
@@ -695,10 +694,7 @@ public class AgentInputSnapshotBuilder {
     }
 
     private CapabilityObservationVisibility.RunAttribution loadRunAttribution(UUID runId) {
-        return agentRunRepository.findById(runId)
-                .map(run -> new CapabilityObservationVisibility.RunAttribution(
-                        run.routeId(), run.inputNodeId()))
-                .orElse(null);
+        return runAttributionLookup.attributionOf(runId).orElse(null);
     }
 
     @SuppressWarnings("unchecked")

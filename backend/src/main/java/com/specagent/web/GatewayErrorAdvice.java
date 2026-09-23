@@ -1,8 +1,8 @@
 package com.specagent.web;
 
 import com.specagent.common.ApiErrorResponse;
-import com.specagent.model.gateway.ModelGatewayErrorCategory;
-import com.specagent.model.gateway.ModelGatewayException;
+import com.specagent.model.contract.ModelGatewayErrorCategory;
+import com.specagent.model.contract.ModelGatewayException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.Ordered;

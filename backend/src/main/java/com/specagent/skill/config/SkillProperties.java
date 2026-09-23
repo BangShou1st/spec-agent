@@ -1,6 +1,5 @@
 package com.specagent.skill.config;
 
-import com.specagent.skill.importing.GitTransportProxy;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
@@ -41,7 +40,10 @@ public class SkillProperties {
      * does not inherit the OS/browser proxy on its own, which is why a clone can
      * fail even when the browser reaches the same host.
      */
-    private String gitProxy = GitTransportProxy.MODE_AUTO;
+    /** Default outbound git route value; resolution semantics live in importing.GitTransportProxy. */
+    public static final String GIT_PROXY_MODE_AUTO = "AUTO";
+
+    private String gitProxy = GIT_PROXY_MODE_AUTO;
 
     // ---- local mirror ---------------------------------------------------
     /**

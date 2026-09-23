@@ -1,19 +1,19 @@
 package com.specagent.capability;
 
-import com.specagent.agent.contract.AgentInputSnapshot;
+import com.specagent.agent.protocol.AgentInputSnapshot;
 import com.specagent.agent.runtime.RunService;
 import com.specagent.agent.runtime.RunWorker;
 import com.specagent.agent.snapshot.AgentInputSnapshotBuilder;
-import com.specagent.context.ContextBuilder;
-import com.specagent.context.ContextOperationType;
-import com.specagent.context.ContextSnapshot;
-import com.specagent.graph.GraphCommandService;
-import com.specagent.node.Node;
-import com.specagent.node.NodeService;
-import com.specagent.project.Project;
-import com.specagent.project.ProjectService;
-import com.specagent.route.Route;
-import com.specagent.route.RouteRepository;
+import com.specagent.workspace.context.ContextBuilder;
+import com.specagent.workspace.context.ContextOperationType;
+import com.specagent.workspace.context.ContextSnapshot;
+import com.specagent.workspace.graph.GraphCommandService;
+import com.specagent.workspace.node.Node;
+import com.specagent.workspace.node.NodeService;
+import com.specagent.workspace.project.Project;
+import com.specagent.workspace.project.ProjectService;
+import com.specagent.workspace.route.Route;
+import com.specagent.workspace.route.RouteRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -122,7 +122,7 @@ class CapabilityIntegrationTest {
                 project.id(), UUID.randomUUID(), ContextOperationType.NORMAL);
         AgentInputSnapshot snapshotWithResource = snapshotBuilder.build(withResource);
         assertThat(snapshotWithResource.availableCapabilities())
-                .extracting(com.specagent.agent.contract.CapabilityDescriptor::id)
+                .extracting(com.specagent.agent.protocol.CapabilityDescriptor::id)
                 .contains(ResourceExtractTextCapability.CAPABILITY_ID);
 
         // A project without RESOURCE nodes still sees the workspace-level
@@ -133,7 +133,7 @@ class CapabilityIntegrationTest {
                 plain.id(), UUID.randomUUID(), ContextOperationType.NORMAL);
         AgentInputSnapshot snapshotWithout = snapshotBuilder.build(withoutResource);
         assertThat(snapshotWithout.availableCapabilities())
-                .extracting(com.specagent.agent.contract.CapabilityDescriptor::id)
+                .extracting(com.specagent.agent.protocol.CapabilityDescriptor::id)
                 .contains(com.specagent.capability.MemorySearchCapability.CAPABILITY_ID)
                 .doesNotContain(ResourceExtractTextCapability.CAPABILITY_ID);
     }

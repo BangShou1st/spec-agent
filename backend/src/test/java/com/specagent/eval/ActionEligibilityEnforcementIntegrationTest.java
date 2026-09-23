@@ -1,6 +1,6 @@
 package com.specagent.eval;
 
-import com.specagent.agent.contract.AgentEvent;
+import com.specagent.agent.protocol.AgentEvent;
 import org.springframework.test.context.TestPropertySource;
 import org.junit.jupiter.api.Test;
 

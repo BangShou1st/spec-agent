@@ -1,6 +1,6 @@
 package com.specagent.agent.snapshot;
 
-import com.specagent.node.Node;
+import com.specagent.workspace.node.Node;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;

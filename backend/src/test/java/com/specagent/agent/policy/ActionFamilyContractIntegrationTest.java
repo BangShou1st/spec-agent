@@ -1,20 +1,22 @@
 package com.specagent.agent.policy;
 
+import com.specagent.agent.runtime.ProposalAcceptanceService;
+
 import com.specagent.agent.action.ActionExecutionContext;
-import com.specagent.agent.contract.ActionFamily;
-import com.specagent.agent.contract.ActionProposal;
+import com.specagent.agent.protocol.ActionFamily;
+import com.specagent.agent.protocol.ActionProposal;
 import com.specagent.capability.CapabilityAdapter;
 import com.specagent.capability.CapabilityDescriptor;
 import com.specagent.capability.CapabilityInvocation;
 import com.specagent.capability.CapabilityResult;
 import com.specagent.capability.SideEffectClass;
-import com.specagent.graph.GraphCommandService;
-import com.specagent.graph.GraphOperation;
-import com.specagent.node.Node;
-import com.specagent.project.Project;
-import com.specagent.project.ProjectService;
-import com.specagent.route.Route;
-import com.specagent.route.RouteRepository;
+import com.specagent.workspace.graph.GraphCommandService;
+import com.specagent.workspace.graph.GraphOperation;
+import com.specagent.workspace.node.Node;
+import com.specagent.workspace.project.Project;
+import com.specagent.workspace.project.ProjectService;
+import com.specagent.workspace.route.Route;
+import com.specagent.workspace.route.RouteRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -72,7 +74,7 @@ class ActionFamilyContractIntegrationTest {
     @Autowired private AgentProposalService proposalService;
     @Autowired private ProposalAcceptanceService acceptanceService;
     @Autowired private RouteRepository routeRepository;
-    @Autowired private com.specagent.node.NodeService nodeService;
+    @Autowired private com.specagent.workspace.node.NodeService nodeService;
 
     private Project project;
     private Route route;

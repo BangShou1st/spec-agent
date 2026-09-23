@@ -1,0 +1,109 @@
+package com.specagent.agent.runtime;
+
+import com.specagent.agent.protocol.AgentEvent;
+import com.specagent.common.Hashes;
+
+import java.util.List;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+/**
+ * Stable logical identity for a client-driven agent-run create request.
+ *
+ * <p>The fingerprint contains only client-stable request fields. Resolved
+ * runtime state such as the current active route or current route tip is
+ * deliberately excluded: an idempotent retry must still replay the original
+ * run after that run has already advanced or switched graph state.
+ *
+ * <p>The field order is fixed and each value is length-delimited, so null,
+ * empty, whitespace, UUID and text values cannot become ambiguous. The hash
+ * intentionally excludes runtime-generated values such as run ids and
+ * timestamps.
+ */
+public final class AgentRunRequestFingerprint {
+
+    private AgentRunRequestFingerprint() {
+    }
+
+    public static String forClientRequest(UUID projectId,
+                                          String operation,
+                                          UUID nodeId,
+                                          UUID sourceRouteId,
+                                          UUID answerId,
+                                          UUID selectedOptionId,
+                                          String freeText) {
+        return forClientRequest(projectId, operation, nodeId, sourceRouteId, answerId,
+                selectedOptionId, freeText, null);
+    }
+
+    public static String forClientRequest(UUID projectId,
+                                          String operation,
+                                          UUID nodeId,
+                                          UUID sourceRouteId,
+                                          UUID answerId,
+                                          UUID selectedOptionId,
+                                          String freeText,
+                                          AgentEvent.PersistenceIntent persistenceIntent) {
+        return forClientRequest(projectId, operation, nodeId, sourceRouteId, answerId,
+                selectedOptionId,
+                selectedOptionId == null ? null : List.of(selectedOptionId),
+                freeText, persistenceIntent);
+    }
+
+    /**
+     * Multi-select variant: the FULL option selection (user order) is part of
+     * the logical request identity; the single-id overload above delegates with
+     * a one-element list, producing the same fingerprint as this method for
+     * single-select answers.
+     */
+    public static String forClientRequest(UUID projectId,
+                                          String operation,
+                                          UUID nodeId,
+                                          UUID sourceRouteId,
+                                          UUID answerId,
+                                          UUID selectedOptionId,
+                                          List<UUID> selectedOptionIds,
+                                          String freeText,
+                                          AgentEvent.PersistenceIntent persistenceIntent) {
+        String optionsField = selectedOptionIds == null ? null
+                : selectedOptionIds.stream().map(UUID::toString).collect(Collectors.joining(","));
+        String canonical = String.join("|",
+                field("projectId", projectId),
+                field("operation", operation),
+                field("nodeId", nodeId),
+                field("sourceRouteId", sourceRouteId),
+                field("answerId", answerId),
+                field("selectedOptionId", selectedOptionId),
+                field("selectedOptionIds", optionsField),
+                field("freeText", freeText),
+                field("persistenceIntent", persistenceIntent));
+        return Hashes.sha256Hex(canonical);
+    }
+
+    /**
+     * Stable logical identity for a runtime-created continuation child: the
+     * child slot of one parent at one cycle depth. Only loop identity
+     * enters the hash — never semantic fields such as conflicts, goals, or
+     * planning flags. Combined with the project-scoped idempotency unique
+     * index, a repeated terminal callback for the same parent resolves to
+     * the one persisted child instead of creating a second run.
+     */
+    public static String forContinuation(UUID projectId,
+                                         UUID parentRunId,
+                                         int cycleIndex) {
+        String canonical = String.join("|",
+                field("projectId", projectId),
+                field("operation", "CONTINUE"),
+                field("parentRunId", parentRunId),
+                field("cycleIndex", cycleIndex));
+        return Hashes.sha256Hex(canonical);
+    }
+
+    private static String field(String name, Object value) {
+        if (value == null) {
+            return name + ":null";
+        }
+        String text = value.toString();
+        return name + ":" + text.length() + ":" + text;
+    }
+}

@@ -1,11 +1,17 @@
 package com.specagent.agent;
 
-import com.specagent.agent.contract.AgentRequestEnvelope;
+import com.specagent.agent.runtime.AgentRunStatus;
+
+import com.specagent.agent.AgentRunTraceSafetyTest;
+import com.specagent.agent.runtime.AgentRun;
+import com.specagent.agent.runtime.AgentRunService;
+
+import com.specagent.agent.protocol.AgentRequestEnvelope;
 import com.specagent.agent.decision.AgentDecisionEngine;
 import com.specagent.model.provider.OpenCodeModelErrorCategory;
 import com.specagent.model.provider.OpenCodeModelException;
-import com.specagent.project.Project;
-import com.specagent.project.ProjectService;
+import com.specagent.workspace.project.Project;
+import com.specagent.workspace.project.ProjectService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;

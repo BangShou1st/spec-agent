@@ -1,29 +1,29 @@
 package com.specagent.agent.snapshot;
 
-import com.specagent.agent.contract.AgentContracts;
-import com.specagent.agent.contract.AgentInputSnapshot;
+import com.specagent.agent.protocol.AgentContracts;
+import com.specagent.agent.protocol.AgentInputSnapshot;
 import com.specagent.capability.CapabilityAdapter;
 import com.specagent.capability.CapabilityDescriptor;
 import com.specagent.capability.CapabilityInvocation;
 import com.specagent.capability.CapabilityResult;
 import com.specagent.capability.CapabilityRuntime;
 import com.specagent.capability.SideEffectClass;
-import com.specagent.answer.AnswerService;
+import com.specagent.workspace.answer.AnswerService;
 import com.specagent.common.Hashes;
-import com.specagent.context.ContextBuilder;
-import com.specagent.context.ContextOperationType;
-import com.specagent.context.ContextSnapshot;
-import com.specagent.graph.GraphCommandService;
-import com.specagent.graph.NodeRelation;
-import com.specagent.graph.NodeRelationType;
-import com.specagent.node.Node;
-import com.specagent.patch.AnswerPatchService;
-import com.specagent.patch.Claim;
-import com.specagent.patch.ClaimKind;
-import com.specagent.patch.ClaimStatus;
-import com.specagent.project.Project;
-import com.specagent.project.ProjectService;
-import com.specagent.route.RouteRepository;
+import com.specagent.workspace.context.ContextBuilder;
+import com.specagent.workspace.context.ContextOperationType;
+import com.specagent.workspace.context.ContextSnapshot;
+import com.specagent.workspace.graph.GraphCommandService;
+import com.specagent.workspace.graph.NodeRelation;
+import com.specagent.workspace.graph.NodeRelationType;
+import com.specagent.workspace.node.Node;
+import com.specagent.workspace.patch.AnswerPatchService;
+import com.specagent.workspace.patch.Claim;
+import com.specagent.workspace.patch.ClaimKind;
+import com.specagent.workspace.patch.ClaimStatus;
+import com.specagent.workspace.project.Project;
+import com.specagent.workspace.project.ProjectService;
+import com.specagent.workspace.route.RouteRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -115,7 +115,7 @@ class AgentInputFrozenProjectionIntegrationTest {
     @Autowired private RouteRepository routeRepository;
     @Autowired private AnswerService answerService;
     @Autowired private AnswerPatchService answerPatchService;
-    @Autowired private com.specagent.node.NodeService nodeService;
+    @Autowired private com.specagent.workspace.node.NodeService nodeService;
 
     /**
      * T4 — post-STATE_UPDATE distinct freeze: the pre-answer snapshot X and
@@ -140,7 +140,7 @@ class AgentInputFrozenProjectionIntegrationTest {
         // STATE_UPDATE checkpoint: persist the immutable answer and its patch,
         // including an unresolved conflict claim exactly as Conflict
         // Intelligence produces them.
-        com.specagent.answer.Answer answer = answerService.finalizeAnswer(
+        com.specagent.workspace.answer.Answer answer = answerService.finalizeAnswer(
                 project.id(), routeId, question.id(), null, "A 目标优先于 B", "user");
         Claim conflict = Claim.of(ClaimKind.CONFLICT, "A 与 B 在同一时间窗内不能同时成立",
                 ClaimStatus.UNRESOLVED, question.id(), answer.id());

@@ -1,9 +1,9 @@
 package com.specagent.model.provider;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.specagent.model.inference.ModelInferenceMessage;
-import com.specagent.model.inference.ModelInferenceRequest;
-import com.specagent.model.inference.ModelOutputContract;
+import com.specagent.model.contract.ModelInferenceMessage;
+import com.specagent.model.contract.ModelInferenceRequest;
+import com.specagent.model.contract.ModelOutputContract;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;

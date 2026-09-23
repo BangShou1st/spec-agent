@@ -1,9 +1,9 @@
 package com.specagent.mcp;
 
-import com.specagent.connection.domain.Connection;
-import com.specagent.connection.domain.ConnectionKind;
-import com.specagent.connection.domain.ConnectionStatus;
-import com.specagent.connection.persistence.ConnectionMcpConnectionLookup;
+import com.specagent.connection.Connection;
+import com.specagent.connection.ConnectionKind;
+import com.specagent.connection.ConnectionStatus;
+import com.specagent.connection.ConnectionMcpConnectionLookup;
 import com.specagent.mcp.domain.McpDiscovery;
 import com.specagent.mcp.domain.McpPrompt;
 import com.specagent.mcp.domain.McpResource;

@@ -1,6 +1,6 @@
 package com.specagent.eval;
 
-import com.specagent.agent.contract.AgentEvent;
+import com.specagent.agent.protocol.AgentEvent;
 
 import java.util.List;
 import java.util.Map;

@@ -1,8 +1,8 @@
 package com.specagent.testing;
 
-import com.specagent.model.inference.ModelInferenceGateway;
-import com.specagent.model.inference.ModelInferenceRequest;
-import com.specagent.model.inference.ModelInferenceResponse;
+import com.specagent.model.contract.ModelInferenceGateway;
+import com.specagent.model.contract.ModelInferenceRequest;
+import com.specagent.model.contract.ModelInferenceResponse;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;

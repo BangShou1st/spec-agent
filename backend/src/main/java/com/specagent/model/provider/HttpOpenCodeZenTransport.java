@@ -1,5 +1,8 @@
 package com.specagent.model.provider;
 
+import com.specagent.model.contract.FragmentListener;
+import com.specagent.model.contract.StreamCancelledException;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.specagent.common.Hashes;

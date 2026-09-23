@@ -1,21 +1,21 @@
 package com.specagent.agent.runtime;
 
-import com.specagent.agent.AgentRun;
-import com.specagent.agent.contract.AgentEvent;
-import com.specagent.agent.AgentRunRepository;
-import com.specagent.agent.AgentRunRequestFingerprint;
-import com.specagent.agent.AgentRunService;
-import com.specagent.agent.AgentRunTriggerType;
-import com.specagent.agent.loop.LoopLinkage;
+import com.specagent.agent.runtime.AgentRun;
+import com.specagent.agent.protocol.AgentEvent;
+import com.specagent.agent.runtime.AgentRunRepository;
+import com.specagent.agent.runtime.AgentRunRequestFingerprint;
+import com.specagent.agent.runtime.AgentRunService;
+import com.specagent.agent.runtime.AgentRunTriggerType;
+import com.specagent.agent.runtime.LoopLinkage;
 import com.specagent.agent.runevent.AgentRunEventService;
 import com.specagent.agent.runevent.AgentRunPhase;
-import com.specagent.node.Node;
-import com.specagent.node.NodeRepository;
-import com.specagent.project.Project;
-import com.specagent.project.ProjectRepository;
-import com.specagent.route.Route;
-import com.specagent.route.RouteLifecycleStatus;
-import com.specagent.route.RouteRepository;
+import com.specagent.workspace.node.Node;
+import com.specagent.workspace.node.NodeRepository;
+import com.specagent.workspace.project.Project;
+import com.specagent.workspace.project.ProjectRepository;
+import com.specagent.workspace.route.Route;
+import com.specagent.workspace.route.RouteLifecycleStatus;
+import com.specagent.workspace.route.RouteRepository;
 import org.springframework.stereotype.Service;
 
 import java.util.LinkedHashMap;

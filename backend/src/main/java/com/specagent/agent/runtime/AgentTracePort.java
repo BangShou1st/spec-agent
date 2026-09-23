@@ -1,9 +1,9 @@
 package com.specagent.agent.runtime;
 
-import com.specagent.agent.contract.AgentInputSnapshot;
-import com.specagent.agent.contract.AgentRequestEnvelope;
-import com.specagent.agent.contract.AgentResponseEnvelope;
-import com.specagent.agent.eligibility.ActionEligibilityGate;
+import com.specagent.agent.protocol.AgentInputSnapshot;
+import com.specagent.agent.protocol.AgentRequestEnvelope;
+import com.specagent.agent.protocol.AgentResponseEnvelope;
+import com.specagent.agent.action.ActionEligibilityGate;
 import com.specagent.agent.policy.PolicyDecision;
 import java.util.UUID;
 

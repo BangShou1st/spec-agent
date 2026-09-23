@@ -1,39 +1,39 @@
 package com.specagent.agent.runtime;
 
-import com.specagent.agent.AgentRun;
-import com.specagent.agent.AgentRunFailureService;
-import com.specagent.agent.AgentRunService;
-import com.specagent.agent.AgentRunStatus;
-import com.specagent.agent.ModelContractException;
-import com.specagent.agent.contract.AgentArtifactResponse;
-import com.specagent.agent.contract.AgentEvent;
-import com.specagent.agent.contract.AgentRequestEnvelope;
-import com.specagent.agent.contract.DecisionBudget;
+import com.specagent.agent.runtime.AgentRun;
+import com.specagent.agent.runtime.AgentRunFailureService;
+import com.specagent.agent.runtime.AgentRunService;
+import com.specagent.agent.runtime.AgentRunStatus;
+import com.specagent.agent.protocol.ModelContractException;
+import com.specagent.agent.protocol.AgentArtifactResponse;
+import com.specagent.agent.protocol.AgentEvent;
+import com.specagent.agent.protocol.AgentRequestEnvelope;
+import com.specagent.agent.protocol.DecisionBudget;
 import com.specagent.agent.decision.AgentDecisionEngine;
-import com.specagent.agent.gates.ContextGuard;
-import com.specagent.agent.contracts.ReflectionResult;
-import com.specagent.agent.contracts.SpecDraft;
-import com.specagent.agent.gates.SpecGroundingGate;
-import com.specagent.agent.gates.SpecSourceReferenceGuard;
+import com.specagent.agent.decision.ContextGuard;
+import com.specagent.agent.decision.ReflectionResult;
+import com.specagent.agent.decision.SpecDraft;
+import com.specagent.agent.decision.SpecGroundingGate;
+import com.specagent.agent.decision.SpecSourceReferenceGuard;
 import com.specagent.agent.runevent.AgentRunEventService;
 import com.specagent.agent.runevent.AgentRunPhase;
 import com.specagent.agent.runevent.RunProgressRecorder;
 import com.specagent.agent.snapshot.AgentInputSnapshotBuilder;
-import com.specagent.answer.Answer;
-import com.specagent.answer.AnswerService;
-import com.specagent.context.ContextBuilder;
-import com.specagent.context.ContextOperationType;
-import com.specagent.context.ContextSnapshot;
-import com.specagent.patch.AnswerPatchService;
-import com.specagent.project.ProjectRepository;
-import com.specagent.route.Route;
-import com.specagent.route.RouteRepository;
-import com.specagent.spec.SourceKind;
-import com.specagent.spec.SourceReference;
-import com.specagent.spec.SpecSection;
-import com.specagent.spec.SpecSnapshot;
-import com.specagent.spec.SpecSnapshotService;
-import com.specagent.spec.UnresolvedItem;
+import com.specagent.workspace.answer.Answer;
+import com.specagent.workspace.answer.AnswerService;
+import com.specagent.workspace.context.ContextBuilder;
+import com.specagent.workspace.context.ContextOperationType;
+import com.specagent.workspace.context.ContextSnapshot;
+import com.specagent.workspace.patch.AnswerPatchService;
+import com.specagent.workspace.project.ProjectRepository;
+import com.specagent.workspace.route.Route;
+import com.specagent.workspace.route.RouteRepository;
+import com.specagent.workspace.spec.SourceKind;
+import com.specagent.workspace.spec.SourceReference;
+import com.specagent.workspace.spec.SpecSection;
+import com.specagent.workspace.spec.SpecSnapshot;
+import com.specagent.workspace.spec.SpecSnapshotService;
+import com.specagent.workspace.spec.UnresolvedItem;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -70,7 +70,7 @@ public class ArtifactCycleService {
     private final SpecSnapshotService specSnapshotService;
     private final AgentRunEventService eventService;
     private final RouteRepository routeRepository;
-    private final com.specagent.project.ProjectRepository projectRepository;
+    private final com.specagent.workspace.project.ProjectRepository projectRepository;
     private final RunProgressRecorder progressRecorder;
     private final AnswerService answerService;
     private final AnswerProcessingGate answerProcessingGate;
@@ -86,7 +86,7 @@ public class ArtifactCycleService {
                                 SpecSnapshotService specSnapshotService,
                                 AgentRunEventService eventService,
                                 RouteRepository routeRepository,
-                                com.specagent.project.ProjectRepository projectRepository,
+                                com.specagent.workspace.project.ProjectRepository projectRepository,
                                 RunProgressRecorder progressRecorder,
                                 AnswerService answerService,
                                 AnswerProcessingGate answerProcessingGate) {
@@ -132,12 +132,12 @@ public class ArtifactCycleService {
             throw new StaleRunTargetException(
                     "Run target route has no tip node: " + route.id());
         }
-        if (!route.lifecycleStatus().equals(com.specagent.route.RouteLifecycleStatus.OPEN)) {
+        if (!route.lifecycleStatus().equals(com.specagent.workspace.route.RouteLifecycleStatus.OPEN)) {
             throw new StaleRunTargetException(
                     "Run target route is no longer OPEN: " + route.id());
         }
 
-        com.specagent.project.Project project = projectRepository.findById(run.projectId())
+        com.specagent.workspace.project.Project project = projectRepository.findById(run.projectId())
                 .orElseThrow(() -> new IllegalStateException(
                         "Project not found: " + run.projectId()));
         boolean explicitRoute = isExplicitRouteRun(run);

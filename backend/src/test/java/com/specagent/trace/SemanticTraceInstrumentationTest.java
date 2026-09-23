@@ -1,10 +1,10 @@
 package com.specagent.trace;
 
-import com.specagent.agent.contract.AgentContracts;
-import com.specagent.agent.contract.AgentEvent;
-import com.specagent.agent.contract.AgentRequestEnvelope;
-import com.specagent.agent.contract.AgentResponseEnvelope;
-import com.specagent.agent.eligibility.ActionEligibilityGate;
+import com.specagent.agent.protocol.AgentContracts;
+import com.specagent.agent.protocol.AgentEvent;
+import com.specagent.agent.protocol.AgentRequestEnvelope;
+import com.specagent.agent.protocol.AgentResponseEnvelope;
+import com.specagent.agent.action.ActionEligibilityGate;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;

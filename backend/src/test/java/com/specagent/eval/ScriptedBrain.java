@@ -1,14 +1,14 @@
 package com.specagent.eval;
 
-import com.specagent.agent.contract.AgentProtocol;
-import com.specagent.agent.contract.AgentContracts;
-import com.specagent.agent.contract.AgentRequestEnvelope;
-import com.specagent.agent.contract.AgentResponseEnvelope;
-import com.specagent.agent.contract.ActionProposal;
-import com.specagent.agent.contract.ObservationView;
-import com.specagent.agent.contract.ProposedClaim;
-import com.specagent.agent.contract.StateUpdateResult;
-import com.specagent.agent.contract.UsageView;
+import com.specagent.agent.protocol.AgentProtocol;
+import com.specagent.agent.protocol.AgentContracts;
+import com.specagent.agent.protocol.AgentRequestEnvelope;
+import com.specagent.agent.protocol.AgentResponseEnvelope;
+import com.specagent.agent.protocol.ActionProposal;
+import com.specagent.agent.protocol.ObservationView;
+import com.specagent.agent.protocol.ProposedClaim;
+import com.specagent.agent.protocol.StateUpdateResult;
+import com.specagent.agent.protocol.UsageView;
 import com.specagent.agent.decision.AgentBrainUnavailableException;
 import com.specagent.agent.decision.AgentDecisionEngine;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -221,7 +221,7 @@ public class ScriptedBrain implements AgentDecisionEngine, BrainScriptInstaller 
     }
 
     @Override
-    public com.specagent.agent.contract.AgentArtifactResponse runArtifactGeneration(
+    public com.specagent.agent.protocol.AgentArtifactResponse runArtifactGeneration(
             AgentRequestEnvelope request) {
         throw new UnsupportedOperationException("eval brain does not script artifact generation");
     }

@@ -1,6 +1,6 @@
 package com.specagent.agent.action;
 
-import com.specagent.agent.contract.ActionProposal;
+import com.specagent.agent.protocol.ActionProposal;
 
 /**
  * Executor port for applying validated action proposals to the graph.

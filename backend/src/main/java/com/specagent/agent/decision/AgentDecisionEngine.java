@@ -1,8 +1,8 @@
 package com.specagent.agent.decision;
 
-import com.specagent.agent.contract.AgentArtifactResponse;
-import com.specagent.agent.contract.AgentRequestEnvelope;
-import com.specagent.agent.contract.AgentResponseEnvelope;
+import com.specagent.agent.protocol.AgentArtifactResponse;
+import com.specagent.agent.protocol.AgentRequestEnvelope;
+import com.specagent.agent.protocol.AgentResponseEnvelope;
 
 /**
  * The decision engine port. One call represents one complete brain

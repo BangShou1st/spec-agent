@@ -1,27 +1,27 @@
 package com.specagent.agent.runtime;
 
-import com.specagent.agent.AgentRun;
-import com.specagent.agent.AgentRunService;
-import com.specagent.agent.AgentRunStatus;
+import com.specagent.agent.runtime.AgentRun;
+import com.specagent.agent.runtime.AgentRunService;
+import com.specagent.agent.runtime.AgentRunStatus;
 import com.specagent.agent.runevent.AgentRunEventService;
-import com.specagent.agent.contract.AgentInputSnapshot;
-import com.specagent.agent.contract.RelationView;
+import com.specagent.agent.protocol.AgentInputSnapshot;
+import com.specagent.agent.protocol.RelationView;
 import com.specagent.agent.snapshot.AgentInputSnapshotBuilder;
 import com.specagent.common.Ids;
-import com.specagent.context.ContextBuilder;
-import com.specagent.context.ContextRelation;
-import com.specagent.context.ContextSnapshot;
-import com.specagent.graph.GraphCommandService;
-import com.specagent.graph.NodeRelation;
-import com.specagent.graph.NodeRelationRepository;
-import com.specagent.graph.NodeRelationType;
-import com.specagent.node.Node;
-import com.specagent.node.NodeAuthorKind;
-import com.specagent.node.NodeKind;
-import com.specagent.node.NodeService;
-import com.specagent.project.Project;
-import com.specagent.project.ProjectService;
-import com.specagent.route.RouteRepository;
+import com.specagent.workspace.context.ContextBuilder;
+import com.specagent.workspace.context.ContextRelation;
+import com.specagent.workspace.context.ContextSnapshot;
+import com.specagent.workspace.graph.GraphCommandService;
+import com.specagent.workspace.graph.NodeRelation;
+import com.specagent.workspace.graph.NodeRelationRepository;
+import com.specagent.workspace.graph.NodeRelationType;
+import com.specagent.workspace.node.Node;
+import com.specagent.workspace.node.NodeAuthorKind;
+import com.specagent.workspace.node.NodeKind;
+import com.specagent.workspace.node.NodeService;
+import com.specagent.workspace.project.Project;
+import com.specagent.workspace.project.ProjectService;
+import com.specagent.workspace.route.RouteRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -180,7 +180,7 @@ class NodeQueryIntegrationTest {
 
         AgentInputSnapshot input = snapshotBuilder.build(snapshot);
         assertThat(input.availableCapabilities())
-                .extracting(com.specagent.agent.contract.CapabilityDescriptor::id)
+                .extracting(com.specagent.agent.protocol.CapabilityDescriptor::id)
                 .contains(com.specagent.capability.ResourceExtractTextCapability.CAPABILITY_ID);
         assertThat(input.relatedNodes()).singleElement().satisfies(ref -> {
             assertThat(ref.nodeId()).isEqualTo(resource.id());

@@ -1,0 +1,201 @@
+package com.specagent.agent.action;
+
+import com.specagent.agent.protocol.ActionIneligibleException;
+
+import com.specagent.agent.action.ActionEligibilityValidator;
+import com.specagent.agent.protocol.ActionEligibility;
+import com.specagent.agent.protocol.ActionEligibilityConstraint;
+import com.specagent.agent.protocol.ActionEligibilityReasonCode;
+
+import com.specagent.agent.protocol.ActionFamily;
+import com.specagent.agent.protocol.ActionProposal;
+import com.specagent.agent.protocol.AgentEvent;
+import com.specagent.agent.protocol.AgentRequestEnvelope;
+import com.specagent.agent.protocol.ClaimView;
+import com.specagent.agent.protocol.LineageEntry;
+
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+/** Java trust-boundary validation for a selected action and its payload. */
+public final class ActionEligibilityValidator {
+
+    public void validateSelection(AgentRequestEnvelope request,
+                                  ActionProposal proposal,
+                                  ActionEligibility eligibility) {
+        if (!ActionEligibility.VERSION.equals(eligibility.version())) {
+            reject(ActionEligibilityReasonCode.ELIGIBILITY_VERSION_MISMATCH);
+        }
+
+        ActionFamily family = ActionFamily.fromCode(proposal.actionFamily());
+        if (family == ActionFamily.INVOKE_CAPABILITY) {
+            validateCapabilityArguments(request, proposal.payload());
+        }
+
+        ActionEligibilityConstraint constraint = eligibility.constraints().get(family.code());
+        if (constraint == null || !constraint.eligible()
+                || !eligibility.eligibleFamilies().contains(family.code())) {
+            ActionEligibilityReasonCode reason = constraint == null
+                    || constraint.reasonCodes().isEmpty()
+                    ? ActionEligibilityReasonCode.FAMILY_NOT_ELIGIBLE
+                    : constraint.reasonCodes().get(0);
+            reject(reason);
+        }
+
+        switch (family) {
+            case CREATE_NODE -> validateCreateNode(request, proposal.payload());
+            case REQUEST_USER_INPUT -> validateRequestUserInput(request, proposal.payload());
+            case INVOKE_CAPABILITY -> validateVisibleCapability(request, proposal.payload());
+            case UPDATE_NODE, CONNECT_NODE, CREATE_ROUTE, RESPOND_TO_USER,
+                 GENERATE_ARTIFACT, WAIT -> {
+                // No additional payload-dependent eligibility invariant yet.
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void validateCreateNode(AgentRequestEnvelope request, Map<String, Object> payload) {
+        Object content = payload.get("content");
+        if (!(content instanceof Map<?, ?> contentMap)
+                || !(contentMap.get("text") instanceof String contentText)) {
+            return; // Structural validator owns malformed payloads.
+        }
+        String normalized = ActionEligibilityEvaluator.normalizeText(contentText);
+        if (normalized.isEmpty()) {
+            return;
+        }
+
+        if (matchesCurrentAnswer(request, normalized)) {
+            reject(ActionEligibilityReasonCode.ANSWER_ALREADY_DURABLE);
+        }
+
+        String subtype = payload.get("subtype") instanceof String value ? value : "";
+        if ("NOTE".equals(subtype) && containsCurrentAnswer(request, normalized)) {
+            // Exact normalized containment, not fuzzy similarity: a NOTE may
+            // not wrap the already-durable Answer in explanatory boilerplate.
+            reject(ActionEligibilityReasonCode.ANSWER_ALREADY_DURABLE);
+        }
+
+        ClaimView duplicateClaim = request.snapshot().effectiveClaims().stream()
+                .filter(claim -> normalized.equals(
+                        ActionEligibilityEvaluator.normalizeText(claim.text())))
+                .findFirst().orElse(null);
+        if (duplicateClaim != null) {
+            if ("confirmed".equals(duplicateClaim.status())) {
+                reject(ActionEligibilityReasonCode.CONFIRMED_STATE_ALREADY_DURABLE);
+            }
+            reject(ActionEligibilityReasonCode.NO_NEW_DURABLE_UNIT);
+        }
+
+        boolean existingNode = request.snapshot().lineage().stream()
+                .map(LineageEntry::node)
+                .anyMatch(node -> normalized.equals(
+                        ActionEligibilityEvaluator.normalizeText(node.body().text())));
+        if (existingNode) {
+            reject(ActionEligibilityReasonCode.NO_NEW_DURABLE_UNIT);
+        }
+
+        if ("DECISION".equals(subtype)
+                && !("ANSWER_SUBMITTED".equals(request.event().kind())
+                && request.event().persistenceIntent()
+                == AgentEvent.PersistenceIntent.RECORD_DECISION_NODE)) {
+            // Natural-language freeText is not authority. A durable Decision
+            // requires the explicit Runtime-owned event intent above.
+            reject(ActionEligibilityReasonCode.MISSING_TYPED_PERSISTENCE_INTENT);
+        }
+    }
+
+    private boolean matchesCurrentAnswer(AgentRequestEnvelope request, String normalized) {
+        if (normalized.equals(ActionEligibilityEvaluator.normalizeText(
+                request.event().freeText()))) {
+            return true;
+        }
+        return request.snapshot().lineage().stream()
+                .map(LineageEntry::answer)
+                .filter(java.util.Objects::nonNull)
+                .anyMatch(answer -> normalized.equals(
+                        ActionEligibilityEvaluator.normalizeText(answer.freeText())));
+    }
+
+    private boolean containsCurrentAnswer(AgentRequestEnvelope request, String normalizedContent) {
+        List<String> answers = new java.util.ArrayList<>();
+        String eventAnswer = ActionEligibilityEvaluator.normalizeText(request.event().freeText());
+        if (!eventAnswer.isEmpty()) {
+            answers.add(eventAnswer);
+        }
+        request.snapshot().lineage().stream()
+                .map(LineageEntry::answer)
+                .filter(java.util.Objects::nonNull)
+                .map(answer -> ActionEligibilityEvaluator.normalizeText(answer.freeText()))
+                .filter(answer -> !answer.isEmpty())
+                .forEach(answers::add);
+        return answers.stream().anyMatch(normalizedContent::contains);
+    }
+
+    private void validateRequestUserInput(AgentRequestEnvelope request,
+                                          Map<String, Object> payload) {
+        Object question = payload.get("questionText");
+        if (!(question instanceof String questionText)) {
+            return;
+        }
+        String normalized = ActionEligibilityEvaluator.normalizeText(questionText);
+        boolean repeatsAnsweredQuestion = request.snapshot().lineage().stream()
+                .filter(entry -> entry.answer() != null)
+                .anyMatch(entry -> normalized.equals(
+                        ActionEligibilityEvaluator.normalizeText(entry.node().body().text())));
+        if (repeatsAnsweredQuestion) {
+            reject(ActionEligibilityReasonCode.RESOLVED_BLOCKER);
+        }
+    }
+
+    private void validateVisibleCapability(AgentRequestEnvelope request,
+                                           Map<String, Object> payload) {
+        Object id = payload.get("capabilityId");
+        boolean visible = id instanceof String capabilityId
+                && request.snapshot().availableCapabilities().stream()
+                .anyMatch(descriptor -> descriptor.id().equals(capabilityId));
+        if (!visible) {
+            reject(ActionEligibilityReasonCode.CAPABILITY_NOT_VISIBLE);
+        }
+    }
+
+    private void validateCapabilityArguments(AgentRequestEnvelope request,
+                                             Map<String, Object> payload) {
+        Object arguments = payload.get("arguments");
+        if (!(arguments instanceof Map<?, ?> map)) {
+            return;
+        }
+        Set<String> allowed = Set.copyOf(request.snapshot().allowedSourceRefs());
+        if (containsUngroundedRef(map.values(), allowed)) {
+            reject(ActionEligibilityReasonCode.UNGROUNDED_CAPABILITY_ARGUMENT);
+        }
+    }
+
+    private boolean containsUngroundedRef(Collection<?> values, Set<String> allowed) {
+        for (Object value : values) {
+            if (value instanceof String text && isRuntimeRef(text) && !allowed.contains(text)) {
+                return true;
+            }
+            if (value instanceof Map<?, ?> nested
+                    && containsUngroundedRef(nested.values(), allowed)) {
+                return true;
+            }
+            if (value instanceof List<?> nested
+                    && containsUngroundedRef(nested, allowed)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isRuntimeRef(String value) {
+        return List.of("node:", "answer:", "patch:", "context:", "route:")
+                .stream().anyMatch(value::startsWith);
+    }
+
+    private static void reject(ActionEligibilityReasonCode reason) {
+        throw new ActionIneligibleException(reason);
+    }
+}

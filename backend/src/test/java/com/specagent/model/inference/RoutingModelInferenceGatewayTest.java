@@ -1,7 +1,16 @@
 package com.specagent.model.inference;
 
-import com.specagent.model.provider.FragmentListener;
-import com.specagent.model.provider.ModelProvider;
+import com.specagent.model.contract.ModelInferenceMessage;
+
+import com.specagent.model.contract.ActiveProviderPort;
+import com.specagent.model.contract.ModelInferenceRequest;
+import com.specagent.model.provider.CustomInferenceGateway;
+import com.specagent.model.provider.OpenCodeModelInferenceGateway;
+import com.specagent.model.provider.OpenRouterInferenceGateway;
+import com.specagent.model.provider.RoutingModelInferenceGateway;
+
+import com.specagent.model.contract.FragmentListener;
+import com.specagent.model.contract.ModelProvider;
 import com.specagent.model.provider.OpenCodeModelErrorCategory;
 import com.specagent.model.provider.OpenCodeModelException;
 import org.junit.jupiter.api.BeforeEach;

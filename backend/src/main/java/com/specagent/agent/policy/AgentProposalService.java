@@ -1,6 +1,6 @@
 package com.specagent.agent.policy;
 
-import com.specagent.agent.contract.ActionProposal;
+import com.specagent.agent.protocol.ActionProposal;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 

@@ -1,6 +1,6 @@
 package com.specagent.agent.runtime;
 
-import com.specagent.agent.AgentRunService;
+import com.specagent.agent.runtime.AgentRunService;
 import com.specagent.agent.broker.RunExistenceCheck;
 import org.springframework.stereotype.Component;
 

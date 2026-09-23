@@ -1,29 +1,29 @@
 package com.specagent.agent.runtime;
 
-import com.specagent.agent.AgentRun;
-import com.specagent.agent.AgentRunStatus;
+import com.specagent.agent.runtime.AgentRun;
+import com.specagent.agent.runtime.AgentRunStatus;
 import com.specagent.agent.AnswerCycleTestDriver;
-import com.specagent.agent.contract.ActionProposal;
-import com.specagent.agent.contract.AgentProtocol;
-import com.specagent.agent.contract.AgentRequestEnvelope;
-import com.specagent.agent.contract.AgentResponseEnvelope;
-import com.specagent.agent.contract.ObservationView;
-import com.specagent.agent.contract.ProposedClaim;
-import com.specagent.agent.contract.StateUpdateResult;
-import com.specagent.agent.contract.UsageView;
+import com.specagent.agent.protocol.ActionProposal;
+import com.specagent.agent.protocol.AgentProtocol;
+import com.specagent.agent.protocol.AgentRequestEnvelope;
+import com.specagent.agent.protocol.AgentResponseEnvelope;
+import com.specagent.agent.protocol.ObservationView;
+import com.specagent.agent.protocol.ProposedClaim;
+import com.specagent.agent.protocol.StateUpdateResult;
+import com.specagent.agent.protocol.UsageView;
 import com.specagent.agent.decision.AgentBrainUnavailableException;
 import com.specagent.agent.decision.AgentDecisionEngine;
 import com.specagent.agent.decision.BrainFailureCode;
 import com.specagent.agent.runevent.AgentRunEventService;
-import com.specagent.answer.Answer;
-import com.specagent.answer.AnswerRepository;
-import com.specagent.answer.AnswerService;
-import com.specagent.node.Node;
-import com.specagent.node.NodeService;
-import com.specagent.patch.AnswerPatchService;
-import com.specagent.project.Project;
-import com.specagent.project.ProjectService;
-import com.specagent.route.RouteService;
+import com.specagent.workspace.answer.Answer;
+import com.specagent.workspace.answer.AnswerRepository;
+import com.specagent.workspace.answer.AnswerService;
+import com.specagent.workspace.node.Node;
+import com.specagent.workspace.node.NodeService;
+import com.specagent.workspace.patch.AnswerPatchService;
+import com.specagent.workspace.project.Project;
+import com.specagent.workspace.project.ProjectService;
+import com.specagent.workspace.route.RouteService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -76,7 +76,7 @@ class TypedRunFailureIntegrationTest {
         volatile BrainFailureCode decisionFailureCode = BrainFailureCode.MODEL_CONTRACT_VIOLATION;
 
         @Override
-        public com.specagent.agent.contract.AgentArtifactResponse runArtifactGeneration(
+        public com.specagent.agent.protocol.AgentArtifactResponse runArtifactGeneration(
                 AgentRequestEnvelope request) {
             throw new UnsupportedOperationException("not scripted for artifact generation");
         }
@@ -142,7 +142,7 @@ class TypedRunFailureIntegrationTest {
     @Autowired
     private AnswerPatchService answerPatchService;
     @Autowired
-    private com.specagent.spec.SpecSnapshotService specSnapshotService;
+    private com.specagent.workspace.spec.SpecSnapshotService specSnapshotService;
     @Autowired
     private AgentRunEventService eventService;
     @Autowired

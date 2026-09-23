@@ -1,12 +1,12 @@
 package com.specagent.model.provider;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.specagent.globalassistant.model.GlobalAssistantDecisionParser;
-import com.specagent.globalassistant.model.GlobalAssistantDecisionSemanticsAdapter;
-import com.specagent.globalassistant.model.GlobalAssistantDecisionValidator;
-import com.specagent.model.inference.ModelInferenceMessage;
-import com.specagent.model.inference.ModelInferenceRequest;
-import com.specagent.model.inference.ModelOutputContract;
+import com.specagent.assistant.model.GlobalAssistantDecisionParser;
+import com.specagent.assistant.model.GlobalAssistantDecisionSemanticsAdapter;
+import com.specagent.assistant.model.GlobalAssistantDecisionValidator;
+import com.specagent.model.contract.ModelInferenceMessage;
+import com.specagent.model.contract.ModelInferenceRequest;
+import com.specagent.model.contract.ModelOutputContract;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;

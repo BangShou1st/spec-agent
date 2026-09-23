@@ -36,7 +36,7 @@ class EvalLiveE01SmokeTest extends EvalLiveHarnessBase {
         assertThat(before.javaWiring().decisionEngine())
                 .isEqualTo("com.specagent.agent.decision.RemotePythonDecisionEngine");
         assertThat(before.javaWiring().inferenceGateway())
-                .isEqualTo("com.specagent.model.inference.OpenCodeModelInferenceGateway");
+                .isEqualTo("com.specagent.model.provider.OpenCodeModelInferenceGateway");
         assertThat(before.pythonBefore().modelMode()).isEqualTo("broker");
         assertThat(before.endpoint()).isEqualTo("https://opencode.ai/zen/v1");
         assertThat(before.credentialSource())

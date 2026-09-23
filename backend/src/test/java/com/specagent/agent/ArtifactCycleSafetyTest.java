@@ -1,10 +1,14 @@
 package com.specagent.agent;
 
-import com.specagent.agent.contract.AgentArtifactResponse;
-import com.specagent.agent.contract.AgentRequestEnvelope;
+import com.specagent.agent.runtime.AgentRunStatus;
+
+import com.specagent.agent.runtime.AgentRunService;
+
+import com.specagent.agent.protocol.AgentArtifactResponse;
+import com.specagent.agent.protocol.AgentRequestEnvelope;
 import com.specagent.agent.decision.AgentDecisionEngine;
-import com.specagent.project.Project;
-import com.specagent.project.ProjectService;
+import com.specagent.workspace.project.Project;
+import com.specagent.workspace.project.ProjectService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -39,7 +43,7 @@ class ArtifactCycleSafetyTest {
     @Autowired
     private com.specagent.agent.runtime.RunWorker worker;
     @Autowired
-    private com.specagent.spec.SpecSnapshotRepository specSnapshotRepository;
+    private com.specagent.workspace.spec.SpecSnapshotRepository specSnapshotRepository;
 
     @SpyBean
     private AgentDecisionEngine decisionEngine;
@@ -65,7 +69,7 @@ class ArtifactCycleSafetyTest {
                 "Overview", "ungrounded content", List.of());
         stubArtifact(section);
         assertThatThrownBy(() -> execute(runId))
-                .isInstanceOf(com.specagent.agent.ModelContractException.class);
+                .isInstanceOf(com.specagent.agent.protocol.ModelContractException.class);
 
         assertFailedAndNothingPersisted(runId, project);
     }
@@ -83,7 +87,7 @@ class ArtifactCycleSafetyTest {
         // A stubbed engine bypasses the engine-side validator, so this proves
         // the runtime's own source-reference guard fails closed too.
         assertThatThrownBy(() -> execute(runId))
-                .isInstanceOf(com.specagent.agent.ModelContractException.class)
+                .isInstanceOf(com.specagent.agent.protocol.ModelContractException.class)
                 .hasMessageContaining("source reference guard rejected");
 
         assertFailedAndNothingPersisted(runId, project);
@@ -91,18 +95,18 @@ class ArtifactCycleSafetyTest {
 
     private void stubArtifact(AgentArtifactResponse.ArtifactSection section) {
         org.mockito.Mockito.doAnswer(invocation -> new AgentArtifactResponse(
-                com.specagent.agent.contract.AgentProtocol.ARTIFACT_PROTOCOL_VERSION,
+                com.specagent.agent.protocol.AgentProtocol.ARTIFACT_PROTOCOL_VERSION,
                 ((AgentRequestEnvelope) invocation.getArgument(0)).runId(),
                 new AgentArtifactResponse.ArtifactGenerationResult(
                         "spec_snapshot", List.of(section), List.of()),
-                new com.specagent.agent.contract.UsageView(1, List.of())))
+                new com.specagent.agent.protocol.UsageView(1, List.of())))
                 .when(decisionEngine).runArtifactGeneration(
                         any(AgentRequestEnvelope.class));
     }
 
     private void assertFailedAndNothingPersisted(UUID runId, Project project) {
         assertThat(agentRunService.getRun(runId).orElseThrow().status())
-                .isEqualTo(com.specagent.agent.AgentRunStatus.FAILED);
+                .isEqualTo(com.specagent.agent.runtime.AgentRunStatus.FAILED);
         assertThat(agentRunService.getRun(runId).orElseThrow().producedSpecSnapshotId())
                 .isNull();
         assertThat(specSnapshotRepository.findByRoute(project.activeRouteId())).isEmpty();

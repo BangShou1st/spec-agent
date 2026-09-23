@@ -1,5 +1,7 @@
 package com.specagent.model.provider;
 
+import com.specagent.model.contract.StreamCancelledException;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
 import java.io.OutputStream;

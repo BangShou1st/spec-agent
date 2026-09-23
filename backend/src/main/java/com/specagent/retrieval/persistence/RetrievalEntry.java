@@ -1,8 +1,8 @@
 package com.specagent.retrieval.persistence;
 
-import com.specagent.retrieval.api.MemoryAuthority;
-import com.specagent.retrieval.api.RetrievalScope;
-import com.specagent.retrieval.api.RetrievalSourceKind;
+import com.specagent.retrieval.MemoryAuthority;
+import com.specagent.retrieval.RetrievalScope;
+import com.specagent.retrieval.RetrievalSourceKind;
 
 import java.time.Instant;
 import java.util.Map;

@@ -1,9 +1,9 @@
 package com.specagent.model.provider;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.specagent.model.inference.ModelInferenceMessage;
-import com.specagent.model.inference.ModelInferenceRequest;
-import com.specagent.model.inference.ModelOutputContract;
+import com.specagent.model.contract.ModelInferenceMessage;
+import com.specagent.model.contract.ModelInferenceRequest;
+import com.specagent.model.contract.ModelOutputContract;
 import java.net.http.HttpClient;
 import java.time.Duration;
 import java.util.List;

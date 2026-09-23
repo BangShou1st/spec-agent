@@ -1,35 +1,38 @@
 package com.specagent.agent.runtime;
 
-import com.specagent.agent.*;
+import com.specagent.agent.protocol.ModelContractException;
+
+import com.specagent.agent.runtime.AgentRunService;
+import com.specagent.agent.runtime.AgentRunFailureService;
 import com.specagent.agent.action.ActionExecutionContext;
-import com.specagent.agent.contract.*;
+import com.specagent.agent.protocol.*;
 import com.specagent.agent.decision.AgentBrainResponseValidator;
 import com.specagent.agent.decision.AgentDecisionEngine;
-import com.specagent.agent.gates.PatchReflectionGate;
-import com.specagent.agent.contracts.ReflectionResult;
-import com.specagent.agent.eligibility.ActionEligibilityGate;
+import com.specagent.agent.decision.PatchReflectionGate;
+import com.specagent.agent.decision.ReflectionResult;
+import com.specagent.agent.action.ActionEligibilityGate;
 import com.specagent.agent.snapshot.LegacyFrozenInputUnavailableException;
 import com.specagent.agent.runevent.AgentRunEvent;
 import com.specagent.agent.runevent.AgentRunEventService;
 import com.specagent.agent.runevent.AgentRunPhase;
 import com.specagent.agent.runevent.RunProgressRecorder;
 import com.specagent.agent.snapshot.AgentInputSnapshotBuilder;
-import com.specagent.answer.Answer;
-import com.specagent.answer.AnswerService;
-import com.specagent.context.ContextBuilder;
-import com.specagent.context.ContextOperationType;
-import com.specagent.context.ContextSnapshot;
-import com.specagent.context.ContextSnapshotRepository;
-import com.specagent.node.Node;
-import com.specagent.node.NodeService;
-import com.specagent.patch.AnswerPatch;
-import com.specagent.patch.AnswerPatchService;
-import com.specagent.patch.Claim;
-import com.specagent.patch.ClaimKind;
-import com.specagent.patch.ClaimStatus;
-import com.specagent.route.Route;
-import com.specagent.route.RouteHistoryResolver;
-import com.specagent.route.RouteRepository;
+import com.specagent.workspace.answer.Answer;
+import com.specagent.workspace.answer.AnswerService;
+import com.specagent.workspace.context.ContextBuilder;
+import com.specagent.workspace.context.ContextOperationType;
+import com.specagent.workspace.context.ContextSnapshot;
+import com.specagent.workspace.context.ContextSnapshotRepository;
+import com.specagent.workspace.node.Node;
+import com.specagent.workspace.node.NodeService;
+import com.specagent.workspace.patch.AnswerPatch;
+import com.specagent.workspace.patch.AnswerPatchService;
+import com.specagent.workspace.patch.Claim;
+import com.specagent.workspace.patch.ClaimKind;
+import com.specagent.workspace.patch.ClaimStatus;
+import com.specagent.workspace.route.Route;
+import com.specagent.workspace.route.RouteHistoryResolver;
+import com.specagent.workspace.route.RouteRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -74,7 +77,7 @@ public class AnswerCycleService {
     private final AgentRunEventService eventService;
     private final NodeService nodeService;
     private final RouteRepository routeRepository;
-    private final com.specagent.project.ProjectRepository projectRepository;
+    private final com.specagent.workspace.project.ProjectRepository projectRepository;
     private final ContextSnapshotRepository contextSnapshotRepository;
     private final com.specagent.agent.snapshot.AgentInputProjectionRepository projectionRepository;
     private final ActionEligibilityGate actionEligibilityGate;
@@ -94,7 +97,7 @@ public class AnswerCycleService {
                               AgentRunEventService eventService,
                               NodeService nodeService,
                               RouteRepository routeRepository,
-                              com.specagent.project.ProjectRepository projectRepository,
+                              com.specagent.workspace.project.ProjectRepository projectRepository,
                               ContextSnapshotRepository contextSnapshotRepository,
                               com.specagent.agent.snapshot.AgentInputProjectionRepository projectionRepository,
                               AgentTracePort semanticTraceRecorder,
@@ -491,7 +494,7 @@ public class AnswerCycleService {
             validateClaimSources(groundedClaims, answer);
 
             ReflectionResult patchReflection = patchReflectionGate.validate(
-                    new com.specagent.agent.contracts.AnswerPatchDraft(groundedClaims));
+                    new com.specagent.agent.decision.AnswerPatchDraft(groundedClaims));
             agentRunService.markReflected(run.id(), trace);
 
             if (!patchReflection.accepted()) {
@@ -626,7 +629,7 @@ public class AnswerCycleService {
     }
 
     private Route loadActiveRoute(UUID projectId) {
-        com.specagent.project.Project project = projectRepository.findById(projectId)
+        com.specagent.workspace.project.Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new IllegalArgumentException("Project not found: " + projectId));
         if (project.activeRouteId() == null) {
             throw new IllegalStateException("Project has no active route: " + projectId);
@@ -651,7 +654,7 @@ public class AnswerCycleService {
             throw new IllegalArgumentException(
                     "Route " + explicitRouteId + " does not belong to project " + projectId);
         }
-        if (route.lifecycleStatus() != com.specagent.route.RouteLifecycleStatus.OPEN) {
+        if (route.lifecycleStatus() != com.specagent.workspace.route.RouteLifecycleStatus.OPEN) {
             throw new IllegalStateException(
                     "Route is not open: " + explicitRouteId
                             + " is " + route.lifecycleStatus().code());

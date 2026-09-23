@@ -1,12 +1,12 @@
 package com.specagent.agent.decision;
 
-import com.specagent.agent.contract.AgentContracts;
-import com.specagent.agent.contract.AgentContractException;
-import com.specagent.agent.contract.AgentInputSnapshot;
-import com.specagent.agent.contract.AgentRequestEnvelope;
-import com.specagent.agent.contract.AgentResponseEnvelope;
-import com.specagent.agent.contract.ClaimView;
-import com.specagent.agent.contract.ObservationView;
+import com.specagent.agent.protocol.AgentContracts;
+import com.specagent.agent.protocol.AgentContractException;
+import com.specagent.agent.protocol.AgentInputSnapshot;
+import com.specagent.agent.protocol.AgentRequestEnvelope;
+import com.specagent.agent.protocol.AgentResponseEnvelope;
+import com.specagent.agent.protocol.ClaimView;
+import com.specagent.agent.protocol.ObservationView;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
@@ -98,7 +98,7 @@ class AgentBrainResponseValidatorTest {
                 fixture("decision-response-valid.json"), AgentResponseEnvelope.class);
         AgentResponseEnvelope mutated = new AgentResponseEnvelope(
                 response.protocolVersion(), response.runId(), null, response.observation(),
-                new com.specagent.agent.contract.ActionProposal(
+                new com.specagent.agent.protocol.ActionProposal(
                         "MARK_RISK", response.actionProposal().payload(),
                         response.actionProposal().baseContextSnapshotId(),
                         response.actionProposal().baseContextHash(),
@@ -125,7 +125,7 @@ class AgentBrainResponseValidatorTest {
                 response.protocolVersion(), response.runId(), null,
                 new ObservationView(List.of(), List.of(),
                         List.of("交付范围与开发资源约束互斥。"), List.of()),
-                new com.specagent.agent.contract.ActionProposal(
+                new com.specagent.agent.protocol.ActionProposal(
                         "WAIT", Map.of(),
                         response.actionProposal().baseContextSnapshotId(),
                         response.actionProposal().baseContextHash(),
@@ -168,7 +168,7 @@ class AgentBrainResponseValidatorTest {
                 response.protocolVersion(), response.runId(), null,
                 new ObservationView(List.of(), List.of(),
                         List.of("交付范围与开发资源约束互斥。"), List.of()),
-                new com.specagent.agent.contract.ActionProposal(
+                new com.specagent.agent.protocol.ActionProposal(
                         "CREATE_NODE", payload,
                         response.actionProposal().baseContextSnapshotId(),
                         response.actionProposal().baseContextHash(),
@@ -203,7 +203,7 @@ class AgentBrainResponseValidatorTest {
                 Map.of("label", "x", "id", "88888888-8888-8888-8888-888888888888")));
         AgentResponseEnvelope mutated = new AgentResponseEnvelope(
                 response.protocolVersion(), response.runId(), null, response.observation(),
-                new com.specagent.agent.contract.ActionProposal(
+                new com.specagent.agent.protocol.ActionProposal(
                         "REQUEST_USER_INPUT", payload,
                         response.actionProposal().baseContextSnapshotId(),
                         response.actionProposal().baseContextHash(),
@@ -230,7 +230,7 @@ class AgentBrainResponseValidatorTest {
         assertThatThrownBy(() -> AgentBrainResponseValidator.validateDecision(request,
                 new AgentResponseEnvelope(response.protocolVersion(), response.runId(), null,
                         response.observation(),
-                        new com.specagent.agent.contract.ActionProposal(
+                        new com.specagent.agent.protocol.ActionProposal(
                                 "REQUEST_USER_INPUT", response.actionProposal().payload(),
                                 UUID.randomUUID(), response.actionProposal().baseContextHash(),
                                 response.actionProposal().sourceRefs(),

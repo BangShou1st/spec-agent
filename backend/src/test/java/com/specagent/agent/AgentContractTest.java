@@ -1,7 +1,13 @@
 package com.specagent.agent;
 
-import com.specagent.agent.contracts.NodeDraft;
-import com.specagent.agent.contracts.ReflectionResult;
+import com.specagent.agent.decision.AgentAction;
+import com.specagent.agent.decision.AgentTaskType;
+
+import com.specagent.agent.decision.ModelRequest;
+import com.specagent.agent.decision.ModelResponse;
+
+import com.specagent.agent.decision.NodeDraft;
+import com.specagent.agent.decision.ReflectionResult;
 import org.junit.jupiter.api.Test;
 
 import java.util.UUID;

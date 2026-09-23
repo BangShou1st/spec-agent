@@ -19,8 +19,8 @@ class McpResultBoundingTest {
     private final McpClientFactory factory = factoryWithBudget(200);
 
     private McpClientFactory factoryWithBudget(int bytes) {
-        com.specagent.mcp.config.McpProperties properties =
-                new com.specagent.mcp.config.McpProperties();
+        com.specagent.mcp.McpProperties properties =
+                new com.specagent.mcp.McpProperties();
         properties.setResultMaxInlineBytes(bytes);
         return new McpClientFactory(properties,
                 new com.specagent.common.network.OutboundNetworkPolicy(false));

@@ -1,13 +1,13 @@
 package com.specagent.agent.runtime;
 
-import com.specagent.agent.action.StaleContextChecker;
+import com.specagent.agent.snapshot.StaleContextChecker;
 import com.specagent.agent.AnswerCycleTestDriver;
 import com.specagent.agent.DecisionCycleTestDriver;
-import com.specagent.node.Node;
-import com.specagent.node.NodeService;
-import com.specagent.project.Project;
-import com.specagent.project.ProjectService;
-import com.specagent.route.RouteRepository;
+import com.specagent.workspace.node.Node;
+import com.specagent.workspace.node.NodeService;
+import com.specagent.workspace.project.Project;
+import com.specagent.workspace.project.ProjectService;
+import com.specagent.workspace.route.RouteRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;

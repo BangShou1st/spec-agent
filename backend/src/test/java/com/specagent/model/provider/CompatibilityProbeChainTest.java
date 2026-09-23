@@ -2,9 +2,9 @@ package com.specagent.model.provider;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
-import com.specagent.globalassistant.model.GlobalAssistantDecisionParser;
-import com.specagent.globalassistant.model.GlobalAssistantDecisionSemanticsAdapter;
-import com.specagent.globalassistant.model.GlobalAssistantDecisionValidator;
+import com.specagent.assistant.model.GlobalAssistantDecisionParser;
+import com.specagent.assistant.model.GlobalAssistantDecisionSemanticsAdapter;
+import com.specagent.assistant.model.GlobalAssistantDecisionValidator;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;

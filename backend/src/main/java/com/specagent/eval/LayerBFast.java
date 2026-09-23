@@ -1,6 +1,6 @@
 package com.specagent.eval;
 
-import com.specagent.agent.AgentRunStatus;
+import com.specagent.agent.runtime.AgentRunStatus;
 
 import java.util.ArrayList;
 import java.util.List;

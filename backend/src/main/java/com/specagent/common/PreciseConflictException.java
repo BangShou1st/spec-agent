@@ -13,7 +13,7 @@ package com.specagent.common;
  * that was violated.
  *
  * <p><b>Why a base class.</b> Command endpoints funnel their exceptions
- * through {@link com.specagent.application.support.CommandExecution#execute}, whose
+ * through {@link com.specagent.workspace.route.CommandExecution#execute}, whose
  * catch clauses are type-based. A catch on {@code IllegalStateException}
  * (the natural supertype of a state conflict) would silently swallow every
  * precise conflict thrown inside the action. This base class gives that

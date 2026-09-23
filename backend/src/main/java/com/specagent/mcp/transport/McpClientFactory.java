@@ -2,7 +2,7 @@ package com.specagent.mcp.transport;
 
 import com.specagent.common.network.OutboundNetworkPolicy;
 import com.specagent.common.network.OutboundPolicyViolationException;
-import com.specagent.mcp.config.McpProperties;
+import com.specagent.mcp.McpProperties;
 import com.specagent.mcp.domain.McpDiscovery;
 import com.specagent.mcp.domain.McpPrompt;
 import com.specagent.mcp.domain.McpResource;

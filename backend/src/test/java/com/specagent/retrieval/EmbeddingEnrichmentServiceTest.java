@@ -1,12 +1,12 @@
 package com.specagent.retrieval;
 
 import com.specagent.retrieval.embedding.EmbeddingEnrichmentService;
-import com.specagent.retrieval.embedding.EmbeddingGateway;
+import com.specagent.retrieval.EmbeddingGateway;
 import com.specagent.retrieval.persistence.RetrievalEntry;
 import com.specagent.retrieval.persistence.RetrievalEntryRepository;
-import com.specagent.retrieval.api.MemoryAuthority;
-import com.specagent.retrieval.api.RetrievalScope;
-import com.specagent.retrieval.api.RetrievalSourceKind;
+import com.specagent.retrieval.MemoryAuthority;
+import com.specagent.retrieval.RetrievalScope;
+import com.specagent.retrieval.RetrievalSourceKind;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;

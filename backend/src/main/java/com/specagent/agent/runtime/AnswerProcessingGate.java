@@ -1,9 +1,9 @@
 package com.specagent.agent.runtime;
 
-import com.specagent.answer.Answer;
-import com.specagent.answer.AnswerService;
-import com.specagent.patch.AnswerPatchService;
-import com.specagent.route.RouteHistoryResolver;
+import com.specagent.workspace.answer.Answer;
+import com.specagent.workspace.answer.AnswerService;
+import com.specagent.workspace.patch.AnswerPatchService;
+import com.specagent.workspace.route.RouteHistoryResolver;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;

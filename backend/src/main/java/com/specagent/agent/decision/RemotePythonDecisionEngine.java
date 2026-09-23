@@ -1,11 +1,14 @@
 package com.specagent.agent.decision;
 
-import com.specagent.agent.runtime.AgentBrainProperties;
-import com.specagent.agent.contract.AgentArtifactResponse;
-import com.specagent.agent.contract.AgentContracts;
-import com.specagent.agent.contract.AgentProtocol;
-import com.specagent.agent.contract.AgentRequestEnvelope;
-import com.specagent.agent.contract.AgentResponseEnvelope;
+import com.specagent.agent.decision.RemotePythonDecisionEngine;
+import com.specagent.agent.protocol.ActionEligibilityReasonCode;
+
+import com.specagent.agent.broker.AgentBrainProperties;
+import com.specagent.agent.protocol.AgentArtifactResponse;
+import com.specagent.agent.protocol.AgentContracts;
+import com.specagent.agent.protocol.AgentProtocol;
+import com.specagent.agent.protocol.AgentRequestEnvelope;
+import com.specagent.agent.protocol.AgentResponseEnvelope;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
@@ -15,8 +18,8 @@ import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.HttpStatusCodeException;
-import com.specagent.agent.eligibility.ActionEligibilityReasonCode;
-import com.specagent.agent.eligibility.ActionIneligibleException;
+import com.specagent.agent.protocol.ActionEligibilityReasonCode;
+import com.specagent.agent.protocol.ActionIneligibleException;
 
 import java.net.SocketTimeoutException;
 import java.util.concurrent.TimeoutException;

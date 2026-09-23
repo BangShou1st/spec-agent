@@ -1,12 +1,19 @@
 package com.specagent.agent;
 
-import com.specagent.context.ContextBuilder;
-import com.specagent.context.ContextOperationType;
-import com.specagent.context.ContextSnapshot;
-import com.specagent.node.Node;
-import com.specagent.node.NodeService;
-import com.specagent.project.Project;
-import com.specagent.project.ProjectService;
+import com.specagent.agent.runtime.AgentRunStatus;
+import com.specagent.agent.runtime.AgentRunTriggerType;
+
+import com.specagent.agent.AgentRunLifecycleIntegrationTest;
+import com.specagent.agent.runtime.AgentRun;
+import com.specagent.agent.runtime.AgentRunService;
+
+import com.specagent.workspace.context.ContextBuilder;
+import com.specagent.workspace.context.ContextOperationType;
+import com.specagent.workspace.context.ContextSnapshot;
+import com.specagent.workspace.node.Node;
+import com.specagent.workspace.node.NodeService;
+import com.specagent.workspace.project.Project;
+import com.specagent.workspace.project.ProjectService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;

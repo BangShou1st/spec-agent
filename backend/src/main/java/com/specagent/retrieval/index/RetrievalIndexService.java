@@ -1,11 +1,11 @@
 package com.specagent.retrieval.index;
 
-import com.specagent.answer.Answer;
-import com.specagent.answer.AnswerIndexPort;
-import com.specagent.node.Node;
-import com.specagent.node.NodeIndexPort;
-import com.specagent.patch.AnswerPatch;
-import com.specagent.patch.AnswerPatchIndexPort;
+import com.specagent.workspace.answer.Answer;
+import com.specagent.workspace.answer.AnswerIndexPort;
+import com.specagent.workspace.node.Node;
+import com.specagent.workspace.node.NodeIndexPort;
+import com.specagent.workspace.patch.AnswerPatch;
+import com.specagent.workspace.patch.AnswerPatchIndexPort;
 import org.springframework.stereotype.Service;
 
 /**

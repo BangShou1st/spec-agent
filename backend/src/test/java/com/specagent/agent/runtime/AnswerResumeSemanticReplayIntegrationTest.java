@@ -1,7 +1,7 @@
 package com.specagent.agent.runtime;
 
-import com.specagent.agent.AgentRun;
-import com.specagent.agent.AgentRunService;
+import com.specagent.agent.runtime.AgentRun;
+import com.specagent.agent.runtime.AgentRunService;
 import com.specagent.agent.runevent.AgentRunEventService;
 import com.specagent.capability.CapabilityAdapter;
 import com.specagent.capability.CapabilityDescriptor;
@@ -9,28 +9,28 @@ import com.specagent.capability.CapabilityInvocation;
 import com.specagent.capability.CapabilityResult;
 import com.specagent.capability.CapabilityRuntime;
 import com.specagent.capability.SideEffectClass;
-import com.specagent.agent.contract.ActionProposal;
-import com.specagent.agent.contract.AgentProtocol;
-import com.specagent.agent.contract.AgentRequestEnvelope;
-import com.specagent.agent.contract.AgentResponseEnvelope;
-import com.specagent.agent.contract.DecisionBudget;
-import com.specagent.agent.contract.ObservationView;
-import com.specagent.agent.contract.ProposedClaim;
-import com.specagent.agent.contract.StateUpdateResult;
-import com.specagent.agent.contract.UsageView;
+import com.specagent.agent.protocol.ActionProposal;
+import com.specagent.agent.protocol.AgentProtocol;
+import com.specagent.agent.protocol.AgentRequestEnvelope;
+import com.specagent.agent.protocol.AgentResponseEnvelope;
+import com.specagent.agent.protocol.DecisionBudget;
+import com.specagent.agent.protocol.ObservationView;
+import com.specagent.agent.protocol.ProposedClaim;
+import com.specagent.agent.protocol.StateUpdateResult;
+import com.specagent.agent.protocol.UsageView;
 import com.specagent.agent.decision.AgentBrainUnavailableException;
 import com.specagent.agent.decision.AgentDecisionEngine;
 import com.specagent.agent.runevent.AgentRunEvent;
-import com.specagent.answer.Answer;
-import com.specagent.answer.AnswerService;
-import com.specagent.node.Node;
-import com.specagent.node.NodeService;
-import com.specagent.patch.AnswerPatch;
-import com.specagent.patch.AnswerPatchService;
-import com.specagent.project.Project;
-import com.specagent.project.ProjectService;
-import com.specagent.route.Route;
-import com.specagent.route.RouteRepository;
+import com.specagent.workspace.answer.Answer;
+import com.specagent.workspace.answer.AnswerService;
+import com.specagent.workspace.node.Node;
+import com.specagent.workspace.node.NodeService;
+import com.specagent.workspace.patch.AnswerPatch;
+import com.specagent.workspace.patch.AnswerPatchService;
+import com.specagent.workspace.project.Project;
+import com.specagent.workspace.project.ProjectService;
+import com.specagent.workspace.route.Route;
+import com.specagent.workspace.route.RouteRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -106,8 +106,8 @@ class AnswerResumeSemanticReplayIntegrationTest {
         int failDecisionAt = -1;
 
         @Override
-        public com.specagent.agent.contract.AgentArtifactResponse runArtifactGeneration(
-                com.specagent.agent.contract.AgentRequestEnvelope request) {
+        public com.specagent.agent.protocol.AgentArtifactResponse runArtifactGeneration(
+                com.specagent.agent.protocol.AgentRequestEnvelope request) {
             throw new UnsupportedOperationException("not scripted for artifact generation");
         }
 
@@ -219,7 +219,7 @@ class AnswerResumeSemanticReplayIntegrationTest {
         AgentRun secondClaimed = runService.claimNextAnswerCycle().orElseThrow();
         worker.executeRun(secondClaimed);
         assertThat(agentRunService.getRun(secondRunId).orElseThrow().status())
-                .isEqualTo(com.specagent.agent.AgentRunStatus.COMPLETED);
+                .isEqualTo(com.specagent.agent.runtime.AgentRunStatus.COMPLETED);
 
         // 3. The resumed cycle reused the persisted patch instead of
         //    re-running STATE_UPDATE.

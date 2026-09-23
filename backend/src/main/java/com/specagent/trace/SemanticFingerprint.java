@@ -1,11 +1,11 @@
 package com.specagent.trace;
 
-import com.specagent.agent.contract.AgentContracts;
-import com.specagent.agent.contract.AgentRequestEnvelope;
-import com.specagent.agent.contract.AgentInputSnapshot;
-import com.specagent.agent.contract.ClaimView;
-import com.specagent.agent.contract.LineageEntry;
-import com.specagent.agent.contract.RelatedNodeRef;
+import com.specagent.agent.protocol.AgentContracts;
+import com.specagent.agent.protocol.AgentRequestEnvelope;
+import com.specagent.agent.protocol.AgentInputSnapshot;
+import com.specagent.agent.protocol.ClaimView;
+import com.specagent.agent.protocol.LineageEntry;
+import com.specagent.agent.protocol.RelatedNodeRef;
 import com.specagent.common.Hashes;
 
 import java.util.Comparator;

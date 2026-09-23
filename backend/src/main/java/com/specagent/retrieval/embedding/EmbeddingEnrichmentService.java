@@ -1,5 +1,7 @@
 package com.specagent.retrieval.embedding;
 
+import com.specagent.retrieval.EmbeddingGateway;
+
 import com.specagent.retrieval.persistence.RetrievalEntry;
 import com.specagent.retrieval.persistence.RetrievalEntryRepository;
 import org.springframework.stereotype.Service;

@@ -1,5 +1,11 @@
 package com.specagent.retrieval.embedding;
 
+import com.specagent.retrieval.EmbeddingGateway;
+
+import com.specagent.retrieval.EmbeddingGateway.Embedding;
+
+import com.specagent.retrieval.embedding.NoopEmbeddingGateway;
+
 import org.springframework.stereotype.Component;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 

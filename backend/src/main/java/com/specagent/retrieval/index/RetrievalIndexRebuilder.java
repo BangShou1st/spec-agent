@@ -1,7 +1,7 @@
 package com.specagent.retrieval.index;
 
-import com.specagent.project.Project;
-import com.specagent.project.ProjectRepository;
+import com.specagent.workspace.project.Project;
+import com.specagent.workspace.project.ProjectRepository;
 import org.springframework.stereotype.Service;
 
 import java.util.UUID;

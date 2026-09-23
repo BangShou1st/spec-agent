@@ -11,7 +11,7 @@ import java.util.Map;
  * {@code PreciseConflictException} so the application/orchestration layer and
  * the HTTP boundary can both signal the same failure. The HTTP mapping itself
  * stays at the edge
- * ({@code com.specagent.api.common.ApiExceptionHandler}), which is the only
+ * ({@code com.specagent.web.ApiExceptionHandler}), which is the only
  * place that knows about {@code @RestControllerAdvice}.
  *
  * <p>Thrown by API components and application services when a request cannot be

@@ -1,13 +1,17 @@
 package com.specagent.eval;
 
-import com.specagent.agent.contract.ActionProposal;
-import com.specagent.agent.contract.AgentContracts;
-import com.specagent.agent.contract.AgentRequestEnvelope;
-import com.specagent.agent.eligibility.ActionEligibility;
-import com.specagent.agent.eligibility.ActionEligibilityEvaluator;
-import com.specagent.agent.eligibility.ActionEligibilityReasonCode;
-import com.specagent.agent.eligibility.ActionEligibilityValidator;
-import com.specagent.agent.eligibility.ActionIneligibleException;
+import com.specagent.agent.protocol.ActionIneligibleException;
+
+import com.specagent.agent.protocol.ActionEligibilityReasonCode;
+
+import com.specagent.agent.protocol.ActionProposal;
+import com.specagent.agent.protocol.AgentContracts;
+import com.specagent.agent.protocol.AgentRequestEnvelope;
+import com.specagent.agent.protocol.ActionEligibility;
+import com.specagent.agent.action.ActionEligibilityEvaluator;
+import com.specagent.agent.protocol.ActionEligibilityReasonCode;
+import com.specagent.agent.action.ActionEligibilityValidator;
+import com.specagent.agent.protocol.ActionIneligibleException;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;

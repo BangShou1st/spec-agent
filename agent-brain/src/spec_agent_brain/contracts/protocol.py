@@ -1,6 +1,6 @@
 """Frozen protocol constants of the V2 cross-language agent boundary.
 
-Mirrors ``com.specagent.agent.contract.AgentProtocol`` on the Java side
+Mirrors ``com.specagent.agent.protocol.AgentProtocol`` on the Java side
 and the authoritative ``contracts/README.md``.
 """
 

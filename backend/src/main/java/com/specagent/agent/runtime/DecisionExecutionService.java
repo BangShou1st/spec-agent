@@ -1,17 +1,17 @@
 package com.specagent.agent.runtime;
 
-import com.specagent.agent.AgentRunStatus;
-import com.specagent.agent.AgentRunTerminalizationService;
+import com.specagent.agent.runtime.AgentRunStatus;
+import com.specagent.agent.runtime.AgentRunTerminalizationService;
 import com.specagent.agent.action.ActionExecutionContext;
 import com.specagent.agent.action.ActionExecutor;
 import com.specagent.agent.action.ActionResult;
-import com.specagent.agent.action.StaleContextChecker;
-import com.specagent.agent.contract.ActionProposal;
-import com.specagent.agent.contract.AgentRequestEnvelope;
-import com.specagent.agent.contract.AgentResponseEnvelope;
+import com.specagent.agent.snapshot.StaleContextChecker;
+import com.specagent.agent.protocol.ActionProposal;
+import com.specagent.agent.protocol.AgentRequestEnvelope;
+import com.specagent.agent.protocol.AgentResponseEnvelope;
 import com.specagent.agent.decision.AgentBrainResponseValidator;
 import com.specagent.agent.decision.AgentDecisionEngine;
-import com.specagent.agent.eligibility.ActionEligibilityGate;
+import com.specagent.agent.action.ActionEligibilityGate;
 import com.specagent.agent.policy.AdvisorPolicyEngine;
 import com.specagent.agent.policy.AgentProposal;
 import com.specagent.agent.policy.AgentProposalService;
@@ -20,7 +20,7 @@ import com.specagent.agent.policy.ProposalStatus;
 import com.specagent.agent.runevent.AgentRunEventService;
 import com.specagent.agent.runevent.AgentRunPhase;
 import com.specagent.agent.runevent.RunProgressRecorder;
-import com.specagent.context.ContextSnapshot;
+import com.specagent.workspace.context.ContextSnapshot;
 import org.springframework.stereotype.Service;
 
 import java.util.HashMap;

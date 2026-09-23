@@ -1,8 +1,8 @@
 package com.specagent.agent.policy;
 
-import com.specagent.agent.contract.ActionProposal;
-import com.specagent.project.Project;
-import com.specagent.project.ProjectService;
+import com.specagent.agent.protocol.ActionProposal;
+import com.specagent.workspace.project.Project;
+import com.specagent.workspace.project.ProjectService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

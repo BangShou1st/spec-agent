@@ -1,6 +1,6 @@
 package com.specagent.agent.ranking;
 
-import com.specagent.agent.eligibility.ActionEligibility;
+import com.specagent.agent.protocol.ActionEligibility;
 
 import java.util.HashSet;
 import java.util.List;

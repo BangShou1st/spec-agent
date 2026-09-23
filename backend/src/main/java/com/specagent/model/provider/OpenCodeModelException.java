@@ -1,7 +1,7 @@
 package com.specagent.model.provider;
 
-import com.specagent.model.gateway.ModelGatewayErrorCategory;
-import com.specagent.model.gateway.ModelGatewayException;
+import com.specagent.model.contract.ModelGatewayErrorCategory;
+import com.specagent.model.contract.ModelGatewayException;
 
 /**
  * Diagnostic failure raised by the OpenCode Zen transport and gateway.

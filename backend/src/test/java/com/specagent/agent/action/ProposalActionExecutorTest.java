@@ -1,15 +1,15 @@
 package com.specagent.agent.action;
 
-import com.specagent.agent.contract.ActionProposal;
-import com.specagent.answer.AnswerService;
-import com.specagent.node.Node;
-import com.specagent.node.NodeOption;
-import com.specagent.node.NodeService;
-import com.specagent.patch.AnswerPatchService;
-import com.specagent.project.Project;
-import com.specagent.project.ProjectService;
-import com.specagent.route.Route;
-import com.specagent.route.RouteRepository;
+import com.specagent.agent.protocol.ActionProposal;
+import com.specagent.workspace.answer.AnswerService;
+import com.specagent.workspace.node.Node;
+import com.specagent.workspace.node.NodeOption;
+import com.specagent.workspace.node.NodeService;
+import com.specagent.workspace.patch.AnswerPatchService;
+import com.specagent.workspace.project.Project;
+import com.specagent.workspace.project.ProjectService;
+import com.specagent.workspace.route.Route;
+import com.specagent.workspace.route.RouteRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

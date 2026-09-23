@@ -1,9 +1,9 @@
 package com.specagent.agent.snapshot;
 
-import com.specagent.agent.contract.NodeView;
+import com.specagent.agent.protocol.NodeView;
 import com.specagent.common.Hashes;
 import com.specagent.common.Json;
-import com.specagent.node.Node;
+import com.specagent.workspace.node.Node;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;

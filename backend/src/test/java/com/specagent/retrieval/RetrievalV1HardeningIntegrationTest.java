@@ -1,24 +1,24 @@
 package com.specagent.retrieval;
 
-import com.specagent.agent.contract.AgentContracts;
+import com.specagent.agent.protocol.AgentContracts;
 import com.specagent.agent.snapshot.AgentInputSnapshotBuilder;
-import com.specagent.answer.AnswerService;
-import com.specagent.context.ContextBuilder;
-import com.specagent.context.ContextOperationType;
-import com.specagent.context.ContextSnapshot;
-import com.specagent.node.KnowledgeStatus;
-import com.specagent.node.Node;
-import com.specagent.node.NodeAuthorKind;
-import com.specagent.node.NodeKind;
-import com.specagent.node.NodeService;
-import com.specagent.patch.AnswerPatchService;
-import com.specagent.patch.Claim;
-import com.specagent.patch.ClaimKind;
-import com.specagent.patch.ClaimStatus;
-import com.specagent.project.Project;
-import com.specagent.project.ProjectService;
-import com.specagent.retrieval.api.RetrievalQuery;
-import com.specagent.retrieval.api.RetrievalScope;
+import com.specagent.workspace.answer.AnswerService;
+import com.specagent.workspace.context.ContextBuilder;
+import com.specagent.workspace.context.ContextOperationType;
+import com.specagent.workspace.context.ContextSnapshot;
+import com.specagent.workspace.node.KnowledgeStatus;
+import com.specagent.workspace.node.Node;
+import com.specagent.workspace.node.NodeAuthorKind;
+import com.specagent.workspace.node.NodeKind;
+import com.specagent.workspace.node.NodeService;
+import com.specagent.workspace.patch.AnswerPatchService;
+import com.specagent.workspace.patch.Claim;
+import com.specagent.workspace.patch.ClaimKind;
+import com.specagent.workspace.patch.ClaimStatus;
+import com.specagent.workspace.project.Project;
+import com.specagent.workspace.project.ProjectService;
+import com.specagent.retrieval.RetrievalQuery;
+import com.specagent.retrieval.RetrievalScope;
 import com.specagent.retrieval.embedding.EmbeddingEnrichmentService;
 import com.specagent.retrieval.embedding.EmbeddingEnrichmentWorker;
 import com.specagent.retrieval.context.RetrievalSearchService;
@@ -26,9 +26,9 @@ import com.specagent.retrieval.embedding.FakeEmbeddingGateway;
 import com.specagent.retrieval.index.RetrievalIndexRebuilder;
 import com.specagent.retrieval.persistence.RetrievalEntryRepository;
 import com.specagent.retrieval.search.HybridRetriever;
-import com.specagent.route.RouteLifecycleStatus;
-import com.specagent.route.Route;
-import com.specagent.route.RouteService;
+import com.specagent.workspace.route.RouteLifecycleStatus;
+import com.specagent.workspace.route.Route;
+import com.specagent.workspace.route.RouteService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -363,7 +363,7 @@ class RetrievalV1HardeningIntegrationTest {
         assertThat(vectorMatches).isPresent();
         assertThat(vectorMatches.orElseThrow()).isNotEmpty();
         var wrongSpaceMatches = entryRepository.vector(project.id(),
-                new com.specagent.retrieval.embedding.EmbeddingGateway.Embedding(
+                new com.specagent.retrieval.EmbeddingGateway.Embedding(
                         "other-model", FakeEmbeddingGateway.DIMENSIONS,
                         new float[FakeEmbeddingGateway.DIMENSIONS]), 8, List.of());
         assertThat(wrongSpaceMatches).isPresent();

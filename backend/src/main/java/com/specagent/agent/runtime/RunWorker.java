@@ -1,13 +1,13 @@
 package com.specagent.agent.runtime;
 
-import com.specagent.agent.AgentRun;
-import com.specagent.agent.AgentRunFailureService;
-import com.specagent.agent.AgentRunService;
-import com.specagent.agent.AgentRunStatus;
-import com.specagent.agent.AgentRunTriggerType;
-import com.specagent.agent.ModelContractException;
-import com.specagent.agent.contract.AgentEvent;
-import com.specagent.agent.loop.ContinuationDispatchService;
+import com.specagent.agent.runtime.AgentRun;
+import com.specagent.agent.runtime.AgentRunFailureService;
+import com.specagent.agent.runtime.AgentRunService;
+import com.specagent.agent.runtime.AgentRunStatus;
+import com.specagent.agent.runtime.AgentRunTriggerType;
+import com.specagent.agent.protocol.ModelContractException;
+import com.specagent.agent.protocol.AgentEvent;
+import com.specagent.agent.runtime.ContinuationDispatchService;
 import com.specagent.agent.runevent.AgentRunEvent;
 import com.specagent.agent.runevent.AgentRunEventService;
 import com.specagent.agent.runevent.AgentRunPhase;

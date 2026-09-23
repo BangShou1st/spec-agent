@@ -1,16 +1,16 @@
 package com.specagent.agent.runtime;
 
-import com.specagent.agent.AgentRunStatus;
-import com.specagent.agent.AgentRunService;
+import com.specagent.agent.runtime.AgentRunStatus;
+import com.specagent.agent.runtime.AgentRunService;
 import com.specagent.agent.DecisionCycleTestDriver;
-import com.specagent.agent.contract.AgentArtifactResponse;
-import com.specagent.agent.contract.AgentRequestEnvelope;
+import com.specagent.agent.protocol.AgentArtifactResponse;
+import com.specagent.agent.protocol.AgentRequestEnvelope;
 import com.specagent.agent.decision.AgentDecisionEngine;
-import com.specagent.context.ContextSnapshotRepository;
-import com.specagent.node.NodeService;
-import com.specagent.project.Project;
-import com.specagent.project.ProjectService;
-import com.specagent.route.RouteService;
+import com.specagent.workspace.context.ContextSnapshotRepository;
+import com.specagent.workspace.node.NodeService;
+import com.specagent.workspace.project.Project;
+import com.specagent.workspace.project.ProjectService;
+import com.specagent.workspace.route.RouteService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -50,11 +50,11 @@ class ArtifactRouteBindingIntegrationTest {
     @Autowired
     private ContextSnapshotRepository contextSnapshotRepository;
     @Autowired
-    private com.specagent.spec.SpecSnapshotRepository specSnapshotRepository;
+    private com.specagent.workspace.spec.SpecSnapshotRepository specSnapshotRepository;
     @Autowired
-    private com.specagent.answer.AnswerService answerService;
+    private com.specagent.workspace.answer.AnswerService answerService;
     @Autowired
-    private com.specagent.patch.AnswerPatchService answerPatchService;
+    private com.specagent.workspace.patch.AnswerPatchService answerPatchService;
     @SpyBean
     private AgentDecisionEngine decisionEngine;
 
@@ -70,9 +70,9 @@ class ArtifactRouteBindingIntegrationTest {
         var seedAnswer = answerService.finalizeAnswer(project.id(), project.activeRouteId(),
                 root.id(), null, "seed answer", "user");
         answerPatchService.save(project.id(), project.activeRouteId(), root.id(),
-                seedAnswer.id(), List.of(new com.specagent.patch.Claim(null,
-                        com.specagent.patch.ClaimKind.fromCode("goal"), "seed claim",
-                        com.specagent.patch.ClaimStatus.fromCode("confirmed"), 0.9,
+                seedAnswer.id(), List.of(new com.specagent.workspace.patch.Claim(null,
+                        com.specagent.workspace.patch.ClaimKind.fromCode("goal"), "seed claim",
+                        com.specagent.workspace.patch.ClaimStatus.fromCode("confirmed"), 0.9,
                         root.id(), seedAnswer.id())), null);
         return project;
     }
@@ -138,27 +138,27 @@ class ArtifactRouteBindingIntegrationTest {
     void specSourceGuardRejectsRouteSnapshotMismatch() {
         // Direct guard-level proof: route A + snapshot of B must be rejected
         // before per-ref validation, even when every ref would resolve.
-        var guard = new com.specagent.agent.gates.SpecSourceReferenceGuard(
-                org.mockito.Mockito.mock(com.specagent.route.RouteRepository.class),
-                org.mockito.Mockito.mock(com.specagent.node.NodeRepository.class),
-                org.mockito.Mockito.mock(com.specagent.answer.AnswerRepository.class),
-                org.mockito.Mockito.mock(com.specagent.patch.AnswerPatchRepository.class),
-                org.mockito.Mockito.mock(com.specagent.route.RouteHistoryResolver.class));
+        var guard = new com.specagent.agent.decision.SpecSourceReferenceGuard(
+                org.mockito.Mockito.mock(com.specagent.workspace.route.RouteRepository.class),
+                org.mockito.Mockito.mock(com.specagent.workspace.node.NodeRepository.class),
+                org.mockito.Mockito.mock(com.specagent.workspace.answer.AnswerRepository.class),
+                org.mockito.Mockito.mock(com.specagent.workspace.patch.AnswerPatchRepository.class),
+                org.mockito.Mockito.mock(com.specagent.workspace.route.RouteHistoryResolver.class));
 
         UUID projectId = UUID.randomUUID();
         UUID routeA = UUID.randomUUID();
         UUID routeB = UUID.randomUUID();
-        var snapshotOfB = new com.specagent.context.ContextSnapshot(
+        var snapshotOfB = new com.specagent.workspace.context.ContextSnapshot(
                 UUID.randomUUID(), projectId, routeB, UUID.randomUUID(),
-                com.specagent.context.ContextOperationType.NORMAL,
+                com.specagent.workspace.context.ContextOperationType.NORMAL,
                 List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), null, "hash",
                 java.time.Instant.now());
 
         // The ref itself is even a real NODE ref that would pass per-ref
         // checks against snapshotOfB — only the route pairing is wrong.
         var result = guard.validate(projectId, routeA, snapshotOfB,
-                List.of(com.specagent.spec.SourceReference.of(
-                        com.specagent.spec.SourceKind.CONTEXT, snapshotOfB.id())));
+                List.of(com.specagent.workspace.spec.SourceReference.of(
+                        com.specagent.workspace.spec.SourceKind.CONTEXT, snapshotOfB.id())));
 
         assertThat(result.accepted()).isFalse();
         assertThat(result.errors())
@@ -170,7 +170,7 @@ class ArtifactRouteBindingIntegrationTest {
         org.mockito.Mockito.doAnswer(invocation -> {
             var envelope = (AgentRequestEnvelope) invocation.getArgument(0);
             return new AgentArtifactResponse(
-                com.specagent.agent.contract.AgentProtocol.ARTIFACT_PROTOCOL_VERSION,
+                com.specagent.agent.protocol.AgentProtocol.ARTIFACT_PROTOCOL_VERSION,
                 envelope.runId(),
                 new AgentArtifactResponse.ArtifactGenerationResult(
                         "spec_snapshot",
@@ -178,7 +178,7 @@ class ArtifactRouteBindingIntegrationTest {
                                 "Overview", "grounded content",
                                 List.of("route:" + envelope.snapshot().routeId()))),
                         List.of()),
-                new com.specagent.agent.contract.UsageView(1, List.of()));
+                new com.specagent.agent.protocol.UsageView(1, List.of()));
         })
                 .when(decisionEngine).runArtifactGeneration(any(AgentRequestEnvelope.class));
     }

@@ -1,6 +1,6 @@
 package com.specagent.eval;
 
-import com.specagent.agent.contract.AgentEvent;
+import com.specagent.agent.protocol.AgentEvent;
 
 /**
  * The user event that triggers the production answer cycle of a scenario.

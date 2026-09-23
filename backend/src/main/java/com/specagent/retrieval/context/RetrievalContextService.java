@@ -1,10 +1,10 @@
 package com.specagent.retrieval.context;
 
-import com.specagent.context.ContextSnapshot;
-import com.specagent.retrieval.api.MemoryAuthority;
-import com.specagent.retrieval.api.RetrievalQuery;
-import com.specagent.retrieval.api.RetrievalScope;
-import com.specagent.retrieval.api.RetrievedContextItem;
+import com.specagent.workspace.context.ContextSnapshot;
+import com.specagent.retrieval.MemoryAuthority;
+import com.specagent.retrieval.RetrievalQuery;
+import com.specagent.retrieval.RetrievalScope;
+import com.specagent.retrieval.RetrievedContextItem;
 import com.specagent.retrieval.search.HybridRetriever;
 import com.specagent.retrieval.persistence.RetrievalEntry;
 import org.springframework.stereotype.Service;

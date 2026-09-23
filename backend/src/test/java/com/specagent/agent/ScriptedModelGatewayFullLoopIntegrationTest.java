@@ -1,16 +1,20 @@
 package com.specagent.agent;
 
-import com.specagent.agent.AgentRun;
-import com.specagent.agent.AgentRunService;
-import com.specagent.answer.AnswerRepository;
-import com.specagent.answer.AnswerService;
-import com.specagent.node.Node;
-import com.specagent.node.NodeService;
-import com.specagent.patch.AnswerPatchService;
-import com.specagent.project.Project;
-import com.specagent.project.ProjectService;
-import com.specagent.route.Route;
-import com.specagent.route.RouteService;
+import com.specagent.agent.runtime.AgentRunStatus;
+
+import com.specagent.agent.ScriptedModelGatewayFullLoopIntegrationTest;
+
+import com.specagent.agent.runtime.AgentRun;
+import com.specagent.agent.runtime.AgentRunService;
+import com.specagent.workspace.answer.AnswerRepository;
+import com.specagent.workspace.answer.AnswerService;
+import com.specagent.workspace.node.Node;
+import com.specagent.workspace.node.NodeService;
+import com.specagent.workspace.patch.AnswerPatchService;
+import com.specagent.workspace.project.Project;
+import com.specagent.workspace.project.ProjectService;
+import com.specagent.workspace.route.Route;
+import com.specagent.workspace.route.RouteService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;

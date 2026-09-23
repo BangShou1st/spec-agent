@@ -1,15 +1,15 @@
 package com.specagent.agent.policy;
 
 import com.specagent.agent.action.ActionExecutionContext;
-import com.specagent.agent.contract.ActionProposal;
+import com.specagent.agent.protocol.ActionProposal;
 import com.specagent.capability.CapabilityAdapter;
 import com.specagent.capability.CapabilityDescriptor;
 import com.specagent.capability.CapabilityInvocation;
 import com.specagent.capability.CapabilityRegistry;
 import com.specagent.capability.CapabilityResult;
 import com.specagent.capability.SideEffectClass;
-import com.specagent.route.Route;
-import com.specagent.route.RouteRepository;
+import com.specagent.workspace.route.Route;
+import com.specagent.workspace.route.RouteRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -33,8 +33,8 @@ class AdvisorPolicyEngineTest {
     @BeforeEach
     void setUp() {
         routeRepository = mock(RouteRepository.class);
-        com.specagent.node.NodeRepository nodeRepository =
-                mock(com.specagent.node.NodeRepository.class);
+        com.specagent.workspace.node.NodeRepository nodeRepository =
+                mock(com.specagent.workspace.node.NodeRepository.class);
         when(nodeRepository.findById(org.mockito.ArgumentMatchers.any(UUID.class)))
                 .thenReturn(Optional.empty());
         CapabilityRegistry registry = new CapabilityRegistry(List.of(

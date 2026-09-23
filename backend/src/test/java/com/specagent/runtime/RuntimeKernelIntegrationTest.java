@@ -1,32 +1,32 @@
 package com.specagent.runtime;
 
-import com.specagent.answer.Answer;
-import com.specagent.answer.AnswerService;
-import com.specagent.agent.AgentRunService;
-import com.specagent.context.ContextBuilder;
-import com.specagent.context.ContextOperationType;
-import com.specagent.context.ContextSnapshot;
-import com.specagent.context.RequirementState;
-import com.specagent.context.RequirementStateBuilder;
-import com.specagent.node.Node;
-import com.specagent.node.NodeService;
-import com.specagent.patch.AnswerPatch;
-import com.specagent.patch.AnswerPatchService;
-import com.specagent.patch.Claim;
-import com.specagent.patch.ClaimKind;
-import com.specagent.patch.ClaimStatus;
-import com.specagent.profile.ProfileService;
-import com.specagent.project.Project;
-import com.specagent.project.ProjectService;
-import com.specagent.route.Route;
-import com.specagent.route.RouteLifecycleStatus;
-import com.specagent.route.RouteService;
-import com.specagent.spec.SourceKind;
-import com.specagent.spec.SourceReference;
-import com.specagent.spec.SpecSection;
-import com.specagent.spec.SpecSnapshot;
-import com.specagent.spec.SpecSnapshotService;
-import com.specagent.spec.UnresolvedItem;
+import com.specagent.workspace.answer.Answer;
+import com.specagent.workspace.answer.AnswerService;
+import com.specagent.agent.runtime.AgentRunService;
+import com.specagent.workspace.context.ContextBuilder;
+import com.specagent.workspace.context.ContextOperationType;
+import com.specagent.workspace.context.ContextSnapshot;
+import com.specagent.workspace.context.RequirementState;
+import com.specagent.workspace.context.RequirementStateBuilder;
+import com.specagent.workspace.node.Node;
+import com.specagent.workspace.node.NodeService;
+import com.specagent.workspace.patch.AnswerPatch;
+import com.specagent.workspace.patch.AnswerPatchService;
+import com.specagent.workspace.patch.Claim;
+import com.specagent.workspace.patch.ClaimKind;
+import com.specagent.workspace.patch.ClaimStatus;
+import com.specagent.workspace.profile.ProfileService;
+import com.specagent.workspace.project.Project;
+import com.specagent.workspace.project.ProjectService;
+import com.specagent.workspace.route.Route;
+import com.specagent.workspace.route.RouteLifecycleStatus;
+import com.specagent.workspace.route.RouteService;
+import com.specagent.workspace.spec.SourceKind;
+import com.specagent.workspace.spec.SourceReference;
+import com.specagent.workspace.spec.SpecSection;
+import com.specagent.workspace.spec.SpecSnapshot;
+import com.specagent.workspace.spec.SpecSnapshotService;
+import com.specagent.workspace.spec.UnresolvedItem;
 import com.specagent.common.Ids;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -256,7 +256,7 @@ class RuntimeKernelIntegrationTest {
         ProjectSetup s = setupBasicProject();
 
         var run = agentRunService.create(s.project().id(), s.routeId(),
-                com.specagent.agent.AgentRunTriggerType.ANSWER_NODE, s.child().id(), null);
+                com.specagent.agent.runtime.AgentRunTriggerType.ANSWER_NODE, s.child().id(), null);
         ContextSnapshot ctx = contextBuilder.buildFromActiveRoute(s.project().id(), run.id(), ContextOperationType.NORMAL);
 
         assertThat(ctx.routeId()).isEqualTo(s.routeId());

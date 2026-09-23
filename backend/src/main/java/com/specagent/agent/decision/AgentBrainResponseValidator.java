@@ -1,14 +1,14 @@
 package com.specagent.agent.decision;
 
-import com.specagent.agent.contract.ActionFamily;
-import com.specagent.agent.contract.AgentProtocol;
-import com.specagent.agent.contract.AgentArtifactResponse;
-import com.specagent.agent.contract.AgentInputSnapshot;
-import com.specagent.agent.contract.AgentContractException;
-import com.specagent.agent.contract.AgentRequestEnvelope;
-import com.specagent.agent.contract.AgentResponseEnvelope;
-import com.specagent.agent.contract.ClaimVocabulary;
-import com.specagent.agent.contract.ProposedClaim;
+import com.specagent.agent.protocol.ActionFamily;
+import com.specagent.agent.protocol.AgentProtocol;
+import com.specagent.agent.protocol.AgentArtifactResponse;
+import com.specagent.agent.protocol.AgentInputSnapshot;
+import com.specagent.agent.protocol.AgentContractException;
+import com.specagent.agent.protocol.AgentRequestEnvelope;
+import com.specagent.agent.protocol.AgentResponseEnvelope;
+import com.specagent.agent.protocol.ClaimVocabulary;
+import com.specagent.agent.protocol.ProposedClaim;
 
 import java.util.List;
 import java.util.Map;
@@ -192,7 +192,7 @@ public final class AgentBrainResponseValidator {
         validateSourceRefs(claim.sourceRefs(), request.snapshot());
     }
 
-    private static void validateObservation(com.specagent.agent.contract.ObservationView observation) {
+    private static void validateObservation(com.specagent.agent.protocol.ObservationView observation) {
         validateEntries("known", observation.known());
         validateEntries("unknowns", observation.unknowns());
         validateEntries("conflicts", observation.conflicts());
@@ -212,7 +212,7 @@ public final class AgentBrainResponseValidator {
     }
 
     private static void validateProposal(AgentRequestEnvelope request,
-                                         com.specagent.agent.contract.ActionProposal proposal) {
+                                         com.specagent.agent.protocol.ActionProposal proposal) {
         ActionFamily family;
         try {
             family = ActionFamily.fromCode(proposal.actionFamily());

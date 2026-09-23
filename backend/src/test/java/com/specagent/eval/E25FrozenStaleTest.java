@@ -1,10 +1,10 @@
 package com.specagent.eval;
 
-import com.specagent.agent.policy.ProposalAcceptanceService;
-import com.specagent.node.NodeService;
-import com.specagent.project.ProjectService;
-import com.specagent.route.Route;
-import com.specagent.route.RouteRepository;
+import com.specagent.agent.runtime.ProposalAcceptanceService;
+import com.specagent.workspace.node.NodeService;
+import com.specagent.workspace.project.ProjectService;
+import com.specagent.workspace.route.Route;
+import com.specagent.workspace.route.RouteRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 

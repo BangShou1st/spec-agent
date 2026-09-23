@@ -1,6 +1,6 @@
 package com.specagent.retrieval.index;
 
-import com.specagent.node.Node;
+import com.specagent.workspace.node.Node;
 
 import java.util.Locale;
 import java.util.Map;

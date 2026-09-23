@@ -1,13 +1,13 @@
 package com.specagent.agent.policy;
 
 import com.specagent.agent.action.ActionExecutionContext;
-import com.specagent.agent.contract.ActionFamily;
-import com.specagent.agent.contract.ActionProposal;
+import com.specagent.agent.protocol.ActionFamily;
+import com.specagent.agent.protocol.ActionProposal;
 import com.specagent.capability.CapabilityDescriptor;
 import com.specagent.capability.CapabilityRegistry;
 import com.specagent.capability.SideEffectClass;
-import com.specagent.route.Route;
-import com.specagent.route.RouteRepository;
+import com.specagent.workspace.route.Route;
+import com.specagent.workspace.route.RouteRepository;
 import org.springframework.stereotype.Component;
 
 import java.util.UUID;
@@ -45,11 +45,11 @@ public class AdvisorPolicyEngine {
 
     private final RouteRepository routeRepository;
     private final CapabilityRegistry capabilityRegistry;
-    private final com.specagent.node.NodeRepository nodeRepository;
+    private final com.specagent.workspace.node.NodeRepository nodeRepository;
 
     public AdvisorPolicyEngine(RouteRepository routeRepository,
                                CapabilityRegistry capabilityRegistry,
-                               com.specagent.node.NodeRepository nodeRepository) {
+                               com.specagent.workspace.node.NodeRepository nodeRepository) {
         this.routeRepository = routeRepository;
         this.capabilityRegistry = capabilityRegistry;
         this.nodeRepository = nodeRepository;
@@ -158,7 +158,7 @@ public class AdvisorPolicyEngine {
 
     private boolean isLiveNodeRef(String ref) {
         try {
-            com.specagent.node.Node node = nodeRepository.findById(
+            com.specagent.workspace.node.Node node = nodeRepository.findById(
                     UUID.fromString(ref.substring(5))).orElse(null);
             return node != null && !node.isRetracted();
         } catch (IllegalArgumentException ex) {

@@ -1,12 +1,12 @@
 package com.specagent.agent.broker;
 
 import com.specagent.agent.broker.ModelInferenceHttpRequest;
-import com.specagent.agent.contract.AgentProtocol;
+import com.specagent.agent.protocol.AgentProtocol;
 import com.specagent.agent.runevent.AgentRunEventRepository;
 import com.specagent.agent.runtime.RunService;
 import com.specagent.common.Json;
-import com.specagent.project.Project;
-import com.specagent.project.ProjectService;
+import com.specagent.workspace.project.Project;
+import com.specagent.workspace.project.ProjectService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;

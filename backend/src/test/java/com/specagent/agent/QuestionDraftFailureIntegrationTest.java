@@ -1,12 +1,19 @@
 package com.specagent.agent;
 
-import com.specagent.agent.contract.AgentRequestEnvelope;
-import com.specagent.agent.contract.AgentResponseEnvelope;
+import com.specagent.agent.runtime.AgentRunStatus;
+
+import com.specagent.agent.QuestionDraftFailureIntegrationTest;
+import com.specagent.agent.runtime.AgentRun;
+
+import com.specagent.agent.runtime.AgentRunService;
+
+import com.specagent.agent.protocol.AgentRequestEnvelope;
+import com.specagent.agent.protocol.AgentResponseEnvelope;
 import com.specagent.agent.decision.AgentDecisionEngine;
-import com.specagent.project.Project;
-import com.specagent.project.ProjectService;
-import com.specagent.route.Route;
-import com.specagent.route.RouteService;
+import com.specagent.workspace.project.Project;
+import com.specagent.workspace.project.ProjectService;
+import com.specagent.workspace.route.Route;
+import com.specagent.workspace.route.RouteService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -47,7 +54,7 @@ class QuestionDraftFailureIntegrationTest {
     @Autowired
     private com.specagent.agent.runtime.RunWorker worker;
     @Autowired
-    private com.specagent.node.NodeService nodeService;
+    private com.specagent.workspace.node.NodeService nodeService;
 
     // Spy over the real deterministic engine: failure tests override single
     // methods, everything else keeps production behavior.
@@ -75,16 +82,16 @@ class QuestionDraftFailureIntegrationTest {
                         "agent-decision.v2",
                         java.util.UUID.randomUUID(),
                         null,
-                        new com.specagent.agent.contract.ObservationView(
+                        new com.specagent.agent.protocol.ObservationView(
                                 java.util.List.of(), java.util.List.of(), java.util.List.of(),
                                 java.util.List.of()),
                         null,
-                        new com.specagent.agent.contract.UsageView(1, java.util.List.of()),
+                        new com.specagent.agent.protocol.UsageView(1, java.util.List.of()),
                         java.util.Map.of()))
                 .when(decisionEngine).runDecision(any(AgentRequestEnvelope.class));
 
         assertThatThrownBy(() -> draftDriver.draftQuestion(project.id()))
-                .isInstanceOf(com.specagent.agent.contract.AgentContractException.class);
+                .isInstanceOf(com.specagent.agent.protocol.AgentContractException.class);
 
         assertFailedRun(project);
     }
@@ -104,7 +111,7 @@ class QuestionDraftFailureIntegrationTest {
         AgentRun stale = runService.createQueuedDraftQuestion(project.id());
         // Another writer appends at the tip before the worker claims the
         // stale run, so its recorded tip is no longer current.
-        com.specagent.node.Node later = nodeService.createChildNode(
+        com.specagent.workspace.node.Node later = nodeService.createChildNode(
                 project.id(), activeRouteId, recordedTip,
                 "A later question", null, java.util.List.of(), true);
 

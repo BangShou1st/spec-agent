@@ -6,7 +6,7 @@ import com.specagent.mcp.domain.McpDiscovery;
 import com.specagent.mcp.domain.McpPrompt;
 import com.specagent.mcp.domain.McpResource;
 import com.specagent.mcp.domain.McpTool;
-import com.specagent.mcp.persistence.McpDiscoveryCacheRepository;
+import com.specagent.mcp.McpDiscoveryCacheRepository;
 import com.fasterxml.jackson.core.type.TypeReference;
 import org.springframework.stereotype.Service;
 

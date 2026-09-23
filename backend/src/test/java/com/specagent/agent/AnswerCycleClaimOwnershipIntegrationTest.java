@@ -1,11 +1,17 @@
 package com.specagent.agent;
 
+import com.specagent.agent.runtime.AgentRunStatus;
+
+import com.specagent.agent.AnswerCycleClaimOwnershipIntegrationTest;
+import com.specagent.agent.runtime.AgentRun;
+import com.specagent.agent.runtime.AgentRunService;
+
 import com.specagent.agent.runtime.RunService;
 import com.specagent.agent.runtime.RunWorker;
-import com.specagent.node.Node;
-import com.specagent.node.NodeService;
-import com.specagent.project.Project;
-import com.specagent.project.ProjectService;
+import com.specagent.workspace.node.Node;
+import com.specagent.workspace.node.NodeService;
+import com.specagent.workspace.project.Project;
+import com.specagent.workspace.project.ProjectService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;

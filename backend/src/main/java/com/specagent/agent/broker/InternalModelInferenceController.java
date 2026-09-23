@@ -1,17 +1,17 @@
 package com.specagent.agent.broker;
 
-import com.specagent.agent.runtime.AgentBrainProperties;
-import com.specagent.agent.contract.AgentContracts;
-import com.specagent.agent.contract.AgentProtocol;
+import com.specagent.agent.broker.AgentBrainProperties;
+import com.specagent.agent.protocol.AgentContracts;
+import com.specagent.agent.protocol.AgentProtocol;
 import com.specagent.agent.runevent.AgentRunEventService;
 import com.specagent.agent.runevent.AgentRunPhase;
-import com.specagent.agent.contract.AgentContractException;
-import com.specagent.model.gateway.ModelGatewayException;
-import com.specagent.model.inference.ModelInferenceGateway;
-import com.specagent.model.inference.ModelInferenceMessage;
-import com.specagent.model.inference.ModelInferenceRequest;
-import com.specagent.model.inference.ModelOutputContract;
-import com.specagent.model.inference.ModelInferenceResponse;
+import com.specagent.agent.protocol.AgentContractException;
+import com.specagent.model.contract.ModelGatewayException;
+import com.specagent.model.contract.ModelInferenceGateway;
+import com.specagent.model.contract.ModelInferenceMessage;
+import com.specagent.model.contract.ModelInferenceRequest;
+import com.specagent.model.contract.ModelOutputContract;
+import com.specagent.model.contract.ModelInferenceResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;

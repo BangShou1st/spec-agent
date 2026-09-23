@@ -4,7 +4,7 @@ import com.specagent.agent.decision.AgentBrainUnavailableException;
 import com.specagent.agent.decision.BrainFailureCode;
 
 import java.util.Map;
-import com.specagent.graph.GraphRuleViolationException;
+import com.specagent.workspace.graph.GraphRuleViolationException;
 
 /**
  * One place that turns a thrown failure into the durable run-failure record:

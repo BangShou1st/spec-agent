@@ -1,5 +1,10 @@
 package com.specagent.model.inference;
 
+import com.specagent.model.contract.ModelInferenceMessage;
+import com.specagent.model.contract.ModelInferenceRequest;
+import com.specagent.model.contract.ModelOutputContract;
+import com.specagent.model.inference.ModelOutputContractTest;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 

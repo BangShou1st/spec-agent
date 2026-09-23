@@ -1,12 +1,19 @@
 package com.specagent.model.inference;
+
+import com.specagent.model.contract.ModelOutputContract;
+
+import com.specagent.model.contract.ModelInferenceGateway;
+import com.specagent.model.contract.ModelInferenceRequest;
+import com.specagent.model.contract.ModelInferenceResponse;
+import com.specagent.model.inference.StreamingDefaultCancellationTest;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import com.specagent.model.provider.FragmentListener;
+import com.specagent.model.contract.FragmentListener;
 import com.specagent.model.provider.OpenCodeChatCompletionRequest;
 import com.specagent.model.provider.OpenCodeChatMessage;
 import com.specagent.model.provider.OpenCodeCompletionResponse;
 import com.specagent.model.provider.OpenCodeZenTransport;
-import com.specagent.model.provider.StreamCancelledException;
+import com.specagent.model.contract.StreamCancelledException;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;

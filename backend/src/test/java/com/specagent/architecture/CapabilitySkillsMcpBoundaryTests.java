@@ -36,7 +36,7 @@ class CapabilitySkillsMcpBoundaryTests {
         ArchRule rule = noClasses()
             .that().resideInAPackage("com.specagent.agent..")
             .should().dependOnClassesThat()
-            .resideInAnyPackage("com.specagent.connection.persistence..",
+            .resideInAnyPackage("com.specagent.connection..",
                 "com.specagent.connection.credentials..")
             .because("Agent never reads connection rows or credential stores "
                 + "directly; providers project availability");
