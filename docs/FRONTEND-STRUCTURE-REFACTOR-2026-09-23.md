@@ -103,9 +103,48 @@ Baseline was captured on `a22ed03` before any edit.
 | `vue-tsc --noEmit` | 0 errors | 0 errors |
 | `vite build` | success | success |
 | `vitest run` | 100 files / 821 tests / 0 failed | 100 files / 820 tests / 0 failed |
+| `e2e/settings.spec.ts` | — | 1 passed (5.2s) |
 | Runtime import cycles | 0 | 0 |
 | `shared/` → `features/`/`app/` | 0 | 0 |
 | Stale in-repo specifiers | — | 0 (277 files scanned) |
+
+The only intentional test delta is the removal of the four
+`RequirementStatePanel` tests (-4), offset by the three new
+`architectureBoundaries` tests (+3).
+
+### E2E status
+
+E2E runs against the real local stack (Postgres in Docker, backend on the
+`test` profile with the fake model gateway, Vite dev server started by
+Playwright). One spec was executed and passed end to end:
+
+```text
+Running 1 test using 1 worker
+[1/1] e2e\settings.spec.ts:3:1 › model settings probes, selects, and saves without exposing the key
+  1 passed (5.2s)
+```
+
+The remaining specs could not be executed in this environment. Two independent
+sandbox constraints block them, both reproducible and unrelated to this change:
+
+1. The Playwright CLI empties its output directory (`test-results/`) at startup.
+   The sandbox's safe-delete shim rejects the bulk delete once that directory
+   holds more than 50 entries and aborts the whole CLI. Working around it
+   (`--output=<fresh dir>`) moves the problem rather than removing it, because
+   the fresh directory accumulates the same way.
+2. Browser launch is blocked when the CLI runs under the sandboxed background
+   execution path: no browser process is ever spawned and the run hangs on the
+   first test. The one successful run above executed with the sandbox bypassed.
+
+Consequently the project-management, skills, connections, workspace and
+global-assistant E2E flows are **not** verified here. They should be run in a
+normal shell with:
+
+```bash
+cd frontend
+PLAYWRIGHT_BACKEND_PORT=8080 PLAYWRIGHT_BROWSERS_PATH=<browsers> \
+  node node_modules/@playwright/test/cli.js test e2e/ --reporter=line --workers=1
+```
 
 Interface parity, measured between the pre-refactor worktree and the refactored
 tree:
@@ -123,14 +162,18 @@ regress.
 
 ## 8. Known gaps
 
-* `frontend/e2e` coverage in this environment is limited by two sandbox
-  constraints, recorded in the handover notes: Playwright wipes its output
-  directory before running (mitigated with `--output`), and one failing spec can
-  stall its worker. Backend-dependent project/workspace specs need the local
-  Postgres + backend stack running.
+* E2E coverage beyond `settings.spec.ts` could not be executed here; see the E2E
+  status above for the two environment constraints and the command to run them.
+  This is the main outstanding verification for this change.
 * `providerSettings.css` still carries `.provider-card__free-toggle` rules that
   no template references (pre-existing dead CSS, left untouched to avoid
   changing stylesheet semantics in a structural change).
+* Deep refactors deliberately **not** attempted, per the brief ("keep the
+  behaviour, record the rest"): state ownership and async ordering inside
+  `WorkspaceView.vue`, `GraphCanvas.vue`, `features/workspace/state/workspaceRuns.ts`,
+  `features/global-assistant/state/globalAssistantStore.ts` and the global
+  `app/styles/style.css` were left intact. These remain the largest files in the
+  tree and are the natural next candidates if further decomposition is wanted.
 
 ## 9. Appendices
 
