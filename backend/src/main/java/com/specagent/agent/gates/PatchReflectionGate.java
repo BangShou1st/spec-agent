@@ -1,4 +1,4 @@
-package com.specagent.agent.decision;
+package com.specagent.agent.gates;
 
 import com.specagent.agent.decision.AnswerPatchDraft;
 import com.specagent.agent.decision.ReflectionResult;

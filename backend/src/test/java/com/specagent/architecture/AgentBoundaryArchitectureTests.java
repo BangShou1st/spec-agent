@@ -9,9 +9,13 @@ import org.junit.jupiter.api.Test;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
 /**
- * Stage A boundary rules for the new agent runtime packages
- * ({@code docs/v2/PYTHON_AGENT_RUNTIME_BOUNDARY.md}):
- * contracts stay pure, the decision layer never touches persistence, the
+ * Stage A boundary rules for the agent runtime packages
+ * ({@code docs/v2/PYTHON_AGENT_RUNTIME_BOUNDARY.md}), updated for the 2026-09
+ * business-module consolidation: the cross-language wire DTOs live in
+ * {@code agent.protocol}, reflection gates in {@code agent.gates}, and the
+ * model output vocabulary in {@code agent.decision}.
+ *
+ * Contracts stay pure, the decision layer never touches persistence, the
  * run worker never touches model/provider code, the inference broker never
  * reaches into repositories or credentials, and provider packages never
  * learn about brain-facing contracts.
@@ -23,7 +27,7 @@ class AgentBoundaryArchitectureTests {
         .importPackages("com.specagent");
 
     @Test
-    void agentContractPackagesAreFreeOfRuntimeDependencies() {
+    void agentProtocolPackagesAreFreeOfRuntimeDependencies() {
         ArchRule rule = noClasses()
             .that().resideInAPackage("com.specagent.agent.protocol..")
             .should().dependOnClassesThat()
@@ -31,10 +35,8 @@ class AgentBoundaryArchitectureTests {
             .orShould().dependOnClassesThat()
             .haveSimpleNameEndingWith("Service")
             .orShould().dependOnClassesThat()
-            .resideInAnyPackage("com.specagent.model..", "com.specagent.api..",
-                "com.specagent.workspace.project..", "com.specagent.workspace.route..",
-                "com.specagent.workspace.node..", "com.specagent.workspace.answer..",
-                "com.specagent.workspace.patch..", "com.specagent.workspace.context..")
+            .resideInAnyPackage("com.specagent.model..", "com.specagent.web..",
+                "com.specagent.workspace..")
             .because("Cross-language wire contracts must stay pure DTOs shared with the Python brain");
 
         rule.check(CLASSES);
@@ -71,7 +73,7 @@ class AgentBoundaryArchitectureTests {
             .should().dependOnClassesThat()
             .haveSimpleNameEndingWith("Repository")
             .orShould().dependOnClassesThat()
-            .resideInAPackage("com.specagent.credential..")
+            .resideInAnyPackage("com.specagent.connection.credentials..")
             .because("The internal inference broker speaks the neutral inference "
                 + "seam plus sanitized event recording only; repository access "
                 + "and credential resolution stay behind the gateway and services");
@@ -120,15 +122,20 @@ class AgentBoundaryArchitectureTests {
     }
 
     @Test
-    void agentActionPackageCannotDependOnModelOrLlmPackages() {
-        ArchRule rule = noClasses()
-            .that().resideInAPackage("com.specagent.agent.action..")
-            .should().dependOnClassesThat()
-            .resideInAnyPackage("com.specagent.model..")
-            .because("Action executors apply validated proposals to the graph; "
-                + "they never call LLM/gateway directly");
+    void agentActionAndGatesPackagesCannotDependOnModelOrLlmPackages() {
+        for (String pkg : new String[] {
+                "com.specagent.agent.action..", "com.specagent.agent.gates.."}) {
+            ArchRule rule = noClasses()
+                .that().resideInAPackage(pkg)
+                .should().dependOnClassesThat()
+                .resideInAnyPackage("com.specagent.model..")
+                .because("Action executors apply validated proposals to the graph and "
+                    + "gates validate them against runtime facts; neither ever calls "
+                    + "LLM/gateway directly");
+            rule.allowEmptyShould(true);
 
-        rule.check(CLASSES);
+            rule.check(CLASSES);
+        }
     }
 
     @Test
@@ -154,14 +161,14 @@ class AgentBoundaryArchitectureTests {
 
         rule.check(CLASSES);
     }
+
     @Test
     void graphCommandPackageCannotDependOnModelOrAgentBrains() {
         ArchRule rule = noClasses()
             .that().resideInAPackage("com.specagent.workspace.graph..")
             .should().dependOnClassesThat()
             .resideInAnyPackage("com.specagent.model..", "com.specagent.agent.decision..",
-                "com.specagent.agent.broker..", "com.specagent.model.contract..",
-                "com.specagent.model.provider..")
+                "com.specagent.agent.broker..", "com.specagent.model.provider..")
             .because("Graph commands are deterministic runtime mutations; they never call models or brains");
 
         rule.check(CLASSES);
@@ -177,13 +184,14 @@ class AgentBoundaryArchitectureTests {
 
         rule.check(CLASSES);
     }
+
     @Test
     void capabilityPackageIsSelfContainedAndNeverReachesIntoAgentOrModel() {
         ArchRule rule = noClasses()
             .that().resideInAPackage("com.specagent.capability..")
             .should().dependOnClassesThat()
             .resideInAnyPackage("com.specagent.agent..", "com.specagent.model..",
-                "com.specagent.api..", "com.specagent.web..")
+                "com.specagent.web..")
             .because("Capability foundation is a self-contained boundary: agent depends on capabilities, never the reverse");
 
         rule.check(CLASSES);
@@ -196,7 +204,8 @@ class AgentBoundaryArchitectureTests {
             .should().dependOnClassesThat()
             .haveSimpleNameEndingWith("Gateway")
             .orShould().dependOnClassesThat()
-            .resideInAnyPackage("com.specagent.credential..", "com.specagent.modelsettings..")
+            .resideInAnyPackage("com.specagent.connection.credentials..",
+                "com.specagent.modelsettings..")
             .because("Capabilities never touch provider gateways, credentials, or model settings; the host runtime owns them");
 
         rule.check(CLASSES);

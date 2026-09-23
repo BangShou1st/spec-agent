@@ -1,5 +1,7 @@
 package com.specagent.agent.runtime;
 
+import com.specagent.agent.gates.ContextGuard;
+
 import com.specagent.agent.snapshot.StaleContextChecker;
 
 import com.specagent.agent.runtime.AgentRun;
@@ -17,7 +19,7 @@ import com.specagent.agent.protocol.AgentResponseEnvelope;
 import com.specagent.agent.protocol.DecisionBudget;
 import com.specagent.agent.decision.AgentBrainResponseValidator;
 import com.specagent.agent.decision.AgentDecisionEngine;
-import com.specagent.agent.decision.ContextGuard;
+import com.specagent.agent.gates.ContextGuard;
 import com.specagent.agent.runevent.AgentRunEventService;
 import com.specagent.agent.runevent.AgentRunPhase;
 import com.specagent.agent.runevent.RunProgressRecorder;

@@ -1,5 +1,7 @@
 package com.specagent.agent.runtime;
 
+import com.specagent.agent.gates.PatchReflectionGate;
+
 import com.specagent.agent.protocol.ModelContractException;
 
 import com.specagent.agent.runtime.AgentRunService;
@@ -8,7 +10,7 @@ import com.specagent.agent.action.ActionExecutionContext;
 import com.specagent.agent.protocol.*;
 import com.specagent.agent.decision.AgentBrainResponseValidator;
 import com.specagent.agent.decision.AgentDecisionEngine;
-import com.specagent.agent.decision.PatchReflectionGate;
+import com.specagent.agent.gates.PatchReflectionGate;
 import com.specagent.agent.decision.ReflectionResult;
 import com.specagent.agent.action.ActionEligibilityGate;
 import com.specagent.agent.snapshot.LegacyFrozenInputUnavailableException;

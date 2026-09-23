@@ -9,9 +9,10 @@ import org.junit.jupiter.api.Test;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
 /**
- * Phase 3 low-coupling guard: agent never reaches into MCP internals, Skill
- * never reaches into planner/policy/brain, capability never touches concrete
- * provider SDKs, and MCP never owns prompt/brain/policy wording.
+ * Phase 3 low-coupling guard, updated for the 2026-09 structure: agent never
+ * reaches into MCP internals, Skill never reaches into planner/policy/brain,
+ * capability never touches concrete provider SDKs, and MCP never owns
+ * prompt/brain/policy wording.
  */
 class CapabilitySkillsMcpBoundaryTests {
 
@@ -32,12 +33,11 @@ class CapabilitySkillsMcpBoundaryTests {
     }
 
     @Test
-    void agentPackagesNeverReachIntoConnectionPersistence() {
+    void agentPackagesNeverReachIntoConnectionInternals() {
         ArchRule rule = noClasses()
             .that().resideInAPackage("com.specagent.agent..")
             .should().dependOnClassesThat()
-            .resideInAnyPackage("com.specagent.connection..",
-                "com.specagent.connection.credentials..")
+            .resideInAnyPackage("com.specagent.connection..")
             .because("Agent never reads connection rows or credential stores "
                 + "directly; providers project availability");
 

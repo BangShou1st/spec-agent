@@ -13,6 +13,20 @@ repositories {
     mavenCentral()
 }
 
+// Evaluation harness source set: com.specagent.eval (+ com.specagent.trace)
+// compile against the production sources but are NOT part of the shipped
+// application. bootRun / production classpaths never see eval classes; the
+// eval* Gradle tasks and the test source set do (via the dependency below).
+val eval = sourceSets.create("eval") {
+    java.srcDir("src/eval/java")
+}
+configurations.named("evalImplementation") {
+    extendsFrom(configurations.implementation.get())
+}
+dependencies {
+    "evalImplementation"(sourceSets["main"].output)
+}
+
 dependencies {
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-data-jdbc")
@@ -39,6 +53,9 @@ implementation("io.modelcontextprotocol.sdk:mcp:0.18.4")
     testImplementation("org.testcontainers:postgresql")
     testImplementation("com.tngtech.archunit:archunit-junit5:1.4.0")
     testImplementation("org.assertj:assertj-core:3.26.3")
+    // Eval harness classes (ScenarioRunner, BrainScriptInstaller, ...) are
+    // consumed by the eval* Test tasks and by eval tests in src/test/java.
+    testImplementation(eval.output)
 }
 
 tasks.withType<Test> {
@@ -136,7 +153,7 @@ tasks.register<Test>("testCrossLanguage") {
 tasks.register<JavaExec>("eligibilityShadowReplay") {
     group = "verification"
     description = "Replays Runtime-owned action eligibility over existing semantic trace artifacts."
-    classpath = sourceSets["main"].runtimeClasspath
+    classpath = eval.runtimeClasspath
     mainClass.set("com.specagent.eval.ActionEligibilityShadowReplay")
     val artifactPaths = providers.gradleProperty("eligibilityArtifacts")
     val outputPath = providers.gradleProperty("eligibilityOutput")

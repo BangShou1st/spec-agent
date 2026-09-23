@@ -138,7 +138,7 @@ class ArtifactRouteBindingIntegrationTest {
     void specSourceGuardRejectsRouteSnapshotMismatch() {
         // Direct guard-level proof: route A + snapshot of B must be rejected
         // before per-ref validation, even when every ref would resolve.
-        var guard = new com.specagent.agent.decision.SpecSourceReferenceGuard(
+        var guard = new com.specagent.agent.gates.SpecSourceReferenceGuard(
                 org.mockito.Mockito.mock(com.specagent.workspace.route.RouteRepository.class),
                 org.mockito.Mockito.mock(com.specagent.workspace.node.NodeRepository.class),
                 org.mockito.Mockito.mock(com.specagent.workspace.answer.AnswerRepository.class),

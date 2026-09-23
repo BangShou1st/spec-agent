@@ -138,9 +138,13 @@ PACKAGE_MOVES = [
     ("com.specagent.application.support", "com.specagent.workspace"),
     ("com.specagent.api.common", "com.specagent.web"),
     # -- agent group ----------------------------------------------------------
+    # NOTE: agent.gates deliberately stays its own package — merging gates
+    # into agent.decision would violate the "decision layer never touches
+    # persistence" boundary (ContextGuard/SpecSourceReferenceGuard read
+    # repositories). Only the model output vocabulary (agent.contracts)
+    # merges into decision.
     ("com.specagent.agent.contract", "com.specagent.agent.protocol"),
     ("com.specagent.agent.contracts", "com.specagent.agent.decision"),
-    ("com.specagent.agent.gates", "com.specagent.agent.decision"),
     ("com.specagent.agent.eligibility", "com.specagent.agent.action"),
     ("com.specagent.agent.loop", "com.specagent.agent.runtime"),
     ("com.specagent.api.agent", "com.specagent.agent.api"),

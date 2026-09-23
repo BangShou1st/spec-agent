@@ -1,5 +1,9 @@
 package com.specagent.agent.runtime;
 
+import com.specagent.agent.gates.ContextGuard;
+import com.specagent.agent.gates.SpecGroundingGate;
+import com.specagent.agent.gates.SpecSourceReferenceGuard;
+
 import com.specagent.agent.runtime.AgentRun;
 import com.specagent.agent.runtime.AgentRunFailureService;
 import com.specagent.agent.runtime.AgentRunService;
@@ -10,11 +14,11 @@ import com.specagent.agent.protocol.AgentEvent;
 import com.specagent.agent.protocol.AgentRequestEnvelope;
 import com.specagent.agent.protocol.DecisionBudget;
 import com.specagent.agent.decision.AgentDecisionEngine;
-import com.specagent.agent.decision.ContextGuard;
+import com.specagent.agent.gates.ContextGuard;
 import com.specagent.agent.decision.ReflectionResult;
 import com.specagent.agent.decision.SpecDraft;
-import com.specagent.agent.decision.SpecGroundingGate;
-import com.specagent.agent.decision.SpecSourceReferenceGuard;
+import com.specagent.agent.gates.SpecGroundingGate;
+import com.specagent.agent.gates.SpecSourceReferenceGuard;
 import com.specagent.agent.runevent.AgentRunEventService;
 import com.specagent.agent.runevent.AgentRunPhase;
 import com.specagent.agent.runevent.RunProgressRecorder;
