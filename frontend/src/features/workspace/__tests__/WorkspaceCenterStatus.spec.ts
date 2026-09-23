@@ -1,0 +1,230 @@
+import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { flushPromises, mount } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
+import { defineComponent, h } from 'vue'
+import WorkspaceView from '@/features/workspace/WorkspaceView.vue'
+import { useGraphUiStore } from '@/features/workspace/state/graphUiStore'
+import { useWorkspaceStore } from '@/features/workspace/state/workspaceStore'
+import {
+  makeActiveState,
+  makeGraphWorkspaceView,
+  makeNode,
+  makeProject,
+  makeRequirementState,
+  makeRoute,
+} from '@/test/fixtures'
+
+vi.mock('@/features/projects/api/projects', () => ({ getProject: vi.fn() }))
+vi.mock('@/features/workspace/api/workspace', () => ({ getActiveState: vi.fn(), listRoutes: vi.fn() }))
+vi.mock('@/features/workspace/api/agentRuns', async () => ({
+  ...(await vi.importActual<typeof import('@/features/workspace/api/agentRuns')>('@/features/workspace/api/agentRuns')),
+  createAgentRun: vi.fn(),
+  getAgentRun: vi.fn(),
+}))
+vi.mock('@/features/workspace/api/requirementState', () => ({
+  getRequirementState: vi.fn(),
+  getRouteRequirementState: vi.fn(),
+}))
+vi.mock('@/features/workspace/api/graph', () => ({ getProjectGraph: vi.fn() }))
+vi.mock('@/features/workspace/api/routes', () => ({
+  activateRoute: vi.fn(),
+  archiveRoute: vi.fn(),
+  deleteRoute: vi.fn(),
+  forkNode: vi.fn(),
+  getRouteLineage: vi.fn(),
+  regenerateNode: vi.fn(),
+  restoreRoute: vi.fn(),
+}))
+vi.mock('@/features/workspace/api/graphCommands', () => ({
+  acceptProposal: vi.fn(),
+  appendContinuation: vi.fn(),
+  createFloatingDraftNode: vi.fn(),
+  createNodeQuery: vi.fn(),
+  createRelation: vi.fn(),
+  getNodeQueryResult: vi.fn(),
+  getUndoRedoAvailability: vi.fn(),
+  listProposals: vi.fn().mockResolvedValue([]),
+  redoGraphOperation: vi.fn(),
+  rejectProposal: vi.fn(),
+  reviseDraftNode: vi.fn(),
+  setKnowledgeStatus: vi.fn(),
+  undoGraphOperation: vi.fn(),
+}))
+vi.mock('@/features/workspace/api/spec', () => ({ generateSpec: vi.fn(), listRouteSpecs: vi.fn() }))
+
+import { getProject } from '@/features/projects/api/projects'
+import { getActiveState, listRoutes } from '@/features/workspace/api/workspace'
+import { getRequirementState } from '@/features/workspace/api/requirementState'
+import { getProjectGraph } from '@/features/workspace/api/graph'
+
+const mockedGetProject = vi.mocked(getProject)
+const mockedGetActiveState = vi.mocked(getActiveState)
+const mockedListRoutes = vi.mocked(listRoutes)
+const mockedGetRequirementState = vi.mocked(getRequirementState)
+const mockedGetProjectGraph = vi.mocked(getProjectGraph)
+
+const GraphCanvasStub = defineComponent({
+  name: 'GraphCanvas',
+  props: {
+    view: { type: Object, default: null },
+    activeNodeId: { type: String, default: null },
+    submitting: Boolean,
+    drafting: Boolean,
+    pending: Boolean,
+  },
+  emits: ['draft', 'submit-answer', 'fork', 'regenerate', 'contextual-ai'],
+  setup() {
+    return () => h('div', { 'data-test': 'graph-canvas-stub' })
+  },
+})
+
+function mockViews() {
+  const active = makeActiveState({
+    project: makeProject({ id: 'p1', activeRouteId: 'r1' }),
+    activeRoute: makeRoute({ id: 'r1', isActive: true, tipNodeId: 'n2' }),
+    activeNode: makeNode({ id: 'n2' }),
+  })
+  mockedGetProject.mockResolvedValue(active.project)
+  mockedGetActiveState.mockResolvedValue(active)
+  mockedListRoutes.mockResolvedValue([active.activeRoute as never])
+  mockedGetRequirementState.mockResolvedValue(makeRequirementState({ routeId: 'r1' }))
+  mockedGetProjectGraph.mockResolvedValue(makeGraphWorkspaceView({
+    projectId: 'p1',
+    activeRouteId: 'r1',
+    routes: [
+      {
+        id: 'r1', label: '当前路线', lifecycleStatus: 'open', isActive: true,
+        rootNodeId: 'n1', tipNodeId: 'n2', createdFromNodeId: null,
+        supersedesRouteId: null, replacementOfNodeId: null, lineageNodeIds: ['n1', 'n2'],
+      },
+    ],
+    nodes: [makeNode({ id: 'n1', projectId: 'p1' }), makeNode({ id: 'n2', projectId: 'p1', parentNodeId: 'n1' })],
+  }))
+  return active
+}
+
+async function mountWorkspace(projectId = 'p1') {
+  const pinia = createPinia()
+  setActivePinia(pinia)
+  const wrapper = mount(WorkspaceView, {
+    props: { projectId },
+    global: { plugins: [pinia], stubs: { GraphCanvas: GraphCanvasStub } },
+  })
+  await flushPromises()
+  return { wrapper, store: useWorkspaceStore(), graphUi: useGraphUiStore() }
+}
+
+describe('WorkspaceView unified center status', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    vi.clearAllMocks()
+  })
+
+  it('renders only the reconcile CTA for an unknown outcome', async () => {
+    mockViews()
+    const { wrapper, store } = await mountWorkspace()
+    store.answerRunSessions.push({
+      clientRequestId: 'req-1',
+      projectId: 'p1',
+      routeId: 'r1',
+      nodeId: 'n2',
+      payload: { selectedOptionId: null, freeText: 'x' },
+      runId: 'run-1',
+      phase: null,
+      runStatus: 'FAILED',
+      status: 'UNKNOWN',
+      repairableAnswerId: null,
+    })
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="recovery-notice"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('提交结果暂时无法确认')
+    const actions = wrapper.findAll('[data-test="recovery-action"]')
+    expect(actions).toHaveLength(1)
+    expect(actions[0].text()).toContain('同步状态')
+    expect(wrapper.find('[data-test="answer-retry"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="answer-outcome-unknown"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="answer-resubmit"]').exists()).toBe(false)
+  })
+
+  it('renders resume CTA and never resubmit when the answer is saved', async () => {
+    mockViews()
+    const { wrapper, store } = await mountWorkspace()
+    store.answerRunSessions.push({
+      clientRequestId: 'req-1',
+      projectId: 'p1',
+      routeId: 'r1',
+      nodeId: 'n2',
+      payload: { selectedOptionId: null, freeText: 'x' },
+      runId: 'run-1',
+      phase: null,
+      runStatus: 'FAILED',
+      status: 'REPAIRABLE',
+      repairableAnswerId: 'a1',
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('回答已经保存')
+    const actions = wrapper.findAll('[data-test="recovery-action"]')
+    expect(actions).toHaveLength(1)
+    expect(actions[0].text()).toContain('继续生成')
+  })
+
+  it('renders one concise status for a normal active agent phase', async () => {
+    mockViews()
+    const { wrapper, store } = await mountWorkspace()
+    store.pendingRouteProjection = {
+      routeId: 'r1', sourceNodeId: null, runId: 'run-1',
+      status: 'RUNNING', phase: 'DECIDING', message: null,
+    }
+    await flushPromises()
+
+    // 中央一行状态已删除：运行进度收敛到画布节点内，中央不再渲染
+    // agent-status 元素。
+    expect(wrapper.find('[data-test="agent-status"]').exists()).toBe(false)
+  })
+
+  it('keeps an ordinary error banner when no recovery model applies', async () => {
+    mockViews()
+    const { wrapper, store } = await mountWorkspace()
+    store.error = { code: 'UNKNOWN_ERROR', message: '操作失败，请稍后重试' }
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="recovery-notice"]').exists()).toBe(false)
+    expect(wrapper.find('.error-banner').exists()).toBe(true)
+  })
+
+  it('renders the agent status exactly once with no legacy runtime-phase element', async () => {
+    mockViews()
+    const { wrapper, store } = await mountWorkspace()
+    store.pendingRouteProjection = {
+      routeId: 'r1', sourceNodeId: null, runId: 'run-1',
+      status: 'RUNNING', phase: 'DECIDING', message: null,
+    }
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="agent-status"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="runtime-phase"]').exists()).toBe(false)
+  })
+
+  it('hides the one-line status once the run reaches a terminal phase', async () => {
+    mockViews()
+    const { wrapper, store } = await mountWorkspace()
+    // 成功链终态：即使 run 记录仍保留，也不常驻“已完成”。
+    store.answerRunSessions.push({
+      clientRequestId: 'req-1',
+      projectId: 'p1',
+      routeId: 'r1',
+      nodeId: 'n2',
+      payload: { selectedOptionId: null, freeText: null },
+      runId: 'run-done',
+      phase: 'COMPLETED',
+      runStatus: 'SUCCEEDED',
+      status: 'RUNNING',
+      repairableAnswerId: null,
+    })
+    await flushPromises()
+    expect(wrapper.find('[data-test="agent-status"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('已完成')
+  })
+})

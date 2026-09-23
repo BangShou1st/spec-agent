@@ -1,0 +1,745 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { describe, expect, it } from 'vitest'
+import { defineComponent, h, nextTick, reactive } from 'vue'
+import { mount } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
+import { useInputDraftStore } from '@/features/workspace/state/inputDraftStore'
+import GraphQuestionNode from '@/features/workspace/graph/components/GraphQuestionNode.vue'
+import type { SpecAgentGraphNodeData, GraphAnswerPresentation } from '@/features/workspace/graph/graphProjection'
+import type { GraphWorkspaceNodeView, GraphWorkspaceOptionView } from '@/shared/contracts/types'
+
+/**
+ * Vue Flow Handle stub: jsdom cannot run the real useVueFlow/useNode
+ * context outside a VueFlow instance, so the node spec renders the anchor
+ * handles as plain divs that expose every prop as an attribute. The real
+ * component contract (8 invisible handles, source/target type, side
+ * position, non-connectable flags) is asserted through these attributes.
+ */
+const HandleStub = defineComponent({
+  name: 'Handle',
+  inheritAttrs: true,
+  render() {
+    return h('div', { class: ['vue-flow__handle', 'graph-question-node__handle'] })
+  },
+})
+
+/** Mounts the node with the Handle stub so jsdom-safe assertions can run. */
+function mountNode(data: SpecAgentGraphNodeData, extra: Record<string, unknown> = {}) {
+  const pinia = createPinia()
+  setActivePinia(pinia)
+  return mount(GraphQuestionNode, {
+    props: { data, submitting: false, pending: false, ...extra },
+    global: { stubs: { Handle: HandleStub }, plugins: [pinia] },
+  })
+}
+
+function option(id: string, label: string, impact: string | null): GraphWorkspaceOptionView {
+  return { id, label, impact, recommended: false }
+}
+
+function nodeData(overrides: Partial<GraphWorkspaceNodeView> = {}): GraphWorkspaceNodeView {
+  return {
+    id: 'n1',
+    projectId: 'p1',
+    parentNodeId: null,
+    supersedesNodeId: null,
+    question: 'What outcome matters most?',
+    purpose: 'Clarify the primary goal.',
+    options: [
+      option('opt-a', 'Product team', 'Fastest value'),
+      option('opt-b', 'Engineering team', null),
+    ],
+    allowFreeAnswer: true,
+    allowMultiSelect: false,
+    createdAt: '2026-08-18T00:00:00Z',
+    kind: 'INTERACTION',
+    subtype: 'QUESTION',
+    content: {},
+    authorKind: 'AGENT',
+    knowledgeStatus: null,
+    userEditableDraft: false,
+    ...overrides,
+  }
+}
+
+function answer(routeId: string, overrides: Partial<GraphAnswerPresentation> = {}): GraphAnswerPresentation {
+  return {
+    routeId,
+    selectedOptionId: null,
+          selectedOptionIds: null,
+    selectedOptionLabel: null,
+    freeText: 'answer text',
+    isPrimary: false,
+    ...overrides,
+  }
+}
+
+function currentData(overrides: Partial<SpecAgentGraphNodeData> = {}): SpecAgentGraphNodeData {
+  return {
+    node: nodeData(),
+    projectId: 'p1',
+    routeIds: ['r1'],
+    visibleRouteIds: ['r1'],
+    answers: [],
+    routeStates: [],
+    primaryAnswer: null,
+    answerPresentationMode: 'single-route',
+    readingRouteId: 'r1',
+    isCurrent: true,
+    canAnswer: true,
+    isExpanded: false,
+    isShared: false,
+    isLatest: false,
+    qLabel: null,
+    visualWeight: 'active',
+    ...overrides,
+  }
+}
+
+function historicalData(overrides: Partial<SpecAgentGraphNodeData> = {}): SpecAgentGraphNodeData {
+  return {
+    node: nodeData({ parentNodeId: 'n0' }),
+    projectId: 'p1',
+    routeIds: ['r1', 'r2'],
+    visibleRouteIds: ['r1', 'r2'],
+    answers: [
+      answer('r1', { selectedOptionId: 'opt-a', selectedOptionLabel: 'Product team', freeText: 'Keep this exact user answer.', isPrimary: true }),
+      answer('r2', { freeText: 'Second route answer.' }),
+    ],
+    routeStates: [
+      {
+        routeId: 'r1',
+        answer: {
+          routeId: 'r1',
+          selectedOptionId: 'opt-a',
+          selectedOptionIds: null,
+          selectedOptionLabel: 'Product team',
+          freeText: 'Keep this exact user answer.',
+          isPrimary: true,
+        },
+      },
+      {
+        routeId: 'r2',
+        answer: {
+          routeId: 'r2',
+          selectedOptionId: null,
+          selectedOptionIds: null,
+          selectedOptionLabel: null,
+          freeText: 'Second route answer.',
+          isPrimary: false,
+        },
+      },
+    ],
+    primaryAnswer: {
+      routeId: 'r1',
+      selectedOptionId: 'opt-a',
+          selectedOptionIds: null,
+      selectedOptionLabel: 'Product team',
+      freeText: 'Keep this exact user answer.',
+      isPrimary: true,
+    },
+    answerPresentationMode: 'focused',
+    readingRouteId: 'r1',
+    isCurrent: false,
+    canAnswer: false,
+    isExpanded: false,
+    isShared: true,
+    isLatest: false,
+    qLabel: null,
+    visualWeight: 'normal',
+    ...overrides,
+  }
+}
+
+describe('graph question node', () => {
+  it('renders historical answered nodes as compact navigation cards', () => {
+    const wrapper = mountNode(historicalData({
+      isLatest: true,
+      qLabel: 'Q3',
+    }))
+
+    expect(wrapper.find('[data-test="historical-question"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="node-state"]').text()).toContain('已确认')
+    expect(wrapper.find('[data-test="answer-summary"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="free-text"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="submit-answer"]').exists()).toBe(false)
+  })
+
+  it('keeps the current answerable node expanded', () => {
+    const wrapper = mountNode(currentData({ qLabel: 'Q4' }))
+
+    expect(wrapper.find('[data-test="question"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="free-text"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="submit-answer"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="node-state"]').text()).toContain('就绪')
+  })
+
+  it('renders current question, purpose, option labels and impacts verbatim', () => {
+    const wrapper = mountNode(currentData())
+    expect(wrapper.text()).toContain('What outcome matters most?')
+    expect(wrapper.text()).toContain('Clarify the primary goal.')
+    expect(wrapper.text()).toContain('Product team')
+    expect(wrapper.text()).toContain('Fastest value')
+    expect(wrapper.text()).toContain('Engineering team')
+  })
+
+  it('submits the exact backend option id with an option-only payload', async () => {
+    const wrapper = mountNode(currentData())
+    await wrapper.find('input[type=radio][value="opt-b"]').setValue()
+    await wrapper.find('[data-test="submit-answer"]').trigger('click')
+    expect(wrapper.emitted('submit-answer')?.[0]).toEqual([{ selectedOptionId: 'opt-b', selectedOptionIds: null, freeText: null, nodeId: 'n1', routeId: 'r1' }])
+  })
+
+  it('submits a free-text-only payload', async () => {
+    const wrapper = mountNode(currentData())
+    await wrapper.find('[data-test="free-text"]').setValue('free text answer')
+    await wrapper.find('[data-test="submit-answer"]').trigger('click')
+    expect(wrapper.emitted('submit-answer')?.[0]).toEqual([{ selectedOptionId: null, selectedOptionIds: null, freeText: 'free text answer', nodeId: 'n1', routeId: 'r1' }])
+  })
+
+  it('submits combined option + free text payload', async () => {
+    const wrapper = mountNode(currentData())
+    await wrapper.find('input[type=radio][value="opt-a"]').setValue()
+    await wrapper.find('[data-test="free-text"]').setValue('with explanation')
+    await wrapper.find('[data-test="submit-answer"]').trigger('click')
+    expect(wrapper.emitted('submit-answer')?.[0]).toEqual([
+      { selectedOptionId: 'opt-a', selectedOptionIds: null, freeText: 'with explanation', nodeId: 'n1', routeId: 'r1' },
+    ])
+  })
+
+  it('multi-select questions render checkboxes, mark recommended options, and submit the full selection', async () => {
+    const wrapper = mountNode(currentData({
+      node: nodeData({
+        allowMultiSelect: true,
+        options: [
+          option('opt-a', 'Product team', 'Fastest value'),
+          option('opt-b', 'Engineering team', null),
+          { ...option('opt-c', 'Both teams', null), recommended: true },
+        ],
+      }),
+    }))
+    // 多选题:渲染 checkbox,且 recommended 选项带「推荐」标记。
+    expect(wrapper.find('input[type=checkbox][value="opt-a"]').exists()).toBe(true)
+    const badges = wrapper.findAll('[data-test="option-recommended"]')
+    expect(badges).toHaveLength(1)
+    expect(badges[0].text()).toBe('推荐')
+
+    await wrapper.find('input[type=checkbox][value="opt-a"]').setValue()
+    await wrapper.find('input[type=checkbox][value="opt-c"]').setValue()
+    await wrapper.find('[data-test="submit-answer"]').trigger('click')
+    expect(wrapper.emitted('submit-answer')?.[0]).toEqual([{
+      selectedOptionId: 'opt-a',
+      selectedOptionIds: ['opt-a', 'opt-c'],
+      freeText: null,
+      nodeId: 'n1',
+      routeId: 'r1',
+    }])
+  })
+
+  it('disables submit with no input and while submitting', async () => {
+    const wrapper = mountNode(currentData())
+    expect((wrapper.find('[data-test="submit-answer"]').attributes('disabled')) !== undefined).toBe(true)
+    await wrapper.find('input[type=radio][value="opt-a"]').setValue()
+    expect(wrapper.find('[data-test="submit-answer"]').attributes('disabled')).toBeUndefined()
+    await wrapper.setProps({ submitting: true })
+    expect(wrapper.find('[data-test="submit-answer"]').attributes('disabled')).toBeDefined()
+  })
+
+  it('free text is hidden when the node does not allow it', () => {
+    const wrapper = mountNode(currentData({ node: nodeData({ allowFreeAnswer: false }) }))
+    expect(wrapper.find('[data-test="free-text"]').exists()).toBe(false)
+  })
+
+  it('local answer input resets when the node changes', async () => {
+    const wrapper = mountNode(currentData())
+    await wrapper.find('[data-test="free-text"]').setValue('stale draft')
+    await wrapper.setProps({ data: currentData({ node: nodeData({ id: 'n2' }) }) })
+    expect((wrapper.find('[data-test="free-text"]').element as HTMLTextAreaElement).value).toBe('')
+  })
+
+  it('keeps text and selections isolated when one mounted node changes reading route', async () => {
+    const data = reactive(currentData())
+    const wrapper = mountNode(data)
+    const viewRoute = async (routeId: string) => {
+      data.readingRouteId = routeId
+      await nextTick()
+    }
+    const text = () => wrapper.get<HTMLTextAreaElement>('[data-test="free-text"]')
+    await text().setValue('路线一草稿')
+    await wrapper.get('input[value="opt-a"]').setValue()
+
+    // Same node and canAnswer; only the reading route changes.
+    await viewRoute('r2')
+    expect(text().element.value).toBe('')
+    expect(wrapper.get<HTMLInputElement>('input[value="opt-a"]').element.checked).toBe(false)
+    await text().setValue('路线二草稿')
+    await wrapper.get('input[value="opt-b"]').setValue()
+
+    await viewRoute('r1')
+    expect(text().element.value).toBe('路线一草稿')
+    expect(wrapper.get<HTMLInputElement>('input[value="opt-a"]').element.checked).toBe(true)
+    await viewRoute('r3')
+    expect(text().element.value).toBe('')
+    await viewRoute('r2')
+    expect(text().element.value).toBe('路线二草稿')
+    expect(wrapper.get<HTMLInputElement>('input[value="opt-b"]').element.checked).toBe(true)
+    expect(wrapper.emitted('submit-answer')).toBeUndefined()
+    expect(useInputDraftStore().getDraft('p1', 'n1', 'r1')?.freeText).toBe('路线一草稿')
+  })
+
+  it('switches drafts by project even if the node and route ids are unchanged', async () => {
+    const data = reactive(currentData())
+    const wrapper = mountNode(data)
+    await wrapper.get('[data-test="free-text"]').setValue('project one')
+    data.projectId = 'p2'
+    await nextTick()
+    expect(wrapper.get<HTMLTextAreaElement>('[data-test="free-text"]').element.value).toBe('')
+    await wrapper.get('[data-test="free-text"]').setValue('project two')
+    data.projectId = 'p1'
+    await nextTick()
+    expect(wrapper.get<HTMLTextAreaElement>('[data-test="free-text"]').element.value).toBe('project one')
+  })
+
+  it('restores both route drafts after remount with a fresh Pinia (page reload)', async () => {
+    const wrapper = mountNode(currentData())
+    await wrapper.get('[data-test="free-text"]').setValue('first route')
+    await wrapper.setProps({ data: currentData({ readingRouteId: 'r2' }) })
+    await wrapper.get('[data-test="free-text"]').setValue('second route')
+    wrapper.unmount()
+    const reloaded = mountNode(currentData())
+    expect(reloaded.get<HTMLTextAreaElement>('[data-test="free-text"]').element.value).toBe('first route')
+    await reloaded.setProps({ data: currentData({ readingRouteId: 'r2' }) })
+    expect(reloaded.get<HTMLTextAreaElement>('[data-test="free-text"]').element.value).toBe('second route')
+  })
+
+  it('uses canonical identity for cleanup and never recreates a cleared draft on render', async () => {
+    const data = currentData({ canonicalNodeId: 'canonical-n1' })
+    const wrapper = mountNode(data)
+    await wrapper.get('[data-test="free-text"]').setValue('answer draft')
+    const drafts = useInputDraftStore()
+    expect(drafts.getDraft('p1', 'canonical-n1', 'r1')?.freeText).toBe('answer draft')
+    drafts.clearDraft('p1', 'canonical-n1', 'r1')
+    await wrapper.setProps({ data: { ...data } })
+    expect(wrapper.get<HTMLTextAreaElement>('[data-test="free-text"]').element.value).toBe('')
+    expect(drafts.getDraft('p1', 'canonical-n1', 'r1')).toBeUndefined()
+  })
+
+  it('historical node has no answer inputs and stays compact; full answer lives in Inspector', () => {
+    const wrapper = mountNode(historicalData())
+    expect(wrapper.find('[data-test="free-text"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="submit-answer"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="historical-question"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="answer-summary"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Keep this exact user answer.')
+  })
+
+  it('clicking (selecting) a historical node reveals the complete question and answer', () => {
+    const wrapper = mountNode(historicalData(), { selected: true })
+
+    // 完整问题按当前节点同规格渲染，不再是两行截断。
+    const question = wrapper.find('[data-test="historical-question"]')
+    expect(question.exists()).toBe(true)
+    expect(question.text()).toContain('What outcome matters most?')
+    expect(question.classes()).not.toContain('graph-node-question--compact')
+    expect(wrapper.find('.graph-question-node--detailed').exists()).toBe(true)
+
+    // 完整回答：选中的选项 + 自由文本原文。
+    expect(wrapper.find('[data-test="historical-answer"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="historical-answer-option"]').text()).toBe('Product team')
+    expect(wrapper.find('[data-test="historical-answer-text"]').text()).toContain('Keep this exact user answer.')
+
+    // 展开仍然是只读的：绝不出现第二套回答输入界面。
+    expect(wrapper.find('[data-test="free-text"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="submit-answer"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="option"]').exists()).toBe(false)
+    // 逐路线历史仍不进卡片。
+    expect(wrapper.text()).not.toContain('Second route answer.')
+  })
+
+  it('expanded historical node lists every option and marks the submitted one', () => {
+    const wrapper = mountNode(historicalData(), { selected: true })
+
+    const rows = wrapper.findAll('.graph-history-option')
+    expect(rows).toHaveLength(2)
+    expect(wrapper.text()).toContain('Engineering team')
+    expect(wrapper.text()).toContain('Fastest value')
+    const chosen = rows.filter((row) => row.classes().includes('graph-history-option--chosen'))
+    expect(chosen).toHaveLength(1)
+    expect(chosen[0].text()).toContain('Product team')
+  })
+
+  it('unselected historical node hides the answer and only offers an expand hint', () => {
+    const wrapper = mountNode(historicalData())
+    expect(wrapper.find('[data-test="historical-answer"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="historical-options"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="expand-hint"]').exists()).toBe(true)
+    expect(wrapper.text()).not.toContain('Keep this exact user answer.')
+  })
+
+  it('action rail renders outside the node body as a right-side vertical stack', () => {
+    const wrapper = mountNode(historicalData())
+    const rail = wrapper.find('.graph-node-actions--toolbar')
+    expect(rail.exists()).toBe(true)
+    // 轨道是 article 的直接子元素，绝不在卡片主体内占位。
+    expect(rail.element.parentElement).toBe(wrapper.element)
+    expect(wrapper.find('[data-test="node-body"] .graph-node-actions--toolbar').exists()).toBe(false)
+    for (const id of ['fork-node', 'reanswer-node', 'regenerate-node', 'contextual-ai']) {
+      expect(rail.find(`[data-test="${id}"]`).exists()).toBe(true)
+    }
+  })
+
+  it('action rail stays visible on selected node (selection adds the --selected class)', async () => {
+    const wrapper = mountNode(historicalData(), { selected: true })
+    const article = wrapper.find('[data-test="graph-question-node"]')
+    expect(article.classes()).toContain('graph-question-node--selected')
+  })
+
+  it('action rail is keyboard focusable: tabindex is 0 and role=toolbar', () => {
+    const wrapper = mountNode(historicalData())
+    const rail = wrapper.find('.graph-node-actions--toolbar')
+    expect(rail.attributes('tabindex')).toBe('0')
+    expect(rail.attributes('role')).toBe('toolbar')
+    expect(rail.attributes('aria-label')).toBe('节点操作')
+  })
+
+  it('current answerable node renders no action rail (answering stays in the card)', () => {
+    const wrapper = mountNode(currentData())
+    expect(wrapper.find('.graph-node-actions--toolbar').exists()).toBe(false)
+  })
+
+  it('historical node never expands verbose route history inside the graph card', async () => {
+    const expanded = historicalData({ isExpanded: true })
+    const wrapper = mountNode(expanded)
+    expect(wrapper.find('[data-test="answer-summary"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="historical-question"]').exists()).toBe(true)
+    expect(wrapper.find('.graph-node-details').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Second route answer.')
+  })
+
+  it('current node gets the large class and historical node the compact class', () => {
+    const current = mountNode(currentData())
+    expect(current.find('.graph-question-node--current').exists()).toBe(true)
+    const historical = mountNode(historicalData())
+    expect(historical.find('.graph-question-node--historical').exists()).toBe(true)
+  })
+
+  it('header is exposed as the drag handle and body controls are not draggable', () => {
+    const wrapper = mountNode(currentData())
+    expect(wrapper.find('[data-test="node-drag-handle"]').classes()).toContain('graph-question-node__header')
+    const body = wrapper.find('.graph-question-node__body')
+    expect(body.classes()).toContain('nodrag')
+    expect(wrapper.find('[data-test="free-text"]').classes()).toContain('nodrag')
+    expect(wrapper.find('button[data-test="submit-answer"]').classes()).toContain('nodrag')
+  })
+
+  it('historical fork/regenerate only emit intent upward', async () => {
+    const wrapper = mountNode(historicalData())
+    await wrapper.find('[data-test="fork-node"]').trigger('click')
+    await wrapper.find('[data-test="regenerate-node"]').trigger('click')
+    expect(wrapper.emitted('fork')?.[0]).toEqual(['n1'])
+    expect(wrapper.emitted('regenerate')?.[0]).toEqual(['n1'])
+  })
+
+  it('answered reading-route tip offers 起草下一个问题 and emits the explicit route id', async () => {
+    const wrapper = mountNode(historicalData({ isTipOfReadingRoute: true }))
+    const button = wrapper.find('[data-test="draft-next-question"]')
+    expect(button.exists()).toBe(true)
+    await button.trigger('click')
+    expect(wrapper.emitted('draft-next')?.[0]).toEqual(['r1'])
+  })
+
+  it('a mid-route answered node (not the tip) never offers drafting next', () => {
+    const wrapper = mountNode(historicalData())
+    expect(wrapper.find('[data-test="draft-next-question"]').exists()).toBe(false)
+  })
+
+  it('an unanswered tip keeps the activate affordance and offers no draft-next', () => {
+    const wrapper = mountNode(historicalData({
+      answers: [],
+      primaryAnswer: null,
+      isTipOfReadingRoute: true,
+    }))
+    expect(wrapper.find('[data-test="draft-next-question"]').exists()).toBe(false)
+  })
+
+  it('当前查看已确定时只读展示，不再要求用户选一次', async () => {
+    const wrapper = mountNode(
+      historicalData({
+        routeMembership: [
+          { routeId: 'r1', label: 'Initial', lifecycleStatus: 'open', isActive: true },
+          { routeId: 'r2', label: 'Route-B', lifecycleStatus: 'archived', isActive: false },
+        ],
+      }),
+      { selected: true },
+    )
+    // 已确定（Focus / 只看这条路线 / 唯一可见归属）→ 只读标签，无选择器。
+    expect(wrapper.find('[data-test="reading-route-select"]').exists()).toBe(false)
+    const resolved = wrapper.find('[data-test="reading-route-resolved"]')
+    expect(resolved.exists()).toBe(true)
+    expect(resolved.text()).toBe('Initial')
+    expect(wrapper.text()).not.toContain('Second route answer.')
+    expect(wrapper.emitted('fork')).toBeUndefined()
+    expect(wrapper.emitted('submit-answer')).toBeUndefined()
+    // 历史共享节点：header 只展示计数，完整成员在 Inspector 中查看。
+    expect(wrapper.find('[data-test="shared-membership"]').text()).toContain('共享 · 2 条路线')
+    expect(wrapper.findAll('.graph-route-chip')).toHaveLength(0)
+  })
+
+  it('真正歧义（多归属都可见且无 Focus）时保留显式选择器', async () => {
+    const wrapper = mountNode(
+      historicalData({
+        readingRouteId: null,
+        routeMembership: [
+          { routeId: 'r1', label: 'Initial', lifecycleStatus: 'open', isActive: true },
+          { routeId: 'r2', label: 'Route-B', lifecycleStatus: 'open', isActive: false },
+        ],
+      }),
+      { selected: true },
+    )
+    expect(wrapper.find('[data-test="reading-route-resolved"]').exists()).toBe(false)
+    const selector = wrapper.find('[data-test="reading-route-select"]')
+    expect(selector.exists()).toBe(true)
+    expect((selector.element as HTMLSelectElement).value).toBe('')
+    await selector.setValue('r2')
+    expect(wrapper.emitted('focus-route')?.[0]).toEqual(['r2'])
+  })
+
+  it('renders runtime state on a pending projection and exposes retry', async () => {
+    const wrapper = mountNode(historicalData({
+      node: nodeData({ id: 'pending:run-1', question: '下一步问题生成失败' }),
+      routeIds: ['r2'],
+      visibleRouteIds: ['r2'],
+      routeMembership: [{ routeId: 'r2', label: '分支路线', lifecycleStatus: 'open', isActive: true }],
+      isShared: false,
+      runtimeStatus: 'FAILED',
+      runtimePhase: 'FAILED',
+      runtimeMessage: '模型服务不可用',
+    }))
+    expect(wrapper.find('[data-test="pending-card"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="node-state"]').text()).toContain('需处理')
+    expect(wrapper.text()).toContain('模型服务不可用')
+    expect(wrapper.find('[data-test="contextual-ai"]').exists()).toBe(false)
+    await wrapper.find('[data-test="retry-pending"]').trigger('click')
+    expect(wrapper.emitted('retry-pending')).toHaveLength(1)
+  })
+
+  it('renders a shared node as neutral when Focus is absent', () => {
+    const wrapper = mountNode(historicalData({
+      readingRouteId: null,
+      primaryAnswer: null,
+      routeMembership: [
+        { routeId: 'r1', label: '主路线', lifecycleStatus: 'open', isActive: true },
+        { routeId: 'r2', label: '分支路线 1', lifecycleStatus: 'open', isActive: false },
+      ],
+    }))
+    expect((wrapper.find('[data-test="reading-route-select"]').element as HTMLSelectElement).value).toBe('')
+    expect(wrapper.find('[data-test="reading-route-select"]').text()).toContain('未选择')
+  })
+})
+describe('shared node canonical answer (no route-specific waiting)', () => {
+  it('shared answered node stays compact and never offers a route-specific "answer this question"', async () => {
+    const wrapper = mountNode(historicalData({
+      routeIds: ['r1', 'r2'],
+      answers: [answer('r1', { freeText: 'Shared canonical answer.', isPrimary: true })],
+      primaryAnswer: answer('r1', { freeText: 'Shared canonical answer.', isPrimary: true }),
+      routeMembership: [
+        { routeId: 'r1', label: 'Initial', lifecycleStatus: 'open', isActive: true },
+        { routeId: 'r2', label: 'Route-B', lifecycleStatus: 'archived', isActive: false },
+      ],
+    }))
+    // 历史卡保持紧凑：完整答案在 Inspector 中查看，卡片只保留导航信息。
+    expect(wrapper.find('[data-test="answer-summary"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="historical-question"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="node-state"]').text()).toContain('已确认')
+    // 绝不出现 route-specific 的"回答这个问题"入口。
+    expect(wrapper.find('[data-test="answer-this-question"]').exists()).toBe(false)
+  })
+
+  it('historical shared node summarizes membership as a count, not per-route chips', async () => {
+    const wrapper = mountNode(historicalData({
+      isShared: true,
+      routeIds: ['r1', 'r2', 'r3', 'r4'],
+      visibleRouteIds: ['r1', 'r2', 'r3', 'r4'],
+      routeMembership: [
+        { routeId: 'r1', label: '主路线', lifecycleStatus: 'open', isActive: true },
+        { routeId: 'r2', label: '分支一', lifecycleStatus: 'open', isActive: false },
+        { routeId: 'r3', label: '分支二', lifecycleStatus: 'open', isActive: false },
+        { routeId: 'r4', label: '分支三', lifecycleStatus: 'archived', isActive: false },
+      ],
+    }))
+    expect(wrapper.find('[data-test="shared-membership"]').text()).toContain('共享 · 4 条路线')
+    expect(wrapper.findAll('.graph-route-chip')).toHaveLength(0)
+  })
+
+  it('current answerable node keeps its reading context chips', async () => {
+    const wrapper = mountNode(currentData({
+      isShared: true,
+      routeIds: ['r1', 'r2'],
+      visibleRouteIds: ['r1', 'r2'],
+      routeMembership: [
+        { routeId: 'r1', label: '主路线', lifecycleStatus: 'open', isActive: true },
+        { routeId: 'r2', label: '分支一', lifecycleStatus: 'open', isActive: false },
+      ],
+    }))
+    expect(wrapper.find('[data-test="shared-membership"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="route-membership"]').exists()).toBe(true)
+  })
+
+  it('shared unanswered node shows only plain waiting, never a route-specific resume affordance', async () => {
+    const wrapper = mountNode(historicalData({
+      routeIds: ['r1', 'r2'],
+      answers: [],
+      primaryAnswer: null,
+      routeStates: [
+        { routeId: 'r1', answer: null },
+        { routeId: 'r2', answer: null },
+      ],
+      readingRouteId: 'r2',
+      routeMembership: [
+        { routeId: 'r1', label: 'Initial', lifecycleStatus: 'open', isActive: true },
+        { routeId: 'r2', label: 'Route-B', lifecycleStatus: 'open', isActive: false },
+      ],
+    }))
+    expect(wrapper.find('[data-test="waiting-plain"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('等待回答')
+    // 没有任何 route-specific 的"回答这个问题"入口。
+    expect(wrapper.find('[data-test="answer-this-question"]').exists()).toBe(false)
+  })
+
+  it('single-route canonical unanswered TIP keeps the legal activate-to-answer affordance', async () => {
+    const wrapper = mountNode(historicalData({
+      routeIds: ['r1'],
+      visibleRouteIds: ['r1'],
+      answers: [],
+      primaryAnswer: null,
+      routeStates: [{ routeId: 'r1', answer: null }],
+      readingRouteId: 'r1',
+      isTipOfReadingRoute: true,
+      isShared: false,
+      routeMembership: [
+        { routeId: 'r1', label: 'Initial', lifecycleStatus: 'open', isActive: false },
+      ],
+    }))
+    // 真正 canonical 未答 Question 且是阅读路线 tip：出现"回答这个问题"。
+    const button = wrapper.find('[data-test="answer-this-question"]')
+    expect(button.exists()).toBe(true)
+    await button.trigger('click')
+    expect(wrapper.emitted('activate-route')?.[0]).toEqual(['r1'])
+  })
+})
+
+describe('node body click handling', () => {
+  it('non-interactive body surface does not stop click propagation (node stays selectable)', async () => {
+    const wrapper = mountNode(historicalData())
+    const article = wrapper.element
+    let bubbled = 0
+    article.addEventListener('click', () => { bubbled += 1 })
+    // 点击 body 的非交互区域（历史节点摘要文本所在区域）。
+    const body = wrapper.find('[data-test="node-body"]').element as HTMLElement
+    body.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    expect(bubbled).toBeGreaterThanOrEqual(1)
+  })
+
+  it('interactive controls stop propagation so they never break selection', async () => {
+    const wrapper = mountNode(currentData())
+    const article = wrapper.element
+    let bubbled = 0
+    article.addEventListener('click', () => { bubbled += 1 })
+    const textarea = wrapper.find('[data-test="free-text"]').element as HTMLElement
+    textarea.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    const submit = wrapper.find('[data-test="submit-answer"]').element as HTMLElement
+    submit.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    const toggle = wrapper.find('[data-test="toggle-expanded"]')
+    expect(bubbled).toBe(0)
+    void toggle
+  })
+
+  it('historical action buttons stop propagation too', async () => {
+    const wrapper = mountNode(historicalData())
+    const article = wrapper.element
+    let bubbled = 0
+    article.addEventListener('click', () => { bubbled += 1 })
+    const forkBtn = wrapper.find('[data-test="fork-node"]').element as HTMLElement
+    forkBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    expect(bubbled).toBe(0)
+  })
+})
+
+describe('graph node edge anchors (adaptive four-side handles)', () => {
+  const handleIds = [
+    'source-left',
+    'source-right',
+    'source-top',
+    'source-bottom',
+    'target-left',
+    'target-right',
+    'target-top',
+    'target-bottom',
+  ] as const
+
+  it('exposes all eight source/target anchor handles', () => {
+    const wrapper = mountNode(currentData())
+    for (const id of handleIds) {
+      const handle = wrapper.find(`[id="${id}"]`)
+      expect(handle.exists(), `missing handle ${id}`).toBe(true)
+      expect(handle.classes()).toContain('vue-flow__handle')
+      expect(handle.classes()).toContain('graph-question-node__handle')
+    }
+  })
+
+  it('gives each handle the right source/target type and side position', () => {
+    const wrapper = mountNode(historicalData())
+    const cases: [string, string, string][] = [
+      ['source-left', 'source', 'left'],
+      ['source-right', 'source', 'right'],
+      ['source-top', 'source', 'top'],
+      ['source-bottom', 'source', 'bottom'],
+      ['target-left', 'target', 'left'],
+      ['target-right', 'target', 'right'],
+      ['target-top', 'target', 'top'],
+      ['target-bottom', 'target', 'bottom'],
+    ]
+    for (const [id, type, position] of cases) {
+      const handle = wrapper.find(`[id="${id}"]`)
+      expect(handle.attributes('type'), id).toBe(type)
+      expect(handle.attributes('position'), id).toBe(position)
+    }
+  })
+
+  it('exposes draggable connection anchors: source starts and completes edges', () => {
+    const wrapper = mountNode(currentData())
+    for (const id of handleIds) {
+      const handle = wrapper.find(`[id="${id}"]`)
+      expect(handle.attributes('connectable'), id).toBe('true')
+    }
+    // source 锚点既可发起也可完成连接（target 锚点不参与指针命中，见样式）。
+    for (const id of ['source-left', 'source-right', 'source-top', 'source-bottom']) {
+      const handle = wrapper.find(`[id="${id}"]`)
+      expect(handle.attributes('connectable-start'), id).toBe('true')
+      expect(handle.attributes('connectable-end'), id).toBe('true')
+      expect(handle.classes()).toContain('graph-question-node__handle--source')
+    }
+    for (const id of ['target-left', 'target-right', 'target-top', 'target-bottom']) {
+      const handle = wrapper.find(`[id="${id}"]`)
+      expect(handle.attributes('connectable-start'), id).toBe('false')
+      expect(handle.attributes('connectable-end'), id).toBe('true')
+      expect(handle.classes()).toContain('graph-question-node__handle--target')
+    }
+  })
+
+  it('style.css keeps anchors hidden by default and reveals them on node hover for manual connection', () => {
+    // Vitest runs with the frontend directory as cwd.
+    const css = readFileSync(resolve(process.cwd(), 'src/app/styles/style.css'), 'utf8')
+    expect(css).toMatch(/\.graph-question-node__handle\s*{[^}]*pointer-events:\s*none/)
+    expect(css).toMatch(/\.graph-question-node__handle\s*{[^}]*opacity:\s*0/)
+    expect(css).toMatch(/\.graph-question-node:hover \.graph-question-node__handle--source\s*{[^}]*pointer-events:\s*all/)
+  })
+
+  it('handles stay present on the historical read-only node too', () => {
+    const wrapper = mountNode(historicalData())
+    for (const id of handleIds) {
+      expect(wrapper.find(`[id="${id}"]`).exists()).toBe(true)
+    }
+  })
+})

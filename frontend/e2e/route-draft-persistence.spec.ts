@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import type { GraphWorkspaceView } from '../src/api/types'
+import type { GraphWorkspaceView } from '../src/shared/contracts/types'
 import { buildThreeNodeLineage, createProject, fitGraph, forkFromNode } from './helpers'
 
 test('A5: route drafts survive focus, reload, and completion of another route', async ({ page, request }) => {

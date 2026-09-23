@@ -1,0 +1,588 @@
+import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { flushPromises, mount } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
+import { defineComponent, h } from 'vue'
+import WorkspaceView from '@/features/workspace/WorkspaceView.vue'
+import { useGraphUiStore } from '@/features/workspace/state/graphUiStore'
+import { useWorkspaceStore } from '@/features/workspace/state/workspaceStore'
+import {
+  makeActiveState,
+  makeGraphWorkspaceView,
+  makeNode,
+  makeProject,
+  makeRequirementState,
+  makeRoute,
+  makeSpecSnapshot,
+} from '@/test/fixtures'
+import type { GraphWorkspaceView } from '@/shared/contracts/types'
+
+vi.mock('@/features/projects/api/projects', () => ({ getProject: vi.fn() }))
+vi.mock('@/features/workspace/api/workspace', () => ({
+  getActiveState: vi.fn(),
+  listRoutes: vi.fn(),
+}))
+vi.mock('@/features/workspace/api/agentRuns', async () => ({
+  ...(await vi.importActual<typeof import('@/features/workspace/api/agentRuns')>('@/features/workspace/api/agentRuns')),
+  createAgentRun: vi.fn(),
+  getAgentRun: vi.fn(),
+}))
+vi.mock('@/features/workspace/api/requirementState', () => ({
+  getRequirementState: vi.fn(),
+  getRouteRequirementState: vi.fn(),
+}))
+vi.mock('@/features/workspace/api/graph', () => ({ getProjectGraph: vi.fn() }))
+vi.mock('@/features/workspace/api/routes', () => ({
+  activateRoute: vi.fn(),
+  archiveRoute: vi.fn(),
+  deleteRoute: vi.fn(),
+  forkNode: vi.fn(),
+  getRouteLineage: vi.fn(),
+  regenerateNode: vi.fn(),
+  restoreRoute: vi.fn(),
+}))
+vi.mock('@/features/workspace/api/spec', () => ({ generateSpec: vi.fn(), listRouteSpecs: vi.fn() }))
+
+import { getProject } from '@/features/projects/api/projects'
+import { getActiveState, listRoutes } from '@/features/workspace/api/workspace'
+import { createAgentRun, getAgentRun } from '@/features/workspace/api/agentRuns'
+import { getRequirementState, getRouteRequirementState } from '@/features/workspace/api/requirementState'
+import { getProjectGraph } from '@/features/workspace/api/graph'
+import {
+  activateRoute as apiActivateRoute,
+  forkNode as apiForkNode,
+} from '@/features/workspace/api/routes'
+import { listRouteSpecs } from '@/features/workspace/api/spec'
+
+const mockedGetProject = vi.mocked(getProject)
+const mockedGetActiveState = vi.mocked(getActiveState)
+const mockedListRoutes = vi.mocked(listRoutes)
+const mockedGetRequirementState = vi.mocked(getRequirementState)
+const mockedGetRouteRequirementState = vi.mocked(getRouteRequirementState)
+const mockedGetProjectGraph = vi.mocked(getProjectGraph)
+
+const mockedCreateAgentRun = vi.mocked(createAgentRun)
+const mockedGetAgentRun = vi.mocked(getAgentRun)
+const mockedListRouteSpecs = vi.mocked(listRouteSpecs)
+
+/**
+ * GraphCanvas stub: real Vue Flow cannot render in jsdom; the shell tests
+ * cover wiring while GraphCanvas.spec covers canvas behavior itself.
+ */
+const locateSpy = vi.fn()
+const GraphCanvasStub = defineComponent({
+  name: 'GraphCanvas',
+  props: {
+    view: { type: Object, default: null },
+    activeNodeId: { type: String, default: null },
+    submitting: Boolean,
+    drafting: Boolean,
+    pending: Boolean,
+  },
+  emits: ['draft', 'submit-answer', 'fork', 'regenerate', 'contextual-ai'],
+  setup(_props, { expose }) {
+    expose({ locateRoute: locateSpy, locateNode: vi.fn() })
+    return () => h('div', { 'data-test': 'graph-canvas-stub' })
+  },
+})
+
+function graphView(): GraphWorkspaceView {
+  return makeGraphWorkspaceView({
+    projectId: 'p1',
+    activeRouteId: 'r1',
+    routes: [
+      {
+        id: 'r1',
+        label: '当前路线',
+        lifecycleStatus: 'open',
+        isActive: true,
+        rootNodeId: 'n1',
+        tipNodeId: 'n2',
+        createdFromNodeId: null,
+        supersedesRouteId: null,
+        replacementOfNodeId: null,
+        lineageNodeIds: ['n1', 'n2'],
+      },
+      {
+        id: 'r2',
+        label: '开放分支',
+        lifecycleStatus: 'open',
+        isActive: false,
+        rootNodeId: 'n1',
+        tipNodeId: 'n3',
+        createdFromNodeId: null,
+        supersedesRouteId: null,
+        replacementOfNodeId: null,
+        lineageNodeIds: ['n1', 'n3'],
+      },
+      {
+        id: 'r3',
+        label: '旧路线',
+        lifecycleStatus: 'archived',
+        isActive: false,
+        rootNodeId: 'n1',
+        tipNodeId: 'n4',
+        createdFromNodeId: null,
+        supersedesRouteId: null,
+        replacementOfNodeId: null,
+        lineageNodeIds: ['n1', 'n4'],
+      },
+    ],
+    nodes: [
+      makeNode({ id: 'n1', projectId: 'p1', question: 'What outcome matters most?' }),
+      makeNode({ id: 'n2', projectId: 'p1', parentNodeId: 'n1', question: 'Scope question' }),
+      makeNode({ id: 'n3', projectId: 'p1', parentNodeId: 'n1', question: 'Fork question' }),
+      makeNode({ id: 'n4', projectId: 'p1', parentNodeId: 'n1', question: 'Old question' }),
+    ],
+    answers: [
+      {
+        id: 'a1',
+        routeId: 'r1',
+        nodeId: 'n1',
+        selectedOptionId: null,
+          selectedOptionIds: null,
+        freeText: 'confirmed answer',
+        createdAt: '2026-01-01T00:00:00Z',
+      },
+    ],
+  })
+}
+
+function mockViews() {
+  const active = makeActiveState({
+    project: makeProject({ id: 'p1', activeRouteId: 'r1' }),
+    activeRoute: makeRoute({ id: 'r1', isActive: true, tipNodeId: 'n2' }),
+    activeNode: makeNode({ id: 'n2' }),
+  })
+  mockedGetProject.mockResolvedValue(active.project)
+  mockedGetActiveState.mockResolvedValue(active)
+  mockedListRoutes.mockResolvedValue([active.activeRoute as never])
+  mockedGetRequirementState.mockResolvedValue(makeRequirementState({ routeId: 'r1' }))
+  mockedGetRouteRequirementState.mockResolvedValue(makeRequirementState({ routeId: 'r1' }))
+  mockedGetProjectGraph.mockResolvedValue(graphView())
+  return active
+}
+
+async function mountWorkspace(projectId = 'p1') {
+  const pinia = createPinia()
+  setActivePinia(pinia)
+  const wrapper = mount(WorkspaceView, {
+    props: { projectId },
+    global: {
+      plugins: [pinia],
+      stubs: { GraphCanvas: GraphCanvasStub },
+    },
+  })
+  await flushPromises()
+  return { wrapper, store: useWorkspaceStore(), graphUi: useGraphUiStore() }
+}
+
+describe('WorkspaceView graph shell', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    vi.clearAllMocks()
+    locateSpy.mockReset()
+  })
+
+  it('loads the graph-first shell with fixed route and inspector sidebars', async () => {
+    mockViews()
+    const { wrapper } = await mountWorkspace()
+
+    expect(wrapper.find('[data-test="left-sidebar"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="route-sidebar"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="graph-canvas-stub"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="right-sidebar"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="workspace-inspector"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="floating-window-routes"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="floating-window-inspector"]').exists()).toBe(false)
+  })
+
+  /**
+   * 回归：workspaceStore 是单例，离开工作区后从不清空。若项目身份只在
+   * onMounted 建立，新工作区 setup 期的 immediate watcher 会用上一个项目的
+   * projectId + 上一个项目的路线 id 发请求 —— 上一个项目被删掉时就是
+   * 404 PROJECT_NOT_FOUND，且错误会盖在新项目的工作区上。
+   */
+  it('never reads specs for the previous project after switching workspaces', async () => {
+    mockViews()
+    mockedListRouteSpecs.mockResolvedValue([])
+    const singleRouteView = (projectId: string, routeId: string) =>
+      makeGraphWorkspaceView({
+        projectId,
+        activeRouteId: routeId,
+        routes: [
+          {
+            id: routeId,
+            label: '当前路线',
+            lifecycleStatus: 'open',
+            isActive: true,
+            rootNodeId: 'n1',
+            tipNodeId: 'n2',
+            createdFromNodeId: null,
+            supersedesRouteId: null,
+            replacementOfNodeId: null,
+            lineageNodeIds: ['n1', 'n2'],
+          },
+        ],
+        nodes: [
+          makeNode({ id: 'n1', projectId }),
+          makeNode({ id: 'n2', projectId, parentNodeId: 'n1' }),
+        ],
+        answers: [],
+      })
+    mockedGetProjectGraph.mockResolvedValue(singleRouteView('p1', 'r1'))
+
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const first = mount(WorkspaceView, {
+      props: { projectId: 'p1' },
+      global: { plugins: [pinia], stubs: { GraphCanvas: GraphCanvasStub } },
+    })
+    await flushPromises()
+    expect(mockedListRouteSpecs).toHaveBeenCalledWith('p1', 'r1')
+    first.unmount()
+
+    // 上一个项目此刻已在后端被删除，但前端无从得知：只能靠身份同步建立。
+    mockedListRouteSpecs.mockClear()
+    mockedGetProjectGraph.mockResolvedValue(singleRouteView('p2', 'r9'))
+    const second = mount(WorkspaceView, {
+      props: { projectId: 'p2' },
+      global: { plugins: [pinia], stubs: { GraphCanvas: GraphCanvasStub } },
+    })
+    await flushPromises()
+
+    expect(useWorkspaceStore().projectId).toBe('p2')
+    expect(mockedListRouteSpecs).toHaveBeenCalledWith('p2', 'r9')
+    expect(mockedListRouteSpecs.mock.calls.some(([projectId]) => projectId === 'p1')).toBe(false)
+    second.unmount()
+  })
+
+  it('drafts through the canvas draft intent as an async run', async () => {
+    mockViews()
+    mockedCreateAgentRun.mockResolvedValue({
+      runId: 'run-draft',
+      operation: 'DRAFT_QUESTION',
+      phase: 'CREATED',
+    })
+    mockedGetAgentRun.mockResolvedValue({
+      runId: 'run-draft',
+      projectId: 'p1',
+      routeId: 'r1',
+      operation: 'DRAFT_QUESTION',
+      status: 'completed',
+      phase: 'COMPLETED',
+      producedNodeId: 'n5',
+      producedAnswerId: null,
+      producedPatchId: null,
+      producedSpecSnapshotId: null,
+    })
+    const { wrapper } = await mountWorkspace()
+    await wrapper.findComponent(GraphCanvasStub).vm.$emit('draft')
+    await flushPromises()
+    expect(mockedCreateAgentRun).toHaveBeenCalledWith('p1', { operation: 'DRAFT_QUESTION', sourceRouteId: null })
+    expect(useWorkspaceStore().feedback).toBe('问题已起草')
+  })
+
+  it('submits answers through the canvas submit intent as an async run', async () => {
+    mockViews()
+    mockedCreateAgentRun.mockResolvedValue({
+      runId: 'run-1',
+      operation: 'ANSWER_TIP',
+      phase: 'CREATED',
+    })
+    mockedGetAgentRun.mockResolvedValue({
+      runId: 'run-1',
+      projectId: 'p1',
+      routeId: 'r1',
+      operation: 'ANSWER_TIP',
+      status: 'completed',
+      phase: 'COMPLETED',
+      producedNodeId: 'n5',
+      producedAnswerId: 'answer-1',
+      producedPatchId: 'patch-1',
+      producedSpecSnapshotId: null,
+    })
+    const { wrapper } = await mountWorkspace()
+    await wrapper.findComponent(GraphCanvasStub).vm.$emit('submit-answer', { freeText: 'answer' })
+    await flushPromises()
+    expect(mockedCreateAgentRun).toHaveBeenCalledWith('p1', {
+      operation: 'ANSWER_TIP',
+      nodeId: 'n2',
+      selectedOptionId: null,
+          selectedOptionIds: null,
+      freeText: 'answer',
+      sourceRouteId: null,
+      idempotencyKey: expect.any(String),
+    })
+    expect(useWorkspaceStore().feedback).toBe('回答已记录')
+  })
+
+  it('selects the canonical target and opens the fixed inspector', async () => {
+    mockViews()
+    const { wrapper, graphUi } = await mountWorkspace()
+    graphUi.setRightSidebar({ open: false, width: graphUi.rightSidebarWidth })
+
+    await wrapper.findComponent(GraphCanvasStub).vm.$emit('contextual-ai', {
+      canonicalNodeId: 'n2',
+      visualNodeKey: 'n2',
+    })
+
+    expect(graphUi.primarySelectedNodeId).toBe('n2')
+    expect(graphUi.rightSidebarOpen).toBe(true)
+  })
+
+  it('preserves a clicked shared visual instance while the query target stays canonical', async () => {
+    const view = graphView()
+    const sharedBranchView: GraphWorkspaceView = {
+      ...view,
+      routes: view.routes.map((route) => route.id === 'r2'
+        ? {
+            ...route,
+            branchType: 'regenerate',
+            sourceRouteId: 'r1',
+            branchAtNodeId: 'n1',
+            lineageNodeIds: ['n1', 'n2'],
+          }
+        : route),
+    }
+    mockViews()
+    mockedGetProjectGraph.mockResolvedValue(sharedBranchView)
+    const { wrapper, graphUi } = await mountWorkspace()
+
+    await wrapper.findComponent(GraphCanvasStub).vm.$emit('contextual-ai', {
+      canonicalNodeId: 'n2',
+      visualNodeKey: 'route:r2:n2',
+    })
+
+    expect(graphUi.primarySelectedNodeId).toBe('route:r2:n2')
+    expect(graphUi.rightSidebarOpen).toBe(true)
+  })
+
+  it('route sidebar activates a sibling route through the runtime command', async () => {
+    mockViews()
+    vi.mocked(apiActivateRoute).mockResolvedValue({
+      projectId: 'p1',
+      route: makeRoute({ id: 'r2', isActive: true }),
+      activeRouteId: 'r2',
+    })
+    const { wrapper } = await mountWorkspace()
+    const route = wrapper.find('[data-route-id="r2"]')
+    route.get('[data-test="route-more"]').element.setAttribute('open', '')
+    await route.get('[data-test="activate-route"]').trigger('click')
+    await flushPromises()
+    expect(vi.mocked(apiActivateRoute)).toHaveBeenCalledWith('p1', 'r2')
+  })
+
+  it('locate route only moves the viewport and never changes focus', async () => {
+    mockViews()
+    const { wrapper, graphUi } = await mountWorkspace()
+    const route = wrapper.find('[data-route-id="r2"]')
+    route.get('[data-test="route-more"]').element.setAttribute('open', '')
+    await route.get('[data-test="locate-route"]').trigger('click')
+    expect(locateSpy).toHaveBeenCalledWith('r2')
+    expect(graphUi.focusRouteId).toBeNull()
+  })
+
+  it('focus route changes only the browser reading context', async () => {
+    mockViews()
+    const { wrapper, graphUi } = await mountWorkspace()
+    // 点击路线卡主体 = 设置阅读聚焦（定位 + 高亮）。
+    await wrapper.find('[data-route-id="r2"] .route-card__label').trigger('click')
+    expect(graphUi.focusRouteId).toBe('r2')
+    expect(useWorkspaceStore().activeState?.activeRoute?.id).toBe('r1')
+  })
+
+  it('archive requires an explicit confirmation dialog', async () => {
+    mockViews()
+    const { wrapper } = await mountWorkspace()
+    const route = wrapper.find('[data-route-id="r1"]')
+    route.get('[data-test="route-more"]').element.setAttribute('open', '')
+    await route.get('[data-test="archive-route"]').trigger('click')
+    expect(wrapper.find('[data-test="confirm-route-action-dialog"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('归档该路线？')
+    await wrapper.find('[data-test="cancel-route-action"]').trigger('click')
+    expect(wrapper.find('[data-test="confirm-route-action-dialog"]').exists()).toBe(false)
+  })
+
+  it('fork dialog requires an explicit Focus route for a shared node', async () => {
+    mockViews()
+    const { wrapper, graphUi } = await mountWorkspace()
+    await wrapper.findComponent(GraphCanvasStub).vm.$emit('fork', 'n1')
+    expect(wrapper.find('[data-test="fork-dialog"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="fork-submit"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.text()).toContain('当前查看')
+
+    graphUi.setFocusRoute('r1')
+    await flushPromises()
+    expect(wrapper.find('[data-test="fork-submit"]').attributes('disabled')).toBeUndefined()
+  })
+
+  it('fork submits the explicit source route and user label through the existing API', async () => {
+    mockViews()
+    vi.mocked(apiForkNode).mockResolvedValue({
+      projectId: 'p1',
+      route: makeRoute({ id: 'route-fork', isActive: true }),
+      activeRouteId: 'route-fork',
+    })
+    const { wrapper } = await mountWorkspace()
+    await wrapper.findComponent(GraphCanvasStub).vm.$emit('fork', 'n1')
+    useGraphUiStore().setFocusRoute('r1')
+    await flushPromises()
+    await wrapper.find('[data-test="fork-label"]').setValue('替代路线')
+    await wrapper.find('[data-test="fork-submit"]').trigger('click')
+    await flushPromises()
+    expect(vi.mocked(apiForkNode)).toHaveBeenCalledWith('p1', 'n1', { sourceRouteId: 'r1', label: '替代路线' })
+  })
+
+  it('regenerate dialog submits only the user direction and source route as a run', async () => {
+    mockViews()
+    mockedCreateAgentRun.mockResolvedValue({
+      runId: 'run-regen',
+      operation: 'REGENERATE_NODE',
+      phase: 'CREATED',
+    })
+    mockedGetAgentRun.mockResolvedValue({
+      runId: 'run-regen',
+      projectId: 'p1',
+      routeId: 'r1',
+      operation: 'REGENERATE_NODE',
+      status: 'completed',
+      phase: 'COMPLETED',
+      producedNodeId: 'n-new',
+      producedAnswerId: null,
+      producedPatchId: null,
+      producedSpecSnapshotId: null,
+    })
+    const { wrapper, graphUi } = await mountWorkspace()
+    graphUi.setFocusRoute('r1')
+    await wrapper.findComponent(GraphCanvasStub).vm.$emit('regenerate', 'n2')
+    expect(wrapper.find('[data-test="regenerate-dialog"]').exists()).toBe(true)
+    await wrapper.find('[data-test="regenerate-instruction"]').setValue('换个更可执行的切入点')
+    await wrapper.find('[data-test="regenerate-submit"]').trigger('click')
+    await flushPromises()
+    expect(mockedCreateAgentRun).toHaveBeenCalledWith('p1', {
+      operation: 'REGENERATE_NODE',
+      nodeId: 'n2',
+      sourceRouteId: 'r1',
+      freeText: '换个更可执行的切入点',
+    })
+  })
+
+  it('inspector no longer hosts spec content; reading context stays explicit', async () => {
+    mockViews()
+    const { wrapper, graphUi } = await mountWorkspace()
+    graphUi.setFocusRoute('r1')
+    await flushPromises()
+    // Spec 已搬出 Inspector：无 tab、无生成入口、无快照详情。
+    expect(wrapper.find('[data-test="tab-spec"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="generate-spec"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="spec-snapshot-detail"]').exists()).toBe(false)
+    // 无选择时展示项目摘要，阅读路线上下文仍明确。
+    expect(wrapper.find('[data-test="project-summary"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('当前查看路线')
+  })
+
+  it('spec dock is collapsed by default in the graph center and keeps graph mounted', async () => {
+    mockViews()
+    vi.mocked(listRouteSpecs).mockResolvedValue([])
+    const { wrapper, graphUi } = await mountWorkspace()
+    graphUi.setFocusRoute('r1')
+    await flushPromises()
+    const dock = wrapper.find('[data-test="spec-dock"]')
+    expect(dock.exists()).toBe(true)
+    expect(dock.attributes('data-state')).toBe('collapsed')
+    // Dock 位于中央列，Graph 仍挂载。
+    expect(wrapper.find('.workspace-shell__graph-region [data-test="graph-canvas-stub"]').exists()).toBe(true)
+  })
+
+  it('expanding the dock keeps graph and inspector usable', async () => {
+    mockViews()
+    vi.mocked(listRouteSpecs).mockResolvedValue([])
+    const { wrapper, graphUi } = await mountWorkspace()
+    graphUi.setFocusRoute('r1')
+    await flushPromises()
+    await wrapper.find('[data-test="spec-dock-toggle"]').trigger('click')
+    expect(wrapper.find('[data-test="spec-dock"]').attributes('data-state')).toBe('expanded')
+    expect(wrapper.find('.workspace-shell__graph-region [data-test="graph-canvas-stub"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="workspace-inspector"]').exists()).toBe(true)
+  })
+
+  it('dock generate-spec still targets the active route while reading another', async () => {
+    mockViews()
+    vi.mocked(listRouteSpecs).mockResolvedValue([])
+    mockedCreateAgentRun.mockResolvedValue({
+      runId: 'run-spec',
+      operation: 'GENERATE_ARTIFACT',
+      phase: 'CREATED',
+    })
+    mockedGetAgentRun.mockResolvedValue({
+      runId: 'run-spec',
+      projectId: 'p1',
+      routeId: 'r1',
+      operation: 'GENERATE_ARTIFACT',
+      status: 'completed',
+      phase: 'COMPLETED',
+      producedNodeId: null,
+      producedAnswerId: null,
+      producedPatchId: null,
+      producedSpecSnapshotId: 'spec-1',
+    })
+    const { wrapper, graphUi } = await mountWorkspace()
+    graphUi.setFocusRoute('r2')
+    await flushPromises()
+    expect(wrapper.find('[data-test="spec-route-warning"]').exists()).toBe(true)
+    await wrapper.find('[data-test="spec-dock-toggle"]').trigger('click')
+    vi.mocked(listRouteSpecs).mockResolvedValue([makeSpecSnapshot({ id: 'spec-1', routeId: 'r1' })])
+    await wrapper.find('[data-test="generate-spec"]').trigger('click')
+    await flushPromises()
+    expect(mockedCreateAgentRun).toHaveBeenCalledWith('p1', { operation: 'GENERATE_ARTIFACT' })
+  })
+
+
+  it('shell copy is chinese while backend content stays verbatim', async () => {
+    mockViews()
+    const { wrapper, graphUi } = await mountWorkspace()
+    graphUi.setFocusRoute('r1')
+    await flushPromises()
+    // 导航优先：默认只展示路线名/节点数/浏览与运行状态；管理动作收进闭合溢出。
+    for (const route of wrapper.findAll('[data-route-id]')) {
+      route.get('[data-test="route-more"]').element.setAttribute('open', '')
+    }
+    wrapper.get('[data-test="route-filters"]').element.setAttribute('open', '')
+    await flushPromises()
+    const text = wrapper.text()
+    // 标题是项目名；壳层文案是中文。
+    expect(text).toContain('Test project')
+    expect(text).toContain('正在浏览')
+    expect(text).toContain('运行路线')
+    expect(text).toContain('已归档')
+    expect(text).toContain('查看完整需求状态')
+    expect(text).toContain('归档并隐藏')
+    expect(text).toContain('定位路线')
+    expect(text).toContain('只看这条路线')
+    // 已移除的视图层/生命周期动作不再存在（结构性断言，避免"已删除"+“路线"
+    // 这类相邻文案拼接造成误判）。
+    for (const removed of ['delete-route', 'focus-route', 'dim-route', 'hide-route']) {
+      expect(wrapper.find(`[data-test="${removed}"]`).exists()).toBe(false)
+    }
+    // 后端/用户内容保持原样（verbatim）：路线名不翻译。
+    expect(text).toContain('开放分支')
+    expect(text).toContain('旧路线')
+    // 派生 claim 文本在二级需求视图中保持原样。
+    await wrapper.find('[data-test="open-requirements"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('A confirmed requirement detail.')
+  })
+
+  it('sidebar open state toggles independently of canvas layout', async () => {
+    mockViews()
+    const { wrapper, graphUi } = await mountWorkspace()
+    expect(graphUi.leftSidebarOpen).toBe(true)
+    expect(graphUi.rightSidebarOpen).toBe(true)
+    await wrapper.find('[data-test="toggle-left"]').trigger('click')
+    expect(graphUi.leftSidebarOpen).toBe(false)
+    await wrapper.find('[data-test="toggle-right"]').trigger('click')
+    expect(graphUi.rightSidebarOpen).toBe(false)
+    await wrapper.find('[data-test="toggle-left"]').trigger('click')
+    expect(graphUi.leftSidebarOpen).toBe(true)
+  })
+})

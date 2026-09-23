@@ -3,10 +3,10 @@ import { createPinia } from 'pinia'
 import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
 import App from './App.vue'
-import router from './router'
-import './style.css'
+import router from '@/app/router/index'
+import '@/app/styles/style.css'
 
-import './styles/providerSettings.css'
-import './styles/mgmt.css'
+import '@/app/styles/providerSettings.css'
+import '@/app/styles/mgmt.css'
 
 createApp(App).use(createPinia()).use(router).mount('#app')

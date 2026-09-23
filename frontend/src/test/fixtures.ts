@@ -21,7 +21,7 @@ import type {
   SpecSectionResponse,
   SpecSnapshotResponse,
   UnresolvedItemResponse,
-} from '@/api/types'
+} from '@/shared/contracts/types'
 
 /** Test fixtures mirroring the backend API contracts. Ids are opaque strings. */
 

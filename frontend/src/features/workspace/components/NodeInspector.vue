@@ -1,0 +1,548 @@
+<script setup lang="ts">
+import { formatShanghaiDateTime as formatTime } from '@/shared/lib/formatTime'
+import { relationTypeLabel } from '@/features/workspace/presentation/routePresentation'
+import { computed, ref, watch } from 'vue'
+import AgentProposalCard from './AgentProposalCard.vue'
+import GraphRunProcessPanel from '@/features/workspace/graph/components/GraphRunProcessPanel.vue'
+import type { SpecAgentGraphNodeData } from '@/features/workspace/graph/graphProjection'
+import { actionsFor, type NodeAction, type NodeActionId } from '@/features/workspace/graph/nodeActions'
+import { useWorkspaceStore } from '@/features/workspace/state/workspaceStore'
+
+/**
+ * 节点详情检查器。只读展示节点内容（问题或通用工作区内容）、全部选项、
+ * 每条路线的回答/等待状态、路线归属与语义关系。历史动作只向上发出意图；
+ * 回答提交永远在 Graph 节点内，这里不提供第二套提交界面。
+ *
+ * 任意节点都可以发起上下文 AI 查询（"问 AI"）：查询使用该节点的 lineage
+ * 与显式阅读路线作为上下文，回答不修改 Graph。
+ */
+const props = defineProps<{ data: SpecAgentGraphNodeData | null }>()
+
+const emit = defineEmits<{
+  fork: [nodeId: string]
+  reanswer: [nodeId: string]
+  regenerate: [nodeId: string]
+}>()
+
+const workspace = useWorkspaceStore()
+
+const nodeQuestion = computed(() => props.data?.node.question || '')
+const contentText = computed(() => {
+  const text = props.data?.node.content?.text
+  return typeof text === 'string' && text.trim() ? text : ''
+})
+const nodeTitle = computed(() => nodeQuestion.value || contentText.value || '（空草稿）')
+
+const kindLabel = computed(() => {
+  if (!props.data) return ''
+  if (props.data.node.kind === 'INTERACTION') return '交互 · 提问'
+  return `${props.data.node.kind} · ${props.data.node.subtype}`
+})
+
+
+function branchLabel(branchType: string | null | undefined): string {
+  return {
+    fork: '分支路线',
+    reanswer: '重新选择答案',
+    regenerate: '替代问题',
+    continuation: '探索分支',
+  }[branchType ?? ''] ?? branchType ?? ''
+}
+
+function membershipLabel(data: SpecAgentGraphNodeData, routeId: string): string {
+  return data.routeMembership?.find((membership) => membership.routeId === routeId)?.label
+    || data.routeStates.find((state) => state.routeId === routeId)?.routeLabel
+    || '路线'
+}
+
+// ---- 历史动作（与画布节点卡共用 nodeActions 配置表）-----------------------
+// 检查器只保留 fork / 重答 / 换题三个动作；可见性与禁用条件（例如根节点不能
+// 换题）统一由 actionsFor 计算，这里不再硬编码第二套分支。
+
+const INSPECTOR_ACTION_IDS: NodeActionId[] = ['fork-node', 'reanswer-node', 'regenerate-node']
+
+const INSPECTOR_ACTION_TEST_IDS: Record<NodeActionId, string> = {
+  'fork-node': 'inspector-fork',
+  'reanswer-node': 'inspector-reanswer',
+  'regenerate-node': 'inspector-regenerate',
+  'draft-next-question': 'inspector-draft-next',
+  'draft-from-node': 'inspector-draft-from-node',
+  'edit-draft': 'inspector-edit-draft',
+  'confirm-knowledge': 'inspector-confirm-knowledge',
+  'continue-node': 'inspector-continue-node',
+  'disconnect-node': 'inspector-disconnect-node',
+  'contextual-ai': 'inspector-contextual-ai',
+}
+
+const inspectorActions = computed(() => {
+  if (!props.data || props.data.node.kind !== 'INTERACTION') return []
+  return actionsFor(props.data).filter((action) => INSPECTOR_ACTION_IDS.includes(action.id))
+})
+
+function onInspectorAction(action: NodeAction): void {
+  if (!props.data) return
+  switch (action.id) {
+    case 'fork-node':
+      emit('fork', props.data.node.id)
+      break
+    case 'reanswer-node':
+      emit('reanswer', props.data.node.id)
+      break
+    case 'regenerate-node':
+      emit('regenerate', props.data.node.id)
+      break
+  }
+}
+
+// ---- Contextual AI query -------------------------------------------------
+
+const askInput = ref('')
+const isVirtualPendingNode = computed(() => props.data?.node.id.startsWith('pending:') ?? false)
+/**
+ * The reading context is OPTIONAL for an AI query: a Floating node belongs to
+ * no route (routeIds=[]) and still queries with routeId=null — the anchor
+ * node itself is the minimum context. A route is a reading-context hint,
+ * never an eligibility gate.
+ */
+const askRouteId = computed(() => {
+  if (!props.data) return null
+  if (props.data.readingRouteId) return props.data.readingRouteId
+  return props.data.routeIds.length === 1 ? props.data.routeIds[0] : null
+})
+/**
+ * A shared route node (more than one route membership) MUST supply an explicit
+ * read route as the AI query context: we must not silently fall back to
+ * routeId=null. A floating node (routeIds=[]) is allowed to query with
+ * routeId=null — the node itself is the only context.
+ */
+const askNeedsExplicitRoute = computed(() => {
+  if (!props.data) return false
+  return props.data.routeIds.length > 1 && !props.data.readingRouteId
+})
+const askBlockedReason = computed(() => {
+  if (!props.data) return null
+  if (isVirtualPendingNode.value) return '运行中的临时卡片不能作为 AI 查询锚点'
+  if (askNeedsExplicitRoute.value) return '共享节点请先选择一条查看路线，再询问 AI'
+  if (props.data.node.kind !== 'INTERACTION' && !contentText.value) return '先写下内容再询问 AI'
+  return null
+})
+
+const queryResult = computed(() => {
+  if (!props.data) return null
+  const canonicalNodeId = props.data.canonicalNodeId ?? props.data.node.id
+  // The live in-memory query wins when it targets this node.
+  if (workspace.nodeQuery && workspace.nodeQuery.nodeId === canonicalNodeId) {
+    return workspace.nodeQuery
+  }
+  // A durable pending proposal is reconnected to its anchor node: even after
+  // a page reload (or after a NEWER query replaced nodeQuery), the proposal
+  // stays visible on the node whose query produced it.
+  const pending = workspace.nodeQueryProposals.find(
+    (proposal) => proposal.inputNodeId === canonicalNodeId,
+  )
+  if (!pending) return null
+  return {
+    nodeId: canonicalNodeId,
+    routeId: pending.routeId,
+    question: '',
+    runId: pending.runId ?? '',
+    status: 'AWAITING_APPROVAL',
+    message: 'AI 提出了一个候选动作，等待你确认',
+    proposalId: pending.proposalId,
+    proposalStatus: pending.status,
+    actionFamily: pending.actionFamily,
+  } as typeof workspace.nodeQuery
+})
+
+const acceptingProposal = ref(false)
+const rejectingProposal = ref(false)
+/** 更多详情默认闭合且不挂载技术内容：raw id 只在用户展开后可见。 */
+const proposalTechOpen = ref(false)
+
+/** 审批卡的节点上下文：Q 号 + 可读标题，无可读文本时回退通用"节点"。 */
+const proposalNodeContext = computed(() => {
+  if (!props.data) return null
+  const q = props.data.qLabel ? `${props.data.qLabel} · ` : ''
+  const title = nodeQuestion.value || contentText.value
+  return `${q}${title || '节点'}`.slice(0, 48)
+})
+
+watch(
+  () => props.data?.node.id,
+  () => {
+    askInput.value = ''
+  },
+)
+
+async function ask(): Promise<void> {
+  if (!props.data || !askInput.value.trim()) return
+  if (askBlockedReason.value) return
+  if (isVirtualPendingNode.value) return
+  const canonicalNodeId = props.data.canonicalNodeId ?? props.data.node.id
+  await workspace.askNodeAI(canonicalNodeId, askRouteId.value, askInput.value)
+}
+
+async function acceptProposal(): Promise<void> {
+  const proposalId = queryResult.value?.proposalId
+  if (!proposalId || acceptingProposal.value) return
+  acceptingProposal.value = true
+  try {
+    await workspace.acceptNodeQueryProposal(proposalId)
+  } finally {
+    acceptingProposal.value = false
+  }
+}
+
+async function rejectProposal(): Promise<void> {
+  const proposalId = queryResult.value?.proposalId
+  if (!proposalId || rejectingProposal.value) return
+  rejectingProposal.value = true
+  try {
+    await workspace.rejectNodeQueryProposal(proposalId)
+  } finally {
+    rejectingProposal.value = false
+  }
+}
+
+// ---- Semantic relations (view-only) ---------------------------------------
+// 关系创建统一走 Canvas drag → Proposal → Confirm；Inspector 只负责查看
+// canonical semantic relations（方向/类型）。这里不再提供第二套下拉创建器。
+
+const relations = computed(() => {
+  if (!props.data) return []
+  const nodeId = props.data.node.id
+  return (workspace.graphView?.relations ?? [])
+    .filter((relation) => relation.sourceNodeId === nodeId || relation.targetNodeId === nodeId)
+})
+
+function relationNodeLabel(nodeId: string): string {
+  const node = workspace.graphView?.nodes.find((candidate) => candidate.id === nodeId)
+  if (!node) return nodeId.slice(0, 8)
+  if (node.question) return node.question.slice(0, 24)
+  const text = node.content?.text
+  return typeof text === 'string' && text ? text.slice(0, 24) : nodeId.slice(0, 8)
+}
+
+/** 对称关系（RELATED_TO/CONFLICTS_WITH）展示为无方向事实。 */
+function relationDirectionLabel(relation: {
+  relationType: string
+  sourceNodeId: string
+  targetNodeId: string
+}): string {
+  const nodeId = props.data?.node.id
+  if (relation.relationType === 'RELATED_TO' || relation.relationType === 'CONFLICTS_WITH') {
+    return `${relationNodeLabel(relation.sourceNodeId)} ↔ ${relationNodeLabel(relation.targetNodeId)}`
+  }
+  if (relation.sourceNodeId === nodeId) {
+    return `→ ${relationNodeLabel(relation.targetNodeId)}`
+  }
+  return `← ${relationNodeLabel(relation.sourceNodeId)}`
+}
+</script>
+
+<template>
+  <div class="node-inspector" data-test="node-inspector">
+    <template v-if="data">
+      <header class="node-inspector__header">
+        <div class="node-inspector__identity">
+          <span v-if="data.qLabel" class="node-inspector__q">{{ data.qLabel }}</span>
+          <span v-if="data.isLatest" class="badge badge-latest">最新</span>
+          <span v-if="data.isShared" class="badge badge-neutral">共享</span>
+        </div>
+        <p class="node-inspector__route-context">
+          当前查看：<strong>{{ data.readingRouteId ? membershipLabel(data, data.readingRouteId) : '未选择路线' }}</strong>
+        </p>
+      </header>
+
+      <section class="node-inspector__section" data-test="inspector-section-content">
+        <h4>问题</h4>
+        <h3 class="node-inspector__title" data-test="node-detail-question">{{ nodeTitle }}</h3>
+        <p v-if="data.node.purpose" class="meta-text">{{ data.node.purpose }}</p>
+        <template v-if="data.node.options.length > 0">
+          <h4 class="node-inspector__heading">选项</h4>
+          <ul class="node-inspector__options">
+            <li v-for="option in data.node.options" :key="option.id" class="node-inspector__option">
+              <span class="graph-option-label">{{ option.label }}</span>
+              <span v-if="option.impact" class="graph-option-impact">{{ option.impact }}</span>
+            </li>
+          </ul>
+        </template>
+        <GraphRunProcessPanel
+          v-if="data.runtimeStatus && data.runtimeStatus !== 'SUCCEEDED' && data.runtimeProgress"
+          class="graph-runtime-state__panel--inline"
+          :phase="data.runtimePhase"
+          :summary="data.runtimeProgress.summary"
+          :steps="data.runtimeProgress.steps"
+          :running="data.runtimeStatus !== 'FAILED'"
+        />
+      </section>
+
+      <section v-if="data.node.kind === 'INTERACTION'" class="node-inspector__section" data-test="inspector-section-answer">
+        <h4>回答</h4>
+        <div v-if="data.primaryAnswer" class="node-inspector__answer" data-test="canonical-answer">
+          <span v-if="data.primaryAnswer.selectedOptionLabel" class="badge badge-open">{{ data.primaryAnswer.selectedOptionLabel }}</span>
+          <p v-if="data.primaryAnswer.freeText" class="graph-answer-text">{{ data.primaryAnswer.freeText }}</p>
+        </div>
+        <p v-else class="muted" data-test="node-detail-no-answer">该节点还没有回答</p>
+      </section>
+
+      <section class="node-inspector__section" data-test="inspector-section-agent">
+        <h4>问 AI</h4>
+        <div class="node-inspector__ask" data-test="node-ask">
+        <textarea
+          v-model="askInput"
+          class="graph-answer-input node-inspector__ask-input"
+          data-test="ask-input"
+          rows="2"
+          :placeholder="askBlockedReason ?? '例如：这个需求会影响哪些部分？'"
+          :disabled="askBlockedReason !== null"
+        ></textarea>
+        <button
+          class="btn btn-small btn-primary"
+          data-test="ask-submit"
+          :disabled="askBlockedReason !== null || askNeedsExplicitRoute || !askInput.trim() || (queryResult?.status === 'RUNNING' || queryResult?.status === 'AWAITING_APPROVAL')"
+          @click="ask"
+        >
+          {{ queryResult?.status === 'RUNNING' ? '正在查询…' : '提问' }}
+        </button>
+        <p v-if="askBlockedReason" class="meta-text">{{ askBlockedReason }}</p>
+        <div v-if="queryResult" class="node-inspector__answer" data-test="ask-result">
+          <template v-if="queryResult.status === 'RUNNING'">
+            <span class="badge badge-open">AI 正在基于该节点上下文回答…</span>
+          </template>
+          <template v-else-if="queryResult.status === 'AWAITING_APPROVAL'">
+            <div data-test="agent-proposal">
+              <AgentProposalCard
+                :action-family="queryResult.actionFamily ?? null"
+                :message="queryResult.message"
+                :node-context="proposalNodeContext"
+                :accepting="acceptingProposal"
+                :rejecting="rejectingProposal"
+                @accept="acceptProposal"
+                @reject="rejectProposal"
+              />
+            </div>
+          </template>
+          <template v-else-if="queryResult.status === 'ACCEPTED'">
+            <span class="badge badge-open">提案已接受，Graph 已更新</span>
+          </template>
+          <template v-else-if="queryResult.status === 'REJECTED'">
+            <span class="badge badge-warn">提案已拒绝，Graph 保持不变</span>
+          </template>
+          <template v-else-if="queryResult.status === 'COMPLETED' && queryResult.message">
+            <p class="graph-answer-text">{{ queryResult.message }}</p>
+          </template>
+          <template v-else-if="queryResult.status === 'COMPLETED'">
+            <span class="badge badge-warn">AI 未返回文字回答（可查看待确认提案）</span>
+          </template>
+          <template v-else-if="queryResult.status === 'POLICY_DENIED' || queryResult.status === 'NOT_CONFIRMABLE'">
+            <span class="badge badge-warn">{{ queryResult.message || 'AI 查询无法生成可确认提案' }}</span>
+          </template>
+          <template v-else>
+            <span class="badge badge-warn">查询失败，请稍后重试</span>
+          </template>
+        </div>
+      </div>
+
+      </section>
+
+      <section class="node-inspector__section" data-test="inspector-section-membership">
+        <h4>路线归属</h4>
+        <p class="meta-text">
+          {{ data.routeIds.length }} 条路线
+          <template v-if="data.isShared">（共享节点）</template>
+        </p>
+        <div v-if="data.routeMembership?.some((membership) => membership.branchType)" class="node-inspector__provenance">
+          <h4 class="node-inspector__heading">分支来源</h4>
+          <p
+            v-for="membership in data.routeMembership?.filter((item) => item.branchType)"
+            :key="membership.routeId"
+            class="meta-text"
+          >
+            {{ membership.label }} · {{ branchLabel(membership.branchType) }}
+            <template v-if="membership.sourceRouteId"> · 来源 {{ membershipLabel(data, membership.sourceRouteId) }}</template>
+          </p>
+        </div>
+      </section>
+
+      <details
+        class="node-inspector__secondary"
+        data-test="inspector-secondary"
+        @toggle="proposalTechOpen = ($event.target as HTMLDetailsElement).open"
+      >
+        <summary>更多详情</summary>
+        <div v-if="proposalTechOpen" class="node-inspector__secondary-body">
+          <p class="meta-text">{{ kindLabel }} · 创建于 {{ formatTime(data.node.createdAt) }}</p>
+
+          <template v-if="queryResult?.proposalId">
+            <h4 class="node-inspector__heading">提案技术详情</h4>
+            <p class="meta-text">提案：{{ queryResult.proposalId }}</p>
+            <p v-if="queryResult.runId" class="meta-text">运行：{{ queryResult.runId }}</p>
+            <p class="meta-text">动作：{{ queryResult.actionFamily ?? '—' }}</p>
+            <p class="meta-text">状态：{{ queryResult.proposalStatus ?? queryResult.status }}</p>
+          </template>
+
+          <h4 class="node-inspector__heading">语义关系</h4>
+          <p v-if="relations.length === 0" class="muted" data-test="node-detail-no-relations">暂无语义关系</p>
+          <ul v-else class="node-inspector__relations" data-test="node-relations">
+            <li v-for="relation in relations" :key="relation.id" class="meta-text">
+              <span class="badge badge-open">{{ relationTypeLabel(relation.relationType) }}</span>
+              {{ relationDirectionLabel(relation) }}
+              <span v-if="relation.origin === 'AGENT'" class="meta-text">（AI 建议）</span>
+            </li>
+          </ul>
+        </div>
+      </details>
+
+      <!-- 历史节点才提供 Fork / Regenerate；当前待回答节点保持只读详情，
+           回答只发生在 Graph 节点内部。动作可见性/禁用来自 nodeActions 配置表。 -->
+      <div v-if="!data.canAnswer && data.node.kind === 'INTERACTION' && inspectorActions.length" class="node-inspector__actions">
+        <button
+          v-for="action in inspectorActions"
+          :key="action.id"
+          class="btn btn-small"
+          :data-test="INSPECTOR_ACTION_TEST_IDS[action.id]"
+          :title="action.title"
+          :disabled="action.disabled === true"
+          @click="onInspectorAction(action)"
+        >
+          {{ action.label }}
+        </button>
+      </div>
+    </template>
+    <p v-else class="muted" data-test="node-detail-empty">选择一个节点查看详情</p>
+  </div>
+</template>
+
+<style scoped>
+.node-inspector__header {
+  margin-bottom: 4px;
+}
+
+.node-inspector__identity {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.node-inspector__q {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--color-accent);
+}
+
+.node-inspector__route-context {
+  margin: 0 0 4px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.node-inspector__section {
+  margin-top: 12px;
+}
+
+.node-inspector__section > h4 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.node-inspector__title {
+  margin: 0 0 6px;
+  font-size: 15px;
+}
+
+.node-inspector__secondary {
+  margin-top: 12px;
+  border-top: 1px solid var(--color-border);
+  padding-top: 8px;
+}
+
+.node-inspector__secondary > summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.node-inspector__secondary-body {
+  padding-top: 8px;
+}
+
+.node-inspector__heading {
+  margin: 14px 0 6px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-secondary);
+}
+
+.node-inspector__reading {
+  margin: 10px 0;
+  padding: 8px;
+  border-radius: var(--radius);
+  background: var(--color-accent-soft);
+  font-size: 12px;
+}
+
+.node-inspector__ask {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.node-inspector__ask-input {
+  min-height: 44px;
+}
+
+.node-inspector__answer {
+  padding: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg-inset, rgba(127, 127, 127, 0.06));
+}
+
+.node-inspector__options {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.node-inspector__option {
+  padding: 6px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  margin-bottom: 4px;
+}
+
+.node-inspector__answers {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.node-inspector__relations {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.node-inspector__actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.node-inspector__relation-create {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+</style>

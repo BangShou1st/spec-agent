@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { RouterLink, RouterView } from 'vue-router'
 import { useRoute } from 'vue-router'
-import GlobalAssistantShell from '@/components/global-assistant/GlobalAssistantShell.vue'
+import GlobalAssistantShell from '@/features/global-assistant/components/GlobalAssistantShell.vue'
 
 const route = useRoute()
 const isWorkspaceRoute = computed(() => route.name === 'workspace')

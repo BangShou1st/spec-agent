@@ -1,0 +1,156 @@
+/**
+ * AgentRun async command + polling API.
+ *
+ * The frontend never hand-builds run payloads elsewhere: answer/repair (and
+ * later question/spec/replacement) mutations go through these explicit
+ * methods, mirroring the backend contract exactly. The HTTP command returns
+ * immediately with a runId; completion is observed by polling the run read
+ * endpoint until a terminal status. No WebSocket/SSE.
+ */
+import { apiClient } from '@/shared/http/client'
+
+export type AgentRunOperation =
+  | 'ANSWER_TIP'
+  | 'RESUME_ANSWER'
+  | 'DRAFT_QUESTION'
+  | 'GENERATE_ARTIFACT'
+  | 'REGENERATE_NODE'
+
+/** Coarse lifecycle statuses returned by GET /agent-runs/{runId}. */
+export type AgentRunStatus =
+  | 'created'
+  | 'running'
+  | 'completed'
+  | 'failed'
+
+/** Real persisted run phases (AgentRunPhase); progress copy derives from these. */
+export const AGENT_RUN_PHASES = [
+  'CREATED',
+  'SNAPSHOT_BUILT',
+  'STATE_UPDATING',
+  'STATE_UPDATED',
+  'DECIDING',
+  'PROPOSAL_CREATED',
+  'ARTIFACT_GENERATING',
+  'AWAITING_APPROVAL',
+  'EXECUTING',
+  'WAITING_USER',
+  'COMPLETED',
+  'FAILED',
+  'STALE',
+] as const
+
+export type AgentRunPhase = (typeof AGENT_RUN_PHASES)[number]
+
+const TERMINAL_STATUSES: ReadonlySet<string> = new Set(['completed', 'failed'])
+
+/** Poll cadence: bounded and modest — no tight infinite loop. */
+export const AGENT_RUN_POLL_INTERVAL_MS = 1500
+
+/** Upper bound on polls per run; exceeded means FAILED for recovery UX. */
+export const AGENT_RUN_MAX_POLLS = 120
+
+export interface AgentRunCreated {
+  runId: string
+  operation: string
+  phase: string
+}
+
+export interface AgentRunView {
+  runId: string
+  projectId: string
+  routeId: string
+  operation: string
+  status: AgentRunStatus
+  phase: AgentRunPhase | string
+  producedNodeId: string | null
+  producedAnswerId: string | null
+  producedPatchId: string | null
+  producedSpecSnapshotId: string | null
+  /** Direct automatic-continuation child run id; absent when none exists yet. */
+  childRunId?: string | null
+  /** True while the durable continuation check for this run is still pending. */
+  continuationPending?: boolean
+  /** Latest durable RESPOND_MESSAGE text; absent when the run never responded. */
+  respondMessage?: string | null
+  /** Whitelisted progress read model; absent on older payloads. */
+  progress?: RunProgressView | null
+}
+
+/** One whitelisted progress step (backend RunProgressView.Step). */
+export interface RunProgressStep {
+  sequence: number
+  phase: string
+  event: string
+  summary: string | null
+  items: string[] | null
+  at: string
+}
+
+/** Whitelisted run progress: composed summaries only, never raw payloads. */
+export interface RunProgressView {
+  phase: string | null
+  summary: string | null
+  steps: RunProgressStep[]
+}
+
+export interface CreateAgentRunPayload {
+  operation: AgentRunOperation
+  /** Node being answered/regenerated; backend falls back to the active route tip when omitted. */
+  nodeId?: string | null
+  /** 多选题的全量选择（用户顺序）；单选题仍走 selectedOptionId。 */
+  selectedOptionIds?: string[] | null
+  /**
+   * Explicit route of this run.
+   *
+   * Required for REGENERATE_NODE (the replacement's source route). Also
+   * optional for ANSWER_TIP / RESUME_ANSWER / DRAFT_QUESTION /
+   * GENERATE_ARTIFACT: when present the run is bound to that route for its
+   * whole life ("EXPLICIT" route mode), which is what lets several routes
+   * answer and generate independently. When absent the run follows the
+   * project's Active route exactly as before — including failing closed if
+   * that pointer moves while the run is queued.
+   */
+  sourceRouteId?: string | null
+  selectedOptionId?: string | null
+  freeText?: string | null
+  /** Required for RESUME_ANSWER: the persisted Answer id being resumed. */
+  answerId?: string | null
+  /**
+   * Stable identity of ONE user action attempt. Retries after an unknown
+   * outcome (network loss, timeout, lost response) MUST reuse the same key so
+   * the backend returns the already-created run instead of creating a second
+   * one. A genuinely new user action generates a new key.
+   */
+  idempotencyKey?: string | null
+}
+
+export function createAgentRun(
+  projectId: string,
+  payload: CreateAgentRunPayload,
+): Promise<AgentRunCreated> {
+  return apiClient.post<AgentRunCreated>(`/projects/${projectId}/agent-runs`, {
+    operation: payload.operation,
+    nodeId: payload.nodeId ?? null,
+    sourceRouteId: payload.sourceRouteId ?? null,
+    selectedOptionId: payload.selectedOptionId ?? null,
+    selectedOptionIds: payload.selectedOptionIds ?? null,
+    freeText: payload.freeText ?? null,
+    answerId: payload.answerId ?? null,
+    idempotencyKey: payload.idempotencyKey ?? null,
+  })
+}
+
+export function getAgentRun(projectId: string, runId: string): Promise<AgentRunView> {
+  return apiClient.get<AgentRunView>(`/projects/${projectId}/agent-runs/${runId}`)
+}
+
+/** All non-terminal runs of the project; used to rebuild the in-flight run
+ * registry after a page reload. */
+export function listActiveRuns(projectId: string): Promise<AgentRunView[]> {
+  return apiClient.get<AgentRunView[]>(`/projects/${projectId}/agent-runs/active`)
+}
+
+export function isTerminalRunStatus(status: string): boolean {
+  return TERMINAL_STATUSES.has(status)
+}
