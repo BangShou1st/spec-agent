@@ -4,6 +4,9 @@ import com.specagent.common.PreciseConflictException;
 import com.tngtech.archunit.base.DescribedPredicate;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
+import com.tngtech.archunit.core.domain.JavaMethod;
+import com.tngtech.archunit.core.domain.JavaModifier;
+import com.tngtech.archunit.core.domain.JavaType;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.lang.ArchRule;
@@ -15,6 +18,8 @@ import org.junit.jupiter.api.Test;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -216,40 +221,81 @@ class ArchitectureTests {
     }
 
     /**
-     * HTTP-only DTO role, derived structurally at rule time: a TOP-LEVEL
-     * class whose simple name ends in Request/Response/Dto <em>and</em> that
-     * is referenced by at least one HTTP controller (the internal inference
-     * broker does not count). {@code *View} types are application read
-     * views, NOT HTTP DTOs, so they stay out of this role on purpose.
-     * Nested types (e.g. a builder's {@code UiRequest} parameter record) are
-     * module-internal carriers, not standalone wire payloads, and are
-     * excluded as well.
+     * Payload reachability starts at mapped endpoint signatures, not controller
+     * implementation dependencies. Follow instance fields (including record
+     * components), bean/JSON getters and generic type arguments, retaining
+     * arrays, inherited payloads and nested classes. Never traverse service
+     * calls, constructors or arbitrary helper methods. External containers
+     * contribute their type arguments, but their own implementation is opaque.
+     *
+     * This is a conservative static type boundary, not a Jackson runtime schema:
+     * instance fields are checked even when a serializer might omit them.
+     * Object/JsonNode contents and dynamically populated SSE payloads require
+     * their existing behavioural/contract tests.
      */
-    static DescribedPredicate<JavaClass> httpOnlyDtoRole(JavaClasses classes) {
-        Set<String> dtoNames = new java.util.HashSet<>();
-        for (JavaClass clazz : classes) {
-            if (clazz.getName().contains("$")) {
-                continue; // nested/anonymous types are module-internal
-            }
-            String name = clazz.getSimpleName();
-            boolean dtoShaped = name.endsWith("Request") || name.endsWith("Response")
-                    || name.endsWith("Dto");
-            if (!dtoShaped) {
-                continue;
-            }
-            boolean controllerReferenced = classes.stream().anyMatch(controller ->
-                    HTTP_CONTROLLERS.test(controller)
-                            && controller.getDirectDependenciesFromSelf().stream()
-                            .anyMatch(dep -> dep.getTargetClass().equals(clazz)));
-            if (controllerReferenced) {
-                dtoNames.add(clazz.getName());
+    private static Set<JavaClass> httpPayloadTypes(JavaClasses classes) {
+        Set<JavaClass> known = new HashSet<>();
+        classes.forEach(known::add);
+        ArrayDeque<JavaClass> pending = new ArrayDeque<>();
+        for (JavaClass controller : classes) {
+            if (!HTTP_CONTROLLERS.test(controller)) continue;
+            for (JavaMethod method : controller.getAllMethods()) {
+                if (!method.isAnnotatedWith("org.springframework.web.bind.annotation.RequestMapping")
+                        && !method.isMetaAnnotatedWith("org.springframework.web.bind.annotation.RequestMapping")) {
+                    continue;
+                }
+                enqueuePayloadTypes(method.getReturnType(), pending);
+                method.getParameterTypes().forEach(type -> enqueuePayloadTypes(type, pending));
             }
         }
-        Set<String> frozen = java.util.Collections.unmodifiableSet(dtoNames);
-        return new DescribedPredicate<>("HTTP-only DTOs (top-level Request/Response/Dto referenced by a controller)") {
+
+        Set<JavaClass> payloads = new HashSet<>();
+        while (!pending.isEmpty()) {
+            JavaClass payload = pending.removeFirst();
+            if (!known.contains(payload) || !payloads.add(payload)) continue;
+            // Include arguments bound by a generic superclass, not just its erased fields.
+            payload.getSuperclass().ifPresent(type -> enqueuePayloadTypes(type, pending));
+            payload.getAllFields().stream()
+                    .filter(field -> !field.getModifiers().contains(JavaModifier.STATIC))
+                    .filter(field -> !field.getName().startsWith("this$"))
+                    .forEach(field -> enqueuePayloadTypes(field.getType(), pending));
+            payload.getAllMethods().stream()
+                    .filter(ArchitectureTests::isPayloadGetter)
+                    .forEach(method -> enqueuePayloadTypes(method.getReturnType(), pending));
+        }
+        return Set.copyOf(payloads);
+    }
+
+    private static void enqueuePayloadTypes(JavaType type, ArrayDeque<JavaClass> pending) {
+        for (JavaClass raw : type.getAllInvolvedRawTypes()) {
+            pending.addLast(raw.isArray() ? raw.getBaseComponentType() : raw);
+        }
+    }
+
+    private static boolean isPayloadGetter(JavaMethod method) {
+        if (!method.getParameterTypes().isEmpty()
+                || method.getModifiers().contains(JavaModifier.STATIC)
+                || method.getRawReturnType().getName().equals("void")) return false;
+        String name = method.getName();
+        boolean beanGetter = method.getModifiers().contains(JavaModifier.PUBLIC)
+                && !name.equals("getClass")
+                && ((name.startsWith("get") && name.length() > 3)
+                    || (name.startsWith("is") && name.length() > 2
+                        && (method.getRawReturnType().getName().equals("boolean")
+                            || method.getRawReturnType().getName().equals("java.lang.Boolean"))));
+        return beanGetter || method.isAnnotatedWith("com.fasterxml.jackson.annotation.JsonGetter")
+                || method.isAnnotatedWith("com.fasterxml.jackson.annotation.JsonProperty");
+    }
+
+    /** HTTP-only naming role within the reachable payload graph; views remain shared read models. */
+    static DescribedPredicate<JavaClass> httpOnlyDtoRole(JavaClasses classes) {
+        Set<JavaClass> payloads = httpPayloadTypes(classes);
+        return new DescribedPredicate<>("HTTP-only Request/Response/Dto types reachable from endpoints") {
             @Override
             public boolean test(JavaClass clazz) {
-                return frozen.contains(clazz.getName());
+                String name = clazz.getSimpleName();
+                return payloads.contains(clazz)
+                        && (name.endsWith("Request") || name.endsWith("Response") || name.endsWith("Dto"));
             }
         };
     }
@@ -285,18 +331,18 @@ class ArchitectureTests {
     }
 
     /**
-     * Rule: the HTTP surface (controllers and HTTP-only DTOs) must never
+     * Rule: the HTTP surface (controllers and reachable payloads) must never
      * reference model internals — a response DTO carrying a provider type
      * would leak the model seam onto the wire just as much as a controller
      * calling a gateway directly.
      */
     static ArchRule httpSurfaceMustNotReferenceModelInternals(JavaClasses classes) {
-        DescribedPredicate<JavaClass> httpDtos = httpOnlyDtoRole(classes);
+        Set<JavaClass> payloads = httpPayloadTypes(classes);
         return noClasses()
-            .that(new DescribedPredicate<>("HTTP surface: controllers or HTTP-only DTOs") {
+            .that(new DescribedPredicate<>("HTTP surface: controllers or reachable payload types") {
                 @Override
                 public boolean test(JavaClass clazz) {
-                    return HTTP_CONTROLLERS.test(clazz) || httpDtos.test(clazz);
+                    return HTTP_CONTROLLERS.test(clazz) || payloads.contains(clazz);
                 }
             })
             .should().dependOnClassesThat()

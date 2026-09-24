@@ -101,14 +101,20 @@ backend/src/
   实际生成的 slice，断言关键 slice 非空且包含预期类（route.app 含 RouteCommandService/
   CommandExecution、route 核心含 RouteService、各模块 root slice 有真实类）。
 - HTTP 边界按类型角色保护（api 包已消失，Controller 规则不足以覆盖全部约束）：
-  - **HTTP-only DTO 角色**：结构化派生——顶层类、简单名以 Request/Response/Dto 结尾、且被
-    至少一个 HTTP Controller 引用（内部推理 broker 不算）。`*View` 是应用层读视图、嵌套
-    类型（如 ContextBuilder 的 UiRequest）是模块内部参数载体，均**不**属于该角色。
+  - **HTTP payload 范围**：从 Controller 带 RequestMapping 或其组合注解的方法参数、返回值
+    出发（内部推理 broker 不算），递归追踪实例字段、record 成分、bean/JSON getter 返回值、
+    泛型参数、数组元素和继承的 payload 类型。List/Map/ResponseEntity 等外部容器仅展开类型
+    参数，不扫描其内部实现；已访问集合保证递归对象不会无限遍历。
+  - **HTTP-only DTO 角色**：上述 payload 中简单名以 Request/Response/Dto 结尾的类型，
+    包括组合子 DTO 与嵌套 record。`*View` 保留应用层读视图身份，不归入 HTTP-only DTO；
+    但实际作为 payload 的 View 及其成员仍受模型类型泄漏规则约束。Controller 的服务依赖、
+    方法体调用、构造参数与非端点辅助方法不作为入口，因此仅供内部使用的 UiRequest 不会误入。
   - `coreMustNotDependOnHttpOnlyDtosInProduction`：核心领域/服务不得反向依赖 HTTP-only
     DTO（源侧豁免：Controller、*CommandService/*QueryService 编排角色、DTO 形状类——
     payload 组合 payload 属正常、`<module>.api` 子包、@RestControllerAdvice）。
-  - `httpSurfaceMustNotReferenceModelInternalsInProduction`：Controller **与** HTTP-only
-    DTO 均不得引用 `com.specagent.model..`（响应 DTO 携带 Provider 类型同样被拒）。
+  - `httpSurfaceMustNotReferenceModelInternalsInProduction`：Controller **与整个可达 payload**
+    均不得引用 `com.specagent.model..`。例如 Controller → OuterResponse → List<InnerResponse>
+    → 模型类型仍会被拒绝；子对象没有 DTO 后缀或声明为嵌套类型，也不会逃过检查。
   - `httpSurfaceTypesMustNotExposeRawContextSnapshotOrCredentials`：*Controller/*Request/
     *Response/*View/*Dto 不得依赖原始 `ContextSnapshot` 类型与 `connection.credentials..`
     （派生值类型如 `RequirementState` 允许）。
@@ -118,7 +124,11 @@ backend/src/
     投影族（原 readmodel.graph 角色）不依赖 model/context/credentials。
   - **反例验证**：`HttpBoundaryGateFixtureTest` 用 `archfixture` 合成夹具（位于
     com.specagent 之外，生产规则不可见）证明：核心服务依赖 HTTP DTO、HTTP DTO 携带模型
-    内部类型这两类违规确实被拒绝，且编排角色（*CommandService）引用 DTO 不被误伤。
+    内部类型这两类违规确实被拒绝，覆盖组合请求、嵌套响应、List/Map/泛型包装/数组及 getter。
+    编排角色（*CommandService）引用 DTO 不被误伤，内部辅助类型不因被 Controller 使用就
+    自动成为 payload。三条组合场景回归用例已先在旧规则上失败，再于修复后通过。
+  - **静态分析范围**：保守检查实例字段，即使某个序列化器可能忽略该字段；不尝试实现完整
+    Jackson schema。Object、JsonNode 及运行时构造的 SSE 内容仍由现有契约与行为测试覆盖。
 - 其余方向规则：runtime kernel（workspace+common）不依赖 model/agent；decision 不碰
   Repository；runtime 不碰模型；broker 不碰 provider 实现/仓库/凭据；capability 自包含；
   Controller 不碰 Repository/模型/凭据；`web` 是顶层叶子，任何模块不得反向依赖它；
@@ -137,6 +147,9 @@ backend/src/
 ## 验证入口
 
 ```bash
+# 本轮仅修改门禁及夹具，可独立验证，无需数据库或启动应用
+./gradlew.bat test --tests 'com.specagent.architecture.*' --console=plain
+
 # 全量非实时测试（确定性；绝不带 SPEC_AGENT_BRAIN_WORKER_ENABLED=true）
 SPRING_PROFILES_ACTIVE=test SPEC_AGENT_MODEL_GATEWAY=fake SPEC_AGENT_MODEL_INFERENCE=fake \
   ./gradlew.bat cleanTest test
@@ -154,3 +167,11 @@ SPRING_PROFILES_ACTIVE=test SPEC_AGENT_MODEL_GATEWAY=fake SPEC_AGENT_MODEL_INFER
 
 live 评测（`evalLive*`）需要真实模型与外部账号配置，仅在显式授权时执行；本仓库默认
 永远不把它们接入 CI。
+
+### HTTP 组合 payload 收尾验证（2026-09-24）
+
+- `a752c9d` 的历史架构测试实际为 **55 条**（14 + 32 + 6 + 3），此前报告的 59 条为计数错误。
+  该提交的本地全量 XML 记录为 255 套件 / 1571 用例 / 0 失败 / 0 跳过。
+- 本轮新增 3 条组合 payload 回归用例，实际重跑架构套件 **58 条 / 0 失败 / 0 跳过**，
+  Gradle 正常退出、exit 0；测试源码编译通过。
+- 本轮只修改测试与文档，未再次运行全量数据库测试或 E2E，不将历史全量结果冒充本轮结果。

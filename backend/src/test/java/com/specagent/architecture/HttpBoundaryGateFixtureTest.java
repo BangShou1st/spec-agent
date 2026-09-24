@@ -2,6 +2,7 @@ package com.specagent.architecture;
 
 import archfixture.SampleCreateProjectRequest;
 import archfixture.SampleLeakyResponse;
+import archfixture.ComposedPayloadController;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import org.junit.jupiter.api.Test;
@@ -66,5 +67,43 @@ class HttpBoundaryGateFixtureTest {
                 classes.get(SampleCreateProjectRequest.class))).isTrue();
         assertThat(ArchitectureTests.httpOnlyDtoRole(classes).test(
                 classes.get(SampleLeakyResponse.class))).isTrue();
+    }
+
+    @Test
+    void composedAndNestedPayloadsCarryingModelInternalsAreRejected() {
+        AssertionError violation = catchThrowableOfType(
+                () -> ArchitectureTests.httpSurfaceMustNotReferenceModelInternals(FIXTURES).check(FIXTURES),
+                AssertionError.class);
+
+        assertThat(violation).isNotNull();
+        assertThat(violation.getMessage()).contains(
+                "ComposedPayloadController$InnerResponse",
+                "ComposedPayloadController$Details",
+                "ComposedPayloadController$GenericDetails",
+                "ComposedPayloadController$GetterDetails",
+                "ModelOutputContract");
+    }
+
+    @Test
+    void coreDependenceOnComposedRequestIsRejected() {
+        AssertionError violation = catchThrowableOfType(
+                () -> ArchitectureTests.coreMustNotDependOnHttpOnlyDtos(FIXTURES).check(FIXTURES),
+                AssertionError.class);
+
+        assertThat(violation).isNotNull();
+        assertThat(violation.getMessage())
+                .contains("ComposedPayloadCoreService", "ComposedPayloadController$ChildRequest");
+    }
+
+    @Test
+    void internalHelpersStayOutsideThePayloadRoleAndViewsStayOutsideHttpOnlyDtos() {
+        var dtoRole = ArchitectureTests.httpOnlyDtoRole(FIXTURES);
+        assertThat(dtoRole.test(FIXTURES.get(ComposedPayloadController.ChildRequest.class))).isTrue();
+        assertThat(dtoRole.test(FIXTURES.get(ComposedPayloadController.InternalRequest.class))).isFalse();
+        assertThat(dtoRole.test(FIXTURES.get(ComposedPayloadController.ReadView.class))).isFalse();
+
+        var result = ArchitectureTests.httpSurfaceMustNotReferenceModelInternals(FIXTURES).evaluate(FIXTURES);
+        assertThat(result.getFailureReport().toString())
+                .doesNotContain("ComposedPayloadController$InternalRequest");
     }
 }
