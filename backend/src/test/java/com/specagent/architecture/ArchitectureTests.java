@@ -17,6 +17,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
@@ -194,6 +195,123 @@ class ArchitectureTests {
         }
     };
 
+    /**
+     * Application orchestration role across all modules: use-case services,
+     * query services and command execution helpers. These roles sit between
+     * the HTTP surface and the core domain, so they may touch HTTP DTOs even
+     * though the core domain may not. Membership is name-role based and
+     * documented here; it is deliberately narrow (do NOT treat every
+     * application view as HTTP DTO, and do NOT widen the orchestration role
+     * to sneak dependencies past the gate).
+     */
+    static boolean isApplicationOrchestrationRole(JavaClass clazz) {
+        if (clazz.getSimpleName().equals("package-info")) {
+            return false;
+        }
+        String name = clazz.getSimpleName();
+        return name.equals("CommandExecution")
+                || name.endsWith("Controller")
+                || name.endsWith("CommandService")
+                || name.endsWith("QueryService");
+    }
+
+    /**
+     * HTTP-only DTO role, derived structurally at rule time: a TOP-LEVEL
+     * class whose simple name ends in Request/Response/Dto <em>and</em> that
+     * is referenced by at least one HTTP controller (the internal inference
+     * broker does not count). {@code *View} types are application read
+     * views, NOT HTTP DTOs, so they stay out of this role on purpose.
+     * Nested types (e.g. a builder's {@code UiRequest} parameter record) are
+     * module-internal carriers, not standalone wire payloads, and are
+     * excluded as well.
+     */
+    static DescribedPredicate<JavaClass> httpOnlyDtoRole(JavaClasses classes) {
+        Set<String> dtoNames = new java.util.HashSet<>();
+        for (JavaClass clazz : classes) {
+            if (clazz.getName().contains("$")) {
+                continue; // nested/anonymous types are module-internal
+            }
+            String name = clazz.getSimpleName();
+            boolean dtoShaped = name.endsWith("Request") || name.endsWith("Response")
+                    || name.endsWith("Dto");
+            if (!dtoShaped) {
+                continue;
+            }
+            boolean controllerReferenced = classes.stream().anyMatch(controller ->
+                    HTTP_CONTROLLERS.test(controller)
+                            && controller.getDirectDependenciesFromSelf().stream()
+                            .anyMatch(dep -> dep.getTargetClass().equals(clazz)));
+            if (controllerReferenced) {
+                dtoNames.add(clazz.getName());
+            }
+        }
+        Set<String> frozen = java.util.Collections.unmodifiableSet(dtoNames);
+        return new DescribedPredicate<>("HTTP-only DTOs (top-level Request/Response/Dto referenced by a controller)") {
+            @Override
+            public boolean test(JavaClass clazz) {
+                return frozen.contains(clazz.getName());
+            }
+        };
+    }
+
+    /**
+     * Rule: the core domain must never depend back on HTTP-only DTOs. Source
+     * side excludes the HTTP layer itself (controllers, advices, classes in
+     * the {@code <module>.api} subpackages, DTO-shaped classes — payloads
+     * compose other payloads) and the application orchestration roles.
+     */
+    static ArchRule coreMustNotDependOnHttpOnlyDtos(JavaClasses classes) {
+        DescribedPredicate<JavaClass> httpDtos = httpOnlyDtoRole(classes);
+        return noClasses()
+            .that().haveSimpleNameNotEndingWith("Controller")
+            .and().haveSimpleNameNotEndingWith("CommandService")
+            .and().haveSimpleNameNotEndingWith("QueryService")
+            .and().haveSimpleNameNotEndingWith("Request")
+            .and().haveSimpleNameNotEndingWith("Response")
+            .and().haveSimpleNameNotEndingWith("Dto")
+            .and().haveNameNotMatching("(.*\\$.*|.*CommandExecution)")
+            .and().haveNameNotMatching(".*\\.api\\..*")
+            .and().areNotAnnotatedWith("org.springframework.web.bind.annotation.RestControllerAdvice")
+            .should().dependOnClassesThat(httpDtos)
+            .because("Core domain and services must never depend back on HTTP-only "
+                + "DTOs; request/response payloads belong to the HTTP layer and "
+                + "the dependency direction is controller -> service -> domain");
+    }
+
+    @Test
+    void coreMustNotDependOnHttpOnlyDtosInProduction() {
+        ArchRule rule = coreMustNotDependOnHttpOnlyDtos(CLASSES);
+        rule.check(CLASSES);
+    }
+
+    /**
+     * Rule: the HTTP surface (controllers and HTTP-only DTOs) must never
+     * reference model internals — a response DTO carrying a provider type
+     * would leak the model seam onto the wire just as much as a controller
+     * calling a gateway directly.
+     */
+    static ArchRule httpSurfaceMustNotReferenceModelInternals(JavaClasses classes) {
+        DescribedPredicate<JavaClass> httpDtos = httpOnlyDtoRole(classes);
+        return noClasses()
+            .that(new DescribedPredicate<>("HTTP surface: controllers or HTTP-only DTOs") {
+                @Override
+                public boolean test(JavaClass clazz) {
+                    return HTTP_CONTROLLERS.test(clazz) || httpDtos.test(clazz);
+                }
+            })
+            .should().dependOnClassesThat()
+            .resideInAnyPackage("com.specagent.model..")
+            .because("Controllers and HTTP-only DTOs must never expose ModelRequest, "
+                + "ModelResponse, or provider payloads; model-settings go through "
+                + "their own settings services");
+    }
+
+    @Test
+    void httpSurfaceMustNotReferenceModelInternalsInProduction() {
+        ArchRule rule = httpSurfaceMustNotReferenceModelInternals(CLASSES);
+        rule.check(CLASSES);
+    }
+
     @Test
     void controllersMustNotDependOnRepositoryClasses() {
         ArchRule rule = noClasses()
@@ -201,22 +319,13 @@ class ArchitectureTests {
             .should().dependOnClassesThat()
             .haveSimpleNameEndingWith("Repository")
             .because("API controllers and DTOs must go through the service boundary; "
-                    + "repositories are runtime-internal");
+                + "repositories are runtime-internal");
 
         rule.check(CLASSES);
     }
 
-    @Test
-    void controllersMustNotDependOnModelOrProviderPackages() {
-        ArchRule rule = noClasses()
-            .that(HTTP_CONTROLLERS)
-            .should().dependOnClassesThat()
-            .resideInAnyPackage("com.specagent.model..")
-            .because("Controllers must never expose ModelRequest, ModelResponse, or provider payloads; "
-                    + "model-settings controllers go through their own settings services");
-
-        rule.check(CLASSES);
-    }
+    // (the model-internals constraint for controllers AND HTTP-only DTOs is
+    // enforced by httpSurfaceMustNotReferenceModelInternalsInProduction above)
 
     @Test
     void controllersMustNotDependOnContextOrCredentialPackages() {

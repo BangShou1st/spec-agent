@@ -90,9 +90,10 @@ backend/src/
 - `workspaceSubPackagesAreFreeOfCycles`：workspace 内部子包零环。project 与 route 是
   **两个独立 slice**，route 按类型角色再分为 `workspace.route.app`（编排角色：*Controller、
   *CommandService、*QueryService、CommandExecution）与 `workspace.route`（核心领域）。
-  仅允许两条精确边：`route.app → project`（归属校验）与 `project → route 核心域`
-  （激活路线状态）。任何新边落在角色之外（如 project 依赖 route 编排、route 核心域依赖
-  project）都会立即成环并被拒绝——不存在整包豁免。
+  当前合法的边只有 `route.app → project`（归属校验）与 `project → route 核心域`
+  （激活路线状态）。注意这是**按角色切分的无环检查，不是完整的依赖白名单**：一条不构成
+  环的新边不会被它拒绝，但任何使 project/route 角色间重新成环的边（在角色之外新增反向
+  依赖）都会被检出并失败——相比旧的整包豁免，检查范围从"合并后不可见"恢复为"角色粒度可见"。
 - `subModulePackagesAreFreeOfCycles`：agent/assistant/model/retrieval/skill/mcp/connection
   内部零环，采用 **root-aware slice**——模块根包本身就是显式 slice（`<module>(root)`），
   根包与子包（如 connection 根 ↔ credentials）之间的环同样会被检出。
@@ -100,6 +101,14 @@ backend/src/
   实际生成的 slice，断言关键 slice 非空且包含预期类（route.app 含 RouteCommandService/
   CommandExecution、route 核心含 RouteService、各模块 root slice 有真实类）。
 - HTTP 边界按类型角色保护（api 包已消失，Controller 规则不足以覆盖全部约束）：
+  - **HTTP-only DTO 角色**：结构化派生——顶层类、简单名以 Request/Response/Dto 结尾、且被
+    至少一个 HTTP Controller 引用（内部推理 broker 不算）。`*View` 是应用层读视图、嵌套
+    类型（如 ContextBuilder 的 UiRequest）是模块内部参数载体，均**不**属于该角色。
+  - `coreMustNotDependOnHttpOnlyDtosInProduction`：核心领域/服务不得反向依赖 HTTP-only
+    DTO（源侧豁免：Controller、*CommandService/*QueryService 编排角色、DTO 形状类——
+    payload 组合 payload 属正常、`<module>.api` 子包、@RestControllerAdvice）。
+  - `httpSurfaceMustNotReferenceModelInternalsInProduction`：Controller **与** HTTP-only
+    DTO 均不得引用 `com.specagent.model..`（响应 DTO 携带 Provider 类型同样被拒）。
   - `httpSurfaceTypesMustNotExposeRawContextSnapshotOrCredentials`：*Controller/*Request/
     *Response/*View/*Dto 不得依赖原始 `ContextSnapshot` 类型与 `connection.credentials..`
     （派生值类型如 `RequirementState` 允许）。
@@ -107,6 +116,9 @@ backend/src/
     （@RestControllerAdvice 除外）。
   - `graphWorkspaceProjectionMustNotDependOnModelContextOrCredentials`：`GraphWorkspace*`
     投影族（原 readmodel.graph 角色）不依赖 model/context/credentials。
+  - **反例验证**：`HttpBoundaryGateFixtureTest` 用 `archfixture` 合成夹具（位于
+    com.specagent 之外，生产规则不可见）证明：核心服务依赖 HTTP DTO、HTTP DTO 携带模型
+    内部类型这两类违规确实被拒绝，且编排角色（*CommandService）引用 DTO 不被误伤。
 - 其余方向规则：runtime kernel（workspace+common）不依赖 model/agent；decision 不碰
   Repository；runtime 不碰模型；broker 不碰 provider 实现/仓库/凭据；capability 自包含；
   Controller 不碰 Repository/模型/凭据；`web` 是顶层叶子，任何模块不得反向依赖它；
