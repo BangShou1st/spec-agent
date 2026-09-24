@@ -87,12 +87,26 @@ backend/src/
 ## 架构门禁（`com.specagent.architecture`）
 
 - `packagesAreFreeOfCycles`：**模块级（第一层包）零容忍**，任何环直接失败。
-- `workspaceSubPackagesAreFreeOfCycles`：workspace 内部子包零环，唯一豁免是
-  **project↔route**（真实聚合耦合：项目持有激活路线状态、路线命令校验项目归属；
-  在 SliceAssignment 中合并为一个 slice 并留有注释）。不要往 workspace 内部新增循环。
+- `workspaceSubPackagesAreFreeOfCycles`：workspace 内部子包零环。project 与 route 是
+  **两个独立 slice**，route 按类型角色再分为 `workspace.route.app`（编排角色：*Controller、
+  *CommandService、*QueryService、CommandExecution）与 `workspace.route`（核心领域）。
+  仅允许两条精确边：`route.app → project`（归属校验）与 `project → route 核心域`
+  （激活路线状态）。任何新边落在角色之外（如 project 依赖 route 编排、route 核心域依赖
+  project）都会立即成环并被拒绝——不存在整包豁免。
 - `subModulePackagesAreFreeOfCycles`：agent/assistant/model/retrieval/skill/mcp/connection
-  内部子包零环（modelsettings 平铺无子包，connection 仅 credentials 子包）。
-- `sliceRulesMatchRealPackages`：防门禁空匹配——每个 slice pattern 必须命中真实包。
+  内部零环，采用 **root-aware slice**——模块根包本身就是显式 slice（`<module>(root)`），
+  根包与子包（如 connection 根 ↔ credentials）之间的环同样会被检出。
+- `sliceRulesMatchRealClasses`：防门禁空匹配——直接用与规则相同的 SliceAssignment 计算
+  实际生成的 slice，断言关键 slice 非空且包含预期类（route.app 含 RouteCommandService/
+  CommandExecution、route 核心含 RouteService、各模块 root slice 有真实类）。
+- HTTP 边界按类型角色保护（api 包已消失，Controller 规则不足以覆盖全部约束）：
+  - `httpSurfaceTypesMustNotExposeRawContextSnapshotOrCredentials`：*Controller/*Request/
+    *Response/*View/*Dto 不得依赖原始 `ContextSnapshot` 类型与 `connection.credentials..`
+    （派生值类型如 `RequirementState` 允许）。
+  - `noOneReachesBackIntoHttpControllers`：核心服务/DTO 不得反向依赖任何 HTTP Controller
+    （@RestControllerAdvice 除外）。
+  - `graphWorkspaceProjectionMustNotDependOnModelContextOrCredentials`：`GraphWorkspace*`
+    投影族（原 readmodel.graph 角色）不依赖 model/context/credentials。
 - 其余方向规则：runtime kernel（workspace+common）不依赖 model/agent；decision 不碰
   Repository；runtime 不碰模型；broker 不碰 provider 实现/仓库/凭据；capability 自包含；
   Controller 不碰 Repository/模型/凭据；`web` 是顶层叶子，任何模块不得反向依赖它；
@@ -100,8 +114,8 @@ backend/src/
 
 ## 已知遗留（后续项，本轮不动）
 
-- `workspace.project`↔`workspace.route` 的相互依赖：可通过"路线归属校验端口下沉"拆开，
-  但会新增一层 Port/Adapter，本轮按指令不做。
+- `workspace.route` 核心域与 project 的解耦（如激活路线状态端口下沉）会新增一层
+  Port/Adapter；当前由上述角色 slice 规则精确约束，不再使用整包豁免。
 - `AnswerCycleService`、`AgentInputSnapshotBuilder`、`GlobalAssistantRuntime`、
   `UndoRedoService`、`HttpOpenCodeZenTransport` 等大文件保持核心执行流程不动；
   若需拆分状态所有权/事务/异步顺序，单独立项。

@@ -16,6 +16,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
@@ -159,11 +160,12 @@ class ArchitectureTests {
         rule.check(CLASSES);
     }
 
-    // ------------------------------------------------------- HTTP controller rules
+    // ------------------------------------------------------- HTTP boundary rules
     // Controllers now live inside their business modules; the rules are keyed
-    // on the Controller type name instead of a dissolved api.. package. The
-    // internal model-inference broker endpoint is deliberately excluded: it IS
-    // the model wire contract served to the Python brain.
+    // on type roles (Controller / Request / Response / View / Dto naming)
+    // instead of a dissolved api.. package. The internal model-inference
+    // broker endpoint is deliberately excluded: it IS the model wire contract
+    // served to the Python brain.
 
     private static final DescribedPredicate<JavaClass> HTTP_CONTROLLERS = new DescribedPredicate<>(
             "HTTP controllers except the internal inference broker") {
@@ -171,6 +173,24 @@ class ArchitectureTests {
         public boolean test(JavaClass clazz) {
             String name = clazz.getSimpleName();
             return name.endsWith("Controller") && !name.equals("InternalModelInferenceController");
+        }
+    };
+
+    /**
+     * The HTTP surface: controllers plus the request/response/view DTOs they
+     * hand across the boundary. These types must never leak internal runtime
+     * material (a raw ContextSnapshot, credential stores) even when the
+     * controller itself only references the DTO — this closes the gap a
+     * controller-only check leaves open.
+     */
+    private static final DescribedPredicate<JavaClass> HTTP_SURFACE_TYPES =
+            new DescribedPredicate<>("HTTP surface types (Controller/Request/Response/View/Dto)") {
+        @Override
+        public boolean test(JavaClass clazz) {
+            String name = clazz.getSimpleName();
+            return name.endsWith("Controller") || name.endsWith("Request")
+                    || name.endsWith("Response") || name.endsWith("View")
+                    || name.endsWith("Dto");
         }
     };
 
@@ -217,6 +237,64 @@ class ArchitectureTests {
             .should().dependOnClassesThat()
             .haveNameMatching("(org\\.springframework\\.ai|com\\.openai|dev\\.langchain4j)\\..*")
             .because("The API surface must stay free of external model SDKs");
+
+        rule.check(CLASSES);
+    }
+
+    @Test
+    void httpSurfaceTypesMustNotExposeRawContextSnapshotOrCredentials() {
+        // Restores the former "api must not expose a raw ContextSnapshot or
+        // credential material" constraint for the dissolved api.. package:
+        // request/response/view DTOs are part of the HTTP surface even when
+        // the controller only references them, so the check has to cover the
+        // DTOs themselves, not just the controller. Derived value types from
+        // workspace.context (e.g. RequirementState) stay allowed — only the
+        // raw snapshot type and credential material are forbidden.
+        ArchRule rule = noClasses()
+            .that(HTTP_SURFACE_TYPES)
+            .should().dependOnClassesThat()
+            .haveFullyQualifiedName("com.specagent.workspace.context.ContextSnapshot")
+            .orShould().dependOnClassesThat()
+            .resideInAnyPackage("com.specagent.connection.credentials..")
+            .because("The HTTP surface must never expose a raw ContextSnapshot "
+                + "or credential material; derived value types stay allowed");
+
+        rule.check(CLASSES);
+    }
+
+    @Test
+    void noOneReachesBackIntoHttpControllers() {
+        // Restores the former "runtime kernel must not depend on api" direction:
+        // with controllers living inside the business modules, the remaining
+        // way to recreate the old upward edge is a service or DTO importing a
+        // controller (or its DTOs) — controllers must only be referenced by
+        // the framework and controller advices.
+        ArchRule rule = noClasses()
+            .that().haveSimpleNameNotEndingWith("Controller")
+            .and().haveNameNotMatching(".*\\$.*")
+            .and().areNotAnnotatedWith("org.springframework.web.bind.annotation.RestControllerAdvice")
+            .should().dependOnClassesThat()
+            .haveSimpleNameEndingWith("Controller")
+            .because("Core services and DTOs must never depend back on HTTP "
+                + "controllers; the dependency direction is controller -> service");
+
+        rule.check(CLASSES);
+    }
+
+    @Test
+    void graphWorkspaceProjectionMustNotDependOnModelContextOrCredentials() {
+        // Restores the former readmodel.graph rule on the type role: the
+        // GraphWorkspace* family (projection query service, views, exceptions)
+        // is a read projection, not a model/provider/context boundary — even
+        // though it now shares the workspace.graph package with the command
+        // side.
+        ArchRule rule = noClasses()
+            .that().haveSimpleNameStartingWith("GraphWorkspace")
+            .should().dependOnClassesThat()
+            .resideInAnyPackage("com.specagent.model..",
+                "com.specagent.workspace.context..",
+                "com.specagent.connection.credentials..")
+            .because("GraphWorkspace is a read projection, not a model/provider/context boundary");
 
         rule.check(CLASSES);
     }
@@ -437,14 +515,46 @@ class ArchitectureTests {
     }
 
     /**
-     * Workspace sub-slices. project and route are merged into one aggregate
-     * slice on purpose: they are genuinely mutually dependent (the project
-     * owns its active-route state, route commands validate project
-     * ownership). That coupling predates the consolidation — the former
-     * api/application/readmodel layering merely distributed it across
-     * slices. Everything else inside workspace must stay acyclic: answer,
-     * node, patch, context, spec, graph and profile may not re-introduce
-     * hidden loops.
+     * Type roles inside workspace.route. The route module contains both core
+     * domain code and application orchestration; only the orchestration role
+     * may reach into workspace.project (ownership validation), which mirrors
+     * the pre-consolidation layering where application.route -> project was a
+     * legal one-way edge while route (domain) never imported project.
+     *
+     * <p>Membership is explicit and default-deny: a new route class that
+     * imports project without belonging to this role will form a cycle in the
+     * slice graph below and fail the gate.
+     */
+    private static boolean isRouteOrchestrationRole(JavaClass clazz) {
+        if (!clazz.getPackageName().startsWith("com.specagent.workspace.route")) {
+            return false;
+        }
+        if (clazz.getSimpleName().equals("package-info")) {
+            return false;
+        }
+        String name = clazz.getSimpleName();
+        return name.equals("CommandExecution")
+                || name.endsWith("Controller")
+                || name.endsWith("CommandService")
+                || name.endsWith("QueryService");
+    }
+
+    /**
+     * Workspace sub-slices with type roles. project and route are separate
+     * slices; route is split by role into the orchestration surface
+     * (workspace.route.app) and the core domain (workspace.route). The legal
+     * edges are exactly:
+     *
+     * <pre>
+     *   workspace.route.app -> workspace.project   (ownership validation)
+     *   workspace.project   -> workspace.route     (active-route state)
+     *   workspace.route.app -> workspace.route     (orchestration drives domain)
+     * </pre>
+     *
+     * Any new edge project -> route.app or route(core) -> project closes a
+     * cycle in this slice graph and fails the rule, so the former
+     * project<->route aggregate exemption is replaced by precise, reviewable
+     * role edges. Everything else inside workspace must stay acyclic.
      */
     private static final SliceAssignment WORKSPACE_SLICES = new SliceAssignment() {
         @Override
@@ -453,19 +563,19 @@ class ArchitectureTests {
             if (!pkg.startsWith("com.specagent.workspace")) {
                 return SliceIdentifier.ignore();
             }
+            if (isRouteOrchestrationRole(clazz)) {
+                return SliceIdentifier.of("workspace.route.app");
+            }
             String rest = pkg.equals("com.specagent.workspace")
                     ? ""
                     : pkg.substring("com.specagent.workspace.".length());
-            if (rest.startsWith("project") || rest.startsWith("route")) {
-                return SliceIdentifier.of("workspace.project+route");
-            }
             int dot = rest.indexOf('.');
             return SliceIdentifier.of("workspace." + (dot < 0 ? rest : rest.substring(0, dot)));
         }
 
         @Override
         public String getDescription() {
-            return "workspace sub-slices (project and route merged as one aggregate slice)";
+            return "workspace sub-slices (route split into core and orchestration roles)";
         }
     };
 
@@ -475,30 +585,68 @@ class ArchitectureTests {
                 .assignedFrom(WORKSPACE_SLICES)
                 .should().beFreeOfCycles()
                 .because("workspace is a navigation group, not a free-for-all module; "
-                        + "only the documented project<->route aggregate coupling is "
-                        + "tolerated (merged into one slice), any other loop fails");
+                        + "route orchestration may validate project ownership and project "
+                        + "may own its active-route state, but both directions are "
+                        + "confined to the explicit type roles — any edge outside "
+                        + "route.app -> project and project -> route(core) closes a "
+                        + "cycle and fails");
 
         rule.check(CLASSES);
     }
 
-    private static final List<String> SUB_MODULE_SLICE_PATTERNS = List.of(
-            "com.specagent.agent.(*)..",
-            "com.specagent.assistant.(*)..",
-            "com.specagent.model.(*)..",
-            "com.specagent.modelsettings.(*)..",
-            "com.specagent.retrieval.(*)..",
-            "com.specagent.skill.(*)..",
-            "com.specagent.mcp.(*)..",
-            "com.specagent.connection.(*)..");
+    /**
+     * Root-aware slice assignment for a module: classes directly in the
+     * module package form the explicit {@code <module>(root)} slice, so a
+     * loop between the root package and a subpackage (e.g. connection root
+     * vs. connection.credentials) is detected — the plain {@code (*)..}
+     * pattern would miss it because it only matches subpackages.
+     */
+    private static SliceAssignment moduleSlices(String basePackage) {
+        String rootPrefix = basePackage + ".";
+        return new SliceAssignment() {
+            @Override
+            public SliceIdentifier getIdentifierOf(JavaClass clazz) {
+                if (clazz.getSimpleName().equals("package-info")) {
+                    return SliceIdentifier.ignore();
+                }
+                String pkg = clazz.getPackageName();
+                if (pkg.equals(basePackage)) {
+                    return SliceIdentifier.of(basePackage + "(root)");
+                }
+                if (!pkg.startsWith(rootPrefix)) {
+                    return SliceIdentifier.ignore();
+                }
+                String rest = pkg.substring(rootPrefix.length());
+                int dot = rest.indexOf('.');
+                return SliceIdentifier.of(basePackage + "." + (dot < 0 ? rest : rest.substring(0, dot)));
+            }
+
+            @Override
+            public String getDescription() {
+                return basePackage + " sub-slices (root package included as an explicit slice)";
+            }
+        };
+    }
+
+    private static final List<String> SUB_MODULE_BASES = List.of(
+            "com.specagent.agent",
+            "com.specagent.assistant",
+            "com.specagent.model",
+            "com.specagent.retrieval",
+            "com.specagent.skill",
+            "com.specagent.mcp",
+            "com.specagent.connection");
 
     @Test
     void subModulePackagesAreFreeOfCycles() {
-        // agent, assistant, model, modelsettings, retrieval, skill, mcp and
-        // connection each keep meaningful internal packages; none of them may
-        // hide internal loops just because the module boundary itself is clean.
-        for (String pattern : SUB_MODULE_SLICE_PATTERNS) {
-            ArchRule rule = slices()
-                    .matching(pattern)
+        // agent, assistant, model, retrieval, skill, mcp and connection each
+        // keep meaningful internal packages; none of them may hide internal
+        // loops just because the module boundary itself is clean. The
+        // root-aware assignment also covers classes directly in the module
+        // root package.
+        for (String base : SUB_MODULE_BASES) {
+            ArchRule rule = SlicesRuleDefinition.slices()
+                    .assignedFrom(moduleSlices(base))
                     .should().beFreeOfCycles();
             rule = rule.allowEmptyShould(true);
             rule.check(CLASSES);
@@ -506,25 +654,42 @@ class ArchitectureTests {
     }
 
     @Test
-    void sliceRulesMatchRealPackages() {
-        // Guard against silently-empty slice patterns: every pattern above
-        // must resolve to at least three distinct packages, otherwise the
-        // cycle rules would pass vacuously.
-        for (String pattern : List.of(
-                "com.specagent.(*)..",
-                "com.specagent.agent.(*)..",
-                "com.specagent.assistant.(*)..",
-                "com.specagent.model.(*)..",
-                "com.specagent.retrieval.(*)..",
-                "com.specagent.skill.(*)..",
-                "com.specagent.mcp.(*)..")) {
-            assertThat(distinctPackagesMatching(pattern))
-                    .as("slice pattern %s must match real packages", pattern)
-                    .isGreaterThanOrEqualTo(2);
+    void sliceRulesMatchRealClasses() {
+        // Guard against silently-empty or silently-blind slice rules: the
+        // assignments above must actually produce the expected slices, and
+        // each root slice must hold real classes (a root slice that silently
+        // loses its classes would disable the root<->subpackage loop check).
+        Map<String, List<JavaClass>> workspaceSlices = slicesOf(WORKSPACE_SLICES);
+        assertThat(workspaceSlices.keySet())
+                .contains("workspace.project", "workspace.route",
+                        "workspace.route.app", "workspace.graph", "workspace.spec");
+        // the orchestration role partition must be non-degenerate on both sides
+        assertThat(workspaceSlices.get("workspace.route.app"))
+                .as("route orchestration role slice")
+                .isNotEmpty()
+                .anyMatch(c -> c.getSimpleName().equals("RouteCommandService"))
+                .anyMatch(c -> c.getSimpleName().equals("CommandExecution"));
+        assertThat(workspaceSlices.get("workspace.route"))
+                .as("route core slice")
+                .anyMatch(c -> c.getSimpleName().equals("RouteService"));
+
+        for (String base : SUB_MODULE_BASES) {
+            Map<String, List<JavaClass>> moduleSlices = slicesOf(moduleSlices(base));
+            assertThat(moduleSlices.keySet().size())
+                    .as("%s must produce more than one slice", base)
+                    .isGreaterThan(1);
+            if (!base.equals("com.specagent.agent") && !base.equals("com.specagent.model")) {
+                // these two modules keep all classes in subpackages; the rest
+                // have real root-package classes covered by the (root) slice
+                assertThat(moduleSlices.get(base + "(root)"))
+                        .as("%s root slice must hold classes", base)
+                        .isNotEmpty();
+            }
         }
+
         // modelsettings is deliberately flat (one package, no sub-slices) and
-        // connection keeps only its credentials sub-slice; assert both roots
-        // still hold classes so the flat layouts are not silently broken.
+        // connection keeps its credentials sub-slice; assert both still exist
+        // so the flat layouts are not silently broken.
         assertThat(CLASSES)
                 .extracting(JavaClass::getPackageName)
                 .anyMatch(p -> p.equals("com.specagent.modelsettings"))
@@ -532,14 +697,18 @@ class ArchitectureTests {
                 .anyMatch(p -> p.equals("com.specagent.connection.credentials"));
     }
 
-    private long distinctPackagesMatching(String archUnitPattern) {
-        // patterns have the fixed shape "<base>(*).."
-        String base = archUnitPattern.substring(0, archUnitPattern.indexOf("(*)"));
-        String regex = java.util.regex.Pattern.quote(base) + "[^.]+(\\..*)?";
-        return CLASSES.stream()
-                .map(JavaClass::getPackageName)
-                .distinct()
-                .filter(p -> p.matches(regex))
-                .count();
+    private Map<String, List<JavaClass>> slicesOf(SliceAssignment assignment) {
+        Map<String, List<JavaClass>> result = new java.util.LinkedHashMap<>();
+        for (JavaClass clazz : CLASSES) {
+            SliceIdentifier id = assignment.getIdentifierOf(clazz);
+            if (id == null || SliceIdentifier.ignore().equals(id)) {
+                continue;
+            }
+            // SliceIdentifier.toString() renders as "SliceIdentifier[<name>]"
+            String rendered = id.toString();
+            String name = rendered.substring(rendered.indexOf('[') + 1, rendered.length() - 1);
+            result.computeIfAbsent(name, k -> new java.util.ArrayList<>()).add(clazz);
+        }
+        return result;
     }
 }
