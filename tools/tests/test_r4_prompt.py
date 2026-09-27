@@ -1,8 +1,10 @@
-"""R4 system prompt tests — TDD Unit 5.
+"""文件名:test_r4_prompt.py
 
-Pins the 15 required content items and the prohibitions (no benchmark
-hints, no scenario names, no family names as guidance, no observation:
-prefix, no removed goal values, no case UUIDs).
+R4 系统提示词测试——TDD 单元 5。
+
+锁定 15 项必备内容与禁令(不含基准提示、场景名、不得以动作族名
+做指引、不得出现 observation: 前缀、不得出现已移除的目标值、
+不得出现案例 UUID)。
 """
 import re
 
@@ -62,7 +64,7 @@ def test_allowed_prefixes_exactly_eight():
 
 
 def test_observation_forbidden_not_allowed():
-    assert "observation:" in SYSTEM_PROMPT_R4  # prohibition sentence
+    assert "observation:" in SYSTEM_PROMPT_R4  # 禁用说明的句子
     lines = [ln for ln in SYSTEM_PROMPT_R4.splitlines()
              if ln.startswith(ALLOWED_LINE)]
     assert "observation:" not in lines[0]

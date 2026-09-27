@@ -1,3 +1,7 @@
+<!--
+  文件名:BackLink.vue
+  用途:返回链接组件:基于 RouterLink 的统一"返回"入口样式。
+-->
 <script setup lang="ts">
 import { RouterLink } from 'vue-router'
 import AppIcon from './AppIcon.vue'

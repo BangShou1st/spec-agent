@@ -5,13 +5,12 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * E06 — Shared State (P2 corpus).
+ * 文件名:E06SharedStateTest.java
  *
- * <p>Variant A (shared read): covered by production route-isolation suites;
- * here the harness proves the negative — Variant B: a forked route that
- * attempts a divergent second answer on the same canonical Question must
- * fail closed (SHARED_STATE_DIVERGENCE), with no forked canonical state
- * and no silent second identity.
+ * 测试目标:E06——共享状态(P2 语料)。变体 A(共享读)由生产路由隔离套件覆盖;
+ * 此处工具链验证反向情形——变体 B:分叉路由试图对同一个权威 Question 给出分歧的
+ * 第二个回答时,必须失败关闭(SHARED_STATE_DIVERGENCE),不得分叉权威状态、
+ * 不得静默产生第二身份。
  */
 class E06SharedStateTest extends EvalHarnessBase {
 

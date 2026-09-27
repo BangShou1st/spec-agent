@@ -9,10 +9,11 @@ import org.junit.jupiter.api.Test;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
 /**
- * Phase 3 low-coupling guard, updated for the 2026-09 structure: agent never
- * reaches into MCP internals, Skill never reaches into planner/policy/brain,
- * capability never touches concrete provider SDKs, and MCP never owns
- * prompt/brain/policy wording.
+ * 文件名:CapabilitySkillsMcpBoundaryTests.java
+ *
+ * 测试目标:Phase 3 低耦合守护(按 2026-09 结构更新):agent 不深入 MCP 内部、
+ * Skill 不深入 planner/policy/大脑、capability 不触碰具体 Provider SDK、
+ * MCP 不拥有 prompt/大脑/policy 语义。
  */
 class CapabilitySkillsMcpBoundaryTests {
 

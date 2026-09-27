@@ -16,8 +16,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * SecretStore contract: AES-GCM round-trip, masked display suffix, plaintext
- * never persisted, unknown refs fail closed, deletion removes the row.
+ * 文件名:LocalAesSecretStoreTest.java
+ *
+ * 测试目标:验证 SecretStore 契约——AES-GCM 加解密往返、掩码展示后缀、
+ * 明文绝不落库、未知引用快速失败、删除即移除对应行。
  */
 @SpringBootTest
 @ActiveProfiles("test")

@@ -10,15 +10,16 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Creates workspace nodes and advances route tips.
+ * 文件名:NodeService.java
  *
- * <p>Interaction (question) nodes are immutable after creation: question,
- * purpose, and options are fixed, and regeneration creates a replacement
- * node. User-authored knowledge drafts are the exception — they may be edited
- * in place while they remain {@code PROPOSED} (see {@link Node#isUserEditableDraft}).
+ * 用途:创建工作区节点并推进路线 tip。
  *
- * <p>Creating a node advances the owning route's tip to the new node, while
- * preserving the route's existing root node.
+ * 交互(问题)节点创建后不可变:question、purpose、options 一经固定,
+ * 重新生成会创建替换节点。用户创作的知识草稿是例外——在仍处于
+ * {@code PROPOSED} 时可以原地编辑(见 {@link Node#isUserEditableDraft})。
+ *
+ * 创建节点会把所属路线的 tip 推进到新节点,同时保留路线既有的
+ * 根节点。
  */
 @Service
 public class NodeService {
@@ -79,12 +80,11 @@ public class NodeService {
     }
 
     /**
-     * Creates an alternative Question Node for a re-answer branch. The new
-     * node copies the old Question's immutable semantics (question, purpose,
-     * options, allowFreeAnswer) onto a fresh canonical id sharing the old
-     * parent; it never reuses the old canonical node and never marks itself
-     * as its replace/supersede. The owning route tip advances to the new
-     * node, so the shared old Question keeps its single immutable Answer.
+     * 为重答分支创建一个替代的 Question 节点。新节点把旧问题的不可变
+     * 语义(question、purpose、options、allowFreeAnswer)复制到一个新的
+     * 规范 id 上,并共享旧节点的父节点;它绝不复用旧的规范节点,也绝不
+     * 把自己标记为对旧节点的替换/取代。所属路线的 tip 推进到新节点,
+     * 这样共享的旧问题保持其唯一不可变的 Answer。
      */
     public Node createReanswerNode(UUID projectId,
                                    UUID routeId,
@@ -97,7 +97,7 @@ public class NodeService {
                 options, allowFreeAnswer, false);
     }
 
-    /** Multi-select-aware re-answer creation (copies the source question's flag). */
+    /** 支持多选的重答节点创建(复制源问题的多选标记)。 */
     public Node createReanswerNode(UUID projectId,
                                    UUID routeId,
                                    UUID parentNodeId,
@@ -111,10 +111,9 @@ public class NodeService {
     }
 
     /**
-     * Creates an immutable replacement node that supersedes a historical node
-     * during a regenerate operation. The replacement node shares the target
-     * node's parent and carries {@code supersedesNodeId} pointing at the old
-     * node. The owning route tip is advanced to the replacement node.
+     * 创建一个不可变的替换节点,用于重新生成(regenerate)操作时取代
+     * 一个历史节点。替换节点与目标节点共享父节点,并携带指向旧节点的
+     * {@code supersedesNodeId}。所属路线的 tip 推进到替换节点。
      */
     public Node createReplacementNode(UUID projectId,
                                       UUID routeId,
@@ -128,7 +127,7 @@ public class NodeService {
                 question, purpose, options, allowFreeAnswer, false);
     }
 
-    /** Multi-select-aware replacement creation (copies the replaced question's flag). */
+    /** 支持多选的替换节点创建(复制被替换问题的多选标记)。 */
     public Node createReplacementNode(UUID projectId,
                                       UUID routeId,
                                       UUID parentNodeId,
@@ -146,10 +145,9 @@ public class NodeService {
     }
 
     /**
-     * Creates a non-interaction workspace node (knowledge draft, resource
-     * reference, artifact). The payload lives in {@code content}; the legacy
-     * {@code question} column stays null for these kinds. Question nodes must
-     * keep using the question-specific creation methods.
+     * 创建一个非交互工作区节点(知识草稿、资源引用、产物)。负载放在
+     * {@code content};这类 kind 的遗留 {@code question} 列保持 null。
+     * 问题节点必须继续使用问题专用的创建方法。
      */
     public Node createWorkspaceNode(UUID projectId,
                                     UUID routeId,
@@ -176,10 +174,9 @@ public class NodeService {
     }
 
     /**
-     * Creates a standalone (floating) workspace draft: same validation as
-     * {@link #createWorkspaceNode} but the route tip is never advanced and
-     * the node carries no parent, so it starts disconnected from every
-     * lineage until the user explicitly connects it.
+     * 创建一个独立(悬浮)的工作区草稿:校验与 {@link #createWorkspaceNode}
+     * 相同,但路线 tip 绝不前进、节点不带父节点,因此在用户显式接入
+     * 之前,它与所有 lineage 都保持脱离。
      */
     public Node createFloatingWorkspaceNode(UUID projectId,
                                             NodeKind kind,
@@ -204,15 +201,14 @@ public class NodeService {
         return nodeRepository.findById(nodeId);
     }
 
-    /** Every project node including retracted ones (callers filter). */
+    /** 项目的全部节点,包含已撤回的(由调用方过滤)。 */
     public List<Node> listProject(UUID projectId) {
         return nodeRepository.findByProject(projectId);
     }
 
     /**
-     * Edits a still-editable user draft in place. The prior subtype/content
-     * must be captured by the caller for the operation log; this method only
-     * performs the guarded mutation.
+     * 原地编辑一个仍可编辑的用户草稿。先前的 subtype/content 必须由
+     * 调用方捕获以写入操作日志;本方法只执行受保护的变更。
      */
     public Node reviseUserDraft(UUID projectId,
                                 UUID nodeId,
@@ -232,7 +228,7 @@ public class NodeService {
         return updated;
     }
 
-    /** Applies an explicit knowledge-state transition to a claim-like node. */
+    /** 对 claim 类节点应用一次显式的知识状态流转。 */
     public Node setKnowledgeStatus(UUID projectId, UUID nodeId, KnowledgeStatus status) {
         Node node = requireNodeInProject(projectId, nodeId);
         if (node.knowledgeStatus() == null) {
@@ -249,9 +245,8 @@ public class NodeService {
     }
 
     /**
-     * Retracts or restores a node's materialized presence. Retraction is a
-     * soft, provenance-preserving operation used by undo compensation; it is
-     * only legal for leaf nodes without answers (enforced by callers).
+     * 撤回或恢复一个节点的实体存在。撤回是软删除、保留出处,
+     * 供 undo 补偿使用;只对没有答案的叶子节点合法(由调用方强制)。
      */
     public void setRetracted(UUID nodeId, boolean retracted) {
         nodeRepository.updateRetracted(nodeId, retracted ? Instant.now() : null);
@@ -283,19 +278,17 @@ public class NodeService {
     }
 
     /**
-     * Advances the route tip to the new node.
+     * 把路线 tip 推进到新节点。
      *
-     * <p>Tip semantics: the tip must always land on (or stay at) the
-     * answerable INTERACTION chain. A knowledge/resource node may hang off the
-     * current tip for provenance and layout, but it never SKIPS a question the
-     * user still has to answer — advancing the tip onto it would bury the
-     * pending question and make the route un-answerable. A non-interaction
-     * node therefore advances the tip only when there is no INTERACTION tip to
-     * displace (an empty route, or a knowledge-only head).
+     * tip 语义:tip 必须始终落在(或停留在)可回答的 INTERACTION 链上。
+     * 知识/资源节点可以挂在当前 tip 之下作为出处与布局用途,但它绝不
+     * 会"跳过"一个用户仍需回答的问题——把 tip 推进到它上面会埋掉待答
+     * 问题、让路线无法作答。因此,非交互节点只在不存在可被取代的
+     * INTERACTION tip 时才推进 tip(空路线,或纯知识头)。
      *
-     * <p>This is THE single tip-advancement semantic for every lineage
-     * writer (creation, connect, attach); callers must never update
-     * tip/root directly, or the two behaviors drift apart again.
+     * 这是所有 lineage 写入方(创建、接入、挂资源)共用的唯一
+     * tip 推进语义;调用方绝不能直接更新 tip/root,否则两种行为会
+     * 再次漂移。
      */
     public void advanceRouteTip(UUID routeId, Node node) {
         RouteTipPort.RouteTip routeTip = routeTipPort.findTip(routeId);
@@ -305,8 +298,8 @@ public class NodeService {
                 return;
             }
         }
-        // Preserve the route's existing root node when updating tip.
-        // If the route has no root yet, set root to the new node.
+        // 更新 tip 时保留路线既有的根节点。
+        // 若路线尚无根节点,则把新节点设为根。
         UUID rootNodeId = routeTip.rootNodeId() != null ? routeTip.rootNodeId() : node.id();
         routeTipPort.advanceTipAndRoot(routeId, node.id(), rootNodeId, Instant.now());
     }

@@ -13,25 +13,19 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * Owns capability discovery, permission filtering, and adapter/provider
- * routing for the host runtime.
+ * 文件名:CapabilityRegistry.java
  *
- * <p>The registry is the single host-side directory for two capability kinds
- * that coexist deliberately:
+ * 用途:宿主运行时的能力注册表,负责能力发现、权限过滤和适配器/Provider 路由。
  *
- * <ul>
- *   <li><b>Static adapters</b> — legacy {@link CapabilityAdapter} instances
- *       (Host Function Tools and internal capabilities), registered once at
- *       construction; and</li>
- *   <li><b>Dynamic providers</b> — {@link CapabilityProvider} SPI instances
- *       whose descriptor sets may change at runtime (MCP tool discovery),
- *       queried per context.</li>
- * </ul>
+ * 注册表是宿主侧唯一的目录,刻意让两类能力共存:
  *
- * <p>Descriptors are filtered by granted permissions before model exposure —
- * the planner only ever sees capabilities the project/user may call, and it
- * never branches on implementation class names. Duplicate capability ids fail
- * closed across both sources: two owners of one id would be ambiguous.
+ * - 【静态适配器】——传统 {@link CapabilityAdapter} 实例(宿主 Function Tools
+ *       和内置能力),在构造时一次性注册;以及
+ * - 【动态 Provider】——{@link CapabilityProvider} SPI 实例,其描述符集合可在
+ *       运行期变化(MCP 工具发现),按上下文实时查询。 *
+ * 描述符在呈现给模型前会按已授予的权限过滤——规划器只会看到项目/用户有权调用的
+ * 能力,并且绝不依据实现类名做分支判断。两个来源中出现重复的 capability id 时按
+ * "失败即关闭"(fail closed)处理:同一个 id 有两个属主会是歧义的。
  */
 @Component
 public class CapabilityRegistry {
@@ -39,7 +33,7 @@ public class CapabilityRegistry {
     private final Map<String, CapabilityAdapter> adaptersById = new LinkedHashMap<>();
     private final List<CapabilityProvider> providers;
 
-    /** Legacy constructor: static adapters only (tests and simple wiring). */
+    /** 传统构造器:仅注册静态适配器(用于测试和简单装配)。 */
     public CapabilityRegistry(List<CapabilityAdapter> adapters) {
         this(adapters, List.of());
     }
@@ -56,25 +50,24 @@ public class CapabilityRegistry {
         this.providers = providers == null ? List.of() : List.copyOf(providers);
     }
 
-    /** All static adapter descriptors (host-side view, unfiltered). */
+    /** 全部静态适配器的描述符(宿主侧视图,未过滤)。 */
     public Collection<CapabilityDescriptor> allDescriptors() {
         return adaptersById.values().stream().map(CapabilityAdapter::descriptor).toList();
     }
 
     /**
-     * Descriptors the planner may see for an empty context: permission-filtered
-     * static + dynamic descriptors. Kept for legacy call sites; prefer
-     * {@link #descriptorsFor(CapabilityQueryContext)} for context-aware views.
+     * 空上下文下规划器可见的描述符:权限过滤后的静态 + 动态描述符。
+     * 保留给旧调用点使用;需要上下文感知的视图请优先使用
+     * {@link #descriptorsFor(CapabilityQueryContext)}。
      */
     public List<CapabilityDescriptor> descriptorsFor(Set<String> grantedPermissions) {
         return descriptorsFor(CapabilityQueryContext.forPermissions(grantedPermissions));
     }
 
     /**
-     * Context-aware descriptors: static adapters plus every provider's
-     * currently-offered descriptors, permission-filtered, deduplicated by id,
-     * with duplicates failing closed. Providers apply their own availability
-     * filtering (enabled/connected) before returning descriptors.
+     * 上下文感知的描述符视图:静态适配器加上每个 Provider 当前提供的描述符,
+     * 经权限过滤、按 id 去重,出现重复即失败关闭。Provider 在返回描述符前
+     * 已自行完成可用性过滤(启用/已连接)。
      */
     public List<CapabilityDescriptor> descriptorsFor(CapabilityQueryContext context) {
         Set<String> grants = context.grantedPermissions();
@@ -135,9 +128,8 @@ public class CapabilityRegistry {
     }
 
     /**
-     * Bridges one provider-owned capability to the legacy adapter contract so
-     * execution/dispatch code stays single-path. The descriptor is resolved
-     * lazily per lookup so availability changes are honored.
+     * 把 Provider 拥有的能力桥接到传统适配器契约上,使执行/分发代码保持单一通路。
+     * 描述符在每次查找时惰性解析,从而正确响应可用性变化。
      */
     private record ProviderBackedAdapter(CapabilityProvider provider, String capabilityId)
             implements CapabilityAdapter {

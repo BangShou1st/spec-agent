@@ -1,18 +1,20 @@
 package com.specagent.capability;
 
 /**
- * Side-effect classification of a capability. The Policy Engine — never the
- * model — derives approval requirements from this runtime-owned class.
+ * 文件名:SideEffectClass.java
+ *
+ * 用途:能力的副作用分类。策略引擎(Policy Engine)——而不是模型——根据这个
+ * 由运行时持有的分类推导审批要求。
  */
 public enum SideEffectClass {
 
-    /** Read-only retrieval/computation; no durable change anywhere. */
+    /** 只读的检索/计算;任何地方都不会产生持久化变更。 */
     NONE,
-    /** Durable change inside the local graph/workspace only. */
+    /** 仅在本地图谱/工作区内产生持久化变更。 */
     LOCAL_DURABLE,
-    /** External side effect that a separate provider action could reverse. */
+    /** 外部副作用,可以通过另一个提供方动作来撤销。 */
     EXTERNAL_REVERSIBLE,
-    /** External side effect that cannot be undone by graph undo. */
+    /** 外部副作用,无法通过图谱撤销(undo)回退。 */
     EXTERNAL_IRREVERSIBLE;
 
     public String code() {

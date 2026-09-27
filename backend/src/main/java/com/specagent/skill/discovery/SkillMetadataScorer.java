@@ -9,23 +9,23 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Generic lexical metadata relevance over Skill catalog entries. Scores
- * query tokens against name/description/compatibilityHint tokens only —
- * never SKILL.md bodies, resource content, scripts, paths, or DB internals.
+ * 文件名:SkillMetadataScorer.java
  *
- * <p>Deliberately domain-blind: the algorithm knows nothing about databases,
- * GitHub, PDFs, legal, or APIs. It only measures generic token overlap with
- * small quality adjustments (name matches weigh more than description
- * matches; exact token equality beats prefix affinity). Fully deterministic
- * for the same inputs; ties break by stable skillId order so projections
- * replay identically.
+ * 用途:对 Skill 目录条目做通用的词法元数据相关度打分。只拿查询词元与
+ * name/description/compatibilityHint 的词元比对 —— 绝不接触 SKILL.md 正文、
+ * 资源内容、脚本、路径或数据库内部信息。
+ *
+ * 刻意保持领域无关:算法不知道数据库、GitHub、PDF、法律或 API 是什么,
+ * 只度量通用的词元重叠,并做少量质量微调(名称匹配权重高于描述匹配;
+ * 词元完全相等优于前缀亲和)。相同输入完全确定;平分时按稳定的 skillId
+ * 顺序打破,保证投影可精确重放。
  */
 public final class SkillMetadataScorer {
 
-    /** Minimum token length: shorter fragments are noise, not signal. */
+    /** 词元最小长度:更短的碎片是噪声而非信号。 */
     private static final int MIN_TOKEN_CHARS = 3;
 
-    /** Small generic stop set — language scaffolding, never domain vocabulary. */
+    /** 少量通用停用词 —— 只收语言骨架词,不收领域词汇。 */
     private static final Set<String> STOP_TOKENS = Set.of(
             "the", "and", "for", "with", "from", "that", "this", "into",
             "whether", "check", "your", "you", "are", "was",
@@ -37,9 +37,9 @@ public final class SkillMetadataScorer {
     }
 
     /**
-     * Ranks entries by generic lexical relevance to the query, highest first.
-     * Zero-score entries sort last in stable skillId order (never dropped —
-     * dropping is the caller's Top-K decision, not the scorer's).
+     * 按与查询词的通用词法相关度对条目排序,分数高的在前。零分条目排在末尾,
+ * 并保持稳定的 skillId 顺序(不丢弃 —— 丢弃是调用方 Top-K 的决定,不是
+ * 打分器的)。
      */
     public static List<SkillCatalogEntry> rankByQuery(String query,
                                                      List<SkillCatalogEntry> entries) {
@@ -84,10 +84,9 @@ public final class SkillMetadataScorer {
     }
 
     /**
-     * Generic token affinity in [0,1]: exact equality is full signal; a shared
-     * stem-length prefix is partial signal (covers Latin inflections like
-     * migration/migrations and lets CJK bigrams match longer shared runs
-     * without any domain dictionary). Nothing else.
+     * [0,1] 区间内的通用词元亲和度:完全相等记满分;共享词干长度前缀记部分分
+ * (覆盖 migration/migrations 这类拉丁语屈折变化,也让 CJK 二元组能与更长的
+ * 共享片段匹配,且不需要任何领域词典)。仅此而已。
      */
     static double affinity(String queryToken, String fieldToken) {
         if (queryToken.equals(fieldToken)) {
@@ -96,9 +95,8 @@ public final class SkillMetadataScorer {
         int shared = sharedPrefixLength(queryToken, fieldToken);
         int shorter = Math.min(queryToken.length(), fieldToken.length());
         if (isCjkToken(queryToken) || isCjkToken(fieldToken)) {
-            // CJK bigram overlap: a shared bigram is already meaningful, and
-            // prefix affinity on 2-char tokens would be noise — exact match
-            // is the only signal across scripts.
+            // CJK 二元组重叠:共享一个二元组已经有意义;对 2 字词元做前缀
+            // 亲和只会引入噪声 —— 跨文字体系只认完全相等。
             return 0.0;
         }
         if (shared >= 5 && shared >= shorter - 2) {
@@ -124,11 +122,10 @@ public final class SkillMetadataScorer {
         if (text == null || text.isBlank()) {
             return List.of();
         }
-        // Unicode-aware split: Latin runs keep the existing pipeline
-        // (lowercase, stop words, minimal stemming, min length); CJK runs
-        // emit generic character bigrams (O(n)); separators flush both.
-        // Script detection uses the standard UnicodeScript API — no
-        // hand-written character ranges, no domain vocabulary.
+        // Unicode 感知的切分:拉丁片段沿用既有管线(小写化、停用词、最小
+        // 词干化、最小长度);CJK 片段生成通用字符二元组(O(n));分隔符
+        // 同时清空两个缓冲。文字类型判定使用标准 UnicodeScript API ——
+        // 不手写字符区间,不引入领域词汇。
         List<String> tokens = new ArrayList<>();
         StringBuilder latin = new StringBuilder();
         StringBuilder cjk = new StringBuilder();
@@ -162,9 +159,8 @@ public final class SkillMetadataScorer {
     }
 
     /**
-     * Generic CJK tokenization: contiguous CJK runs become overlapping
-     * character bigrams (a single-char run stays a unigram). Pure character
-     * sequence — the algorithm never knows what any CJK word means.
+     * 通用 CJK 切分:连续的 CJK 片段转为重叠的字符二元组(单字片段保留为
+     * 一元组)。纯字符序列处理 —— 算法不理解任何 CJK 词的含义。
      */
     private static void flushCjk(StringBuilder buffer, List<String> tokens) {
         if (buffer.length() == 0) {
@@ -190,10 +186,9 @@ public final class SkillMetadataScorer {
     }
 
     /**
-     * Minimal generic English plural folding (migrations → migration). Purely
-     * morphological, no vocabulary: strips a trailing "s" unless the word ends
-     * in "ss", and folds "ies" → "y". Keeps tokens deterministic without any
-     * domain knowledge.
+     * 通用的最小英文复数归并(migrations → migration)。纯形态学规则、零
+     * 词汇表:除非以 "ss" 结尾,剥掉末尾的 "s";"ies" 归并为 "y"。不引入
+     * 任何领域知识,同时保持词元确定性。
      */
     static String stem(String token) {
         if (token.endsWith("ies") && token.length() > 4) {

@@ -21,10 +21,11 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Fail-closed validation of brain responses: the brain is untrusted input, so
- * invented source refs, stale base context, unknown action families, runtime
- * identity smuggling, unresolved-conflict bypasses, and budget violations must
- * all be rejected.
+ * 文件名:AgentBrainResponseValidatorTest.java
+ *
+ * 测试目标:验证 AgentBrainResponseValidator 对大脑响应的 fail-closed 校验——大脑输出
+ * 视为不可信输入,凭空捏造的来源引用、过期的基础上下文、未知的动作族、伪造运行时身份、
+ * 绕过未解决冲突上报、预算违规等都必须被拒绝。
  */
 class AgentBrainResponseValidatorTest {
 
@@ -113,11 +114,9 @@ class AgentBrainResponseValidatorTest {
 
     @Test
     void unresolvedConflictAcceptsAnyActionFamilyOnceConflictIsReported() throws Exception {
-        // Slice 4: the conflict action-family whitelist is removed. Once the
-        // brain faithfully reports the conflict in observation.conflicts, the
-        // ACTION choice is unrestricted here — WAIT included. Execution
-        // safety belongs to Runtime policy/stale/permission gates, never to
-        // this contract check.
+        // Slice 4:已移除冲突场景下的动作族白名单。只要大脑在 observation.conflicts
+        // 中如实上报了冲突,ACTION 的选择在这里不受限制(包括 WAIT)。执行安全由
+        // Runtime 的 policy/stale/permission 门禁负责,不属于本契约校验的职责。
         AgentRequestEnvelope request = requestWithUnresolvedConflict();
         AgentResponseEnvelope response = AgentContracts.read(
                 fixture("decision-response-valid.json"), AgentResponseEnvelope.class);
@@ -154,9 +153,8 @@ class AgentBrainResponseValidatorTest {
 
     @Test
     void unresolvedConflictAcceptsNonDecisionCreateNodeOnceConflictIsReported() throws Exception {
-        // Slice 4: a plain NOTE create (not an explicit DECISION node) was
-        // rejected by the old whitelist; with the whitelist removed it
-        // passes once the conflict is faithfully reported.
+        // Slice 4:普通 NOTE 节点(非显式 DECISION 节点)在旧白名单下会被拒绝;
+        // 白名单移除后,只要如实上报冲突即可通过。
         AgentRequestEnvelope request = requestWithUnresolvedConflict();
         AgentResponseEnvelope response = AgentContracts.read(
                 fixture("decision-response-valid.json"), AgentResponseEnvelope.class);
@@ -219,14 +217,13 @@ class AgentBrainResponseValidatorTest {
 
     @Test
     void modelSuggestedConfidenceCanNeverAuthorizeAnything() throws Exception {
-        // The validator never reads confidence/risk as an authorization signal:
-        // a high-confidence proposal still needs the same structural checks.
+        // 校验器绝不把 confidence/risk 当作授权信号:高置信度的提案仍要经过同样的结构校验。
         AgentRequestEnvelope request = request();
         AgentResponseEnvelope response = AgentContracts.read(
                 fixture("decision-response-valid.json"), AgentResponseEnvelope.class);
         assertThatCode(() -> AgentBrainResponseValidator.validateDecision(request, response))
                 .doesNotThrowAnyException();
-        // And a stale snapshot id fails regardless of any confidence value.
+        // 而且无论置信度取值多少,过期的快照 id 都会导致失败。
         assertThatThrownBy(() -> AgentBrainResponseValidator.validateDecision(request,
                 new AgentResponseEnvelope(response.protocolVersion(), response.runId(), null,
                         response.observation(),

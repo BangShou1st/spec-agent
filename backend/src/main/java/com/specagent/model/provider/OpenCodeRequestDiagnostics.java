@@ -5,10 +5,10 @@ import com.specagent.common.Hashes;
 import java.util.List;
 
 /**
- * Safe request metadata for one OpenCode call.
+ * 文件名:OpenCodeRequestDiagnostics.java
  *
- * <p>This record contains timing, shape, counts and hashes only. It never
- * contains prompt text, raw request bytes, credentials, or response bodies.</p>
+ * 用途:一次 OpenCode 调用的安全请求元数据。该 record 只包含耗时、请求形态、
+ * 计数和哈希值,绝不包含提示词文本、原始请求字节、凭据或响应体。
  */
 public record OpenCodeRequestDiagnostics(
         String requestType,

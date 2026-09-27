@@ -3,25 +3,25 @@ package com.specagent.agent.runtime;
 import com.specagent.common.PreciseConflictException;
 
 /**
- * Thrown when a new run cannot target its route because the project's runtime
- * route state does not allow it: the project has no active route, or the
- * requested route is no longer OPEN. Carries a stable reason code so the API
- * layer can surface a precise 409 instead of a generic runtime conflict.
+ * 文件名:RouteTargetConflictException.java
  *
- * <p>Extends {@link PreciseConflictException} (itself an
- * {@code IllegalStateException}): the conflict is a state precondition
- * failure, so existing callers/tests that classify the original
- * {code IllegalStateException("no active route")} keep matching, while the
- * API layer maps the concrete type to a precise 409 and
- * {@code CommandExecution} preserves it instead of degrading it to
- * {@code RUNTIME_CONFLICT}.
+ * 用途:当新 run 无法把目标指向其 route 时抛出——项目的运行时 route 状态
+ * 不允许:项目没有活跃 route,或所请求的 route 已不再是 OPEN。携带稳定的
+ * reason code,让 API 层能返回精确的 409,而不是笼统的运行时冲突。
+ *
+ * 继承 {@link PreciseConflictException}(后者本身是
+ * {@code IllegalStateException}):该冲突本质是状态前置条件不满足,因此原有
+ * 按 {@code IllegalStateException("no active route")} 分类识别的调用方/测试
+ * 仍然匹配;而 API 层可以把这个具体类型映射为精确的 409,
+ * {@code CommandExecution} 也会原样保留它,而不是降级为
+ * {@code RUNTIME_CONFLICT}。
  */
 public class RouteTargetConflictException extends PreciseConflictException {
 
     public enum Reason {
-        /** The project has no active route pointer. */
+        /** 项目没有活跃的 route 指针。 */
         NO_ACTIVE_ROUTE,
-        /** The requested route exists but its lifecycle is not OPEN. */
+        /** 所请求的 route 存在,但其生命周期状态不是 OPEN。 */
         ROUTE_NOT_OPEN
     }
 

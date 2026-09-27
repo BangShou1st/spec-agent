@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
-"""R4 semantic planning diagnostic harness (DIAGNOSTIC ONLY).
+"""文件名:semantic_planning_diagnostic_r4.py
 
-Lineage SEMANTIC_PLANNING_DIAGNOSTIC_R4 (SEMANTIC_DEFINITION_CHANGE).
-This round implements preflight only: --mode transport (G1), schema (G2),
-calibration (G3), or preflight (G1->G2->G3 with abort). Formal 90x3 is
-NOT implemented here and must not run without owner review.
+R4 语义规划诊断 harness(仅诊断用)。
 
-Pipeline per rep: provider response -> extract choices[0].message.content
--> JSON parse -> C1 -> C2 -> C3 mapping. Never validates the whole
-provider envelope. Per-rep class is exactly one of C1 / C2 / C3 /
-PROVIDER_FAILURE. C1/C2 never count as semantic passes.
-Never touches production code paths, prompts, or eligibility.
+血统 SEMANTIC_PLANNING_DIAGNOSTIC_R4(SEMANTIC_DEFINITION_CHANGE)。
+本轮只实现预检:--mode transport(G1)、schema(G2)、calibration(G3),
+或 preflight(按 G1->G2->G3 顺序执行,失败即中止)。正式的 90x3
+流程不在这里实现,且未经负责人评审绝不能运行。
+
+每轮响应的处理流水线:供应商响应 -> 提取 choices[0].message.content
+-> JSON 解析 -> C1 -> C2 -> C3 映射。绝不校验供应商信封整体。
+单轮分类恰好是 C1 / C2 / C3 / PROVIDER_FAILURE 之一。
+C1/C2 一律不计为语义通过。绝不触碰生产代码路径、提示词或资格判定。
 """
 from __future__ import annotations
 
@@ -66,8 +67,8 @@ SAMPLING_PROFILE = {
     "transport": "DIRECT",
 }
 
-# Frozen G12 set: (arm, scenario, variant, repetition) with R3 majority in
-# oracle-v2 expected, minus 4 E07-resolved structural exclusions.
+# 冻结的 G12 集合:(arm, scenario, variant, repetition),即 R3 多数结果
+# 落在 oracle-v2 期望内的用例,再减去 4 条因 E07 已解决而结构性排除的条目。
 FROZEN_REGRESSION_28 = (
     ("B+", "E01", "base", 0), ("B+", "E01", "paraphrase", 2),
     ("B+", "E01", "shuffled", 1),
@@ -91,7 +92,7 @@ FROZEN_REGRESSION_28 = (
     ("C", "E19", "large", 1), ("C", "E25", "stale-relation-set", 2),
 )
 
-# G2 schema corners reuse calibration wire shapes (validity only).
+# G2 schema 角落用例复用校准夹具的线上形状(只校验合法性)。
 SCHEMA_CASE_IDS = ["CAL-U1", "CAL-U2", "CAL-D1", "CAL-E1", "CAL-N1"]
 
 

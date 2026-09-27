@@ -24,9 +24,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Internal inference broker safety: shared-secret auth, closed call types,
- * bounded prompts, sanitized events, and no credential material anywhere in
- * responses. Uses the deterministic fake inference gateway (test profile).
+ * 文件名:InternalModelInferenceBrokerIntegrationTest.java
+ *
+ * 测试目标:内部模型推理 broker 的安全属性——共享密钥认证、封闭的调用类型集合、
+ * 有界的 prompt、脱敏的事件,以及响应中不出现任何凭证材料。使用 test profile 下的
+ * 确定性假推理网关。
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -85,14 +87,14 @@ class InternalModelInferenceBrokerIntegrationTest {
         assertThat(response)
                 .contains("\"protocolVersion\":\"model-inference.v1\"")
                 .contains("REQUEST_USER_INPUT")
-                // No credential material ever crosses the broker boundary.
+                // 凭证材料绝不跨过 broker 边界。
                 .doesNotContain("apiKey")
                 .doesNotContain("sk-");
 
         String events = eventText(runId);
         assertThat(events).contains("MODEL_INFERENCE");
         assertThat(events).contains("promptSha256");
-        // Events are sanitized: raw prompt content is never recorded.
+        // 事件已脱敏:原始 prompt 内容绝不被记录。
         assertThat(events).doesNotContain("xxxxxxxxxx");
     }
 

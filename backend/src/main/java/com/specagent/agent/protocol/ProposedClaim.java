@@ -4,8 +4,13 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * One brain-proposed claim. Carries content, status and the source refs that
- * ground it; never a runtime-owned claim id.
+ * 文件名:ProposedClaim.java
+ *
+ * 用途:Brain 提出的单条 claim(断言),携带内容、状态以及为其
+ * 提供依据的 source refs。
+ *
+ * 约束:绝不携带 Runtime 独有的 claim id;id 由 Java 侧在校验
+ * 通过后分配。
  */
 public record ProposedClaim(String kind,
                             String text,

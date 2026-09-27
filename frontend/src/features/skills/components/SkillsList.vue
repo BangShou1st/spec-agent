@@ -1,3 +1,8 @@
+<!--
+  文件名:SkillsList.vue
+  用途:已安装 Skill 的列表组件:每行展示名称、描述、来源与启用开关,
+       并提供进入详情与删除入口;busyId 用于禁用正在操作的行。
+-->
 <script setup lang="ts">
 import { ref } from 'vue'
 import AppIcon from '@/shared/ui/AppIcon.vue'

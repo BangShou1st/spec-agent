@@ -18,28 +18,26 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * P2 Phase 2 — Live behavioral baseline harness base.
+ * 文件名:EvalLiveHarnessBase.java
  *
- * <p>Boots the production Spring context with the production Brain wiring
- * (remote-python engine through the internal inference broker) instead of the
- * scripted B-fast brain: {@code ScenarioRunner.runLive} refuses to run when a
- * {@code BrainScriptInstaller} bean is present, so importing only
- * {@code EvalProbeCapabilities.Config} here guarantees live observations can
- * never silently come from scripted outputs.
+ * 测试目标:P2 Phase 2——live 行为基线套件的共享基座。
  *
- * <p>Live runs need explicit external OpenCode settings and a reachable
- * agent-brain in broker mode. Missing/invalid provider settings fail closed;
- * an unavailable brain remains an environmental skip so PR CI stays green
- * offline.
- * Cleanup mirrors {@link EvalHarnessBase} project-scoped row deletion because
- * run failure marking commits in its own transaction.
+ * 启动生产 Spring 上下文,使用生产大脑接线(经内部推理 broker 的
+ * remote-python 引擎)而非脚本化 B-fast 大脑:{@code ScenarioRunner.runLive}
+ * 在存在 {@code BrainScriptInstaller} bean 时拒绝运行,因此这里只引入
+ * {@code EvalProbeCapabilities.Config},保证 live 观测绝不可能静默来自脚本输出。
+ *
+ * live 运行需要显式的外部 OpenCode 配置和可达的 broker 模式 agent-brain。
+ * Provider 配置缺失/无效时失败关闭;大脑不可用则作为环境性跳过,
+ * 使 PR CI 离线仍保持绿色。清理逻辑与 {@link EvalHarnessBase} 的项目级行删除
+ * 相同,因为运行失败标记在自己事务中提交。
  */
 @SpringBootTest
 @ActiveProfiles("test")
 @org.springframework.context.annotation.Import({EvalProbeCapabilities.Config.class})
 public abstract class EvalLiveHarnessBase {
 
-    /** Default repetitions per scenario variant for the stability baseline. */
+    /** 稳定性基线中每个场景变体的默认重复次数。 */
     protected static final int LIVE_REPETITIONS = 3;
 
     @Autowired
@@ -60,9 +58,8 @@ public abstract class EvalLiveHarnessBase {
     private final List<UUID> liveProjectIds = new ArrayList<>();
 
     /**
-     * Runs one scenario variant N times through the live Brain and returns
-     * every observation. Repetitions differ only by the recorded seed — never
-     * by semantics — so unanimous vs mixed outcomes are the stability signal.
+     * 把一个场景变体经 live 大脑运行 N 次并返回全部观测。各次重复只在记录的
+     * seed 上不同——语义完全一致——因此"全体一致 vs 结果混杂"即是稳定性信号。
      */
     protected List<ObservationEnvelope> runLiveScenario(ScenarioDefinition scenario,
                                                         VariantSpec variant) {
@@ -85,10 +82,8 @@ public abstract class EvalLiveHarnessBase {
     }
 
     /**
-     * Requires a real live chain and returns safe evidence stamped into the
-     * baseline artifact. Provider configuration is checked first and is a
-     * hard failure: a live run must never skip or fall back when its explicit
-     * external configuration is missing or invalid.
+     * 要求真实 live 链路并返回写入基线产物的安全证据。先检查 Provider 配置,
+     * 且属于硬失败:显式外部配置缺失或无效时,live 运行绝不能跳过或回退。
      */
     protected LiveChainEvidence requireLiveBrain(String brainHealthUrl) {
         RuntimeOpenCodeSettings settings;
@@ -105,7 +100,7 @@ public abstract class EvalLiveHarnessBase {
                 settings.credentialSource(), openCodeZenTransport.endpoint());
     }
 
-    /** Reads safe Python-side invocation evidence; no prompt or completion data. */
+    /** 读取 Python 侧的安全调用证据;不含任何 prompt 或补全数据。 */
     protected LiveBrainHealth readLiveBrainHealth(String brainHealthUrl) {
         java.net.http.HttpResponse<String> response;
         try {

@@ -1,3 +1,8 @@
+<!--
+  文件名:ConnectionLifecycleAction.vue
+  用途:连接生命周期操作区:根据连接当前状态(created/tested/connected/enabled/failed)
+       展示下一步动作按钮(测试/连接/启用/刷新)与提示文案,操作通过事件交给父组件执行。
+-->
 <script setup lang="ts">
 import { computed } from 'vue'
 import { managementErrorMessage } from '@/shared/http/errorCopy'

@@ -17,8 +17,10 @@ import java.net.http.HttpResponse;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Verifies the SDK fake MCP servlet is actually reachable at the registered
- * URL inside the Spring test container.
+ * 文件名:SdkFakeMcpServerReachabilityTest.java
+ *
+ * 测试目标:验证 SDK fake MCP servlet 在 Spring 测试容器中确实可以通过
+ * 注册的 URL 访问到。
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @Import(SdkFakeMcpServerConfig.class)
@@ -47,8 +49,8 @@ class SdkFakeMcpServerReachabilityTest {
         System.out.println("SERVLET_MAPPINGS=" + mappings);
         assertThat(mappings).anyMatch(m -> m.startsWith("/fake-mcp"));
         HttpClient client = HttpClient.newHttpClient();
-        // The transport endpoint is /fake-mcp/mcp (see SdkFakeMcpServerConfig):
-        // a JSON-RPC POST there must reach the transport, not DispatcherServlet.
+        // 传输端点是 /fake-mcp/mcp(见 SdkFakeMcpServerConfig):
+        // 对它发起的 JSON-RPC POST 必须到达传输层,而不是 DispatcherServlet。
         String body = """
                 {"jsonrpc":"2.0","id":"1","method":"ping","params":{}}
                 """;

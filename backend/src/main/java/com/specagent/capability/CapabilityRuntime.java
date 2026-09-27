@@ -9,24 +9,21 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Executes capability invocations behind the host runtime contract.
+ * 文件名:CapabilityRuntime.java
  *
- * <p>Idempotency/retry metadata is runtime-owned: for one invocation key the
- * database grants execution ownership to exactly one caller (atomic claim on
- * the unique index); losers and later retries read back the recorded result
- * instead of re-executing the adapter. SUCCEEDED invocations replay their
- * recorded result, FAILED invocations replay the recorded failure without a
- * new external attempt.
+ * 用途:在宿主运行时契约之下执行能力调用,是能力执行的统一入口与守门人。
  *
- * <p>Honest crash-window semantics: if the process dies after the adapter's
- * external work happened but before {@code complete} persisted the outcome,
- * the invocation stays RUNNING and later callers receive a typed
- * {@link CapabilityResult.Status#IN_PROGRESS IN_PROGRESS} state — never a
- * fabricated replay and never a silent re-execution. Exactly-once external
- * side effects cannot be guaranteed from local transactions alone; adapters
- * that touch external systems must therefore use the runtime-owned identity
- * carried by {@link CapabilityInvocation} as their downstream idempotency
- * key. Current built-in capabilities are read-only/internal and unaffected.
+ * 幂等/重试元数据由运行时持有:对于同一个 invocation key,数据库通过唯一索引上的
+ * 原子认领把执行权授予恰好一个调用方;落败者和后续重试都会读回已记录的结果,
+ * 而不是再次执行适配器。SUCCEEDED 的调用会重放已记录的结果,FAILED 的调用
+ * 重放已记录的失败,不会发起新的外部尝试。
+ *
+ * 诚实的崩溃窗口语义:如果进程在适配器完成外部工作之后、{@code complete}
+ * 持久化结果之前崩溃,调用会停留在 RUNNING 状态,后续调用方会收到带类型的
+ * {@link CapabilityResult.Status#IN_PROGRESS IN_PROGRESS} 状态——既不是编造的重放,
+ * 也不是静默的重新执行。仅靠本地事务无法保证外部副作用恰好执行一次;因此,
+ * 涉及外部系统的适配器必须把 {@link CapabilityInvocation} 携带的运行时身份
+ * 作为下游系统的幂等键。当前内置能力均为只读/内部能力,不受影响。
  */
 @Service
 public class CapabilityRuntime {
@@ -41,13 +38,11 @@ public class CapabilityRuntime {
     }
 
     /**
-     * Executes (or replays) one project-scoped invocation. Callers must have
-     * passed policy for the descriptor's side-effect class first — the runtime
-     * enforces idempotency and typing, policy enforces authorization.
+     * 执行(或重放)一次项目范围内的调用。调用方必须先通过针对描述符副作用分类的
+     * 策略检查——运行时负责幂等与类型化,策略负责授权。
      *
-     * <p>Strictly project-scoped: {@code projectId} must be non-null and
-     * fail closed otherwise. Application-scoped callers must use
-     * {@link #invokeApplicationScoped}.
+     * 严格限定项目范围:{@code projectId} 必须非空,否则失败关闭。
+     * 应用范围内的调用方必须使用 {@link #invokeApplicationScoped}。
      */
     @Transactional
     public CapabilityResult invoke(String invocationKey,
@@ -63,9 +58,9 @@ public class CapabilityRuntime {
     }
 
     /**
-     * The single application-scoped public entry point for Global Assistant
-     * host tools. Persists {@code project_id = NULL} while reusing the exact
-     * registry → adapter → claim/complete/replay path. No dummy project.
+     * Global Assistant 宿主工具唯一的应用范围公开入口。持久化时 {@code project_id = NULL},
+     * 同时复用与项目范围完全相同的 注册表 → 适配器 → claim/complete/重放 通路,
+     * 不使用假项目 ID。
      */
     @Transactional
     public CapabilityResult invokeApplicationScoped(String invocationKey,
@@ -84,8 +79,8 @@ public class CapabilityRuntime {
                 Ids.random(), invocationKey, capabilityId, projectId, runId, arguments);
 
         if (!invocationRepository.claim(invocation)) {
-            // Lost the claim race or retried a known key: the recorded row —
-            // not another adapter execution — is the single source of truth.
+            // 认领竞态落败,或重试了一个已知的 key:已记录的行——而不是再执行一次
+            // 适配器——才是唯一事实来源。
             CapabilityInvocationRecord existing = invocationRepository
                     .findByInvocationKey(invocationKey)
                     .orElseThrow(() -> new IllegalStateException(
@@ -116,9 +111,8 @@ public class CapabilityRuntime {
     }
 
     private CapabilityResult replayResult(CapabilityInvocationRecord record) {
-        // A claimed-but-unfinished invocation (concurrent owner or crashed
-        // process) surfaces as a real in-progress state: it must neither be
-        // presented as a successful replay nor re-executed here.
+        // "已认领但未完成"的调用(存在并发属主,或持有方进程已崩溃)应如实呈现为
+        // 进行中状态:既不能伪装成成功的重放,也不能在这里重新执行。
         if (record.status() == CapabilityResult.Status.RUNNING) {
             return new CapabilityResult(
                     record.id(),

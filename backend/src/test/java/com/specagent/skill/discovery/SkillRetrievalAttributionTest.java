@@ -8,9 +8,11 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Retrieval failure attribution: visibility vs retriever vs descriptor/prompt
- * vs validator/policy vs MCP vs normalization each own their layer. This test
- * pins the layering contract for the small-catalog first version.
+ * 文件名:SkillRetrievalAttributionTest.java
+ *
+ * 测试目标:检索失败的归因分层——可见性、检索器、描述符/prompt、
+ * 校验器/策略、MCP、归一化各自拥有自己的层。此测试固定小目录首版的
+ * 分层契约。
  */
 class SkillRetrievalAttributionTest {
 
@@ -34,7 +36,7 @@ class SkillRetrievalAttributionTest {
     void ineligibleSkillIsVisibilityFailure() {
         List<SkillCatalogEntry> all = List.of(entry("sk-off", false), entry("sk-on", true));
         List<SkillCatalogEntry> eligible = visibility.eligible(all, context());
-        // Correct Skill not eligible -> Visibility layer owns it.
+        // 正确的 Skill 不可见 -> 归属可见性层。
         assertThat(eligible).extracting(SkillCatalogEntry::skillId)
                 .containsExactly("sk-on");
     }
@@ -43,8 +45,8 @@ class SkillRetrievalAttributionTest {
     void eligibleButAbsentIsRetrieverFailure() {
         List<SkillCatalogEntry> eligible =
                 List.of(entry("sk-a", true), entry("sk-b", true), entry("sk-c", true));
-        // Eligible but absent from Top-K -> Retriever layer owns it. Without a
-        // query the retriever preserves stable catalog order (Top-2 = first two).
+        // 符合条件但没进 Top-K -> 归属检索器层。无查询时检索器保持
+        // 稳定的目录顺序(Top-2 = 前两个)。
         List<SkillCatalogEntry> topK = retriever.retrieve(context(), eligible, 2);
         assertThat(topK).extracting(SkillCatalogEntry::skillId)
                 .containsExactly("sk-a", "sk-b");
@@ -52,9 +54,8 @@ class SkillRetrievalAttributionTest {
 
     @Test
     void visibilityNeverTruncatesEligibleUniverse() {
-        // Regression guard for the merge-review finding: visibility must not
-        // pre-limit to maxVisible — the full eligible universe reaches the
-        // retriever even when it exceeds the model-facing budget.
+        // 合并评审结论的回归守卫:可见性层不得预限制为 maxVisible——
+        // 完整的符合条件集合必须全部送达检索器,即使超出面向模型的预算。
         var all = new java.util.ArrayList<SkillCatalogEntry>();
         for (int i = 0; i < 40; i++) {
             all.add(entry("sk-" + i, true));
@@ -68,7 +69,7 @@ class SkillRetrievalAttributionTest {
         List<SkillCatalogEntry> topK = List.of(entry("sk-a", true), entry("sk-b", true));
         SkillCatalogProjector.Projection first = projector.project(topK, false);
         SkillCatalogProjector.Projection second = projector.project(topK, false);
-        // Same inputs -> same order, same fingerprint: replay-safe.
+        // 相同输入 -> 相同顺序、相同指纹:可安全重放。
         assertThat(second.entries()).isEqualTo(first.entries());
         assertThat(second.fingerprint()).isEqualTo(first.fingerprint());
         assertThat(first.truncated()).isFalse();

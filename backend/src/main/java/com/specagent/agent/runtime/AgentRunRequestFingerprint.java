@@ -8,17 +8,17 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
- * Stable logical identity for a client-driven agent-run create request.
+ * 文件名:AgentRunRequestFingerprint.java
  *
- * <p>The fingerprint contains only client-stable request fields. Resolved
- * runtime state such as the current active route or current route tip is
- * deliberately excluded: an idempotent retry must still replay the original
- * run after that run has already advanced or switched graph state.
+ * 用途:为客户端发起的 agent-run 创建请求计算稳定的逻辑身份指纹(SHA-256),
+ * 配合 project 范围的幂等唯一索引实现"同一逻辑请求只落库一个 run"。
  *
- * <p>The field order is fixed and each value is length-delimited, so null,
- * empty, whitespace, UUID and text values cannot become ambiguous. The hash
- * intentionally excludes runtime-generated values such as run ids and
- * timestamps.
+ * 指纹只包含客户端可控的稳定请求字段;刻意排除当前活跃 route、route tip 等
+ * 运行时解析状态——幂等重试即使在原 run 已经推进或切换了图状态之后,
+ * 也必须重放命中原始 run。
+ *
+ * 字段顺序固定,每个值带长度前缀,因此 null、空串、空白、UUID 与普通文本
+ * 不会产生歧义。run id、时间戳等运行时生成的值有意不参与哈希。
  */
 public final class AgentRunRequestFingerprint {
 
@@ -51,10 +51,9 @@ public final class AgentRunRequestFingerprint {
     }
 
     /**
-     * Multi-select variant: the FULL option selection (user order) is part of
-     * the logical request identity; the single-id overload above delegates with
-     * a one-element list, producing the same fingerprint as this method for
-     * single-select answers.
+     * 多选变体:完整的选项集合(保持用户选择的顺序)属于逻辑请求身份;
+     * 上面的单 id 重载委托到这里传入单元素列表,单选场景下两个方法
+     * 产生相同指纹。
      */
     public static String forClientRequest(UUID projectId,
                                           String operation,
@@ -81,12 +80,10 @@ public final class AgentRunRequestFingerprint {
     }
 
     /**
-     * Stable logical identity for a runtime-created continuation child: the
-     * child slot of one parent at one cycle depth. Only loop identity
-     * enters the hash — never semantic fields such as conflicts, goals, or
-     * planning flags. Combined with the project-scoped idempotency unique
-     * index, a repeated terminal callback for the same parent resolves to
-     * the one persisted child instead of creating a second run.
+     * 为 runtime 创建的续跑子 run 计算稳定逻辑身份:同一个父 run 在同一轮深度
+     * 下的"子 run 槽位"。哈希只包含循环身份字段——绝不包含冲突、目标、计划
+     * 标志等语义字段。配合 project 范围的幂等唯一索引,父 run 终止回调重复
+     * 到达时只会命中已落库的那个子 run,而不会创建第二个。
      */
     public static String forContinuation(UUID projectId,
                                          UUID parentRunId,

@@ -31,8 +31,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Fork command integration tests. Fork stays a historical lineage view: no
- * node/answer/patch copies, old route untouched, new route becomes active.
+ * 文件名:RouteForkApiIntegrationTest.java
+ *
+ * 测试目标:fork 命令的集成测试——fork 保持"历史谱系视图"语义:不拷贝
+ * 节点/回答/补丁,原路线不被触碰,新路线成为活跃路线。
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -90,7 +92,7 @@ class RouteForkApiIntegrationTest {
                 .findFirst()
                 .orElseThrow();
 
-        // Fork semantics: tip = source node, root = source route root, old route unchanged.
+        // fork 语义:tip = 源节点,root = 源路线根节点,旧路线不变。
         assertThat(fork.tipNodeId()).isEqualTo(root.id());
         assertThat(fork.rootNodeId()).isEqualTo(root.id());
         assertThat(fork.createdFromNodeId()).isEqualTo(root.id());
@@ -101,7 +103,7 @@ class RouteForkApiIntegrationTest {
         Route oldRoute = routeService.getRoute(originalRouteId).orElseThrow();
         assertThat(oldRoute.tipNodeId()).isEqualTo(child.id());
         assertThat(nodeRepository.findByProject(project.id())).hasSize(nodeCountBefore);
-        // No answers or patches are copied onto the fork route.
+        // fork 路线上不拷贝任何回答或补丁。
         assertThat(answerRepository.findByRouteAndNodeIds(fork.id(), List.of(root.id()))).isEmpty();
         assertThat(answerPatchService.findByRoute(fork.id())).isEmpty();
     }
@@ -126,7 +128,7 @@ class RouteForkApiIntegrationTest {
         UUID forkRouteId = projectService.getProject(project.id()).orElseThrow().activeRouteId();
         Route fork = routeService.getRoute(forkRouteId).orElseThrow();
         assertThat(fork.tipNodeId()).isEqualTo(root.id());
-        // The source answer/patch stay on the source route, not the fork.
+        // 源回答/补丁留在源路线上,不在 fork 上。
         assertThat(answerRepository.findByRouteAndNodeIds(fork.id(), List.of(root.id()))).isEmpty();
         assertThat(answerPatchService.findByRoute(fork.id())).isEmpty();
         assertThat(answerService.getAnswer(answer.id()).orElseThrow().routeId())
@@ -181,17 +183,16 @@ class RouteForkApiIntegrationTest {
         Route fork = routeService.getRoute(
                 projectService.getProject(project.id()).orElseThrow().activeRouteId()).orElseThrow();
         assertThat(fork.tipNodeId()).isEqualTo(root.id());
-        // The sibling node still exists but is not part of the fork history.
+        // 兄弟节点仍然存在,但不是 fork 历史的一部分。
         assertThat(nodeRepository.findById(siblingA.id())).isPresent();
         assertThat(fork.tipNodeId()).isNotEqualTo(siblingA.id());
     }
 
     /**
-     * A fork route's tip is answered through an inherited reference, not an
-     * Answer row of its own. The DRAFT_QUESTION pre-check must read effective
-     * answers (own + inherited), otherwise a Follower-mode Draft on a freshly
-     * forked route is rejected with a false UNANSWERED_QUESTION_HAS_CHILD and
-     * the UI falls back to "branch created, first question failed".
+     * fork 路线的 tip 通过继承引用被回答,而非拥有自己的 Answer 记录。
+     * DRAFT_QUESTION 预检查必须读取有效回答(自有 + 继承),否则在刚 fork 的
+     * 路线上以 Follower 模式起草会被错误地以 UNANSWERED_QUESTION_HAS_CHILD
+     * 拒绝,UI 随之退化为"分支已创建,第一个问题生成失败"。
      */
     @Test
     void draftOnForkedRouteAcceptsInheritedTipAnswer() throws Exception {
@@ -212,10 +213,10 @@ class RouteForkApiIntegrationTest {
         Route fork = routeService.getRoute(
                 projectService.getProject(project.id()).orElseThrow().activeRouteId()).orElseThrow();
         assertThat(fork.tipNodeId()).isEqualTo(root.id());
-        // Inherited only: the fork route owns no Answer row for its tip.
+        // 仅有继承回答:fork 路线对它的 tip 不拥有任何 Answer 记录。
         assertThat(answerRepository.findByRouteAndNodeIds(fork.id(), List.of(root.id()))).isEmpty();
 
-        // No sourceRouteId: the target route is the Active pointer (the fork).
+        // 不传 sourceRouteId:目标路线是 Active 指针(即 fork)。
         mockMvc.perform(post("/api/v1/projects/{projectId}/agent-runs", project.id())
                         .contentType(APPLICATION_JSON)
                         .content("{\"operation\": \"DRAFT_QUESTION\"}"))

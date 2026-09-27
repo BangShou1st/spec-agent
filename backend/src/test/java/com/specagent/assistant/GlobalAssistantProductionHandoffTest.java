@@ -32,9 +32,15 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
 /**
- * Production-path handoff: real lifecycle transactions, real AFTER_COMMIT
- * listener, real handoff DB writes. Never calls tryHandoff manually in the
- * automatic-chain test. No outer test transaction so commit semantics are real.
+ * 文件名:GlobalAssistantProductionHandoffTest.java
+ *
+ * 测试目标:在生产执行路径上验证转向(steer)交接——真实的生命周期事务、
+ * 真实的 AFTER_COMMIT 监听器、真实的交接数据库写入。
+ * 自动链路测试中不手动调用 tryHandoff;测试不加外层事务,
+ * 以保证提交语义真实生效。
+ * 覆盖场景:终态提交自动触发交接、重复终态通知只创建一个后继、
+ * 终态事务回滚不产生交接、孤儿恢复加待处理转向只产生一个后继、
+ * 线程停止的原子性,以及对过期目标的转向被无副作用地拒绝。
  */
 @SpringBootTest
 @ActiveProfiles("test")

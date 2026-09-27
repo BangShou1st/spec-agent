@@ -10,24 +10,20 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.UUID;
 
 /**
- * Read-only route-lineage API.
+ * 文件名:RouteLineageController.java
  *
- * <p>Exposes one route's historical node chain through the read-model query
- * boundary. This endpoint is read-only, provider-free, model-free, and
- * persistence-free: it only inspects an existing route for display. It is the
- * only backend feature added in Phase 7.2; it never builds a
- * {@code ContextSnapshot} and is never used to change runtime semantics.
+ * 用途:只读的路线 lineage(历史节点链)API。通过读模型查询边界
+ * 暴露一条路线的历史节点链。此端点只读、不依赖 provider、不依赖模型、
+ * 不直接碰持久化:仅检查既有路线用于展示。它是 Phase 7.2 新增的唯一
+ * 后端功能;从不构建 {@code ContextSnapshot},也从不用于改变运行时语义。
  *
- * <p>Architecture boundary (the API layer still never depends on context,
- * model, repository, or credential):
+ * 架构边界(API 层依旧绝不依赖 context、model、repository、credential):
  *
- * <pre>
  * RouteLineageController
  *         ↓
  * com.specagent.workspace.route.RouteLineageQueryService
  *         ↓
  * ProjectService / RouteService / NodeService
- * </pre>
  */
 @RestController
 @RequestMapping("/api/v1/projects/{projectId}/routes/{routeId}")

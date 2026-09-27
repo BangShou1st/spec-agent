@@ -3,10 +3,12 @@ package com.specagent.common;
 import java.util.UUID;
 
 /**
- * Identifier generation for runtime records.
+ * 文件名:Ids.java
  *
- * <p>Deterministic within a run; uses random UUIDs so that persisted records
- * have stable, unique identity without relying on database sequence behavior.
+ * 用途:运行时记录的标识符生成工具,统一从这里取随机 UUID。
+ *
+ * 使用随机 UUID,使持久化记录无需依赖数据库序列即可获得稳定、
+ * 唯一的身份标识。
  */
 public final class Ids {
 

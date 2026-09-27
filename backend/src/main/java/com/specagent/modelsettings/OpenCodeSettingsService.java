@@ -13,7 +13,14 @@ import org.springframework.stereotype.Service;
 import java.time.Instant;
 import java.util.List;
 
-/** Coordinates probe/save without exposing the working key to the API layer. */
+/**
+ * 文件名:OpenCodeSettingsService.java
+ *
+ * 用途:OpenCode(Zen)提供商设置的应用服务:协调密钥探测与保存,
+ * 负责模型发现、仅切换模型与连通性验证,并通过 OpenCodeRuntimeSettingsPort
+ * 向推理侧提供运行时设置;支持 database 与外部实测评估两种配置来源,
+ * 全程不把工作密钥暴露给 API 层。
+ */
 @Service
 public class OpenCodeSettingsService implements OpenCodeRuntimeSettingsPort {
 
@@ -28,7 +35,7 @@ public class OpenCodeSettingsService implements OpenCodeRuntimeSettingsPort {
     private final String externalApiKey;
     private final String externalSelectedModel;
 
-    /** Default constructor retained for direct unit-test callers. */
+    /** 保留的默认构造器,供直接调用的单元测试使用。 */
     public OpenCodeSettingsService(OpenCodeSettingsRepository repository,
                                    OpenCodeModelCatalog catalog,
                                    OpenCodeZenTransport transport) {
@@ -60,27 +67,25 @@ public class OpenCodeSettingsService implements OpenCodeRuntimeSettingsPort {
                 .orElseGet(OpenCodeSettingsStatus::unconfigured);
     }
 
-    /** Probes a candidate in memory. This method never writes the repository. */
+    /** 只在内存里探测候选配置;本方法绝不写仓储。 */
     public OpenCodeCandidateModels probe(String apiKey) {
         String candidate = requireKey(apiKey);
         OpenCodeCandidateModels models = currentCandidateModels(candidate);
-        // A probe validates credential reachability using one currently
-        // available model, but does not choose or persist a working model.
+        // 探测只用一个当前可用的模型来验证密钥可达性,不会挑选或持久化工作模型
         transport.validateCredential(candidate, models.recommendedProbeModel());
         return models;
     }
 
     /**
-     * Lists current models with the already persisted credential. The key is
-     * resolved explicitly from storage; an empty request key is never
-     * interpreted as "reuse the old key".
+     * 用已持久化的密钥列出当前模型。密钥从存储中显式解析;
+     * 请求里传空密钥绝不会被视为"沿用旧密钥"。
      */
     public OpenCodeCandidateModels listSavedKeyModels() {
         OpenCodeSettings settings = requireStoredSettings();
         return currentCandidateModels(settings.apiKey());
     }
 
-    /** Revalidates the complete candidate configuration before one upsert. */
+    /** 保存前对完整候选配置做全部校验,通过后才落一次 upsert。 */
     public OpenCodeSettingsStatus save(String apiKey, String selectedModel) {
         String candidate = requireKey(apiKey);
         if (selectedModel == null || selectedModel.isBlank()) {
@@ -100,9 +105,8 @@ public class OpenCodeSettingsService implements OpenCodeRuntimeSettingsPort {
     }
 
     /**
-     * Changes only the selected model using the persisted key. All provider
-     * validation happens before the single upsert, so a failed switch leaves
-     * the previous working settings active and preserves credential metadata.
+     * 只切换选中模型,复用已持久化的密钥。所有提供商校验都在唯一一次
+     * upsert 之前完成,因此切换失败时旧配置依然生效,密钥元数据不受影响。
      */
     public OpenCodeSettingsStatus changeModel(String selectedModel) {
         OpenCodeSettings current = requireStoredSettings();
@@ -121,10 +125,9 @@ public class OpenCodeSettingsService implements OpenCodeRuntimeSettingsPort {
     }
 
     /**
-     * Revalidates the persisted configuration without writing anything.
-     * Mirrors the OpenRouter contract: the reachability check runs against the
-     * model that is actually stored, so a settings card can offer an explicit
-     * "test again" action that never mutates the saved pair.
+     * 重新验证已持久化的配置,但不写任何东西。与 OpenRouter 的契约一致:
+     * 可达性检查针对实际存储的那个模型执行,让设置卡片能提供显式的
+     * "再次测试"操作,且永远不会改动已保存的配置对。
      */
     public OpenCodeSettingsStatus validate() {
         OpenCodeSettings current = requireStoredSettings();
@@ -137,7 +140,7 @@ public class OpenCodeSettingsService implements OpenCodeRuntimeSettingsPort {
         return status();
     }
 
-    /** The only normal service method that returns the full key to backend code. */
+    /** 唯一会把完整密钥返回给后端代码的常规服务方法。 */
     @Override
     public RuntimeOpenCodeSettings requireRuntimeSettings() {
         if (EXTERNAL_ENVIRONMENT_SOURCE.equals(runtimeSettingsSource)) {
@@ -153,17 +156,15 @@ public class OpenCodeSettingsService implements OpenCodeRuntimeSettingsPort {
             throw new OpenCodeModelException(OpenCodeModelErrorCategory.NOT_CONFIGURED,
                     "OpenCode settings are not configured");
         }
-        // Model selection is gated at save/changeModel time against the live
-        // provider list (free or paid); the runtime path itself stays
-        // policy-free and never re-imposes a cost filter.
+        // 模型选择已在 save/changeModel 时对照提供商实时列表(免费或付费)做过门禁;
+        // 运行时路径本身保持无策略,不再附加成本过滤
         return new RuntimeOpenCodeSettings(settings.apiKey(), settings.selectedModel(),
                 "database:opencode_settings");
     }
 
     /**
-     * Explicit live-evaluation source. Blank values are intentionally not
-     * defaulted from the product database: evalLive must never inherit the
-     * test database's provider row or a product-local model selection.
+     * 显式的实测评估(live-evaluation)来源。留空的值有意不从产品数据库兜底:
+     * evalLive 绝不能继承测试数据库里的提供商行或产品本地的模型选择。
      */
     private RuntimeOpenCodeSettings requireExternalRuntimeSettings() {
         if (externalApiKey == null || externalApiKey.isBlank()
@@ -173,16 +174,14 @@ public class OpenCodeSettingsService implements OpenCodeRuntimeSettingsPort {
                             + "SPEC_AGENT_EVAL_OPENCODE_KEY and "
                             + "SPEC_AGENT_EVAL_OPENCODE_MODEL; test database settings are not used");
         }
-        // Product settings follow the same live-list policy as any other
-        // provider: the explicitly isolated live evaluation source may select
-        // any exact model exposed by the provider. Qualification validates
-        // reachability and schema compliance before a model is used as a
-        // reference; it must not be constrained by product cost policy.
+        // 产品配置与其他提供商一样遵循"实时列表"策略:显式隔离的实测评估来源
+        // 可以选择提供商暴露的任意精确模型。资格验证是在模型作为参照使用之前
+        // 校验其可达性与 schema 合规性,不应受产品成本策略约束。
         return new RuntimeOpenCodeSettings(externalApiKey.trim(), externalSelectedModel.trim(),
                 EXTERNAL_CREDENTIAL_SOURCE);
     }
 
-    /** Full provider catalog plus the free subset, from one live call. */
+    /** 一次实时调用得到完整提供商目录与免费子集。 */
     private OpenCodeCandidateModels currentCandidateModels(String apiKey) {
         List<String> allModels = catalog.listAllModels(apiKey);
         if (allModels.isEmpty()) {
@@ -192,14 +191,12 @@ public class OpenCodeSettingsService implements OpenCodeRuntimeSettingsPort {
         List<String> freeModels = allModels.stream()
                 .filter(OpenCodeModelCatalog::isFreeModel)
                 .toList();
-        // Reachability probe prefers a free model so the credential check
-        // never spends credit; any exposed model is an acceptable fallback.
+        // 可达性探测优先用免费模型,密钥检查绝不消耗额度;任何已暴露模型都可作兜底
         String probeModel = !freeModels.isEmpty() ? freeModels.get(0) : allModels.get(0);
         return new OpenCodeCandidateModels(allModels, freeModels, probeModel);
     }
 
-    /** One probe/list result: everything exposed, the free subset, and the
-     * model a reachability check should run against. */
+    /** 一次探测/列表的结果:全部暴露的模型、免费子集,以及可达性检查应使用的模型。 */
     public record OpenCodeCandidateModels(List<String> allModels, List<String> freeModels,
                                           String recommendedProbeModel) {
     }
@@ -225,8 +222,8 @@ public class OpenCodeSettingsService implements OpenCodeRuntimeSettingsPort {
     }
 
     private static String suffix(String apiKey) {
-        // A very short candidate must never be returned in full as its own
-        // masked suffix. The normal OpenCode key is longer, but fail closed.
+        // 过短的候选密钥绝不能把自己的原文当作脱敏后缀返回。正常 OpenCode
+        // 密钥更长,但这里宁可 fail closed(直接不给后缀)。
         return apiKey.length() <= 4 ? "" : apiKey.substring(apiKey.length() - 4);
     }
 

@@ -9,10 +9,15 @@ import org.springframework.web.bind.annotation.RequestBody;
 import java.util.List;
 import java.util.Map;
 
-/** Payload composition fixtures; none of the child types is referenced by an endpoint directly. */
+/**
+ * 文件名:ComposedPayloadController.java
+ *
+ * 测试夹具:载荷组合控制器,端点返回/接收由多个子类型组合而成的载荷,
+ * 验证架构门禁能递归识别嵌套类型。所有子类型都不会被端点直接引用。
+ */
 public class ComposedPayloadController {
 
-    // Controller implementation dependencies are not HTTP payloads.
+    // 控制器的实现依赖不属于 HTTP 载荷。
     private final InternalRequest internal = new InternalRequest(null);
 
     @GetMapping("/fixture/composed")
@@ -49,7 +54,7 @@ public class ComposedPayloadController {
 
     public record InnerResponse(ModelOutputContract contract) { }
 
-    // No DTO suffix: payload coverage must not depend on the child's name.
+    // 没有 DTO 后缀:载荷覆盖不能依赖子类型的命名。
     public record Details(ModelOutputContract contract) { }
 
     public record GenericDetails(ModelOutputContract contract) { }

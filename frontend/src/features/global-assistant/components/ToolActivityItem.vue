@@ -1,3 +1,9 @@
+<!--
+  文件名:ToolActivityItem.vue
+  用途:全局助手时间线中的单条工具活动:显示工具名与执行状态(执行中/完成/失败),
+       可展开查看 capabilityId、参数摘要与耗时;完成时展示结果条目数或后端摘要,
+       并内嵌相关项目资源列表。
+-->
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { GaToolActivity } from '@/features/global-assistant/state/globalAssistantStore'
@@ -16,9 +22,9 @@ const stateLabel = computed(() => {
 })
 
 /**
- * Completed line from the generic registry and the REAL result count only.
- * Falls back to the backend summary string when no trustworthy count exists.
- * Never parses prompts, prose, or project names.
+ * 完成摘要只来自通用注册表的条目数标签和真实结果数量;
+ * 没有可信数量时回退到后端给的 summary 字符串。
+ * 绝不解析 prompt、正文或项目名来"猜"数量。
  */
 const completedLine = computed(() => {
   if (props.activity.state !== 'success') return null

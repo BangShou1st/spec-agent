@@ -1,12 +1,23 @@
+<!--
+  文件名:NodeInspector.vue
+  用途:节点详情检查器:只读展示节点内容、选项、各路线的回答/等待状态、路线归属
+       与语义关系;提供 fork/重答/换题意图(向上发出)与上下文 AI 查询("问 AI")。
+       回答提交只在 Graph 节点内进行,这里不提供第二套提交界面。
+-->
 <script setup lang="ts">
 import { formatShanghaiDateTime as formatTime } from '@/shared/lib/formatTime'
 import { relationTypeLabel } from '@/features/workspace/presentation/routePresentation'
 import { computed, ref, watch } from 'vue'
 import AgentProposalCard from './AgentProposalCard.vue'
 import GraphRunProcessPanel from '@/features/workspace/graph/components/GraphRunProcessPanel.vue'
+import type { UnresolvedFailure } from '@/features/workspace/api/agentRuns'
 import type { SpecAgentGraphNodeData } from '@/features/workspace/graph/graphProjection'
 import { actionsFor, type NodeAction, type NodeActionId } from '@/features/workspace/graph/nodeActions'
 import { useWorkspaceStore } from '@/features/workspace/state/workspaceStore'
+import { useRunRegistryStore } from '@/features/workspace/state/runRegistryStore'
+import { useGraphUiStore } from '@/features/workspace/state/graphUiStore'
+import NodeRecoveryBar from '@/features/workspace/graph/components/NodeRecoveryBar.vue'
+import { useRouter } from 'vue-router'
 
 /**
  * 节点详情检查器。只读展示节点内容（问题或通用工作区内容）、全部选项、
@@ -25,6 +36,26 @@ const emit = defineEmits<{
 }>()
 
 const workspace = useWorkspaceStore()
+const runRegistry = useRunRegistryStore()
+const graphUi = useGraphUiStore()
+const router = useRouter()
+
+/** 查询失败的任务级恢复身份:来自服务端判定的未解决失败清单。 */
+const queryFailure = computed(() => {
+  const runId = workspace.nodeQuery?.runId
+  return runId ? runRegistry.failures[runId] ?? null : null
+})
+
+/** 配置/凭据类失败的入口:模型设置(与画布/顶部入口同一动作分发)。 */
+function goToModelSettings(): void {
+  void router.push('/settings')
+}
+
+/** 过期目标的定位:画布选中来源节点(与顶部入口同一动作分发)。 */
+function locateFailure(failure: UnresolvedFailure): void {
+  if (failure.sourceNodeId) graphUi.selectNode(failure.sourceNodeId)
+}
+
 
 const nodeQuestion = computed(() => props.data?.node.question || '')
 const contentText = computed(() => {
@@ -94,15 +125,14 @@ function onInspectorAction(action: NodeAction): void {
   }
 }
 
-// ---- Contextual AI query -------------------------------------------------
+// ---- 上下文 AI 查询 -------------------------------------------------------
 
 const askInput = ref('')
 const isVirtualPendingNode = computed(() => props.data?.node.id.startsWith('pending:') ?? false)
 /**
- * The reading context is OPTIONAL for an AI query: a Floating node belongs to
- * no route (routeIds=[]) and still queries with routeId=null — the anchor
- * node itself is the minimum context. A route is a reading-context hint,
- * never an eligibility gate.
+ * 阅读路线对 AI 查询是可选的:浮动节点不属于任何路线(routeIds=[]),
+ * 仍可以以 routeId=null 查询——锚点节点本身就是最小上下文。
+ * 路线只是阅读上下文的提示,绝不是资格门槛。
  */
 const askRouteId = computed(() => {
   if (!props.data) return null
@@ -110,10 +140,9 @@ const askRouteId = computed(() => {
   return props.data.routeIds.length === 1 ? props.data.routeIds[0] : null
 })
 /**
- * A shared route node (more than one route membership) MUST supply an explicit
- * read route as the AI query context: we must not silently fall back to
- * routeId=null. A floating node (routeIds=[]) is allowed to query with
- * routeId=null — the node itself is the only context.
+ * 共享路线节点(归属多于一条路线)必须提供显式的阅读路线作为 AI 查询上下文:
+ * 绝不悄悄回退到 routeId=null。浮动节点(routeIds=[])允许以 routeId=null
+ * 查询——节点本身就是唯一上下文。
  */
 const askNeedsExplicitRoute = computed(() => {
   if (!props.data) return false
@@ -130,13 +159,12 @@ const askBlockedReason = computed(() => {
 const queryResult = computed(() => {
   if (!props.data) return null
   const canonicalNodeId = props.data.canonicalNodeId ?? props.data.node.id
-  // The live in-memory query wins when it targets this node.
+  // 指向本节点的内存中的实时查询优先。
   if (workspace.nodeQuery && workspace.nodeQuery.nodeId === canonicalNodeId) {
     return workspace.nodeQuery
   }
-  // A durable pending proposal is reconnected to its anchor node: even after
-  // a page reload (or after a NEWER query replaced nodeQuery), the proposal
-  // stays visible on the node whose query produced it.
+  // 持久化的待定提案会重新挂回它的锚点节点:即使页面刷新过
+  // (或之后有更新的查询替换了 nodeQuery),提案仍显示在产生它的那个节点上。
   const pending = workspace.nodeQueryProposals.find(
     (proposal) => proposal.inputNodeId === canonicalNodeId,
   )
@@ -204,7 +232,7 @@ async function rejectProposal(): Promise<void> {
   }
 }
 
-// ---- Semantic relations (view-only) ---------------------------------------
+// ---- 语义关系(只读) -------------------------------------------------------
 // 关系创建统一走 Canvas drag → Proposal → Confirm；Inspector 只负责查看
 // canonical semantic relations（方向/类型）。这里不再提供第二套下拉创建器。
 
@@ -339,7 +367,19 @@ function relationDirectionLabel(relation: {
             <span class="badge badge-warn">{{ queryResult.message || 'AI 查询无法生成可确认提案' }}</span>
           </template>
           <template v-else>
-            <span class="badge badge-warn">查询失败，请稍后重试</span>
+            <span class="badge badge-danger" data-test="ask-failed">AI 查询未完成</span>
+            <!-- 查询失败的任务级恢复:身份来自服务端未解决失败清单。
+                 go-settings/locate 与 retry 一样实际接线(6/P2-4):
+                 配置错误跳模型设置,过期目标定位画布节点。 -->
+            <NodeRecoveryBar
+              v-if="queryFailure"
+              :items="[{ failure: queryFailure, routeLabel: undefined }]"
+              :is-retrying="(id: string) => runRegistry.isRetrying(id)"
+              @retry="(failure: UnresolvedFailure) => workspace.retryFailedRun(failure)"
+              @go-settings="goToModelSettings"
+              @locate="(failure: UnresolvedFailure) => locateFailure(failure)"
+            />
+            <span v-else class="badge badge-warn">查询失败，请稍后重试</span>
           </template>
         </div>
       </div>

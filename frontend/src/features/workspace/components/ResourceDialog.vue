@@ -1,3 +1,7 @@
+<!--
+  文件名:ResourceDialog.vue
+  用途:画布工作台的"添加资源"对话框,负责收集文本 / 链接 / 本地文件三类资源并在浏览器内本地解析出正文,以独立资源节点提交到画布。
+-->
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import {

@@ -25,9 +25,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Floating node creation: the response's {@code routeId} must be null because
- * a floating draft is route-less graph content. The creation-context route id
- * still lives in the operation log; only the response shape changes.
+ * 文件名:FloatingNodeResponseRouteIdTest.java
+ *
+ * 测试目标:验证游离节点创建接口的响应形态——游离草稿是不挂在路线上的
+ * 图内容,响应中的 {@code routeId} 必须为空(不出现)。创建上下文中的路线 id
+ * 仍会记录在操作日志里,改变的只是响应结构。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -54,8 +56,8 @@ class FloatingNodeResponseRouteIdTest {
 
     @Test
     void floatingNodeResponseHasNullRouteId() throws Exception {
-        // First, add a root so the route has content; floating drafts are
-        // always route-less regardless of any pre-existing content.
+        // 先添加一个根节点让路线有内容;游离草稿始终不挂路线,
+        // 与是否已有内容无关。
         commandService.createRootDraftNode(
                 project.id(), route.id(), "NOTE", Map.of("text", "root"));
 
@@ -73,8 +75,8 @@ class FloatingNodeResponseRouteIdTest {
 
     @Test
     void floatingNodeCanBeCreatedWithoutAnyActiveRoute() throws Exception {
-        // Archive the project's only route so activeRouteId becomes null:
-        // floating creation must not hard-depend on an Active route.
+        // 归档项目唯一的路线,使 activeRouteId 变为 null:
+        // 游离创建不能硬依赖存在 Active 路线。
         routeService.archiveRoute(project.id(), route.id());
         org.junit.jupiter.api.Assertions.assertNull(
                 projectService.getProject(project.id()).orElseThrow().activeRouteId());
@@ -85,7 +87,7 @@ class FloatingNodeResponseRouteIdTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").exists())
                 .andExpect(jsonPath("$.routeId").doesNotExist());
-        // No route tip / root / active pointer changed.
+        // 路线 tip / 根节点 / 活跃指针均未被改动。
         org.junit.jupiter.api.Assertions.assertNull(
                 projectService.getProject(project.id()).orElseThrow().activeRouteId());
     }

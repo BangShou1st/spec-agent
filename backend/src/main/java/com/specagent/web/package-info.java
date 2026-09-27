@@ -1,10 +1,10 @@
 /**
- * Web/transport boundary bridge.
+ * 文件名:package-info.java
  *
- * <p>Holds the single {@code @RestControllerAdvice} that maps provider/gateway
- * failures into the API error contract. It lives outside {@code com.specagent.api..}
- * because the API boundary must not depend on {@code com.specagent.model..}
- * packages; this bridge is the one place where model-gateway exception types
- * meet API DTOs, and it exposes only static, provider-neutral messages.
+ * 用途:web/传输边界桥接包说明。存放把供应商/网关失败映射进 API
+ * 错误契约的唯一 {@code @RestControllerAdvice}。它位于 {@code com.specagent.api..}
+ * 之外,因为 API 边界不得依赖 {@code com.specagent.model..} 包;这个桥是
+ * 模型网关异常类型与 API DTO 相遇的唯一位置,只暴露静态、供应商中立的
+ * 消息。
  */
 package com.specagent.web;

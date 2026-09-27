@@ -1,9 +1,10 @@
-"""planning-mapping.v2 tests — TDD Unit 4.
+"""文件名:test_r4_mapping.py
 
-Input states are C1/C2-clean by construction (harness enforces).
-Mapping never repairs: illegal combos raise instead of collapsing to
-PLANNING_AMBIGUOUS (removed outcome). Pre-eligibility winner is reported
-for G8 accounting.
+planning-mapping.v2 测试——TDD 单元 4。
+
+输入状态按构造即通过 C1/C2(harness 保证)。映射不做修复:
+非法组合直接抛错,而不是折叠成 PLANNING_AMBIGUOUS(该结果已移除)。
+资格过滤前的原始赢家会上报,供 G8 统计。
 """
 import pytest
 

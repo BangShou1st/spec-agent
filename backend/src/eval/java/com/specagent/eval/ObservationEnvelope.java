@@ -10,15 +10,19 @@ import java.util.Map;
 import java.util.TreeMap;
 
 /**
- * Uniform observation of one scenario attempt.
+ * 文件名:ObservationEnvelope.java
  *
- * <p>Covers pre/post state, the actual primary action, the execution
- * result, the state delta, invariant/property outcomes, violations, the
- * failure class, call accounting (production calls, provider retries,
- * judge calls, capability calls), token/cost/latency accounting, and
- * reproducibility metadata. Fields the runtime cannot provide stay
- * {@code unknown}/null — never guessed. Cost in particular is
- * {@code unknown} unless a real pricing source reports it.
+ * 用途:单个场景尝试的统一观察记录(评测产物的基本单元)。覆盖前后状态、
+ * 实际主动作、执行结果、状态增量、不变量/属性校验结果、违例与失败分类、
+ * 调用记账(生产调用、provider 重试、judge 调用、能力调用)、token / 成本 /
+ * 延迟记账,以及可复现性元数据(git sha、种子、各类摘要指纹、语义追踪)。
+ * 运行时提供不了的字段保持 {@code unknown}/null——绝不臆造;成本尤其如此,
+ * 除非有真实定价来源报告,否则一律为 {@code unknown}。
+ *
+ * 协作:由 {@link ScenarioRunner} 经 Builder 构造,经
+ * {@link EvalArtifactWriter} 序列化为 JSONL;{@link EvalSummary}、
+ * {@link LiveStabilitySummary}、{@link CausalReportGenerator} 与影子回放
+ * 工具都从它聚合分析。
  */
 public final class ObservationEnvelope {
 

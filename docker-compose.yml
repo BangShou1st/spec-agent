@@ -7,7 +7,9 @@ services:
       POSTGRES_USER: spec_agent
       POSTGRES_PASSWORD: spec_agent_dev
     ports:
-      - "5434:5432"
+      # 只绑定回环接口:数据库不对局域网暴露。本机工具 psql 直连
+      # 127.0.0.1:5434;确实需要远程访问时由部署者显式修改并自行评估风险。
+      - "127.0.0.1:5434:5432"
     volumes:
       - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
       - spec-agent-postgres-data:/var/lib/postgresql/data

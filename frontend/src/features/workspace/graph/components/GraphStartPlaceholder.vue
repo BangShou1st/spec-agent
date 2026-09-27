@@ -1,13 +1,16 @@
+<!--
+  文件名:GraphStartPlaceholder.vue
+  用途:空项目的画布起始占位:提供"起草第一个问题"与"先写下想法"两个入口。
+-->
 <script setup lang="ts">
 defineProps<{ drafting: boolean; ideaPending?: boolean }>()
 defineEmits<{ draft: []; 'add-idea': [] }>()
 </script>
 
 <template>
-  <!-- The outer element is a stretched flex container: its box tracks the
-       canvas, not the interactive region. Floating-layout obstacles measure
-       the content wrapper (data-layout-role), so keep that role on the column
-       the user actually reads and clicks. -->
+  <!-- 外层元素是一个拉伸的 flex 容器:它的盒子跟随画布,而不是交互区域。
+       浮动布局的障碍物测量的是内容包装层(data-layout-role),所以这个
+       role 要放在用户真正阅读与点击的那一列上。 -->
   <div class="graph-start-placeholder" data-test="graph-start-placeholder">
     <div class="graph-start-placeholder__content" data-layout-role="start-placeholder">
       <h2 class="graph-start-placeholder__title">开始需求澄清</h2>

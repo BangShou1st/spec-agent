@@ -3,8 +3,10 @@ package com.specagent.skill.discovery;
 import java.util.List;
 
 /**
- * Candidate metadata for a semantic retrieval search ({@code skill.search}).
- * Metadata only — never full SKILL.md content.
+ * 文件名:SkillSearchCandidate.java
+ *
+ * 用途:语义检索搜索({@code skill.search})返回的单个候选元数据。只含
+ * 元数据 —— 绝不携带完整 SKILL.md 内容。
  */
 public record SkillSearchCandidate(
         String skillId,

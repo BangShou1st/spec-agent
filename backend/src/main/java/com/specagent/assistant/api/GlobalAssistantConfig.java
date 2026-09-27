@@ -7,13 +7,15 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 /**
- * Bounded async executor for Global Assistant runs. Transport disconnect
- * never cancels the run: execution outlives any single SSE subscription.
+ * 文件名:GlobalAssistantConfig.java
  *
- * <p>Conservative bounds for the current single-instance scale: at most 4
- * concurrent runs with a queue of 50. Saturation rejects with a typed run
- * failure instead of growing OS threads without bound. Graceful shutdown
- * waits up to 30 seconds for in-flight runs.
+ * 用途:为全局助手 Run 的执行提供有界异步线程池(gaExecutor)。
+ * 传输层断连不会取消 Run:执行生命周期独立于任何单个 SSE 订阅而存在。
+ *
+ * 角色:api 层的基础设施配置,run 创建入口把执行任务提交到这里排队执行。
+ * 按当前单实例规模做了保守限额:最多 4 个并发 Run,队列容量 50;队列打满时
+ * 以类型化的 Run 失败(Reject)收场,而不是无限扩张 OS 线程。优雅停机时
+ * 最多等待 30 秒让在途 Run 跑完。
  */
 @Configuration
 public class GlobalAssistantConfig {

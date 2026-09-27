@@ -1,10 +1,11 @@
 package com.specagent.common;
 
 /**
- * Field-level validation detail inside an {@link ApiErrorResponse}.
+ * 文件名:ApiFieldError.java
  *
- * <p>Only the field name and a static validation reason are exposed; the
- * rejected value itself is never echoed back.
+ * 用途:{@link ApiErrorResponse} 中的字段级校验明细。
+ *
+ * 只暴露字段名和静态的校验原因,被拒绝的原始值绝不回显给调用方。
  */
 public record ApiFieldError(String field, String message) {
 }

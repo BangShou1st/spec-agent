@@ -28,11 +28,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Spec generation cutover integration tests: {@code POST /agent-runs} with
- * {@code operation=GENERATE_ARTIFACT} returns 202 + runId, the worker executes
- * ONE ARTIFACT_GENERATION call, and the derived snapshot is persisted with its
- * run provenance behind the Phase 6.1 spec read API. Grounding stays
- * fail-closed (every section must cite allowed source refs).
+ * 文件名:SpecGenerateApiIntegrationTest.java
+ *
+ * 测试目标:规格生成切换的集成测试——{@code POST /agent-runs} 且
+ * {@code operation=GENERATE_ARTIFACT} 时返回 202 + runId,worker 执行一次
+ * ARTIFACT_GENERATION 调用,派生快照连同其 run 溯源一起持久化,并通过
+ * Phase 6.1 的 spec 读取 API 暴露。真实性保证(fails-closed grounding)
+ * 仍然有效(每个 section 必须引用允许的来源引用)。
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -59,7 +61,7 @@ class SpecGenerateApiIntegrationTest {
     @Autowired
     private com.specagent.agent.runtime.AgentRunService agentRunService;
 
-    /** Drafts a root question and answers it through the production paths. */
+    /** 通过生产路径起草一个根问题并回答它。 */
     private Project projectWithAnsweredLineage() {
         Project project = projectService.createProject("Spec generation project");
         draftDriver.draftQuestion(project.id());
@@ -95,15 +97,15 @@ class SpecGenerateApiIntegrationTest {
 
         String runId = enqueueArtifact(project);
 
-        // The command returned 202 before any model work happened.
+        // 命令在任何模型工作发生之前就已返回 202。
         assertThat(agentRunStatus(runId)).isEqualTo("created");
 
         executeQueued(runId);
 
         assertThat(agentRunStatus(runId)).isEqualTo("completed");
 
-        // The produced snapshot is readable through the spec read API with
-        // its provenance, grounded sections and unresolved items.
+        // 生成的快照可连同其溯源、有真实依据的 section 与未决事项,
+        // 一起通过 spec 读取 API 读取。
         UUID snapshotId = producedSnapshotId(runId);
         mockMvc.perform(get("/api/v1/specs/{snapshotId}", snapshotId))
                 .andExpect(status().isOk())
@@ -129,8 +131,7 @@ class SpecGenerateApiIntegrationTest {
         executeQueued(secondRun);
         UUID second = producedSnapshotId(secondRun);
 
-        // Each generation produces an independent snapshot; neither is treated
-        // as source truth for the other.
+        // 每次生成产出独立的快照;任何一个都不会被当作另一个的事实来源。
         assertThat(second).isNotEqualTo(first);
         for (UUID id : java.util.List.of(first, second)) {
             mockMvc.perform(get("/api/v1/specs/{snapshotId}", id))

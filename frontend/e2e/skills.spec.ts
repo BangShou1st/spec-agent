@@ -1,5 +1,5 @@
-import { test, expect } from '@playwright/test'
 
+import { test, expect } from './helpers'
 const skills = [
   { skillId: 's1', name: 'Research', description: 'Research helper', sourceKind: 'BUILTIN', versionId: 'v1', enabled: true, createdAt: '2026-01-01T00:00:00Z' },
   { skillId: 's2', name: 'Mine', description: 'Personal notes', sourceKind: 'UPLOAD_ZIP', versionId: null, enabled: false, createdAt: '2026-01-02T00:00:00Z' },

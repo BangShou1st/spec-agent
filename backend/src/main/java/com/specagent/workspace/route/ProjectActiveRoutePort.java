@@ -5,27 +5,25 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Write-side port for the project row lock and the active-route pointer.
+ * 文件名:ProjectActiveRoutePort.java
  *
- * <p>Route lifecycle commands must serialize on the project row and maintain
- * {@code Project.activeRouteId}, but the route domain depending on the project
- * repository (while project creation depends on route creation) closes the
- * project &lt;-&gt; route package cycle. This port inverts the route -&gt;
- * project edge: the route domain speaks only in terms of locks, pointer
- * updates, and active-route reads. Implemented by the project-side
- * {@code ProjectRepository}.
+ * 用途:项目行锁与活跃路线指针的写侧端口。路线生命周期命令必须按
+ * 项目行串行化,并维护 {@code Project.activeRouteId};但路线域若直接依赖
+ * 项目 repository(而项目创建又依赖路线创建),会闭合 project &lt;-&gt; route
+ * 的包循环。此端口把 route -&gt; project 这条边反转:路线域只面向"锁、
+ * 指针更新、活跃路线读取"编程。由项目侧的 {@code ProjectRepository} 实现。
  */
 public interface ProjectActiveRoutePort {
 
-    /** Blocks until this project's row lock is held (FOR UPDATE). */
+    /** 阻塞直到持有该项目的行锁(FOR UPDATE)。 */
     void lockProject(UUID projectId);
 
-    /** Updates the active-route pointer and bumps the project's updated_at. */
+    /** 更新活跃路线指针,并顺带刷新项目的 updated_at。 */
     void updateActiveRoute(UUID projectId, UUID routeId, Instant updatedAt);
 
     /**
-     * Current active-route pointer; empty when no route is active.
-     * A missing project is a hard error and throws {@code IllegalArgumentException}.
+     * 当前活跃路线指针;没有活跃路线时返回 empty。
+     * 项目不存在属于硬错误,抛出 {@code IllegalArgumentException}。
      */
     Optional<UUID> findActiveRouteId(UUID projectId);
 }

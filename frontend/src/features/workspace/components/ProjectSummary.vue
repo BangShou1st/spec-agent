@@ -1,3 +1,8 @@
+<!--
+  文件名:ProjectSummary.vue
+  用途:工作台的无选择轻量项目摘要:只读的需求计数 + 当前查看路线;
+       不拉数据、不展示原始 id,完整需求通过 open-requirements 事件进入二级视图。
+-->
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { RequirementStateView } from '@/shared/contracts/types'

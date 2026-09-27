@@ -11,7 +11,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-/** Read-only explicit retrieval capability; all visibility stays Runtime-owned. */
+/**
+ * 文件名:MemorySearchCapability.java
+ *
+ * 用途:只读的显式检索能力(memory.search),供 Agent 在决策过程中主动调用,
+ * 在当前 Workspace 的受控 Memory / Resource 范围内检索证据。
+ * 可见性始终由运行时掌控。
+ */
 @Component
 public class MemorySearchCapability implements InternalCapabilityAdapter {
 
@@ -32,10 +38,8 @@ public class MemorySearchCapability implements InternalCapabilityAdapter {
                        "routeRef", Map.of("type", "string"),
                        "maxResults", Map.of("type", "integer", "maximum", 8)),
                 Map.of("items", Map.of("type", "array")), true,
-                // Workspace-level read-only capability: it is not tied to a
-                // particular Node kind, so an ordinary Decision snapshot can
-                // see it even when its contextKinds list contains no MEMORY
-                // marker.
+                // Workspace 级只读能力:不绑定特定 Node kind,因此即使决策快照
+                // 的 contextKinds 列表中没有 MEMORY 标记,普通决策快照也能看到它。
                 SideEffectClass.NONE, List.of(), List.of());
     }
 

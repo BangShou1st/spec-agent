@@ -19,14 +19,17 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Local AES-GCM secret storage keyed by an environment-provided master key.
- * Personal-use minimum-security posture: no KMS platform, but secrets are
- * never stored or logged in plaintext, and the plaintext never crosses model-
- * visible boundaries.
+ * 文件名:LocalAesSecretStore.java
  *
- * <p>The master key must be provided via {@code SPEC_AGENT_SECRET_MASTER_KEY}
- * (32 bytes, base64). When absent, the store is disabled and connection
- * operations requiring a secret fail closed with a typed error.
+ * 用途:基于环境变量提供的主密钥的本地 AES-GCM 密钥存储,
+ * 负责连接凭据的加密落库、解密读取、掩码后缀查询与删除。
+ *
+ * 定位是个人使用场景的最低安全形态:不接入 KMS 平台,但密钥绝不以
+ * 明文落库或写日志,明文也绝不跨越模型可见的边界。
+ *
+ * 主密钥必须通过 {@code SPEC_AGENT_SECRET_MASTER_KEY} 提供
+ * (32 字节,base64 编码)。未配置时存储整体禁用,需要密钥的连接操作
+ * 以类型化错误收敛失败(fail closed)。
  */
 @Repository
 public class LocalAesSecretStore implements SecretStore {
@@ -65,7 +68,7 @@ public class LocalAesSecretStore implements SecretStore {
         }
     }
 
-    /** True when encryption is available (master key configured). */
+    /** 加密能力是否可用(即主密钥已配置)。 */
     public boolean available() {
         return masterKey != null;
     }

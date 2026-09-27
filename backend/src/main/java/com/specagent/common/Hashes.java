@@ -5,9 +5,12 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
 /**
- * Deterministic, non-security hashing helpers.
+ * 文件名:Hashes.java
  *
- * <p>Context hashes are a debug/verification aid, not a security boundary.
+ * 用途:确定性的、非安全用途的哈希工具,主要用于生成内容指纹
+ * (例如不可变包内容的身份标识)。
+ *
+ * Context 哈希只作为调试/验证辅助,不构成安全边界。
  */
 public final class Hashes {
 
@@ -19,7 +22,7 @@ public final class Hashes {
                 ? new byte[0] : input.getBytes(StandardCharsets.UTF_8));
     }
 
-    /** SHA-256 of raw bytes (used for immutable package content identity). */
+    /** 对原始字节做 SHA-256(用于不可变包内容的身份标识)。 */
     public static String sha256Hex(byte[] input) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");

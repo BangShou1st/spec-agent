@@ -1,11 +1,11 @@
 package com.specagent.workspace.node;
 
 /**
- * Stable outer classification of a workspace-unit node.
+ * 文件名:NodeKind.java
  *
- * <p>The kind set is intentionally small and stable; product variation goes
- * into {@code subtype} and {@code content}, not into new kinds. Legacy rows
- * predating the generic workspace model are interpreted as {@code INTERACTION}.
+ * 用途:工作区节点的外层稳定分类。kind 集合刻意保持小而稳定;
+ * 产品层面的差异放进 {@code subtype} 和 {@code content},而不是新增
+ * kind。早于通用工作区模型的遗留行按 {@code INTERACTION} 解释。
  */
 public enum NodeKind {
 

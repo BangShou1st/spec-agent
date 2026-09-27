@@ -1,10 +1,11 @@
-"""ARTIFACT_GENERATION engine: one grounded model call producing a derived
-artifact envelope.
+"""文件名:engine.py
 
-The brain stamps the protocol version and run identity from its own trusted
-request (never from model output) and pre-checks every section's source refs
-against the snapshot's allowed refs; Java re-validates everything fail-closed
-anyway.
+用途:ARTIFACT_GENERATION 引擎——用一次 grounded 模型调用生成派生工件的
+响应信封。
+
+Brain 使用自己收到的可信请求来填写协议版本与 run 标识(绝不采信模型输出),
+并在本地预先校验每个 section 的 source refs 是否都在快照允许范围内;
+Java 侧随后仍会对全部内容做 fail-closed 复核。
 """
 
 import json
@@ -21,15 +22,14 @@ from ..prompts import artifact as artifact_prompt
 
 
 class ArtifactBrainContractError(RuntimeError):
-    """Raised when a model output violates the brain's own output contract."""
+    """模型输出违反 brain 自身输出契约时抛出。"""
 
 
 class UngroundedReferenceError(ArtifactBrainContractError):
-    """A section cited a ref outside the frozen snapshot's allowed refs.
+    """某个 section 引用了冻结快照允许范围之外的 source ref。
 
-    Reported separately from a malformed response: this is the route
-    isolation/grounding gate rejecting a cross-route citation, which the
-    Runtime must be able to tell apart from a broken model output.
+    单独从"响应格式错误"中拆出来报告:这是路由隔离/grounding 门禁拒绝了
+    跨路由引用,Runtime 必须能把它和模型输出损坏区分开。
     """
 
 
@@ -64,7 +64,7 @@ def _parse_model_output(content: str) -> ModelArtifactOutput:
         raise ArtifactBrainContractError("model output is not valid JSON") from exc
     try:
         return ModelArtifactOutput.model_validate(raw)
-    except Exception as exc:  # pydantic ValidationError -> typed brain failure
+    except Exception as exc:  # pydantic ValidationError -> 转成有类型的 brain 失败
         raise ArtifactBrainContractError(
             f"model output violates the ARTIFACT_GENERATION contract: {exc}") from exc
 

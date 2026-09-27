@@ -6,7 +6,12 @@ import org.springframework.stereotype.Service;
 
 import java.util.UUID;
 
-/** Operational entry point for rebuilding the derived retrieval projection. */
+/**
+ * 文件名:RetrievalIndexRebuilder.java
+ *
+ * 用途:重建派生检索投影的运维入口,支持按项目、按来源、或全量
+ * 重建检索索引(当索引逻辑变更或数据不一致时使用)。
+ */
 @Service
 public class RetrievalIndexRebuilder {
 

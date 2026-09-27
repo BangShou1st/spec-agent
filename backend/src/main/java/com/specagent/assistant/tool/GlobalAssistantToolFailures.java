@@ -4,6 +4,12 @@ import com.specagent.capability.CapabilityResult;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+/**
+ * 文件名:GlobalAssistantToolFailures.java
+ *
+ * 用途:工具能力失败结果的统一构造器——把错误码与有界的原因文本
+ * 组装成标准形状的 FAILED CapabilityResult,保证失败载荷可控、可预期。
+ */
 public final class GlobalAssistantToolFailures {
     private GlobalAssistantToolFailures() {
     }

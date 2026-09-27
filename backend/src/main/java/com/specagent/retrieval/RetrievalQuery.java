@@ -4,7 +4,14 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
-/** Runtime-built query; the Brain never constructs database/vector queries. */
+/**
+ * 文件名:RetrievalQuery.java
+ *
+ * 用途:运行时构建的检索查询请求,描述 Brain 想要什么上下文
+ * (范围、查询文本、条数与字符上限、来源过滤等)。
+ *
+ * Brain 永远不直接构造数据库/向量查询,只提交这份领域内的查询对象。
+ */
 public record RetrievalQuery(UUID projectId,
                              UUID routeId,
                              UUID anchorNodeId,

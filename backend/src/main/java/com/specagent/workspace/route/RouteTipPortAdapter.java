@@ -7,13 +7,13 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * Thin implementation of the node-owned {@link RouteTipPort} on top of
- * {@link RouteRepository}.
+ * 文件名:RouteTipPortAdapter.java
  *
- * <p>It adds no logic of its own: the tip/root mutation is the existing
- * {@code updateTipAndRoot} statement and the read is the existing
- * {@code findById}. Its only job is to keep the port's dependency direction
- * intact, so {@code NodeService} never imports the route package.
+ * 用途:节点侧 {@link RouteTipPort} 在 {@link RouteRepository} 之上的
+ * 薄实现。自身不添加任何逻辑:tip/root 变更就是既有的
+ * {@code updateTipAndRoot} 语句,读取就是既有的 {@code findById}。
+ * 它唯一的职责是保持端口的依赖方向,使 {@code NodeService} 永远不
+ * import route 包。
  */
 @Component
 public class RouteTipPortAdapter implements RouteTipPort {

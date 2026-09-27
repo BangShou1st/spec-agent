@@ -32,22 +32,19 @@ import java.util.Objects;
 import java.util.UUID;
 
 /**
- * Autonomous continuation execution: exactly 1 fresh DECISION, no
- * STATE_UPDATE.
+ * 文件名:ContinuationCycleService.java
  *
- * <p>A continuation child records its causal anchor as {@code inputNodeId}
- * (the parent's resulting tip at creation time). Execution re-anchors here:
- * the live route tip must still equal it, otherwise the child goes stale
- * before any model call — newer external causality is never followed.
+ * 用途:自治续跑 run 的执行器——恰好 1 次全新 DECISION,没有 STATE_UPDATE。
  *
- * <p>Observation is always a fresh snapshot built from current Runtime
- * truth (graph, claims, answers/patches, capability results). The parent
- * snapshot is never replayed. The DECISION tail (validate → eligibility →
- * policy → execute → terminalize) is entirely
- * {@link DecisionExecutionService}; this service only prepares the
- * continuation input. It never reads semantic planner fields, branches on
- * action families, or decides continuation — the next boundary belongs to
- * the coordinator's post-commit hook, never to this run.
+ * 续跑子 run 把因果锚点记录在 {@code inputNodeId}(创建时父 run 的结果
+ * tip)。执行在这里重新锚定:实际路线 tip 必须仍与之相等,否则子 run 在任何
+ * 模型调用之前就已过期——绝不追随更新的外部因果。
+ *
+ * 观察始终是基于当前 runtime 事实(图、claims、回答/补丁、capability 结果)
+ * 构建的全新快照,绝不重放父 run 的快照。DECISION 尾段(校验 → 资格 → 策略
+ * → 执行 → 终态化)完全交给 {@link DecisionExecutionService};本服务只负责
+ * 准备续跑输入。它绝不读取语义规划字段、绝不按动作族分支、也绝不决定是否
+ * 继续续跑——下一个边界属于协调器的 post-commit 钩子,绝不在本 run 内。
  */
 @Service
 public class ContinuationCycleService {
@@ -87,13 +84,13 @@ public class ContinuationCycleService {
         this.actionEligibilityGate = actionEligibilityGate;
     }
 
-    /** Post-run view over one continuation cycle. */
+    /** 一次续跑循环结束后的事后视图。 */
     public record ContinuationCycleResult(UUID runId, UUID producedNodeId,
                                           UUID proposalId, String outcome) {
     }
 
     /**
-     * Executes one continuation run: re-anchor, fresh observe, one DECISION.
+     * 执行一次续跑 run:重新锚定 → 全新观察 → 一次 DECISION。
      */
     public ContinuationCycleResult executeContinuation(AgentRun run) {
         Route route = loadContinuationTargetRoute(run);
@@ -108,18 +105,16 @@ public class ContinuationCycleService {
                     "snapshotId", snapshot.id().toString(),
                     "contextHash", snapshot.contextHash()));
 
-            // Route/tip re-anchor above pins the execution target; the shared
-            // guard re-validates the fresh snapshot (route exists, OPEN,
-            // still the active route, hash present). An Active-mode child
-            // rejects here on an active-route switch with zero model calls,
-            // zero actions, zero children; a child that was created against an
-            // EXPLICIT route (its chain runs independently of the Active
-            // pointer) keeps its own route instead.
+            // 上面的路线/tip 重新锚定锁定了执行目标;共享守卫对全新快照做
+            // 再校验(路线存在、OPEN、仍是活跃路线、hash 存在)。Active 模式
+            // 的子 run 在这里拒绝活跃路线切换:零模型调用、零动作、零子 run;
+            // 针对 EXPLICIT 路线创建的子 run(其链路独立于 Active 指针运行)
+            // 则保留自己的路线。
             if (!contextGuard.validate(snapshot, isExplicitRouteRun(run)).accepted()) {
                 throw new ModelContractException("Context guard rejected continuation run");
             }
 
-            // Fresh continuation: one DECISION call, never a STATE_UPDATE.
+            // 全新续跑:一次 DECISION 调用,绝不是 STATE_UPDATE。
             AgentRequestEnvelope envelope = actionEligibilityGate.prepareDecisionRequest(
                     snapshotBuilder.buildEnvelope(
                             run.id(), snapshot,
@@ -146,11 +141,10 @@ public class ContinuationCycleService {
     }
 
     /**
-     * Loads and re-anchors the continuation target: the run's route must
-     * still belong to the project, and the live tip must still equal the
-     * {@code inputNodeId} anchor recorded at child creation. A moved tip
-     * fails closed here — before any snapshot, model call, or mutation —
-     * and the failure terminalizes the run, so no further child follows.
+     * 加载并重新锚定续跑目标:run 的路线必须仍属于该项目,且实际 tip 必须仍
+     * 等于子 run 创建时记录的 {@code inputNodeId} 锚点。tip 已移动会在这里
+     * fail-closed——早于任何快照、模型调用或变更——且失败会终态化该 run,
+     * 不再派生后续子 run。
      */
     private Route loadContinuationTargetRoute(AgentRun run) {
         Project project = projectRepository.findById(run.projectId())
@@ -173,13 +167,12 @@ public class ContinuationCycleService {
     }
 
     /**
-     * Whether this run's own payload marked it as an EXPLICIT-route run.
+     * 本 run 自身的事件载荷是否把它标记为 EXPLICIT 路线 run。
      *
-     * <p>Recorded at creation ({@code RunService.createContinueRun}) for
-     * children whose parent chain runs on a route that is not the project
-     * Active route. Only such a child may skip the guard's Active-equality
-     * rule — an Active-mode child keeps failing closed when the Active pointer
-     * moves, exactly as before.
+     * 在创建时记录({@code RunService.createContinueRun}),适用于父链路
+     * 运行在"非项目 Active 路线"上的子 run。只有这样的子 run 才允许跳过守卫
+     * 的 Active 相等规则——Active 模式子 run 在 Active 指针移动时保持
+     * fail-closed,与从前完全一致。
      */
     private boolean isExplicitRouteRun(AgentRun run) {
         return eventService.findByRunId(run.id()).stream()
@@ -196,9 +189,7 @@ public class ContinuationCycleService {
         if (latest != null && latest.status() != AgentRunStatus.FAILED
                 && latest.status() != AgentRunStatus.COMPLETED) {
             String reason = RunFailureReasons.reasonCode(ex);
-            agentRunFailureService.fail(runId, appendTrace(trace, "failed:" + reason));
-            eventService.append(runId, AgentRunPhase.FAILED, "RUN_FAILED",
-                    RunFailureReasons.payload(reason));
+            agentRunFailureService.fail(runId, appendTrace(trace, "failed:" + reason), ex);
         }
     }
 

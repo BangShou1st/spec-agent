@@ -1,3 +1,6 @@
+// 文件名:globalAssistantHistory.spec.ts
+// 用途:全局助手会话库 store 单测:加载历史并高亮当前线程、后端重复线程去重、
+//       切换到旧会话时加载规范化消息等行为。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useGlobalAssistantStore } from '@/features/global-assistant/state/globalAssistantStore'

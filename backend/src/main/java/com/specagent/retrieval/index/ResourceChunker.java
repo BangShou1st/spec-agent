@@ -3,7 +3,15 @@ package com.specagent.retrieval.index;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Deterministic, source-preserving chunker for text resources. */
+/**
+ * 文件名:ResourceChunker.java
+ *
+ * 用途:文本资源的确定性分块器。把长文本切成带位置信息的 Chunk
+ * (索引、内容、起止字符),供检索索引按块建条目。
+ *
+ * 切分结果是确定且保源的:同一输入永远得到同样的分块,并且每块都能
+ * 映射回原文位置。优先按段落/标题/句子边界切,避免语义被硬截断。
+ */
 public class ResourceChunker {
 
     private static final int TARGET_CHARS = 1200;

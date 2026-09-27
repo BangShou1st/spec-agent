@@ -1,11 +1,5 @@
-import { test, expect } from '@playwright/test'
-import {
-  FAKE_ROOT_QUESTION,
-  answerActiveNode,
-  createProject,
-  draftFirstQuestion,
-} from './helpers'
 
+import { test, expect, FAKE_ROOT_QUESTION, createProject, draftFirstQuestion, answerActiveNode } from './helpers'
 /**
  * Core graph clarification flow: empty project placeholder → explicit draft
  * → first real root node → answer directly inside the node → node becomes

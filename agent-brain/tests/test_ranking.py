@@ -1,3 +1,9 @@
+"""文件名:test_ranking.py
+
+用途:语义 ranking 契约与胜者选择算法的测试:分数上界、严格校验、
+排序不变性,以及与 Java 侧共享的跨语言 ranking fixture。
+"""
+
 import json
 from pathlib import Path
 

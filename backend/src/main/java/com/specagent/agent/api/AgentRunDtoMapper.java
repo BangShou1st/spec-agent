@@ -10,14 +10,17 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * Maps {@link AgentRun} to its safe API representation, including the
- * sanitized trace-step list and the whitelisted run progress view.
+ * 文件名:AgentRunDtoMapper.java
  *
- * <p>The trace is stored as a JSON string through a JSONB column, so the
- * read-back value is a JSON string literal (outer quotes, escaped newlines).
- * It is decoded back to plain newline-joined lifecycle steps. The trace
- * intentionally contains diagnostic lifecycle steps only, never raw provider
- * payloads or secrets.
+ * 用途:把 {@link AgentRun} 映射为安全的 API 表示,包括脱敏后的
+ * trace 步骤列表和经白名单过滤的 run 进度视图。
+ *
+ * trace 以 JSON 字符串形式存于 JSONB 列,读回来的值是一个 JSON 字符串
+ * 字面量(带外层引号、换行被转义),这里会解码回普通换行拼接的生命周期
+ * 步骤。trace 刻意只包含诊断性的生命周期步骤,绝不包含原始 provider
+ * 载荷或机密信息。
+ *
+ * 协作:被 AgentRunController 用于构造响应 DTO。
  */
 @Component
 public class AgentRunDtoMapper {

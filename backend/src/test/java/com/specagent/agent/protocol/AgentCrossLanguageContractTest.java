@@ -20,9 +20,12 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Golden-fixture contract tests shared with the Python brain. The fixtures
- * under {@code contracts/fixtures} are the single cross-language authority:
- * valid ones must parse, invalid ones must be rejected fail-closed.
+ * 文件名:AgentCrossLanguageContractTest.java
+ *
+ * 测试目标:验证与 Python 大脑共享的黄金 fixture 契约——{@code contracts/fixtures}
+ * 下的 fixture 是跨语言的唯一权威:合法的必须能解析,非法的必须 fail-closed 拒绝。
+ * 覆盖请求/响应信封的严格解析、未知字段与未知协议版本拒绝、V2/V3 字段隔离、
+ * 能力描述符与技能目录的往返序列化、路由无关 NODE_QUERY 的可空性等场景。
  */
 class AgentV2ContractTest {
 
@@ -41,7 +44,7 @@ class AgentV2ContractTest {
         assertThat(envelope.snapshot().metadata().projectTitle())
                 .isEqualTo("内部工单系统探索");
         assertThat(envelope.snapshot().lineage()).hasSize(2);
-        // Generic Graph language only: no question-workflow names on the wire.
+        // 线路上的语言只允许通用 Graph 词汇,不允许 question-workflow 命名。
         String wire = fixture("agent-input-valid.json");
         assertThat(wire).doesNotContain("\"question\"");
         assertThat(wire).doesNotContain("DRAFT_NODE");
@@ -105,11 +108,9 @@ class AgentV2ContractTest {
                 fixture("decision-response-v3-valid.json"), AgentResponseEnvelope.class);
 
         assertThat(request.actionEligibility().version()).isEqualTo("action-eligibility.v1");
-        // Frozen principle: unresolved conflict/open_question never denies
-        // CREATE_NODE at the eligibility boundary. The V3 fixture keeps an
-        // unresolved open_question to prove it: CREATE_NODE stays eligible
-        // while objective preconditions (WAIT dependency, capability
-        // visibility) still apply.
+        // 冻结原则:在 eligibility 边界上,未解决的冲突/开放问题绝不否决 CREATE_NODE。
+        // V3 fixture 特意保留一个未解决的 open_question 来证明这一点:CREATE_NODE
+        // 保持 eligible,而客观前置条件(WAIT 依赖、能力可见性)仍然生效。
         assertThat(request.actionEligibility().eligibleFamilies())
                 .contains("CREATE_NODE", "REQUEST_USER_INPUT")
                 .doesNotContain("WAIT", "INVOKE_CAPABILITY");
@@ -153,7 +154,7 @@ class AgentV2ContractTest {
                 .containsEntry("type", "object");
         assertThat(descriptor.supports())
                 .containsExactly("DOCUMENT", "RESOURCE:FILE");
-        // Legacy 5-arg constructor stays wire-equivalent (empty schema/supports).
+        // 旧版 5 参构造器保持与线路上等价(schema/supports 为空)。
         assertThat(AgentContracts.write(new CapabilityDescriptor(
                 "legacy.tool", "1", "legacy", true, "NONE")))
                 .contains("\"inputSchema\":{}")
@@ -162,8 +163,8 @@ class AgentV2ContractTest {
 
     @Test
     void legacyFixturesWithoutSchemaFieldsStillParse() throws Exception {
-        // Every existing golden fixture predates inputSchema/supports; they
-        // must keep parsing with empty defaults (replay compatibility).
+        // 现有的黄金 fixture 都早于 inputSchema/supports 字段;它们必须以空默认值
+        // 继续解析(重放兼容)。
         AgentRequestEnvelope envelope = AgentContracts.read(
                 fixture("agent-input-valid.json"), AgentRequestEnvelope.class);
         assertThat(envelope.snapshot().availableCapabilities()).isEmpty();
@@ -171,8 +172,8 @@ class AgentV2ContractTest {
 
     @Test
     void skillCatalogRoundTripsStrictlyWithLegacyDefault() throws Exception {
-        // Phase 4: availableSkills is a bounded catalog with fingerprint +
-        // truncation evidence; legacy fixtures without it parse to empty.
+        // Phase 4:availableSkills 是带指纹与截断证据的有界目录;
+        // 没有该字段的旧 fixture 解析为空。
         AgentRequestEnvelope legacy = AgentContracts.read(
                 fixture("agent-input-valid.json"), AgentRequestEnvelope.class);
         assertThat(legacy.snapshot().availableSkills().skills()).isEmpty();
@@ -200,7 +201,7 @@ class AgentV2ContractTest {
                 .extracting(AvailableSkillView::skillId).containsExactly("sk-1");
         assertThat(reparsed.snapshot().availableSkills().fingerprint())
                 .isEqualTo("fp-1");
-        // No full SKILL.md, paths, scores, or DB internals on the wire.
+        // 线路上不出现完整 SKILL.md、路径、分数或数据库内部结构。
         assertThat(AgentContracts.write(enriched))
                 .doesNotContain("SKILL.md")
                 .doesNotContain("embedding")
@@ -257,7 +258,7 @@ class AgentV2ContractTest {
             "decision-response-invalid-stale-base-context.json"
     })
     void decisionResponseFixturesRoundTripThroughStrictMapper(String name) throws Exception {
-        // Schema-level: these parse (semantic rejection is the validator's job).
+        // Schema 层面:这些 fixture 能解析(语义层面的拒绝由校验器负责)。
         AgentResponseEnvelope response =
                 AgentContracts.read(fixture(name), AgentResponseEnvelope.class);
         assertThat(response.actionProposal()).isNotNull();
@@ -282,11 +283,9 @@ class AgentV2ContractTest {
 
     @Test
     void routelessNodeQueryFixtureParsesWithNullRouteIds() throws Exception {
-        // Stage C NODE_QUERY routeless nullability: a Floating-node NODE_QUERY
-        // is the only semantic flow that may carry null route ids. The
-        // contract is the single cross-language authority: the same fixture
-        // is parsed by both the Java strict mapper and the Python Pydantic
-        // envelope.
+        // Stage C:NODE_QUERY 无路由时可空——浮动节点上的 NODE_QUERY 是唯一允许
+        // 携带 null 路由 id 的语义流。契约是跨语言的唯一权威:同一 fixture 同时被
+        // Java 严格 mapper 和 Python Pydantic envelope 解析。
         AgentRequestEnvelope envelope = AgentContracts.read(
                 fixture("agent-input-routeless-node-query-valid.json"),
                 AgentRequestEnvelope.class);
@@ -295,7 +294,7 @@ class AgentV2ContractTest {
         assertThat(envelope.event().kind()).isEqualTo("NODE_QUERY");
         assertThat(envelope.snapshot().anchorNodeId())
                 .isEqualTo(UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"));
-        // The route-bound baseline must keep its route ids.
+        // 绑定路由的基线 fixture 必须保留路由 id。
         AgentRequestEnvelope baseline = AgentContracts.read(
                 fixture("agent-input-valid.json"), AgentRequestEnvelope.class);
         assertThat(baseline.snapshot().routeId()).isNotNull();
@@ -305,10 +304,9 @@ class AgentV2ContractTest {
     @Test
     void nodeQuerySemanticContextFixtureCarriesBoundedOneHopBodyAndDirection()
             throws Exception {
-        // Stage C bounded 1-hop semantic context: relations preserve direction
-        // and relatedNodes carry the actual projected node body (not only
-        // opaque ids), with node:<relatedId> present in allowedSourceRefs and
-        // no second-hop node anywhere on the wire.
+        // Stage C:有界的 1 跳语义上下文——relations 保留方向,relatedNodes 携带
+        // 真实的投影节点正文(而不只是不透明的 id),node:<relatedId> 出现在
+        // allowedSourceRefs 中,且线路上不出现任何第二跳节点。
         AgentRequestEnvelope envelope = AgentContracts.read(
                 fixture("agent-input-node-query-semantic-context-valid.json"),
                 AgentRequestEnvelope.class);
@@ -330,12 +328,12 @@ class AgentV2ContractTest {
                 .isEqualTo(UUID.fromString("06000000-0000-0000-0000-000000000006"));
         assertThat(ref.relationType()).isEqualTo("SUPPORTS");
         assertThat(ref.direction()).isEqualTo("OUTGOING");
-        // The related node body content really travels on the wire.
+        // 相关节点的正文内容确实在线路上传输。
         assertThat(ref.node().body().text())
                 .contains("离线队列容量上限 2048 条");
         assertThat(ref.node().kind()).isEqualTo("RESOURCE");
 
-        // The related node is a first-class source ref and stays out of lineage.
+        // 相关节点是一等来源引用,且不会混入 lineage。
         assertThat(envelope.snapshot().allowedSourceRefs())
                 .contains("node:06000000-0000-0000-0000-000000000006");
         assertThat(envelope.snapshot().lineage()).hasSize(1);

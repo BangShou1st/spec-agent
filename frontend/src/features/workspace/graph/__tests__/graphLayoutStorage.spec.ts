@@ -1,3 +1,5 @@
+// 文件名:graphLayoutStorage.spec.ts
+// 用途:布局/UI 偏好 localStorage 持久化的单元测试:验证默认值回退、非法 JSON/坐标防御、侧栏宽度钳制与读写失败静默吞掉。
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   loadProjectGraphPreferences,

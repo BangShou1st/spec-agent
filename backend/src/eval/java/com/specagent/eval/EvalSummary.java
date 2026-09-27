@@ -6,7 +6,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
-/** Aggregate of one eval run over many attempt observations. */
+/**
+ * 文件名:EvalSummary.java
+ *
+ * 用途:一次评测运行跨所有尝试观察的聚合结果:总通过率、LayerA /
+ * LayerBFast 分层通过率、按 {@link FailureClass} 统计的失败分布、主动作分布、
+ * 预算违例与调用开销,以及每个"场景/变体"的通过情况。{@link #toText()}
+ * 输出人类可读的汇总文本。
+ *
+ * 协作:由 {@link EvalArtifactWriter} 序列化为 summary.json/.txt,
+ * 从 {@link ObservationEnvelope} 列表经 {@link #from} 聚合而来。
+ */
 public record EvalSummary(
         int totalAttempts,
         int passed,

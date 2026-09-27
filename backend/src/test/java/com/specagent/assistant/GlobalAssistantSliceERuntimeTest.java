@@ -35,7 +35,10 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Slice E: bounded loop, budgets, no-progress, cancellation, observations.
+ * 文件名:GlobalAssistantSliceERuntimeTest.java
+ *
+ * 测试目标:Slice E 运行时——有界的工具循环、预算控制、无进展检测、
+ * 取消语义与观察事件。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -110,7 +113,7 @@ class GlobalAssistantSliceERuntimeTest {
                 .isEqualTo(GlobalAssistantRunStatus.COMPLETED);
         long toolStarts = events.findByRun(run.id()).stream()
                 .filter(e -> e.type().equals("TOOL_STARTED")).count();
-        // No-progress stops before the second identical call executes.
+        // 无进展检测应在第二次相同调用执行前诚实停止。
         assertThat(toolStarts).isEqualTo(1);
     }
     @Test

@@ -1,16 +1,16 @@
-/**
- * Regression tests for the project-session identity of workspace async
- * reads (issue: a slow request for project A overwrote project B's
- * canonical state after B had already loaded).
+// 文件名:workspaceProjectSession.spec.ts
+// 用途:工作区异步读取的项目会话身份回归测试(受控门,无真实时序):锁定 A→B、A→B→A 与同项目乱序刷新下,慢响应绝不能覆盖另一个项目的 canonical 状态。
+/*
+ * 工作区异步读取的项目会话身份回归测试(问题:针对项目 A 的慢请求在 B
+ * 已经加载完成之后覆盖了 B 的 canonical 状态)。
  *
- * All scenarios use controlled gates — deterministic, no real timing, and
- * covering A→B, A→B→A, and same-project out-of-order reloads. The
- * project-session counter (not just projectId) is what these tests pin.
+ * 所有场景都使用受控门——确定性,无真实时序,并覆盖 A→B、A→B→A 与
+ * 同项目的乱序刷新。这些测试锁定的正是项目会话计数器(而不只是
+ * projectId)。
  *
- * Gate model: a gate is opened per project id; while open, that project's
- * canonical reads wait on the gate. Re-mocking other projects' reads never
- * detaches the pending call, so the stale response is always really in
- * flight when the gate is released.
+ * 门模型:按项目 id 开门;门开着时,该项目的 canonical 读取在门上等待。
+ * 重新 mock 其它项目的读取绝不会让在途调用脱离,因此门放开时过期响应
+ * 确实还在途。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
@@ -188,7 +188,7 @@ describe('project-session identity for workspace async reads', () => {
     expect(store.projectId).toBe('p2')
     expect(store.project?.id).toBe('p2')
 
-    // A's responses land AFTER B took over the store.
+    // A 的响应在 B 接管 store 之后才落地。
     releaseGate('p1')
     await slowLoad
     await vi.waitFor(() => expect(store.loading).toBe(false))
@@ -202,9 +202,8 @@ describe('project-session identity for workspace async reads', () => {
 
   it('out-of-order SAME-PROJECT reloads keep the newest response (A→A)', async () => {
     const store = useWorkspaceStore()
-    // Two SEPARATE gates for the same project id: the first load's reads
-    // attach to gate1 at call time, the reload's to gate2 — so the reload
-    // can complete while the first load is still in flight.
+    // 同一项目 id 使用两个独立的门:第一次加载的读取在调用时挂到 gate1,
+    // 重载的挂到 gate2——因此重载可以在第一次加载仍在途时完成。
     const gate1 = openGate('p1')
 
     const slowLoad = store.loadWorkspace('p1')
@@ -216,13 +215,12 @@ describe('project-session identity for workspace async reads', () => {
     await fastLoad
     expect(store.project?.title).toBe('canonical-p1')
 
-    // The first load's responses land AFTER the reload took over.
+    // 第一次加载的响应在重载接管之后才落地。
     gate1.resolve()
     await slowLoad
     await vi.waitFor(() => expect(store.loading).toBe(false))
 
-    // projectId alone cannot distinguish the two loads; the session
-    // counter must reject the older one.
+    // 光靠 projectId 无法区分这两次加载;会话计数器必须拒绝较旧的那个。
     expect(store.project?.title).toBe('canonical-p1')
     expect(store.graphView?.projectId).toBe('p1')
     expect(store.error).toBeNull()
@@ -258,8 +256,8 @@ describe('project-session identity for workspace async reads', () => {
     openGate('p1')
     const refresh1 = store.refreshWorkspace()
     await vi.waitFor(() => expect(store.refreshing).toBe(true))
-    // Second refresh arrives while the first is still running: it must be
-    // executed (serialized), not rejected with a lost refresh.
+    // 第二次刷新在第一次仍在运行时到来:它必须被执行(串行化),而不是
+    // 被拒绝导致刷新丢失。
     const refresh2 = store.refreshWorkspace()
 
     releaseGate('p1')
@@ -267,7 +265,7 @@ describe('project-session identity for workspace async reads', () => {
     expect(await refresh2).toBe(true)
 
     // 1 load + 2 refreshes — the second refresh was NOT swallowed by the
-    // old `refreshing` early-return.
+    // 旧版 `refreshing` 提前返回的行为。
     expect(mockedGetProjectGraph).toHaveBeenCalledTimes(3)
     expect(store.graphView?.projectId).toBe('p1')
   })
@@ -310,22 +308,21 @@ describe('project-session identity for workspace async reads', () => {
   }
 
   it('a QUEUED stale refresh exits before clearing the new project\'s error or re-requesting the old project', async () => {
-    // Reproduction: A's first refresh is in flight; A's second refresh is
-    // queued; the user switches to B and B shows an error; A's first
-    // refresh ends and the QUEUED second one starts — the old task must
-    // not clear B's error and must not send another request for A.
+    // 复现:A 的第一次刷新在途;A 的第二次刷新已排队;用户切到 B 且 B
+    // 显示一个错误;A 的第一次刷新结束、排队的第二次刷新开始——旧任务
+    // 绝不能清 B 的错误,也绝不能再为 A 发请求。
     const store = useWorkspaceStore()
     await store.loadWorkspace('p1')
 
     openGate('p1')
     const refresh1 = store.refreshWorkspace()
     await vi.waitFor(() => expect(store.refreshing).toBe(true))
-    const refresh2 = store.refreshWorkspace() // queued behind refresh1
+    const refresh2 = store.refreshWorkspace() // 排在 refresh1 之后
     const p1ReadsBefore = readCount('p1')
 
     await store.loadWorkspace('p2')
     expect(store.projectId).toBe('p2')
-    // B is in an errored era (e.g. its own read failed).
+    // B 处于出错纪元(例如它自己的读取失败了)。
     store.error = { code: 'B_ERROR', message: 'B failed' }
 
     releaseGate('p1')
@@ -333,9 +330,8 @@ describe('project-session identity for workspace async reads', () => {
     expect(await refresh2).toBe(false)
     await vi.waitFor(() => expect(store.refreshing).toBe(false))
 
-    // The stale queued task exited BEFORE writing state and BEFORE sending
-    // its request: B's error survives, and no extra canonical read for p1
-    // was issued.
+    // 过期的排队任务在写状态之前、发请求之前就已退出:B 的错误幸存,
+    // 且没有为 p1 发出额外的 canonical 读取。
     expect(store.projectId).toBe('p2')
     expect(store.error).toMatchObject({ code: 'B_ERROR' })
     expect(readCount('p1')).toBe(p1ReadsBefore)
@@ -343,23 +339,22 @@ describe('project-session identity for workspace async reads', () => {
   })
 
   it('after a project switch the new session\'s refresh does NOT wait behind the old session\'s queued/slow refresh', async () => {
-    // A's refresh is in flight (gated) and another A refresh is queued.
-    // Switch to B: B's refresh must start immediately, not wait for the
-    // old session's slow request to resolve.
+    // A 的刷新在途(被门控),另一条 A 刷新已排队。切到 B:B 的刷新必须
+    // 立即开始,而不是等旧会话的慢请求落定。
     const store = useWorkspaceStore()
     await store.loadWorkspace('p1')
 
     openGate('p1')
     const refresh1 = store.refreshWorkspace()
     await vi.waitFor(() => expect(store.refreshing).toBe(true))
-    void store.refreshWorkspace() // queued behind refresh1
+    void store.refreshWorkspace() // 排在 refresh1 之后
 
     await store.loadWorkspace('p2')
 
     const p2ReadsBefore = readCount('p2')
     const refreshB = store.refreshWorkspace()
-    // The queued body starts synchronously after its tail — B's canonical
-    // reads must be issued without releasing A's gate.
+    // 排队的函数体在其链尾之后同步启动——B 的 canonical 读取必须在
+    // 不放开 A 的门的情况下发出。
     await vi.waitFor(() => expect(readCount('p2')).toBe(p2ReadsBefore + 1))
 
     releaseGate('p1')
@@ -378,16 +373,16 @@ describe('project-session identity for workspace async reads', () => {
 
     await store.loadWorkspace('p2')
 
-    // B's own refresh is now in flight (gated).
+    // B 自己的刷新现在在途(被门控)。
     openGate('p2')
     const refreshB = store.refreshWorkspace()
     await vi.waitFor(() => expect(store.refreshing).toBe(true))
 
-    // A's slow refresh settles while B's is still running.
+    // A 的慢刷新落定时,B 的仍在运行。
     releaseGate('p1')
     expect(await refreshA).toBe(false)
 
-    // The old task's cleanup must not release B's refreshing flag.
+    // 旧任务的清理绝不能释放 B 的 refreshing 标志。
     expect(store.refreshing).toBe(true)
 
     releaseGate('p2')

@@ -35,8 +35,13 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 /**
- * Blocker 7 (bounded 1-hop semantic context) and Blocker 4.3 (node-query route
- * membership validation) for {@link ContextBuilder#buildForNodeQuery}.
+ * 文件名:ContextBuilderNodeQueryContextTest.java
+ *
+ * 测试目标:验证 {@link ContextBuilder#buildForNodeQuery} 的两类约束——
+ * Blocker 7(有界的 1 跳语义上下文):节点查询只捕获与锚点直接相连的有效
+ * 关系,保留方向,不递归扩散,也不污染谱系;Blocker 4.3(节点查询的路线
+ * 归属校验):锚点必须位于显式路线的谱系上,已撤回节点与跨路线锚点被拒绝,
+ * 真正的游离节点允许传 null 路线。
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -74,7 +79,7 @@ class ContextBuilderNodeQueryContextTest {
                 RouteLifecycleStatus.OPEN, "R", null, null, null, null, NOW, NOW);
         when(projectRepository.findById(projectId)).thenReturn(Optional.of(project));
         lenient().when(routeRepository.findById(routeId)).thenReturn(Optional.of(route));
-        // Default: anchor is a routeless/floating node unless a test overrides.
+        // 默认:锚点是游离节点(不在任何路线上),除非某个用例覆盖该打桩。
         when(routeRepository.findByProject(projectId)).thenReturn(List.of(route));
         when(routeHistoryResolver.resolveLineage(routeTip)).thenReturn(List.of(anchorId));
         when(routeHistoryResolver.resolveLineage(anchorId)).thenReturn(List.of(anchorId));
@@ -99,13 +104,13 @@ class ContextBuilderNodeQueryContextTest {
                 NodeRelation.Origin.USER, NodeRelation.Status.ACTIVE, null, null, NOW, null);
     }
 
-    // ---- Blocker 7: bounded 1-hop semantic context --------------------------------
+    // ---- Blocker 7:有界的 1 跳语义上下文 --------------------------------
 
     @Test
     void nodeQueryCapturesOneHopActiveRelationsWithDirectionAndNeverPollutesLineage() {
         when(nodeRepository.findById(anchorId)).thenReturn(Optional.of(anchor(false)));
-        // A -> B (anchor is source) and D -> A (anchor is target); B -> C must
-        // NOT be pulled in (no recursion to B's neighbours).
+        // A -> B(锚点为源)与 D -> A(锚点为目标);B -> C 不应被拉入
+        // (不允许向 B 的邻居递归扩散)。
         when(nodeRelationRepository.findActiveTouchingNode(projectId, anchorId)).thenReturn(List.of(
                 relation(anchorId, nodeB, NodeRelationType.DEPENDS_ON),
                 relation(nodeC, anchorId, NodeRelationType.DERIVED_FROM)));
@@ -117,7 +122,7 @@ class ContextBuilderNodeQueryContextTest {
                 new ContextRelation(anchorId, nodeB, "DEPENDS_ON"),
                 new ContextRelation(nodeC, anchorId, "DERIVED_FROM"));
         assertThat(snapshot.relatedNodeIds()).containsExactlyInAnyOrder(nodeB, nodeC);
-        // Lineage stays pure: only the anchor, never the related nodes.
+        // 谱系保持纯净:只包含锚点本身,不含关联节点。
         assertThat(snapshot.includedNodeIds()).containsExactly(anchorId);
         assertThat(snapshot.includedNodeIds()).doesNotContain(nodeB, nodeC);
     }
@@ -125,9 +130,8 @@ class ContextBuilderNodeQueryContextTest {
     @Test
     void nodeQueryRespectsSupportedRelationTypesAndExcludesOthers() {
         when(nodeRepository.findById(anchorId)).thenReturn(Optional.of(anchor(false)));
-        // SUPPORTS is supported; an unknown/unsupported type would be filtered.
-        // Here we also include a relation type that is NOT in the supported set
-        // by relying on the whitelist — only DEPENDS_ON/SUPPORTS qualify.
+        // SUPPORTS 属于支持的关系类型;未知/不支持的关系类型会被过滤。
+        // 这里通过白名单只纳入 DEPENDS_ON/SUPPORTS——不支持的类型不会出现在结果中。
         when(nodeRelationRepository.findActiveTouchingNode(projectId, anchorId)).thenReturn(List.of(
                 relation(anchorId, nodeB, NodeRelationType.DEPENDS_ON),
                 relation(anchorId, nodeC, NodeRelationType.SUPPORTS)));
@@ -144,7 +148,7 @@ class ContextBuilderNodeQueryContextTest {
         when(nodeRepository.findById(anchorId)).thenReturn(Optional.of(anchor(false)));
         when(nodeRelationRepository.findActiveTouchingNode(projectId, anchorId))
                 .thenReturn(List.of());
-        // Anchor is NOT on the (only) route's lineage -> genuine floating node.
+        // 锚点不在(唯一)路线的谱系上 -> 是真正的游离节点。
         when(routeHistoryResolver.resolveLineage(routeTip)).thenReturn(List.of(UUID.randomUUID()));
 
         ContextSnapshot snapshot = contextBuilder.buildForNodeQuery(
@@ -155,7 +159,7 @@ class ContextBuilderNodeQueryContextTest {
         assertThat(snapshot.routeId()).isNull();
     }
 
-    // ---- Blocker 4.3: route membership validation --------------------------------
+    // ---- Blocker 4.3:路线归属校验 --------------------------------
 
     @Test
     void crossRouteAnchorIsRejected() {
@@ -164,7 +168,7 @@ class ContextBuilderNodeQueryContextTest {
         Route other = new Route(otherRouteId, projectId, UUID.randomUUID(), UUID.randomUUID(),
                 RouteLifecycleStatus.OPEN, "O", null, null, null, null, NOW, NOW);
         when(routeRepository.findById(otherRouteId)).thenReturn(Optional.of(other));
-        // Anchor is not on the other route's canonical lineage.
+        // 锚点不在另一条路线的权威谱系上。
         when(routeHistoryResolver.resolveLineage(other.tipNodeId())).thenReturn(List.of(UUID.randomUUID()));
 
         assertThatThrownBy(() -> contextBuilder.buildForNodeQuery(
@@ -186,7 +190,7 @@ class ContextBuilderNodeQueryContextTest {
     @Test
     void floatingNullRouteAcceptedForGenuineFloatingNode() {
         when(nodeRepository.findById(anchorId)).thenReturn(Optional.of(anchor(false)));
-        // Anchor does not belong to the route's lineage.
+        // 锚点不属于该路线的谱系。
         when(routeHistoryResolver.resolveLineage(routeTip)).thenReturn(List.of(UUID.randomUUID()));
         when(nodeRelationRepository.findActiveTouchingNode(projectId, anchorId))
                 .thenReturn(List.of(relation(anchorId, nodeB, NodeRelationType.DEPENDS_ON)));
@@ -201,7 +205,7 @@ class ContextBuilderNodeQueryContextTest {
     @Test
     void sharedNodeWithExplicitMemberRouteAccepted() {
         when(nodeRepository.findById(anchorId)).thenReturn(Optional.of(anchor(false)));
-        // Anchor IS on the route's lineage (shared node with explicit route).
+        // 锚点确实在路线谱系上(共享节点 + 显式路线)。
         when(routeHistoryResolver.resolveLineage(routeTip)).thenReturn(List.of(anchorId));
 
         ContextSnapshot snapshot = contextBuilder.buildForNodeQuery(
@@ -214,7 +218,7 @@ class ContextBuilderNodeQueryContextTest {
     @Test
     void routeNodeWithNullRouteIsRejected() {
         when(nodeRepository.findById(anchorId)).thenReturn(Optional.of(anchor(false)));
-        // Anchor belongs to the route's lineage -> passing null route is rejected.
+        // 锚点属于路线谱系 -> 传 null 路线会被拒绝。
         when(routeHistoryResolver.resolveLineage(routeTip)).thenReturn(List.of(anchorId));
 
         assertThatThrownBy(() -> contextBuilder.buildForNodeQuery(

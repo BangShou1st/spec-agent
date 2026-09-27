@@ -1,3 +1,7 @@
+// 文件名:projects.ts
+// 用途:项目管理的 API 封装:项目列表(支持按标题服务端过滤)、创建、详情、
+//       重命名与删除。
+
 import { apiClient } from '@/shared/http/client'
 import type { CreateProjectRequest, ProjectResponse, ProjectSummaryResponse } from '@/shared/contracts/types'
 

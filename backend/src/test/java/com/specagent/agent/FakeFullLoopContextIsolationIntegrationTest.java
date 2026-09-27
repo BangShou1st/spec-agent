@@ -37,8 +37,10 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Verifies that the fake full loop never leaks context from sibling or
- * superseded routes: context is lineage, not global chat history.
+ * 文件名:FakeFullLoopContextIsolationIntegrationTest.java
+ *
+ * 测试目标:验证 fake 全循环绝不泄漏兄弟路由或被取代路由的上下文:
+ * 上下文是血统(lineage),不是全局聊天记录。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -71,10 +73,10 @@ class FakeFullLoopContextIsolationIntegrationTest {
         var firstAnswer = answerDriver.submitFreeText(project.id(), "main route answer");
         assertThat(firstAnswer.run().status()).isEqualTo(AgentRunStatus.COMPLETED);
 
-        // Fork a sibling route from node1; the fork becomes active.
+        // 从 node1 fork 出一条兄弟路由;fork 后它成为活动路由。
         Route forkRoute = routeService.forkFromNode(project.id(), originalRouteId, node1, "sibling route");
 
-        // Create answer + patch on the sibling route only.
+        // 只在兄弟路由上创建答案 + patch。
         Node siblingNode = nodeService.createChildNode(project.id(), forkRoute.id(), node1,
                 "Sibling question?", "sibling purpose", List.of(), true);
         Answer siblingAnswer = answerService.finalizeAnswer(
@@ -85,7 +87,7 @@ class FakeFullLoopContextIsolationIntegrationTest {
                         siblingNode.id(), siblingAnswer.id())),
                 null);
 
-        // Switch back to the original route and run the answer loop there.
+        // 切回原始路由,并在其上运行答题循环。
         routeService.setActiveRoute(project.id(), originalRouteId);
         var result = answerDriver.submitFreeText(project.id(), "main route answer");
         assertThat(result.run().status()).isEqualTo(AgentRunStatus.COMPLETED);

@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Structured semantic planning diagnostic, lineage R2 (DIAGNOSTIC ONLY).
+"""文件名:semantic_planning_diagnostic_r2.py
 
-New lineage after R1 INCONCLUSIVE (transport proxy/egress contamination).
-Semantic surfaces are imported from the R1 module, never redefined:
-prompt bytes, schema, reason codes, mapping, gates, and majority rules
-are identical by construction. Only the transport changes: explicit
-DIRECT with no environment proxy, full error evidence, a 5-request
-preflight gate, and a transport circuit breaker. Never wired into
-production; never run as acceptance.
+结构化语义规划诊断,R2 血统(仅诊断用)。
+
+R1 判定 INCONCLUSIVE(传输层被代理/出口污染)之后的新血统。
+语义面一律从 R1 模块 import,绝不重新定义:提示词字节、schema、
+reason codes、映射、门槛与多数规则按构造完全一致。只改传输层:
+显式直连(DIRECT)不使用环境代理、保留完整错误证据、5 次请求的
+预检门槛,以及传输层熔断。绝不接入生产,也绝不当作验收流程运行。
 """
 
 from __future__ import annotations

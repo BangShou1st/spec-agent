@@ -1,3 +1,6 @@
+// 文件名:gaAnswerStream.spec.ts
+// 用途:答案流(GaRunProjection)的单测:ANSWER_STREAM_STARTED 重置草稿、同代增量追加、
+//       旧代/空 delta 忽略、跨代替换,以及修复重置(ANSWER_STREAM_RESET)不泄漏被否决的草稿。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { GaRunProjection, useGlobalAssistantStore } from '@/features/global-assistant/state/globalAssistantStore'

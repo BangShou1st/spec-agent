@@ -23,9 +23,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Undo/Redo as operation-specific compensation: preconditions are checked
- * before replay, immutable history is never deleted, and new work cuts off
- * the redo branch.
+ * 文件名:UndoRedoIntegrationTest.java
+ *
+ * 测试目标:撤销/重做作为按操作类型的补偿——重放前先检查前置条件,
+ * 不可变历史绝不被删除,新工作会截断 redo 分支。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -91,7 +92,7 @@ class UndoRedoIntegrationTest {
 
     @Test
     void floatingDraftNeverTouchesRouteAnchorAndUndoRedoKeepsItDisconnected() {
-        // The route already has content; a floating idea must not rewire it.
+        // 路线上已有内容;游离灵感不得改写它。
         Node root = commandService.createRootDraftNode(
                 project.id(), route.id(), "NOTE", Map.of("text", "root"));
         Node floating = commandService.createFloatingDraftNode(
@@ -116,27 +117,23 @@ class UndoRedoIntegrationTest {
     }
 
     /**
-     * Blocked regressions: a floating draft created with NO route at all
-     * (project active route archived/removed, routeId=null) must undo and
-     * redo without ever consulting a route — replayNodeCreation previously
-     * resolved the route before the isFloatingCreation branch, so redo failed
-     * at the missing-route lookup.
+     * 已阻塞的回归:完全不带路线创建的游离草稿(项目活跃路线被归档/移除,
+     * routeId=null)必须在不查询任何路线的情况下完成 undo 和 redo——此前
+     * replayNodeCreation 在 isFloatingCreation 分支之前就解析路线,导致 redo
+     * 在路线缺失的查询处失败。
      */
     @Test
     void floatingNoRouteCreationUndoRedoWorksWithoutAnyRoute() {
-        // 1. Project with an active route, then remove that route (archived)
-        //    so the project has NO active route at all.
+        // 1. 项目先有活跃路线,然后将其归档,使项目完全没有活跃路线。
         UUID firstActiveRouteId = project.activeRouteId();
         routeService.archiveRoute(project.id(), firstActiveRouteId);
         assertThat(projectRepository.findById(project.id()).orElseThrow().activeRouteId()).isNull();
 
-        // 2. Create a floating node with routeId=null (no creation context
-        //    route either).
+        // 2. 以 routeId=null 创建游离节点(创建上下文也没有路线)。
         Node floating = commandService.createFloatingDraftNode(
                 project.id(), null, "IDEA", Map.of("text", "无路线灵感"));
 
-        // 4. The node is fully disconnected and the project still has no
-        //    active route.
+        // 4. 节点完全游离,项目仍没有活跃路线。
         assertThat(floating.parentNodeId()).isNull();
         assertThat(projectRepository.findById(project.id()).orElseThrow().activeRouteId()).isNull();
 
@@ -144,8 +141,7 @@ class UndoRedoIntegrationTest {
         UUID archivedTip = archived.tipNodeId();
         UUID archivedRoot = archived.rootNodeId();
 
-        // 5. Undo: the floating node is retracted; active stays null; the
-        //    archived route is untouched.
+        // 5. Undo:游离节点被撤回;active 保持 null;已归档路线未被触碰。
         assertThat(undoRedoService.canUndo(project.id())).isTrue();
         undoRedoService.undo(project.id());
         assertThat(nodeRepository.findById(floating.id()).orElseThrow().isRetracted()).isTrue();
@@ -155,8 +151,7 @@ class UndoRedoIntegrationTest {
         assertThat(routeRepository.findById(firstActiveRouteId).orElseThrow().rootNodeId())
                 .isEqualTo(archivedRoot);
 
-        // 6-10. Redo: the node is restored; active stays null; the archived
-        //    route is still untouched.
+        // 6-10. Redo:节点被恢复;active 保持 null;已归档路线仍未被触碰。
         assertThat(undoRedoService.canRedo(project.id())).isTrue();
         undoRedoService.redo(project.id());
         assertThat(nodeRepository.findById(floating.id()).orElseThrow().isRetracted()).isFalse();
@@ -168,10 +163,9 @@ class UndoRedoIntegrationTest {
     }
 
     /**
-     * Fix for the second-undo permanent failure: a child that was itself undone
-     * (soft-retracted) must NOT block undoing its parent. Previously the
-     * existence check ignored {@code retracted_at} and the parent creation could
-     * never be undone once any descendant existed.
+     * 修复"第二次 undo 永久失败"的问题:自身已被 undo(软撤回)的 child
+     * 不得阻碍撤销其 parent。此前的存在性检查忽略了 {@code retracted_at},
+     * 一旦存在任何后代,parent 的创建就永远无法被撤销。
      */
     @Test
     void undoRootSucceedsAfterChildUndoBecauseRetractedChildIsNotLiveDownstream() {
@@ -180,13 +174,12 @@ class UndoRedoIntegrationTest {
         Node child = commandService.appendContinuation(
                 project.id(), route.id(), root.id(), "NOTE", Map.of("text", "child")).node();
 
-        // Undo the child (latest op). It is soft-retracted, not deleted.
+        // 撤销 child(最新操作)。它是软撤回,并非删除。
         undoRedoService.undo(project.id());
         assertThat(nodeRepository.findById(child.id()).orElseThrow().isRetracted()).isTrue();
         assertThat(nodeRepository.findById(root.id()).orElseThrow().isRetracted()).isFalse();
 
-        // The retracted child no longer counts as live downstream history, so
-        // the parent creation is now undoable.
+        // 已撤回的 child 不再算作存活的下游历史,因此 parent 的创建现在可以撤销。
         assertThat(undoRedoService.canUndo(project.id())).isTrue();
         undoRedoService.undo(project.id());
         assertThat(nodeRepository.findById(root.id()).orElseThrow().isRetracted()).isTrue();
@@ -196,9 +189,9 @@ class UndoRedoIntegrationTest {
     }
 
     /**
-     * B2.2 end-to-end: create root; append child; undo child; undo root; redo
-     * root; redo child — every step succeeds and the route root/tip is correctly
-     * restored from the (now retracted) child's undo.
+     * B2.2 端到端:创建 root;追加 child;undo child;undo root;redo root;
+     * redo child——每一步都成功,路线 root/tip 从(已撤回的)child 的 undo
+     * 中被正确恢复。
      */
     @Test
     void undoChildThenRootThenRedoRootThenChildRestoresRoute() {
@@ -207,16 +200,16 @@ class UndoRedoIntegrationTest {
         Node child = commandService.appendContinuation(
                 project.id(), route.id(), root.id(), "NOTE", Map.of("text", "child")).node();
 
-        undoRedoService.undo(project.id()); // undo child (leaf)
+        undoRedoService.undo(project.id()); // 撤销 child(叶子)
         assertThat(nodeRepository.findById(child.id()).orElseThrow().isRetracted()).isTrue();
-        undoRedoService.undo(project.id()); // undo root — must not be blocked
+        undoRedoService.undo(project.id()); // 撤销 root——不得被阻碍
         assertThat(nodeRepository.findById(root.id()).orElseThrow().isRetracted()).isTrue();
 
         Route cleared = routeRepository.findById(route.id()).orElseThrow();
         assertThat(cleared.tipNodeId()).isNull();
         assertThat(cleared.rootNodeId()).isNull();
 
-        // Redo replays the most-recently-undone (root) first, then child.
+        // Redo 先重放最近被撤销的(root),再重放 child。
         undoRedoService.redo(project.id());
         Route afterRoot = routeRepository.findById(route.id()).orElseThrow();
         assertThat(afterRoot.tipNodeId()).isEqualTo(root.id());
@@ -236,7 +229,7 @@ class UndoRedoIntegrationTest {
                 project.id(), route.id(), "NOTE", Map.of("text", "root"));
         undoRedoService.undo(project.id());
 
-        // New work after the undo cuts off the redo branch.
+        // undo 之后的新工作截断了 redo 分支。
         commandService.createRootDraftNode(
                 project.id(), route.id(), "IDEA", Map.of("text", "新内容"));
 
@@ -276,12 +269,12 @@ class UndoRedoIntegrationTest {
                 project.id(), route.id(), root.id(), "IDEA", Map.of("text", "branch"));
         assertThat(branch.branched()).isTrue();
 
-        undoRedoService.undo(project.id()); // undoes the branch creation
+        undoRedoService.undo(project.id()); // 撤销分支创建
 
         Route deleted = routeRepository.findById(branch.route().id()).orElseThrow();
         assertThat(deleted.lifecycleStatus()).isEqualTo(RouteLifecycleStatus.DELETED);
         assertThat(nodeRepository.findById(branch.node().id()).orElseThrow().isRetracted()).isTrue();
-        // Original route untouched.
+        // 原路线未被触碰。
         assertThat(routeRepository.findById(route.id()).orElseThrow().tipNodeId())
                 .isEqualTo(tip.id());
 
@@ -309,23 +302,20 @@ class UndoRedoIntegrationTest {
     }
 
     /**
-     * Strict-barrier contract: an accepted agent proposal is recorded as a
-     * non-reversible ACTIVE operation and acts as an undo-history barrier.
-     * Earlier reversible work becomes unreachable for undo — the service
-     * never skips over the barrier to compensate an older operation, because
-     * the accepted proposal's effects may depend on that older state.
+     * 严格屏障契约:被接受的 agent 提案会记录为不可回滚的 ACTIVE 操作,并
+     * 充当 undo 历史的屏障。更早的可回滚工作从此对 undo 不可达——服务绝不
+     * 跳过屏障去补偿更旧的操作,因为被接受提案的效果可能依赖那些更旧的状态。
      */
     @Test
     void acceptedAgentProposalIsAnUndoHistoryBarrier() {
-        // Reversible user work first.
+        // 先做可回滚的用户工作。
         Node root = commandService.createRootDraftNode(
                 project.id(), route.id(), "NOTE", Map.of("text", "root"));
         assertThat(undoRedoService.canUndo(project.id())).isTrue();
 
-        // Then a non-reversible agent mutation via real proposal acceptance.
-        // The proposal anchors at the route tip (root), as every runtime-
-        // produced node-creating proposal does; a node-creating proposal
-        // without an anchor is only valid on a still-empty route.
+        // 再通过真实的提案接受执行不可回滚的 agent 变更。与所有运行时生成
+        // 的创建节点提案一样,该提案以路线 tip(root)为锚点;没有锚点的
+        // 创建节点提案只在仍然为空的路线才有效。
         com.specagent.agent.protocol.ActionProposal proposal =
                 new com.specagent.agent.protocol.ActionProposal(
                         "CREATE_NODE",
@@ -338,39 +328,37 @@ class UndoRedoIntegrationTest {
                 java.util.UUID.randomUUID(), project.id(), route.id());
         acceptanceService.acceptAndExecute(pending.id(), "user");
 
-        // The ACCEPT_AGENT_PROPOSAL entry is ACTIVE and non-reversible.
+        // ACCEPT_AGENT_PROPOSAL 条目为 ACTIVE 且不可回滚。
         var acceptOperation = commandService.listOperations(project.id()).stream()
                 .filter(op -> op.type() == GraphOperation.Type.ACCEPT_AGENT_PROPOSAL)
                 .findFirst().orElseThrow();
         assertThat(acceptOperation.reversible()).isFalse();
         assertThat(acceptOperation.status()).isEqualTo(GraphOperation.Status.ACTIVE);
 
-        // Barrier semantics: the earlier reversible creation is NOT offered
-        // as undoable, and a direct undo attempt is rejected fail-closed.
+        // 屏障语义:更早的可回滚创建不再作为可撤销项提供,直接尝试 undo
+        // 也会快速失败被拒。
         assertThat(undoRedoService.canUndo(project.id())).isFalse();
         assertThatThrownBy(() -> undoRedoService.undo(project.id()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("不可撤销");
-        // Nothing was undone by the rejected attempt.
+        // 被拒绝的尝试没有撤销任何东西。
         assertThat(nodeRepository.findById(root.id()).orElseThrow().isRetracted()).isFalse();
         assertThat(undoRedoService.canRedo(project.id())).isFalse();
 
-        // New reversible work on top of the barrier is undoable again — but
-        // only down TO the barrier, never across it.
+        // 屏障之上的新可回滚工作又可以撤销了——但只能撤到屏障处,绝不跨越。
         Node child = commandService.appendContinuation(
                 project.id(), route.id(), root.id(), "NOTE", Map.of("text", "child")).node();
         assertThat(undoRedoService.canUndo(project.id())).isTrue();
         UndoRedoService.UndoRedoResult undo = undoRedoService.undo(project.id());
         assertThat(nodeRepository.findById(child.id()).orElseThrow().isRetracted()).isTrue();
-        // After that undo the barrier blocks further undos again.
+        // 这次 undo 之后,屏障再次阻止更早的撤销。
         assertThat(undoRedoService.canUndo(project.id())).isFalse();
     }
 
     /**
-     * B2.1: redo replays the most-recently-undone operation first. Multiple
-     * undos then redos must rebuild the original operation order by {@code
-     * undoneAt} (not {@code createdAt}): the last thing undone is the first thing
-     * redone, so a sequence of edits is restored in its authored order.
+     * B2.1:redo 优先重放最近被撤销的操作。多次 undo 再多次 redo 必须按
+     * {@code undoneAt}(而非 {@code createdAt})重建原始操作顺序:最后被撤销
+     * 的最先被重做,一系列编辑按其编写顺序被恢复。
      */
     @Test
     void redoReplaysMostRecentlyUndoneOperationFirst() {
@@ -379,13 +367,13 @@ class UndoRedoIntegrationTest {
         commandService.reviseDraftNode(project.id(), draft.id(), "REQUIREMENT", Map.of("text", "第二稿"));
         commandService.reviseDraftNode(project.id(), draft.id(), "RISK", Map.of("text", "第三稿"));
 
-        // Undo the three edits (latest-first each time).
+        // 撤销三次编辑(每次都撤销最新一条)。
         undoRedoService.undo(project.id());
         undoRedoService.undo(project.id());
         undoRedoService.undo(project.id());
         assertThat(nodeRepository.findById(draft.id()).orElseThrow().contentText()).isEqualTo("初稿");
 
-        // Redo replays in reverse-undo order: 初稿, then 第二稿, then 第三稿.
+        // Redo 按撤销的逆序重放:初稿,然后第二稿,然后第三稿。
         undoRedoService.redo(project.id());
         assertThat(nodeRepository.findById(draft.id()).orElseThrow().contentText()).isEqualTo("初稿");
         undoRedoService.redo(project.id());
@@ -395,9 +383,9 @@ class UndoRedoIntegrationTest {
     }
 
     /**
-     * B2.4-1: a relation undo retracts it and redo re-activates it through the
-     * invariant boundary (this is also covered by the existing
-     * undoRelationRetractsAndRedoReactivates, kept here for the B2.4 matrix).
+     * B2.4-1:关系的 undo 撤回它,redo 通过不变量边界重新激活它
+     * (undoRelationRetractsAndRedoReactivates 也覆盖了此场景,这里为
+     * B2.4 矩阵保留)。
      */
     @Test
     void redoRelationReactivatesThroughInvariantBoundary() {
@@ -417,10 +405,9 @@ class UndoRedoIntegrationTest {
     }
 
     /**
-     * B2.4-2: after undoing a relation, intervening work creates the same
-     * relation again (now active). Redo must be rejected (cut off by new work,
-     * and the duplicate backstop in replay would also fire). The original
-     * relation stays retracted.
+     * B2.4-2:撤销一条关系后,中间的新工作重新创建了相同的关系(现在为活跃)。
+     * redo 必须被拒绝(被新工作截断,重放中的重复兜底也会触发)。原关系保持
+     * 撤回状态。
      */
     @Test
     void redoRelationRejectedWhenConflictingActiveRelationExists() {
@@ -434,7 +421,7 @@ class UndoRedoIntegrationTest {
 
         undoRedoService.undo(project.id());
 
-        // Intervening work re-creates the identical relation (now active).
+        // 中间的新工作重新创建了完全相同的关系(现在为活跃)。
         commandService.createSemanticRelation(
                 project.id(), a.id(), b.id(), NodeRelationType.SUPPORTS,
                 NodeRelation.Origin.USER, null, null);
@@ -448,9 +435,8 @@ class UndoRedoIntegrationTest {
     }
 
     /**
-     * B2.4-3: undo a DEPENDS_ON, then intervening work creates B DEPENDS_ON A.
-     * Replaying A DEPENDS_ON B would close the cycle, so redo is rejected and the
-     * original relation stays retracted.
+     * B2.4-3:撤销 A DEPENDS_ON B 后,中间的新工作创建了 B DEPENDS_ON A。
+     * 重放 A DEPENDS_ON B 会闭合成环,因此 redo 被拒绝,原关系保持撤回状态。
      */
     @Test
     void redoDependsOnRejectedWhenItWouldCreateCycle() {
@@ -462,10 +448,10 @@ class UndoRedoIntegrationTest {
                 project.id(), a.id(), b.id(), NodeRelationType.DEPENDS_ON,
                 NodeRelation.Origin.USER, null, null);
 
-        undoRedoService.undo(project.id()); // undo A DEPENDS_ON B
+        undoRedoService.undo(project.id()); // 撤销 A DEPENDS_ON B
 
-        // Intervening work: B DEPENDS_ON A. Replaying A DEPENDS_ON B now forms a
-        // cycle (A -> B -> A).
+        // 中间的新工作:B DEPENDS_ON A。此时重放 A DEPENDS_ON B 会形成环
+        // (A -> B -> A)。
         commandService.createSemanticRelation(
                 project.id(), b.id(), a.id(), NodeRelationType.DEPENDS_ON,
                 NodeRelation.Origin.USER, null, null);
@@ -473,14 +459,13 @@ class UndoRedoIntegrationTest {
         assertThat(undoRedoService.canRedo(project.id())).isFalse();
         assertThatThrownBy(() -> undoRedoService.redo(project.id()))
                 .isInstanceOf(IllegalStateException.class);
-        // Only B -> A is active; A -> B remains retracted.
+        // 只有 B -> A 是活跃的;A -> B 保持撤回。
         assertThat(relationRepository.findActiveByProject(project.id())).hasSize(1);
     }
 
     /**
-     * B2.4-4: an endpoint is retracted after the relation is undone. Redo must
-     * re-validate through the invariant boundary and be rejected because a
-     * relation cannot reference a retracted node.
+     * B2.4-4:关系被撤销后,其端点被撤回。redo 必须通过不变量边界重新校验并
+     * 被拒绝,因为关系不能引用已撤回的节点。
      */
     @Test
     void redoRelationRejectedWhenEndpointRetracted() {
@@ -495,12 +480,10 @@ class UndoRedoIntegrationTest {
         undoRedoService.undo(project.id());
         assertThat(relationRepository.findActiveByProject(project.id())).isEmpty();
 
-        // The endpoint B is retracted out-of-band (e.g. by another graph action
-        // orthogonal to this operation stack).
+        // 端点 B 被带外撤回(例如由与本操作栈正交的另一个图操作)。
         nodeService.setRetracted(b.id(), true);
 
-        // Cut-off does not fire (no new GraphOperation), but the invariant
-        // boundary rejects the replay.
+        // 截断机制未触发(没有新的 GraphOperation),但不变量边界拒绝了重放。
         assertThat(undoRedoService.canRedo(project.id())).isTrue();
         assertThatThrownBy(() -> undoRedoService.redo(project.id()))
                 .isInstanceOf(IllegalStateException.class)

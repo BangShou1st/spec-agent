@@ -20,13 +20,15 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.Objects;
 
 /**
- * Optional, in-process diagnostic recorder used by the evaluation plumbing.
- * It is off by default, never writes to the inference request, and keeps one
- * immutable snapshot per attempt until the evaluation runner takes it.
+ * 文件名:SemanticTraceRecorder.java
  *
- * <p>Implements the agent-side write port {@link AgentTracePort} so the agent
- * layer can record traces without depending on this package (the read/take
- * side stays on the concrete type for the evaluation plumbing).
+ * 用途:评估流水线使用的可选进程内诊断记录器,按 attempt 收集
+ * 输入/输出快照、语义指纹、策略判定与动作可用性等阶段证据。
+ *
+ * 约束:默认关闭({@code spec.agent.semantic-trace.enabled:false}),
+ * 绝不写入推理请求;每个 attempt 保留一份不可变快照,直到评估运行器
+ * 取走。实现 agent 侧的写端口 {@link AgentTracePort},使 agent 层无需
+ * 依赖本包即可记录 trace(读取/取走一侧仍由评估流水线使用具体类型)。
  */
 @Service
 public class SemanticTraceRecorder implements AgentTracePort {
@@ -40,7 +42,7 @@ public class SemanticTraceRecorder implements AgentTracePort {
         this.enabled = new AtomicBoolean(enabled);
     }
 
-    /** Factory for focused deterministic tests without Spring configuration. */
+    /** 供确定性单测使用的工厂,无需 Spring 配置。 */
     public static SemanticTraceRecorder forTesting(boolean enabled) {
         return new SemanticTraceRecorder(enabled);
     }
@@ -49,7 +51,7 @@ public class SemanticTraceRecorder implements AgentTracePort {
         return enabled.get();
     }
 
-    /** Test-only toggle used to compare the same deterministic flow ON/OFF. */
+    /** 仅供测试的开关,用于对同一确定性流程做 ON/OFF 对比。 */
     public void setEnabledForTesting(boolean enabled) {
         this.enabled.set(enabled);
     }
@@ -162,7 +164,7 @@ public class SemanticTraceRecorder implements AgentTracePort {
         append(runId, stage, failure);
     }
 
-    /** Takes and removes one attempt. A missing trace is an explicit empty trace. */
+    /** 取走并移除一个 attempt 的 trace;不存在时返回显式的空 trace。 */
     public SemanticTrace take(UUID runId) {
         if (!enabled() || runId == null) {
             return SemanticTrace.empty(runId);
@@ -171,7 +173,7 @@ public class SemanticTraceRecorder implements AgentTracePort {
         return trace == null ? SemanticTrace.empty(runId) : trace;
     }
 
-    /** Returns a snapshot without removing it; useful for unit tests. */
+    /** 返回快照但不移除;主要用于单元测试。 */
     public SemanticTrace snapshot(UUID runId) {
         return enabled() && runId != null
                 ? traces.getOrDefault(runId, SemanticTrace.empty(runId))
@@ -238,8 +240,7 @@ public class SemanticTraceRecorder implements AgentTracePort {
     }
 
     private static String fingerprintForSnapshot(AgentInputSnapshot snapshot) {
-        // The post-state fingerprint intentionally uses the same normalized
-        // semantic fields as a request, while omitting the request event.
+        // 后状态指纹刻意复用与请求相同的规范化语义字段,但省略请求事件。
         return SemanticFingerprint.forSnapshot(snapshot);
     }
 

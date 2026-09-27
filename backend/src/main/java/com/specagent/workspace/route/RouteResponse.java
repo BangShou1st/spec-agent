@@ -6,13 +6,13 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * Route representation returned by the route reads and commands.
+ * 文件名:RouteResponse.java
  *
- * <p>Owned by the application layer (use-case view model), serialized as-is by
- * the REST boundary. {@code lifecycleStatus} exposes the route lifecycle only
- * ({@code open|superseded|archived|deleted}); there is no {@code active}
- * lifecycle status. {@code isActive} is derived by comparing the route id with
- * {@code Project.activeRouteId} at read time and never mutates route state.
+ * 用途:路线读取与命令返回的路线表示。由应用层持有(用例视图模型),
+ * REST 边界原样序列化。{@code lifecycleStatus} 只暴露路线生命周期
+ * ({@code open|superseded|archived|deleted}),不存在 {@code active} 这种
+ * 生命周期状态;{@code isActive} 在读取时通过路线 id 与
+ * {@code Project.activeRouteId} 比对推导,绝不修改路线状态。
  */
 public record RouteResponse(
         UUID id,

@@ -1,3 +1,5 @@
+// 文件名:skillsStore.spec.ts
+// 用途:skillsStore 单测:mock API 层,验证列表/详情/暂存导入/安装/删除等状态流转。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useSkillsStore } from '@/features/skills/state/skillsStore'

@@ -24,8 +24,12 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Backend-owned steer handoff. Owns accept/claim/successor/recover/discard.
- * Runtime stays responsible for one-run execution only.
+ * 文件名:TurnHandoffService.java
+ *
+ * 用途:后端自主的 steer(中途转向)交接服务,拥有 accept(受理)、
+ * claim(认领)、successor(创建继任 run)、recover(恢复搁置交接)、
+ * discard(废弃)全部状态机。Runtime 只管单次 run 的执行,
+ * 跨 run 的接力责任在这里。
  */
 @Service
 public class TurnHandoffService {

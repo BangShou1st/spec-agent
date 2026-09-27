@@ -1,3 +1,5 @@
+// 文件名:nodeActions.ts
+// 用途:节点操作配置表:画布节点卡与 NodeInspector 共用的"这个节点现在能做什么"动作列表生成逻辑,集中表达不同节点类型的能力差异。
 import type { SpecAgentGraphNodeData } from './graphProjection'
 
 /**

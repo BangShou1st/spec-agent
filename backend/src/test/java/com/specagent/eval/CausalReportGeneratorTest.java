@@ -9,7 +9,14 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** Offline, model-free tests for the first-fault classifier and report shape. */
+/**
+ * 文件名:CausalReportGeneratorTest.java
+ *
+ * 测试目标:离线、不依赖模型的"首要故障(first-fault)"分类器与报告结构测试。
+ * 覆盖:状态更新缺冲突归类为 STATE_UPDATE_FIRST、语义等价传播后的错误动作归类为
+ * DECISION_FIRST、已捕获边界故障优先于轨迹不完整、多重边界故障保持 COMPOUND、
+ * 基础设施故障不计为行为失败。
+ */
 class CausalReportGeneratorTest {
 
     private static final UUID ATTEMPT =

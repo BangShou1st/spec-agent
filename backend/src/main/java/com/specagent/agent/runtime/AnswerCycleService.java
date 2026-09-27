@@ -45,22 +45,25 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Answer cycle: exactly 2 serial provider calls (STATE_UPDATE + DECISION),
- * replacing the legacy 3-call path (INTERPRET_ANSWER + DRAFT_ANSWER_PATCH +
- * DRAFT_NODE).
+ * 文件名:AnswerCycleService.java
  *
- * <p>Flow:
- * <ol>
- *   <li>Persist immutable Answer (before any model call).</li>
- *   <li>Check for existing AnswerPatch (repair gate).</li>
- *   <li>If no patch: Call 1 STATE_UPDATE → grounded claims → persist patch checkpoint.</li>
- *   <li>Rebuild a post-state snapshot containing that Answer/Patch.</li>
- *   <li>Call 2 DECISION from the post-state snapshot → observation + action proposal.</li>
- *   <li>Policy evaluation → auto-execute or propose for confirmation.</li>
- * </ol>
+ * 用途:回答循环的执行器——恰好 2 次串行模型调用(STATE_UPDATE + DECISION),
+ * 取代遗留的 3 次调用路径(INTERPRET_ANSWER + DRAFT_ANSWER_PATCH + DRAFT_NODE)。
  *
- * <p>Preserves repair semantics: once the Answer exists, retry resumes from
- * the safe patch checkpoint and never creates a second Answer.
+ * 在"命令 → 持久化 → Brain → 校验 → checkpoint"链路中,它负责被领取后的
+ * run 实际执行:落库不可变 Answer → 构造冻结输入快照调用 Brain → 校验响应
+ * → 持久化补丁 checkpoint 与状态更新。
+ *
+ * 流程:
+ * 1. 先持久化不可变 Answer(在任何模型调用之前)。
+ * 2. 检查是否已存在 AnswerPatch(修复门)。
+ * 3. 无补丁时:第 1 次调用 STATE_UPDATE → claims 落锚 → 持久化补丁 checkpoint。
+ * 4. 重建包含该 Answer/Patch 的事后(post-state)快照。
+ * 5. 第 2 次调用 DECISION(从事后快照)→ 观察结果 + 动作提案。
+ * 6. 策略评估 → 自动执行或提交确认。
+ *
+ * 保留修复语义:Answer 一旦存在,重试会从安全的补丁 checkpoint 续跑,
+ * 绝不创建第二个 Answer。
  */
 @Service
 public class AnswerCycleService {
@@ -68,6 +71,7 @@ public class AnswerCycleService {
     private static final Logger LOG = LoggerFactory.getLogger(AnswerCycleService.class);
 
     private final AgentRunService agentRunService;
+    private final ExecutionFence executionFence;
     private final AgentRunFailureService agentRunFailureService;
     private final ContextBuilder contextBuilder;
     private final AgentInputSnapshotBuilder snapshotBuilder;
@@ -86,8 +90,10 @@ public class AnswerCycleService {
     private final AgentTracePort semanticTraceRecorder;
     private final RunProgressRecorder progressRecorder;
     private final RouteHistoryResolver routeHistoryResolver;
+    private final org.springframework.transaction.support.TransactionTemplate transactionTemplate;
 
     public AnswerCycleService(AgentRunService agentRunService,
+                                ExecutionFence executionFence,
                               AgentRunFailureService agentRunFailureService,
                               ContextBuilder contextBuilder,
                               AgentInputSnapshotBuilder snapshotBuilder,
@@ -105,8 +111,10 @@ public class AnswerCycleService {
                               AgentTracePort semanticTraceRecorder,
                               ActionEligibilityGate actionEligibilityGate,
                               RunProgressRecorder progressRecorder,
-                              RouteHistoryResolver routeHistoryResolver) {
+                              RouteHistoryResolver routeHistoryResolver,
+                              org.springframework.transaction.support.TransactionTemplate transactionTemplate) {
         this.agentRunService = agentRunService;
+        this.executionFence = executionFence;
         this.agentRunFailureService = agentRunFailureService;
         this.contextBuilder = contextBuilder;
         this.snapshotBuilder = snapshotBuilder;
@@ -125,15 +133,15 @@ public class AnswerCycleService {
         this.actionEligibilityGate = actionEligibilityGate;
         this.progressRecorder = progressRecorder;
         this.routeHistoryResolver = routeHistoryResolver;
+        this.transactionTemplate = transactionTemplate;
     }
 
     /**
-     * Executes the answer cycle for a submitted answer.
+     * 为提交的回答执行回答循环。
      *
-     * <p>Input validation mirrors the legacy orchestrator contract: the
-     * selected option must belong to the exact node being answered, free text
-     * is only accepted when the node allows it, and at least one meaningful
-     * input is required. All checks run before any Answer is persisted.
+     * 输入校验与遗留编排器契约保持一致:所选选项必须属于正被回答的那个
+     * 节点,自由文本仅在节点允许时接受,且至少要有一个有意义的输入。
+     * 所有检查都在任何 Answer 落库之前执行。
      */
     public AnswerCycleResult submitAnswer(AgentRun run, UUID projectId,
                                           UUID selectedOptionId, String freeText) {
@@ -147,15 +155,13 @@ public class AnswerCycleService {
     }
 
     /**
-     * Same as above, but the run may target an EXPLICIT route
-     * ({@code explicitRouteId != null}) instead of the project's Active route.
+     * 与上一个重载相同,但 run 可以指向一条显式路线
+     * ({@code explicitRouteId != null})而不必是项目的 Active 路线。
      *
-     * <p>This is what makes several routes independent: route B keeps
-     * answering while route A is the Active route, because the run resolves its
-     * target from itself instead of re-reading the single Active pointer. The
-     * tip/staleness checks are unchanged — they just run against the resolved
-     * route — and with {@code explicitRouteId == null} the behaviour is
-     * byte-identical to the Active-route path.
+     * 这是多条路线得以独立运行的关键:即使路线 A 是 Active 路线,路线 B
+     * 也能继续回答,因为 run 从自身解析目标,而不是重新读取唯一的 Active 指针。
+     * tip/过期检查保持不变——只是改为对解析出的路线执行;当
+     * {@code explicitRouteId == null} 时,行为与 Active 路线路径逐字节一致。
      */
     public AnswerCycleResult submitAnswer(AgentRun run, UUID projectId,
                                           UUID selectedOptionId, String freeText,
@@ -167,10 +173,9 @@ public class AnswerCycleService {
     }
 
     /**
-     * Multi-select submission: {@code selectedOptionIds} is the FULL selection
-     * in user order. Multiple entries are only accepted when the answering
-     * node carries {@code allowMultiSelect}; the first entry mirrors the
-     * legacy single-selection semantics across the whole pipeline.
+     * 多选提交:{@code selectedOptionIds} 是按用户顺序的完整选择集合。
+     * 仅当被回答的节点带有 {@code allowMultiSelect} 时才允许多个条目;
+     * 第一个条目在整个流水线中镜像遗留的单选语义。
      */
     public AnswerCycleResult submitAnswer(AgentRun run, UUID projectId,
                                           List<UUID> selectedOptionIds, String freeText,
@@ -187,9 +192,8 @@ public class AnswerCycleService {
                 .orElseThrow(() -> new IllegalStateException(
                         "Active tip node not found: " + route.tipNodeId()));
 
-        // A queued run records its input node at enqueue time. If the graph
-        // moved on before the worker claimed the run, fail instead of
-        // answering a different node than the user was looking at.
+        // 排队 run 在入队时记录了输入节点。若 worker 领取 run 之前图已推进,
+        // 直接失败,而不是替用户回答一个与他当时所看节点不同的节点。
         if (run.inputNodeId() != null && !run.inputNodeId().equals(route.tipNodeId())) {
             throw new IllegalStateException(explicitRoute
                     ? "Answer target is not the tip of route " + route.id() + ": " + run.inputNodeId()
@@ -210,21 +214,32 @@ public class AnswerCycleService {
                     ? buildAndValidateContextForRoute(run, projectId, route, trace)
                     : buildAndValidateContext(run, projectId, trace);
 
-            // Persist immutable Answer BEFORE any model call.
-            Answer answer = answerService.finalizeAnswerWithSelections(
-                    projectId, route.id(), route.tipNodeId(),
-                    selectedOptions, normalizedFreeText, "user");
+            // 在任何模型调用之前,先持久化不可变 Answer。
+            // 所有权 fencing(原子协议):Answer 落库与带所有权条件的检查点
+            // 写入(markPersistedAnswer)在同一事务——新执行器接管后,旧
+            // 执行器的条件检查点落空(0 行),整个事务回滚,Answer 不落库。
+            final String gateTrace = trace;
+            Answer answer = transactionTemplate.execute(tx -> {
+                // 所有权协议(第四轮):事务第一条语句对所有权行取 FOR SHARE
+                // 并验证代次,锁保持到提交——接管的代次递增与本事务互斥,
+                // 条件检查点不可能在过期快照下通过。已闩锁丢失立即拒绝。
+                executionFence.lockOwnershipForWrite();
+                Answer persisted = answerService.finalizeAnswerWithSelections(
+                        projectId, route.id(), route.tipNodeId(),
+                        selectedOptions, normalizedFreeText, "user");
+                agentRunService.markPersistedAnswer(run.id(), persisted.id(), gateTrace);
+                return persisted;
+            });
             trace = appendTrace(trace, "persisted_answer");
-            agentRunService.markPersistedAnswer(run.id(), answer.id(), trace);
 
-            // Build envelope with answer event.
+            // 构造携带回答事件的请求信封。
             AgentEvent event = new AgentEvent(
                     "ANSWER_SUBMITTED", route.tipNodeId(),
                     selectedOptionId, normalizedFreeText, persistenceIntent);
             AgentRequestEnvelope envelope = snapshotBuilder.buildEnvelope(
                     run.id(), snapshot, event, new DecisionBudget(2));
 
-            // STATE_UPDATE + DECISION + policy + execute.
+            // STATE_UPDATE + DECISION + 策略评估 + 执行。
             return completeCycle(run, projectId, route, snapshot, envelope,
                     answer, selectedOptionId, normalizedFreeText, trace);
 
@@ -235,15 +250,13 @@ public class AnswerCycleService {
     }
 
     /**
-     * Resumes an existing answer whose processing failed. The answer is
-     * already persisted, so it is never finalized again.
+     * 恢复一个处理失败的既有回答。回答已持久化,因此绝不再次 finalize,
+     * 不会创建第二个 Answer。
      *
-     * <p>Semantic replay guarantee: the resumed DECISION envelope is rebuilt
-     * from the immutable persisted Answer, so the original user input — the
-     * ANSWER_SUBMITTED event kind, selected option, free text and source
-     * node — is identical to the first attempt. Resume never degrades into a
-     * context-free CONTINUE, and the persisted patch checkpoint (if any) is
-     * reused without re-running STATE_UPDATE.
+     * 语义重放保证:恢复后的 DECISION 信封从不可变的已落库 Answer 重建,
+     * 因此原始用户输入——ANSWER_SUBMITTED 事件类型、所选选项、自由文本、
+     * 来源节点——与第一次尝试完全一致。恢复绝不退化成无上下文的 CONTINUE;
+     * 已落库的补丁 checkpoint(若存在)被直接复用,不重跑 STATE_UPDATE。
      */
     public AnswerCycleResult resumeAnswer(AgentRun run, UUID projectId, UUID answerId) {
         return resumeAnswer(run, projectId, answerId, null);
@@ -254,7 +267,7 @@ public class AnswerCycleService {
         return resumeAnswer(run, projectId, answerId, persistenceIntent, null);
     }
 
-    /** Resume with an EXPLICIT route (see {@link #submitAnswer} for the mode). */
+    /** 使用显式路线恢复(模式说明见 {@link #submitAnswer})。 */
     public AnswerCycleResult resumeAnswer(AgentRun run, UUID projectId, UUID answerId,
                                           AgentEvent.PersistenceIntent persistenceIntent,
                                           UUID explicitRouteId) {
@@ -279,10 +292,9 @@ public class AnswerCycleService {
                     : "Answer node is not part of the active route history");
         }
 
-        // A non-tip answer can only be repaired at its checkpoint boundary.
-        // Never replay a later DECISION against the current tip, and never
-        // require a legacy post-state projection that is irrelevant to this
-        // checkpoint-only recovery.
+        // 非 tip 回答只能在它的 checkpoint 边界上修复。
+        // 绝不向当前 tip 重放其后的 DECISION,也绝不要求与本次
+        // "仅 checkpoint 恢复"无关的遗留事后状态投影。
         if (!answer.nodeId().equals(route.tipNodeId())) {
             return recoverHistoricalAnswer(run, projectId, route, answer, persistenceIntent);
         }
@@ -293,10 +305,9 @@ public class AnswerCycleService {
         try {
             trace = appendTrace(trace, "context_built");
             final String traceAfterBuild = trace;
-            // Frozen-input replay: when repair reruns STATE_UPDATE, reuse the
-            // ORIGINAL attempt's pre-answer snapshot so the model input cannot
-            // drift with live workspace changes. Only an attempt whose
-            // original snapshot is undiscoverable builds a fresh context.
+            // 冻结输入重放:修复重跑 STATE_UPDATE 时,复用原始尝试的"回答前"
+            // 快照,使模型输入不会随工作区的实时变化而漂移。只有原始快照
+            // 无法找到的尝试才构建全新上下文。
             ContextSnapshot snapshot = resolveOriginalPreAnswerSnapshot(projectId, answer)
                     .map(original -> attachSnapshot(run, original, traceAfterBuild))
                     .orElseGet(() -> explicitRoute
@@ -306,9 +317,8 @@ public class AnswerCycleService {
             trace = appendTrace(trace, "persisted_answer");
             agentRunService.markPersistedAnswer(run.id(), answer.id(), trace);
 
-            // Rebuild the original submission semantics from the persisted
-            // Answer — not from caller-supplied input and never as a bare
-            // CONTINUE.
+            // 从已落库的 Answer 重建原始提交语义——而不是依据调用方新输入,
+            // 也绝不能退化为一个裸 CONTINUE。
             UUID selectedOptionId = answer.selectedOptionId() == null
                     ? null : UUID.fromString(answer.selectedOptionId());
             String freeText = answer.freeText();
@@ -328,10 +338,9 @@ public class AnswerCycleService {
     }
 
     /**
-     * Compatibility recovery for an answer that is already historical on its
-     * owning route. Only the missing STATE_UPDATE checkpoint is executed. A
-     * persisted patch makes the operation an idempotent no-op; no DECISION,
-     * node creation, or route-tip mutation is allowed in either case.
+     * 对已在所属路线上成为历史的回答做兼容性恢复。只执行缺失的 STATE_UPDATE
+     * checkpoint。若补丁已落库,本操作是幂等空操作;无论哪种情况,都不允许
+     * 执行 DECISION、创建节点或变更路线 tip。
      */
     private AnswerCycleResult recoverHistoricalAnswer(
             AgentRun run, UUID projectId, Route route, Answer answer,
@@ -386,9 +395,8 @@ public class AnswerCycleService {
     }
 
     /**
-     * Shared post-answer processing: STATE_UPDATE → patch checkpoint →
-     * post-state DECISION snapshot → DECISION → policy → execute. Eliminates
-     * duplication between submitAnswer and resumeAnswer.
+     * 回答之后的共享处理:STATE_UPDATE → 补丁 checkpoint → 事后状态 DECISION
+     * 快照 → DECISION → 策略 → 执行。消除 submitAnswer 与 resumeAnswer 之间的重复。
      */
     private AnswerCycleResult completeCycle(AgentRun run, UUID projectId,
                                             Route route, ContextSnapshot snapshot,
@@ -396,11 +404,11 @@ public class AnswerCycleService {
                                             Answer answer,
                                             UUID selectedOptionId, String freeText,
                                             String trace) {
-        // Check for existing patch (repair gate).
+        // 检查是否已有补丁(修复门)。
         AnswerPatch patch = answerPatchService.findBySourceAnswerId(answer.id()).orElse(null);
         boolean resumeWithCheckpoint = patch != null;
 
-        // Call 1: STATE_UPDATE (unless patch already exists).
+        // 第 1 次调用:STATE_UPDATE(补丁已存在时跳过)。
         if (patch == null) {
             patch = runStateUpdate(run, projectId, route, envelope, answer, trace);
             trace = appendTrace(trace, "persisted_patch");
@@ -411,15 +419,12 @@ public class AnswerCycleService {
                     "STATE_UPDATE_SKIPPED", Map.of("reason", "patch_exists"));
         }
 
-        // STATE_UPDATE is a durable checkpoint. DECISION must read the state
-        // AFTER that checkpoint, not the pre-answer snapshot used for the
-        // first model call. On a repair resume, the ORIGINAL attempt's
-        // post-state snapshot (and therefore its frozen model input) is
-        // reused; only a first attempt — or a repair whose predecessor never
-        // reached its DECISION call — builds a fresh post-state snapshot.
-        // Rebuild against the exact route (never whatever route happens to be
-        // active now) so the new Answer/Patch/effective claims are causally
-        // visible while route isolation remains fail-closed.
+        // STATE_UPDATE 是持久化 checkpoint。DECISION 必须读取该 checkpoint 之后
+        // 的状态,而不是第一次模型调用所用的"回答前"快照。修复恢复时,复用
+        // 原始尝试的事后(post-state)快照(以及其冻结的模型输入);只有首次
+        // 尝试——或前驱从未走到 DECISION 调用的修复——才构建全新的事后快照。
+        // 重建时必须针对本 run 的确切路线(绝不是"当前恰好活跃的路线"),使新
+        // Answer/Patch/有效 claims 具备因果可见性,同时路线隔离保持 fail-closed。
         ContextSnapshot decisionSnapshot;
         AgentRequestEnvelope decisionEnvelope;
         try {
@@ -438,10 +443,9 @@ public class AnswerCycleService {
         }
         semanticTraceRecorder.capturePostState(run.id(), decisionEnvelope.snapshot());
 
-        // Call 2: DECISION through the shared execution core. The policy /
-        // stale-check / execute / terminalize segment is the same fail-closed
-        // chain as the question-draft cycle; only the post-state DECISION
-        // input preparation above stays answer-specific.
+        // 第 2 次调用:DECISION,走共享执行核心。策略/过期检查/执行/终态化
+        // 这一段与问题起草周期是同一条 fail-closed 链;只有上面的 DECISION
+        // 输入准备是回答特有的。
         trace = appendTrace(trace, "deciding");
         ActionExecutionContext execContext = new ActionExecutionContext(
                 run.id(), projectId, route.id(), decisionSnapshot.id(),
@@ -458,8 +462,8 @@ public class AnswerCycleService {
     }
 
     /**
-     * Runs STATE_UPDATE, grounds claims, validates, and persists patch checkpoint.
-     * Returns the persisted patch.
+     * 执行 STATE_UPDATE:claims 落锚、校验并持久化补丁 checkpoint,
+     * 返回已落库的补丁。
      */
     private AnswerPatch runStateUpdate(AgentRun run, UUID projectId,
                                        Route route, AgentRequestEnvelope envelope,
@@ -506,11 +510,18 @@ public class AnswerCycleService {
                         "Patch reflection rejected: " + patchReflection.errors());
             }
 
-            AnswerPatch patch = answerPatchService.saveOrReuse(
-                    projectId, route.id(), answer.nodeId(), answer.id(),
-                    groundedClaims, run.id());
-            validatePatchSources(patch, route, answer);
-            agentRunService.markPersistedAnswerPatch(run.id(), patch.id(), trace);
+            // 所有权 fencing(原子协议):补丁落库与带所有权条件的检查点
+            // 写入在同一事务——丢锁执行器的检查点落空即整体回滚,补丁不落库。
+            final String patchTrace = trace;
+            AnswerPatch patch = transactionTemplate.execute(tx -> {
+                executionFence.lockOwnershipForWrite();
+                AnswerPatch persisted = answerPatchService.saveOrReuse(
+                        projectId, route.id(), answer.nodeId(), answer.id(),
+                        groundedClaims, run.id());
+                validatePatchSources(persisted, route, answer);
+                agentRunService.markPersistedAnswerPatch(run.id(), persisted.id(), patchTrace);
+                return persisted;
+            });
             return patch;
         } catch (RuntimeException ex) {
             semanticTraceRecorder.captureFailure(run.id(), "STATE_APPLICATION", ex);
@@ -536,9 +547,9 @@ public class AnswerCycleService {
     }
 
     /**
-     * A confirmed Claim is evidence about this immutable Answer. Its source
-     * identity must therefore remain anchored to the Answer's own node, even
-     * when recovery is running after the route tip has moved forward.
+     * 已确认(CONFIRMED)的 Claim 是关于这条不可变 Answer 的证据。因此其来源
+     * 身份必须始终锚定在 Answer 自己的节点上——即使恢复发生在路线 tip 已经
+     * 前进之后。
      */
     private void validateClaimSources(List<Claim> claims, Answer answer) {
         for (Claim claim : claims) {
@@ -559,7 +570,7 @@ public class AnswerCycleService {
         }
     }
 
-    /** The persisted Patch must carry the same source identity as its Answer. */
+    /** 已落库的 Patch 必须携带与其 Answer 相同的来源身份。 */
     private void validatePatchSources(AnswerPatch patch, Route route, Answer answer) {
         if (!answer.id().equals(patch.sourceAnswerId())
                 || !answer.nodeId().equals(patch.sourceNodeId())
@@ -571,10 +582,9 @@ public class AnswerCycleService {
     }
 
     /**
-     * Validates a client-selected option id against the exact answering node.
-     * The client may only reference an existing runtime-owned option id
-     * previously returned by that node; ids from other nodes, sibling routes,
-     * or random fabrication are rejected before any answer is persisted.
+     * 校验客户端选择的选项 id 确实属于被回答的那个节点。客户端只能引用该
+     * 节点此前返回的、runtime 持有的既有选项 id;来自其他节点、兄弟路线或
+     * 随意编造的 id,在任何回答落库之前就会被拒绝。
      */
     private String validateSelectedOption(Node tipNode, UUID selectedOptionId) {
         if (selectedOptionId == null) {
@@ -589,10 +599,9 @@ public class AnswerCycleService {
     }
 
     /**
-     * Validates the FULL client selection against the exact answering node.
-     * Multiple entries are only legal on a multi-select question; duplicates
-     * are collapsed while preserving user order, and every id must be a
-     * runtime-owned option of this node.
+     * 校验客户端的完整选择集合是否属于被回答的那个节点。多选仅在多选问题
+     * ({@code allowMultiSelect})上合法;重复项被折叠但保留用户顺序,且每个
+     * id 都必须是该节点持有的选项。
      */
     private List<String> validateSelectedOptions(Node tipNode, List<UUID> selectedOptionIds) {
         if (selectedOptionIds == null || selectedOptionIds.isEmpty()) {
@@ -617,9 +626,8 @@ public class AnswerCycleService {
     }
 
     /**
-     * Enforces the answer input policy: at least one meaningful input (a valid
-     * selected option or non-blank free text) is required, and non-blank free
-     * text is rejected when the node does not allow free-form answers.
+     * 强制执行回答输入策略:至少需要一个有意义的输入(有效选项或非空自由
+     * 文本);当节点不允许自由作答时,非空自由文本会被拒绝。
      */
     private void validateAnswerInput(Node tipNode, String selectedOption, String freeText) {
         if (selectedOption == null && freeText == null) {
@@ -642,9 +650,9 @@ public class AnswerCycleService {
     }
 
     /**
-     * The route an answer cycle writes to. Without an explicit route this is
-     * the project Active route (unchanged, still fail-closed when the pointer
-     * moved); with one, the route must belong to the project and be OPEN.
+     * 回答循环写入的目标路线。没有显式路线时是项目 Active 路线(行为不变,
+     * 指针变动时仍然 fail-closed);有显式路线时,该路线必须属于本项目且
+     * 处于 OPEN 状态。
      */
     private Route resolveRunRoute(UUID projectId, UUID explicitRouteId) {
         if (explicitRouteId == null) {
@@ -671,8 +679,8 @@ public class AnswerCycleService {
     }
 
     /**
-     * Explicit-route context: built from the run's own route instead of the
-     * Active pointer, so an independently running chain reads its own lineage.
+     * 显式路线上下文:从 run 自己的路线构建,而不是 Active 指针,使一条
+     * 独立运行的链路读取的是自己的谱系。
      */
     private ContextSnapshot buildAndValidateContextForRoute(AgentRun run, UUID projectId,
                                                             Route route, String trace) {
@@ -691,13 +699,10 @@ public class AnswerCycleService {
     }
 
     /**
-     * Frozen-input replay for a STATE_UPDATE rerun: the ORIGINAL attempt's
-     * pre-answer snapshot, discovered through the persisted answer's first
-     * producing run. An undiscoverable snapshot is returned as empty only for
-     * the still-tip compatibility path, where a fresh context is an explicit
-     * legacy fallback; historical checkpoint-only recovery rejects that empty
-     * result. An inconsistent discovered snapshot always fails closed instead
-     * of silently rebuilding.
+     * STATE_UPDATE 重跑的冻结输入重放:通过已落库回答的第一个产出 run,找到
+     * 原始尝试的"回答前"快照。仅对"仍是 tip"的兼容路径,找不到快照才返回空
+     * ——全新上下文在那里是明确的遗留回退;历史的"仅 checkpoint 恢复"会拒绝
+     * 这个空结果。发现的不一致快照一律 fail-closed,绝不静默重建。
      */
     private java.util.Optional<ContextSnapshot> resolveOriginalPreAnswerSnapshot(
             UUID projectId, Answer answer) {
@@ -733,12 +738,10 @@ public class AnswerCycleService {
     }
 
     /**
-     * Frozen-input replay for repair: the most recent post-state DECISION
-     * snapshot frozen by an earlier attempt of this answer. Every DECISION
-     * envelope carries its snapshot identity in the DECISION_STARTED event,
-     * so the latest one across previous runs is the continuity anchor.
-     * Missing (the previous attempt died before its DECISION call started)
-     * resolves to empty; an inconsistent discovered snapshot fails closed.
+     * 修复时的冻结输入重放守卫:遗留重放要求此前尝试冻结过 DECISION 投影。
+     * 每个 DECISION 信封都在 DECISION_STARTED 事件里携带其快照身份;若存在
+     * DECISION_STARTED 事件却没有可用的冻结投影(或事件不含快照身份),
+     * 语义重放不可用,直接抛出异常,而不是用新快照伪造重放。
      */
     private void failIfLegacyReplay(UUID answerId) {
         boolean hasPatch = answerPatchService.findBySourceAnswerId(answerId).isPresent();
@@ -784,7 +787,7 @@ public class AnswerCycleService {
             UUID projectId, Route route, UUID answerId, UUID currentRunId,
             boolean resumeWithCheckpoint) {
         if (!resumeWithCheckpoint) {
-            // First attempt: no earlier DECISION input exists to preserve.
+            // 首次尝试:不存在需要保留的早期 DECISION 输入。
             return java.util.Optional.empty();
         }
         java.util.List<UUID> decisionSnapshotIds = new java.util.ArrayList<>();
@@ -824,9 +827,9 @@ public class AnswerCycleService {
             String persisted = latest.trace();
             String base = (persisted == null || persisted.isBlank()) ? trace : persisted;
             String reason = RunFailureReasons.reasonCode(ex);
-            agentRunFailureService.fail(runId, appendTrace(base, "failed:" + reason));
-            eventService.append(runId, AgentRunPhase.FAILED,
-                    "RUN_FAILED", RunFailureReasons.payload(reason));
+            // 状态转换与 RUN_FAILED 事件由失败服务在同一事务内原子提交:
+            // 状态未生效(所有权拒绝/已终态)时不会有"本次失败已发生"的事件。
+            agentRunFailureService.fail(runId, appendTrace(base, "failed:" + reason), ex);
         }
     }
 

@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Structured semantic planning diagnostic (DIAGNOSTIC ONLY).
+"""文件名:semantic_planning_diagnostic.py
 
-Sends frozen DECISION inputs to the frozen provider/model with a frozen
-planning prompt, validates planning-state.v1 responses, derives offline
-action candidates through the frozen mapping, and scores pre-registered
-gates. Never touches production code paths, prompts, or eligibility.
+结构化语义规划诊断脚本(仅诊断用)。
+
+把冻结的 DECISION 输入,连同冻结的规划提示词一起发给冻结的
+供应商/模型,校验 planning-state.v1 响应,经冻结的映射离线推导
+动作候选,并对预注册的门槛打分。绝不触碰生产代码路径、提示词或
+资格判定逻辑。
 """
 
 from __future__ import annotations
@@ -456,9 +458,9 @@ def _verdict(case_rows: list) -> dict:
                checks["schema_zero"], checks["stability_ge_reference"]]):
         verdict = "DIAGNOSTIC_ACCEPTED"
     else:
-        # Required behavioral gates or the pre-registered stability reference
-        # failed while coverage was sufficient: a behavioral rejection.
-        # If stability alone failed it is recorded as the forensic driver.
+        # 覆盖率充分的前提下,行为门槛或预注册的稳定性参考线未达标:
+        # 属于行为性拒绝。若仅稳定性未达标,则把它记录为法证层面的
+        # 主导原因。
         verdict = "DIAGNOSTIC_REJECTED"
         checks["stability_driver"] = (
             checks["correction_ge_3_of_5"] and checks["critical_8_zero"]

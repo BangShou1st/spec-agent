@@ -12,8 +12,11 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 
 /**
- * Activation hard gate: minimal bounded inference requiring a legal minimal
- * FINAL decision. Never executes Agent tools.
+ * 文件名:CompatibilityProbeService.java
+ *
+ * 用途:激活前的硬性门槛:执行一次最小、有界的推理,要求模型返回合法的
+ * 最小 FINAL 决策。探测绝不执行任何 Agent 工具。用于保存/激活提供商配置前
+ * 验证凭据、端点和模型确实可用。
  */
 @Service
 public class CompatibilityProbeService {

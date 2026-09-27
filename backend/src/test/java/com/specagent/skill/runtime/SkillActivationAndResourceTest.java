@@ -23,9 +23,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * Activation rules: only installed + enabled + visible Skills activate;
- * instructions stay bounded; provenance is recorded; resources are read on
- * demand with traversal defense.
+ * 文件名:SkillActivationAndResourceTest.java
+ *
+ * 测试目标:验证激活规则——只有已安装、已启用且可见的 Skill 才能激活;
+ * 指令保持有界;记录来源信息;资源按需读取并具备路径穿越防御。
  */
 class SkillActivationAndResourceTest {
 
@@ -122,8 +123,7 @@ class SkillActivationAndResourceTest {
                         com.specagent.skill.domain.SkillPackageFile.FileKind.SKILL_MD,
                         13, "skill-hash", "skill content".getBytes())));
 
-        // Reading the instructions is display-only; running the Skill still goes
-        // through activation, which is a separate path.
+        // 读取指令内容仅用于展示;运行 Skill 仍要走激活流程,那是另一条路径。
         SkillResourceService.ResourceRead read =
                 resourceService.readResource(VERSION_ID, "SKILL.md");
 

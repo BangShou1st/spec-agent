@@ -1,11 +1,5 @@
-import { test, expect } from '@playwright/test'
-import {
-  buildThreeNodeLineage,
-  closeFloatingWorkspaceWindows,
-  createProject,
-  fitGraph,
-} from './helpers'
 
+import { test, expect, createProject, fitGraph, closeFloatingWorkspaceWindows, buildThreeNodeLineage } from './helpers'
 test('问 AI opens the Inspector and anchors NodeQuery to the canonical node id', async ({ page }) => {
   let canonicalRootNodeId: string | null = null
   page.on('response', async (response) => {

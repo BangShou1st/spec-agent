@@ -13,12 +13,12 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 
 /**
- * Startup backfill for the local skill mirror: re-projects every installed
- * skill's current version from the authoritative database. This is what
- * makes the mirror self-healing — files deleted, edited or lost on disk are
- * rewritten from Postgres on the next start, and skills installed before the
- * mirror existed (all rows in an existing database) appear on disk without
- * any migration step. Idempotent and never fatal.
+ * 文件名:SkillLocalMirrorBackfill.java
+ *
+ * 用途:本地 skill 镜像的启动回填 —— 从权威数据库重新投影每个已安装
+ * skill 的当前版本。这是镜像自愈能力的来源:磁盘上被删除、被修改或丢失的
+ * 文件会在下次启动时从 Postgres 重写;镜像功能上线之前安装的 skill(既有
+ * 数据库里的全部记录)也会无需任何迁移步骤即出现在磁盘上。幂等且绝不致命。
  */
 @Component
 public class SkillLocalMirrorBackfill implements ApplicationRunner {

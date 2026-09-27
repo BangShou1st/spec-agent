@@ -8,11 +8,12 @@ import com.specagent.common.Ids;
 import java.util.UUID;
 
 /**
- * Domain-neutral requirement claim derived from an answer.
+ * 文件名:Claim.java
  *
- * <p>A claim is a structured piece of requirement state. It is always traceable
- * to the node and answer that produced it, and (when confirmed) to a source
- * reference. Claims are the unit replayed to build {@code RequirementState}.
+ * 用途:由答案推导出的领域中立的 需求 claim(断言)。claim 是一段
+ * 结构化的需求状态。它始终可以追溯到产生它的节点与答案,在已确认
+ * (confirmed)的情况下还可追溯到来源引用。claim 是重放构建
+ * {@code RequirementState} 的最小单元。
  */
 public class Claim {
 
@@ -46,9 +47,9 @@ public class Claim {
     }
 
     /**
-     * Runtime-owned claim derived from structured model output: the runtime
-     * assigns the id and leaves provenance for the runtime to ground later.
-     * Model output must never supply id, sourceNodeId, or sourceAnswerId.
+     * 由结构化模型输出推导、由运行时持有的 claim:id 由运行时分配,
+     * 出处留给运行时稍后落地。模型输出绝不允许提供 id、sourceNodeId
+     * 或 sourceAnswerId。
      */
     public static Claim unsourced(ClaimKind kind, String text, ClaimStatus status, Double confidence) {
         return new Claim(Ids.random(), kind, text, status, confidence, null, null);
@@ -94,7 +95,7 @@ public class Claim {
     }
 
     /**
-     * Convenience helper for callers; never part of the persisted claim JSON.
+     * 供调用方使用的便捷助手;绝不会进入持久化的 claim JSON。
      */
     @JsonIgnore
     public boolean isConfirmed() {

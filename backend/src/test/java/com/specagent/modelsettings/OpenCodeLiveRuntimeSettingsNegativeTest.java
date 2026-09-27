@@ -16,7 +16,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.verifyNoInteractions;
 
-/** Missing eval credentials/model must fail before any DB lookup or fallback. */
+/**
+ * 文件名:OpenCodeLiveRuntimeSettingsNegativeTest.java
+ *
+ * 测试目标:验证外部评估环境缺少凭证/模型配置时 fail-closed:
+ * 在任何数据库查询或兜底发生之前就抛出 OpenCodeModelException(报文包含缺失的环境变量名,
+ * 并明确不使用测试数据库设置);上下文装配上保持 RoutingModelInferenceGateway 为权威入口、
+ * OpenCode 为唯一委托,且不存在 Fake 网关。
+ */
 @SpringBootTest(properties = {
         "spec.agent.model.inference=opencode",
         "spec.agent.model.runtime-settings-source=external-environment",
@@ -41,7 +48,7 @@ class OpenCodeLiveRuntimeSettingsNegativeTest {
 
     @Test
     void missingLiveConfigurationFailsClosedWithoutTestDatabaseOrFakeFallback() {
-        // MODEL PROVIDERS V1: routing is the authoritative entry; OpenCode stays the delegate.
+        // MODEL PROVIDERS V1:路由网关是权威入口,OpenCode 保持为委托。
         assertThat(inferenceGateway).isInstanceOf(RoutingModelInferenceGateway.class);
         assertThat(context.getBeansOfType(OpenCodeModelInferenceGateway.class)).hasSize(1);
         assertThat(context.getBeansOfType(FakeModelInferenceGateway.class)).isEmpty();

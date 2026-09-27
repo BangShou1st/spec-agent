@@ -15,12 +15,13 @@ import org.springframework.core.io.ClassPathResource;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Content contract for the shipped built-in Skill packages.
+ * 文件名:BuiltinSkillPackageTest.java
  *
- * <p>These packages are data, not code, so nothing else fails when one of them
- * goes stale: a renamed folder, a missing reference or an over-long
- * description would only surface as "that skill silently never appears".
- * This test is the thing that actually breaks.
+ * 测试目标:验证随产品发布的内置 Skill 包的内容契约。
+ *
+ * 这些包是数据而不是代码,一旦某个包过期,其他地方不会报错:目录改名、
+ * 引用缺失或描述超长只会表现为"该 Skill 静默地不再出现"。这个测试就是
+ * 真正会先崩溃的那道关卡。
  */
 class BuiltinSkillPackageTest {
 
@@ -40,8 +41,8 @@ class BuiltinSkillPackageTest {
             assertThat(manifest.hasValidName())
                     .as("SKILL.md name must satisfy the package name pattern: %s", manifest.name())
                     .isTrue();
-            // The folder name is the BUILTIN source identity, so a mismatch
-            // would make restarts re-seed the same skill under a second row.
+            // 目录名就是 BUILTIN 来源的身份标识,若不一致会导致重启时
+            // 把同一个 Skill 在第二行重复播种。
             assertThat(manifest.name())
                     .as("SKILL.md name must equal its folder name in %s", packageName)
                     .isEqualTo(packageName);
@@ -82,8 +83,7 @@ class BuiltinSkillPackageTest {
 
     @Test
     void seeder_groups_the_index_by_package_and_keeps_the_skill_md_first() {
-        // readIndex only reads classpath resources, so it is exercised without
-        // any persistence collaborator.
+        // readIndex 只读 classpath 资源,因此不需要任何持久化协作对象即可验证。
         Map<String, List<String>> packages = new BuiltinSkillSeeder(null, null).readIndex();
 
         assertThat(packages).isNotEmpty();

@@ -19,11 +19,11 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Replacement live-staleness regression: the model decided on the frozen
- * snapshot; if the source route's tip moved (a new node was appended) before
- * the commit runs, the replacement must fail closed — never commit a decision
- * made against outdated route state, even when the target still sits on the
- * historical lineage.
+ * 文件名:ReplacementLiveStalenessIntegrationTest.java
+ *
+ * 测试目标:替换(Replacement)的活跃过期回归:模型基于冻结快照做出决策,若在
+ * 提交执行前来源路由的 tip 已被推进(追加了新节点),替换必须 fail closed——绝不
+ * 提交一个基于过期路由状态做出的决策,即使目标仍在历史血统上。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -43,14 +43,14 @@ class ReplacementLiveStalenessIntegrationTest {
     private RouteRepository routeRepository;
 
     /**
-     * The deterministic precondition seam: expected tip = tip at snapshot
-     * time; current tip mutated afterwards → stale.
+     * 确定性前置条件接缝:预期 tip = 快照时刻的 tip;
+     * 之后当前 tip 被变更 → 过期。
      */
     @Test
     void replacementRejectsSourceRouteMutationAfterSnapshot() {
         Project project = projectService.createProject("Stale regen " + UUID.randomUUID());
-        // No queue drain needed: the answer-cycle driver claims the exact run
-        // it enqueued, so runs left queued by other fixtures cannot interfere.
+        // 无需清空队列:答题驱动按 id 领取自己入队的 run,
+        // 其他 fixture 遗留在队列中的 run 不会造成干扰。
         var draftRun = draftDriver.draftQuestion(project.id());
         var answerRun = answerDriver.submitFreeText(project.id(), "first answer");
         UUID sourceRouteId = answerRun.run().routeId();
@@ -59,8 +59,8 @@ class ReplacementLiveStalenessIntegrationTest {
         UUID tipAtSnapshotTime = routeRepository.findById(sourceRouteId)
                 .orElseThrow().tipNodeId();
 
-        // Model inference happens... meanwhile another node is appended to
-        // the same source route (tip moves past what the model saw).
+        // 模型推理进行中……与此同时另一个节点被追加到同一来源路由
+        // (tip 越过了模型所看到的位置)。
         nodeService.createChildNode(project.id(), sourceRouteId,
                 targetChild.id(), "New question appended after snapshot",
                 null, List.of(), true);
@@ -71,10 +71,10 @@ class ReplacementLiveStalenessIntegrationTest {
                 .hasMessageContaining("changed after the replacement snapshot");
     }
 
-    /** Target removed from the lineage also fails closed. */
+    /** 目标脱离当前血统同样 fail closed。 */
     @Test
     void replacementRejectsTargetOutsideCurrentLineage() {
-        // Nonexistent source route: the checker fails closed immediately.
+        // 来源路由不存在:检查器立即 fail closed。
         assertThatThrownBy(() -> staleContextChecker
                 .verifyLiveExecutionPreconditions(
                         UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID()))

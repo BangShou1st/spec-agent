@@ -5,11 +5,11 @@ import com.specagent.workspace.node.NodeOption;
 import java.util.UUID;
 
 /**
- * Read-only representation of a selectable option on a node.
+ * 文件名:NodeOptionResponse.java
  *
- * <p>Option ids are runtime-owned and returned read-only. No Phase 6.1 API
- * allows a client to supply a {@code NodeOption} id for creation.
- * {@code recommended} marks the model's context-based suggestion.
+ * 用途:节点上可选项的只读表示。选项 id 由运行时生成,只读返回。
+ * Phase 6.1 的 API 不允许客户端提供 {@code NodeOption} id 来创建内容。
+ * {@code recommended} 标记模型基于上下文的建议。
  */
 public record NodeOptionResponse(
         UUID id,

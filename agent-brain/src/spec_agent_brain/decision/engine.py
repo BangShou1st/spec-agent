@@ -1,9 +1,11 @@
-"""DECISION engine: reflection + planning in one model call, then a
-runtime-stamped action proposal envelope.
+"""文件名:engine.py
 
-The brain stamps base context identity from its own trusted request (never
-from model output) and pre-checks source refs against the snapshot's allowed
-refs; Java re-validates everything fail-closed anyway.
+用途:DECISION 引擎——用一次模型调用完成 reflection + planning,再组装出
+由 runtime 盖章的 action proposal 信封。
+
+Brain 使用自己收到的可信请求来填写 base context 标识(绝不采信模型输出),
+并在本地预先校验 source refs 是否在快照允许范围内;Java 侧随后仍会对全部
+内容做 fail-closed 复核。
 """
 
 import json
@@ -28,48 +30,43 @@ from ..prompts import decision as decision_prompt
 
 logger = logging.getLogger("spec_agent_brain")
 
-# The one documented model deviation the parse layer normalizes: the model
-# occasionally hoists this field out of ``action`` to the top level of its own
-# JSON object, where the contract has no such field.
+# 解析层唯一需要归一化的、已记录在案的模型偏差:模型偶尔会把该字段从
+# ``action`` 内部提升到自己 JSON 对象的顶层,而契约里顶层并没有这个字段。
 TOP_LEVEL_SOURCE_REFS = "sourceRefs"
 
 
 class BrainContractError(RuntimeError):
-    """Raised when a model output violates the brain's own output contract."""
+    """模型输出违反 brain 自身输出契约时抛出。"""
 
 
 class UngroundedReferenceError(BrainContractError):
-    """The output cited a ref outside the frozen snapshot's allowed refs.
+    """输出引用了冻结快照允许范围之外的 ref。
 
-    A distinct type because the Runtime reports it separately: an
-    out-of-range citation is the route/branch grounding gate doing its job,
-    not a malformed model response, and collapsing the two into one opaque
-    failure hides which side failed.
+    单独设一个类型是因为 Runtime 要分别上报:越界引用是路由/分支 grounding
+    门禁在正常工作,而不是模型响应损坏;把两者混成一个不可分辨的失败,
+    会掩盖到底是哪一侧出了问题。
     """
 
 
 class AmbiguousSourceRefsError(BrainContractError):
-    """The output carried two *different* sourceRefs lists.
+    """输出携带了两份*不同*的 sourceRefs 列表。
 
-    The parse layer resolves only provably equivalent shapes. Two different
-    lists have no defined merge semantics, so they are rejected instead of
-    being silently overwritten or unioned.
+    解析层只归并可证明等价的形态。两份不同的列表没有定义好的合并语义,
+    所以直接拒绝,而不是悄悄覆盖或取并集。
     """
 
 
 class ConflictSurfacingError(BrainContractError):
-    """The output omitted observation.conflicts while unresolved conflicts exist.
+    """存在未解决的冲突,但输出遗漏了 observation.conflicts。
 
-    Kept distinct from the other contract failures because it is the one
-    violation a second, explicitly-instructed call can actually repair: the
-    unresolved claim stays in the snapshot, so without a repair every later
-    decision on that route fails identically and the project becomes
-    permanently unanswerable.
+    与其他契约失败区分开,因为它是唯一能通过第二次、带明确指令的调用真正
+    修复的违规:未解决的 claim 仍留在快照里,如果不做修复,该路由上后续
+    每次决策都会以同样的方式失败,项目将永远无法继续。
     """
 
 
 class ActionIneligibleBrainError(BrainContractError):
-    """The model selected a family outside the Runtime-owned V3 mask."""
+    """模型选择了 Runtime 持有的 V3 掩码之外的 action family。"""
 
 
 CONFLICT_REPAIR_INSTRUCTION = (
@@ -102,9 +99,9 @@ def handle_decision(
     try:
         output = _validate_output(completion.content, request)
     except ConflictSurfacingError:
-        # One bounded repair, and only when the Runtime-declared budget funds a
-        # second call. Nothing else is retried: every other violation still
-        # fails closed on the first output, exactly as before.
+        # 只做一次有界的修复,且仅当 Runtime 声明的预算付得起第二次调用。
+        # 其余一律不重试:其他任何违规仍然和以前一样在第一次输出上直接
+        # fail-closed。
         if request.decision_budget.max_model_calls < 2:
             raise
         repair = CONFLICT_REPAIR_INSTRUCTION.format(
@@ -131,19 +128,19 @@ def handle_decision(
         action_proposal=ActionProposal(
             action_family=output.action.action_family,
             payload=output.action.payload,
-            # Runtime-owned identity is stamped from the trusted request, so
-            # the model can never fabricate or stale-stamp the base context.
+            # Runtime 持有的标识来自可信请求盖章,所以模型永远无法伪造或
+            # 盖上过期的 base context。
             base_context_snapshot_id=request.snapshot.snapshot_id,
             base_context_hash=request.snapshot.context_hash,
             source_refs=output.action.source_refs,
-            # proposalId is runtime-owned UUID; idempotencyKey derived from
-            # the trusted run identity (one proposal per decision cycle).
+            # proposalId 是 runtime 持有的 UUID;idempotencyKey 从可信的 run
+            # 标识派生(每个 decision 周期一个 proposal)。
             proposal_id=uuid.uuid4(),
             idempotency_key=str(request.run_id),
             anchor_refs=output.action.anchor_refs,
         ),
-        # Honest accounting: the repair call is reported, never hidden. Java
-        # rejects the response when this exceeds the declared budget.
+        # 如实记账:修复调用会被上报,绝不隐藏。超过声明预算时 Java 会
+        # 拒绝该响应。
         usage=UsageView(model_calls=model_calls, prompt_hashes=[]),
         diagnostics=semantic_diagnostics(
             decision_prompt.SYSTEM_PROMPT, user_prompt, "DECISION"),
@@ -176,7 +173,7 @@ def _unresolved_conflict_texts(
 
 def _render_model_input(
         request: AgentV2RequestEnvelope | AgentV3RequestEnvelope) -> str:
-    """Adds V3 Runtime control data without modifying Candidate C's prompt."""
+    """在不改动 Candidate C prompt 的前提下注入 V3 的 Runtime 控制数据。"""
     rendered = decision_prompt.render_user_prompt(request)
     if not isinstance(request, AgentV3RequestEnvelope):
         return rendered
@@ -194,51 +191,46 @@ def _parse_model_output(content: str) -> ModelDecisionOutput:
     raw = _normalize_stray_source_refs(raw)
     try:
         return ModelDecisionOutput.model_validate(raw)
-    except Exception as exc:  # pydantic ValidationError -> typed brain failure
+    except Exception as exc:  # pydantic ValidationError -> 转成有类型的 brain 失败
         raise BrainContractError(
             "model output violates the DECISION contract: "
             f"{exc} [{_output_layout(content)}]") from exc
 
 
 def _normalize_stray_source_refs(raw: Any) -> Any:
-    """Compatibility shim for exactly one documented DECISION deviation.
+    """针对唯一一个已记录在案的 DECISION 偏差做兼容垫片。
 
-    The model sometimes emits ``sourceRefs`` as a *top-level* field of its JSON
-    object instead of inside ``action``. Exactly two shapes are resolved, and
-    both are provably equivalent to the model having used the documented layout:
+    模型偶尔会把 ``sourceRefs`` 作为 JSON 对象的*顶层*字段输出,而不是放在
+    ``action`` 里。只有两种形态会被归一,且两者都可证明等价于模型使用了
+    文档规定的布局:
 
-    - the action *omits* the field and the top level carries a legal ref list:
-      the value is relocated into ``action.sourceRefs``, the field's only
-      defined home;
-    - both places carry the *same* legal ref list: the top-level copy is a pure
-      duplicate and is dropped.
+    - ``action`` *缺少*该字段而顶层带一份合法 ref 列表:把值搬回
+      ``action.sourceRefs``——该字段唯一被定义的位置;
+    - 两处带的是*同一份*合法 ref 列表:顶层那份是纯重复,直接丢弃。
 
-    Which shape applies is decided by key *presence*, never by truthiness: an
-    action that already defines the field is never treated as if it had omitted
-    it, so a present-but-illegal value (``null``, ``false``, ``0``, ``""``, a
-    non-string array) is never repaired by the top-level copy.
+    用哪种形态只看键*是否存在*,绝不看值是否为真:已经定义了该字段的
+    action 永远不会被当成"缺失"处理,所以一个存在但非法的值(``null``、
+    ``false``、``0``、``""``、非字符串数组)永远不会被顶层副本修复。
 
-    Everything else fails closed exactly as before:
+    其余情况一律像以前一样 fail-closed:
 
-    - two *different* legal lists — including an empty action list against a
-      non-empty top level — have no defined merge semantics (neither
-      overwriting, nor unioning, nor preferring the longer one is acceptable) and
-      are rejected;
-    - an action field that is present but not a legal ref list is left untouched
-      for the strict contract to reject;
-    - any other unknown field is still rejected by the strict contract, and a
-      relocated list is not trusted — it still runs through the full schema, the
-      allowed-refs whitelist and every action/eligibility check downstream.
+    - 两份*不同*的合法列表——包括 action 里是空列表而顶层非空——没有定义
+      的合并语义(覆盖、取并集、取更长的那个都不可接受),直接拒绝;
+    - action 里的字段存在但不是合法 ref 列表时,原样保留,交给严格契约
+      去拒绝;
+    - 其他任何未知字段仍由严格契约拒绝,而且搬移过来的列表也不被信任——
+      它仍要走完整的 schema、allowed-refs 白名单以及下游所有
+      action/eligibility 检查。
 
-    No ref is ever invented, dropped or rewritten, and unknown keys are never
-    stripped. If equivalence cannot be shown, the brain keeps rejecting.
+    绝不发明、删除或改写任何 ref,也绝不剥离未知键。无法证明等价时,
+    brain 持续拒绝。
     """
     if not isinstance(raw, dict) or TOP_LEVEL_SOURCE_REFS not in raw:
         return raw
     stray = raw[TOP_LEVEL_SOURCE_REFS]
     action = raw.get("action")
     if not _is_source_ref_list(stray) or not isinstance(action, dict):
-        # Not the documented shape: leave it for the strict contract to reject.
+        # 不是文档描述的形态:留给严格契约去拒绝。
         return raw
     if TOP_LEVEL_SOURCE_REFS in action:
         action_refs = action[TOP_LEVEL_SOURCE_REFS]
@@ -251,9 +243,8 @@ def _normalize_stray_source_refs(raw: Any) -> Any:
             raise AmbiguousSourceRefsError(
                 "model output carries two different sourceRefs lists: "
                 f"action={_bounded_refs(action_refs)} topLevel={_bounded_refs(stray)}")
-        # The action defines the field with something that is not a ref list.
-        # That is an illegal value, not a missing one: never patch it with the
-        # top-level copy — the strict contract rejects it as it always did.
+        # action 定义了该字段,但值不是 ref 列表。这是非法值,不是缺失:
+        # 绝不用顶层副本去修补——严格契约照旧拒绝它。
         return raw
     action[TOP_LEVEL_SOURCE_REFS] = list(stray)
     raw.pop(TOP_LEVEL_SOURCE_REFS)
@@ -263,16 +254,16 @@ def _normalize_stray_source_refs(raw: Any) -> Any:
 
 
 def _is_source_ref_list(value: Any) -> bool:
-    """True only for a JSON array of strings — the declared ``List[str]`` shape."""
+    """仅当值是字符串数组——即声明的 ``List[str]`` 形态——时为 True。"""
     return isinstance(value, list) and all(isinstance(item, str) for item in value)
 
 
 def _output_layout(content: str) -> str:
-    """Bounded layout diagnostic for a rejected DECISION output.
+    """被拒绝的 DECISION 输出的有界布局诊断。
 
-    Records only the key layout and the two sourceRefs lists — enough to prove
-    how the model misplaced the field and to reproduce the rejection offline —
-    never the rest of the model output, so user content does not leak into logs.
+    只记录键布局和两份 sourceRefs 列表——足以证明模型把字段放错了哪里,
+    并能在离线复现这次拒绝——但绝不记录模型输出的其余部分,因此用户内容
+    不会泄漏进日志。
     """
     try:
         raw = json.loads(content)
@@ -287,15 +278,15 @@ def _output_layout(content: str) -> str:
             + " actionSourceRefs=" + _bounded_refs(action_refs))
 
 
-# Diagnostics render model-emitted refs, which are model output: bound both the
-# number of entries and the characters, so a malformed output cannot stream an
-# unbounded payload into the log line or the typed error detail.
+# 诊断信息会渲染模型输出的 refs,而 refs 属于模型输出:同时限制条目数和
+# 字符数,保证畸形的输出无法把无界的 payload 涌进日志行或有类型的错误
+# detail 里。
 REF_ENTRY_MAX_CHARS = 120
 REF_RENDER_MAX_CHARS = 400
 
 
 def _bounded_refs(value: Any) -> str:
-    """Bounded rendering of a refs value: at most five entries, capped length."""
+    """有界地渲染一份 refs 值:最多五条,长度封顶。"""
     if value is None:
         return "<absent>"
     if not isinstance(value, list):
@@ -329,15 +320,13 @@ def _check_eligibility_action(output: ModelDecisionOutput,
 
 def _check_conflict_action(output: ModelDecisionOutput,
                            request: AgentV2RequestEnvelope) -> None:
-    """Fail closed when unresolved requirement conflicts would go unsurfaced.
+    """存在未解决的需求冲突却未被暴露时,fail-closed。
 
-    NODE_QUERY is a read-only contextual conversation and must stay usable even
-    when the workspace has unresolved conflicts. For normal planning cycles the
-    conflict must still be surfaced faithfully in observation.conflicts — but
-    the ACTION choice is never restricted here (Slice 4): a read-only
-    capability invocation is as acceptable as asking the user. Execution
-    safety belongs to the Java Runtime policy/stale/permission gates, never
-    to this contract check.
+    NODE_QUERY 是只读的上下文对话,即使工作区有未解决的冲突也必须保持
+    可用。对普通 planning 周期,冲突仍必须在 observation.conflicts 中如实
+    暴露——但这里从不限制 ACTION 的选择(Slice 4):只读的能力调用和询问
+    用户一样可接受。执行安全属于 Java Runtime 的 policy/stale/permission
+    门禁,绝不属于这个契约检查。
     """
     if request.event.kind == "NODE_QUERY":
         return

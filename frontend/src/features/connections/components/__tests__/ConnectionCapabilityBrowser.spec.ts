@@ -1,3 +1,6 @@
+// 文件名:ConnectionCapabilityBrowser.spec.ts
+// 用途:连接能力浏览器组件测试:验证 Tools/Resources/Prompts 三标签页各自渲染对应内容、
+//       工具的 schema 按需展开。
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import ConnectionCapabilityBrowser from '@/features/connections/components/ConnectionCapabilityBrowser.vue'

@@ -9,16 +9,15 @@ import org.junit.jupiter.api.Test;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
 /**
- * Stage A boundary rules for the agent runtime packages
- * ({@code docs/v2/PYTHON_AGENT_RUNTIME_BOUNDARY.md}), updated for the 2026-09
- * business-module consolidation: the cross-language wire DTOs live in
- * {@code agent.protocol}, reflection gates in {@code agent.gates}, and the
- * model output vocabulary in {@code agent.decision}.
+ * 文件名:AgentBoundaryArchitectureTests.java
  *
- * Contracts stay pure, the decision layer never touches persistence, the
- * run worker never touches model/provider code, the inference broker never
- * reaches into repositories or credentials, and provider packages never
- * learn about brain-facing contracts.
+ * 测试目标:用 ArchUnit 守护 agent 运行时各包的 Stage A 边界规则
+ * (见 {@code docs/v2/PYTHON_AGENT_RUNTIME_BOUNDARY.md}),并按 2026-09
+ * 业务模块合并更新:跨语言线级 DTO 位于 {@code agent.protocol},
+ * 反射门禁位于 {@code agent.gates},模型输出词汇位于 {@code agent.decision}。
+ *
+ * 约束:契约包保持纯净、决策层不碰持久化、运行 worker 不碰模型/Provider 代码、
+ * 推理 broker 不碰仓储或凭据、Provider 包不感知面向大脑的契约。
  */
 class AgentBoundaryArchitectureTests {
 
@@ -109,8 +108,7 @@ class AgentBoundaryArchitectureTests {
 
     @Test
     void agentSnapshotBuilderIsTheOnlyProjectionAllowedToReadRepositories() {
-        // Guard the intended direction: the snapshot package may read
-        // repositories, but nothing in it may call the model gateway seam.
+        // 守护预期方向:snapshot 包可以读仓储,但其中任何代码都不得调用模型网关接缝。
         ArchRule rule = noClasses()
             .that().resideInAPackage("com.specagent.agent.snapshot..")
             .should().dependOnClassesThat()

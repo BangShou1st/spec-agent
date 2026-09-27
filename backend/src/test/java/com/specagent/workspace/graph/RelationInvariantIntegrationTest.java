@@ -29,10 +29,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Write-time relation invariants under the final product model:
- * endpoint hard rules (self / missing / cross-project / retracted), symmetric
- * duplicate semantics, DEPENDS_ON + DERIVED_FROM joint cycle rejection, and
- * permissive cycles for RELATED_TO / CONFLICTS_WITH / SUPPORTS.
+ * 文件名:RelationInvariantIntegrationTest.java
+ *
+ * 测试目标:最终产品模型下写入时的关系不变量——端点硬规则(自引用 /
+ * 节点缺失 / 跨项目 / 已撤回)、对称重复语义、DEPENDS_ON 与 DERIVED_FROM
+ * 联合成环拒绝,以及 RELATED_TO / CONFLICTS_WITH / SUPPORTS 的宽松成环允许。
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -86,7 +87,7 @@ class RelationInvariantIntegrationTest {
                 "B", null, List.of(), true);
         commandService.createSemanticRelation(project.id(), a.id(), b.id(),
                 NodeRelationType.RELATED_TO, NodeRelation.Origin.USER, null, null);
-        // Retract A via the same soft-retraction path used by Undo.
+        // 通过 Undo 使用的同一个软撤回路径撤回 A。
         nodeService.setRetracted(a.id(), true);
 
         assertThatThrownBy(() -> commandService.createSemanticRelation(
@@ -111,7 +112,7 @@ class RelationInvariantIntegrationTest {
                         .contentType("application/json")
                         .content(relBody(b.id().toString(), c.id().toString(), "DEPENDS_ON")))
                 .andExpect(status().isCreated());
-        // C -> A closes the cycle A -> B -> C -> A.
+        // C -> A 闭合环 A -> B -> C -> A。
         mockMvc.perform(post("/api/v1/projects/{pid}/relations", project.id())
                         .contentType("application/json")
                         .content(relBody(c.id().toString(), a.id().toString(), "DEPENDS_ON")))
@@ -146,7 +147,7 @@ class RelationInvariantIntegrationTest {
                 NodeRelationType.DEPENDS_ON, NodeRelation.Origin.USER, null, null);
         commandService.createSemanticRelation(project.id(), b.id(), c.id(),
                 NodeRelationType.DERIVED_FROM, NodeRelation.Origin.USER, null, null);
-        // C DEPENDS_ON A closes the mixed causal circle.
+        // C DEPENDS_ON A 闭合混合因果环。
         assertThatThrownBy(() -> commandService.createSemanticRelation(
                 project.id(), c.id(), a.id(), NodeRelationType.DEPENDS_ON,
                 NodeRelation.Origin.USER, null, null))
@@ -218,8 +219,8 @@ class RelationInvariantIntegrationTest {
         commandService.createSemanticRelation(project.id(), floating.id(), q.id(),
                 NodeRelationType.DEPENDS_ON, NodeRelation.Origin.USER, null, null);
 
-        // Floating placement unchanged: no parent, no route membership, tip
-        // and Active untouched.
+        // 游离节点的位置不变:没有父节点、不进入路线成员,tip 与 Active
+        // 指针均未被触碰。
         assertThat(nodeService.getNode(floating.id()).orElseThrow().parentNodeId()).isNull();
         assertThat(routeRepository.findById(route.id()).orElseThrow().tipNodeId()).isEqualTo(q.id());
         assertThat(projectService.getProject(project.id()).orElseThrow().activeRouteId())

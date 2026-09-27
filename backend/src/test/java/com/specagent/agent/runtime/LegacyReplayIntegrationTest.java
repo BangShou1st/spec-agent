@@ -27,6 +27,14 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+/**
+ * 文件名:LegacyReplayIntegrationTest.java
+ *
+ * 测试目标:验证旧版(LEGACY)run 的重放行为:缺少冻结输入投影的旧 run 续跑时
+ * 必须以类型化错误 LEGACY_FROZEN_INPUT_UNAVAILABLE 失败,且不产生重复的答案/patch
+ * 工件;带 snapshotId 但无投影的旧 run 同样类型化失败;从未被消费的快照仍按
+ * 常规流程完成首次冻结。
+ */
 @SpringBootTest
 @ActiveProfiles("test")
 @Transactional

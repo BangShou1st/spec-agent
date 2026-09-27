@@ -7,10 +7,10 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Reads generic requirement profiles.
+ * 文件名:ProfileService.java
  *
- * <p>A profile is configuration, not code. It must never introduce runtime
- * domain-specific branches. The default profile is seeded by migration.
+ * 用途:读取通用需求画像。画像是配置而不是代码,绝不允许引入
+ * 运行时的领域特定分支。默认画像由数据库迁移脚本播种。
  */
 @Service
 public class ProfileService {

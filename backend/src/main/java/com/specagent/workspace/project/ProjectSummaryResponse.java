@@ -6,7 +6,9 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * Lean project summary for list endpoints.
+ * 文件名:ProjectSummaryResponse.java
+ *
+ * 用途:列表端点使用的精简项目摘要(不含默认画像等完整字段)。
  */
 public record ProjectSummaryResponse(
         UUID id,

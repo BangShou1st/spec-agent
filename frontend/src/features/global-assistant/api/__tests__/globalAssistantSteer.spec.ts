@@ -1,3 +1,6 @@
+// 文件名:globalAssistantSteer.spec.ts
+// 用途:全局助手 steer/stop/delete API 的单测:stub 全局 fetch,
+//       验证转向(steer)请求携带 message 与 uiContext、线程活动状态读取、停止与删除线程。
 import { describe, expect, it, vi } from 'vitest'
 import { deleteGaThread, getGaThreadActivity, steerGaRun, stopGaThread } from '@/features/global-assistant/api/globalAssistant'
 

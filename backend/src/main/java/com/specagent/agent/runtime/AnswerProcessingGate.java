@@ -10,25 +10,23 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 
 /**
- * One shared judge for "does the state a spec would be derived from still owe
- * a processed answer?" — used identically by the command surface (before a
- * GENERATE_ARTIFACT run is queued) and by the executor (before an already
- * queued run is claimed and executed).
+ * 文件名:AnswerProcessingGate.java
  *
- * <p>The judge reads the route's <em>effective</em> answer history — the route's
- * own answers plus the frozen inherited prefix ({@code route_inherited_answers})
- * — exactly the set {@code ContextBuilder} folds into the spec context. The
- * previous two gates each looked only at the route's own tip answer, so forking
- * from an answered node whose STATE_UPDATE never completed let the branch
- * publish a spec that silently omitted the user's inherited answer.
+ * 用途:"规格所要依据的状态是否还拖欠未处理回答"的共享判定器——命令入口
+ * (入队 GENERATE_ARTIFACT run 之前)与执行器(领取并执行已排队 run 之前)
+ * 使用完全相同的判定逻辑。
  *
- * <p>Answers with an existing {@code AnswerPatch} checkpoint pass: a failed or
- * stale DECISION after the STATE_UPDATE checkpoint does not reopen the gate
- * (repair reuses the checkpoint; the claims are already in the state).
+ * 判定器读取路线的<em>有效</em>回答历史——路线自身回答 + 冻结的继承前缀
+ * ({@code route_inherited_answers})——与 {@code ContextBuilder} 折入规格上下文
+ * 的是同一集合。此前的两个检查各只看路线自身的 tip 回答,导致从"STATE_UPDATE
+ * 从未完成"的已回答节点分叉时,分支可能发布一份静默遗漏用户继承回答的规格。
  *
- * <p>Sibling isolation: only answers on this route's own tip lineage are
- * judged, so an unrelated sibling route's unprocessed answer never blocks this
- * route's generation.
+ * 已有 {@code AnswerPatch} checkpoint 的回答视为通过:checkpoint 之后的
+ * DECISION 失败或过期不会重新关闭该门(修复会复用 checkpoint;claims 已在
+ * 状态之中)。
+ *
+ * 兄弟路线隔离:只判定本路线 tip 谱系上的回答,无关兄弟路线上未处理的
+ * 回答绝不会阻塞本路线的生成。
  */
 @Service
 public class AnswerProcessingGate {
@@ -46,13 +44,11 @@ public class AnswerProcessingGate {
     }
 
     /**
-     * The first effective answer of the route whose processing never landed a
-     * checkpoint, in root-to-tip order — empty when every effective answer has
-     * its {@code AnswerPatch}.
+     * 返回该路线第一个从未落成 checkpoint 的有效回答,按根到 tip 的顺序排列;
+     * 所有有效回答都已具备 {@code AnswerPatch} 时返回空。
      *
-     * @param routeId the route the spec would be generated from
-     * @param tipNodeId the route's current tip; the spec context replays its
-     *        parent lineage
+     * @param routeId 规格将要生成的来源路线
+     * @param tipNodeId 路线当前 tip;规格上下文会重放其父代谱系
      */
     public Optional<Answer> firstUnprocessedAnswer(UUID routeId, UUID tipNodeId) {
         if (routeId == null || tipNodeId == null) {

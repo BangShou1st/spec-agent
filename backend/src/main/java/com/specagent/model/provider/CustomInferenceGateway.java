@@ -25,8 +25,11 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 /**
- * Custom provider gateway. API format is explicit user choice; never
- * auto-detected, never fallen back to another format.
+ * 文件名:CustomInferenceGateway.java
+ *
+ * 用途:自定义提供商的推理网关,实现 {@link ModelInferenceGateway}。API 格式是
+ * 用户的显式选择:绝不自动探测,也绝不回退到其他格式。每次调用按当前存储的设置
+ * 解析端点、适配器和凭据后直连提供商。
  */
 @Component
 @ConditionalOnProperty(name = "spec.agent.model.inference", havingValue = "opencode", matchIfMissing = true)
@@ -60,8 +63,7 @@ public class CustomInferenceGateway implements ModelInferenceGateway {
         Resolved resolved = resolve();
         Map<String, Object> body = new LinkedHashMap<>(
                 resolved.adapter().buildRequestBody(request, resolved.model()));
-        // Anthropic streaming uses stream:true inside the same body shape;
-        // Chat/Responses use stream:true as well.
+        // Anthropic 与 Chat/Responses 的流式都在同一请求体形状上使用 stream:true。
         body.put("stream", true);
         String aggregated = ProviderHttpSupport.postSse(client, mapper, resolved.endpoint(),
                 resolved.adapter().authHeaders(resolved.apiKey()), body,

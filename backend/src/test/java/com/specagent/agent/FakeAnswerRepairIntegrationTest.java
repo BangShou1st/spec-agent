@@ -29,13 +29,13 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Answer repair/resume integration tests through the async ANSWER_CYCLE: a
- * failed answer run leaves the immutable answer persisted, and the
- * RESUME_ANSWER retry resumes from that existing answer without finalizing a
- * second one. The semantic replay guarantee (the resumed envelope is rebuilt
- * from the persisted Answer) is covered by
- * {@code AnswerResumeSemanticReplayIntegrationTest}; this suite covers the
- * durable-artifact invariants and ownership checks.
+ * 文件名:FakeAnswerRepairIntegrationTest.java
+ *
+ * 测试目标:通过异步 ANSWER_CYCLE 验证答案的修复/续跑集成行为:失败的答题 run
+ * 仍会持久化不可变答案,RESUME_ANSWER 重试从既有答案续跑,而不会产生第二个定稿答案。
+ * 语义重放保证(续跑 envelope 从持久化的 Answer 重建)由
+ * {@code AnswerResumeSemanticReplayIntegrationTest} 覆盖;本套件覆盖持久化产物
+ * 不变量与所有权校验。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -63,24 +63,24 @@ class FakeAnswerRepairIntegrationTest {
         Node root = nodeService.createRootNode(project.id(), project.activeRouteId(),
                 "What is the most important outcome?", null, List.of(), true);
 
-        // Phase 1: simulate a cycle that persisted the Answer but failed
-        // before completing — the answered node is still the active tip.
+        // 阶段 1:模拟一个持久化了 Answer 但未完成即失败的循环——
+        // 被回答的节点仍是活动末梢。
         Answer persisted = answerService.finalizeAnswer(
                 project.id(), project.activeRouteId(), root.id(), null, "clarified", "user");
         UUID originalNodeId = root.id();
         UUID answerId = persisted.id();
 
-        // Phase 2: resume from the persisted answer (the repair path). The
-        // patch checkpoint is reused; no second Answer may appear.
+        // 阶段 2:从持久化的答案续跑(修复路径)。patch 检查点被复用,
+        // 不允许出现第二个 Answer。
         var repaired = answerDriver.resumeAnswer(project.id(), answerId);
 
         assertThat(repaired.run().status()).isEqualTo(AgentRunStatus.COMPLETED);
 
-        // No second answer was created.
+        // 没有创建第二个答案。
         assertThat(answerRepository.findByRouteAndNodeIds(project.activeRouteId(), List.of(originalNodeId)))
                 .hasSize(1);
 
-        // The patch checkpoint stayed single: exactly one patch for the answer.
+        // patch 检查点保持唯一:该答案恰好对应一个 patch。
         List<AnswerPatch> patches = answerPatchService.findByRoute(project.activeRouteId());
         assertThat(patches).hasSize(1);
         AnswerPatch patch = patches.get(0);
@@ -90,7 +90,7 @@ class FakeAnswerRepairIntegrationTest {
         assertThat(confirmed.sourceNodeId()).isEqualTo(originalNodeId);
         assertThat(confirmed.sourceAnswerId()).isEqualTo(answerId);
 
-        // Repair run completed and recorded all produced ids.
+        // 修复 run 已完成并记录了所有产出的 id。
         assertThat(repaired.run().producedAnswerId()).isEqualTo(answerId);
         assertThat(repaired.run().producedPatchId()).isEqualTo(patch.id());
         Route finalRoute = routeService.getRoute(project.activeRouteId()).orElseThrow();
@@ -105,7 +105,7 @@ class FakeAnswerRepairIntegrationTest {
         Answer answer = answerService.finalizeAnswer(
                 projectA.id(), projectA.activeRouteId(), node.id(), null, "clarified", "user");
 
-        // Foreign-project resume: the driver targets project B with A's answer.
+        // 跨项目续跑:驱动以项目 B 为目标、却使用项目 A 的答案。
         Project projectB = projectService.createProject("Repair foreign project B");
 
         UUID answerId = answer.id();
@@ -113,10 +113,10 @@ class FakeAnswerRepairIntegrationTest {
             answerDriver.resumeAnswer(projectB.id(), answerId);
             org.junit.jupiter.api.Assertions.fail("foreign-project resume must fail");
         } catch (RuntimeException expected) {
-            // fail-closed
+            // fail closed(期望失败)
         }
 
-        // Inactive-flow resume: fork away so the answer's route is no longer active.
+        // 非活动流程续跑:fork 走,使答案所在路由不再是活动路由。
         Route forkRoute = routeService.forkFromNode(
                 projectA.id(), projectA.activeRouteId(), node.id(), "sibling route");
         assertThat(projectService.getProject(projectA.id()).orElseThrow().activeRouteId())
@@ -126,10 +126,10 @@ class FakeAnswerRepairIntegrationTest {
             answerDriver.resumeAnswer(projectA.id(), answerId);
             org.junit.jupiter.api.Assertions.fail("inactive-flow resume must fail");
         } catch (RuntimeException expected) {
-            // fail-closed
+            // fail closed(期望失败)
         }
 
-        // The immutable answer was never duplicated or modified.
+        // 不可变答案从未被复制或修改。
         assertThat(answerRepository.findByRouteAndNodeIds(
                 projectA.activeRouteId(), List.of(node.id()))).hasSize(1);
     }

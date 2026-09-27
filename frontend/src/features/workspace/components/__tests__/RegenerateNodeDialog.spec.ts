@@ -1,3 +1,5 @@
+// 文件名:RegenerateNodeDialog.spec.ts
+// 用途:RegenerateNodeDialog 组件单元测试,验证重新生成节点时只收集"方向指令"输入、共享节点需先选定查看路线、空指令拦截与取消行为。
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import RegenerateNodeDialog from '@/features/workspace/components/RegenerateNodeDialog.vue'

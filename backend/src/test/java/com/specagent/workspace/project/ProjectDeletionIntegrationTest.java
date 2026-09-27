@@ -30,6 +30,14 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+/**
+ * 文件名:ProjectDeletionIntegrationTest.java
+ *
+ * 测试目标:项目删除接口的集成测试——删除后项目 404、关联表数据全部清空、
+ * 不影响其他项目;存在运行中的 agent 运行时拒绝删除;通过在事务中途注入
+ * 故障验证删除整体回滚;并覆盖 produced_answer/produced_patch 外键与
+ * agent_runs 自引用续写链等外键陷阱。
+ */
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -40,13 +48,14 @@ class ProjectDeletionIntegrationTest {
     @Autowired ProjectService projects;
     @Autowired ProjectDeletionService deletion;
     @Autowired NamedParameterJdbcTemplate jdbc;
+    @Autowired com.specagent.agent.runtime.RunService runService;
 
     static final AtomicBoolean DELETE_FAULT_ARMED = new AtomicBoolean(false);
 
     /**
-     * Test-layer mid-transaction fault: a delegating template that fails the
-     * {@code DELETE FROM agent_runs} statement (midway through the ordered
-     * deletes) while armed. Production code exposes no test hook.
+     * 测试层的事务中途故障:一个代理模板,在"武装"状态下使
+     * {@code DELETE FROM agent_runs} 语句(有序删除的中途)失败。生产代码
+     * 没有暴露任何测试钩子。
      */
     @TestConfiguration
     static class DeletionFaultConfig {
@@ -169,8 +178,8 @@ class ProjectDeletionIntegrationTest {
         } finally {
             DELETE_FAULT_ARMED.set(false);
         }
-        // The service ran in its own transaction, so these reads observe the
-        // post-rollback committed state: everything must be back.
+        // 服务运行在自己的事务里,这些读取观察到的是回滚之后已提交的状态:
+        // 所有数据必须原样恢复。
         assertThat(snapshot(doomed.id())).isEqualTo(before);
         assertThat(count("SELECT COUNT(*) FROM projects WHERE id = :projectId", doomed.id())).isOne();
         assertThat(count("SELECT COUNT(*) FROM nodes WHERE project_id = :projectId", bystander.id())).isOne();
@@ -201,8 +210,11 @@ class ProjectDeletionIntegrationTest {
     @Test
     void deleteBlockedWhenRunningRunExistsAndNothingRemoved() throws Exception {
         var p = projects.createProject("Running guard");
-        jdbc.update("INSERT INTO agent_runs (id, project_id, route_id, trigger_type, status, trace, created_at) VALUES (:id, :projectId, NULL, 'MANUAL', 'RUNNING', '{}' , NOW())",
-                Map.of("id", UUID.randomUUID(), "projectId", p.id()));
+        // 通过生产入队 + 认领路径构造真实的非终态状态(小写 code),
+        // 不再手写数据库状态字符串——大写 'RUNNING' 与真实存储不一致,
+        // 曾经让这个测试错误地通过。
+        var run = runService.createQueuedDraftQuestion(p.id());
+        assertThat(runService.claimDecisionCycleRun(run.id())).isPresent();
         mockMvc.perform(delete("/api/v1/projects/{id}", p.id()))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("PROJECT_HAS_RUNNING_RUNS"));
@@ -211,11 +223,10 @@ class ProjectDeletionIntegrationTest {
     }
 
     /**
-     * Covers the FK traps that a bare project-creation test misses: an agent_run that
-     * produced an answer and a patch (produced_answer_id / produced_patch_id point at rows
-     * deleted earlier in the old ordering) and a continuation chain whose child links back
-     * to its root via the agent_runs self-FKs (parent_run_id / root_run_id). Deleting the
-     * project must not raise a foreign-key violation.
+     * 覆盖单纯的项目创建测试会遗漏的外键陷阱:产生了回答与补丁的 agent_run
+     * (produced_answer_id / produced_patch_id 指向旧删除顺序中更早被删除的
+     * 记录),以及通过 agent_runs 自引用外键(parent_run_id / root_run_id)
+     * 让子节点回连根节点的续写链。删除项目不得抛出外键违规。
      */
     @Test
     void deleteSucceedsWithProducedAnswerPatchAndContinuationChain() {

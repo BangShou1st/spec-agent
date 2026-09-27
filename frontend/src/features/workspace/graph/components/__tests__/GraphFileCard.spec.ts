@@ -1,3 +1,5 @@
+// 文件名:GraphFileCard.spec.ts
+// 用途:知识节点文件资源卡与文件预览弹窗的单元测试:验证图标/文件名/上传时间展示、teleport 弹窗行为、缩放/平移/折行等阅读工具。
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'

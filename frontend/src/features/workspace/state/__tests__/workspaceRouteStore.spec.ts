@@ -1,3 +1,5 @@
+// 文件名:workspaceRouteStore.spec.ts
+// 用途:workspaceStore 路线命令的单元测试:验证激活/恢复/归档/删除/fork/重答/换题命令与失败重试入口。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { ApiError } from '@/shared/http/client'
@@ -218,8 +220,8 @@ describe('workspaceStore route workspace', () => {
   })
 
   it('fork success refreshes canonical reads and never guesses the new route id', async () => {
-    // The fork's first-child draft goes through the async run surface; a
-    // completed DRAFT_QUESTION run keeps the fork flow successful.
+    // fork 的首个子问题起草走异步 run 通道;一次完成的 DRAFT_QUESTION
+    // run 保持 fork 流程成功。
     mockedCreateAgentRun.mockResolvedValue({
       runId: 'run-draft',
       operation: 'DRAFT_QUESTION',
@@ -450,8 +452,7 @@ describe('workspaceStore route workspace', () => {
 
   it('after successful generation reloads snapshots and selects in the route cache', async () => {
     mockBackendViews(activeWithTip(), makeRequirementState())
-    // The generation goes through the async run surface; the produced
-    // snapshot id comes from the terminal run read view.
+    // 生成走异步 run 通道;产出的快照 id 来自终态 run 读取视图。
     mockedCreateAgentRun.mockResolvedValue({
       runId: 'run-spec',
       operation: 'GENERATE_ARTIFACT',

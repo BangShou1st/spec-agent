@@ -18,7 +18,13 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-/** Builds bounded, provenance-preserving retrieved working memory. */
+/**
+ * 文件名:RetrievalContextService.java
+ *
+ * 用途:为 Brain 构建有界、保留溯源的检索式工作记忆。它把上下文快照
+ * (ContextSnapshot)转成检索查询,调用混合检索器,再按条数/字符上限裁剪,
+ * 供模型在运行时看到项目内的相关记忆。
+ */
 @Service
 public class RetrievalContextService {
 

@@ -43,7 +43,14 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** Blocking integration gates for the hardened Memory + RAG vertical slice. */
+/**
+ * 文件名:RetrievalV1HardeningIntegrationTest.java
+ *
+ * 测试目标:Memory + RAG 加固垂直切片的阻塞式集成关卡——工作区记忆
+ * 搜索可见性、fork/reanswer/regenerate 时的共享祖先路线来源刷新、超长路线
+ * 的有界工作上下文与历史记忆召回、冻结快照不再重检索、ROUTE/PROJECT 检索
+ * 作用域语义、向量通道状态流转、密钥形态内容不进入索引、派生索引可重建。
+ */
 @SpringBootTest(properties = "spec.agent.retrieval.embedding.provider=fake")
 @ActiveProfiles("test")
 @Transactional

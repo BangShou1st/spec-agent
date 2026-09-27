@@ -34,9 +34,11 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Slice A: threads/messages/runs/events, working-state/summary CAS,
- * application-scoped invocations, single-active invariant, cancel signal,
- * serialized event sequence (real PostgreSQL).
+ * 文件名:GlobalAssistantSliceAIntegrationTest.java
+ *
+ * 测试目标:Slice A 集成——线程/消息/运行/事件四个存储、
+ * 工作状态与摘要的 CAS 乐观并发、应用级能力调用、
+ * 单活跃运行不变量、取消信号,以及事件序列的单调性(真实 PostgreSQL)。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -78,7 +80,7 @@ class GlobalAssistantSliceAIntegrationTest {
         List<GlobalAssistantMessage> stored = conversations.listMessages(thread.id());
         assertThat(stored.get(0).providerLabel()).isEqualTo("OpenCode Zen");
         assertThat(stored.get(0).modelId()).isEqualTo("mimo-v2.5-free");
-        // Legacy path and user messages stay un-attributed.
+        // 旧路径的助手消息与用户消息都保持无归属信息。
         assertThat(stored.get(1).providerLabel()).isNull();
         assertThat(stored.get(1).modelId()).isNull();
     }
@@ -143,9 +145,9 @@ class GlobalAssistantSliceAIntegrationTest {
         GlobalAssistantRun reloaded = runs.findById(run.id()).orElseThrow();
         assertThat(reloaded.cancelRequestedAt()).isNotNull();
         assertThat(reloaded.status()).isIn(GlobalAssistantRunStatus.CREATED, GlobalAssistantRunStatus.RUNNING);
-        // Idempotent second cancel keeps the same signal semantics.
+        // 第二次取消是幂等的,信号语义不变。
         assertThat(runs.requestCancel(run.id())).isTrue();
-        // Terminal runs never resurrect.
+        // 终态运行不会复活。
         runs.terminalize(run.id(), GlobalAssistantRunStatus.CANCELLED, "RUN_CANCELLED");
         assertThat(runs.findById(run.id()).orElseThrow().status())
                 .isEqualTo(GlobalAssistantRunStatus.CANCELLED);
@@ -158,7 +160,7 @@ class GlobalAssistantSliceAIntegrationTest {
         GlobalAssistantThread thread = conversations.createThread();
         GlobalAssistantRun run = conversations.createRun(thread.id(), "v1", "v1", "fp");
         runs.terminalize(run.id(), GlobalAssistantRunStatus.COMPLETED, null);
-        // Cancel on a terminal run changes nothing and never resurrects it.
+        // 对终态运行请求取消不会有任何改变,也不会使其复活。
         runs.requestCancel(run.id());
         assertThat(runs.findById(run.id()).orElseThrow().status())
                 .isEqualTo(GlobalAssistantRunStatus.COMPLETED);

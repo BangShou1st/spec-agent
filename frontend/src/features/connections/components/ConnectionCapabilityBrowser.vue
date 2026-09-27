@@ -1,3 +1,8 @@
+<!--
+  文件名:ConnectionCapabilityBrowser.vue
+  用途:连接能力浏览器:以 Tools / Resources / Prompts 三个标签页展示连接发现的能力,
+       工具可展开查看 inputSchema 与 annotations,资源可点击读取内容(结果由父组件回传)。
+-->
 <script setup lang="ts">
 import { ref } from 'vue'
 import type { ConnectionPromptView, ConnectionResourceContent, ConnectionResourceView, ConnectionToolView } from '@/features/connections/api/connectionTypes'

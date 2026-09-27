@@ -12,9 +12,11 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Query-only facade over the authoritative Skill store. The Agent/Brain never
- * consumes these internals directly; this service powers management/API views
- * and (through the discovery projection) bounded catalog reads.
+ * 文件名:SkillQueryService.java
+ *
+ * 用途:权威 Skill 存储之上的只读查询门面。Agent/Brain 绝不直接消费这些
+ * 内部接口;本服务为管理/API 视图提供数据,并(经由发现投影)提供有界的
+ * 目录读取。
  */
 @Service
 public class SkillQueryService {
@@ -45,7 +47,7 @@ public class SkillQueryService {
         return repository.listVersions(skillRowId);
     }
 
-    /** Installed file list for a version, without byte payloads. */
+    /** 某个版本的已安装文件清单,不含字节负载。 */
     public List<SkillRepository.FileSummary> listFileSummaries(UUID versionId) {
         return repository.listFileSummaries(versionId);
     }
@@ -63,8 +65,8 @@ public class SkillQueryService {
     }
 
     public List<SkillStagedImport> listStagedImports() {
-        // Pending-review surface only: REJECTED rows stay durable for audit
-        // but must never reappear as actionable pending imports.
+        // 只暴露待审阅视图:REJECTED 记录为审计目的保持持久,
+        // 但绝不能再作为可操作的待审导入出现。
         return repository.listStagedImports(List.of(
                 SkillStagedImport.Status.STAGED,
                 SkillStagedImport.Status.READY));

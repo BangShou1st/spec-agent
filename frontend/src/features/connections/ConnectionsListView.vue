@@ -1,3 +1,8 @@
+<!--
+  文件名:ConnectionsListView.vue
+  用途:Connections 管理页(设置区):列出所有连接并支持新建、启用/禁用、删除,
+       选中或新建成功后跳转到对应详情页;数据与操作均通过 connectionsStore 完成。
+-->
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import ApiErrorBanner from '@/shared/ui/ApiErrorBanner.vue'

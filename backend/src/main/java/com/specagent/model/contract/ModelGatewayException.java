@@ -1,12 +1,12 @@
 package com.specagent.model.contract;
 
 /**
- * Provider-neutral failure raised by a {@link ModelGateway} implementation.
+ * 文件名:ModelGatewayException.java
  *
- * <p>The agent reasoning layer catches this type and reads
- * {@link #gatewayCategory()} for diagnosis; it must never depend on a concrete
- * provider exception. Messages never contain the API key or the Authorization
- * header value, and the agent trace never persists the message.
+ * 用途:{@link ModelGateway} 实现抛出的提供商无关异常。上层推理逻辑捕获该类型后
+ * 通过 {@link #gatewayCategory()} 读取错误分类来诊断问题,绝不能依赖某个具体提供商
+ * 的异常类型。异常消息中永不包含 API key 或 Authorization 头的值,agent 轨迹也
+ * 永不持久化该消息。
  */
 public class ModelGatewayException extends RuntimeException {
 
@@ -39,8 +39,7 @@ public class ModelGatewayException extends RuntimeException {
     }
 
     /**
-     * The HTTP status that caused the failure, or null when the failure did not
-     * reach the HTTP layer (timeout, connection, invalid response).
+     * 导致失败的 HTTP 状态码;失败未到达 HTTP 层时(超时、连接、响应非法)返回 null。
      */
     public Integer httpStatus() {
         return httpStatus;

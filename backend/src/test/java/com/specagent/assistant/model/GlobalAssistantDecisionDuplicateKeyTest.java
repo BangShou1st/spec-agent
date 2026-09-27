@@ -3,7 +3,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
-/** Authoritative parser fails closed on any duplicate JSON object member. */
+/**
+ * 文件名:GlobalAssistantDecisionDuplicateKeyTest.java
+ *
+ * 测试目标:权威解析器对任何重复的 JSON 对象键都必须失败收场。
+ * 覆盖场景:顶层 kind/assistantText/toolRequest/uiAction 重复、
+ * 嵌套对象内 capabilityId/arguments/destination/resourceId 重复,
+ * 以及合法决策不受影响地正常解析。
+ */
 class GlobalAssistantDecisionDuplicateKeyTest {
     private final GlobalAssistantDecisionParser parser =
             new GlobalAssistantDecisionParser(new ObjectMapper());

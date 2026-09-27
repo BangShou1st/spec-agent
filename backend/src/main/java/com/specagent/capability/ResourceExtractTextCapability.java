@@ -11,18 +11,18 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Internal read-only capability: extract a bounded, provenance-preserving
- * text excerpt from a RESOURCE node.
+ * 文件名:ResourceExtractTextCapability.java
  *
- * <p>Large contents are never fully injected into prompts — the result
- * carries a bounded excerpt plus truncation metadata, and the source node
- * ref so later cycles can retrieve more if needed. The result is external
- * source evidence, never auto-confirmed graph truth.
+ * 用途:内置只读能力,从 RESOURCE 节点提取有界且保留溯源的文本摘录。
+ *
+ * 大段内容永远不会被完整注入提示词——结果只携带有界摘录加截断元数据,
+ * 以及源节点引用,后续决策周期若需要更多内容可再次检索。
+ * 结果属于外部来源证据,永远不会被自动确认为图谱事实。
  */
 @Component
 public class ResourceExtractTextCapability implements InternalCapabilityAdapter {
 
-    /** Bounded excerpt length; full content stays in the resource node. */
+    /** 摘录长度上限;完整内容仍保留在资源节点中。 */
     static final int MAX_EXCERPT_CHARS = 2000;
 
     public static final String CAPABILITY_ID = "resource.extract_text";

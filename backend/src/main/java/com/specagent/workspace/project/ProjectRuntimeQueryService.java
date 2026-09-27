@@ -14,17 +14,18 @@ import org.springframework.stereotype.Service;
 import java.util.UUID;
 
 /**
- * Application query component that composes existing runtime reads to
- * produce the runtime-visible active project state.
+ * 文件名:ProjectRuntimeQueryService.java
  *
- * <p>It composes {@link ProjectService}, {@link RouteService}, and
- * {@link NodeService}; it never writes state, never calls the model, never
- * builds a {@code ContextSnapshot}, and never re-implements route or context
- * semantics. It is not a second Runtime Kernel.
+ * 用途:应用层查询组件,组合既有的运行时读取,产出运行时可见的
+ * 活跃项目状态。
  *
- * <p>It is an application-layer read model (its error kernel and view DTOs are
- * application-owned), so it lives in {@code com.specagent.workspace.project}
- * instead of the {@code api} package.
+ * 它组合 {@link ProjectService}、{@link RouteService} 与
+ * {@link NodeService};绝不写状态、绝不调用模型、绝不构建
+ * {@code ContextSnapshot},也绝不重新实现路线或上下文语义。
+ * 它不是第二个 Runtime Kernel。
+ *
+ * 它是应用层读模型(其错误内核与视图 DTO 由应用层持有),因此放在
+ * {@code com.specagent.workspace.project} 而不是 {@code api} 包。
  */
 @Service
 public class ProjectRuntimeQueryService {
@@ -52,10 +53,9 @@ public class ProjectRuntimeQueryService {
         Route activeRoute = routeService.getRoute(project.activeRouteId())
                 .orElseThrow(() -> ApiException.internal("INTERNAL_INVARIANT_VIOLATION",
                         "The active route pointer does not resolve"));
-        // Defensive fail-closed guard: under correct runtime invariants the
-        // active pointer always resolves to a route owned by this project. If
-        // it ever does not, neither the foreign route nor its node may be
-        // exposed; the read fails as an internal invariant violation.
+        // 防御性 fail-closed 守卫:在正确的运行时不变量下,活跃指针必然
+        // 解析到一条属于本项目的路线。一旦不是,外来路线及其节点都不得
+        // 外露;读取以内部不变量违例失败。
         if (!activeRoute.projectId().equals(project.id())) {
             throw ApiException.internal("INTERNAL_INVARIANT_VIOLATION",
                     "The active route does not belong to the project");

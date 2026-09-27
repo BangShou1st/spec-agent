@@ -1,9 +1,14 @@
+// 文件名:skills.ts
+// 用途:Skill 管理的 API 封装:列表/详情/版本/资源读取,ZIP 与 Git 的暂存导入、
+//       Git 仓库探测、待导入的安装/拒绝/删除,以及启用/禁用/删除已装 Skill。
+//       以后端 SkillController 为准;这里不做语义路由或关键字分支。
+
 import { apiClient } from '@/shared/http/client'
 import type { GitSkillDiscovery, InstalledSkillResult, SkillDetail, SkillResourceRead, SkillResourceSummary, SkillSummary, SkillVersionView, StagedImportDetail, StagedImportView } from './skillTypes'
 
 /**
- * Skill management API wrappers. Backend SkillController is authority.
- * No semantic routing or keyword branching lives here.
+ * Skill 管理 API 封装。以后端 SkillController 为准;
+ * 这里不存在语义路由或关键字分支。
  */
 
 export function listSkills(): Promise<SkillSummary[]> {
@@ -36,7 +41,7 @@ export function stageSkillGit(url: string, ref?: string, subPath?: string): Prom
   return apiClient.post<StagedImportView>('/skills/imports/git', { url, ref, subPath })
 }
 
-/** Lists the Skill packages a repository offers; stages nothing. */
+/** 列出仓库提供的 Skill 包;不做任何暂存。 */
 export function discoverSkillGit(url: string, ref?: string): Promise<GitSkillDiscovery> {
   return apiClient.post<GitSkillDiscovery>('/skills/imports/git/discover', { url, ref })
 }

@@ -1,6 +1,5 @@
-import { test, expect } from '@playwright/test'
-import { answerActiveNode, buildThreeNodeLineage, createProject, draftFirstQuestion, fitGraph } from './helpers'
 
+import { test, expect, createProject, fitGraph, draftFirstQuestion, answerActiveNode, buildThreeNodeLineage } from './helpers'
 test.setTimeout(400000)
 
 const viewports = [

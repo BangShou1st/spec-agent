@@ -5,7 +5,12 @@ import org.springframework.boot.test.context.SpringBootTest;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** One-attempt E01 live smoke; intentionally separate from the full baseline task. */
+/**
+ * 文件名:EvalLiveE01SmokeTest.java
+ *
+ * 测试目标:单次尝试的 E01 live 冒烟,验证真实生产链路(远程 Python 大脑 +
+ * OpenCode 推理网关)的接线证据与行为结果;刻意与完整基线任务分开。
+ */
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.DEFINED_PORT,
         properties = {

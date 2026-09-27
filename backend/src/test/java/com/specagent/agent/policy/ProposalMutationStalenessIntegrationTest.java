@@ -31,6 +31,14 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+/**
+ * 文件名:ProposalMutationStalenessIntegrationTest.java
+ *
+ * 测试目标:验证提案类变更的新鲜度(staleness)校验矩阵——lineage/相关节点的正文修订、
+ * 节点撤回、关系撤回、新增相关关系都会让变更型提案过期,而无关变更不影响;冻结快照
+ * 重放保持冻结;缺少指纹的旧投影绝不 fail-open;接受阶段同样拒绝过期提案,
+ * 只读提案即使发生漂移也放行。
+ */
 @SpringBootTest
 @ActiveProfiles("test")
 @Transactional

@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Fix missing imports after package splits, driven by javac errors.
+"""文件名:fix-missing-imports.py
 
-Parses Gradle/javac diagnostics of the form (Chinese or English locale):
+包拆分/迁移后自动补缺失 import 的脚本,依据 javac 报错驱动。
+
+解析 Gradle/javac 诊断输出(兼容中英文环境),形如:
     <file>:<line>: 错误: 找不到符号   /   error: cannot find symbol
         符号:   类 X            /   symbol:   class X
-Then locates the unique class named X in the source tree and inserts the
-import into <file> (after the package statement), unless already present.
+然后在源码树中找到名为 X 的唯一类,把 import 插入 <file>
+(package 声明之后);若已存在则跳过。
 """
 import os, re, subprocess, sys
 from collections import defaultdict
@@ -15,7 +17,7 @@ BACKEND = os.path.join(ROOT, "backend")
 SRC = os.path.join(BACKEND, "src")
 
 def index_classes():
-    idx = defaultdict(list)  # simple name -> [fqn]
+    idx = defaultdict(list)  # 简单类名 -> [全限定名]
     for dirpath, _d, files in os.walk(SRC):
         for fn in files:
             if fn.endswith(".java"):
@@ -53,7 +55,7 @@ def main():
     idx = index_classes()
     errs, _ = compile_errors()
     print(f"{len(errs)} cannot-find-symbol errors")
-    fixes = defaultdict(set)  # file -> {import line}
+    fixes = defaultdict(set)  # 文件 -> {import 语句}
     unresolved = []
     for path, line, symbol in errs:
         if not symbol or isinstance(symbol, tuple):
@@ -64,8 +66,7 @@ def main():
             unresolved.append((path, line, symbol))
             continue
         if len(cands) > 1:
-            # prefer same-module package heuristic: choose the one whose package
-            # shares the longest prefix with the importing file's package
+            # 同模块包优先的启发式:优先选与导入文件包名共享最长前缀的候选
             rel = os.path.relpath(path, SRC).replace("\\", "/")
             fpkg = ".".join(rel.split("/")[2:-1])
             cands.sort(key=lambda c: -len(os.path.commonprefix([c.split("."), fpkg.split(".")])))

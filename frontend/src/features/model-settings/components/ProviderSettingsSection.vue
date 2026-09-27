@@ -1,3 +1,9 @@
+<!--
+  文件名:ProviderSettingsSection.vue
+  用途:Provider 注册表界面:胶囊 Tab 只决定当前编辑哪份配置,
+       绝不切换运行时 Provider;切换必须是卡片上显式的「设为当前 Provider」操作。
+       同时管理自定义 Provider 的创建/编辑弹窗。
+-->
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useProviderSettingsStore } from '@/features/model-settings/state/providerSettingsStore'
@@ -10,9 +16,9 @@ import CustomProviderSettings from './CustomProviderSettings.vue'
 import CustomProviderDialog from './CustomProviderDialog.vue'
 
 /**
- * The provider registry surface. Pills only select which configuration is
- * being edited — they never switch the runtime provider; that stays an
- * explicit 「设为当前 Provider」 action on each card.
+ * Provider 注册表界面。胶囊只选择当前正在编辑的配置——
+ * 它们绝不切换运行时 Provider;切换始终是每张卡片上
+ * 显式的「设为当前 Provider」操作。
  */
 const providers = useProviderSettingsStore()
 const custom = useCustomProviderStore()
@@ -50,7 +56,7 @@ function openCreate(): void {
   dialogOpen.value = true
 }
 
-/** Editing reuses the create dialog, so 显示名称 stays editable after creation. */
+/** 编辑复用创建弹窗,因此显示名称在创建后仍可编辑。 */
 function openEdit(): void {
   custom.clearError()
   dialogMode.value = 'edit'

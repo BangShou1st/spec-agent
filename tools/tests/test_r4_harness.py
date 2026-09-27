@@ -1,9 +1,10 @@
-"""R4 harness unit tests — TDD Unit 7.
+"""文件名:test_r4_harness.py
 
-Pins pipeline order (extract -> parse -> C1 -> C2 -> C3), per-rep
-classification, manifest provenance completeness (no secrets), gate
-math (calibration, G11 flip, G12 frozen set), and the frozen sampling
-profile. No provider calls here.
+R4 harness 单元测试——TDD 单元 7。
+
+锁定流水线顺序(提取 -> 解析 -> C1 -> C2 -> C3)、单轮分类、
+manifest 溯源完整性(不含机密)、门槛计算(校准门槛、G11 翻转率、
+G12 冻结集合),以及冻结的采样配置。此处不调用任何供应商。
 """
 import json
 

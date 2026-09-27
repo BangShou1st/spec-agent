@@ -1,18 +1,21 @@
+<!--
+  文件名:ToggleSwitch.vue
+  用途:生命周期开关组件:所有开/关控件的统一视觉定义,只上报点击事件、绝不自行改状态,语义由调用方持有。
+-->
 <script setup lang="ts">
-/**
- * Lifecycle switch. One visual definition for every on/off control, so a
- * disabled-state toggle never grows a second look. Callers own the semantics:
- * the switch only reports a click, never mutates state itself.
+/*
+ * 生命周期开关。所有开/关控件共用一份视觉定义,禁用态的开关绝不会长出
+ * 第二种样子。语义由调用方持有:开关只上报一次点击,绝不自己改状态。
  *
- * `data-test`, `title`, `aria-*` and other attributes fall through to the root
- * button, so each caller keeps its own test contract.
+ * `data-test`、`title`、`aria-*` 等属性透传到根按钮,每个调用方保留自己
+ * 的测试契约。
  */
 withDefaults(defineProps<{
   checked: boolean
   disabled?: boolean
   onLabel?: string
   offLabel?: string
-  /** data-test for the state text, when the caller's contract needs one. */
+  /** 状态文本的 data-test,调用方契约需要时提供。 */
   statusTestId?: string
 }>(), {
   disabled: false,

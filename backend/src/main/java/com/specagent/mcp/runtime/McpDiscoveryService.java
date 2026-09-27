@@ -15,9 +15,10 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Discovery orchestration for MCP connections: runs a live discovery when
- * needed, persists a normalized cache per connection, and serves cached
- * results on reconnect. Refresh invalidates the cache and re-discovers.
+ * 文件名:McpDiscoveryService.java
+ *
+ * 用途:MCP 连接的发现编排:按需执行实时发现,为每个连接持久化一份规范化缓存,
+ * 重连时直接返回缓存结果。刷新(refresh)会使缓存失效并重新发现。
  */
 @Service
 public class McpDiscoveryService {
@@ -44,14 +45,14 @@ public class McpDiscoveryService {
         this.json = json;
     }
 
-    /** Live discovery (test/refresh path). Never writes remotely. */
+    /** 实时发现(测试/刷新路径)。绝不产生远程写入。 */
     public McpDiscovery discoverLive(McpConnectionTarget connection) {
         McpDiscovery discovery = connectionRuntime.testAndDiscover(connection);
         persist(connection.rowId(), discovery);
         return discovery;
     }
 
-    /** Cached discovery if present, otherwise live discovery (then cached). */
+    /** 有缓存就用缓存,否则实时发现(发现后写入缓存)。 */
     public McpDiscovery discover(McpConnectionTarget connection) {
         Optional<McpDiscoveryCacheRepository.CacheRow> cached =
                 cacheRepository.findByConnection(connection.rowId());
@@ -61,7 +62,7 @@ public class McpDiscoveryService {
         return discoverLive(connection);
     }
 
-    /** Cache-only read for management UI: never triggers live network discovery. */
+    /** 仅供管理界面使用的纯缓存读取:绝不触发实时网络发现。 */
     public Optional<McpDiscovery> findCached(UUID connectionRowId) {
         return cacheRepository.findByConnection(connectionRowId).map(this::fromCache);
     }

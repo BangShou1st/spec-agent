@@ -1,3 +1,5 @@
+// 文件名:WorkspaceCenterStatus.spec.ts
+// 用途:工作台中央状态展示测试:加载/刷新/提交等在途状态在中央区域的呈现与消失。
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
@@ -147,7 +149,7 @@ describe('WorkspaceView unified center status', () => {
     expect(wrapper.find('[data-test="answer-resubmit"]').exists()).toBe(false)
   })
 
-  it('renders resume CTA and never resubmit when the answer is saved', async () => {
+  it('no longer renders the global resume CTA when the answer is saved (entry deleted 2026-09-27)', async () => {
     mockViews()
     const { wrapper, store } = await mountWorkspace()
     store.answerRunSessions.push({
@@ -164,10 +166,12 @@ describe('WorkspaceView unified center status', () => {
     })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('回答已经保存')
-    const actions = wrapper.findAll('[data-test="recovery-action"]')
-    expect(actions).toHaveLength(1)
-    expect(actions[0].text()).toContain('继续生成')
+    // REPAIRABLE 会话的全局"回答已经保存/继续生成"横幅已删除:恢复统一
+    // 由任务级失败恢复(服务端未解决失败清单 + 节点恢复栏)承接,不得再
+    // 出现第二个并行恢复入口。
+    expect(wrapper.text()).not.toContain('回答已经保存')
+    expect(wrapper.text()).not.toContain('继续生成')
+    expect(wrapper.findAll('[data-test="recovery-action"]')).toHaveLength(0)
   })
 
   it('renders one concise status for a normal active agent phase', async () => {

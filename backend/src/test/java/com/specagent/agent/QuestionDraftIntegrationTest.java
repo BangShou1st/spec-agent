@@ -29,9 +29,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Question-draft decision cycle through the deterministic fake engine: the
- * test driver drives exactly the production DRAFT_QUESTION path — one DECISION
- * call, policy auto-execute, INTERACTION node appended with runtime-owned ids.
+ * 文件名:QuestionDraftIntegrationTest.java
+ *
+ * 测试目标:通过确定性 fake 引擎验证问题草稿决策循环:测试驱动精确走生产
+ * DRAFT_QUESTION 路径——一次 DECISION 调用、策略自动执行、追加带运行时生成 id 的
+ * INTERACTION 节点。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -137,16 +139,16 @@ class QuestionDraftIntegrationTest {
     @Test
     void draftChildNodeAppendsToExistingTip() {
         Project project = projectService.createProject("Question draft project");
-        // First run creates the root node on the active route.
+        // 第一次运行在活动路由上创建根节点。
         AgentRun first = draftDriver.draftQuestion(project.id());
         Node firstNode = nodeService.getNode(first.producedNodeId()).orElseThrow();
         assertThat(firstNode.parentNodeId()).isNull();
 
-        // An unanswered Question must remain the route tip; drafting a follow-up
-        // requires the tip Question to be answered first.
+        // 未回答的 Question 必须保持为路由末梢;起草后续问题要求先把
+        // 末梢 Question 回答掉。
         finalizeAndCheckpoint(project, firstNode, "answered first question");
 
-        // Second run must create a child of the route tip, not a new root.
+        // 第二次运行创建的是路由末梢的子节点,而不是新的根。
         AgentRun second = draftDriver.draftQuestion(project.id());
         Node secondNode = nodeService.getNode(second.producedNodeId()).orElseThrow();
         assertThat(secondNode.parentNodeId()).isEqualTo(firstNode.id());
@@ -159,11 +161,10 @@ class QuestionDraftIntegrationTest {
 
         Node draft1 = nodeService.getNode(
                 draftDriver.draftQuestion(project.id()).producedNodeId()).orElseThrow();
-        // The second draft chains off the first tip. An unanswered Question must
-        // stay the tip, so answer the first node before drafting the next one.
-        // The deterministic fake advances past the answered question (repeating
-        // it would trip the enforced RESOLVED_BLOCKER rule), so the follow-up
-        // is the second rung of the clarification ladder.
+        // 第二次草稿链在第一个 tip 之后。未回答的 Question 必须保持为
+        // tip,所以先回答第一个节点再起草下一个。确定性 fake 会越过已回答的
+        // 问题(重复它会触发强制的 RESOLVED_BLOCKER 规则),因此后续问题是
+        // 澄清阶梯的第二级。
         finalizeAndCheckpoint(project, draft1, "answered for determinism check");
         Node draft2 = nodeService.getNode(
                 draftDriver.draftQuestion(project.id()).producedNodeId()).orElseThrow();

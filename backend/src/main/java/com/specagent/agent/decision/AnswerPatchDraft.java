@@ -5,7 +5,9 @@ import com.specagent.workspace.patch.Claim;
 import java.util.List;
 
 /**
- * Draft of an answer patch: the structured claims derived from an answer.
+ * 文件名:AnswerPatchDraft.java
+ *
+ * 用途:回答补丁(answer patch)草稿:由一条回答推导出的结构化 claims。
  */
 public record AnswerPatchDraft(
         List<Claim> claims

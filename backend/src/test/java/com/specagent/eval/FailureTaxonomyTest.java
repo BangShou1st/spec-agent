@@ -8,10 +8,11 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Failure taxonomy tests (P2 evaluation harness, TDD).
+ * 文件名:FailureTaxonomyTest.java
  *
- * <p>Every attempt carries typed violations with one overall result. Natural
- * language strings must never scatter across tests as ad-hoc failure labels.
+ * 测试目标:失败分类法(P2 评估工具链,TDD)。每次尝试都携带类型化违规并
+ * 有一个总体结果;自然语言字符串绝不能散落在各测试里充当临时失败标签。
+ * 覆盖失败类聚合、必备失败类、Provider 故障与行为失败/ schema 故障的区分等。
  */
 class FailureTaxonomyTest {
 
@@ -132,8 +133,7 @@ class FailureTaxonomyTest {
 
     @Test
     void typedModelOutputFailuresAreSchemaFailuresNotInfrastructure() {
-        // The service worked and rejected the output: that is a model-output
-        // defect, not a reliability incident.
+        // 服务正常工作并拒绝了输出:这是模型输出缺陷,不是可靠性事故。
         ObservationEnvelope contract = providerFailureWithResult("failed:model_contract_violation");
         assertThat(LiveFailureClassifier.isSchemaFailure(contract)).isTrue();
         assertThat(LiveFailureClassifier.isInfrastructureFailure(contract)).isFalse();

@@ -1,3 +1,7 @@
+<!--
+  文件名:WorkspaceInspector.vue
+  用途:画布工作台右侧的上下文检查器,按当前选择切换显示节点详情(NodeInspector)、边上下文或项目摘要/需求详情,不改变 Focus / Active 路线。
+-->
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import NodeInspector from './NodeInspector.vue'
@@ -8,14 +12,14 @@ import { useGraphUiStore } from '@/features/workspace/state/graphUiStore'
 import { useWorkspaceStore } from '@/features/workspace/state/workspaceStore'
 
 /**
- * 上下文检查器：单一表面，按选择切换。
+ * 上下文检查器:单一表面,按选择切换。
  *
  * - 选中节点 → NodeInspector
  * - 选中边 → 边上下文视图
- * - 无选择 → 项目摘要（二级：完整需求视图 ↔ 返回）
+ * - 无选择 → 项目摘要(二级:完整需求视图 ↔ 返回)
  *
- * 不再有顶层 详情 / 需求状态 / 规格 tabs；规格已搬到 Graph 中央 Spec Dock。
- * 选择变化会重置二级视图，但绝不改变 Focus / Active 路线。
+ * 不再有顶层 详情 / 需求状态 / 规格 tabs;规格已搬到 Graph 中央 Spec Dock。
+ * 选择变化会重置二级视图,但绝不改变 Focus / Active 路线。
  */
 interface SelectedEdge {
   id: string

@@ -19,12 +19,11 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Spec read API.
+ * 文件名:SpecController.java
  *
- * <p>Snapshots are derived artifacts and are exposed read-only. Route-scoped
- * reads verify project ownership so a route from project A can never be read
- * through project B. Markdown export renders the stored snapshot on demand —
- * the exporter is a pure view and never persists a second copy.
+ * 用途:规格的读取 API。快照是派生产物,一律只读暴露;按 route 读取时校验
+ * 项目归属,项目 A 的 route 绝不可能经由项目 B 读到。Markdown 导出按需渲染
+ * 已存储的快照——导出器是纯视图,绝不落库第二份副本。
  */
 @RestController
 public class SpecController {
@@ -52,9 +51,8 @@ public class SpecController {
     }
 
     /**
-     * Markdown export of one snapshot. `variant=snapshot` is the faithful,
-     * provenance-complete export; `variant=delivery` is the development
-     * handoff document. Rendering is deterministic — no model call.
+     * 单个快照的 Markdown 导出。`variant=snapshot` 是忠实、溯源完整的导出;
+     * `variant=delivery` 是开发交付文档。渲染完全确定——不调用模型。
      */
     @GetMapping(value = "/api/v1/specs/{snapshotId}/export.md",
             produces = "text/markdown;charset=UTF-8")

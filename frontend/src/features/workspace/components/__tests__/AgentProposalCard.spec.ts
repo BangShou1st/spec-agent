@@ -1,3 +1,5 @@
+// 文件名:AgentProposalCard.spec.ts
+// 用途:AgentProposalCard 组件单元测试,验证动作文案的人类可读性、确认/拒绝按钮的意图上报与 pending 禁用状态。
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import AgentProposalCard from '@/features/workspace/components/AgentProposalCard.vue'

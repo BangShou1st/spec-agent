@@ -30,10 +30,11 @@ import java.util.concurrent.TimeUnit;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Real-database concurrency proofs for the proposal terminal lifecycle: two
- * racing transactions contend over the same PROPOSED row through the real
- * service layer and real PostgreSQL row locks — no mocks, no artificial
- * serialization. Exactly one terminal transition may ever win.
+ * 文件名:AgentProposalLifecycleConcurrencyIntegrationTest.java
+ *
+ * 测试目标:用真实数据库验证提案终态生命周期的并发正确性——两个竞争事务通过真实
+ * 服务层和真实 PostgreSQL 行锁竞争同一个 PROPOSED 行,不 mock、不人为串行化;
+ * 终态迁移永远只允许一个赢家(接受/拒绝/过期两两竞争)。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -75,7 +76,7 @@ class AgentProposalLifecycleConcurrencyIntegrationTest {
         jdbcTemplate.update("DELETE FROM nodes WHERE project_id = ?", project.id());
     }
 
-    /** One racer's outcome: either the call returned normally, or the exact exception it failed with. */
+    /** 单个竞争者的结果:调用正常返回,或携带失败时的原始异常。 */
     private record Attempt(boolean success, Throwable error) {
         static Attempt run(Callable<?> action) {
             try {
@@ -88,8 +89,8 @@ class AgentProposalLifecycleConcurrencyIntegrationTest {
     }
 
     /**
-     * Starts two racers behind a shared barrier so both reach the service at
-     * the same moment; the database row lock decides the winner, not the test.
+     * 用共享屏障让两个竞争者同时到达服务层;赢家由数据库行锁决定,
+     * 而不是由测试决定。
      */
     private Attempt[] race(Callable<?> first, Callable<?> second) throws Exception {
         ExecutorService pool = Executors.newFixedThreadPool(2);
@@ -145,8 +146,7 @@ class AgentProposalLifecycleConcurrencyIntegrationTest {
         long wins = (attempts[0].success() ? 1 : 0) + (attempts[1].success() ? 1 : 0);
         assertThat(wins).as("exactly one racer may win the terminal transition").isEqualTo(1);
         Attempt loser = attempts[0].success() ? attempts[1] : attempts[0];
-        // Deterministic business failure — never a 500-style internal error,
-        // SQL constraint violation, or silent fake success.
+        // 确定性的业务失败——绝不能是 500 风格的内部错误、SQL 约束冲突或静默的假成功。
         assertThat(loser.error()).isInstanceOf(ProposalAlreadyDecidedException.class);
         assertThat(loser.error())
                 .hasMessageContaining("already been decided")
@@ -165,8 +165,7 @@ class AgentProposalLifecycleConcurrencyIntegrationTest {
         AgentProposal decided = reload(pending.id());
         assertThat(decided.status()).isEqualTo(ProposalStatus.ACCEPTED);
 
-        // The graph mutation happened exactly once, and the route tip points
-        // at the single produced child — never at two competing nodes.
+        // 图变更恰好发生一次,路线 tip 指向唯一产生的子节点——绝不能指向两个竞争节点。
         assertThat(childrenOf(tip.id())).isEqualTo(baselineChildren + 1);
         UUID producedChildId = jdbcTemplate.queryForObject(
                 "SELECT id FROM nodes WHERE parent_node_id = ?",
@@ -174,7 +173,7 @@ class AgentProposalLifecycleConcurrencyIntegrationTest {
         assertThat(routeRepository.findById(route.id()).orElseThrow().tipNodeId())
                 .isEqualTo(producedChildId);
 
-        // One acceptance, one operation-log entry.
+        // 一次接受,一条操作日志。
         assertThat(acceptOperations(pending.id())).isEqualTo(1);
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT decided_by FROM agent_proposals WHERE id = ?",
@@ -198,12 +197,12 @@ class AgentProposalLifecycleConcurrencyIntegrationTest {
         AgentProposal decided = reload(pending.id());
 
         if (decided.status() == ProposalStatus.ACCEPTED) {
-            // Legal outcome A: acceptance won — its full effect must exist.
+            // 合法结果 A:接受胜出——它的全部效果必须存在。
             assertThat(decided.decidedBy()).isEqualTo(DECIDED_BY_A);
             assertThat(childrenOf(tip.id())).isEqualTo(baselineChildren + 1);
             assertThat(acceptOperations(pending.id())).isEqualTo(1);
         } else if (decided.status() == ProposalStatus.REJECTED) {
-            // Legal outcome B: rejection won — no mutation may exist.
+            // 合法结果 B:拒绝胜出——不允许存在任何变更。
             assertThat(decided.decidedBy()).isEqualTo(DECIDED_BY_B);
             assertThat(childrenOf(tip.id())).isEqualTo(baselineChildren);
             assertThat(acceptOperations(pending.id())).isZero();
@@ -232,8 +231,7 @@ class AgentProposalLifecycleConcurrencyIntegrationTest {
 
         AgentProposal decided = reload(pending.id());
 
-        // Only one terminal state survives; decidedBy must match whichever
-        // transition won, proving the loser never overwrote anything.
+        // 只有一个终态存活;decidedBy 必须与胜出的迁移一致,证明输家从未覆盖任何内容。
         if (decided.status() == ProposalStatus.REJECTED) {
             assertThat(decided.decidedBy()).isEqualTo(DECIDED_BY_A);
         } else if (decided.status() == ProposalStatus.EXPIRED) {

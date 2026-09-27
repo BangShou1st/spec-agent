@@ -11,9 +11,18 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Manages the lifecycle of action proposals: creation, acceptance,
- * rejection, and expiration. Every state transition is traceable
- * through decidedAt/decidedBy timestamps.
+ * 文件名:AgentProposalService.java
+ *
+ * 用途:动作提案生命周期的服务层管理:创建、接受、拒绝与过期。
+ * 每次状态流转都通过 decidedAt/decidedBy 时间戳留下可追溯的审计记录。
+ *
+ * 流转语义是"单胜者":终态转换基于数据库的原子 compare-and-set,
+ * 并发竞争时只有一个请求成功,其余抛 {@link ProposalAlreadyDecidedException},
+ * 绝不覆盖已有终态。接受前会用行锁(requirePending)快速失败于已决定的提案。
+ *
+ * 协作:被 AgentProposalController(用户接受/拒绝)与
+ * ProposalAcceptanceService(接受后执行)调用;底层持久化在
+ * {@link AgentProposalRepository}。
  */
 @Service
 public class AgentProposalService {
@@ -25,10 +34,9 @@ public class AgentProposalService {
     }
 
     /**
-     * Creates a new proposal in PROPOSED status. Idempotent by the
-     * database-backed unique index: when a proposal with the same key already
-     * exists — including one inserted concurrently by another worker — it is
-     * returned unchanged and only one row ever persists.
+     * 以 PROPOSED 状态创建新提案。幂等性由数据库唯一索引保证:当相同键的
+     * 提案已存在时——包括被其他 worker 并发插入的那条——原样返回已存在的
+     * 提案,数据库中永远只有一行。
      */
     @Transactional
     public AgentProposal createProposal(ActionProposal actionProposal,
@@ -45,7 +53,7 @@ public class AgentProposalService {
                 actionProposal.idempotencyKey(),
                 Instant.now(), null, null);
         if (!repository.insertIfAbsent(proposal)) {
-            // Lost the insert race: the persisted winner is the shared truth.
+            // 插入竞争落败:已持久化的胜者是共享的唯一真相。
             return repository.findByIdempotencyKey(actionProposal.idempotencyKey())
                     .orElseThrow(() -> new IllegalStateException(
                             "Idempotent proposal row missing after losing its insert race: "
@@ -55,11 +63,10 @@ public class AgentProposalService {
     }
 
     /**
-     * Accepts a proposal, marking it as ACCEPTED with the current timestamp.
-     * The transition out of PROPOSED is atomic and single-winner: a proposal
-     * already decided (ACCEPTED/REJECTED/EXPIRED by another request racing
-     * this one) raises {@link ProposalAlreadyDecidedException} instead of
-     * overwriting the terminal state.
+     * 接受提案,将其标记为 ACCEPTED 并记录当前时间。从 PROPOSED 出发的
+     * 转换是原子且单胜者的:提案已被决定(被并发请求 ACCEPTED/REJECTED/
+     * EXPIRED)时抛 {@link ProposalAlreadyDecidedException},
+     * 而不是覆盖终态。
      */
     @Transactional
     public void acceptProposal(UUID proposalId, String decidedBy) {
@@ -71,9 +78,8 @@ public class AgentProposalService {
     }
 
     /**
-     * Rejects a proposal, marking it as REJECTED with the current timestamp.
-     * Same single-winner rule as acceptance: an existing terminal state is
-     * never overwritten.
+     * 拒绝提案,将其标记为 REJECTED 并记录当前时间。
+     * 与接受相同的单胜者规则:绝不覆盖已有的终态。
      */
     @Transactional
     public void rejectProposal(UUID proposalId, String decidedBy) {
@@ -85,9 +91,8 @@ public class AgentProposalService {
     }
 
     /**
-     * Expires a proposal, marking it as EXPIRED with the current timestamp.
-     * Same single-winner rule as acceptance: an existing terminal state is
-     * never overwritten.
+     * 使提案过期,将其标记为 EXPIRED 并记录当前时间。
+     * 与接受相同的单胜者规则:绝不覆盖已有的终态。
      */
     @Transactional
     public void expireProposal(UUID proposalId) {
@@ -99,10 +104,9 @@ public class AgentProposalService {
     }
 
     /**
-     * Locks the proposal row and fails fast when it is already decided or
-     * does not exist. The lock is held to the end of the transaction, so a
-     * racing decision on the same proposal waits here and re-reads the
-     * committed status before its own CAS attempt.
+     * 锁定提案行,在提案已决定或不存在时快速失败。锁持有到事务结束,
+     * 因此同一提案的并发决策会在这里排队,并在自己的 CAS 尝试之前
+     * 重新读取已提交的状态。
      */
     private void requirePending(UUID proposalId) {
         AgentProposal locked = repository.findByIdForUpdate(proposalId)
@@ -114,9 +118,8 @@ public class AgentProposalService {
     }
 
     /**
-     * Builds the loser error after the CAS observed zero affected rows. The
-     * status is read fresh (the winner's row is already committed at that
-     * point under READ_COMMITTED), so the reported state matches the DB.
+     * 在 CAS 观察到影响行数为 0 后构造落败方异常。状态是重新读取的
+     * (READ_COMMITTED 下胜者的行此时已提交),因此报告的状态与数据库一致。
      */
     private ProposalAlreadyDecidedException alreadyDecided(UUID proposalId) {
         String currentStatus = repository.findById(proposalId)
@@ -126,9 +129,8 @@ public class AgentProposalService {
     }
 
     /**
-     * Locking read for lifecycle decisions. Callers that are about to execute
-     * work on behalf of a PROPOSED proposal (acceptance) must take the row
-     * lock up front so the lock spans their entire transaction.
+     * 供生命周期决策使用的加锁读取。即将代表 PROPOSED 提案执行工作的
+     * 调用方(接受事务)必须提前取行锁,使锁覆盖其整个事务。
      */
     public Optional<AgentProposal> getProposalForUpdate(UUID id) {
         return repository.findByIdForUpdate(id);
@@ -139,9 +141,9 @@ public class AgentProposalService {
     }
 
     /**
-     * Finds the proposal created by a specific agent run, if any. Node-query
-     * runs that downgrade a mutation action to an approval produce exactly one
-     * proposal linked by {@code runId}; read-only runs never create one.
+     * 查找由指定 agent run 创建的提案(若有)。把变更动作降级为待批准的
+     * node-query run 恰好产出一条以 {@code runId} 关联的提案;
+     * 只读 run 从不创建提案。
      */
     public Optional<AgentProposal> findByRunId(UUID runId) {
         return repository.findByRunId(runId);

@@ -13,6 +13,13 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * 文件名:PatchReflectionGateTest.java
+ *
+ * 测试目标:验证 PatchReflectionGate 门禁对答案补丁草稿的校验逻辑——CONFIRMED 状态的
+ * Claim 必须同时携带来源节点和来源答案,Claim 文本不能为空白;ASSUMED 状态的 Claim
+ * 允许没有来源,空草稿直接拒绝。
+ */
 class PatchReflectionGateTest {
 
     private final PatchReflectionGate patchReflectionGate = new PatchReflectionGate();

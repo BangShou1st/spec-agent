@@ -30,12 +30,13 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Stale-anchor race: an external tip move between parent completion and
- * child creation must refuse the autonomous continuation.
+ * 文件名:ContinuationStaleAnchorRaceTest.java
  *
- * <p>The anchor rule under test is family-blind: the expected tip is the
- * parent's produced node when one exists, otherwise the parent's input
- * node. The live tip must still equal it or no child is created.
+ * 测试目标:过期锚点竞态:在父 run 完成与子 run 创建之间发生的外部 tip 推进,
+ * 必须拒绝自主续跑。
+ *
+ * 被测锚点规则与动作族无关:预期 tip 是父 run 的产出节点(若存在),
+ * 否则是父 run 的输入节点。活动 tip 必须仍与其一致,否则不创建子 run。
  */
 @SpringBootTest
 @ActiveProfiles("test")

@@ -5,11 +5,11 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Structured requirement-state changes derived from one answer.
+ * 文件名:AnswerPatch.java
  *
- * <p>An answer patch carries a list of domain-neutral {@link Claim}s. Replaying
- * patches along the active route lineage derives the {@code RequirementState}.
- * The patch itself is an immutable record.
+ * 用途:由一条答案推导出的结构化需求状态变更。一条 answer patch
+ * 携带一组领域中立的 {@link Claim} 列表;沿活跃路线 lineage 重放这些
+ * patch,即可推导出 {@code RequirementState}。patch 本身是不可变记录。
  */
 public class AnswerPatch {
 

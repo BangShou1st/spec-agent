@@ -8,10 +8,11 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 
 /**
- * Graph-side adapter for {@link RouteGraphSupportPort}. Thin delegation to the
- * existing graph operation journal and provenance validator; the user actor
- * and journal type mapping live here so the route domain does not depend on
- * graph types.
+ * 文件名:RouteGraphSupportAdapter.java
+ *
+ * 用途:{@link RouteGraphSupportPort} 的图侧适配器。对既有图操作
+ * 日志和出处校验器的薄委托;"用户"执行者与日志类型的映射放在这里,
+ * 使 route 领域不必依赖 graph 类型。
  */
 @Service
 public class RouteGraphSupportAdapter implements RouteGraphSupportPort {

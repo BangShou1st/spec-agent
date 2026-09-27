@@ -1,16 +1,19 @@
+<!--
+  文件名:GraphToolbar.vue
+  用途:画布左侧的紧凑工具栏:高频操作(加想法、撤销/重做、缩放、适应视图)常驻,低频操作(添加资源、重新自动布局、显示全部)收进原生溢出菜单。
+-->
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useWorkspaceStore } from '@/features/workspace/state/workspaceStore'
 import AppIcon from '@/shared/ui/AppIcon.vue'
 
 /**
- * Compact canvas toolbar: only frequent controls stay visible (+ 想法,
- * undo/redo, zoom, fit). Low-frequency actions (add resource, auto layout,
- * show all) live in a native overflow menu. Floating-window commands are
- * gone: Route and Inspector are fixed sidebar regions.
+ * 紧凑的画布工具栏:只有高频控件常驻(+ 想法、undo/redo、缩放、适应视图)。
+ * 低频操作(添加资源、自动布局、显示全部)收进原生溢出菜单。浮动窗口命令
+ * 已移除:路线与 Inspector 是固定的侧栏区域。
  *
- * The rail is deliberately narrow (vertical strip), so the 只看这条路线 state
- * indicator lives on the canvas itself (GraphCanvas), not here.
+ * 工具栏刻意保持窄条(竖条),因此"只看这条路线"的状态指示器放在画布上
+ * (GraphCanvas),而不是这里。
  */
 const workspace = useWorkspaceStore()
 

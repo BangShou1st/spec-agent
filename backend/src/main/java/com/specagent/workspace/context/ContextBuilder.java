@@ -29,14 +29,15 @@ import java.util.UUID;
 import java.util.Objects;
 
 /**
- * Builds a deterministic, lineage-based context snapshot for one agent run.
+ * 文件名:ContextBuilder.java
  *
- * <p>Context is not global chat history. It is the active route's tip replayed
- * through its parent lineage to the root, plus answers and patches on that
- * lineage. Sibling routes and superseded/archived/deleted routes are excluded by
- * default and recorded in {@code excludedRouteIds}.
+ * 用途:为一次 agent 运行构建确定性的、基于世系(lineage)的上下文快照。
+ * 上下文不是全局聊天历史,而是"当前 route 的 tip 沿父指针回放到根节点"的链路,
+ * 加上该链路上的回答与补丁。兄弟 route 以及被取代/归档/删除的 route 默认排除,
+ * 并记录在 {@code excludedRouteIds} 中。它是 context 包的核心入口,产出的
+ * {@link ContextSnapshot} 是交给 Brain 的冻结上下文。
  *
- * <p>This builder is deterministic and never calls a model or model gateway.
+ * 本构建器完全确定性,绝不调用模型或模型网关。
  */
 @Service
 public class ContextBuilder {
@@ -69,9 +70,9 @@ public class ContextBuilder {
     }
 
     /**
-     * Relation types admitted into the bounded 1-hop semantic context. Direction
-     * is preserved exactly as stored; symmetric types are already canonicalized
-     * at write time by {@code GraphInvariantValidator.endpointsCanonicalized}.
+     * 允许进入有界一跳语义上下文的关系类型。方向严格保持存储原样;对称类型
+     * 已在写入时由 {@code GraphInvariantValidator.endpointsCanonicalized} 做了
+     * 规范化。
      */
     private static final java.util.Set<NodeRelationType> SEMANTIC_RELATION_TYPES =
             java.util.Set.of(NodeRelationType.RELATED_TO, NodeRelationType.DEPENDS_ON,
@@ -79,12 +80,10 @@ public class ContextBuilder {
                     NodeRelationType.SUPPORTS);
 
     /**
-     * Derived working material of one route: non-interaction nodes (knowledge
-     * drafts, requirements, resources) that hang under a lineage node as a
-     * provenance parent. They never displace the answerable tip, so they are
-     * folded into the route's context here — visible and citable, without
-     * entering the answerable chain. Nodes claimed by another route's lineage
-     * (branch/forbidden material of a sibling route) are excluded.
+     * 一条 route 的派生工作材料:挂在世系节点之下(作为溯源父节点)的非交互节点
+     * (知识草稿、需求、资源等)。它们永远不会取代可作答的 tip,因此在这里折入
+     * route 的上下文——对模型可见、可被引用,但不进入可作答链路。被其他 route
+     * 世系认领的节点(兄弟 route 的分支/禁用材料)会被排除。
      */
     private List<UUID> derivedMaterial(UUID projectId, UUID routeId, List<UUID> lineage) {
         Set<UUID> lineageIds = Set.copyOf(lineage);
@@ -122,15 +121,12 @@ public class ContextBuilder {
                             + " is " + activeRoute.lifecycleStatus().code());
         }
 
-        // Build lineage from tip to root along parent pointers. A route's
-        // context is exactly its root-to-tip lineage; replacement nodes belong
-        // to the replacement route's lineage and never enter this chain.
+        // 沿父指针从 tip 回放到根,构建世系。一条 route 的上下文就是它的
+        // root-to-tip 世系;替换节点属于替换 route 的世系,绝不进入本链路。
         List<UUID> lineage = resolveLineage(activeRoute.tipNodeId());
         List<UUID> includedNodeIds = new ArrayList<>(lineage);
-        // Derived knowledge hanging under the chain is working material of
-        // THIS route: knowledge/resource nodes may attach to a lineage node
-        // without displacing the answerable tip, so they are added here to
-        // stay visible and citable for the model.
+        // 挂在链路之下的派生知识是本 route 的工作材料:知识/资源节点可以附着在
+        // 世系节点上而不取代可作答的 tip,因此在这里加入,让模型始终可见、可引用。
         includedNodeIds.addAll(derivedMaterial(projectId, activeRouteId, includedNodeIds));
 
         List<UUID> includedAnswerIds = routeHistoryResolver
@@ -158,18 +154,14 @@ public class ContextBuilder {
     }
 
     /**
-     * Builds a route-bound context snapshot for one explicit run target. The
-     * caller supplies the exact {@code routeId} and {@code inputNodeId} frozen
-     * onto the run at enqueue time; this builder never reads the project's
-     * active route pointer to choose a target, so a run that was queued
-     * against route A keeps building context for route A even if the active
-     * pointer moved to route B in the meantime.
+     * 为一个显式的运行目标构建绑定 route 的上下文快照。调用方提供入队时冻结到
+     * run 上的精确 {@code routeId} 与 {@code inputNodeId};本构建器绝不读取项目
+     * 的 active route 指针来挑选目标,因此针对 route A 入队的 run,即使期间活跃
+     * 指针已切到 route B,也依然为 route A 构建上下文。
      *
-     * <p>The resulting snapshot always satisfies
-     * {@code snapshot.routeId == routeId} and
-     * {@code snapshot.tipNodeId == route.tipNodeId}; callers that require the
-     * enqueue-time tip identity additionally verify
-     * {@code inputNodeId == route.tipNodeId} (enforced here fail-closed).
+     * 产出的快照始终满足 {@code snapshot.routeId == routeId} 且
+     * {@code snapshot.tipNodeId == route.tipNodeId};需要保持入队时 tip 身份的
+     * 调用方还会校验 {@code inputNodeId == route.tipNodeId}(此处 fail-closed 强制)。
      */
     public ContextSnapshot buildForRoute(UUID projectId,
                                          UUID routeId,
@@ -194,12 +186,11 @@ public class ContextBuilder {
                             + " (current tip: " + route.tipNodeId() + ")");
         }
 
-        // Build lineage from tip to root along parent pointers. A route's
-        // context is exactly its root-to-tip lineage; replacement nodes belong
-        // to the replacement route's lineage and never enter this chain.
+        // 沿父指针从 tip 回放到根,构建世系。一条 route 的上下文就是它的
+        // root-to-tip 世系;替换节点属于替换 route 的世系,绝不进入本链路。
         List<UUID> lineage = resolveLineage(route.tipNodeId());
         List<UUID> includedNodeIds = new ArrayList<>(lineage);
-        // Derived knowledge hanging under the chain (see buildFromActiveRoute).
+        // 挂在链路之下的派生知识(见 buildFromActiveRoute)。
         includedNodeIds.addAll(derivedMaterial(projectId, routeId, includedNodeIds));
 
         List<UUID> includedAnswerIds = routeHistoryResolver
@@ -237,9 +228,8 @@ public class ContextBuilder {
         Node targetNode = nodeRepository.findById(targetNodeId)
                 .orElseThrow(() -> new IllegalArgumentException("Target node not found: " + targetNodeId));
 
-        // Regenerate context carries only the shared parent lineage of the
-        // target node: the target node itself, its answers, patches, and child
-        // subtree are deliberately absent.
+        // Regenerate 上下文只携带目标节点的共享父世系:目标节点自身及其回答、
+        // 补丁、子树都被有意排除在外。
         List<UUID> parentLineage = resolveLineage(targetNode.parentNodeId());
 
         List<UUID> includedAnswerIds = routeHistoryResolver
@@ -271,10 +261,8 @@ public class ContextBuilder {
     }
 
     /**
-     * Freezes the pre-proposal context for model-powered question replacement.
-     * The snapshot is anchored to the explicit source route and the rejected
-     * node's parent tip. No accepted replacement route/node identity exists at
-     * this point.
+     * 为模型驱动的问题替换冻结"提案前"上下文。快照锚定在显式的源 route 以及被
+     * 否决节点的父 tip 上——此刻尚不存在任何已被接受的替换 route/节点身份。
      */
     public ContextSnapshot buildForReplacement(UUID projectId,
                                                UUID sourceRouteId,
@@ -324,13 +312,11 @@ public class ContextBuilder {
     }
 
     /**
-     * Builds a read context anchored at an arbitrary node for a contextual
-     * AI query ("ask AI about this node").
+     * 以任意节点为锚点,为"就该节点问问 AI"这类上下文查询构建读取上下文。
      *
-     * <p>The lineage is the anchor's own root-to-anchor chain along parent
-     * pointers; the read context is the explicit {@code routeId} the caller
-     * chose (never an active/first/latest fallback). The user's question is
-     * frozen into {@code specialInputs} so it is part of the context hash.
+     * 世系即锚点自身沿父指针回放到根的链路;读取上下文是调用方显式指定的
+     * {@code routeId}(绝不回退到 active/first/latest)。用户的问题被冻结进
+     * {@code specialInputs},因此也参与上下文哈希。
      */
     public ContextSnapshot buildForNodeQuery(UUID projectId,
                                              UUID routeId,
@@ -338,9 +324,9 @@ public class ContextBuilder {
                                              String userQuestion) {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new IllegalArgumentException("Project not found: " + projectId));
-        // The route is OPTIONAL reading context for a node query. A floating
-        // node belongs to no route (routeIds=[]); its query context is the
-        // anchor node itself. routeId must never be a hard eligibility gate.
+        // 对节点查询而言 route 是可选的读取上下文。游离节点不属于任何 route
+        // (routeIds=[]),其查询上下文就是锚点自身。routeId 绝不能成为硬性的
+        // 准入门槛。
         Route route = null;
         if (routeId != null) {
             route = routeRepository.findById(routeId)
@@ -355,13 +341,12 @@ public class ContextBuilder {
             throw new IllegalArgumentException("Anchor node does not belong to project: " + anchorNodeId);
         }
 
-        // B4.3 — anchor eligibility, fail closed:
-        // - a retracted anchor can never be the subject of a query;
-        // - a route-bound query requires the anchor to sit on that route's
-        //   canonical lineage (shared/cross-route anchors are rejected);
-        // - a routeless (routeId == null) query requires the anchor to be a
-        //   genuine floating node: if it actually belongs to any route we must
-        //   not silently treat it as routeless.
+        // B4.3 — 锚点准入检查,fail-closed:
+        // - 已回撤的锚点永远不能成为查询对象;
+        // - 绑定 route 的查询要求锚点位于该 route 的规范化世系上
+        //   (共享/跨 route 的锚点会被拒绝);
+        // - 无 route(routeId == null)的查询要求锚点必须是真正的游离节点:
+        //   若它实际属于某个 route,就不能被悄悄当作无 route 处理。
         if (anchor.isRetracted()) {
             throw new IllegalArgumentException("Anchor node is retracted: " + anchorNodeId);
         }
@@ -383,9 +368,8 @@ public class ContextBuilder {
                         .stream().map(answer -> answer.id()).toList();
         List<UUID> includedPatchIds = answerPatchRepository.findBySourceAnswerIds(includedAnswerIds)
                 .stream().map(patch -> patch.id()).toList();
-        // Without an explicit route there is no route to read from: exclude
-        // every route so the context stays the anchor itself, never the whole
-        // workspace.
+        // 没有显式 route 就没有可读取的 route:排除全部 route,使上下文只含
+        // 锚点自身,而不是整个工作区。
         List<UUID> excludedRouteIds = routeId == null
                 ? routeRepository.findByProject(projectId).stream()
                         .map(Route::id).toList()
@@ -394,10 +378,9 @@ public class ContextBuilder {
                         .filter(id -> !id.equals(routeId))
                         .toList();
 
-        // B7 — bounded 1-hop semantic context. Only ACTIVE relations of the
-        // configured types that touch the anchor enter the context; the related
-        // canonical node ids are recorded separately and never pollute the
-        // lineage. No recursion: neighbours of the related nodes are excluded.
+        // B7 — 有界一跳语义上下文。只有触及锚点、且类型在配置范围内的 ACTIVE
+        // 关系才进入上下文;相关联的规范化节点 id 单独记录,绝不污染世系。
+        // 不做递归:关联节点的邻居被排除。
         List<ContextRelation> relations = resolveSemanticRelations(projectId, anchorNodeId);
         List<UUID> relatedNodeIds = relations.stream()
                 .map(r -> r.sourceNodeId().equals(anchorNodeId) ? r.targetNodeId() : r.sourceNodeId())
@@ -420,10 +403,9 @@ public class ContextBuilder {
     }
 
     /**
-     * B4.3 helper: true when the anchor node sits on the canonical lineage of any
-     * route in the project. Bounded to the project's routes (never a full
-     * workspace scan); used to reject a routeless query whose anchor really
-     * belongs to a route.
+     * B4.3 辅助方法:判断锚点节点是否位于项目内任意 route 的规范化世系上。
+     * 范围限定在项目的 route 列表内(绝不全工作区扫描);用于拒绝那种锚点实际
+     * 属于某条 route 的"无 route 查询"。
      */
     private boolean isAnchorMemberOfAnyRoute(UUID projectId, UUID anchorNodeId) {
         for (Route candidate : routeRepository.findByProject(projectId)) {
@@ -435,9 +417,8 @@ public class ContextBuilder {
     }
 
     /**
-     * B7 helper: the bounded 1-hop semantic context for an anchor. Returns the
-     * ACTIVE relations of the configured types that touch the anchor, in
-     * canonical stored direction, with no recursion.
+     * B7 辅助方法:获取锚点的有界一跳语义上下文。返回触及锚点、类型在配置范围内
+     * 的 ACTIVE 关系,保持规范化的存储方向,不做递归。
      */
     private List<ContextRelation> resolveSemanticRelations(UUID projectId, UUID anchorNodeId) {
         List<ContextRelation> result = new ArrayList<>();
@@ -452,10 +433,9 @@ public class ContextBuilder {
     }
 
     /**
-     * Resolves a route's root-to-tip lineage by following {@code parentNodeId}
-     * pointers from the tip upward. The chain is deterministic: a route's
-     * context is exactly this chain, and sibling or replacement nodes never
-     * appear in it.
+     * 沿 {@code parentNodeId} 指针从 tip 向上回溯,解析一条 route 的
+     * root-to-tip 世系。链路是确定的:一条 route 的上下文恰好就是这条链,
+     * 兄弟节点或替换节点绝不会出现在其中。
      */
     private List<UUID> resolveLineage(UUID tipNodeId) {
         return routeHistoryResolver.resolveLineage(tipNodeId);
@@ -494,9 +474,8 @@ public class ContextBuilder {
     }
 
     /**
-     * Adds frozen project metadata to any operation-specific special inputs.
-     * The helper keeps replacement/regenerate inputs extensible while ensuring
-     * the title is always part of the exact snapshot and its hash.
+     * 把项目元数据冻结进各操作特有的 special inputs。借助这个辅助方法,替换/
+     * 重建的输入可以继续扩展,同时保证项目标题始终是快照及其哈希的一部分。
      */
     private Map<String, Object> withProjectTitle(Project project,
                                                   Map<String, Object> existing) {

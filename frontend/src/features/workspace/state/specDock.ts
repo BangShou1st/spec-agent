@@ -1,11 +1,12 @@
-/**
- * Spec dock domain: the route-scoped requirement-state and spec-snapshot
- * reads, spec generation/export, and the fail-closed reconciliation of a
- * generation whose outcome could not be observed.
+// 文件名:specDock.ts
+// 用途:Spec 停靠栏领域逻辑:逐路线的需求状态与规格快照读取、规格生成/导出,以及生成结果不可观测时的 fail-closed 对账,从 workspaceStore 拆出。
+/*
+ * Spec 停靠栏领域:路线范围的需求状态与规格快照读取、规格生成/导出,
+ * 以及结果无法观测的生成的 fail-closed 对账。
  *
- * Every function is the verbatim action body lifted out of `workspaceStore.ts`
- * with `this` replaced by the store instance passed in as the first argument.
- * The store keeps the action names and delegates, so no caller changes.
+ * 每个函数都是从 `workspaceStore.ts` 原样搬出的 action 主体,只是把
+ * `this` 换成了作为第一个参数传入的 store 实例。store 保留原 action 名
+ * 并委托到这里,调用方零改动。
  */
 import { createAgentRun } from '@/features/workspace/api/agentRuns'
 import { toDisplayError } from '@/shared/http/displayError'
@@ -19,25 +20,22 @@ import type { SpecDockSlice } from './slices'
 import type { ManualModelRetryIntent } from './types'
 import { captureProjectSession } from './shared'
 
-/**
- * Per-store request-generation counters for route-scoped reads.
+/*
+ * 逐 store 的请求代际计数器,用于路线范围的读取。
  *
- * Session identity alone cannot resolve ownership WITHIN one project:
- * two overlapping reads of the same route must not let the OLDER response
- * overwrite the newer one or release the newer request's loading marker.
- * The latest generation per route owns the cache write, the error write,
- * and the marker release.
+ * 会话身份无法解决同一个项目内部的归属:对同一路线的两次重叠读取,绝不能
+ * 让更旧的响应覆盖更新的那个,或释放更新请求的 loading 标记。每条路线的
+ * 最新代际拥有缓存写入、错误写入与标记释放。
  */
 const requirementLoadGenerations = new WeakMap<object, Map<string, number>>()
 const specListGenerations = new WeakMap<object, Map<string, number>>()
-/** Monotonic token for the single-slot `loadingSpecs` flag. */
+/** 单槽 `loadingSpecs` 标志的单调令牌。 */
 const specListFlagTokens = new WeakMap<object, { token: number }>()
 
-/**
- * Loads (and caches) the requirement state for an explicit route. The
- * cache is indexed by route id; no global selection decides ownership.
- * The response is validated against the project session before the cache
- * write: a slow read must not poison a newer project era's cache.
+/*
+ * 加载(并缓存)某条显式路线的需求状态。缓存按路线 id 索引;没有任何
+ * 全局选择决定归属。响应在写缓存前与项目会话校验:一次慢的读取绝不能
+ * 污染更新项目纪元的缓存。
  */
 export async function ensureRequirementStateAction(
   store: SpecDockSlice,
@@ -51,8 +49,7 @@ export async function ensureRequirementStateAction(
   if (cached) {
     return cached
   }
-  // Request identity: the latest generation of THIS route decides who may
-  // write the cache, the error, and the loading marker.
+  // 请求身份:本路线的最新代际决定谁能写缓存、错误与 loading 标记。
   const generations = requirementLoadGenerations.get(store) ?? new Map<string, number>()
   requirementLoadGenerations.set(store, generations)
   const myGeneration = (generations.get(routeId) ?? 0) + 1
@@ -72,8 +69,8 @@ export async function ensureRequirementStateAction(
     store.error = toDisplayError(err)
     return null
   } finally {
-    // Release the marker only for the still-current session AND only when
-    // no newer request of the same route (or another route) owns it now.
+    // 只有会话仍然有效、且没有同路线(或其它路线)的更新请求持有该标记
+    // 时,才释放它。
     if (
       isCurrent()
       && isLatestForRoute()
@@ -84,7 +81,7 @@ export async function ensureRequirementStateAction(
   }
 }
 
-/** Selects the displayed spec snapshot for one explicit route. */
+/** 为一条显式路线选择展示的规格快照。 */
 export function selectSpecForRouteAction(
   store: SpecDockSlice,
   routeId: string,
@@ -96,7 +93,7 @@ export function selectSpecForRouteAction(
   }
 }
 
-/** Loads the snapshot list for a route from the backend. */
+/** 从后端加载某条路线的快照列表。 */
 export async function loadRouteSpecsAction(store: SpecDockSlice, routeId: string): Promise<void> {
   if (!store.projectId) {
     return
@@ -120,22 +117,19 @@ export async function loadRouteSpecsAction(store: SpecDockSlice, routeId: string
     if (!isCurrent() || !isLatestForRoute()) return
     store.error = toDisplayError(err)
   } finally {
-    // Session guard: a stale load's cleanup must not release the NEW
-    // session's flag (beginProject already reset it there). Token guard:
-    // within one session, an older concurrent load must not release the
-    // flag of a newer one.
+    // 会话守卫:过期加载的清理绝不能释放新会话的标志(beginProject 已在
+    // 切换时重置)。令牌守卫:同一会话内,较早的并发加载绝不能释放较晚
+    // 加载的标志。
     if (isCurrent() && flags.token === myToken) {
       store.loadingSpecs = false
     }
   }
 }
 
-/**
- * Generates a spec snapshot for the ACTIVE route through the backend.
- * After success the canonical snapshot list is reloaded and the new
- * snapshot is selected in that route's cache; the frontend never
- * synthesizes a spec locally and never sets Focus here. Returns whether
- * a new snapshot landed on this route.
+/*
+ * 经后端为 Active 路线生成一份规格快照。成功后重新加载 canonical 快照
+ * 列表,并把新快照选入该路线的缓存;前端绝不在本地合成规格,也绝不在此
+ * 设置 Focus。返回新快照是否落到了这条路线上。
  */
 export async function generateSpecAction(store: SpecDockSlice): Promise<boolean> {
   if (!store.projectId || store.generatingSpec || store.routeCommandPending) {
@@ -153,16 +147,15 @@ export async function generateSpecAction(store: SpecDockSlice): Promise<boolean>
   store.error = null
   const routeId = activeRoute.id
   const { projectId, isCurrent } = captureProjectSession(store)
-  // ONE try/catch/finally covers the WHOLE generation flow — including the
-  // baseline read. A baseline failure returns through this finally, so the
-  // generation lock is always released for the owning session and later
-  // generations of the same session are never blocked by residue.
+  // 单个 try/catch/finally 覆盖整个生成流程——包括基线读取。基线失败也
+  // 会经过这个 finally 返回,生成锁对持有会话总是被释放,同一会话的后续
+  // 代际也绝不会被残留阻塞。
   let baselineSpecs: SpecSnapshotResponse[]
   let beforeSpecIds: string[] = []
   try {
     try {
-      // This read is the mutation baseline. If it fails, do not start a
-      // generation request whose outcome could no longer be reconciled.
+      // 这次读取是 mutation 的基线。它失败时,绝不去启动一个结果无法
+      // 再对账的生成请求。
       baselineSpecs = await listRouteSpecs(projectId, routeId)
     } catch (err) {
       if (!isCurrent()) return false
@@ -186,8 +179,8 @@ export async function generateSpecAction(store: SpecDockSlice): Promise<boolean>
     const outcome = await store.pollRunChainToTerminal(created.runId)
     if (!isCurrent()) return false
     if (outcome === 'unknown' || outcome === 'failed') {
-      // FAILED or outcome unknown: reconcile canonical reads through the
-      // shared fail-closed reconciliation (exactly-one-new-snapshot rule).
+      // FAILED 或结果未知:经共享的 fail-closed 对账刷新 canonical 读取
+      // (恰有一条新快照规则)。
       const intent: Extract<ManualModelRetryIntent, { kind: 'spec' }> = {
         kind: 'spec',
         routeId,
@@ -207,8 +200,7 @@ export async function generateSpecAction(store: SpecDockSlice): Promise<boolean>
       store.manualModelRetry = intent
       return false
     }
-    // COMPLETED: select the produced snapshot from the canonical backend
-    // list — never built up locally.
+    // COMPLETED:从 canonical 后端列表中选出产出的快照——绝不在本地拼装。
     const producedId = outcome.producedSpecSnapshotId
     const specs = await listRouteSpecs(projectId, routeId)
     if (!isCurrent()) return false
@@ -229,8 +221,8 @@ export async function generateSpecAction(store: SpecDockSlice): Promise<boolean>
     store.manualModelRetry = null
     return true
   } catch (err) {
-    // The create-run request itself failed or its outcome is unknown;
-    // reconcile canonical reads before any retry affordance.
+    // 创建 run 的请求本身失败或结果未知;在任何重试入口之前先对账
+    // canonical 读取。
     if (!isCurrent()) return false
     const safeError = toDisplayError(err)
     store.error = safeError
@@ -252,18 +244,17 @@ export async function generateSpecAction(store: SpecDockSlice): Promise<boolean>
     }
     return false
   } finally {
-    // Only the owning session releases the generation lock: a stale
-    // generation's cleanup must not release the NEW session's flag.
+    // 只有持有会话的一方释放生成锁:过期生成的清理绝不能释放新会话的
+    // 标志。
     if (isCurrent()) {
       store.generatingSpec = false
     }
   }
 }
 
-/**
- * Downloads one snapshot's Markdown export (browser save). The backend
- * renders the stored snapshot deterministically; this action only owns
- * the pending/error/feedback state around the download.
+/*
+ * 下载一份快照的 Markdown 导出(浏览器保存)。后端确定性地渲染已存储的
+ * 快照;本 action 只负责下载前后的 pending/错误/反馈状态。
  */
 export async function exportSpecMarkdownAction(
   store: SpecDockSlice,
@@ -285,8 +276,8 @@ export async function exportSpecMarkdownAction(
     store.error = toDisplayError(err)
     return false
   } finally {
-    // Only the owning session releases the flag; beginProject resets it
-    // on switch so the new project is never frozen by the old export.
+    // 只有持有会话的一方释放标志;beginProject 在切换时重置它,新项目
+    // 绝不会被旧导出冻结。
     if (isCurrent()) {
       store.exportingSpec = false
     }

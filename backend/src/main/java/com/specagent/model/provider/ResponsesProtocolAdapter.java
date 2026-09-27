@@ -11,8 +11,10 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /**
- * OpenAI Responses wire translation ({@code POST <base>/responses}).
- * Never sends Chat Completions {@code response_format} verbatim.
+ * 文件名:ResponsesProtocolAdapter.java
+ *
+ * 用途:OpenAI Responses 协议的线上格式适配器({@code POST <base>/responses})。
+ * 绝不原样发送 Chat Completions 的 {@code response_format} 字段。
  */
 @Component
 public class ResponsesProtocolAdapter implements ProtocolAdapter {
@@ -69,9 +71,8 @@ public class ResponsesProtocolAdapter implements ProtocolAdapter {
         if (root == null || !root.isObject()) {
             throw ModelProviderException.invalidResponse(context, "Responses response must be an object");
         }
-        // V1 fail-closed: never accept output text when the top-level
-        // status/error signals failure. The Compatibility Probe therefore
-        // rejects incomplete Responses-compatible endpoints naturally.
+        // V1 fail-closed:当顶层 status/error 表明失败时,绝不接受输出文本。
+        // 兼容性探测由此自然拒绝不完整的 Responses 兼容端点。
         if (root.has("error") && root.get("error") != null && !root.get("error").isNull()) {
             JsonNode err = root.get("error");
             String msg = "Responses provider error";
@@ -147,12 +148,12 @@ public class ResponsesProtocolAdapter implements ProtocolAdapter {
             return null;
         }
         String type = data.has("type") && data.get("type").isTextual() ? data.get("type").asText() : "";
-        // Protocol error event surfaces as failure, never as text.
+        // 协议错误事件一律作为失败抛出,绝不当作文本。
         if ("response.failed".equals(type) || "error".equals(type)) {
             throw ModelProviderException.providerRequestError(context, "Responses provider error event", null);
         }
-        // Whitelist ONLY output-text deltas by event type. Reasoning, tool,
-        // usage, lifecycle and metadata events never surface.
+        // 按事件类型白名单:只放行 output-text 增量。reasoning、tool、usage、
+        // 生命周期和元数据事件一律不对外呈现。
         if ("response.output_text.delta".equals(type)) {
             JsonNode delta = data.get("delta");
             if (delta != null && delta.isTextual()) {
@@ -188,8 +189,7 @@ public class ResponsesProtocolAdapter implements ProtocolAdapter {
             return false;
         }
         String type = data.get("type").asText();
-        // response.incomplete is a failure terminal: partial output must
-        // never be returned as a successful inference result.
+        // response.incomplete 是失败终止:部分输出绝不能当作成功的推理结果返回。
         return "response.failed".equals(type) || "response.incomplete".equals(type)
                 || "error".equals(type);
     }

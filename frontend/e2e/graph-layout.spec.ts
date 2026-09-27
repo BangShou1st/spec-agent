@@ -1,12 +1,5 @@
-import { test, expect } from '@playwright/test'
-import {
-  buildThreeNodeLineage,
-  closeFloatingWorkspaceWindows,
-  createProject,
-  fitGraph,
-  openToolbarMore,
-} from './helpers'
 
+import { test, expect, createProject, fitGraph, closeFloatingWorkspaceWindows, openToolbarMore, buildThreeNodeLineage } from './helpers'
 /**
  * Graph layout behavior: header-only drag with live edges, position
  * persistence across reload, multi-select group movement, and toolbar

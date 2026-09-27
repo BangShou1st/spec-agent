@@ -1,4 +1,7 @@
-"""Contract tests for the diagnostic planning-state.v1 schema."""
+"""文件名:test_planning.py
+
+用途:诊断用的 planning-state.v1 schema 的契约测试。
+"""
 
 import json
 from pathlib import Path

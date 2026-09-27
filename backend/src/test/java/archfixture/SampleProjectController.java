@@ -5,8 +5,10 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 
 /**
- * Controller fixture that hands {@link SampleCreateProjectRequest} and
- * {@link SampleLeakyResponse}, making both members of the HTTP DTO role.
+ * 文件名:SampleProjectController.java
+ *
+ * 控制器夹具:使用 {@link SampleCreateProjectRequest} 和
+ * {@link SampleLeakyResponse},使两者都被归入 HTTP DTO 角色。
  */
 public class SampleProjectController {
 

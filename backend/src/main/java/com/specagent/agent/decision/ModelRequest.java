@@ -6,14 +6,15 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Immutable request handed to a model adapter for one agent reasoning step.
+ * 文件名:ModelRequest.java
  *
- * <p>Every model run must carry a contextSnapshotId: the agent always
- * reasons against a frozen context snapshot, never against live state.
+ * 用途:交给模型适配器、用于一次 Agent 推理步骤的不可变请求。
  *
- * <p>Metadata is runtime-owned context for the gateway. It carries no action
- * expectation: the model proposes its own action in its output, and the runtime
- * validates the proposal against the action the task requires.
+ * 每次模型运行都必须携带 contextSnapshotId:Agent 始终基于冻结的上下文
+ * 快照推理,绝不基于实时状态。
+ *
+ * metadata 是供网关使用的运行时上下文。它不携带任何动作预期:模型在
+ * 输出中自行提出动作,运行时再对照该任务要求的动作去校验提案。
  */
 public record ModelRequest(
         UUID projectId,

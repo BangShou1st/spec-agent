@@ -4,11 +4,12 @@ import com.specagent.assistant.conversation.GlobalAssistantRunRepository;
 import java.util.List;
 import org.springframework.stereotype.Service;
 /**
- * Startup orphan recovery for the single-instance V1 executor.
- * Persisted CREATED/RUNNING runs from a dead process terminalize as honest
- * failures: no automatic tool replay, no durable side-effect retry.
- * Pending-steer recovery is delegated to TurnHandoffService so stranded
- * steers still hand off exactly once.
+ * 文件名:GlobalAssistantRunRecoveryService.java
+ *
+ * 用途:单实例 V1 执行器的启动期孤儿恢复。已持久化的 CREATED/RUNNING
+ * run 如果属于已死进程,会被诚实地质化为失败:不自动重放工具,
+ * 也不重试持久化副作用。待处理的 steer 恢复委托给 TurnHandoffService,
+ * 确保被搁置的 steer 依然恰好交接一次。
  */
 @Service
 public class GlobalAssistantRunRecoveryService {

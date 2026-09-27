@@ -4,9 +4,10 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * One staged (not yet installed) Skill import awaiting review/install.
- * Staging validates, hashes, and bounds the package WITHOUT executing anything;
- * install is a separate explicit step.
+ * 文件名:SkillStagedImport.java
+ *
+ * 用途:一条已暂存(尚未安装)、等待审阅/安装的 Skill 导入记录。暂存阶段
+ * 完成校验、哈希与限额检查,但绝不执行任何内容;安装是另一个独立的显式步骤。
  */
 public record SkillStagedImport(
         UUID id,

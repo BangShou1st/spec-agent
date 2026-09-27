@@ -3,14 +3,15 @@ package com.specagent.agent.runtime;
 import java.util.UUID;
 
 /**
- * The target route's tip carries a persisted Answer whose post-answer
- * processing never completed, so a derived artifact could only be a silently
- * incomplete document.
+ * 文件名:IncompleteAnswerCycleException.java
  *
- * <p>Thrown by the artifact cycle for a run that was already queued when the
- * tip became an unprocessed answer. The command surface rejects the same
- * situation up front with the same code, so the user gets one explanation and
- * one recovery entry (resume the saved answer, then generate).
+ * 用途:目标 route 的 tip 上存在一条已持久化的 Answer,但回答后的处理
+ * (STATE_UPDATE)从未完成——此时派生任何产物,只能得到一份"悄悄不完整"的
+ * 文档,因此直接拒绝执行。
+ *
+ * 由 artifact cycle 抛出:针对那种在 tip 变成"未处理回答"之前就已入队的
+ * run。命令入口面对同样的情形会提前用相同的拒绝码拦截,保证用户看到的是
+ * 同一种解释、同一个恢复入口(先恢复保存的回答,再生成)。
  */
 public class IncompleteAnswerCycleException extends RuntimeException {
 

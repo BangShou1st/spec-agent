@@ -1,3 +1,5 @@
+// 文件名:WorkspaceInspector.spec.ts
+// 用途:WorkspaceInspector 组件单元测试,验证按选择切换的上下文表面、需求状态按阅读路线加载、二级视图与键盘焦点保持,以及检查器不渲染规格内容。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'

@@ -10,9 +10,11 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 /**
- * SSE error-status contract: JSON error bodies cannot be negotiated for an
- * event-stream Accept, so the SSE endpoint answers unknown runs with a bare
- * 404 while the JSON read endpoints keep their typed error bodies.
+ * 文件名:ProbeAdviceTest.java
+ *
+ * 测试目标:验证 SSE 的错误状态契约——Accept 为 event-stream 时无法
+ * 协商出 JSON 错误体,所以 SSE 端点对未知运行返回裸 404,
+ * 而 JSON 读端点仍保留其类型化错误体。
  */
 @SpringBootTest
 @AutoConfigureMockMvc

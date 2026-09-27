@@ -1,3 +1,6 @@
+// 文件名:conversationHistory.spec.ts
+// 用途:最近对话历史组件测试:验证按时间分组的行渲染与当前会话高亮、空态展示、
+//       运行中禁用切换的守护提示,以及点击行时 select 事件的抛出。
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'

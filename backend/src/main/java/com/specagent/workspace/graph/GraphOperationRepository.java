@@ -15,6 +15,13 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * 文件名:GraphOperationRepository.java
+ *
+ * 用途:graph_operations 表的持久化访问。负责追加(只增不改写)、
+ * 查询类型化操作日志,以及撤销时更新状态。撤销/重做的栈语义并不是
+ * 存出来的,而是从按创建顺序排列的整份日志推导出来的。
+ */
 @Repository
 public class GraphOperationRepository {
 
@@ -87,7 +94,7 @@ public class GraphOperationRepository {
         return jdbcTemplate.query(sql, Maps.of("id", id), rowMapper).stream().findFirst();
     }
 
-    /** Full log in creation order; undo/redo stack semantics are derived from it. */
+    /** 按创建顺序返回完整日志;undo/redo 的栈语义由它推导。 */
     public List<GraphOperation> findByProject(UUID projectId) {
         String sql = """
                 SELECT * FROM graph_operations
@@ -122,11 +129,10 @@ public class GraphOperationRepository {
     }
 
     /**
-     * Strictly increasing wall-clock timestamps for operation lifecycle
-     * stamps. Undo/redo cutoff compares createdAt against undoneAt with a
-     * strict "after", so two operations stamped with the same Instant would
-     * make new work invisible to the cutoff check; this tick guarantees a
-     * total order within one node.
+     * 为操作的生命周期时间戳生成严格递增的墙钟时间。undo/redo 的截断点
+     * 用严格的"晚于"比较 createdAt 与 undoneAt,若两个操作被打上同一个
+     * Instant,新工作就会对截断判断不可见;这里的手动推进保证了单机内
+     * 的全序。
      */
     public static Instant nextTimestamp() {
         while (true) {

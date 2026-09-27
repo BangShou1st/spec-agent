@@ -13,17 +13,15 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Deterministic baseline suite (CI-blocking, B-fast profile).
+ * 文件名:EvalBaselineSuiteTest.java
  *
- * <p>Runs the whole corpus through the production answer cycle with the
- * scripted B-fast brain and writes machine-readable artifacts:
- * {@code results.jsonl}, {@code summary.json}, {@code summary.txt}.
- * Output goes to {@code build/eval-baseline} (never committed).
+ * 测试目标:确定性基线套件(阻塞 CI,B-fast 档)。用脚本化 B-fast 大脑把
+ * 整个语料跑过生产回答循环,并写出机器可读产物:{@code results.jsonl}、
+ * {@code summary.json}、{@code summary.txt}。输出到 {@code build/eval-baseline}
+ * (绝不提交)。
  *
- * <p>Acceptance scenarios (E17 confirmed/stale, E25 stale) are covered
- * by their dedicated corpus tests; this suite records the runner
- * attempts (unconfirmed/pending outcomes included) as the frozen
- * baseline.
+ * 验收类场景(E17 confirmed/stale、E25 stale)由各自的语料测试覆盖;
+ * 本套件将运行器产生的全部尝试(含 unconfirmed/pending 结果)记录为冻结基线。
  */
 class EvalBaselineSuiteTest extends EvalHarnessBase {
 
@@ -65,8 +63,8 @@ class EvalBaselineSuiteTest extends EvalHarnessBase {
         System.out.println(summary.toText());
 
         assertThat(summary.totalAttempts()).isEqualTo(countAttempts());
-        // Baseline freeze: record reality, do not tune prompts here. A
-        // failing baseline fails the suite so regressions block CI.
+        // 基线冻结:记录真实结果,不在此调整提示词。基线失败即套件失败,
+        // 让回归直接阻塞 CI。
         assertThat(summary.failed())
                 .as("baseline failures: %s", summary.toText())
                 .isZero();

@@ -5,12 +5,12 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * E01 — Simple Answer (smoke scenario, P2 corpus).
+ * 文件名:E01SimpleAnswerTest.java
  *
- * <p>Verifies the most basic production answer cycle: the Answer persists,
- * the STATE_UPDATE patch passes Java validation/application, a post-state
- * ContextSnapshot feeds DECISION, the primary action is allowed, no
- * unrelated state mutates, and the call budget holds.
+ * 测试目标:E01——简单回答(smoke 场景,P2 语料)。验证最基础的生产回答循环:
+ * Answer 持久化、STATE_UPDATE 补丁通过 Java 校验与应用、后置状态的 ContextSnapshot
+ * 供 DECISION 使用、主动作被允许、无关状态未被改动、调用预算不超支。
+ * 覆盖 base、paraphrase(同义改写)、shuffled(上下文乱序)三个变体。
  */
 class E01SimpleAnswerTest extends EvalHarnessBase {
 

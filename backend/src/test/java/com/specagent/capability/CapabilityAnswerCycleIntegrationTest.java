@@ -27,10 +27,11 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * End-to-end capability path through a real answer cycle: the decision
- * engine proposes INVOKE_CAPABILITY against a visible descriptor, policy
- * auto-executes the read-only capability, the invocation is recorded
- * exactly once, and no duplicate graph mutations occur.
+ * 文件名:CapabilityAnswerCycleIntegrationTest.java
+ *
+ * 测试目标:验证完整回答周期中的能力调用链路——决策引擎基于可见的能力
+ * 描述符提议 INVOKE_CAPABILITY,策略自动执行只读能力,调用恰好记录一次,
+ * 且不会产生重复的图谱变更。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -57,8 +58,8 @@ class CapabilityAnswerCycleIntegrationTest {
         Node resource = commandService.attachResource(
                 project.id(), route.id(), null, "TEXT",
                 Map.of("text", "客户访谈记录：核心诉求是离线可用。"));
-        // A question after the resource puts a RESOURCE node in the lineage
-        // of the answer cycle context.
+        // 问题节点位于资源节点之后,使 RESOURCE 节点进入
+        // 回答周期上下文的 lineage。
         questionNode = nodeService.createChildNode(
                 project.id(), route.id(), resource.id(),
                 "离线模式最重要的场景是什么？", null, List.of(), true);
@@ -75,8 +76,8 @@ class CapabilityAnswerCycleIntegrationTest {
         AgentRun run = agentRunService.getRun(runId).orElseThrow();
         assertThat(run.status()).isEqualTo(AgentRunStatus.COMPLETED);
 
-        // The read-only capability executed exactly once (idempotency key is
-        // derived from run + proposal, so retries can never duplicate it).
+        // 只读能力恰好执行一次(幂等键由 run + proposal 派生,
+        // 重试永远不会产生重复执行)。
         List<CapabilityInvocationRecord> invocations =
                 invocationRepository.findRecentCompleted(project.id(), 10);
         assertThat(invocations).hasSize(1);
@@ -84,7 +85,7 @@ class CapabilityAnswerCycleIntegrationTest {
         assertThat(invocation.capabilityId()).isEqualTo(ResourceExtractTextCapability.CAPABILITY_ID);
         assertThat(invocation.status()).isEqualTo(CapabilityResult.Status.SUCCEEDED);
 
-        // The executing phase recorded the capability family.
+        // executing 阶段记录了能力族。
         assertThat(eventService.findByRunId(runId).stream()
                 .anyMatch(e -> "EXECUTING".equals(e.eventType())
                         && "INVOKE_CAPABILITY".equals(String.valueOf(e.payload().get("actionFamily")))))

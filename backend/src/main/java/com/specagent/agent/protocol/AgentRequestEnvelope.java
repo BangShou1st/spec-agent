@@ -7,9 +7,14 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * The full request envelope Spring sends to the Python brain for both
- * {@code POST /v1/state-updates} and {@code POST /v1/decisions}. The endpoint
- * determines the call type; the envelope itself is identical.
+ * 文件名:AgentRequestEnvelope.java
+ *
+ * 用途:Spring 发送给 Python Brain 的完整请求信封,同时服务于
+ * {@code POST /v1/state-updates} 和 {@code POST /v1/decisions} 两个端点;
+ * 由端点决定调用类型,信封本身结构一致。
+ *
+ * 约束:紧凑构造器 fail-closed 校验协议版本——v2 不允许携带
+ * actionEligibility,v3 必须携带 actionEligibility。
  */
 public record AgentRequestEnvelope(String protocolVersion,
                                      UUID runId,

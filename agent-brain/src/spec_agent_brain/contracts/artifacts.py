@@ -1,10 +1,10 @@
-"""Strict Pydantic contracts for the artifact generation boundary
-(Python -> Spring).
+"""文件名:artifacts.py
 
-The artifact response is its own protocol version: an artifact is a derived,
-read-only deliverable (initially only ``spec_snapshot``), never a graph
-mutation. The model output carries grounded content and source references
-only; the runtime owns every id.
+用途:工件生成边界的严格 Pydantic 契约(Python -> Spring)。
+
+工件响应有自己独立的协议版本:工件是派生的、只读的交付物
+(初期只有 ``spec_snapshot``),绝不是对图的变更。模型输出只携带
+grounded 内容与 source 引用;所有 id 由 runtime 侧分配。
 """
 
 from typing import List, Literal, Optional
@@ -34,11 +34,11 @@ class AgentArtifactResponse(StrictModel):
     usage: Optional[UsageView] = None
 
 
-# --- Model output contract (what the LLM must emit, strictly parsed) --------
+# --- 模型输出契约(LLM 必须产出的内容,严格解析) ---------------------------
 
 
 class ModelArtifactOutput(StrictModel):
-    """ARTIFACT_GENERATION model output: grounded artifact content only."""
+    """ARTIFACT_GENERATION 的模型输出:只允许 grounded 的工件内容。"""
 
     artifact_type: Literal["spec_snapshot"]
     sections: List[ArtifactSection]

@@ -8,14 +8,17 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Builds the whitelisted {@link RunProgressView} from a run's event rows.
- * Only sequence, phase, event type and composed summary fields are exposed;
- * raw payloads stay internal.
+ * 文件名:RunProgressAssembler.java
+ *
+ * 用途:从某个运行的原始事件行构建白名单化的 {@link RunProgressView}。
+ *
+ * 约束:只暴露 sequence、phase、事件类型与组合出的摘要字段;
+ * 原始 payload 保持内部不外泄。
  */
 @Service
 public class RunProgressAssembler {
 
-    /** Upper bound on returned steps so a long chain cannot bloat responses. */
+    /** 返回步骤数的上限,防止超长链条撑大响应。 */
     static final int MAX_STEPS = 100;
 
     private final AgentRunEventService eventService;

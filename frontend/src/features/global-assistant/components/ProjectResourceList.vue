@@ -1,3 +1,8 @@
+<!--
+  文件名:ProjectResourceList.vue
+  用途:工具活动下的"相关项目"资源列表:只保留 id 为合法 UUID 的 PROJECT 资源(最多 10 条),
+       展示名称与更新时间,点击跳转到对应项目工作台。
+-->
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'

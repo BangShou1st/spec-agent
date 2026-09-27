@@ -15,8 +15,10 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Durable capability invocation log. The runtime — not the model — owns
- * retry/idempotency metadata recorded here.
+ * 文件名:CapabilityInvocationRepository.java
+ *
+ * 用途:能力调用日志的持久化仓储(基于 PostgreSQL)。运行时——而不是模型——
+ * 持有这里记录的重试/幂等元数据,用于保证外部副作用不会被重复执行。
  */
 @Repository
 public class CapabilityInvocationRepository {
@@ -46,10 +48,9 @@ public class CapabilityInvocationRepository {
     }
 
     /**
-     * Atomically claims execution ownership for the invocation key: the row
-     * is inserted only when no row with that key exists (the unique index is
-     * the final arbiter, no check-then-insert window). Returns true exactly
-     * when this call won the claim and may execute the adapter.
+     * 原子性地认领 invocation key 的执行权:仅当不存在相同 key 的行时才插入
+     * (由唯一索引做最终裁决,不存在"先查后插"的竞态窗口)。仅当本次调用
+     * 赢得认领时返回 true,此时才允许执行适配器。
      */
     public boolean claim(CapabilityInvocation invocation) {
         String sql = """
@@ -91,8 +92,8 @@ public class CapabilityInvocationRepository {
     }
 
     /**
-     * Every invocation row owned by one run, in creation order. Additive
-     * read for continuation eligibility; claim/complete semantics untouched.
+     * 按创建顺序返回一次运行拥有的全部调用记录。仅作为续跑资格判断的增量读取,
+     * 不影响 claim/complete 的语义。
      */
     public List<CapabilityInvocationRecord> findByRunId(UUID runId) {
         String sql = "SELECT * FROM capability_invocations "
@@ -100,7 +101,7 @@ public class CapabilityInvocationRepository {
         return jdbcTemplate.query(sql, Maps.of("runId", runId), rowMapper);
     }
 
-    /** Most recent completed invocations of a project (bounded observations). */
+    /** 项目最近已完成(非 RUNNING)的调用记录,数量有界,供观测使用。 */
     public List<CapabilityInvocationRecord> findRecentCompleted(UUID projectId, int limit) {
         String sql = """
                 SELECT * FROM capability_invocations

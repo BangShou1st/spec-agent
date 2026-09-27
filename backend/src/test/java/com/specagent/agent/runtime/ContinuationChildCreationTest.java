@@ -43,10 +43,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Slice 2: idempotent continuation child creation.
+ * 文件名:ContinuationChildCreationTest.java
  *
- * <p>No test depends on the default max-cycles value: tests that need a
- * non-default budget set it explicitly and restore it afterwards.
+ * 测试目标:Slice 2:续跑子 run 的幂等创建。并发创建收敛到唯一子 run、重复调用
+ * 返回同一子 run、max-cycles 预算各档位行为符合公式、无关内容不改变子 run 身份、
+ * 不同事实来源走同一条创建路径、不合格的父 run 不产生任何子 run、V23 输者路径的
+ * fail-closed 证明。
+ *
+ * 没有测试依赖默认 max-cycles 值:需要非默认预算的测试会显式设置并在结束后恢复。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -221,7 +225,7 @@ class ContinuationChildCreationTest {
             UUID childId = coordinator.continueIfEligible(parentId).orElseThrow().id();
             succeedCapability(childId);
             agentRunRepository.updateStatus(childId, AgentRunStatus.COMPLETED,
-                    Instant.now(), "{}");
+                    Instant.now(), "{}", 0L);
 
             assertThat(coordinator.continueIfEligible(childId)).isEmpty();
             assertThat(agentRunRepository.findChildByParentRunId(childId)).isEmpty();
@@ -304,10 +308,9 @@ class ContinuationChildCreationTest {
 
     @Test
     void sameParentDifferentKeyNeverAliasesAsSuccess() {
-        // Fail-closed proof for the V23 loser path: a continuation insert for
-        // an already-continued parent under a DIFFERENT deterministic key
-        // must surface the constraint failure, never return the other key's
-        // child as if it were this request's winner.
+        // V23 输者路径的 fail-closed 证明:对已续跑过的父 run,用一个不同的
+        // 确定性 key 插入续跑必须让约束失败浮出,绝不能把另一个 key 的子 run
+        // 当作本请求的赢家返回。
         UUID parentId = capabilityParent();
         UUID firstChild = coordinator.continueIfEligible(parentId).orElseThrow().id();
         String otherKey = "continue:" + parentId + ":other";

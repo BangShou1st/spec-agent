@@ -8,10 +8,13 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
- * Sanitizes diagnostic-only semantic evidence before it can leave the
- * process.  This is deliberately independent from the model request path:
- * redaction can only change the copied trace value, never the value sent to a
- * model or applied to runtime state.
+ * 文件名:SemanticTraceSanitizer.java
+ *
+ * 用途:在诊断用语义证据离开进程之前进行脱敏——抹除 Bearer 令牌、
+ * 各类密钥赋值、敏感键名和已知哨兵字符串。
+ *
+ * 约束:刻意与模型请求路径完全独立:脱敏只能改变复制出来的
+ * trace 值,绝不影响发送给模型的内容或施加到 Runtime 状态上的值。
  */
 public final class SemanticTraceSanitizer {
 

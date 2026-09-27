@@ -7,13 +7,14 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.specagent.common.Json;
 
 /**
- * Strict JSON access for the cross-language contracts.
+ * 文件名:AgentContracts.java
  *
- * <p>The mapper is deliberately stricter than the default application mapper:
- * unknown properties, ambiguous enums and nulls for primitives all fail
- * closed. Both the request envelope (Java-built) and the response envelope
- * (brain-built, untrusted) go through this mapper so golden fixtures behave
- * identically on both sides of the boundary.
+ * 用途:跨语言契约(Java ↔ Python)的严格 JSON 读写入口。
+ *
+ * 约束:这里的 mapper 刻意比应用默认 mapper 更严格——未知属性、
+ * 歧义枚举、给基本类型传 null 全部 fail-closed。请求信封(Java 构建)
+ * 和响应信封(Brain 构建、不可信)都必须经过它,保证 golden fixtures
+ * 在边界两侧行为一致。
  */
 public final class AgentContracts {
 
@@ -28,14 +29,14 @@ public final class AgentContracts {
     private AgentContracts() {
     }
 
-    /** Serializes a contract value using its version-aware wire field rules. */
+    /** 按带版本的线上(wire)字段规则序列化契约值。 */
     public static String write(Object value) {
         return JSON.write(value);
     }
 
     /**
-     * Parses a contract value fail-closed. Any unknown field, unknown enum or
-     * shape violation raises {@link AgentContractException}.
+     * 以 fail-closed 方式解析契约值。任何未知字段、未知枚举或形状违约
+     * 都会抛出 {@link AgentContractException}。
      */
     public static <T> T read(String json, Class<T> type) {
         try {

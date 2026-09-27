@@ -9,30 +9,26 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Durable continuation dispatcher: the low-latency fast path plus the
- * crash-recovery scanner over {@code agent_run_continuation_checks}.
+ * 文件名:ContinuationDispatchService.java
  *
- * <p>Only dependencies are the check outbox and the coordinator — no model,
- * route, context, action, approval, or semantic planning input. Every
- * decision re-reads durable run facts via
- * {@link ContinuationCoordinator#continueIfEligible(UUID)}, so a replay after
- * a crash returns the same answer as the lost afterCommit.
+ * 用途:持久化的续跑分发器:既是低延迟快速路径,也是 {@code agent_run_continuation_checks}
+ * 的崩溃恢复扫描器。
  *
- * <p>Transaction shape (minimal, no framework): each evaluation runs child
- * creation plus the exact-generation mark inside one explicit
- * {@link TransactionTemplate} transaction — never a self-invoked
- * {@code @Transactional} proxy method, so the atomicity holds no matter how
- * this bean is called. A mark-phase failure rolls the whole evaluation back:
- * the pending check stays pending and recovery safely replays it. A crash
- * between child creation and the mark leaves a pending row with a child
- * already present; recovery then observes {@code ALREADY_CONTINUED} and marks
- * processed without creating a second child (V23 single-child index plus the
- * deterministic {@code continue:<parentRunId>} key arbitrate).
+ * 依赖只有检查 outbox 与协调器——没有模型、路线、上下文、动作、审批或任何
+ * 语义规划输入。每个决策都通过 {@link ContinuationCoordinator#continueIfEligible(UUID)}
+ * 重新读取持久化的 run 事实,因此崩溃后的重放会得到与丢失的 afterCommit 相同的答案。
  *
- * <p>Generation gate: completion marks exactly the generation it evaluated.
- * A concurrent re-request (approval accept reopening a parked check)
- * increments the generation first, so the stale completion marks 0 rows and
- * the new generation stays pending until recovery converges it.
+ * 事务形态(最小化、不依赖框架自代理):每次评估都在一个显式
+ * {@link TransactionTemplate} 事务里同时完成"子 run 创建 + 精确代数标记"——
+ * 绝不是自调用的 {@code @Transactional} 代理方法,因此无论本 bean 如何被调用,
+ * 原子性都成立。标记阶段失败会回滚整个评估:待处理检查保持待处理,由恢复
+ * 流程安全重放。子 run 创建之后、标记之前崩溃,会留下"待处理行 + 已存在的
+ * 子 run";恢复时观察到 {@code ALREADY_CONTINUED},只标记已处理而不创建
+ * 第二个子 run(V23 单子索引加确定性 {@code continue:<parentRunId>} key 裁决)。
+ *
+ * 代数门:完成只标记自己实际评估的那个代数。并发的再次请求(审批接受
+ * 重新打开停靠的检查)会先把代数加一,因此过期的完成只标记 0 行,
+ * 新代数保持待处理,直到恢复流程收敛它。
  */
 @Service
 public class ContinuationDispatchService {
@@ -51,19 +47,17 @@ public class ContinuationDispatchService {
         this.transactionTemplate = transactionTemplate;
     }
 
-    /** Requests evaluation for a terminal run (joins the terminal txn). */
+    /** 为一个终态 run 请求评估(加入终态事务)。 */
     public void request(UUID runId) {
         checkRepository.request(runId);
     }
 
     /**
-     * Evaluates the pending generation for one run: creates the child when
-     * eligible, then marks exactly that generation processed — both in one
-     * explicit transaction. Transient failures propagate without marking, so
-     * the recovery scanner retries; an already-created child converges via
-     * {@code ALREADY_CONTINUED} to marking without a second row. A duplicate
-     * delivery of an already-processed check is a no-op (the terminal run
-     * itself is never re-executed — see {@code RunWorker} fail-closed).
+     * 评估单个 run 的待处理代数:满足条件时创建子 run,然后把该代数精确标记
+     * 为已处理——两者在同一个显式事务内。瞬时失败不标记、直接向上抛出,由
+     * 恢复扫描器重试;已创建的子 run 会经由 {@code ALREADY_CONTINUED} 收敛为
+     * "只标记、不建第二行"。已处理检查的重复投递是空操作(终态 run 本身
+     * 绝不会被重新执行——见 {@code RunWorker} 的 fail-closed 设计)。
      */
     public void process(UUID runId) {
         ContinuationCheck check = checkRepository.findPendingByRunId(runId)
@@ -75,10 +69,8 @@ public class ContinuationDispatchService {
     }
 
     /**
-     * Evaluates one pending check generation. Package-visible for the
-     * generation-race test: it pins the exact ABA interleaving (generation 1
-     * in flight while generation 2 is requested) that the public path can
-     * only reach through timing.
+     * 评估一条待处理的检查代数。包内可见,专供代数竞态测试使用:它固定了
+     * 公共路径只能靠时序才能触发的确切 ABA 交错(代数 1 在途时请求代数 2)。
      */
     void process(ContinuationCheck check) {
         transactionTemplate.executeWithoutResult(status -> {
@@ -87,7 +79,7 @@ public class ContinuationDispatchService {
         });
     }
 
-    /** Replays pending checks oldest-first; one bad row never blocks others. */
+    /** 按最老优先重放待处理检查;单行失败绝不阻塞其他行。 */
     public void recoverPending() {
         recoverPending(100);
     }

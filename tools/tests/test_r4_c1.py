@@ -1,8 +1,10 @@
-"""R4 C1 (raw contract) validator tests — TDD Unit 1.
+"""文件名:test_r4_c1.py
 
-Covers Phase 7 Schema/C1 categories against the corrected spec
-(Architecture Sections 10-11): canonical refs, gapType nullability,
-reason polarity, observation: forbidden, assessment nullability.
+R4 C1(原始契约)校验器测试——TDD 单元 1。
+
+按修正后的规范(架构文档第 10-11 节)覆盖第 7 阶段的 Schema/C1
+类别:规范引用、gapType 可空性、reason 极性、observation: 禁用、
+capabilityAssessment 可空性。
 """
 import copy
 

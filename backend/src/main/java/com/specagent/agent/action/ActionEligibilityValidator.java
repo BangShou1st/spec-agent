@@ -19,7 +19,18 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/** Java trust-boundary validation for a selected action and its payload. */
+/**
+ * 文件名:ActionEligibilityValidator.java
+ *
+ * 用途:Java 信任边界内的资格校验器,验证模型选中的动作及其载荷。
+ * 在资格掩码的基础上做更深的确定性校验:重复的持久化单元
+ * (已落库的 Answer/confirmed claim/已有节点)、未被解析的提问、
+ * 能力可见性、能力参数中的未 grounding 引用、DECISION 节点的
+ * 类型化持久化意图等。
+ *
+ * 协作:由 ActionEligibilityGate.assess 调用;任何规则不满足
+ * 即抛 ActionIneligibleException(带原因码)。
+ */
 public final class ActionEligibilityValidator {
 
     public void validateSelection(AgentRequestEnvelope request,
@@ -50,7 +61,7 @@ public final class ActionEligibilityValidator {
             case INVOKE_CAPABILITY -> validateVisibleCapability(request, proposal.payload());
             case UPDATE_NODE, CONNECT_NODE, CREATE_ROUTE, RESPOND_TO_USER,
                  GENERATE_ARTIFACT, WAIT -> {
-                // No additional payload-dependent eligibility invariant yet.
+                // 这些动作族尚无额外的载荷相关资格不变量。
             }
         }
     }
@@ -60,7 +71,7 @@ public final class ActionEligibilityValidator {
         Object content = payload.get("content");
         if (!(content instanceof Map<?, ?> contentMap)
                 || !(contentMap.get("text") instanceof String contentText)) {
-            return; // Structural validator owns malformed payloads.
+            return; // 结构合法性由结构校验器负责。
         }
         String normalized = ActionEligibilityEvaluator.normalizeText(contentText);
         if (normalized.isEmpty()) {
@@ -73,8 +84,8 @@ public final class ActionEligibilityValidator {
 
         String subtype = payload.get("subtype") instanceof String value ? value : "";
         if ("NOTE".equals(subtype) && containsCurrentAnswer(request, normalized)) {
-            // Exact normalized containment, not fuzzy similarity: a NOTE may
-            // not wrap the already-durable Answer in explanatory boilerplate.
+            // 精确的规范化包含判断,而非模糊相似:NOTE 不允许把已经落库的
+            // Answer 包裹在解释性套话里重新提交。
             reject(ActionEligibilityReasonCode.ANSWER_ALREADY_DURABLE);
         }
 
@@ -101,8 +112,8 @@ public final class ActionEligibilityValidator {
                 && !("ANSWER_SUBMITTED".equals(request.event().kind())
                 && request.event().persistenceIntent()
                 == AgentEvent.PersistenceIntent.RECORD_DECISION_NODE)) {
-            // Natural-language freeText is not authority. A durable Decision
-            // requires the explicit Runtime-owned event intent above.
+            // 自然语言的 freeText 不构成权威。持久化的 DECISION 必须有
+            // 上述 Runtime 持有的显式事件意图。
             reject(ActionEligibilityReasonCode.MISSING_TYPED_PERSISTENCE_INTENT);
         }
     }

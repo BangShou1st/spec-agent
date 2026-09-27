@@ -1,3 +1,6 @@
+// 文件名:globalAssistantSuccessorHandoff.spec.ts
+// 用途:全局助手 steer 后继运行交接的回归测试(BUG-01):验证后端 AFTER_COMMIT 交接
+//       存在时间窗时,store 会持续轮询活动状态直到后继运行出现,不提前丢失 steer 状态。
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import {
@@ -7,13 +10,12 @@ import {
 import type { GaEventEnvelope } from '@/features/global-assistant/api/globalAssistant'
 
 /**
- * BUG-01 regression: Global Assistant steer successor observation.
+ * BUG-01 回归测试:全局助手 steer 后继运行的观测。
  *
- * Backend handoff is legal-but-late: `TurnHandoffListener` creates the
- * successor run in an AFTER_COMMIT phase, so `GET /threads/{id}/activity`
- * legitimately reports `{ activeRun: null, pendingSteer: S }` for a short
- * window before `{ activeRun: B, pendingSteer: null }` becomes visible.
- * The store must keep observing canonical activity until the handoff resolves.
+ * 后端的交接是"合法但迟到":`TurnHandoffListener` 在 AFTER_COMMIT 阶段创建
+ * 后继运行,因此 `GET /threads/{id}/activity` 会在一小段时间窗口内先返回
+ * `{ activeRun: null, pendingSteer: S }`,之后才可见 `{ activeRun: B, pendingSteer: null }`。
+ * store 必须持续观测规范的活动状态,直到交接落定。
  */
 
 const THREAD = 't-1'
@@ -22,7 +24,7 @@ const RUN_B = 'r-B'
 const STEER = 's-1'
 const STEERING_STATUS = '正在调整方向…'
 
-/** Must match GA_SUCCESSOR_OBSERVE_INTERVAL_MS in globalAssistantStore. */
+/** 必须与 globalAssistantStore 中的 GA_SUCCESSOR_OBSERVE_INTERVAL_MS 保持一致。 */
 const OBSERVE_INTERVAL_MS = 400
 
 interface ActivityBody {
@@ -63,7 +65,7 @@ function jsonOk(body: unknown, status = 200): Response {
   return { ok: status >= 200 && status < 300, status, json: async () => body } as unknown as Response
 }
 
-/** A fetch-stream body that stays open: no terminal frame, no reconnect path. */
+/** 一个保持打开的 fetch 流 body:没有终止帧,也没有重连路径。 */
 function openStreamBody(): unknown {
   return {
     getReader: () => ({
@@ -78,17 +80,17 @@ interface Harness {
   activityCalls: () => number
   streamOpens: () => string[]
   eventReplays: () => string[]
-  /** Resolves a previously deferred activity read (stale-result tests). */
+  /** 解决一次先前被挂起的活动读取(用于过期结果测试)。 */
   deferActivity: (body: ActivityBody) => void
-  /** Replaces the scripted activity response from this point on. */
+  /** 从这里开始替换脚本化的活动响应。 */
   setActivity: (body: ActivityBody) => void
 }
 
 interface HarnessOptions {
-  /** Scripted activity responses; the last entry repeats forever. */
+  /** 脚本化的活动响应;最后一条会永远重复。 */
   activity: ActivityBody[]
   events?: Record<string, GaEventEnvelope[]>
-  /** The first N activity reads wait for manual resolution. */
+  /** 前 N 次活动读取等待手动解决。 */
   deferredActivityCount?: number
 }
 
@@ -169,7 +171,7 @@ const CANCELLED: GaTerminal = { type: 'RUN_CANCELLED', errorCode: null, reason: 
 
 let current: ReturnType<typeof useGlobalAssistantStore> | null = null
 
-/** Store observing terminalized run A with an accepted-but-unresolved steer S. */
+/** 构造一个 store:正在观测已终态的运行 A,且存在一条已接受但未落定的 steer S。 */
 function seedStore(): ReturnType<typeof useGlobalAssistantStore> {
   const store = useGlobalAssistantStore()
   store.threadId = THREAD
@@ -187,12 +189,12 @@ function seedStore(): ReturnType<typeof useGlobalAssistantStore> {
   return store
 }
 
-/** Flushes pending microtasks without advancing the fake clock. */
+/** 冲刷待处理的微任务,但不推进假时钟。 */
 async function settle(): Promise<void> {
   await vi.advanceTimersByTimeAsync(0)
 }
 
-/** Advances exactly one successor-observation interval. */
+/** 恰好推进一个后继观测间隔。 */
 async function tick(): Promise<void> {
   await vi.advanceTimersByTimeAsync(OBSERVE_INTERVAL_MS)
 }
@@ -222,12 +224,12 @@ describe('global assistant successor handoff observation (BUG-01)', () => {
     store.finishTerminal(CANCELLED)
     await settle()
 
-    // Backend legal intermediate state: no active run yet, steer still pending.
+    // 后端合法的中间态:还没有活跃运行,steer 仍待生效。
     expect(store.activeRunId).toBeNull()
     expect(store.currentStatus).toBe(STEERING_STATUS)
     expect(h.activityCalls()).toBe(1)
 
-    // Observation must continue until the handoff actually resolves.
+    // 观测必须持续到交接真正落定。
     await tick()
 
     expect(store.activeRunId).toBe(RUN_B)
@@ -287,7 +289,7 @@ describe('global assistant successor handoff observation (BUG-01)', () => {
     await settle()
     expect(h.activityCalls()).toBe(1)
 
-    // Repeated follow-up triggers must not spawn independent retry chains.
+    // 重复触发后继跟进绝不能再孵化出独立的重试链。
     await store.pollSuccessorAfterTerminal()
     await store.pollSuccessorAfterTerminal()
     await settle()
@@ -315,7 +317,7 @@ describe('global assistant successor handoff observation (BUG-01)', () => {
     await store.switchThread('t-2')
     expect(store.threadId).toBe('t-2')
 
-    // T1's in-flight read now returns T1's successor: it must be discarded.
+    // T1 的在途读取现在返回的是 T1 的后继:必须被丢弃。
     h.deferActivity(withSuccessor('r-B1'))
     await settle()
     await tick()
@@ -376,14 +378,14 @@ describe('global assistant successor handoff observation (BUG-01)', () => {
     expect(store.currentStatus).toBe(STEERING_STATUS)
     expect(h.activityCalls()).toBe(1)
 
-    // Far beyond the old fixed 400ms x 15 budget: a still-pending steer must
-    // keep the observation alive (downshifted to slow polling, never stopped).
+    // 远超旧的 400ms x 15 固定预算:仍待生效的 steer 必须让观测保持存活
+    // (降级为慢速轮询,绝不停止)。
     for (let i = 0; i < 30; i += 1) await vi.advanceTimersByTimeAsync(2000)
     expect(store.currentStatus).toBe(STEERING_STATUS)
     expect(store.activeRunId).toBeNull()
     expect(h.activityCalls()).toBeGreaterThan(1)
 
-    // The successor only shows up much later: observation must still catch it.
+    // 后继运行很久之后才出现:观测仍必须捕捉到它。
     h.setActivity(withSuccessor())
     await vi.advanceTimersByTimeAsync(2000)
 
@@ -405,7 +407,7 @@ describe('global assistant successor handoff observation (BUG-01)', () => {
     await settle()
     expect(h.activityCalls()).toBe(1)
 
-    // Stop completes while the first successor read is still in flight.
+    // 第一次后继读取仍在途时,停止操作已完成。
     await store.cancelActiveRun()
     expect(store.successorObserverToken).toBe(0)
 
@@ -415,7 +417,7 @@ describe('global assistant successor handoff observation (BUG-01)', () => {
     await tick()
 
     expect(store.activeRunId).toBeNull()
-    // 'CANCELLED' is A's own terminal status; it must never be revived to B's.
+    // 'CANCELLED' 是 A 自己的终态;绝不能把它复用到 B 身上。
     expect(store.activeStatus).not.toBe('RUNNING')
     expect(store.isRunning).toBe(false)
     expect(store.pendingSteer).toBeNull()
@@ -437,7 +439,7 @@ describe('global assistant successor handoff observation (BUG-01)', () => {
     expect(h.eventReplays()).toEqual([RUN_B])
     expect(h.streamOpens()).toEqual([RUN_B])
 
-    // The same successor observed again through the public follow-up entry point.
+    // 通过公开的后继跟进入口再次观测同一个后继运行。
     await store.attachSuccessorIfReady()
     await store.attachSuccessorIfReady()
     await settle()

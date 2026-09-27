@@ -1,3 +1,5 @@
+// 文件名:ResizableSidebar.spec.ts
+// 用途:ResizableSidebar 组件单元测试,验证侧栏宽度、独立折叠、定位上下文(position)与拖拽调宽的边界钳制。
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import ResizableSidebar from '@/features/workspace/components/ResizableSidebar.vue'
@@ -29,12 +31,11 @@ describe('resizable sidebar', () => {
         slots: { default: '<div data-test="slot-content">routes</div>' },
       })
       const aside = wrapper.find(`[data-test="${side}-sidebar"]`)
-      // The aside must be the containing block for its absolutely
-      // positioned toggle button and resize handle; otherwise they anchor
-      // to the workspace shell (or viewport) once the sidebar becomes a
-      // plain flex item instead of an absolutely positioned overlay.
-      // (Real pixel geometry is asserted in e2e/workspace-layout.spec.ts;
-      // jsdom has no layout engine so getBoundingClientRect is always 0.)
+      // aside 必须是其内部绝对定位的折叠按钮与拖拽手柄的包含块,否则一旦
+      // 侧栏从绝对定位的浮层变成普通 flex 子元素,这些按钮就会锚定到
+      // 工作台外壳(或视口)上。
+      // (真实像素几何在 e2e/workspace-layout.spec.ts 中断言;
+      // jsdom 没有布局引擎,getBoundingClientRect 恒为 0。)
       expect(['relative', 'absolute', 'fixed', 'sticky']).toContain(
         window.getComputedStyle(aside.element).position,
       )
@@ -46,7 +47,7 @@ describe('resizable sidebar', () => {
     })
     const handle = wrapper.find('[data-test="resize-handle-left"]')
     await handle.trigger('pointerdown', { clientX: 100 })
-    // Drag far beyond the max.
+    // 拖拽远超最大宽度。
     await window.dispatchEvent(new MouseEvent('pointermove', { clientX: 2000 }))
     await window.dispatchEvent(new MouseEvent('pointerup'))
     const emitted = wrapper.emitted('update:width')

@@ -6,8 +6,11 @@ import java.util.TreeMap;
 import org.springframework.stereotype.Component;
 
 /**
- * Deterministic tool argument canonicalization for idempotency keys,
- * repeat detection and trace comparison. Map key order never changes semantics.
+ * 文件名:GlobalAssistantToolArgumentCanonicalizer.java
+ *
+ * 用途:把工具参数确定性地规范化成稳定字符串,供幂等键、
+ * 重复调用检测与轨迹比对使用。Map 键顺序不同不应改变语义,
+ * 这里统一按键排序序列化。
  */
 @Component
 public class GlobalAssistantToolArgumentCanonicalizer {

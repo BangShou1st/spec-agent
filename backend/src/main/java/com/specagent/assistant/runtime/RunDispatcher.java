@@ -12,8 +12,10 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 /**
- * Single dispatch owner. All async run execution funnels here so
- * createRun and steer-handoff share saturation/failure behavior.
+ * 文件名:RunDispatcher.java
+ *
+ * 用途:run 异步派发的唯一入口。所有异步 run 执行都汇聚到这里,
+ * 让 createRun 与 steer 交接共享同一套"线程池饱和/执行失败"的处理行为。
  */
 @Service
 public class RunDispatcher {
@@ -46,10 +48,9 @@ public class RunDispatcher {
         try {
             runtime.getObject().executeRun(threadId, runId, message, uiRequest);
         } catch (Exception ex) {
-            // Full stack trace is mandatory here: this catch is the last
-            // terminalization net, and without it a runtime bug (e.g. an NPE
-            // after a tool result) is invisible — the user only sees a generic
-            // failure and the log only a class name.
+            // 这里必须打完整堆栈:这个 catch 是终态化的最后一道网,
+            // 缺了它,运行时 bug(比如工具结果之后的 NPE)就会不可见——
+            // 用户只看到通用失败,日志里只剩一个类名。
             log.warn("Global assistant run failed unexpectedly: runId={} error={}",
                     runId, ex.getClass().getSimpleName(), ex);
             try {

@@ -1,6 +1,5 @@
-import { test, expect } from '@playwright/test'
-import { buildThreeNodeLineage, closeFloatingWorkspaceWindows, createProject, fitGraph } from './helpers'
 
+import { test, expect, createProject, fitGraph, closeFloatingWorkspaceWindows, buildThreeNodeLineage } from './helpers'
 /**
  * P1-4 E2E: a very long historical freeText answer must not produce
  * a thousand-pixel-tall graph card. The Inspector remains the place to

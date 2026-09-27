@@ -1,3 +1,6 @@
+// 文件名:ConnectionLifecycleAction.spec.ts
+// 用途:连接生命周期操作区组件测试:针对各阶段(created/tested/connected/enabled/failed)
+//       验证展示的下一步动作按钮与失败时的错误提示。
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import ConnectionLifecycleAction from '@/features/connections/components/ConnectionLifecycleAction.vue'

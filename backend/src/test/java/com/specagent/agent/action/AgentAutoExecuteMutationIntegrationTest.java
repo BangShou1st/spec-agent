@@ -36,13 +36,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Real-database concurrency proofs for the auto-execute graph-action mutation
- * boundary ({@link AgentGraphMutationService}). The auto-execute path (agent
- * REQUEST_USER_INPUT / CREATE_NODE through {@link ProposalActionExecutor})
- * must serialize against every other project-wide graph writer under the
- * project-row lock, re-verify its decision anchor against the CURRENT route
- * tip, and commit node insert + tip update atomically. No mocks: every test
- * races real service-layer transactions over real PostgreSQL row locks.
+ * 文件名:AgentAutoExecuteMutationIntegrationTest.java
+ *
+ * 测试目标:用真实数据库验证自动执行图变更边界({@link AgentGraphMutationService})的
+ * 并发正确性。自动执行路径(通过 {@link ProposalActionExecutor} 的 REQUEST_USER_INPUT /
+ * CREATE_NODE)必须在项目行锁下与所有项目级图写入方串行化、依据当前路线 tip 重新校验
+ * 决策锚点、并以原子事务提交节点插入与 tip 更新。全程不用 mock:每个测试都在真实
+ * PostgreSQL 行锁上竞争真实的服务层事务。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -86,13 +86,13 @@ class AgentAutoExecuteMutationIntegrationTest {
         jdbcTemplate.update("DELETE FROM agent_runs WHERE project_id = ?", project.id());
         jdbcTemplate.update("DELETE FROM graph_operations WHERE project_id = ?", project.id());
         jdbcTemplate.update("DELETE FROM node_relations WHERE project_id = ?", project.id());
-        // Routes must go before nodes: branch/continuation routes reference
-        // nodes via branch_at_node_id / root / tip foreign keys.
+        // 必须先删 routes 再删 nodes:分支/续写路线通过 branch_at_node_id /
+        // root / tip 外键引用节点。
         jdbcTemplate.update("DELETE FROM routes WHERE project_id = ?", project.id());
         jdbcTemplate.update("DELETE FROM nodes WHERE project_id = ?", project.id());
     }
 
-    /** One racer's outcome: returned produced node id, or the exact exception. */
+    /** 单个竞争者的结果:成功时返回产生的节点 id,失败时携带原始异常。 */
     private record Attempt(boolean success, UUID producedNodeId, Throwable error) {
         static Attempt run(Callable<UUID> action) {
             try {
@@ -104,8 +104,8 @@ class AgentAutoExecuteMutationIntegrationTest {
     }
 
     /**
-     * Starts two racers behind a shared barrier so both reach the service at
-     * the same moment; the database row lock decides the order, not the test.
+     * 用共享屏障让两个竞争者同时到达服务层;先后顺序由数据库行锁决定,
+     * 而不是由测试决定。
      */
     private Attempt[] race(Callable<UUID> first, Callable<UUID> second) throws Exception {
         ExecutorService pool = Executors.newFixedThreadPool(2);
@@ -126,9 +126,8 @@ class AgentAutoExecuteMutationIntegrationTest {
     }
 
     /**
-     * The production auto-execute entry: an agent REQUEST_USER_INPUT proposal
-     * anchored at {@code anchorNodeId} executed through the real executor into
-     * the transactional boundary.
+     * 生产环境的自动执行入口:一个锚定在 {@code anchorNodeId} 的 agent
+     * REQUEST_USER_INPUT 提案,经真实的 executor 执行进入事务边界。
      */
     private UUID autoAppend(UUID anchorNodeId) {
         ActionProposal proposal = new ActionProposal(
@@ -160,7 +159,7 @@ class AgentAutoExecuteMutationIntegrationTest {
     }
 
     // ------------------------------------------------------------------
-    // A. auto-execute REQUEST_USER_INPUT vs concurrent Undo
+    // A. 自动执行 REQUEST_USER_INPUT 与并发 undo 的竞争
     // ------------------------------------------------------------------
 
     @Test
@@ -176,12 +175,10 @@ class AgentAutoExecuteMutationIntegrationTest {
         Route routeNow = routeRepository.findById(route.id()).orElseThrow();
 
         if (auto.success()) {
-            // The agent append committed first: its own CREATE_DRAFT_NODE
-            // (AGENT) is now the top of the operation log, so undo
-            // compensates THE AGENT NODE (retract + tip rollback) — the old
-            // "live child rejects undo" premise predates agent mutations
-            // entering the log. The root draft itself stays intact and
-            // nothing is half-applied.
+            // agent 追加先提交:它自己的 CREATE_DRAFT_NODE(AGENT)现在位于操作日志
+            // 顶部,undo 补偿的是 AGENT 节点(撤回 + tip 回滚)——"存活子节点拒绝
+            // undo"的旧前提早于 agent 变更进入日志。根草稿保持完好,不会出现
+            // 半提交状态。
             assertThat(attempts[1].error()).as("undo compensates the latest (agent) operation")
                     .isNull();
             assertThat(rootNow.isRetracted()).isFalse();
@@ -189,23 +186,22 @@ class AgentAutoExecuteMutationIntegrationTest {
             assertThat(agentNode.isRetracted()).isTrue();
             assertThat(routeNow.tipNodeId()).isEqualTo(tip.id());
         } else {
-            // The undo committed first (root retracted, route cleared): the
-            // agent append must fail closed as stale and insert nothing.
+            // undo 先提交(根节点被撤回,路线被清空):agent 追加必须以过期为由
+            // fail-closed,什么也不插入。
             assertThat(auto.error()).isInstanceOf(StaleProposalException.class);
             assertThat(rootNow.isRetracted()).isTrue();
             assertThat(routeNow.tipNodeId()).isNull();
             assertThat(childrenOf(tip.id())).isEqualTo(baselineChildren);
             assertThat(agentAutoNodes()).isZero();
         }
-        // No dangling half-state: an undone root can never keep an appended
-        // agent child as the route tip.
+        // 不允许悬空的半状态:被 undo 的根节点绝不能把追加的 agent 子节点留在路线 tip 上。
         if (rootNow.isRetracted()) {
             assertThat(routeNow.tipNodeId()).isNull();
         }
     }
 
     // ------------------------------------------------------------------
-    // B. auto-execute append vs concurrent continuation
+    // B. 自动执行追加与并发续写(continuation)的竞争
     // ------------------------------------------------------------------
 
     @Test
@@ -222,13 +218,12 @@ class AgentAutoExecuteMutationIntegrationTest {
         Route routeNow = routeRepository.findById(route.id()).orElseThrow();
 
         if (auto.success()) {
-            // The auto-execute won the anchor position: its node is the tip
-            // of the original route. The continuation must never have
-            // overwritten that tip with its own node on the same route.
+            // 自动执行抢到了锚点位:它的节点是原路线的 tip。续写绝不能在
+            // 同一条路线上用自己的节点覆盖这个 tip。
             assertThat(routeNow.tipNodeId()).isEqualTo(auto.producedNodeId());
         } else {
-            // The continuation won the anchor position first; the auto-execute
-            // must fail closed as stale and never insert against the moved tip.
+            // 续写先抢到锚点位;自动执行必须以过期为由 fail-closed,
+            // 绝不能对着已移动的 tip 插入节点。
             assertThat(auto.error()).isInstanceOf(StaleProposalException.class);
             assertThat(childrenOf(tip.id())).isEqualTo(baselineChildren + 1);
             assertThat(agentAutoNodes()).isZero();
@@ -241,8 +236,8 @@ class AgentAutoExecuteMutationIntegrationTest {
                         project.id(), route.id(), tip.id(), "NOTE", Map.of("text", "用户先续写"))
                 .node();
 
-        // The agent decision anchored at the OLD tip, which is no longer the
-        // tip: the append must fail closed and leave exactly the newer node.
+        // agent 决策锚定在旧 tip 上,而旧 tip 已不再是 tip:追加必须 fail-closed,
+        // 只保留较新的节点。
         assertThatThrownBy(() -> autoAppend(tip.id()))
                 .isInstanceOf(StaleProposalException.class);
         assertThat(childrenOf(tip.id())).isEqualTo(baselineChildren + 1);
@@ -252,7 +247,7 @@ class AgentAutoExecuteMutationIntegrationTest {
     }
 
     // ------------------------------------------------------------------
-    // C. auto-execute append vs archive source route
+    // C. 自动执行追加与归档源路线的竞争
     // ------------------------------------------------------------------
 
     @Test
@@ -267,12 +262,11 @@ class AgentAutoExecuteMutationIntegrationTest {
         Route routeNow = routeRepository.findById(route.id()).orElseThrow();
 
         if (auto.success()) {
-            // The append won first; the route then archived with the new tip.
+            // 追加先完成;路线随后带着新 tip 归档。
             assertThat(routeNow.lifecycleStatus().code()).isEqualTo("archived");
             assertThat(routeNow.tipNodeId()).isEqualTo(auto.producedNodeId());
         } else {
-            // The archive won first: an archived route must never receive a
-            // later stale agent node.
+            // 归档先完成:已归档的路线绝不能再接收迟到的过期 agent 节点。
             assertThat(auto.error())
                     .as("auto-execute against an archived route must fail closed")
                     .isInstanceOf(IllegalStateException.class)
@@ -297,18 +291,16 @@ class AgentAutoExecuteMutationIntegrationTest {
     }
 
     // ------------------------------------------------------------------
-    // D. failure after node INSERT but before route-tip update rollback
+    // D. 节点 INSERT 之后、路线 tip 更新之前失败时的回滚
     // ------------------------------------------------------------------
 
     @Test
     void failureAfterNodeInsertRollsBackTheNodeToo() {
         UUID tipBefore = routeRepository.findById(route.id()).orElseThrow().tipNodeId();
 
-        // The mutation boundary runs the whole append (node INSERT + tip/root
-        // update) inside ONE transaction. A failure injected AFTER the node is
-        // inserted — here a forced rollback before the transaction commits —
-        // must roll the inserted node back together with the tip update: the
-        // node is never observable without the tip advancement.
+        // 变更边界把整个追加(节点 INSERT + tip/root 更新)放在同一个事务里。
+        // 在节点插入之后注入失败——这里在事务提交前强制回滚——必须把已插入的
+        // 节点连同 tip 更新一起回滚:绝不允许出现"节点可见但 tip 未推进"的状态。
         assertThatThrownBy(() -> transactionTemplate.executeWithoutResult(status -> {
             autoAppend(tip.id());
             throw new IllegalStateException("injected failure after node insert");
@@ -321,7 +313,7 @@ class AgentAutoExecuteMutationIntegrationTest {
     }
 
     // ------------------------------------------------------------------
-    // E. unanswered INTERACTION Question invariant (no child before answer)
+    // E. 未回答 INTERACTION Question 的不变量(回答之前不允许有子节点)
     // ------------------------------------------------------------------
 
     private Project newQuestionProject(String title, Node[] questionOut) {
@@ -336,9 +328,9 @@ class AgentAutoExecuteMutationIntegrationTest {
 
     @Test
     void unansweredInteractionQuestionRejectsAgentChildAndKeepsTip() {
-        // Real integration: create project/route, create an INTERACTION Question
-        // Q1 as route root, do NOT finalize an Answer for Q1, then attempt a
-        // real ProposalActionExecutor REQUEST_USER_INPUT anchored at Q1.
+        // 真实集成流程:创建项目/路线,把 INTERACTION Question Q1 建为路线根节点,
+        // 不为 Q1 定稿 Answer,然后用真实的 ProposalActionExecutor 尝试一个
+        // 锚定在 Q1 上的 REQUEST_USER_INPUT。
         Node[] q1Box = new Node[1];
         Project p = newQuestionProject("未回答问题拒绝追加", q1Box);
         Node q1 = q1Box[0];
@@ -374,7 +366,7 @@ class AgentAutoExecuteMutationIntegrationTest {
         assertThat(autoAfter).isEqualTo(autoBefore);
         assertThat(agentAutoNodesIn(p.id())).isZero();
 
-        // Cleanup isolated project
+        // 清理隔离项目
         jdbcTemplate.update("DELETE FROM agent_proposals WHERE project_id = ?", p.id());
         jdbcTemplate.update("DELETE FROM agent_run_events WHERE run_id IN (SELECT id FROM agent_runs WHERE project_id = ?)", p.id());
         jdbcTemplate.update("DELETE FROM agent_run_continuation_checks WHERE run_id IN (SELECT id FROM agent_runs WHERE project_id = ?)", p.id());
@@ -419,7 +411,7 @@ class AgentAutoExecuteMutationIntegrationTest {
         assertThat(routeNow.tipNodeId()).isEqualTo(q2.id());
         assertThat(childrenOf(q1.id())).isEqualTo(1);
 
-        // Cleanup isolated project
+        // 清理隔离项目
         jdbcTemplate.update("DELETE FROM agent_proposals WHERE project_id = ?", p.id());
         jdbcTemplate.update("DELETE FROM agent_run_events WHERE run_id IN (SELECT id FROM agent_runs WHERE project_id = ?)", p.id());
         jdbcTemplate.update("DELETE FROM agent_run_continuation_checks WHERE run_id IN (SELECT id FROM agent_runs WHERE project_id = ?)", p.id());

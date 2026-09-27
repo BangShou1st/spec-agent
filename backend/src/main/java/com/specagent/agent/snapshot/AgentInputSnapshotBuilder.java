@@ -68,45 +68,43 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Deterministic Java-side projection of a frozen {@link ContextSnapshot} into
- * the versioned {@code AgentInputSnapshot} wire contract.
+ * 文件名:AgentInputSnapshotBuilder.java
  *
- * <p>The durable {@code ContextSnapshot} manifest stays untouched and remains
- * the lineage authority; this builder only projects exactly the records the
- * manifest lists, in the manifest's own order, into generic Graph language.
- * Python never reconstructs this state from database access.
+ * 用途:把冻结的 {@link ContextSnapshot} 确定性地投影成带版本的
+ * {@code AgentInputSnapshot} wire 契约,即模型实际收到的输入快照。
  *
- * <p><strong>Frozen input integrity:</strong> the first projection of a
- * ContextSnapshot is persisted once as an immutable {@link
- * com.specagent.agent.snapshot.FrozenInputProjection} row (payload hash +
- * contract version, insert-if-absent). Every later projection of the SAME
- * snapshot replays that stored payload, so retry/resume/repair can never
- * silently rebuild model input from live mutable records (editable node
- * bodies, related-node bodies, route labels, capability results). Corrupted,
- * tampered, or foreign-identity frozen rows fail closed — never a live
- * rebuild.
+ * 持久化的 {@code ContextSnapshot} 清单保持不动、始终是血缘(lineage)
+ * 的权威来源;本构建器只把清单所列的记录按清单自身的顺序投影成通用
+ * Graph 语言。Python 绝不通过直接访问数据库来重建这份状态。
  *
- * <p>{@code projectTitle} is carried only as low-authority display metadata
- * and must never be promoted to an objective by any consumer of the snapshot.
+ * <strong>冻结输入完整性:</strong>ContextSnapshot 的第一次投影会作为
+ * 不可变的 {@link com.specagent.agent.snapshot.FrozenInputProjection} 行
+ * 持久化一次(payload 哈希 + 契约版本,insert-if-absent)。同一 snapshot
+ * 之后的每次投影都原样回放存储的 payload,因此重试/续跑/修复绝不可能
+ * 基于活的易变记录(可编辑的节点正文、相关节点正文、路由标签、能力结果)
+ * 悄悄重建模型输入。冻结行一旦损坏、被篡改或身份不符,一律 fail-closed
+ * 抛出类型化异常——绝不回退到活数据重建。
+ *
+ * {@code projectTitle} 仅作为低权威的展示元数据传递,任何快照消费者
+ * 都不得把它提升为 objective。
  */
 @Service
 public class AgentInputSnapshotBuilder {
 
-    /** Bounded observation count: prompts never receive an unbounded catalog. */
+    /** 有界的观察数量上限:提示词永远不会收到无上限的目录。 */
     private static final int RECENT_CAPABILITY_RESULTS_LIMIT = 5;
 
     /**
-     * Wider fetch window for visibility filtering: sibling routes may hold the
-     * newest rows, so the projection scans a wider recent window and keeps the
-     * newest visible ones. The projected count stays bounded by the limit above.
+     * 为可见性过滤设置的更宽取数窗口:同层路由里可能保存着最新的记录,
+     * 因此投影会扫描更宽的近期窗口并保留其中可见的最新条目。
+     * 投影后的数量仍受上面那个上限约束。
      */
     private static final int VISIBILITY_FETCH_LIMIT = 20;
 
     /**
-     * Hard upper bound for a canonical frozen payload. The projection is
-     * already bounded by construction (bounded lineage, 1-hop relations,
-     * bounded resource excerpts, bounded capability observations); exceeding
-     * this bound is a typed fail-closed failure, never a silent truncation.
+     * 规范化冻结 payload 的硬上限。投影本身在构造上就是有界的
+     * (血缘有界、关系只取 1 跳、资源摘要有界、能力观察有界);
+     * 一旦超出此上限,按类型化 fail-closed 失败处理,绝不静默截断。
      */
     private static final int MAX_FROZEN_PAYLOAD_CHARS = 1_000_000;
 
@@ -165,7 +163,7 @@ public class AgentInputSnapshotBuilder {
     }
 
     /**
-     * Builds the complete request envelope for one frozen snapshot and run.
+     * 为一次冻结 snapshot 和一次 run 构建完整的请求信封。
      */
     public AgentRequestEnvelope buildEnvelope(UUID runId,
                                                 ContextSnapshot snapshot,
@@ -181,13 +179,12 @@ public class AgentInputSnapshotBuilder {
     }
 
     /**
-     * Projects one frozen snapshot into the model-facing input snapshot.
+     * 把一个冻结 snapshot 投影成面向模型的输入快照。
      *
-     * <p>Load-or-freeze: the first projection builds from the authoritative
-     * records, freezes the canonical payload durably, and returns it; every
-     * later projection of the same snapshot replays the stored payload
-     * verbatim. Concurrent first freezes resolve through the unique snapshot
-     * index (first-writer-wins); a loser returns the winner's frozen payload.
+     * 加载或冻结(load-or-freeze):第一次投影从权威记录构建,
+     * 把规范化 payload 持久冻结并返回;同一 snapshot 之后的每次投影都
+     * 逐字回放存储的 payload。并发的首次冻结通过 snapshot 唯一索引仲裁
+     * (先写者胜);落败方返回胜者的冻结 payload。
      */
     public AgentInputSnapshot build(ContextSnapshot snapshot) {
         return build(snapshot, null);
@@ -210,10 +207,9 @@ public class AgentInputSnapshotBuilder {
     }
 
     /**
-     * Verifies and replays a durable frozen projection. Every check fails
-     * closed with a typed corruption failure — never a live rebuild — because
-     * the frozen payload is the audit/reproducibility evidence of what the
-     * model saw.
+     * 校验并回放一份持久化的冻结投影。每项检查失败都 fail-closed 抛出
+     * 类型化损坏异常——绝不回退到活数据重建——因为冻结 payload 就是
+     * "模型看到了什么"的审计与可复现性证据。
      */
     private AgentInputSnapshot loadFrozen(ContextSnapshot snapshot,
                                           AgentInputProjectionRepository.FrozenInputProjection frozen) {
@@ -248,10 +244,9 @@ public class AgentInputSnapshotBuilder {
     }
 
     /**
-     * Persists the first freeze of a snapshot. When a concurrent racer won
-     * (insert-if-absent lost), this build is discarded and the winner's frozen
-     * payload is loaded and returned instead — concurrent first freezes never
-     * diverge and never last-writer-win.
+     * 持久化 snapshot 的首次冻结。当并发竞争中对手已获胜(insert-if-absent
+     * 落败)时,丢弃本次构建结果,改为加载并返回胜者的冻结 payload——
+     * 并发首次冻结绝不分叉,也绝不"后写者胜"。
      */
     private AgentInputSnapshot freezeOrAdopt(ContextSnapshot snapshot,
                                              LiveProjection liveProjection) {
@@ -282,9 +277,8 @@ public class AgentInputSnapshotBuilder {
     }
 
     /**
-     * Projects exactly the manifest-listed records from the live
-     * authoritative stores. Called at most once per snapshot identity — the
-     * first freeze — and never again for that snapshot.
+     * 从活的权威存储中投影"恰好是清单所列"的记录。对同一 snapshot 身份
+     * 至多调用一次——即首次冻结——之后绝不再调用。
      */
     private LiveProjection buildFromLiveRecords(ContextSnapshot snapshot,
                                                 Set<UUID> mandatoryNodeIds) {
@@ -308,10 +302,9 @@ public class AgentInputSnapshotBuilder {
         }
         List<Node> relatedNodes = loadRelatedNodes(snapshot, allContextNodes);
         List<RelatedNodeRef> relatedRefs = relatedNodeRefs(snapshot, relatedNodes);
-        // One Skill discovery projection per first-freeze build: the same
-        // catalog feeds both the wire field and the skill.search visibility
-        // gate, so the two can never disagree (and a future heavier retriever
-        // cannot produce two different catalogs for one frozen snapshot).
+        // 每次首次冻结构建只做一次 Skill 发现投影:同一份目录同时用于
+        // wire 字段和 skill.search 可见性门禁,两者永远不会不一致
+        // (未来更重的检索器也无法对同一个冻结 snapshot 产出两份不同目录)。
         SkillCatalogView skillCatalog =
                 availableSkills(snapshot, workingLineageNodes, relatedNodes);
         List<ClaimView> effectiveClaims = effectiveClaims(snapshot);
@@ -350,10 +343,9 @@ public class AgentInputSnapshotBuilder {
     }
 
     /**
-     * Separates the route's authoritative parent lineage from the manifest's
-     * derived material before applying the working-memory bounds. Route
-     * membership comes from RouteHistoryResolver, never from a parent-chain
-     * guess made by the retrieval projection.
+     * 在应用工作记忆边界之前,先把路由的权威父级血缘与清单里的派生材料
+     * 分开。路由归属来自 RouteHistoryResolver,绝不来自检索投影对父链的
+     * 猜测。
      */
     private List<Node> selectWorkingNodes(ContextSnapshot snapshot,
                                           List<Node> manifestNodes,
@@ -429,10 +421,9 @@ public class AgentInputSnapshotBuilder {
                 }
             }
         }
-        // A NODE_QUERY's explicit question is the retrieval intent. Appending
-        // the current tip body to that text can dilute pg_trgm word similarity
-        // enough to hide an older matching fact, while the tip remains present
-        // in mandatory working context already.
+        // NODE_QUERY 的显式提问就是检索意图。若把当前 tip 正文追加到该文本后,
+        // pg_trgm 词相似度可能被稀释到足以掩盖一条更早的匹配事实;
+        // 而 tip 本身已经在必选工作上下文中,不会被遗漏。
         if (snapshot.operationType() == ContextOperationType.NODE_QUERY
                 && !explicitUserQueries.isEmpty()) {
             return String.join("\n", explicitUserQueries);
@@ -455,8 +446,8 @@ public class AgentInputSnapshotBuilder {
     }
 
     /**
-     * Bounded 1-hop semantic context projected onto the wire, direction
-     * preserved exactly as stored in the durable snapshot.
+     * 有界的 1 跳语义上下文投影到 wire 上,方向与持久化 snapshot 中存储的
+     * 完全一致。
      */
     private List<RelationView> relations(ContextSnapshot snapshot) {
         return snapshot.relations().stream()
@@ -465,15 +456,13 @@ public class AgentInputSnapshotBuilder {
     }
 
     /**
-     * The live {@link Node} domain objects at the other end of the 1-hop
-     * semantic context. Every {@code snapshot.relatedNodeId()} is loaded and
-     * verified: the node must still exist, belong to the snapshot's project,
-     * and not be retracted. Verification failures fail the projection loudly
-     * (a frozen snapshot listed a node that is no longer part of its project's
-     * live graph), never silently dropping context. A related node that is
-     * already part of the lineage is skipped — it is fully present in the
-     * lineage already, so duplicating it as a "related" node would add no
-     * context. Related nodes never enter the lineage and never pollute it.
+     * 加载 1 跳语义上下文另一端的活 {@link Node} 领域对象。每个
+     * {@code snapshot.relatedNodeId()} 都要加载并校验:节点必须仍然存在、
+     * 属于 snapshot 的项目、且未被撤回。校验失败会让投影大声失败
+     * (冻结 snapshot 列出了一个已不属于其项目活图的节点),
+     * 绝不静默丢弃上下文。已在血缘中的相关节点会被跳过——它已经完整
+     * 出现在血缘里,再以"相关节点"身份重复一次不会增加任何上下文。
+     * 相关节点永不进入血缘,也绝不污染血缘。
      */
     private List<Node> loadRelatedNodes(ContextSnapshot snapshot, List<Node> lineageNodes) {
         Set<UUID> lineageIds = lineageNodes.stream().map(Node::id)
@@ -504,18 +493,16 @@ public class AgentInputSnapshotBuilder {
     }
 
     /**
-     * The related canonical nodes of the 1-hop semantic context, each with
-     * explicit provenance (relation type + direction relative to the anchor)
-     * plus the projected NodeView/body of the related node itself — the model
-     * reads real body content, never only opaque ids.
+     * 1 跳语义上下文的相关规范节点列表,每项都带显式来源信息(关系类型 +
+     * 相对锚点的方向)以及相关节点自身投影出的 NodeView/正文——模型读到
+     * 的是真实正文内容,绝不只是一堆不透明的 id。
      */
     private List<RelatedNodeRef> relatedNodeRefs(ContextSnapshot snapshot, List<Node> relatedNodes) {
         UUID anchor = snapshot.tipNodeId();
         List<RelatedNodeRef> refs = new ArrayList<>();
         for (Node related : relatedNodes) {
-            // Provenance is taken from the stored relation that touches the
-            // related node on one end; the snapshot guarantees at least one
-            // such relation exists for every listed related id.
+            // 来源信息取自存储的关系中触达该相关节点的那一条;snapshot
+            // 保证每个列出的相关 id 至少存在一条这样的关系。
             ContextRelation relation = snapshot.relations().stream()
                     .filter(r -> r.sourceNodeId().equals(related.id())
                             || r.targetNodeId().equals(related.id()))
@@ -531,15 +518,13 @@ public class AgentInputSnapshotBuilder {
     }
 
     /**
-     * Permission-, availability- and relevance-filtered capability descriptors
-     * projected onto the wire contract. Filtering (permissions, provider
-     * availability, {@code supports} compatibility against the context node
-     * kinds, catalog bounds) is owned by
-     * {@link CapabilityVisibilityService}; this builder only maps the bounded
-     * runtime descriptor onto the versioned wire shape — including the bounded
-     * input schema and the {@code supports} facts that drove visibility — so
-     * the model can construct valid calls for dynamic providers without ever
-     * seeing implementation classes, connections, endpoints or credentials.
+     * 经过权限、可用性与相关性过滤的能力描述符,投影到 wire 契约上。
+     * 过滤(权限、provider 可用性、与上下文节点类型的 {@code supports}
+     * 兼容性、目录上限)由 {@link CapabilityVisibilityService} 负责;
+     * 本构建器只把有界的运行时描述符映射到带版本的 wire 形状——包括
+     * 有界的输入 schema 和驱动可见性的 {@code supports} 事实——使模型
+     * 能为动态 provider 构造合法调用,却永远看不到实现类、连接、
+     * 端点或凭据。
      */
     private List<CapabilityDescriptor> visibleCapabilityDescriptors(ContextSnapshot snapshot,
                                                                     List<Node> lineageNodes,
@@ -561,9 +546,8 @@ public class AgentInputSnapshotBuilder {
         CapabilityQueryContext context = new CapabilityQueryContext(
                 Set.of(), List.copyOf(contextKinds), Map.of());
         boolean skillsPresent = skillHostToolVisibility.anyEnabledSkill(snapshot.projectId());
-        // skill.search is a truncation fallback only: it stays hidden unless
-        // the single Skill catalog projection for this build was truncated.
-        // The precomputed catalog is passed in — no second discovery call.
+        // skill.search 只是截断兜底:仅当本次构建的 Skill 目录投影被截断时
+        // 才对外可见。直接传入预计算的目录,不再做第二次发现调用。
         boolean catalogTruncated = skillCatalog.truncated();
         return capabilityVisibilityService.visibleCapabilities(context).stream()
                 .filter(descriptor -> skillsPresent
@@ -582,22 +566,20 @@ public class AgentInputSnapshotBuilder {
     }
 
     /**
-     * Skill Host Function Tools are exposed only when the project actually has
-     * an enabled Skill to activate/read — "installed != loaded" applies to the
-     * procedural-knowledge tools just as it does to Skill bodies. The check is
-     * a deterministic structured fact (a registered capability id prefix),
-     * never user wording.
+     * Skill Host 函数工具只在项目确实存在已启用的 Skill 可激活/可读取时
+     * 才暴露——"已安装 != 已加载"对过程性知识工具和 Skill 本体同等适用。
+     * 判定依据是确定性的结构化事实(已注册能力 id 的前缀),绝不是用户
+     * 的措辞。
      */
     private boolean isSkillHostTool(String capabilityId) {
         return capabilityId.startsWith("skill.");
     }
 
     /**
-     * Bounded Skill catalog for one fresh Decision context. Discovery runs
-     * here — at first-freeze time — so every fresh continuation snapshot gets
-     * a freshly discovered catalog while the same frozen snapshot always
-     * replays the identical frozen projection. Only identity + bounded
-     * metadata cross the boundary; full SKILL.md stays behind activation.
+     * 面向一次全新 Decision 上下文的有界 Skill 目录。发现在这里执行——
+     * 即首次冻结时——因此每个全新的续跑 snapshot 都会得到一份新发现的
+     * 目录,而同一个冻结 snapshot 永远回放完全相同的冻结投影。跨边界
+     * 传递的只有身份 + 有界元数据;完整的 SKILL.md 留在激活之后。
      */
     private SkillCatalogView availableSkills(ContextSnapshot snapshot,
                                             List<Node> lineageNodes,
@@ -624,14 +606,12 @@ public class AgentInputSnapshotBuilder {
     }
 
     /**
-     * The user's explicit skill directive for this context, or null. Nodes
-     * edited through the "/" skill picker persist the picked skill under the
-     * {@code skillId} content key; the directive only survives into the wire
-     * snapshot when that id is present in the discovered (enabled) catalog,
-     * so a disabled or removed skill is silently downgraded to absent instead
-     * of reaching the model as an unenforceable instruction. Lineage nodes
-     * win over related nodes; among several bound nodes the first in
-     * deterministic lineage order wins.
+     * 用户在本上下文中显式指定的 Skill 指令,没有则为 null。通过 "/"
+     * Skill 选择器编辑的节点会把所选 skill 持久化在 {@code skillId}
+     * content 键下;只有当该 id 出现在已发现(已启用)的目录中,指令才会
+     * 进入 wire snapshot——被禁用或已移除的 Skill 会被静默降级为"不存在",
+     * 而不是以一条无法执行的指令到达模型。血缘节点优先于相关节点;
+     * 多个绑定节点之间按确定性的血缘顺序取第一个。
      */
     private UserRequiredSkillView userRequiredSkill(List<Node> lineageNodes,
                                                     List<Node> relatedNodes,
@@ -669,9 +649,9 @@ public class AgentInputSnapshotBuilder {
     }
 
     /**
-     * Recent completed capability invocations as bounded observations. They
-     * are evidence for later cycles, never auto-confirmed truth; the count
-     * stays small so prompts never receive an unbounded catalog.
+     * 近期已完成的能力调用,作为有界的观察条目。它们只是后续循环的
+     * 证据,绝不是自动确认为真的事实;数量保持很小,提示词永远不会
+     * 收到无上限的目录。
      */
     private List<CapabilityResultView> capabilityResults(ContextSnapshot snapshot) {
         List<CapabilityInvocationRecord> recent = capabilityInvocationRepository
@@ -715,9 +695,8 @@ public class AgentInputSnapshotBuilder {
 
     private RouteContextView routeContext(ContextSnapshot snapshot) {
         if (snapshot.routeId() == null) {
-            // Routeless NODE_QUERY context (floating node): the read context
-            // is the anchor node itself. Build the explicit route-less view
-            // without any repository lookup against a null route id.
+            // 无路由的 NODE_QUERY 上下文(游离节点):读取上下文就是锚点节点
+            // 本身。直接构建显式的无路由视图,不用 null 路由 id 去查库。
             return new RouteContextView(null, snapshot.tipNodeId(), null);
         }
         String label = routeRepository.findById(snapshot.routeId())
@@ -785,9 +764,9 @@ public class AgentInputSnapshotBuilder {
                         claim.sourceAnswerId() == null ? null : "answer:" + claim.sourceAnswerId()))
                 .filter(java.util.Objects::nonNull)
                 .forEach(refs::add);
-        // Related nodes are first-class source refs too: a model may ground on
-        // their body content or reference them in a CONNECT_NODE proposal
-        // (e.g. relating the anchor to a directly-visible related node).
+        // 相关节点也是一等来源引用:模型可以在其正文上做 grounding,
+        // 也可以在 CONNECT_NODE 提案中引用它们
+        // (例如把锚点与一个直接可见的相关节点建立关系)。
         relatedRefs.stream().map(RelatedNodeRef::nodeId).distinct()
                 .forEach(id -> refs.add("node:" + id));
         if (retrievedContext != null) {
@@ -822,13 +801,13 @@ public class AgentInputSnapshotBuilder {
         return byAnswer;
     }
 
-    /** Generic Graph-language node projection; workflow names never appear. */
+    /** 通用 Graph 语言的节点投影;绝不出现工作流专有名称。 */
     private NodeView nodeView(Node node) {
         List<OptionView> options = node.options().stream()
                 .map(option -> new OptionView(option.id(), option.label()))
                 .toList();
-        // Interaction nodes keep their question text; other kinds expose the
-        // primary content payload as text so the body stays one shape.
+        // 交互节点保留提问文本;其他类型把主内容载荷以文本形式暴露,
+        // 使节点正文保持同一种形状。
         String text = node.question() != null ? node.question() : node.contentText();
         return new NodeView(node.id(),
                 new NodeBodyView(text, options, node.allowFreeAnswer()),

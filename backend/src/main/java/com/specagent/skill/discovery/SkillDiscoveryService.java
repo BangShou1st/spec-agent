@@ -11,14 +11,14 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Agent-facing facade for Skill discovery. Context construction consumes this
- * single entry point; Agent code never knows which visibility/retrieval/
- * projector implementations are behind it.
+ * 文件名:SkillDiscoveryService.java
  *
- * <p>Discovery runs per fresh Decision context: the same frozen snapshot
- * replays the identical projection (the catalog is derived from the immutable
- * installed-versions state and frozen inputs), while a fresh continuation
- * snapshot may legitimately produce a different catalog.
+ * 用途:面向 Agent 的 Skill 发现门面。构建上下文时只经由这一个入口,
+ * Agent 代码无需感知背后用的是哪种可见性/检索/投影实现。
+ *
+ * 发现按每个新的 Decision 上下文运行:同一个冻结快照会重放出完全相同的
+ * 投影(目录由不可变的"已安装版本"状态与冻结输入推导而来),而新的续跑
+ * 快照得到不同的目录也是合理的。
  */
 @Service
 public class SkillDiscoveryService {
@@ -42,10 +42,9 @@ public class SkillDiscoveryService {
     }
 
     /**
-     * Builds the bounded model-facing Skill catalog for one discovery context.
-     * The full eligible universe flows into the retriever; the projector owns
-     * the model-facing Top-K bound, so {@code truncated} reflects eligible
-     * vs projected — never installed-vs-visible.
+     * 为一次发现上下文构建面向模型的、有界的 Skill 目录。全部合格候选进入
+ * 检索器;模型可见的 Top-K 上限由投影器负责,因此 {@code truncated} 反映的
+ * 是"合格 vs 投影",而非"已安装 vs 可见"。
      */
     public SkillCatalogProjector.Projection discover(SkillDiscoveryContext context) {
         List<SkillCatalogEntry> all = queryService.listSkills().stream()
@@ -59,11 +58,10 @@ public class SkillDiscoveryService {
     }
 
     /**
-     * {@code skill.search}: query-aware metadata candidates over the FULL
-     * eligible universe — the point of the fallback is recalling Skills the
-     * automatic Top-K did not show. Never activates anything; the model makes
-     * the final activation decision. Metadata only (no SKILL.md bodies,
-     * resource content, scripts, paths, or DB internals).
+     * {@code skill.search}:在完整合格集合上做带查询词的元数据检索 —— 回退路径
+ * 的意义就在于召回自动 Top-K 没有展示的 Skill。它绝不激活任何东西,激活
+ * 决定权在模型。只返回元数据(不含 SKILL.md 正文、资源内容、脚本、路径、
+ * 数据库内部信息)。
      */
     public List<SkillSearchCandidate> search(SkillDiscoveryContext context) {
         List<SkillCatalogEntry> all = queryService.listSkills().stream()
@@ -83,8 +81,7 @@ public class SkillDiscoveryService {
         Optional<SkillVersion> version = skill.currentVersionId() == null
                 ? Optional.empty() : queryService.findVersion(skill.currentVersionId());
         SkillCatalogEntry entry = SkillCatalogEntry.from(skill, version.orElse(null));
-        // Bounded compatibility hint from resource kinds the package declares
-        // (metadata references), resolved without loading full content.
+        // 兼容性提示来自包声明的资源类型(metadata 引用),无需加载完整内容即可解析。
         String hint = compatibilityHint(entry);
         return hint == null ? entry : entry.withCompatibilityHint(hint);
     }
@@ -96,8 +93,7 @@ public class SkillDiscoveryService {
         List<String> refs = queryService.listFileSummaries(UUID.fromString(entry.versionId()))
                 .stream()
                 .map(summary -> summary.relativePath())
-                // SKILL.md itself is the instruction body, not a hint; only
-                // sibling resource/reference files describe compatibility.
+                // SKILL.md 本身是指令正文,不构成提示;只有同级的资源/参考文件才描述兼容性。
                 .filter(path -> !"SKILL.md".equals(path))
                 .filter(path -> path.toLowerCase()
                         .matches(".*\\.(pdf|docx|xlsx|csv|json|sql|md|txt)$"))

@@ -14,21 +14,19 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Eval probe capabilities (test fixtures, not production behavior).
+ * 文件名:EvalProbeCapabilities.java
  *
- * <p>Fixed generic probes the corpus references by id: read-only and
- * local-durable decoys, an external decoy, and high-risk local/external
- * probes for the authorization scenarios. Each probe records its
- * invocations and answers success/failure from the behavior installed by
- * {@link ScenarioRunner} — the Java CapabilityRuntime, policy engine, and
- * confirmation flow stay authoritative.
+ * 测试目标:评估用探针能力(测试夹具,非生产行为)。语料按 id 引用的
+ * 固定通用探针:只读与本地持久化诱饵、外部诱饵,以及授权场景用的高风险
+ * 本地/外部探针。每个探针记录自己的调用次数,成败由 {@link ScenarioRunner}
+ * 安装的行为决定——Java 的 CapabilityRuntime、policy 引擎与确认流程始终是权威。
  */
 public final class EvalProbeCapabilities {
 
-    /** Invocation counts per capability id, cleared between attempts. */
+    /** 按能力 id 记录的调用计数,每次尝试之间清空。 */
     public static final Map<String, AtomicInteger> INVOCATIONS = new ConcurrentHashMap<>();
 
-    /** Success flag per capability id, installed per scenario. */
+    /** 按能力 id 记录的成功标志,由各场景安装。 */
     public static final Map<String, Boolean> SUCCEED = new ConcurrentHashMap<>();
 
     public static final String DECOY_READ_ONLY = "eval.decoy.read-only";
@@ -93,7 +91,7 @@ public final class EvalProbeCapabilities {
         }
     }
 
-    /** Test wiring: registers the fixed probe adapters in eval tests. */
+    /** 测试装配:在评估测试中注册固定的探针适配器。 */
     @TestConfiguration
     public static class Config {
         @Bean

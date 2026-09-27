@@ -29,20 +29,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Active-route pointer atomicity under concurrency.
+ * 文件名:RouteActivePointerConcurrencyIntegrationTest.java
  *
- * <p>Two independent transactions race on lifecycle / active-route mutations for
- * the same project. Each operation takes the project row lock
- * ({@code SELECT ... FOR UPDATE} in {@code ProjectRepository.lockById}) so the
- * decision-and-write sequence is serialized: a winner fully commits before the
- * loser even observes project state. The regression this guards is the classic
- * lost-update — without the lock, {@code archiveRoute} could read a stale
- * active pointer, leave it dangling on an archived route, and the project would
- * end up with {@code activeRouteId} pointing at a non-OPEN route.
+ * 测试目标:并发下活跃路线指针的原子性。
  *
- * <p>Deliberately NOT {@code @Transactional}: each racer must run in its own
- * real database transaction so the project lock actually serializes them, and
- * the setup rows are committed before the threads start.
+ * 两个独立事务对同一项目竞争执行生命周期 / 活跃路线变更。每个操作都会
+ * 获取项目行锁({@code ProjectRepository.lockById} 中的
+ * {@code SELECT ... FOR UPDATE}),使"决策-写入"序列被串行化:获胜方完整
+ * 提交之后,失败方才观察到项目状态。该测试守护的回归是经典的丢失更新——
+ * 没有锁时,{@code archiveRoute} 可能读到过期的活跃指针,把它悬空在已归档
+ * 的路线上,导致项目 {@code activeRouteId} 指向非 OPEN 的路线。
+ *
+ * 刻意不使用 {@code @Transactional}:每个竞争者必须运行在自己真实的
+ * 数据库事务中,项目锁才能真正串行化它们;准备数据需在启动线程前提交。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -79,19 +78,18 @@ class RouteActivePointerConcurrencyIntegrationTest {
         jdbcTemplate.update("DELETE FROM answers WHERE project_id = ?", project.id());
         jdbcTemplate.update("DELETE FROM graph_operations WHERE project_id = ?", project.id());
         jdbcTemplate.update("DELETE FROM node_relations WHERE project_id = ?", project.id());
-        // Routes carry FK references into nodes (branch_at / created_from /
-        // branch_from), so routes must go before nodes.
+        // 路线通过外键引用节点(branch_at / created_from / branch_from),
+        // 因此 routes 必须先于 nodes 删除。
         jdbcTemplate.update("DELETE FROM routes WHERE project_id = ?", project.id());
         jdbcTemplate.update("DELETE FROM nodes WHERE project_id = ?", project.id());
         jdbcTemplate.update("DELETE FROM projects WHERE id = ?", project.id());
     }
 
     /**
-     * activate A vs archive A. Whatever commits last, the project must never be
-     * left pointing its active route at an archived route. If archive wins, the
-     * active pointer is cleared (null); if activate "wins" it only does so before
-     * archive ran, after which archive clears the pointer. The final active route
-     * is therefore null or — if another OPEN route existed — an OPEN route, never A.
+     * 激活 A 对 归档 A。无论谁最后提交,项目绝不能把活跃路线指向已归档的
+     * 路线。归档获胜则活跃指针被清除(null);激活"获胜"也只发生在归档执行
+     * 之前,之后归档仍会清除指针。因此最终的活跃路线要么为 null,要么——
+     * 若存在其他 OPEN 路线——是一条 OPEN 路线,绝不会是 A。
      */
     @Test
     void activateActiveVsArchiveActiveNeverDanglesPointerOnArchivedRoute() throws Exception {
@@ -113,11 +111,11 @@ class RouteActivePointerConcurrencyIntegrationTest {
             futureActivate.get(60, TimeUnit.SECONDS);
             futureArchive.get(60, TimeUnit.SECONDS);
 
-            // The archived route is always archived — archive cannot be defeated.
+            // 已归档路线最终一定被归档——归档操作不会被挫败。
             Route archived = routeRepository.findById(activeRouteId).orElseThrow();
             assertThat(archived.lifecycleStatus()).isEqualTo(RouteLifecycleStatus.ARCHIVED);
 
-            // The active pointer is never left on the archived route.
+            // 活跃指针绝不停留在已归档的路线上。
             Project after = projectRepository.findById(project.id()).orElseThrow();
             assertThat(after.activeRouteId())
                     .as("active pointer must not dangle on the archived route")
@@ -134,10 +132,9 @@ class RouteActivePointerConcurrencyIntegrationTest {
     }
 
     /**
-     * restore A vs activate B. A starts archived and B is active. Both end OPEN;
-     * whichever write wins the active pointer last, the pointer must still land on
-     * an OPEN route — never on the archived-then-restored A in a stale state, and
-     * never on a non-OPEN route.
+     * 恢复 A 对 激活 B。A 初始为归档,B 为活跃。两者最终都为 OPEN;无论哪个
+     * 写入最后赢得活跃指针,指针必须落在一条 OPEN 路线上——绝不会落在处于
+     * 过期状态的"归档后恢复"的 A 上,也绝不会落在非 OPEN 路线上。
      */
     @Test
     void restoreVsActivateAlwaysLeavesActivePointingAtOpenRoute() throws Exception {
@@ -145,7 +142,7 @@ class RouteActivePointerConcurrencyIntegrationTest {
         UUID routeA = project.activeRouteId();
         UUID routeB = routeService.createRoute(project.id(), RouteLifecycleStatus.OPEN, "并发B").id();
 
-        // A is archived and B becomes active, so both racers are meaningful.
+        // A 被归档、B 成为活跃,使两个竞争者都有意义。
         routeService.archiveRoute(project.id(), routeA);
         routeService.setActiveRoute(project.id(), routeB);
 
@@ -164,13 +161,13 @@ class RouteActivePointerConcurrencyIntegrationTest {
             futureRestore.get(60, TimeUnit.SECONDS);
             futureActivateB.get(60, TimeUnit.SECONDS);
 
-            // Both routes end OPEN.
+            // 两条路线最终都为 OPEN。
             assertThat(routeRepository.findById(routeA).orElseThrow().lifecycleStatus())
                     .isEqualTo(RouteLifecycleStatus.OPEN);
             assertThat(routeRepository.findById(routeB).orElseThrow().lifecycleStatus())
                     .isEqualTo(RouteLifecycleStatus.OPEN);
 
-            // The active pointer must point at an OPEN route, whatever won.
+            // 无论谁获胜,活跃指针必须指向 OPEN 路线。
             Project after = projectRepository.findById(project.id()).orElseThrow();
             assertThat(after.activeRouteId()).isNotNull();
             Route active = routeRepository.findById(after.activeRouteId()).orElseThrow();
@@ -183,12 +180,10 @@ class RouteActivePointerConcurrencyIntegrationTest {
     }
 
     /**
-     * Item 4 (deep review) — a fork racing the source-route archive. Both take
-     * the project lock first; whatever wins, the archived route is never
-     * mutated or resurrected: if archive wins, the fork fails stale on the
-     * lifecycle; if the fork wins, the archive still archives the source and
-     * the fork simply inherits the frozen immutable nodes. The archived route
-     * stays archived either way.
+     * 深度评审第 4 项——fork 与源路线归档竞争。两者都先获取项目锁;无论谁
+     * 获胜,已归档的路线绝不被修改或复活:归档获胜则 fork 因生命周期过期
+     * 失败;fork 获胜则归档仍会归档源路线,fork 继承冻结的不可变节点。
+     * 无论哪种结果,归档路线保持归档。
      */
     @Test
     void archiveVsForkNeverMutatesOrResurrectsArchivedRoute() throws Exception {
@@ -215,13 +210,13 @@ class RouteActivePointerConcurrencyIntegrationTest {
             archiveFuture.get(60, TimeUnit.SECONDS);
             Attempt forkAttempt = forkFuture.get(60, TimeUnit.SECONDS);
 
-            // The source route is archived regardless of the race outcome.
+            // 无论竞争结果如何,源路线都被归档。
             assertThat(routeRepository.findById(routeId).orElseThrow().lifecycleStatus())
                     .isEqualTo(RouteLifecycleStatus.ARCHIVED);
 
             if (forkAttempt.success) {
-                // Fork won the lock: its route is OPEN and inherits the frozen
-                // immutable nodes; the archive still archived the source.
+                // fork 赢得锁:其路线为 OPEN 并继承冻结的不可变节点;归档仍
+                // 归档了源路线。
                 Route fork = routeRepository.findById(
                         projectRepository.findById(project.id()).orElseThrow().activeRouteId())
                         .orElseThrow();
@@ -229,7 +224,7 @@ class RouteActivePointerConcurrencyIntegrationTest {
                 assertThat(fork.rootNodeId()).isEqualTo(root.id());
                 assertThat(fork.tipNodeId()).isEqualTo(child.id());
             } else {
-                // Archive won: the fork was rejected on the lifecycle, fail-closed.
+                // 归档赢得锁:fork 因生命周期被拒,快速失败。
                 assertThat(forkAttempt.error).isInstanceOf(IllegalStateException.class)
                         .hasMessageContaining("exploration source");
             }
@@ -239,9 +234,8 @@ class RouteActivePointerConcurrencyIntegrationTest {
     }
 
     /**
-     * Item 4 (deep review) — a re-answer racing the source-route archive. Same
-     * serialization contract as the fork: the source never ends up both
-     * archived and re-answered, and a re-answer can never resurrect it.
+     * 深度评审第 4 项——re-answer 与源路线归档竞争。与 fork 相同的串行化
+     * 契约:源路线绝不会既被归档又被重新回答,re-answer 也绝不能复活它。
      */
     @Test
     void archiveVsReanswerNeverMutatesOrResurrectsArchivedRoute() throws Exception {
@@ -286,9 +280,8 @@ class RouteActivePointerConcurrencyIntegrationTest {
     }
 
     /**
-     * Item 4 (deep review) — a replacement commit racing the source-route
-     * archive. The commit holds the project lock and re-reads the source under
-     * it; an archived source is never superseded or replaced.
+     * 深度评审第 4 项——替换提交与源路线归档竞争。提交持有项目锁并在锁内
+     * 重读源路线;已归档的源路线绝不会被取代或替换。
      */
     @Test
     void archiveVsReplacementNeverMutatesArchivedRoute() throws Exception {
@@ -317,14 +310,13 @@ class RouteActivePointerConcurrencyIntegrationTest {
             archiveFuture.get(60, TimeUnit.SECONDS);
             Attempt replacementAttempt = replacementFuture.get(60, TimeUnit.SECONDS);
 
-            // The source route is archived; a replacement can never supersede or
-            // otherwise mutate an archived route.
+            // 源路线被归档;替换绝不能取代或修改已归档的路线。
             assertThat(routeRepository.findById(routeId).orElseThrow().lifecycleStatus())
                     .isEqualTo(RouteLifecycleStatus.ARCHIVED);
 
             if (replacementAttempt.success) {
-                // Replacement won the lock; the archive then still archived the
-                // source and the replacement route is the active OPEN route.
+                // 替换赢得锁;归档随后仍归档了源路线,替换路线是活跃的
+                // OPEN 路线。
                 Route replacement = routeRepository.findById(
                         projectRepository.findById(project.id()).orElseThrow().activeRouteId())
                         .orElseThrow();
@@ -339,12 +331,9 @@ class RouteActivePointerConcurrencyIntegrationTest {
     }
 
     /**
-     * Item 4 (deep review) — the replacement decision is frozen against the
-     * source tip captured BEFORE the commit; a concurrent continuation that
-     * advances the tip must make the replacement commit fail stale instead of
-     * superseding a moved route. The frozen expected tip is re-verified under
-     * the project lock inside the commit transaction, so there is no
-     * check-then-act window.
+     * 深度评审第 4 项——替换决策冻结于提交之前捕获的源 tip;并发续写推进
+     * tip 时,替换提交必须因过期失败,而不是取代已移动的路线。冻结的期望
+     * tip 会在提交事务内、项目锁下重新核验,因此不存在 check-then-act 窗口。
      */
     @Test
     void replacementCommitFailsStaleWhenConcurrentContinuationMovesTip() throws Exception {
@@ -356,34 +345,33 @@ class RouteActivePointerConcurrencyIntegrationTest {
                 "Child question", null, List.of(), true);
         answerService.finalizeAnswer(project.id(), routeId, child.id(), null, "child answer", "user");
 
-        // The decision is frozen against child.id() as the source tip.
+        // 决策以 child.id() 作为源 tip 被冻结。
         UUID frozenTip = child.id();
 
-        // A continuation advances the tip to a new node BEFORE the commit.
+        // 提交之前,续写把 tip 推进到新节点。
         // 派生知识不再顶掉问题 tip,这里用真正的新问题推进 tip。
         Node advanced = nodeService.createChildNode(
                 project.id(), routeId, child.id(),
                 "Advanced question", null, List.of(), true);
         assertThat(advanced.id()).isNotEqualTo(frozenTip);
 
-        // The stale commit must be rejected: the frozen tip no longer matches.
+        // 过期的提交必须被拒绝:冻结的 tip 不再匹配。
         assertThatThrownBy(() -> routeService.commitReplacementFromNode(
                 project.id(), routeId, child.id(), frozenTip, null,
                 "Replacement question", "Replacement purpose", List.of(), true))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Source route tip moved");
 
-        // And the route is untouched: still OPEN with the advanced tip.
+        // 路线未被触碰:仍为 OPEN,tip 为推进后的节点。
         Route source = routeRepository.findById(routeId).orElseThrow();
         assertThat(source.lifecycleStatus()).isEqualTo(RouteLifecycleStatus.OPEN);
         assertThat(source.tipNodeId()).isEqualTo(advanced.id());
     }
 
     /**
-     * Item 4 (deep review) — the commit boundary itself re-verifies the frozen
-     * tip under the project lock: when the tip still matches, the replacement
-     * commits; when it moved, it fails. This proves the serialization is
-     * order-correct under concurrency (tips cannot advance mid-commit).
+     * 深度评审第 4 项——提交边界本身在项目锁下重新核验冻结 tip:tip 仍匹配
+     * 则替换提交;已移动则失败。这证明并发下串行化是顺序正确的
+     * (tip 不可能在提交中途推进)。
      */
     @Test
     void replacementCommitTipMatchesUnderLock() throws Exception {
@@ -395,8 +383,7 @@ class RouteActivePointerConcurrencyIntegrationTest {
                 "Child question", null, List.of(), true);
         answerService.finalizeAnswer(project.id(), routeId, child.id(), null, "child answer", "user");
 
-        // Frozen tip matches the live tip; the commit must succeed and supersede
-        // the source.
+        // 冻结 tip 与活跃 tip 匹配;提交必须成功并取代源路线。
         RegenerateResult result = routeService.commitReplacementFromNode(
                 project.id(), routeId, child.id(), child.id(), null,
                 "Replacement question", "Replacement purpose", List.of(), true);
@@ -404,7 +391,7 @@ class RouteActivePointerConcurrencyIntegrationTest {
         assertThat(result.replacementRoute().lifecycleStatus()).isEqualTo(RouteLifecycleStatus.OPEN);
     }
 
-    /** One racer's outcome: success, or the exact exception it failed with. */
+    /** 单个竞争者的结果:成功,或失败时抛出的具体异常。 */
     private record Attempt(boolean success, Throwable error) {
         static Attempt run(Callable<?> action) {
             try {

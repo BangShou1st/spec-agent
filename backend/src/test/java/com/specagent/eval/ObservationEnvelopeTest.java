@@ -10,14 +10,13 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Observation-envelope and artifact serialization tests (P2, TDD).
+ * 文件名:ObservationEnvelopeTest.java
  *
- * <p>Every scenario attempt ends in one uniform observation: pre/post state,
- * actual primary action, execution result, state deltas, invariant/property
- * outcomes, violations, failure class, call/token/cost/latency accounting,
- * and reproducibility metadata. Unknown cost stays {@code unknown} — never
- * estimated. Artifacts serialize to one JSONL line per attempt plus
- * summary.json / summary.txt aggregates.
+ * 测试目标:观测信封与产物序列化(P2,TDD)。每次场景尝试都收敛为一个
+ * 统一观测:前置/后置状态、实际主动作、执行结果、状态增量、不变量/属性检查
+ * 结果、违规、失败类、调用/token/成本/延迟记账以及可复现元数据。
+ * 未知成本保持 {@code unknown}——绝不估算。产物按每次尝试一行 JSONL 序列化,
+ * 外加 summary.json / summary.txt 聚合。
  */
 class ObservationEnvelopeTest {
 

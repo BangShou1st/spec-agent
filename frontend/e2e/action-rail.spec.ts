@@ -1,6 +1,5 @@
-import { test, expect } from '@playwright/test'
-import { buildThreeNodeLineage, closeFloatingWorkspaceWindows, createProject, fitGraph } from './helpers'
 
+import { test, expect, createProject, fitGraph, closeFloatingWorkspaceWindows, buildThreeNodeLineage } from './helpers'
 /**
  * P1-3 E2E: the action rail lives on the RIGHT side of the node, and
  * the hover-to-button gap must not collapse the rail mid-flight. The

@@ -12,8 +12,11 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Active-provider persistence. Viewing a tab never activates; only this
- * explicit server-side endpoint changes the runtime provider after gates.
+ * 文件名:ModelProviderSettingsController.java
+ *
+ * 用途:激活提供商的持久化接口(/api/v1/settings/providers),提供查询当前
+ * 激活提供商与切换激活两个端点。仅浏览标签页不会激活提供商;只有这里的
+ * 显式服务端接口在通过各提供商的激活门禁后才改变运行时提供商。
  */
 @RestController
 @RequestMapping("/api/v1/settings/providers")

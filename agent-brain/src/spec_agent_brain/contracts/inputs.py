@@ -1,9 +1,10 @@
-"""Strict Pydantic contracts for the request envelope (Spring -> Python).
+"""文件名:inputs.py
 
-Every model uses ``extra="forbid"`` so unknown fields fail closed, and the
-envelope protocol version is a ``Literal`` so unknown versions are rejected.
-Wire field names are camelCase via alias generation; Python code uses
-snake_case.
+用途:请求信封(Spring -> Python)的严格 Pydantic 契约。
+
+所有模型都使用 ``extra="forbid"``,未知字段一律 fail-closed;信封的协议
+版本是 ``Literal`` 类型,未知版本直接拒绝。线上字段名通过 alias 生成器
+使用 camelCase,Python 代码内部使用 snake_case。
 """
 
 from typing import Any, Dict, List, Literal, Optional
@@ -20,11 +21,10 @@ def to_camel(name: str) -> str:
 
 
 class StrictModel(BaseModel):
-    """Base for all wire models: unknown fields rejected, camelCase aliases.
+    """所有线上模型类的基类:拒绝未知字段,camelCase 别名。
 
-    ``populate_by_name`` lets Python code construct models with snake_case
-    names; the wire format stays camelCase because serialization always uses
-    ``by_alias=True``.
+    ``populate_by_name`` 允许 Python 代码用 snake_case 字段名构造模型;
+    线上格式仍是 camelCase,因为序列化始终使用 ``by_alias=True``。
     """
 
     model_config = ConfigDict(
@@ -97,9 +97,9 @@ class LineageEntry(StrictModel):
 
 
 class RouteContextView(StrictModel):
-    # ``route_id`` is null only for a routeless Floating Node NODE_QUERY
-    # (Stage C). Route-bound flows (STATE_UPDATE, normal DECISION, ANSWER,
-    # SPEC, REGENERATE) continue to carry a UUID here.
+    # 仅当是无路由的 Floating Node NODE_QUERY(Stage C)时 ``route_id`` 才
+    # 为 null。绑定路由的流程(STATE_UPDATE、普通 DECISION、ANSWER、SPEC、
+    # REGENERATE)仍会在这里携带 UUID。
     route_id: Optional[UUID] = None
     tip_node_id: Optional[UUID] = None
     label: Optional[str] = None
@@ -119,19 +119,19 @@ class CapabilityDescriptor(StrictModel):
     read_only: bool
     description: str = ""
     side_effect_class: str = "NONE"
-    # Bounded JSON-Schema-flavoured argument shape (optional for wire/replay
-    # compatibility with older frozen payloads and brains).
+    # 有界的 JSON-Schema 风格的参数形状(可选字段,以兼容旧冻结 payload
+    # 与旧版本 brain 的线上/回放格式)。
     input_schema: Dict[str, Any] = Field(default_factory=dict)
-    # Structured relevance facts ("KIND" or "KIND:SUBTYPE") that drove
-    # visibility; mirrors the runtime projection, never model-authored.
+    # 驱动可见性判断的结构化相关性事实("KIND" 或 "KIND:SUBTYPE");
+    # 镜像 runtime 的投影,绝不是模型生成的内容。
     supports: List[str] = Field(default_factory=list)
 
 
 class CapabilityResultView(StrictModel):
-    """A completed capability invocation exposed as a bounded observation.
+    """一次已完成的能力调用,以有界 observation 的形式暴露。
 
-    Capability results are external evidence or generated summaries for
-    later cycles — never auto-confirmed graph truth.
+    能力结果是外部证据或为后续周期生成的摘要——绝不是自动确认的
+    图上事实。
     """
 
     invocation_id: str
@@ -143,10 +143,10 @@ class CapabilityResultView(StrictModel):
 
 
 class AvailableSkillView(StrictModel):
-    """One bounded Skill catalog entry in the frozen input snapshot.
+    """冻结输入快照中的一条有界 Skill 目录项。
 
-    Identity plus bounded metadata only — never full SKILL.md, filesystem
-    paths, embedding scores, or DB internals.
+    只有身份信息和有界元数据——绝不是完整的 SKILL.md、文件系统路径、
+    embedding 分数或数据库内部结构。
     """
 
     skill_id: str
@@ -156,11 +156,10 @@ class AvailableSkillView(StrictModel):
 
 
 class UserRequiredSkillView(StrictModel):
-    """A Skill the user explicitly bound to a graph node (" /" picker).
+    """用户通过节点绑定(" /" 选择器)显式指定的 Skill。
 
-    This is a user directive, not a catalog suggestion: the decision cycle
-    must activate this skill. Java only sets it when the bound id is present
-    in the discovered enabled catalog.
+    这是用户指令,不是目录推荐:decision 周期必须激活这个 skill。
+    只有当绑定的 id 确实存在于已发现的启用目录中时,Java 才会设置它。
     """
 
     skill_id: str
@@ -168,11 +167,11 @@ class UserRequiredSkillView(StrictModel):
 
 
 class SkillCatalogView(StrictModel):
-    """Bounded Skill catalog with replay evidence.
+    """带回放证据的有界 Skill 目录。
 
-    ``fingerprint`` plus ``truncated`` let replay verify the model saw the
-    same catalog; entry order is stable. ``user_required`` carries the
-    user's explicit skill directive for this context when one exists.
+    ``fingerprint`` 加上 ``truncated`` 让回放能验证模型看到的是同一份目录;
+    条目顺序稳定。当存在用户显式指令时,``user_required`` 携带用户对当前
+    上下文的 skill 指定。
     """
 
     skills: List[AvailableSkillView] = Field(default_factory=list)
@@ -182,10 +181,10 @@ class SkillCatalogView(StrictModel):
 
 
 class RelationView(StrictModel):
-    """One direction-preserving semantic relation on the wire.
+    """一条保持方向性的语义关系(线上格式)。
 
-    Mirrors the durable ``ContextRelation``: source, target and the relation
-    type code. Direction is preserved exactly as stored.
+    镜像持久化的 ``ContextRelation``:source、target 与关系类型码。
+    方向与存储时完全一致。
     """
 
     source_node_id: UUID
@@ -194,15 +193,13 @@ class RelationView(StrictModel):
 
 
 class RelatedNodeRef(StrictModel):
-    """A related canonical node in the bounded 1-hop semantic context.
+    """有界 1-hop 语义上下文中的一个相关规范节点。
 
-    ``direction`` is relative to the anchor: ``OUTGOING`` when the anchor is the
-    relation source, ``INCOMING`` when it is the target. Symmetric relations are
-    canonicalized at write time, so an ``INCOMING`` direction simply means the
-    stored endpoints place the anchor on the target side. ``node`` carries the
-    full projected NodeView/body of the related node so the model reads real
-    body content, not only an opaque id. Related nodes are never part of the
-    lineage.
+    ``direction`` 是相对于锚点而言的:锚点是关系 source 时为 ``OUTGOING``,
+    是 target 时为 ``INCOMING``。对称关系在写入时已做规范化,所以
+    ``INCOMING`` 只表示存储的端点把锚点放在了 target 一侧。``node`` 携带
+    相关节点完整投影后的 NodeView/body,让模型读到真实正文而不只是一个
+    不可读的 id。相关节点永远不属于 lineage。
     """
 
     node_id: UUID
@@ -212,10 +209,10 @@ class RelatedNodeRef(StrictModel):
 
 
 class RetrievedContextItem(StrictModel):
-    """Runtime-ranked evidence projected into frozen working memory.
+    """由 runtime 排序后投影进冻结工作记忆的证据条目。
 
-    Relevance scores and embedding details are intentionally absent. Scope,
-    authority, content, and provenance are the model-visible boundary.
+    有意不包含相关性分数和 embedding 细节。scope、authority、content
+    和 provenance 才是模型可见的边界。
     """
 
     source_ref: str
@@ -235,9 +232,9 @@ class AgentInputSnapshot(StrictModel):
     snapshot_id: UUID
     context_hash: str
     project_id: UUID
-    # ``route_id`` is null only for a routeless Floating Node NODE_QUERY
-    # (Stage C). Required (UUID) for every other flow. The mirror field on
-    # ``RouteContextView.route_id`` must agree.
+    # 仅当是无路由的 Floating Node NODE_QUERY(Stage C)时 ``route_id`` 才
+    # 为 null。其他所有流程都必填(UUID)。必须与
+    # ``RouteContextView.route_id`` 上的镜像字段一致。
     route_id: Optional[UUID] = None
     anchor_node_id: Optional[UUID] = None
     route_context: RouteContextView
@@ -246,11 +243,11 @@ class AgentInputSnapshot(StrictModel):
     metadata: SnapshotMetadata
     allowed_source_refs: List[str] = Field(default_factory=list)
     available_capabilities: List[CapabilityDescriptor] = Field(default_factory=list)
-    # Bounded Skill catalog for the fresh Decision context (optional for
-    # wire/replay compatibility with older frozen payloads).
+    # 面向全新 Decision 上下文的有界 Skill 目录(可选字段,以兼容旧冻结
+    # payload 的线上/回放格式)。
     available_skills: SkillCatalogView = Field(default_factory=SkillCatalogView)
     capability_results: List[CapabilityResultView] = Field(default_factory=list)
-    # Bounded 1-hop semantic context (NODE_QUERY only; empty for other ops).
+    # 有界的 1-hop 语义上下文(仅 NODE_QUERY;其他操作为空)。
     relations: List[RelationView] = Field(default_factory=list)
     related_nodes: List[RelatedNodeRef] = Field(default_factory=list)
     retrieved_context: List[RetrievedContextItem] = Field(default_factory=list)
@@ -317,19 +314,18 @@ class AgentV2RequestEnvelope(StrictModel):
 
     @model_validator(mode="after")
     def _route_id_contract(self) -> "AgentV2RequestEnvelope":
-        """Authoritative cross-field rule for routeless NODE_QUERY.
+        """关于无路由 NODE_QUERY 的权威跨字段规则。
 
-        The ``route_id`` field is intentionally Optional on the model layer so
-        the strict wire shape can carry a Floating-node NODE_QUERY. This
-        validator is the only place where that nullability is admitted, and
-        it is deliberately narrow:
+        ``route_id`` 在模型层有意声明为 Optional,以便严格的线上格式能承载
+        Floating 节点的 NODE_QUERY。这个校验器是唯一承认该可空性的地方,
+        且规则刻意收得很窄:
 
-        - A non-``NODE_QUERY`` event MUST carry a route UUID in BOTH
-          ``snapshot.routeId`` and ``snapshot.routeContext.routeId``.
-        - A ``NODE_QUERY`` event admits exactly two valid modes:
-            (a) route-bound: both fields are non-null UUIDs and equal;
-            (b) routeless:   both fields are null.
-        - Mixed state (one null, one UUID) or unequal UUIDs is rejected.
+        - 非 ``NODE_QUERY`` 事件必须在 ``snapshot.routeId`` 和
+          ``snapshot.routeContext.routeId`` 两处都携带路由 UUID。
+        - ``NODE_QUERY`` 事件只承认两种合法形态:
+            (a) 绑定路由:两个字段都是非空 UUID 且相等;
+            (b) 无路由:两个字段都为 null。
+        - 混合状态(一个为 null、另一个为 UUID)或 UUID 不相等一律拒绝。
         """
         snapshot = self.snapshot
         snapshot_route = snapshot.route_id
@@ -351,7 +347,7 @@ class AgentV2RequestEnvelope(StrictModel):
                     "snapshot.routeContext.routeId to be equal")
             return self
 
-        # NODE_QUERY: null/null or UUID/UUID-and-equal.
+        # NODE_QUERY:要么 null/null,要么 UUID/UUID 且相等。
         if (snapshot_route is None) != (context_route is None):
             raise ValueError(
                 "NODE_QUERY must be either fully route-bound "
@@ -371,12 +367,11 @@ class AgentV3RequestEnvelope(AgentV2RequestEnvelope):
 
 def parse_request_envelope(
         payload: Dict[str, Any]) -> AgentV2RequestEnvelope | AgentV3RequestEnvelope:
-    """Parses a raw JSON object into the request envelope, fail-closed."""
+    """把原始 JSON 对象解析成请求信封,未知版本 fail-closed。"""
     version = payload.get("protocolVersion")
     if version == protocol.INPUT_PROTOCOL_VERSION:
         return AgentV2RequestEnvelope.model_validate(payload)
     if version == protocol.INPUT_PROTOCOL_VERSION_V3:
         return AgentV3RequestEnvelope.model_validate(payload)
-    # Preserve a Pydantic ValidationError rather than inventing a parallel
-    # exception type for unknown versions.
+    # 保留 Pydantic 的 ValidationError,而不是为未知版本另造一套并行异常。
     return AgentV2RequestEnvelope.model_validate(payload)

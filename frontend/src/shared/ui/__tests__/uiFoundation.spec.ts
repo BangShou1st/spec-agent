@@ -1,3 +1,5 @@
+// 文件名:uiFoundation.spec.ts
+// 用途:共享 UI 基础组件的单元测试:覆盖 ToggleSwitch/UiDialogShell/UiConfirmDialog 等基础件的关键契约。
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import UiFilePicker from '@/shared/ui/UiFilePicker.vue'

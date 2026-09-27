@@ -1,3 +1,7 @@
+// 文件名:openRouterStore.ts
+// 用途:OpenRouter Provider 的 Pinia 状态仓:状态加载、密钥探测、模型列表刷新、
+//       保存/校验,以及"可用列表 vs 展示列表"与已存选中项的可见性规则。
+
 import { defineStore } from 'pinia'
 import { toDisplayError } from '@/shared/http/displayError'
 import {
@@ -8,7 +12,7 @@ import {
   validateOpenRouter,
 } from '@/features/model-settings/api/modelProviders'
 
-/** Mirrors the backend free-id policy: openrouter/free or the :free suffix. */
+/** 镜像后端的免费模型判定规则:openrouter/free 或 :free 后缀。 */
 function isFreeModelId(id: string): boolean {
   return id === 'openrouter/free' || id.endsWith(':free')
 }
@@ -27,15 +31,15 @@ export const useOpenRouterStore = defineStore('openRouter', {
     selectedModel: null as string | null,
     configRevision: 0,
     validated: false,
-    // Full provider catalog (free and paid) plus the free subset; the UI
-    // defaults to the full list and can toggle "仅免费" to filter.
+    // Provider 的完整目录(免费+付费)及免费子集;UI 默认展示完整列表,
+    // 可通过"仅免费"开关过滤。
     allModels: [] as string[],
     freeModels: [] as string[],
     freeOnly: false,
-    // True provider-available models from the last successful fetch.
-    // freeModels is the display list (available + injected persisted for
-    // visibility). Save gating must use availableModels, never the display
-    // list, so an injected unavailable persisted value cannot be saved.
+    // 最近一次成功拉取得到的、Provider 真实可用的模型。
+    // freeModels 是展示列表(可用列表 + 为可见性注入的已持久化值)。
+    // 保存门槛必须用 availableModels,绝不能用展示列表,
+    // 否则注入的不可用持久化值会被保存。
     availableModels: [] as string[],
     /** 首次状态加载中：此时列表为空只代表「还没到」，不代表「没有」。 */
     loading: false,
@@ -48,7 +52,7 @@ export const useOpenRouterStore = defineStore('openRouter', {
     error: null as ProviderError | null,
   }),
   getters: {
-    /** Display list: full catalog by default, free-only when toggled. */
+    /** 展示列表:默认完整目录,开启"仅免费"后为免费子集。 */
     displayModels(state): string[] {
       return state.freeOnly
       && state.freeModels.length > 0 ? state.freeModels : state.allModels
@@ -56,9 +60,8 @@ export const useOpenRouterStore = defineStore('openRouter', {
   },
   actions: {
     ensurePersistedVisible(): void {
-      // A persisted selection must stay visible even before models are
-      // (re)fetched. It is prepended as the saved value, never replaced
-      // by silently picking another model.
+      // 已持久化的选中项即使在模型(重新)拉取之前也必须保持可见。
+      // 它以"已保存的值"身份被前置插入,绝不是悄悄换选了另一个模型。
       if (this.selectedModel && !this.allModels.includes(this.selectedModel)) {
         this.allModels = [this.selectedModel, ...this.allModels]
       }
@@ -126,9 +129,8 @@ export const useOpenRouterStore = defineStore('openRouter', {
         this.availableModels = [...all]
         this.allModels = [...all]
         this.freeModels = [...(res.freeModels ?? [])]
-        // Unavailability is judged against the true live list BEFORE the
-        // persisted value is prepended for visibility, so an injected stale
-        // selection still surfaces as unavailable.
+        // 不可用判定发生在"为可见性前置插入持久化值"之前、对照真实在线列表,
+        // 因此注入的过期选中项仍会被如实判定为不可用。
         const visible = this.freeOnly && this.freeModels.length > 0 ? this.freeModels : this.allModels
         this.modelUnavailable = Boolean(
           this.configured && this.selectedModel && !visible.includes(this.selectedModel),
@@ -137,7 +139,7 @@ export const useOpenRouterStore = defineStore('openRouter', {
         this.failed = false
       } catch (err) {
         this.error = displayError(err)
-        // 401/403/429/5xx stay hard errors and never degrade to manual.
+        // 401/403/429/5xx 保持为硬错误,绝不降级为手动模式。
         this.failed = true
       } finally {
         this.loadingModels = false

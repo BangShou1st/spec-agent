@@ -13,6 +13,13 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+/**
+ * 文件名:ReadModelLineageWalkerTest.java
+ *
+ * 测试目标:验证读取模型谱系遍历器 {@link ReadModelLineageWalker} 的
+ * 快速失败行为:谱系成环、节点缺失、深度超限(规范深度为 1 万个节点)
+ * 都必须以稳定的异常原因失败,而不是返回残缺或错误的谱系。
+ */
 class ReadModelLineageWalkerTest {
 
     private static final Instant NOW = Instant.parse("2026-08-18T00:00:00Z");

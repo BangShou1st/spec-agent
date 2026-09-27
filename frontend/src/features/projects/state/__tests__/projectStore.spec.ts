@@ -1,3 +1,6 @@
+// 文件名:projectStore.spec.ts
+// 用途:项目 store 单测:列表加载、创建、重命名、删除,
+//       以及乱序响应守护(慢的旧列表响应绝不覆盖新结果)。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { ApiError } from '@/shared/http/client'

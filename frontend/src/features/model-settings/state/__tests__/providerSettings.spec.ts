@@ -1,3 +1,6 @@
+// 文件名:providerSettings.spec.ts
+// 用途:Provider 设置 store 单测:当前 Provider 的加载/切换、
+//       用户手动切走后再次进入设置页保持其选择。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useProviderSettingsStore } from '@/features/model-settings/state/providerSettingsStore'

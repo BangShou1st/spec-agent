@@ -4,16 +4,16 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Read-only route lineage view for the UI.
+ * 文件名:RouteLineageView.java
  *
- * <p>Describes one existing route and its historical node chain in root→tip
- * order. {@code lifecycleStatus} is the route lifecycle only
- * ({@code open|superseded|archived|deleted}); {@code isActive} is derived from
- * {@code Project.activeRouteId} at read time and never mutates route state.
- * When the route has no tip node, {@code nodes} is an empty list.
+ * 用途:给 UI 的路线 lineage 只读视图,按根到尾顺序描述一条既有路线
+ * 及其历史节点链。{@code lifecycleStatus} 只是路线生命周期
+ * ({@code open|superseded|archived|deleted});{@code isActive} 在读取时
+ * 由 {@code Project.activeRouteId} 推导,绝不修改路线状态。
+ * 路线没有 tip 节点时,{@code nodes} 为空列表。
  *
- * <p>This is a display read. It is not used to change {@code ContextBuilder}
- * semantics and it never builds or persists a {@code ContextSnapshot}.
+ * 这是纯展示读取:不用于改变 {@code ContextBuilder} 语义,
+ * 也绝不构建或持久化 {@code ContextSnapshot}。
  */
 public record RouteLineageView(
         UUID projectId,
@@ -24,7 +24,7 @@ public record RouteLineageView(
         boolean isActive,
         List<RouteLineageNodeView> nodes) {
 
-    /** Safe read model for a route without a tip node. */
+    /** 没有 tip 节点的路线的安全读模型。 */
     public static RouteLineageView empty(UUID projectId, UUID routeId,
                                          UUID rootNodeId, String lifecycleStatus, boolean isActive) {
         return new RouteLineageView(projectId, routeId, rootNodeId, null,

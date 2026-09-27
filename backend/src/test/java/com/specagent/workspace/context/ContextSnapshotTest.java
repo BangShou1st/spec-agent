@@ -9,9 +9,12 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Constructor normalization regression tests. Every list field must tolerate a
- * null argument (normalized to an empty list); {@code includedPatchIds} once
- * regressed into a {@code List.copyOf(null)} NPE in both branches.
+ * 文件名:ContextSnapshotTest.java
+ *
+ * 测试目标:验证 {@link ContextSnapshot} 构造器对列表字段的规范化行为——
+ * 所有列表字段都必须容忍 null 入参(规范化为空列表);非空入参则做防御性
+ * 拷贝并保证不可修改。历史上 {@code includedPatchIds} 曾因 {@code List.copyOf(null)}
+ * 在两个分支上出现 NPE 回归。
  */
 class ContextSnapshotTest {
 
@@ -48,7 +51,7 @@ class ContextSnapshotTest {
                 List.of(nodeA), relations,
                 null, "hash-2", Instant.now());
 
-        // Mutating the caller's list must not leak into the snapshot.
+        // 修改调用方持有的列表不得泄漏进快照。
         nodes.add(UUID.randomUUID());
         relations.clear();
         assertThat(snapshot.includedNodeIds()).containsExactly(nodeA);

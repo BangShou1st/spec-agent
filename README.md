@@ -269,18 +269,22 @@ python -m venv .venv
 .venv/Scripts/pip install -e ".[dev]"
 .venv/Scripts/python -m pytest
 
-.venv/Scripts/uvicorn spec_agent_brain.app:app --port 8100
+.venv/Scripts/uvicorn spec_agent_brain.app:app --host 127.0.0.1 --port 8100
 ```
 
-Brain 支持：
+Brain 支持（`SPEC_AGENT_BRAIN_MODEL_MODE` 是显式两值枚举）：
 
 ```text
 SPEC_AGENT_BRAIN_MODEL_MODE=fake
 SPEC_AGENT_BRAIN_MODEL_MODE=broker
 ```
 
-- `fake`：完全离线、确定性测试。
+- `fake`：完全离线、确定性，仅供测试/离线演示。
 - `broker`：模型请求回到 Java 内部 broker，再由 Java 持有 provider 配置和凭据。
+  要求同时配置 `SPEC_AGENT_INTERNAL_BROKER_URL` 与非空
+  `SPEC_AGENT_BRAIN_INTERNAL_SECRET`。
+- 其他任何值（含拼写错误）都会在启动时失败，不会静默回落到 fake。
+- 健康检查 `GET /health` 返回 `ready` 与 `configError`，真实反映配置状态。
 
 ### 后端
 
@@ -303,6 +307,64 @@ cd frontend
 npm install
 npm run dev
 ```
+
+---
+
+## 安全与访问边界（单用户本机交付）
+
+产品按"本机单用户"形态交付，默认访问边界如下：
+
+- 后端只绑定回环接口（`server.address: 127.0.0.1`，可用 `SERVER_ADDRESS` 覆盖）。
+- PostgreSQL 的 Docker 发布只绑定回环（`127.0.0.1:5434:5432`）。
+- Brain 监听 `127.0.0.1`。
+- Java ↔ Brain 的内部密钥没有仓库级固定默认值。未配置时，后端首次启动
+  生成安装实例独有的随机密钥并持久化到 `backend/data/internal-secret.txt`；
+  `start-dev.bat` 会生成同一文件并把相同值传给后端与 Brain。
+
+把后端显式绑定到非回环地址（局域网/公网）时，产品 API 本身没有认证层，
+启动守卫会拒绝启动；确要网络部署，必须同时设置
+`SPEC_AGENT_ALLOW_NON_LOOPBACK=true` 并自行提供反向代理/认证入口与网络隔离。
+
+## 模型凭据加密存储与主密钥
+
+`model_providers`、`opencode_settings`、`openrouter_settings`、
+`custom_provider_settings` 的 API Key 以 AES-GCM 密文落库（`enc:v1:<keyId>:...`），
+API 响应与日志保持脱敏（只输出掩码后缀）。
+
+主密钥解析顺序：
+
+1. 环境变量/属性 `SPEC_AGENT_SECRET_MASTER_KEY`（32 字节 base64）。
+2. 未配置时使用密钥文件 `backend/data/secret-master.key`（首次启动自动
+   生成并持久化，之后每次启动读取同一文件；Windows 下继承目录 ACL）。
+
+- 已有明文凭据在启动时自动加密改写（迁移可重复执行；失败保持明文并使
+  启动失败，不会丢配置）。
+- 主密钥缺失或与历史密文不匹配时启动失败/读取显式报错（fail closed），
+  不会返回垃圾数据。
+- 轮换：把新密钥设为主密钥、旧密钥放入
+  `SPEC_AGENT_SECRET_MASTER_KEY_FALLBACK`（逗号分隔），重启一次完成重写，
+  之后移除 fallback。
+
+## 备份与恢复
+
+1. 数据库：`pg_dump -h 127.0.0.1 -p 5434 -U spec_agent spec_agent > backup.sql`。
+2. 密钥文件：同时备份 `backend/data/secret-master.key` 与
+   `backend/data/internal-secret.txt`（丢失主密钥文件后，已加密的模型
+   凭据无法解密，需要重新输入各 provider 的 API Key）。
+3. 恢复：先恢复数据库与密钥文件，再启动后端；启动迁移会把任何残留明文
+   自动重新加密。
+
+## 故障处理
+
+- **启动后 AI 任务仍长时间"进行中"**：进程崩溃/重启会留下孤儿任务。
+  重启后启动恢复会把它们诚实置为失败（`INTERRUPTED_BY_RESTART`），
+  前端可重新发起；不会自动重放模型调用或重写不可变回答。
+- **删除项目返回 409（`PROJECT_HAS_RUNNING_RUNS`）**：项目存在排队或
+  处理中的任务。等待任务终态化后重试；保护覆盖全部非终态，且与入队在
+  项目行锁上互斥。
+- **设置页提示"Base URL 已指向新的服务地址"**：修改了 provider 地址且
+  未显式决定密钥。输入新地址对应的 API Key，或清空输入框表示无鉴权；
+  旧密钥不会自动带到新来源。
 
 ---
 

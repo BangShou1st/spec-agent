@@ -1,3 +1,8 @@
+// 文件名:skillsStore.ts
+// 用途:Skill 的 Pinia 状态仓:已安装 Skill 与暂存导入的状态管理——列表/详情/版本/
+//       资源加载、ZIP/Git 暂存与 Git 探测、安装/拒绝/删除、启用/禁用;
+//       列表加载使用 loadToken 竞态守护。
+
 import { defineStore } from 'pinia'
 import { toDisplayError } from '@/shared/http/displayError'
 import { createLoadToken } from './raceGuard'
@@ -12,8 +17,8 @@ export interface SkillsStoreError {
 const displayError: (err: unknown) => SkillsStoreError = toDisplayError
 
 /**
- * Installed Skill and staged-import state. Never touches workspace or connections.
- * No semantic routing: explicit user selections only.
+ * 已安装 Skill 与暂存导入的状态。绝不触碰工作台或连接数据;
+ * 不做语义路由:只响应用户的显式选择。
  */
 const listLoadToken = createLoadToken()
 
@@ -108,8 +113,7 @@ export const useSkillsStore = defineStore('skills', {
       }
     },
     /**
-     * Lists the Skill packages a repository offers so a library or marketplace
-     * can be navigated. Read-only: nothing is staged by discovering.
+     * 列出仓库提供的 Skill 包,供浏览库/市场后选择。只读:探测不做任何暂存。
      */
     async discoverGit(url: string, ref?: string): Promise<boolean> {
       this.gitDiscovering = true
@@ -216,7 +220,7 @@ export const useSkillsStore = defineStore('skills', {
     clearError(): void {
       this.error = null
     },
-    /** Drops the previous repository inspection so a new import starts clean. */
+    /** 丢弃上一次的仓库探测结果,让新的导入从干净状态开始。 */
     resetGitDiscovery(): void {
       this.gitCandidates = null
       this.gitSuggestedPath = null

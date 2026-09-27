@@ -23,13 +23,16 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
- * Deterministic guard that verifies every spec source reference points at a
- * real runtime record belonging to the current project, route, and context
- * snapshot.
+ * 文件名:SpecSourceReferenceGuard.java
  *
- * <p>This runs after {@link SpecGroundingGate} and before a spec snapshot is
- * persisted. It never replaces grounding; it hardens it: a grounded section
- * may only cite records the frozen context actually included.
+ * 用途:确定性门禁,校验每条 spec 来源引用都指向真实存在的 Runtime
+ * 记录,且属于当前项目、当前路由和当前上下文快照。
+ *
+ * 运行在 {@link SpecGroundingGate} 之后、spec 快照持久化之前。
+ * 它不替代 grounding,而是加固:已 grounded 的分节只能引用冻结上下文
+ * 实际包含的记录。
+ *
+ * 协作:由 spec 生成流程调用,拒绝时返回带错误列表的 ReflectionResult。
  */
 @Component
 public class SpecSourceReferenceGuard {
@@ -62,9 +65,8 @@ public class SpecSourceReferenceGuard {
             return ReflectionResult.rejectedResult("Spec source references are required");
         }
 
-        // Whole-context invariant first: even when every individual ref is
-        // real and in-context, a caller that pairs route A with a snapshot of
-        // route B must be rejected before per-ref validation can pass.
+        // 先做整体上下文不变量:即使每条 ref 都是真实且在上下文内的,
+        // "路由 A 搭配路由 B 的快照"的调用也必须在逐条校验之前被拒绝。
         if (contextSnapshot == null) {
             errors.add("Context snapshot is required");
         } else {
@@ -76,11 +78,10 @@ public class SpecSourceReferenceGuard {
             }
         }
 
-        // Answers inherited from the route this one branched off are part of
-        // THIS route's effective history (see {@code route_inherited_answers})
-        // and were frozen into the snapshot by the ContextBuilder, so the
-        // branch route may legitimately cite them. Ancestor answers the
-        // snapshot did NOT include stay rejected.
+        // 从本路由分叉出去的那条路由所继承的 Answer 属于本路由的
+        // 有效历史(见 {@code route_inherited_answers}),并已由
+        // ContextBuilder 冻结进快照,因此分支路由可以合法引用它们。
+        // 快照未包含的祖先 Answer 仍然被拒绝。
         Set<UUID> citableInheritedAnswers = contextSnapshot == null ? Set.of()
                 : routeHistoryResolver.resolveEffectiveAnswers(routeId,
                         contextSnapshot.includedNodeIds()).stream()
@@ -161,10 +162,9 @@ public class SpecSourceReferenceGuard {
                     if (!answer.projectId().equals(projectId)) {
                         errors.add("Answer source reference does not belong to project " + projectId);
                     }
-                    // Route-local answers must belong to the current route;
-                    // inherited answers must be part of this route's effective
-                    // (branched-off) history. Both must be in the frozen
-                    // context, so a sibling or foreign route can never be cited.
+                    // 路由本地的 Answer 必须属于当前路由;继承的 Answer 必须属于
+                    // 本路由的有效(分叉)历史。两者都必须在冻结上下文内,
+                    // 因此兄弟路由或外部路由的 Answer 永远不可能被引用。
                     if (!answer.routeId().equals(routeId)
                             && !citableInheritedAnswers.contains(ref.refId())) {
                         errors.add("Answer source reference does not belong to route " + routeId);

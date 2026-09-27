@@ -1,3 +1,6 @@
+// 文件名:ProjectsView.spec.ts
+// 用途:项目列表页组件测试:服务端搜索(mock 模拟 GET /projects?title= 过滤行为)、
+//       标题高亮渲染、搜索词转发 API,以及行内重命名交互。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
@@ -20,8 +23,8 @@ const mockedRename = vi.mocked(renameProject)
 
 type ProjectSummaryList = Awaited<ReturnType<typeof listProjects>>
 
-// The backend is the filter now: the mock returns the server-filtered subset
-// for a given title, exactly like GET /projects?title= would.
+// 过滤已在后端:mock 对给定标题返回服务端过滤后的子集,
+// 与 GET /projects?title= 的行为完全一致。
 function mockListByQuery(all: ProjectSummaryList): void {
   mockedList.mockImplementation((title?: string) =>
     Promise.resolve(
@@ -125,7 +128,7 @@ describe('ProjectsView', () => {
 
     const marks = wrapper.findAll('[data-test="project-title-match"]')
     expect(marks.map((mark) => mark.text())).toEqual(['规格'])
-    // The title is split for highlighting, but still renders as one string.
+    // 标题为高亮被拆分,但渲染出来仍是一个完整字符串。
     expect(wrapper.find('.project-row__title').text()).toBe('结算规格梳理')
   })
 
@@ -178,7 +181,7 @@ describe('ProjectsView', () => {
 
     await wrapper.find('[data-test="project-search"]').setValue('登录')
 
-    // The term is forwarded to the API; the backend decides what matches.
+    // 查询词转发给 API;命中与否由后端决定。
     expect(mockedList).toHaveBeenCalledWith('登录')
     expect(wrapper.text()).not.toContain('结算规格梳理')
     expect(wrapper.text()).toContain('登录流程优化')

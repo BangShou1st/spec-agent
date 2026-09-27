@@ -15,8 +15,11 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 
 /**
- * Bounded application-level project summary for the assistant.
- * Never dumps the full graph / claims / routes / internal snapshots.
+ * 文件名:GlobalProjectSummaryQueryService.java
+ *
+ * 用途:面向助手的有界项目摘要查询(project.get_summary 的后端)。
+ * 只产出标题、活跃路线、路线/节点计数、最近活跃时间和规格可用性等
+ * 摘要字段;绝不倾倒完整图谱、需求条目、路线明细或内部快照。
  */
 @Service
 public class GlobalProjectSummaryQueryService {

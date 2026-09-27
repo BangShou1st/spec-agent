@@ -7,20 +7,19 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Second corpus batch (P2 Phase 2): E02, E05, E08, E10, E11, E12, E13, E19,
- * E22-wait, E24.
+ * 文件名:EvalCorpusBatch2.java
  *
- * <p>Same contract as the first batch: every scenario is data (text seeds,
- * never fixed sentences), variants carry the anti-overfit axes, and
- * expectations assert action families, canonical state deltas, and call
- * budgets — never verbatim wording. Every scenario here first passes B-fast
- * (scripted) before entering the live baseline corpus, so a live red always
- * means live behavior — never a malformed scenario.
+ * 测试目标:第二批评估语料(P2 Phase 2):E02、E05、E08、E10、E11、E12、
+ * E13、E19、E22-wait、E24。
  *
- * <p>Deferred to a later round (need new UserEvent kinds or failure-semantic
- * proof): E03 answer revise (CONTINUE), E04 non-tip continue (new route
- * context), E09 route planning (CREATE_ROUTE deny shape), E22-improper WAIT
- * under conflict, E23 malformed provider output.
+ * 与第一批相同的契约:每个场景都是数据(文本种子,绝不用固定句子),
+ * 变体携带防过拟合轴,期望只断言动作族、权威状态增量和调用预算——绝不断言
+ * 逐字措辞。每个场景先通过 B-fast(脚本化)才进入 live 基线语料,
+ * 保证 live 红灯永远代表真实行为问题,而非场景本身畸形。
+ *
+ * 推迟到后续轮次(需要新的 UserEvent 种类或故障语义证明):
+ * E03 回答修订(CONTINUE)、E04 非尖端继续(新路由上下文)、E09 路由规划
+ * (CREATE_ROUTE 拒绝形态)、E22 冲突下的不当 WAIT、E23 畸形 Provider 输出。
  */
 public final class EvalCorpusBatch2 {
 
@@ -40,9 +39,8 @@ public final class EvalCorpusBatch2 {
     }
 
     /**
-     * E02 — Ambiguity clarification: a vague answer still moves through the
-     * full cycle into an explicit clarifying question, never a silent
-     * assumption. Same cycle shape as E01 with ambiguity-flavored seeds.
+     * E02——歧义澄清:模糊的回答仍走完整循环,落到一个显式的澄清提问,
+     * 绝不静默假设。与 E01 相同的循环形态,只是种子带歧义色彩。
      */
     public static ScenarioDefinition e02() {
         ScenarioDefinition scenario = new ScenarioDefinition(
@@ -93,9 +91,8 @@ public final class EvalCorpusBatch2 {
     }
 
     /**
-     * E05 — Sibling isolation: answering on the active route after a fork
-     * leaves the sibling route unpolluted — exactly one canonical answer
-     * exists project-wide, and no new route is created by the answer cycle.
+     * E05——兄弟路由隔离:分叉后在活动路由上回答,兄弟路由不受污染——
+     * 全项目恰好存在一个权威回答,且回答循环不创建新路由。
      */
     public static ScenarioDefinition e05() {
         ScenarioDefinition scenario = new ScenarioDefinition(
@@ -146,10 +143,9 @@ public final class EvalCorpusBatch2 {
     }
 
     /**
-     * E08 — Conflict delegation: the user explicitly authorized the tradeoff
-     * in this answer, so the agent records a KNOWLEDGE/DECISION node. A
-     * model-authored DECISION is confirmed intent and always requires
-     * confirmation — the attempt ends awaiting approval with no side effect.
+     * E08——冲突委托:用户在本次回答中显式授权了权衡,agent 据此记录一个
+     * KNOWLEDGE/DECISION 节点。模型生成的 DECISION 属于确认意图,总是需要
+     * 确认——尝试以待审批结束,无任何副作用。
      */
     public static ScenarioDefinition e08() {
         ScenarioDefinition scenario = new ScenarioDefinition(
@@ -197,10 +193,9 @@ public final class EvalCorpusBatch2 {
     }
 
     /**
-     * E09 — Route planning: a route-creation proposal has no executable
-     * runtime command path in this stage, so policy denies it outright —
-     * never a clickable-but-unexecutable proposal. The answer cycle itself
-     * still persists, and the run completes as policy-denied.
+     * E09——路由规划:本阶段路由创建提案没有可执行的运行时命令路径,
+     * policy 直接拒绝——绝不产生"可点击但不可执行"的提案。
+     * 回答循环本身照常持久化,运行以 policy_denied 结束。
      */
     public static ScenarioDefinition e09() {
         ScenarioDefinition scenario = new ScenarioDefinition(
@@ -240,9 +235,8 @@ public final class EvalCorpusBatch2 {
     }
 
     /**
-     * E10 — Resource grounding: an attached resource is present in context
-     * but the answer cycle still completes normally — resources inform, they
-     * never hijack the decision.
+     * E10——资源锚定:附件资源出现在上下文中,但回答循环照常完成——
+     * 资源只提供信息,绝不劫持决策。
      */
     public static ScenarioDefinition e10() {
         ScenarioDefinition scenario = new ScenarioDefinition(
@@ -292,8 +286,8 @@ public final class EvalCorpusBatch2 {
     }
 
     /**
-     * E11 — Capability success: a read-only probe is invoked and auto-executes
-     * (NONE side-effect class), exactly once, with the run completing.
+     * E11——能力成功:只读探针被调用并自动执行(无副作用类 NONE),
+     * 恰好一次,运行正常完成。
      */
     public static ScenarioDefinition e11() {
         ScenarioDefinition scenario = new ScenarioDefinition(
@@ -338,9 +332,8 @@ public final class EvalCorpusBatch2 {
     }
 
     /**
-     * E12 — Capability failure: the probe reports failure, which surfaces as
-     * a typed message — the run still completes, nothing retries silently,
-     * and no graph mutation beyond the answer cycle occurs.
+     * E12——能力失败:探针报告失败,以类型化消息呈现——运行仍然完成,
+     * 没有任何静默重试,回答循环之外不发生任何图变更。
      */
     public static ScenarioDefinition e12() {
         ScenarioDefinition scenario = new ScenarioDefinition(
@@ -385,8 +378,8 @@ public final class EvalCorpusBatch2 {
     }
 
     /**
-     * E13 — Irrelevant capability: decoy capabilities are registered but the
-     * decision must not call any of them — no side effect, no invocation.
+     * E13——无关能力:诱饵能力已注册,但决策不得调用其中任何一个——
+     * 无副作用、无调用。
      */
     public static ScenarioDefinition e13() {
         ScenarioDefinition scenario = new ScenarioDefinition(
@@ -434,9 +427,8 @@ public final class EvalCorpusBatch2 {
     }
 
     /**
-     * E19 — Large context: several resources and sibling questions coexist,
-     * yet the answer cycle still completes with exactly one mutation — scale
-     * must not break the cycle.
+     * E19——大上下文:多个资源与兄弟问题共存,回答循环仍以恰好一次变更完成——
+     * 规模不能破坏循环。
      */
     public static ScenarioDefinition e19() {
         ScenarioDefinition scenario = new ScenarioDefinition(
@@ -487,8 +479,8 @@ public final class EvalCorpusBatch2 {
     }
 
     /**
-     * E22-wait — Legitimate WAIT: the agent pauses without mutating the graph
-     * beyond the persisted answer cycle. WAIT auto-executes as read-only.
+     * E22-wait——合法 WAIT:agent 暂停,不改动已持久化回答循环之外的任何图内容。
+     * WAIT 作为只读动作自动执行。
      */
     public static ScenarioDefinition e22Wait() {
         ScenarioDefinition scenario = new ScenarioDefinition(
@@ -527,9 +519,8 @@ public final class EvalCorpusBatch2 {
     }
 
     /**
-     * E24 — Active vs Focus: working focus sits on the sibling route while
-     * the answer cycle runs on the active route. Focus never selects an
-     * Answer — the answer still lands on the active tip.
+     * E24——活动路由与 Focus:工作 focus 位于兄弟路由,而回答循环运行在活动
+     * 路由上。Focus 永远不能决定 Answer 的归属——回答仍落在活动尖端上。
      */
     public static ScenarioDefinition e24() {
         ScenarioDefinition scenario = new ScenarioDefinition(

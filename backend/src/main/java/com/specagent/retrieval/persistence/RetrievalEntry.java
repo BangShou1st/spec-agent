@@ -8,7 +8,12 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 
-/** Canonical Java representation of one rebuildable retrieval row. */
+/**
+ * 文件名:RetrievalEntry.java
+ *
+ * 用途:一条可重建检索行的规范化 Java 表示,对应 retrieval_entries 表的
+ * 一条记录,包含来源、范围、权威级别、内容、内容哈希与向量状态等字段。
+ */
 public record RetrievalEntry(UUID id,
                              UUID projectId,
                              UUID routeId,

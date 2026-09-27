@@ -1,10 +1,13 @@
+<!--
+  文件名:SkillSlashMenu.vue
+  用途:"/"技能选择器的候选菜单:展示有界数量的已启用技能(名称+描述);纯展示组件,选中与高亮状态由宿主经 props/事件控制。
+-->
 <script setup lang="ts">
 import type { SkillSummary } from '@/features/skills/api/skillTypes'
 
 /**
- * Candidate menu for the "/" skill picker: bounded list of enabled skills
- * (name + description). Purely presentational — selection and highlighting
- * state come from the host via props/events.
+ * "/"技能选择器的候选菜单:有界数量的已启用技能列表(名称 + 描述)。
+ * 纯展示——选中与高亮状态由宿主通过 props/事件提供。
  */
 defineProps<{
   items: SkillSummary[]

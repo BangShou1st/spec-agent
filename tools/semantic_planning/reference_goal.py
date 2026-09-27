@@ -1,11 +1,13 @@
-"""G1-G5 reference goal derivation (harness-computed, deterministic).
+"""文件名:reference_goal.py
 
-Reads ONLY pre-flag observables from the frozen model input:
-effectiveClaims (+patch claims), capabilityResults. Never reads model
-flags, reason codes, mapping outcomes, or benchmark expected labels.
+G1-G5 参考目标推导(harness 计算,确定性)。
 
-Rules are disjoint by construction; evaluation order cannot change the
-result. Versioned for manifest provenance.
+只读取冻结模型输入中"打分前"的可观察量:effectiveClaims
+(含 patch claims)与 capabilityResults。绝不读取模型标志、
+reason codes、映射结果或基准期望标签。
+
+各规则按构造互斥;求值顺序不影响结果。带版本号,便于
+manifest 溯源。
 """
 from __future__ import annotations
 
@@ -64,7 +66,7 @@ def _conf(claim: dict) -> float:
 
 
 def derive_reference_goal_type(model_input: dict) -> str:
-    """Mechanical G1-G5 derivation. Total: every input maps to one goal."""
+    """机械执行 G1-G5 推导。完备:每个输入都映射到唯一目标。"""
     claims = list(_iter_all_claims(model_input or {}))
     if not claims:
         return "UNDERSTAND_USER_INTENT"  # G1
@@ -77,4 +79,4 @@ def derive_reference_goal_type(model_input: dict) -> str:
     if any(_get(c, "status") == "confirmed" and _conf(c) >= CONF_THRESHOLD
            for c in claims):
         return "PRODUCE_DIRECT_RESPONSE"  # G4
-    return "UNDERSTAND_USER_INTENT"  # G5 fail-safe fallback
+    return "UNDERSTAND_USER_INTENT"  # G5 兜底回退

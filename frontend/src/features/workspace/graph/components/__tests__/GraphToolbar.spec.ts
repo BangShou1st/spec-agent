@@ -1,3 +1,5 @@
+// 文件名:GraphToolbar.spec.ts
+// 用途:GraphToolbar 单元测试:验证高频控件常驻、低频控件收进溢出菜单,以及浮动窗口按钮已被移除。
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia } from 'pinia'

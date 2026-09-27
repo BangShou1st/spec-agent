@@ -6,13 +6,12 @@ import org.springframework.stereotype.Component;
 import java.util.UUID;
 
 /**
- * Thin implementation of the graph-consumed {@link AnswerExistencePort} on top
- * of {@link AnswerRepository}.
+ * 文件名:AnswerExistencePortAdapter.java
  *
- * <p>It adds no logic of its own: existence is the existing
- * {@code existsByNodeId} statement and nothing else. Its only job is to keep
- * the port's dependency direction intact, so the graph package never imports
- * the answer package.
+ * 用途:供 graph 包消费的 {@link AnswerExistencePort} 的薄适配器,底层委托
+ * {@link AnswerRepository} 实现。自身不附加任何逻辑:存在性判断就是既有的
+ * {@code existsByNodeId} 查询。它存在的唯一意义是维持端口依赖方向——graph 包
+ * 永远不直接 import answer 包,避免包间耦合成环。
  */
 @Component
 public class AnswerExistencePortAdapter implements AnswerExistencePort {

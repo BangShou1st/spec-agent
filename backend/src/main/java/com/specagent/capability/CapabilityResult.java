@@ -5,9 +5,19 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Typed result of one capability invocation. Results are observations with
- * provenance — they enter later decision cycles as external evidence and are
- * never auto-confirmed graph truth.
+ * 文件名:CapabilityResult.java
+ *
+ * 用途:一次能力调用后的带类型结果。结果是带有溯源(provenance)的观测——
+ * 它们作为外部证据进入后续决策周期,永远不会被自动确认为图谱事实(graph truth)。
+ *
+ * @param invocationId  调用唯一 ID
+ * @param invocationKey 幂等键
+ * @param capabilityId  执行的能力标识
+ * @param status        调用状态
+ * @param content       结果内容
+ * @param sourceRefs    来源引用
+ * @param provenance    溯源信息
+ * @param warnings      警告信息
  */
 public record CapabilityResult(
         UUID invocationId,
@@ -20,10 +30,9 @@ public record CapabilityResult(
         List<String> warnings) {
 
     /**
-     * Lifecycle of one invocation. {@code RUNNING} is the persisted claimed-
-     * but-unfinished state; {@code IN_PROGRESS} is the typed runtime answer
-     * given to callers who arrive while an invocation is still running — it
-     * is deliberately not a replay and never carries fabricated content.
+     * 一次调用的生命周期。{@code RUNNING} 是持久化中"已认领但未完成"的状态;
+     * {@code IN_PROGRESS} 是运行时返回给"调用仍在进行中"的后续调用方的带类型应答——
+     * 它刻意不是重放,也绝不携带编造的内容。
      */
     public enum Status { SUCCEEDED, FAILED, REPLAYED, RUNNING, IN_PROGRESS }
 

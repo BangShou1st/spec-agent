@@ -1,7 +1,13 @@
 package com.specagent.assistant.conversation;
 
 /**
- * Frozen public event types. Canonical names only; no synonyms.
+ * 文件名:GlobalAssistantEventType.java
+ *
+ * 用途:冻结的公共事件类型常量表,定义 SSE 事件流上所有事件名的
+ * 规范写法(RUN_STARTED、ASSISTANT_DELTA、TOOL_COMPLETED 等)。
+ *
+ * 角色:conversation 包的事件词汇表,前端与后端都只认这里的
+ * 规范名称,不允许任何同义变体。
  */
 public final class GlobalAssistantEventType {
     private GlobalAssistantEventType() {

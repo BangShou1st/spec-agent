@@ -25,9 +25,11 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Connection management API closure: every lifecycle step is reachable
- * through product-level connectionId alone. No test reads the internal
- * row UUID as an API prerequisite. Secrets never appear in responses.
+ * 文件名:ConnectionControllerIntegrationTest.java
+ *
+ * 测试目标:验证连接管理 API 的完整闭环——每个生命周期步骤都仅凭产品级
+ * 的 connectionId 即可触达,任何用例都不读取内部行 UUID 作为前置条件;
+ * 密钥绝不出现在响应中。
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @Import(SdkFakeMcpServerConfig.class)
@@ -284,18 +286,17 @@ class ConnectionControllerIntegrationTest {
     }
 
     /**
-     * Issue #14 error-contract regression: MCP asset access rejections throw
-     * the MCP-owned exception internally, but the public contract must stay
-     * byte-for-byte the historical one — 400 CONNECTION_COMMAND_REJECTED for
-     * not-visible connections and unexposed resources, 404
-     * CONNECTION_NOT_FOUND for unknown connections, never 500/UNKNOWN_ERROR.
+     * Issue #14 错误契约回归:MCP 资产访问被拒时内部抛出的是 MCP 自己的
+     * 异常,但对外契约必须与历史版本逐字节一致——不可见的连接和未暴露的
+     * 资源返回 400 CONNECTION_COMMAND_REJECTED,未知连接返回 404
+     * CONNECTION_NOT_FOUND,绝不出现 500/UNKNOWN_ERROR。
      */
     @SuppressWarnings("unchecked")
     @Test
     void mcpAssetRejectionsKeepTheHistoricalPublicContract() {
         String connectionId = createConnection("contract-mcp", fakeServerUrl, null);
 
-        // Never tested/connected -> not agent-visible -> 400 rejected.
+        // 从未 test/connect -> 对 agent 不可见 -> 400 拒绝。
         ResponseEntity<Map> resources = rest.getForEntity(
                 "/api/v1/connections/" + connectionId + "/resources", Map.class);
         assertThat(resources.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
@@ -306,8 +307,7 @@ class ConnectionControllerIntegrationTest {
         assertThat(prompts.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(String.valueOf(prompts.getBody())).contains("CONNECTION_COMMAND_REJECTED");
 
-        // Visible after connect+enable: unknown resource URI still fails
-        // closed with the same rejected contract.
+        // connect+enable 之后可见:未知资源 URI 仍以同样的拒绝契约快速失败。
         assertThat(rest.postForEntity("/api/v1/connections/" + connectionId + "/connect", null, Map.class)
                 .getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(rest.postForEntity("/api/v1/connections/" + connectionId + "/enable", null, Void.class)
@@ -317,7 +317,7 @@ class ConnectionControllerIntegrationTest {
         assertThat(unknownUri.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(String.valueOf(unknownUri.getBody())).contains("CONNECTION_COMMAND_REJECTED");
 
-        // Unknown connection stays 404 CONNECTION_NOT_FOUND on every facet.
+        // 未知连接在任何方面都保持 404 CONNECTION_NOT_FOUND。
         ResponseEntity<Map> unknownRead = rest.getForEntity(
                 "/api/v1/connections/conn_doesnotexist2/resources/read?uri=docs://guide", Map.class);
         assertThat(unknownRead.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);

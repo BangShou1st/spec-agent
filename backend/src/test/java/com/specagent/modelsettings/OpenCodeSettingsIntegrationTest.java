@@ -19,6 +19,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.when;
 
+/**
+ * 文件名:OpenCodeSettingsIntegrationTest.java
+ *
+ * 测试目标:对 OpenCodeSettingsService 做服务层集成测试:probe 只发现免费模型
+ * 不持久化候选键;save 重新校验凭证与模型并原子持久化(toString 不泄漏明文 Key);
+ * 校验失败时保留原有可用设置;已保存 Key 可列出模型并免重提交地切换模型,
+ * 切换失败时保持既有配置不变。
+ */
 @SpringBootTest
 @ActiveProfiles("test")
 class OpenCodeSettingsIntegrationTest {

@@ -5,12 +5,12 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * E07 — Conflict (P2 corpus).
+ * 文件名:E07ConflictTest.java
  *
- * <p>Variant A (unresolved): incompatible demands must enter explicit
- * resolution (REQUEST_USER_INPUT), never a silent priority choice.
- * Variant B (resolved, E07-resolved): the user already made the
- * tradeoff, so the agent must converge without re-asking.
+ * 测试目标:E07——冲突(P2 语料)。变体 A(未解决):互斥诉求必须进入显式
+ * 澄清流程(REQUEST_USER_INPUT),绝不静默做优先级取舍。变体 B(已解决,
+ * E07-resolved):用户已做出权衡,agent 必须收敛,不得再次追问。
+ * 各变体均包含同义改写(paraphrase)版本。
  */
 class E07ConflictTest extends EvalHarnessBase {
 

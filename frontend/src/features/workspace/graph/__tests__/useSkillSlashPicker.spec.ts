@@ -1,3 +1,5 @@
+// 文件名:useSkillSlashPicker.spec.ts
+// 用途:"/"技能斜杠选择器 composable 的单元测试:验证 token 检测与打开条件、禁用技能过滤、提及替换与光标位置、键盘循环导航。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useSkillSlashPicker } from '@/features/workspace/graph/useSkillSlashPicker'
@@ -58,7 +60,7 @@ describe('useSkillSlashPicker', () => {
     const picker = pickerWith([BRAINSTORM, DISABLED])
     expect(picker.syncWithCaret('写个想法 /br', 8)).toEqual({ start: 5, query: 'br' })
     expect(picker.open.value).toBe(true)
-    // Disabled skills never become candidates.
+    // 禁用的技能绝不成为候选。
     expect(picker.filtered.value.map((skill) => skill.skillId)).toEqual(['brainstorm'])
   })
 
@@ -79,11 +81,11 @@ describe('useSkillSlashPicker', () => {
   it('replaces the token with a mention and moves the caret past it', () => {
     const picker = pickerWith([BRAINSTORM])
     const text = '想法 /bra 继续写'
-    // Caret sits right after "/bra" (index 7), before the trailing space.
+    // 光标在 "/bra" 之后(下标 7),位于结尾空格之前。
     picker.syncWithCaret(text, 7)
     const applied = picker.applySkill(text, 7, BRAINSTORM)
     expect(applied.text).toBe('想法 @skill/brainstorming 继续写')
-    // Caret lands right after the mention, before the pre-existing space.
+    // 光标落在提及之后、原有空格之前。
     expect(applied.caret).toBe('想法 @skill/brainstorming'.length)
   })
 

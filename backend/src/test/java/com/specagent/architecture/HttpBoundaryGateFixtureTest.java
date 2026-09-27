@@ -11,14 +11,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
 /**
- * Effectiveness proof for the HTTP boundary gates: synthetic fixtures
- * (package {@code archfixture}, deliberately OUTSIDE com.specagent so the
- * production rules never see them) demonstrate that both rules actually
- * reject the violations they are supposed to catch, and that the
- * orchestration role is exempt where intended.
+ * 文件名:HttpBoundaryGateFixtureTest.java
  *
- * <p>The fixtures import real production model types so the model-internals
- * rule is exercised against the true package predicate.
+ * 测试目标:证明 HTTP 边界门禁真实有效。合成夹具(位于 {@code archfixture}
+ * 包,刻意放在 com.specagent 之外,使生产规则平时看不到它们)验证两条规则
+ * 确实会拒绝它们应该捕获的违规,且编排角色在预期范围内豁免。
+ *
+ * 夹具引用了真实的生产模型类型,使"模型内部类型"规则在真实的包谓词下得到检验。
  */
 class HttpBoundaryGateFixtureTest {
 
@@ -35,7 +34,7 @@ class HttpBoundaryGateFixtureTest {
         assertThat(violation.getMessage())
                 .contains("SampleCoreService")
                 .contains("SampleCreateProjectRequest");
-        // the orchestration role must NOT be flagged: it may reference HTTP DTOs
+        // 编排角色不应被标记:它允许引用 HTTP DTO
         assertThat(violation.getMessage())
                 .as("orchestration role is exempt from the core rule")
                 .doesNotContain("SampleOrchestrationCommandService");
@@ -51,7 +50,7 @@ class HttpBoundaryGateFixtureTest {
         assertThat(violation.getMessage())
                 .contains("SampleLeakyResponse")
                 .contains("ModelOutputContract");
-        // the plain controller must NOT be flagged: it only references its own DTOs
+        // 普通控制器不应被标记:它只引用自己的 DTO
         assertThat(violation.getMessage())
                 .as("the controller itself stays clean")
                 .doesNotContain("SampleProjectController.java:");
@@ -59,9 +58,8 @@ class HttpBoundaryGateFixtureTest {
 
     @Test
     void fixtureSetupCoversBothRules() {
-        // Guard the fixtures themselves: the DTO role must have picked up both
-        // Request and Response fixtures via the controller reference, otherwise
-        // the rejection tests above would pass vacuously.
+        // 守护夹具本身:DTO 角色必须已通过控制器引用识别出 Request 与 Response
+        // 两个夹具,否则上面的拒绝测试会空洞通过。
         JavaClasses classes = FIXTURES;
         assertThat(ArchitectureTests.httpOnlyDtoRole(classes).test(
                 classes.get(SampleCreateProjectRequest.class))).isTrue();

@@ -1,3 +1,5 @@
+// 文件名:ConfirmRouteActionDialog.spec.ts
+// 用途:ConfirmRouteActionDialog 组件单元测试,验证路线归档/删除确认文案、软删除提示与按钮禁用逻辑。
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import ConfirmRouteActionDialog from '@/features/workspace/components/ConfirmRouteActionDialog.vue'

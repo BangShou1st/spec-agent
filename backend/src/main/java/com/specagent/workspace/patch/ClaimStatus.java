@@ -1,10 +1,11 @@
 package com.specagent.workspace.patch;
 
 /**
- * Grounding status of a requirement claim.
+ * 文件名:ClaimStatus.java
  *
- * <p>Unsupported model output must be labeled {@code ASSUMED}, {@code UNRESOLVED},
- * or {@code REJECTED}, never {@code CONFIRMED} without a source reference.
+ * 用途:需求 claim 的"落地"状态。没有来源引用支撑的模型输出必须
+ * 被标记为 {@code ASSUMED}、{@code UNRESOLVED} 或 {@code REJECTED},
+ * 绝不能无来源地标记为 {@code CONFIRMED}。
  */
 public enum ClaimStatus {
     CONFIRMED,

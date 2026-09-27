@@ -14,7 +14,14 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Prompt V3 shape tests: principles, not full-string snapshots.
+ * 文件名:GlobalAssistantPromptV3Test.java
+ *
+ * 测试目标:提示词 V3 的形态测试——校验原则要点而非整串快照。
+ * 覆盖场景:版本号为 v3、skill 事实必须经工具佐证、四种决策类型齐全、
+ * 无遗留决策字段、禁止把 PROJECTS 当兜底导航、候选提示非规范化、
+ * 禁止虚构动作话术、单一主下一步、不含基准测试示例与模型特定指令、
+ * PROJECT 导航必须携带 resourceId 而其他目的地禁止携带、
+ * NAVIGATE 的 assistantText 可选。
  */
 @SpringBootTest
 @ActiveProfiles("test")

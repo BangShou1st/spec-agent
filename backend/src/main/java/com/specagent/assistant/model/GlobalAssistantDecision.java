@@ -3,8 +3,11 @@ package com.specagent.assistant.model;
 import java.util.Map;
 
 /**
- * Discriminated decision contract V2. Exactly one decision kind per model
- * output. No combinatorial flags.
+ * 文件名:GlobalAssistantDecision.java
+ *
+ * 用途:V2 版的判别式决策契约——模型每输出一次,恰好对应一种决策类型
+ * (调用工具 / 澄清 / 导航 / 最终回答),用 kind 区分而不是堆组合开关。
+ * 这是模型输出的结构化落点,后续由解析器还原、由校验器把关。
  */
 public record GlobalAssistantDecision(
         DecisionKind kind,

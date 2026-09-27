@@ -23,11 +23,16 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Contextual AI query command surface ("ask AI about this node").
+ * 文件名:NodeQueryRunController.java
  *
- * <p>POST enqueues an async NODE_QUERY run (202 + runId); the worker executes
- * exactly one DECISION call. The route is explicit — a shared node never
- * falls back to an active/first/latest route to resolve its read context.
+ * 用途:"针对节点问 AI"的上下文查询命令面。
+ *
+ * POST 入队一个异步 NODE_QUERY run(返回 202 + runId);worker 恰好执行
+ * 一次 DECISION 调用。路由必须显式给出——共享节点绝不回退到
+ * 活动/第一个/最新的路由来解析其读取上下文。
+ *
+ * 协作:由前端 Inspector 调用;查询结果视图由本控制器的
+ * queryResultView 组装,含提案状态与语义化的终态。
  */
 @RestController
 @RequestMapping("/api/v1/projects/{projectId}/nodes/{nodeId}/query")
@@ -70,9 +75,8 @@ public class NodeQueryRunController {
         return agentRunService.getRun(runId)
                 .filter(run -> run.projectId().equals(projectId))
                 .filter(run -> run.triggerType().code().equals("node_query"))
-                // The run must target the requested node. A node_query run whose
-                // inputNodeId does not match (or is null) must not be served for
-                // a different node — fail closed with 404.
+                // 该 run 必须指向请求的节点。inputNodeId 不匹配(或为 null)的
+                // node_query run 绝不能被提供给其他节点——fail-closed 返回 404。
                 .filter(run -> nodeId.equals(run.inputNodeId()))
                 .<ResponseEntity<?>>map(run -> ResponseEntity.ok(queryResultView(run)))
                 .orElse(ResponseEntity.notFound().build());
@@ -85,10 +89,9 @@ public class NodeQueryRunController {
                 ? null : run.producedNodeId().toString());
         view.put("message", respondMessage(run.id()));
 
-        // Surface the advisory proposal produced by this run, if the query was
-        // downgraded to an awaiting-approval action. Read-only runs have none.
-        // The semantic status reflects the proposal lifecycle so the frontend can
-        // render the awaiting/accepted/rejected UI (B3 closure).
+        // 如果查询被降级为等待批准的动作,则把本 run 产出的 advisory 提案
+        // 暴露出来。只读 run 没有提案。语义化状态反映提案生命周期,
+        // 供前端渲染 awaiting/accepted/rejected 界面(B3 收尾)。
         var proposal = proposalService.findByRunId(run.id());
         if (proposal.isPresent()) {
             var p = proposal.get();
@@ -104,11 +107,9 @@ public class NodeQueryRunController {
             return view;
         }
 
-        // No proposal: the terminal outcome is derived from DURABLE runtime
-        // event evidence, never from a human-readable trace string. A query
-        // run whose proposal was denied by policy, or whose mutation action
-        // was not confirmable, keeps its semantic outcome instead of
-        // collapsing into COMPLETED.
+        // 无提案时:终态从 DURABLE 的 runtime 事件证据推导,绝不依赖人类可读的
+        // trace 字符串。提案被策略拒绝、或变更动作无法确认的查询 run,
+        // 保留其语义化结果,而不是坍缩成 COMPLETED。
         List<AgentRunEvent> events = eventService.findByRunId(run.id());
         boolean policyDenied = events.stream()
                 .anyMatch(e -> AgentRunEventTypes.POLICY_DENIED_EVENT.equals(e.eventType()));
@@ -124,9 +125,8 @@ public class NodeQueryRunController {
         } else if (run.status() == AgentRunStatus.FAILED) {
             view.put("status", "FAILED");
         } else {
-            // Run status codes are lowercase in the domain model; the query
-            // result contract uses the uppercase frontend casing for terminal
-            // run states (the semantic statuses above are already uppercase).
+            // 领域模型中的 run 状态码是小写;查询结果契约对终态 run 状态
+            // 使用大写的前端命名(上面那些语义化状态本身就是大写)。
             view.put("status", run.status().code().toUpperCase());
         }
         return view;

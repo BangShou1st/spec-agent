@@ -29,10 +29,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Re-answer under the final product model: it creates a NEW canonical
- * Question Node. The old Question and its immutable Answer stay untouched on
- * the source route; the inherited prefix freezes only the answers strictly
- * before the old target; the new Question starts the re-answer route waiting.
+ * 文件名:RouteReanswerApiIntegrationTest.java
+ *
+ * 测试目标:最终产品模型下的重新回答——它会创建一个新的权威 Question
+ * 节点。旧 Question 及其不可变回答在源路线上保持不变;继承前缀只冻结严格
+ * 早于旧目标的回答;新 Question 在重新回答路线上处于等待回答状态。
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -65,13 +66,12 @@ class RouteReanswerApiIntegrationTest {
         draftDriver.draftQuestion(project.id());
         answerDriver.submitFreeText(project.id(), "Root answer");
         var targetRun = answerDriver.submitFreeText(project.id(), "Original answer");
-        // The run records the answered node as its input; re-answer that node.
+        // 该 run 将被回答的节点记录为其输入;对那个节点重新回答。
         Node target = nodeRepository.findById(targetRun.run().inputNodeId()).orElseThrow();
         UUID sourceRouteId = targetRun.run().routeId();
         UUID oldAnswerId = targetRun.answerId();
         UUID oldParentId = target.parentNodeId();
-        // Source tip before re-answer (the run may have advanced past the
-        // target by drafting the next question).
+        // 重新回答之前的源 tip(run 可能已通过起草下一个问题越过目标)。
         UUID sourceTipBefore = routeService.getRoute(sourceRouteId).orElseThrow().tipNodeId();
 
         mockMvc.perform(post("/api/v1/projects/{projectId}/nodes/{nodeId}/reanswer",
@@ -90,25 +90,25 @@ class RouteReanswerApiIntegrationTest {
         UUID reanswerRouteId = projectService.getProject(project.id()).orElseThrow().activeRouteId();
         Route reanswer = routeService.getRoute(reanswerRouteId).orElseThrow();
 
-        // 1. New Question Node identity: tip is a NEW node, never the old one.
+        // 1. 新的 Question 节点身份:tip 是一个新节点,绝不是旧节点。
         assertThat(reanswer.tipNodeId()).isNotEqualTo(target.id());
         Node newQuestion = nodeRepository.findById(reanswer.tipNodeId()).orElseThrow();
         assertThat(newQuestion.kind().code()).isEqualTo("INTERACTION");
         assertThat(newQuestion.subtype()).isEqualTo("QUESTION");
-        // 2. Copied question/purpose/options.
+        // 2. 问题/目的/选项被拷贝。
         assertThat(newQuestion.question()).isEqualTo(target.question());
         assertThat(newQuestion.purpose()).isEqualTo(target.purpose());
         assertThat(newQuestion.options()).hasSize(target.options().size());
         assertThat(newQuestion.allowFreeAnswer()).isEqualTo(target.allowFreeAnswer());
-        // 3. Parent is the old target's parent.
+        // 3. 父节点是旧目标的父节点。
         assertThat(newQuestion.parentNodeId()).isEqualTo(oldParentId);
-        // 4. Inherited prefix excludes the old target answer.
+        // 4. 继承前缀排除旧目标的回答。
         assertThat(inheritedAnswerRepository.findByBranchRouteId(reanswer.id()))
                 .extracting(RouteInheritedAnswer::nodeId)
                 .doesNotContain(target.id());
         assertThat(answerRepository.findByRouteAndNodeIds(reanswer.id(),
                 List.of(reanswer.tipNodeId()))).isEmpty();
-        // 5. Source route unchanged: tip and old Question/Answer untouched.
+        // 5. 源路线不变:tip 与旧 Question/Answer 未被触碰。
         assertThat(answerRepository.findById(oldAnswerId).orElseThrow().routeId())
                 .isEqualTo(sourceRouteId);
         assertThat(nodeRepository.findById(target.id()).orElseThrow().isRetracted()).isFalse();
@@ -137,7 +137,7 @@ class RouteReanswerApiIntegrationTest {
         UUID reanswerRouteId = projectService.getProject(project.id()).orElseThrow().activeRouteId();
         Route reanswer = routeService.getRoute(reanswerRouteId).orElseThrow();
         assertThat(reanswer.tipNodeId()).isNotEqualTo(root.id());
-        // Root re-answer: the new Question is a fresh root (no parent).
+        // 根节点重新回答:新 Question 是全新根(无父节点)。
         Node newRoot = nodeRepository.findById(reanswer.tipNodeId()).orElseThrow();
         assertThat(newRoot.parentNodeId()).isNull();
         assertThat(newRoot.question()).isEqualTo(root.question());

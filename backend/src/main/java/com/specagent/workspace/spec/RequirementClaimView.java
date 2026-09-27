@@ -5,11 +5,11 @@ import com.specagent.workspace.patch.Claim;
 import java.util.UUID;
 
 /**
- * Safe read-model projection of one requirement claim.
+ * 文件名:RequirementClaimView.java
  *
- * <p>Exposes content and runtime-grounded provenance only. The runtime-owned
- * claim id, persistence metadata, prompts, and model payloads are never
- * exposed; the claim is derived state, not source of truth.
+ * 用途:单条需求 claim 的安全读模型投影,面向前端展示。只暴露内容与基于
+ * 运行时的溯源信息(source 节点/回答);运行时持有的 claim id、持久化元数据、
+ * 提示词与模型负载一律不外露。claim 是派生状态,不是事实源。
  */
 public record RequirementClaimView(
         String kind,

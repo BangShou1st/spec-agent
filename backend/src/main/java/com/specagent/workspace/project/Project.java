@@ -4,10 +4,11 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * Requirement exploration workspace.
+ * 文件名:Project.java
  *
- * <p>{@code activeRouteId} is the current working focus. It is not the same thing
- * as a route's lifecycle status; there is no {@code active} route status.
+ * 用途:需求探索工作区(项目)聚合。{@code activeRouteId} 表示当前的
+ * 工作焦点;它与路线的生命周期状态不是一回事,不存在 {@code active}
+ * 这样的路线状态。
  */
 public class Project {
 

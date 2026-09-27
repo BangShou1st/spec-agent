@@ -13,10 +13,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Route resolution for the Skill git import. The JVM default is direct, so a
- * host whose browser reaches git through a local proxy fails with a bare
- * TransportException; AUTO closes that gap without a code path that can
- * silently reroute a correctly working direct connection.
+ * 文件名:GitTransportProxyTest.java
+ *
+ * 测试目标:验证 Skill git 导入的代理路由解析。JVM 默认是直连,因此
+ * 浏览器通过本地代理访问 git 的主机在裸 TransportException 下会失败;
+ * AUTO 模式补上这一空档,同时不存在会静默改道原本正常直连的代码路径。
  */
 class GitTransportProxyTest {
 
@@ -45,16 +46,15 @@ class GitTransportProxyTest {
 
         GitTransportProxy.Route direct = GitTransportProxy.resolve(
                 GitTransportProxy.MODE_AUTO, NO_ENV, NO_LOCAL_PROXY);
-        // A null selector means "leave the JVM default alone": no rerouting.
+        // selector 为 null 表示"保持 JVM 默认":不做任何改道。
         assertThat(direct.selector()).isNull();
         assertThat(direct.description()).contains("direct");
     }
 
     @Test
     void autoPrefersTheWindowsSystemProxyBeforeLocalPortProbing() {
-        // The system proxy is the browser's own setting, so it must win over
-        // the well-known-port guesswork — a browser-configured proxy on an
-        // unusual port still routes the clone.
+        // 系统代理是浏览器自己的设置,因此必须优先于常见端口猜测——
+        // 即使浏览器把代理配置在非常规端口上,clone 也应能路由成功。
         GitTransportProxy.Route route = GitTransportProxy.resolve(
                 GitTransportProxy.MODE_AUTO, NO_ENV, port -> port == 7897,
                 () -> "127.0.0.1:7899");
@@ -84,7 +84,7 @@ class GitTransportProxyTest {
                 + "    ProxyServer    REG_SZ    http=127.0.0.1:10809;https=127.0.0.1:10810;ftp=127.0.0.1:10811\n";
         assertThat(GitTransportProxy.parseRegistryProxy(perProtocol)).isEqualTo("127.0.0.1:10810");
 
-        // Disabled proxy: never reports a route even with a server value present.
+        // 代理已禁用:即使存在 server 值也绝不报告路由。
         String disabled = "    ProxyEnable    REG_DWORD    0x0\n"
                 + "    ProxyServer    REG_SZ    127.0.0.1:7897\n";
         assertThat(GitTransportProxy.parseRegistryProxy(disabled)).isNull();

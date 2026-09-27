@@ -42,11 +42,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Frozen ContextSnapshot integrity: once a ContextSnapshot has been projected
- * into the model-facing {@code AgentInputSnapshot}, retrying the SAME snapshot
- * must replay the exact same semantic model input — never a live rebuild over
- * mutable node bodies, related-node bodies, route labels, or capability
- * results. New snapshots may see the new live state; old ones never do.
+ * 文件名:AgentInputFrozenProjectionIntegrationTest.java
+ *
+ * 测试目标:冻结 ContextSnapshot 的完整性——一个 ContextSnapshot 一旦投影为面向模型的
+ * {@code AgentInputSnapshot},对同一快照的重试必须重放完全相同的语义模型输入,绝不基于
+ * 可变的节点正文、相关节点正文、路线标签或能力结果做实时重建。新快照可以看到新的实时
+ * 状态,旧快照永远看不到。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -66,10 +67,9 @@ class AgentInputFrozenProjectionIntegrationTest {
                             false, SideEffectClass.LOCAL_DURABLE, List.of(), List.of());
                 }
 
-                // Lineage visibility requires attributable observations: the probe
-                // echoes node refs from its arguments into source refs so the
-                // late result belongs to the query lineage. Rows with no run and
-                // no refs stay hidden fail-closed (see the lineage visibility test).
+                // lineage 可见性要求观察可归因:探针把参数中的节点引用回显到
+                // source refs,让迟到的结果归属到查询 lineage。没有 run 也没有
+                // 引用的行保持隐藏(fail-closed,见 lineage 可见性测试)。
                 @Override
                 public CapabilityResult invoke(CapabilityInvocation invocation) {
                     return new CapabilityResult(invocation.invocationId(),
@@ -118,12 +118,9 @@ class AgentInputFrozenProjectionIntegrationTest {
     @Autowired private com.specagent.workspace.node.NodeService nodeService;
 
     /**
-     * T4 — post-STATE_UPDATE distinct freeze: the pre-answer snapshot X and
-     * the post-state snapshot Y are different identities with different frozen
-     * projections, and the DECISION-side projection Y exposes the just
-     * persisted patch claims — including an unresolved conflict claim, so
-     * Conflict Intelligence keeps its causal visibility into the DECISION
-     * input.
+     * T4——STATE_UPDATE 之后的区分冻结:答案前快照 X 与状态后快照 Y 是不同身份、
+     * 不同冻结投影;DECISION 侧投影 Y 暴露刚持久化的补丁 claims——包括未解决的
+     * 冲突 claim,让 Conflict Intelligence 对 DECISION 输入保持因果可见性。
      */
     @Test
     void postStateSnapshotIsADistinctFreezeCarryingPersistedClaims() {
@@ -132,14 +129,13 @@ class AgentInputFrozenProjectionIntegrationTest {
         Node question = nodeService.createRootNode(project.id(), routeId,
                 "最重要的目标是什么？", null, List.of(), true);
 
-        // Pre-answer snapshot X: the STATE_UPDATE-side context.
+        // 答案前快照 X:STATE_UPDATE 侧的上下文。
         ContextSnapshot preState = contextBuilder.buildFromActiveRoute(
                 project.id(), UUID.randomUUID(), ContextOperationType.NORMAL);
         AgentInputSnapshot preProjection = snapshotBuilder.build(preState);
 
-        // STATE_UPDATE checkpoint: persist the immutable answer and its patch,
-        // including an unresolved conflict claim exactly as Conflict
-        // Intelligence produces them.
+        // STATE_UPDATE 检查点:持久化不可变答案及其补丁,其中包含一个未解决的
+        // 冲突 claim,与 Conflict Intelligence 的产出方式一致。
         com.specagent.workspace.answer.Answer answer = answerService.finalizeAnswer(
                 project.id(), routeId, question.id(), null, "A 目标优先于 B", "user");
         Claim conflict = Claim.of(ClaimKind.CONFLICT, "A 与 B 在同一时间窗内不能同时成立",
@@ -147,8 +143,8 @@ class AgentInputFrozenProjectionIntegrationTest {
         answerPatchService.save(project.id(), routeId, question.id(), answer.id(),
                 List.of(conflict), null);
 
-        // Post-state snapshot Y: a distinct identity that the DECISION call
-        // must read; its frozen projection carries the persisted conflict.
+        // 状态后快照 Y:DECISION 调用必须读取的另一个身份;
+        // 它的冻结投影携带已持久化的冲突。
         ContextSnapshot postState = contextBuilder.buildForRoute(
                 project.id(), routeId, question.id(), UUID.randomUUID(),
                 ContextOperationType.NORMAL);
@@ -161,16 +157,14 @@ class AgentInputFrozenProjectionIntegrationTest {
             assertThat(claim.status()).isEqualTo("unresolved");
         });
 
-        // Replaying X stays frozen: it never absorbs the post-state claims.
+        // 重放 X 保持冻结:它绝不吸收状态后的 claims。
         assertThat(snapshotBuilder.build(preState)).isEqualTo(preProjection);
         assertThat(snapshotBuilder.build(preState).effectiveClaims())
                 .noneSatisfy(claim -> assertThat(claim.kind()).isEqualTo("conflict"));
     }
     /**
-     * T1 — same-ContextSnapshot reproducibility over a mutable LINEAGE node
-     * body: the anchor of the query context is an editable user draft, so a
-     * live rebuild would pick up the edited body. The frozen projection must
-     * not.
+     * T1——同一 ContextSnapshot 对可变 LINEAGE 节点正文的重放稳定性:查询上下文的
+     * 锚点是可编辑的用户草稿,实时重建会读到编辑后的正文;冻结投影绝不能。
      */
     @Test
     void sameSnapshotReplaysFrozenProjectionAfterLineageNodeBodyMutation() {
@@ -195,7 +189,7 @@ class AgentInputFrozenProjectionIntegrationTest {
         assertThat(replayed.contextHash()).isEqualTo(first.contextHash());
         assertThat(replayed.snapshotId()).isEqualTo(first.snapshotId());
 
-        // A NEW snapshot may legitimately see the new live body.
+        // 新快照可以合法地看到新的实时正文。
         AgentInputSnapshot fresh = snapshotBuilder.build(contextBuilder.buildForNodeQuery(
                 project.id(), routeId, draft.id(), "这个节点说了什么？"));
         assertThat(fresh.snapshotId()).isNotEqualTo(first.snapshotId());
@@ -203,10 +197,8 @@ class AgentInputFrozenProjectionIntegrationTest {
     }
 
     /**
-     * T2 — related-node reproducibility: a route-bound NODE_QUERY freeze sees
-     * the related Knowledge draft body "before"; editing the draft afterwards
-     * must not change the replayed projection, while a new snapshot reads
-     * "after".
+     * T2——相关节点重放稳定性:路线绑定的 NODE_QUERY 冻结时看到相关 Knowledge
+     * 草稿正文 "before";之后编辑草稿不得改变重放投影,新快照则读到 "after"。
      */
     @Test
     void sameSnapshotReplaysRelatedNodeBodyFrozenAtFreezeTime() {
@@ -241,9 +233,8 @@ class AgentInputFrozenProjectionIntegrationTest {
     }
 
     /**
-     * T3 — capability observation reproducibility: results completed after a
-     * snapshot was frozen must not retroactively appear in its replayed
-     * projection; a new snapshot may include them.
+     * T3——能力观察重放稳定性:快照冻结之后才完成的结果不得追溯性地出现在
+     * 其重放投影中;新快照可以包含它们。
      */
     @Test
     void sameSnapshotExcludesCapabilityResultsCompletedAfterFreeze() {
@@ -274,9 +265,8 @@ class AgentInputFrozenProjectionIntegrationTest {
     }
 
     /**
-     * T6 — routeless NODE_QUERY stays frozen-safe: a floating node query
-     * (routeId = null) freezes and replays without reintroducing any
-     * route-required assumption.
+     * T6——无路线 NODE_QUERY 保持冻结安全:浮动节点查询(routeId = null)
+     * 冻结与重放都不重新引入任何"必须有路线"的假设。
      */
     @Test
     void routelessNodeQueryFreezesAndReplays() {
@@ -304,9 +294,8 @@ class AgentInputFrozenProjectionIntegrationTest {
     }
 
     /**
-     * Durable identity: exactly one frozen projection row per snapshot, bound
-     * to the snapshot identity, canonical version, byte-stable payload and a
-     * matching payload hash.
+     * 持久身份:每个快照恰好一行冻结投影,绑定快照身份、规范版本、
+     * 字节级稳定的载荷及匹配的载荷 hash。
      */
     @Test
     void frozenProjectionIsPersistedOnceWithVerifiableIdentity() {
@@ -338,16 +327,14 @@ class AgentInputFrozenProjectionIntegrationTest {
 
         assertThat(version).isEqualTo(AgentInputProjectionRepository.SUPPORTED_PROJECTION_VERSION);
         assertThat(payloadHash).isEqualTo(Hashes.sha256Hex(payload));
-        // The frozen payload is the canonical contract projection and parses
-        // back to the exact same semantic snapshot the builder returned.
+        // 冻结载荷是规范的契约投影,解析回来必须与构建器返回的语义快照完全一致。
         assertThat(AgentContracts.read(payload, AgentInputSnapshot.class)).isEqualTo(first);
         assertThat(payload).contains("\"snapshotId\":\"" + snapshot.id() + "\"");
     }
 
     /**
-     * T8 — tamper/malformed persistence fails closed: hash mismatch, an
-     * unsupported projection version, and malformed JSON must each raise a
-     * typed corruption failure — never a silent live rebuild.
+     * T8——篡改/畸形持久化 fail-closed:hash 不匹配、不支持的投影版本、畸形 JSON
+     * 各自必须抛出带类型的损坏失败——绝不静默转为实时重建。
      */
     @Test
     void tamperedOrUnsupportedFrozenPayloadFailsClosed() {
@@ -356,7 +343,7 @@ class AgentInputFrozenProjectionIntegrationTest {
         Node draft = graphCommandService.createRootDraftNode(project.id(), routeId,
                 "NOTE", Map.of("text", "audit"));
 
-        // 1. Hash mismatch (payload tampered after freeze).
+        // 1. hash 不匹配(冻结后载荷被篡改)。
         ContextSnapshot tampered = contextBuilder.buildForNodeQuery(
                 project.id(), routeId, draft.id(), "篡改-hash");
         snapshotBuilder.build(tampered);
@@ -368,7 +355,7 @@ class AgentInputFrozenProjectionIntegrationTest {
                 .hasMessageContaining("hash");
         assertThat(countProjections(tampered.id())).isEqualTo(1);
 
-        // 2. Unsupported projection version.
+        // 2. 不支持的投影版本。
         ContextSnapshot versioned = contextBuilder.buildForNodeQuery(
                 project.id(), routeId, draft.id(), "篡改-version");
         snapshotBuilder.build(versioned);
@@ -379,7 +366,7 @@ class AgentInputFrozenProjectionIntegrationTest {
                 .isInstanceOf(FrozenProjectionCorruptedException.class)
                 .hasMessageContaining("version");
 
-        // 3. Malformed JSON payload (hash-consistent, so parse must fail).
+        // 3. 畸形 JSON 载荷(hash 一致,所以必须在解析时失败)。
         ContextSnapshot malformed = contextBuilder.buildForNodeQuery(
                 project.id(), routeId, draft.id(), "篡改-json");
         snapshotBuilder.build(malformed);
@@ -391,7 +378,7 @@ class AgentInputFrozenProjectionIntegrationTest {
                 .isInstanceOf(FrozenProjectionCorruptedException.class)
                 .hasMessageContaining("parse");
 
-        // A still-identical sibling snapshot keeps working after the failures.
+        // 一个仍然完好的兄弟快照在这些失败之后继续正常工作。
         ContextSnapshot healthy = contextBuilder.buildForNodeQuery(
                 project.id(), routeId, draft.id(), "健康检查");
         assertThat(snapshotBuilder.build(healthy).lineage().get(0).node().body().text())
@@ -399,8 +386,7 @@ class AgentInputFrozenProjectionIntegrationTest {
     }
 
     /**
-     * Identity binding: a frozen row that belongs to a DIFFERENT snapshot
-     * identity must be rejected, not replayed.
+     * 身份绑定:属于另一个快照身份的冻结行必须被拒绝,而不能被重放。
      */
     @Test
     void frozenPayloadBoundToAnotherSnapshotIdentityFailsClosed() {

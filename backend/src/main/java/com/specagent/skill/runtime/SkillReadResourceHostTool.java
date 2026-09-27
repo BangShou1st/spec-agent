@@ -12,10 +12,11 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Host Function Tool {@code skill.read_resource}: reads one specific resource
- * of an activated Skill version with strict path containment and provenance.
- * Read-only, NONE side-effect class; binary assets are refused (phase one
- * serves text resources only).
+ * 文件名:SkillReadResourceHostTool.java
+ *
+ * 用途:Host Function Tool {@code skill.read_resource}:读取一个已激活
+ * Skill 版本的指定资源,执行严格的路径包含检查并附带溯源信息。只读、NONE
+ * 副作用等级;二进制资源一律拒绝(一期只提供文本资源)。
  */
 @Component
 public class SkillReadResourceHostTool implements InternalCapabilityAdapter {

@@ -7,8 +7,11 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Unit coverage for the live smoke environment gate. Pure logic: no database,
- * no network, no process environment mutation.
+ * 文件名:LiveSmokeEnvironmentTest.java
+ *
+ * 测试目标:live smoke 环境门禁的单元测试。纯逻辑校验:无数据库、
+ * 无网络、不改进程环境。覆盖 key 缺失、网关选择器错误/未设置、
+ * 非 -free 模型被拦截,以及环境齐全时放行、掩码永不泄露完整 key 等场景。
  */
 class LiveSmokeEnvironmentTest {
 
@@ -98,7 +101,7 @@ class LiveSmokeEnvironmentTest {
         assertThat(masked).hasSizeLessThan(key.length());
         assertThat(LiveSmokeEnvironment.maskSuffix(null)).isEqualTo("?");
         assertThat(LiveSmokeEnvironment.maskSuffix("   ")).isEqualTo("?");
-        // A short secret must not leak its full value.
+        // 短密钥绝不能泄漏其完整值。
         assertThat(LiveSmokeEnvironment.maskSuffix("abcd")).isEqualTo("?");
         assertThat(LiveSmokeEnvironment.maskSuffix("ab")).isEqualTo("?");
     }

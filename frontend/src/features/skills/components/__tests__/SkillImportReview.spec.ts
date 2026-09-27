@@ -1,3 +1,5 @@
+// 文件名:SkillImportReview.spec.ts
+// 用途:Skill 导入评审弹窗组件测试:验证名称/元信息/manifest 展示与安装、拒绝操作。
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import SkillImportReview from '@/features/skills/components/SkillImportReview.vue'

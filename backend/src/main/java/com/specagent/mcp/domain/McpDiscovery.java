@@ -4,9 +4,16 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Complete normalized discovery result for one MCP connection. This is the
- * only shape that leaves the {@code mcp} module — SDK classes never cross the
- * boundary.
+ * 文件名:McpDiscovery.java
+ *
+ * 用途:一个 MCP 连接的完整、规范化发现结果。这是唯一允许离开 {@code mcp}
+ * 模块的数据形态——SDK 类型绝不跨越该边界。
+ *
+ * @param serverInfo      Server 的信息描述
+ * @param protocolVersion 协议版本
+ * @param tools           发现的工具列表
+ * @param resources       发现的资源列表
+ * @param prompts         发现的提示列表
  */
 public record McpDiscovery(
         String serverInfo,

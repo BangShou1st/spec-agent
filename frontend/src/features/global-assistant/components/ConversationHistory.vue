@@ -1,3 +1,9 @@
+<!--
+  文件名:ConversationHistory.vue
+  用途:全局助手的"最近对话"历史列表:按时间段分组展示线程(标题/预览/相对时间),
+       支持切换会话、按条目菜单删除(带确认),任务运行中禁止切换与删除;
+       加载失败可重试。
+-->
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { GaThreadListItem } from '@/features/global-assistant/api/globalAssistant'

@@ -1,7 +1,9 @@
 package com.specagent.model.provider;
 
 /**
- * One chat message in the minimal OpenCode Zen completion payload.
+ * 文件名:OpenCodeChatMessage.java
+ *
+ * 用途:OpenCode Zen 最小化补全载荷中的一条聊天消息(role + content)。
  */
 public record OpenCodeChatMessage(String role, String content) {
 

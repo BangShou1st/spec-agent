@@ -1,8 +1,10 @@
 package com.specagent.connection;
 
 /**
- * Typed validation failure for Connection management input.
- * Maps to 400 VALIDATION_ERROR with a stable safe message.
+ * 文件名:ConnectionValidationException.java
+ *
+ * 用途:Connection 管理输入校验失败时抛出的类型化异常,
+ * 映射为 400 VALIDATION_ERROR,消息稳定且安全。
  */
 public class ConnectionValidationException extends RuntimeException {
 

@@ -17,10 +17,12 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 /**
- * Transactional run lifecycle owner. The Runtime only orchestrates;
- * every state transition plus its public events commits atomically here.
- * Nothing is swallowed: a lost race surfaces as a typed exception and the
- * loser emits nothing contradictory.
+ * 文件名:GlobalAssistantRunLifecycleService.java
+ *
+ * 用途:run 生命周期状态迁移的事务性所有者。Runtime 只负责编排;
+ * 每一次状态迁移连同它的公开事件都在这里原子提交。
+ * 任何失败都不吞掉:竞争落败会以类型化异常浮现,
+ * 落败方不发任何相互矛盾的事件。
  */
 @Service
 public class GlobalAssistantRunLifecycleService {
@@ -53,7 +55,7 @@ public class GlobalAssistantRunLifecycleService {
     public void completeWithAssistant(UUID threadId, UUID runId, String text) {
         completeWithAssistantAndUiAction(threadId, runId, text, null, null);
     }
-    /** Completion with the request-time provider/model snapshot from the run. */
+    /** 完成时携带 run 上记录的请求期供应商/模型快照。 */
     @Transactional
     public void completeWithAssistant(UUID threadId, UUID runId, String text,
             String providerLabel, String modelId) {
@@ -68,8 +70,8 @@ public class GlobalAssistantRunLifecycleService {
     @Transactional
     public void completeWithAssistantAndUiAction(UUID threadId, UUID runId, String text,
             String uiDestination, String uiResourceId, String providerLabel, String modelId) {
-        // The authoritative message is persisted exactly once. User-visible prose
-        // already streamed as ANSWER_DELTA transients; no full-text delta here.
+        // 权威助手消息只持久化一次。用户可见正文此前已作为 ANSWER_DELTA
+        // 瞬态事件流式输出;这里不再发全文 delta。
         conversations.appendAssistantMessage(threadId, text, runId, providerLabel, modelId);
         events.append(runId, GlobalAssistantEventType.ASSISTANT_COMPLETED, Map.of());
         if (uiDestination != null) {
@@ -91,7 +93,7 @@ public class GlobalAssistantRunLifecycleService {
     @Transactional
     public void completeForClarification(UUID threadId, UUID runId, String question,
             String providerLabel, String modelId) {
-        // Question prose already streamed as ANSWER_DELTA transients, if any.
+        // 澄清问题的正文(如有)此前已作为 ANSWER_DELTA 瞬态流式输出。
         conversations.appendAssistantMessage(threadId, question, runId, providerLabel, modelId);
         events.append(runId, GlobalAssistantEventType.ASSISTANT_COMPLETED, Map.of());
         events.append(runId, GlobalAssistantEventType.USER_INPUT_REQUIRED, Map.of("question", question));
@@ -135,7 +137,7 @@ public class GlobalAssistantRunLifecycleService {
         publisher.publishEvent(new RunTerminalEvent(threadId, runId, status));
     }
 
-    /** Cosmetic attribution; resolved at persist time, never breaks the transition. */
+    /** 仅装饰性的模型归属;持久化时解析,绝不打断状态迁移。 */
     private String attributionProvider() {
         return modelTarget.resolveActive().providerLabel();
     }

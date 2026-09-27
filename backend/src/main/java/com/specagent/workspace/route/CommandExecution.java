@@ -15,35 +15,30 @@ import java.util.UUID;
 import java.util.function.Supplier;
 
 /**
- * Execution wrapper for command endpoints.
+ * 文件名:CommandExecution.java
  *
- * <p>Expected domain/runtime failures from the orchestrator and route service
- * are translated into stable, safe API errors without ever exposing the raw
- * exception message (which may carry ids or internal state):
+ * 用途:命令端点的统一执行包装器。把编排器与路线服务抛出的预期内
+ * 领域/运行时异常,翻译成稳定、安全的 API 错误,并且绝不把原始异常消息
+ * (可能携带内部 id 或状态)暴露出去:
  *
- * <pre>
  * IllegalStateException    -> 409 CONFLICT       RUNTIME_CONFLICT
  * IllegalArgumentException -> 400 BAD_REQUEST    INVALID_REQUEST
- * </pre>
  *
- * <p>{@link ApiException}, every {@link PreciseConflictException} and
- * contract/gateway failures propagate untouched so the central handlers can
- * map them with their own precise statuses/codes instead of a generic
- * {@code RUNTIME_CONFLICT}. The {@code PreciseConflictException} catch is the
- * single hook that keeps the precise-conflict family safe as it grows; new
- * precise conflicts only have to extend that base class (enforced by an
- * architecture test) and must not be added here by name. The static
- * validation helpers below give command endpoints precise 404/409 errors from
- * existing service reads without ever touching repositories.
+ * {@link ApiException}、所有 {@link PreciseConflictException} 以及
+ * 契约/网关类异常原样向外传播,让中央处理器能按各自的精确状态码/错误码
+ * 处理,而不是被笼统的 {@code RUNTIME_CONFLICT} 吞掉。对
+ * {@code PreciseConflictException} 的 catch 是保证"精确冲突"家族随演进仍然
+ * 安全的唯一钩子:新增的精确冲突只需继承该基类(由架构测试强制约束),
+ * 不允许在这里按类名逐个添加。下方的静态校验辅助方法让命令端点基于已有的
+ * service 读取就能给出精确的 404/409 错误,而不必直接访问 repository。
  *
- * <p>Placement note: this helper composes runtime services
- * ({@code project}, {@code route}, {@code node}, {@code answer}), so it belongs
- * to the application layer, not to the shared {@code common} kernel: putting it
- * in {@code com.specagent.common} would make {@code common} depend on those
- * slices while they already depend on {@code common}
- * ({@code PreciseConflictException}, {@code Ids}), introducing four new package
- * cycles. Living in {@code com.specagent.workspace} keeps the
- * dependency one-way: {@code api -> application -> runtime slices}.
+ * 摆放位置说明:本辅助类组合了多个运行时切片服务
+ * ({@code project}、{@code route}、{@code node}、{@code answer}),
+ * 因此属于应用层,而不是共享的 {@code common} 内核。如果放进
+ * {@code com.specagent.common},会让 {@code common} 反过来依赖这些切片,
+ * 而它们本身已经依赖 {@code common}({@code PreciseConflictException}、
+ * {@code Ids}),引入四个新的包循环。放在 {@code com.specagent.workspace}
+ * 则保证依赖单向:{@code api -> application -> runtime slices}。
  */
 public final class CommandExecution {
 
@@ -56,11 +51,10 @@ public final class CommandExecution {
         } catch (ApiException ex) {
             throw ex;
         } catch (PreciseConflictException ex) {
-            // State conflicts that carry their own stable reason code
-            // (NO_ACTIVE_ROUTE, ROUTE_NOT_OPEN, RELATION_DEPENDENCY_CYCLE,
-            // UNANSWERED_QUESTION_HAS_CHILD, ...). Mapped by the central
-            // ApiExceptionHandler; must never be collapsed into the generic
-            // RUNTIME_CONFLICT below.
+            // 携带自身稳定 reason code 的状态冲突
+            // (NO_ACTIVE_ROUTE、ROUTE_NOT_OPEN、RELATION_DEPENDENCY_CYCLE、
+            // UNANSWERED_QUESTION_HAS_CHILD 等)。由中央 ApiExceptionHandler
+            // 统一映射;绝不能被折叠成下面的笼统 RUNTIME_CONFLICT。
             throw ex;
         } catch (IllegalStateException ex) {
             throw ApiException.conflict("RUNTIME_CONFLICT",
@@ -115,8 +109,8 @@ public final class CommandExecution {
     }
 
     /**
-     * Resolves the project's active route. A missing active pointer is a
-     * request/state conflict (409), not a not-found resource.
+     * 解析项目的当前活跃路线。活跃指针缺失属于请求/状态冲突(409),
+     * 而不是资源不存在(404)。
      */
     public static Route requireActiveRoute(Project project, RouteService routeService) {
         if (project.activeRouteId() == null) {

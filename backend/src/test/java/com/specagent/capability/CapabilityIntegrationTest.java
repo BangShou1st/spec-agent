@@ -29,10 +29,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Capability foundation integration: bounded resource extraction with
- * provenance, idempotent replay, snapshot descriptor relevance filtering,
- * and observations entering later cycles. End-to-end answer-cycle coverage
- * lives in CapabilityAnswerCycleIntegrationTest.
+ * 文件名:CapabilityIntegrationTest.java
+ *
+ * 测试目标:验证能力基础设施的集成行为——带来源的截断资源抽取、幂等
+ * 重放、快照中描述符按上下文相关性过滤、已完成调用作为观察进入后续周期。
+ * 端到端回答周期覆盖见 CapabilityAnswerCycleIntegrationTest。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -86,7 +87,7 @@ class CapabilityIntegrationTest {
                 project.id(), null, Map.of("nodeRef", "node:" + resource.id()));
 
         assertThat(replay.status()).isEqualTo(CapabilityResult.Status.REPLAYED);
-        // Idempotency: one durable record, never a second execution.
+        // 幂等性:只有一条持久化记录,绝不会二次执行。
         assertThat(invocationRepository.findByInvocationKey("test-key-2")).isPresent();
         assertThat(invocationRepository.findRecentCompleted(project.id(), 10))
                 .filteredOn(record -> record.invocationKey().equals("test-key-2"))
@@ -117,7 +118,7 @@ class CapabilityIntegrationTest {
 
     @Test
     void snapshotExposesResourceCapabilityOnlyForRelevantLineage() {
-        // With a RESOURCE node in the lineage, the capability is visible.
+        // lineage 中存在 RESOURCE 节点时,该能力可见。
         ContextSnapshot withResource = contextBuilder.buildFromActiveRoute(
                 project.id(), UUID.randomUUID(), ContextOperationType.NORMAL);
         AgentInputSnapshot snapshotWithResource = snapshotBuilder.build(withResource);
@@ -125,9 +126,8 @@ class CapabilityIntegrationTest {
                 .extracting(com.specagent.agent.protocol.CapabilityDescriptor::id)
                 .contains(ResourceExtractTextCapability.CAPABILITY_ID);
 
-        // A project without RESOURCE nodes still sees the workspace-level
-        // memory search capability, while the resource-specific capability
-        // remains hidden because no RESOURCE context is available.
+        // 没有 RESOURCE 节点的项目仍然能看到工作区级别的记忆搜索能力,
+        // 而资源专属能力因缺少 RESOURCE 上下文保持隐藏。
         Project plain = projectService.createProject("无资源项目");
         ContextSnapshot withoutResource = contextBuilder.buildFromActiveRoute(
                 plain.id(), UUID.randomUUID(), ContextOperationType.NORMAL);

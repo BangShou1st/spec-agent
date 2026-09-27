@@ -14,12 +14,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * E25 — Frozen/stale context (P2 corpus).
+ * 文件名:E25FrozenStaleTest.java
  *
- * <p>The base attempt proves the DECISION runs against the post-state
- * frozen snapshot with no unexpected delta. The stale variant proves
- * retracted context fails closed at the acceptance boundary: no Brain
- * output can bypass Java validation, and no unintended mutation occurs.
+ * 测试目标:E25——冻结/过期上下文(P2 语料)。base 用例证明 DECISION 基于
+ * 后置状态冻结快照运行且无意外增量;stale 变体证明已撤回的上下文在验收边界
+ * 失败关闭:大脑输出不能绕过 Java 校验,不发生任何意外变更。
  */
 class E25FrozenStaleTest extends EvalHarnessBase {
 

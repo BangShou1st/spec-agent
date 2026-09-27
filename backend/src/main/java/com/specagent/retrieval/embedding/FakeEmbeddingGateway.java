@@ -15,7 +15,12 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Optional;
 
-/** Offline deterministic embedding provider for retrieval tests and eval gates. */
+/**
+ * 文件名:FakeEmbeddingGateway.java
+ *
+ * 用途:离线确定性的向量嵌入提供者,基于内容哈希生成固定维度向量,
+ * 用于检索相关的测试与评测门槛,不依赖真实嵌入服务。
+ */
 @Component
 @ConditionalOnProperty(name = "spec.agent.retrieval.embedding.provider",
         havingValue = "fake")

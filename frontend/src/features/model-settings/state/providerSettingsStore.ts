@@ -1,3 +1,7 @@
+// 文件名:providerSettingsStore.ts
+// 用途:Provider 设置区的全局状态仓:当前激活 Provider 的加载与切换,
+//       以及设置页内"正在查看哪个配置 Tab"的会话级状态(查看绝不等于激活)。
+
 import { defineStore } from 'pinia'
 import { toDisplayError } from '@/shared/http/displayError'
 import { activateProvider, getActiveProvider, type ModelProvider } from '@/features/model-settings/api/modelProviders'
@@ -39,7 +43,7 @@ export const useProviderSettingsStore = defineStore('providerSettings', {
       }
     },
     view(provider: ModelProvider): void {
-      // Viewing a tab never activates the runtime provider.
+      // 查看某个 Tab 绝不会激活运行时 Provider。
       this.viewing = provider
       this.viewTouched = true
     },

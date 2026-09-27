@@ -22,13 +22,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Trace safety on the runtime path, zero public network.
+ * 文件名:AgentRunTraceSafetyTest.java
  *
- * <p>The persisted {@link AgentRun} trace must stay diagnosable without ever
- * carrying secrets or raw payloads: no API key, no Authorization header, no
- * user answer text. Provider failures surface only as the safe terminal
- * {@code failed} trace step even when the exception message itself contains
- * secret-like content.
+ * 测试目标:验证运行时路径上的 trace 安全性(全程无公网)。持久化的 {@link AgentRun}
+ * trace 必须始终可诊断,但绝不携带密钥或原始载荷:不含 API key、Authorization 头、
+ * 用户答案文本。即使异常消息本身包含疑似密钥内容,供应商失败也只以安全的
+ * {@code failed} 终态 trace 步骤呈现。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -67,8 +66,7 @@ class AgentRunTraceSafetyTest {
 
     @Test
     void providerFailureCategoryAppearsInTraceWithoutSecretOrMessage() {
-        // The spy fails like a provider whose error message unexpectedly echoes
-        // a secret: the trace must keep only the safe terminal step.
+        // 通过 spy 模拟错误消息意外回显密钥的供应商失败:trace 必须只保留安全的终态步骤。
         org.mockito.Mockito.doAnswer(invocation -> {
             throw new OpenCodeModelException(OpenCodeModelErrorCategory.RATE_LIMITED,
                     "OpenCode request failed " + SECRET_SENTINEL);

@@ -1,3 +1,5 @@
+// 文件名:GraphRunProcessPanel.spec.ts
+// 用途:GraphRunProcessPanel 单元测试:验证阶段文案与转圈、只渲染带汇总的步骤、紧凑模式的尾部截取与失败态样式。
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import GraphRunProcessPanel from '@/features/workspace/graph/components/GraphRunProcessPanel.vue'

@@ -11,27 +11,25 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Shared outbound network policy for server-initiated requests (Skill Git
- * import, custom MCP servers). One policy, not one ad-hoc URL check per
- * feature.
+ * 文件名:OutboundNetworkPolicy.java
  *
- * <p>Enforcement focuses on SSRF and external-network safety:
- * <ul>
- *   <li>allowed schemes only ({@code https}, and {@code http} for localhost
- *       test/tooling where explicitly enabled);</li>
- *   <li>DNS-is-resolved and the target must not be a private/link-local/
- *       loopback/cloud-metadata address;</li>
- *   <li>redirects are re-validated against the same rules;</li>
- *   <li>timeouts and byte bounds are passed through as call parameters.</li>
- * </ul>
+ * 用途:服务端主动发起的外呼请求(Skill 的 Git 导入、自定义 MCP 服务器等)
+ * 共用的出网安全策略。所有功能走同一套策略,而不是各写各的 URL 检查。
+ *
+ * 防护重点在 SSRF 与外网安全:
+ * - 只允许的 scheme({@code https};{@code http} 仅限 localhost 的
+ *       测试/工具场景,且必须显式开启);
+ * - 必须能完成 DNS 解析,且目标不得是私有/链路本地/回环/云元数据地址;
+ * - 重定向地址按同样规则重新校验;
+ * - 超时与字节上限由调用方作为参数传入。
  */
 @Component
 public class OutboundNetworkPolicy {
 
-    /** Addresses that must never be contacted by server-initiated requests. */
+    /** 服务端主动发起的请求绝不允许访问的地址。 */
     public static final Set<String> BLOCKED_HOSTS = Set.of(
             "metadata.google.internal", "metadata.google", "169.254.169.254",
-            "100.100.100.200", // Alibaba cloud metadata
+            "100.100.100.200", // 阿里云元数据地址
             "metadata", "metadata.azure.internal", "instance-data");
 
     private static final List<String> PRIVATE_PREFIXES = List.of(
@@ -40,13 +38,12 @@ public class OutboundNetworkPolicy {
     private static final String IPV6_ULA = "fc";
 
     /**
-     * Host-name resolution seam.
+     * 主机名解析接缝。
      *
-     * <p>Production always resolves through the JVM resolver
-     * ({@link InetAddress#getAllByName(String)}). Tests inject a deterministic
-     * stub so the address-based SSRF checks can be exercised without depending
-     * on live public DNS: the policy's contract is "would this host be
-     * allowed", not "is the public internet reachable from this machine".
+     * 生产环境始终走 JVM 的解析器
+     * ({@link InetAddress#getAllByName(String)})。测试注入确定性的桩,使
+     * 基于地址的 SSRF 检查不必依赖真实公共 DNS 即可验证:本策略的契约是
+     * "这个主机是否被允许",而不是"这台机器能否连通公共互联网"。
      */
     @FunctionalInterface
     public interface HostResolver {
@@ -64,15 +61,15 @@ public class OutboundNetworkPolicy {
         this(allowLocalhostHttp, InetAddress::getAllByName);
     }
 
-    /** Test seam only: production code uses the JVM resolver (see above). */
+    /** 仅供测试使用的接缝:生产代码使用 JVM 解析器(见上)。 */
     public OutboundNetworkPolicy(boolean allowLocalhostHttp, HostResolver hostResolver) {
         this.allowLocalhostHttp = allowLocalhostHttp;
         this.hostResolver = hostResolver;
     }
 
     /**
-     * Validates a URL for outbound connection. Returns the URI when it may be
-     * contacted; otherwise throws {@link OutboundPolicyViolationException}.
+     * 校验一个 URL 是否允许外呼。允许访问时返回解析后的 URI,
+     * 否则抛出 {@link OutboundPolicyViolationException}。
      */
     public URI validateOutboundUrl(String url, int maxRedirects) {
         URI uri = parse(url);
@@ -84,7 +81,7 @@ public class OutboundNetworkPolicy {
         return uri;
     }
 
-    /** Validates a redirect location against the same policy as the original. */
+    /** 按与原地址相同的策略校验重定向目标。 */
     public URI validateRedirect(String location) {
         URI uri = parse(location);
         validateScheme(uri);
@@ -134,15 +131,15 @@ public class OutboundNetworkPolicy {
             throw new OutboundPolicyViolationException("Outbound URL lacks a host");
         }
         String lower = host.toLowerCase();
-        // Cloud metadata hostnames are always blocked by name regardless of DNS.
+        // 云元数据主机名不依赖 DNS 结果,一律按名称直接拦截。
         for (String blocked : BLOCKED_HOSTS) {
             if (lower.equals(blocked) || lower.endsWith("." + blocked)) {
                 throw new OutboundPolicyViolationException(
                         "Outbound host is blocked: " + host);
             }
         }
-        // Explicit localhost opt-in (test/tooling hooks) bypasses the SSRF
-        // address checks for loopback targets only.
+        // 显式开启的 localhost 白名单(测试/工具钩子)只对回环地址
+        // 跳过 SSRF 地址检查。
         if (allowLocalhostHttp && (lower.equals("localhost")
                 || lower.equals("::1") || lower.startsWith("127.")
                 || lower.equals("0:0:0:0:0:0:0:1"))) {

@@ -5,7 +5,16 @@ import com.specagent.agent.protocol.ActionEligibility;
 import java.util.HashSet;
 import java.util.List;
 
-/** Versioned, model-produced ranking representation; Runtime selects the winner. */
+/**
+ * 文件名:SemanticRanking.java
+ *
+ * 用途:带版本号的模型排序结果整体表示,包含协议版本、资格判定版本与依据哈希、
+ * 输入指纹、对各动作族的评估列表以及权重版本。Runtime 依据此结果选出胜出的动作。
+ *
+ * 协作:由 Brain 产出、Runtime 解析构造;通过校验协议/资格版本号、
+ * SHA-256 指纹格式、评估列表非空且动作族不重复等,确保排序建立在
+ * 与当前上下文一致的资格判定基础上。
+ */
 public record SemanticRanking(String protocolVersion,
                               String eligibilityVersion,
                               String eligibilityBasisHash,

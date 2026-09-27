@@ -5,14 +5,15 @@ import com.specagent.agent.protocol.ModelContractException;
 import java.util.Objects;
 
 /**
- * Runtime-owned correlation validation between a {@link ModelRequest} and the
- * {@link ModelResponse} a gateway returned for it.
+ * 文件名:ModelResponseCorrelation.java
  *
- * <p>Gateway output is always untrusted input. Before any typed parsing,
- * reflection or persistence may happen, the runtime must verify that the
- * response echoes back the exact requesting agentRunId, contextSnapshotId and
- * taskType. Any mismatch rejects the response outright: the containing run is
- * failed and no artifact derived from that response may be persisted.
+ * 用途:运行时拥有的关联性(correlation)校验,核对 {@link ModelRequest}
+ * 与网关为其返回的 {@link ModelResponse} 是否对应。
+ *
+ * 网关输出始终是不可信输入。在任何类型化解析、Reflection 或持久化发生
+ * 之前,运行时必须先确认响应回显了与请求完全一致的 agentRunId、
+ * contextSnapshotId 和 taskType。任何不匹配都会整体拒绝该响应:所在 run
+ * 判为失败,且源自该响应的任何产物都不得持久化。
  */
 public final class ModelResponseCorrelation {
 
@@ -20,9 +21,9 @@ public final class ModelResponseCorrelation {
     }
 
     /**
-     * Validates that the response was produced for exactly this request.
+     * 校验响应确实是针对这一条请求产生的。
      *
-     * @throws ModelContractException on any correlation mismatch
+     * @throws ModelContractException 存在任何关联字段不匹配时抛出
      */
     public static void validate(ModelRequest request, ModelResponse response) {
         if (!Objects.equals(response.requestAgentRunId(), request.agentRunId())) {

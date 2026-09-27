@@ -42,11 +42,21 @@ spec:
       inference: fake
     brain:
       # Tests drive RunWorker synchronously through test drivers; the
-      # background poller stays off to keep runs deterministic.
+      # background poller stays off to keep runs deterministic. (An env var
+      # such as SPEC_AGENT_BRAIN_WORKER_ENABLED=true still overrides this.)
       enabled: false
       engine: ${SPEC_AGENT_BRAIN_ENGINE:fake}
+      # Deterministic internal token for the test profile (matches the
+      # test-suite default); production installs generate a per-install file.
+      internal-secret: dev-internal-secret
       worker:
         enabled: false
+    secret:
+      # Deterministic test master key (32 bytes base64) so this profile
+      # decrypts the same encrypted fixtures as the unit-test suite. The
+      # test database therefore holds ciphertext under THIS key id; running
+      # against it with a different master key fails closed by design.
+      master-key: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
     skill:
       builtin:
         # Built-in skill packages are shipped for product/testing use, but the

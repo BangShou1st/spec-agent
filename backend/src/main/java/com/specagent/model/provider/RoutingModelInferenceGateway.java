@@ -13,10 +13,11 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 
 /**
- * Authoritative {@link ModelInferenceGateway} entry. The ONLY place where
- * active-provider routing happens. No request building, no SSE parsing,
- * no fallback, no retry, no Agent logic here — just active provider to
- * registry to delegate.
+ * 文件名:RoutingModelInferenceGateway.java
+ *
+ * 用途:权威的 {@link ModelInferenceGateway} 入口,也是唯一发生"按激活提供商
+ * 路由"的地方。这里不做请求构建、不做 SSE 解析、不做降级(fallback)、不重试、
+ * 没有任何 Agent 逻辑——只做:查激活提供商 -> 查注册表 -> 委派。
  */
 @Component
 @Primary

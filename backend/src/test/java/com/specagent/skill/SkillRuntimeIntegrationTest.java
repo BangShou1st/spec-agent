@@ -33,10 +33,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * End-to-end Skill Runtime integration against the real Postgres-backed
- * store: ZIP stage -> install -> enable -> discovery -> activate -> resource
- * read -> disable -> invisible, with immutable version+content-hash behavior
- * and containment enforcement.
+ * 文件名:SkillRuntimeIntegrationTest.java
+ *
+ * 测试目标:针对真实 Postgres 存储验证 Skill 运行时的端到端集成——
+ * ZIP 暂存 -> 安装 -> 启用 -> 发现 -> 激活 -> 资源读取 -> 禁用 -> 不可见,
+ * 并覆盖版本与内容哈希的不可变行为以及路径越界防护。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -78,9 +79,8 @@ class SkillRuntimeIntegrationTest {
 
     @AfterEach
     void cleanup() {
-        // Committed cleanup: an enabled Skill row must never survive the test
-        // class, because it would change planner-visible capability exposure
-        // for every other suite sharing this database.
+        // 提交式清理:已启用的 Skill 行绝不能在本测试类结束后残留,
+        // 否则会改变共享此数据库的其他套件所看到的规划器能力暴露。
         clearSkillTables();
     }
 
@@ -107,7 +107,7 @@ class SkillRuntimeIntegrationTest {
         assertThat(installed.skillId()).isNotNull();
         assertThat(installed.versionNo()).isEqualTo(1);
 
-        // Immutable version identity + content hash unique.
+        // 版本身份不可变 + 内容哈希唯一。
         assertThat(queryService.findVersion(installed.versionId())).isPresent();
         assertThat(queryService.findVersion(installed.versionId()).orElseThrow().contentHash())
                 .isEqualTo(staged.contentHash());
@@ -159,7 +159,7 @@ class SkillRuntimeIntegrationTest {
         SkillImportService.InstalledResult installed1 =
                 importService.install(staged1.stagedImportId());
 
-        // Same name + same source kind -> same Skill row, bumped version.
+        // 同名 + 同来源类型 -> 复用同一 Skill 行,版本号递增。
         SkillImportService.StagedResult staged2 = importService.stageZip(
                 zip(SKILL_MD.replace("Step 1", "Step 1 revised"), null, null));
         SkillImportService.InstalledResult installed2 =
@@ -171,16 +171,16 @@ class SkillRuntimeIntegrationTest {
         assertThat(queryService.listVersions(installed2.skillRowId()))
                 .extracting(com.specagent.skill.domain.SkillVersion::versionNo)
                 .containsExactly(1, 2);
-        // Immutable: the old version's content hash is untouched.
+        // 不可变:旧版本的内容哈希保持不变。
         assertThat(queryService.findVersion(installed1.versionId())
                 .orElseThrow().contentHash())
                 .isEqualTo(staged1.contentHash());
-        // The current version now points at the new immutable version.
+        // 当前版本指针现在指向新的不可变版本。
         assertThat(queryService.findSkill(installed1.skillId())
                 .orElseThrow().currentVersionId())
                 .isEqualTo(installed2.versionId());
 
-        // New install starts disabled; enabling only the active version works.
+        // 新安装默认禁用;只有激活当前版本后才可见。
         importService.enable(installed1.skillRowId());
         SkillCatalogProjector.Projection catalog = discover();
         assertThat(catalog.entries())

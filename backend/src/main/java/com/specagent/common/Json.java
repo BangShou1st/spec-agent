@@ -8,11 +8,13 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Thin wrapper around Jackson for persisting structured JSONB columns.
+ * 文件名:Json.java
  *
- * <p>Runtime code stores domain-neutral structured content (claims, options,
- * source references, trace summaries) as JSONB. It never stores provider
- * secrets or model-native response objects here.
+ * 用途:Jackson 的轻量封装,负责把结构化内容序列化为 JSON 字符串、
+ * 再反序列化回来,供写入 JSONB 列时使用。
+ *
+ * 运行时把领域中立的结构化内容(claims、options、来源引用、trace 摘要)
+ * 以 JSONB 形式落库;这里绝不存放供应商密钥或模型原生的响应对象。
  */
 @Component
 public class Json {

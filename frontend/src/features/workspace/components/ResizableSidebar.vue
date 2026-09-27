@@ -1,13 +1,18 @@
+<!--
+  文件名:ResizableSidebar.vue
+  用途:工作台的可拖宽、可折叠侧栏(仅浏览器行为):宽度与开合由父组件控制
+       (经 graphUiStore 持久化),本组件只发出新的意图;拖拽宽度被钳制在允许范围,
+       侧栏宽度变化绝不触发画布坐标重算。
+-->
 <script setup lang="ts">
 import { onBeforeUnmount, ref } from 'vue'
 
 /**
- * Resizable + collapsible workspace sidebar (browser-only).
+ * 可调宽 + 可折叠的工作台侧栏(仅浏览器行为)。
  *
- * Width and open state are controlled by the parent (persisted via
- * graphUiStore); this component only emits new intents. Resize drags are
- * clamped to the allowed range and the graph coordinates are never
- * recomputed when the sidebar width changes.
+ * 宽度与开合状态由父组件控制(经 graphUiStore 持久化);
+ * 本组件只发出新的意图。拖拽调整被钳制在允许范围内,
+ * 侧栏宽度变化时绝不重算图坐标。
  */
 const props = defineProps<{
   side: 'left' | 'right'

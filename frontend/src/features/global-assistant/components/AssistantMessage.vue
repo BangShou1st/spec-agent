@@ -1,3 +1,8 @@
+<!--
+  文件名:AssistantMessage.vue
+  用途:全局助手的单条消息气泡:用户消息靠右显示纯文本,助手消息靠左经 RichAssistantText
+       渲染富文本,并在下方展示时间与"供应商 · 模型"归属信息。
+-->
 <script setup lang="ts">
 import { computed } from 'vue'
 import RichAssistantText from '@/shared/ui/RichAssistantText.vue'
@@ -10,9 +15,9 @@ const props = defineProps<{
   modelId?: string | null
 }>()
 const bubbleClass = computed(() => (props.role === 'USER' ? 'ga-message--user' : 'ga-message--assistant'))
-/** Today keeps the clock; older messages carry their real date. */
+/** 今天的消息只显示时刻;更早的消息带上真实日期。 */
 const timeLabel = computed(() => gaMessageTimeLabel(props.createdAt))
-/** "供应商 · 模型" attribution, shown after the time when both parts exist. */
+/** 拼出"供应商 · 模型"归属文案,两部分都存在时才显示在时间之后。 */
 const attributionLabel = computed(() => {
   if (props.role !== 'ASSISTANT') return null
   const parts = [props.providerLabel?.trim(), props.modelId?.trim()].filter((p) => !!p)

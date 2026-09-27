@@ -22,20 +22,20 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Dynamic {@link CapabilityProvider}: maps every discovered MCP tool of every
- * agent-visible connection into its own bounded CapabilityDescriptor id
- * {@code mcp.<connectionId>.<toolName>}.
+ * 文件名:McpToolCapabilityProvider.java
  *
- * <p>One MCP server is NOT one capability — one server with twenty tools
- * yields twenty dynamic descriptors. Enabled/status filtering is the
- * provider's responsibility: disabled or FAILED connections return no
- * descriptors, so they disappear from planner candidates by construction.
- * The registry never knows GitHub/Slack/etc. — it only sees this provider.
+ * 用途:动态 {@link CapabilityProvider} 实现——把每个对 Agent 可见的连接上
+ * 发现的每一个 MCP 工具,映射成独立的有界 CapabilityDescriptor,id 形如
+ * {@code mcp.<connectionId>.<toolName>}。
  *
- * <p>Side-effect classification of foreign MCP tools is conservative: the
- * server's readOnlyHint is treated as untrusted metadata, and any tool whose
- * behavior cannot be confirmed read-only defaults to a side-effect class that
- * requires policy confirmation. Unknown never equals NONE.
+ * 一个 MCP Server 不等于一个能力——一个带二十个工具的 Server 会产生二十个
+ * 动态描述符。启用/状态过滤由 Provider 负责:被禁用或 FAILED 的连接不会返回
+ * 任何描述符,因此它们在构造上就会从规划器候选集中消失。注册表永远不知道
+ * GitHub/Slack 等具体服务——它只看到这个 Provider。
+ *
+ * 对外部 MCP 工具的副作用分类采取保守策略:Server 声明的 readOnlyHint 被视为
+ * 不可信元数据;任何无法确认其只读行为的工具,默认归入需要策略确认的副作用
+ * 分类。未知永远不等于 NONE。
  */
 @Component
 public class McpToolCapabilityProvider implements CapabilityProvider {
@@ -132,9 +132,8 @@ public class McpToolCapabilityProvider implements CapabilityProvider {
                 tool.description(),
                 tool.inputSchema(),
                 Map.of(),
-                // Conservative trust boundary: a server-declared readOnlyHint
-                // is untrusted metadata. Absent/unknown behavior must never
-                // default to NONE.
+                // 保守的信任边界:Server 声明的 readOnlyHint 属于不可信元数据。
+                // 缺失/未知的行为绝不能默认为 NONE。
                 isConfidentlyReadOnly(tool),
                 sideEffectClass(tool),
                 List.of(),
@@ -157,7 +156,7 @@ public class McpToolCapabilityProvider implements CapabilityProvider {
         if (readOnly) {
             return SideEffectClass.NONE;
         }
-        // Unknown behavior: conservative. Requires policy confirmation.
+        // 行为未知时保持保守:归入需要策略确认的分类。
         return SideEffectClass.EXTERNAL_REVERSIBLE;
     }
 
@@ -169,7 +168,7 @@ public class McpToolCapabilityProvider implements CapabilityProvider {
         }
     }
 
-    /** Splits {@code mcp.<connId>.<tool>} back into connection + tool. */
+    /** 把 {@code mcp.<connId>.<tool>} 拆解回连接 + 工具名。 */
     private ResolvedTool resolve(String capabilityId) {
         if (!capabilityId.startsWith("mcp.")) {
             return null;

@@ -21,6 +21,13 @@ import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Service;
 
+/**
+ * 文件名:OpenRouterSettingsService.java
+ *
+ * 用途:OpenRouter 提供商设置的应用服务:密钥探测、模型发现(带资格过滤)、
+ * 保存(变更即失效验证)、兼容性验证,并通过 OpenRouterRuntimeSettingsPort
+ * 向推理侧提供经过激活门禁的运行时设置。
+ */
 @Service
 public class OpenRouterSettingsService implements OpenRouterRuntimeSettingsPort {
 
@@ -53,21 +60,20 @@ public class OpenRouterSettingsService implements OpenRouterRuntimeSettingsPort 
     }
 
     /**
-     * One model-discovery result: every displayable provider model plus the
-     * free qualified subset used for the reachability probe.
+     * 一次模型发现的结果:全部可展示的提供商模型,加上用于可达性探测的
+     * 免费且通过资格筛选的子集。
      */
     public record CandidateModels(List<String> allModels, List<String> freeModels) {
     }
 
-    /** Candidate probe: validates key reachability + model list without saving. */
+    /** 候选密钥探测:验证密钥可达性与模型列表,但不保存任何东西。 */
     public CandidateModels probeCandidate(String apiKey) {
         String key = requireKey(apiKey);
         CandidateModels models = discover(key);
         if (models.freeModels().isEmpty()) {
             throw ModelProviderException.invalidModel("openrouter", "No free models available", null);
         }
-        // Credential reachability is proven by a successful model list; the
-        // compatibility probe runs per selected model at validate time.
+        // 密钥可达性由"成功拉到模型列表"来证明;兼容性探测在 validate 时对所选模型执行
         return models;
     }
 
@@ -85,7 +91,7 @@ public class OpenRouterSettingsService implements OpenRouterRuntimeSettingsPort 
         return new CandidateModels(ids.all(), free);
     }
 
-    /** Save invalidates prior validation when key or model changes. */
+    /** 保存:密钥或模型发生变化时,先前的验证结果即被作废。 */
     public Status save(String apiKeyInput, String modelInput) {
         String model = ProviderUrlSecurity.normalizeModelId(modelInput);
         OpenRouterSettings existing = repository.find().orElse(null);
@@ -98,9 +104,8 @@ public class OpenRouterSettingsService implements OpenRouterRuntimeSettingsPort 
         } else {
             resolvedKey = apiKeyInput.trim();
         }
-        // Selection follows the live provider list: free and paid ids are
-        // both saveable, but the id must exist right now and the saved pair
-        // must pass the real compatibility probe before activation.
+        // 模型选择遵循提供商实时列表:免费与付费 id 都可保存,但该 id 必须
+        // 当前真实存在,且保存的配置对必须在激活前通过真正的兼容性探测
         CandidateModels models = probeCandidate(resolvedKey);
         if (!models.allModels().contains(model)) {
             throw ModelProviderException.invalidModel("openrouter",
@@ -117,7 +122,7 @@ public class OpenRouterSettingsService implements OpenRouterRuntimeSettingsPort 
         return status(false);
     }
 
-/** Compatibility test on the saved configuration. Sets validated revision. */
+    /** 对已保存的配置做兼容性测试,通过后写入验证修订号。 */
     public Status validate() {
         OpenRouterSettings s = requireStored();
         CandidateModels models = probeCandidate(s.apiKey());
@@ -148,9 +153,8 @@ public class OpenRouterSettingsService implements OpenRouterRuntimeSettingsPort 
     }
 
     /**
-     * Inference-port projection: stored settings gated by the activatable
-     * check, fail closed — the historical requireStored + requireActivatable
-     * sequence the gateway ran per request.
+     * 推理端口投影:先取已存配置,再走激活资格检查,失败即拒绝(fail closed)——
+     * 等价于网关历史上每次请求执行的 requireStored + requireActivatable 序列。
      */
     @Override
     public RuntimeOpenRouterSettings requireRuntimeSettings() {

@@ -1,3 +1,6 @@
+// 文件名:connections.spec.ts
+// 用途:Connections API 封装的单测:stub 全局 fetch,验证列表/详情/创建/更新/生命周期
+//       以及 tools/resources/prompts 等端点拼出的 URL 与方法是否正确。
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { connectConnection, createConnection, deleteConnection, disableConnection, enableConnection, getConnection, listConnectionPrompts, listConnectionResources, listConnectionTools, listConnections, readConnectionResource, refreshConnection, testConnection, updateConnection } from '@/features/connections/api/connections'
 

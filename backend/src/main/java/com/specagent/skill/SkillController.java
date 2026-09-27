@@ -25,20 +25,20 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Skill management backend API. This is the contract the future Skills UI
- * consumes; it is complete enough that the frontend never has to force a
- * refactor of the core Runtime.
+ * 文件名:SkillController.java
  *
- * <p>Endpoints:<ul>
- *   <li>list + detail + versions + safe file/resource reads;</li>
- *   <li>staged ZIP import, staged git import, staged review + install/reject;</li>
- *   <li>enable / disable / delete;</li>
- *   <li>resource inventory (path + kind + size + hash, never raw content
- *       except through the bounded detail read).</li>
- * </ul>
- * <p>All failures are typed via {@link SkillImportException} /
- * {@link SkillResourceRejectedException} so raw provider/stack details never
- * leak to the client.
+ * 用途:Skill 管理的后端 REST API,是未来 Skills 前端界面直接消费的契约。
+ * 接口设计得足够完整,避免前端倒逼核心 Runtime 重构。
+ *
+ * 提供的端点:
+ *
+ * - 列表 + 详情 + 版本 + 受控的文件/资源读取;
+ * - ZIP 暂存导入、git 暂存导入、暂存区审阅 + 安装/驳回;
+ * - 启用 / 停用 / 删除;
+ * - 资源清单(路径 + 类型 + 大小 + 哈希,除受限的详情读取外不返回原始内容)。
+ * 所有失败都通过 {@link SkillImportException} /
+ * {@link SkillResourceRejectedException} 以类型化方式抛出,避免底层提供方细节
+ * 或堆栈信息泄漏给客户端。
  */
 @RestController
 @RequestMapping("/api/v1/skills")
@@ -56,7 +56,7 @@ public class SkillController {
         this.resourceService = resourceService;
     }
 
-    // ---- listing / detail ------------------------------------------------
+    // ---- 列表 / 详情 ------------------------------------------------------
 
     @GetMapping
     public List<SkillSummaryResponse> listSkills() {
@@ -101,7 +101,7 @@ public class SkillController {
         return ResponseEntity.ok(resources);
     }
 
-    // ---- staged imports --------------------------------------------------
+    // ---- 暂存导入 ---------------------------------------------------------
 
     @PostMapping("/imports/zip")
     public ResponseEntity<StagedImportResponse> stageZip(@RequestParam("file") MultipartFile file) {
@@ -127,8 +127,8 @@ public class SkillController {
     }
 
     /**
-     * Lists the Skill packages a repository offers without staging anything, so
-     * a library or marketplace can be navigated instead of rejected.
+     * 列出仓库中包含的 Skill 包但不做任何暂存,方便浏览仓库(类库/市场)而不是
+     * 一律当作导入失败驳回。
      */
     @PostMapping("/imports/git/discover")
     public ResponseEntity<GitDiscoveryResponse> discoverGit(
@@ -177,7 +177,7 @@ public class SkillController {
         return ResponseEntity.noContent().build();
     }
 
-    // ---- lifecycle -------------------------------------------------------
+    // ---- 生命周期 ---------------------------------------------------------
 
     @PostMapping("/{skillId}/enable")
     public ResponseEntity<Void> enable(@PathVariable String skillId) {
@@ -203,11 +203,11 @@ public class SkillController {
         return ResponseEntity.noContent().build();
     }
 
-    // ---- safe resource read ----------------------------------------------
+    // ---- 安全的资源读取 -----------------------------------------------------
 
     /**
-     * Bounded safe resource detail read: latest installed version, path
-     * containment enforced server-side, text-only in phase one.
+     * 有界的资源详情安全读取:只读最新已安装版本,路径包含性由服务端强制校验,
+     * 一期仅支持纯文本内容。
      */
     @GetMapping("/{skillId}/resources/read")
     public ResponseEntity<ResourceReadResponse> readResource(
@@ -224,7 +224,7 @@ public class SkillController {
                 read.totalChars(), read.sha256(), read.versionId()));
     }
 
-    // ---- DTOs ------------------------------------------------------------
+    // ---- DTO 定义 ---------------------------------------------------------
 
     public record SkillSummaryResponse(String skillId, String name, String description,
                                        String sourceKind, String versionId,
@@ -284,7 +284,7 @@ public class SkillController {
                                        int totalChars, String sha256, String versionId) {
     }
 
-    /** {@code subPath} selects one Skill directory inside a larger repository. */
+    /** {@code subPath} 用于在较大的仓库中定位某一个 Skill 目录。 */
     public record GitImportRequest(String url, String ref, String subPath) {
     }
 

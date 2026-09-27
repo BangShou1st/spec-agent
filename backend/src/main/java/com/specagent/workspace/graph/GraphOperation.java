@@ -6,13 +6,13 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * One typed, user-visible durable graph mutation in the append-preserving
- * operation log.
+ * 文件名:GraphOperation.java
  *
- * <p>Undo is operation-specific compensation over this log; immutable
- * answers and historical lineage are never physically deleted to make the UI
- * look reverted. {@code beforeRefs}/{@code afterRefs} carry the structured
- * state each compensation/replay needs, keyed by operation type.
+ * 用途:操作日志中的一条类型化、用户可见的持久图变更记录(只追加、
+ * 不覆盖)。撤销就是针对这条日志做操作特定的补偿;不可变答案与历史
+ * lineage 绝不会为了"让 UI 看起来回退了"而被物理删除。
+ * {@code beforeRefs}/{@code afterRefs} 按操作类型携带补偿/重放所需的
+ * 结构化状态。
  */
 public class GraphOperation {
 
@@ -27,51 +27,44 @@ public class GraphOperation {
         CREATE_BRANCH_AND_APPEND(true),
         ATTACH_RESOURCE(true),
         /**
-         * A floating (route-less) node is attached to a route tip. Undo
-         * detaches it again (the node keeps existing, disconnected) instead of
-         * retracting it — the user's content survives a connect/undo cycle.
+         * 一个悬浮(无路线)节点被接入路线 tip。撤销时是把它再摘下来
+         * (节点仍然存在,只是脱离),而不是撤回它——用户的内容能安然
+         * 度过一次"接入/撤销"循环。
          */
         CONNECT_FLOATING_NODE(true),
         /**
-         * A node is detached from its route and becomes floating again. The
-         * node's content is never touched; redo re-attaches it to the tip it
-         * came from.
+         * 一个节点被从其路线摘下,重新变成悬浮。节点内容永不被触碰;
+         * 重做会把它重新接回原来的 tip。
          */
         DISCONNECT_NODE(true),
         CREATE_SEMANTIC_RELATION(true),
         SET_KNOWLEDGE_STATUS(true),
         ACCEPT_AGENT_PROPOSAL(false),
         /**
-         * A new branch route was forked from a historical node of an existing
-         * route (the fork shares the source lineage, nothing is copied). Undo
-         * soft-deletes the fork route (only while it has not been continued)
-         * and restores the previous active-route pointer.
+         * 从既有路线的某个历史节点 fork 出一条新分支路线(fork 共享来源
+         * lineage,不复制任何东西)。撤销时软删除该 fork 路线(仅限它
+         * 还未被续写时),并恢复之前的活跃路线指针。
          */
         ROUTE_FORK(true),
         /**
-         * A re-answer route was created with a cloned question node. Undo
-         * retracts the clone and soft-deletes the route while it still sits
-         * at the clone.
+         * 创建了一条带克隆问题节点的重答路线。撤销时撤回克隆节点,
+         * 并在路线仍停在克隆节点时软删除该路线。
          */
         ROUTE_REANSWER(true),
         /**
-         * A replacement (regenerate) route was committed: the replacement
-         * question node was created and the source route superseded. Undo
-         * retracts the replacement, soft-deletes its route, and reopens the
-         * source route.
+         * 一条替换(重新生成)路线被提交:替换问题节点已创建,来源路线
+         * 已被取代。撤销时撤回替换节点,软删除其路线,并重新打开来源路线。
          */
         ROUTE_REGENERATE(true),
         /**
-         * A floating knowledge/resource node started a new standalone route.
-         * The node itself is untouched; undo soft-deletes the route while it
-         * still only contains that node.
+         * 一个悬浮的知识/资源节点开启了一条独立新路线。节点本身不动;
+         * 撤销时在路线仍只包含该节点时软删除该路线。
          */
         ROUTE_START(true),
         /**
-         * An explicit route lifecycle transition (archive / soft-delete /
-         * restore). Undo applies the reverse transition and restores the
-         * recorded active-route pointer, fail-closed against the transition
-         * state machine.
+         * 一次显式的路线生命周期流转(归档 / 软删除 / 恢复)。撤销时应用
+         * 逆向流转并恢复记录的活跃路线指针,严格遵循流转状态机,
+         * 失败即拒绝。
          */
         ROUTE_LIFECYCLE(true);
 

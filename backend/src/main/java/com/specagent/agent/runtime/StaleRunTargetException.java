@@ -1,10 +1,11 @@
 package com.specagent.agent.runtime;
 
 /**
- * Thrown when a queued run's recorded execution target no longer matches the
- * live graph state at claim time (for example the project switched to another
- * active route while the run was waiting). The cycle must fail closed instead
- * of executing against a target the user was no longer looking at.
+ * 文件名:StaleRunTargetException.java
+ *
+ * 用途:排队 run 记录的执行目标在认领时已与图的实际状态不符时抛出
+ * (例如 run 排队等待期间项目切换到了另一个活跃 route)。此时周期必须
+ * fail-closed,绝不能对用户早已不看的目标执行。
  */
 public class StaleRunTargetException extends RuntimeException {
 

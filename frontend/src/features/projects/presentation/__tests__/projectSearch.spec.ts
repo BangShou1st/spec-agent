@@ -1,3 +1,6 @@
+// 文件名:projectSearch.spec.ts
+// 用途:项目搜索高亮辅助函数单测:查询词规范化(空白视为无词)与
+//       标题按命中片段拆分(大小写不敏感、所有出现位置都高亮、与后端过滤规则一致)。
 import { describe, expect, it } from 'vitest'
 import { normalizeQuery, splitTitleSegments } from '@/features/projects/presentation/projectSearch'
 

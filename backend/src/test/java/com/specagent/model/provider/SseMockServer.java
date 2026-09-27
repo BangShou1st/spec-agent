@@ -6,7 +6,12 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.Executors;
 
-/** Tiny deterministic SSE mock server for transport tests. No internet. */
+/**
+ * 文件名:SseMockServer.java
+ *
+ * 测试目标:供传输层测试使用的极简确定性 SSE mock 服务器(仅本地,不联网):
+ * 把 {@code payload} 按 4KB 分块以 text/event-stream 返回,可选 chunkDelayMs 模拟分块间隔。
+ */
 final class SseMockServer implements AutoCloseable {
 
     private final HttpServer server;

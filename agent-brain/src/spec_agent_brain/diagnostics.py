@@ -1,9 +1,10 @@
-"""Safe, deterministic diagnostics for semantic evidence capture.
+"""文件名:diagnostics.py
 
-Diagnostics are returned only as a response-side observation.  They are never
-fed back into a prompt or sent to the inference broker.  The semantic input is
-decoded from the exact user message that the engine passes to ``ModelClient``;
-the system prompt is represented by a hash only.
+用途:语义证据采集的安全、确定性诊断。
+
+诊断只作为响应侧的观察结果返回,绝不回灌进 prompt,也绝不发给推理
+broker。语义输入取自引擎传给 ``ModelClient`` 的那条原始 user 消息并解码;
+system prompt 只用哈希表示。
 """
 
 import hashlib
@@ -45,12 +46,11 @@ def _sanitize(value: Any) -> Any:
 
 
 def semantic_diagnostics(system_prompt: str, user_prompt: str, stage: str) -> dict[str, Any]:
-    """Build response-side diagnostics from the exact model messages.
+    """从确切的模型消息构建响应侧诊断。
 
-    ``user_prompt`` is parsed rather than reconstructed so the diagnostic
-    payload is the same semantic JSON that entered the model request.  A
-    malformed prompt is intentionally represented without a second parse
-    failure; the actual model call and contract path remain unchanged.
+    ``user_prompt`` 采用解析而不是重新拼装,保证诊断 payload 与真正进入
+    模型请求的语义 JSON 完全一致。格式错误的 prompt 有意用单一占位表示、
+    不再抛出第二次解析失败;真正的模型调用与契约路径保持不变。
     """
     import json
 

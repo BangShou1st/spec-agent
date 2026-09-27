@@ -10,25 +10,20 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.UUID;
 
 /**
- * Read-only route-scoped requirement-state API.
+ * 文件名:RouteRequirementStateController.java
  *
- * <p>Exposes the backend-derived requirement state for an explicitly named
- * route (open, superseded, archived, or deleted) through the read-model query
- * boundary. This endpoint is read-only: it never calls a model, never writes
- * state, and never persists an answer, patch, node, route, or spec. The
- * existing active-route endpoint ({@link RequirementStateController}) is left
- * unchanged.
+ * 用途:按 route 划界的只读需求状态 API。通过读模型查询边界,暴露后端为
+ * 显式指定 route(open、superseded、archived 或 deleted)派生的需求状态。该
+ * 端点只读:绝不调用模型、绝不写状态,也绝不落库任何回答、补丁、节点、route
+ * 或规格。既有的活跃 route 端点({@link RequirementStateController})保持不变。
  *
- * <p>Architecture boundary (the API layer still never depends on context,
- * model, repository, or credential):
+ * 架构边界(API 层依旧不依赖 context、模型、仓储或凭据):
  *
- * <pre>
  * RouteRequirementStateController
  *         ↓
  * com.specagent.workspace.spec.RequirementStateQueryService
  *         ↓
  * ProjectService / RouteService / RequirementStateBuilder
- * </pre>
  */
 @RestController
 @RequestMapping("/api/v1/projects/{projectId}/routes/{routeId}/requirement-state")

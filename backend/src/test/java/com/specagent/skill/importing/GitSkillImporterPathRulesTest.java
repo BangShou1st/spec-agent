@@ -11,14 +11,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Path rules of the Git importer, which run on repository trees that are not
- * curated the way a ZIP package is. Hidden entries are repository metadata and
- * are skipped; a repository holding many Skill directories must fail with the
- * directories it actually found rather than an unrelated containment message.
+ * 文件名:GitSkillImporterPathRulesTest.java
  *
- * <p>The importer is constructed with null collaborators on purpose: every rule
- * under test here is pure path/collection logic and never reaches the network
- * policy or the property bounds.
+ * 测试目标:验证 Git 导入器的路径规则。它处理的仓库树不像 ZIP 包那样
+ * 经过人工筛选:隐藏条目属于仓库元数据,应被跳过;包含多个 Skill 目录的
+ * 仓库报错时,必须列出实际找到的目录,而不是抛出无关的越界提示。
+ *
+ * 这里故意用 null 协作对象构造导入器:被测的每条规则都是纯粹的
+ * 路径/集合逻辑,不会触达网络策略或属性上限。
  */
 class GitSkillImporterPathRulesTest {
 
@@ -38,7 +38,7 @@ class GitSkillImporterPathRulesTest {
     void onlyDotPrefixedSegmentsAreHidden() {
         assertThat(GitSkillImporter.isHiddenEntry("SKILL.md")).isFalse();
         assertThat(GitSkillImporter.isHiddenEntry("scripts/run.sh")).isFalse();
-        // A dot inside a segment is an ordinary name, never a hidden directory.
+        // 路径段内部的点是普通文件名的一部分,绝不构成隐藏目录。
         assertThat(GitSkillImporter.isHiddenEntry("skills/v1.2/SKILL.md")).isFalse();
         assertThat(GitSkillImporter.isHiddenEntry("references/a.b.md")).isFalse();
     }

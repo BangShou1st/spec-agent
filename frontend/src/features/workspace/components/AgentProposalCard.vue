@@ -1,3 +1,8 @@
+<!--
+  文件名:AgentProposalCard.vue
+  用途:Agent 提案的产品化审批卡:只渲染已持久化的提案数据——可读动作标签、
+       提案消息、节点上下文与 拒绝/确认执行 按钮;不展示内部 id/状态,不编造影响。
+-->
 <script setup lang="ts">
 import { computed } from 'vue'
 import { agentActionLabel } from '@/features/workspace/presentation/agentPresentation'

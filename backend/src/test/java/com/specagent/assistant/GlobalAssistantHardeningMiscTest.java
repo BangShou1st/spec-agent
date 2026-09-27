@@ -36,8 +36,13 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * FIX I/N/O/P/Q: failure transparency, catalog starvation, descriptor and
- * observation projection, bounded executor configuration.
+ * 文件名:GlobalAssistantHardeningMiscTest.java
+ *
+ * 测试目标:全局助手的若干加固点——失败透明、目录饥饿、描述与观察投影、
+ * 有界执行器配置。
+ * 覆盖场景:摘要仓库故障不会伪装成"无 spec"、无关能力大量注册后
+ * GA 工具目录仍稳定、工具描述符渲染结构化 schema、观察以稳定 JSON 渲染、
+ * 执行器池有界且可管理、调度被拒绝时运行以 FAILED 收场并释放槽位。
  */
 @SpringBootTest
 @ActiveProfiles("test")

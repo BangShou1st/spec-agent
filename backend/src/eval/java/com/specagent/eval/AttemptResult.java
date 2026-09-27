@@ -5,7 +5,15 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
-/** Overall result of one scenario attempt with its typed violations. */
+/**
+ * 文件名:AttemptResult.java
+ *
+ * 用途:单个场景一次尝试的整体结果:是否通过、实际执行的主动作,以及
+ * 带失败分类({@link FailureClass})的违例列表和调用预算记录。
+ *
+ * 协作:由 {@link ScenarioRunner} 产出,是分层校验器和汇总报告
+ * ({@link EvalSummary})的基本数据单元。
+ */
 public record AttemptResult(
         String scenarioId,
         String variantId,

@@ -14,7 +14,10 @@ import java.util.UUID;
 import org.springframework.stereotype.Component;
 
 /**
- * Host tool: bounded application-level project summary. Never dumps the graph.
+ * 文件名:ProjectGetSummaryCapability.java
+ *
+ * 用途:宿主工具——读取单个项目的有界应用层摘要。
+ * 绝不倾倒完整需求图谱。GA 工具目录中的 project.get_summary 即本能力。
  */
 @Component
 public class ProjectGetSummaryCapability implements InternalCapabilityAdapter {

@@ -4,12 +4,11 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * The single active runtime provider.
+ * 文件名:ModelProviderSettings.java
  *
- * <p>{@code activeProvider} keeps the preset code so existing readers and the
- * preset activation path stay valid; {@code activeProviderId} names the exact
- * row, which is what makes several user-defined providers distinguishable.
- * For a seeded preset row both point at the same provider.
+ * 用途:全局单例的"当前激活运行时提供商"设置。{@code activeProvider} 保留
+ * 预设编码以兼容既有读取方和预设激活路径;{@code activeProviderId} 指向具体行,
+ * 使多个用户自建提供商可以相互区分。预设种子行两者指向同一提供商。
  */
 public record ModelProviderSettings(String activeProvider, UUID activeProviderId, Instant updatedAt) {
 }

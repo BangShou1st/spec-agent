@@ -1,5 +1,5 @@
-import { test, expect } from '@playwright/test'
 
+import { test, expect, type Page } from './helpers'
 const THREAD_ID = '11111111-1111-4111-8111-111111111111'
 const PROJECT_ID = '22222222-2222-4222-8222-222222222222'
 

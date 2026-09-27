@@ -1,3 +1,7 @@
+// 文件名:ProviderSettingsSection.spec.ts
+// 用途:Provider 设置区组件测试:胶囊 Tab 与创建/编辑弹窗的行为,
+//       包括弹窗不卸载底层卡片、取消不跳 Tab、编辑模式下显示名称可改、
+//       胶囊只选配置不触发激活等回归点。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'

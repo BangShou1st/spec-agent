@@ -1,14 +1,19 @@
+<!--
+  文件名:ProviderSummaryItem.vue
+  用途:ProviderCard 当前配置摘要中的单行"标签/值"项;抽成共享组件,
+       让所有 Provider 的摘要渲染一致(含省略号规则与缺省占位符)。
+-->
 <script setup lang="ts">
 /**
- * One label/value row inside a ProviderCard's current-configuration summary.
- * Shared so every provider renders its summary items identically — including
- * the ellipsis rule and the em-dash placeholder for absent values.
+ * ProviderCard 当前配置摘要中的一行"标签/值"。
+ * 抽成共享组件让所有 Provider 的摘要项渲染完全一致,
+ * 包括省略号规则与缺省值的占位符。
  */
 withDefaults(defineProps<{
   label: string
   value: string | null | undefined
   testId?: string
-  /** Long single-line values (base URL, model id) must not wrap the grid. */
+  /** 较长的单行值(如 Base URL、模型 id)不允许把网格撑到换行。 */
   ellipsis?: boolean
 }>(), {
   testId: undefined,

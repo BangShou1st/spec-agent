@@ -1,20 +1,71 @@
-import { expect, type Locator, type Page } from '@playwright/test'
+import {
+  expect,
+  test as base,
+  type APIRequestContext,
+  type Locator,
+  type Page,
+} from '@playwright/test'
 
 /**
  * Shared E2E helpers for the graph-first workspace. Every flow proves
  * browser-visible behavior against the real local backend with the fake
  * model gateway; nothing here inspects the database directly.
+ *
+ * Cleanup contract: every project created through {@link createProject}
+ * is registered for deletion when the test finishes, so reruns on a dirty
+ * environment only ever touch data this run created. Specs must import
+ * `test` from this module (the extended fixture owns the teardown).
  */
+
+export const test = base.extend<{ e2eProjectCleanup: void }>({
+  e2eProjectCleanup: [async ({ request }, use) => {
+    await use()
+    for (const projectId of createdProjectIds.splice(0)) {
+      await deleteProjectBestEffort(request, projectId)
+    }
+  }, { auto: true }],
+})
+
+export { expect }
+export type { APIRequestContext, Locator, Page }
 
 export const FAKE_ROOT_QUESTION = 'What is the most important outcome?'
 
-/** Creates a project through the UI and lands in its graph workspace. */
-export async function createProject(page: Page, title: string): Promise<void> {
+/** Project ids created during the current test; drained by the auto fixture. */
+const createdProjectIds: string[] = []
+
+/** Deletes a project this test created; retries briefly if runs are settling. */
+export async function deleteProjectBestEffort(
+  request: APIRequestContext,
+  projectId: string,
+): Promise<void> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const response = await request.delete(`/api/v1/projects/${projectId}`)
+    if (response.status() === 204 || response.status() === 404) {
+      return
+    }
+    // 409: 项目仍有未终态 run(fake 网关下应很快终态化),稍候重试。
+    await new Promise((resolve) => setTimeout(resolve, 2000))
+  }
+}
+
+/** Creates a project through the UI and lands in its graph workspace.
+ * The title is made unique per call so reruns never collide with leftover
+ * same-name projects from an interrupted earlier run. Returns the project id
+ * (also registered for automatic cleanup). */
+export async function createProject(page: Page, title: string): Promise<string> {
+  const uniqueTitle = `${title} ${Date.now().toString(36)}`
   await page.goto('/projects')
-  await page.getByLabel('Project title').fill(title)
+  await page.getByLabel('Project title').fill(uniqueTitle)
   await page.getByRole('button', { name: '创建项目' }).click()
   await page.waitForURL(/\/projects\/[0-9a-f-]+/)
   await expect(page.getByTestId('graph-canvas')).toBeVisible()
+  const match = page.url().match(/\/projects\/([0-9a-f-]+)/)
+  const projectId = match ? match[1] : ''
+  if (projectId) {
+    createdProjectIds.push(projectId)
+  }
+  return projectId
 }
 
 /** Fits the whole graph into the viewport (viewport-only; never moves nodes). */
@@ -129,9 +180,20 @@ export async function draftFirstQuestion(page: Page): Promise<void> {
     await expect(page.getByTestId('question')).toBeVisible({ timeout: 180000 })
     return
   } catch {
-    const retry = page.getByRole('button', { name: '重新请求' })
-    if (await retry.isVisible()) {
-      await retry.click()
+    // 起草失败时的兜底:旧的全局"重新请求"入口已删除(2026-09-27)。
+    // 错误条的通用出口是"刷新状态"(重载 canonical);若刷新后草稿仍未
+    // 落地,则以正常业务动作再起草一次。
+    const refresh = page.getByRole('button', { name: '刷新状态' })
+    if (await refresh.isVisible().catch(() => false)) {
+      await refresh.click()
+      await expect(page.getByTestId('graph-canvas')).toBeVisible({ timeout: 60_000 })
+    }
+    if (await page.getByTestId('question').isVisible().catch(() => false)) {
+      return
+    }
+    const draft = page.getByTestId('draft-question')
+    if (await draft.isVisible().catch(() => false)) {
+      await draft.click()
       await expect(page.getByTestId('question')).toBeVisible({ timeout: 180000 })
       return
     }

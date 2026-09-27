@@ -35,8 +35,14 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Bounded structural repair: one repair inference per rejected decision,
- * no Tool replay, cancellation preserved, no semantic retry.
+ * 文件名:GlobalAssistantRepairTest.java
+ *
+ * 测试目标:验证决策的结构化修复机制是有界的——每个被拒绝的决策
+ * 只做一次修复推理,不做工具重放,保留取消语义,不做语义层面的重试。
+ * 覆盖场景:有副作用的工具跨修复只执行一次、只读搜索同理、
+ * 连续两次无效决策直接失败且不再第三次调用、首个决策有效则不修复、
+ * 供应商故障不触发修复、修复前/修复后的取消都会让运行停在 CANCELLED、
+ * 语义上"不调工具"的有效决策不会被重试。
  */
 @SpringBootTest
 @ActiveProfiles("test")

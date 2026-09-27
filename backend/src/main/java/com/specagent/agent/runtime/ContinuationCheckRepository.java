@@ -8,14 +8,15 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Durable continuation outbox over {@code agent_run_continuation_checks}.
+ * 文件名:ContinuationCheckRepository.java
  *
- * <p>One row per terminal run: {@code requested_at} when terminalization
- * committed, {@code processed_at} when the dispatcher evaluated the exact
- * {@code request_generation} it read. No semantic fields — the coordinator
- * re-reads durable run facts, never this table, to decide. A crashed
- * afterCommit leaves a pending row for the recovery scanner; a re-request
- * after PARKED_APPROVAL increments the generation and reopens evaluation.
+ * 用途:基于 {@code agent_run_continuation_checks} 表的持久化续跑 outbox。
+ *
+ * 每个终态 run 一行:{@code requested_at} 是终态化提交的时间,
+ * {@code processed_at} 是分发器评估完它读到的那个 {@code request_generation}
+ * 的时间。表里没有任何语义字段——协调器决策时重新读取持久化的 run 事实,
+ * 绝不读这张表。afterCommit 之后崩溃会留下待处理行,由恢复扫描器兜底;
+ * PARKED_APPROVAL 之后再次请求会把代数加一并重新打开评估。
  */
 @Repository
 public class ContinuationCheckRepository {
@@ -27,11 +28,10 @@ public class ContinuationCheckRepository {
     }
 
     /**
-     * Requests continuation evaluation for a terminal run. Every request
-     * increments the generation and reopens evaluation: a processed row
-     * (e.g. PARKED_APPROVAL later accepted) resets to pending under a NEW
-     * generation, so a stale in-flight completion of the old generation can
-     * never mark the new request processed (ABA-safe: it marks 0 rows).
+     * 为一个终态 run 请求续跑评估。每次请求都会把代数加一并重新打开评估:
+     * 已处理过的行(例如 PARKED_APPROVAL 之后又被接受)会在"新代数"下重置为
+     * 待处理,因此旧代数在途的过期完成绝不可能把新请求标记为已处理
+     * (ABA 安全:它只会标记 0 行)。
      */
     public void request(UUID runId) {
         String sql = """
@@ -46,7 +46,7 @@ public class ContinuationCheckRepository {
         jdbcTemplate.update(sql, Maps.of("runId", runId));
     }
 
-    /** Oldest pending checks first, bounded so one poll never scans the table. */
+    /** 待处理检查按最老优先取出,带条数上限,单次轮询绝不全表扫描。 */
     public List<ContinuationCheck> findPending(int limit) {
         String sql = """
                 SELECT run_id, request_generation FROM agent_run_continuation_checks
@@ -60,7 +60,7 @@ public class ContinuationCheckRepository {
                         rs.getLong("request_generation")));
     }
 
-    /** The pending generation for one run, if any. */
+    /** 单个 run 的待处理代数(若存在)。 */
     public java.util.Optional<ContinuationCheck> findPendingByRunId(UUID runId) {
         String sql = """
                 SELECT run_id, request_generation FROM agent_run_continuation_checks
@@ -73,7 +73,7 @@ public class ContinuationCheckRepository {
                 .stream().findFirst();
     }
 
-    /** The latest generation requested for one run, pending or processed. */
+    /** 单个 run 最近一次请求的代数(无论是否已处理)。 */
     public long currentGeneration(UUID runId) {
         String sql = """
                 SELECT request_generation FROM agent_run_continuation_checks
@@ -89,10 +89,9 @@ public class ContinuationCheckRepository {
     }
 
     /**
-     * Marks exactly the evaluated generation processed. Returns the marked
-     * row count: 0 means a concurrent re-request already superseded this
-     * generation — the new generation stays pending and recovery converges
-     * it; the caller must not treat 0 as success of this generation.
+     * 把"被评估的那个代数"精确标记为已处理,返回标记的行数:0 表示并发的
+     * 再次请求已使本代数被取代——新代数保持待处理并由恢复流程收敛;
+     * 调用方绝不能把 0 当成本代数成功。
      */
     public int markProcessed(UUID runId, long generation) {
         String sql = """

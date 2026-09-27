@@ -29,14 +29,15 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Routeless NODE_QUERY as a first-class context: a floating persisted node
- * (routeIds=[]) in a project with NO active route can be the anchor of an
- * "Ask AI" query. The ContextSnapshot persists with route_id = NULL, the
- * snapshot never emits a {@code route:null} source ref, the query reaches a
- * terminal COMPLETED result, and the query leaves the graph unchanged.
+ * 文件名:RoutelessNodeQueryIntegrationTest.java
  *
- * <p>Exercises the real {@code ContextSnapshotRepository} persistence path —
- * the snapshot row must survive with a NULL route id.
+ * 测试目标:无路由 NODE_QUERY 作为一等上下文:在完全没有活动路由的项目里,
+ * 一个游离的持久化节点(routeIds=[])可以充当"问 AI"的锚点。ContextSnapshot 以
+ * route_id = NULL 持久化,模型可见投影绝不发出 {@code route:null} 来源引用,
+ * 查询到达终态 COMPLETED,且查询不改变图。
+ *
+ * 走真实的 {@code ContextSnapshotRepository} 持久化路径——快照行必须以
+ * NULL 路由 id 存活下来。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -62,12 +63,12 @@ class RoutelessNodeQueryIntegrationTest {
     @BeforeEach
     void setUp() {
         project = projectService.createProject("无路线节点问答 " + UUID.randomUUID());
-        // Remove the active route, so the project has NO active route at all.
+        // 移除活动路由,使项目完全没有活动路由。
         UUID activeRouteId = project.activeRouteId();
         routeService.archiveRoute(project.id(), activeRouteId);
         assertThat(projectRepository.findById(project.id()).orElseThrow().activeRouteId()).isNull();
 
-        // A floating persisted canonical node, created with no route at all.
+        // 一个完全不带路由创建的游离持久化规范节点。
         floatingNode = commandService.createFloatingDraftNode(
                 project.id(), null, "IDEA", Map.of("text", "无路线的漂浮想法"));
     }
@@ -88,27 +89,26 @@ class RoutelessNodeQueryIntegrationTest {
         AgentRun run = agentRunService.getRun(runId).orElseThrow();
         assertThat(run.status()).isEqualTo(AgentRunStatus.COMPLETED);
 
-        // The ContextSnapshot persisted with route_id = NULL and includes the
-        // anchor node.
+        // ContextSnapshot 以 route_id = NULL 持久化,且包含锚点节点。
         ContextSnapshot snapshot = snapshotRepository.findById(run.contextSnapshotId()).orElseThrow();
         assertThat(snapshot.routeId()).isNull();
         assertThat(snapshot.includedNodeIds()).contains(floatingNode.id());
-        // The anchor lineage is exactly the floating node itself.
+        // 锚点血统就是那个游离节点本身。
         assertThat(snapshot.includedNodeIds()).hasSize(1);
-        // The persisted row really carries NULL route_id.
+        // 持久化的行确实携带 NULL route_id。
         UUID persistedRouteId = jdbcTemplate.queryForObject(
                 "SELECT route_id FROM context_snapshots WHERE id = ?", UUID.class, snapshot.id());
         assertThat(persistedRouteId).isNull();
 
-        // The model-facing projection never emits a route:null source ref and
-        // carries an explicit route-less route context.
+        // 模型可见投影绝不发出 route:null 来源引用,
+        // 且携带显式的无路由上下文。
         AgentInputSnapshot projected = snapshotBuilder.build(snapshot);
         assertThat(projected.routeId()).isNull();
         assertThat(projected.routeContext().routeId()).isNull();
         assertThat(projected.allowedSourceRefs())
                 .noneMatch(ref -> ref.startsWith("route:"));
 
-        // Exactly one DECISION call; terminal RESPOND message present.
+        // 恰好一次 DECISION 调用;终态 RESPOND 消息存在。
         var phases = eventService.findByRunId(runId);
         assertThat(phases.stream()
                 .filter(e -> "DECISION_STARTED".equals(e.eventType())).count()).isEqualTo(1);
@@ -116,15 +116,13 @@ class RoutelessNodeQueryIntegrationTest {
                 .anyMatch(e -> NodeQueryService.RESPOND_MESSAGE_EVENT.equals(e.eventType())))
                 .isTrue();
 
-        // The query never mutated the graph: routes, nodes, answers and
-        // relations are exactly as before.
+        // 查询从未变更图:routes、nodes、answers、relations 与之前完全一致。
         assertThat(countRoutes(project.id())).isEqualTo(routesBefore);
         assertThat(countNodes(project.id())).isEqualTo(nodesBefore);
         assertThat(countAnswers(project.id())).isEqualTo(answersBefore);
         assertThat(countRelations(project.id())).isEqualTo(relationsBefore);
-        // The query run itself must not touch the operation log: the logged
-        // operations all predate it (setup archived the active route and
-        // created the floating draft — both now enter the log by design).
+        // 问答 run 自身绝不能碰操作日志:日志中的操作都发生在它之前
+        // (setup 归档了活动路由并创建了游离草稿——两者按设计都会入日志)。
         int operationsBeforeRun = commandService.listOperations(project.id()).size();
         assertThat(operationsBeforeRun).isEqualTo(2);
         assertThat(commandService.listOperations(project.id())).hasSize(operationsBeforeRun);

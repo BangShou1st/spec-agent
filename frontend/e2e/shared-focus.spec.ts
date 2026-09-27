@@ -1,6 +1,5 @@
-import { test, expect } from '@playwright/test'
-import { buildThreeNodeLineage, closeFloatingWorkspaceWindows, createProject, fitGraph, forkFromNode, hoverNode } from './helpers'
 
+import { test, expect, createProject, fitGraph, closeFloatingWorkspaceWindows, hoverNode, buildThreeNodeLineage, forkFromNode } from './helpers'
 test('shared node current-reading selector changes Focus without activating a route', async ({ page }) => {
   await createProject(page, 'E2E Shared Focus Flow')
   await buildThreeNodeLineage(page)

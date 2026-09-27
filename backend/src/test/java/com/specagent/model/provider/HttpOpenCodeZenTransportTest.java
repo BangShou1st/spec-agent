@@ -29,9 +29,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * HTTP-level tests against a local stub server. No public network is ever
- * touched: the stub records the exact request the JDK HttpClient would send
- * and answers with controlled payloads.
+ * 文件名:HttpOpenCodeZenTransportTest.java
+ *
+ * 测试目标:针对本地 stub 服务器的 HTTP 层测试(绝不触网:stub 记录 JDK HttpClient
+ * 实际发出的请求并返回受控报文)。覆盖:completion/listModels/凭证探测的请求头与请求体
+ * 契约(User-Agent、Bearer 鉴权、会话头、tools 占位数组、无 temperature 等采样参数);
+ * 空会话 ID fail-closed;生产请求无超时而设置类请求有独立限时;SSE 聚合、reasoning 观测
+ * 但不混入正文;各类错误(401/403/429/5xx/400/302/连接失败/畸形 JSON/意外载荷/错误事件)
+ * 到错误类别与诊断原因的精确映射;诊断信息与异常消息绝不泄漏 API Key、原始报文或 reasoning;
+ * 结构化契约保持流式并携带 response_format;以及生产请求忽略 JVM 默认 ProxySelector。
  */
 class HttpOpenCodeZenTransportTest {
 
@@ -131,8 +137,8 @@ class HttpOpenCodeZenTransportTest {
         assertThat(payload.get("stream").asBoolean()).isTrue();
         assertThat(payload.fieldNames()).toIterable()
                 .containsExactlyInAnyOrder("model", "messages", "stream", "tools");
-        // Zen's free tier only answers client-shaped requests, so every
-        // completion carries the transport-owned placeholder tool array.
+        // Zen 免费档只应答客户端形状的请求,所以每次 completion
+        // 都携带由传输层持有的占位 tools 数组。
         assertThat(payload.get("tools")).isNotEmpty();
         assertThat(payload.get("tools").get(0).get("type").asText()).isEqualTo("function");
         assertThat(payload.get("temperature")).isNull();
@@ -280,24 +286,22 @@ class HttpOpenCodeZenTransportTest {
         CapturedRequest request = captured.get(0);
         assertThat(request.method()).isEqualTo("POST");
         assertThat(request.path()).isEqualTo("/chat/completions");
-        // Probe requests must carry exactly the same transport policy.
+        // 探测请求必须携带与正式请求完全一致的传输策略。
         assertThat(request.headers().getFirst("User-Agent")).isEqualTo(OpenCodeZenTransport.USER_AGENT);
         assertThat(request.headers().getFirst("Authorization")).isEqualTo("Bearer " + TEST_KEY);
         assertThat(request.headers().getFirst("Content-Type")).isEqualTo("application/json");
 
-        // The probe model comes from the caller (currently discovered free
-        // model); the transport never hardcodes one. Probes carry an ephemeral
-        // session from the same centralized wire policy.
+        // 探测模型来自调用方(当前发现的免费模型),传输层绝不硬编码。
+        // 探测使用与统一报文策略一致的临时会话。
         assertThat(request.headers().getFirst("x-opencode-session")).isNotBlank().startsWith("ses_");
         JsonNode payload = mapper.readTree(request.body());
         assertThat(payload.get("model").asText()).isEqualTo("current-free");
         assertThat(payload.get("messages").get(0).get("role").asText()).isEqualTo("user");
         assertThat(payload.get("max_tokens").asInt()).isEqualTo(256);
         assertThat(payload.get("response_format").get("type").asText()).isEqualTo("json_object");
-        // Zen admits the free tier only for client-shaped requests: the probe has
-        // to be streamed and carry a non-empty tools array, exactly like the
-        // production completion. A non-streamed or tool-less probe is rejected
-        // with FreeTierError before any credential check happens.
+        // Zen 免费档只放行客户端形状的请求:探测必须流式且携带非空 tools 数组,
+        // 与生产 completion 完全一致。非流式或缺少 tools 的探测会在凭证校验
+        // 之前就被 FreeTierError 拒绝。
         assertThat(payload.get("stream").asBoolean()).isTrue();
         assertThat(payload.get("tools")).isNotEmpty();
     }
@@ -685,9 +689,8 @@ class HttpOpenCodeZenTransportTest {
     }
 
     /**
-     * Fail-closed stand-in for any application-level proxy: records every
-     * selection and routes to an ephemeral dead port that nothing listens
-     * on, so any transport that honors it cannot reach its target.
+     * 面向任何应用层代理的 fail-closed 替身:记录每次选择调用,
+     * 并路由到一个无人监听的临时死端口,任何遵循它的传输都无法到达目标。
      */
     private static final class RecordingPoisonSelector extends ProxySelector {
         private final AtomicInteger selects = new AtomicInteger();

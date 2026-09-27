@@ -21,28 +21,24 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Undo/Redo as operation-specific compensation over the typed graph
- * operation log.
+ * 文件名:UndoRedoService.java
  *
- * <p>Undo never physically deletes immutable history: node creation is
- * compensated by soft retraction plus route-tip rollback; draft edits restore
- * the prior content; semantic relations are marked retracted; branch routes
- * are soft-deleted and restorable. Redo re-applies the original logical
- * operation only while its preconditions still hold; intervening work that
- * would conflict makes redo unavailable rather than forcing replay.
+ * 用途:撤销/重做服务——基于类型化图操作日志的"操作特定补偿"。
  *
- * <p>Linear stack semantics: undo targets the most recent ACTIVE operation;
- * redo targets the most recent UNDONE operation, provided no newer ACTIVE
- * operation was created after it was undone (new work cuts off the redo
- * branch, exactly like a familiar editor undo history).
+ * 撤销绝不物理删除不可变历史:节点创建通过软撤回加路线 tip 回滚来
+ * 补偿;草稿编辑恢复先前内容;语义关系被标记为撤回;分支路线被软删除
+ * 且可恢复。重做只在其前置条件仍成立时重放原逻辑操作;中间发生的、
+ * 会产生冲突的新工作会让重做不可用,而不是强行重放。
  *
- * <p>Non-reversible barrier: an ACTIVE non-reversible operation (accepted
- * agent proposals) is an undo-history barrier. Undo never reaches past it —
- * earlier reversible operations stay out of reach while the barrier is the
- * latest ACTIVE operation, because compensating them underneath accepted
- * agent work could silently break the graph invariants the proposal relied
- * on. {@link #canUndo} reports false at a barrier so the UI never offers an
- * undo that would be rejected.
+ * 线性栈语义:撤销针对最近的 ACTIVE 操作;重做针对最近的 UNDONE
+ * 操作,前提是它被撤销后没有产生新的 ACTIVE 操作(新工作会切断重做
+ * 分支,与常见编辑器的撤销历史完全一致)。
+ *
+ * 不可逆屏障:一条 ACTIVE 且不可逆的操作(已接受的 agent 提案)是
+ * 撤销历史的屏障。撤销永不越过它——只要屏障还是最新的 ACTIVE 操作,
+ * 更早的可逆操作都够不着,因为在已接受的 agent 工作之下补偿它们,
+ * 可能悄悄破坏提案所依赖的图不变量。屏障处 {@link #canUndo} 返回 false,
+ * UI 因此绝不会提供一个注定被拒的撤销。
  */
 @Service
 public class UndoRedoService {
@@ -84,11 +80,9 @@ public class UndoRedoService {
     }
 
     /**
-     * True when the most recent ACTIVE operation is reversible. A
-     * non-reversible operation at the top of the stack is an undo barrier:
-     * older ACTIVE operations are NOT reachable for undo while it stands, so
-     * this returns false even though reversible operations still exist
-     * further down the log.
+     * 当最近的 ACTIVE 操作可逆时返回 true。栈顶的不可逆操作是撤销屏障:
+     * 只要它还在,更老的 ACTIVE 操作都不可撤销——所以即使日志深处仍有
+     * 可逆操作,这里也返回 false。
      */
     public boolean canUndo(UUID projectId) {
         return latestByStatus(projectId, GraphOperation.Status.ACTIVE)
@@ -96,7 +90,7 @@ public class UndoRedoService {
                 .orElse(false);
     }
 
-    /** True when the most-recently-undone operation can still be replayed. */
+    /** 最近一次被撤销的操作若仍可重放则返回 true。 */
     public boolean canRedo(UUID projectId) {
         return latestUndoneForRedo(projectId)
                 .map(op -> redoNotCutOff(projectId, op))
@@ -105,12 +99,11 @@ public class UndoRedoService {
 
     @Transactional
     public UndoRedoResult undo(UUID projectId) {
-        // Serialize stack mutations for this project: undo/redo and live graph
-        // mutations (e.g. createSemanticRelation) all take the same project-row
-        // lock, so two concurrent undos can never act on the same operation and
-        // an undo can never interleave with a new mutation into a half-applied
-        // stack. The node-specific lock for the retraction target is taken
-        // later, inside the compensation path, before any retraction decision.
+        // 让本项目内的栈变更串行:undo/redo 与实时的图变更(如
+        // createSemanticRelation)都取同一把 project 行锁,因此两个并发
+        // 撤销绝不会作用于同一操作,撤销也绝不会与一次新变更交错出
+        // 半应用的栈。被撤回目标节点的专属锁稍后在补偿路径内、任何
+        // 撤回决策之前再取。
         projectRepository.lockById(projectId);
         GraphOperation operation = latestByStatus(projectId, GraphOperation.Status.ACTIVE)
                 .orElseThrow(() -> new IllegalStateException("没有可撤销的操作"));
@@ -120,8 +113,8 @@ public class UndoRedoService {
         compensate(operation);
         operationRepository.updateStatus(operation.id(), GraphOperation.Status.UNDONE,
                 com.specagent.workspace.graph.GraphOperationRepository.nextTimestamp());
-        // Re-read so the response reflects the persisted UNDONE status instead
-        // of the in-memory ACTIVE object that was just compensated.
+        // 重新读一次,让响应反映持久化后的 UNDONE 状态,
+        // 而不是刚被补偿完的内存 ACTIVE 对象。
         return new UndoRedoResult(operationRepository.findById(operation.id()).orElse(operation),
                 describeUndo(operation));
     }
@@ -129,9 +122,9 @@ public class UndoRedoService {
     @Transactional
     public UndoRedoResult redo(UUID projectId) {
         projectRepository.lockById(projectId);
-        // Redo targets the most-recently-undone operation (largest undoneAt):
-        // exactly like a familiar editor, the last thing you undid is the first
-        // thing you redo. createdAt would not order multi-undo correctly.
+        // 重做针对最近被撤销的操作(undoneAt 最大):与常见编辑器一致,
+        // 最后撤销的就是最先重做的。用 createdAt 排序在多次撤销下
+        // 得不到正确顺序。
         GraphOperation operation = latestUndoneForRedo(projectId)
                 .orElseThrow(() -> new IllegalStateException("没有可恢复的操作"));
         if (!redoNotCutOff(projectId, operation)) {
@@ -145,7 +138,7 @@ public class UndoRedoService {
     }
 
     // ------------------------------------------------------------------
-    // Undo compensation per operation type
+    // 按操作类型的撤销补偿
     // ------------------------------------------------------------------
 
     private void compensate(GraphOperation operation) {
@@ -167,15 +160,14 @@ public class UndoRedoService {
     }
 
     /**
-     * Undo of "connect a floating node": the node is detached again — it keeps
-     * existing with its content, it only loses route membership. Legal only
-     * while nothing was appended after it, so lineage history is never orphaned.
+     * 撤销"接入悬浮节点":节点被重新摘下——它连同内容继续存在,
+     * 只是失去路线归属。仅在其后没有追加任何内容时才合法,
+     * lineage 历史绝不会被孤立。
      *
-     * <p>Two connect shapes exist: the node became the tip (empty route or a
-     * knowledge-only head), or it hangs below the unchanged INTERACTION tip as
-     * provenance. The recorded {@code tipAdvanced} ref distinguishes them;
-     * legacy records (before the ref existed) always advanced the tip, so the
-     * current tip state settles the ambiguity fail-closed.
+     * 接入有两种形态:节点成为 tip(空路线或纯知识头),或它挂在
+     * 未变化的 INTERACTION tip 之下作为出处。记录的 {@code tipAdvanced}
+     * 引用可区分两者;该引用出现之前的旧记录总是推进 tip,所以歧义由
+     * 当前 tip 状态做 fail-closed 判定。
      */
     private void compensateConnect(GraphOperation operation) {
         UUID nodeId = requireUuid(operation.afterRefs(), "nodeId");
@@ -190,8 +182,7 @@ public class UndoRedoService {
         }
         UUID previousTipNodeId = optionalUuid(operation.beforeRefs(), "previousTipNodeId");
         if (!tipAdvanced) {
-            // Provenance-only connect: the tip never moved, detaching the
-            // parent pointer alone fully compensates the operation.
+            // 仅出处式接入:tip 从未移动,只清空父指针即完整补偿。
             if (!java.util.Objects.equals(route.tipNodeId(), previousTipNodeId)) {
                 throw new IllegalStateException("路线末端已变化，无法撤销这次接入");
             }
@@ -211,10 +202,9 @@ public class UndoRedoService {
     }
 
     /**
-     * Connect operations recorded {@code tipAdvanced} from the first kind-aware
-     * connect onward; older records always advanced the tip, so a missing ref
-     * means "advanced" unless the current tip says otherwise (fail-closed
-     * inference for logs written before the fix).
+     * 从第一次按 kind 区分的接入起,接入操作都会记录 {@code tipAdvanced};
+     * 更早的记录总是推进 tip,所以引用缺失意味着"已推进",除非当前
+     * tip 表现相反(对修复前写入的日志做 fail-closed 推断)。
      */
     private boolean tipAdvancedOf(GraphOperation operation, Route route, UUID nodeId) {
         Object recorded = operation.afterRefs().get("tipAdvanced");
@@ -225,9 +215,8 @@ public class UndoRedoService {
     }
 
     /**
-     * Undo of "detach": the node is re-attached the way it was — as the route
-     * tip (tip detach), or hung back below the lineage (provenance detach,
-     * tip untouched). Legacy records were always tip detaches.
+     * 撤销"摘线":节点按原样接回——作为路线 tip(tip 摘线),或重新挂回
+     * lineage 之下(出处摘线,tip 不动)。旧记录一律是 tip 摘线。
      */
     private void compensateDisconnect(GraphOperation operation) {
         UUID nodeId = requireUuid(operation.afterRefs(), "nodeId");
@@ -235,15 +224,15 @@ public class UndoRedoService {
         UUID parentId = optionalUuid(operation.beforeRefs(), "parentId");
         boolean tipDetached = operation.afterRefs().get("tipDetached") instanceof Boolean b
                 ? b
-                : true; // legacy records always detached the tip
+                : true; // 旧记录总是摘掉 tip
         Node node = requireActiveNode(operation.projectId(), nodeId);
         nodeRepository.lockById(nodeId);
         Route route = routeRepository.findById(routeId)
                 .orElseThrow(() -> new IllegalStateException("Route missing during undo: " + routeId));
         Instant now = Instant.now();
         if (!tipDetached) {
-            // Provenance detach: the tip never moved; require the old parent
-            // to still sit on the lineage, then restore the parent pointer.
+            // 出处摘线:tip 从未移动;先要求旧父节点仍在这条 lineage 上,
+            // 再恢复父指针。
             if (node.parentNodeId() != null) {
                 throw new IllegalStateException("节点已接入路线，无法撤销这次断开");
             }
@@ -264,23 +253,20 @@ public class UndoRedoService {
 
     private void compensateNodeCreation(GraphOperation operation) {
         UUID nodeId = requireUuid(operation.afterRefs(), "nodeId");
-        // routeId is absent for floating creations (created without any route);
-        // a floating draft never touched the route tip/root.
+        // 悬浮创建(不经过任何路线)没有 routeId;
+        // 悬浮草稿从未触碰路线的 tip/root。
         UUID routeId = optionalUuid(operation.afterRefs(), "routeId");
         Node node = requireActiveNode(operation.projectId(), nodeId);
-        // Lock the node row before deciding retraction, mirroring
-        // AnswerService.finalizeAnswer's lock-first pattern: the retractability
-        // checks below then observe an authoritative, race-free node state, so
-        // an in-flight answer finalization or graph mutation on the same node
-        // cannot be lost (or win a lost-update race) once we commit the
-        // retraction.
+        // 在决定撤回前先锁节点行,镜像 AnswerService.finalizeAnswer 的
+        // 先锁后判模式:下面的可撤回性检查随后观察到的是权威、无竞态的
+        // 节点状态,因此同一节点上正在进行的答案定稿或图变更不会在
+        // 撤回提交后丢失(或输掉 lost-update 竞态)。
         nodeRepository.lockById(nodeId);
         requireRetractable(operation.projectId(), node, routeId);
 
         nodeService.setRetracted(nodeId, true);
         if (isFloatingCreation(operation)) {
-            // A floating draft never touched the route tip/root; retraction
-            // alone fully compensates its creation.
+            // 悬浮草稿从未触碰路线 tip/root;仅撤回即可完整补偿其创建。
             return;
         }
         UUID parentId = node.parentNodeId();
@@ -297,7 +283,7 @@ public class UndoRedoService {
         UUID nodeId = requireUuid(operation.afterRefs(), "nodeId");
         UUID routeId = requireUuid(operation.afterRefs(), "routeId");
         Node node = requireActiveNode(operation.projectId(), nodeId);
-        // Lock the node row before deciding retraction (see compensateNodeCreation).
+        // 在决定撤回前先锁节点行(见 compensateNodeCreation)。
         nodeRepository.lockById(nodeId);
         Route route = routeRepository.findById(routeId)
                 .orElseThrow(() -> new IllegalStateException("Branch route missing during undo: " + routeId));
@@ -306,10 +292,9 @@ public class UndoRedoService {
         }
         requireRetractable(operation.projectId(), node, routeId);
 
-        // Restore the active pointer first (legacy records have no explicit
-        // previous-active ref; the branch's source route is the safe fallback),
-        // then soft-delete via the bare transition core — compensations must
-        // not append lifecycle operations of their own.
+        // 先恢复活跃指针(旧记录没有显式的 previous-active 引用;分支的
+        // 来源路线是安全回退),再经由裸流转核心做软删除——补偿绝不能
+        // 自己再追加生命周期操作。
         restoreActivePointer(operation, optionalUuid(operation.beforeRefs(), "sourceRouteId"));
         nodeService.setRetracted(nodeId, true);
         routeService.transitionLifecycle(operation.projectId(), routeId, RouteLifecycleStatus.DELETED);
@@ -349,14 +334,13 @@ public class UndoRedoService {
     }
 
     // ------------------------------------------------------------------
-    // Route-operation compensations
+    // 路线操作的补偿
     // ------------------------------------------------------------------
 
     /**
-     * Undo of ROUTE_FORK / ROUTE_START: the new route is soft-deleted — but
-     * only while it still sits exactly where creation left it (no continuation
-     * advanced its tip). The node(s) the route points at are shared or floating
-     * and are never touched.
+     * 撤销 ROUTE_FORK / ROUTE_START:新路线被软删除——但仅当它仍停在
+     * 创建时的位置(没有任何续写推进过它的 tip)。路线指向的节点是
+     * 共享或悬浮的,永不被触碰。
      */
     private void compensateStandaloneRouteCreation(GraphOperation operation) {
         UUID routeId = requireUuid(operation.afterRefs(), "routeId");
@@ -373,7 +357,7 @@ public class UndoRedoService {
                 RouteLifecycleStatus.DELETED);
     }
 
-    /** Redo of ROUTE_FORK / ROUTE_START: reopen the soft-deleted route. */
+    /** 重做 ROUTE_FORK / ROUTE_START:重新打开被软删除的路线。 */
     private void replayStandaloneRouteCreation(GraphOperation operation) {
         UUID routeId = requireUuid(operation.afterRefs(), "routeId");
         UUID tipNodeId = optionalUuid(operation.afterRefs(), "tipNodeId");
@@ -389,7 +373,7 @@ public class UndoRedoService {
         routeService.setActiveRoutePointer(operation.projectId(), routeId);
     }
 
-    /** Undo of ROUTE_REANSWER: retract the cloned question and soft-delete its route. */
+    /** 撤销 ROUTE_REANSWER:撤回克隆的问题节点并软删除其路线。 */
     private void compensateReanswerRoute(GraphOperation operation) {
         UUID routeId = requireUuid(operation.afterRefs(), "routeId");
         UUID clonedNodeId = requireUuid(operation.afterRefs(), "clonedNodeId");
@@ -407,7 +391,7 @@ public class UndoRedoService {
                 RouteLifecycleStatus.DELETED);
     }
 
-    /** Redo of ROUTE_REANSWER: reopen the route and un-retract the clone. */
+    /** 重做 ROUTE_REANSWER:重新打开路线并解除克隆节点的撤回。 */
     private void replayReanswerRoute(GraphOperation operation) {
         UUID routeId = requireUuid(operation.afterRefs(), "routeId");
         UUID clonedNodeId = requireUuid(operation.afterRefs(), "clonedNodeId");
@@ -428,7 +412,7 @@ public class UndoRedoService {
         routeService.setActiveRoutePointer(operation.projectId(), routeId);
     }
 
-    /** Undo of ROUTE_REGENERATE: retract the replacement and reopen the source route. */
+    /** 撤销 ROUTE_REGENERATE:撤回替换节点并重新打开来源路线。 */
     private void compensateRegenerate(GraphOperation operation) {
         UUID routeId = requireUuid(operation.afterRefs(), "routeId");
         UUID replacementNodeId = requireUuid(operation.afterRefs(), "replacementNodeId");
@@ -453,13 +437,13 @@ public class UndoRedoService {
         routeService.transitionLifecycle(operation.projectId(), routeId,
                 RouteLifecycleStatus.DELETED);
         if (sourceWasOpen) {
-            // SUPERSEDED → OPEN is a legal reverse transition.
+            // SUPERSEDED → OPEN 是合法的逆向流转。
             routeService.transitionLifecycle(operation.projectId(), sourceRouteId,
                     RouteLifecycleStatus.OPEN);
         }
     }
 
-    /** Redo of ROUTE_REGENERATE: reopen the replacement, re-retract nothing, re-supersede. */
+    /** 重做 ROUTE_REGENERATE:重开替换路线、无需再撤回什么、重新取代来源。 */
     private void replayRegenerate(GraphOperation operation) {
         UUID routeId = requireUuid(operation.afterRefs(), "routeId");
         UUID replacementNodeId = requireUuid(operation.afterRefs(), "replacementNodeId");
@@ -481,9 +465,8 @@ public class UndoRedoService {
             if (source.lifecycleStatus() != RouteLifecycleStatus.OPEN) {
                 throw new IllegalStateException("来源路线状态已变化，无法恢复换题");
             }
-            // OPEN → SUPERSEDED is reserved for replacement commits (the state
-            // machine forbids it as a user lifecycle command), so re-apply the
-            // supersession directly like the live commit path does.
+            // OPEN → SUPERSEDED 仅保留给替换提交(状态机禁止把它作为用户
+            // 生命周期命令),因此像实时提交路径那样直接重新应用取代。
             routeRepository.updateLifecycle(sourceRouteId, RouteLifecycleStatus.SUPERSEDED,
                     Instant.now());
         }
@@ -494,10 +477,9 @@ public class UndoRedoService {
     }
 
     /**
-     * Undo of ROUTE_LIFECYCLE: apply the reverse transition (fail-closed
-     * against the lifecycle state machine — e.g. a restored SUPERSEDED route
-     * cannot be un-restored back to SUPERSEDED) and restore the recorded
-     * active-route pointer.
+     * 撤销 ROUTE_LIFECYCLE:应用逆向流转(严格遵循生命周期状态机——
+     * 例如被恢复的 SUPERSEDED 路线无法"取消恢复"回 SUPERSEDED),
+     * 并恢复记录的活跃路线指针。
      */
     private void compensateRouteLifecycle(GraphOperation operation) {
         UUID routeId = requireUuid(operation.afterRefs(), "routeId");
@@ -513,7 +495,7 @@ public class UndoRedoService {
         restoreActivePointer(operation, null);
     }
 
-    /** Redo of ROUTE_LIFECYCLE: re-apply the forward transition. */
+    /** 重做 ROUTE_LIFECYCLE:重新应用正向流转。 */
     private void replayRouteLifecycle(GraphOperation operation) {
         UUID routeId = requireUuid(operation.afterRefs(), "routeId");
         RouteLifecycleStatus toStatus = RouteLifecycleStatus.fromCode(
@@ -537,7 +519,7 @@ public class UndoRedoService {
         }
     }
 
-    /** Sets the active-route pointer back to the recorded value (no-op when equal). */
+    /** 把活跃路线指针恢复为记录值(相同时为 no-op)。 */
     private void restoreActivePointer(GraphOperation operation, UUID fallbackRouteId) {
         UUID previous = optionalUuid(operation.beforeRefs(), "previousActiveRouteId");
         if (previous == null) {
@@ -564,7 +546,7 @@ public class UndoRedoService {
     }
 
     // ------------------------------------------------------------------
-    // Redo replay per operation type (preconditions checked first)
+    // 按操作类型的重做重放(先检查前置条件)
     // ------------------------------------------------------------------
 
     private void replay(GraphOperation operation) {
@@ -586,10 +568,9 @@ public class UndoRedoService {
     }
 
     /**
-     * Redo of a connect: re-attach the same node as the tip (or below the
-     * unchanged tip for provenance connects), but only while the route still
-     * sits exactly where the undo left it — intervening work fails closed
-     * instead of silently rebasing the lineage.
+     * 重做一次接入:把同一节点重新接为 tip(或对出处式接入,重新挂在
+     * 未变化的 tip 之下),但仅当路线仍停在撤销后留下的位置——中间
+     * 发生的新工作会 fail-closed,而不是悄悄重定 lineage 基准。
      */
     private void replayConnect(GraphOperation operation) {
         UUID nodeId = requireUuid(operation.afterRefs(), "nodeId");
@@ -616,14 +597,14 @@ public class UndoRedoService {
         }
     }
 
-    /** Redo of a detach: detach again, requiring the same state. */
+    /** 重做一次摘线:再次摘下,要求状态与撤销前一致。 */
     private void replayDisconnect(GraphOperation operation) {
         UUID nodeId = requireUuid(operation.afterRefs(), "nodeId");
         UUID routeId = requireUuid(operation.afterRefs(), "routeId");
         UUID parentId = optionalUuid(operation.beforeRefs(), "parentId");
         boolean tipDetached = operation.afterRefs().get("tipDetached") instanceof Boolean b
                 ? b
-                : true; // legacy records always detached the tip
+                : true; // 旧记录总是摘掉 tip
         Node node = requireActiveNode(operation.projectId(), nodeId);
         if (!java.util.Objects.equals(node.parentNodeId(), parentId)) {
             throw new IllegalStateException("节点归属已变化，无法重复断开");
@@ -652,8 +633,7 @@ public class UndoRedoService {
 
     private void replayNodeCreation(GraphOperation operation) {
         UUID nodeId = requireUuid(operation.afterRefs(), "nodeId");
-        // routeId is absent for floating creations; floating restore never
-        // touches the route tip/root.
+        // 悬浮创建没有 routeId;悬浮恢复绝不触碰路线 tip/root。
         UUID routeId = optionalUuid(operation.afterRefs(), "routeId");
         UUID parentId = optionalUuid(operation.afterRefs(), "parentId");
         Node node = nodeRepository.findById(nodeId)
@@ -663,9 +643,8 @@ public class UndoRedoService {
         }
 
         if (isFloatingCreation(operation)) {
-            // Floating drafts stay disconnected: restoring them must not
-            // touch the route tip/root or require a specific tip state, and
-            // must never consult a route that the creation never referenced.
+            // 悬浮草稿保持脱离:恢复它们不得触碰路线 tip/root、不得要求
+            // 特定的 tip 状态,也绝不允许查询创建时从未引用过的路线。
             requireRetractable(operation.projectId(), node, routeId);
             nodeService.setRetracted(nodeId, false);
             return;
@@ -686,7 +665,7 @@ public class UndoRedoService {
         }
     }
 
-    /** True when the recorded creation was a standalone (floating) draft. */
+    /** 记录的创建是否是独立(悬浮)草稿。 */
     private boolean isFloatingCreation(GraphOperation operation) {
         return Boolean.TRUE.equals(operation.afterRefs().get("floating"));
     }
@@ -702,8 +681,8 @@ public class UndoRedoService {
         requireRetractable(operation.projectId(), node, routeId);
         Route route = routeRepository.findById(routeId)
                 .orElseThrow(() -> new IllegalStateException("Branch route missing during redo: " + routeId));
-        // Undo leaves the soft-deleted route's tip at the created node; redo
-        // is possible only while that tip never advanced past it.
+        // 撤销后路线(软删除)的 tip 停在创建的节点上;重做只有在该
+        // tip 从未越过它时才可能。
         if (route.lifecycleStatus() != RouteLifecycleStatus.DELETED
                 || route.tipNodeId() == null || !route.tipNodeId().equals(nodeId)) {
             throw new IllegalStateException("分支路线状态已变化，无法恢复");
@@ -727,14 +706,12 @@ public class UndoRedoService {
     }
 
     /**
-     * Re-activates the SAME relation row that undo retracted, but only after
-     * re-running the identical invariant boundary the live creation path uses
-     * ({@code GraphCommandService.createSemanticRelation} →
-     * {@link GraphInvariantValidator#validateRelationCreation}). Redo must never
-     * bypass validation or mint a new relation identity: if intervening work
-     * (a conflicting active relation, a dependency cycle, a retracted endpoint,
-     * or a cross-project/self reference) would now invalidate the replay, it
-     * fails closed rather than silently rebasing the graph.
+     * 重新激活被撤销撤回的同一行关系,但必须先重跑与实时创建路径完全
+     * 相同的不变量关卡({@code GraphCommandService.createSemanticRelation}
+     * → {@link GraphInvariantValidator#validateRelationCreation})。
+     * 重做绝不能绕过校验或铸造新的关系身份:如果中间发生的新工作
+     * (一条冲突的激活关系、依赖成环、端点被撤回、跨项目或自引用)
+     * 会让重放失效,则 fail-closed,而不是悄悄重定图的基准。
      */
     private void replayRelation(GraphOperation operation) {
         UUID relationId = requireUuid(operation.afterRefs(), "relationId");
@@ -747,16 +724,14 @@ public class UndoRedoService {
         UUID targetNodeId = requireUuid(operation.afterRefs(), "targetNodeId");
         NodeRelationType type = NodeRelationType.fromCode(
                 String.valueOf(operation.afterRefs().get("relationType")));
-        // Serialize against concurrent relation mutations within the project,
-        // exactly like the live creation path.
+        // 与项目内并发的关变更串行,与实时创建路径完全一致。
         projectRepository.lockById(operation.projectId());
-        // Endpoints exist / not retracted / same project / not self, plus the
-        // DEPENDS_ON + DERIVED_FROM DAG cycle check against the CURRENT graph.
+        // 端点存在 / 未撤回 / 同项目 / 非自引用,外加针对"当前图"的
+        // DEPENDS_ON + DERIVED_FROM DAG 成环检查。
         invariantValidator.validateRelationCreation(operation.projectId(), sourceNodeId, targetNodeId, type);
-        // No active duplicate of this canonical relation may already exist: if
-        // intervening work created one, replaying would violate the unique
-        // backstop, so fail closed instead of rebasing. The canonical-pair
-        // lookup mirrors the live de-duplication (symmetric types normalized).
+        // 这条规范关系绝不能已有激活的重复行:若中间的新工作创建了一条,
+        // 重放会违反唯一兜底,因此 fail-closed 而不是重定基准。规范对
+        // 查找与实时去重一致(对称类型已规范化)。
         if (relationRepository.findActiveByCanonicalPair(operation.projectId(), sourceNodeId, targetNodeId, type)
                 .map(r -> !r.id().equals(relationId))
                 .orElse(false)) {
@@ -778,19 +753,17 @@ public class UndoRedoService {
     }
 
     // ------------------------------------------------------------------
-    // Shared preconditions
+    // 共享前置条件
     // ------------------------------------------------------------------
 
     /**
-     * A created node can be retracted only while it is a leaf with no
-     * immutable answers and no other route pointing at it as tip; otherwise
-     * downstream history would be silently orphaned.
+     * 创建的节点只有在它是叶子、没有不可变答案、也没有其他路线把它
+     * 指为 tip 时才可撤回;否则下游历史会被悄悄孤立。
      */
     private void requireRetractable(UUID projectId, Node node, UUID owningRouteId) {
-        // Only live (non-retracted) descendants block retraction. A child that
-        // was itself already undone (soft-retracted) does NOT block undoing its
-        // parent — otherwise the second undo would be permanently rejected and
-        // the linear stack would never unwind past it.
+        // 只有存活(未撤回)的子孙才阻止撤回。一个自己已被撤销
+        // (软撤回)的子节点不会阻止撤销其父节点——否则第二次撤销会被
+        // 永久拒绝,线性栈永远无法越过它回退。
         if (nodeRepository.existsActiveByParentNodeId(node.id())) {
             throw new IllegalStateException("节点已有后续内容，请先处理其下游节点");
         }
@@ -820,12 +793,11 @@ public class UndoRedoService {
     }
 
     /**
-     * Redo target: the most-recently-undone operation — the UNDONE operation
-     * with the greatest {@code undoneAt} (ties broken by id for determinism).
-     * {@code undoneAt} is populated only when an operation transitions to
-     * UNDONE, so it captures the true undo order; {@code createdAt} would not
-     * distinguish a third undo from an earlier one. UNDONE ops without an
-     * {@code undoneAt} (none are produced today) are ignored.
+     * 重做目标:最近被撤销的操作——即 {@code undoneAt} 最大的 UNDONE 操作
+     * (并列时按 id 决出确定性顺序)。只有操作转入 UNDONE 时才写入
+     * {@code undoneAt},因此它记录了真实的撤销顺序;{@code createdAt}
+     * 无法区分第三次撤销与更早的一次。没有 {@code undoneAt} 的 UNDONE
+     * 操作(当前不会产生)会被忽略。
      */
     private java.util.Optional<GraphOperation> latestUndoneForRedo(UUID projectId) {
         return operationRepository.findByProject(projectId).stream()
@@ -835,8 +807,8 @@ public class UndoRedoService {
     }
 
     /**
-     * New ACTIVE work created after the operation was undone cuts off its
-     * redo branch; the user must re-issue the operation explicitly.
+     * 操作被撤销之后产生的任何新 ACTIVE 工作都会切断它的重做分支;
+     * 用户必须显式重新发起该操作。
      */
     private boolean redoNotCutOff(UUID projectId, GraphOperation undone) {
         Instant undoneAt = undone.undoneAt() == null ? Instant.EPOCH : undone.undoneAt();
@@ -847,7 +819,7 @@ public class UndoRedoService {
     }
 
     // ------------------------------------------------------------------
-    // Ref helpers
+    // Ref 辅助方法
     // ------------------------------------------------------------------
 
     private UUID requireUuid(Map<String, Object> refs, String key) {
@@ -913,8 +885,8 @@ public class UndoRedoService {
             case ROUTE_REGENERATE -> "已恢复：换题";
             case ROUTE_START -> "已恢复：新路线";
             case ROUTE_LIFECYCLE -> "已恢复：路线状态变更";
-            // Unreachable: an ACCEPT_AGENT_PROPOSAL can never be in UNDONE
-            // state because undo rejects it; kept for switch exhaustiveness.
+            // 不可达:ACCEPT_AGENT_PROPOSAL 永远不会处于 UNDONE 状态,
+            // 因为撤销会直接拒绝它;保留此分支仅为 switch 穷尽性。
             case ACCEPT_AGENT_PROPOSAL -> "已恢复：接受提案";
         };
     }

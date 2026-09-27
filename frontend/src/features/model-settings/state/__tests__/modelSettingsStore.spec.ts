@@ -1,3 +1,6 @@
+// 文件名:modelSettingsStore.spec.ts
+// 用途:OpenCode 模型设置 store 单测:保存后以重新拉取的列表为准、
+//       已保存选中项在重新拉取前保持可见、探测失败保留工作状态等行为。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { ApiError } from '@/shared/http/client'

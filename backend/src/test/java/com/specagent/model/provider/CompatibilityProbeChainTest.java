@@ -16,7 +16,14 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.*;
 
-/** The probe reuses the authoritative chain: parser then validator. */
+/**
+ * 文件名:CompatibilityProbeChainTest.java
+ *
+ * 测试目标:验证自定义 Provider 兼容性探测复用权威解析链(先 Parser 后 Validator):
+ * 通过本地 HttpServer 模拟 Chat Completions / Responses 接口,覆盖最小合法 FINAL 决策通过,
+ * 以及重复键、多余字段、校验层失败、非法 Unicode 代理项、非 JSON 报文、非 FINAL、
+ * finish_reason=length、status=incomplete 等各类非法响应一律抛出 ModelProviderException。
+ */
 class CompatibilityProbeChainTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();

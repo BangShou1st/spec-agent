@@ -1,3 +1,5 @@
+// 文件名:ConnectionsList.spec.ts
+// 用途:连接列表组件测试:验证行内真实名称与状态文案渲染、select 与 disable 事件的抛出。
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import ConnectionsList from '@/features/connections/components/ConnectionsList.vue'

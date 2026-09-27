@@ -3,8 +3,12 @@ package com.specagent.agent.protocol;
 import java.util.List;
 
 /**
- * Generic node body in Graph language. The current V1 question workflow is
- * projected into this shape; workflow names never enter the contract.
+ * 文件名:NodeBodyView.java
+ *
+ * 用途:以 Graph 语言表示的通用节点正文。
+ *
+ * 约束:当前的 V1 提问工作流被投影成这个统一形状;工作流名称本身
+ * 绝不进入跨语言契约(领域差异只体现在投影内容里)。
  */
 public record NodeBodyView(String text, List<OptionView> options, boolean acceptsFreeText) {
 

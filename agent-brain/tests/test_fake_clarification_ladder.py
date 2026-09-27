@@ -1,7 +1,9 @@
-"""Regression for the deterministic fake clarification ladder: the fake must
-never repeat an already-answered lineage question, or the Java Runtime's
-enforced RESOLVED_BLOCKER rule fails the run. Mirrors the Java-side
-DeterministicFakeClarificationTest rung for rung."""
+"""文件名:test_fake_clarification_ladder.py
+
+用途:确定性 fake 澄清阶梯的回归测试:fake 绝不能重复一个已经有答案的
+lineage 问题,否则 Java Runtime 强制执行的 RESOLVED_BLOCKER 规则会让
+run 失败。与 Java 侧 DeterministicFakeClarificationTest 逐级对应。
+"""
 
 import copy
 import json
@@ -23,23 +25,23 @@ def test_fake_advances_past_answered_questions():
 
     base = json.loads((FIXTURES_DIR / "agent-input-valid.json").read_text(encoding="utf-8"))
 
-    # Zero answered fake questions: the canonical first question is kept, so
-    # the golden decision fixture still matches.
+    # 零个已回答的 fake 问题:保留标准的第一问,保证 golden decision
+    # fixture 仍然匹配。
     request = parse_request_envelope(_without_answers(base))
     response = handle_decision(request, FakeModelClient())
     assert response.action_proposal.payload["questionText"] == Q1
 
-    # One answered (Q1): must advance to Q2, never repeat Q1.
+    # 已回答一问(Q1):必须推进到 Q2,绝不重复 Q1。
     request = parse_request_envelope(_with_answered(base, [Q1]))
     response = handle_decision(request, FakeModelClient())
     assert response.action_proposal.payload["questionText"] == Q2
 
-    # Two answered (Q1, Q2): must advance to Q3.
+    # 已回答两问(Q1、Q2):必须推进到 Q3。
     request = parse_request_envelope(_with_answered(base, [Q1, Q2]))
     response = handle_decision(request, FakeModelClient())
     assert response.action_proposal.payload["questionText"] == Q3
 
-    # Three answered (Q1-Q3): the fallback must stay clear of every one.
+    # 三问全部已回答(Q1-Q3):回退问题必须避开所有已问过的。
     request = parse_request_envelope(_with_answered(base, [Q1, Q2, Q3]))
     response = handle_decision(request, FakeModelClient())
     question = response.action_proposal.payload["questionText"]

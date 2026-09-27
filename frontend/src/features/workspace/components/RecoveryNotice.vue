@@ -1,3 +1,8 @@
+<!--
+  文件名:RecoveryNotice.vue
+  用途:工作台的统一恢复提示组件:一次只渲染一个卡片、最多一个主 CTA;
+       点击只发出语义意图,真正的 store 命令由父组件翻译执行。
+-->
 <script setup lang="ts">
 import type { RecoveryAction, RecoveryNoticeModel } from '@/features/workspace/presentation/recoveryPresentation'
 

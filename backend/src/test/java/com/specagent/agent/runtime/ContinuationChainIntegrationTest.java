@@ -48,17 +48,16 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 
 /**
- * Slice 3B: a created continuation child really executes one fresh
- * Observe → DECISION → Act cycle through the production chain.
+ * 文件名:ContinuationChainIntegrationTest.java
  *
- * <p>Deliberately NOT {@code @Transactional}: the worker's terminal
- * continuation hook evaluates after commit, and a rolled-back test
- * transaction would never fire it. Fixtures are removed per project in
- * {@link #cleanUp()}.
+ * 测试目标:Slice 3B:创建出的续跑子 run 通过生产链路真实执行一轮全新的
+ * Observe → DECISION → Act 循环。
  *
- * <p>No test branches on action family names, conflict text, or planner
- * flags. Continuation is judged only through the coordinator's durable
- * verdicts; the fake brain decides the next proposal.
+ * 刻意不加 {@code @Transactional}:worker 的终态续跑钩子在提交后(after commit)
+ * 才评估,回滚的测试事务永远不会触发它。fixture 在 {@link #cleanUp()} 中按项目清理。
+ *
+ * 测试不基于动作族名、冲突文本或 planner 标志做分支。续跑只通过协调器的
+ * 持久化裁决判定;下一个提案由 fake brain 决定。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -145,7 +144,7 @@ class ContinuationChainIntegrationTest {
                 .isEqualTo(AgentRunStatus.COMPLETED);
         assertThat(agentRunService.getRun(childId).orElseThrow().status())
                 .isEqualTo(AgentRunStatus.COMPLETED);
-        // The child's fresh snapshot observed the parent's capability result.
+        // 子 run 的全新快照观察到了父 run 的能力结果。
         var snapshot = contextBuilder.buildForRoute(
                 project.id(), project.activeRouteId(),
                 routeRepository.findById(project.activeRouteId()).orElseThrow().tipNodeId(),
@@ -153,7 +152,7 @@ class ContinuationChainIntegrationTest {
         assertThat(snapshotBuilder.build(snapshot).capabilityResults())
                 .anyMatch(view -> view.status().equals(
                         CapabilityResult.Status.SUCCEEDED.name()));
-        // The terminal child leaves no grandchild.
+        // 终态子 run 不留下孙 run。
         assertThat(agentRunRepository.findChildByParentRunId(childId)).isEmpty();
         assertThat(agentRunService.listByProject(project.id())).hasSize(2);
     }
@@ -241,7 +240,7 @@ class ContinuationChainIntegrationTest {
                 .orElseThrow(() -> new IllegalStateException(
                         "expected a continuation child")).id();
 
-        // External causality moves the tip after the child was created.
+        // 外部因果在子 run 创建之后推进了 tip。
         nodeService.createChildNode(project.id(), project.activeRouteId(),
                 routeRepository.findById(project.activeRouteId()).orElseThrow().tipNodeId(),
                 "external question moves the tip?", null, List.of(), true);
@@ -255,7 +254,7 @@ class ContinuationChainIntegrationTest {
         try {
             worker.executeRun(childClaimed);
         } catch (RuntimeException expected) {
-            // Stale anchor fails closed; the worker still terminalizes.
+            // 过期锚点 fail closed;worker 仍然做终态化。
         }
 
         int decisionsAfter = Mockito.mockingDetails(decisionEngine)
@@ -278,10 +277,9 @@ class ContinuationChainIntegrationTest {
         UUID childId = agentRunRepository.findChildByParentRunId(root.id())
                 .orElseThrow().id();
 
-        // A retried terminal hook (worker retry, duplicate delivery) must
-        // converge on the same persisted child, never a second row. The
-        // duplicate goes through dispatch — never by re-executing the
-        // terminal COMPLETED run's model/action path.
+        // 重试的终态钩子(worker 重试、重复投递)必须收敛到同一个已持久化的
+        // 子 run,绝不能出现第二行。重复投递走 dispatch——绝不通过重新执行
+        // 终态 COMPLETED run 的模型/动作路径。
         dispatchService.process(root.id());
 
         assertThat(agentRunRepository.findChildByParentRunId(root.id())
@@ -295,8 +293,8 @@ class ContinuationChainIntegrationTest {
     @Test
     void graphMutationChainsToChildSeeingFreshNode() {
         Project project = newProjectWithResource("chain-graph");
-        // An unanswered question cannot gain a lineage child: answer the
-        // root first so the stubbed CREATE_NODE may append.
+        // 未回答的问题不能获得血统子节点:先回答根节点,
+        // 打桩的 CREATE_NODE 才能追加。
         var routeBefore = routeRepository.findById(project.activeRouteId()).orElseThrow();
         finalizeAndCheckpoint(project, routeBefore.tipNodeId(), "answered for append");
         withMaxCycles(5);
@@ -337,9 +335,8 @@ class ContinuationChainIntegrationTest {
 
     @Test
     void userInputQuestionParksWithoutChild() {
-        // No stub: the production fake brain answers a draft with a
-        // user-input question, which the executor persists as an
-        // INTERACTION node — a permanent external boundary.
+        // 不打桩:生产 fake brain 对草稿的回答是用户输入问题,
+        // 执行器将其持久化为 INTERACTION 节点——一个永久的外部边界。
         Project project = newProjectWithoutResource("chain-user-boundary");
         withMaxCycles(5);
 
@@ -373,8 +370,8 @@ class ContinuationChainIntegrationTest {
     @Test
     void acceptedProposalExecutesOnceAndContinuesToChildSeeingResult() {
         Project project = newProjectWithResource("chain-approval-accept");
-        // An unanswered question cannot gain a lineage child: answer the
-        // root first so the accepted CREATE_NODE may append.
+        // 未回答的问题不能获得血统子节点:先回答根节点,
+        // 被接受的 CREATE_NODE 才能追加。
         var routeBefore = routeRepository.findById(project.activeRouteId()).orElseThrow();
         finalizeAndCheckpoint(project, routeBefore.tipNodeId(), "answered for append");
         withMaxCycles(5);
@@ -392,9 +389,8 @@ class ContinuationChainIntegrationTest {
         worker.executeRun(claim(root));
         assertThat(agentRunRepository.findChildByParentRunId(root.id())).isEmpty();
 
-        // User accepts: the proposal executes exactly once, the originating
-        // run gains the durable effect, and the reopened check dispatches to
-        // exactly one continuation child.
+        // 用户接受:提案精确执行一次,发起 run 获得持久化效果,
+        // 重新打开的检查分发到恰好一个续跑子 run。
         var pending = proposalService.findByRunId(root.id())
                 .orElseThrow(() -> new IllegalStateException("expected a pending proposal"));
         var accepted = acceptanceService.acceptAndExecute(pending.id(), "test-user");
@@ -414,7 +410,7 @@ class ContinuationChainIntegrationTest {
         assertThat(agentRunService.getRun(childId).orElseThrow().status())
                 .isEqualTo(AgentRunStatus.COMPLETED);
 
-        // The child's ACTUAL DECISION input lineage contains the approved node.
+        // 子 run 实际 DECISION 输入的血统包含被批准的节点。
         var requests = Mockito.mockingDetails(decisionEngine)
                 .getInvocations().stream()
                 .filter(call -> "runDecision".equals(call.getMethod().getName()))
@@ -425,8 +421,7 @@ class ContinuationChainIntegrationTest {
                 .map(entry -> entry.node().id()))
                 .contains(accepted.producedNodeId());
 
-        // Duplicate accept converges on the single winner — never a second
-        // execution, never a second child.
+        // 重复接受收敛到唯一赢家——绝不第二次执行,绝没有第二个子 run。
         org.assertj.core.api.Assertions.assertThatThrownBy(
                         () -> acceptanceService.acceptAndExecute(pending.id(), "test-user"))
                 .isInstanceOf(com.specagent.agent.policy.ProposalAlreadyDecidedException.class);
@@ -456,16 +451,16 @@ class ContinuationChainIntegrationTest {
         Integer nodeCount = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM nodes WHERE project_id = ?",
                 Integer.class, project.id());
-        // Fixture seeds: 1 resource + 1 knowledge + 1 root question. Reject
-        // executes nothing, so no agent node appears.
+        // fixture 种子:1 个 resource + 1 个 knowledge + 1 个根问题。拒绝
+        // 不执行任何动作,因此不会出现 agent 节点。
         assertThat(nodeCount).isEqualTo(3);
     }
 
     @Test
     void lostAcceptDispatchRecoversPendingCheckToChild() {
         Project project = newProjectWithResource("chain-approval-recover");
-        // Same answer-first fixture as the accept test: the accepted
-        // CREATE_NODE must have a lineage parent.
+        // 与接受用例相同的先回答 fixture:被接受的 CREATE_NODE
+        // 必须有血统父节点。
         var routeBeforeRecover = routeRepository.findById(project.activeRouteId()).orElseThrow();
         finalizeAndCheckpoint(project, routeBeforeRecover.tipNodeId(), "answered for append");
         withMaxCycles(5);
@@ -484,8 +479,8 @@ class ContinuationChainIntegrationTest {
         var pending = proposalService.findByRunId(root.id())
                 .orElseThrow(() -> new IllegalStateException("expected a pending proposal"));
 
-        // The accept-time afterCommit dispatch throws: acceptance itself
-        // already committed (execution done once), the check stays pending.
+        // 接受时刻的 afterCommit 分发抛异常:接受本身已提交(执行恰好
+        // 完成一次),检查保持 pending。
         Mockito.doThrow(new IllegalStateException("accept dispatch down"))
                 .doCallRealMethod()
                 .when(dispatchService).process(any(UUID.class));
@@ -495,7 +490,7 @@ class ContinuationChainIntegrationTest {
         assertThat(checkRepository.findPendingByRunId(root.id())).isPresent();
         Mockito.reset(dispatchService);
 
-        // Recovery converges the still-pending check to exactly one child.
+        // 恢复把仍 pending 的检查收敛到恰好一个子 run。
         dispatchService.recoverPending();
         UUID childId = agentRunRepository.findChildByParentRunId(root.id())
                 .orElseThrow(() -> new IllegalStateException(
@@ -535,9 +530,9 @@ class ContinuationChainIntegrationTest {
         AtomicInteger decisions = new AtomicInteger();
         stubDecisionsAfterFirstWithTerminalRespond(decisions);
 
-        // Root's first DECISION really executes (capability success) and the
-        // continuation child's DECISION responds: the child's terminal
-        // RESPOND must persist the user-visible message durably.
+        // 根 run 的第一次 DECISION 真实执行(能力成功),续跑子 run 的
+        // DECISION 做出回应:子 run 的终态 RESPOND 必须把用户可见消息
+        // 持久化保存。
         AgentRun root = runService.createQueuedDraftQuestion(project.id());
         worker.executeRun(claim(root));
         UUID childId = agentRunRepository.findChildByParentRunId(root.id())
@@ -550,7 +545,7 @@ class ContinuationChainIntegrationTest {
         AgentRun child = agentRunService.getRun(childId).orElseThrow();
         assertThat(child.status()).isEqualTo(AgentRunStatus.COMPLETED);
 
-        // Durable: the RESPOND_MESSAGE row is the single source of truth.
+        // 持久化:RESPOND_MESSAGE 事件行是唯一事实来源。
         List<String> messages = eventService.findByRunId(childId).stream()
                 .filter(e -> "RESPOND_MESSAGE".equals(e.eventType()))
                 .map(e -> e.payload().get("message"))
@@ -559,13 +554,12 @@ class ContinuationChainIntegrationTest {
                 .toList();
         assertThat(messages).containsExactly("chain observed and done");
 
-        // Atomic: COMPLETED is never visible without the message event and
-        // the RUN_COMPLETED marker — all committed by one terminalization.
+        // 原子性:没有消息事件和 RUN_COMPLETED 标记时,COMPLETED 绝不可见
+        // ——全部由一次终态化提交。
         assertThat(eventService.findByRunId(childId).stream()
                 .anyMatch(e -> "RUN_COMPLETED".equals(e.eventType()))).isTrue();
 
-        // Idempotent read: the message view derives from the same event row
-        // on every read (no second store to diverge).
+        // 幂等读取:消息视图每次读取都来自同一事件行(不存在会发散的第二存储)。
         List<String> reread = eventService.findByRunId(childId).stream()
                 .filter(e -> "RESPOND_MESSAGE".equals(e.eventType()))
                 .map(e -> e.payload().get("message"))
@@ -574,7 +568,7 @@ class ContinuationChainIntegrationTest {
                 .toList();
         assertThat(reread).isEqualTo(messages);
 
-        // No child follows a terminal response: the chain ends here.
+        // 终态回应之后不再有子 run:链在此结束。
         assertThat(agentRunRepository.findChildByParentRunId(childId)).isEmpty();
     }
 
@@ -595,10 +589,9 @@ class ContinuationChainIntegrationTest {
                 .filter(run -> run.id().equals(childId))
                 .orElseThrow());
 
-        // Proof is the child's ACTUAL DECISION input — not a rebuilt test
-        // snapshot: the second runDecision request carries the parent's
-        // SUCCEEDED capability result. (The capability fixture produces no
-        // graph node, so lineage proof lives in the graph-mutation test.)
+        // 证据是子 run 实际的 DECISION 输入——不是重建的测试快照:第二次
+        // runDecision 请求携带父 run 的 SUCCEEDED 能力结果。(能力 fixture 不
+        // 产生图节点,因此血统证据放在图变更用例中验证。)
         var requests = Mockito.mockingDetails(decisionEngine)
                 .getInvocations().stream()
                 .filter(call -> "runDecision".equals(call.getMethod().getName()))
@@ -635,8 +628,8 @@ class ContinuationChainIntegrationTest {
                 .filter(run -> run.id().equals(childId))
                 .orElseThrow());
 
-        // Same actual-input proof for the FAILED side: durable failures
-        // persist as evidence and enter the child's real DECISION input.
+        // FAILED 一侧同样的实际输入证明:持久化的失败作为证据保存,
+        // 并进入子 run 真实的 DECISION 输入。
         var requests = Mockito.mockingDetails(decisionEngine)
                 .getInvocations().stream()
                 .filter(call -> "runDecision".equals(call.getMethod().getName()))
@@ -652,8 +645,8 @@ class ContinuationChainIntegrationTest {
     @Test
     void childDecisionSeesParentGraphMutationInRequestLineage() {
         Project project = newProjectWithResource("chain-fresh-observe-graph");
-        // An unanswered question cannot gain a lineage child: answer the
-        // root first so the stubbed CREATE_NODE may append.
+        // 未回答的问题不能获得 lineage 子节点:先回答根节点,
+        // 桩定的 CREATE_NODE 才能追加。
         var routeBefore = routeRepository.findById(project.activeRouteId()).orElseThrow();
         finalizeAndCheckpoint(project, routeBefore.tipNodeId(), "answered for append");
         withMaxCycles(5);
@@ -680,9 +673,8 @@ class ContinuationChainIntegrationTest {
                 .filter(run -> run.id().equals(childId))
                 .orElseThrow());
 
-        // Proof is the child's ACTUAL DECISION input lineage — not a
-        // rebuilt test snapshot: the second request's lineage contains the
-        // node Run1 durably produced.
+        // 证据是子 run 实际 DECISION 输入的血统——不是重建的测试快照:
+        // 第二次请求的血统包含 Run1 持久化产出的节点。
         var requests = Mockito.mockingDetails(decisionEngine)
                 .getInvocations().stream()
                 .filter(call -> "runDecision".equals(call.getMethod().getName()))
@@ -705,9 +697,8 @@ class ContinuationChainIntegrationTest {
         int decisionsAfterFirstRun = Mockito.mockingDetails(decisionEngine)
                 .getInvocations().size();
 
-        // A duplicate delivery of the terminal COMPLETED run must fail
-        // closed — never re-run model/action. Recovery goes through
-        // dispatch, never through executeRun on a terminal row.
+        // 终态 COMPLETED run 的重复投递必须 fail closed——绝不重跑模型/动作。
+        // 恢复只能走 dispatch,绝不能对终态行执行 executeRun。
         org.assertj.core.api.Assertions.assertThatThrownBy(
                         () -> worker.executeRun(
                                 runService.getRun(root.id()).orElseThrow()))
@@ -728,11 +719,10 @@ class ContinuationChainIntegrationTest {
         AgentRun root = runService.createQueuedDraftQuestion(project.id());
         worker.executeRun(claim(root));
 
-        // Simulate a crash after COMMIT but before afterCommit dispatch: the
-        // terminal check row is pending while no child exists yet. Recovery
-        // must create exactly one child and mark the check processed. The
-        // fast-path child is removed in FK order (events first, then the
-        // run) so the replay starts from the same durable state as a crash.
+        // 模拟在 COMMIT 之后、afterCommit 分发之前崩溃:终态检查行处于
+        // pending 且子 run 尚不存在。恢复必须创建恰好一个子 run 并把检查
+        // 标记为已处理。快速路径的子 run 按外键顺序删除(先事件后 run),
+        // 使重放从与崩溃时相同的持久化状态开始。
         assertThat(agentRunRepository.findChildByParentRunId(root.id())).isPresent();
         UUID childId = agentRunRepository.findChildByParentRunId(root.id())
                 .orElseThrow().id();
@@ -778,9 +768,8 @@ class ContinuationChainIntegrationTest {
                 .orElseThrow(() -> new IllegalStateException(
                         "expected a continuation child")).id();
 
-        // Simulate a crash between child creation and markProcessed: the
-        // check is still pending while the child already exists. Recovery
-        // must converge via ALREADY_CONTINUED — no second child.
+        // 模拟在子 run 创建与 markProcessed 之间崩溃:子 run 已存在但检查
+        // 仍 pending。恢复必须经由 ALREADY_CONTINUED 收敛——不产生第二个子 run。
         jdbcTemplate.update(
                 "INSERT INTO agent_run_continuation_checks"
                         + " (run_id, requested_at, processed_at, request_generation)"
@@ -815,10 +804,9 @@ class ContinuationChainIntegrationTest {
                 .orElseThrow(() -> new IllegalStateException(
                         "expected a continuation child")).id();
 
-        // Rebuild the exact ABA interleaving deterministically: the fast
-        // path already consumed generation 1, so remove the child (FK order)
-        // and re-request twice — generation 2 pins the "in-flight stale"
-        // completion while generation 3 is the superseding request.
+        // 确定性地重建精确的 ABA 交错:快速路径已消费 generation 1,所以删除
+        // 子 run(按外键顺序)并重新请求两次——generation 2 固定"在途的过期"
+        // 完成,generation 3 是顶替它的新请求。
         jdbcTemplate.update("DELETE FROM agent_run_events WHERE run_id = ?", childId);
         jdbcTemplate.update("DELETE FROM agent_runs WHERE id = ?", childId);
         dispatchService.request(root.id());
@@ -826,8 +814,8 @@ class ContinuationChainIntegrationTest {
                 .orElseThrow(() -> new IllegalStateException(
                         "expected a pending check after re-request"));
 
-        // Slice 6 preview: approval accept re-requests evaluation of the
-        // same terminal run. The generation must increment and reopen.
+        // Slice 6 预览:审批接受会对同一终态 run 重新发起评估。generation
+        // 必须递增并重新打开。
         dispatchService.request(root.id());
         ContinuationCheck generationNew = checkRepository.findPendingByRunId(root.id())
                 .orElseThrow(() -> new IllegalStateException(
@@ -835,23 +823,21 @@ class ContinuationChainIntegrationTest {
         assertThat(generationNew.generation())
                 .isEqualTo(generationStale.generation() + 1);
 
-        // The stale completion runs first: it creates the child, but its
-        // generation-gated mark targets the OLD generation against a row
-        // that already carries the NEW one — 0 rows marked.
+        // 过期完成先执行:它创建了子 run,但按 generation 门控的 mark 以旧
+        // generation 去更新一个已携带新 generation 的行——0 行被更新。
         dispatchService.process(generationStale);
         UUID firstChild = agentRunRepository.findChildByParentRunId(root.id())
                 .orElseThrow(() -> new IllegalStateException(
                         "stale completion must still create the child")).id();
 
-        // The new generation MUST remain pending — the stale completion
-        // must not have consumed the superseding request.
+        // 新 generation 必须保持 pending——过期的完成绝不能消费顶替它的请求。
         assertThat(checkRepository.findPendingByRunId(root.id()))
                 .isPresent()
                 .get().extracting(ContinuationCheck::generation)
                 .isEqualTo(generationNew.generation());
 
-        // Recovery converges the new generation: ALREADY_CONTINUED, same
-        // child, exactly one row, and the check finally processed.
+        // 恢复收敛新 generation:ALREADY_CONTINUED、同一个子 run、恰好一行,
+        // 检查最终被处理。
         dispatchService.recoverPending();
         assertThat(agentRunRepository.findChildByParentRunId(root.id())
                 .orElseThrow().id()).isEqualTo(firstChild);
@@ -869,11 +855,10 @@ class ContinuationChainIntegrationTest {
         AtomicInteger decisions = new AtomicInteger();
         stubDecisionsAfterFirstWithTerminalRespond(decisions);
 
-        // The immediate post-terminal dispatch throws: the failure must be
-        // isolated to delivery — the parent run stays COMPLETED (never
-        // rethrown as an execution failure) and the check stays pending.
-        // doThrow().doCallRealMethod() scopes the failure to the fast path
-        // only; the later recovery below runs the real dispatch.
+        // 终态后立即执行的分发抛异常:失败必须只隔离在投递环节——父 run
+        // 保持 COMPLETED(绝不作为执行失败重新抛出),检查保持 pending。
+        // doThrow().doCallRealMethod() 把失败范围限定在快速路径;后面的恢复
+        // 走真实分发。
         Mockito.doThrow(new IllegalStateException("dispatch transport down"))
                 .doCallRealMethod()
                 .when(dispatchService).process(any(UUID.class));
@@ -886,15 +871,15 @@ class ContinuationChainIntegrationTest {
         assertThat(agentRunRepository.findChildByParentRunId(root.id())).isEmpty();
         assertThat(checkRepository.findPendingByRunId(root.id())).isPresent();
 
-        // Recovery later converges the still-pending check normally.
+        // 恢复随后正常收敛仍 pending 的检查。
         dispatchService.recoverPending();
         UUID childId = agentRunRepository.findChildByParentRunId(root.id())
                 .orElseThrow(() -> new IllegalStateException(
                         "recovery must converge the deferred check")).id();
         assertThat(checkRepository.findPendingByRunId(root.id())).isEmpty();
 
-        // The stub throws only once (doThrow().doCallRealMethod()): remove
-        // it explicitly so no later test inherits the failure.
+        // 桩只抛一次(doThrow().doCallRealMethod()):显式 reset,
+        // 避免后续测试继承该失败。
         Mockito.reset(dispatchService);
         worker.executeRun(runService.claimNextContinue()
                 .filter(run -> run.id().equals(childId))
@@ -913,8 +898,8 @@ class ContinuationChainIntegrationTest {
         AgentRun root = runService.createQueuedDraftQuestion(project.id());
         worker.executeRun(claim(root));
 
-        // The fast path already consumed generation 1: rebuild the crash
-        // shape deterministically (no child, one pending generation).
+        // 快速路径已消费 generation 1:确定性重建崩溃形态(无子 run,
+        // 一个 pending 的 generation)。
         UUID fastChild = agentRunRepository.findChildByParentRunId(root.id())
                 .orElseThrow(() -> new IllegalStateException(
                         "expected the fast-path child")).id();
@@ -925,10 +910,9 @@ class ContinuationChainIntegrationTest {
                 .orElseThrow(() -> new IllegalStateException(
                         "expected a pending check"));
 
-        // Fail the mark phase AFTER the coordinator created the child: the
-        // explicit TransactionTemplate transaction must roll the child back
-        // together with the mark — a half-evaluation (child without mark)
-        // must never commit under the final atomic design.
+        // 在协调器创建子 run 之后使 mark 阶段失败:显式的 TransactionTemplate
+        // 事务必须把子 run 与 mark 一起回滚——半次评估(有子 run 无 mark)在
+        // 最终的原子设计下绝不能提交。
         Mockito.doThrow(new IllegalStateException("mark store unavailable"))
                 .when(checkRepository).markProcessed(any(UUID.class), anyLong());
         try {
@@ -941,8 +925,7 @@ class ContinuationChainIntegrationTest {
             Mockito.reset(checkRepository);
         }
 
-        // No child row survived the rollback, and the check is still
-        // pending: recovery replays the same evaluation safely.
+        // 回滚后没有子 run 行幸存,检查仍 pending:恢复会安全重放同一评估。
         assertThat(agentRunRepository.findChildByParentRunId(root.id())).isEmpty();
         assertThat(checkRepository.findPendingByRunId(root.id())).isPresent();
 
@@ -984,9 +967,9 @@ class ContinuationChainIntegrationTest {
                 .orElseThrow(() -> new IllegalStateException(
                         "expected a continuation child")).id();
 
-        // The active route switches while the child waits — but the old tip
-        // is untouched, so the stale-anchor check alone would still pass. The
-        // shared ContextGuard (active-route match) must reject instead.
+        // 子 run 等待期间活动路由被切换——但旧 tip 未被动过,因此仅凭
+        // 过期锚点检查仍会通过。必须由共享的 ContextGuard(活动路由匹配)
+        // 拒绝。
         // 派生知识 tip 语义下,live tip 就是那个已回答的问题本身(笔记只是
         // 挂靠在其下),fork 分支点已有 finalized answer,直接分叉即可。
         UUID liveTip = routeRepository.findById(project.activeRouteId())
@@ -1005,7 +988,7 @@ class ContinuationChainIntegrationTest {
         try {
             worker.executeRun(childClaimed);
         } catch (RuntimeException expected) {
-            // Guard rejection fails the run closed; the worker terminalizes.
+            // 守卫拒绝使 run fail closed;worker 做终态化。
         }
 
         int decisionsAfter = Mockito.mockingDetails(decisionEngine)
@@ -1023,9 +1006,9 @@ class ContinuationChainIntegrationTest {
         projectIds.add(project.id());
         commandService.attachResource(project.id(), project.activeRouteId(), null,
                 "TEXT", Map.of("text", "continuation chain resource text"));
-        // A durable KNOWLEDGE node in the lineage: the failed-capability
-        // fixture points its broken ref at this node (a real allowed ref
-        // that is not a resource, so the adapter persists FAILED).
+        // 血统中一个持久化的 KNOWLEDGE 节点:失败能力 fixture 把损坏的
+        // 引用指向该节点(一个真实的、被允许的、但不是 resource 的引用,
+        // 因此适配器会持久化 FAILED)。
         nodeService.createWorkspaceNode(project.id(), project.activeRouteId(),
                 routeRepository.findById(project.activeRouteId()).orElseThrow().tipNodeId(),
                 com.specagent.workspace.node.NodeKind.KNOWLEDGE, "NOTE",
@@ -1039,14 +1022,14 @@ class ContinuationChainIntegrationTest {
     }
 
     private Project newProjectWithoutResource(String name) {
-        // Intentionally an empty route: the production fake brain drafts the
-        // root question itself, which the executor persists as INTERACTION.
+        // 刻意使用空路由:生产 fake brain 自己起草根问题,
+        // 执行器将其持久化为 INTERACTION。
         Project project = projectService.createProject(name + "-" + UUID.randomUUID());
         projectIds.add(project.id());
         return project;
     }
 
-    /** Direct fixture answer with its completed STATE_UPDATE checkpoint. */
+    /** 带已完成 STATE_UPDATE 检查点的直接 fixture 答案。 */
     private void finalizeAndCheckpoint(Project project, UUID nodeId, String freeText) {
         var answer = answerService.finalizeAnswer(project.id(), project.activeRouteId(),
                 nodeId, null, freeText, "test-user");
@@ -1124,10 +1107,9 @@ class ContinuationChainIntegrationTest {
     }
 
     /**
-     * Slice 6: same DECISION proposal but anchored at the live tip, so a
-     * later user accept passes the acceptance stale-anchor gate (the
-     * anchorless variant above can only park — it can never be accepted on
-     * a non-empty route, which is the correct fail-closed behavior).
+     * Slice 6:同一个 DECISION 提案,但锚定在活动 tip 上,使后续的用户接受
+     * 能通过接受阶段的过期锚点门禁(上面无锚点的变体只能暂停——在非空路由上
+     * 它永远不可能被接受,这正是正确的 fail-closed 行为)。
      */
     private AgentResponseEnvelope createAnchoredDecisionNodeProposal(
             AgentRequestEnvelope request) {
@@ -1163,9 +1145,8 @@ class ContinuationChainIntegrationTest {
 
     private AgentResponseEnvelope brokenCapabilityInvoke(AgentRequestEnvelope request) {
         UUID snapshotId = UUID.fromString(request.snapshot().snapshotId());
-        // A real lineage node that is NOT a resource: passes the contract
-        // validator (ref inside allowed refs) but fails inside the adapter,
-        // persisting a FAILED capability result without crashing the run.
+        // 一个真实的、但不是 resource 的血统节点:通过契约校验器(引用在允许
+        // 集合内),却在适配器内部失败,持久化 FAILED 能力结果而不使 run 崩溃。
         String nodeRef = request.snapshot().lineage().stream()
                 .filter(entry -> !"INTERACTION".equals(entry.node().kind())
                         && !"RESOURCE".equals(entry.node().kind()))

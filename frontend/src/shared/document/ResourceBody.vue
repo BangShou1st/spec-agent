@@ -1,3 +1,7 @@
+<!--
+  文件名:ResourceBody.vue
+  用途:文件预览弹窗的正文渲染器:按资源类型(markdown 富文本/代码等宽/普通正文)渲染提取文本。
+-->
 <script setup lang="ts">
 import { computed } from 'vue'
 import RichAssistantText from '@/shared/ui/RichAssistantText.vue'

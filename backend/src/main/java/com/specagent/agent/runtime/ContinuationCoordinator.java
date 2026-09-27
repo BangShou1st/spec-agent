@@ -25,22 +25,20 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Decides whether one terminal AgentRun may spawn an autonomous
- * continuation child (Slice 2+). The only question answered here is
- * "can another cycle legally start" — never "what should it do".
+ * 文件名:ContinuationCoordinator.java
  *
- * <p>Input is a run id only; every fact is re-read from durable state, so
- * {@code evaluate(runId)} returns the same answer after a process restart.
- * No parameter carries model-generated text, policy objects, or
- * precomputed decisions. Chain identity is lazy: a null
- * {@code rootRunId}/{@code cycleIndex} reads as "own root at cycle 0", so
- * external creation paths need no loop metadata.
+ * 用途:判断一个终态 AgentRun 是否可以派生自治续跑子 run(Slice 2+)。
+ * 这里只回答"能否合法开启下一个循环",绝不回答"下一个循环该做什么"。
  *
- * <p>Child creation (Slice 2) reuses the existing {@code inputNodeId}
- * mechanism as the stale anchor (no new column): the child records the
- * row-derived expected tip, and execution fails closed while the live
- * route tip no longer equals it, instead of following newer external
- * causal chains.
+ * 入参只有 run id;所有事实都从持久化状态重新读取,因此进程重启后
+ * {@code evaluate(runId)} 会得到相同结论。任何参数都不携带模型生成的文本、
+ * 策略对象或预计算结论。链路身份是惰性的:-null 的
+ * {@code rootRunId}/{@code cycleIndex} 视为"自身即链根、第 0 轮",外部创建
+ * 路径因此无需携带 loop 元数据。
+ *
+ * 子 run 创建(Slice 2)复用既有的 {@code inputNodeId} 机制作为过期锚点
+ * (不加新列):子 run 记录由行推导出的期望 tip,执行时若实际路线 tip 已不再
+ * 相等则 fail-closed,而不是追随更新的外部因果链。
  */
 @Component
 public class ContinuationCoordinator {
@@ -73,19 +71,16 @@ public class ContinuationCoordinator {
     }
 
     /**
-     * Creates the continuation child when (and only when) the run is
-     * eligible, and returns it. A repeated call for the same parent
-     * returns the already persisted child instead of creating a second
-     * row: the deterministic {@code continue:<parentRunId>} key plus the
-     * project-scoped idempotency unique index arbitrate concurrent
-     * creators, so no Java-level check-then-insert exists here.
+     * 当且仅当 run 满足条件时创建续跑子 run 并返回。对同一个父 run 的重复调用
+     * 会返回已落库的子 run,而不是创建第二行:确定性的 {@code continue:<parentRunId>}
+     * key 加上 project 范围的幂等唯一索引裁决并发创建者,因此这里不存在
+     * Java 层的 check-then-insert。
      *
-    * <p>The child stays {@code CREATED}: claiming and executing it belongs
-    * to the worker (Slice 3+), never to this call.
+     * 子 run 保持 {@code CREATED} 状态:领取与执行属于 worker(Slice 3+),
+     * 绝不属于本调用。
      *
-     * <p>A stale anchor (live tip moved past the row-derived expected tip
-     * since the parent completed) refuses creation and returns empty: the
-     * chain parks instead of following external causality.
+     * 锚点已过期(父 run 完成后,实际 tip 已越过行推导出的期望 tip)时拒绝
+     * 创建并返回空:链路停靠,不追随外部因果。
      */
     public Optional<AgentRun> continueIfEligible(UUID runId) {
         ContinuationDecision decision = evaluate(runId);
@@ -106,8 +101,8 @@ public class ContinuationCoordinator {
     }
 
     /**
-     * Judges one run from durable state. Terminal {@code FAILED} runs map
-     * to {@code FAILED}; non-terminal runs are a caller error and throw.
+     * 从持久化状态裁决单个 run。终态 {@code FAILED} 映射到 {@code FAILED};
+     * 非终态 run 属于调用方错误,直接抛异常。
      */
     public ContinuationDecision evaluate(UUID runId) {
         AgentRun run = agentRunService.getRun(runId)
@@ -158,12 +153,10 @@ public class ContinuationCoordinator {
     }
 
     /**
-     * True when this run produced an interaction node. A produced question
-     * is an external boundary: this chain ends here permanently, whether or
-     * not an answer arrives later. A later user answer opens a new
-     * ANSWER_CYCLE chain — it never reactivates this run. Proven from the
-     * node row only — never from the requested action family name, and never
-     * from answer state.
+     * 本 run 是否产出了交互(interaction)节点。产出的"问题"是一个外部边界:
+     * 无论之后是否收到回答,这条链到此永久结束。之后的用户回答会开启一条新的
+     * ANSWER_CYCLE 链——绝不会重新激活本 run。结论只从节点行推导——绝不依据
+     * 请求的动作族名称,也绝不依据回答状态。
      */
     private boolean producedExternalBoundary(AgentRun run) {
         if (run.producedNodeId() == null) {
@@ -178,17 +171,14 @@ public class ContinuationCoordinator {
     }
 
     /**
-     * True when a next snapshot could consume something this run left
-     * behind: a produced graph node, or completed capability invocation rows
-     * (successes and durable failures alike — failures persist as evidence).
-     * Unfinished invocations do not count.
+     * 判断下一个快照能否消费本 run 留下的东西:产出的图节点,或已完成的
+     * capability invocation 行(成功与持久化失败都算——失败也会作为证据
+     * 落库)。未完成的 invocation 不算。
      *
-     * <p>Produced spec snapshots never count: no fresh
-     * {@code AgentInputSnapshot} projection reads them, so a child DECISION
-     * could not observe them — they are not new observations for a next
-     * cycle. Produced answers and patches never count either: the answer
-     * cycle persists them before its DECISION call, so the current run's own
-     * model already saw them.
+     * 产出的规格快照绝不算数:没有任何新的 {@code AgentInputSnapshot}
+     * 投影会读取它,子 run 的 DECISION 观察不到它——它不是下一轮的新观察。
+     * 产出的回答与补丁也绝不算数:回答循环在其 DECISION 调用之前就已持久化
+     * 它们,本 run 自己的模型已经见过。
      */
     private boolean hasNewFacts(AgentRun run) {
         if (run.producedNodeId() != null) {
@@ -201,8 +191,8 @@ public class ContinuationCoordinator {
     }
 
     /**
-     * True when the run was denied without effect: an expired proposal left
-     * by a deny branch, or a node-query deny/not-confirmable event.
+     * 本 run 是否属于"被拒绝且无效果":deny 分支遗留的过期提案,
+     * 或 node-query 的 POLICY_DENIED / MUTATION_NOT_CONFIRMABLE 事件。
      */
     private static boolean isDenied(Optional<AgentProposal> proposal,
                                     List<AgentRunEvent> events) {

@@ -25,16 +25,16 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Real {@link ModelInferenceGateway} backed by the frozen OpenCode Zen
- * transport. Credential resolution and HTTP transport stay
- * exactly where they were; this adapter only reshapes the call into the
- * neutral inference seam so the Python brain can reach the same proven
- * transport through the internal broker without ever seeing a key. Model
- * selection is validated against the live provider list when settings are
- * saved; the runtime path imposes no additional cost-policy filter.
+ * 文件名:OpenCodeModelInferenceGateway.java
  *
- * <p>No retry, no provider fallback. Generation limits are not forwarded:
- * production OpenCode completions keep their verified request shape.
+ * 用途:由冻结的 OpenCode Zen 传输层支撑的真实 {@link ModelInferenceGateway}。
+ * 凭据解析和 HTTP 传输保持在原处不动;本适配器只是把调用重塑为提供商无关的
+ * 推理端口,让 Python 大脑可以通过内部代理使用同一套经过验证的传输层,而全程
+ * 接触不到密钥。模型选择在保存设置时对照提供商的实时模型列表校验;运行时路径
+ * 不附加任何额外的成本策略过滤。
+ *
+ * 不重试,不做提供商降级(fallback)。生成上限不向下转发:生产 OpenCode
+ * 补全保持已验证的请求形态。
  */
 @Component
 @ConditionalOnProperty(name = "spec.agent.model.inference", havingValue = "opencode", matchIfMissing = true)
@@ -99,13 +99,11 @@ public class OpenCodeModelInferenceGateway implements ModelInferenceGateway {
     }
 
     /**
-     * Translates the neutral output contract into the OpenCode-native
-     * request shape. Text stays on the historical wire shape; a JSON object
-     * becomes {@code response_format.type=json_object} without claiming
-     * native schema enforcement; a JSON schema becomes
-     * {@code response_format.json_schema} with strict enforcement.
-     * Unknown contract variants fail closed instead of silently
-     * downgrading to text. No silent fallback between modes.
+     * 把提供商无关的输出契约翻译成 OpenCode 原生的请求形态。Text 保持历史的线上
+     * 形态;JSON 对象转换为 {@code response_format.type=json_object},不承诺原生
+     * schema 强制;JSON schema 转换为 {@code response_format.json_schema} 并启用
+     * strict 强制。未知的契约变体按失败处理,而不是悄悄降级为文本。各模式之间
+     * 不做静默回退。
      */
     private static OpenCodeChatCompletionRequest toProviderRequest(
             String selectedModel,

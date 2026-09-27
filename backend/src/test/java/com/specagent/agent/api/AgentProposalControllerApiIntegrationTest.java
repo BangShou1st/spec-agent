@@ -31,10 +31,12 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Advisor proposal listing. A PROPOSED proposal has not been decided yet, so
- * its {@code decidedAt}/{@code decidedBy} are null; the summary must serialize
- * them as null (never throw) and the default {@code /proposals} list must
- * return 200, not 500.
+ * 文件名:AgentProposalControllerApiIntegrationTest.java
+ *
+ * 测试目标:验证 Advisor 提案列表 API——PROPOSED 提案尚未决定,其 decidedAt/decidedBy
+ * 必须序列化为 null(序列化不得抛异常,默认 /proposals 列表返回 200 而非 500);摘要携带
+ * runId/inputNodeId 等运行时身份供前端重连;triggerType 由各提案的 AgentRun 派生并支持
+ * 过滤/排除过滤;无 run 记录的旧提案接受后 originRunId 为 null。
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -80,9 +82,9 @@ class AgentProposalControllerApiIntegrationTest {
         assertThat(body).hasSize(1);
         JsonNode summary = body.get(0);
         assertThat(summary.get("status").asText()).isEqualTo("PROPOSED");
-        // PROPOSED proposals are undecided: decidedAt/decidedBy must be null.
-        // Before the LinkedHashMap fix, Map.of(...) with a null value threw
-        // NullPointerException and the list returned HTTP 500.
+        // PROPOSED 提案尚未决定:decidedAt/decidedBy 必须为 null。
+        // 在 LinkedHashMap 修复之前,Map.of(...) 携带 null 值会抛 NullPointerException,
+        // 列表会返回 HTTP 500。
         JsonNode decidedAt = summary.get("decidedAt");
         JsonNode decidedBy = summary.get("decidedBy");
         assertThat(decidedAt == null || decidedAt.isNull()).isTrue();
@@ -90,15 +92,14 @@ class AgentProposalControllerApiIntegrationTest {
     }
 
     /**
-     * Item 8 (deep review) — the pending proposal list carries enough runtime
-     * identity (runId + inputNodeId) for the frontend to reconnect a durable
-     * PROPOSED proposal to its NodeQuery anchor node after a page reload.
+     * 深度评审第 8 项——待处理提案列表携带足够的运行时身份(runId + inputNodeId),
+     * 让前端在页面刷新后能把持久化的 PROPOSED 提案重新连接到它的 NodeQuery 锚点节点。
      */
     @Test
     void proposalSummaryCarriesRuntimeIdentityForReloadReconnection() throws Exception {
         UUID runId = runService.createQueuedNodeQuery(
                 project.id(), routeId, anchor.id(), "锚点问题？");
-        // Bind a real node-query run to the proposal so the anchor resolves.
+        // 把真实的 node-query run 绑定到提案,锚点才能解析出来。
         var proposal = proposalService.createProposal(
                 new ActionProposal("CREATE_NODE",
                         Map.of("kind", "KNOWLEDGE", "subtype", "RISK",
@@ -115,8 +116,8 @@ class AgentProposalControllerApiIntegrationTest {
         JsonNode body = new ObjectMapper().readTree(result.getResponse().getContentAsString());
         assertThat(body).hasSize(1);
         JsonNode summary = body.get(0);
-        // Reconnection identity: proposalId, runId, and the canonical anchor
-        // node id (inputNodeId) of the query run that produced the proposal.
+        // 重连身份:proposalId、runId,以及产生该提案的查询运行的规范锚点
+        // 节点 id(inputNodeId)。
         assertThat(summary.get("proposalId").asText()).isEqualTo(proposal.id().toString());
         assertThat(summary.get("runId").asText()).isEqualTo(runId.toString());
         assertThat(summary.get("inputNodeId").asText()).isEqualTo(anchor.id().toString());
@@ -126,10 +127,9 @@ class AgentProposalControllerApiIntegrationTest {
     }
 
     /**
-     * Item 3 (final review) — the pending proposal list exposes triggerType
-     * derived from each proposal's AgentRun. Every run type carries an
-     * inputNodeId, so the frontend must filter NodeQuery proposals by the
-     * explicit triggerType, never by inputNodeId inference.
+     * 最终评审第 3 项——待处理提案列表暴露由各提案的 AgentRun 派生的 triggerType。
+     * 每种 run 类型都带 inputNodeId,所以前端必须按显式的 triggerType 过滤
+     * NodeQuery 提案,绝不能靠 inputNodeId 推断。
      */
     @Test
     void proposalSummaryExposesTriggerTypeDerivedFromEachRun() throws Exception {
@@ -164,17 +164,15 @@ class AgentProposalControllerApiIntegrationTest {
         JsonNode answerSummary = findSummary(body, answerProposal.id().toString());
         assertThat(querySummary.get("triggerType").asText()).isEqualTo("node_query");
         assertThat(answerSummary.get("triggerType").asText()).isEqualTo("answer_cycle");
-        // Both proposals share the same anchor node: triggerType is the only
-        // safe discriminator for NodeQuery recovery.
+        // 两个提案共享同一个锚点节点:triggerType 是 NodeQuery 恢复唯一安全的区分字段。
         assertThat(querySummary.get("inputNodeId").asText())
                 .isEqualTo(answerSummary.get("inputNodeId").asText())
                 .isEqualTo(anchor.id().toString());
     }
 
     /**
-     * Server-side triggerType filtering: the shared proposal list can be
-     * narrowed to a single trigger type, which is what lets the workspace stop
-     * fetching the full list and post-filtering it in the browser.
+     * 服务端 triggerType 过滤:共享的提案列表可以收窄到单一触发类型,
+     * 工作区由此不必拉取全量列表再在浏览器里后置过滤。
      */
     @Test
     void triggerTypeFilterKeepsOnlyProposalsOfThatRunType() throws Exception {
@@ -196,9 +194,8 @@ class AgentProposalControllerApiIntegrationTest {
     }
 
     /**
-     * The complementary exclusion filter. It exists because the workspace's two
-     * loaders are "only NodeQuery" and "everything except NodeQuery"; exclusion
-     * keeps the second one correct even when a new trigger type is introduced.
+     * 互补的排除过滤。它存在的理由是工作区的两个加载器分别是"只要 NodeQuery"
+     * 和"除 NodeQuery 外的一切";即使将来新增触发类型,排除过滤也能让后者保持正确。
      */
     @Test
     void excludeTriggerTypeFilterDropsProposalsOfThatRunType() throws Exception {
@@ -221,7 +218,7 @@ class AgentProposalControllerApiIntegrationTest {
         assertThat(body.get(0).get("triggerType").asText()).isEqualTo("answer_cycle");
     }
 
-    /** No filter parameter still returns the unfiltered list (backward compatible). */
+    /** 不带过滤参数时仍返回未过滤的全量列表(向后兼容)。 */
     @Test
     void omittedTriggerTypeFilterReturnsEveryProposal() throws Exception {
         UUID nodeQueryRunId = runService.createQueuedNodeQuery(

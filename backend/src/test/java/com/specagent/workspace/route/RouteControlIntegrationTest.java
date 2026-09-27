@@ -27,6 +27,15 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+/**
+ * 文件名:RouteControlIntegrationTest.java
+ *
+ * 测试目标:路线控制全流程的集成测试——fork 从历史节点创建 OPEN 路线并
+ * 冻结有效前缀(继承回答引用、不克隆)、重新生成(regenerate)创建替换节点
+ * /替换路线并取代源路线、替换上下文的冻结隔离(排除旧回答/补丁/子树、
+ * 包含用户指令)、恢复与软删除的生命周期约束,以及各操作不会误用已归档或
+ * 已取代的路线。
+ */
 @SpringBootTest
 @ActiveProfiles("test")
 @Transactional
@@ -70,9 +79,8 @@ class RouteControlIntegrationTest {
     }
 
     /**
-     * Topology-focused tests call the modern deterministic commit boundary
-     * directly. Context-focused tests add the separate runtime context build
-     * that the production replacement cycle performs after the commit.
+     * 拓扑类用例直接调用现代的确定性提交边界;上下文类用例额外执行生产环境
+     * 替换周期在提交之后进行的那次运行时上下文构建。
      */
     private RegenerateResult commitReplacement(UUID projectId,
                                                UUID sourceRouteId,
@@ -87,8 +95,8 @@ class RouteControlIntegrationTest {
                 question, purpose, options, true);
     }
 
-    /** Result + the frozen regenerate context the test builds itself (the
-     * production commit never populates a snapshot). */
+    /** 提交结果 + 测试自行构建的冻结 regenerate 上下文
+     * (生产的提交从不填充快照)。 */
     private record RegenOutcome(RegenerateResult result, ContextSnapshot context) {}
 
     private RegenOutcome replacementWithContext(Fixture fixture,
@@ -96,8 +104,8 @@ class RouteControlIntegrationTest {
                                                 String question,
                                                 String purpose,
                                                 List<NodeOption> options) {
-        // The fixture's route tip is the child node; the replacement freezes it
-        // so a concurrent continuation can never advance it mid-commit.
+        // fixture 的路线 tip 是 child 节点;替换将其冻结,并发的续写绝不能
+        // 在提交中途推进它。
         RegenerateResult committed = commitReplacement(
                 fixture.project().id(), fixture.routeId(), fixture.child().id(),
                 fixture.child().id(), null, question, purpose, options);
@@ -336,8 +344,8 @@ class RouteControlIntegrationTest {
         assertThat(forkCtx.routeId()).isEqualTo(fork.id());
         assertThat(forkCtx.includedNodeIds()).containsExactly(f.root().id());
 
-        // The original route is still OPEN after creating a fork; repeating
-        // restore is an illegal lifecycle transition under the hardened matrix.
+        // 创建 fork 后原路线仍是 OPEN;对 OPEN 路线重复执行 restore 在加固后
+        // 的状态矩阵下是非法的生命周期转换。
         assertThatThrownBy(() -> routeService.restoreRoute(f.project().id(), f.routeId()))
                 .isInstanceOf(IllegalStateException.class);
 
@@ -404,8 +412,8 @@ class RouteControlIntegrationTest {
         Fixture f = createFixture();
         routeService.archiveRoute(f.project().id(), f.routeId());
 
-        // An archived explicit source must fail closed; Runtime must not scan
-        // another route that happens to contain a related node.
+        // 已归档的显式源必须快速失败;运行时绝不能扫描恰好包含相关节点的
+        // 其他路线。
         assertThatThrownBy(() -> routeService.forkFromNode(
                 f.project().id(), f.routeId(), f.root().id(), "Fork"))
                 .isInstanceOf(IllegalStateException.class)
@@ -416,23 +424,23 @@ class RouteControlIntegrationTest {
     void replacementDoesNotUseSupersededActiveRoute() {
         Fixture f = createFixture();
 
-        // First regenerate to supersede the active route.
+        // 第一次 regenerate 取代活跃路线。
         RegenerateResult first = commitReplacement(
                 f.project().id(), f.routeId(), f.child().id(), f.child().id(), null,
                 "Better child question", "Better purpose", List.of());
         assertThat(first.oldRoute().lifecycleStatus()).isEqualTo(RouteLifecycleStatus.SUPERSEDED);
 
-        // The replacement route is now active.
+        // 替换路线现在是活跃路线。
         Route replacementRoute = first.replacementRoute();
         assertThat(replacementRoute.lifecycleStatus()).isEqualTo(RouteLifecycleStatus.OPEN);
 
-        // Regenerate again from the replacement route's tip.
+        // 从替换路线的 tip 再次 regenerate。
         RegenerateResult second = commitReplacement(
                 f.project().id(), replacementRoute.id(), replacementRoute.tipNodeId(),
                 replacementRoute.tipNodeId(), null,
                 "Even better question", "Even better purpose", List.of());
 
-        // The first replacement route should now be superseded.
+        // 第一条替换路线现在应被取代。
         assertThat(second.oldRoute().lifecycleStatus()).isEqualTo(RouteLifecycleStatus.SUPERSEDED);
     }
 
@@ -499,7 +507,7 @@ class RouteControlIntegrationTest {
         assertThat(context.includedNodeIds())
                 .doesNotContain(child.id(), grandchild.id(), result.replacementNode().id());
 
-        // The old route keeps its original tip; regeneration never repoints it.
+        // 旧路线保留其原始 tip;regenerate 绝不重指它。
         Route oldRoute = routeService.getRoute(originalRouteId).orElseThrow();
         assertThat(oldRoute.tipNodeId()).isEqualTo(grandchild.id());
     }

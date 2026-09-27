@@ -12,9 +12,10 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Exposes MCP resources as retrievable external context with provenance.
- * Resources are never flattened into Tools and never become confirmed Graph
- * truth — they are evidence retrievable on demand.
+ * 文件名:McpResourceProvider.java
+ *
+ * 用途:把 MCP 资源暴露为可检索、带溯源的外部上下文。资源绝不会被打平成
+ * Tool,也绝不会变成已确认的图谱事实——它们只是可按需检索的证据。
  */
 @Component
 public class McpResourceProvider {
@@ -31,14 +32,14 @@ public class McpResourceProvider {
         this.connectionRuntime = connectionRuntime;
     }
 
-    /** Lists the resources of an agent-visible connection. */
+    /** 列出某个对 Agent 可见的连接上的资源。 */
     public List<McpResource> discoverResources(UUID connectionRowId) {
         McpConnectionTarget connection = requireVisible(connectionRowId);
         McpDiscovery discovery = discoveryService.discover(connection);
         return discovery.resources();
     }
 
-    /** Reads one resource of an agent-visible connection with provenance. */
+    /** 读取某个对 Agent 可见的连接上的一个资源,结果附带溯源信息。 */
     public com.specagent.mcp.domain.McpResourceContent read(UUID connectionRowId, String uri) {
         McpConnectionTarget connection = requireVisible(connectionRowId);
         McpDiscovery discovery = discoveryService.discover(connection);

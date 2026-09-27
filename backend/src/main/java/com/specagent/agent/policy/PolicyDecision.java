@@ -1,12 +1,16 @@
 package com.specagent.agent.policy;
 
 /**
- * Result of the Advisor policy engine's evaluation of an action proposal.
- * Determines whether the action may be auto-executed, requires user
- * confirmation, or is denied outright.
+ * 文件名:PolicyDecision.java
  *
- * <p>Confidence is never a factor in autoExecute or requiresConfirmation.
- * It is carried only as an informational signal.
+ * 用途:Advisor 策略引擎对动作提案的评估结果:允许自动执行、
+ * 要求用户确认,还是直接拒绝。
+ *
+ * 模型置信度绝不参与 autoExecute / requiresConfirmation 的判定,
+ * 它只作为信息性信号携带。
+ *
+ * 协作:由 AdvisorPolicyEngine.evaluate 产出,供决策循环与
+ * ProposalAcceptanceService 消费。
  */
 public record PolicyDecision(MutationClass classification,
                              boolean autoExecute,

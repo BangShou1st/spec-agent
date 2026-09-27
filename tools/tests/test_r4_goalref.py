@@ -1,8 +1,10 @@
-"""G1-G5 reference goal derivation tests — TDD Unit 2.
+"""文件名:test_r4_goalref.py
 
-The reference function reads ONLY pre-flag observables. Each rule gets at
-least one case; order-independence, fallback, unresolved priority, and the
-capabilityResults path are pinned.
+G1-G5 参考目标推导测试——TDD 单元 2。
+
+参考函数只读取"打分前"的可观察量。每条规则至少一个用例;
+锁定求值顺序无关性、兜底回退、未解决 claim 的优先级,以及
+capabilityResults 路径。
 """
 import pytest
 

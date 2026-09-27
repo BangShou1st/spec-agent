@@ -25,6 +25,12 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * 文件名:AgentRunLifecycleIntegrationTest.java
+ *
+ * 测试目标:验证 AgentRun 的生命周期流转:创建后可挂接上下文快照、可记录产出节点并完成、
+ * 失败时状态置为 FAILED 且 completedAt 非空。
+ */
 @SpringBootTest
 @ActiveProfiles("test")
 @Transactional

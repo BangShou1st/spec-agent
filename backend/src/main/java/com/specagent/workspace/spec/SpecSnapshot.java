@@ -5,10 +5,12 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * A generated spec for one route tip.
+ * 文件名:SpecSnapshot.java
  *
- * <p>Derived artifact, not source of truth. It is tied to a single route tip and
- * a single context snapshot, and its confirmed claims carry source references.
+ * 用途:为某个 route tip 生成的一份规格快照,是 spec 包的核心领域对象。
+ * 它是派生产物,不是事实源:绑定唯一的 route tip 和唯一的上下文快照,已确认的
+ * claim 携带溯源引用(source references),保证每段规格内容都能追溯到运行时
+ * 记录。快照一旦生成即冻结,后续导出与展示都以它为准。
  */
 public class SpecSnapshot {
 

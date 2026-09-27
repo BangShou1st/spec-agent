@@ -26,20 +26,16 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * Regression for BUG-03: the internal inference broker serves the Python
- * agent brain, which parses model output as strict JSON
- * ({@code engine._parse_model_output -> json.loads}) and fails closed with a
- * 502 {@code brain_failure} on anything else (markdown-fenced or prose-wrapped
- * JSON). The broker therefore MUST request a structured JSON output contract
- * for the brain's calls so the model cannot return non-JSON text.
+ * 文件名:InternalModelInferenceContractTest.java
  *
- * <p>Before the fix the broker built the request with the historical
- * {@code text()} contract (no {@code response_format}), letting a real model
- * emit fenced JSON and break every draft-question run with INTERNAL_ERROR.
- * This test asserts the broker requests {@link ModelOutputContract.JsonObject}
- * for every closed brain call type — STATE_UPDATE, DECISION, ARTIFACT_GENERATION
- * — through a single table-driven case. It FAILS on the old behavior and PASSES
- * after the fix.
+ * 测试目标:BUG-03 回归——内部推理 broker 服务于 Python agent 大脑,后者把模型输出
+ * 按严格 JSON 解析({@code engine._parse_model_output -> json.loads}),遇到其他形式
+ * (markdown 围栏或散文包裹的 JSON)会以 502 {@code brain_failure} fail-closed。
+ * 因此 broker 必须为大脑调用请求结构化 JSON 输出契约,阻止模型返回非 JSON 文本。
+ * 通过单一表驱动用例断言每个封闭的大脑调用类型(STATE_UPDATE、DECISION、
+ * ARTIFACT_GENERATION)都请求 {@link ModelOutputContract.JsonObject};
+ * 旧行为下该测试失败,修复后通过。另验证会话身份绑定到所属 project,
+ * 无法解析 project 时回退为 run 而不是让调用失败。
  */
 @ExtendWith(MockitoExtension.class)
 class InternalModelInferenceContractTest {
@@ -106,7 +102,7 @@ class InternalModelInferenceContractTest {
 
         ArgumentCaptor<ModelInferenceRequest> captor = ArgumentCaptor.forClass(ModelInferenceRequest.class);
         verify(gateway).complete(captor.capture());
-        // One project is one provider-side conversation.
+        // 一个 project 就是一个 provider 侧会话。
         assertThat(captor.getValue().conversationId()).isEqualTo(projectId);
         assertThat(captor.getValue().conversationOrRun()).isEqualTo(projectId);
     }

@@ -1,7 +1,6 @@
-/**
- * Connection management DTOs. Backend ConnectionController responses are authority.
- * Config is validated non-secret metadata; secrets never appear in responses.
- */
+// 文件名:connectionTypes.ts
+// 用途:连接(Connection)管理的 DTO 类型定义。以后端 ConnectionController 的响应为准;
+//       config 只承载非敏感的元数据,secret 绝不会出现在响应中。
 
 export interface ConnectionSummary {
   connectionId: string

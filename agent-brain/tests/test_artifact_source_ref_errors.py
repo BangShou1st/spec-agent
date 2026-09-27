@@ -1,9 +1,9 @@
-"""ARTIFACT_GENERATION grounding failures are typed separately.
+"""文件名:test_artifact_source_ref_errors.py
 
-An out-of-range citation is the route-isolation gate rejecting a cross-route
-reference — a different failure from a malformed model response — and the
-Runtime must be able to tell them apart. A section with no references at all
-stays a plain contract error.
+用途:验证 ARTIFACT_GENERATION 的 grounding 失败被分类成独立的异常类型。
+
+越界引用是路由隔离门禁在拒绝跨路由引用——与模型响应损坏是不同的失败——
+Runtime 必须能把两者区分开。完全没有引用的 section 仍然是普通的契约错误。
 """
 
 import json

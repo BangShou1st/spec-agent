@@ -11,9 +11,13 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 /**
- * Append + deterministic ordered read of user-facing messages. The canonical
- * conversation order is the append-monotonic per-thread sequence; created_at
- * stays as time metadata only.
+ * 文件名:GlobalAssistantMessageRepository.java
+ *
+ * 用途:面向用户消息的追加写入与确定性有序读取,对应
+ * global_assistant_messages 表。
+ *
+ * 角色:conversation 包的消息存储层。会话的规范顺序是每线程单调递增
+ * 的 append 序号(sequence),created_at 仅作为时间元数据,不参与排序。
  */
 @Repository
 public class GlobalAssistantMessageRepository {
@@ -33,18 +37,16 @@ public class GlobalAssistantMessageRepository {
                 rs.getString("model_id"));
     }
     /**
-     * Appends one message with the next per-thread sequence. The thread row
-     * lock serializes concurrent appenders of one thread, so a later append
-     * always observes a greater sequence; a rolled-back transaction leaves
-     * no row behind. Gaps from rolled-back allocations are harmless: only
-     * the order is contractual.
+     * 以每线程下一个序号追加一条消息。线程行锁(FOR UPDATE)把同一
+     * 线程的并发追加串行化,后追加的消息必然观察到更大的序号;事务
+     * 回滚则不会留下任何行。回滚导致的序号空洞无害:契约只关心顺序。
      */
     @org.springframework.transaction.annotation.Transactional
     public GlobalAssistantMessage append(UUID threadId, GlobalAssistantMessage.Role role, String content, UUID runId) {
         return append(threadId, role, content, runId, null, null);
     }
 
-    /** Append with optional model accounting ({@code providerLabel}/{@code modelId}). */
+    /** 追加消息,可附带模型计费归属({@code providerLabel}/{@code modelId})。 */
     @org.springframework.transaction.annotation.Transactional
     public GlobalAssistantMessage append(UUID threadId, GlobalAssistantMessage.Role role, String content, UUID runId,
             String providerLabel, String modelId) {
@@ -68,7 +70,7 @@ public class GlobalAssistantMessageRepository {
         return new GlobalAssistantMessage(id, threadId, role, content, runId, now, next, providerLabel, modelId);
     }
     /**
-     * Canonical conversation order: append sequence only.
+     * 按会话的规范顺序(仅 append 序号)读取线程全部消息。
      */
     public List<GlobalAssistantMessage> findByThread(UUID threadId) {
         return jdbc.query(

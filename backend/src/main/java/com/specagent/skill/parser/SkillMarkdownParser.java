@@ -12,17 +12,17 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Parses the open Agent Skills {@code SKILL.md} format: a YAML front-matter
- * block (between {@code ---} markers) followed by the markdown instructions.
- * Only {@code name} and {@code description} are mandatory package metadata.
+ * 文件名:SkillMarkdownParser.java
  *
- * <p>Parsing is deliberately conservative:
- * <ul>
- *   <li>YAML is loaded with {@link SafeConstructor} — no custom object
- *       instantiation, no arbitrary tag execution;</li>
- *   <li>metadata values are coerced to plain strings (never rich types);</li>
- *   <li>instructions are bounded by the caller against runtime limits.</li>
- * </ul>
+ * 用途:解析开放 Agent Skills 的 {@code SKILL.md} 格式:位于 {@code ---}
+ * 标记之间的 YAML front-matter 块,后接 markdown 指令正文。包元数据中仅
+ * {@code name} 与 {@code description} 为必填。
+ *
+ * 解析刻意保守:
+ * - YAML 使用 {@link SafeConstructor} 加载 —— 不实例化自定义对象,
+ *       不执行任意 tag;
+ * - 元数据值一律规约为普通字符串(绝不保留富类型);
+ * - 指令正文由调用方按运行时限额做长度约束。
  */
 @Component
 public class SkillMarkdownParser {
@@ -30,8 +30,8 @@ public class SkillMarkdownParser {
     private static final String FRONT_MATTER_DELIMITER = "---";
 
     /**
-     * Parses one SKILL.md file into a manifest + instructions. A missing or
-     * malformed front-matter fails closed with {@link SkillParseException}.
+     * 把单个 SKILL.md 文件解析为 manifest + 指令正文。front-matter 缺失或
+     * 格式错误时以 {@link SkillParseException} 失败关闭。
      */
     public SkillManifest parse(String skillMarkdown) {
         String text = skillMarkdown == null ? "" : skillMarkdown;
@@ -75,7 +75,7 @@ public class SkillMarkdownParser {
     private ParsedParts splitFrontMatter(String text) {
         String trimmed = text.stripLeading();
         if (!trimmed.startsWith(FRONT_MATTER_DELIMITER)) {
-            // No front-matter: a bare markdown file is not a valid Skill.
+            // 没有 front-matter:纯 markdown 文件不是合法的 Skill。
             throw new SkillParseException(
                     "SKILL.md must start with a YAML front-matter block (---)");
         }
@@ -117,7 +117,7 @@ public class SkillMarkdownParser {
         for (Map.Entry<String, String> entry : metadata.entrySet()) {
             String key = entry.getKey().toLowerCase();
             if ("references".equals(key)) {
-                // Comma or newline separated list of relative paths.
+                // 逗号或换行分隔的相对路径列表。
                 String[] parts = entry.getValue().split("[,\\n]");
                 for (String part : parts) {
                     String ref = part.strip();

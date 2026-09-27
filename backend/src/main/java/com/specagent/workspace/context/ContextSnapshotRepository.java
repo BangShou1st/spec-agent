@@ -14,6 +14,13 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * 文件名:ContextSnapshotRepository.java
+ *
+ * 用途:ContextSnapshot 的持久化仓储,基于 JDBC 访问 context_snapshots 表,
+ * 负责快照的写入与按 id/route 查询。各 id 集合与关系列表以 jsonb 列存储,读回
+ * 时精确还原,保证冻结快照可复现。
+ */
 @Repository
 public class ContextSnapshotRepository {
 
@@ -72,10 +79,9 @@ public class ContextSnapshotRepository {
                 "excludedRouteIds", json.writeList(snapshot.excludedRouteIds()),
                 "relatedNodeIds", json.writeList(snapshot.relatedNodeIds()),
                 "relationsJson", json.writeList(snapshot.relations()),
-                // specialInputs is already a serialized JSON object text; it
-                // must be stored as-is into the jsonb column, never
-                // re-serialized (re-serializing would double-encode the JSON
-                // string and break the read-back projection).
+                // specialInputs 已经是序列化好的 JSON 对象文本;必须原样写入
+                // jsonb 列,绝不能再序列化一次(重复序列化会把 JSON 字符串二次
+                // 转义,破坏读回时的投影)。
                 "specialInputs", snapshot.specialInputs(),
                 "contextHash", snapshot.contextHash(),
                 "createdAt", Timestamp.from(snapshot.createdAt())));

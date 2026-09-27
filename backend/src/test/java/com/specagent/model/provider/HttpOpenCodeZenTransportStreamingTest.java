@@ -17,7 +17,13 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/** Wire-level streaming: fragments surface pre-completion; decline aborts. */
+/**
+ * 文件名:HttpOpenCodeZenTransportStreamingTest.java
+ *
+ * 测试目标:验证 HttpOpenCodeZenTransport 的线上报文级流式行为:片段在完成前逐个透出;
+ * 监听器拒绝片段即中止流并抛 StreamCancelledException;reasoning 事件作为空片段检查点
+ * 出现,在 reasoning 阶段拒绝同样会在正文产生前取消。
+ */
 class HttpOpenCodeZenTransportStreamingTest {
 
     private final ObjectMapper mapper = new ObjectMapper();

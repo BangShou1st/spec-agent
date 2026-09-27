@@ -1,6 +1,8 @@
-/**
- * Presentation-layer copy and formatting for Skills / Connections management.
- * Backend enums stay untouched; only the rendered text is mapped here.
+// 文件名:managementCopy.ts
+// 用途:Skills / 连接管理页的展示层文案与格式化:来源/连接类型中文标签、字节与日期格式化;后端枚举原样保留,只映射渲染文本。
+/*
+ * Skills / Connections 管理的展示层文案与格式化。
+ * 后端枚举值原样保留;只在这里映射渲染文本。
  */
 
 import { formatShanghaiDateTime } from './formatTime'

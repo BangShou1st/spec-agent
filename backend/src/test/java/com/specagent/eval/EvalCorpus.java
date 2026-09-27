@@ -5,12 +5,12 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * First deterministic corpus batch (P2): E01, E06, E07, E17, E25.
+ * 文件名:EvalCorpus.java
  *
- * <p>Every scenario is data, not bespoke logic: graph setup uses text
- * seeds (never fixed sentences), variants carry the anti-overfit axes,
- * and expectations assert action families, canonical state deltas, and
- * call budgets — never verbatim wording.
+ * 测试目标:第一批确定性评估语料(P2):E01、E06、E07、E17、E25。
+ * 每个场景都是数据而非定制逻辑:图搭建使用文本种子(绝不用固定句子),
+ * 变体携带防过拟合轴,期望只断言动作族、权威状态增量和调用预算——
+ * 绝不断言逐字措辞。
  */
 public final class EvalCorpus {
 
@@ -29,9 +29,8 @@ public final class EvalCorpus {
     }
 
     /**
-     * E01 — Simple Answer: the smoke scenario. One root question, one
-     * answer, STATE_UPDATE persists a patch, DECISION asks the next
-     * allowed question, nothing else mutates.
+     * E01——简单回答:冒烟场景。一个根问题、一个回答,STATE_UPDATE 持久化补丁,
+     * DECISION 追问下一个被允许的问题,其余什么都不改。
      */
     public static ScenarioDefinition e01() {
         ScenarioDefinition scenario = new ScenarioDefinition(
@@ -82,10 +81,8 @@ public final class EvalCorpus {
     }
 
     /**
-     * E06 — Shared State. Variant A: two routes share one canonical
-     * Question/Answer identity (reads converge). Variant B: a forked
-     * route attempts a divergent second answer on the same canonical
-     * node and must fail closed without forking canonical state.
+     * E06——共享状态。变体 A:两条路由共享同一权威 Question/Answer 身份(读收敛)。
+     * 变体 B:分叉路由对同一权威节点给出分歧的第二回答,必须失败关闭且不分叉权威状态。
      */
     public static ScenarioDefinition e06() {
         ScenarioDefinition scenario = new ScenarioDefinition(
@@ -127,10 +124,8 @@ public final class EvalCorpus {
     }
 
     /**
-     * E07 — Conflict. Variant A: unresolved incompatible demands must
-     * enter explicit resolution (REQUEST_USER_INPUT), never a silent
-     * assumption. Variant B: the user already made the tradeoff, so the
-     * agent must not re-ask the resolved question.
+     * E07——冲突。变体 A:未解决的互斥诉求必须进入显式澄清(REQUEST_USER_INPUT),
+     * 绝不静默假设。变体 B:用户已做出权衡,agent 不得重复追问已解决的问题。
      */
     public static ScenarioDefinition e07() {
         BrainScript unresolved = new BrainScript(
@@ -178,9 +173,8 @@ public final class EvalCorpus {
     }
 
     /**
-     * E07-resolved — the user already made the tradeoff. The agent must
-     * not re-ask the resolved question; the conflict converges under
-     * existing production semantics.
+     * E07-resolved——用户已做出权衡。agent 不得重复追问已解决的问题;
+     * 冲突在既有生产语义下收敛。
      */
     public static ScenarioDefinition e07Resolved() {
         ScenarioDefinition scenario = new ScenarioDefinition(
@@ -224,11 +218,9 @@ public final class EvalCorpus {
     }
 
     /**
-     * E17 — High-risk action. Variant A (unconfirmed): the proposal
-     * waits for approval and no capability executes. Variant B is
-     * exercised by the E17 test via acceptance of the pending proposal.
-     * Variant C (stale confirmation) is exercised by advancing the
-     * graph before acceptance and expecting fail-closed.
+     * E17——高风险动作。变体 A(未确认):提案等待批准,无能力执行。
+     * 变体 B 由 E17 测试通过接受待处理提案来演练。
+     * 变体 C(过期确认)由验收前推进图并期望失败关闭来演练。
      */
     public static ScenarioDefinition e17() {
         BrainScript invokeHighRisk = new BrainScript(
@@ -283,12 +275,9 @@ public final class EvalCorpus {
     }
 
     /**
-     * E25 — Frozen/stale context. The scripted decision is built against
-     * the live snapshot, so staleness is probed at the acceptance
-     * boundary: the E25 test advances the graph after the proposal goes
-     * pending and expects acceptance to fail closed with no mutation.
-     * The base attempt itself must complete cleanly with no unexpected
-     * delta.
+     * E25——冻结/过期上下文。脚本化决策基于实时快照构建,因此过期性在验收
+     * 边界探测:E25 测试在提案进入待处理后推进图,期望验收失败关闭且无变更。
+     * base 尝试本身必须干净完成且无意外增量。
      */
     public static ScenarioDefinition e25() {
         ScenarioDefinition scenario = new ScenarioDefinition(
@@ -338,9 +327,9 @@ public final class EvalCorpus {
     }
 
     /**
-     * E25-stale — a confirmable agent-authored DECISION goes pending, then
-     * the referenced context is retracted. Acceptance must fail closed
-     * with no mutation: Brain output can never bypass Java validation.
+     * E25-stale——一个需确认的 agent 生成 DECISION 进入待处理状态后,
+     * 其引用的上下文被撤回。验收必须失败关闭且无变更:
+     * 大脑输出永远不能绕过 Java 校验。
      */
     public static ScenarioDefinition e25Stale() {
         ScenarioDefinition scenario = new ScenarioDefinition(

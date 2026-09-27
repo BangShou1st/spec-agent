@@ -31,14 +31,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Repair/resume command integration tests through the async AgentRun surface:
- * an already persisted immutable answer whose post-answer processing failed is
- * resumed via {@code RESUME_ANSWER} without finalizing a second answer, and
- * ownership/lifecycle checks fail closed.
+ * 文件名:RepairApiIntegrationTest.java
  *
- * <p>The semantic replay guarantee is covered by
- * {@code AnswerResumeSemanticReplayIntegrationTest}; the durable-artifact
- * invariants are covered by {@code FakeAnswerRepairIntegrationTest}.
+ * 测试目标:经异步 AgentRun 入口验证修复/恢复命令——已持久化且答案后处理失败的
+ * 不可变答案,通过 {@code RESUME_ANSWER} 恢复且不定稿第二条答案;所有权与生命周期
+ * 校验 fail-closed。语义重放保证由 {@code AnswerResumeSemanticReplayIntegrationTest}
+ * 覆盖;持久产物不变量由 {@code FakeAnswerRepairIntegrationTest} 覆盖。
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -89,7 +87,7 @@ class RepairApiIntegrationTest {
         assertThat(agentRunService.getRun(java.util.UUID.fromString(runId)).orElseThrow().status())
                 .isEqualTo(com.specagent.agent.runtime.AgentRunStatus.COMPLETED);
 
-        // No second answer was created for the same route/node.
+        // 同一路线/节点上没有创建第二条答案。
         List<Answer> answers = answerService.findAnswersForRouteAndNodeIds(
                 project.activeRouteId(), List.of(root.id()));
         assertThat(answers).hasSize(1);
@@ -104,7 +102,7 @@ class RepairApiIntegrationTest {
         Answer answer = persistedAnswer(projectA, node);
         Project projectB = projectService.createProject("Repair owner B");
 
-        // The run read view of another project's run is not found.
+        // 其他项目 run 的读视图不可见。
         UUID foreignRunId = runService.createQueuedRunWithInput(
                 projectA.id(), "RESUME_ANSWER", node.id(), null, null, answer.id());
         mockMvc.perform(get("/api/v1/projects/{projectId}/agent-runs/{runId}",
@@ -119,7 +117,7 @@ class RepairApiIntegrationTest {
                 "Root question", null, List.of(), true);
         Answer answer = persistedAnswer(project, root);
 
-        // Fork away: the answer's route is no longer the active flow.
+        // 分叉后:答案所在路线不再是激活流程。
         Route fork = routeService.forkFromNode(project.id(), project.activeRouteId(), root.id(), "fork");
         assertThat(projectService.getProject(project.id()).orElseThrow().activeRouteId())
                 .isEqualTo(fork.id());
@@ -128,7 +126,7 @@ class RepairApiIntegrationTest {
             worker.executeRun(runService.claimNextAnswerCycle().orElseThrow());
             org.junit.jupiter.api.Assertions.fail("inactive-flow resume must fail");
         } catch (RuntimeException expected) {
-            // fail-closed: the run ends FAILED
+            // fail-closed:run 以 FAILED 结束
         }
     }
 

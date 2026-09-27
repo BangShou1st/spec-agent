@@ -1,3 +1,5 @@
+// 文件名:graphProjection.spec.ts
+// 用途:画布投影的单元测试:验证共享节点渲染一次、pending 卡片投影、运行时覆盖、可见性规则(筛选/隐藏/只看镜头)、canonical 回答稳定性与增量布局。
 import { describe, expect, it } from 'vitest'
 import { projectGraph, getNodeRouteMembership, getLineageEdgeMembership, selectPrimaryAnswer, getVisibleRouteIds, estimateNodeCardHeight } from '@/features/workspace/graph/graphProjection'
 import type { GraphWorkspaceNodeView, GraphWorkspaceRelationView, GraphWorkspaceView, RouteLifecycleStatus } from '@/shared/contracts/types'
@@ -59,11 +61,11 @@ function answer(routeId: string, nodeId: string, freeText = 'answer ' + routeId 
   }
 }
 
-/**
- * Route A: A -> B -> C (Active, open)
- * Route B: A -> B -> D (open fork)
- * Route C: A -> B -> E (archived fork)
- * Route D: A -> B' (open replacement: B' supersedes B)
+/*
+ * 路线 A:A → B → C(Active,open)
+ * 路线 B:A → B → D(open fork)
+ * 路线 C:A → B → E(archived fork)
+ * 路线 D:A → B'(open 替代:B' 替代 B)
  */
 function fixture(): GraphWorkspaceView {
   return {
@@ -193,7 +195,7 @@ describe('graph projection', () => {
     const ids = result.nodes.map((node) => node.id)
     expect(ids).toContain('pending:run-a')
     expect(ids).toContain('pending:run-b')
-    // Each card carries its own runtime snapshot.
+    // 每张卡片携带自己的运行时快照。
     const cardA = result.nodes.find((node) => node.id === 'pending:run-a')
     const cardB = result.nodes.find((node) => node.id === 'pending:run-b')
     expect((cardA?.data as SpecAgentGraphNodeData).runtimePhase).toBe('STATE_UPDATING')
@@ -302,7 +304,7 @@ describe('graph projection', () => {
     expect(ids).not.toContain('e')
     expect(ids).toContain('a')
     expect(ids).toContain('b')
-    // bprime belongs to the open replacement route and stays visible.
+    // bprime 属于 open 的替代路线 D,保持可见。
     expect(ids).toContain('bprime')
     const aData = result.nodes.find((n) => n.id === 'a')?.data as SpecAgentGraphNodeData
     expect(aData.routeIds).toEqual([ACTIVE_ROUTE_ID, ROUTE_B_ID, ROUTE_C_ID, ROUTE_D_ID])
@@ -350,10 +352,10 @@ describe('graph projection', () => {
     const result = project()
     const repl = result.edges.find((e) => e.id === 'replacement:b->bprime')
     expect(repl).toBeUndefined()
-    // lineage a->bprime exists for the replacement route D
+    // 替代路线 D 存在 lineage a->bprime
     const lineage = result.edges.find((e) => e.id === 'a->bprime')
     expect(lineage?.data?.routeIds).toEqual([ROUTE_D_ID])
-    // b is never the lineage parent of bprime
+    // b 绝不是 bprime 的 lineage 父节点
     expect(result.edges.find((e) => e.id === 'b->bprime')).toBeUndefined()
     const bprime = result.nodes.find((n) => n.id === 'bprime')!
     expect((bprime.data as SpecAgentGraphNodeData).node.parentNodeId).toBe('a')
@@ -527,9 +529,9 @@ describe('graph projection', () => {
   })
 
   it('relation endpoint uses focus visual instance when focused route has a unique visible instance', () => {
-    // Shared node b belongs to routes A, B, C and to replacement D's parent a.
-    // With focusRouteId = B, the relation edge should anchor on b's instance
-    // (B-visible), and that instance has its own visualNodeKey.
+    // Shared node b 属于路线 A、B、C,并且是替代路线 D 的父 a 的目标。
+    // 当 focusRouteId = B 时,关系边应锚定在 b 的实例(B 可见)上,该实例
+    // 有自己的 visualNodeKey。
     const view = fixture()
     view.relations = [{
       id: 'rel-1', sourceNodeId: 'a', targetNodeId: 'b', relationType: 'RELATED_TO',
@@ -543,18 +545,16 @@ describe('graph projection', () => {
     })
     const rel = result.edges.find((edge) => edge.id === 'relation:rel-1')
     expect(rel).toBeDefined()
-    // visual instance for shared node on B is "b" (same canonical id in this
-    // simple case). The relation edge endpoint must anchor on a visible
-    // instance: the projection must NOT silently pick Active (A) just
-    // because A has the active route membership.
+    // 共享节点在 B 上的视觉实例就是 "b"(此简单场景下与 canonical id 相同)。
+    // 关系边端点必须锚定在可见实例上:投影绝不能因为 A 拥有 Active 路线
+    // 归属就静默地选择 Active(A)。
     expect(rel?.source).toBe('a')
     expect(rel?.target).toBe('b')
   })
 
   it('default relation layer is OFF: no relation edges on canvas even with focus + visible instance', () => {
-    // Canvas must never be cluttered with semantic relations unless the user
-    // explicitly opens the relation layer. The canonical fact still lives in
-    // view.relations and is reachable from the Inspector.
+    // 除非用户显式打开关系层,画布绝不能被语义关系铺满。canonical 事实仍
+    // 保存在 view.relations 中,可从 Inspector 查看。
     const view = fixture()
     view.relations = [{
       id: 'rel-1', sourceNodeId: 'a', targetNodeId: 'b', relationType: 'RELATED_TO',
@@ -571,9 +571,8 @@ describe('graph projection', () => {
   })
 
   it('relation edge endpoint is suppressed when no focus and the endpoint has no visible instance', () => {
-    // Force a relation whose target lives only on an archived route; with
-    // the archived filter OFF the target has zero visible instances, so the
-    // edge must NOT be drawn presentationally.
+    // 构造一条 target 只存在于归档路线上的关系;归档筛选关闭后 target 的
+    // 可见实例为 0,展示层绝不能把这条边画出来。
     const view = fixture()
     const filters = { ...DEFAULT_FILTERS, archived: false }
     view.relations = [{
@@ -893,7 +892,7 @@ describe('replacement edge visibility', () => {
     expect(ids).toContain('a')
     expect(ids).toContain('bprime')
     expect(ids).not.toContain('b')
-    // source b 不可见 → no replacement edge.
+    // source b 不可见 → 不渲染替代边。
     expect(hidden.edges.find((e) => e.id === 'replacement:b->bprime')).toBeUndefined()
     // 显示全部路线后仍保持 lineage-only topology。
     const all = projectGraph({ view, activeNodeId: null, uiState: uiState(), savedPositions: {} })
@@ -902,16 +901,16 @@ describe('replacement edge visibility', () => {
 })
 
 describe('adaptive edge routing in the canonical projection', () => {
-  // Projected positions use the stable 320px footprint and the new spacing.
+  // 投影位置使用稳定的 320px 外框与新间距。
   it('lineage edges render as adaptive curves with directed handles', () => {
     const result = project()
     const aToB = result.edges.find((e) => e.id === 'a->b')!
     expect(aToB.type).toBe('adaptive')
     expect(aToB.markerEnd).toBeDefined()
-    // a center (160,110), b center (520,110): horizontal right.
+    // a 中心 (160,110),b 中心 (520,110):横向向右。
     expect(aToB.sourceHandle).toBe('source-right')
     expect(aToB.targetHandle).toBe('target-left')
-    // b->c uses the wider current-node center: b (520,110), c (930,110).
+    // b->c 使用更宽的当前节点中心:b (520,110),c (930,110)。
     const bToC = result.edges.find((e) => e.id === 'b->c')!
     expect(bToC.type).toBe('adaptive')
     expect(bToC.sourceHandle).toBe('source-right')
@@ -922,7 +921,7 @@ describe('adaptive edge routing in the canonical projection', () => {
     const result = project()
     const repl = result.edges.find((e) => e.id === 'replacement:b->bprime')!
     expect(repl).toBeUndefined()
-    // supersedesNodeId is still not treated as parentNodeId.
+    // supersedesNodeId 仍不被当作 parentNodeId。
     const bprime = result.nodes.find((n) => n.id === 'bprime')!
     expect((bprime.data as SpecAgentGraphNodeData).node.parentNodeId).toBe('a')
   })
@@ -939,11 +938,11 @@ describe('adaptive edge routing in the canonical projection', () => {
       uiState: uiState(),
       savedPositions: saved,
     })
-    // b placed directly below a -> vertical adaption on refresh.
+    // b 直接位于 a 下方 → 刷新时做纵向适配。
     const aToB = result.edges.find((e) => e.id === 'a->b')!
     expect(aToB.sourceHandle).toBe('source-bottom')
     expect(aToB.targetHandle).toBe('target-top')
-    // d dragged far above b -> top/bottom adaption.
+    // d 被拖到 b 上方很远处 → 上/下锚点适配。
     const bToD = result.edges.find((e) => e.id === 'b->d')!
     expect(bToD.sourceHandle).toBe('source-top')
     expect(bToD.targetHandle).toBe('target-bottom')

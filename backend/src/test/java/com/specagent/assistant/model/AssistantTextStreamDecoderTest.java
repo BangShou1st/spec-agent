@@ -4,7 +4,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
 
-/** Generic incremental decode: structure only, never prompt or scenario content. */
+/**
+ * 文件名:AssistantTextStreamDecoderTest.java
+ *
+ * 测试目标:验证通用文本流解码器的增量解码——只关心 JSON 结构,
+ * 与具体提示词或业务场景内容无关。
+ * 覆盖场景:FINAL/CLARIFY/NAVIGATE 的文本跨分片逐步释放、TOOL 与
+ * 未知 kind 不释放、转义引号/反斜杠/换行/unicode 转义跨边界、
+ * 代理对(含字面与 \\u 转义)在任何切分点都不产生未配对字符。
+ */
 class AssistantTextStreamDecoderTest {
 
     private static String stream(String full, int... cuts) {
@@ -70,20 +78,20 @@ class AssistantTextStreamDecoderTest {
     }
 
     @Test void escapedQuoteSplitAcrossBoundary() {
-        // Raw JSON text value: Say \"hi\" now
+        // 原始 JSON 文本值:Say \"hi\" now
         String full = "{\"kind\":\"FINAL\",\"assistantText\":\"Say \\\"hi\\\" now\"}";
         int cut = full.indexOf("hi") - 1;
         assertThat(stream(full, cut, cut + 3)).isEqualTo("Say \"hi\" now");
     }
 
     @Test void backslashNewlineAndUnicode() {
-        // Raw JSON text value: a\\b<newline>c<\u4f60>d
+        // 原始 JSON 文本值:a\\b<换行>c<你>d
         String full = "{\"kind\":\"FINAL\",\"assistantText\":\"a\\\\b\\nc\\u4f60d\"}";
         assertThat(stream(full, 20, 30, 40)).isEqualTo("a\\b\nc\u4f60d");
     }
 
     @Test void unicodeEscapeSplitMidSequence() {
-        // Truly raw JSON: the runtime string carries literal backslash-u sequences.
+        // 真正的原始 JSON:运行时字符串里是字面的反斜杠-u 序列。
         String full = "{\"kind\":\"FINAL\",\"assistantText\":\"\\u4f60\\u597d\"}";
         int cut = full.indexOf("\\u597d") + 2;
         assertThat(stream(full, cut)).isEqualTo("\u4f60\u597d");
@@ -169,7 +177,7 @@ class AssistantTextStreamDecoderTest {
     }
 
     @Test void rawUnicodeEscapeSurrogatePairNeverSplits() {
-        // Raw JSON: literal backslash-u sequences, NOT Java unicode escapes.
+        // 原始 JSON:字面的反斜杠-u 序列,而不是 Java unicode 转义。
         String full = "{\"kind\":\"FINAL\",\"assistantText\":\"hi \\uD83D\\uDE00 bye\"}";
         assertNoUnpairedAtAnySplit(full, "hi \uD83D\uDE00 bye");
     }

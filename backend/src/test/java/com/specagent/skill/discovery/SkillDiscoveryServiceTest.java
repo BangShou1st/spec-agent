@@ -18,8 +18,10 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
- * Skill discovery rules: per-fresh-context projection, disabled invisible,
- * bounded catalog + truncated flag, stable ordering and replay fingerprint.
+ * 文件名:SkillDiscoveryServiceTest.java
+ *
+ * 测试目标:验证 Skill 发现规则——按新鲜上下文投影目录、禁用的 Skill
+ * 不可见、目录有界且带截断标记、排序稳定并产出可重放的指纹。
  */
 class SkillDiscoveryServiceTest {
 
@@ -94,7 +96,7 @@ class SkillDiscoveryServiceTest {
                 skill("sk-a", "Alpha", true, "v1")));
         SkillCatalogProjector.Projection first = service.discover(SkillDiscoveryContext.empty());
 
-        // A fresh decision context may legitimately discover new Skills.
+        // 新鲜的决策上下文可以合法地发现新 Skill。
         when(queryService.listSkills()).thenReturn(List.of(
                 skill("sk-a", "Alpha", true, "v1"),
                 skill("sk-d", "Delta", true, "v2")));
@@ -141,7 +143,7 @@ class SkillDiscoveryServiceTest {
 
         assertThat(results).extracting(SkillSearchCandidate::skillId)
                 .contains("sk-target");
-        // Query-aware: the migration Skill outranks the alphabetically-first one.
+        // 查询感知:迁移类 Skill 排在字母序第一的 Skill 之前。
         assertThat(results.get(0).skillId()).isEqualTo("sk-target");
     }
 
@@ -162,7 +164,7 @@ class SkillDiscoveryServiceTest {
         SkillCatalogProjector.Projection projection =
                 service.discover(SkillDiscoveryContext.empty());
 
-        // 40 installed but only 10 eligible: no truncation.
+        // 已安装 40 个但只有 10 个符合条件:不产生截断。
         assertThat(projection.entries()).hasSize(10);
         assertThat(projection.truncated()).isFalse();
     }

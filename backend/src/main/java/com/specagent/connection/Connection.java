@@ -5,9 +5,12 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * A saved Connection: the product-level representation of an external
- * integration. Never carries a plaintext secret — only a {@code credentialRef}
- * into the encrypted credential store.
+ * 文件名:Connection.java
+ *
+ * 用途:一条已保存的 Connection 记录,是外部集成在产品层面的表示,
+ * 贯穿连接管理(增删改查、测试、连接、启停)的各层。
+ *
+ * 绝不携带明文密钥——只保存指向加密凭据存储的 {@code credentialRef}。
  */
 public record Connection(
         UUID id,

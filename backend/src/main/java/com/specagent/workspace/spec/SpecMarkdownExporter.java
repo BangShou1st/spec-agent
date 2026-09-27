@@ -22,23 +22,18 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Deterministic Markdown rendering of one SpecSnapshot. The exporter is a
- * pure view: it never mutates state and never calls the model. The snapshot
- * stays the structured source of truth in the database; every export is
- * regenerated on demand so a rendering bug can never corrupt a derived
- * artifact.
+ * 文件名:SpecMarkdownExporter.java
  *
- * <p>Two deliberately different views over the same route:
- * <ul>
- *   <li>{@link Variant#SNAPSHOT} — faithful export of the snapshot itself for
- *     audit: metadata table, the frozen sections, unresolved items, and the
- *     resolved source-tracing appendix.</li>
- *   <li>{@link Variant#DELIVERY} — the development handoff document: the
- *     frozen sections PLUS the live requirement state (confirmed / assumed /
- *     unresolved claims replayed from the route lineage) and a Q&amp;A digest,
- *     so developers get the requirement state, not only the frozen prose.</li>
- * </ul>
- */
+ * 用途:把一份 SpecSnapshot 确定性地渲染成 Markdown。导出器是纯视图:绝不
+ * 修改状态,绝不调用模型。快照本身作为结构化事实源保存在数据库中,每次导出都
+ * 按需重新生成,因此渲染缺陷不可能破坏派生产物。
+ *
+ * 对同一条 route 提供两种刻意不同的视图:
+ * - {@link Variant#SNAPSHOT} — 快照自身的忠实导出,面向审计:元数据表、
+ *     冻结的章节、未决事项,以及已解析的来源追溯附录。
+ * - {@link Variant#DELIVERY} — 开发交付文档:冻结章节之外,再加上实时的
+ *     需求状态(从 route 世系回放出的 confirmed / assumed / unresolved claims)
+ *     和问答摘要,让开发者拿到需求状态,而不只是冻结的文本。 */
 @Service
 public class SpecMarkdownExporter {
 

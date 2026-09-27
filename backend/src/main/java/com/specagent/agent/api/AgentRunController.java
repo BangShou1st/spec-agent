@@ -13,12 +13,15 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Safe operator read of agent runs.
+ * 文件名:AgentRunController.java
  *
- * <p>Phase 6.1 read contract preserved: no endpoint starts, answers, or mutates
- * agent runs. Run/project ownership is verified so a run from project A can
- * never be read through project B. Only safe metadata and the sanitized
- * trace-step list are exposed.
+ * 用途:面向运维者的 agent run 只读 REST API。
+ *
+ * 保持 Phase 6.1 的读取契约:任何端点都不启动、应答或变更 agent run。
+ * 会校验 run/项目归属关系,项目 A 的 run 绝不可能通过项目 B 读取。
+ * 仅暴露安全的元数据和脱敏后的 trace 步骤列表。
+ *
+ * 协作:由运维/调试前端调用,数据经 AgentRunDtoMapper 转为响应 DTO。
  */
 @RestController
 @RequestMapping("/api/v1/projects/{projectId}/runs")

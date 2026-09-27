@@ -10,6 +10,15 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.*;
 
+/**
+ * 文件名:ChatCompletionsProtocolAdapterTest.java
+ *
+ * 测试目标:验证 OpenAI Chat Completions 协议适配器:文本/JSON Object 请求体的
+ * response_format 映射、可选的 Bearer 鉴权头、非流式响应与流式增量的解析
+ * (reasoning/tool_calls/usage 不作为可见文本)、[DONE] 与 finish_reason 的终止语义
+ * (只有 stop 算成功终止,其余按失败处理)、缺失 finish_reason 时 fail-closed,
+ * 以及 HTTP 状态码到网关错误类别的映射。
+ */
 class ChatCompletionsProtocolAdapterTest {
     private final ObjectMapper mapper = new ObjectMapper();
     private final ChatCompletionsProtocolAdapter adapter = new ChatCompletionsProtocolAdapter();
@@ -74,8 +83,7 @@ class ChatCompletionsProtocolAdapterTest {
             assertThat(adapter.isSuccessfulTerminal("{}", data, "chat")).isFalse();
             assertThat(adapter.isFailureTerminal(data, "chat")).isTrue();
         }
-        // [DONE] without an explicit stop stays a success terminal when no
-        // failure finish reason preceded it.
+        // 未出现失败 finish_reason 时,不带显式 stop 的 [DONE] 仍视为成功终止。
         assertThat(adapter.isSuccessfulTerminal("[DONE]", null, "chat")).isTrue();
         var plain = mapper.readTree("{\"choices\":[{\"delta\":{\"content\":\"Hi\"}}]}");
         assertThat(adapter.isSuccessfulTerminal("{}", plain, "chat")).isFalse();

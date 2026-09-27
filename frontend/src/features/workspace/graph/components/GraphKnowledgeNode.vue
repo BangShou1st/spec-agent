@@ -1,9 +1,16 @@
+<!--
+  文件名:GraphKnowledgeNode.vue
+  用途:非交互节点卡片(知识草稿/资源引用/工件)的画布渲染:支持草稿就地编辑、"/"技能绑定、文件资源预览与节点操作轨道,按节点 kind 注册到画布节点类型表。
+-->
 <script lang="ts">
-// The shared node chassis (edge anchors, drag header, action rail) lives in
-// GraphNodeShell; this card only contributes content-specific behaviour.
+// 共享的节点外壳(边锚点、拖拽头、操作轨道)在 GraphNodeShell 中;
+// 本卡片只贡献特定内容的行为。
 import GraphNodeShell from './GraphNodeShell.vue'
-export default { components: { GraphNodeShell } }
+import NodeRecoveryBar, { type RecoveryItem } from './NodeRecoveryBar.vue'
+import { useRunRegistryStore } from '@/features/workspace/state/runRegistryStore'
+export default { components: { GraphNodeShell, NodeRecoveryBar } }
 </script>
+
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
@@ -19,14 +26,12 @@ import { useSkillSlashPicker } from '@/features/workspace/graph/useSkillSlashPic
 import type { SkillSummary } from '@/features/skills/api/skillTypes'
 
 /**
- * Card for non-interaction workspace nodes (knowledge drafts, resource
- * references, artifacts). Registered by node kind in the canvas node-type
- * registry — new subtypes reuse this card instead of adding card classes.
+ * 非交互工作区节点(知识草稿、资源引用、工件)的卡片。按节点 kind 注册到
+ * 画布节点类型注册表——新的子类型复用本卡片,不再新增卡片类。
  *
- * A user-authored draft stays editable in place while PROPOSED; confirmed
- * or agent-authored content is read-only and evolves through knowledge-state
- * transitions, revision, and branches — never silent rewrites. Double-click
- * (or a pending edit request right after creation) opens the editor.
+ * 用户 authored 的草稿在 PROPOSED 阶段可就地编辑;已确认或 agent 撰写的
+ * 内容只读,只能通过知识状态流转、修订与分支演进——绝无静默改写。
+ * 双击(或创建后紧随的待处理编辑请求)会打开编辑器。
  */
 const props = defineProps<{
   data: SpecAgentGraphNodeData
@@ -38,7 +43,24 @@ const graphUi = useGraphUiStore()
 
 const emit = defineEmits<{
   'contextual-ai': [nodeId: string]
+  'retry-failure': [failure: import('@/features/workspace/api/agentRuns').UnresolvedFailure]
+  'go-settings': []
+  'locate-failure': [failure: import('@/features/workspace/api/agentRuns').UnresolvedFailure]
 }>()
+
+const runRegistry = useRunRegistryStore()
+/** 节点上的未解决失败(问 AI / 换题等绑定到知识节点的任务)。 */
+const recoveryItems = computed<RecoveryItem[]>(() =>
+  (props.data.recovery?.failures ?? []).map((failure) => ({
+    failure,
+    routeLabel: props.data.routeMembership?.find(
+      (membership) => membership.routeId === failure.routeId,
+    )?.label,
+  })),
+)
+function isFailureRetrying(failedRunId: string): boolean {
+  return runRegistry.isRetrying(failedRunId)
+}
 
 const node = computed(() => props.data.node)
 const isDraft = computed(() => node.value.userEditableDraft)
@@ -165,12 +187,12 @@ async function draftNextHere(): Promise<void> {
 const knowledgeStatusLabel = computed(() =>
   knowledgeStatusCopy(node.value.knowledgeStatus))
 
-// Draft editing state: local until saved; cancels restore the server value.
+// 草稿编辑状态:保存前只存在本地;取消则恢复服务端值。
 const editing = ref(false)
 const editSubtype = ref(node.value.subtype)
 const editText = ref(contentText.value)
-// "/" picker: binds the picked skill for persistence; the visible mention
-// lives in the text itself, the authoritative binding rides in content.
+// "/"选择器:记录所选技能用于持久化;可见的提及写在文本里,权威绑定
+// 放在 content 字段中。
 const picker = useSkillSlashPicker()
 const draftInputEl = ref<HTMLTextAreaElement | null>(null)
 const editSkillId = ref<string | null>(null)
@@ -309,8 +331,8 @@ function onMenuPress(): void {
 }
 
 async function continueFromHere(): Promise<void> {
-  // Route context must be explicit; ambiguous shared nodes ask the user to
-  // pick a reading route first (never active/first/latest fallback).
+  // 路线上下文必须显式;有歧义的共享节点会请用户先选查看路线
+  // (绝不回退到 active/第一个/最新)。
   const routeId = props.data.readingRouteId
   if (!routeId) return
   await workspace.continueFromNode(node.value.id, routeId)
@@ -360,7 +382,18 @@ async function confirmContent(): Promise<void> {
     </template>
 
     <div class="graph-question-node__body nodrag" data-test="node-body">
-      <!-- 文件资源卡：图标+文件名+上传时间，点击查看原件（弹窗）。 -->
+      <!-- 任务级失败恢复栏:问 AI 失败 / 换题失败(知识节点)的常驻恢复入口。 -->
+      <NodeRecoveryBar
+        v-if="recoveryItems.length > 0"
+        :items="recoveryItems"
+        :is-retrying="isFailureRetrying"
+        @retry="(failure) => emit('retry-failure', failure)"
+        @go-settings="emit('go-settings')"
+        @locate="(failure) => emit('locate-failure', failure)"
+      />
+      /**
+ * 文件资源卡：图标+文件名+上传时间，点击查看原件（弹窗）。
+ */
       <button
         v-if="isFileResource && !editing"
         type="button"
@@ -379,7 +412,9 @@ async function confirmContent(): Promise<void> {
         </span>
       </button>
 
-      <!-- Editable draft: author content directly on the card. -->
+      /**
+ * 可编辑草稿:直接在卡片上撰写内容。
+ */
       <template v-if="editing">
         <select v-model="editSubtype" class="graph-knowledge-node__subtype nodrag" data-test="draft-subtype" aria-label="类型">
           <option v-for="entry in SUBTYPES" :key="entry.value" :value="entry.value">{{ entry.label }}</option>
@@ -426,8 +461,10 @@ async function confirmContent(): Promise<void> {
       </template>
 
       <template v-else-if="!isFileResource">
-        <!-- 与全局 AI 助手同一套富文本渲染：段落 / 列表 / 代码 / 引用都能正确
-             换行与缩进，长笔记不再被压成一坨纯文本。 -->
+        /**
+ * 与全局 AI 助手同一套富文本渲染：段落 / 列表 / 代码 / 引用都能正确
+ * 换行与缩进，长笔记不再被压成一坨纯文本。
+ */
         <RichAssistantText
           v-if="contentText"
           class="graph-knowledge-node__text"
@@ -444,8 +481,10 @@ async function confirmContent(): Promise<void> {
       </p>
     </div>
 
-    <!-- 操作轨道按钮：统一来自 nodeActions 配置表；轨道容器与显隐在
-         GraphNodeShell 中。编辑态使用卡片内的保存/取消表单按钮。 -->
+    /**
+ * 操作轨道按钮：统一来自 nodeActions 配置表；轨道容器与显隐在
+ * GraphNodeShell 中。编辑态使用卡片内的保存/取消表单按钮。
+ */
     <template #actions>
       <button
         v-for="action in railActions"
@@ -469,7 +508,9 @@ async function confirmContent(): Promise<void> {
       @close="previewOpen = false"
     />
 
-    <!-- 浮层挂在 body 上（fixed 定位），脱离 vue-flow 节点的层叠与拖拽上下文 -->
+    /**
+ * 浮层挂在 body 上（fixed 定位），脱离 vue-flow 节点的层叠与拖拽上下文
+ */
     <Teleport to="body">
       <SkillSlashMenu
         v-if="picker.open.value"

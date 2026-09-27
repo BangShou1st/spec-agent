@@ -1,31 +1,31 @@
 package com.specagent.model.contract;
 
 /**
- * Provider-neutral failure categories of the {@link ModelGateway} contract.
+ * 文件名:ModelGatewayErrorCategory.java
  *
- * <p>Gateway implementations map their provider-specific failures onto this
- * vocabulary so the agent reasoning layer can diagnose failures without
- * knowing any concrete provider. Never add provider platform features here.
+ * 用途:{@link ModelGateway} 契约的提供商无关错误分类。各网关实现把自己的提供商
+ * 专属错误映射到这套词汇上,让上层推理逻辑无需了解具体提供商就能诊断失败原因。
+ * 不要在这里加入任何提供商平台特有的概念。
  */
 public enum ModelGatewayErrorCategory {
-    /** The HTTP request timed out. */
+    /** HTTP 请求超时。 */
     TIMEOUT,
-    /** The connection could not be established or was dropped. */
+    /** 连接建立失败或中途被断开。 */
     CONNECTION,
-    /** The provider rejected the credential (HTTP 401 / 403). */
+    /** 提供商拒绝了凭据(HTTP 401 / 403)。 */
     AUTHENTICATION,
-    /** The provider rate limited the request (HTTP 429). */
+    /** 提供商对请求限流(HTTP 429)。 */
     RATE_LIMITED,
-    /** The provider returned a server error (HTTP 5xx). */
+    /** 提供商返回服务端错误(HTTP 5xx)。 */
     SERVER_ERROR,
-    /** The provider returned an unexpected 4xx response. */
+    /** 提供商返回了意料之外的 4xx 响应。 */
     PROVIDER_REQUEST_ERROR,
-    /** The response body was malformed or did not match the expected shape. */
+    /** 响应体格式非法,或与预期的结构不符。 */
     INVALID_RESPONSE,
-    /** The completion succeeded but produced no usable content. */
+    /** 补全调用成功但没有产出可用内容。 */
     EMPTY_CONTENT,
-    /** The gateway cannot run because the configured model is not allowed. */
+    /** 网关无法运行:配置的模型不在允许范围内。 */
     INVALID_MODEL,
-    /** The gateway cannot run because a required configuration is missing. */
+    /** 网关无法运行:缺少必需的配置项。 */
     NOT_CONFIGURED
 }

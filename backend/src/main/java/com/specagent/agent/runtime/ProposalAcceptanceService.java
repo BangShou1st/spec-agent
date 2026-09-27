@@ -41,13 +41,13 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Executes a user-accepted Advisor proposal.
+ * 文件名:ProposalAcceptanceService.java
  *
- * <p>Acceptance is the confirmation that Advisor mode required: the stored
- * proposal is re-validated against current graph facts (stale anchors and
- * vanished endpoints are rejected, never silently rebased), executed through
- * the runtime command layer, and recorded in the typed operation log as an
- * agent mutation traceable to the proposal.
+ * 用途:执行用户已接受的 Advisor proposal。Acceptance 就是 Advisor 模式
+ * 所要求的"确认"步骤:存储的 proposal 会先对照当前图事实重新校验
+ * (stale 锚点与已消失的端点会被拒绝,绝不静默 rebase 到新状态),再经
+ * runtime 命令层执行,并以可追溯到该 proposal 的 agent 变更身份写入类型化
+ * 操作日志。
  */
 @Service
 public class ProposalAcceptanceService {
@@ -101,31 +101,27 @@ public class ProposalAcceptanceService {
     }
 
     /**
-     * Accepts and executes a pending proposal in one transaction. Execution
-     * failures leave the proposal PROPOSED so the user can retry after the
-     * underlying problem is resolved.
+     * 在一个事务内接受并执行 pending proposal。执行失败时 proposal 保持
+     * PROPOSED 状态,用户可以在底层问题解决后重试。
      *
-     * <p>Lock order is project → proposal → graph: the project row lock is
-     * taken first (after resolving the project from immutable proposal
-     * metadata), then the proposal row is locked and re-read, then the graph
-     * mutation. This mirrors the project-first order of every other graph
-     * writer ({@link GraphCommandService}, {@code UndoRedoService}), so
-     * acceptance can never hold a proposal lock while waiting for the project
-     * lock in the reverse order (no proposal→project deadlock path).
+     * 加锁顺序为 project → proposal → graph:先取 project 行锁(从
+     * 不可变的 proposal 元数据解析出项目之后),再锁定并重读 proposal 行,
+     * 最后做图变更。这与所有其他图写入方的"project 优先"顺序
+     * ({@link GraphCommandService}、{@code UndoRedoService})一致,因此
+     * acceptance 绝不会持着 proposal 锁又按相反顺序等 project 锁
+     * (不存在 proposal→project 的死锁路径)。
      */
     @Transactional
     public AcceptedProposalResult acceptAndExecute(UUID proposalId, String decidedBy) {
-        // 1. Resolve the project from immutable proposal metadata (no lock).
+        // 1. 从不可变的 proposal 元数据解析项目(不加锁)。
         AgentProposal metadata = proposalService.getProposal(proposalId)
                 .orElseThrow(() -> new IllegalArgumentException("Proposal not found: " + proposalId));
         UUID projectId = metadata.projectId();
-        // 2. Serialize against every other project-wide graph writer.
+        // 2. 与项目内所有其他图写入方串行化。
         projectRepository.lockById(projectId);
-        // 3. Lock and re-read the proposal row after the project lock. The
-        //    single-winner arbitration happens here: the row lock is held
-        //    until this transaction commits or rolls back, so a racing
-        //    accept/reject/expire waits behind it and then observes the
-        //    committed outcome.
+        // 3. 取到 project 锁后,再锁定并重读 proposal 行。唯一的"赢家仲裁"
+        //    发生在这里:行锁会持有到本事务提交或回滚为止,并发 racing 的
+        //    accept/reject/expire 会排在它后面,然后再观察已提交的结果。
         AgentProposal stored = proposalService.getProposalForUpdate(proposalId)
                 .orElseThrow(() -> new IllegalArgumentException("Proposal not found: " + proposalId));
         if (stored.status() != ProposalStatus.PROPOSED) {
@@ -137,8 +133,8 @@ public class ProposalAcceptanceService {
         }
 
         ActionProposal proposal = rebuildActionProposal(stored);
-        // Frozen mutable-source staleness: if the model-visible body that
-        // produced this proposal has since changed, acceptance is stale.
+        // 冻结"可变来源"的过期判定:如果产生该 proposal 时模型可见的内容
+        // 后来发生了变化,则本次 acceptance 视为过期。
         contextSnapshotRepository.findById(stored.baseContextSnapshotId())
                 .ifPresent(snapshot -> {
                     if (!isReadOnlyFamily(proposal)) {
@@ -153,9 +149,9 @@ public class ProposalAcceptanceService {
             case CONNECT_NODE -> executeConnectNode(proposal, stored);
             case INVOKE_CAPABILITY -> executeCapabilityInvocation(proposal, stored);
             // UPDATE_NODE / CREATE_ROUTE / GENERATE_ARTIFACT / CONTINUATION
-            // connections never reach here as PROPOSED proposals: policy denies
-            // them before creation because no command layer executes them in
-            // this stage. The defensive failure below stays fail-closed.
+            // 连接绝不会以 PROPOSED 状态走到这里:policy 在创建之前就拒绝了
+            // 它们,因为本阶段没有命令层会执行它们。下面的防御性失败保持
+            // fail-closed。
             case UPDATE_NODE, CREATE_ROUTE, RESPOND_TO_USER, GENERATE_ARTIFACT, WAIT ->
                     throw new UnsupportedOperationException(
                             "Action family " + stored.actionFamily()
@@ -163,17 +159,14 @@ public class ProposalAcceptanceService {
         };
 
         proposalService.acceptProposal(proposalId, decidedBy);
-        // Capability invocations produce no graph entity; node/relation
-        // families always produce exactly one.
+        // capability 调用不产生图实体;节点/关系 family 总是恰好产生一个。
         List<UUID> producedRefs = result.producedNodeId() != null
                 ? List.of(result.producedNodeId())
                 : result.relationId() != null ? List.of(result.relationId()) : List.of();
-        // Only an acceptance with a REAL graph effect is recorded as the
-        // non-reversible ACCEPT_AGENT_PROPOSAL barrier. An effect-free
-        // acceptance (e.g. INVOKE_CAPABILITY) must not lock the whole undo
-        // history — the graph mutations it may have triggered (agent node /
-        // relation creation) already entered the log as their own reversible
-        // AGENT operations.
+        // 只有带来真实图效果的 acceptance 才记为不可逆的
+        // ACCEPT_AGENT_PROPOSAL 屏障。无效果的 acceptance(例如
+        // INVOKE_CAPABILITY)绝不能锁死整个 undo 历史——它可能触发的图变更
+        // (agent 节点/关系创建)已经以各自可逆的 AGENT 操作进入了日志。
         if (!producedRefs.isEmpty()) {
             operationRepository.append(stored.projectId(), GraphOperation.Actor.AGENT,
                     GraphOperation.Type.ACCEPT_AGENT_PROPOSAL,
@@ -182,20 +175,17 @@ public class ProposalAcceptanceService {
                     "proposal:" + proposalId);
         }
 
-        // Slice 6: the originating run gains the durable effect reference
-        // (status/trace untouched — it already terminalized) plus an
-        // ACCEPTANCE_EXECUTED event, and its continuation check reopens in
-        // the SAME transaction. The coordinator re-judges the run from
-        // these durable facts: ACCEPTED (no longer PARKED_APPROVAL) plus a
-        // consumable effect (graph node) yields a child; INTERACTION output
-        // still parks as an external boundary; effect-free acceptance still
-        // yields NO_EFFECT. Acceptance itself never forces continuation.
+        // Slice 6:原始 run 在同一事务里获得持久化效果引用(不动 status/trace
+        // ——它早已终态化)以及一条 ACCEPTANCE_EXECUTED 事件,其 continuation
+        // check 也随之重新打开。协调器会基于这些持久化事实重新判定该 run:
+        // ACCEPTED(不再是 PARKED_APPROVAL)加上可消费的效果(图节点)会产生
+        // 子 run;INTERACTION 输出仍作为外部边界挂起;无效果的 acceptance
+        // 仍判为 NO_EFFECT。acceptance 本身绝不强制续跑。
         //
-        // The originating run id is a legacy creation hint: external
-        // creation paths may carry a run id with no persisted run row
-        // (proposal-only flows). Only a really persisted run is an origin:
-        // continuation effects AND the returned originRunId share this one
-        // gate, so the API never hands the frontend a ghost run to poll.
+        // 原始 run id 只是历史遗留的创建提示:外部创建路径可能携带一个没有
+        // 对应持久化 run 行的 run id(仅 proposal 的流程)。只有真正持久化过
+        // 的 run 才算 origin:续跑效果与返回的 originRunId 共用这一个闸门,
+        // API 绝不会把幽灵 run 交给前端去轮询。
         UUID persistedOriginRunId = stored.runId() != null
                 && agentRunRepository.findById(stored.runId()).isPresent()
                 ? stored.runId() : null;
@@ -216,10 +206,9 @@ public class ProposalAcceptanceService {
     }
 
     /**
-     * Best-effort fast-path delivery of the reopened continuation check.
-     * The acceptance transaction already committed the request; a dispatch
-     * failure is logged and left pending for the recovery scanner — it
-     * never fails the user's acceptance call.
+     * 重新打开的 continuation check 的尽力而为快速通道投递。acceptance
+     * 事务已提交该请求;派发失败只记日志并保持 pending,交给恢复扫描器
+     * ——绝不让用户的 acceptance 调用失败。
      */
     private void dispatchContinuationAfterCommit(UUID runId) {
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
@@ -246,9 +235,8 @@ public class ProposalAcceptanceService {
     }
 
     /**
-     * Rebuilds the wire-level proposal view from the persisted record. The
-     * persisted payload is the already-validated model payload; identity
-     * fields are restored from runtime-owned columns.
+     * 从持久化记录重建线上协议层 proposal 视图。持久化的 payload 就是
+     * 已通过校验的模型 payload;身份字段从 runtime 自有的列恢复。
      */
     private ActionProposal rebuildActionProposal(AgentProposal stored) {
         return new ActionProposal(
@@ -263,9 +251,8 @@ public class ProposalAcceptanceService {
     }
 
     /**
-     * Stale validation against current graph facts. Node-creating proposals
-     * require their anchor to still be the route tip; relation proposals
-     * require both endpoints to still exist unretracted.
+     * 对照当前图事实做过期校验。创建节点的 proposal 要求其锚点仍是
+     * route tip;关系的 proposal 要求两个端点都仍存在且未被撤销。
      */
     private void validateStillFresh(ActionProposal proposal, AgentProposal stored) {
         switch (ActionFamily.fromCode(stored.actionFamily())) {
@@ -274,11 +261,10 @@ public class ProposalAcceptanceService {
                         .orElseThrow(() -> new StaleProposalException(
                                 "Proposal route no longer exists: " + stored.routeId()));
                 UUID anchorNodeId = firstNodeRef(proposal);
-                // The anchor semantics mirror the transactional graph-action
-                // boundary: a null anchor is only valid on a still-empty route
-                // (bootstrap root), a non-null anchor must still be the live
-                // route tip. Never fall back to "append at whatever the tip is
-                // now" — that would silently rebase the decision.
+                // 锚点语义与事务性图动作边界一致:空锚点只在 route 仍为空
+                // (引导根节点)时合法;非空锚点必须仍是当前活跃的 route tip。
+                // 绝不回退成"追加到现在不管是谁的 tip"——那会静默 rebase
+                // 当初的决策。
                 if (anchorNodeId == null) {
                     if (route.tipNodeId() != null) {
                         throw new StaleProposalException(
@@ -299,9 +285,8 @@ public class ProposalAcceptanceService {
                 requireLiveNode(targetId);
             }
             case INVOKE_CAPABILITY -> {
-                // Capability arguments may reference graph nodes; those refs
-                // must still be live at acceptance time, mirroring the wire
-                // validation the proposal passed when it was created.
+                // capability 参数可能引用图节点;这些 ref 在接受时必须仍然
+                // 存活,与 proposal 创建时通过的那次线上校验保持一致。
                 if (stored.payload().get("arguments") instanceof Map<?, ?> arguments) {
                     for (Object value : arguments.values()) {
                         if (value instanceof String ref && ref.startsWith("node:")) {
@@ -311,7 +296,7 @@ public class ProposalAcceptanceService {
                 }
             }
             case UPDATE_NODE, CREATE_ROUTE, RESPOND_TO_USER, GENERATE_ARTIFACT, WAIT -> {
-                // No freshness rule for other families in this stage.
+                // 本阶段其他 family 没有新鲜度规则。
             }
         }
     }
@@ -345,12 +330,10 @@ public class ProposalAcceptanceService {
     }
 
     /**
-     * Local-durable capability invocations execute through the same action
-     * executor used by the auto-execute path (which routes into the
-     * capability runtime with its runtime-owned idempotency key) — acceptance
-     * never duplicates execution logic. Read-only capabilities never become
-     * proposals (policy auto-executes them); external side-effect classes are
-     * denied before creation.
+     * 本地持久化的 capability 调用,通过与自动执行路径相同的 action executor
+     * 执行(它会携带 runtime 自有的幂等键路由进 capability runtime)
+     * ——acceptance 绝不复制一份执行逻辑。只读 capability 不会成为 proposal
+     * (policy 自动执行它们);外部副作用类在创建前就被拒绝。
      */
     private AcceptedProposalResult executeCapabilityInvocation(ActionProposal proposal,
                                                                AgentProposal stored) {

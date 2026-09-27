@@ -22,10 +22,11 @@ import java.util.zip.CRC32;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Install/delete must keep the local mirror in sync with the authoritative
- * store: a fresh install projects its files to disk, a delete removes them.
- * Built-in, git and uploaded skills all share this one pipeline, so this
- * covers the unified "one local directory for every skill" behavior.
+ * 文件名:SkillLocalMirrorIntegrationTest.java
+ *
+ * 测试目标:验证安装/删除会让本地镜像与权威存储保持同步——新安装会把
+ * 文件投影到磁盘,删除会将其移除。内置、git 和上传的 Skill 共用同一条
+ * 管线,因此覆盖了"所有 Skill 共用一个本地目录"的统一行为。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -45,7 +46,7 @@ class SkillLocalMirrorIntegrationTest {
 
     @DynamicPropertySource
     static void mirrorProperties(DynamicPropertyRegistry registry) {
-        // Flat keys: `local-mirror.enabled` would not bind localMirrorEnabled.
+        // 使用平铺的键:`local-mirror.enabled` 无法绑定到 localMirrorEnabled。
         registry.add("spec.agent.skill.local-mirror-enabled", () -> "true");
         registry.add("spec.agent.skill.local-mirror-root", () -> mirrorRoot.toString());
     }

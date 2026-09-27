@@ -17,31 +17,32 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * Host tool: stage a Skill import from an HTTPS git repository.
+ * 文件名:SkillImportCapability.java
  *
- * <p><b>Staging only.</b> The package is cloned, validated and stored as a
- * reviewable staging row — never executed, never installed, never enabled.
- * Installation stays a user action in the Skills settings page, and an
- * installed Skill remains disabled until it is enabled there. That ordering is
- * what makes it safe to let the model start an import: the assistant can only
- * put a candidate in front of the user, not make it agent-visible.
+ * 用途:宿主工具——从 HTTPS git 仓库暂存一个 Skill 导入,
+ * GA 工具目录中的 skill.import 即本能力。
  *
- * <p>Repositories that hold a single Skill are staged directly. Repositories
- * that hold a library (a {@code skills/<name>/} tree or a plugin marketplace)
- * come back as candidates so the assistant asks which one to use instead of
- * guessing.
+ * 【只做暂存】。包会被克隆、校验并存为一条可审阅的暂存记录——
+ * 绝不执行、绝不安装、绝不启用。安装始终是用户在 Skills 设置页里的
+ * 手动动作,已安装的 Skill 在那里启用之前也保持禁用。正是这个顺序
+ * 让"让模型发起导入"变得安全:助手只能把候选摆到用户面前,
+ * 不能让代理看到它。
+ *
+ * 只含单个 Skill 的仓库直接暂存;含一个 Skill 库的仓库
+ * ({@code skills/<name>/} 目录树或插件市场)会返回候选列表,
+ * 让助手去问用户要哪个,而不是瞎猜。
  */
 @Component
 public class SkillImportCapability implements InternalCapabilityAdapter {
 
     public static final String CAPABILITY_ID = "skill.import";
 
-    /** Candidate lists are bounded so one marketplace cannot flood the model. */
+    /** 候选列表有上限,防止单个市场仓库刷爆模型上下文。 */
     private static final int MAX_REPORTED_CANDIDATES = 20;
 
     /**
-     * Candidate metadata comes from an untrusted repository, so it enters the
-     * model context only in bounded, display-sized form.
+     * 候选元数据来自不受信任的仓库,只以有界、展示尺寸的形式
+     * 进入模型上下文。
      */
     private static final int MAX_CANDIDATE_DESCRIPTION_CHARS = 160;
 
@@ -141,8 +142,8 @@ public class SkillImportCapability implements InternalCapabilityAdapter {
                     + " Available: " + summary(usable, MAX_REPORTED_CANDIDATES));
         }
         if (matches.size() > 1) {
-            // Ambiguity is a question for the user, not a guess: report the
-            // candidates and stage nothing.
+            // 有歧义时这是该问用户的问题,不是猜一猜:报告候选,
+            // 什么都不暂存。
             return choiceResult(invocation, discovery, matches, requested != null);
         }
 
@@ -184,8 +185,8 @@ public class SkillImportCapability implements InternalCapabilityAdapter {
         }
         Map<String, Object> content = new LinkedHashMap<>();
         content.put("requiresChoice", true);
-        // No stagedImportId key at all: absence is the honest signal that
-        // nothing was staged yet (content maps reject null values).
+        // 完全不写 stagedImportId 键:键不存在才诚实地表明"什么都还没暂存"
+        // (content map 会拒绝 null 值)。
         if (!requestedSkill && discovery.suggestedPath() != null) {
             content.put("skillPath", discovery.suggestedPath());
         }

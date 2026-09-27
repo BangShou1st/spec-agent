@@ -25,9 +25,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Closure B read-contract tests: the plain run polling view exposes the
- * autonomous chain facts (direct child, pending continuation check, latest
- * RESPOND_MESSAGE) without executing anything.
+ * 文件名:AgentRunChainReadApiIntegrationTest.java
+ *
+ * 测试目标:闭环 B 的读契约测试——普通 run 轮询视图在不执行任何动作的前提下,
+ * 暴露自治链事实:直接子 run 的 id、待处理的续写检查(continuationPending)、
+ * 以及最新的 RESPOND_MESSAGE 消息。
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -115,7 +117,7 @@ class AgentRunChainReadApiIntegrationTest {
                 .andExpect(jsonPath("$.continuationPending").value(false))
                 .andExpect(jsonPath("$.respondMessage").doesNotExist());
 
-        // A run with no RESPOND_MESSAGE and no linkage still exposes nulls.
+        // 没有 RESPOND_MESSAGE 也没有链路关系的 run,这些字段仍暴露为空。
         mockMvc.perform(get("/api/v1/projects/{projectId}/agent-runs/{runId}",
                         project.id(), parent.id()))
                 .andExpect(status().isOk())

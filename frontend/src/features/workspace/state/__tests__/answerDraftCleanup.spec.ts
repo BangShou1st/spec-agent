@@ -1,3 +1,5 @@
+// 文件名:answerDraftCleanup.spec.ts
+// 用途:回答提交后输入草稿清理的单元测试:验证清理只针对提交时捕获的项目/路线/节点身份,运行时路线替换也不影响。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useWorkspaceStore } from '@/features/workspace/state/workspaceStore'
@@ -90,13 +92,12 @@ describe('answer draft cleanup identity', () => {
     ;(getProjectGraph as unknown as Mock).mockResolvedValue({ projectId: "p1", activeRouteId: route.id, routes: [], nodes: [], answers: [], relations: [] })
     await store.loadWorkspace('p1')
 
-    // Drafts exist for BOTH the answered node (Q3) and the produced node (Q4).
+    // 被回答节点(Q3)与产出节点(Q4)都存在草稿。
     const drafts = useInputDraftStore()
     drafts.setDraft('p1', 'q3', { selectedOptionId: null, freeText: 'my Q3 answer' }, 'r-old')
     drafts.setDraft('p1', 'q4-next', { selectedOptionId: null, freeText: 'unrelated Q4 draft' }, 'r-new')
 
-    // After the run completes the runtime has moved to a new route; the
-    // refresh returns that new canonical state.
+    // run 完成后运行时已切到新路线;刷新返回的是新的 canonical 状态。
     ;(getActiveState as unknown as Mock).mockResolvedValue(
       makeActiveState({
         project: makeProject({ id: 'p1', activeRouteId: 'r-new' }),
@@ -142,9 +143,8 @@ describe('answer draft cleanup identity', () => {
     const drafts = useInputDraftStore()
     drafts.setDraft('p1', 'n1', { selectedOptionId: null, freeText: 'typed answer' }, 'route-at-submit')
 
-    // The runtime replaced the route during the run; the post-refresh state
-    // points at the replacement route — cleanup must still use the route
-    // captured at SUBMISSION time.
+    // 运行时在 run 期间替换了路线;刷新后的状态指向替代路线——清理
+    // 仍必须使用提交时捕获的路线。
     const replacementRoute = makeRoute({ id: 'replacement-route', projectId: 'p1', isActive: true })
     ;(getActiveState as unknown as Mock).mockResolvedValue(
       makeActiveState({

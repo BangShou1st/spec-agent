@@ -1,7 +1,6 @@
-/**
- * Skill management DTOs. Backend SkillController responses are authority;
- * these types mirror them and never guess backend state.
- */
+// 文件名:skillTypes.ts
+// 用途:Skill 管理的 DTO 类型定义。以后端 SkillController 的响应为准;
+//       这些类型只镜像后端,绝不猜测后端状态。
 
 export interface SkillSummary {
   skillId: string
@@ -63,7 +62,7 @@ export interface StagedImportDetail {
   createdAt: string
 }
 
-/** One Skill package a git repository offers. path '' means the repository root. */
+/** 一个 Git 仓库提供的单个 Skill 包。path 为 '' 表示仓库根目录。 */
 export interface GitSkillCandidate {
   path: string
   name: string

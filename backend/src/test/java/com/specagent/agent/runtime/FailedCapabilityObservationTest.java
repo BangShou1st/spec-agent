@@ -28,12 +28,12 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Slice 1, section 17: a FAILED capability invocation must already be
- * visible to future snapshots on the same route. Only then may the
- * coordinator treat a durable failure as consumable new observation.
+ * 文件名:FailedCapabilityObservationTest.java
  *
- * <p>Read-only verification of the existing projection; production
- * projection behavior stays untouched.
+ * 测试目标:Slice 1 第 17 节:FAILED 的能力调用必须已对同一路由的未来快照可见。
+ * 只有在此基础上,协调器才能把持久化的失败当作可消费的新观察。
+ *
+ * 对既有投影做只读验证;不改动生产投影行为。
  */
 @SpringBootTest
 @ActiveProfiles("test")

@@ -14,9 +14,14 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Hybrid candidate generation and Reciprocal Rank Fusion. Scope and authority
- * are applied after fusion by the context service, never folded into a fake
- * similarity score.
+ * 文件名:HybridRetriever.java
+ *
+ * 用途:检索的核心引擎——混合候选生成 + RRF(倒数排名融合)排序。
+ * 按范围并行跑多条检索通道(路线词法/trigram、项目词法/trigram、
+ * 资源分块、图节点直取、可选向量),把各通道排名融合成统一候选列表。
+ *
+ * 范围与权威级别的规则在融合之后由 context 服务施加,绝不折算成
+ * 伪造的相似度分数。
  */
 @Service
 public class HybridRetriever {
@@ -70,8 +75,8 @@ public class HybridRetriever {
     }
 
     /**
-     * RRF fuses relevance lanes; this stable tier applies authority and scope
-     * rules afterwards without inventing weighted similarity magic numbers.
+     * RRF 负责融合相关性通道;这个稳定的分层在融合之后施加权威级别与
+     * 范围规则,不去发明带权重的相似度魔数。
      */
     private int selectionTier(RetrievalQuery query, RetrievalEntry entry) {
         if (entry.authority() == MemoryAuthority.REJECTED) {

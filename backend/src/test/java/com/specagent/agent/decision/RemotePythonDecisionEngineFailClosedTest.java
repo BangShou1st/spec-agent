@@ -26,11 +26,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
 /**
- * Fail-closed behavior of the remote Python decision engine: unknown protocol
- * versions, wrong run ids, invented source refs, and unreachable brains all
- * produce typed failures. No retry, no fallback. The failure *code* keeps the
- * causes apart: a malformed model output and an out-of-range citation are not
- * "the brain is down", and a slow brain is not an unreachable one.
+ * 文件名:RemotePythonDecisionEngineFailClosedTest.java
+ *
+ * 测试目标:验证远程 Python 决策引擎的 fail-closed 行为——未知协议版本、错误 runId、
+ * 捏造来源引用、大脑不可达等都必须产生带类型的失败,且不重试、不降级。失败码用于区分
+ * 根因:模型输出畸形与引用越界不是"大脑宕机",慢响应也不是"不可达"。
  */
 class RemotePythonDecisionEngineFailClosedTest {
 
@@ -137,7 +137,7 @@ class RemotePythonDecisionEngineFailClosedTest {
     @Test
     void unreachableBrainProducesTypedFailureWithoutRetry() {
         AgentBrainProperties properties = new AgentBrainProperties();
-        properties.setBaseUrl("http://localhost:1"); // nothing listens here
+        properties.setBaseUrl("http://localhost:1"); // 该端口没有任何服务在监听
         properties.setConnectTimeoutMs(200);
         properties.setReadTimeoutSeconds(1);
         RemotePythonDecisionEngine isolated = new RemotePythonDecisionEngine(properties);
@@ -150,8 +150,7 @@ class RemotePythonDecisionEngineFailClosedTest {
 
     @Test
     void providerUnavailableResponseBecomesExplicitRemoteFailure() throws Exception {
-        // An untyped 5xx keeps the historical opaque code: the engine only
-        // classifies a cause the brain actually named.
+        // 无类型的 5xx 保留历史的不透明失败码:引擎只对大脑明确报告的原因做分类。
         assertThat(failureCodeOf("{\"error\":\"provider unavailable\"}", 502))
                 .isEqualTo(BrainFailureCode.BRAIN_UNAVAILABLE);
     }
@@ -160,7 +159,7 @@ class RemotePythonDecisionEngineFailClosedTest {
     void modelOutputContractViolationIsClassifiedAndNeverRetried() throws Exception {
         assertThat(failureCodeOf("{\"detail\":\"brain_failure:BrainContractError\"}", 502))
                 .isEqualTo(BrainFailureCode.MODEL_CONTRACT_VIOLATION);
-        // A deterministic contract violation is never retried by the engine.
+        // 确定性的契约违规绝不重试。
         assertThat(requests.get()).isEqualTo(1);
     }
 
@@ -244,8 +243,8 @@ class RemotePythonDecisionEngineFailClosedTest {
 
     @Test
     void brokerTimeoutCallIsReportedAsATimeoutNotAsProviderFailure() throws Exception {
-        // A broker timeout from the brain must map to BRAIN_TIMEOUT, not
-        // MODEL_PROVIDER_FAILURE, so the user sees the right diagnosis.
+        // 大脑上报的 broker 超时必须映射为 BRAIN_TIMEOUT 而不是 MODEL_PROVIDER_FAILURE,
+        // 这样用户才能看到正确的诊断。
         assertThat(failureCodeOf("{\"detail\":\"brain_failure:BrokerTimeoutError\"}", 502))
                 .isEqualTo(BrainFailureCode.BRAIN_TIMEOUT);
     }

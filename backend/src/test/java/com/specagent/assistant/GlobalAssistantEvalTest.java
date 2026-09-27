@@ -38,12 +38,13 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Deterministic runtime acceptance with scripted provider-neutral decisions
- * (no live model): correct execution of each scripted decision, budget
- * enforcement, typed failures, event protocol and context continuity across
- * canonical/paraphrase/held-out wordings plus negative controls. This is not
- * a semantic model-accuracy measurement. Live semantic qualification is
- * reported separately and never mocked as PASS.
+ * 文件名:GlobalAssistantEvalTest.java
+ *
+ * 测试目标:使用脚本化的供应商中立决策(不调用真实模型)做确定性的运行时验收。
+ * 覆盖场景:每类脚本决策的正确执行、预算控制、类型化失败、事件协议,
+ * 以及在规范/改写/未见过的表述及负向对照组上的上下文连续性。
+ * 注意:这不是对模型语义准确率的度量;语义合格率单独报告,
+ * 绝不会在 mock 环境下标记为 PASS。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -110,7 +111,7 @@ class GlobalAssistantEvalTest {
         Project mailProject = projects.createProject("Eval Mail Sorter " + UUID.randomUUID());
         Project payProject = projects.createProject("Eval Pay Ledger " + UUID.randomUUID());
         List<ScenarioResult> results = new ArrayList<>();
-        // create: canonical / paraphrase / held-out entity
+        // 创建项目:规范表述 / 改写 / 未见过的实体
         results.add(runScenario("create", "canonical", "create a project", "project.create", "Eval Calendar",
                  List.of("{\"toolRequest\": {\"capabilityId\": \"project.create\", \"arguments\": {\"title\": \"Eval Calendar\" }}, \"kind\":\"TOOL\"}",
                          "{\"assistantText\": \"Created.\", \"kind\":\"FINAL\"}")));
@@ -120,7 +121,7 @@ class GlobalAssistantEvalTest {
         results.add(runScenario("create", "held-out", "I want to design a fresh notes product", "project.create", "Notes Product",
                  List.of("{\"toolRequest\": {\"capabilityId\": \"project.create\", \"arguments\": {\"title\": \"Notes Product\" }}, \"kind\":\"TOOL\"}",
                          "{\"assistantText\": \"Created.\", \"kind\":\"FINAL\"}")));
-        // search: canonical / paraphrase / word-order variation
+        // 搜索:规范表述 / 改写 / 词序变化
         results.add(runScenario("search", "canonical", "find the mail project", "project.search", null,
                  List.of("{\"toolRequest\": {\"capabilityId\": \"project.search\", \"arguments\": {\"query\": \"" + mailProject.title().substring(0, 8) + "\"}}, \"kind\":\"TOOL\"}",
                          "{\"assistantText\": \"Found.\", \"kind\":\"FINAL\"}")));
@@ -146,7 +147,7 @@ class GlobalAssistantEvalTest {
                 List.of("{\"toolRequest\": {\"capabilityId\": \"project.get_summary\", \"arguments\": {\"projectId\": \""
                          + mailProject.id() + "\"}}, \"kind\":\"TOOL\"}",
                          "{\"assistantText\": \"Status ready.\", \"kind\":\"FINAL\"}")));
-        // resolved navigation (structured selection, no search needed)
+        // 已解析的导航(结构化选中,无需再搜索)
         GlobalAssistantThread navThread = conversations.createThread();
         GlobalAssistantRun navRun = conversations.createRun(navThread.id(), "v1", "v1",
                 GlobalAssistantToolCatalog.FINGERPRINT);
@@ -160,17 +161,17 @@ class GlobalAssistantEvalTest {
         assertThat(runs.findById(navRun.id()).orElseThrow().status())
                 .isEqualTo(GlobalAssistantRunStatus.COMPLETED);
         assertThat(runs.findById(navRun.id()).orElseThrow().stepCount()).isEqualTo(1);
-        // ambiguous reference asks instead of guessing
+        // 指代有歧义时应追问而不是瞎猜
         results.add(runScenario("ambiguity", "canonical", "open the mail one",
                  List.of("{\"assistantText\": \"I found two candidates, which one?\", \"kind\":\"CLARIFY\"}")));
-        // multi-step reference resolution
+        // 多步的指代解析
         results.add(runScenario("multi-step", "canonical", "open the pay project and summarize it", "project.search", null,
                  List.of("{\"toolRequest\": {\"capabilityId\": \"project.search\", \"arguments\": {\"query\": \"" + payProject.title().substring(0, 8) + "\"}}, \"kind\":\"TOOL\"}",
                         "{\"toolRequest\": {\"capabilityId\": \"project.get_summary\", \"arguments\": {\"projectId\": \""
                                  + payProject.id() + "\"}}, \"kind\":\"TOOL\"}",
                         "{\"assistantText\": \"Done.\", \"uiAction\": {\"destination\": \"PROJECT\", \"resourceId\": \""
                                   + payProject.id() + "\"}, \"kind\":\"NAVIGATE\"}")));
-        // no-tool conversational answer
+        // 不需要工具的纯对话式回答
         results.add(runScenario("no-tool", "canonical", "how are projects usually organized?",
                  List.of("{\"assistantText\": \"By recency and search.\", \"kind\":\"FINAL\"}")));
         results.add(runScenario("no-tool", "paraphrase", "what does the word project mean in English?",
@@ -188,35 +189,35 @@ class GlobalAssistantEvalTest {
         assertThat(completed).isEqualTo(results.size());
         assertThat(scriptedMatched).isEqualTo(results.size());
         assertThat(titleCorrect).isEqualTo(titleMeasured);
-        // Mean model steps come from the persisted run counter, not event counts.
+        // 平均模型步数取自持久化的运行计数器,而不是事件计数。
         double meanSteps = results.stream().mapToInt(ScenarioResult::runSteps).average().orElse(0);
         assertThat(meanSteps).isLessThanOrEqualTo(10);
     }
     @Test
     void negativeControlsFailClosed() {
-        // Casual question triggers no tool.
+        // 闲聊式提问不应触发任何工具。
         ScenarioResult casual = runScenario("negative-casual", "control",
                 "will I maybe build a pay project someday",
                  List.of("{\"assistantText\": \"Let me know when you want one.\", \"kind\":\"FINAL\"}"));
-        // A well-formed but unknown project id passes shape validation.
+        // 格式合法但项目 id 不存在,应通过结构校验(存在性由工具层兜底)。
         java.util.UUID fakeId = java.util.UUID.randomUUID();
         validator.validate(new com.specagent.assistant.model.GlobalAssistantDecision(
                 com.specagent.assistant.model.GlobalAssistantDecision.DecisionKind.TOOL, null,
                 new com.specagent.assistant.model.GlobalAssistantDecision.ToolRequest(
                         "project.get_summary", java.util.Map.of("projectId", fakeId.toString())),
                 null));
-        // Unknown tool rejected.
+        // 未知工具应被拒绝。
         assertThatThrownBy(() -> validator.validate(parser.parse(
                          "{\"toolRequest\": {\"capabilityId\": \"skill.do\", \"arguments\": {}}, \"kind\":\"TOOL\"}")))
                 .isInstanceOf(GlobalAssistantModelException.class);
-        // Arbitrary URL rejected.
+        // 任意 URL 应被拒绝。
         assertThatThrownBy(() -> validator.validate(parser.parse(
                          "{\"assistantText\": \"go\", \"uiAction\": {\"destination\": \"PROJECT\", \"resourceId\": \"https://x\"}, \"kind\":\"NAVIGATE\"}")))
                 .isInstanceOf(GlobalAssistantModelException.class);
-        // Skill/MCP leakage absent from catalog.
+        // 工具目录中不应出现 Skill/MCP 泄漏。
         assertThat(GlobalAssistantToolCatalog.TOOL_IDS)
                 .doesNotContain("skill.list", "mcp.call");
-        // Same tool + same args + no new observation stops (covered in Slice E).
-        // Second active run conflicts (covered in Slices A+F).
+        // 同一工具 + 相同参数 + 无新观察应停止(已在 Slice E 覆盖)。
+        // 并发活跃运行冲突(已在 Slice A+F 覆盖)。
     }
 }

@@ -1,8 +1,9 @@
-"""R4 C2 deterministic cross-check tests — TDD Unit 3.
+"""文件名:test_r4_c2.py
 
-Covers Architecture Section 11 checks 1-8. C2 never judges novelty or
-whether cited claims truly ground arguments; it rejects only
-machine-verifiable contradictions.
+R4 C2 确定性交叉校验测试——TDD 单元 3。
+
+覆盖架构文档第 11 节的检查项 1-8。C2 不判断新颖性,也不判断
+被引用的 claim 是否真正支撑论点;只拒绝机器可验证的矛盾。
 """
 import copy
 
@@ -190,8 +191,8 @@ def test_project_risk_table():
 
 
 def test_fake_confirmed_auth_unresolved_citation():
-    # Cites an UNRESOLVED claim as authorization: target exists but the
-    # status gate (confirmed conf>=0.5) fails -> FAKE_AUTH.
+    # 把 UNRESOLVED 的 claim 当作授权引用:目标存在但状态门槛
+    # (confirmed 且 conf>=0.5)不满足 -> FAKE_AUTH。
     mi = make_input(caps=[IRR_CAP], claims=[unres()],
                     patches=[patch(unres())])
     s = quiet_state("PRODUCE_DIRECT_RESPONSE")

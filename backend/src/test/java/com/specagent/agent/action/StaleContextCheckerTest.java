@@ -25,6 +25,13 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+/**
+ * 文件名:StaleContextCheckerTest.java
+ *
+ * 测试目标:验证 StaleContextChecker 对提案上下文新鲜度的校验——提案携带的快照 id、
+ * 上下文 hash、锚点节点三者必须与当前快照一致,任一过期(旧 hash、随机快照 id、
+ * 随机锚点)都必须抛出 StaleProposalException,只有全部匹配才放行。
+ */
 @SpringBootTest
 @ActiveProfiles("test")
 @Transactional

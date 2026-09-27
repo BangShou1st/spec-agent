@@ -1,3 +1,8 @@
+<!--
+  文件名:ConnectionCreateDialog.vue
+  用途:新建连接弹窗:收集名称、服务器地址与可选凭证,提交 create 事件由父组件创建;
+       弹窗打开时通过 useDialogReset 自动清空表单。
+-->
 <script setup lang="ts">
 import { ref, toRef } from 'vue'
 import { useDialogReset } from '@/shared/ui/useDialogForm'

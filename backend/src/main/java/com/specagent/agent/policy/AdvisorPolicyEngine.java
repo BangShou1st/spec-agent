@@ -13,32 +13,27 @@ import org.springframework.stereotype.Component;
 import java.util.UUID;
 
 /**
- * Advisor-mode policy engine that evaluates action proposals against runtime
- * facts to determine execution authorization. Confidence is never an
- * authorization signal — only mutation scope, lifecycle state, capability
- * side-effect class, and graph invariants drive the decision.
+ * 文件名:AdvisorPolicyEngine.java
  *
- * <p>Five mutation classes are distinguished:
- * <ol>
- *   <li>READ_ONLY_INTERNAL — auto-execute (WAIT, RESPOND_TO_USER, read-only
- *       capability invocations)</li>
- *   <li>VISIBLE_GRAPH_MUTATION — auto-execute for append-only continuation;
- *       confirm for branch/history-adjacent mutations</li>
- *   <li>CONFIRMED_INTENT_CHANGE — always confirm (includes agent-authored
- *       KNOWLEDGE/DECISION nodes, local-durable capabilities and artifact
- *       generation)</li>
- *   <li>DESTRUCTIVE_OR_HISTORY — always confirm</li>
- *   <li>EXTERNAL_SIDE_EFFECT — deny unless an explicitly authorized external
- *       capability policy exists</li>
- * </ol>
+ * 用途:Advisor 模式的策略引擎,对照 Runtime 事实评估动作提案,
+ * 决定执行授权。置信度绝不是授权信号——只有变更范围、生命周期状态、
+ * 能力副作用类别和图不变量才驱动决策。
  *
- * <p>Contract closure invariant: every family the response validator accepts
- * gets a deterministic decision here, and every family classified as
- * requiring confirmation must be executable by
- * {@code ProposalAcceptanceService} after acceptance. Families with no
- * runtime execution path in the current stage (UPDATE_NODE, CREATE_ROUTE,
- * GENERATE_ARTIFACT, CONTINUATION connections) are denied outright so a
- * clickable-but-unexecutable proposal can never exist.
+ * 五种变更类别:
+ * 1. READ_ONLY_INTERNAL —— 自动执行(WAIT、RESPOND_TO_USER、只读能力调用)
+ * 2. VISIBLE_GRAPH_MUTATION —— 仅追加式续写自动执行;分支/历史相关变更要求确认
+ * 3. CONFIRMED_INTENT_CHANGE —— 一律要求确认(包括 agent 撰写的
+ *       KNOWLEDGE/DECISION 节点、local-durable 能力和制品生成)
+ * 1. DESTRUCTIVE_OR_HISTORY —— 一律要求确认
+ * 2. EXTERNAL_SIDE_EFFECT —— 拒绝,除非存在显式授权的外部能力策略
+ *
+ * 契约闭合不变量:响应校验器接受的每个动作族都会在这里得到确定性决策,
+ * 且每个被归类为"要求确认"的动作族,在接受后必须能被
+ * {@code ProposalAcceptanceService} 执行。当前阶段没有 Runtime 执行路径的
+ * 动作族(UPDATE_NODE、CREATE_ROUTE、GENERATE_ARTIFACT、CONTINUATION 连接)
+ * 一律直接拒绝,使"可点击但不可执行"的提案永远不会存在。
+ *
+ * 协作:由决策循环在执行前调用,决定 auto-execute / require-confirmation / deny。
  */
 @Component
 public class AdvisorPolicyEngine {
@@ -56,8 +51,7 @@ public class AdvisorPolicyEngine {
     }
 
     /**
-     * Evaluates whether the given proposal may be auto-executed, requires
-     * confirmation, or is denied under Advisor mode.
+     * 评估给定提案在 Advisor 模式下是自动执行、要求确认,还是被拒绝。
      */
     public PolicyDecision evaluate(ActionProposal proposal,
                                    ActionExecutionContext context) {
@@ -67,10 +61,9 @@ public class AdvisorPolicyEngine {
         }
         String unsupportedReason = unsupportedFamilyReason(proposal, family);
         if (unsupportedReason != null) {
-            // Contract closure: a family without an executable runtime command
-            // path must never become a PROPOSED proposal — accepting it would
-            // fail unconditionally. Deny is the single consistent answer from
-            // policy, so proposal creation never happens for these families.
+            // 契约闭合:没有可执行 Runtime 命令路径的动作族绝不能变成
+            // PROPOSED 提案——接受它必然无条件失败。策略层面的唯一一致
+            // 答案就是拒绝,因此这些动作族根本不会创建提案。
             return PolicyDecision.deny(MutationClass.CONFIRMED_INTENT_CHANGE,
                     unsupportedReason);
         }
@@ -88,22 +81,19 @@ public class AdvisorPolicyEngine {
     }
 
     /**
-     * Non-null when the action family has no execution path behind user
-     * acceptance in the current stage: no runtime command layer implements
-     * it yet, so requiring confirmation would produce a proposal that is
-     * clickable but guaranteed to fail. Keep this in lockstep with
-     * {@code ProposalAcceptanceService}: every family NOT listed here and
-     * classified as requiring confirmation must be executable on acceptance.
+     * 当前阶段动作族在用户接受后没有执行路径时返回非 null:尚无 Runtime
+     * 命令层实现它,因此要求确认只会产出一个"可点击但必然失败"的提案。
+     * 必须与 {@code ProposalAcceptanceService} 保持同步:不在此列表中且被
+     * 归类为要求确认的动作族,都必须能在接受时执行。
      */
     private String unsupportedFamilyReason(ActionProposal proposal, ActionFamily family) {
         return switch (family) {
             case UPDATE_NODE -> "节点更新在本阶段没有可执行的运行时命令，提案被拒绝";
             case CREATE_ROUTE -> "路线创建在本阶段没有可执行的运行时命令，提案被拒绝";
             case GENERATE_ARTIFACT -> "制品生成运行时尚未接入，提案被拒绝";
-            // CONTINUATION topology is owned by the continuation commands
-            // (append-only lineage invariants); acceptance only executes
-            // SEMANTIC relations, so a CONTINUATION proposal would be
-            // unexecutable.
+            // CONTINUATION 拓扑由 continuation 命令负责(仅追加的血缘不变量);
+            // acceptance 只执行 SEMANTIC 关系,因此 CONTINUATION 提案
+            // 是不可执行的。
             case CONNECT_NODE -> "CONTINUATION".equals(proposal.payload().get("relationClass"))
                     ? "CONTINUATION 连接必须通过 continuation 命令执行，提案被拒绝"
                     : null;
@@ -112,38 +102,34 @@ public class AdvisorPolicyEngine {
     }
 
     /**
-     * True when confirming this proposal now would produce a PROPOSED
-     * proposal that {@code ProposalAcceptanceService} can actually execute
-     * later. This mirrors the acceptance-time staleness rules: node-creating
-     * families execute only while their anchor is still the route tip, so a
-     * non-tip anchor would create an acceptable-looking proposal whose every
-     * acceptance attempt fails as stale — those must not be created.
+     * 判断现在确认该提案是否会产生一个 {@code ProposalAcceptanceService}
+     * 之后确实能执行的 PROPOSED 提案。镜像接受时的 stale 规则:创建节点的
+     * 动作族只有在锚点仍是路由 tip 时才能执行,因此非 tip 锚点会产生一个
+     * 看似可接受、但每次接受都因 stale 而失败的提案——这类提案不应创建。
      *
-     * <p>Proposal-creating call sites (the answer cycle's confirmation branch
-     * and the node-query mutation downgrade) must consult this before
-     * persisting a pending proposal.
+     * 创建提案的调用方(answer 周期的确认分支与 node-query 的变更降级)
+     * 必须在持久化待决提案之前调用本方法。
      */
     public boolean canProduceAcceptableProposal(ActionProposal proposal,
                                                 ActionExecutionContext context) {
         return switch (ActionFamily.fromCode(proposal.actionFamily())) {
             case WAIT, RESPOND_TO_USER:
-                // Read-only families are auto-executed; they never become
-                // proposals in the first place.
+                // 只读动作族被自动执行,根本不会变成提案。
                 yield false;
             case UPDATE_NODE, CREATE_ROUTE, GENERATE_ARTIFACT:
-                // No execution path in this stage — policy denies them.
+                // 本阶段没有执行路径——策略直接拒绝。
                 yield false;
             case CONNECT_NODE:
-                // Only SEMANTIC relations are executable on acceptance.
+                // 接受时只有 SEMANTIC 关系可执行。
                 yield "SEMANTIC".equals(proposal.payload().get("relationClass"))
                         && endpointsLive(proposal);
             case CREATE_NODE, REQUEST_USER_INPUT:
-                // Executable on acceptance only while the anchor is the live
-                // route tip (mirrors ProposalAcceptanceService staleness).
+                // 只有锚点是活路由 tip 时才能在接受后执行
+                // (镜像 ProposalAcceptanceService 的 stale 规则)。
                 yield isAppendOnlyContinuation(proposal, context);
             case INVOKE_CAPABILITY:
-                // Only local-durable capabilities confirm into proposals;
-                // unknown ids and external side-effect classes are denied.
+                // 只有 local-durable 能力会确认成提案;
+                // 未知 id 与外部副作用类别被拒绝。
                 yield evaluateCapabilityInvocation(proposal).requiresConfirmation();
         };
     }
@@ -167,8 +153,8 @@ public class AdvisorPolicyEngine {
     }
 
     /**
-     * Capability invocations are classified by the runtime-owned descriptor
-     * side-effect class — never by model confidence or a blanket rule.
+     * 能力调用按 Runtime 持有的描述符副作用类别分级——绝不按模型置信度
+     * 或一刀切规则。
      */
     private PolicyDecision evaluateCapabilityInvocation(ActionProposal proposal) {
         Object id = proposal.payload().get("capabilityId");
@@ -199,13 +185,12 @@ public class AdvisorPolicyEngine {
             case REQUEST_USER_INPUT, CREATE_NODE -> classifyGraphMutation(proposal, context);
             case UPDATE_NODE, CONNECT_NODE, CREATE_ROUTE ->
                     MutationClass.CONFIRMED_INTENT_CHANGE;
-            // Artifact generation is local durable output (not an external
-            // side effect): it needs confirmation while no artifact runtime
-            // is wired for execution.
+            // 制品生成是本地持久化输出(不是外部副作用):在制品运行时
+            // 接入执行之前,需要用户确认。
             case GENERATE_ARTIFACT ->
                     MutationClass.CONFIRMED_INTENT_CHANGE;
-            // INVOKE_CAPABILITY never reaches classify(): it is dispatched to
-            // evaluateCapabilityInvocation by descriptor side-effect class.
+            // INVOKE_CAPABILITY 永远不会走到 classify():它按描述符的
+            // 副作用类别被分发给 evaluateCapabilityInvocation。
             case INVOKE_CAPABILITY -> throw new IllegalStateException(
                     "Capability invocation must be classified by its descriptor");
         };
@@ -213,11 +198,10 @@ public class AdvisorPolicyEngine {
 
     private MutationClass classifyGraphMutation(ActionProposal proposal,
                                                 ActionExecutionContext context) {
-        // A model-authored DECISION is confirmed product intent, not merely an
-        // append-only UI addition. Even at the live route tip it must remain a
-        // proposal until the user explicitly accepts it. This is the runtime
-        // backstop for conflict-resolution delegation; natural-language model
-        // confidence can never silently authorize the decision.
+        // 模型撰写的 DECISION 是已确认的产品意图,不只是追加式的 UI 内容。
+        // 即使它锚定在活路由 tip 上,也必须保持提案状态直到用户显式接受。
+        // 这是冲突解决委托的 Runtime 兜底;自然语言形式的模型置信度
+        // 绝不能静默授权一次决策。
         if (isDecisionNode(proposal)) {
             return MutationClass.CONFIRMED_INTENT_CHANGE;
         }
@@ -243,12 +227,10 @@ public class AdvisorPolicyEngine {
     }
 
     /**
-     * An append-only continuation is a mutation that only appends to the
-     * route: either a new child node at the current route tip (anchor equals
-     * tip) or the bootstrap root node on a route that has no tip yet (both
-     * null). Anything that would touch existing confirmed intent is not
-     * append-only. A null anchor over a non-empty route is never append-only
-     * (fail-closed).
+     * 仅追加式续写是只向路由追加内容的变更:要么在当前路由 tip 上
+     * 新增子节点(锚点等于 tip),要么在尚无 tip 的路由上添加引导根节点
+     * (两者均为 null)。任何会触及既有已确认意图的变更都不是仅追加式。
+     * 非空路由上的 null 锚点绝不是仅追加式(fail-closed)。
      */
     private boolean isAppendOnlyContinuation(ActionProposal proposal,
                                              ActionExecutionContext context) {
@@ -258,8 +240,7 @@ public class AdvisorPolicyEngine {
         }
         UUID tipNodeId = route.tipNodeId();
         if (tipNodeId == null) {
-            // Route bootstrap: appending the first root node adds lineage
-            // without changing any existing intent.
+            // 路由引导:追加第一个根节点只增加血缘,不改变任何既有意图。
             return context.anchorNodeId() == null;
         }
         return tipNodeId.equals(context.anchorNodeId());

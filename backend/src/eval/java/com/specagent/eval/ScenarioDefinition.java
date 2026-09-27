@@ -8,12 +8,17 @@ import java.util.HexFormat;
 import java.util.List;
 
 /**
- * One declarative evaluation scenario with its variants.
+ * 文件名:ScenarioDefinition.java
  *
- * <p>The scenario id is stable (E01…E25); the hash covers the semantics that
- * affect evaluation (given + expect + variant contents), independent of
- * variant ordering. Calibration/holdout usage is tracked per variant so
- * future prompt tuning can exclude holdout variants.
+ * 用途:一个声明式评测场景及其全部变体:场景 id 稳定(E01…E25),
+ * {@code given} 块({@link GivenSpec})定义初始状态与触发,{@code expect}
+ * 块({@link ExpectSpec})定义验收基准。场景哈希覆盖影响评测的语义
+ * (given + expect + 变体内容),与变体排序无关;每个变体单独记录校准/
+ * 保留(holdout)用途,方便后续 prompt 调优排除保留集。
+ *
+ * 协作:是评测链路的输入根——由 {@link ScenarioRunner} 执行,
+ * {@link EvalArtifactWriter} 记录其哈希,{@link CausalReportGenerator} 按其
+ * 解释失败证据。
  */
 public record ScenarioDefinition(
         String scenarioId,
@@ -27,7 +32,7 @@ public record ScenarioDefinition(
         variants = variants == null ? List.of() : List.copyOf(variants);
     }
 
-    /** Validates structural rules fail-fast (unique variants, no action overlap). */
+    /** 快速失败地校验结构规则(变体 id 唯一、动作不重叠)。 */
     public void validate() {
         if (variants.isEmpty()) {
             throw new IllegalArgumentException(
@@ -50,7 +55,7 @@ public record ScenarioDefinition(
         }
     }
 
-    /** Stable hash over scenario semantics (given + expect + variant contents). */
+    /** 场景语义(given + expect + 变体内容)的稳定哈希。 */
     public String scenarioHash() {
         List<String> renderedVariants = new ArrayList<>();
         for (VariantSpec variant : variants) {

@@ -23,8 +23,10 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Slice F: public API, event persistence/ordering, replay cursor,
- * disconnect semantics (transport-only), refresh recovery, UI_ACTION validation.
+ * 文件名:GlobalAssistantSliceFStreamTest.java
+ *
+ * 测试目标:Slice F——公开 API、事件持久化与排序、重放游标、
+ * 断连语义(仅传输层)、刷新恢复,以及 UI_ACTION 校验。
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -96,7 +98,7 @@ class GlobalAssistantSliceFStreamTest {
                 .andReturn();
         JsonNode stored = mapper.readTree(eventList.getResponse().getContentAsString());
         assertThat(stored.size()).isGreaterThanOrEqualTo(2);
-        // Ordering: sequences ascend; eventId is the persisted UUID, SSE id is the sequence.
+        // 排序:sequence 递增;eventId 是持久化的 UUID,SSE 的 id 用 sequence。
         int previous = 0;
         for (JsonNode envelope : stored) {
             int sequence = envelope.get("sequence").asInt();
@@ -110,8 +112,8 @@ class GlobalAssistantSliceFStreamTest {
     @Test
     void secondActiveRunConflictsWith409() throws Exception {
         String threadId = createThread();
-        // Occupy the slot deterministically with a CREATED run owned by no
-        // executor, so the second create must conflict regardless of timing.
+        // 用一个无人执行的 CREATED 运行确定性地占住槽位,
+        // 这样第二次创建无论时序如何都必然冲突。
         var first = conversations.createRunWithUserMessage(
                 UUID.fromString(threadId), "first", "v1", "v1", "fp");
         MvcResult second = mockMvc.perform(
@@ -134,8 +136,8 @@ class GlobalAssistantSliceFStreamTest {
     @Test
     void cancelSignalsWithoutTerminalizing() throws Exception {
         String threadId = createThread();
-        // A CREATED run with no executor stays put: cancel only records the
-        // cooperative signal and never flips the status itself.
+        // 无执行器的 CREATED 运行保持原状:取消只记录协作信号,
+        // 绝不会自己翻转运行状态。
         var created = conversations.createRunWithUserMessage(
                 UUID.fromString(threadId), "please wait", "v1", "v1", "fp");
         String runId = created.id().toString();
@@ -175,8 +177,7 @@ class GlobalAssistantSliceFStreamTest {
         for (var event : afterFirst) {
             assertThat(event.sequence()).isGreaterThan(1);
         }
-        // Disconnect is transport-only: the run stays terminal, never FAILED
-        // because a subscriber went away.
+        // 断连只发生在传输层:运行保持终态,绝不会因为订阅者离开而变 FAILED。
         var run = runs.findById(runUuid).orElseThrow();
         assertThat(run.status().name()).isNotEqualTo("FAILED");
     }

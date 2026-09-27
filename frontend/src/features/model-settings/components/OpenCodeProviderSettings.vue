@@ -1,3 +1,10 @@
+<!--
+  文件名:OpenCodeProviderSettings.vue
+  用途:OpenCode Zen 的 Provider 卡片,对齐 OpenRouter 卡片范式:
+       统一外壳、统一状态胶囊与统一的 保存并测试/重新测试/设为当前 操作行,
+       不再有"先存凭证再存模型"的两步流程。
+       请求形态的差异(绝对直连 https://opencode.ai/zen/v1、自带请求头)由后端传输层特判。
+-->
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import ProviderCard from './ProviderCard.vue'
@@ -9,13 +16,12 @@ import { useProviderSettingsStore } from '@/features/model-settings/state/provid
 import { providerCardState } from '@/features/model-settings/presentation/providerPresentation'
 
 /**
- * OpenCode Zen card, aligned to the OpenRouter paradigm.
+ * OpenCode Zen 卡片,对齐 OpenRouter 范式。
  *
- * The request shape stays special-cased behind the backend transport (absolute
- * direct calls to https://opencode.ai/zen/v1 with its own headers); what is
- * unified here is the card itself — same shell, same status pill, same
- * 保存并测试 / 重新测试 / 设为当前 Provider action row as every other provider,
- * and no more two-step 保存凭证 then 保存模型.
+ * 请求形态的差异仍由后端传输层特判(使用自带请求头绝对直连
+ * https://opencode.ai/zen/v1);这里统一的是卡片本身——与其他 Provider 相同的外壳、
+ * 相同的状态胶囊、相同的 保存并测试 / 重新测试 / 设为当前 Provider 操作行,
+ * 并且不再有"先 保存凭证 再 保存模型"的两步流程。
  */
 type RetryAction = 'load' | 'models' | 'probe' | 'save' | null
 
@@ -37,7 +43,7 @@ const state = computed(() => providerCardState(
 
 const showCredentialForm = computed(() => !configured.value || store.changingCredential)
 const canProbe = computed(() => apiKey.value.trim().length > 0 && !store.probing && !store.saving)
-/** Saving also proves reachability server-side, hence 保存并测试 in one action. */
+/** 保存动作同时会在服务端验证可达性,所以是"保存并测试"一步完成。 */
 const canSave = computed(() => store.selectedModel !== null
   && store.displayModels.includes(store.selectedModel)
   && !store.modelUnavailable
@@ -80,8 +86,8 @@ async function saveAndTest(): Promise<void> {
     return
   }
   retryAction.value = 'save'
-  // A brand-new or replaced credential goes through save(); an unchanged
-  // credential only needs the model moved, and both paths revalidate server-side.
+  // 全新或更换凭证走 save();凭证未变时只需改模型,
+  // 两条路径都会在服务端重新校验。
   const ok = showCredentialForm.value
     ? await store.save(apiKey.value.trim(), store.selectedModel)
     : await store.saveModel(store.selectedModel)

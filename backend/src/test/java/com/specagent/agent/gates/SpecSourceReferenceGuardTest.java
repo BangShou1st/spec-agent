@@ -26,6 +26,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+/**
+ * 文件名:SpecSourceReferenceGuardTest.java
+ *
+ * 测试目标:验证 SpecSourceReferenceGuard 对规格来源引用的合法性校验——CONTEXT 引用
+ * 必须命中当前运行上下文快照,ANSWER/PATCH 引用必须在快照冻结范围内,ROUTE 引用必须是
+ * 当前路线且属于同一项目;并覆盖分支路线继承自父路线的答案/补丁应放行、兄弟路线答案应拒绝的场景。
+ */
 class SpecSourceReferenceGuardTest {
 
     private final RouteRepository routeRepository = mock(RouteRepository.class);
@@ -147,10 +154,9 @@ class SpecSourceReferenceGuardTest {
     }
 
     /**
-     * A branch route's spec may cite the answers it inherited from the route it
-     * forked off: the ContextBuilder freezes those answers into the branch's
-     * snapshot (via {@code route_inherited_answers}), so rejecting them made
-     * every spec on a forked route fail deterministically.
+     * 分支路线的规格可以引用它从父路线继承来的答案:ContextBuilder 会把这些答案
+     * (通过 {@code route_inherited_answers})冻结进分支的快照,如果拒绝这些引用,
+     * 分支路线上的所有规格都会确定性地校验失败。
      */
     @Test
     void acceptsInheritedAnswerFromTheForkedOffRoute() {
@@ -169,7 +175,7 @@ class SpecSourceReferenceGuardTest {
         assertThat(result.accepted()).isTrue();
     }
 
-    /** An inherited answer the snapshot did NOT include is still rejected. */
+    /** 快照中未包含的继承答案仍然要被拒绝。 */
     @Test
     void rejectsInheritedAnswerThatIsNotInTheFrozenContext() {
         UUID ownerRouteId = UUID.randomUUID();
@@ -215,7 +221,7 @@ class SpecSourceReferenceGuardTest {
         assertThat(result.accepted()).isTrue();
     }
 
-    /** A sibling route's answer (same project, not on this route's history) is rejected. */
+    /** 兄弟路线的答案(同项目但不在本路线历史上)应被拒绝。 */
     @Test
     void rejectsSiblingRouteAnswerEvenIfProjectMatches() {
         UUID siblingRouteId = UUID.randomUUID();

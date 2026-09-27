@@ -3,14 +3,14 @@ package com.specagent.workspace.context;
 import java.util.UUID;
 
 /**
- * One direction-preserving ACTIVE semantic relation in a frozen context.
+ * 文件名:ContextRelation.java
  *
- * <p>Used by the bounded 1-hop semantic context for a node query: the relation
- * is stored exactly as persisted (source/target/type) so the decision engine
- * can see direction. Symmetric relation types are normalized at write time by
- * {@code GraphInvariantValidator.endpointsCanonicalized}, so the stored
- * direction for RELATED_TO / CONFLICTS_WITH may be {@code (minId, maxId)}; this
- * record keeps that stored direction untouched.
+ * 用途:冻结上下文中的一条保持方向的 ACTIVE 语义关系,用于节点查询的有界
+ * 一跳语义上下文。关系按持久化原样保存(source/target/type),让决策引擎能
+ * 看到方向。对称关系类型在写入时已由
+ * {@code GraphInvariantValidator.endpointsCanonicalized} 规范化,因此
+ * RELATED_TO / CONFLICTS_WITH 的存储方向可能是 {@code (minId, maxId)};本记录
+ * 对该存储方向原样保留、不做改写。
  */
 public record ContextRelation(UUID sourceNodeId, UUID targetNodeId, String relationType) {
 

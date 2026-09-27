@@ -3,12 +3,14 @@ package com.specagent.agent.runtime;
 import java.util.UUID;
 
 /**
- * The continuation coordinator's answer for one terminal run.
+ * 文件名:ContinuationDecision.java
  *
- * <p>{@code eligible} is true for exactly one verdict,
- * {@link ContinuationVerdict#EXECUTED_NEW_OBSERVATION}: a next autonomous
- * cycle may legally be created (Slice 2+). Every other verdict parks or
- * ends the chain. The decision carries no semantic recommendation.
+ * 用途:续跑协调器对一个终态 run 给出的裁决。
+ *
+ * 只有一种裁决满足 {@code eligible} 为 true,即
+ * {@link ContinuationVerdict#EXECUTED_NEW_OBSERVATION}:允许合法创建下一轮
+ * 自治循环(Slice 2+)。其余所有裁决都会停靠或终结链路。决策不携带任何
+ * 语义建议。
  */
 public record ContinuationDecision(UUID runId,
                                     ContinuationVerdict verdict,
@@ -25,11 +27,9 @@ public record ContinuationDecision(UUID runId,
     }
 
     /**
-     * True for exactly one verdict,
-     * {@link ContinuationVerdict#EXECUTED_NEW_OBSERVATION}: a next autonomous
-     * cycle may legally be created (Slice 2+). Every other verdict parks or
-     * ends the chain. Eligibility derives from the verdict — it is never
-     * stored as independent state.
+     * 仅对一种裁决返回 true,即 {@link ContinuationVerdict#EXECUTED_NEW_OBSERVATION}:
+     * 允许合法创建下一轮自治循环(Slice 2+)。其余裁决都会停靠或终结链路。
+     * 可续跑性由裁决本身派生——绝不作为独立状态存储。
      */
     public boolean eligible() {
         return verdict == ContinuationVerdict.EXECUTED_NEW_OBSERVATION;

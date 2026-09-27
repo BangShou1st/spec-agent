@@ -21,16 +21,19 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * Pure Runtime-owned evaluator for deterministic necessary conditions and
- * hard prohibitions. It deliberately does not implement semantic ranking.
+ * 文件名:ActionEligibilityEvaluator.java
  *
- * <p>Frozen principle: constrain execution, not reasoning. Unresolved
- * conflicts and open questions never restrict the eligible action set here.
- * They must still be surfaced faithfully in {@code observation.conflicts},
- * but the ACTION choice stays unrestricted at this boundary. Execution
- * safety belongs to the capability-visibility, WAIT-dependency, duplicate,
- * schema, refs, stale, policy, permission, and graph-invariant gates —
- * never to a semantic conflict/open-question mapping.
+ * 用途:Runtime 持有的纯函数评估器,只判定确定性的必要条件与硬性禁令,
+ * 刻意不做语义排序。
+ *
+ * 冻结原则:约束执行,而不是约束推理。未解决的冲突和未回答的问题
+ * 绝不会在这里限制可执行的动作集合——它们仍会如实呈现在
+ * {@code observation.conflicts} 中,但在这个边界上 ACTION 的选择不受限。
+ * 执行安全属于能力可见性、WAIT 依赖、重复、schema、refs、stale、policy、
+ * 权限和图不变量等门禁,绝不属于"语义冲突/未决问题"的映射。
+ *
+ * 协作:由 ActionEligibilityGate 调用,产出 ActionEligibility
+ * (各动作族的资格约束与依据哈希)。
  */
 public final class ActionEligibilityEvaluator {
 
@@ -41,8 +44,8 @@ public final class ActionEligibilityEvaluator {
             evaluated.put(family, ActionEligibilityConstraint.allow());
         }
 
-        // No pending-dependency representation exists in agent-input.v2. WAIT
-        // therefore cannot acquire deterministic eligibility from this input.
+        // agent-input.v2 中不存在待处理依赖的表示,因此 WAIT 无法
+        // 从这份输入获得确定性的资格,直接拒绝。
         evaluated.put(ActionFamily.WAIT, ActionEligibilityConstraint.deny(
                 ActionEligibilityReasonCode.NO_PENDING_DEPENDENCY));
 
@@ -69,9 +72,8 @@ public final class ActionEligibilityEvaluator {
     }
 
     /**
-     * Stable semantic identity: Runtime UUIDs and collection order are
-     * intentionally excluded, while every fact used by this evaluator is
-     * included in normalized sorted form.
+     * 稳定的语义身份:Runtime 的 UUID 与集合顺序被刻意排除在外,
+     * 而本评估器用到的每个事实都以规范化排序后的形式纳入哈希。
      */
     private String basisHash(AgentRequestEnvelope request,
                              EnumMap<ActionFamily, ActionEligibilityConstraint> evaluated) {

@@ -3,9 +3,14 @@ package com.specagent.mcp.domain;
 import java.util.Map;
 
 /**
- * Normalized result of a single MCP tool call. Provider outputs are untrusted
- * external data: they are validated/bounded here, carry provenance, and are
- * never presented as confirmed Graph truth.
+ * 文件名:McpToolResult.java
+ *
+ * 用途:单次 MCP 工具调用的规范化结果。Provider 的输出是不可信的外部数据:
+ * 在这里完成校验与限界,携带溯源信息,并且永远不会被当作已确认的图谱事实呈现。
+ *
+ * @param success      调用是否成功
+ * @param content      结果内容
+ * @param errorMessage 失败时的错误信息
  */
 public record McpToolResult(
         boolean success,

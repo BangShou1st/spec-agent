@@ -1,3 +1,5 @@
+// 文件名:managementBoundaries.spec.ts
+// 用途:管理页(Skills/连接/模型设置)结构边界的守护测试:约束各管理页面模块间的依赖方向。
 import { describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useWorkspaceStore } from '@/features/workspace/state/workspaceStore'

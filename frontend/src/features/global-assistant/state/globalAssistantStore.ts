@@ -1,3 +1,8 @@
+// 文件名:globalAssistantStore.ts
+// 用途:全局助手的核心 Pinia 状态仓:线程/消息/运行的生命周期管理、SSE 事件流接入与
+//       逐事件投影(GaRunProjection)、steer 转向与后继运行交接观测(BUG-01)、
+//       断线重连、乐观消息与草稿、会话历史与删除,以及 thread/run/panel 的本地持久化。
+
 import { defineStore } from 'pinia'
 import { readStored, writeStored } from '@/shared/lib/safeStorage'
 import { ApiError } from '@/shared/http/client'
@@ -39,24 +44,23 @@ export interface GaResourceRef {
 
 const GA_UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
 
-/** Shown while a steer handoff is pending and the successor is not visible yet. */
+/** steer 交接待生效、后继运行尚未可见时展示的状态文案。 */
 const GA_STEERING_STATUS = '正在调整方向…'
 
 /**
- * BUG-01: the backend creates the steer successor in an AFTER_COMMIT phase, so
- * canonical thread activity legitimately reports `{ activeRun: null, pendingSteer: S }`
- * for a window of unknown length. The store must keep observing activity until
- * the handoff resolves instead of giving up after a single read.
+ * BUG-01:后端在 AFTER_COMMIT 阶段才创建 steer 的后继运行,因此线程的规范活动状态
+ * 会在一段未知长度的时间窗口内合法地返回 `{ activeRun: null, pendingSteer: S }`。
+ * store 必须持续观测活动状态直到交接落定,而不是读一次就放弃。
  *
- * Observation lifetime is driven by canonical state, never by a deadline:
- * fast reads first, then a sustained slow cadence while the pending steer is
- * still unresolved. Only canonical resolution or a lifecycle event ends it.
+ * 观测的生命周期由规范状态驱动,绝不靠超时截止:先快速读若干次,
+ * 之后在待生效 steer 仍未解决时转为持续的低频轮询。
+ * 只有规范状态落定或生命周期事件才能结束观测。
  */
 export const GA_SUCCESSOR_OBSERVE_INTERVAL_MS = 400
 export const GA_SUCCESSOR_OBSERVE_FAST_READS = 10
 export const GA_SUCCESSOR_OBSERVE_SLOW_INTERVAL_MS = 1500
 
-/** Code-point-safe bounded truncation: Array.from splits by code point, never by UTF-16 unit. */
+/** 按码点的有界截断:用 Array.from 按码点切分,绝不按 UTF-16 单元切分。 */
 function truncateGaLabel(value: string, max = 200): string {
   const points = Array.from(value)
   return points.length > max ? points.slice(0, max).join('') : value
@@ -94,9 +98,9 @@ export interface GaToolActivity {
   endedAt: string | null
   durationMs: number | null
   resourceRefs: GaResourceRef[]
-  /** Structured result kind from the TOOL_COMPLETED event (generic rendering). */
+  /** TOOL_COMPLETED 事件给出的结构化结果类型(用于通用渲染)。 */
   resultKind: string | null
-  /** Trustworthy result count: sanitized refs length wins, else event resultCount. */
+  /** 可信的结果条数:清洗后的 resourceRefs 长度优先,否则用事件里的 resultCount。 */
   resultCount: number | null
 }
 
@@ -111,7 +115,7 @@ export interface GaTerminal {
   reason: string | null
 }
 
-/** Deterministic per-run projection. Pure and unit-testable. */
+/** 确定性的单运行事件投影。纯逻辑,可单测。 */
 export class GaRunProjection {
   lastSequence = 0
   streamingText = ''
@@ -124,7 +128,7 @@ export class GaRunProjection {
   terminal: GaTerminal | null = null
   private toolSeq = 0
 
-  /** Returns true when the event produced a visible change. */
+  /** 事件产生了可见变化时返回 true。 */
   apply(event: GaEventEnvelope): boolean {
     if (!event || typeof event.sequence !== 'number') return false
     if (event.sequence <= this.lastSequence) return false
@@ -140,8 +144,8 @@ export class GaRunProjection {
         return true
       }
       case 'ASSISTANT_DELTA': {
-        // Legacy at-once message event (old persisted runs, failure texts,
-        // mocked streams). New runs use ANSWER_STREAM_* with generations.
+        // 旧式一次性消息事件(历史持久化的运行、失败文案、mock 流)。
+        // 新运行使用带 generation 的 ANSWER_STREAM_* 事件。
         const text = typeof payload.text === 'string' ? payload.text : ''
         if (!text) return false
         this.streamingText += text
@@ -160,8 +164,8 @@ export class GaRunProjection {
         if (!text) return false
         const generation = typeof payload.generation === 'number' ? payload.generation : null
         if (generation !== null && generation !== this.streamGeneration) {
-          // New generation without an explicit STARTED (e.g. resubscribe
-          // snapshot): reconcile by replacing the stale draft.
+          // 没有显式 STARTED 就出现的新 generation(例如重新订阅的快照):
+          // 用替换旧草稿的方式对账。
           this.streamGeneration = generation
           this.streamingText = text
           return true
@@ -270,7 +274,7 @@ export class GaRunProjection {
         return true
       }
       case 'APPROVAL_REQUIRED':
-        // V1 has no approval-response endpoint: restrained non-interactive state only.
+        // V1 没有审批应答端点:只做克制的非交互状态提示。
         this.approvalRequired = true
         return true
       case 'UI_ACTION': {
@@ -355,9 +359,9 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
     stoppedNotice: false as boolean,
     deletingThreadId: null as string | null,
     confirmDeleteThreadId: null as string | null,
-    /** Non-zero while a successor-observation loop owns this thread (singleton token). */
+    /** 后继观测循环持有该线程期间非零(单例令牌)。 */
     successorObserverToken: 0 as number,
-    /** Last successor run already attached; makes attach idempotent. */
+    /** 最近一次已挂接的后继运行 id;保证挂接操作幂等。 */
     successorAttachedRunId: null as string | null,
   }),
   getters: {
@@ -408,7 +412,7 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
           try {
             const envelopes = await listGaEvents(this.activeRunId)
             for (const envelope of envelopes) this.ingestEvent(envelope)
-          } catch { /* replay best-effort; SSE catches up */ }
+          } catch { /* 重放尽力而为,SSE 会补齐 */ }
           if (this.activeRunId) this.openStream()
         } else if (storedRun && !this.pendingSteer) {
           await this.recoverRun(storedRun)
@@ -423,7 +427,7 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
           this.pendingSteer = null
         } else if (err instanceof ApiError) {
           this.threadId = storedThread
-          try { this.messages = await listGaMessages(storedThread) } catch { /* keep empty */ }
+          try { this.messages = await listGaMessages(storedThread) } catch { /* 保持为空 */ }
           this.error = { code: err.code, message: gaErrorMessage(err.code, err.message) }
         }
       } finally {
@@ -438,22 +442,22 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
       return act
     },
     /**
-     * Canonical read with the thread guard. Deliberately projection-free so
-     * callers can validate ownership BEFORE anything is written to state.
+     * 带线程守护的规范读取。刻意不参与投影,
+     * 让调用方能在任何内容写入 state 之前先校验归属。
      */
     async readThreadActivity(): Promise<GaThreadActivity | null> {
       if (!this.threadId) return null
       const requestedThreadId = this.threadId
       try {
         const act = await getGaThreadActivity(this.threadId)
-        // A read that lands after a thread switch belongs to the old thread.
+        // 线程切换之后才返回的读取属于旧线程。
         if (this.threadId !== requestedThreadId) return null
         return act
       } catch {
         return null
       }
     },
-    /** Projects a validated canonical activity read onto the store. */
+    /** 将一次已校验的规范活动读取投影到 store。 */
     applyThreadActivity(act: GaThreadActivity): void {
       if (act.activeRun) {
         this.activeRunId = act.activeRun.runId
@@ -593,12 +597,12 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
       try {
         const envelopes = await listGaEvents(runId)
         for (const envelope of envelopes) this.ingestEvent(envelope)
-      } catch { /* replay is best-effort; SSE will catch up */ }
+      } catch { /* 重放尽力而为,SSE 会补齐 */ }
       this.openStream()
     },
     ingestEvent(event: GaEventEnvelope): boolean {
-      // Late events from a previous run must never contaminate the new run:
-      // per-run sequences restart, so runId is the authoritative filter.
+      // 上一个运行迟到的事件绝不能污染新运行:
+      // 每个运行的 sequence 会重新从 0 计数,所以 runId 是权威过滤条件。
       if (this.activeRunId && event.runId !== this.activeRunId) return false
       if (event.sequence <= this.lastSequence) return false
       const projection = new GaRunProjection()
@@ -626,8 +630,8 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
         this.streamingText.length > 0 &&
         this.currentStatus === GA_SENDING_STATUS
       ) {
-        // Real stream evidence supersedes the optimistic send-time label.
-        // No timers: the visible draft itself is the generating state.
+        // 真实的流式证据取代乐观的发送期标签。
+        // 不用定时器:可见的草稿本身就是"生成中"状态。
         this.currentStatus = GA_GENERATING_STATUS
       }
       this.activities = [...projection.activities]
@@ -642,9 +646,8 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
       return true
     },
     finishTerminal(terminal: GaTerminal): void {
-      // A terminal run never leaves a transient draft behind: the authoritative
-      // message arrives via messages reload. Without this the streamed draft
-      // would linger as a ghost duplicate of the final answer.
+      // 终态运行绝不留下临时草稿:权威消息通过消息重载到达。
+      // 不做这一步,流式草稿会像幽灵一样残留,与最终答案重复。
       this.streamingText = ''
       this.streamGeneration = null
       if (terminal.type === 'RUN_FAILED') {
@@ -675,9 +678,8 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
       await this.attachSuccessorIfReady()
     },
     /**
-     * Single entry point after a terminal: ensures one observer generation
-     * owns the thread, then performs one canonical observation step.
-     * Re-entrant calls reuse the active generation (never a second loop).
+     * 终态后的唯一入口:确保由同一代观测者持有该线程,
+     * 然后执行一次规范的观测步骤。重入调用复用活跃代(绝不启动第二个循环)。
      */
     async attachSuccessorIfReady(): Promise<void> {
       if (!this.threadId) return
@@ -688,8 +690,8 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
       await this.observeSuccessor(this.successorObserverToken, 0)
     },
     /**
-     * Attaches the successor run: resets the per-run projection, replays its
-     * events and opens its stream. Idempotent per run id.
+     * 挂接后继运行:重置单运行投影、重放其事件并打开其事件流。
+     * 按运行 id 保证幂等。
      */
     async attachSuccessorRun(runId: string, status: string): Promise<void> {
       if (!this.threadId) return
@@ -709,25 +711,24 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
       try {
         const envelopes = await listGaEvents(runId)
         for (const envelope of envelopes) {
-          // Replay may terminalize the successor: stop projecting into it.
+          // 重放过程中后继运行可能已经终结:停止向其继续投影。
           if (this.activeRunId !== runId) return
           this.ingestEvent(envelope)
         }
-      } catch { /* SSE catches up */ }
+      } catch { /* SSE 会补齐 */ }
       if (this.activeRunId !== runId) return
       this.openStream()
       await this.reconcileMessages()
     },
-    /** Invalidates the observation loop. Pending reads/timers become no-ops. */
+    /** 使观测循环失效。进行中的读取/定时器随之变成空操作。 */
     stopSuccessorObservation(): void {
       this.successorObserverToken = 0
       clearSuccessorTimer()
     },
     /**
-     * One observation step. `token` is the deterministic cancellation ownership.
-     * The canonical read is deliberately separated from its projection: a result
-     * that lost ownership (stop / thread switch / delete / reset) never gets the
-     * chance to write activeRunId, activeStatus or pendingSteer.
+     * 一次观测步骤。`token` 是确定性的取消归属凭证。
+     * 规范读取与投影刻意分离:失去归属(停止/切换线程/删除/重置)的结果
+     * 绝没有机会写入 activeRunId、activeStatus 或 pendingSteer。
      */
     async observeSuccessor(token: number, attempt: number): Promise<void> {
       if (this.successorObserverToken !== token) return
@@ -737,7 +738,7 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
       }
       const previousRunId = this.activeRunId
       const act = await this.readThreadActivity()
-      // Ownership check BEFORE projection: never apply a stale read.
+      // 投影之前先做归属校验:绝不应用过期的读取。
       if (this.successorObserverToken !== token) return
       if (!act) {
         this.scheduleSuccessorObservation(token, attempt + 1)
@@ -752,20 +753,19 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
         return
       }
       if (act.pendingSteer) {
-        // Handoff still pending: the successor simply is not visible yet.
-        // Observation stays alive for as long as the canonical pending steer
-        // exists, downshifting to slow polling instead of giving up.
+        // 交接仍未完成:后继运行只是还没可见。
+        // 只要规范的 pending steer 还存在,观测就继续,
+        // 降级为慢速轮询而不是放弃。
         this.currentStatus = GA_STEERING_STATUS
         this.scheduleSuccessorObservation(token, attempt + 1)
         return
       }
-      // No successor and no pending steer: the handoff resolved on its own.
+      // 既没有后继运行也没有待生效 steer:交接已自行落定。
       this.resolveSuccessorObservation(hadPendingSteer)
     },
     /**
-     * Schedules the next observation. Fast cadence for the first reads, then a
-     * sustained slow cadence. There is no wall-clock deadline: only canonical
-     * resolution or a lifecycle event ends the observation.
+     * 安排下一次观测。前几次读取用快节奏,之后转为持续的低频节奏。
+     * 没有墙钟截止时间:只有规范状态落定或生命周期事件才能结束观测。
      */
     scheduleSuccessorObservation(token: number, completedReads: number): void {
       if (this.successorObserverToken !== token) return
@@ -782,7 +782,7 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
         void this.observeSuccessor(token, completedReads)
       }, delay)
     },
-    /** Exits observation and falls back to canonical thread state. */
+    /** 退出观测,回落到线程的规范状态。 */
     resolveSuccessorObservation(reconcileCanonical: boolean): void {
       this.stopSuccessorObservation()
       this.currentStatus = null
@@ -795,7 +795,7 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
         this.streamingText = ''
         this.streamGeneration = null
         this.dedupeOptimistic()
-      } catch { /* keep optimistic projection */ }
+      } catch { /* 保留乐观投影 */ }
     },
     async sendMessage(text: string, uiContext: GaUiContext): Promise<void> {
       const message = text.trim()
@@ -923,7 +923,7 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
           try {
             const envelopes = await listGaEvents(created.runId)
             for (const envelope of envelopes) this.ingestEvent(envelope)
-          } catch { /* fall through to reconcile */ }
+          } catch { /* 继续走对账兜底 */ }
           if (!this.activeRunId) return
           this.finishTerminal({ type: created.status === 'COMPLETED' ? 'RUN_COMPLETED' : created.status === 'FAILED' ? 'RUN_FAILED' : 'RUN_CANCELLED', errorCode: null, reason: null })
           return
@@ -967,20 +967,20 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
           try {
             const envelopes = await listGaEvents(runId)
             for (const envelope of envelopes) this.ingestEvent(envelope)
-          } catch { /* ignore */ }
+          } catch { /* 忽略 */ }
           if (this.activeRunId === runId && !this.lastSequenceTerminal()) {
             this.finishTerminal({ type: run.status === 'COMPLETED' ? 'RUN_COMPLETED' : run.status === 'FAILED' ? 'RUN_FAILED' : 'RUN_CANCELLED', errorCode: run.errorCode, reason: null })
           }
           return
         }
-      } catch { /* fall through to retry */ }
+      } catch { /* 继续走重试 */ }
       try {
         const envelopes = await listGaEvents(runId)
         for (const envelope of envelopes) {
           if (this.activeRunId !== runId) return
           this.ingestEvent(envelope)
         }
-      } catch { /* ignore */ }
+      } catch { /* 忽略 */ }
       if (this.activeRunId !== runId) return
       if (this.reconnectAttempts >= 5) {
         this.connection = 'disconnected'
@@ -1005,7 +1005,7 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
       if (!this.threadId || this.cancelRequested) return
       if (!this.activeRunId && !this.pendingSteer) return
       this.cancelRequested = true
-      // An explicit stop cancels any pending steer continuation.
+      // 显式停止会一并取消任何待生效的 steer 续接。
       this.stopSuccessorObservation()
       this.currentStatus = '正在停止…'
       try {
@@ -1175,7 +1175,7 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
 
 let activeHandle: { close: () => void } | null = null
 let activeController: AbortController | null = null
-/** BUG-01 successor observation: monotonic token + owned timer. */
+/** BUG-01 后继运行观测:单调递增令牌 + 独占定时器。 */
 let successorObserverSeq = 0
 let successorTimer: ReturnType<typeof setTimeout> | null = null
 

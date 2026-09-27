@@ -13,11 +13,12 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Durable normalized MCP discovery cache per connection. After a successful
- * discovery, tools/resources/prompts are cached here (as normalized JSON) so
- * reconnect does not re-run discovery; refresh invalidates it. Semantically
- * MCP-owned (table {@code mcp_discovery_cache}, keyed by connection row id);
- * the table schema is unchanged.
+ * 文件名:McpDiscoveryCacheRepository.java
+ *
+ * 用途:每个连接的持久化、规范化 MCP 发现结果缓存。发现成功后,工具/资源/提示
+ * 会以规范化 JSON 的形式缓存在这里,重连时无需重新执行发现;刷新(refresh)会使
+ * 缓存失效。语义上属于 MCP 模块所有(表 {@code mcp_discovery_cache},
+ * 以连接行 id 为键);表结构保持不变。
  */
 @Repository
 public class McpDiscoveryCacheRepository {

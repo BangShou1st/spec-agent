@@ -10,8 +10,10 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
- * Single-schema-source tests V2: the discriminated decision schema must mirror
- * the strict parser contract while the parser stays the executable authority.
+ * 文件名:GlobalAssistantDecisionSchemaTest.java
+ *
+ * 测试目标:单一 schema 来源(V2)——带 kind 判别的决策 schema 必须与
+ * 严格解析器契约保持镜像,同时解析器仍是可执行层面的权威。
  */
 class GlobalAssistantDecisionSchemaTest {
 

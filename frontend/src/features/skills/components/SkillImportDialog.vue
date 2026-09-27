@@ -1,3 +1,9 @@
+<!--
+  文件名:SkillImportDialog.vue
+  用途:Skill 导入弹窗:支持 ZIP 文件与 Git 仓库两种导入方式(仅解析不执行其中脚本),
+       Git 方式可先只读探测仓库候选包,选中候选即写入子目录字段;表单校验与提交
+       事件交由父组件处理。
+-->
 <script setup lang="ts">
 import { ref, toRef } from 'vue'
 import { useDialogReset } from '@/shared/ui/useDialogForm'
@@ -50,7 +56,7 @@ function discoverGit(): void {
   const r = gitRef.value.trim()
   emit('discover-git', url, r ? r : undefined)
 }
-/** Choosing a candidate is the same selection the subdirectory field carries. */
+/** 选中某个候选包,等价于直接在子目录字段填入其 path。 */
 function pickCandidate(candidate: GitSkillCandidate): void {
   gitSubPath.value = candidate.path
 }

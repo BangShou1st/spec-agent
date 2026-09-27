@@ -1,3 +1,5 @@
+// 文件名:GraphKnowledgeNode.spec.ts
+// 用途:GraphKnowledgeNode 卡片单元测试:验证浮动节点与已接入节点的下一步操作差异(继续生成问题/起草下一个问题/断开),以及"接入只允许手动拖线"。
 import { describe, expect, it, vi } from 'vitest'
 import { defineComponent, h } from 'vue'
 import { mount } from '@vue/test-utils'
@@ -8,9 +10,9 @@ import { makeGraphWorkspaceView } from '@/test/fixtures'
 import type { SpecAgentGraphNodeData } from '@/features/workspace/graph/graphProjection'
 import type { GraphWorkspaceNodeView, GraphWorkspaceRouteView } from '@/shared/contracts/types'
 
-/**
- * Vue Flow Handle stub: jsdom cannot run the real useVueFlow/useNode
- * context outside a VueFlow instance (same approach as GraphQuestionNode.spec).
+/*
+ * Vue Flow Handle stub:在 VueFlow 实例之外 jsdom 无法运行真实的
+ * useVueFlow/useNode 上下文(与 GraphQuestionNode.spec 同一做法)。
  */
 const HandleStub = defineComponent({
   name: 'Handle',

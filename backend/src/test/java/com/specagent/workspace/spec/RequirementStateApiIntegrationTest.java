@@ -39,13 +39,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Requirement-state read endpoint integration tests.
+ * 文件名:RequirementStateApiIntegrationTest.java
  *
- * <p>Proves the endpoint is a safe, read-only, route-scoped view of the
- * backend-derived requirement state: never calls a model, never writes state,
- * never leaks sibling-route claims, and fails closed when the active pointer
- * cannot be trusted. Runs against the default fake model gateway (zero public
- * provider requests).
+ * 测试目标:需求状态读取接口(requirement-state)的集成测试。验证该接口
+ * 是安全、只读、按路线范围的后端派生需求状态视图:绝不调用模型、绝不写状态、
+ * 绝不泄漏兄弟路线的 Claim,在活跃指针不可信时快速失败。运行于默认假模型
+ * 网关(不产生任何真实模型请求)。
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -92,15 +91,14 @@ class RequirementStateApiIntegrationTest {
     @Test
     void groupsClaimsByActualRuntimeStatusAfterAnswer() throws Exception {
         Project project = projectService.createProject("Grouped state project");
-        // Run the normal runtime path so the first confirmed claim is derived
-        // from a real answer (deterministic engine, no provider). The fake
-        // engine's STATE_UPDATE proposes a single confirmed goal claim.
+        // 走正常的运行时路径,使第一个 confirmed claim 派生自真实回答
+        // (确定性引擎,无真实模型请求)。假引擎的 STATE_UPDATE 会提出一条
+        // confirmed 的 goal claim。
         draftDriver.draftQuestion(project.id());
         answerDriver.submitFreeText(project.id(), "Primary outcome answer");
 
-        // Add assumed, unresolved, and rejected claims on the same active
-        // route through the runtime patch service so every status group is
-        // populated.
+        // 通过运行时补丁服务在同一个活跃路线上添加 assumed、unresolved、
+        // rejected 状态的 Claim,使每个状态分组都有数据。
         UUID activeRouteId = projectService.getProject(project.id()).orElseThrow().activeRouteId();
         UUID childTip = routeService.getRoute(activeRouteId).orElseThrow().tipNodeId();
         Answer extraAnswer = answerService.finalizeAnswer(project.id(), activeRouteId, childTip,
@@ -133,20 +131,19 @@ class RequirementStateApiIntegrationTest {
                 .contains("The user clarified the main outcome.");
         assertThat(view.unresolved()).extracting(RequirementClaimView::text)
                 .contains("Open follow-up detail");
-        // Groups are mutually exclusive: a claim appears exactly once by its
-        // actual runtime status.
+        // 各分组互斥:每个 Claim 按其实际运行时状态恰好出现一次。
         assertThat(view.confirmed()).doesNotContain(view.unresolved().get(0));
     }
 
     @Test
     void activeRouteStateDoesNotExposeSiblingRouteClaims() throws Exception {
         Project project = projectService.createProject("Isolation project");
-        // Active route gets real derived claims through the decision runtime.
+        // 活跃路线通过决策运行时获得真实的派生 Claim。
         draftDriver.draftQuestion(project.id());
         answerDriver.submitFreeText(project.id(), "Active route answer");
         UUID activeRouteId = projectService.getProject(project.id()).orElseThrow().activeRouteId();
 
-        // Sibling route with unmistakable sentinel content, never activated.
+        // 带有明确哨兵内容的兄弟路线,从未被激活。
         Route sibling = routeService.createRoute(project.id(), RouteLifecycleStatus.OPEN, "sibling route");
         Node siblingNode = nodeService.createRootNode(project.id(), sibling.id(),
                 "Sibling question", null, List.of(), true);
@@ -157,7 +154,7 @@ class RequirementStateApiIntegrationTest {
                         ClaimStatus.CONFIRMED, siblingNode.id(), siblingAnswer.id())),
                 null);
 
-        // The active route pointer is unchanged and points at the original route.
+        // 活跃路线指针未变,仍指向原始路线。
         assertThat(projectService.getProject(project.id()).orElseThrow().activeRouteId())
                 .isEqualTo(activeRouteId);
 
@@ -199,7 +196,7 @@ class RequirementStateApiIntegrationTest {
         Project projectA = projectService.createProject("Owner A");
         Project projectB = projectService.createProject("Owner B");
 
-        // Give project B's route unmistakable sentinel content.
+        // 给项目 B 的路线加入明确的哨兵内容。
         UUID routeB = projectB.activeRouteId();
         Node nodeB = nodeService.createRootNode(projectB.id(), routeB,
                 "B question", null, List.of(), true);
@@ -210,7 +207,7 @@ class RequirementStateApiIntegrationTest {
                         ClaimStatus.CONFIRMED, nodeB.id(), answerB.id())),
                 null);
 
-        // Corrupt A's active pointer to point at B's route.
+        // 把 A 的活跃指针破坏为指向 B 的路线。
         projectRepository.updateActiveRoute(projectA.id(), routeB, Instant.now());
 
         MvcResult result = mockMvc.perform(get("/api/v1/projects/{projectId}/requirement-state", projectA.id()))
@@ -224,7 +221,7 @@ class RequirementStateApiIntegrationTest {
     }
 
     // ------------------------------------------------------------------
-    // Phase 7.3A: route-scoped requirement-state reads.
+    // Phase 7.3A:按路线范围的需求状态读取。
     // ------------------------------------------------------------------
 
     private Route createRouteWithSentinelClaim(Project project, String sentinelText) {
@@ -244,7 +241,7 @@ class RequirementStateApiIntegrationTest {
     @Test
     void routeScopedReadReturnsExplicitRouteBWhileActiveRouteIsA() throws Exception {
         Project project = projectService.createProject("Route scoped project");
-        // Active route A gets real derived claims through the decision runtime.
+        // 活跃路线 A 通过决策运行时获得真实的派生 Claim。
         draftDriver.draftQuestion(project.id());
         answerDriver.submitFreeText(project.id(), "Active route answer");
         UUID activeRouteId = projectService.getProject(project.id()).orElseThrow().activeRouteId();
@@ -261,7 +258,7 @@ class RequirementStateApiIntegrationTest {
 
         String body = result.getResponse().getContentAsString();
         assertThat(body).contains("ROUTE_B_ONLY_CLAIM_5D1F");
-        // A's active-route claims never leak into the explicit B read.
+        // A 的活跃路线 Claim 绝不泄漏到显式的 B 路线读取中。
         assertThat(body).doesNotContain("The user clarified the main outcome.");
     }
 

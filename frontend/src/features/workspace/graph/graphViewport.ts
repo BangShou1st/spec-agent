@@ -1,23 +1,24 @@
+// 文件名:graphViewport.ts
+// 用途:画布视口的确定性计算辅助:纯坐标数学计算 fit 视图、节点居中与安全空闲区域(避开浮动面板),产出 setViewport 所需的 transform,绝不移动节点坐标。
+/*
+ * 确定性的视口辅助函数(Phase 7.3 收尾)。
+ *
+ * Vue Flow 的 `fitView` 依赖节点实测状态,而刷新落地时它可能尚未就绪,
+ * 导致部分 fit 路径在 E2E 中不稳定。这些辅助函数纯粹从当前投影出的节点
+ * 坐标加上已知/安全的兜底尺寸计算视口 transform,于是所有 fit 类操作
+ * (初始适配、工具栏适配、定位节点、定位路线、新活跃节点露出、自动布局
+ * 后适配)都用 `setViewport` 走完全相同的确定性数学。它们只产出
+ * transform;绝不移动节点坐标,也绝不修改任何状态。
+ */
+
 import type { GraphPosition } from './graphTypes'
 import { GRAPH_NODE_HEIGHT, GRAPH_NODE_WIDTH } from './graphEdgeRouting'
 
-/**
- * Deterministic viewport helpers (Phase 7.3 wrap-up).
- *
- * Vue Flow's `fitView` depends on node-measurement state that may not be
- * ready when a refresh lands, which made some fit paths unreliable in E2E.
- * These helpers compute a viewport transform purely from the current
- * projected node coordinates plus known/safe fallback dimensions, so all
- * fit-style operations (initial fit, toolbar fit, locate node, locate
- * route, new-active-node reveal, post-auto-layout fit) use `setViewport`
- * with exactly the same deterministic math. They only produce transforms;
- * they never move node coordinates and never mutate any state.
- */
 
 export const FALLBACK_NODE_WIDTH = GRAPH_NODE_WIDTH
 export const FALLBACK_NODE_HEIGHT = GRAPH_NODE_HEIGHT
 
-/** A node as seen by the viewport helpers: projected position + known size. */
+/** 视口辅助函数眼中的节点:投影位置 + 已知尺寸。 */
 export interface ViewportNode {
   id: string
   position: GraphPosition
@@ -26,11 +27,11 @@ export interface ViewportNode {
 }
 
 export interface FitOptions {
-  /** Margin in px kept between the fitted content and every canvas edge. */
+  /** 适配内容与画布每条边之间保留的边距(px)。 */
   padding?: number
-  /** Hard cap on the resulting zoom level. */
+  /** 结果缩放级别的硬上限。 */
   maxZoom?: number
-  /** When supplied, the graph is fitted inside this safe region instead of the full canvas. */
+  /** 提供时,图被适配进该安全区域而不是整个画布。 */
   region?: FitViewportRegion
 }
 
@@ -59,13 +60,12 @@ function rectsOverlap(a: FitViewportRegion, b: { x: number; y: number; width: nu
   return !(a.x + a.width <= b.x || b.x + b.width <= a.x || a.y + a.height <= b.y || b.y + b.height <= a.y)
 }
 
-/**
- * Deterministic largest empty rectangle inside the canvas that avoids all
- * given obstacles (expanded by `gap`). Pure geometry: knows nothing about
- * Inspector/Routes/DOM. WorkspaceView supplies the obstacles from floating
- * window state; graphViewport only does the math.
+/*
+ * 在画布内寻找避开所有给定障碍物(按 `gap` 外扩)的确定性最大空矩形。
+ * 纯几何计算:不认识 Inspector/路线/DOM。WorkspaceView 从浮动窗口状态
+ * 提供障碍物;graphViewport 只做数学。
  *
- * Determinism: maximal area wins; ties broken by smallest x, then y.
+ * 确定性:面积最大者获胜;平局时取更小的 x,再取更小的 y。
  */
 export function resolveSafeFitRegion(input: SafeFitRegionInput): FitViewportRegion {
   const { canvasWidth, canvasHeight, obstacles } = input
@@ -144,14 +144,14 @@ export function resolveSafeFitRegion(input: SafeFitRegionInput): FitViewportRegi
 }
 
 
-/** Resolves the size of a node: measured size wins, safe fallbacks otherwise. */
+/** 解析节点尺寸:实测尺寸优先,否则使用安全兜底值。 */
 export function getNodeSize(node: ViewportNode): { width: number; height: number } {
   const width = node.width !== undefined && node.width > 0 ? node.width : FALLBACK_NODE_WIDTH
   const height = node.height !== undefined && node.height > 0 ? node.height : FALLBACK_NODE_HEIGHT
   return { width, height }
 }
 
-/** Bounding box of the given nodes from coordinates + resolved sizes. */
+/** 由坐标 + 解析出的尺寸计算节点集合的包围盒。 */
 export function computeBounds(
   nodes: ViewportNode[],
 ): { minX: number; minY: number; maxX: number; maxY: number } | null {
@@ -172,9 +172,9 @@ export function computeBounds(
   return { minX, minY, maxX, maxY }
 }
 
-/**
- * Viewport transform that fits the given nodes into the canvas, keeping
- * `padding` px on every side and never zooming beyond `maxZoom`.
+/*
+ * 把给定节点适配进画布的视口 transform:每侧保留 `padding` px 边距,
+ * 缩放绝不超过 `maxZoom`。
  */
 export function computeFitViewport(
   nodes: ViewportNode[],
@@ -218,7 +218,7 @@ export function computeFitViewport(
   }
 }
 
-/** Viewport transform that centers a single node in the canvas. */
+/** 把单个节点居中在画布中的视口 transform。 */
 export function computeFitNodeViewport(
   node: ViewportNode | null,
   canvasWidth: number,

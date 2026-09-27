@@ -1,3 +1,5 @@
+// 文件名:useDialogForm.ts
+// 用途:对话框表单复用 composable:在弹窗打开时重置本地草稿状态,关闭时恢复初始值。
 import { watch, type Ref } from 'vue'
 
 /**

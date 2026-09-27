@@ -20,9 +20,11 @@ import java.time.Duration;
 import java.util.Map;
 
 /**
- * Shared bounded HTTP execution for OpenRouter / Custom. Never follows
- * redirects (credentials must never forward to another origin), enforces
- * body-size and timeout bounds, and redacts secrets from every message.
+ * 文件名:ProviderHttpSupport.java
+ *
+ * 用途:OpenRouter / Custom 共用的有界 HTTP 执行工具。绝不跟随重定向
+ * (凭据绝不能被转发到另一个源),强制限制请求体大小和超时,并在所有消息中
+ * 脱敏密钥。
  */
 public final class ProviderHttpSupport {
 
@@ -31,9 +33,8 @@ public final class ProviderHttpSupport {
     public static final Duration SETTINGS_TIMEOUT = Duration.ofSeconds(20);
 
     /**
-     * Centralized SSE stream budgets. A single event, the aggregated
-     * visible output, and the total raw streamed chars each fail closed
-     * instead of growing without bound. No payload is ever dumped.
+     * 集中管理的 SSE 流预算。单个事件、聚合后的可见输出以及原始流总字符数
+     * 各自有上限,超出即按失败处理,而不是无界增长。任何载荷都不会被整体倾倒。
      */
     public static final int MAX_SSE_EVENT_BYTES = 256 * 1024;
     public static final int MAX_AGGREGATED_BYTES = 2 * 1024 * 1024;
@@ -137,8 +138,8 @@ public final class ProviderHttpSupport {
             throw ModelProviderException.invalidResponse(context, "Provider response too large");
         }
         String text = new String(raw, StandardCharsets.UTF_8);
-        // Model-list 404/405/501 map to unsupported (manual fallback) at the
-        // caller; other errors stay hard failures so auth outages are visible.
+        // 模型列表的 404/405/501 由调用方映射为"不支持"(转手动填写);
+        // 其他错误仍是硬失败,保证凭据失效等故障可见。
         if (response.statusCode() == 404 || response.statusCode() == 405 || response.statusCode() == 501) {
             return new HttpResult(response.statusCode(), null, safeSnippet(text));
         }
@@ -163,9 +164,9 @@ public final class ProviderHttpSupport {
     }
 
     /**
-     * True SSE with incremental fragments. Every provider event is a
-     * cancellation checkpoint via an empty fragment when it carries no
-     * visible text, so Stop/Steer interrupts even before the first prose.
+     * 标准的增量片段 SSE 流。每个提供商事件都是一次取消检查点:事件不携带可见
+     * 文本时以空片段形式送达监听器,因此 Stop/Steer 中断甚至可以发生在正文
+     * 开始之前。
      */
     public static String postSse(HttpClient client, ObjectMapper mapper, String url,
                                  Map<String, String> headers, Map<String, Object> body,
@@ -298,7 +299,7 @@ public final class ProviderHttpSupport {
                 throw new StreamCancelledException("Provider stream cancelled by run owner");
             }
         } else {
-            // Cancellation checkpoint even with no visible prose.
+            // 即使没有可见正文,也是一次取消检查点。
             checkpoint(listener);
         }
         return success;

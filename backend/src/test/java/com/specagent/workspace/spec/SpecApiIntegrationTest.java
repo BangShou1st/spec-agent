@@ -34,8 +34,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Spec read API integration tests. Snapshots are exposed as derived artifacts
- * with provenance; project/route ownership is verified on scoped reads.
+ * 文件名:SpecApiIntegrationTest.java
+ *
+ * 测试目标:规格(spec)读取 API 的集成测试——快照以带溯源信息的派生
+ * 产物形式暴露;按项目/路线范围的读取会校验归属关系。
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -109,7 +111,7 @@ class SpecApiIntegrationTest {
     @Test
     void listRouteSnapshots() throws Exception {
         SpecFixture fixture = createProjectWithSnapshot();
-        // A second snapshot on the same route.
+        // 同一路线上的第二个快照。
         specSnapshotService.createSnapshot(
                 fixture.project().id(),
                 fixture.route().id(),

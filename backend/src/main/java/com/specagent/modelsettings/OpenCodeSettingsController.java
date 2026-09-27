@@ -9,6 +9,13 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+/**
+ * 文件名:OpenCodeSettingsController.java
+ *
+ * 用途:OpenCode(Zen)提供商设置的 REST 接口(/api/v1/settings/opencode),
+ * 提供状态查询、密钥探测、已存密钥模型列表、保存、仅切换模型、连通性验证等端点。
+ * 密钥只在请求进入时出现,响应永远只返回脱敏形式。
+ */
 @RestController
 @RequestMapping("/api/v1/settings/opencode")
 public class OpenCodeSettingsController {
@@ -50,7 +57,7 @@ public class OpenCodeSettingsController {
         return OpenCodeSettingsResponse.from(service.changeModel(request.selectedModel()));
     }
 
-    /** Explicit reachability test on the stored pair; never mutates settings. */
+    /** 对已存配置对做显式连通性测试;不会改动任何设置。 */
     @PostMapping("/validate")
     public OpenCodeSettingsResponse validate() {
         return OpenCodeSettingsResponse.from(service.validate());

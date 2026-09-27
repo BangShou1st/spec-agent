@@ -5,12 +5,11 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * One stored provider: a preset kind plus this row's own credential, protocol
- * and model selection.
+ * 文件名:ModelProviderRecord.java
  *
- * <p>This is the single shape the settings page, the activation gate and the
- * runtime dispatch all read. {@code apiKey} is never returned to the browser —
- * API projections expose {@code maskedSuffix} instead.
+ * 用途:一个已存储的模型提供商行:预设类型 + 该行自己的密钥、协议格式和模型选择。
+ * 这是设置页、激活门禁和运行时分发共同读取的唯一数据形状。{@code apiKey} 永远
+ * 不会返回给浏览器——对外的 API 投影只暴露 {@code maskedSuffix}(脱敏后缀)。
  */
 public record ModelProviderRecord(
         UUID id,
@@ -29,29 +28,29 @@ public record ModelProviderRecord(
         Instant updatedAt,
         Instant validatedAt) {
 
-    /** True when a stored key exists, without exposing it. */
+    /** 判断是否存在已存密钥,但不暴露密钥本身。 */
     public boolean hasKey() {
         return apiKey != null && !apiKey.isBlank();
     }
 
-    /** A row is "validated" only for the revision that was actually tested. */
+    /** 只有"实际被测过的那个修订号"才算验证通过;配置改过就要重测。 */
     public boolean validated() {
         return validatedRevision != null && validatedRevision == configRevision;
     }
 
-    /** Saved model came from manual entry rather than the provider catalog. */
+    /** 选中模型是手动填写的,而非来自提供商目录发现。 */
     public boolean manualModel() {
         return "MANUAL".equals(modelSource);
     }
 
-    /** Configured means the row can actually serve inference right now. */
+    /** 已配置 = 这一行现在就能真正提供推理服务。 */
     public boolean configured() {
         return baseUrl != null && !baseUrl.isBlank()
                 && selectedModel != null && !selectedModel.isBlank()
                 && (!preset.requiresApiKey() || hasKey());
     }
 
-    /** The label shown on the card header and the provider pill. */
+    /** 卡片标题和提供商标签上展示的名称,缺省回退到预设默认名。 */
     public String effectiveDisplayName() {
         if (displayName != null && !displayName.isBlank()) {
             return displayName.trim();

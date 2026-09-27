@@ -15,8 +15,11 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /**
- * Host tool: create a project via ProjectService. Idempotent through the
- * CapabilityRuntime invocation_key claim; replay never creates a second project.
+ * 文件名:ProjectCreateCapability.java
+ *
+ * 用途:宿主工具——通过 ProjectService 创建项目。幂等性由
+ * CapabilityRuntime 的 invocation_key 认领机制保证;重放绝不会
+ * 创建出第二个项目。GA 工具目录中的 project.create 即本能力。
  */
 @Component
 public class ProjectCreateCapability implements InternalCapabilityAdapter {

@@ -1,3 +1,5 @@
+// 文件名:GraphQuestionNode.spec.ts
+// 用途:GraphQuestionNode 卡片单元测试:验证当前节点作答(选项/多选/自由文本、草稿按路线隔离)、历史节点紧凑/展开切换、pending 投影、操作轨道与四向边锚点。
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -9,12 +11,11 @@ import GraphQuestionNode from '@/features/workspace/graph/components/GraphQuesti
 import type { SpecAgentGraphNodeData, GraphAnswerPresentation } from '@/features/workspace/graph/graphProjection'
 import type { GraphWorkspaceNodeView, GraphWorkspaceOptionView } from '@/shared/contracts/types'
 
-/**
- * Vue Flow Handle stub: jsdom cannot run the real useVueFlow/useNode
- * context outside a VueFlow instance, so the node spec renders the anchor
- * handles as plain divs that expose every prop as an attribute. The real
- * component contract (8 invisible handles, source/target type, side
- * position, non-connectable flags) is asserted through these attributes.
+/*
+ * Vue Flow Handle stub:在 VueFlow 实例之外 jsdom 无法运行真实的
+ * useVueFlow/useNode 上下文,因此节点测试把锚点 handle 渲染成把每个 prop
+ * 暴露为属性的普通 div。真实组件契约(8 个不可见 handle、source/target
+ * 类型、边位置、connectable 标志)通过这些属性断言。
  */
 const HandleStub = defineComponent({
   name: 'Handle',
@@ -24,7 +25,7 @@ const HandleStub = defineComponent({
   },
 })
 
-/** Mounts the node with the Handle stub so jsdom-safe assertions can run. */
+/** 挂载带 Handle stub 的节点,保证断言在 jsdom 下安全。 */
 function mountNode(data: SpecAgentGraphNodeData, extra: Record<string, unknown> = {}) {
   const pinia = createPinia()
   setActivePinia(pinia)
@@ -269,7 +270,7 @@ describe('graph question node', () => {
     await text().setValue('路线一草稿')
     await wrapper.get('input[value="opt-a"]').setValue()
 
-    // Same node and canAnswer; only the reading route changes.
+    // 同一节点且 canAnswer 不变;只有阅读路线变化。
     await viewRoute('r2')
     expect(text().element.value).toBe('')
     expect(wrapper.get<HTMLInputElement>('input[value="opt-a"]').element.checked).toBe(false)
@@ -520,8 +521,28 @@ describe('graph question node', () => {
     expect(wrapper.find('[data-test="node-state"]').text()).toContain('需处理')
     expect(wrapper.text()).toContain('模型服务不可用')
     expect(wrapper.find('[data-test="contextual-ai"]').exists()).toBe(false)
-    await wrapper.find('[data-test="retry-pending"]').trigger('click')
-    expect(wrapper.emitted('retry-pending')).toHaveLength(1)
+    // 占位卡的重试按钮携带失败任务身份(retry-failure 事件),不再发空事件。
+    const pendingFailure: import('@/features/workspace/api/agentRuns').UnresolvedFailure = {
+      runId: 'run-1', projectId: 'p1', operation: 'DRAFT_QUESTION', routeId: 'r2',
+      sourceNodeId: null, reasonCode: 'model_provider_failure',
+      reasonSummary: '模型服务不可用', availableAction: 'GO_TO_MODEL_SETTINGS',
+      actionLabel: '前往模型设置', stale: false, retryRunId: null,
+      retryStatus: null, createdAt: '2026-09-27T00:00:00Z',
+    }
+    const withFailure = mountNode(historicalData({
+      node: nodeData({ id: 'pending:run-1', question: '下一步问题生成失败' }),
+      routeIds: ['r2'],
+      visibleRouteIds: ['r2'],
+      routeMembership: [{ routeId: 'r2', label: '分支路线', lifecycleStatus: 'open', isActive: true }],
+      isShared: false,
+      runtimeStatus: 'FAILED',
+      runtimePhase: 'FAILED',
+      runtimeMessage: '模型服务不可用',
+      pendingFailure,
+    }))
+    expect(withFailure.find('[data-test="retry-pending"]').text()).toContain('前往模型设置')
+    await withFailure.find('[data-test="retry-pending"]').trigger('click')
+    expect(withFailure.emitted('retry-failure')?.[0]).toEqual([pendingFailure])
   })
 
   it('renders a shared node as neutral when Focus is absent', () => {
@@ -729,7 +750,7 @@ describe('graph node edge anchors (adaptive four-side handles)', () => {
   })
 
   it('style.css keeps anchors hidden by default and reveals them on node hover for manual connection', () => {
-    // Vitest runs with the frontend directory as cwd.
+    // Vitest 以 frontend 目录为 cwd 运行。
     const css = readFileSync(resolve(process.cwd(), 'src/app/styles/style.css'), 'utf8')
     expect(css).toMatch(/\.graph-question-node__handle\s*{[^}]*pointer-events:\s*none/)
     expect(css).toMatch(/\.graph-question-node__handle\s*{[^}]*opacity:\s*0/)

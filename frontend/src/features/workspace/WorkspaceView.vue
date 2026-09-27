@@ -1,3 +1,10 @@
+<!--
+  文件名:WorkspaceView.vue
+  用途:工作台主页面("图优先"外壳):固定的 路线/画布/检查器 三区布局——
+       左 RouteSidebar + 中央 GraphCanvas + 右 WorkspaceInspector,由 ResizableSidebar
+       组合;运行时命令经 workspaceStore(仅 Active 路线),Focus/隐藏/侧栏等浏览器态
+       在 graphUiStore;并承载恢复提示、提案卡、Spec Dock 与各类操作弹窗。
+-->
 <script setup lang="ts">
 import { computed, inject, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { routerKey } from 'vue-router'
@@ -32,18 +39,19 @@ import {
 import { productErrorMessage, requiresModelSettings } from '@/shared/http/errorCopy'
 import { useGraphUiStore } from '@/features/workspace/state/graphUiStore'
 import { useRunRegistryStore, type RunRegistryEntry } from '@/features/workspace/state/runRegistryStore'
+import { DRAFT_FAMILY_OPERATIONS, NODE_QUERY_OPERATION, SPEC_GENERATION_OPERATION, type UnresolvedFailure } from '@/features/workspace/api/agentRuns'
+import NodeRecoveryBar, { type RecoveryItem } from '@/features/workspace/graph/components/NodeRecoveryBar.vue'
 import { useWorkspaceStore } from '@/features/workspace/state/workspaceStore'
 import type { SpecExportVariant } from '@/features/workspace/api/spec'
 import type { RegenerateNodeRequest, SubmitAnswerRequest } from '@/shared/contracts/types'
 
 /**
- * Graph-first workspace shell with fixed Route / Graph / Inspector regions.
+ * 图优先的工作台外壳,固定 路线/画布/检查器 三区。
  *
- * Layout: left RouteSidebar + center GraphCanvas + right WorkspaceInspector,
- * composed with the existing ResizableSidebar infrastructure. Runtime commands
- * go through workspaceStore (Active-route only); Focus/Dim/Hide/positions/
- * sidebars live in graphUiStore (browser-only). Focus drives shared-node
- * reading; Active remains runtime-only.
+ * 布局:左 RouteSidebar + 中央 GraphCanvas + 右 WorkspaceInspector,
+ * 由既有的 ResizableSidebar 基础设施组合而成。运行时命令经 workspaceStore
+ * (只走 Active 路线);Focus/Dim/Hide/位置/侧栏 等浏览器态在 graphUiStore
+ * (仅浏览器)。Focus 驱动共享节点的阅读;Active 始终只用于运行时。
  */
 const props = defineProps<{ projectId: string }>()
 
@@ -52,6 +60,7 @@ const graphUi = useGraphUiStore()
 const runRegistry = useRunRegistryStore()
 const router = inject(routerKey, null)
 const canvasRef = ref<InstanceType<typeof GraphCanvas> | null>(null)
+const specDockRef = ref<InstanceType<typeof SpecDock> | null>(null)
 
 const forkDialogOpen = ref(false)
 const resourceDialogOpen = ref(false)
@@ -175,10 +184,10 @@ const reanswerNodeData = computed(() =>
 )
 
 /**
- * Resolves the source route for a node command (fork / reanswer / regenerate).
+ * 为节点命令(fork / 重新回答 / 重新生成)解析来源路线。
  *
- * Uses the SAME deterministic resolver as the canvas projection, so a node can
- * never read under one route while its commands have no source route at all.
+ * 与画布投影使用同一个确定性解析器,因此绝不会出现节点用某条路线阅读、
+ * 而它的命令却找不到来源路线的情况。
  * 只看这条路线 / 点卡片定下的 Focus 直接生效；当其它归属路线都被隐藏/筛掉时，
  * 唯一可见的那条也被视为已确定；只有真正歧义（多归属且都可见且无 Focus）时
  * 才返回 null，此时卡片会显式要求用户选一条。
@@ -205,14 +214,16 @@ const regenerateSourceRoute = computed(() => sourceRouteForNode(regenerateNodeId
 const workspaceErrorMessage = computed(() =>
   productErrorMessage(store.error?.code ?? 'UNKNOWN_ERROR', store.error?.message),
 )
+/*
+ * 通用错误条的重试标签(2026-09-27 起不再做全局恢复分发):旧实现按
+ * 全局状态机派发"重新请求"(repairableAnswerId/manualModelRetry),
+ * 与任务级恢复入口并行。现在错误条只保留三类无歧义出口——配置错误去
+ * 设置页、可安全重提交的载荷、以及刷新/同步;失败任务的恢复一律从
+ * 对应失败位置的任务级入口执行。
+ */
 const workspaceRetryLabel = computed(() => {
   if (store.error && requiresModelSettings(store.error.code)) return '前往模型设置'
-  if (store.answerOutcomeUnknown) return '刷新状态'
-  if (store.repairableAnswerId) return '重新请求'
   if (store.resubmitAnswerPayload) return '再次提交'
-  if (store.manualModelRetry?.state === 'needs_reconcile'
-    || store.manualModelRetry?.state === 'ambiguous') return '刷新状态'
-  if (store.manualModelRetry?.state === 'ready') return '重新请求'
   return '刷新状态'
 })
 const workspaceRetrying = computed(() => store.loading || store.refreshing
@@ -220,9 +231,9 @@ const workspaceRetrying = computed(() => store.loading || store.refreshing
   || store.routeCommandPending || store.generatingSpec)
 
 /**
- * The artifact gate supplies a bounded recovery identity. Resolve it against
- * the canonical graph so the user sees the actual question and owning route,
- * not an opaque UUID and not the currently active branch by assumption.
+ * 产物关卡(artifact gate)会给出一个有限范围的恢复身份。
+ * 到规范图里解析它,让用户看到真实的问题与归属路线,
+ * 而不是一个不可读的 UUID,也不是"想当然地"按当前激活分支处理。
  */
 const historicalAnswerRecoveryTarget = computed(() => {
   const error = store.error
@@ -267,9 +278,12 @@ const recoveryModel = computed<RecoveryNoticeModel | null>(() => {
   if (store.error && requiresModelSettings(store.error.code)) return null
   return recoveryNoticeFromState({
     answerOutcomeUnknown: store.answerOutcomeUnknown,
-    repairableAnswerId: store.repairableAnswerId,
     resubmitAnswerPayload: store.resubmitAnswerPayload,
-    manualRetryState: store.manualModelRetry?.state ?? null,
+    // 只暴露对账态(needs_reconcile/ambiguous);'ready' 的全局"重新请求"
+    // 入口已删除,由任务级恢复入口/正常业务动作承担。
+    manualRetryState: store.manualModelRetry?.state === 'ready'
+      ? null
+      : store.manualModelRetry?.state ?? null,
     errorCode: store.error?.code ?? null,
     historicalAnswerRecovery: historicalAnswerRecoveryTarget.value,
   })
@@ -339,29 +353,78 @@ function runProgressOf(entry: RunRegistryEntry | undefined): GraphRunProgress | 
 }
 
 /**
- * 画布 pending 卡列表：run 注册表是唯一权威来源；draft 流程的
- * pendingRouteProjection（带失败文案等临时状态）优先生效，其余未绑定到
- * 具体节点的 in-flight run（重新起草、后台续跑、刷新后重建等）各自成卡。
- * 多条路线并发生成时每条路线一张卡。
+ * 恢复链身份:同一 operation + 路线的起草/续跑状态属于同一条恢复链
+ * (路线 tip 在任一时刻唯一,来源节点由路线决定),必须合并为唯一投影。
+ * 刻意不把 sourceNodeId 纳入键:registry 重建的条目可能暂时缺失来源,
+ * 缺失与已知来源必须是同一条链,否则去重失效。绝不按显示顺序/
+ * Active/first/latest 猜测身份。
+ */
+function draftChainKey(routeId: string | null, operation: string | null | undefined): string {
+  return `${operation ?? ''}::${routeId ?? '*'}`
+}
+
+/**
+ * 画布 pending 卡列表:先按明确的任务/恢复链身份合并状态,再生成唯一
+ * 投影(第二轮复核 R2-C 的闭合):
+ * - legacy pendingRouteProjection(带失败文案等临时状态)优先生效;同一
+ *   run 存在服务端失败身份时必须合并进同一张卡——否则失败卡没有恢复
+ *   身份,按钮无法渲染;
+ * - registry 条目与失败清单条目按 runId 与恢复链身份双重量去重,同一
+ *   任务绝不产生两条投影;
+ * - 恢复在途(retryRunId 存在)时旧失败卡原位转为重试进度,不与旧失败
+ *   卡或新运行卡重复显示;
+ * - 服务端未解决失败清单是硬刷新/重启后仍然存在的权威来源。
  */
 const pendingProjections = computed<GraphPendingProjection[]>(() => {
   const projections: GraphPendingProjection[] = []
   const seen = new Set<string>()
+  const chainDone = new Set<string>()
+  const attach = (projection: GraphPendingProjection): void => {
+    projections.push(projection)
+    seen.add(projection.runId)
+    chainDone.add(draftChainKey(projection.routeId, projection.operation))
+  }
+
   const legacy = store.pendingRouteProjection
-  if (legacy) {
-    seen.add(legacy.runId)
-    projections.push({
-      ...legacy,
-      operation: 'DRAFT_QUESTION',
-      progress: runProgressOf(runRegistry.runs[legacy.runId]),
-    })
+  if (legacy && legacy.status !== 'SUCCEEDED') {
+    const legacyFailure = runRegistry.failures[legacy.runId] ?? null
+    const legacyRun = runRegistry.runs[legacy.runId]
+    // 过期 legacy 卡:其 run 已被服务端清单/注册表清除(被更新的失败接替)
+    // 时绝不渲染,更不能占用恢复链槽位——否则新失败卡会因链去重而无按钮。
+    if (legacyFailure || legacyRun) {
+      let status = legacy.status
+      let phase = legacy.phase
+      let progress = runProgressOf(legacyRun)
+      // 恢复在途:同一张卡原位转进度态,不另出新运行卡
+      const retryRun = legacyFailure?.retryRunId
+        ? runRegistry.runs[legacyFailure.retryRunId]
+        : undefined
+      if (retryRun && (retryRun.status === 'PENDING' || retryRun.status === 'RUNNING')) {
+        status = retryRun.status
+        phase = retryRun.phase
+        progress = runProgressOf(retryRun)
+      }
+      attach({
+        ...legacy,
+        status,
+        phase,
+        progress,
+        operation: 'DRAFT_QUESTION',
+        failure: legacyFailure,
+      })
+    }
   }
   for (const entry of runRegistry.list) {
     if (seen.has(entry.runId)) continue
     if (entry.status === 'SUCCEEDED') continue
-    if (entry.sourceNodeId) continue // 绑定到既有节点：走 runtimeByNode 叠加
+    if (entry.sourceNodeId && !(entry.status === 'FAILED' && DRAFT_FAMILY_OPERATIONS.has(entry.operation))) {
+      continue // 绑定到既有节点：走 runtimeByNode 叠加
+    }
     if (!entry.routeId) continue
-    projections.push({
+    const chain = draftChainKey(entry.routeId, entry.operation)
+    // 起草家族的条目(在途或失败)都渲染为占位卡:同一恢复链绝不出现第二张。
+    if (DRAFT_FAMILY_OPERATIONS.has(entry.operation ?? '') && chainDone.has(chain)) continue
+    attach({
       routeId: entry.routeId,
       sourceNodeId: entry.sourceNodeId,
       runId: entry.runId,
@@ -370,16 +433,80 @@ const pendingProjections = computed<GraphPendingProjection[]>(() => {
       message: null,
       operation: entry.operation,
       progress: runProgressOf(entry),
+      failure: runRegistry.failures[entry.runId] ?? null,
     })
   }
-  return projections
+  // 失败任务占位卡:起草/续跑家族的失败(下一节点尚未生成),来自服务端
+  // 未解决清单——硬刷新/重启后依然存在。
+  for (const failure of runRegistry.failureList) {
+    if (failure.stale || !DRAFT_FAMILY_OPERATIONS.has(failure.operation)) continue
+    if (!failure.routeId) continue
+    const chain = draftChainKey(failure.routeId, failure.operation)
+    // 恢复在途:原位转进度态——显示在途重试 run 的进度,绝不与旧失败
+    // 卡或新运行卡重复显示。
+    const retryRun = failure.retryRunId ? runRegistry.runs[failure.retryRunId] : undefined
+    if (retryRun && (retryRun.status === 'PENDING' || retryRun.status === 'RUNNING')) {
+      if (!seen.has(retryRun.runId) && !chainDone.has(chain)) {
+        attach({
+          routeId: failure.routeId,
+          sourceNodeId: failure.sourceNodeId ?? retryRun.sourceNodeId,
+          runId: retryRun.runId,
+          status: retryRun.status,
+          phase: retryRun.phase,
+          message: null,
+          operation: retryRun.operation || failure.operation,
+          progress: runProgressOf(retryRun),
+          failure,
+        })
+      }
+      continue
+    }
+    if (seen.has(failure.runId) || chainDone.has(chain)) continue
+    attach({
+      routeId: failure.routeId,
+      sourceNodeId: failure.sourceNodeId,
+      runId: failure.runId,
+      status: 'FAILED',
+      phase: null,
+      message: failure.reasonSummary ?? failure.actionLabel,
+      operation: failure.operation,
+      progress: null,
+      failure,
+    })
+  }
+  // 最终防线:同一 runId 与同一恢复链在输出中只允许出现一次——无论来源
+  // (legacy 投影 / registry 条目 / 服务端失败清单)如何竞争,同一任务
+  // 绝不产生两条可见投影。
+  const out: GraphPendingProjection[] = []
+  const outRuns = new Set<string>()
+  const outChains = new Set<string>()
+  for (const projection of projections) {
+    const chain = draftChainKey(projection.routeId, projection.operation)
+    if (outRuns.has(projection.runId) || outChains.has(chain)) continue
+    outRuns.add(projection.runId)
+    outChains.add(chain)
+    out.push(projection)
+  }
+  return out
 })
 
 /** 既有节点上的运行时叠加：源节点已知的 in-flight run（回答/重生成/续修）。 */
+/** 起草/续跑家族的失败不绑在源节点上:它们渲染为源节点下游的占位卡。 */
+
 const runtimeByNode = computed<Record<string, GraphNodeRuntimeState>>(() => {
   const map: Record<string, GraphNodeRuntimeState> = {}
+  // 属于失败恢复链的在途重试 run:进度显示在下游占位卡(原位转进度),
+  // 不再在源节点上叠加第二份进度展示。
+  const recoveryRetryRunIds = new Set(
+    runRegistry.failureList
+      .filter((failure) => failure.retryRunId)
+      .map((failure) => failure.retryRunId as string),
+  )
   for (const entry of runRegistry.list) {
     if (!entry.sourceNodeId || entry.status === 'SUCCEEDED') continue
+    // 起草家族的失败走下游占位卡(见 pendingProjections),不在源节点上叠加。
+    if (entry.status === 'FAILED' && DRAFT_FAMILY_OPERATIONS.has(entry.operation)) continue
+    if (DRAFT_FAMILY_OPERATIONS.has(entry.operation) && recoveryRetryRunIds.has(entry.runId)) continue
     map[entry.sourceNodeId] = {
       status: entry.status,
       phase: entry.phase,
@@ -388,6 +515,118 @@ const runtimeByNode = computed<Record<string, GraphNodeRuntimeState>>(() => {
   }
   return map
 })
+
+/**
+ * 任务级失败恢复:键 `${nodeId}::${routeId ?? '*'}`。共享节点上不同路线的
+ * 失败互不覆盖;来源来自服务端判定的未解决失败清单(硬刷新/重启后仍在)。
+ * 起草家族的失败走占位卡,不在这里出现。
+ */
+const recoveryByNode = computed<Record<string, { failures: UnresolvedFailure[] }>>(() => {
+  const map: Record<string, { failures: UnresolvedFailure[] }> = {}
+  for (const failure of runRegistry.failureList) {
+    if (!failure.sourceNodeId || failure.stale) continue
+    if (DRAFT_FAMILY_OPERATIONS.has(failure.operation)) continue
+    const key = failure.sourceNodeId + '::' + (failure.routeId ?? '*')
+    const bucket = map[key] ?? { failures: [] }
+    bucket.failures.push(failure)
+    map[key] = bucket
+  }
+  return map
+})
+
+/** 失败绑定路线的展示名(供恢复栏与顶部入口使用)。 */
+function routeLabelOf(routeId: string | null): string | undefined {
+  if (!routeId) return '无路线'
+  return store.graphView?.routes.find((route) => route.id === routeId)?.label?.trim() || undefined
+}
+
+function recoveryItemsFor(failures: UnresolvedFailure[]): RecoveryItem[] {
+  return failures.map((failure) => ({ failure, routeLabel: routeLabelOf(failure.routeId) }))
+}
+
+/** 任务级恢复入口:重试 / 前往模型设置 / 定位过期目标。 */
+async function handleRetryFailure(failure: UnresolvedFailure): Promise<void> {
+  if (failure.availableAction === 'GO_TO_MODEL_SETTINGS') {
+    if (router) await router.push('/settings')
+    return
+  }
+  if (failure.availableAction === 'STALE') {
+    if (failure.sourceNodeId) graphUi.selectNode(failure.sourceNodeId)
+    return
+  }
+  await store.retryFailedRun(failure)
+}
+
+/**
+ * 把失败任务的定位目标解析成画布上的视觉实例 id。共享节点存在多个视觉
+ * 实例,必须按失败绑定的路线解析,绝不回退 Active/first/latest。
+ * 起草家族的失败目标是下游占位卡(pending:<runId>),不是源节点本身。
+ */
+function resolveFailureVisualNodeId(
+  targetNodeId: string,
+  routeId: string | null,
+): string | null {
+  if (!store.graphView) return null
+  const projection = projectGraph({
+    view: store.graphView,
+    activeNodeId: store.activeState?.activeNode?.id ?? null,
+    uiState: {
+      focusRouteId: graphUi.focusRouteId,
+      lifecycleFilters: graphUi.lifecycleFilters,
+      routeDisplayStates: graphUi.routeDisplayStates,
+      isolatedRouteId: graphUi.isolatedRouteId,
+      expandedNodeIds: graphUi.expandedNodeIds,
+      showRelationLayer: graphUi.showRelationLayer,
+    },
+    savedPositions: graphUi.nodePositions,
+    pendings: pendingProjections.value,
+  })
+  const direct = projection.nodes.find((node) => node.id === targetNodeId)
+  if (direct) return direct.id
+  const instance = projection.nodes.find((node) =>
+    node.data?.canonicalNodeId === targetNodeId
+      && (!routeId || node.data?.routeIds.includes(routeId)),
+  )
+  return instance?.id ?? null
+}
+
+/**
+ * 顶部恢复汇总的只读定位:按操作族把用户带到失败任务的真实位置——
+ * 起草失败定位下游失败占位卡,规格失败打开并定位对应规格面板,查询失败
+ * 打开对应节点和检查器,共享节点先切到失败绑定的路线视图。绝不发起
+ * 重试/生成请求,绝不偷偷生成新路线;目标已删除或不在画布上时给出明确
+ * 解释,不做静默回退。
+ */
+function handleLocateFailure(failure: UnresolvedFailure): void {
+  const routeId = failure.routeId
+  if (routeId && !store.graphView?.routes.some((route) => route.id === routeId)) {
+    store.feedback = '该失败绑定的路线已被删除，原始位置无法定位；失败记录仍保留在清单中。'
+    return
+  }
+  // 共享节点:先把阅读 Focus 切到失败绑定的路线,定位到的实例才是
+  // 该失败任务自己的路线视图。
+  if (routeId) graphUi.setFocusRoute(routeId)
+
+  const draftFamily = DRAFT_FAMILY_OPERATIONS.has(failure.operation)
+  const targetNodeId = draftFamily ? 'pending:' + failure.runId : failure.sourceNodeId
+  if (!targetNodeId) {
+    store.feedback = '该失败没有可定位的图上目标（来源节点不存在）。'
+    return
+  }
+  const visualId = resolveFailureVisualNodeId(targetNodeId, routeId)
+  if (!visualId) {
+    store.feedback = '失败位置当前不在画布上（节点可能已被撤回或视图已变化）；可稍后重试定位。'
+    return
+  }
+  // 起草失败选中的是占位卡本身,不是只选中源节点。
+  graphUi.selectNode(visualId)
+  if (failure.operation === SPEC_GENERATION_OPERATION) {
+    specDockRef.value?.open()
+  } else if (failure.operation === NODE_QUERY_OPERATION) {
+    graphUi.setRightSidebar({ open: true, width: graphUi.rightSidebarWidth })
+  }
+  void nextTick(() => canvasRef.value?.locateNode(visualId))
+}
 
 /**
  * 中央一行状态已移除：过程展示收敛到画布节点内（pending 卡与既有节点的
@@ -415,6 +654,18 @@ const specReadingRouteLabel = computed(() => {
 })
 const specActiveRouteLabel = computed(() =>
   store.activeRoute?.label?.trim() || '当前路线',
+)
+/**
+ * 规格面板的失败条目(R5-A 的闭合):以 API 契约 operation=GENERATE_ARTIFACT
+ * 判定规格生成失败,并绑定面板正在查看的路线(显式阅读路线,与 specSnapshots
+ * 同一来源)——Active 路线 A、阅读路线 B 时,面板只展示/恢复 B 的任务,
+ * 绝不因 Active 指针串目标。
+ */
+const specFailureEntries = computed(() =>
+  runRegistry.failureList.filter((failure) =>
+    failure.operation === SPEC_GENERATION_OPERATION
+    && failure.routeId !== null
+    && failure.routeId === (specReadingRouteId.value ?? null)),
 )
 const specSnapshots = computed(() =>
   specReadingRouteId.value ? store.specsByRoute[specReadingRouteId.value] ?? [] : [],
@@ -480,8 +731,8 @@ function handleSpecDockExpandedChange(): void {
   specDockResizeTimer = window.setTimeout(() => {
     specDockResizeTimer = null
     void nextTick(() => {
-      // jsdom (unit tests) has no requestAnimationFrame; fall back to a timer so
-      // the callback never becomes an unhandled rejection in the test run.
+      // jsdom(单元测试)没有 requestAnimationFrame;回退到定时器,
+      // 保证回调在测试运行中不会变成未处理的 Promise 拒绝。
       const scheduleFrame = typeof window.requestAnimationFrame === 'function'
         ? window.requestAnimationFrame.bind(window)
         : (callback: FrameRequestCallback) => window.setTimeout(() => callback(0), 0)
@@ -503,7 +754,12 @@ const reanswerFinalized = computed(() => {
     && answer.routeId === reanswerSourceRoute.value!.id)
 })
 
-/** 恢复 CTA 的语义意图 → 已有 store 命令，不新增语义。 */
+/**
+ * 恢复 CTA 的语义意图 → 已有 store 命令,不新增语义。旧的全局分发已删除:
+ * - 无锚点的 `repairableAnswerId` 回退(旧全局"继续生成")→ 任务级失败恢复;
+ * - `retry-model-operation`(旧全局"重新请求")→ 各失败位置的任务级入口。
+ * "同步状态"对 manual retry 意图执行对账(检查状态,绝不盲重试)。
+ */
 async function handleRecoveryAction(action: RecoveryAction): Promise<void> {
   if (action === 'reconcile-answer') {
     await store.reconcileAnswerOutcome()
@@ -513,44 +769,32 @@ async function handleRecoveryAction(action: RecoveryAction): Promise<void> {
       await store.repairAnswerForActiveFlow(
         historical.answerId, historical.routeId, historical.nodeId,
       )
-    } else if (store.repairableAnswerId) {
-      await store.repairAnswerForActiveFlow(store.repairableAnswerId)
     }
   } else if (action === 'resubmit-answer') {
     await store.resubmitFailedAnswer()
-  } else if (action === 'retry-model-operation') {
-    const retryKind = store.manualModelRetry?.kind
-    const ok = await store.retryManualModelOperation()
-    if (ok && retryKind === 'regenerate') {
-      await focusAfterMutation()
-    }
+  } else if (store.manualModelRetry) {
+    // 对账路径:needs_reconcile/ambiguous 只检查状态并收敛意图,不重发请求。
+    await store.retryManualModelOperation()
   } else {
     await store.refreshWorkspace()
   }
 }
 
+/** 通用错误条的单一出口:配置错误/可验证锚点的恢复/刷新。失败任务的
+ * 重试不在全局错误条分发——从对应失败位置的任务级入口执行。 */
 async function retry(): Promise<void> {
   if (store.error && requiresModelSettings(store.error.code)) {
     if (router) await router.push({ name: 'settings' })
   } else if (store.answerOutcomeUnknown) {
     await store.reconcileAnswerOutcome()
-  } else if (store.repairableAnswerId) {
-    const historical = historicalAnswerRecoveryTarget.value
-    if (historical) {
-      await store.repairAnswerForActiveFlow(
-        historical.answerId, historical.routeId, historical.nodeId,
-      )
-    } else {
-      await store.repairAnswerForActiveFlow(store.repairableAnswerId)
-    }
+  } else if (historicalAnswerRecoveryTarget.value) {
+    // 历史 Answer 检查点:绑定具体 Answer/节点/路线(错误载荷携带身份)
+    const historical = historicalAnswerRecoveryTarget.value!
+    await store.repairAnswerForActiveFlow(
+      historical.answerId, historical.routeId, historical.nodeId,
+    )
   } else if (store.resubmitAnswerPayload) {
     await store.resubmitFailedAnswer()
-  } else if (store.manualModelRetry) {
-    const retryKind = store.manualModelRetry.kind
-    const ok = await store.retryManualModelOperation()
-    if (ok && retryKind === 'regenerate') {
-      await focusAfterMutation()
-    }
   } else {
     await store.loadWorkspace(props.projectId)
   }
@@ -666,8 +910,8 @@ async function handleRelationConfirm(payload: {
     payload.relationType as 'RELATED_TO' | 'DEPENDS_ON' | 'DERIVED_FROM' | 'CONFLICTS_WITH' | 'SUPPORTS',
   )
   if (ok) {
-    // Endpoints stay selected so the just-created relation is immediately
-    // visible without the global Show All toggle.
+    // 端点保持选中状态,让刚创建的关系立即可见,
+    // 无需再去开全局的"显示全部"开关。
     graphUi.selectNode(payload.sourceNodeId)
   }
 }
@@ -796,7 +1040,7 @@ async function handleForkSubmit(label: string | null): Promise<void> {
   if (!sourceRouteId) return
   const ok = await store.forkNode(forkNodeId.value, sourceRouteId, label)
   forkDialogOpen.value = false
-  if (ok || store.forkDraftRetryRouteId) {
+  if (ok) {
     await focusAfterMutation()
     forkNodeId.value = null
   }
@@ -816,9 +1060,8 @@ async function handleReanswerSubmit(label: string | null): Promise<void> {
   }
 }
 
-/** Fork prerequisites are explicit, local dialog actions. Each command
- * refreshes canonical state while the dialog remains open; no command is
- * chained into an implicit Fork. */
+/** Fork 的前置条件是显式的、弹窗内的本地操作。每条命令都在弹窗保持打开期间
+ * 刷新规范状态;任何命令都不会被串成一次隐式的 Fork。 */
 async function handleForkRestore(routeId: string): Promise<void> {
   await store.restoreRoute(routeId)
 }
@@ -835,10 +1078,6 @@ async function handleRegenerateSubmit(payload: RegenerateNodeRequest): Promise<v
   }
 }
 
-async function retryForkDraft(): Promise<void> {
-  const ok = await store.retryForkDraft()
-  if (ok) await focusAfterMutation()
-}
 
 function handleLocateRoute(routeId: string): void {
   void canvasRef.value?.locateRoute(routeId)
@@ -922,6 +1161,22 @@ async function confirmDestructive(): Promise<void> {
           />
         </div>
 
+        <!-- 顶部统一入口:只读恢复汇总与定位(第四轮 R4-B 的闭合)。
+             这里没有任何重试/生成控件——NodeRecoveryBar 的 locateOnly 模式
+             真实不渲染恢复按钮;真正的恢复动作只存在于对应失败位置
+             (节点恢复栏/下游占位卡/规格面板/节点检查器)。 -->
+        <div
+          v-if="store.graphView && runRegistry.failureList.length > 0"
+          class="workspace-shell__pending-banner"
+          data-test="pending-recovery-banner"
+        >
+          <NodeRecoveryBar
+            locate-only
+            :items="recoveryItemsFor(runRegistry.failureList)"
+            :is-retrying="(id) => runRegistry.isRetrying(id)"
+            @locate="handleLocateFailure"
+          />
+        </div>
         <div class="workspace-shell__graph-region">
           <GraphCanvas
             ref="canvasRef"
@@ -932,6 +1187,7 @@ async function confirmDestructive(): Promise<void> {
             :drafting="store.drafting"
             :pending="store.routeCommandPending"
             :runtime-by-node="runtimeByNode"
+            :recovery-by-node="recoveryByNode"
             :pendings="pendingProjections"
             @draft="handleDraft"
             @draft-next="handleDraftNext"
@@ -942,7 +1198,8 @@ async function confirmDestructive(): Promise<void> {
             @disconnect="handleDisconnect"
             @activate-route="handleActivateRouteForAnswer"
             @contextual-ai="handleContextualAi"
-            @retry-pending="store.retryPendingAgentRun"
+            @retry-failure="handleRetryFailure"
+            @go-settings="router && router.push('/settings')"
             @add-idea="handleAddIdea"
             @add-resource="resourceDialogOpen = true"
             @relation-proposal="handleRelationProposal"
@@ -955,11 +1212,11 @@ async function confirmDestructive(): Promise<void> {
               正在刷新工作区…
             </p>
             <p v-if="store.feedback" class="feedback-line" data-test="feedback" role="status">{{ store.feedback }}</p>
-            <button v-if="store.forkDraftRetryRouteId" class="btn btn-primary workspace-shell__retry-draft" data-test="retry-fork-draft" :disabled="workspaceRetrying" @click="retryForkDraft">重试起草</button>
           </div>
         </div>
 
         <SpecDock
+          ref="specDockRef"
           :reading-route-id="specReadingRouteId"
           :reading-route-label="specReadingRouteLabel"
           :active-route-id="store.activeRoute?.id ?? null"
@@ -969,6 +1226,9 @@ async function confirmDestructive(): Promise<void> {
           :generating="store.generatingSpec"
           :exporting="store.exportingSpec"
           :command-pending="store.routeCommandPending"
+          :spec-failures="specFailureEntries"
+          :is-retrying="(id) => runRegistry.isRetrying(id)"
+          @retry-failure="handleRetryFailure"
           @generate-spec="handleGenerateSpec"
           @export-spec="handleExportSpec"
           @select-snapshot="handleSelectSpec"

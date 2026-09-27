@@ -1,3 +1,5 @@
+// 文件名:BackLink.spec.ts
+// 用途:BackLink 组件单元测试:验证返回链接的渲染与跳转目标。
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createRouter, createWebHistory } from 'vue-router'

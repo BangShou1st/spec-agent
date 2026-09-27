@@ -21,6 +21,14 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * 文件名:ActionEligibilityEvaluatorTest.java
+ *
+ * 测试目标:验证 ActionEligibilityEvaluator 的确定性——运行时身份变化、claims 顺序、
+ * 无关能力上下文的顺序都不应改变 eligibility 掩码与 basisHash;并验证冻结原则:
+ * 未解决的 conflict/open_question 不会否决 CREATE_NODE,只有客观执行前置条件
+ * (能力可见性、WAIT 依赖)才能在该边界限制 eligibility。
+ */
 class ActionEligibilityEvaluatorTest {
 
     private static final Path FIXTURES = Path.of("../contracts/fixtures");
@@ -85,10 +93,9 @@ class ActionEligibilityEvaluatorTest {
 
     @Test
     void unresolvedConflictLeavesCreateNodeEligible() throws Exception {
-        // Frozen principle: constrain execution, not reasoning. An unresolved
-        // conflict/open_question never denies CREATE_NODE here. Only objective
-        // execution preconditions (capability visibility, WAIT dependency)
-        // may restrict eligibility at this boundary.
+        // 冻结原则:约束执行而不是约束推理。这里未解决的 conflict/open_question
+        // 绝不否决 CREATE_NODE。只有客观执行前置条件(能力可见性、WAIT 依赖)
+        // 才能在这个边界限制 eligibility。
         AgentRequestEnvelope original = request();
         AgentInputSnapshot snapshot = original.snapshot();
         List<ClaimView> claims = new ArrayList<>(snapshot.effectiveClaims());
@@ -103,8 +110,7 @@ class ActionEligibilityEvaluatorTest {
         assertThat(result.eligibleFamilies()).contains("CREATE_NODE");
         assertThat(result.constraints().get("CREATE_NODE").eligible()).isTrue();
         assertThat(result.constraints().get("CREATE_NODE").reasonCodes()).isEmpty();
-        // Objective execution precondition still applies: WAIT has no
-        // pending-dependency representation in this input.
+        // 客观执行前置条件仍然生效:该输入中 WAIT 没有 pending 依赖的表现。
         assertThat(result.eligibleFamilies()).doesNotContain("WAIT");
         assertThat(result.constraints().get("WAIT").reasonCodes())
                 .containsExactly(ActionEligibilityReasonCode.NO_PENDING_DEPENDENCY);

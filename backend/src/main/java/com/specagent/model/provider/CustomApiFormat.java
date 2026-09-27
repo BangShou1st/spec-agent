@@ -1,8 +1,10 @@
 package com.specagent.model.provider;
 
 /**
- * Custom provider wire protocol. Provider identity stays {@link ModelProvider#CUSTOM};
- * this enum only selects the protocol adapter inside the Custom boundary.
+ * 文件名:CustomApiFormat.java
+ *
+ * 用途:自定义提供商使用的线上协议格式。提供商身份仍是 {@link ModelProvider#CUSTOM};
+ * 本枚举只在 Custom 边界内部选择对应的协议适配器。
  */
 public enum CustomApiFormat {
     CHAT_COMPLETIONS,
@@ -21,7 +23,7 @@ public enum CustomApiFormat {
         };
     }
 
-    /** Canonical endpoint suffix appended to the normalized base URL. */
+    /** 拼接到规范化 base URL 之后的规范端点后缀。 */
     public String endpointSuffix() {
         return switch (this) {
             case CHAT_COMPLETIONS -> "/chat/completions";
@@ -30,7 +32,7 @@ public enum CustomApiFormat {
         };
     }
 
-    /** UI presentation label required by the frozen design. */
+    /** 冻结设计要求的 UI 展示标签。 */
     public String presentationLabel() {
         return switch (this) {
             case ANTHROPIC_MESSAGES -> "Anthropic Messages (/v1/messages)";

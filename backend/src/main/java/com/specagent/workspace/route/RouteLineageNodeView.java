@@ -7,12 +7,12 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Read-only view of one immutable node on a route lineage.
+ * 文件名:RouteLineageNodeView.java
  *
- * <p>Exposes only the safe immutable node fields the UI needs to identify and
- * inspect a historical clarification node before fork/regenerate. Answers,
- * patches, context snapshots, model payloads, provider data, and database
- * internals are never exposed.
+ * 用途:路线 lineage 上单个不可变节点的只读视图。只暴露 UI 识别和
+ * 检视分叉/重新生成之前的历史澄清节点所需的、安全的不可变节点字段;
+ * 答案、补丁、上下文快照、模型负载、provider 数据和数据库内部结构
+ * 一律不外露。
  */
 public record RouteLineageNodeView(
         UUID id,

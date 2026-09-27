@@ -24,7 +24,18 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
-/** Offline replay of the production Java eligibility evaluator over eval traces. */
+/**
+ * 文件名:ActionEligibilityShadowReplay.java
+ *
+ * 用途:影子回放工具——用生产环境真实的 {@link ActionEligibilityEvaluator} 和
+ * {@link ActionEligibilityValidator},离线重放评测产物(results.jsonl)中记录的
+ * DECISION_INPUT / DECISION_OUTPUT 阶段,统计"如果当时启用了资格校验,会有多少
+ * 动作被否决(would-veto)"。核心产出是 vetoed_passes(会误伤的正确动作)和
+ * vetoed_failures(能拦住的失败动作)两个指标,用于在上线资格门禁前评估其影响面。
+ *
+ * 协作:独立入口(main),读取 {@link EvalArtifactWriter} 生成的 jsonl 评测产物,
+ * 输出 eligibility-shadow-report.json / .txt 两份报告。
+ */
 public final class ActionEligibilityShadowReplay {
 
     private ActionEligibilityShadowReplay() {

@@ -1,11 +1,9 @@
-/**
- * Graph workspace mutation API: transactional commands, the typed operation
- * log behind Undo/Redo, semantic relations, and contextual node queries.
- *
- * All endpoints are Runtime commands — none of them call a model. Route
- * context is always explicit; a shared node never falls back to an
- * active/first/latest route to resolve its read context.
- */
+// 文件名:graphCommands.ts
+// 用途:图工作台的变更 API:事务性命令、支撑撤销/重做的类型化操作日志、
+//       语义关系与上下文节点查询。
+// 所有端点都是运行时命令——没有任何一个会调用模型。路线上下文始终显式;
+// 共享节点绝不回退到 active/first/latest 路线来解析阅读上下文。
+
 import { apiClient } from '@/shared/http/client'
 import type { GraphWorkspaceRelationView } from '@/shared/contracts/types'
 
@@ -37,7 +35,7 @@ export interface UndoRedoResult {
     status: string
   }
   description: string
-  /** Display title of the compensated node when it is still resolvable. */
+  /** 被补偿节点仍可解析时的展示标题。 */
   targetTitle: string | null
 }
 
@@ -51,41 +49,40 @@ export interface NodeQueryRunResult {
   status: string
   producedNodeId: string | null
   message: string | null
-  /** Present when status === 'AWAITING_APPROVAL'. */
+  /** status === 'AWAITING_APPROVAL' 时存在。 */
   proposalId?: string | null
   proposalStatus?: string | null
   actionFamily?: string | null
 }
 
-/** Result of accepting a pending NodeQuery proposal. */
+/** 接受一个待定的 NodeQuery 提案的结果。 */
 export interface ProposalAcceptResult {
   proposalId: string
   status: string
   actionFamily: string | null
   producedNodeId: string | null
   relationId: string | null
-  /** Originating run whose continuation chain may reopen; null for legacy flows. */
+  /** 来源运行的续跑链可能被重新打开;旧流程为 null。 */
   originRunId?: string | null
 }
 
-/** Result of rejecting a pending NodeQuery proposal. */
+/** 拒绝一个待定 NodeQuery 提案的结果。 */
 export interface ProposalRejectResult {
   proposalId: string
   status: string
 }
 
 /**
- * Safe summary of one durable AgentProposal, with enough runtime identity to
- * reconnect a pending proposal to its NodeQuery anchor after a page reload.
- * triggerType is derived from the proposal's AgentRun and is the ONLY reliable
- * way to tell a NodeQuery proposal apart from an Answer/Decision one — every
- * run type carries an inputNodeId, so inputNodeId must never be used to infer
- * the query origin.
+ * 单个持久化 AgentProposal 的安全摘要,带有足够的运行时身份,
+ * 使页面刷新后仍能把待定提案重新挂回它的 NodeQuery 锚点。
+ * triggerType 由提案的 AgentRun 派生,是区分 NodeQuery 提案与
+ * Answer/Decision 提案的唯一可靠依据——每种运行类型都带 inputNodeId,
+ * 因此绝不能用 inputNodeId 推断查询来源。
  */
 export interface ProjectProposalSummary {
   proposalId: string
   runId: string | null
-  /** AgentRunTriggerType code of the producing run (e.g. "node_query"). */
+  /** 产生该提案的运行的 AgentRunTriggerType 代码(如 "node_query")。 */
   triggerType: string | null
   inputNodeId: string | null
   routeId: string | null
@@ -97,19 +94,18 @@ export interface ProjectProposalSummary {
 }
 
 /**
- * Optional server-side trigger-type narrowing of the shared proposal list.
- * Both fields are lists of AgentRunTriggerType codes (e.g. "node_query") and
- * are sent comma-separated; an absent/empty list means "no filter", so the
- * call stays backward compatible with the unfiltered list.
+ * 对共享提案列表做可选的服务端 trigger-type 收窄。
+ * 两个字段都是 AgentRunTriggerType 代码列表(如 "node_query"),以逗号分隔发送;
+ * 缺省/空列表表示"不过滤",调用因此对未过滤列表保持向后兼容。
  */
 export interface ProposalTriggerFilter {
-  /** Keep only proposals whose producing run has one of these trigger types. */
+  /** 只保留产生运行的 trigger type 属于这些的提案。 */
   triggerTypes?: string[] | null
-  /** Drop proposals whose producing run has one of these trigger types. */
+  /** 丢弃产生运行的 trigger type 属于这些的提案。 */
   excludeTriggerTypes?: string[] | null
 }
 
-/** Lists durable proposals of a project, defaulting to the pending ones. */
+/** 列出项目的持久化提案,默认只看待定的。 */
 export function listProposals(
   projectId: string,
   status = 'PROPOSED',
@@ -138,13 +134,12 @@ export function createRootDraftNode(
   )
 }
 
-/** Creates a standalone (floating) draft that starts disconnected from every
- * lineage. The creation-context route id is optional — a floating node may be
- * created with no Active route (routeId=null is legal).
+/** 创建一个独立(浮动)草稿节点,初始与所有谱系断开。
+ * 创建上下文的路线 id 可选——浮动节点可以在没有 Active 路线时创建(routeId=null 合法)。
  *
- * `nodeKind` selects the node's semantics: KNOWLEDGE (default, "+ 想法") or
- * RESOURCE (attached documents). A floating resource is authored first and
- * connected to a route later via {@link connectFloatingNode}. */
+ * `nodeKind` 决定节点语义:KNOWLEDGE(默认,"+ 想法")或
+ * RESOURCE(附件文档)。浮动资源先编写内容,之后通过 {@link connectFloatingNode}
+ * 接入某条路线。 */
 export function createFloatingDraftNode(
   projectId: string,
   routeId: string | null,
@@ -157,10 +152,9 @@ export function createFloatingDraftNode(
 }
 
 /**
- * Connects a floating node into a route as its new tip. The backend only
- * accepts the route's current tip (never a historical insert) and rejects an
- * unanswered question as parent, so a hand-drawn connection cannot rewrite
- * lineage. The node keeps its id, kind and content.
+ * 把浮动节点接入某条路线,成为其新的末端。后端只接受路线当前末端
+ * (绝不做历史插入),并且拒绝把未回答的问题当作父节点,因此手工连线
+ * 不可能改写谱系。节点保留自己的 id、kind 和内容。
  */
 export function connectFloatingNode(
   projectId: string,
@@ -174,7 +168,7 @@ export function connectFloatingNode(
   )
 }
 
-/** Detaches the current tip from its route, restoring a floating node. */
+/** 把当前末端从其路线分离,恢复为浮动节点。 */
 export function disconnectNode(
   projectId: string,
   nodeId: string,
@@ -276,16 +270,14 @@ export function getNodeQueryResult(
 }
 
 /**
- * Accepts a pending NodeQuery proposal. The backend currently takes only the
- * path-bound proposal id, so an empty body is sent. On success the caller is
- * expected to refresh the canonical graph because accepting a proposal may
- * produce new nodes/relations.
+ * 接受一个待定的 NodeQuery 提案。后端目前只取路径中的提案 id,因此发送空请求体。
+ * 成功后调用方应刷新规范图,因为接受提案可能产生新的节点/关系。
  */
 export function acceptProposal(id: string): Promise<ProposalAcceptResult> {
   return apiClient.post<ProposalAcceptResult>(`/proposals/${id}/accept`, {})
 }
 
-/** Rejects a pending NodeQuery proposal; the graph is left unchanged. */
+/** 拒绝一个待定的 NodeQuery 提案;图保持不变。 */
 export function rejectProposal(id: string): Promise<ProposalRejectResult> {
   return apiClient.post<ProposalRejectResult>(`/proposals/${id}/reject`, {})
 }

@@ -1,3 +1,5 @@
+// 文件名:RouteActionDialog.spec.ts
+// 用途:RouteActionDialog(fork 模式)单元测试,验证不提供路线选择器、共享节点需先选查看路线、归档来源可恢复、未回答拦截与取消行为。
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import RouteActionDialog from '@/features/workspace/components/RouteActionDialog.vue'

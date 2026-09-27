@@ -19,13 +19,13 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Durable store for the Skill Runtime. The database is the authoritative
- * Skill state: installed versions are immutable rows with content hashes, and
- * staged imports are separate review records. Nothing lives on the host
- * filesystem.
+ * 文件名:SkillRepository.java
  *
- * <p>This repository is deliberately a persistence seam for the Skill domain;
- * the Agent/Brain never consumes it directly.
+ * 用途:Skill Runtime 的持久化存储。数据库是 Skill 状态的权威来源:已安装
+ * 版本为带内容哈希的不可变记录,暂存导入是独立的待审阅记录。任何东西都不落
+ * 宿主文件系统。
+ *
+ * 本仓储刻意作为 Skill 领域的持久化接缝存在;Agent/Brain 绝不直接消费它。
  */
 @Repository
 public class SkillRepository {
@@ -93,7 +93,7 @@ public class SkillRepository {
         this.json = json;
     }
 
-    // ---- skills ----------------------------------------------------------
+    // ---- skill 表 ---------------------------------------------------------
 
     public Skill insertSkill(Skill skill) {
         String sql = """
@@ -167,7 +167,7 @@ public class SkillRepository {
         return jdbc.query(sql, Map.of("name", name), skillMapper).stream().findFirst();
     }
 
-    // ---- versions --------------------------------------------------------
+    // ---- 版本表 ------------------------------------------------------------
 
     public SkillVersion insertVersion(SkillVersion version) {
         String sql = """
@@ -216,7 +216,7 @@ public class SkillRepository {
         return jdbc.queryForObject(sql, Map.of("skillRowId", skillRowId), Integer.class);
     }
 
-    // ---- package files ---------------------------------------------------
+    // ---- 包文件表 -----------------------------------------------------------
 
     public void insertPackageFiles(List<SkillPackageFile> files) {
         for (SkillPackageFile file : files) {
@@ -250,7 +250,7 @@ public class SkillRepository {
                 .stream().findFirst();
     }
 
-    // ---- staged imports --------------------------------------------------
+    // ---- 暂存导入表 ---------------------------------------------------------
 
     public SkillStagedImport insertStagedImport(SkillStagedImport staged) {
         String sql = """
@@ -350,7 +350,7 @@ public class SkillRepository {
                 Map.of("stagedImportId", stagedImportId));
     }
 
-    // ---- activations -----------------------------------------------------
+    // ---- 激活记录表 ----------------------------------------------------------
 
     public void recordActivation(UUID projectId, UUID runId, String skillId, UUID versionId,
                                  String sourceIdentity, String contentHash) {
@@ -373,7 +373,7 @@ public class SkillRepository {
                 .addValue("createdAt", Timestamp.from(Instant.now())));
     }
 
-    /** Newest activations for one project (bounded). */
+    /** 单个项目最近的激活记录(有界)。 */
     public List<UUID> recentActivatedVersionIds(UUID projectId, int limit) {
         String sql = """
                 SELECT version_id FROM skill_activations
@@ -399,8 +399,8 @@ public class SkillRepository {
     }
 
     /**
-     * Returns the installed version's file list (path + kind + size + hash)
-     * without the byte payload for bounded catalog projection.
+     * 返回已安装版本的文件清单(路径 + 类型 + 大小 + 哈希),不含字节负载,
+     * 供有界的目录投影使用。
      */
     public List<FileSummary> listFileSummaries(UUID versionId) {
         String sql = "SELECT relative_path, kind, size_bytes, sha256 "

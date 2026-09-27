@@ -27,7 +27,6 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.UUID;
@@ -40,18 +39,21 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Artifact generation must never publish a document that silently omits an
- * answer the user already gave.
+ * 文件名:ArtifactGenerationAnswerGateIntegrationTest.java
  *
- * <p>A route tip carrying a persisted Answer with no AnswerPatch never finished
- * its STATE_UPDATE, so that answer's claims are missing from the state a spec
- * would be derived from. Both the command surface and the queued run refuse it,
- * and the refusal names the recovery the checkpoint already supports.
+ * 测试目标:验证制品生成门禁——绝不能发布一份静默遗漏用户已给出答案的文档。
+ * 路线 tip 上持久化了 Answer 但没有 AnswerPatch,说明该答案的 STATE_UPDATE 从未完成,
+ * 其 claims 不在规格推导所依赖的状态里;命令入口与排队 run 都必须拒绝,
+ * 且拒绝信息要指名检查点已支持的恢复方式。
+ *
+ * 刻意不加 @Transactional(与 TypedRunFailureIntegrationTest 同理):失败终态化与
+ * RUN_FAILED 事件在独立的 REQUIRES_NEW 事务内原子提交——这正是第四轮所有权协议的
+ * 一致性要求;外层测试事务会让 REQUIRES_NEW 看不到未提交的 run 行,从而掩盖本套件
+ * 要断言的那条记录。生产中 claim 事务在 worker 执行之前已经提交,本形态与之完全一致。
  */
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-@Transactional
 class ArtifactGenerationAnswerGateIntegrationTest {
 
     @Autowired
@@ -76,9 +78,28 @@ class ArtifactGenerationAnswerGateIntegrationTest {
     private AgentRunEventService eventService;
     @Autowired
     private RunWorker worker;
+    @Autowired
+    private org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate jdbc;
+
+    private final java.util.List<UUID> touchedProjectIds = new java.util.ArrayList<>();
+
+    @org.junit.jupiter.api.AfterEach
+    void cleanUpRunRows() {
+        for (UUID projectId : touchedProjectIds) {
+            jdbc.update("DELETE FROM agent_run_events WHERE run_id IN "
+                    + "(SELECT id FROM agent_runs WHERE project_id = :projectId)",
+                    java.util.Map.of("projectId", projectId));
+            jdbc.update("DELETE FROM agent_run_continuation_checks WHERE run_id IN "
+                    + "(SELECT id FROM agent_runs WHERE project_id = :projectId)",
+                    java.util.Map.of("projectId", projectId));
+            jdbc.update("DELETE FROM agent_runs WHERE project_id = :projectId",
+                    java.util.Map.of("projectId", projectId));
+        }
+    }
 
     private Project projectWithTipQuestion() {
         Project project = projectService.createProject("Artifact gate project");
+        touchedProjectIds.add(project.id());
         nodeService.createRootNode(project.id(), project.activeRouteId(),
                 "What is the goal?", null, List.of(), true);
         return project;
@@ -101,7 +122,7 @@ class ArtifactGenerationAnswerGateIntegrationTest {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("ANSWER_CYCLE_INCOMPLETE"));
 
-        // Nothing was generated and nothing was queued that could generate it.
+        // 什么都没有生成,也没有排队任何可能生成它的 run。
         assertThat(runService.claimNextArtifact()).isEmpty();
         assertThat(specSnapshotService.listByRoute(project.activeRouteId())).isEmpty();
     }
@@ -137,8 +158,7 @@ class ArtifactGenerationAnswerGateIntegrationTest {
         String runId = new com.fasterxml.jackson.databind.ObjectMapper()
                 .readTree(accepted.getResponse().getContentAsString()).get("runId").asText();
 
-        // The user answers before the queued run is claimed; the answer's
-        // STATE_UPDATE never completes.
+        // 用户在排队 run 被认领之前提交了答案;该答案的 STATE_UPDATE 从未完成。
         answerService.finalizeAnswer(project.id(), project.activeRouteId(), tipNodeId,
                 null, "saved answer", "user");
 
@@ -146,10 +166,9 @@ class ArtifactGenerationAnswerGateIntegrationTest {
         assertThatThrownBy(() -> worker.executeRun(claimed))
                 .isInstanceOf(RuntimeException.class);
 
-        // The durable FAILED status is written in its own REQUIRES_NEW
-        // transaction (invisible to this test's transaction); the non-
-        // transactional TypedRunFailureIntegrationTest asserts that status. Here
-        // the decisive evidence is the recorded failure itself.
+        // 持久的 FAILED 状态与 RUN_FAILED 事件在同一 REQUIRES_NEW 事务内
+        // 原子提交(第四轮失败一致性协议);这里决定性的证据是记录下来的失败
+        // 事件本身,以及"没有任何 spec 快照被生成"。
         AgentRun run = agentRunService.getRun(UUID.fromString(runId)).orElseThrow();
         assertThat(specSnapshotService.listByRoute(project.activeRouteId())).isEmpty();
 
@@ -161,8 +180,7 @@ class ArtifactGenerationAnswerGateIntegrationTest {
                 .containsEntry("errorCode", RunFailureReasons.ANSWER_CYCLE_INCOMPLETE);
         assertThat((String) failed.payload().get("summary")).isNotBlank();
 
-        // The same explanation reaches the client through the whitelisted
-        // progress read model.
+        // 同样的说明通过白名单进度读模型送达客户端。
         mockMvc.perform(get("/api/v1/projects/{projectId}/agent-runs/{runId}",
                         project.id(), run.id()))
                 .andExpect(status().isOk())

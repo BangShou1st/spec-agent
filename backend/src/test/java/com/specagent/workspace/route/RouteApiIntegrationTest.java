@@ -22,8 +22,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Route read API integration tests. Reads never mutate route lifecycle and
- * never introduce an {@code active} lifecycle status.
+ * 文件名:RouteApiIntegrationTest.java
+ *
+ * 测试目标:路线读取 API 的集成测试——读取绝不改变路线生命周期,
+ * 也绝不引入 {@code active} 生命周期状态。
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -83,8 +85,7 @@ class RouteApiIntegrationTest {
         mockMvc.perform(get("/api/v1/projects/{id}/routes", project.id()))
                 .andExpect(status().isOk());
 
-        // After the read, the active route is still the original one and no
-        // lifecycle status changed.
+        // 读取之后,活跃路线仍是原始那条,且没有任何生命周期状态变化。
         var routes = routeService.listRoutes(project.id());
         assertThat(routes.stream().filter(r -> r.lifecycleStatus() == RouteLifecycleStatus.OPEN))
                 .hasSize(2);

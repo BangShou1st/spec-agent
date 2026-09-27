@@ -4,10 +4,13 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * The artifact generation response returned by the Python brain: a derived,
- * read-only deliverable with grounded content and source references only.
- * The runtime owns every id; the model may cite refs from the request
- * snapshot's allowed set and nothing else.
+ * 文件名:AgentArtifactResponse.java
+ *
+ * 用途:Python Brain 返回的产物(artifact)生成响应——一份派生的、
+ * 只读的交付物,只包含有依据(grounded)的内容和来源引用。
+ *
+ * 约束:所有 id 由 Runtime 拥有;模型只能引用请求快照允许集合内的
+ * ref,此外一律拒绝。紧凑构造器按 fail-closed 方式校验协议版本。
  */
 public record AgentArtifactResponse(String protocolVersion,
                                      UUID runId,
@@ -22,15 +25,14 @@ public record AgentArtifactResponse(String protocolVersion,
     }
 
     /**
-     * One grounded artifact section; {@code sourceRefs} must be non-empty and
-     * every ref must be inside the request snapshot's allowed set.
+     * 一个有依据的产物章节;{@code sourceRefs} 必须非空,且每个 ref
+     * 都必须落在请求快照的允许引用集合内。
      */
     public record ArtifactSection(String title, String content, List<String> sourceRefs) {
     }
 
     /**
-     * The generated artifact body. Initially the only supported type is
-     * {@code spec_snapshot}.
+     * 生成的产物主体。初期唯一支持的类型是 {@code spec_snapshot}。
      */
     public record ArtifactGenerationResult(String artifactType,
                                             List<ArtifactSection> sections,

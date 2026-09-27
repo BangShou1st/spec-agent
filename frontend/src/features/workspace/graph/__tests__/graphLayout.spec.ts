@@ -1,3 +1,5 @@
+// 文件名:graphLayout.spec.ts
+// 用途:画布布局的单元测试:验证初始布局的方向与槽位、保存坐标优先、新节点空闲槽位寻找(含高卡重叠规避)、测量高度的行距增长与首次/增量刷新策略。
 import { describe, expect, it } from 'vitest'
 import { computeInitialLayout, placeNewNode, resolvePositions, HORIZONTAL_GAP, VERTICAL_GAP } from '@/features/workspace/graph/graphLayout'
 import type { GraphPosition } from '@/features/workspace/graph/graphTypes'
@@ -37,7 +39,7 @@ describe('graph layout', () => {
     const saved: Record<string, GraphPosition> = { a: { x: 42, y: 99 } }
     const positions = computeInitialLayout(nodes, saved)
     expect(positions.a).toEqual({ x: 42, y: 99 })
-    // the unsaved sibling still gets a computed position
+    // 未保存的兄弟节点仍获得计算出的位置
     expect(positions.b.x).toBe(HORIZONTAL_GAP)
   })
 

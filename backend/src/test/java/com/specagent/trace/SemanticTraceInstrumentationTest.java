@@ -17,7 +17,13 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** Deterministic safety tests for the diagnostic-only trace seam. */
+/**
+ * 文件名:SemanticTraceInstrumentationTest.java
+ *
+ * 测试目标:针对仅用于诊断的语义追踪接缝的确定性安全测试——启用追踪
+ * 时捕获各阶段但不改变推理请求、禁用时完全空操作、并验证敏感信息在值与
+ * 异常摘要中的脱敏。
+ */
 class SemanticTraceInstrumentationTest {
 
     private static final Path FIXTURES = Path.of("../contracts/fixtures");

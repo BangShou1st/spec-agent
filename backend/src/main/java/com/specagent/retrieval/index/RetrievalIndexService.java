@@ -9,9 +9,13 @@ import com.specagent.workspace.patch.AnswerPatchIndexPort;
 import org.springframework.stereotype.Service;
 
 /**
- * Application-boundary adapter for incremental derived indexing. Canonical
- * writers depend only on their own narrow outbound ports; this service owns
- * the retrieval projection and never calls an embedding provider.
+ * 文件名:RetrievalIndexService.java
+ *
+ * 用途:增量派生索引的应用层边界适配器。规范化写入方(Node/Answer/
+ * AnswerPatch 的写服务)只依赖各自窄的出站端口,本服务实现这些端口,
+ * 把新写入的领域对象投影进检索索引。
+ *
+ * 它只拥有检索投影,绝不调用嵌入服务(向量增强是独立环节)。
  */
 @Service
 public class RetrievalIndexService implements NodeIndexPort, AnswerIndexPort, AnswerPatchIndexPort {

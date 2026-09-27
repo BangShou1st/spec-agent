@@ -1,6 +1,10 @@
 package com.specagent.workspace.route;
 
-/** Route command kinds recorded in the graph operation journal. */
+/**
+ * 文件名:RouteOperationKind.java
+ *
+ * 用途:记录在图操作日志中的路线命令类型枚举。
+ */
 public enum RouteOperationKind {
     ROUTE_LIFECYCLE,
     ROUTE_FORK,

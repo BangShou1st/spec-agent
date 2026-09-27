@@ -1,3 +1,7 @@
+<!--
+  文件名:AppIcon.vue
+  用途:内联 SVG 图标组件:按 name 渲染内置图标集合,供工具栏、按钮等统一使用。
+-->
 <script setup lang="ts">
 const props = defineProps<{
   name:

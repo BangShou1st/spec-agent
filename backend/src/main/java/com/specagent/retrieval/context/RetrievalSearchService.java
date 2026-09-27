@@ -20,7 +20,13 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-/** Explicit, bounded read-only retrieval used by memory.search. */
+/**
+ * 文件名:RetrievalSearchService.java
+ *
+ * 用途:供 memory.search 使用的显式、有界、只读检索服务。按指定的
+ * 单一范围(ROUTE/PROJECT/RESOURCE)执行混合检索并返回带溯源的结果,
+ * 供用户或工具主动搜索项目记忆。
+ */
 @Service
 public class RetrievalSearchService {
 

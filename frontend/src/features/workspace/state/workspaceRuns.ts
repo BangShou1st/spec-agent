@@ -1,14 +1,15 @@
-/**
- * Workspace runs domain: the async Agent Runtime lifecycle.
+// 文件名:workspaceRuns.ts
+// 用途:工作区 run 领域:异步 Agent 运行时生命周期(起草/作答/轮询 run 链到终态叶子/fail-closed 结果对账/手动重试),以及回答恢复读取与 mutation 后的聚焦交接。
+/*
+ * 工作区 run 领域:异步 Agent 运行时的生命周期。
  *
- * Drafting, answering, polling run chains to a terminal leaf, reconciling the
- * fail-closed outcome states, and the manual retry affordances the UI surfaces
- * after a failed or unknown run. Also owns the answer-recovery readers and the
- * post-mutation focus handoff they feed.
+ * 起草、作答、把 run 链轮询到终态叶子、对 fail-closed 的结果状态做对账,
+ * 以及失败/未知 run 之后 UI 呈现的手动重试入口。还负责回答恢复读取,以及
+ * 由它们喂养的 mutation 后聚焦交接。
  *
- * Every function is the verbatim action body lifted out of `workspaceStore.ts`
- * with `this` replaced by the store instance passed in as the first argument.
- * The store keeps the action names and delegates, so no caller changes.
+ * 每个函数都是从 `workspaceStore.ts` 原样搬出的 action 主体,只是把
+ * `this` 换成了作为第一个参数传入的 store 实例。store 保留原 action 名
+ * 并委托到这里,调用方零改动。
  */
 import { reactive } from 'vue'
 import { sleep } from '@/shared/lib/timing'
@@ -18,8 +19,9 @@ import {
   createAgentRun,
   getAgentRun,
   isTerminalRunStatus,
+  retryAgentRun,
 } from '@/features/workspace/api/agentRuns'
-import type { AgentRunView } from '@/features/workspace/api/agentRuns'
+import type { AgentRunView, UnresolvedFailure } from '@/features/workspace/api/agentRuns'
 import { ApiError, GENERIC_ERROR_MESSAGE } from '@/shared/http/client'
 import { toDisplayError } from '@/shared/http/displayError'
 import { classifyModelFailure } from '@/shared/http/errorCopy'
@@ -35,16 +37,14 @@ import type {
 } from './types'
 import { withAnswerableNodeHint } from './shared'
 
-// ---- Answer-run session helpers ---------------------------------------------
+// ---- 回答 run 会话辅助 ------------------------------------------------------
 //
-// Every answer attempt owns an `AnswerRunSessionState` entry on the store.
-// All lifecycle writes below go through the session object — never through
-// the store's derived single-value getters — so two concurrent answers on
-// different routes are fully isolated.
+// 每次回答尝试都在 store 上拥有一个 `AnswerRunSessionState` 条目。下方
+// 所有生命周期写入都走会话对象——绝不走 store 的派生单值 getter——因此
+// 不同路线上的两个并发回答完全隔离。
 
-/** True while the session is still tracked by THIS store instance. A project
- * switch (beginProject) drops all sessions; a detached session must never
- * write feedback/error into the NEW project. */
+/** 此会话仍被本 store 实例追踪时为 true。项目切换(beginProject)会丢弃
+ * 全部会话;被脱离的会话绝不能把反馈/错误写进新项目。 */
 function isSessionTracked(store: AnswerRunSlice, session: AnswerRunSessionState): boolean {
   return store.answerRunSessions.includes(session)
 }
@@ -54,10 +54,9 @@ function removeAnswerSession(store: AnswerRunSlice, session: AnswerRunSessionSta
   if (index >= 0) store.answerRunSessions.splice(index, 1)
 }
 
-/**
- * A successful recovery supersedes only stale sessions for the exact answer
- * target. Other answers/routes remain visible, and a separate run that is
- * still in flight is never cancelled by another run's terminal observation.
+/*
+ * 一次成功的恢复只取代与确切回答目标匹配的过期会话。其它回答/路线保持
+ * 可见,仍在途的另一条 run 绝不会被本 run 的终态观察取消。
  */
 function removeCompletedAnswerRecoverySessions(
   store: AnswerRunSlice,
@@ -83,8 +82,8 @@ function removeCompletedAnswerRecoverySessions(
   }
 }
 
-/** Live tip of one explicit route, read from the canonical graph. Never the
- * Active pointer: under multi-route work it may name a different route. */
+/** 从 canonical 图读取某条显式路线的实时末端。绝不是 Active 指针:
+ * 多路线工作下它可能指向另一条路线。 */
 function routeTipOf(store: AnswerRunSlice, routeId: string | null): string | null {
   if (!routeId) return null
   return store.graphView?.routes.find((route) => route.id === routeId)?.tipNodeId ?? null
@@ -94,11 +93,10 @@ function findSessionByRunId(store: AnswerRunSlice, runId: string): AnswerRunSess
   return store.answerRunSessions.find((session) => session.runId === runId) ?? null
 }
 
-/**
- * Canonical read: does the route this session was submitted to carry a
- * finalized Answer for the answered node? Under multi-route work the route
- * is NOT the Active route, so searching the Active route's answers would
- * report "nothing landed" and offer a resubmit for an answer that exists.
+/*
+ * canonical 读取:本会话提交到的那条路线是否已为被回答节点落定了一条
+ * 回答?多路线工作下该路线不是 Active 路线,因此搜索 Active 路线的回答
+ * 会错误报告"什么都没落地",并对一条已存在的回答提供重提交。
  */
 function findFinalizedAnswerForSession(
   store: AnswerRunSlice,
@@ -170,9 +168,9 @@ export function markPendingRouteFailedAction(
   }
 }
 
-/**
- * Drafts the next question through the async Agent Runtime. Explicit user
- * action only; a fresh project enqueues no run until this fires.
+/*
+ * 经异步 Agent 运行时起草下一个问题。仅限显式用户动作;新项目在触发
+ * 之前不会排入任何 run。
  *
  * 显式路线模式：从路线菜单 / 路线末端节点发起时传入 routeId，整个 run
  * 绑定该路线（与 ANSWER_TIP 的显式模式一致，多路线可各自独立起草）；
@@ -185,10 +183,9 @@ export async function draftQuestionAction(
   if (!store.projectId || store.drafting || store.routeCommandPending) {
     return false
   }
-  // Draft identity: the project (and its session) captured when the user
-  // action started. After EVERY await the identity is re-validated before
-  // any store write, so a slow draft can never leak its error/feedback or
-  // clear its projection into a different project session.
+  // 起草身份:用户动作开始时捕获的项目(及其会话)。每个 await 之后、
+  // 任何 store 写入之前都重新校验该身份,因此一次慢的起草绝不能把它的
+  // 错误/反馈泄漏到另一个项目会话,也绝不能清掉别的会话的投影。
   const projectId = store.projectId
   const projectSessionId = store.projectSessionId
   const isCurrent = (): boolean =>
@@ -244,8 +241,8 @@ export async function draftQuestionAction(
     const outcome = await store.pollDraftRun(run.runId)
     if (!isCurrent()) return false
     if (outcome === 'completed') {
-      // A terminal RESPOND leaf carries the user-visible message; a
-      // graph-mutation leaf keeps the existing draft confirmation copy.
+      // 终态 RESPOND 叶子携带用户可见消息;图 mutation 叶子保留既有的
+      // 起草确认文案。
       store.feedback = store.pendingDraftRespondMessage ?? '问题已起草'
       const refreshed = await store.refreshWorkspace()
       if (!isCurrent()) return false
@@ -253,8 +250,8 @@ export async function draftQuestionAction(
       store.manualModelRetry = null
       return true
     }
-    // FAILED or outcome unknown: reconcile against canonical reads, then
-    // surface the retry affordance keyed to the pre-draft graph state.
+    // FAILED 或结果未知:对照 canonical 读取对账,再以起草前的图状态为键
+    // 呈现重试入口。
     // 目标路线的 tip 是否前进是"草稿已落地"的判据；显式路线同样成立。
     const reconciled = await store.refreshWorkspace()
     if (!isCurrent()) return false
@@ -271,8 +268,8 @@ export async function draftQuestionAction(
           ? afterTipNodeId !== beforeTipNodeId
           : (afterActiveRouteId !== beforeRouteId || afterTipNodeId !== beforeTipNodeId))
     ) {
-      // The draft actually landed (e.g. the run finished after the last
-      // poll); never offer a retry that would double-draft.
+      // 草稿其实已经落地(例如 run 在最后一次轮询之后才完成);绝不提供
+      // 会造成重复起草的重试。
       store.manualModelRetry = null
       store.pendingRouteProjection = null
       store.error = null
@@ -294,8 +291,8 @@ export async function draftQuestionAction(
     store.markPendingRouteFailed('起草问题的运行失败，请重试', outcome === 'failed')
     return false
   } catch (err) {
-    // The create-run request itself failed; the run may or may not exist.
-    // Reconcile canonical state before allowing a retry.
+    // 创建 run 的请求本身失败;run 可能存在也可能不存在。允许重试之前
+    // 先对账 canonical 状态。
     if (!isCurrent()) return false
     const safeError = toDisplayError(err)
     store.error = safeError
@@ -332,20 +329,18 @@ export async function draftQuestionAction(
     }
     return false
   } finally {
-    // Only the owning session releases the draft flag: a stale draft's
-    // cleanup must not release the NEW session's flag (beginProject has
-    // already reset it there).
+    // 只有持有会话的一方释放起草标志:过期起草的清理绝不能释放新会话的
+    // 标志(beginProject 已经在那里重置过)。
     if (isCurrent()) {
       store.drafting = false
     }
   }
 }
 
-/**
- * Polls one run to its terminal state and returns the final read view
- * (with the produced record ids), 'failed' for a FAILED terminal status,
- * or 'unknown' when no terminal read happened within the budget. Stops
- * observing when the project switches.
+/*
+ * 把一条 run 轮询到终态,返回最终读取视图(含产出的记录 id)、FAILED
+ * 终态对应的 'failed',或预算内没有读到终态时的 'unknown'。项目切换时
+ * 停止观察。
  */
 export async function pollRunToTerminalAction(
   store: AnswerRunSlice,
@@ -366,28 +361,26 @@ export async function pollRunToTerminalAction(
     }
     try {
       const view = await getAgentRun(projectId, runId)
-      // Post-await identity check: the read may have resolved after the
-      // user switched projects — never feed the stale run then.
+      // await 后的身份检查:读取可能在用户切换项目之后才 resolve——
+      // 那时绝不能把过期的 run 喂进注册表。
       if (!isCurrent()) return 'unknown'
       useRunRegistryStore().feed(view)
       onView?.(view)
       if (!isTerminalRunStatus(view.status)) continue
       return view.status === 'completed' ? view : 'failed'
     } catch {
-      // Transient poll failure: keep polling within budget.
+      // 瞬时轮询失败:在预算内继续轮询。
     }
   }
   return 'unknown'
 }
 
-/**
- * Follows one autonomous run chain to its terminal leaf. A COMPLETED run
- * with a childRunId continues on the child; a COMPLETED run with no
- * child but a pending continuation check keeps polling the same run
- * until the dispatcher/recovery creates the child. The poll budget is
- * shared across the whole chain so a long chain cannot poll forever.
- * Returns the terminal leaf view, 'failed' for a FAILED leaf, or
- * 'unknown' when the budget ran out or the project switched.
+/*
+ * 追踪一条自主 run 链到它的终态叶子。带 childRunId 的 COMPLETED run 继续
+ * 追子 run;没有子 run 但有待续检查的 COMPLETED run 保持轮询同一条 run,
+ * 直到调度器/恢复流程创建子 run。轮询预算整条链共享,长链不可能永远
+ * 轮询。返回终态叶子视图、FAILED 叶子对应的 'failed',或预算耗尽/项目
+ * 切换时的 'unknown'。
  */
 export async function pollRunChainToTerminalAction(
   store: AnswerRunSlice,
@@ -409,13 +402,18 @@ export async function pollRunChainToTerminalAction(
     }
     try {
       const view = await getAgentRun(projectId, currentRunId)
-      // Post-await identity check: the read may have resolved after the
-      // user switched projects — never follow the stale chain then.
+      // await 后的身份检查:读取可能在用户切换项目之后才 resolve——
+      // 那时绝不能继续追踪过期的链。
       if (!isCurrent()) return 'unknown'
       useRunRegistryStore().feed(view)
       onView?.(view)
       if (!isTerminalRunStatus(view.status)) continue
-      if (view.status === 'failed') return 'failed'
+      if (view.status === 'failed') {
+        // run 到达失败终态:立即对账服务端未解决失败清单,让节点/占位卡
+        // 的恢复入口立刻出现,而不是等到下一次工作区刷新。
+        void store.rebuildUnresolvedFailures()
+        return 'failed'
+      }
       if (view.childRunId) {
         currentRunId = view.childRunId
         continue
@@ -423,16 +421,15 @@ export async function pollRunChainToTerminalAction(
       if (view.continuationPending) continue
       return view
     } catch {
-      // Transient poll failure: keep polling within budget.
+      // 瞬时轮询失败:在预算内继续轮询。
     }
   }
   return 'unknown'
 }
 
-/**
- * Polls one question-draft run chain to a terminal leaf. Drafting has no
- * immutable-input concerns: 'completed' refreshes canonical state in the
- * caller, anything else reconciles.
+/*
+ * 把一条问题起草 run 链轮询到终态叶子。起草没有不可变输入的顾虑:
+ * 'completed' 时由调用方刷新 canonical 状态,其余情况做对账。
  */
 export async function pollDraftRunAction(
   store: AnswerRunSlice,
@@ -443,8 +440,8 @@ export async function pollDraftRunAction(
     runId,
     (view) => store.updatePendingRouteProjection(view),
   )
-  // Post-await identity check: a stale poll must not write its respond
-  // message into a different project session.
+  // await 后的身份检查:过期轮询绝不能把它的 respond 消息写进另一个
+  // 项目会话。
   if (store.projectSessionId !== projectSessionId) return 'unknown'
   if (outcome === 'unknown' || outcome === 'failed') return outcome
   if (outcome.respondMessage) {
@@ -453,16 +450,14 @@ export async function pollDraftRunAction(
   return 'completed'
 }
 
-/**
- * Submits an answer through the async Agent Runtime.
+/*
+ * 经异步 Agent 运行时提交回答。
  *
- * The HTTP command returns immediately with a runId (202); the model
- * workflow runs in the background worker. `submitting` therefore means
- * "a run is in flight for this node", never "an HTTP request is blocked".
- * While the run is pending only the answering node is locked; pan, zoom,
- * inspect and route navigation stay available. Completion is observed by
- * polling the run read endpoint; the canonical graph is refreshed from
- * the backend after a terminal state — never patched locally.
+ * HTTP 命令立即返回 runId(202);模型工作流在后台 worker 中运行。因此
+ * `submitting` 的含义是"该节点有一个 run 在途",绝不是"一个 HTTP 请求
+ * 被阻塞"。run 待处理期间只有被回答的节点被锁定;平移、缩放、检查与
+ * 路线导航保持可用。完成通过轮询 run 读取端点观察;终态之后从后端刷新
+ * canonical 图——绝不在本地打补丁。
  */
 export async function submitAnswerAction(
   store: AnswerRunSlice,
@@ -471,38 +466,34 @@ export async function submitAnswerAction(
   if (!store.projectId || store.routeCommandPending) {
     return false
   }
-  // The whole attempt is bound to the project identity captured HERE.
+  // 整次尝试都绑定到在此捕获的项目身份。
   const projectId = store.projectId
-  // Target resolution: an explicit target (the tip of the route the user
-  // is reading) wins; otherwise the Active route's current node — the
-  // original behaviour, unchanged.
+  // 目标解析:显式目标(用户正在阅读的路线的末端)优先;否则 Active
+  // 路线的当前节点——原有行为,未变。
   const activeRouteId = store.activeState?.activeRoute?.id ?? null
   const answeringNodeId = payload.nodeId
     ?? store.activeState?.activeNode?.id
     ?? store.activeState?.activeRoute?.tipNodeId
     ?? null
   const submittedRouteId = payload.routeId ?? activeRouteId
-  // One in-flight answer run PER ROUTE: another route's chain must never
-  // block this one (that is the whole point of independent routes), while
-  // the same route can never have two competing answer cycles.
+  // 每条路线同时至多一个在途回答 run:另一条路线的链绝不能阻塞本条
+  // (这正是独立路线的全部意义),而同一条路线绝不能同时跑两个竞争的
+  // 回答周期。
   if (!answeringNodeId || (submittedRouteId !== null
     && store.answerRunsInFlight.includes(submittedRouteId))) {
     return false
   }
-  // Submission identity is fixed when the user action starts: the node
-  // being answered and its route at that moment. Success cleanup uses
-  // exactly these — never produced ids or post-refresh route pointers.
+  // 提交身份在用户动作开始时固定:此刻被回答的节点及其路线。成功清理
+  // 使用的正是这些——绝不是产出的 id 或刷新后的路线指针。
   const submittedNodeId = answeringNodeId
-  // One stable idempotency identity per user action attempt: unknown-
-  // outcome retries (create request lost, response lost) reuse the same
-  // key so the backend returns the already-created run.
+  // 每次用户动作尝试一个稳定的幂等身份:结果未知的重试(创建请求丢失、
+  // 响应丢失)复用同一个键,后端因此返回已创建的那条 run。
   const clientRequestId = crypto.randomUUID()
 
-  // A NEW attempt for the SAME target (same project + route + node)
-  // replaces the previous attempt's recovery affordances — that previous
-  // session is exactly what the user is retrying. Sessions of OTHER
-  // targets (other routes/nodes) are never touched: one run must never
-  // clear or overwrite another run's error or recovery state.
+  // 对同一目标(同项目 + 路线 + 节点)的新尝试会取代上一次尝试的恢复
+  // 入口——那个旧会话正是用户正在重试的对象。其它目标(其它路线/节点)
+  // 的会话绝不被触碰:一条 run 绝不能清除或覆盖另一条 run 的错误或
+  // 恢复状态。
   store.answerRunSessions = store.answerRunSessions.filter((existing) => {
     const sameTarget = existing.projectId === projectId
       && existing.nodeId === submittedNodeId
@@ -510,9 +501,9 @@ export async function submitAnswerAction(
     return !(sameTarget && existing.status !== 'RUNNING')
   })
 
-  // `reactive()` so the store's derived getters (answerRunId, submitting,
-  // recovery affordances) react to in-place session lifecycle updates — a
-  // raw object pushed into the reactive array would mutate silently.
+  // 用 `reactive()` 包装,让 store 的派生 getter(answerRunId、submitting、
+  // 恢复入口)能对会话的就地生命周期更新作出反应——推入响应式数组的裸
+  // 对象会静默变异而不触发更新。
   const session = reactive<AnswerRunSessionState>({
     clientRequestId,
     projectId,
@@ -530,13 +521,11 @@ export async function submitAnswerAction(
   store.error = null
   let created = false
   try {
-    // The backend routes an ANSWER_TIP whose node already carries a
-    // persisted Answer to RESUME_ANSWER itself; the frontend never
-    // guesses which one applies.
+    // 节点已带持久化回答的 ANSWER_TIP 由后端自行路由到 RESUME_ANSWER;
+    // 前端绝不猜测适用哪一个。
     //
-    // EXPLICIT route mode is requested ONLY when the target is not the
-    // Active route: that keeps the Active path's fail-closed guarantee
-    // (a run whose Active pointer moved must still fail) untouched.
+    // EXPLICIT 路线模式只在目标不是 Active 路线时启用:Active 路径的
+    // fail-closed 保证(Active 指针移动过的 run 仍必须失败)原样保留。
     const run = await createAgentRun(projectId, {
       operation: 'ANSWER_TIP',
       nodeId: submittedNodeId,
@@ -561,21 +550,19 @@ export async function submitAnswerAction(
     })
     await store.pollAnswerRun(run.runId)
     if (isSessionTracked(store, session) && session.status === 'UNKNOWN') {
-      // Polling ended without a terminal read (network loss beyond the
-      // budget). Reconcile canonical state; never auto-resubmit.
+      // 轮询结束却没有读到终态(预算之外的网络丢失)。对账 canonical
+      // 状态;绝不自动重提交。
       await reconcileUnknownAnswerOutcomeAction(store, session)
     }
-    // The poll settled the session in place: it is gone on a fully-handled
-    // success, or carries its own recovery status (REPAIRABLE /
-    // RESUBMITTABLE / UNKNOWN) that belongs to THIS attempt only.
+    // 轮询已就地把会话落定:完全处理的成功时它已消失,否则带着只属于
+    // 这次尝试的恢复状态(REPAIRABLE / RESUBMITTABLE / UNKNOWN)。
     return !isSessionTracked(store, session)
   } catch (err) {
     if (!isSessionTracked(store, session)) return false
     const safeError = toDisplayError(err)
     if (!created) {
-      // The create-run request itself failed or its outcome is unknown.
-      // Reconcile against canonical reads before ever allowing a second
-      // mutation: only a proven absent Answer + no run may resubmit.
+      // 创建 run 的请求本身失败或结果未知。在允许第二次 mutation 之前
+      // 先对账 canonical 读取:只有被证明无回答且无 run 时才可重提交。
       const reconciled = await store.refreshWorkspace()
       if (!isSessionTracked(store, session)) return false
       if (!reconciled) {
@@ -585,9 +572,8 @@ export async function submitAnswerAction(
       }
       const answerId = findFinalizedAnswerForSession(store, session)
       if (answerId) {
-        // An Answer was already persisted (the create request may have
-        // landed even though its response was lost). Never resubmit —
-        // surface repair instead.
+        // 回答已经持久化(创建请求可能已落地,只是响应丢了)。绝不重提交
+        // ——改用修复入口。
         if (routeTipOf(store, session.routeId) === session.nodeId) {
           session.status = 'REPAIRABLE'
           session.repairableAnswerId = answerId
@@ -597,14 +583,14 @@ export async function submitAnswerAction(
             store.activeState?.activeNode?.question ?? null,
           )
         } else {
-          // The tip moved past the answered node: the mutation completed.
+          // 末端已越过被回答节点:mutation 实际已完成。
           removeAnswerSession(store, session)
           store.feedback = '回答已记录'
           store.error = null
         }
       } else {
-        // Canonical reads prove: no Answer, and the run was never
-        // created. A one-shot resubmit is now provably safe.
+        // canonical 读取证明:没有回答,run 也从未创建。一次性重提交现在
+        // 可证明是安全的。
         session.status = 'RESUBMITTABLE'
         store.error = withAnswerableNodeHint(
           safeError,
@@ -613,8 +599,8 @@ export async function submitAnswerAction(
       }
       return false
     }
-    // Run was created but polling ended without a terminal read (budget
-    // exhausted on network loss). Do NOT resubmit: reconcile instead.
+    // run 已创建,但轮询结束却没有读到终态(预算耗尽于网络丢失)。
+    // 不要重提交:改为对账。
     const reconciled = await store.refreshWorkspace()
     if (!isSessionTracked(store, session)) return false
     if (!reconciled) {
@@ -635,15 +621,12 @@ export async function submitAnswerAction(
   }
 }
 
-/**
- * Polls one answer run chain to its terminal leaf. The polled session is
- * resolved by run id and ALL observations are written onto that session —
- * concurrent answer runs each own their poll loop and never overwrite each
- * other's phase/status. The loop stops observing as soon as the session is
- * no longer tracked (project switch / workspace reload), checked both after
- * the sleep AND after each awaited read. Only the terminal leaf decides
- * success: an intermediate COMPLETED parent with a child must never finish
- * early.
+/*
+ * 把一条回答 run 链轮询到终态叶子。被轮询的会话按 run id 解析,所有观察
+ * 都写在该会话上——并发回答 run 各自拥有自己的轮询循环,绝不覆盖彼此的
+ * 阶段/状态。会话一旦不再被追踪(项目切换 / 工作区刷新)循环就停止观察,
+ * sleep 之后与每次 await 的读取之后都检查。只有终态叶子才能判定成功:
+ * 带子 run 的中间 COMPLETED 父节点绝不能提前结束。
  */
 export async function pollAnswerRunAction(store: AnswerRunSlice, runId: string): Promise<void> {
   const session = findSessionByRunId(store, runId)
@@ -654,7 +637,7 @@ export async function pollAnswerRunAction(store: AnswerRunSlice, runId: string):
     if (attempt > 0) {
       await sleep(AGENT_RUN_POLL_INTERVAL_MS)
       if (!isSessionTracked(store, session)) {
-        // Project switched away or workspace reloaded: stop observing.
+        // 项目已切换或工作区已刷新:停止观察。
         return
       }
     }
@@ -672,8 +655,8 @@ export async function pollAnswerRunAction(store: AnswerRunSlice, runId: string):
             : 'RUNNING'
       if (!isTerminalRunStatus(view.status)) continue
       if (view.status === 'failed') {
-        // FAILED run: the Answer may or may not be persisted. Canonical
-        // reads decide between repair and resubmit affordances.
+        // FAILED run:回答可能已持久化也可能没有。由 canonical 读取在修复
+        // 与重提交入口之间裁决。
         await store.reconcileFailedAnswerRun(session)
         return
       }
@@ -683,32 +666,30 @@ export async function pollAnswerRunAction(store: AnswerRunSlice, runId: string):
       }
       if (view.continuationPending) continue
       if (session.historicalRecovery && !view.producedPatchId) {
-        // A historical checkpoint is successful only when the terminal run
-        // reports the Patch it was meant to recover. A completed status alone
-        // must not erase the retry affordance.
+        // 历史检查点只有在终态 run 报告了它要恢复的 Patch 时才算成功。
+        // 仅一个 completed 状态绝不能抹掉重试入口。
         await store.reconcileFailedAnswerRun(session)
         return
       }
       await store.finishSuccessfulAnswerRun(view, session)
       return
     } catch {
-      // Transient poll failure: keep polling within budget.
+      // 瞬时轮询失败:在预算内继续轮询。
       if (!isSessionTracked(store, session)) return
     }
   }
-  // Budget exhausted with no terminal read: this attempt's outcome is
-  // unknown; the caller reconciles against canonical reads.
+  // 预算耗尽且没有读到终态:这次尝试的结果未知;调用方对照 canonical
+  // 读取做对账。
   if (isSessionTracked(store, session)) {
     session.status = 'UNKNOWN'
   }
 }
 
-/**
- * Terminal chain leaf of ONE answer attempt: refresh canonical state and
- * settle exactly this session. Cleanup identity is the SUBMITTED answer
- * target captured when the user action started — never producedNodeId,
- * which names the NEXT node the runtime generated, and never a route id
- * re-read after refresh. Other sessions (other routes' runs) are untouched.
+/*
+ * 一次回答尝试的终态链叶子:刷新 canonical 状态并只落定这个会话。清理
+ * 身份是用户动作开始时捕获的"提交时"回答目标——绝不是 producedNodeId
+ * (它指向运行时生成的下一个节点),也绝不是刷新后重新读取的路线 id。
+ * 其它会话(其它路线的 run)不受影响。
  */
 export async function finishSuccessfulAnswerRunAction(
   store: AnswerRunSlice,
@@ -718,8 +699,8 @@ export async function finishSuccessfulAnswerRunAction(
   const target = session ?? findSessionByRunId(store, view.runId)
   if (!target) return
   const leafMessage = view.respondMessage ?? null
-  // Session guard BEFORE the first write: if the project already switched,
-  // this terminal leaf must not write its feedback into the new era.
+  // 第一次写入之前的会话守卫:项目若已切换,这个终态叶子绝不能把反馈写
+  // 进新纪元。
   if (!isSessionTracked(store, target)) return
   if (target.historicalRecovery && !view.producedPatchId) {
     retainHistoricalRecovery(store, target, historicalRecoveryAnswerId(store, target))
@@ -728,8 +709,8 @@ export async function finishSuccessfulAnswerRunAction(
   store.feedback = leafMessage ?? '回答已记录'
   await store.refreshWorkspace()
   if (!isSessionTracked(store, target)) return
-  // A draft retry intent is only cleared when it belongs to THIS route —
-  // a concurrent draft retry on another route is not this run's business.
+  // 起草重试意图只有属于本路线时才清除——另一条路线上的并发起草重试
+  // 与本 run 无关。
   const intent = store.manualModelRetry
   if (intent) {
     const intentRouteId = intent.kind === 'draft'
@@ -753,10 +734,10 @@ export async function finishSuccessfulAnswerRunAction(
   )
 }
 
-/**
- * FAILED run reconciliation for ONE session: canonical reads decide whether
- * the Answer persisted (→ repair affordance, never a second submission) or
- * nothing landed (→ explicit one-shot resubmit payload on this session).
+/*
+ * 单个会话的 FAILED run 对账:canonical 读取裁决回答是否已持久化
+ * (→ 修复入口,绝不二次提交),还是什么都没落地(→ 本会话上显式的
+ * 一次性重提交载荷)。
  */
 export async function reconcileFailedAnswerRunAction(
   store: AnswerRunSlice,
@@ -779,8 +760,8 @@ export async function reconcileFailedAnswerRunAction(
       target.repairableAnswerId = answerId
       store.feedback = '回答已保存，后续生成未完成'
     } else {
-      // The tip moved past the answered node: the mutation completed
-      // despite the failure report. Never offer resubmit or repair.
+      // 末端已越过被回答节点:尽管报告了失败,mutation 实际已完成。
+      // 绝不提供重提交或修复。
       removeAnswerSession(store, target)
       store.feedback = '回答已记录'
     }
@@ -791,12 +772,10 @@ export async function reconcileFailedAnswerRunAction(
   }
 }
 
-/**
- * Reconciliation after ONE attempt could not be observed to a terminal
- * state (poll network loss beyond the budget). Canonical reads decide
- * between repair (Answer persisted), completed-anyway (tip advanced), and
- * an explicit unknown-outcome affordance on this session. Never resubmits
- * by itself.
+/*
+ * 单次尝试无法被观察到达终态(预算之外的网络丢失)之后的对账。canonical
+ * 读取在修复(回答已持久化)、其实已完成(末端已前进)与本会话上显式的
+ * 未知结果入口之间裁决。绝不自行重提交。
  */
 export async function reconcileUnknownAnswerOutcomeAction(
   store: AnswerRunSlice,
@@ -824,16 +803,14 @@ export async function reconcileUnknownAnswerOutcomeAction(
     }
     return
   }
-  // Without a persisted Answer the run may still be executing server
-  // side: keep UNKNOWN so the user reconciles instead of creating a
-  // second mutation.
+  // 没有持久化的回答时,run 可能仍在服务端执行:保持 UNKNOWN,让用户去
+  // 对账,而不是再制造第二个 mutation。
   target.status = 'UNKNOWN'
 }
 
-/**
- * Reconciles the focused recovery session (刷新状态 button) before allowing
- * a failed submit to mutate again. Only this session's affordances change;
- * concurrent runs on other routes are untouched.
+/*
+ * 在允许一次失败的提交再次 mutation 之前,先对账焦点恢复会话(刷新状态
+ * 按钮)。只有该会话的入口变化;其它路线上的并发 run 不受影响。
  */
 export async function reconcileAnswerOutcomeAction(store: AnswerRunSlice): Promise<boolean> {
   const session = store.focusedAnswerSession
@@ -870,12 +847,11 @@ export async function reconcileAnswerOutcomeAction(store: AnswerRunSlice): Promi
   return true
 }
 
-/**
- * Repairs an existing answer checkpoint through a RESUME_ANSWER run. The
- * backend replays the original ANSWER_SUBMITTED semantics from the
- * persisted Answer, so this never creates a second Answer and the
- * frontend never re-sends its guessed copy of the user input. The repair
- * runs inside its own session, isolated from concurrent answer runs.
+/*
+ * 经 RESUME_ANSWER run 修复一个已有的回答检查点。后端从持久化的回答
+ * 重放原始的 ANSWER_SUBMITTED 语义,因此这绝不会创建第二条回答,前端也
+ * 绝不重发它猜测的用户输入副本。修复在自己独立的会话内运行,与并发的
+ * 回答 run 隔离。
  */
 export async function repairAnswerForActiveFlowAction(
   store: AnswerRunSlice,
@@ -944,8 +920,7 @@ export async function repairAnswerForActiveFlowAction(
     try {
       reconciled = await store.refreshWorkspace()
     } catch {
-      // The command outcome is now unknown; preserve the historical target
-      // until a later explicit reconciliation can establish the checkpoint.
+      // 命令结果现在未知;保留历史目标,等待之后的显式对账确立检查点。
       reconciled = false
     }
     if (isSessionTracked(store, session) && historicalRecovery) {
@@ -964,53 +939,41 @@ export async function repairAnswerForActiveFlowAction(
       return false
     }
     if (isSessionTracked(store, session) && reconciled) {
-      // The answer still needs repair; refresh the canonical checkpoint.
-      store.canonicalRepairableAnswerId = store.findFinalizedAnswerForActiveTip()
+      // 回答仍需修复:会话级 repairableAnswerId 已保留;全局 canonical
+      // 检查点入口已删除(失败恢复统一走任务级失败清单)。
     }
-    // A failed repair leaves no dangling RUNNING session behind — the
-    // route lock must never outlive the attempt.
+    // 一次失败的修复绝不留下悬挂的 RUNNING 会话——路线锁绝不能比这次
+    // 尝试活得更久。
     removeAnswerSession(store, session)
     if (isCurrent()) {
       store.error = safeError
     }
     return false
   } finally {
-    // Only the owning session releases the repair flag: a stale repair's
-    // cleanup must not release the NEW session's flag.
+    // 只有持有会话的一方释放修复标志:过期修复的清理绝不能释放新会话的
+    // 标志。
     if (isCurrent()) {
       store.repairingAnswer = false
     }
   }
 }
 
-/** Re-submits only after reconciliation proved that the Answer was absent. */
+/** 只有在对账证明回答确实不存在之后才重新提交。 */
 export async function resubmitFailedAnswerAction(store: AnswerRunSlice): Promise<boolean> {
   const payload = store.resubmitAnswerPayload
   if (!payload || !store.projectId || store.submitting || store.routeCommandPending) return false
   return store.submitAnswer(payload)
 }
 
-export function findFinalizedAnswerForActiveTipAction(store: AnswerRunSlice): string | null {
-  const activeRoute = store.activeState?.activeRoute
-  const tipNodeId = activeRoute?.tipNodeId
-  if (!activeRoute || !tipNodeId) return null
-  return store.graphView?.answers.find((answer) =>
-    answer.nodeId === tipNodeId
-    && answer.routeId === activeRoute.id
-    && answer.inherited === false
-    && answer.ownerRouteId === activeRoute.id,
-  )?.id ?? null
-}
 
 export function findFinalizedAnswerForNodeAction(
   store: AnswerRunSlice,
   nodeId: string | null,
   routeId?: string | null,
 ): string | null {
-  // The answer is looked up on the route it was submitted to. Under
-  // multi-route work that route is NOT the Active route, so searching the
-  // Active route's answers would report "nothing landed" and offer a
-  // resubmit for an answer that already exists.
+  // 回答在它被提交到的那条路线上查找。多路线工作下那条路线不是 Active
+  // 路线,因此搜索 Active 路线的回答会错误报告"什么都没落地",并对一条
+  // 已经存在的回答提供重提交。
   const lookupRouteId = routeId
     ?? store.submittedRouteIdForCleanup
     ?? store.activeState?.activeRoute?.id
@@ -1024,13 +987,11 @@ export function findFinalizedAnswerForNodeAction(
   )?.id ?? null
 }
 
-/**
- * Live tip of the route the in-flight answer was submitted to, read from
- * the canonical graph.
+/*
+ * 在途回答被提交到的那条路线的实时末端,从 canonical 图读取。
  *
- * Never the Active pointer: it may have moved on, or — under multi-route
- * work — may name a completely different route than the one being
- * answered.
+ * 绝不是 Active 指针:它可能已经前进,或者——多路线工作下——指向与
+ * 被回答路线完全不同的一条路线。
  */
 export function answerTargetRouteTipAction(store: AnswerRunSlice): string | null {
   const routeId = store.submittedRouteIdForCleanup
@@ -1038,30 +999,6 @@ export function answerTargetRouteTipAction(store: AnswerRunSlice): string | null
   return store.graphView?.routes.find((route) => route.id === routeId)?.tipNodeId ?? null
 }
 
-export function findForkDraftRetryRouteIdAction(store: AnswerRunSlice): string | null {
-  const activeRoute = store.activeState?.activeRoute
-  const graphRoute = activeRoute
-    ? store.graphView?.routes.find((route) => route.id === activeRoute.id)
-    : null
-  const tipNodeId = graphRoute?.tipNodeId ?? activeRoute?.tipNodeId
-  if (
-    !activeRoute
-    || !graphRoute
-    || graphRoute.branchType !== 'fork'
-    || !tipNodeId
-    || graphRoute.branchAtNodeId !== tipNodeId
-  ) {
-    return null
-  }
-  const tipAnswers = store.graphView?.answers.filter((answer) =>
-    answer.routeId === graphRoute.id && answer.nodeId === tipNodeId,
-  ) ?? []
-  return tipAnswers.length === 1
-    && tipAnswers[0].inherited === true
-    && tipAnswers[0].ownerRouteId !== graphRoute.id
-    ? graphRoute.id
-    : null
-}
 
 export function setFocusAfterMutationAction(
   store: AnswerRunSlice,
@@ -1086,8 +1023,7 @@ export async function retryManualModelOperationAction(store: AnswerRunSlice): Pr
   if (intent.state === 'ambiguous') {
     const previousError = store.error
     await store.refreshWorkspace()
-    // Stale guard: the old session's retry must not write its error into
-    // the new project era.
+    // 过期守卫:旧会话的重试绝不能把它的错误写进新的项目纪元。
     if (!isCurrent()) return false
     store.error = previousError
     return false
@@ -1133,47 +1069,107 @@ export async function retryManualModelOperationAction(store: AnswerRunSlice): Pr
   return store.regenerateNode(intent.nodeId, intent.payload)
 }
 
-export async function retryForkDraftAction(store: AnswerRunSlice): Promise<boolean> {
-  const retryRouteId = store.forkDraftRetryRouteId
-  if (!retryRouteId || store.routeCommandPending || store.drafting) {
-    return false
-  }
+/**
+ * 重试终态后的共享收尾(第三轮复核 R3-B 的闭合):主动重试
+ * (retryFailedRunAction)与硬刷新后由服务端清单续接的 watcher
+ * (workspaceLoader.resumeInFlightRetryWatches)共用这同一条完成路径——
+ * canonical 刷新(图/规格/需求状态)、失败清单对账、乐观标记清理与按操作
+ * 的节点查询结果刷新。成功后新产物自动可见,恢复提示正确消失,不依赖发起
+ * 重试的那个页面还活着;失败/unknown 由服务端清单的最新失败接替,unknown
+ * 不伪装成终态。每次写入之前都重新校验会话身份,旧项目纪元绝不污染新纪元。
+ *
+ * @param failure 被重试的失败任务(服务端判定的未解决失败身份)
+ * @param retryRunId 重试 run id(主动重试为新建 run;续接为清单里的 retryRunId)
+ * @param outcome pollRunChainToTerminal 的终态结果
+ * @returns 成功恢复返回 true;失败/结果未知/会话过期返回 false
+ */
+export async function finalizeRetryCompletionAction(
+  store: AnswerRunSlice,
+  failure: UnresolvedFailure,
+  retryRunId: string,
+  outcome: AgentRunView | 'failed' | 'unknown',
+): Promise<boolean> {
+  const registry = useRunRegistryStore()
   const projectId = store.projectId
   const projectSessionId = store.projectSessionId
   const isCurrent = (): boolean =>
     store.projectSessionId === projectSessionId && store.projectId === projectId
-  const activeRoute = store.activeState?.activeRoute
-  const retryRoute = store.graphView?.routes.find((route) => route.id === retryRouteId)
-  if (activeRoute?.id !== retryRouteId || retryRoute?.lifecycleStatus !== 'open') {
-    store.error = {
-      code: 'FORK_DRAFT_RETRY_REQUIRES_ACTIVE_ROUTE',
-      message: '请先将该分支设为当前路线，再重试起草',
-    }
+  // canonical 刷新:新节点/规格/需求状态立即进入页面(不需要用户再次刷新)。
+  // 刷新内部已与失败清单对账一次;这里再显式对账,保证刷新失败时提示仍收敛。
+  await store.refreshWorkspace()
+  if (!isCurrent()) return false
+  await store.rebuildUnresolvedFailures()
+  if (!isCurrent()) return false
+  if (outcome === 'failed' || outcome === 'unknown') {
+    // 失败/结果未知:乐观标记回滚。结果未知同样由服务端清单对账
+    // (rebuild 已同步 retryRunId),绝不留下永久禁用的旧入口,也绝不把
+    // unknown 当作成功或终态展示。
+    registry.clearRetryMark(failure.runId)
     return false
   }
-  const drafted = store.manualModelRetry?.kind === 'draft'
-    ? await store.retryManualModelOperation()
-    : await store.draftQuestion()
-  // Stale guard: the awaited retry/draft may have outlived the session it
-  // was started in — never write its cleanup into the new era.
-  if (!isCurrent()) return drafted
-  if (drafted) {
-    store.forkDraftRetryRouteId = null
-    store.setFocusAfterMutation({
-      routeId: retryRouteId,
-      nodeId: store.activeState?.activeRoute?.tipNodeId ?? null,
+  registry.clearFailure(failure.runId)
+  // 节点查询重试成功:检查器立即展示新 run 的真实结果(6-5),绝不
+  // 只显示"恢复成功"而把检查器留在旧失败结果上。
+  if (failure.availableAction === 'RETRY_NODE_QUERY' && failure.sourceNodeId
+      && store.nodeQuery?.runId === failure.runId) {
+    await store.refreshNodeQueryResult(failure.sourceNodeId, retryRunId, {
+      routeId: store.nodeQuery.routeId,
+      question: store.nodeQuery.question,
     })
-    store.feedback = '已起草分支的首个后续问题'
+    if (!isCurrent()) return false
   }
-  return drafted
+  store.feedback = '已从上次失败处恢复'
+  return true
 }
 
-/** Retry the visible pending projection without inventing a provider or
- * issuing a second mutation unless Runtime recovery has proven it safe. */
-export async function retryPendingAgentRunAction(store: AnswerRunSlice): Promise<boolean> {
-  if (store.forkDraftRetryRouteId) return store.retryForkDraft()
-  if (store.manualModelRetry?.kind === 'draft') {
-    return store.retryManualModelOperation()
+/**
+ * 任务级失败恢复:从失败任务身份(服务端判定的未解决失败)发起重试。
+ * 身份、原始意图与恢复资格全部由服务端持久化事实决定——前端只提交
+ * "重试哪个失败任务",绝不本地重建 payload,也绝不回落 Active 路线。
+ * 幂等性由后端确定性键保证:双击/跨标签页的重复重试返回同一个 run。
+ *
+ * 即时状态(6-2):乐观 retrying 标记在请求发出之前就写入——按钮立即
+ * 禁用、立即显示进度,不等待网络往返;失败/结果未知/会话切换都有对应
+ * 的清理路径,后端幂等仍然保留。
+ */
+export async function retryFailedRunAction(
+  store: AnswerRunSlice,
+  failure: UnresolvedFailure,
+): Promise<boolean> {
+  const registry = useRunRegistryStore()
+  if (registry.isRetrying(failure.runId)) return false
+  if (!failure.runId) return false
+  const projectId = store.projectId
+  if (!projectId) return false
+  // 请求发出前立即防重复并显示进度:延迟响应/双击/慢网络下按钮状态
+  // 必须先于网络往返生效。
+  registry.markRetryPending(failure.runId)
+  const projectSessionId = store.projectSessionId
+  const isCurrent = (): boolean =>
+    store.projectSessionId === projectSessionId && store.projectId === projectId
+  try {
+    const created = await retryAgentRun(projectId, failure.runId)
+    if (!isCurrent()) return false
+    registry.markRetryStarted(failure.runId, created.runId)
+    registry.register({
+      runId: created.runId,
+      operation: failure.availableAction === 'CONTINUE_PROCESSING' ? 'RESUME_ANSWER' : failure.operation,
+      routeId: failure.routeId,
+      sourceNodeId: failure.sourceNodeId,
+    })
+    const outcome = await store.pollRunChainToTerminal(created.runId)
+    if (!isCurrent()) return false
+    // 重试完成:与刷新续接的 watcher 共用同一条收尾(见上)。
+    return await finalizeRetryCompletionAction(store, failure, created.runId, outcome)
+  } catch (err) {
+    if (!isCurrent()) return false
+    registry.clearRetryMark(failure.runId)
+    if (err instanceof ApiError && err.code === 'RECOVERY_IN_FLIGHT') {
+      // 另一个标签页/会话已发起重试:对账并显示进度,绝不重复提交。
+      await store.rebuildUnresolvedFailures()
+      return false
+    }
+    store.error = toDisplayError(err)
+    return false
   }
-  return store.draftQuestion()
 }

@@ -6,17 +6,17 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * A workspace unit in the exploration graph.
+ * 文件名:Node.java
  *
- * <p>A node may represent an interaction (a clarification question), user- or
- * agent-authored knowledge, an external resource reference, or a generated
- * artifact. Interaction nodes keep their immutable {@code question},
- * {@code purpose}, and {@code options} fixed at creation; regeneration creates
- * a replacement node instead of mutating them. Non-interaction nodes carry
- * their payload in {@code content}.
+ * 用途:探索图中的一个工作区单元。
  *
- * <p>Legacy rows created before the generic workspace model are interpreted as
- * {@code INTERACTION/QUESTION} nodes authored by the agent.
+ * 节点可以是一次交互(澄清问题)、用户或 agent 创作的知识、一个外部
+ * 资源引用,或一份生成的产物。交互节点在创建时就把不可变的
+ * {@code question}、{@code purpose}、{@code options} 固定下来;重新生成
+ * 会创建替换节点,而不是原地修改。非交互节点的负载放在 {@code content}。
+ *
+ * 早于通用工作区模型创建的遗留行被解释为 agent 创建的
+ * {@code INTERACTION/QUESTION} 节点。
  */
 public class Node {
 
@@ -177,7 +177,7 @@ public class Node {
         return content;
     }
 
-    /** Convenience accessor for the primary text payload inside {@code content}. */
+    /** 便捷访问器:取出 {@code content} 中的主要文本负载。 */
     public String contentText() {
         Object text = content.get("text");
         return text instanceof String value && !value.isBlank() ? value : null;
@@ -208,10 +208,9 @@ public class Node {
     }
 
     /**
-     * A user-authored knowledge draft may be edited in place while it remains
-     * {@code PROPOSED}. Once downstream durable history exists, semantic
-     * changes must go through revision/replacement, and confirmed content
-     * follows knowledge-state transitions instead of free editing.
+     * 用户创作的知识草稿在仍处于 {@code PROPOSED} 时可以原地编辑。
+     * 一旦下游出现持久历史,语义修改必须走修订/替换;已确认的内容
+     * 走知识状态流转,而不是自由编辑。
      */
     public boolean isUserEditableDraft() {
         return !isRetracted()

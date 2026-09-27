@@ -5,7 +5,13 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.*;
 
-/** Success terminals gate success; failure terminals never pass as success. */
+/**
+ * 文件名:TerminalSemanticsTest.java
+ *
+ * 测试目标:验证三种协议适配器的流终止语义:成功终止事件([DONE]+finish_reason=stop、
+ * response.completed、message_stop)才能判定为成功;失败终止(finish_reason=length 等非 stop、
+ * response.failed/incomplete、error 事件)绝不能被当作成功。
+ */
 class TerminalSemanticsTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();

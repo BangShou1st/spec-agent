@@ -25,10 +25,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * AgentRun read API integration tests. The question draft runs through the
- * async decision runtime (deterministic fake engine under the test profile),
- * so runs are produced with zero public provider requests; only safe metadata
- * and sanitized trace steps are exposed.
+ * 文件名:AgentRunApiIntegrationTest.java
+ *
+ * 测试目标:AgentRun 读接口的集成测试——问题草稿经异步决策运行时执行(test profile 下
+ * 使用确定性假引擎,零公开 provider 请求),读接口只暴露安全元数据与脱敏的 trace 步骤;
+ * 覆盖单 run 读取、项目 run 列表、未知 run/项目 404,以及跨项目读取必须不可见。
  */
 @SpringBootTest
 @AutoConfigureMockMvc

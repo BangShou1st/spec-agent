@@ -20,16 +20,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Slice 2 review closure: the database itself guarantees one continuation
- * child per parent run.
+ * 文件名:ContinuationSingleChildInvariantTest.java
  *
- * <p>This test proves the {@code V23} partial unique index
- * {@code UNIQUE(parent_run_id) WHERE parent_run_id IS NOT NULL} — not the
- * application idempotency key. Both children therefore use distinct run ids
- * and distinct idempotency keys, and both inserts go straight through
- * {@link AgentRunRepository#save}, bypassing
- * {@code ContinuationCoordinator.continueIfEligible} and
- * {@code RunService.createContinueRun} on purpose.
+ * 测试目标:Slice 2 评审收尾:由数据库本身保证每个父 run 只有一个续跑子 run。
+ *
+ * 本测试证明的是 {@code V23} 部分唯一索引
+ * {@code UNIQUE(parent_run_id) WHERE parent_run_id IS NOT NULL}——而不是应用层
+ * 幂等 key。因此两个子 run 使用不同的 run id 和不同的幂等 key,且两次插入都直接
+ * 走 {@link AgentRunRepository#save},刻意绕过
+ * {@code ContinuationCoordinator.continueIfEligible} 和
+ * {@code RunService.createContinueRun}。
  */
 @SpringBootTest
 @ActiveProfiles("test")

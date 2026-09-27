@@ -1,17 +1,18 @@
-"""planning-mapping.v2 (deterministic, diagnostic-only).
+"""文件名:mapping_v2.py
 
-Input states MUST already be C1/C2-clean (harness enforces order:
-C1 -> C2 -> mapping). Mapping never repairs semantic state: illegal
-flag combinations raise instead of collapsing to PLANNING_AMBIGUOUS,
-which no longer exists as an outcome.
+planning-mapping.v2(确定性映射,仅诊断用)。
 
-Residual order u > e > d > n is an explicit tie-break for the only two
-mapping-reachable multi-true pairs (e,n) and (d,n). It is not a weight
-table and never adjudicates conflicting primaries.
+输入状态必须已通过 C1/C2 校验(harness 保证执行顺序:C1 -> C2 -> 映射)。
+映射不负责修复语义状态:非法的标志组合直接抛错,而不是折叠成
+PLANNING_AMBIGUOUS——该结果已不复存在。
 
-Eligibility: the pre-filter winner is reported via info["raw_winner"] /
-info["eligible_ok"] so G8 can count winners outside the eligible set.
-An ineligible winner yields NO_WINNER as the mapped outcome.
+残余优先序 u > e > d > n 只是对映射可到达的两组多真组合
+(e,n) 与 (d,n) 的显式平局裁决;它不是权重表,也不会裁决
+互相冲突的主标志。
+
+资格过滤:预过滤的原始赢家通过 info["raw_winner"] / info["eligible_ok"]
+上报,供 G8 统计落在合格集合之外的赢家。赢家不合格时,映射结果为
+NO_WINNER。
 """
 from __future__ import annotations
 
@@ -43,7 +44,7 @@ def mapping_hash() -> str:
 
 
 def derive_outcome(state: dict, eligible_families) -> tuple:
-    """Map a C1/C2-clean state. Returns (outcome, info dict)."""
+    """映射一个已通过 C1/C2 的状态。返回 (结果, info 字典)。"""
     eligible = list(eligible_families or [])
     u = state["userInputRequired"]["value"]
     e = state["externalStepRequired"]["value"]

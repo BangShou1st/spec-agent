@@ -13,19 +13,19 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 /**
- * Maps model-gateway failures into the stable API error contract.
+ * 文件名:GatewayErrorAdvice.java
  *
- * <p>This advice is the single bridge between the provider-neutral
- * {@link ModelGatewayException} vocabulary and the API error contract. Every
- * response carries a static, provider-neutral message — never the raw gateway
- * message, which could echo provider payloads — and never mentions any
- * concrete provider. The exception message is not logged either; only the
- * safe category is logged server-side.
+ * 用途:把模型网关失败映射到稳定的 API 错误契约,是供应商侧异常
+ * 进入 HTTP 边界的唯一通道。
  *
- * <p>It lives outside {@code com.specagent.api..} because the API boundary
- * intentionally has no dependency on model packages. It runs before the
- * generic advice so its exact-type handler wins over the catch-all
- * {@code Exception} mapping.
+ * 本 advice 是供应商中立的 {@link ModelGatewayException} 词汇与 API
+ * 错误契约之间的唯一桥梁。每个响应都携带静态、供应商中立的消息——绝不
+ * 透传原始网关消息(那可能回显供应商负载),也绝不提及任何具体供应商。
+ * 异常消息同样不写日志;服务端只记录安全的类别枚举。
+ *
+ * 它放在 {@code com.specagent.api..} 之外,因为 API 边界刻意不依赖
+ * model 包。它先于通用 advice 执行,精确类型处理器优先于兜底的
+ * {@code Exception} 映射生效。
  */
 @RestControllerAdvice
 @Order(Ordered.HIGHEST_PRECEDENCE)

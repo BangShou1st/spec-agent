@@ -25,9 +25,11 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Project API: create, get, and list projects, plus the active project state
- * view. Controllers never touch repositories; composition beyond a single
- * service lives in {@link ProjectRuntimeQueryService}.
+ * 文件名:ProjectController.java
+ *
+ * 用途:项目 API:创建、获取、列出项目,以及活跃项目状态视图。
+ * 控制器绝不直接访问 repository;超出单一服务的组合逻辑放在
+ * {@link ProjectRuntimeQueryService} 中。
  */
 @RestController
 @RequestMapping("/api/v1/projects")
@@ -57,7 +59,7 @@ public class ProjectController {
         }
     }
 
-    /** Renames a project; route state, answers and history stay untouched. */
+    /** 重命名项目;路线状态、答案与历史完全不受影响。 */
     @PutMapping("/{projectId}/title")
     public ProjectResponse renameProject(@PathVariable UUID projectId,
                                          @Valid @RequestBody RenameProjectRequest request) {

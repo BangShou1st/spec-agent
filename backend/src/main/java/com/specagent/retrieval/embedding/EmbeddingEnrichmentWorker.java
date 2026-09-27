@@ -8,10 +8,13 @@ import org.springframework.stereotype.Component;
 import java.util.UUID;
 
 /**
- * Runtime trigger for optional vector enrichment. It only processes derived
- * PENDING rows after canonical/index writes have completed; it never runs on
- * the snapshot construction path and provider failure leaves lexical lanes
- * available.
+ * 文件名:EmbeddingEnrichmentWorker.java
+ *
+ * 用途:可选向量增强的运行时触发器,定时扫描有待处理条目的项目并
+ * 调用 {@link EmbeddingEnrichmentService} 批量补齐向量。
+ *
+ * 它只在规范化/索引写入完成之后处理派生的 PENDING 行;绝不出现在
+ * 快照构建路径上,且嵌入服务失败时词法检索通道仍然可用。
  */
 @Component
 @ConditionalOnProperty(name = "spec.agent.retrieval.embedding.worker.enabled",

@@ -1,8 +1,9 @@
-"""Strict, Runtime-auditable semantic ranking contract.
+"""文件名:ranking.py
 
-The model supplies bounded assessments; the Runtime computes the winner from
-the request's eligibility mask and a versioned generic scorecard.  This module
-is intentionally not wired into the production Decision engine yet.
+用途:严格的、可由 Runtime 审计的语义 ranking 契约。
+
+模型只提供有界的评估;Runtime 根据请求里的 eligibility 掩码和一个带版本
+的通用计分卡计算胜者。本模块有意尚未接入生产环境的 Decision 引擎。
 """
 
 from typing import Dict, List, Literal, Sequence
@@ -132,7 +133,7 @@ class SemanticRankingSelection(StrictModel):
 
 
 class SemanticRankingError(ValueError):
-    """Fail-closed ranking contract or winner-selection error."""
+    """ranking 契约或胜者选择错误,fail-closed。"""
 
 
 _PRIORITY_LEVEL = {
@@ -180,7 +181,7 @@ def select_winner(
         eligible_families: Sequence[str],
         ranking: SemanticRanking,
 ) -> SemanticRankingSelection:
-    """Select a winner without family-specific precedence or fallback."""
+    """不引入家族优先级或回退逻辑,纯粹按分数选出胜者。"""
     eligible = list(eligible_families)
     if len(eligible) != len(set(eligible)):
         raise SemanticRankingError("duplicate eligible action family")

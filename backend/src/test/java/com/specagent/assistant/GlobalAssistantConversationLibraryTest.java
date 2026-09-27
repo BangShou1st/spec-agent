@@ -13,8 +13,12 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
 /**
- * Conversation Library read-model: deterministic title/preview/recency, max 50, no empty threads.
- * RED-first behavioral coverage for GET /threads backing projection.
+ * 文件名:GlobalAssistantConversationLibraryTest.java
+ *
+ * 测试目标:验证会话库读模型(GET /threads 背后的投影)的行为契约。
+ * 覆盖场景:标题取首条用户消息、预览取最新消息、按最近更新排序、
+ * 标题/预览截断加省略号、空白归一化、最多返回 50 条、
+ * 空会话与纯助手会话不返回、并列时排序确定,以及控制器 DTO 的投影契约。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -147,7 +151,7 @@ class GlobalAssistantConversationLibraryTest {
         conversations.appendUserMessage(first.id(), "tie thread one", null);
         GlobalAssistantThread second = conversations.createThread();
         conversations.appendUserMessage(second.id(), "tie thread two", null);
-        // Force identical latest-message timestamps so only the tie-break decides order.
+        // 强制把最新消息时间戳改成完全相同,让顺序只由并列打破规则决定。
         java.sql.Timestamp fixed = java.sql.Timestamp.from(java.time.Instant.parse("2026-09-10T00:00:00Z"));
         jdbc.update("UPDATE global_assistant_messages SET created_at = ?", fixed);
         List<GlobalAssistantThreadListItem> runOne = conversations.listThreads();
@@ -156,7 +160,7 @@ class GlobalAssistantConversationLibraryTest {
         assertThat(runTwo).hasSize(2);
         assertThat(runOne.get(0).threadId()).isEqualTo(runTwo.get(0).threadId());
         assertThat(runOne.get(1).threadId()).isEqualTo(runTwo.get(1).threadId());
-        // Deterministic tie-break: same input order yields same output order and covers both threads.
+        // 确定性并列打破:相同输入顺序得到相同输出顺序,且两条会话都在结果里。
         assertThat(java.util.Set.of(runOne.get(0).threadId(), runOne.get(1).threadId()))
                 .containsExactlyInAnyOrder(first.id(), second.id());
     }

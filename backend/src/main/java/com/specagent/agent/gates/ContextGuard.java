@@ -14,20 +14,22 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Deterministic validator for a context snapshot before any agent step runs.
+ * 文件名:ContextGuard.java
  *
- * <p>A context may only be used when its route exists, belongs to the context
- * project, and is OPEN (or SUPERSEDED for explicit replacement exploration).
- * Normal (non-regenerate) context must also match the
- * project's active route; regenerate context is a special operation context and
- * therefore exempt from the active-route match.
+ * 用途:任何 agent 步骤执行之前,对上下文快照做确定性校验的门禁。
  *
- * <p>Routeless NODE_QUERY context is first-class: a floating canonical Node
- * (routeIds=[]) carries {@code routeId == null}, and its snapshot is the
- * anchor node's own lineage. Such a snapshot must be validated against the
- * project and its context hash, but must never require a route, an active
- * route, or route-to-active matching. Every other operation type retains the
- * strict route requirements below.
+ * 上下文只有在其路由存在、属于上下文所在项目且处于 OPEN 状态
+ * (显式替换探索时可为 SUPERSEDED)时才可使用。普通(非 regenerate)
+ * 上下文还必须匹配项目的活动路由;regenerate 上下文是特殊的操作上下文,
+ * 因此豁免活动路由匹配。
+ *
+ * 无路由的 NODE_QUERY 上下文是一等公民:游离的规范节点
+ * (routeIds=[])携带 {@code routeId == null},其快照就是锚点节点自身的
+ * 血缘。这类快照必须校验项目与上下文哈希,但绝不要求路由、活动路由或
+ * 路由-活动匹配。其他所有操作类型仍保留下述严格的路由要求。
+ *
+ * 协作:由 run 流水线在构建模型输入前调用,拒绝时返回带错误列表的
+ * ReflectionResult。
  */
 @Component
 public class ContextGuard {
@@ -41,24 +43,22 @@ public class ContextGuard {
     }
 
     /**
-     * Default validation: the context route must be the project's Active route.
-     * Kept as the single-argument entry point so every existing caller and the
-     * whole active-route invariant suite is unaffected.
+     * 默认校验:上下文路由必须是项目的 Active 路由。
+     * 保留单参数入口,使所有既有调用方和整套 active-route 不变量测试
+     * 不受影响。
      */
     public ReflectionResult validate(ContextSnapshot snapshot) {
         return validate(snapshot, false);
     }
 
     /**
-     * Validates a context snapshot.
+     * 校验一个上下文快照。
      *
-     * @param explicitRoute true when the run was created against an EXPLICIT
-     *        route instead of the project Active route. Multi-route work
-     *        (answering or drafting on a route that is not Active) is legal
-     *        only in this mode, and even then the route must still belong to
-     *        the project and be OPEN — the Active-equality check is the only
-     *        rule that is skipped, never the lifecycle/ownership ones. Without
-     *        an explicit route the behaviour is byte-identical to before.
+     * @param explicitRoute 当 run 是针对 EXPLICIT 路由(而非项目 Active 路由)
+     *        创建时为 true。多路由工作(在非 Active 路由上作答或起草)只有
+     *        在此模式下才合法,且即便如此路由也必须属于该项目并处于 OPEN
+     *        状态——被跳过的只有 Active 相等检查,生命周期/归属检查从不
+     *        跳过。不传显式路由时行为与之前字节级一致。
      */
     public ReflectionResult validate(ContextSnapshot snapshot, boolean explicitRoute) {
         List<String> errors = new ArrayList<>();
@@ -75,9 +75,8 @@ public class ContextGuard {
         boolean routelessNodeQuery = snapshot.operationType() == ContextOperationType.NODE_QUERY
                 && snapshot.routeId() == null;
         if (routelessNodeQuery) {
-            // Floating node query: the context is the anchor node itself and
-            // references no route. Only project existence and the context hash
-            // are required; route/active-route requirements never apply.
+            // 游离节点查询:上下文就是锚点节点本身,不引用任何路由。
+            // 只要求项目存在与上下文哈希;路由/活动路由要求一概不适用。
             if (snapshot.contextHash() == null || snapshot.contextHash().isBlank()) {
                 errors.add("Context hash is required");
             }

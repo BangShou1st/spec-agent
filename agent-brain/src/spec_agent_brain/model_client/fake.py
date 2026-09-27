@@ -1,9 +1,10 @@
-"""Deterministic fake model client for tests and offline development.
+"""文件名:fake.py
 
-Returns exactly the canonical fake outputs shared with the Java-side fake
-inference gateway (see ``contracts/fixtures/fake-model-*.json``), so both
-language paths produce identical deterministic decisions. Never selected in
-normal product configuration.
+用途:用于测试与离线开发的确定性 fake 模型客户端。
+
+返回与 Java 侧 fake 推理网关共享的标准 fake 输出(见
+``contracts/fixtures/fake-model-*.json``),保证两种语言路径产生完全相同的
+确定性决策。正常产品配置中永远不会选中它。
 """
 
 import json
@@ -13,13 +14,13 @@ from typing import Sequence
 
 from .base import ChatMessage, Completion, ModelClientError, require_call_type
 
-# Must stay identical to contracts/fixtures/fake-model-state-update-output.json.
+# 必须与 contracts/fixtures/fake-model-state-update-output.json 完全一致。
 STATE_UPDATE_OUTPUT = (
     '{"claims":[{"kind":"goal","text":"The user clarified the main outcome.",'
     '"status":"confirmed","confidence":0.9,"sourceRefs":[]}]}'
 )
 
-# Must stay identical to contracts/fixtures/fake-model-decision-output.json.
+# 必须与 contracts/fixtures/fake-model-decision-output.json 完全一致。
 DECISION_OUTPUT = (
     '{"observation":{"known":["The user clarified the main outcome."],'
     '"unknowns":["The user must confirm scope boundaries."],"conflicts":[],"risks":[]},'
@@ -29,10 +30,9 @@ DECISION_OUTPUT = (
     '"allowFreeAnswer":true},"sourceRefs":[]}}'
 )
 
-# Must stay identical to contracts/fixtures/fake-model-artifact-output.json.
-# The ``{{CONTEXT_REF}}`` placeholder is substituted with the request's own
-# context ref at completion time: the fake never invents ids, it reuses the
-# trusted snapshot identity from its input prompt.
+# 必须与 contracts/fixtures/fake-model-artifact-output.json 完全一致。
+# ``{{CONTEXT_REF}}`` 占位符在补全时替换为请求自己的 context ref:
+# fake 从不发明 id,而是复用输入 prompt 里可信的快照标识。
 ARTIFACT_GENERATION_OUTPUT = (
     '{"artifactType":"spec_snapshot",'
     '"sections":[{"title":"Overview","content":"用户澄清了主要目标：明确最重要的成果。",'
@@ -43,11 +43,10 @@ ARTIFACT_GENERATION_OUTPUT = (
 )
 
 
-# Deterministic clarification ladder shared with the Java-side
-# LocalDeterministicDecisionEngine: the fake never repeats an already-answered
-# lineage question, or the enforced RESOLVED_BLOCKER rule fails the run. The
-# first rung keeps the canonical fake question so zero-answered behavior (and
-# the golden fixture above) is unchanged.
+# 与 Java 侧 LocalDeterministicDecisionEngine 共享的确定性澄清阶梯:
+# fake 绝不重复一个已经有答案的 lineage 问题,否则强制执行的
+# RESOLVED_BLOCKER 规则会让 run 失败。第一级保留标准的 fake 问题,使
+# 零回答场景的行为(以及上面的 golden fixture)保持不变。
 _FOLLOW_UP_LADDER = (
     ("What is the most important outcome?",
      "This clarifies the primary requirement goal.",
@@ -65,16 +64,16 @@ _FOLLOW_UP_OPTION_LABEL = "Clarify the remaining details."
 
 
 def _normalize_question(value) -> str:
-    """Same normalization the Java eligibility gate enforces (NFKC + single
-    spaces + lower): the fake compares with exactly this form."""
+    """与 Java eligibility 门禁完全相同的归一化(NFKC + 单空格 + 转小写):
+    fake 就是用这个形态做比较的。"""
     if not isinstance(value, str):
         return ""
     return re.sub(r"\s+", " ", unicodedata.normalize("NFKC", value).strip()).lower()
 
 
 def _answered_questions(messages: Sequence[ChatMessage]) -> set:
-    """Collects normalized texts of lineage nodes that already carry an answer,
-    read from the trusted snapshot inside the rendered prompt."""
+    """从渲染后的 prompt 里的可信快照中,收集已带答案的 lineage 节点的
+    归一化文本。"""
     answered = set()
     for message in reversed(messages):
         try:
@@ -97,7 +96,7 @@ def _answered_questions(messages: Sequence[ChatMessage]) -> set:
 
 
 def _decision_output(messages: Sequence[ChatMessage]) -> str:
-    """Renders the canonical decision output for the next unanswered rung."""
+    """为下一个尚未回答的阶梯渲染标准的 decision 输出。"""
     answered = _answered_questions(messages)
     for question, purpose, option_label in _FOLLOW_UP_LADDER:
         if _normalize_question(question) not in answered:
@@ -145,11 +144,10 @@ class FakeModelClient:
 
 
 def _context_ref_from_prompt(messages: Sequence[ChatMessage]) -> str:
-    """Picks the snapshot's own context ref out of the rendered user prompt.
+    """从渲染后的 user prompt 中挑出快照自己的 context ref。
 
-    The artifact contract requires every section to cite allowed source refs;
-    the deterministic fake reuses the trusted context identity instead of
-    inventing one.
+    工件契约要求每个 section 都引用允许的 source ref;确定性的 fake 复用
+    可信的 context 标识,而不是发明一个。
     """
     for message in reversed(messages):
         try:
@@ -169,7 +167,7 @@ def _context_ref_from_prompt(messages: Sequence[ChatMessage]) -> str:
 
 
 def _artifact_output(messages: Sequence[ChatMessage]) -> str:
-    """Renders the canonical artifact output with its real context refs."""
+    """渲染带真实 context refs 的标准 artifact 输出。"""
     return ARTIFACT_GENERATION_OUTPUT.replace(
         "{{CONTEXT_REF}}", _context_ref_from_prompt(messages)
     )

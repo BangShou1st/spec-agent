@@ -1,3 +1,8 @@
+<!--
+  文件名:ConnectionsList.vue
+  用途:连接列表组件:每行展示名称、端点与状态徽标,点击行进入详情,
+       "..." 菜单提供启用/禁用/删除(删除需二次确认);busyId 用于禁用正在操作的行按钮。
+-->
 <script setup lang="ts">
 import { ref } from 'vue'
 import { connectionStatusText as connectionStatusCopy } from '@/shared/lib/statusCopy'

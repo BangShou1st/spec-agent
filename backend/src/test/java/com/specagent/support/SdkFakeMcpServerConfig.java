@@ -14,14 +14,15 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * SDK-backed fake MCP server for integration tests. Uses the official SDK's
- * stateless {@code McpServer} + {@code HttpServletStatelessServerTransport}
- * so the test server and the {@code com.specagent.mcp} client share the same
- * protocol implementation — no hand-rolled framing, and stateless so every
- * test session works against the same servlet.
+ * 文件名:SdkFakeMcpServerConfig.java
  *
- * <p>Scripted behavior: one call-counting tool ({@link #TOOL_NAME}) and one
- * text resource. Failure modes toggled per test via {@link #state()}.
+ * 测试目标:基于官方 SDK 的假 MCP 服务器,供集成测试使用。采用 SDK 的
+ * 无状态 {@code McpServer} + {@code HttpServletStatelessServerTransport},
+ * 使测试服务器与 {@code com.specagent.mcp} 客户端共用同一套协议实现——
+ * 不手写消息帧;无状态设计让每个测试会话都面对同一个 servlet。
+ *
+ * 脚本化行为:一个带调用计数的工具({@link #TOOL_NAME})和一个文本资源。
+ * 故障模式由各测试通过 {@link Fakes#setFailToolCall} 开关控制。
  */
 @Configuration
 public class SdkFakeMcpServerConfig {
@@ -36,12 +37,10 @@ public class SdkFakeMcpServerConfig {
 
     @Bean
     public HttpServletStatelessServerTransport fakeMcpTransport() {
-        // The SDK transport only handles requests whose URI ends with its
-        // message endpoint (default "/mcp"). The servlet is therefore mapped
-        // at /fake-mcp/* and the endpoint stays "/fake-mcp/mcp" so plain
-        // /fake-mcp/* requests without that suffix keep returning 404 from
-        // the transport itself — that 404 must not be confused with a Tomcat
-        // routing failure.
+        // SDK 传输层只处理 URI 以其 message endpoint 结尾(默认 "/mcp")的请求。
+        // 因此 servlet 映射在 /fake-mcp/*,endpoint 固定为 "/fake-mcp/mcp";
+        // 不带该后缀的普通 /fake-mcp/* 请求会由传输层自身返回 404——
+        // 该 404 不能与 Tomcat 路由失败混淆。
         return HttpServletStatelessServerTransport.builder()
                 .messageEndpoint("/fake-mcp/mcp")
                 .build();
@@ -110,7 +109,7 @@ public class SdkFakeMcpServerConfig {
         return registration;
     }
 
-    /** Mutable per-test scripted state shared with the server. */
+    /** 与服务器共享的、每个测试可变的脚本化状态。 */
     public static final class Fakes {
         private final AtomicInteger calls = new AtomicInteger();
         private volatile boolean failToolCall;

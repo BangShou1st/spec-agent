@@ -29,9 +29,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
 /**
- * Regression for the deterministic fake clarification path under enforced
- * eligibility: the fake must never repeat an already-answered question, or
- * the RESOLVED_BLOCKER rule fails the answer run before it reaches terminal.
+ * 文件名:DeterministicFakeClarificationTest.java
+ *
+ * 测试目标:回归验证 ENFORCED eligibility 模式下确定性假澄清路径——假引擎绝不能重复
+ * 已回答的问题,否则 RESOLVED_BLOCKER 规则会在答案运行到达终态之前将其判失败;
+ * 同时验证紧凑的 query schema 能阻止假引擎误调 memory.search 能力。
  */
 class DeterministicFakeClarificationTest {
 

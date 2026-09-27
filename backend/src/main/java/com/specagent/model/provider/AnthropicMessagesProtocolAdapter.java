@@ -11,7 +11,11 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /**
- * Anthropic Messages wire translation ({@code POST <base>/messages}).
+ * 文件名:AnthropicMessagesProtocolAdapter.java
+ *
+ * 用途:Anthropic Messages 协议的线上格式适配器({@code POST <base>/messages})。
+ * 把提供商无关的推理请求翻译成 Anthropic 的请求体,并把 Anthropic 的响应/流式事件
+ * 解析回统一契约。
  */
 @Component
 public class AnthropicMessagesProtocolAdapter implements ProtocolAdapter {
@@ -56,11 +60,10 @@ public class AnthropicMessagesProtocolAdapter implements ProtocolAdapter {
         }
         body.put("messages", messages);
         body.put("stream", false);
-        // V1 frozen decision: GA production speaks JSON_OBJECT and Anthropic
-        // Messages has no valid wire mapping for it. Fail closed HERE,
-        // before any HTTP request, instead of sending a guessed field.
-        // Text and JsonSchema mappings below are retained as internal
-        // groundwork only; they never satisfy the GA production contract.
+        // V1 冻结决策:GA 生产环境使用 JSON_OBJECT 契约,而 Anthropic Messages
+        // 没有对应的合法线上字段。必须在这里(发出任何 HTTP 请求之前)按失败处理,
+        // 而不是猜测一个字段发出去。下面的 Text 和 JsonSchema 映射仅作为内部铺垫
+        // 保留,它们不满足 GA 生产契约。
         ModelOutputContract contract = request.outputContract();
         if (contract instanceof ModelOutputContract.JsonObject) {
             throw ModelProviderException.providerRequestError("anthropic",
@@ -105,7 +108,7 @@ public class AnthropicMessagesProtocolAdapter implements ProtocolAdapter {
                 sb.append(block.get("text").asText());
             }
         }
-        // Thinking / tool_use / redacted blocks are never surfaced.
+        // thinking / tool_use / redacted 类型的内容块永远不会对外呈现。
         if (sb.length() == 0) {
             throw ModelProviderException.invalidResponse(context, "Anthropic response has no text block");
         }
@@ -134,7 +137,7 @@ public class AnthropicMessagesProtocolAdapter implements ProtocolAdapter {
         if ("error".equals(type)) {
             throw ModelProviderException.providerRequestError(context, "Anthropic provider error event", null);
         }
-        // Only content_block_delta with a text delta enters presentation.
+        // 只有带文本增量的 content_block_delta 才进入展示层。
         if ("content_block_delta".equals(type)) {
             JsonNode delta = data.get("delta");
             if (delta != null && delta.isObject()) {
@@ -147,7 +150,7 @@ public class AnthropicMessagesProtocolAdapter implements ProtocolAdapter {
             return null;
         }
         // message_start/content_block_start/content_block_stop/message_delta/
-        // message_stop/ping never surface; thinking/tool/input_json deltas ignored.
+        // message_stop/ping 一律不对外呈现;thinking/tool/input_json 的增量也忽略。
         return null;
     }
 

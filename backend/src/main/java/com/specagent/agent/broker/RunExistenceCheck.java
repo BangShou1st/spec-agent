@@ -3,17 +3,19 @@ package com.specagent.agent.broker;
 import java.util.UUID;
 
 /**
- * Port interface for verifying that a run ID exists before the internal
- * inference broker processes a request. The implementation lives in the
- * runtime package and delegates to durable persistence, keeping the broker
- * free of repository dependencies.
+ * 文件名:RunExistenceCheck.java
+ *
+ * 用途:端口接口,供内部推理 broker 在处理请求前校验 run id 是否真实
+ * 存在。实现位于 runtime 包、委托给持久化存储,使 broker 不依赖任何
+ * 仓库(repository)。
+ *
+ * 协作:由 InternalModelInferenceController 的契约校验阶段调用。
  */
 @FunctionalInterface
 public interface RunExistenceCheck {
 
     /**
-     * Returns {@code true} when the given run ID corresponds to a real,
-     * persisted AgentRun record.
+     * 当给定 run id 对应一条真实、已持久化的 AgentRun 记录时返回 {@code true}。
      */
     boolean exists(UUID runId);
 }

@@ -1,42 +1,42 @@
-/**
- * Local document → plain text extraction for resource attachments.
+// 文件名:documentText.ts
+// 用途:资源附件的本地文档 → 纯文本抽取:PDF(文本层/OCR 兜底)、Word(.docx)、Excel(.xlsx)、图片(OCR)与纯文本,全程在浏览器内确定性完成,零模型调用、零网络上传。
+/*
+ * 面向资源附件的本地文档 → 纯文本抽取。
  *
- * WHY LOCAL: the model transport in this project is plain-text chat
- * completions (`ChatCompletionsProtocolAdapter` writes
- * `content: <string>`), so no PDF/Office binary ever reaches the model. The
- * text has to exist BEFORE the model call, and the resource node already
- * stores exactly that: `content.text`. So extraction is deliberately
- * deterministic and dependency-light — no parsing model, no server round trip,
- * no non-reproducible output.
+ * 为什么本地:本项目的模型传输是纯文本聊天补全
+ * (`ChatCompletionsProtocolAdapter` 写入 `content: <string>`),所以任何
+ * PDF/Office 二进制都不会到达模型。文本必须存在于模型调用之前,而资源
+ * 节点存储的正是它:`content.text`。因此抽取刻意保持确定性与低依赖
+ * ——无解析模型、无服务器往返、无可变性输出。
  *
- * ROUTING:
- *  - `.pdf`                 → pdfjs text layer (fast, exact for digital PDFs)
- *  - `.pdf` with no text    → OCR fallback (scanned pages)
- *  - `.docx`                → OPC zip → `word/document.xml` paragraphs
- *  - `.xlsx` / `.xlsm`      → OPC zip → sharedStrings + sheet cell values
- *  - images                 → OCR
- *  - `.txt` / `.md`         → raw text
+ * 路由:
+ *  - `.pdf`                 → pdfjs 文本层(快,对数字 PDF 精确)
+ *  - `.pdf` 无文本          → OCR 兜底(扫描页)
+ *  - `.docx`                → OPC zip → `word/document.xml` 段落
+ *  - `.xlsx` / `.xlsm`      → OPC zip → sharedStrings + 工作表单元格
+ *  - 图片                    → OCR
+ *  - `.txt` / `.md`         → 原始文本
  *
- * Everything is caps-and-fails-visibly: a document that yields no text is
- * reported as such instead of silently attaching an empty resource.
+ * 一切都是"有上限且失败可见":抽不出文本的文档会被明确报告,而不是
+ * 静默附加一个空资源。
  */
 import JSZip from 'jszip'
 
-/** Upper bound of the attached text. Matches the browser-side read limit. */
+/** 附加文本的上限。与浏览器侧的读取上限一致。 */
 export const MAX_EXTRACTED_TEXT_BYTES = 256 * 1024
 
 export type ExtractKind = 'text' | 'pdf' | 'docx' | 'xlsx' | 'image'
 
 export interface ExtractedDocument {
-  /** Plain text that goes into `content.text`. */
+  /** 写入 `content.text` 的纯文本。 */
   text: string
   kind: ExtractKind
-  /** True when the text came out of OCR rather than a text layer. */
+  /** 文本来自 OCR 而非文本层时为 true。 */
   ocr: boolean
-  /** PDF page count / sheet names, when meaningful. */
+  /** PDF 页数 / 工作表名(有意义时)。 */
   pages?: number
   sheets?: string[]
-  /** User-visible caveats (truncated, empty page, OCR language, …). */
+  /** 用户可见的告警(截断、空页、OCR 语言等)。 */
   warnings: string[]
 }
 
@@ -61,7 +61,7 @@ export function extensionOf(name: string): string {
   return dot < 0 ? '' : name.slice(dot).toLowerCase()
 }
 
-/** OCR needs a raster image; PDF pages are rasterised through pdfjs first. */
+/** OCR 需要点阵图;PDF 页先经 pdfjs 栅格化。 */
 export function isOcrCapable(fileName: string): boolean {
   return IMAGE_EXTENSIONS.includes(extensionOf(fileName))
 }
@@ -79,12 +79,12 @@ export function unsupportedDocumentMessage(fileName: string): string {
   return `${fileName} 暂不支持解析。可直接解析：PDF、Word(.docx)、Excel(.xlsx)、纯文本(.txt/.md/.csv)、图片(OCR)`
 }
 
-/**
- * Blob reading helpers.
+/*
+ * Blob 读取辅助。
  *
- * Deliberately FileReader-based rather than `Blob.text()` / `.arrayBuffer()`:
- * both are missing in the jsdom environment the unit tests run in, and
- * FileReader is supported everywhere the app runs.
+ * 刻意基于 FileReader 而不是 `Blob.text()` / `.arrayBuffer()`:后者在
+ * 单元测试运行的 jsdom 环境中缺失,而 FileReader 在应用运行的每个环境
+ * 都可用。
  */
 function readBlobAsText(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -126,7 +126,7 @@ function normalizeLines(text: string): string {
 function enforceLimit(text: string, warnings: string[]): string {
   const encoder = new TextEncoder()
   if (encoder.encode(text).length <= MAX_EXTRACTED_TEXT_BYTES) return text
-  // Slice on characters, then verify the byte budget (Chinese is 3 bytes/char).
+  // 按字符切,再校验字节预算(中文每字符 3 字节)。
   let cut = Math.floor((text.length * MAX_EXTRACTED_TEXT_BYTES) / encoder.encode(text).length)
   while (cut > 0 && encoder.encode(text.slice(0, cut)).length > MAX_EXTRACTED_TEXT_BYTES) {
     cut = Math.floor(cut * 0.95)
@@ -135,19 +135,18 @@ function enforceLimit(text: string, warnings: string[]): string {
   return text.slice(0, cut)
 }
 
-/** pdf.js text items are `{str}` for text; other item kinds carry no text. */
+/** pdf.js 的文本项对文本是 `{str}`;其它 item 类型不携带文本。 */
 function pdfItemText(item: unknown): string {
   if (typeof item !== 'object' || item === null) return ''
   const str = (item as { str?: unknown }).str
   return typeof str === 'string' ? str : ''
 }
 
-/**
- * WordprocessingML → text. Paragraph boundaries, in-paragraph line breaks and
- * tabs are the only structure we honour, and they have to be tokenised TOGETHER
- * with the text runs: a `<w:tab/>` / `<w:br/>` is a sibling of `<w:t>`, never
- * inside it, so "replace tabs first, then read `<w:t>`" silently drops them.
- * Every run's own wording is kept verbatim.
+/*
+ * WordprocessingML → 文本。段落边界、段内换行与制表符是我们唯一尊重的
+ * 结构,而且它们必须与文本 run 一起做词法切分:`<w:tab/>` / `<w:br/>`
+ * 是 `<w:t>` 的兄弟节点,绝不在其内部,所以"先替换制表符再读 `<w:t>`"
+ * 会静默丢掉它们。每个 run 的原文逐字保留。
  */
 export function docxXmlToText(documentXml: string): string {
   const tokens = /<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>|<w:tab\b[^>]*\/>|<w:br\b[^>]*\/>/g
@@ -169,10 +168,10 @@ interface SheetPart {
   path: string
 }
 
-/**
- * SpreadsheetML → text. Only values are extracted (no formulas/styles): the
- * point is a faithful, bounded reading of what the sheet displays. Each row
- * becomes one tab-separated line and each sheet gets a header line.
+/*
+ * SpreadsheetML → 文本。只抽取值(不含公式/样式):目标是忠实、有界地
+ * 读取工作表所显示的内容。每行变成一个制表符分隔的行,每个工作表有一行
+ * 标题。
  */
 export function xlsxSheetsFromWorkbook(workbookXml: string, relsXml: string): SheetPart[] {
   const rels = new Map<string, string>()
@@ -195,9 +194,9 @@ export function xlsxSheetsFromWorkbook(workbookXml: string, relsXml: string): Sh
 
 function cellsFromRow(rowXml: string, sharedStrings: string[]): string[] {
   const cells: string[] = []
-  // Self-closing cells (`<c r="B2"/>`) MUST be matched before the paired form:
-  // otherwise `[^>]*` swallows the `/` and the non-greedy body runs on to the
-  // next `</c>`, silently merging two cells into one.
+  // 自闭合单元格(`<c r="B2"/>`)必须先于成对形式匹配:否则 `[^>]*` 会
+  // 吞掉 `/`,非贪婪的 body 一直跑到下一个 `</c>`,把两个单元格静默合并
+  // 成一个。
   for (const match of rowXml.matchAll(/<c\b([^>]*?)\/>|<c\b([^>]*)>([\s\S]*?)<\/c>/g)) {
     const attributes = match[1] ?? match[2] ?? ''
     const inner = match[3] ?? ''
@@ -293,7 +292,7 @@ async function extractXlsx(file: File): Promise<ExtractedDocument> {
   }
 }
 
-/** The slice of pdfjs this module actually uses (keeps the seam narrow). */
+/** 本模块实际使用的 pdfjs 切面(保持接缝窄)。 */
 export interface PdfPageLike {
   getTextContent: () => Promise<{ items: unknown[] }>
   getViewport: (options: { scale: number }) => { width: number; height: number }
@@ -315,10 +314,9 @@ export interface PdfjsLike {
   GlobalWorkerOptions: { workerSrc: string }
 }
 
-/**
- * pdfjs is imported lazily: it pulls in a ~1MB parser + worker that most
- * sessions never touch (txt/md/docx/xlsx/OCR paths do not need it), and the
- * library must only ever run in the browser.
+/*
+ * pdfjs 懒加载:它会拉入约 1MB 的解析器 + worker,大多数会话根本用不到
+ * (txt/md/docx/xlsx/OCR 路径不需要它),且该库只允许在浏览器中运行。
  */
 async function loadPdfjsFromBundle(): Promise<PdfjsLike> {
   const pdfjs = await import('pdfjs-dist')
@@ -327,13 +325,12 @@ async function loadPdfjsFromBundle(): Promise<PdfjsLike> {
   return pdfjs as unknown as PdfjsLike
 }
 
-/**
- * Test seams.
+/*
+ * 测试接缝。
  *
- * The PDF page loop and the "no text layer → OCR" decision are this module's
- * own logic and are unit-tested through these overrides; the real pdf.js
- * parser and the real tesseract worker only run in a browser, so they are
- * covered by the in-browser probe instead. Production never calls this.
+ * PDF 页循环与"无文本层 → OCR"的决策是本模块自己的逻辑,通过这些覆盖
+ * 做单元测试;真正的 pdf.js 解析器与 tesseract worker 只在浏览器中运行,
+ * 由浏览器内探针覆盖。生产路径绝不调用这里。
  */
 let loadPdfjsImpl: () => Promise<PdfjsLike> = loadPdfjsFromBundle
 let runOcrImpl: (source: Blob | HTMLCanvasElement, onProgress?: (message: string) => void) => Promise<OcrOutcome> =
@@ -381,7 +378,7 @@ async function extractPdf(
       warnings,
     }
   }
-  // No text layer at all → almost certainly a scan. Fall back to OCR.
+  // 完全没有文本层 → 几乎可以肯定是扫描件。回退到 OCR。
   onProgress?.('未发现文本层，改用 OCR 识别扫描件…')
   const ocrText = await ocrPdfPages(document, document.numPages, onProgress, warnings)
   const text = normalizeLines(ocrText)
@@ -426,13 +423,12 @@ interface OcrOutcome {
   languages: string
 }
 
-/**
- * OCR engine lifecycle. tesseract.js is created per recognition and always
- * terminated: a leaked worker keeps a WASM heap alive for the whole session.
+/*
+ * OCR 引擎生命周期。tesseract.js 每次识别创建、并总是终止:泄漏的
+ * worker 会让一个 WASM 堆存活整个会话。
  *
- * Language data and runtime are served from this app (`/tessdata`,
- * `/tesseract`), so recognition works offline; if the vendored runtime is
- * missing we fall back to tesseract.js's CDN defaults instead of failing.
+ * 语言数据与运行时由本应用提供(`/tessdata`、`/tesseract`),识别可离线
+ * 工作;若本地运行时缺失,则回退到 tesseract.js 的 CDN 默认值而不是失败。
  */
 async function runOcr(
   source: Blob | HTMLCanvasElement,
@@ -483,10 +479,9 @@ async function extractPlainText(file: File): Promise<ExtractedDocument> {
   return { text: enforceLimit(text, warnings), kind: 'text', ocr: false, warnings }
 }
 
-/**
- * Single entry point used by the resource dialog. Throws
- * `DocumentExtractionError` with a user-safe message for anything it cannot
- * read; every other failure is re-reported with the original message.
+/*
+ * 资源对话框使用的唯一入口。无法读取的文件抛出带用户安全消息的
+ * `DocumentExtractionError`;其它任何失败都以原始消息重新上报。
  */
 export async function extractDocumentText(
   file: File,

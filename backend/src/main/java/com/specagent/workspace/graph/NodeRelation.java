@@ -4,12 +4,12 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * A semantic relation between two nodes.
+ * 文件名:NodeRelation.java
  *
- * <p>Distinct from a visible continuation edge (expressed through
- * {@code nodes.parentNodeId}): semantic relations carry reasoning meaning and
- * stay out of the default Canvas. Retraction is soft and provenance is kept
- * ({@code retractedAt}); rows are never physically deleted.
+ * 用途:两个节点之间的语义关系。它不同于画布上可见的续写连线
+ * (那由 {@code nodes.parentNodeId} 表达):语义关系承载推理含义,
+ * 不进入默认画布。撤回是软删除且保留出处({@code retractedAt});
+ * 行永远不会被物理删除。
  */
 public class NodeRelation {
 

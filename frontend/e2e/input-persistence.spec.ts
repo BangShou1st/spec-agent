@@ -1,6 +1,5 @@
-import { test, expect } from '@playwright/test'
-import { buildThreeNodeLineage, closeFloatingWorkspaceWindows, createProject, fitGraph } from './helpers'
 
+import { test, expect, createProject, fitGraph, closeFloatingWorkspaceWindows, buildThreeNodeLineage } from './helpers'
 /**
  * P0-2 / Section 6 UX: option and freeText input must survive:
  *   1. a real Chromium mouse drag of the source node

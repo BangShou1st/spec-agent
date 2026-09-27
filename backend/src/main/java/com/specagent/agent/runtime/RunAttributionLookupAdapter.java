@@ -8,9 +8,11 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Runtime-side adapter for {@link RunAttributionLookupPort}: projects a run
- * into the attribution pair the snapshot builder needs. Keeping the mapping
- * here means the snapshot package stays free of run-persistence types.
+ * 文件名:RunAttributionLookupAdapter.java
+ *
+ * 用途:{@link RunAttributionLookupPort} 的 runtime 侧适配器:把 run 投影成
+ * snapshot builder 需要的归属信息对(routeId + inputNodeId)。映射逻辑放在
+ * runtime 包内,是为了让 snapshot 包不依赖 run 持久化类型。
  */
 @Component
 public class RunAttributionLookupAdapter implements RunAttributionLookupPort {

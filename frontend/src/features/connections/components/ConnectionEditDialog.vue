@@ -1,3 +1,8 @@
+<!--
+  文件名:ConnectionEditDialog.vue
+  用途:编辑连接弹窗:预填当前名称与服务器地址,凭证留空表示保留原值;
+       只提交发生变化的字段(save 事件),无变化时直接关闭。
+-->
 <script setup lang="ts">
 import { ref, toRef } from 'vue'
 import { useDialogReset } from '@/shared/ui/useDialogForm'

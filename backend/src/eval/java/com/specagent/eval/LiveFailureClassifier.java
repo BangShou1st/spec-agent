@@ -2,7 +2,17 @@ package com.specagent.eval;
 
 import java.util.Locale;
 
-/** Deterministic classification of live provider/infrastructure outcomes. */
+/**
+ * 文件名:LiveFailureClassifier.java
+ *
+ * 用途:对 live provider / 基础设施失败做确定性分类:判断一次尝试是否
+ * 属于基础设施失败(provider、Brain、网关、超时、限流、5xx 等),并进一步
+ * 归入 {@link ProviderFailureClass};同时单独识别模型/契约 schema 类失败。
+ * 用于可靠性维度的统计,避免把 provider 故障误记为行为失败。
+ *
+ * 协作:被 {@link EvalSummary} / {@link CausalReportGenerator} 消费,
+ * 从 {@link ObservationEnvelope} 的执行结果与违例中读取证据。
+ */
 public final class LiveFailureClassifier {
 
     private LiveFailureClassifier() {
@@ -21,9 +31,8 @@ public final class LiveFailureClassifier {
             return false;
         }
         String detail = result.substring("failed:".length()).toLowerCase(Locale.ROOT);
-        // RUN_FAILED is also used for deterministic runtime/domain failures
-        // (for example SHARED_STATE_DIVERGENCE). Only provider/Brain/gateway
-        // failure evidence belongs in the reliability dimension.
+        // RUN_FAILED 也被确定性的运行时/领域失败使用(例如 SHARED_STATE_DIVERGENCE)。
+        // 只有 provider/Brain/网关的失败证据才归入可靠性维度。
         return detail.contains("agentbrainunavailable")
                 || detail.contains("brain_unavailable")
                 || detail.contains("modelgateway")
@@ -68,7 +77,7 @@ public final class LiveFailureClassifier {
         return ProviderFailureClass.UNKNOWN;
     }
 
-    /** Identifies model/broker contract parsing failures for separate reporting. */
+    /** 识别模型/broker 契约解析失败,单独报告。 */
     public static boolean isSchemaFailure(ObservationEnvelope observation) {
         if (observation == null) {
             return false;
@@ -80,8 +89,8 @@ public final class LiveFailureClassifier {
         String result = observation.executionResult();
         if (result != null) {
             String detail = result.toLowerCase(Locale.ROOT);
-            // Typed brain/model-output codes are schema failures, never
-            // infrastructure: the service worked and rejected the output.
+            // 类型化的 brain/模型输出错误码属于 schema 失败,绝不归为
+            // 基础设施失败:服务正常工作并拒绝了该输出。
             if (detail.contains("model_contract_violation")
                     || detail.contains("model_ungrounded_reference")) {
                 return true;

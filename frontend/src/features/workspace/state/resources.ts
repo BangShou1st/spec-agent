@@ -1,15 +1,15 @@
-/**
- * Resource & authoring domain: user-authored draft/resource nodes and the
- * graph commands that shape them (floating creation, connection, disconnection,
- * in-place revision, knowledge confirmation, explicit semantic relations).
+// 文件名:resources.ts
+// 用途:资源与创作领域逻辑:用户撰写的草稿/资源节点及其图命令(浮动创建、接入/断开、就地修订、知识确认、显式语义关系),从 workspaceStore 拆出,store 实例作为首参传入。
+/*
+ * 资源与创作领域:用户撰写的草稿/资源节点,以及塑造它们的图命令
+ * (浮动创建、连接、断开、就地修订、知识确认、显式语义关系)。
  *
- * Every function is the verbatim action body lifted out of `workspaceStore.ts`
- * with `this` replaced by the store instance passed in as the first argument.
- * The store keeps the action names and delegates, so no caller changes.
+ * 每个函数都是从 `workspaceStore.ts` 原样搬出的 action 主体,只是把
+ * `this` 换成了作为第一个参数传入的 store 实例。store 保留原 action 名
+ * 并委托到这里,调用方零改动。
  *
- * Every async response is validated against the project session captured at
- * start (see `captureProjectSession`): a slow command must never write its
- * feedback or error into a different project era.
+ * 每个异步响应都与开始时捕获的项目会话校验(见 `captureProjectSession`):
+ * 一次慢的命令绝不能把它的反馈或错误写进另一个项目纪元。
  */
 import {
   appendContinuation,
@@ -25,12 +25,10 @@ import { startRouteFromNode } from '@/features/workspace/api/routes'
 import type { ResourceSlice } from './slices'
 import { captureProjectSession } from './shared'
 
-/**
- * Adds a user-authored idea as a standalone (floating) draft — zero
- * model calls, never connected to any node. The user connects it
- * manually on the canvas. No Active Route is required: the creation
- * context route id is optional (null context is legal). Returns the
- * created node id, or null on failure.
+/*
+ * 把用户撰写的想法添加为独立(浮动)草稿——零模型调用,绝不连接到任何
+ * 节点,由用户之后在画布上手动连线。不需要 Active 路线:创建上下文路线
+ * id 是可选的(null 上下文合法)。返回创建的节点 id,失败返回 null。
  */
 export async function createIdeaAction(store: ResourceSlice): Promise<string | null> {
   if (!store.projectId || store.graphCommandPending) return null
@@ -54,19 +52,17 @@ export async function createIdeaAction(store: ResourceSlice): Promise<string | n
     store.error = toDisplayError(err)
     return null
   } finally {
-    // Only the owning session releases the lock: a stale command's cleanup
-    // must not release the NEW session's graph-command lock (beginProject
-    // has already reset it on switch).
+    // 只有持有会话的一方释放锁:过期命令的清理绝不能释放新会话的
+    // graph-command 锁(beginProject 在切换时已经重置过它)。
     if (isCurrent()) {
       store.graphCommandPending = false
     }
   }
 }
 
-/**
- * Continues from a node on an explicit route. The backend appends at the
- * tip or creates an explicit branch from a historical node — the UI never
- * pretends history was rewritten.
+/*
+ * 从某条显式路线上的节点继续。后端会在末端追加,或从历史节点创建显式
+ * 分支——UI 绝不假装历史被改写了。
  */
 export async function continueFromNodeAction(
   store: ResourceSlice,
@@ -93,9 +89,8 @@ export async function continueFromNodeAction(
     store.error = toDisplayError(err)
     return false
   } finally {
-    // Only the owning session releases the lock: a stale command's cleanup
-    // must not release the NEW session's graph-command lock (beginProject
-    // has already reset it on switch).
+    // 只有持有会话的一方释放锁:过期命令的清理绝不能释放新会话的
+    // graph-command 锁(beginProject 在切换时已经重置过它)。
     if (isCurrent()) {
       store.graphCommandPending = false
     }
@@ -197,9 +192,8 @@ export async function createFloatingResourceAction(
     store.error = toDisplayError(err)
     return false
   } finally {
-    // Only the owning session releases the lock: a stale command's cleanup
-    // must not release the NEW session's graph-command lock (beginProject
-    // has already reset it on switch).
+    // 只有持有会话的一方释放锁:过期命令的清理绝不能释放新会话的
+    // graph-command 锁(beginProject 在切换时已经重置过它)。
     if (isCurrent()) {
       store.graphCommandPending = false
     }
@@ -233,9 +227,8 @@ export async function connectFloatingNodeAction(
     store.error = toDisplayError(err)
     return false
   } finally {
-    // Only the owning session releases the lock: a stale command's cleanup
-    // must not release the NEW session's graph-command lock (beginProject
-    // has already reset it on switch).
+    // 只有持有会话的一方释放锁:过期命令的清理绝不能释放新会话的
+    // graph-command 锁(beginProject 在切换时已经重置过它)。
     if (isCurrent()) {
       store.graphCommandPending = false
     }
@@ -265,19 +258,18 @@ export async function disconnectNodeAction(
     store.error = toDisplayError(err)
     return false
   } finally {
-    // Only the owning session releases the lock: a stale command's cleanup
-    // must not release the NEW session's graph-command lock (beginProject
-    // has already reset it on switch).
+    // 只有持有会话的一方释放锁:过期命令的清理绝不能释放新会话的
+    // graph-command 锁(beginProject 在切换时已经重置过它)。
     if (isCurrent()) {
       store.graphCommandPending = false
     }
   }
 }
 
-/**
- * Saves an in-place edit of a still-editable user draft. `skillId` is the
- * optional "/" picker binding: it rides in the open content map as
- * metadata next to the visible text, and null clears an existing binding.
+/*
+ * 保存仍可编辑的用户草稿的就地修改。`skillId` 是可选的"/"选择器绑定:
+ * 它以元数据形式与可见文本一起放在开放的 content map 里,null 表示清除
+ * 已有绑定。
  */
 export async function reviseDraftAction(
   store: ResourceSlice,
@@ -310,16 +302,15 @@ export async function reviseDraftAction(
     store.error = toDisplayError(err)
     return false
   } finally {
-    // Only the owning session releases the lock: a stale command's cleanup
-    // must not release the NEW session's graph-command lock (beginProject
-    // has already reset it on switch).
+    // 只有持有会话的一方释放锁:过期命令的清理绝不能释放新会话的
+    // graph-command 锁(beginProject 在切换时已经重置过它)。
     if (isCurrent()) {
       store.graphCommandPending = false
     }
   }
 }
 
-/** Confirms claim-like knowledge content (PROPOSED -> CONFIRMED). */
+/** 把断言型知识内容确认为可信(PROPOSED → CONFIRMED)。 */
 export async function confirmKnowledgeAction(
   store: ResourceSlice,
   nodeId: string,
@@ -341,16 +332,15 @@ export async function confirmKnowledgeAction(
     store.error = toDisplayError(err)
     return false
   } finally {
-    // Only the owning session releases the lock: a stale command's cleanup
-    // must not release the NEW session's graph-command lock (beginProject
-    // has already reset it on switch).
+    // 只有持有会话的一方释放锁:过期命令的清理绝不能释放新会话的
+    // graph-command 锁(beginProject 在切换时已经重置过它)。
     if (isCurrent()) {
       store.graphCommandPending = false
     }
   }
 }
 
-/** Creates an explicit user semantic relation through the Runtime command. */
+/** 通过运行时命令创建一条显式的用户语义关系。 */
 export async function createSemanticRelationAction(
   store: ResourceSlice,
   sourceNodeId: string,
@@ -374,9 +364,8 @@ export async function createSemanticRelationAction(
     store.error = toDisplayError(err)
     return false
   } finally {
-    // Only the owning session releases the lock: a stale command's cleanup
-    // must not release the NEW session's graph-command lock (beginProject
-    // has already reset it on switch).
+    // 只有持有会话的一方释放锁:过期命令的清理绝不能释放新会话的
+    // graph-command 锁(beginProject 在切换时已经重置过它)。
     if (isCurrent()) {
       store.graphCommandPending = false
     }

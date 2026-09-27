@@ -21,8 +21,10 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 /**
- * Structural repair unit tests: exactly one repair inference per rejected
- * semantic decision, same contract, observable repair call type.
+ * 文件名:GlobalAssistantBrainRepairTest.java
+ *
+ * 测试目标:结构化修复的单元测试——每个被拒绝的语义决策恰好做
+ * 一次修复推理,契约保持不变,修复调用的 callType 可被观测。
  */
 class GlobalAssistantBrainRepairTest {
 
@@ -66,7 +68,7 @@ class GlobalAssistantBrainRepairTest {
         AtomicReference<ModelInferenceRequest> first = new AtomicReference<>();
         AtomicReference<ModelInferenceRequest> second = new AtomicReference<>();
         AtomicInteger calls = new AtomicInteger();
-        // repair path is exercised at runtime level; here the brain parses strict single calls
+        // 修复路径在运行时层面演练;这里只验证大脑严格按单次调用解析
         GlobalAssistantBrain brain = brainWithScripts(scripts, first, second, calls);
         assertThatThrownBy(() -> brain.decide(UUID.randomUUID(), null, List.of()))
                 .isInstanceOf(GlobalAssistantModelException.class);

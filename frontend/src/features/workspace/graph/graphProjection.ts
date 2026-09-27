@@ -1,3 +1,5 @@
+// 文件名:graphProjection.ts
+// 用途:画布投影核心:把后端的 canonical GraphWorkspaceView(节点/路线/回答/关系)加上浏览器 UI 状态(Focus、筛选、镜头、运行时进度)投影成 Vue Flow 可渲染的节点与边,是 Graph 视图层与数据层之间的转换器。
 import { MarkerType, type Edge, type Node } from '@vue-flow/core'
 import type {
   GraphWorkspaceNodeView,
@@ -7,7 +9,8 @@ import type {
   GraphWorkspaceView,
   RouteLifecycleStatus,
 } from '@/shared/contracts/types'
-import type { RunProgressStep } from '@/features/workspace/api/agentRuns'
+import type { RunProgressStep, UnresolvedFailure } from '@/features/workspace/api/agentRuns'
+export type { UnresolvedFailure }
 import type { GraphPosition, GraphRouteDisplayState } from './graphTypes'
 import { placeNewNode, resolvePositions, HORIZONTAL_GAP, VERTICAL_GAP } from './graphLayout'
 import {
@@ -28,16 +31,16 @@ import {
 
 export type GraphVisualWeight = 'active' | 'focus' | 'normal' | 'dimmed'
 
-/** Runtime progress is projected separately from knowledge status. */
+/** 运行时进度与知识状态分开投影。 */
 export type GraphRuntimeStatus = 'PENDING' | 'RUNNING' | 'SUCCEEDED' | 'FAILED'
 
-/** Whitelisted process content shown inside an executing node card. */
+/** 执行中节点卡片内部展示的白名单过程内容。 */
 export interface GraphRunProgress {
   summary: string | null
   steps: RunProgressStep[]
 }
 
-/** A browser-only card projected from an in-flight AgentRun. */
+/** 由进行中的 AgentRun 投影出的仅浏览器端卡片。 */
 export interface GraphPendingProjection {
   routeId: string
   sourceNodeId: string | null
@@ -47,19 +50,27 @@ export interface GraphPendingProjection {
   message: string | null
   operation?: string | null
   progress?: GraphRunProgress | null
+  /** 起草/续跑家族的失败任务:占位卡携带服务端判定的恢复身份,
+   *  重试按钮据此提交,绝不猜测全局目标。 */
+  failure?: UnresolvedFailure | null
 }
 
-/** Runtime overlay projected onto an existing canonical node. */
+/** 投影到已有 canonical 节点上的运行时覆盖层。 */
 export interface GraphNodeRuntimeState {
   status: GraphRuntimeStatus | null
   phase: string | null
   progress: GraphRunProgress | null
 }
 
-/**
- * Contextual AI actions identify the canonical node and the visual instance
- * that the user actually acted on. The former anchors the query; the latter
- * preserves the clicked branch when one canonical node has multiple visuals.
+/** 节点上的未解决失败恢复状态(服务端判定,按路线精确绑定)。 */
+export interface GraphRecoveryState {
+  failures: UnresolvedFailure[]
+}
+
+/*
+ * 上下文 AI 动作同时标识 canonical 节点和用户实际操作的视觉实例。
+ * 前者锚定查询;后者在同一个 canonical 节点有多个视觉实例时保留用户
+ * 点击的那条分支。
  */
 export interface ContextualAiTarget {
   canonicalNodeId: string
@@ -118,9 +129,8 @@ export interface SpecAgentGraphNodeData {
   primaryAnswer: GraphAnswerPresentation | null
   answerPresentationMode: AnswerPresentationMode
   readingRouteId: string | null
-  /** True when this visual node is the canonical tip of its current reading
-   * route — the only case where "activate its owning route and answer" is a
-   * legal affordance for a genuinely unanswered Question. */
+  /** 此视觉节点是其当前阅读路线的 canonical 末端时为 true——这是对真正
+   * 未回答的问题启用"激活归属路线并作答"的唯一合法场景。 */
   isTipOfReadingRoute?: boolean
   isCurrent: boolean
   canAnswer: boolean
@@ -130,12 +140,16 @@ export interface SpecAgentGraphNodeData {
   qLabel: string | null
   routeMembership?: GraphRouteMembershipPresentation[]
   visualWeight: GraphVisualWeight
-  /** Runtime facts are intentionally optional and never replace knowledgeStatus. */
+  /** 运行时事实刻意设为可选,绝不替代 knowledgeStatus。 */
   runtimeStatus?: GraphRuntimeStatus | null
   runtimePhase?: string | null
   runtimeMessage?: string | null
-  /** Process content (steps + summaries) for an in-flight run on this node. */
+  /** 此节点上进行中 run 的过程内容(步骤 + 摘要)。 */
   runtimeProgress?: GraphRunProgress | null
+  /** 该节点(绑定当前阅读路线)上的未解决失败恢复状态。 */
+  recovery?: GraphRecoveryState | null
+  /** Pending 占位卡携带的失败任务身份(仅占位卡使用)。 */
+  pendingFailure?: UnresolvedFailure | null
 }
 
 export interface SpecAgentGraphEdgeData {
@@ -154,20 +168,23 @@ export interface GraphProjectionInput {
     lifecycleFilters: Record<RouteLifecycleStatus, boolean>
     routeDisplayStates: Record<string, GraphRouteDisplayState>
     expandedNodeIds: string[]
-    /** Ephemeral "只看这条路线" lens: when set, this route is the ONLY visible
-     * one. Explicit per-route intent, so it outranks lifecycle filters, manual
-     * dim/hide AND the Active-route force-visible rule. Never persisted. */
+    /** 临时的"只看这条路线"镜头:生效时该路线是唯一可见路线。这是显式的
+     * 单路线用户意图,因此优先于生命周期筛选、手动弱化/隐藏以及 Active
+     * 路线强制可见规则。绝不持久化。 */
     isolatedRouteId?: string | null
-    /** Default false. Inspector remains the canonical relations viewer. */
+    /** 默认 false。Inspector 仍是关系的权威查看器。 */
     showRelationLayer?: boolean
-    /** Selected node ids (visual keys): their direct 1-hop relations project
-     * onto the canvas even when the global relation layer is off. */
+    /** 已选中的节点 id(视觉 key):即使全局关系层关闭,它们的直接 1-hop
+     * 关系也会投影到画布上。 */
     selectedNodeIds?: string[]
   }
   savedPositions: Record<string, GraphPosition>
-  /** Per-canonical-node runtime overlays for in-flight runs on existing nodes. */
+  /** 任务级失败恢复:键为 `${canonicalNodeId}::${readingRouteId ?? '*'}`,
+   *  共享节点不同路线的失败互不覆盖。 */
+  recoveryByNode?: Record<string, GraphRecoveryState>
+  /** 已有节点上进行中 run 的逐 canonical 节点运行时覆盖层。 */
   runtimeByNode?: Record<string, GraphNodeRuntimeState>
-  /** Browser-only cards for runs whose target node does not exist yet. */
+  /** 目标节点尚不存在时,为这些 run 生成仅浏览器端卡片。 */
   pendings?: GraphPendingProjection[]
 }
 
@@ -182,16 +199,14 @@ export interface LineageEdgeMembership {
   routeIds: string[]
 }
 
-/**
- * A route is visible when the isolate lens (if any) selects it, or — with no
- * lens — when it is the Active route or passes the lifecycle filter and is not
- * manually hidden.
+/*
+ * 路线可见的条件:若单路线镜头存在则由它选择;没有镜头时,是 Active 路线、
+ * 通过生命周期筛选且未被手动隐藏。
  *
- * The isolate lens is checked FIRST and wins outright: it is one explicit
- * per-route user command, so it may hide the Active route. Everything weaker
- * (lifecycle filter, manual dim/hide, Active force-visible) only applies
- * without a lens. Before this rule, "只看这条路线" on a non-Active route always
- * kept the running route on the canvas, so a second isolate looked like a no-op.
+ * 镜头先检查且直接获胜:它是一条显式的单路线用户命令,因此可以隐藏
+ * Active 路线。所有更弱的规则(生命周期筛选、手动弱化/隐藏、Active 强制
+ * 可见)只在无镜头时生效。在此规则之前,对非 Active 路线执行"只看这条
+ * 路线"总把运行路线留在画布上,于是第二次只看看起来像无操作。
  */
 function routeVisible(
   route: Pick<GraphWorkspaceRouteView, 'id' | 'lifecycleStatus'>,
@@ -215,7 +230,7 @@ export function getVisibleRouteIds(
   return visible
 }
 
-/** Canonical membership remains available for non-visual consumers. */
+/** canonical 归属关系仍供非视觉消费方使用。 */
 export function getNodeRouteMembership(view: GraphWorkspaceView): Map<string, string[]> {
   const membership = new Map<string, string[]>()
   for (const route of view.routes) {
@@ -227,7 +242,7 @@ export function getNodeRouteMembership(view: GraphWorkspaceView): Map<string, st
   return membership
 }
 
-/** Legacy canonical edge helper; visual projection uses the V2 helper. */
+/** 旧版 canonical 边辅助函数;视觉投影使用 V2 版本。 */
 export function getLineageEdgeMembership(view: GraphWorkspaceView): Map<string, LineageEdgeMembership> {
   const membership = new Map<string, LineageEdgeMembership>()
   for (const route of view.routes) {
@@ -246,7 +261,7 @@ export function getLineageEdgeMembership(view: GraphWorkspaceView): Map<string, 
   return membership
 }
 
-/** Physical lineage edges are deduplicated by visual endpoints. */
+/** 物理 lineage 边按视觉端点去重。 */
 export function getVisualLineageEdgeMembership(view: GraphWorkspaceView): Map<string, LineageEdgeMembership> {
   const membership = new Map<string, LineageEdgeMembership>()
   for (const instance of buildVisualInstances(view)) {
@@ -291,11 +306,10 @@ export function selectPrimaryAnswer(
     const withNodeId = answer as GraphAnswerPresentation & { nodeId?: string }
     return withNodeId.nodeId === undefined || withNodeId.nodeId === nodeId
   })
-  // A canonical Question Node carries at most ONE immutable Answer identity
-  // project-wide (SHARED_STATE_DIVERGENCE is an invariant violation). The
-  // answer CONTENT never depends on Focus/reading route — Focus only changes
-  // the reading context. Always return the single canonical Answer, so a
-  // Shared answered Question shows the same answer under Main/Branch/null.
+  // 一个 canonical 问题节点全项目只携带一个不可变的回答身份
+  // (SHARED_STATE_DIVERGENCE 属于不变式违例)。回答内容绝不依赖
+  // Focus/阅读路线——Focus 只改变阅读上下文。始终返回唯一的 canonical
+  // 回答,共享的已答问题在 主路线/分支路线/无 Focus 下显示同一回答。
   return nodeAnswers[0] ?? null
 }
 
@@ -307,10 +321,10 @@ function fallbackRouteLabel(route: Pick<GraphWorkspaceRouteView, 'branchType' | 
   return route.isActive ? '主路线' : '路线'
 }
 
-/**
- * Registry-style node type resolution: the stable node kind maps to a
- * registered card component (see GraphCanvas nodeTypes). New subtypes reuse
- * an existing kind's card; they never add per-business card classes.
+/*
+ * 注册表式的节点类型解析:稳定的节点 kind 映射到已注册的卡片组件
+ * (见 GraphCanvas 的 nodeTypes)。新的子类型复用既有 kind 的卡片,
+ * 绝不为业务单独新增卡片类。
  */
 export function nodeTypeForKind(kind: GraphWorkspaceNodeView['kind']): 'question' | 'knowledge' {
   return kind === 'INTERACTION' ? 'question' : 'knowledge'
@@ -342,9 +356,9 @@ function buildAnswerPresentations(view: GraphWorkspaceView): Map<string, GraphAn
   return byNode
 }
 
-/** Compute the AnswerPresentationMode. Shared canonical nodes carry one
- * immutable Answer identity, so a "divergent summaries" mode cannot occur in
- * a healthy graph; the mode stays a pure reading-context signal. */
+/** 计算 AnswerPresentationMode。共享 canonical 节点只携带一个不可变的
+ * 回答身份,健康图里不可能出现"分歧摘要"模式;该模式只是纯粹的阅读
+ * 上下文信号。 */
 function computeAnswerPresentation(
   _routeIds: string[],
   _routeStates: GraphRouteAnswerState[],
@@ -368,21 +382,18 @@ function computePositions(
   )
 }
 
-/**
- * Deterministic card-height estimate, used ONLY while a card has never been
- * measured (Vue Flow reports real heights one frame later; 重新自动布局 then
- * uses the measured values).
+/*
+ * 确定性的卡片高度估算,仅在卡片从未被实测时使用(Vue Flow 会在一帧之后
+ * 报告真实高度;"重新自动布局"届时使用实测值)。
  *
- * Why it is needed: a card sizes to its content, so a fixed row pitch piles a
- * long note on top of the next card. The first layout runs before any
- * measurement exists, and its result is persisted immediately — so without an
- * estimate the very first layout of a project with long notes overlaps.
+ * 为什么需要它:卡片尺寸随内容自适应,固定行距会把一条长笔记堆到下一张
+ * 卡片上。首次布局在任何实测之前运行,且其结果会立即持久化——所以没有
+ * 估算值时,长笔记项目的首次布局就会重叠。
  *
- * Calibration (measured on the real canvas): a 320px knowledge card with
- * 482 chars / 20 newlines renders 802px tall; a 320px interaction card with a
- * 148-char question, a 40-char purpose and a free-text box renders 463px.
- * Constants are deliberately tuned to OVER-estimate slightly: extra space is
- * cosmetic, too little space is a visible overlap.
+ * 校准(在真实画布上测量):320px 知识卡片 482 字符 / 20 个换行渲染为
+ * 802px 高;320px 交互卡片(148 字符问题 + 40 字符 purpose + 自由文本框)
+ * 渲染为 463px。常量刻意略微高估:多留空间只是难看点,空间不足则是
+ * 可见的重叠。
  */
 export function estimateNodeCardHeight(node: GraphWorkspaceNodeView): number {
   const BASE = 76
@@ -398,7 +409,7 @@ export function estimateNodeCardHeight(node: GraphWorkspaceNodeView): number {
   const MIN_HEIGHT = 110
   const MAX_HEIGHT = 1400
 
-  /** Rendered lines of a text block: explicit breaks plus soft wrapping. */
+  /** 文本块的渲染行数:显式换行加上软换行。 */
   const renderedLines = (text: string | null | undefined, charsPerLine: number): number => {
     if (!text) return 0
     const trimmed = text.trim()
@@ -443,9 +454,8 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
   const visibleKeys = new Set(visibleInstances.map((instance) => instance.visualNodeKey))
   const positions = computePositions(visibleInstances, savedPositions)
 
-  // Floating drafts (route-less ideas) start at a free slot to the right of
-  // the current layout instead of the root column, which the on-canvas
-  // toolbar overlays — a new idea must be immediately visible and reachable.
+  // 浮动想法(不属于任何路线的灵感)从当前布局右侧的空闲槽位开始,而不是
+  // 根列——根列会被画布工具栏遮住,新想法必须立即可见、可点。
   for (const instance of visibleInstances) {
     if (instance.routeIds.length !== 0) continue
     if (savedPositions[instance.visualNodeKey]) continue
@@ -472,7 +482,7 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
     }
   }
 
-  // Compute latest marker: active route tip with no answer.
+  // 计算"最新"标记:运行路线末端且未回答。
   const activeRoute = view.routes.find((r) => r.id === activeRouteId)
   const activeTipNodeId = activeRoute?.tipNodeId ?? null
   const activeTipHasAnswer = activeTipNodeId != null
@@ -577,6 +587,9 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
         runtimePhase: input.runtimeByNode?.[instance.canonicalNodeId]?.phase ?? null,
         runtimeMessage: null,
         runtimeProgress: input.runtimeByNode?.[instance.canonicalNodeId]?.progress ?? null,
+        recovery: input.recoveryByNode?.[
+          instance.canonicalNodeId + '::' + (readingRouteId ?? '*')
+        ] ?? null,
       },
       dragHandle: '.graph-question-node__header',
       class: [
@@ -588,9 +601,8 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
   })
   const edges: Edge<SpecAgentGraphEdgeData>[] = []
 
-  // Pending cards are presentation projections of in-flight AgentRuns. They
-  // are never added to the canonical GraphWorkspaceView and are replaced by
-  // the real persisted nodes after their runs complete.
+  // Pending 卡片是进行中 AgentRun 的展示投影。它们绝不加入 canonical
+  // GraphWorkspaceView,并在 run 完成后被真实持久化的节点取代。
   const pendings = input.pendings ?? []
   for (const pending of pendings) {
     const pendingRoute = view.routes.find((route) => route.id === pending.routeId)
@@ -628,7 +640,7 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
         // 声明盒；碰撞检查按真实高度走，两张并发/连续失败卡才不会叠放。
         height: estimateNodeCardHeight(pendingNode) + 180,
       })
-    // Register the slot so a second concurrent card never overlaps the first.
+    // 注册该槽位,确保第二张并发卡片绝不与第一张重叠。
     positions[pendingId] = pendingPosition
     nodes.push({
       id: pendingId,
@@ -668,6 +680,7 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
         runtimePhase: pending.phase,
         runtimeMessage: pending.message,
         runtimeProgress: pending.progress ?? null,
+        pendingFailure: pending.failure ?? null,
       },
       dragHandle: '.graph-question-node__header',
       class: [
@@ -778,16 +791,15 @@ export function projectGraph(input: GraphProjectionInput): GraphProjectionResult
   return { nodes, edges }
 }
 
-/**
- * Resolves the visual instance a relation endpoint attaches to. Three-state
- * rule, NEVER falling back to Active/first/latest on shared ambiguity:
+/*
+ * 解析关系端点挂在哪个视觉实例上。三态规则,在共享歧义下绝不回退到
+ * Active/第一个/最新:
  *
- *  1. If a focus route is set and the canonical node has exactly one visible
- *     instance that includes the focus route → use that instance.
- *  2. Else if the canonical node has exactly one visible instance → use it.
- *  3. Else → return null (relation edge must NOT be drawn presentationally
- *     because we cannot deterministically pick a visual instance; the
- *     canonical fact remains in the read model and the Inspector).
+ *  1. 若设置了焦点路线,且 canonical 节点恰好有一个包含该路线的可见
+ *     实例 → 使用该实例。
+ *  2. 否则,若 canonical 节点恰好有一个可见实例 → 使用它。
+ *  3. 否则 → 返回 null(无法确定性地选出视觉实例,关系边就不能画出;
+ *     canonical 事实仍保留在读模型与 Inspector 中)。
  */
 function relationEndpointKey(
   instances: GraphVisualInstance[],

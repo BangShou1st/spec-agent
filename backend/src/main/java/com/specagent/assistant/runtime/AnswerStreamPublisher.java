@@ -6,16 +6,16 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Coalescing publisher for transient answer-stream events of one model call.
+ * 文件名:AnswerStreamPublisher.java
  *
- * <p>Each generation corresponds to one provider attempt: the initial decision
- * is generation 1, a repair re-inference is generation 2. Frontend replaces its
- * draft whenever the generation changes, so a repaired answer can never
- * silently append to a failed draft. Deltas are persisted per coalesced batch
- * through the normal event path (ordering, dedup, and reconnect replay come
- * free); the authoritative assistant message is still written exactly once at
- * completion and is the only durable message. Batches flush while the provider
- * is still generating (time- or size-triggered), never after completion.
+ * 用途:对单次模型调用的瞬态答案流事件做合并批量发布的发布器。
+ *
+ * 每个 generation 对应一次供应商尝试:初始决策是 generation 1,
+ * 修复重推理是 generation 2。前端在 generation 变化时会整体替换草稿,
+ * 因此修复后的答案绝不会悄悄拼接到失败的草稿后面。增量文本按合并后的
+ * 批次走普通事件链路持久化(顺序、去重与断线重连回放都是现成的);
+ * 权威的助手消息仍在完成时恰好写一次,也是唯一的持久消息。
+ * 批次在供应商仍在生成时按时间或大小触发刷出,完成后不再刷。
  */
 final class AnswerStreamPublisher {
 
@@ -38,7 +38,7 @@ final class AnswerStreamPublisher {
         this.runStartNanos = runStartNanos;
     }
 
-    /** Starts the next generation; emits RESET when a previous draft exists. */
+    /** 开启下一个 generation;若已有旧草稿则发出 RESET 事件。 */
     int nextGeneration() {
         finish();
         if (generationStarted) {
@@ -53,7 +53,7 @@ final class AnswerStreamPublisher {
         return generation;
     }
 
-    /** Accepts releasable plaintext; flushes while the provider generates. */
+    /** 接收可释放的明文;趁供应商还在生成时就批量刷出。 */
     void accept(String text) {
         if (text == null || text.isEmpty()) return;
         if (!generationStarted) {
@@ -70,7 +70,7 @@ final class AnswerStreamPublisher {
         }
     }
 
-    /** Final flush at stream end; no-op when nothing is pending. */
+    /** 流结束时的最终刷出;没有积压内容时是空操作。 */
     void finish() {
         if (pending.length() > 0) {
             flush();

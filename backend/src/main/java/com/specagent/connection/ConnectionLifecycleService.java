@@ -20,14 +20,17 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Saved-Connection lifecycle. The product Connection and the MCP protocol stay
- * separate: this service owns status/credential-ref/enablement, while MCP
- * execution happens through {@code McpDiscoveryService} and the transport.
+ * 文件名:ConnectionLifecycleService.java
  *
- * <p>Status model: CREATED (row saved) -> TESTED (test succeeded but not yet
- * connected) -> CONNECTED (discovery persisted). DISABLED/FAILED connections
- * are invisible to planner candidates. Only test/discovery-successful
- * connections become agent-visible.
+ * 用途:已保存 Connection 的生命周期服务,负责连接的创建、测试、连接、
+ * 刷新、启停、更新与删除,以及凭据引用的写入与清理。
+ *
+ * 产品层的 Connection 与 MCP 协议保持分离:本服务只管状态、凭据引用
+ * 和启用开关;MCP 执行通过 {@code McpDiscoveryService} 和 transport 完成。
+ *
+ * 状态流转:CREATED(已落库) -> TESTED(测试通过但尚未连接) ->
+ * CONNECTED(发现结果已持久化)。DISABLED/FAILED 状态的连接对 planner
+ * 候选不可见;只有测试/发现成功的连接才对 agent 可见。
  */
 @Service
 public class ConnectionLifecycleService {
@@ -44,7 +47,7 @@ public class ConnectionLifecycleService {
         this.discoveryService = discoveryService;
     }
 
-    /** Masked credential suffix for API responses; null when no credential is stored. */
+    /** 供 API 响应使用的掩码凭据后缀;未配置凭据时返回 null。 */
     public String maskedSuffix(Connection connection) {
         if (connection.credentialRef() == null || connection.credentialRef().isBlank()) {
             return null;
@@ -52,7 +55,7 @@ public class ConnectionLifecycleService {
         return secretStore.maskedSuffix(connection.credentialRef());
     }
 
-    /** Creates a saved Connection row (no network activity). */
+    /** 创建一条已保存的 Connection 记录(不产生任何网络活动)。 */
     @Transactional
     public Connection create(ConnectionKind kind, String name, Map<String, Object> config,
                              String secret) {
@@ -77,10 +80,9 @@ public class ConnectionLifecycleService {
     }
 
     /**
-     * Tests the connection (handshake + discovery cache). Never writes
-     * remotely. Not transactional as a whole: the FAILED status update must
-     * commit even when discovery throws, so it runs in its own transaction
-     * after the failure is caught.
+     * 测试连接(握手 + 发现缓存)。绝不写远端。整体上不加事务:即使
+     * discovery 抛异常,FAILED 状态的更新也必须提交,因此在捕获失败之后
+     * 用独立事务单独执行。
      */
     public McpDiscovery test(UUID connectionId) {
         Connection connection = requireConnection(connectionId);
@@ -95,7 +97,7 @@ public class ConnectionLifecycleService {
         }
     }
 
-    /** Connects: test + persist discovery, mark CONNECTED. */
+    /** 连接:测试 + 持久化发现结果,状态置为 CONNECTED。 */
     public McpDiscovery connect(UUID connectionId) {
         Connection connection = requireConnection(connectionId);
         try {
@@ -114,7 +116,7 @@ public class ConnectionLifecycleService {
         repository.updateStatus(connectionId, status, lastError);
     }
 
-    /** Refreshes discovery from the live server. */
+    /** 从真实服务器重新拉取发现结果。 */
     @Transactional
     public McpDiscovery refresh(UUID connectionId) {
         Connection connection = requireConnection(connectionId);
@@ -159,7 +161,7 @@ public class ConnectionLifecycleService {
         return repository.list();
     }
 
-    /** Product-level resolve for the public management API. */
+    /** 供公开管理 API 使用的产品层解析:按 connectionId 查找连接。 */
     public Connection requireByConnectionId(String connectionId) {
         if (connectionId == null || connectionId.isBlank()) {
             throw new ConnectionNotFoundException(String.valueOf(connectionId));
@@ -249,7 +251,7 @@ public class ConnectionLifecycleService {
         return repository.findById(current.id()).orElseThrow();
     }
 
-    /** Shared safe-config validation: config is non-secret metadata, never a secret carrier. */
+    /** config 的统一安全校验:config 只是非敏感元数据,绝不承载密钥。 */
     static Map<String, Object> validatedConfig(ConnectionKind kind, Map<String, Object> config) {
         Map<String, Object> safe = config == null ? Map.of() : Map.copyOf(config);
         for (String key : safe.keySet()) {

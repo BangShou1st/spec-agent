@@ -35,8 +35,13 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * FIX T/U/V/W/X RED: after-commit publish, UUID event ids, ordered handoff,
- * strict cursor handling through the real SSE endpoint.
+ * 文件名:GlobalAssistantSseHardeningTest.java
+ *
+ * 测试目标:SSE 流的若干加固点——事务提交后才发布、UUID 事件 id、
+ * 有序交接,以及通过真实 SSE 端点验证的严格游标处理。
+ * 覆盖场景:回滚的事件不会到达订阅者、已提交事件只发布一次、
+ * SSE 信封的 id 规则、Last-Event-ID 游标只重放其后的事件、
+ * 非法游标失败收场,以及并发追加时序列严格递增。
  */
 @SpringBootTest
 @AutoConfigureMockMvc

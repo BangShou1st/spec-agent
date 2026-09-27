@@ -30,21 +30,19 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.slices;
 
 /**
- * Structure gates after the 2026-09 business-module consolidation
- * ({@code docs/BACKEND_STRUCTURE.md}).
+ * 文件名:ArchitectureTests.java
  *
- * <p>Layer mapping from the previous structure:
- * <ul>
- *   <li>{@code api/application/readmodel} dissolved — controllers, use-case
- *       services and query projections now live inside the business module
- *       they serve (workspace.*, agent.api, modelsettings, ...); the shared
- *       HTTP error-mapping edge is {@code com.specagent.web}.</li>
- *   <li>{@code globalassistant} → {@code assistant}; {@code settings} →
- *       {@code modelsettings}; {@code agent.contract} → {@code agent.protocol}.</li>
- *   <li>The "runtime kernel" (project/route/node/answer/context/patch/spec/
- *       profile) is now {@code com.specagent.workspace..}.</li>
- * </ul>
- */
+ * 测试目标:2026-09 业务模块合并后的结构门禁(见 {@code docs/BACKEND_STRUCTURE.md}),
+ * 用 ArchUnit 校验分层依赖方向、HTTP 边界、无循环依赖等结构约束。
+ *
+ * 相对旧结构的分层映射:
+ * - {@code api/application/readmodel} 已解散——控制器、用例服务和查询投影
+ *       现在各归其所属业务模块(workspace.*、agent.api、modelsettings 等);
+ *       共享的 HTTP 错误映射边缘是 {@code com.specagent.web}。
+ * - {@code globalassistant} → {@code assistant};{@code settings} →
+ *       {@code modelsettings};{@code agent.contract} → {@code agent.protocol}。
+ * - "运行时内核"(project/route/node/answer/context/patch/spec/profile)
+ *       现为 {@code com.specagent.workspace..}。 */
 class ArchitectureTests {
 
     private static final JavaClasses CLASSES = new ClassFileImporter()
@@ -54,7 +52,7 @@ class ArchitectureTests {
     private static final String[] RUNTIME_KERNEL = {
         "com.specagent.workspace..", "com.specagent.common.."};
 
-    // ---------------------------------------------------------------- layering
+    // ---------------------------------------------------------------- 分层规则
 
     @Test
     void runtimePackagesShouldNotDependOnModelPackages() {
@@ -120,7 +118,7 @@ class ArchitectureTests {
         rule.check(CLASSES);
     }
 
-    // ------------------------------------------------------- agent boundaries
+    // ------------------------------------------------------- agent 边界规则
 
     @Test
     void productionAgentOrchestrationHasNoFakeTypes() {
@@ -166,12 +164,11 @@ class ArchitectureTests {
         rule.check(CLASSES);
     }
 
-    // ------------------------------------------------------- HTTP boundary rules
-    // Controllers now live inside their business modules; the rules are keyed
-    // on type roles (Controller / Request / Response / View / Dto naming)
-    // instead of a dissolved api.. package. The internal model-inference
-    // broker endpoint is deliberately excluded: it IS the model wire contract
-    // served to the Python brain.
+    // ------------------------------------------------------- HTTP 边界规则
+    // 控制器现已内聚在各业务模块中;规则改为按类型角色
+    // (Controller / Request / Response / View / Dto 命名)判定,
+    // 而不再依赖已解散的 api.. 包。内部模型推理 broker 端点被有意排除:
+    // 它本身就是提供给 Python 大脑的模型线级契约。
 
     private static final DescribedPredicate<JavaClass> HTTP_CONTROLLERS = new DescribedPredicate<>(
             "HTTP controllers except the internal inference broker") {
@@ -183,11 +180,9 @@ class ArchitectureTests {
     };
 
     /**
-     * The HTTP surface: controllers plus the request/response/view DTOs they
-     * hand across the boundary. These types must never leak internal runtime
-     * material (a raw ContextSnapshot, credential stores) even when the
-     * controller itself only references the DTO — this closes the gap a
-     * controller-only check leaves open.
+     * HTTP 表面类型:控制器加上其跨越边界传递的请求/响应/视图 DTO。
+     * 即使控制器自身只引用 DTO,这些类型也绝不能泄漏内部运行时素材
+     * (原始 ContextSnapshot、凭据存储)——以此堵住只查控制器会留下的缺口。
      */
     private static final DescribedPredicate<JavaClass> HTTP_SURFACE_TYPES =
             new DescribedPredicate<>("HTTP surface types (Controller/Request/Response/View/Dto)") {
@@ -201,13 +196,10 @@ class ArchitectureTests {
     };
 
     /**
-     * Application orchestration role across all modules: use-case services,
-     * query services and command execution helpers. These roles sit between
-     * the HTTP surface and the core domain, so they may touch HTTP DTOs even
-     * though the core domain may not. Membership is name-role based and
-     * documented here; it is deliberately narrow (do NOT treat every
-     * application view as HTTP DTO, and do NOT widen the orchestration role
-     * to sneak dependencies past the gate).
+     * 全模块通用的应用编排角色:用例服务、查询服务和命令执行辅助类。
+     * 这些角色位于 HTTP 表面与核心领域之间,可以触碰 HTTP DTO(核心领域不行)。
+     * 成员资格按命名角色判定并在此记录;范围有意收窄(不要把每个应用视图都当成
+     * HTTP DTO,也不要借扩大编排角色让依赖绕过门禁)。
      */
     static boolean isApplicationOrchestrationRole(JavaClass clazz) {
         if (clazz.getSimpleName().equals("package-info")) {
@@ -221,17 +213,14 @@ class ArchitectureTests {
     }
 
     /**
-     * Payload reachability starts at mapped endpoint signatures, not controller
-     * implementation dependencies. Follow instance fields (including record
-     * components), bean/JSON getters and generic type arguments, retaining
-     * arrays, inherited payloads and nested classes. Never traverse service
-     * calls, constructors or arbitrary helper methods. External containers
-     * contribute their type arguments, but their own implementation is opaque.
+     * 载荷可达性从映射端点的签名出发,而不是控制器实现依赖。沿实例字段
+     * (含 record 组件)、bean/JSON getter 和泛型实参遍历,保留数组、
+     * 继承的载荷和嵌套类。绝不穿越服务调用、构造器或任意辅助方法。
+     * 外部容器贡献其类型实参,但其自身实现视为不透明。
      *
-     * This is a conservative static type boundary, not a Jackson runtime schema:
-     * instance fields are checked even when a serializer might omit them.
-     * Object/JsonNode contents and dynamically populated SSE payloads require
-     * their existing behavioural/contract tests.
+     * 这是保守的静态类型边界,不是 Jackson 运行时 schema:即使序列化器
+     * 可能省略字段,实例字段也一律检查。Object/JsonNode 内容和动态填充的
+     * SSE 载荷由各自已有的行为/契约测试覆盖。
      */
     private static Set<JavaClass> httpPayloadTypes(JavaClasses classes) {
         Set<JavaClass> known = new HashSet<>();
@@ -253,7 +242,7 @@ class ArchitectureTests {
         while (!pending.isEmpty()) {
             JavaClass payload = pending.removeFirst();
             if (!known.contains(payload) || !payloads.add(payload)) continue;
-            // Include arguments bound by a generic superclass, not just its erased fields.
+            // 包含泛型父类绑定的类型实参,而不只是擦除后的字段。
             payload.getSuperclass().ifPresent(type -> enqueuePayloadTypes(type, pending));
             payload.getAllFields().stream()
                     .filter(field -> !field.getModifiers().contains(JavaModifier.STATIC))
@@ -287,7 +276,7 @@ class ArchitectureTests {
                 || method.isAnnotatedWith("com.fasterxml.jackson.annotation.JsonProperty");
     }
 
-    /** HTTP-only naming role within the reachable payload graph; views remain shared read models. */
+    /** 可达载荷图中仅限 HTTP 层的命名角色;View 仍算共享读模型,不在其列。 */
     static DescribedPredicate<JavaClass> httpOnlyDtoRole(JavaClasses classes) {
         Set<JavaClass> payloads = httpPayloadTypes(classes);
         return new DescribedPredicate<>("HTTP-only Request/Response/Dto types reachable from endpoints") {
@@ -301,10 +290,9 @@ class ArchitectureTests {
     }
 
     /**
-     * Rule: the core domain must never depend back on HTTP-only DTOs. Source
-     * side excludes the HTTP layer itself (controllers, advices, classes in
-     * the {@code <module>.api} subpackages, DTO-shaped classes — payloads
-     * compose other payloads) and the application orchestration roles.
+     * 规则:核心领域绝不能反向依赖仅限 HTTP 层的 DTO。源侧排除 HTTP 层自身
+     * (控制器、advice、{@code <module>.api} 子包中的类、DTO 形态的类——
+     * 载荷本就由其他载荷组合而成)以及应用编排角色。
      */
     static ArchRule coreMustNotDependOnHttpOnlyDtos(JavaClasses classes) {
         DescribedPredicate<JavaClass> httpDtos = httpOnlyDtoRole(classes);
@@ -331,10 +319,9 @@ class ArchitectureTests {
     }
 
     /**
-     * Rule: the HTTP surface (controllers and reachable payloads) must never
-     * reference model internals — a response DTO carrying a provider type
-     * would leak the model seam onto the wire just as much as a controller
-     * calling a gateway directly.
+     * 规则:HTTP 表面(控制器与可达载荷)绝不能引用模型内部类型——
+     * 响应 DTO 携带 Provider 类型,与控制器直接调用网关一样,都会把模型
+     * 接缝泄漏到线级契约上。
      */
     static ArchRule httpSurfaceMustNotReferenceModelInternals(JavaClasses classes) {
         Set<JavaClass> payloads = httpPayloadTypes(classes);
@@ -370,8 +357,8 @@ class ArchitectureTests {
         rule.check(CLASSES);
     }
 
-    // (the model-internals constraint for controllers AND HTTP-only DTOs is
-    // enforced by httpSurfaceMustNotReferenceModelInternalsInProduction above)
+    // (控制器与仅限 HTTP 层 DTO 的模型内部类型约束
+    // 由上面的 httpSurfaceMustNotReferenceModelInternalsInProduction 统一强制)
 
     @Test
     void controllersMustNotDependOnContextOrCredentialPackages() {
@@ -398,13 +385,10 @@ class ArchitectureTests {
 
     @Test
     void httpSurfaceTypesMustNotExposeRawContextSnapshotOrCredentials() {
-        // Restores the former "api must not expose a raw ContextSnapshot or
-        // credential material" constraint for the dissolved api.. package:
-        // request/response/view DTOs are part of the HTTP surface even when
-        // the controller only references them, so the check has to cover the
-        // DTOs themselves, not just the controller. Derived value types from
-        // workspace.context (e.g. RequirementState) stay allowed — only the
-        // raw snapshot type and credential material are forbidden.
+        // 恢复原"api 不得暴露原始 ContextSnapshot 或凭据素材"约束(针对已解散的
+        // api.. 包):请求/响应/视图 DTO 属于 HTTP 表面,即使控制器只引用它们,
+        // 检查也必须覆盖 DTO 本身而不只是控制器。workspace.context 的派生值类型
+        // (如 RequirementState)仍然允许——只禁止原始快照类型和凭据素材。
         ArchRule rule = noClasses()
             .that(HTTP_SURFACE_TYPES)
             .should().dependOnClassesThat()
@@ -419,11 +403,9 @@ class ArchitectureTests {
 
     @Test
     void noOneReachesBackIntoHttpControllers() {
-        // Restores the former "runtime kernel must not depend on api" direction:
-        // with controllers living inside the business modules, the remaining
-        // way to recreate the old upward edge is a service or DTO importing a
-        // controller (or its DTOs) — controllers must only be referenced by
-        // the framework and controller advices.
+        // 恢复原"运行时内核不得依赖 api"方向:控制器内聚到业务模块后,
+        // 重现旧上行边的剩余途径是服务或 DTO 反向 import 控制器(或其 DTO)——
+        // 控制器只能被框架和控制器 advice 引用。
         ArchRule rule = noClasses()
             .that().haveSimpleNameNotEndingWith("Controller")
             .and().haveNameNotMatching(".*\\$.*")
@@ -438,11 +420,9 @@ class ArchitectureTests {
 
     @Test
     void graphWorkspaceProjectionMustNotDependOnModelContextOrCredentials() {
-        // Restores the former readmodel.graph rule on the type role: the
-        // GraphWorkspace* family (projection query service, views, exceptions)
-        // is a read projection, not a model/provider/context boundary — even
-        // though it now shares the workspace.graph package with the command
-        // side.
+        // 按类型角色恢复原 readmodel.graph 规则:GraphWorkspace* 家族
+        // (投影查询服务、视图、异常)是读投影,不是模型/Provider/上下文边界——
+        // 尽管它现在与命令侧共用 workspace.graph 包。
         ArchRule rule = noClasses()
             .that().haveSimpleNameStartingWith("GraphWorkspace")
             .should().dependOnClassesThat()
@@ -454,7 +434,7 @@ class ArchitectureTests {
         rule.check(CLASSES);
     }
 
-    // ------------------------------------------------------------ misc guards
+    // ------------------------------------------------------------ 其他守护
 
     @Test
     void productConfigDefaultsToOpenCode() throws IOException {
@@ -581,21 +561,18 @@ class ArchitectureTests {
 
     @Test
     void conflictExceptionsMustCarryThePreciseConflictMarker() {
-        // Guard for the CommandExecution trap: that wrapper rethrows a single
-        // PreciseConflictException and otherwise degrades every
-        // IllegalStateException to 409/RUNTIME_CONFLICT. A new precise
-        // conflict exception that forgot the marker would therefore lose its
-        // stable code silently.
+        // 防 CommandExecution 陷阱:该包装器只会原样重抛单个
+        // PreciseConflictException,其余 IllegalStateException 一律降级为
+        // 409/RUNTIME_CONFLICT。新的精确冲突异常若漏掉标记,就会静默丢失
+        // 稳定码。
         //
-        // Approximation (documented): ArchUnit cannot see "is actually thrown
-        // through CommandExecution.execute", so the rule keys on the
-        // production naming convention for precise conflicts
-        // (*ConflictException / *RuleViolationException) combined with the
-        // IllegalStateException supertype. The Assistant module is excluded
-        // on purpose: GlobalAssistantVersionConflictException is an internal
-        // optimistic-concurrency retry signal caught and retried inside
-        // GlobalAssistantRuntime, so it never crosses the HTTP boundary and
-        // must not join this family.
+        // 近似判定(已记录):ArchUnit 看不到"异常是否真的经由
+        // CommandExecution.execute 抛出",因此规则改按生产代码命名约定
+        // (*ConflictException / *RuleViolationException)加上
+        // IllegalStateException 父类型来识别。Assistant 模块被有意排除:
+        // GlobalAssistantVersionConflictException 是内部乐观并发重试信号,
+        // 在 GlobalAssistantRuntime 内部捕获并重试,不跨 HTTP 边界,
+        // 不应归入此家族。
         DescribedPredicate<JavaClass> preciseConflictByName = JavaClass.Predicates
                 .assignableTo(IllegalStateException.class)
                 .and(new DescribedPredicate<>("named *ConflictException or *RuleViolationException") {
@@ -625,10 +602,9 @@ class ArchitectureTests {
 
     @Test
     void sharedDecisionExecutionCoreStaysCycleNeutral() {
-        // Slice 3A: DecisionExecutionService executes an already-prepared
-        // DECISION only. Cycle preparation (context building, Answer/Patch
-        // persistence, post-state reconstruction) and continuation belong to
-        // the callers — never to the shared core.
+        // Slice 3A:DecisionExecutionService 只执行已准备好的 DECISION。
+        // 循环准备(上下文构建、Answer/Patch 持久化、后置状态重建)与续跑
+        // 属于调用方——绝不属于共享核心。
         ArchRule rule = noClasses()
             .that().haveSimpleName("DecisionExecutionService")
             .should().dependOnClassesThat()
@@ -650,16 +626,15 @@ class ArchitectureTests {
         rule.check(CLASSES);
     }
 
-    // ------------------------------------------------------------ cycle gates
+    // ------------------------------------------------------------ 循环门禁
 
     @Test
     void packagesAreFreeOfCycles() {
-        // Zero-cycle invariant at the module level (first package segment).
+        // 模块级(包名首段)零循环不变量。
         //
-        // History: the 2026-09-19 audit froze 34 violation lines covering 7
-        // package groups; all were broken by port sinking / type re-homing
-        // (issue #14 and the 2026-09 structure refactor). There is no frozen
-        // baseline: any module-level cycle fails the build outright.
+        // 历史:2026-09-19 审计冻结了覆盖 7 个包组的 34 条违规线;全部通过
+        // 端口下沉/类型迁移消除(issue #14 与 2026-09 结构重构)。没有冻结
+        // 基线:任何模块级循环都会直接导致构建失败。
         ArchRule rule = slices()
                 .matching("com.specagent.(*)..")
                 .should().beFreeOfCycles()
@@ -670,15 +645,12 @@ class ArchitectureTests {
     }
 
     /**
-     * Type roles inside workspace.route. The route module contains both core
-     * domain code and application orchestration; only the orchestration role
-     * may reach into workspace.project (ownership validation), which mirrors
-     * the pre-consolidation layering where application.route -> project was a
-     * legal one-way edge while route (domain) never imported project.
+     * workspace.route 内部的类型角色。route 模块同时包含核心领域代码和应用编排;
+     * 只有编排角色可以访问 workspace.project(所有权校验)。这对应合并前的分层:
+     * application.route -> project 是合法的单向边,而 route(领域)从不 import project。
      *
-     * <p>Membership is explicit and default-deny: a new route class that
-     * imports project without belonging to this role will form a cycle in the
-     * slice graph below and fail the gate.
+     * 成员资格显式且默认拒绝:不属于此角色却 import 了 project 的 route 新类,
+     * 会在下方的 slice 图中形成循环并触发门禁失败。
      */
     private static boolean isRouteOrchestrationRole(JavaClass clazz) {
         if (!clazz.getPackageName().startsWith("com.specagent.workspace.route")) {
@@ -695,21 +667,17 @@ class ArchitectureTests {
     }
 
     /**
-     * Workspace sub-slices with type roles. project and route are separate
-     * slices; route is split by role into the orchestration surface
-     * (workspace.route.app) and the core domain (workspace.route). The legal
-     * edges are exactly:
+     * workspace 子 slice 及其类型角色。project 与 route 是独立 slice;route 按角色
+     * 拆分为编排面(workspace.route.app)和核心领域(workspace.route)。合法的边
+     * 有且仅有:
      *
-     * <pre>
-     *   workspace.route.app -> workspace.project   (ownership validation)
-     *   workspace.project   -> workspace.route     (active-route state)
-     *   workspace.route.app -> workspace.route     (orchestration drives domain)
-     * </pre>
+     *   workspace.route.app -> workspace.project   (所有权校验)
+     *   workspace.project   -> workspace.route     (active-route 状态)
+     *   workspace.route.app -> workspace.route     (编排驱动领域)
      *
-     * Any new edge project -> route.app or route(core) -> project closes a
-     * cycle in this slice graph and fails the rule, so the former
-     * project<->route aggregate exemption is replaced by precise, reviewable
-     * role edges. Everything else inside workspace must stay acyclic.
+     * 任何新增的 project -> route.app 或 route(核心) -> project 边都会在此
+     * slice 图中闭合成循环并触发规则失败。原 project<->route 聚合豁免由此被
+     * 精确、可评审的角色边取代。workspace 内其余部分必须保持无循环。
      */
     private static final SliceAssignment WORKSPACE_SLICES = new SliceAssignment() {
         @Override
@@ -750,11 +718,10 @@ class ArchitectureTests {
     }
 
     /**
-     * Root-aware slice assignment for a module: classes directly in the
-     * module package form the explicit {@code <module>(root)} slice, so a
-     * loop between the root package and a subpackage (e.g. connection root
-     * vs. connection.credentials) is detected — the plain {@code (*)..}
-     * pattern would miss it because it only matches subpackages.
+     * 模块的根包感知 slice 划分:直接位于模块包下的类构成显式的
+     * {@code <module>(root)} slice,从而能检测根包与子包之间的循环
+     * (如 connection 根包与 connection.credentials)——普通的 {@code (*)..}
+     * 模式只匹配子包,会漏掉这种情况。
      */
     private static SliceAssignment moduleSlices(String basePackage) {
         String rootPrefix = basePackage + ".";
@@ -794,11 +761,9 @@ class ArchitectureTests {
 
     @Test
     void subModulePackagesAreFreeOfCycles() {
-        // agent, assistant, model, retrieval, skill, mcp and connection each
-        // keep meaningful internal packages; none of them may hide internal
-        // loops just because the module boundary itself is clean. The
-        // root-aware assignment also covers classes directly in the module
-        // root package.
+        // agent、assistant、model、retrieval、skill、mcp、connection 各自都有
+        // 有意义的内部包;不能因为模块边界干净就允许内部藏循环。
+        // 根包感知划分同时覆盖直接位于模块根包下的类。
         for (String base : SUB_MODULE_BASES) {
             ArchRule rule = SlicesRuleDefinition.slices()
                     .assignedFrom(moduleSlices(base))
@@ -810,15 +775,14 @@ class ArchitectureTests {
 
     @Test
     void sliceRulesMatchRealClasses() {
-        // Guard against silently-empty or silently-blind slice rules: the
-        // assignments above must actually produce the expected slices, and
-        // each root slice must hold real classes (a root slice that silently
-        // loses its classes would disable the root<->subpackage loop check).
+        // 防止 slice 规则静默失效(为空或失明):上面的划分必须真的产出预期
+        // slice,且每个 root slice 必须持有真实类(root slice 若静默丢光类,
+        // 根包<->子包循环检查就会失效)。
         Map<String, List<JavaClass>> workspaceSlices = slicesOf(WORKSPACE_SLICES);
         assertThat(workspaceSlices.keySet())
                 .contains("workspace.project", "workspace.route",
                         "workspace.route.app", "workspace.graph", "workspace.spec");
-        // the orchestration role partition must be non-degenerate on both sides
+        // 编排角色划分在两侧都必须非退化
         assertThat(workspaceSlices.get("workspace.route.app"))
                 .as("route orchestration role slice")
                 .isNotEmpty()
@@ -834,17 +798,16 @@ class ArchitectureTests {
                     .as("%s must produce more than one slice", base)
                     .isGreaterThan(1);
             if (!base.equals("com.specagent.agent") && !base.equals("com.specagent.model")) {
-                // these two modules keep all classes in subpackages; the rest
-                // have real root-package classes covered by the (root) slice
+                // 这两个模块的所有类都在子包中;其余模块根包下有真实类,
+                // 由 (root) slice 覆盖
                 assertThat(moduleSlices.get(base + "(root)"))
                         .as("%s root slice must hold classes", base)
                         .isNotEmpty();
             }
         }
 
-        // modelsettings is deliberately flat (one package, no sub-slices) and
-        // connection keeps its credentials sub-slice; assert both still exist
-        // so the flat layouts are not silently broken.
+        // modelsettings 有意保持扁平(单包、无子 slice),connection 保留其
+        // credentials 子 slice;断言两者仍然存在,防止扁平布局被静默破坏。
         assertThat(CLASSES)
                 .extracting(JavaClass::getPackageName)
                 .anyMatch(p -> p.equals("com.specagent.modelsettings"))
@@ -859,7 +822,7 @@ class ArchitectureTests {
             if (id == null || SliceIdentifier.ignore().equals(id)) {
                 continue;
             }
-            // SliceIdentifier.toString() renders as "SliceIdentifier[<name>]"
+            // SliceIdentifier.toString() 的输出形如 "SliceIdentifier[<name>]"
             String rendered = id.toString();
             String name = rendered.substring(rendered.indexOf('[') + 1, rendered.length() - 1);
             result.computeIfAbsent(name, k -> new java.util.ArrayList<>()).add(clazz);

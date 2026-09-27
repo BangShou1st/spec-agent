@@ -3,28 +3,27 @@ package com.specagent.connection.credentials;
 import java.util.UUID;
 
 /**
- * Narrow secret storage boundary for the Connection domain. A Connection row
- * persists only a {@code credentialRef}; the plaintext secret lives behind
- * this interface, encrypted at rest, and is never written to traces, model
- * context, capability results, descriptors, or error responses.
+ * 文件名:SecretStore.java
+ *
+ * 用途:Connection 领域的窄密钥存储边界。Connection 行只持久化一个
+ * {@code credentialRef};明文密钥藏在这个接口之后,静态加密存储,绝不写入
+ * trace、模型上下文、capability 结果、描述符或错误响应。
  */
 public interface SecretStore {
 
     /**
-     * Stores a secret for one connection row under a new runtime-owned
-     * reference and returns that reference. At most a masked suffix is
-     * retained for status display.
+     * 为某个连接行存储密钥,生成新的运行时持有引用并返回该引用。
+     * 最多只保留掩码后缀用于状态展示。
      */
     String store(UUID connectionRowId, String secret);
 
     /**
-     * Retrieves the authorized caller's secret for one credential reference.
-     * Implementations must make it impossible to enumerate or exfiltrate
-     * secrets through the model/API surface.
+     * 按凭据引用取出授权调用方的密钥。实现必须保证无法通过模型/API 面
+     * 枚举或外带密钥。
      */
     String resolve(String credentialRef);
 
-    /** Masked display suffix, or null when the ref is unknown. */
+    /** 掩码后的展示后缀;引用不存在时返回 null。 */
     String maskedSuffix(String credentialRef);
 
     void delete(String credentialRef);

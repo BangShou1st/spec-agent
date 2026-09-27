@@ -19,9 +19,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Verifies that a run's final trace carries the major lifecycle steps instead
- * of being overwritten by the last step. The answer scenario drives the async
- * ANSWER_CYCLE; only the spec failure test stubs the fake model.
+ * 文件名:AgentRunTraceIntegrationTest.java
+ *
+ * 测试目标:验证 AgentRun 最终 trace 保留完整生命周期的主要步骤,而不是被最后一步覆盖。
+ * 答题场景通过异步 ANSWER_CYCLE 驱动,仅规格失败用例对 fake 模型做桩处理。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -52,7 +53,7 @@ class AgentRunTraceIntegrationTest {
                 .contains("persisted_answer")
                 .contains("persisted_patch")
                 .contains("completed");
-        // Run events carry the phase progression of the 2-call cycle.
+        // 运行事件记录了 2 次调用循环的各阶段推进。
     }
 
 

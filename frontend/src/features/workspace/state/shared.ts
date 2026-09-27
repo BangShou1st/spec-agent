@@ -1,23 +1,22 @@
-/**
- * Shared, store-agnostic helpers for the workspace domain modules.
+// 文件名:shared.ts
+// 用途:工作区领域模块共享的、与 store 无关的辅助函数与常量:项目会话捕获、提案列表的 fail-soft 读取、冲突类错误的可回答节点提示。
+/*
+ * 工作区领域模块共享的、与 store 无关的辅助函数。
  *
- * These used to live at the top of `workspaceStore.ts`. They are pure functions
- * / constants with no store access, so they belong next to the domain modules
- * rather than inside the store definition.
+ * 这些函数过去位于 `workspaceStore.ts` 顶部。它们是不访问 store 的纯函数
+ * /常量,所以应该放在领域模块旁边,而不是 store 定义内部。
  */
 import type { DisplayError } from '@/shared/http/displayError'
 import { listProposals } from '@/features/workspace/api/graphCommands'
 import type { ProjectProposalSummary } from '@/features/workspace/api/graphCommands'
 import type { ProjectSessionSlice } from './slices'
 
-/**
- * Captures the project-session identity of the store at the moment an async
- * action starts. `isCurrent()` must be called after EVERY `await` and before
- * any store write (including catch/finally paths): it validates BOTH the
- * project-session counter and the project id, so a slow response for project
- * A can never write state, feedback, or errors into project B — including
- * A→B→A switches and same-project reloads, which only the counter
- * distinguishes.
+/*
+ * 在异步 action 开始的瞬间捕获 store 的项目会话身份。`isCurrent()` 必须在
+ * 每个 `await` 之后、任何 store 写入之前调用(包括 catch/finally 路径):
+ * 它同时校验项目会话计数器与项目 id,因此针对项目 A 的慢响应绝不能把
+ * 状态、反馈或错误写进项目 B——包括 A→B→A 切换与同项目刷新,只有计数器
+ * 才能区分它们。
  */
 export function captureProjectSession(store: ProjectSessionSlice): {
   projectId: string
@@ -34,27 +33,23 @@ export function captureProjectSession(store: ProjectSessionSlice): {
   }
 }
 
-/**
- * The trigger type that marks a proposal as contextual "Ask AI" output of the
- * NodeInspector. The proposal list API is shared by every run type, and recovery
- * must never infer the query origin from inputNodeId (every run type carries
- * one), so this explicit AgentRunTriggerType code is the only safe
- * discriminator.
+/*
+ * 把提案标记为 NodeInspector 上下文"问 AI"产出的触发类型。提案列表 API
+ * 被所有 run 类型共用,恢复流程绝不能从 inputNodeId 推断查询来源(每种
+ * run 类型都带一个),因此这个显式的 AgentRunTriggerType 代码是唯一安全
+ * 的判别符。
  */
 export const NODE_QUERY_TRIGGER = 'node_query'
 
-/**
- * Reads the durable PROPOSED NodeQuery proposals for one project, fail-soft:
- * a failed proposal-list read must never fail the workspace load or refresh
- * (pending proposals remain discoverable on the next successful load). The
- * pure-function shape lets loadWorkspace/refreshWorkspace fetch it in the same
- * Promise.all as the canonical reads, so the workspace critical path and its
- * load/layout timing are unchanged.
+/*
+ * fail-soft 地读取一个项目的持久 PROPOSED NodeQuery 提案:提案列表读取
+ * 失败绝不能让工作区加载或刷新失败(待确认提案在下次成功加载时仍可发现)。
+ * 纯函数形态让 loadWorkspace/refreshWorkspace 能把请求与 canonical 读取
+ * 放进同一个 Promise.all,工作区关键路径及其加载/布局时序保持不变。
  *
- * The narrowing is applied by the backend (see ProposalTriggerFilter) instead of
- * by post-filtering a full list here: the client no longer downloads proposals
- * it would discard, and "which run types belong to which surface" is decided
- * next to the data.
+ * 收窄由后端完成(见 ProposalTriggerFilter),而不是在这里对全量列表做
+ * 后过滤:客户端不再下载会丢弃的提案,"哪类 run 属于哪个表面"的决策也
+ * 留在数据旁边。
  */
 export function loadNodeQueryProposalsSafely(projectId: string): Promise<ProjectProposalSummary[]> {
   return listProposals(projectId, 'PROPOSED', { triggerTypes: [NODE_QUERY_TRIGGER] })
@@ -85,11 +80,10 @@ const CONFLICT_HINT_CODES = new Set([
   'AGENT_RUN_TARGET_STALE',
 ])
 
-/**
- * Appends the current answerable question's title to a conflict-family error
- * so the banner names the node the user should operate on. Best effort: the
- * hint comes from the last successful workspace read and is skipped entirely
- * when that read has no answerable node — a stale hint is worse than none.
+/*
+ * 把冲突类错误的提示补上当前可回答问题的标题,让横幅直接点名用户应当
+ * 操作的节点。尽力而为:提示来自最后一次成功的工作区读取,该读取没有
+ * 可回答节点时完全跳过——过期的提示不如没有提示。
  */
 export function withAnswerableNodeHint(
   error: DisplayError,

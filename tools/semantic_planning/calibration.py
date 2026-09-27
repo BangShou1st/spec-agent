@@ -1,11 +1,12 @@
-"""8 synthetic calibration cases (wire-compatible, non-benchmark).
+"""文件名:calibration.py
 
-All IDs are uuid5-derived from case names; all texts carry [CAL:...]
-markers. Authorization records live in snapshot.capabilityResults[] and
-grounding content in confirmed claims: real wire positions only, never
-observation:. Each case ships its design-intended ideal_state (C1/C2
-clean, mapping to expected_mapping) so fixture/design coherence is
-testable without calling any provider.
+8 个合成校准用例(与线上协议兼容,非基准题)。
+
+所有 ID 由用例名经 uuid5 派生;所有文本带 [CAL:...] 标记。
+授权记录放在 snapshot.capabilityResults[],依据内容放在 confirmed
+claims 里——只用真实的线上字段位置,绝不用 observation:。每个用例
+都附带设计意图上的 ideal_state(通过 C1/C2,并映射到
+expected_mapping),因此无需调用任何供应商即可检验夹具与设计的一致性。
 """
 from __future__ import annotations
 
@@ -109,7 +110,7 @@ def _state(goal, u, e, d, n):
 def _build():
     cases = []
 
-    # CAL-U1: empty everything -> UNDERSTAND -> REQUEST.
+    # CAL-U1:一切为空 -> UNDERSTAND -> REQUEST。
     entry, nid, aid, pid = _entry(
         "CAL-U1", "[CAL:U1-answer]", [], "[CAL:U1-question]")
     mi = _input("CAL-U1", "[CAL:U1-answer]", [entry], [], [])
@@ -124,7 +125,7 @@ def _build():
             _n_false("NOT_DURABLE", ["event:kind"])),
     })
 
-    # CAL-U2: unresolved + high-risk cap, no args/auth -> RESOLVE -> REQUEST.
+    # CAL-U2:存在未解决 claim + 高风险能力,无参数/授权 -> RESOLVE -> REQUEST。
     uc = _claim("unresolved", 0.2, "[CAL:U2-need-unclear]")
     entry, nid, aid, pid = _entry(
         "CAL-U2", "[CAL:U2-answer]", [dict(uc)], "[CAL:U2-question]")
@@ -143,7 +144,7 @@ def _build():
             _n_false("NOT_STANDALONE", ["claim:effective/0"])),
     })
 
-    # CAL-U3: conflicting unresolved claims -> RESOLVE -> REQUEST.
+    # CAL-U3:未解决 claim 相互冲突 -> RESOLVE -> REQUEST。
     c1 = _claim("unresolved", 0.4, "[CAL:U3-option-alpha]")
     c2 = _claim("unresolved", 0.4, "[CAL:U3-option-beta]")
     entry, nid, aid, pid = _entry(
@@ -164,7 +165,7 @@ def _build():
             _n_false("NOT_STANDALONE", ["claim:effective/0"])),
     })
 
-    # CAL-E1: irreversible positive with approval record -> GATHER -> INVOKE.
+    # CAL-E1:不可逆能力为真且带审批记录 -> GATHER -> INVOKE。
     g1 = _claim("confirmed", 0.9, "[CAL:E1-arg-host-grounded]")
     g2 = _claim("confirmed", 0.9, "[CAL:E1-arg-window-grounded]")
     auth = _claim("confirmed", 0.9, "[CAL:E1-user-authorized-actuator]")
@@ -203,7 +204,7 @@ def _build():
                      ["claim:effective/0"])),
     })
 
-    # CAL-E2: read-only positive; asking cannot help -> RESOLVE but u=false.
+    # CAL-E2:只读能力为真;提问也无济于事 -> RESOLVE 但 u=false。
     uq = _claim("unresolved", 0.3, "[CAL:E2-missing-upstream-status]")
     kc = _claim("confirmed", 0.8, "[CAL:E2-user-answered-twice-identical]")
     entry, nid, aid, pid = _entry(
@@ -230,7 +231,7 @@ def _build():
             _n_false("NOT_DURABLE", ["claim:effective/0"])),
     })
 
-    # CAL-D1: confirmed grounded content, nothing pending -> RESPOND.
+    # CAL-D1:confirmed 且有依据的内容,无待办 -> RESPOND。
     d1 = _claim("confirmed", 0.9, "[CAL:D1-grounded-answer-content]")
     entry, nid, aid, pid = _entry(
         "CAL-D1", "[CAL:D1-answer]", [dict(d1)], "[CAL:D1-question]")
@@ -250,7 +251,7 @@ def _build():
                      ["claim:effective/0"])),
     })
 
-    # CAL-N1: genuinely novel durable constraint; no primary need -> CREATE.
+    # CAL-N1:确有新颖且持久的约束;无主要需求 -> CREATE。
     n1 = _claim("confirmed", 0.9, "[CAL:N1-retention-ninety-days]")
     entry, nid, aid, pid = _entry(
         "CAL-N1", "[CAL:N1-answer]", [dict(n1)], "[CAL:N1-question]")
@@ -263,15 +264,15 @@ def _build():
             "PRODUCE_DIRECT_RESPONSE",
             _u_false(["claim:effective/0"]),
             _e_false("NO_EXTERNAL_NEED", ["event:kind"]),
-            # No response owed on this continuation: the durable fact is
-            # the news. AWAITING_* codes assume a pending need; the vocab
-            # gap is documented, polarity and resolution are what C1 checks.
+            # 该续聊场景不欠用户一次响应:真正的新信息是那条持久事实。
+            # AWAITING_* 码都隐含"有待满足的需求";此处词汇表存在缺口,
+            # 属已记录问题——C1 只校验极性与可解析性。
             _d_false("NO_GROUNDED_CONTENT", ["event:kind"]),
             {"value": True, "reasonCodes": ["NOVEL_SEMANTIC_UNIT"],
              "evidenceRefs": ["claim:effective/0"]}),
     })
 
-    # CAL-N2: patch merely restates the confirmed claim -> n=false.
+    # CAL-N2:patch 只是复述已确认的 claim -> n=false。
     r0 = _claim("confirmed", 0.9, "[CAL:N2-decided-threshold]")
     r1 = _claim("confirmed", 0.9, "[CAL:N2-decided-threshold-restated]")
     entry, nid, aid, pid = _entry(

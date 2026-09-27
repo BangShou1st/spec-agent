@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
-"""Structured semantic planning diagnostic, lineage R3 (DIAGNOSTIC ONLY).
+"""文件名:semantic_planning_diagnostic_r3.py
 
-Parent: R2 DIAGNOSTIC_REJECTED (prompt envelope / shape instruction).
-R3 is a new legal lineage. Single allowed change vs R2:
+结构化语义规划诊断,R3 血统(仅诊断用)。
 
-  OUTPUT_SCHEMA_CLARIFICATION: add explicit nested JSON output example
-  to the planning prompt. No semantic rule change.
+父血统:R2 DIAGNOSTIC_REJECTED(提示词的输出信封/形状说明问题)。
+R3 是一条新的合法血统。相对 R2 仅允许一处改动:
 
-Everything else frozen: planning-state.v1 schema, reason vocabulary,
-evidence vocabulary, 90 unique cases, 3 repetitions, planning-mapping.v1,
-expected labels, E22 treatment, behavioral gates, stability gate,
-provider, model, endpoint, UA, DIRECT transport, max_tokens,
-response_format, stream, pacing.
+  OUTPUT_SCHEMA_CLARIFICATION:在规划提示词中追加显式的嵌套 JSON
+  输出示例。语义规则零改动。
 
-Harness correction (diagnostic-only, NOT semantic): R1/R2 parsed the
-provider envelope raw directly with validate_planning_state, which can
-never validate even when inner content is correct. R3 extracts
-choices[0].message.content before strict validation. Reason codes,
-evidence refs, mapping, gates unchanged. Never wired to production.
+其余全部冻结:planning-state.v1 schema、reason 词汇、evidence 词汇、
+90 个唯一用例、3 次重复、planning-mapping.v1、期望标签、E22 处理、
+行为门槛、稳定性门槛、供应商、模型、端点、UA、直连传输、max_tokens、
+response_format、stream、节奏。
+
+Harness 修正(仅诊断层面,不涉及语义):R1/R2 直接用
+validate_planning_state 校验供应商原始信封,即使内层内容正确也
+永远无法通过。R3 在严格校验前先提取 choices[0].message.content。
+reason codes、evidence refs、映射与门槛均不变。绝不接入生产。
 """
 
 from __future__ import annotations

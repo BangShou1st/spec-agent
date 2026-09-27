@@ -1,4 +1,8 @@
-"""Shared test fixtures for the agent-brain test suite."""
+"""文件名:conftest.py
+
+用途:agent-brain 测试套件的共享 fixture,提供统一的测试配置以及加载
+contracts/fixtures 下 JSON fixture 的工具函数。
+"""
 
 from pathlib import Path
 

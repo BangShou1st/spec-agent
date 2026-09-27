@@ -31,18 +31,15 @@ import java.util.concurrent.TimeUnit;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Real-concurrency proof of the ANSWER_CYCLE claim ownership (tech-debt #13).
+ * 文件名:AnswerCycleClaimConcurrencyIntegrationTest.java
  *
- * <p>Several consumers hit the shared queue at once (the production
- * {@code RunWorker} poller, a test driver, the eval harness). The claim must be
- * atomic: exactly one consumer wins a given run, the losers get nothing, and
- * only the winner's run transitions to RUNNING — so a single run can never be
- * adopted by two executors.
+ * 测试目标:用真实并发验证 ANSWER_CYCLE 的领取所有权(tech-debt #13)。多个消费者
+ * (生产 {@code RunWorker} 轮询器、测试驱动、评估 harness)会同时竞争共享队列,领取必须
+ * 是原子的:恰好一个消费者赢得某个 run,失败者一无所获,且只有赢家的 run 会转为 RUNNING,
+ * 从而保证单个 run 永远不会被两个执行者同时认领。
  *
- * <p>The competition is produced with a {@link CyclicBarrier}, never with
- * sleeps or retries, and the enqueue is committed (no surrounding test
- * transaction) so the racing threads contend over the same database row on
- * separate connections.
+ * 竞争通过 {@link CyclicBarrier} 制造,绝不使用 sleep 或重试;入队被真实提交
+ * (无外层测试事务),使竞争线程在独立连接上争夺同一数据库行。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -91,7 +88,7 @@ class AnswerCycleClaimConcurrencyIntegrationTest {
                 .hasSize(1);
         assertThat(winners.get(0).orElseThrow().id()).isEqualTo(runId);
 
-        // The single winner owns the RUNNING row; every later claim gets nothing.
+        // 唯一赢家持有 RUNNING 状态的行;后续任何领取都得空。
         assertThat(runService.getRun(runId).orElseThrow().status())
                 .isEqualTo(AgentRunStatus.RUNNING);
         assertThat(runService.claimAnswerCycleRun(runId))
@@ -122,7 +119,7 @@ class AnswerCycleClaimConcurrencyIntegrationTest {
         jdbcTemplate.update("DELETE FROM node_relations WHERE project_id = ?", projectId);
         jdbcTemplate.update("DELETE FROM graph_operations WHERE project_id = ?", projectId);
         jdbcTemplate.update("DELETE FROM spec_snapshots WHERE project_id = ?", projectId);
-        // Routes reference nodes (branch_at_node_id); delete routes before nodes.
+        // routes 引用 nodes(branch_at_node_id),需先删 routes 再删 nodes。
         jdbcTemplate.update("DELETE FROM routes WHERE project_id = ?", projectId);
         jdbcTemplate.update("DELETE FROM nodes WHERE project_id = ?", projectId);
         jdbcTemplate.update("DELETE FROM projects WHERE id = ?", projectId);

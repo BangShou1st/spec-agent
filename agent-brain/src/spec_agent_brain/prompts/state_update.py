@@ -1,7 +1,10 @@
-"""STATE_UPDATE prompt: answer/evidence -> grounded claims.
+"""文件名:state_update.py
 
-Language contract: instructions and any user-visible generated text are
-Simplified Chinese; machine protocol keys and enum values stay unchanged.
+用途:STATE_UPDATE 的 prompt 模板与用户消息渲染:把回答/证据转换为
+grounded 的结构化 claims。
+
+语言约定:指令与任何用户可见的生成文本使用简体中文;机器协议键与枚举
+值保持英文原样。
 """
 
 import json

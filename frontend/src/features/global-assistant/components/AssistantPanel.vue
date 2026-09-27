@@ -1,3 +1,9 @@
+<!--
+  文件名:AssistantPanel.vue
+  用途:全局助手面板的主容器:组装头部(历史/新对话/关闭)、连接状态条、错误与审批提示、
+       对话时间线与输入区;负责把路由投影为 UI 上下文发送消息,处理待跳转导航、
+       草稿回填、会话切换与删除,以及断线重连。
+-->
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -44,7 +50,7 @@ watch(
     try {
       await router.push(target)
     } catch {
-      /* navigation is best-effort; thread stays alive */
+      // 跳转尽力而为,失败不影响当前会话
     }
   },
 )
@@ -76,7 +82,7 @@ function handleCancel(): void {
   void store.cancelActiveRun()
 }
 
-/** A starter chip fills the composer and takes focus; sending stays explicit. */
+/** 建议提示词只回填输入框并聚焦,发送仍由用户显式点击。 */
 function handleSuggestion(prompt: string): void {
   if (switchGuard.value) return
   composerText.value = prompt

@@ -1,3 +1,5 @@
+// 文件名:documentText.spec.ts
+// 用途:documentText 文档抽取的单元测试:验证 docx/xlsx XML 解析、扩展名判定与支持格式的抽取行为。
 import { describe, expect, it, vi } from 'vitest'
 import JSZip from 'jszip'
 import {

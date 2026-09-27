@@ -1,8 +1,10 @@
 package com.specagent.agent.protocol;
 
 /**
- * Raised when a model adapter cannot honor an agent contract, for example when
- * a task type is not supportable by the active adapter.
+ * 文件名:ModelContractException.java
+ *
+ * 用途:模型适配器无法履行 Agent 契约时抛出的异常,例如当前激活的
+ * 适配器不支持某种任务类型。
  */
 public class ModelContractException extends RuntimeException {
     public ModelContractException(String message) {

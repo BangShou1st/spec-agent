@@ -9,13 +9,11 @@ import com.specagent.workspace.node.Node;
 import com.specagent.workspace.patch.AnswerPatch;
 
 /**
- * Outcome of one fake answer run: the immutable answer, the grounded answer
- * patch, and the next node drafted after the answer.
+ * 文件名:FakeAnswerRunResult.java
  *
- * <p>Every field is required and non-null whenever the run completes
- * successfully. The three model responses correspond to the three model calls
- * of the loop: interpret the answer, draft the answer patch, draft the next
- * node.
+ * 测试目标:一次 fake 答题 run 的结果承载:不可变答案、有依据的答案 patch、
+ * 以及答案之后起草的下一个节点。run 成功完成时所有字段必填且非空。三个模型响应
+ * 对应循环中的三次模型调用:解读答案、起草答案 patch、起草下一个节点。
  */
 public record FakeAnswerRunResult(
         AgentRun run,

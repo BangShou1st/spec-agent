@@ -19,28 +19,23 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Thin read-model bridge that composes existing runtime reads into one
- * canonical project graph for display.
+ * 文件名:GraphWorkspaceQueryService.java
  *
- * <p>It never writes state, never calls a model, never builds or persists a
- * {@code ContextSnapshot}, and never re-implements route or context semantics.
- * It is not a second Runtime Kernel.
+ * 用途:薄读模型桥,把既有 runtime 读取拼装成一张用于展示的规范
+ * 项目图。它绝不写状态、绝不调用模型、从不构建或持久化
+ * {@code ContextSnapshot},也从不重复实现路线或上下文语义。
+ * 它不是第二个 Runtime Kernel。
  *
- * <p>For every route, the lineage is walked from {@code tipNodeId} up through
- * {@code parentNodeId} pointers to the root and exposed in root→tip order.
- * The read is permitted for every lifecycle status (open, superseded,
- * archived, deleted). It fails closed as an internal invariant violation when
- * a node is missing, when a node belongs to another project, when the lineage
- * cycles or exceeds a maximum depth, or when the route's recorded root node
- * does not match the resolved lineage. A route without a tip node yields an
- * empty lineage.
+ * 对每条路线,lineage 从 {@code tipNodeId} 沿 {@code parentNodeId}
+ * 指针向上走到根,并以根→tip 的顺序输出。任何生命周期状态的路线
+ * (open、superseded、archived、deleted)都可读。节点缺失、节点属于
+ * 其他项目、lineage 成环或超深、路线记录的根节点与解析结果不符时,
+ * 一律 fail-closed,按内部不变量违例处理。没有 tip 的路线输出空 lineage。
  *
- * <p>Nodes are deduplicated across routes (shared nodes appear once).
- * Route-specific answers remain separate and are never merged by node.
- * Replacement routes naturally expose their parent lineage plus the
- * replacement node; a superseded target node is never injected into the
- * replacement route's lineage merely because {@code supersedesNodeId} points
- * at it.
+ * 节点跨路线去重(共享节点只出现一次)。路线专属答案保持独立,
+ * 绝不按节点合并。替换路线自然展示其父 lineage 加替换节点;仅凭
+ * {@code supersedesNodeId} 指向某个节点,绝不会把被取代的目标节点
+ * 注入替换路线的 lineage。
  */
 @Service
 public class GraphWorkspaceQueryService {
@@ -74,15 +69,13 @@ public class GraphWorkspaceQueryService {
         Map<UUID, Node> nodesById = new LinkedHashMap<>();
         List<GraphWorkspaceRouteView> routeViews = new ArrayList<>();
         List<GraphWorkspaceAnswerView> answerViews = new ArrayList<>();
-        // Shared-state divergence detector: one canonical Question Node may
-        // carry only ONE immutable Answer identity project-wide. If the read
-        // model ever sees two distinct effective Answer ids for the same node,
-        // that is an invariant violation, not a normal UI presentation mode.
+        // 共享状态分歧探测器:一个规范的 Question 节点全项目只能携带
+        // 一个不可变的 Answer 身份。如果读模型对同一节点看到两个不同的
+        // 有效 Answer id,那就是不变量违例,不是正常的 UI 呈现模式。
         java.util.Map<UUID, UUID> answerIdentityByNode = new java.util.HashMap<>();
-        // Membership for the answered/unanswered divergence check below: for a
-        // canonical Question node, which routes carry it in their lineage, and
-        // of those, which routes resolved an effective Answer for it. Only the
-        // immutable Answer id is compared — never the answer text.
+        // 下面"已答/未答分歧"检查的成员表:对一个规范 Question 节点,
+        // 哪些路线把它纳入了 lineage,其中哪些路线为它解析出了有效
+        // Answer。只比较不可变的 Answer id——绝不比较答案文本。
         java.util.Map<UUID, java.util.Set<UUID>> routesByNode = new java.util.HashMap<>();
         java.util.Map<UUID, java.util.Set<UUID>> answeredRoutesByNode = new java.util.HashMap<>();
 
@@ -114,10 +107,10 @@ public class GraphWorkspaceQueryService {
             routeViews.add(GraphWorkspaceRouteView.from(route, project.activeRouteId(), lineageNodeIds));
         }
 
-        // Fail closed: a canonical Question node must be answered consistently
-        // across every route membership. If it is answered in at least one
-        // route but left unanswered in another (a partial, divergent lineage
-        // state), that is a shared-state divergence, not a UI mode.
+        // Fail-closed:一个规范 Question 节点在每条包含它的路线上都必须
+        // 是一致的答案状态。若它在至少一条路线上有答案、却在另一条上
+        // 没有答案(部分、分歧的 lineage 状态),就是共享状态分歧,
+        // 而不是 UI 模式。
         for (java.util.Map.Entry<UUID, java.util.Set<UUID>> entry : answeredRoutesByNode.entrySet()) {
             UUID nodeId = entry.getKey();
             java.util.Set<UUID> unansweredRoutes = new java.util.HashSet<>(
@@ -131,8 +124,8 @@ public class GraphWorkspaceQueryService {
             }
         }
 
-        // Floating drafts belong to no route lineage; they are still visible
-        // standalone graph content and must reach the workspace view.
+        // 悬浮草稿不属于任何路线 lineage;它们仍是独立可见的图内容,
+        // 必须出现在工作区视图里。
         nodeService.listProject(project.id()).stream()
                 .filter(node -> !node.isRetracted())
                 .forEach(node -> nodesById.putIfAbsent(node.id(), node));
@@ -167,8 +160,8 @@ public class GraphWorkspaceQueryService {
 
         for (Node node : rootToTip) {
             if (!node.projectId().equals(projectId)) {
-                // Fail closed: neither the foreign node nor any node beyond it
-                // may be exposed in the response.
+                // Fail-closed:外来节点本身以及它之后的任何节点,
+                // 都不允许出现在响应里。
                 throw GraphWorkspaceQueryException.of(
                         GraphWorkspaceQueryException.Reason.INVARIANT_VIOLATION,
                         "A node in the route lineage belongs to another project");

@@ -1,16 +1,16 @@
-/**
- * Compile-time proof of the narrow-slice read-only contract
- * (`state/slices.ts`).
+// 文件名:slicesReadonly.spec.ts
+// 用途:窄切片只读契约(state/slices.ts)的编译期证明:负向用例用 @ts-expect-error 锁死被禁止的跨域写入,正向用例证明合法读取与自有写入仍可编译。
+/*
+ * 窄切片只读契约(`state/slices.ts`)的编译期证明。
  *
- * The negative cases use `@ts-expect-error`: if a forbidden cross-domain
- * write ever type-checks again (i.e. the read-only contract regresses),
- * vue-tsc fails with "Unused '@ts-expect-error' directive". The positive
- * case proves legal reads and owned writes still compile and the real store
- * satisfies every slice structurally.
+ * 负向用例使用 `@ts-expect-error`:如果某个被禁止的跨域写入再次通过
+ * 类型检查(即只读契约回归),vue-tsc 会以 "Unused '@ts-expect-error'
+ * directive" 报错。正向用例证明合法读取与自有写入仍然可编译,且真实
+ * store 在结构上满足每个切片。
  *
- * The negative helpers ARE executed (noUnusedLocals), but only against a
- * freshly created store whose canonical data is null, so the runtime effect
- * of the (never-type-checking) statements is a no-op.
+ * 负向辅助函数确实会被执行(noUnusedLocals),但只对一个 canonical 数据
+ * 为 null 的全新 store 执行,因此那些(永远不会通过类型检查的)语句的
+ * 运行时效果是空操作。
  */
 import { describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
@@ -31,7 +31,7 @@ describe('narrow slice read-only contract (compile-time)', () => {
     setActivePinia(createPinia())
     const store = useWorkspaceStore()
 
-    // Structural assignability: the store is used AS each slice, no wrapper.
+    // 结构化可赋值:store 直接当作每个切片使用,无需包装。
     const answerRun: AnswerRunSlice = store
     const proposal: ProposalSlice = store
     const resource: ResourceSlice = store
@@ -40,7 +40,7 @@ describe('narrow slice read-only contract (compile-time)', () => {
     const routeCommand: RouteCommandSlice = store
     const session: ProjectSessionSlice = store
 
-    // Legal reads of read-only inputs.
+    // 对只读输入的合法读取。
     expect(answerRun.graphView).toBeNull()
     expect(routeCommand.activeState).toBeNull()
     expect(specDock.routeCommandPending).toBe(false)
@@ -49,7 +49,7 @@ describe('narrow slice read-only contract (compile-time)', () => {
     expect(proposal.nodeQuery).toBeNull()
     expect(session.projectId).toBeNull()
 
-    // Domain-owned writable state stays writable.
+    // 领域自有的可写状态保持可写。
     answerRun.pendingRouteProjection = null
     answerRun.feedback = null
     answerRun.error = null
@@ -57,9 +57,8 @@ describe('narrow slice read-only contract (compile-time)', () => {
     specDock.manualModelRetry = null
     graphUndo.undoRedo = { canUndo: false, canRedo: false }
     routeCommand.pendingRouteCommand = null
-    routeCommand.forkDraftRetryRouteId = null
 
-    // Cross-domain commands still go through the store facade.
+    // 跨域命令仍然只经 store 门面调用。
     void answerRun.refreshWorkspace()
     void resource.refreshWorkspace()
     void graphUndo.refreshUndoRedoAvailability()
@@ -85,8 +84,8 @@ describe('narrow slice read-only contract (compile-time)', () => {
     // @ts-expect-error — the run-orchestration lock is read-only for specDock
     specDock.routeCommandPending = true
 
-    // (2) Nested mutation of canonical graph data: arrays are readonly, so
-    //     push/splice do not exist, and entries' properties are readonly.
+    // (2) canonical 图数据的嵌套修改:数组是 readonly 的,push/splice
+    //     不存在,条目属性也是只读的。
     // @ts-expect-error — canonical graph arrays are deeply read-only
     answerRun.graphView?.routes.push(makeRoute())
     // @ts-expect-error — nested graph objects are deeply read-only

@@ -1,11 +1,13 @@
 package com.specagent.workspace.node;
 
 /**
- * Knowledge state for claim-like node content. Not every kind uses this:
- * interaction and resource nodes carry no knowledge status.
+ * 文件名:KnowledgeStatus.java
  *
- * <p>This is deliberately distinct from operation/progress state, which lives
- * on {@code AgentRun}, and from route lifecycle status.
+ * 用途:claim 类节点内容的知识状态。并非所有 kind 都使用它:
+ * 交互节点和资源节点不携带知识状态。
+ *
+ * 它与操作/进度状态(存放在 {@code AgentRun} 上)以及路线生命周期
+ * 状态刻意保持区分。
  */
 public enum KnowledgeStatus {
 

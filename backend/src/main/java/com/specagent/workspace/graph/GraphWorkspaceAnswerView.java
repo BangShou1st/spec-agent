@@ -7,11 +7,11 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Read-only answer presentation view on the project graph.
+ * 文件名:GraphWorkspaceAnswerView.java
  *
- * <p>Answer identity remains {@code (routeId, nodeId)}: route-specific answers
- * stay separate and are never merged by node. Only safe presentation fields are
- * exposed; patches and raw answer internals never leak.
+ * 用途:项目图上答案的只读展示视图。答案身份保持
+ * {@code (routeId, nodeId)}:路线专属的答案彼此独立,绝不按节点合并。
+ * 只暴露安全的展示字段;patch 和答案内部数据绝不外泄。
  */
 public record GraphWorkspaceAnswerView(
         UUID id,

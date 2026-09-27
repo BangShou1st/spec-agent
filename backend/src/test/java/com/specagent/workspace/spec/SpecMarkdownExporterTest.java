@@ -27,10 +27,11 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 
 /**
- * Unit tests for the deterministic Markdown export of a SpecSnapshot. The
- * exporter is a pure view: same snapshot in, same Markdown out, no model, no
- * persistence. The delivery variant additionally projects the route's
- * requirement state (lineage claims + Q&A digest).
+ * 文件名:SpecMarkdownExporterTest.java
+ *
+ * 测试目标:验证 {@link SpecSnapshot} 确定性 Markdown 导出的单元测试。
+ * 导出器是纯视图:相同快照输入,相同 Markdown 输出,无模型调用、无持久化。
+ * delivery 变体额外投影路线的需求状态(谱系 claims + 问答摘要)。
  */
 @ExtendWith(MockitoExtension.class)
 class SpecMarkdownExporterTest {

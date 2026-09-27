@@ -1,3 +1,6 @@
+// 文件名:ModelSettingsView.spec.ts
+// 用途:模型设置页组件测试:切换到 OpenCode Zen Tab 后验证保存/测试流程、
+//       必须显式选模型、状态胶囊语义,以及已配置且未换密钥时免重输密钥的保存路径。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'

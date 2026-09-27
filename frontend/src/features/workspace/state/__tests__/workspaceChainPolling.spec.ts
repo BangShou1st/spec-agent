@@ -1,3 +1,5 @@
+// 文件名:workspaceChainPolling.spec.ts
+// 用途:run 链轮询的单元测试:验证按 run id 解析会话、链式子 run 追踪与终态叶子的落定行为。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useWorkspaceStore } from '@/features/workspace/state/workspaceStore'
@@ -107,7 +109,7 @@ describe('autonomous run chain polling (Closure B)', () => {
     const store = useWorkspaceStore()
     store.projectId = 'p1'
     store.refreshWorkspace = vi.fn().mockResolvedValue(true) as never
-    // Seed the answer session that pollAnswerRun resolves by run id.
+    // 预置 pollAnswerRun 将按 run id 解析的回答会话。
     store.answerRunSessions.push({
       clientRequestId: 'req-f4',
       projectId: 'p1',
@@ -128,7 +130,7 @@ describe('autonomous run chain polling (Closure B)', () => {
     await store.pollAnswerRun('run-1')
     expect(finishSpy).toHaveBeenCalledTimes(1)
     expect(store.feedback).toBe('chain answer')
-    // The settled session is removed, so no pending answer node remains.
+    // 落定的会话已被移除,因此不再有待处理的回答节点。
     expect(store.answerRunSessions).toHaveLength(0)
     expect(store.pendingAnswerNodeId).toBeNull()
   })

@@ -7,11 +7,11 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Read-only spec snapshot representation.
+ * 文件名:SpecSnapshotResponse.java
  *
- * <p>A spec snapshot is a derived artifact, never source of truth. The DTO
- * exposes provenance and content only; raw model/provider responses, raw
- * prompts, global requirement state, and database internals are never exposed.
+ * 用途:规格快照的只读响应表示(DTO)。规格快照是派生产物,绝非事实源;
+ * DTO 只暴露溯源信息与内容,原始模型/提供商响应、原始提示词、全局需求状态和
+ * 数据库内部结构一律不外露。
  */
 public record SpecSnapshotResponse(
         UUID id,

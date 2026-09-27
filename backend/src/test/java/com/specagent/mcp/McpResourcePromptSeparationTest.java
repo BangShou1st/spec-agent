@@ -34,12 +34,13 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 /**
- * MCP primitive separation: resources are retrievable evidence with
- * provenance (never tools, never Graph truth); prompts are discoverable
- * assets only (never automatic system policy). Non-visible connections and
- * unknown URIs fail closed. Connections reach the providers only through the
- * MCP-owned lookup projection; the MCP-owned rejection maps at the API edge
- * to the historical 400 CONNECTION_COMMAND_REJECTED contract.
+ * 文件名:McpResourcePromptSeparationTest.java
+ *
+ * 测试目标:验证 MCP 原语分离规则——resource 是带来源的可检索证据
+ * (不是 tool,也不是 Graph 真值);prompt 仅是可发现的资产(绝不充当
+ * 自动系统策略)。不可见的连接与未知 URI 一律快速失败。连接只能通过
+ * MCP 自有的 lookup 投影触达 provider;MCP 自有的拒绝异常在 API 边界
+ * 映射为历史的 400 CONNECTION_COMMAND_REJECTED 契约。
  */
 @ExtendWith(MockitoExtension.class)
 class McpResourcePromptSeparationTest {
@@ -136,8 +137,7 @@ class McpResourcePromptSeparationTest {
 
         List<McpPrompt> prompts = promptAssetProvider.discoverPrompts(visible.rowId());
         assertThat(prompts).extracting(McpPrompt::name).containsExactly("review");
-        // Discovery carries names/descriptions/counts only — no prompt text
-        // that could be mistaken for system policy.
+        // 发现结果只携带名称/描述/数量——不带可能被误当成系统策略的 prompt 文本。
         assertThat(prompts.get(0).argumentCount()).isEqualTo(1);
     }
 
@@ -146,9 +146,9 @@ class McpResourcePromptSeparationTest {
         String huge = "x".repeat(10_000);
         McpTool tool = new McpTool("big", huge, Map.of("type", "object"), Map.of());
         assertThat(tool.description()).isEqualTo(huge);
-        // Bounding happens at the transport normalization layer; the domain
-        // record preserves what discovery cached. The provider descriptor path
-        // is covered by McpClientFactory bounds (max-description-chars=320).
+        // 截断发生在传输层归一化;领域记录保留发现时缓存的内容。
+        // provider 描述符路径的边界由 McpClientFactory 覆盖
+        // (max-description-chars=320)。
         assertThat(huge.length()).isGreaterThan(320);
     }
 }

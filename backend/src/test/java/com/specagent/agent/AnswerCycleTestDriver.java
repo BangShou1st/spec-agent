@@ -9,19 +9,17 @@ import org.springframework.stereotype.Component;
 import java.util.UUID;
 
 /**
- * Test-only driver for the async ANSWER_CYCLE: enqueues a run and executes it
- * synchronously through the worker. Replaces the retired synchronous
- * the synchronous answer commands in test fixtures so
- * recovery/isolation suites exercise exactly the production answer path.
+ * 文件名:AnswerCycleTestDriver.java
  *
- * <p><b>Claim ownership.</b> The driver always claims the exact run it
- * enqueued ({@link RunService#claimAnswerCycleRun(java.util.UUID)}), never the
- * queue head ({@code claimNextAnswerCycle}). The ANSWER_CYCLE queue is shared
- * with the production {@code RunWorker} poller and with every other fixture in
- * the same database, so a queue-wide claim can hand this driver an unrelated
- * queued run (and execute it) or hide its own run behind another test's
- * ordering. If a competing consumer already claimed the run, the by-id claim
- * returns empty and the driver fails closed instead of executing a foreign run.
+ * 测试目标:仅供测试使用的异步 ANSWER_CYCLE 驱动:入队一个 run,并通过 worker
+ * 同步执行它。替代已废弃的同步答案命令,使恢复/隔离类测试套件精确走生产答题路径。
+ *
+ * 【领取所有权】。驱动始终按 id 领取自己入队的那个 run
+ * ({@link RunService#claimAnswerCycleRun(java.util.UUID)}),绝不领取队头
+ * ({@code claimNextAnswerCycle})。ANSWER_CYCLE 队列与生产 {@code RunWorker} 轮询器
+ * 以及同一数据库中的其他 fixture 共享,按队列领取可能把一个无关的排队 run 交给本驱动
+ * (并执行它),或让自己的 run 被其他测试的排序挡住。若竞争消费者已抢先领取,按 id
+ * 领取会返回空,驱动将失败(fail closed)而不是执行外来 run。
  */
 @Component
 public class AnswerCycleTestDriver {
@@ -35,22 +33,21 @@ public class AnswerCycleTestDriver {
     }
 
     /**
-     * Submits a free-text answer to the active route tip and drives the run to
-     * its terminal state. Returns the run plus the produced records.
+     * 向活动路由末梢提交一段自由文本答案,并把 run 驱动到终态。
+     * 返回 run 及其产出的记录。
      */
     public SubmittedAnswer submitFreeText(UUID projectId, String freeText) {
         return submit(projectId, "ANSWER_TIP", null, freeText, null);
     }
 
-    /** Resumes the given persisted answer (repair path). */
+    /** 从已持久化的答案继续(修复路径)。 */
     public SubmittedAnswer resumeAnswer(UUID projectId, UUID answerId) {
         return submit(projectId, "RESUME_ANSWER", null, null, answerId);
     }
 
     /**
-     * Enqueues an answer run against a specific node without executing it.
-     * Used to stage runs whose target may go stale before the worker claims
-     * them (failure-path fixtures).
+     * 针对指定节点入队一个答题 run,但不执行。用于布置在 worker 领取前
+     * 目标可能已过期的 run(失败路径 fixture)。
      */
     public UUID enqueueOnly(UUID projectId, String operation, UUID nodeId,
                             UUID selectedOptionId, String freeText, UUID answerId) {
@@ -62,8 +59,8 @@ public class AnswerCycleTestDriver {
                                    UUID nodeId, String freeText, UUID answerId) {
         UUID runId = runService.createQueuedRunWithInput(
                 projectId, operation, nodeId, null, freeText, answerId);
-        // Claim exactly the run this driver enqueued: the ANSWER_CYCLE queue is
-        // shared, so "oldest queued run" is not necessarily ours.
+        // 精确领取本驱动入队的那个 run:ANSWER_CYCLE 队列是共享的,
+        // "最旧的排队 run"不一定是我们的。
         var claimed = runService.claimAnswerCycleRun(runId)
                 .orElseThrow(() -> new IllegalStateException(
                         "Enqueued answer-cycle run is not claimable: " + runId));
@@ -73,7 +70,7 @@ public class AnswerCycleTestDriver {
         return new SubmittedAnswer(run);
     }
 
-    /** Post-run view over one submitted answer cycle. */
+    /** 一次已提交答题循环的事后视图。 */
     public record SubmittedAnswer(AgentRun run) {
 
         public UUID answerId() {

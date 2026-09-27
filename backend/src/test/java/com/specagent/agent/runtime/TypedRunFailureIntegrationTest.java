@@ -40,21 +40,20 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * A failed answer cycle reports <em>which</em> cause it was and always leaves a
- * recoverable checkpoint.
+ * 文件名:TypedRunFailureIntegrationTest.java
  *
- * <p>Deterministic regression for the acceptance-run chain: the model output was
- * rejected by the brain contract, the run failed with one opaque reason, and the
- * only thing the retry could do was resume the same persisted answer. This test
- * pins that the cause is typed, that a deterministic contract failure is not
- * retried automatically, and that the resume path reuses the existing Answer and
- * patch without creating a second of either.
+ * 测试目标:失败的答题循环必须报告<em>具体是哪种</em>原因,并始终留下可恢复的
+ * 检查点。
+ *
+ * 针对验收运行链的确定性回归:模型输出被 brain 契约拒绝,run 以一个不透明原因
+ * 失败,重试唯一能做的就是续跑同一个持久化答案。本测试固定:原因是类型化的、
+ * 确定性契约失败不会被自动重试、续跑路径复用既有 Answer 和 patch 而不创建任何一个
+ * 的第二份。
  */
 @SpringBootTest
 @ActiveProfiles("test")
-// Deliberately NOT @Transactional: the durable run failure is recorded in its
-// own REQUIRES_NEW transaction, exactly as in production, so a surrounding test
-// transaction would hide the very record this suite asserts on.
+// 刻意不加 @Transactional:持久的 run 失败记录在它自己的 REQUIRES_NEW 事务中写入,
+// 与生产完全一致;外层测试事务会掩盖本套件要断言的那条记录。
 class TypedRunFailureIntegrationTest {
 
     @TestConfiguration
@@ -67,7 +66,7 @@ class TypedRunFailureIntegrationTest {
         }
     }
 
-    /** Deterministic engine that can fail DECISION with a typed brain code. */
+    /** 确定性引擎:可以让 DECISION 以类型化的 brain 码失败。 */
     static class TypedFailureEngine implements AgentDecisionEngine {
 
         final AtomicInteger stateUpdates = new AtomicInteger();
@@ -179,8 +178,8 @@ class TypedRunFailureIntegrationTest {
     }
 
     /**
-     * Enqueues an answer run and drives it through the worker, tolerating the
-     * expected scripted failure so the durable run record can be inspected.
+     * 入队一个答题 run 并通过 worker 驱动,容忍预期的脚本化失败,
+     * 以便检查持久化的 run 记录。
      */
     private AgentRun submitExpectingFailure(Project project, String freeText) {
         UUID tipNodeId = routeService.getRoute(project.activeRouteId())
@@ -190,7 +189,7 @@ class TypedRunFailureIntegrationTest {
         try {
             runWorker.executeRun(runService.claimAnswerCycleRun(runId).orElseThrow());
         } catch (RuntimeException expected) {
-            // RunWorker rethrows after recording the typed failure.
+            // RunWorker 记录类型化失败后重新抛出。
         }
         return runService.getRun(runId).orElseThrow();
     }
@@ -204,9 +203,9 @@ class TypedRunFailureIntegrationTest {
         AgentRun first = submitExpectingFailure(project, "the durable answer");
 
         assertThat(first.status()).isEqualTo(AgentRunStatus.FAILED);
-        // The brain failure happened after the STATE_UPDATE checkpoint landed.
+        // brain 失败发生在 STATE_UPDATE 检查点落地之后。
         assertThat(engine.stateUpdates.get()).isEqualTo(1);
-        // A deterministic contract failure is not retried automatically.
+        // 确定性契约失败不会被自动重试。
         assertThat(engine.decisions.get()).isEqualTo(1);
 
         Map<String, Object> failure = runFailure(first);
@@ -215,14 +214,13 @@ class TypedRunFailureIntegrationTest {
                 .containsEntry("errorCode", "model_contract_violation");
         assertThat((String) failure.get("summary")).isNotBlank();
 
-        // The checkpoint is intact: exactly one answer and one patch.
+        // 检查点完好:恰好一个答案和一个 patch。
         Answer persisted = answerService.findAnswerForNode(project.activeRouteId(), root.id())
                 .orElseThrow();
         assertThat(answerPatchService.findBySourceAnswerId(persisted.id())).isPresent();
         assertThat(answerPatchService.findByRoute(project.activeRouteId())).hasSize(1);
 
-        // Recovery resumes the SAME answer and completes without duplicating
-        // either durable record.
+        // 恢复续跑同一个答案并完成,不复制任何持久化记录。
         engine.failDecision = false;
         AnswerCycleTestDriver.SubmittedAnswer repaired =
                 answerDriver.resumeAnswer(project.id(), persisted.id());
@@ -242,17 +240,17 @@ class TypedRunFailureIntegrationTest {
         UUID tipNodeId = routeService.getRoute(project.activeRouteId())
                 .orElseThrow().tipNodeId();
 
-        // Queue the artifact run while the tip is still unanswered...
+        // 在 tip 尚未回答时排队工件 run……
         UUID runId = runService.createQueuedArtifactGeneration(project.id(), null, "gate", null)
                 .id();
-        // ...then the user answers and that answer's STATE_UPDATE never lands.
+        // ……随后用户回答了,而该答案的 STATE_UPDATE 始终没有落地。
         answerService.finalizeAnswer(project.id(), project.activeRouteId(), tipNodeId,
                 null, "saved answer", "user");
 
         try {
             runWorker.executeRun(runService.claimNextArtifact().orElseThrow());
         } catch (RuntimeException expected) {
-            // The gate refuses before any model call.
+            // 门禁在任何模型调用之前拒绝。
         }
 
         AgentRun run = runService.getRun(runId).orElseThrow();
@@ -260,8 +258,7 @@ class TypedRunFailureIntegrationTest {
         assertThat(runFailure(run))
                 .containsEntry("reason", RunFailureReasons.ANSWER_CYCLE_INCOMPLETE)
                 .containsEntry("errorCode", RunFailureReasons.ANSWER_CYCLE_INCOMPLETE);
-        // No artifact was derived from the incomplete state, and no model call
-        // was made for it.
+        // 没有从不完整状态派生任何工件,也没有为它发起任何模型调用。
         assertThat(specSnapshotService.listByRoute(project.activeRouteId())).isEmpty();
         assertThat(engine.decisions.get()).isZero();
     }

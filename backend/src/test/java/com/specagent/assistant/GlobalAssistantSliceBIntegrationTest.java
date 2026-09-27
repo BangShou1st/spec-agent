@@ -31,16 +31,16 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Slice B: the five host tools, deterministic search, catalog double isolation,
- * descriptor quality (no benchmark phrases), idempotent project.create.
+ * 文件名:GlobalAssistantSliceBIntegrationTest.java
  *
- * <p>The isolation invariant is: the GA whitelist keeps the Skill Runtime host
- * tools ({@code skill.activate}, {@code skill.search}, {@code skill.read_resource})
- * and every MCP capability out of the model-facing catalog, because those are the
- * surfaces that pull untrusted instructions or remote tool definitions into the
- * model. {@code skill.import} is allowed: it stages a reviewable import row and
- * returns metadata only — it never activates a Skill and never returns its
- * instructions.
+ * 测试目标:Slice B 集成——五个宿主工具、确定性搜索、目录双重隔离、
+ * 描述符质量(不含基准测试短语)、幂等的 project.create。
+ *
+ * 隔离不变量为:GA 白名单把 Skill Runtime 宿主工具
+ * ({@code skill.activate}、{@code skill.search}、{@code skill.read_resource})
+ * 以及所有 MCP 能力挡在模型可见目录之外,因为这些入口会把不可信指令
+ * 或远程工具定义引入模型。{@code skill.import} 被允许:它只落一条
+ * 可人工审查的导入记录并返回元数据,从不激活 Skill,也从不返回其指令内容。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -77,15 +77,14 @@ class GlobalAssistantSliceBIntegrationTest {
         projects.createProject("GA Search Beta " + marker);
         List<GlobalProjectSearchService.Candidate> candidates = search.search(marker, 5);
         assertThat(candidates).hasSizeGreaterThanOrEqualTo(2);
-        // Deterministic: repeated calls return the same order.
+        // 确定性:重复调用返回相同顺序。
         List<GlobalProjectSearchService.Candidate> again = search.search(marker, 5);
         assertThat(again.stream().map(GlobalProjectSearchService.Candidate::projectId).toList())
                 .isEqualTo(candidates.stream().map(GlobalProjectSearchService.Candidate::projectId).toList());
     }
     @Test
     void projectSearchHasNoBusinessWordSpecialCases() {
-        // Paraphrases with different entity names resolve through the same
-        // deterministic path; the service exposes no per-word weights.
+        // 不同实体名的改写都走同一条确定性路径;服务不暴露任何按词特判的权重。
         String marker = UUID.randomUUID().toString().substring(0, 8);
         projects.createProject("Notebook Planner " + marker);
         assertThat(search.search("notebook " + marker, 5)).isNotEmpty();
@@ -120,14 +119,12 @@ class GlobalAssistantSliceBIntegrationTest {
     }
     @Test
     void gaCatalogIsolatedFromSkillRuntimeAndMcp() {
-        // Raw visibility may still list skill/mcp (empty supports = visible
-        // everywhere); the frozen double isolation is: supports marker hides GA
-        // tools from Project Agent, and the explicit GA whitelist keeps the
-        // Skill Runtime host tools and MCP out of the model-facing GA catalog.
-        // The rule names those tools explicitly rather than banning the whole
-        // "skill." prefix: the hazard is reading/activating a Skill (untrusted
-        // instructions in, tool definitions in), not staging an import the user
-        // still has to review and enable.
+        // 原始可见性里可能仍列出 skill/mcp(supports 为空 = 处处可见);
+        // 冻结的双重隔离是:supports 标记对 Project Agent 隐藏 GA 工具,
+        // 显式 GA 白名单把 Skill Runtime 宿主工具和 MCP 挡在模型可见的
+        // GA 目录之外。规则点名这些工具而不是封禁整个 "skill." 前缀:
+        // 危险在于读取/激活 Skill(不可信指令进来、工具定义进来),
+        // 而不是暂存一条仍需用户审查并启用的导入记录。
         List<CapabilityDescriptor> gaVisible =
                 visibility.visibleCapabilities(GlobalAssistantToolCatalog.queryContext());
         List<String> projected = gaVisible.stream()
@@ -147,7 +144,7 @@ class GlobalAssistantSliceBIntegrationTest {
                 SkillReadResourceHostTool.CAPABILITY_ID);
         assertThat(projected).noneMatch(skillRuntimeHostTools::contains);
         assertThat(projected).noneMatch(id -> id.startsWith("mcp."));
-        // Every GA descriptor carries the application marker.
+        // 每个 GA 描述符都带应用标记。
         for (CapabilityDescriptor descriptor : gaVisible) {
             if (GlobalAssistantToolCatalog.isAllowed(descriptor.capabilityId())) {
                 assertThat(descriptor.supports()).contains(GlobalAssistantToolCatalog.SUPPORT_MARKER);
@@ -185,8 +182,7 @@ class GlobalAssistantSliceBIntegrationTest {
             CapabilityDescriptor descriptor =
                     registry.findDescriptor(id).orElseThrow();
             String text = descriptor.description();
-            // Each descriptor must name its own domain, and none may quote a
-            // benchmark prompt back at the model.
+            // 每个描述符必须说明自己的领域,且都不得把基准测试的提示词回喂给模型。
             assertThat(text).containsIgnoringCase(
                     id.startsWith("project.") ? "project" : "skill");
             assertThat(text).doesNotContain("\u6253\u5f00");

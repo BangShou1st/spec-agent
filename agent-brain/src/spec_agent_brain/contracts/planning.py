@@ -1,9 +1,10 @@
-"""Strict diagnostic contract for structured semantic planning state.
+"""文件名:planning.py
 
-The model classifies what the current task still needs before any action
-is selected. Every flag carries bounded reason codes and evidence refs;
-free-form reasoning is forbidden. This module is diagnostic-only and is
-not wired into the production Decision engine.
+用途:结构化语义 planning 状态的严格诊断契约。
+
+模型在选定任何 action 之前,先对当前任务还缺什么做分类。每个标志位都
+必须携带有界的 reason codes 与 evidence refs,禁止自由发挥的推理文本。
+本模块仅用于诊断,尚未接入生产环境的 Decision 引擎。
 """
 
 from typing import Dict, List, Literal
@@ -89,7 +90,7 @@ class PlanningState(StrictModel):
 
 
 class PlanningStateError(ValueError):
-    """Fail-closed planning-state contract error."""
+    """planning-state 契约错误,fail-closed。"""
 
 
 def _check_flag(name: str, flag: PlanningFlag) -> None:
@@ -110,7 +111,7 @@ def _check_flag(name: str, flag: PlanningFlag) -> None:
 
 
 def validate_planning_state(payload: object) -> PlanningState:
-    """Parse and fully validate one model-produced planning state."""
+    """解析并完整校验一份模型产出的 planning 状态。"""
     try:
         state = PlanningState.model_validate(payload)
     except Exception as exc:

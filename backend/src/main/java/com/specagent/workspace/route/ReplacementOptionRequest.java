@@ -4,9 +4,10 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
 /**
- * A replacement option in a regenerate request. Only client-owned content
- * (label, impact) is accepted; runtime-owned option ids are created by the
- * runtime and never supplied by clients.
+ * 文件名:ReplacementOptionRequest.java
+ *
+ * 用途:重新生成请求中的一个 replacement 选项。只接受客户端拥有的
+ * 内容(label、impact);选项 id 由运行时创建,永远不由客户端提供。
  */
 public record ReplacementOptionRequest(
         @NotBlank(message = "must not be blank")

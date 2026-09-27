@@ -31,11 +31,12 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 
 /**
- * Bounded sequential tool-agent loop. Owns one-run orchestration only:
- * decision -&gt; tool -&gt; observation -&gt; decision, plus cancel, budgets,
- * no-progress, persistence coordination and terminalization.
- * Steer handoff lives in turn package; this runtime only publishes
- * terminal events so backend-owned continuation stays decoupled.
+ * 文件名:GlobalAssistantRuntime.java
+ *
+ * 用途:有界的顺序式工具代理循环,是单次 run 的编排核心:
+ * 决策 -&gt; 工具 -&gt; 观察 -&gt; 决策,循环往复;同时负责取消、预算、
+ * 无进展检测、持久化协调与终态化。steer 交接归 turn 包管,
+ * 这里只发布终态事件,让后端自主的后续流转保持解耦。
  */
 @Service
 public class GlobalAssistantRuntime {
@@ -74,8 +75,8 @@ public class GlobalAssistantRuntime {
         this.modelTargets = modelTargets;
     }
     /**
-     * Executes one user turn synchronously. The run row already exists;
-     * this method drives it to a terminal state.
+     * 同步执行一个用户轮次。run 行已存在;
+     * 本方法把它驱动到终态。
      */
     public void executeRun(UUID threadId, UUID runId, String userMessage,
             GlobalAssistantContextBuilder.UiRequest uiRequest) {
@@ -100,9 +101,8 @@ public class GlobalAssistantRuntime {
             } finally {
                 queueMs = (System.nanoTime() - queueStart) / 1_000_000;
             }
-        // Snapshot the provider/model actually serving THIS run's inference
-        // requests, taken once at request time. Messages persist this exact
-        // attribution, so later provider switches never mislabel old answers.
+        // 在请求时一次性快照实际服务本次 run 推理请求的供应商/模型。
+        // 消息持久化的就是这个归属,因此之后切换供应商也不会把旧答案标错。
         var attribution = modelTargets.resolveActive();
         var attributionProvider = attribution.providerLabel();
         var attributionModel = attribution.modelId();
@@ -255,8 +255,8 @@ public class GlobalAssistantRuntime {
                         toolExecutionMs += (System.nanoTime() - t0) / 1_000_000;
                     }
                 } catch (RuntimeException ex) {
-                    // Never swallow silently: the TOOL_FAILED copy is generic,
-                    // so the log is the only place the real cause survives.
+                    // 绝不静默吞掉:TOOL_FAILED 的文案是通用话术,
+                    // 日志是真实原因唯一能留存的地方。
                     log.warn("GA tool execution failed: runId={} capabilityId={} error={}",
                             runId, decision.toolRequest().capabilityId(),
                             ex.getClass().getSimpleName(), ex);
@@ -283,19 +283,18 @@ public class GlobalAssistantRuntime {
                     completedPayload.put("summary", toolSummary(decision.toolRequest().capabilityId(), result));
                     completedPayload.put("resourceRefs", refs);
                     completedPayload.put("resultCount", refs.size());
-                    // resultKind is null for capabilities without a list/kind
-                    // mapping (skill.import): absence of the key is the honest
-                    // signal. A null value here would kill the whole run —
-                    // Map.copyOf in the event repository rejects null values.
+                    // 对于没有列表/kind 映射的能力(skill.import),resultKind 为 null:
+                    // 不写入这个键才是诚实的信号。这里若放一个 null 值会害死整个 run ——
+                    // 事件仓库里的 Map.copyOf 会拒绝 null 值。
                     String resultKind = com.specagent.assistant.tool.GlobalAssistantToolPresentation
                             .resultKind(decision.toolRequest().capabilityId());
                     if (resultKind != null) {
                         completedPayload.put("resultKind", resultKind);
                     }
                     runEvents.append(runId, GlobalAssistantEventType.TOOL_COMPLETED, completedPayload);
-                    // Real phase transition, not a timer: the tool finished and the
-                    // final model round starts now. Keeps the UI truthful during
-                    // the second model call without narrating tool internals.
+                    // 这是真实的阶段切换,不是定时器:工具已结束,最终一轮
+                    // 模型调用现在开始。让 UI 在第二次模型调用期间保持真实,
+                    // 又不旁白工具内部细节。
                     runEvents.append(runId, GlobalAssistantEventType.STATUS, Map.of("message",
                             com.specagent.assistant.tool.GlobalAssistantToolPresentation.COMPOSING_MESSAGE));
                 } else if (result.status() == CapabilityResult.Status.IN_PROGRESS) {
@@ -506,9 +505,8 @@ public class GlobalAssistantRuntime {
             return current;
         }
         Map<String, Object> content = result.content();
-        // Skill repository discovery is not project-shaped: its candidate list
-        // is persisted verbatim as continuity state so the next turn can still
-        // see which skills the tool actually returned.
+        // Skill 仓库发现结果不是项目形状:它的候选列表按原样存为连续性状态,
+        // 让下一轮还能看到工具实际返回过哪些 skill。
         if (SkillDiscoverCapability.CAPABILITY_ID.equals(capabilityId)) {
             List<String> discoverRefs = new ArrayList<>(current.lastToolResultRefs());
             discoverRefs.add(capabilityId + ":" + content.get("candidateCount"));
@@ -522,9 +520,8 @@ public class GlobalAssistantRuntime {
         List<Map<String, String>> candidates = new ArrayList<>(current.candidateProjects());
         UUID resolved = current.lastResolvedProjectId();
         List<String> refs = new ArrayList<>(current.lastToolResultRefs());
-        // Capability result shapes live in the presentation registry; the
-        // runtime only passes the opaque capability id through. A fifth
-        // capability needs registration only, no runtime change.
+        // 能力结果形状注册在展示层登记表里;运行时只透传不透明的能力 ID。
+        // 新增第五个能力只需要注册,不用改运行时。
         com.specagent.assistant.tool.GlobalAssistantToolPresentation.ResultShape shape =
                 com.specagent.assistant.tool.GlobalAssistantToolPresentation.resultShapeOf(capabilityId);
         if (shape == null) {
@@ -558,9 +555,8 @@ public class GlobalAssistantRuntime {
                 resolved, refs, current.lastSkillDiscovery());
     }
     /**
-     * Projects a successful skill.import.discover result into bounded
-     * continuity state: only parseable candidates survive, bounded to the
-     * same 20-candidate cap the capability reports.
+     * 把成功的 skill.import.discover 结果投影成有界的连续性状态:
+     * 只保留可解析的候选,数量上限与能力上报的 20 个候选上限一致。
      */
     private GlobalAssistantWorkingState.SkillDiscovery skillDiscoveryFrom(Map<String, Object> content) {
         List<Map<String, String>> candidates = new ArrayList<>();
@@ -616,9 +612,9 @@ public class GlobalAssistantRuntime {
         return com.specagent.assistant.tool.GlobalAssistantToolPresentation.runningMessage(capabilityId);
     }
     private String toolSummary(String capabilityId, CapabilityResult result) {
-        // Skill import result shapes live here: requiresChoice means the model
-        // must ask the user to pick one, stagedImportId means one package was
-        // staged for review. Nothing about the import is executed or installed.
+        // Skill 导入的结果形状集中在这里:requiresChoice 表示模型必须请用户
+        // 挑选一个,stagedImportId 表示已有一个包暂存待审。导入本身
+        // 不会被执行,也不会安装任何东西。
         if (SkillDiscoverCapability.CAPABILITY_ID.equals(capabilityId)) {
             Object candidateCount = result.content().get("candidateCount");
             return "仓库中共发现 " + candidateCount + " 个 Skill 候选";
@@ -649,9 +645,8 @@ public class GlobalAssistantRuntime {
         return "已完成";
     }
     /**
-     * Fallback answer for a navigation-only decision (the model produced no
-     * text of its own). Product copy lives in the UI language like every other
-     * assistant-facing string, never in the wire language.
+     * 纯导航决策的兜底答案(模型自己没有产出文本)。与其他面向助手的
+     * 字符串一样,产品文案使用 UI 语言,绝不用线上协议语言。
      */
     private String defaultNavigationText(GlobalAssistantDecision.UiAction uiAction) {
         return switch (uiAction.destination()) {
@@ -669,9 +664,8 @@ public class GlobalAssistantRuntime {
         return runs.findById(runId).map(r -> r.cancelRequestedAt() != null).orElse(false);
     }
     /**
-     * Bounded sanitized contract error for repair prompts. Never carries raw
-     * payloads, credentials, or stack traces; the brain only forwards these
-     * short validator/parser messages.
+     * 供修复提示词使用的有界脱敏契约错误描述。绝不携带原始载荷、凭据
+     * 或堆栈;brain 只转发这些来自校验器/解析器的简短消息。
      */
     private String sanitizedRejectionReason(String value) {
         if (value == null || value.isBlank()) {

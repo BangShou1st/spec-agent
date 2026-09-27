@@ -5,13 +5,14 @@ import java.util.UUID;
 import com.specagent.retrieval.RetrievedContextItem;
 
 /**
- * The deterministic, runtime-built, frozen model-facing projection of one
- * decision cycle ({@code AgentInputSnapshot}).
+ * 文件名:AgentInputSnapshot.java
  *
- * <p>All identities are runtime-owned. The projection is built Java-side from
- * the durable {@code ContextSnapshot} manifest; the brain never reconstructs
- * this state from database access. See {@code contracts/README.md} for the
- * frozen wire shape.
+ * 用途:单个决策周期面向模型的确定性输入投影,由 Runtime 构建并冻结
+ * ({@code AgentInputSnapshot}),是 Brain 推理的唯一事实来源。
+ *
+ * 约束:所有身份标识都归 Runtime 所有。该投影由 Java 侧从持久化的
+ * {@code ContextSnapshot} manifest 构建,Brain 绝不允许通过访问数据库
+ * 自行重建这份状态。冻结的线上(wire)形状见 {@code contracts/README.md}。
  */
 public record AgentInputSnapshot(String snapshotId,
                                  String contextHash,
@@ -46,7 +47,7 @@ public record AgentInputSnapshot(String snapshotId,
         retrievedContext = retrievedContext == null ? List.of() : List.copyOf(retrievedContext);
     }
 
-    /** Legacy constructor for callers that predate the Skill catalog field. */
+    /** 兼容旧调用的构造器:适用于 Skill 目录字段出现之前的调用方。 */
     public AgentInputSnapshot(String snapshotId,
                               String contextHash,
                               UUID projectId,
@@ -68,7 +69,7 @@ public record AgentInputSnapshot(String snapshotId,
                 relations, relatedNodes, List.of(), autonomy);
     }
 
-    /** Compatibility constructor for callers that already include Skills. */
+    /** 兼容构造器:适用于已经包含 Skills 的调用方。 */
     public AgentInputSnapshot(String snapshotId,
                               String contextHash,
                               UUID projectId,

@@ -1,3 +1,5 @@
+// 文件名:graphUiStore.ts
+// 用途:画布工作台仅浏览器端的 UI 状态 store(Pinia):选中/多选、Focus 路线、生命周期筛选、弱化/隐藏、展开节点、本地节点位置与侧栏布局,绝不持有运行时事实。
 import { defineStore } from 'pinia'
 import type { RouteLifecycleStatus } from '@/shared/contracts/types'
 import {
@@ -18,13 +20,12 @@ import type {
 } from '@/features/workspace/graph/graphTypes'
 import { buildVisualInstances } from '@/features/workspace/graph/graphVisualIdentity'
 
-/**
- * Default lifecycle visibility.
+/*
+ * 生命周期可见性默认值。
  *
- * `archived` is OFF by default: 归档 is the single "put this route away" action
- * (the separate soft-delete action was removed), so archiving must actually
- * remove the route from the default view. Users who want to inspect or restore
- * an archived route tick the 已归档 filter in the Route sidebar.
+ * `archived` 默认关闭:归档是唯一的"收起这条路线"操作(独立的软删除操作
+ * 已移除),因此归档必须真正把路线从默认视图移除。想查看或恢复已归档路线
+ * 的用户,在路线侧栏勾选"已归档"筛选即可。
  */
 const DEFAULT_FILTERS: Record<RouteLifecycleStatus, boolean> = {
   open: true,
@@ -33,25 +34,22 @@ const DEFAULT_FILTERS: Record<RouteLifecycleStatus, boolean> = {
   deleted: false,
 }
 
-/**
- * Browser-only graph workspace UI state.
+/*
+ * 仅浏览器端的画布工作台 UI 状态。
  *
- * This store owns selection, multi-selection, focus route, lifecycle
- * filters, dim/hide display state, expanded nodes, local node positions
- * and sidebar layout. It never owns Runtime facts: Active route, lifecycle,
- * answers, nodes, routes and Spec content stay in `workspaceStore`/backend.
+ * 本 store 拥有选中、多选、Focus 路线、生命周期筛选、弱化/隐藏显示状态、
+ * 展开节点、本地节点位置与侧栏布局。它绝不拥有运行时事实:Active 路线、
+ * 生命周期、回答、节点、路线与 Spec 内容仍留在 workspaceStore/后端。
  *
- * Focus Route is the only explicit browser reading context. It never changes
- * the Active route and shared nodes never infer a route from Active.
+ * Focus Route 是唯一的显式浏览器阅读上下文。它绝不改变 Active 路线,
+ * 共享节点也绝不从 Active 推断路线。
  *
- * 只看这条路线 is an ephemeral single-route lens on top of Focus: it narrows the
- * canvas to one route without touching Focus, Active or the persisted display
- * states, and it is the only view state that may hide the Active route
- * (the running route stays reachable through the 显示全部路线 escape hatch).
+ * "只看这条路线"是叠加在 Focus 之上的临时单路线镜头:把画布收窄到一条
+ * 路线,不触碰 Focus、Active 与持久化的显示状态,并且是唯一可以隐藏
+ * Active 路线的视图状态(运行路线始终可以通过"显示全部路线"逃生口找回)。
  *
- * Persisted locally: per-project node positions + route display states,
- * and the global sidebar open/width preferences. Never persisted:
- * selection, expanded nodes, focus, the isolate lens, pan/zoom.
+ * 本地持久化:逐项目的节点位置 + 路线显示状态,以及全局侧栏展开/宽度
+ * 偏好。绝不持久化:选中、展开节点、Focus、只看镜头、平移/缩放。
  */
 export const useGraphUiStore = defineStore('graphUi', {
   state: () => {
@@ -61,39 +59,34 @@ export const useGraphUiStore = defineStore('graphUi', {
       activeRouteId: null as string | null,
       selectedNodeIds: [] as string[],
       primarySelectedNodeId: null as string | null,
-      // One-shot "open this node's editor" request (e.g. right after creating
-      // an idea). The matching card consumes and clears it.
+      // 一次性的"打开该节点编辑器"请求(例如刚创建一个想法之后)。
+      // 匹配的卡片会消费并清掉它。
       pendingEditNodeKey: null as string | null,
       selectedEdgeId: null as string | null,
       selectedSharedEdgeRouteIds: [] as string[],
       focusRouteId: null as string | null,
-      /**
-       * Ephemeral "只看这条路线" lens: the single route the canvas renders.
+      /*
+       * 临时的"只看这条路线"镜头:画布只渲染这一条路线。
        *
-       * Deliberately NOT modelled with `routeDisplayStates`. That map is
-       * persisted per project, and the Active route is force-visible there
-       * (`routeVisible`) and repaired by `reconcile`, so hiding routes through
-       * it could never hide the running route: "只看这条路线" on a non-active
-       * route left the running route on the canvas — the second isolate looked
-       * like it silently did nothing.
+       * 刻意不用 `routeDisplayStates` 建模。那个映射按项目持久化,而
+       * Active 路线在其中强制可见(routeVisible)且由 reconcile 修复,因此
+       * 通过它隐藏路线永远藏不住运行路线:对非 Active 路线执行"只看这条
+       * 路线"时运行路线仍留在画布上——第二次只看看起来像静默无操作。
        *
-       * The lens is browser-only and never persisted: leaving it (显示全部路线,
-       * 退出只看, or clicking another route card) restores the previous view
-       * exactly, with no stale hidden state after a reload or an Active-route
-       * change.
+       * 镜头只在浏览器端存在、绝不持久化:离开镜头(显示全部路线、退出
+       * 只看、或点击另一张路线卡片)会精确恢复之前的视图,刷新或切换
+       * Active 路线后不会残留隐藏状态。
        */
       isolatedRouteId: null as string | null,
-      // Pending relation proposal from a canvas drag (source handle → target
-      // handle). No relation is persisted until the user confirms a type and
-      // direction in the proposal chooser; Cancel/Esc/click-away clears it
-      // with zero backend calls.
+      // 画布拖线(源 handle → 目标 handle)产生的待确认关系提案。在用户于
+      // 提案选择器中确认类型与方向之前不持久化任何关系;取消/Esc/点击
+      // 空白清掉它,零后端调用。
       pendingRelation: null as {
         sourceNodeId: string
         targetNodeId: string
       } | null,
-      // Optional semantic-relation layer visibility. Browser-only ephemeral:
-      // never persisted, always defaults to false. The Inspector remains
-      // the canonical place to inspect relations.
+      // 可选语义关系层的可见性。仅浏览器的临时状态:绝不持久化,默认
+      // 恒为 false。Inspector 仍是查看关系的权威场所。
       showRelationLayer: false,
       lifecycleFilters: { ...DEFAULT_FILTERS } as Record<RouteLifecycleStatus, boolean>,
       routeDisplayStates: {} as Record<string, GraphRouteDisplayState>,
@@ -114,9 +107,9 @@ export const useGraphUiStore = defineStore('graphUi', {
     },
   },
   actions: {
-    /**
-     * Switches the browser-only UI to another project: clears per-project
-     * view state and loads that project's saved layout.
+    /*
+     * 把仅浏览器的 UI 切换到另一个项目:清空逐项目的视图状态,并加载该
+     * 项目已保存的布局。
      */
     initProject(projectId: string): void {
       this.projectId = projectId
@@ -130,19 +123,19 @@ export const useGraphUiStore = defineStore('graphUi', {
       this.routeDisplayStates = { ...v2.routeDisplayStates }
     },
 
-    /** Returns the explicit browser reading route, never the runtime Active route. */
+    /** 返回显式的浏览器阅读路线,绝不是运行时 Active 路线。 */
     readingRouteId(_activeRouteId?: string | null): string | null {
       return this.focusRouteId
     },
 
-    /** Normal click: single selection replaces the old selection. */
+    /** 普通点击:单选替换旧选择。 */
     selectNode(nodeId: string): void {
       this.selectedNodeIds = [nodeId]
       this.primarySelectedNodeId = nodeId
       this.clearEdgeSelection()
     },
 
-    /** Asks the matching node card to open its editor, then clears itself. */
+    /** 请求匹配的节点卡片打开编辑器,随后自清除。 */
     requestNodeEdit(nodeKey: string): void {
       this.pendingEditNodeKey = nodeKey
     },
@@ -153,7 +146,7 @@ export const useGraphUiStore = defineStore('graphUi', {
       return true
     },
 
-    /** Ctrl/Cmd + click: add/remove from multi-selection. */
+    /** Ctrl/Cmd + 点击:加入/移出多选。 */
     toggleSelectNode(nodeId: string): void {
       this.clearEdgeSelection()
       if (this.selectedNodeIds.includes(nodeId)) {
@@ -167,7 +160,7 @@ export const useGraphUiStore = defineStore('graphUi', {
       }
     },
 
-    /** Mirrors a Vue Flow selection batch into the UI store. */
+    /** 把 Vue Flow 的一批选中变化镜像进 UI store。 */
     setSelection(nodeIds: string[]): void {
       this.selectedNodeIds = [...nodeIds]
       if (nodeIds.length > 0) this.clearEdgeSelection()
@@ -193,41 +186,39 @@ export const useGraphUiStore = defineStore('graphUi', {
     },
 
     setFocusRoute(routeId: string | null): void {
-      // Focus is a reading context for visible routes only: a manually
-      // hidden route can never become the Focus route.
+      // Focus 只是可见路线的阅读上下文:被手动隐藏的路线绝不能成为
+      // Focus 路线。
       if (routeId !== null && this.routeDisplayStates[routeId] === 'hidden') {
         return
       }
       this.focusRouteId = routeId
     },
 
-    /**
-     * "只看这条路线": renders exactly one route on the canvas.
+    /*
+     * "只看这条路线":在画布上只渲染一条路线。
      *
-     * Explicit per-route intent beats every weaker view signal (lifecycle
-     * filters, manual dim/hide, Active), so the lens also hides the running
-     * route — that is the whole point of the command. It is reversible in one
-     * click (显示全部路线 / 退出只看), never persisted, and it always carries
-     * the reading Focus with it: Focus must never point at an invisible route
-     * (an unreachable Focus dims every visible node, which reads as "the view
-     * broke").
+     * 显式的单路线意图压过所有更弱的视图信号(生命周期筛选、手动弱化/
+     * 隐藏、Active),因此镜头也会隐藏运行路线——这正是这条命令的全部
+     * 意义。它一键可逆(显示全部路线 / 退出只看),绝不持久化,并且总是
+     * 把阅读 Focus 一起带过去:Focus 绝不能指向不可见的路线(够不着的
+     * Focus 会把所有可见节点变灰,看起来就像"视图坏了")。
      */
     isolateRoute(routeId: string): void {
       this.isolatedRouteId = routeId
       this.focusRouteId = routeId
     },
 
-    /** Leaves the isolate lens. Focus and display states are preserved. */
+    /** 离开只看镜头。Focus 与显示状态都保留。 */
     clearIsolation(): void {
       this.isolatedRouteId = null
     },
 
-    /** Toggles the optional semantic-relation layer on the canvas. */
+    /** 切换画布上可选的语义关系层。 */
     setShowRelationLayer(visible: boolean): void {
       this.showRelationLayer = visible
     },
 
-    /** Registers a canvas drag as a pending relation proposal (no backend call). */
+    /** 把画布拖线登记为待确认关系提案(不调后端)。 */
     setPendingRelation(payload: { sourceNodeId: string; targetNodeId: string } | null): void {
       this.pendingRelation = payload
     },
@@ -244,10 +235,9 @@ export const useGraphUiStore = defineStore('graphUi', {
       this.lifecycleFilters = { ...this.lifecycleFilters, [status]: visible }
     },
 
-    /**
-     * Hide keeps route-exclusive elements out of the current browser view.
-     * The Active route can never be hidden. Hiding the focused route clears
-     * Focus first: Focus must never point at a hidden route.
+    /*
+     * 隐藏让路线专属元素离开当前浏览器视图。Active 路线绝不能被隐藏。
+     * 隐藏 Focus 路线先清 Focus:Focus 绝不能指向被隐藏的路线。
      */
     hideRoute(routeId: string): void {
       if (routeId === this.activeRouteId) {
@@ -262,7 +252,7 @@ export const useGraphUiStore = defineStore('graphUi', {
       this.setRouteDisplayState(routeId, 'hidden')
     },
 
-    /** Dim keeps the route visible with lower visual weight. */
+    /** 弱化让路线保持可见但降低视觉权重。 */
     dimRoute(routeId: string): void {
       this.setRouteDisplayState(routeId, 'dimmed')
     },
@@ -276,9 +266,9 @@ export const useGraphUiStore = defineStore('graphUi', {
       this.persistProjectState()
     },
 
-    /**
-     * Clears the isolate lens and manual dim/hide but preserves Focus and
-     * lifecycle filters. This is the canonical "回到全视图" escape hatch.
+    /*
+     * 清除只看镜头与手动弱化/隐藏,但保留 Focus 与生命周期筛选。这是
+     * 权威的"回到全视图"逃生口。
      */
     showAll(): void {
       this.isolatedRouteId = null
@@ -286,9 +276,9 @@ export const useGraphUiStore = defineStore('graphUi', {
       this.persistProjectState()
     },
 
-    /**
-     * Restores the full default view: clears Focus, the isolate lens, manual
-     * display state and resets lifecycle filters to their defaults.
+    /*
+     * 恢复完整默认视图:清掉 Focus、只看镜头、手动显示状态,并把生命周期
+     * 筛选重置为默认值。
      */
     resetView(): void {
       this.focusRouteId = null
@@ -309,7 +299,7 @@ export const useGraphUiStore = defineStore('graphUi', {
       this.persistProjectState()
     },
 
-    /** Persists a batch of node positions (used on drag stop). */
+    /** 持久化一批节点位置(拖拽结束时使用)。 */
     setNodePositions(positions: Record<string, GraphPosition>): void {
       this.nodePositions = { ...this.nodePositions, ...positions }
       this.persistProjectState()
@@ -327,11 +317,10 @@ export const useGraphUiStore = defineStore('graphUi', {
       this.persistWorkspaceState()
     },
 
-    /**
-     * Reconciles browser-only view state against the canonical graph after
-     * every refresh: drops stale selections, clears the isolate lens when its
-     * route disappears, clears Focus on routes that are no longer visible, and
-     * repairs any persisted hidden state on the Active route.
+    /*
+     * 每次刷新后,把仅浏览器的视图状态与 canonical 图对账:丢弃过期的
+     * 选中,路线消失时清掉只看镜头,不再可见的路线上清掉 Focus,并修复
+     * Active 路线上任何被持久化的隐藏状态。
      */
     reconcile(view: {
       activeRouteId: string | null
@@ -356,9 +345,8 @@ export const useGraphUiStore = defineStore('graphUi', {
         this.primarySelectedNodeId = this.selectedNodeIds[0] ?? null
       }
 
-      // An isolate lens is explicit per-route intent: it survives lifecycle
-      // filter changes and the Active-route repair below. It is dropped only
-      // when the route itself is gone from the workspace.
+      // 只看镜头是显式的单路线意图:它在生命周期筛选变化与下方的
+      // Active 路线修复中幸存。只有路线本身从工作区消失时才丢弃。
       if (
         this.isolatedRouteId &&
         !view.routes.some((route) => route.id === this.isolatedRouteId)
@@ -384,8 +372,8 @@ export const useGraphUiStore = defineStore('graphUi', {
         view.activeRouteId &&
         this.routeDisplayStates[view.activeRouteId] === 'hidden'
       ) {
-        // A persisted hidden state can never hide the Active route; it is
-        // repaired to normal and the fix is persisted too.
+        // 被持久化的隐藏状态绝不能隐藏 Active 路线;修复为 normal,
+        // 修复结果同样持久化。
         this.routeDisplayStates = {
           ...this.routeDisplayStates,
           [view.activeRouteId]: 'normal',

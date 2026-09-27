@@ -1,3 +1,7 @@
+<!--
+  文件名:AdaptiveGraphEdge.vue
+  用途:Vue Flow 的自适应贝塞尔边组件:按边类型(lineage/替代/语义关系)与视觉权重(focus/dimmed)渲染不同的描边样式,供画布所有连线使用。
+-->
 <script setup lang="ts">
 import { computed } from 'vue'
 import { BaseEdge, getBezierPath, type EdgeProps } from '@vue-flow/core'
@@ -13,7 +17,7 @@ const pathResult = computed(() =>
     targetX: props.targetX,
     targetY: props.targetY,
     targetPosition: props.targetPosition,
-    // A restrained curvature keeps the edge directional without large loops.
+    // 克制的曲率让边保持方向感,又不会绕出大圈。
     curvature: 0.18,
   }),
 )

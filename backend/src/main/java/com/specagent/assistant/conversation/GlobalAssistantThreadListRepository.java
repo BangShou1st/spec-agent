@@ -8,9 +8,14 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 /**
- * Conversation Library read-model: one bounded query, no N+1.
- * Only threads with at least one USER message. Recency = latest canonical
- * message created_at DESC, tie-break thread id DESC for determinism.
+ * 文件名:GlobalAssistantThreadListRepository.java
+ *
+ * 用途:会话列表(Conversation Library)读模型的查询层:用一条
+ * 有界 SQL 一次取出最近线程的标题源文本与预览源文本,无 N+1。
+ *
+ * 角色:conversation 包的列表查询层。只列出至少含一条 USER 消息的
+ * 线程;排序按最新规范消息 created_at 倒序,并以线程 id 倒序打破平局,
+ * 保证结果确定。标题/预览的截断交给 {@link GlobalAssistantConversationLibrary}。
  */
 @Repository
 public class GlobalAssistantThreadListRepository {

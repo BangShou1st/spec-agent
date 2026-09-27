@@ -1,3 +1,5 @@
+// 文件名:graph.spec.ts
+// 用途:规范项目图读取 API 单测:验证 getProjectGraph 的端点 URL 与透传行为。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { apiClient } from '@/shared/http/client'
 import { getProjectGraph } from '@/features/workspace/api/graph'

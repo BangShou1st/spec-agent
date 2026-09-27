@@ -1,4 +1,8 @@
-"""Cross-language contracts of the agent-brain service."""
+"""文件名:__init__.py
+
+用途:contracts 子包的对外出口,集中导出 agent-brain 服务的跨语言契约
+(Python 与 Spring/Java 双方共同遵守的数据结构)。
+"""
 
 from .inputs import AgentInputSnapshot, AgentV2Event, AgentV2RequestEnvelope
 from .decisions import (

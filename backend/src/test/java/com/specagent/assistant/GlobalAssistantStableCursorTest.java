@@ -28,7 +28,10 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Stable cursor RED: append-monotonic sequence, tie-proof chunks, remainder.
+ * 文件名:GlobalAssistantStableCursorTest.java
+ *
+ * 测试目标:摘要游标的稳定性——消息序号追加单调、时间戳并列时
+ * 分块仍互不重叠、剩余消息进入上下文的边界正确。
  */
 @SpringBootTest
 @ActiveProfiles("test")

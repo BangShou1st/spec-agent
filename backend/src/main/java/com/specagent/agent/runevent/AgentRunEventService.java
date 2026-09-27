@@ -9,8 +9,10 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Append-only run event recording. Every run phase transition and sanitized
- * model-inference call becomes one event; events are never rewritten.
+ * 文件名:AgentRunEventService.java
+ *
+ * 用途:运行事件的只追加(append-only)记录服务——每次运行阶段
+ * 迁移和已脱敏的模型推理调用都会成为一条事件;事件绝不重写。
  */
 @Service
 public class AgentRunEventService {

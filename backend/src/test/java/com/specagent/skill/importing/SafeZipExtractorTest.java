@@ -15,8 +15,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * ZIP import security: traversal, absolute paths, special entries, depth and
- * size bounds — every rule must fail closed before any install.
+ * 文件名:SafeZipExtractorTest.java
+ *
+ * 测试目标:验证 ZIP 导入的安全规则——路径穿越、绝对路径、特殊条目、
+ * 层级与大小上限——每条规则都必须在任何安装发生之前快速失败。
  */
 class SafeZipExtractorTest {
 
@@ -161,7 +163,7 @@ class SafeZipExtractorTest {
 
     @Test
     void symlinkEntryKindIsRejected() {
-        // Unix symlink entry: mode bits 0xA1FF (symlink + perms).
+        // Unix 符号链接条目:mode 位 0xA1FF(符号链接 + 权限位)。
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         try (ZipArchiveOutputStream zip = new ZipArchiveOutputStream(out)) {
             ZipArchiveEntry md = new ZipArchiveEntry("SKILL.md");

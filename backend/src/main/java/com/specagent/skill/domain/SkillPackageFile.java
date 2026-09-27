@@ -3,10 +3,11 @@ package com.specagent.skill.domain;
 import java.util.UUID;
 
 /**
- * One immutable file inside an installed Skill version. {@code relativePath}
- * is normalized and containment-checked at import time; {@code content} is
- * text for TEXT-ish kinds (base64 kept out of the domain object — the
- * repository stores bytes).
+ * 文件名:SkillPackageFile.java
+ *
+ * 用途:已安装 Skill 版本内的一个不可变文件。{@code relativePath} 在导入
+ * 时做归一化与路径包含性校验;文本类 kind 的 {@code content} 为文本内容
+ * (base64 不进入领域对象 —— 字节由仓储层存储)。
  */
 public record SkillPackageFile(
         UUID id,

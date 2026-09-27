@@ -1,3 +1,5 @@
+// 文件名:SkillDetailView.spec.ts
+// 用途:Skill 详情页组件测试:mock Skill API,验证详情/资源/版本渲染与详情页交互。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'

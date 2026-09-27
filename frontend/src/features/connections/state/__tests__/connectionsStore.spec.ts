@@ -1,3 +1,6 @@
+// 文件名:connectionsStore.spec.ts
+// 用途:connectionsStore 单测:mock API 层,验证列表/详情加载、类型化错误映射
+//       (不向外泄露原始错误)、以及创建后刷新列表的行为。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useConnectionsStore } from '@/features/connections/state/connectionsStore'

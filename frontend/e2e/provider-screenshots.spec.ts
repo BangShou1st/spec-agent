@@ -1,6 +1,20 @@
-import { test, expect } from '@playwright/test'
 
-const SHOTS = '.impeccable/shots'
+import { mkdirSync } from 'node:fs'
+import path from 'node:path'
+import { test, expect } from './helpers'
+
+// 截图产物写入"每次运行独立"的目录:避免固定路径下的陈旧/被占用文件
+// 让 PNG 落盘出现 UNKNOWN 错误,也让重复执行互不覆盖。需要固定位置时
+// 用 PLAYWRIGHT_SHOTS_DIR 覆盖。
+const SHOTS = process.env.PLAYWRIGHT_SHOTS_DIR
+  ?? path.join('test-results', 'provider-shots',
+    new Date().toISOString().replace(/[:.]/g, '-'))
+test.beforeAll(() => {
+  mkdirSync(SHOTS, { recursive: true })
+})
+test.afterAll(async () => {
+  test.info().annotations.push({ type: 'shots-dir', description: SHOTS })
+})
 
 test.describe('provider settings screenshots', () => {
   test('capture all required states', async ({ page }) => {

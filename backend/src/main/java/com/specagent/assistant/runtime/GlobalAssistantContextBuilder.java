@@ -14,9 +14,12 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 
 /**
- * Projects bounded canonical facts into a model-visible context.
- * Never executes tools, never calls controllers, never mutates projects,
- * never decides the next tool.
+ * 文件名:GlobalAssistantContextBuilder.java
+ *
+ * 用途:把有界的权威事实投影成模型可见的 {@link GlobalAssistantContext}——
+ * 组装最近对话窗口、对话摘要、UI 状态、工作状态、最近项目线索与工具描述符,
+ * 供提示词渲染使用。它绝不执行工具、绝不调用控制器、绝不修改项目,
+ * 也不决定下一个工具是什么。
  */
 @Service
 public class GlobalAssistantContextBuilder {
@@ -40,9 +43,8 @@ public class GlobalAssistantContextBuilder {
         return build(threadId, null, currentRequest, uiRequest);
     }
     /**
-     * Builds the bounded projection. The current run's USER message is already
-     * carried as {@code currentRequest}, so it is excluded from recent history
-     * to avoid duplication; earlier runs' history is preserved.
+     * 构建有界投影。当前 run 的 USER 消息已经作为 {@code currentRequest}
+     * 携带,因此会从最近历史中排除以免重复;更早 run 的历史照常保留。
      */
     public GlobalAssistantContext build(UUID threadId, UUID currentRunId, String currentRequest,
             UiRequest uiRequest) {

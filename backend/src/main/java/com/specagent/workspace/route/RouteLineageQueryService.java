@@ -13,27 +13,23 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Thin read-model bridge that resolves one route's historical node lineage for
- * display.
+ * 文件名:RouteLineageQueryService.java
  *
- * <p>This is the only UI-support read bridge added for the route workspace: it
- * composes existing runtime reads and never writes state, never calls a model,
- * never builds or persists a {@code ContextSnapshot}, and never re-implements
- * route or context semantics. It is not a second Runtime Kernel.
+ * 用途:解析一条路线历史节点 lineage 用于展示的薄读模型桥。这是
+ * 路线工作区唯一新增的 UI 支撑读桥:它组合既有的运行时读取,绝不写状态、
+ * 绝不调用模型、绝不构建或持久化 {@code ContextSnapshot},也绝不重新
+ * 实现路线或上下文语义。它不是第二个 Runtime Kernel。
  *
- * <p>Lineage semantics: the chain is walked from {@code tipNodeId} up through
- * {@code parentNodeId} pointers to the root and returned in root→tip order.
- * The read is permitted for every lifecycle status (open, superseded,
- * archived, deleted). It fails closed as an internal invariant violation when
- * a node is missing, when a node belongs to another project, when the lineage
- * cycles or exceeds a maximum depth, or when the route's recorded root node
- * does not match the resolved lineage. A route without a tip node yields an
- * empty node list.
+ * lineage 语义:从 {@code tipNodeId} 沿 {@code parentNodeId} 指针向上
+ * 走到根,再按根到尾的顺序返回。任何生命周期状态(open、superseded、
+ * archived、deleted)都允许读取。fail-closed 策略:节点缺失、节点属于
+ * 其他项目、lineage 成环或超过最大深度、路线记录的根节点与解析出的
+ * lineage 不一致,都以内部不变量违例失败。没有 tip 节点的路线返回
+ * 空节点列表。
  *
- * <p>Replacement routes naturally expose their parent lineage plus the
- * replacement node; a superseded target node is never injected into the
- * replacement route's lineage merely because {@code supersedesNodeId} points
- * at it.
+ * replacement 路线天然展示其父 lineage 加上 replacement 节点;
+ * 不会仅因 {@code supersedesNodeId} 指向某个被取代节点,就把它注入
+ * replacement 路线的 lineage。
  */
 @Service
 public class RouteLineageQueryService {
@@ -58,8 +54,8 @@ public class RouteLineageQueryService {
                 .orElseThrow(() -> RouteLineageQueryException.of(
                         RouteLineageQueryException.Reason.ROUTE_NOT_FOUND, "Route not found"));
         if (!route.projectId().equals(projectId)) {
-            // A foreign route is indistinguishable from a missing one at the
-            // API edge; both surface as 404 ROUTE_NOT_FOUND.
+            // 在 API 边界上,"别人的路线"与"不存在的路线"不可区分;
+            // 两者都以 404 ROUTE_NOT_FOUND 呈现。
             throw RouteLineageQueryException.of(
                     RouteLineageQueryException.Reason.ROUTE_NOT_FOUND, "Route not found");
         }
@@ -85,8 +81,8 @@ public class RouteLineageQueryService {
 
         for (Node node : rootToTip) {
             if (!node.projectId().equals(projectId)) {
-                // Fail closed: neither the foreign node nor any node beyond it
-                // may be exposed in the response.
+                // Fail closed:外来节点以及它之后的所有节点
+                // 都不允许出现在响应中。
                 throw RouteLineageQueryException.of(
                         RouteLineageQueryException.Reason.INVARIANT_VIOLATION,
                         "A node in the route lineage belongs to another project");

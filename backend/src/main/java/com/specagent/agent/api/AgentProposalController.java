@@ -20,10 +20,14 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
- * Advisor proposal lifecycle API. Listing filters by the requested status and,
- * optionally, by the trigger type of the run that produced each proposal;
- * accepting a proposal re-validates it against current graph facts and
- * executes it through the runtime command layer in one transaction.
+ * 文件名:AgentProposalController.java
+ *
+ * 用途:Advisor 提案生命周期 REST API。列表接口按请求的状态过滤,
+ * 并可按产出提案的 run 触发类型进一步过滤;接受提案时会对照当前图状态
+ * 重新校验,并在一个事务内通过 Runtime 命令层执行。
+ *
+ * 协作:被前端工作台调用,用于浏览/接受/拒绝 proposal;
+ * 接受与拒绝分别走 ProposalAcceptanceService 和 AgentProposalService。
  */
 @RestController
 @RequestMapping("/api/v1")
@@ -42,21 +46,16 @@ public class AgentProposalController {
     }
 
     /**
-     * Lists proposals, optionally narrowed by the producing run's trigger type.
+     * 列出提案,可按产出 run 的触发类型进一步收窄。
      *
-     * <p>Both filter parameters are optional and comma-separated
-     * ({@code AgentRunTriggerType} codes, e.g. {@code node_query}); omitting
-     * them returns the unfiltered list exactly as before.
-     * <ul>
-     *   <li>{@code triggerType} — keep only proposals whose run has one of
-     *       these trigger types.</li>
-     *   <li>{@code excludeTriggerType} — drop proposals whose run has one of
-     *       these trigger types.</li>
-     * </ul>
+     * 两个过滤参数都是可选的、逗号分隔
+     * ({@code AgentRunTriggerType} 代码,如 {@code node_query});
+     * 省略时返回与之前完全一致的未过滤列表。
+ * - {@code triggerType} —— 只保留 run 触发类型命中的提案。
+ * - {@code excludeTriggerType} —— 剔除 run 触发类型命中的提案。
      *
-     * <p>A proposal whose run row is gone has an unknown ({@code null})
-     * trigger type: it is dropped by an inclusion filter and kept by an
-     * exclusion filter, which is what the previous client-side filtering did.
+     * 提案对应的 run 记录已不存在时触发类型未知({@code null}):
+     * 会被包含过滤剔除、被排除过滤保留,与之前客户端过滤的行为一致。
      */
     @GetMapping("/projects/{projectId}/proposals")
     public ResponseEntity<List<Map<String, Object>>> listProposals(
@@ -68,8 +67,8 @@ public class AgentProposalController {
         Set<String> include = triggerTypeCodes(triggerType);
         Set<String> exclude = triggerTypeCodes(excludeTriggerType);
 
-        // One project-scoped run read for the whole page instead of two
-        // getRun() round-trips per proposal (the previous N+1).
+        // 整个页面只做一次项目级 run 读取,而不是每个提案两次 getRun()
+        // 往返(之前的 N+1 问题)。
         Map<UUID, AgentRun> runsById = agentRunService.listByProject(projectId).stream()
                 .collect(Collectors.toMap(AgentRun::id, run -> run, (first, second) -> first));
 
@@ -116,8 +115,8 @@ public class AgentProposalController {
     private Map<String, Object> toSummary(AgentProposal proposal,
                                           String triggerType,
                                           String inputNodeId) {
-        // LinkedHashMap (not Map.of) so null decidedAt/decidedBy for PROPOSED
-        // proposals do not throw NullPointerException.
+        // 使用 LinkedHashMap(而非 Map.of),使 PROPOSED 状态提案的
+        // decidedAt/decidedBy 为 null 时不会抛 NullPointerException。
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("proposalId", proposal.id().toString());
         summary.put("runId", proposal.runId() == null ? null : proposal.runId().toString());
@@ -132,7 +131,7 @@ public class AgentProposalController {
         return summary;
     }
 
-    /** Parses a comma-separated trigger-type code list; blank means "no filter". */
+    /** 解析逗号分隔的触发类型代码列表;为空表示"不过滤"。 */
     private static Set<String> triggerTypeCodes(String csv) {
         if (csv == null || csv.isBlank()) {
             return Set.of();
@@ -157,11 +156,10 @@ public class AgentProposalController {
     }
 
     /**
-     * The run trigger type that produced this proposal, derived from the
-     * proposal's AgentRun. The frontend must NOT infer the query origin from
-     * {@code inputNodeId} — every run type carries one — so the trigger type is
-     * the explicit filter that keeps NodeQuery recovery to node_query proposals
-     * only. Null when the run is gone.
+     * 产出该提案的 run 触发类型,由提案关联的 AgentRun 推导。
+     * 前端绝不得从 {@code inputNodeId} 推断查询来源——每种 run 都有
+     * inputNodeId——因此触发类型才是把 NodeQuery 恢复限定在
+     * node_query 提案上的显式过滤依据。run 已不存在时为 null。
      */
     private static String resolveTriggerType(UUID runId, Map<UUID, AgentRun> runsById) {
         if (runId == null) {
@@ -172,9 +170,8 @@ public class AgentProposalController {
     }
 
     /**
-     * The canonical anchor node of the NodeQuery run that produced this
-     * proposal, so the frontend can reconnect a pending proposal to its
-     * Inspector anchor even after a page reload. Null when the run is gone.
+     * 产出该提案的 NodeQuery run 的规范锚点节点,使前端即使在页面刷新后
+     * 也能把待决提案重新连到 Inspector 的锚点上。run 已不存在时为 null。
      */
     private static String resolveInputNodeId(UUID runId, Map<UUID, AgentRun> runsById) {
         if (runId == null) {

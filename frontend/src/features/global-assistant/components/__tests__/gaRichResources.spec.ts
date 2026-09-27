@@ -1,3 +1,7 @@
+// 文件名:gaRichResources.spec.ts
+// 用途:富文本与资源相关组件测试:RichAssistantText 的标题/列表/代码/链接渲染与
+//       h1 降级、不安全内容剥离;sanitizeGaResourceRefs 只保留合法 PROJECT 引用且
+//       按码点截断标题(不劈开 emoji);ProjectResourceList 的 UUID 导航可点击。
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createRouter, createWebHistory } from 'vue-router'

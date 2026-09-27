@@ -4,8 +4,14 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Independent accounting of production reasoning calls, provider retries,
- * judge calls, and capability calls for one attempt.
+ * 文件名:CallBudgetTracker.java
+ *
+ * 用途:对一次尝试中生产推理调用、provider 重试、judge 调用和能力调用
+ * 做独立计数记账,并与 {@link CallBudget} 声明的预算逐维度比对,超支即产出
+ * CALL_BUDGET 类型的 {@link Violation}。
+ *
+ * 协作:由 {@link ScenarioRunner} 在执行期间记录各类调用,尝试结束后
+ * 调用 {@link #check} 生成违例,并随 {@link AttemptResult} 一起上报。
  */
 public final class CallBudgetTracker {
 
@@ -28,7 +34,7 @@ public final class CallBudgetTracker {
         return new CallBudgetTracker(0, 0, 0, 0);
     }
 
-    /** Rehydrates counts without stage detail (artifact replay). */
+    /** 从计数重建但不保留阶段明细(用于产物回放)。 */
     public static CallBudgetTracker of(int productionCalls, int providerRetries,
                                        int judgeModelCalls, int capabilityCalls) {
         return new CallBudgetTracker(productionCalls, providerRetries, judgeModelCalls, capabilityCalls);
@@ -74,7 +80,7 @@ public final class CallBudgetTracker {
         return stages.stream().filter("STATE_UPDATE"::equals).count();
     }
 
-    /** Checks this attempt against the declared budget, one violation per breached dimension. */
+    /** 对照声明预算检查本次尝试,每个超支维度各产生一条违例。 */
     public List<Violation> check(CallBudget budget) {
         List<Violation> violations = new ArrayList<>();
         if (!budget.expectedStages().isEmpty()

@@ -6,11 +6,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Slice 2 review closure: continuation chain budget rejects nonsense
- * values fast.
+ * 文件名:LoopPropertiesValidationTest.java
  *
- * <p>Plain unit test on purpose — no Spring context. The bound is a
- * fail-fast setter contract, not container behavior.
+ * 测试目标:Slice 2 评审收尾:续跑链预算对无意义取值快速拒绝(0 与负数抛
+ * IllegalArgumentException,1 可接受)。
+ *
+ * 刻意做成纯单元测试——不启动 Spring 上下文。该边界是 fail-fast 的
+ * setter 契约,不是容器行为。
  */
 class LoopPropertiesValidationTest {
 

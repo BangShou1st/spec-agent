@@ -6,6 +6,7 @@ import com.specagent.agent.action.ActionExecutionContext;
 import com.specagent.agent.action.ActionExecutor;
 import com.specagent.agent.action.ActionResult;
 import com.specagent.agent.snapshot.StaleContextChecker;
+import com.specagent.agent.protocol.ActionFamily;
 import com.specagent.agent.protocol.ActionProposal;
 import com.specagent.agent.protocol.AgentRequestEnvelope;
 import com.specagent.agent.protocol.AgentResponseEnvelope;
@@ -29,24 +30,24 @@ import java.util.Objects;
 import java.util.UUID;
 
 /**
- * Shared tail of one prepared DECISION: run the model call through the
- * Runtime fail-closed chain to a terminal run.
+ * 文件名:DecisionExecutionService.java
  *
- * <p>Covers exactly the segment both the question-draft cycle and the answer
- * cycle already execute line-for-line: DECISION invocation, response
- * validation, eligibility assess/enforce, {@code PROPOSAL_CREATED}, policy
- * evaluation (including the confirmation-executability downgrade), deny /
- * awaiting-approval branches, stale check, {@code ActionExecutor},
- * produced-node persistence, completion, and {@code RUN_COMPLETED}.
+ * 用途:一次已备好的 DECISION 的共享尾部:把模型调用送过 Runtime 的
+ * fail-closed 链,直到 run 进入终态。在"命令 → 持久化 → Brain → 校验 →
+ * checkpoint"链路中,它对应"Brain 调用之后、校验与终态持久化"这一段,
+ * 是问题起草周期与回答周期逐行共用的执行内核。
  *
- * <p>Everything before this segment stays with the caller: route/target
- * loading, active-route validation, input-node stale-anchor checks, context
- * building, guards, Answer persistence, STATE_UPDATE, AnswerPatch, post-state
- * snapshot reconstruction, event semantics, and budget selection all differ
- * per cycle and are never rebuilt here. The core takes already-prepared
- * Runtime objects (plain typed parameters, no mega-context), never reads
- * Answer/Patch rows, semantic planner fields, trigger types, or action
- * families to branch, and never touches continuation.
+ * 精确覆盖两种周期原本逐行重复的片段:DECISION 调用、响应校验、
+ * eligibility 的 assess/enforce、{@code PROPOSAL_CREATED}、policy 评估
+ * (含"确认后不可执行"降级)、拒绝 / 待审批分支、stale 检查、
+ * {@code ActionExecutor}、产出节点持久化、完成与 {@code RUN_COMPLETED}。
+ *
+ * 本片段之前的一切仍归调用方:route/目标加载、活跃 route 校验、
+ * input-node stale 锚点检查、上下文构建、guard、Answer 持久化、
+ * STATE_UPDATE、AnswerPatch、后置状态快照重建、事件语义、预算选择——
+ * 这些在每个周期各不相同,绝不在此重建。本服务只接收已备好的 Runtime
+ * 对象(普通类型参数,没有巨型上下文),绝不读取 Answer/Patch 行、语义
+ * planner 字段、trigger type 或 action family 来分支,也绝不触碰续跑。
  */
 @Service
 public class DecisionExecutionService {
@@ -57,6 +58,8 @@ public class DecisionExecutionService {
     private final AgentProposalService proposalService;
     private final AgentRunTerminalizationService terminalizationService;
     private final AgentRunEventService eventService;
+    private final ExecutionFence executionFence;
+    private final org.springframework.transaction.support.TransactionTemplate transactionTemplate;
     private final StaleContextChecker staleContextChecker;
     private final ActionEligibilityGate actionEligibilityGate;
     private final AgentTracePort semanticTraceRecorder;
@@ -68,6 +71,8 @@ public class DecisionExecutionService {
                                     AgentProposalService proposalService,
                                     AgentRunTerminalizationService terminalizationService,
                                     AgentRunEventService eventService,
+                                    ExecutionFence executionFence,
+                                    org.springframework.transaction.support.TransactionTemplate transactionTemplate,
                                     StaleContextChecker staleContextChecker,
                                     ActionEligibilityGate actionEligibilityGate,
                                     AgentTracePort semanticTraceRecorder,
@@ -78,6 +83,8 @@ public class DecisionExecutionService {
         this.proposalService = proposalService;
         this.terminalizationService = terminalizationService;
         this.eventService = eventService;
+        this.executionFence = executionFence;
+        this.transactionTemplate = transactionTemplate;
         this.staleContextChecker = staleContextChecker;
         this.actionEligibilityGate = actionEligibilityGate;
         this.semanticTraceRecorder = semanticTraceRecorder;
@@ -85,26 +92,23 @@ public class DecisionExecutionService {
     }
 
     /**
-     * Executes one prepared DECISION to a terminal run.
+     * 执行一次已备好的 DECISION,直到 run 进入终态。
      *
-     * <p>Run/project/route identity comes from {@code execContext} alone —
-     * there is no second copy to drift. The envelope and snapshot must agree
-     * with it (fail-closed on mismatch) since a prepared input built for one
-     * run must never execute as another.
+     * run/project/route 身份只来自 {@code execContext}——没有第二份副本
+     * 可以漂移。envelope 与 snapshot 必须与之一致(不一致即 fail-closed),
+     * 因为为某个 run 准备的输入绝不能以另一个 run 的身份执行。
      *
-     * @param snapshot frozen snapshot the envelope was built from
-     * @param envelope prepared DECISION request (budget and event already set
-     *                 by the caller)
-     * @param execContext execution context for policy and the executor; also
-     *                 the single source of run/project/route identity
-     * @param trace caller-owned lifecycle trace; the returned trace appends
-     *              only this segment's steps with the caller's separator
-     * @param traceSeparator separator the caller uses between trace steps
-     * @param decisionStartedPayload payload for the {@code DECISION_STARTED}
-     *              event. The answer cycle records its post-state snapshot
-     *              identity here (repair replay anchor); the question-draft
-     *              cycle records an empty payload. The content differs per
-     *              cycle by design and is owned by the caller.
+     * @param snapshot envelope 构建自的冻结快照
+     * @param envelope 已备好的 DECISION 请求(预算与事件已由调用方设置)
+     * @param execContext policy 与执行器用的执行上下文;同时也是
+     *                 run/project/route 身份的唯一来源
+     * @param trace 调用方持有的生命周期 trace;返回的 trace 只用调用方的
+     *              分隔符追加本片段的步骤
+     * @param traceSeparator 调用方在 trace 步骤之间使用的分隔符
+     * @param decisionStartedPayload {@code DECISION_STARTED} 事件的 payload。
+     *              answer cycle 在此记录其后置状态快照身份(修复重放锚点);
+     *              question-draft cycle 记录空 payload。内容按周期不同是
+     *              设计使然,归调用方负责。
      */
     public DecisionExecutionResult execute(ContextSnapshot snapshot,
                                            AgentRequestEnvelope envelope,
@@ -123,6 +127,8 @@ public class DecisionExecutionService {
                     "Prepared DECISION input does not match its execution context "
                             + "for run " + runId);
         }
+        // 所有权 fencing:起草/换题/续跑的节点产物执行之前确认租约仍在。
+        executionFence.assertOwnership();
         semanticTraceRecorder.captureDecisionInput(envelope);
 
         eventService.append(runId, AgentRunPhase.DECIDING, "DECISION_STARTED",
@@ -150,9 +156,8 @@ public class DecisionExecutionService {
 
         PolicyDecision policyDecision = policyEngine.evaluate(proposal, execContext);
 
-        // A confirmation verdict for a proposal that could never be executed
-        // after acceptance is downgraded to a deny — no clickable-but-dead
-        // proposals are ever persisted.
+        // 提案被确认后也永远无法执行的 confirmation 判定,降级为 deny——
+        // 绝不持久化"能点但点了没用"的 proposal。
         if (policyDecision.requiresConfirmation()
                 && !policyEngine.canProduceAcceptableProposal(proposal, execContext)) {
             policyDecision = PolicyDecision.deny(policyDecision.classification(),
@@ -184,33 +189,60 @@ public class DecisionExecutionService {
                     "awaiting_approval", trace);
         }
 
-        // Auto-execute: the proposal's base context must still be the live
-        // snapshot before any mutation.
+        // 自动执行:任何变更前,proposal 的基础上下文必须仍是当前活跃快照。
         staleContextChecker.check(proposal, execContext, snapshot);
         trace = appendTrace(trace, "executing", traceSeparator);
         eventService.append(runId, AgentRunPhase.EXECUTING,
                 "EXECUTING", Map.of("actionFamily", proposal.actionFamily()));
         progressRecorder.note(runId, AgentRunPhase.EXECUTING, "正在执行变更");
 
-        ActionResult execResult = actionExecutor.execute(proposal, execContext);
-        trace = appendTrace(trace, "completed", traceSeparator);
-
-        Map<String, Object> completedPayload = new HashMap<>();
-        completedPayload.put("actionFamily", proposal.actionFamily());
-        if (execResult.producedNodeId() != null) {
-            completedPayload.put("producedNodeId", execResult.producedNodeId().toString());
+        // 节点产物族(CREATE_NODE / REQUEST_USER_INPUT)的执行是纯数据库
+        // 变更:把图变更与带所有权条件的终态化放进同一事务——丢锁执行器
+        // 的终态化落空(0 行)即整体回滚,节点绝不脱离所有权提交。
+        // INVOKE_CAPABILITY 是外部副作用,继续遵守既有幂等键边界,绝不把
+        // 外部调用包进数据库事务(数据库回滚不能撤销已发出的外部请求)。
+        ActionFamily family = ActionFamily.fromCode(proposal.actionFamily());
+        boolean graphMutation = family == ActionFamily.CREATE_NODE
+                || family == ActionFamily.REQUEST_USER_INPUT;
+        ActionResult execResult;
+        if (graphMutation) {
+            final String gateTrace = trace;
+            execResult = transactionTemplate.execute(tx -> {
+                // 所有权协议(第四轮):事务第一条语句取所有权行 FOR SHARE 并
+                // 验证代次——所有权锁先于图/任务行锁,接管的代次递增与本
+                // 事务互斥;丢锁执行器在取锁处即被整体拒绝(R4-A/R4-C)。
+                executionFence.lockOwnershipForWrite();
+                ActionResult result = actionExecutor.execute(proposal, execContext);
+                String stepTrace = appendTrace(gateTrace, "completed", traceSeparator);
+                Map<String, Object> payload = new HashMap<>();
+                payload.put("actionFamily", proposal.actionFamily());
+                if (result.producedNodeId() != null) {
+                    payload.put("producedNodeId", result.producedNodeId().toString());
+                }
+                terminalizationService.completeWithResponse(runId, AgentRunStatus.COMPLETED,
+                        stepTrace, result.producedNodeId(), null, payload);
+                return result;
+            });
+            trace = appendTrace(trace, "completed", traceSeparator);
+        } else {
+            execResult = actionExecutor.execute(proposal, execContext);
+            trace = appendTrace(trace, "completed", traceSeparator);
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("actionFamily", proposal.actionFamily());
+            if (execResult.producedNodeId() != null) {
+                payload.put("producedNodeId", execResult.producedNodeId().toString());
+            }
+            // 只有 RESPOND_TO_USER 执行才产生用户可见的消息效果:capability
+            // 调用的结果里也会带一条诊断性 message,但如果把它持久化成
+            // RESPOND_MESSAGE,链路会被判定为 TERMINAL_RESPONSE 而挂起,
+            // 吞掉 capability 自身的持久化事实。终态事件是终态响应的唯一
+            // 事实来源——绝不另设第二个消息存储。
+            String responseMessage =
+                    "RESPOND_TO_USER".equals(execResult.actionFamily())
+                            ? execResult.message() : null;
+            terminalizationService.completeWithResponse(runId, AgentRunStatus.COMPLETED, trace,
+                    execResult.producedNodeId(), responseMessage, payload);
         }
-        // Only a RESPOND_TO_USER execution produces a user-visible message
-        // effect: capability invocations also carry a diagnostic message in
-        // the result, but persisting it as RESPOND_MESSAGE would park the
-        // chain as TERMINAL_RESPONSE and swallow the capability's own
-        // durable facts. The terminal event stays the single source of truth
-        // for terminal responses — never a second message store.
-        String responseMessage =
-                "RESPOND_TO_USER".equals(execResult.actionFamily())
-                        ? execResult.message() : null;
-        terminalizationService.completeWithResponse(runId, AgentRunStatus.COMPLETED, trace,
-                execResult.producedNodeId(), responseMessage, completedPayload);
 
         return new DecisionExecutionResult(runId, execResult.producedNodeId(), null,
                 "completed", trace);
@@ -224,9 +256,8 @@ public class DecisionExecutionService {
     }
 
     /**
-     * Runtime-neutral outcome of one shared DECISION execution. Carries only
-     * what every cycle needs; cycle-specific artifacts (answer/patch ids)
-     * stay with the caller.
+     * 与 Runtime 中立的一次共享 DECISION 执行结果。只携带所有周期都需要的
+     * 字段;周期特有的产物(answer/patch id)留在调用方。
      */
     public record DecisionExecutionResult(UUID runId,
                                           UUID producedNodeId,

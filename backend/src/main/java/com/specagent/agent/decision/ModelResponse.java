@@ -6,11 +6,12 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Immutable response from a model adapter for one agent reasoning step.
+ * 文件名:ModelResponse.java
  *
- * <p>Echoes back the requesting agentRunId and contextSnapshotId so the agent
- * loop can always attribute a response to the exact run and snapshot it was
- * produced from.
+ * 用途:模型适配器针对一次 Agent 推理步骤返回的不可变响应。
+ *
+ * 响应会回显请求方的 agentRunId 和 contextSnapshotId,使 Agent 循环总能
+ * 把一条响应归因到产生它的那个确切 run 和快照。
  */
 public record ModelResponse(
         UUID requestAgentRunId,

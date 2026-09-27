@@ -15,8 +15,10 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 /**
- * Provider-neutral output contract tests. This file must never import a
- * provider package: the contract carries semantic shape only.
+ * 文件名:ModelOutputContractTest.java
+ *
+ * 测试目标:验证与具体 Provider 无关的输出契约(文本、JSON Schema、JSON Object)的
+ * 行为:契约的构造与不可变快照、非法参数一律 fail-closed 抛异常,以及请求未显式指定契约时默认使用文本契约。
  */
 class ModelOutputContractTest {
 

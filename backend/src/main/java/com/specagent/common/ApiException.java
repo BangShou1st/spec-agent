@@ -5,19 +5,20 @@ import org.springframework.http.HttpStatus;
 import java.util.Map;
 
 /**
- * Explicit application-level failure with a stable error code and HTTP status.
+ * 文件名:ApiException.java
  *
- * <p>The shared error kernel: it lives in {@code com.specagent.common} next to
- * {@code PreciseConflictException} so the application/orchestration layer and
- * the HTTP boundary can both signal the same failure. The HTTP mapping itself
- * stays at the edge
- * ({@code com.specagent.web.ApiExceptionHandler}), which is the only
- * place that knows about {@code @RestControllerAdvice}.
+ * 用途:带稳定错误码和 HTTP 状态码的显式应用层异常,是后端统一的业务失败
+ * 信号。
  *
- * <p>Thrown by API components and application services when a request cannot be
- * satisfied. The handler maps it to the stable {@link ApiErrorResponse}
- * contract. Messages are static and safe; they never carry stack traces, SQL,
- * credentials, or provider payloads.
+ * 属于共享错误内核:放在 {@code com.specagent.common} 中,与
+ * {@code PreciseConflictException} 相邻,让应用/编排层和 HTTP 边界都能抛出
+ * 同一种失败。HTTP 映射本身留在边界
+ * ({@code com.specagent.web.ApiExceptionHandler}),那里是唯一认识
+ * {@code @RestControllerAdvice} 的地方。
+ *
+ * 当请求无法被满足时,由 API 组件和应用服务抛出。异常处理器会把它映射到
+ * 稳定的 {@link ApiErrorResponse} 契约。消息是静态且安全的,绝不携带堆栈、
+ * SQL、凭据或供应商负载。
  */
 public class ApiException extends RuntimeException {
 

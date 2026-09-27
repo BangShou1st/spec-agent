@@ -4,11 +4,11 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
 /**
- * Create-project request.
+ * 文件名:CreateProjectRequest.java
  *
- * <p>Only user-owned content is accepted. Runtime-owned fields
- * ({@code projectId}, {@code activeRouteId}, {@code defaultProfileId},
- * {@code createdAt}, {@code updatedAt}) are never accepted from clients.
+ * 用途:创建项目的请求体。只接受用户拥有的内容;运行时拥有的字段
+ * ({@code projectId}、{@code activeRouteId}、{@code defaultProfileId}、
+ * {@code createdAt}、{@code updatedAt})绝不接受客户端提供。
  */
 public record CreateProjectRequest(
         @NotBlank(message = "must not be blank")

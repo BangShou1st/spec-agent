@@ -10,24 +10,24 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Shared outbound network policy: scheme whitelist, SSRF/private-host
- * blocking, cloud-metadata names, and redirect revalidation.
+ * 文件名:OutboundNetworkPolicyTest.java
  *
- * <p>Every address-resolution-dependent case injects a deterministic
- * {@link OutboundNetworkPolicy.HostResolver} stub. The policy decides "would
- * this host be allowed", which must not depend on the runner's public DNS or
- * egress state: asserting against live resolution of a real public host made
- * this class the only place in the suite that needed the public internet, and
- * it flipped two cases green/red on byte-identical code in CI. The rules
- * themselves are unchanged and still all checked — only the resolver is fixed.
+ * 测试目标:验证共享的出站网络策略——协议白名单、SSRF/私网地址拦截、
+ * 云元数据主机名拦截以及重定向后的重新校验。
  *
- * <p>Literal addresses never consult the resolver at all (neither in
- * production nor here), so the private/link-local/metadata cases keep
- * exercising the real address classifier.
+ * 所有依赖地址解析的用例都注入确定性的
+ * {@link OutboundNetworkPolicy.HostResolver} 桩。策略判断的是"这个主机是否
+ * 允许访问",不应依赖运行环境的公共 DNS 或出网状态:之前断言依赖真实公网
+ * 主机的实时解析,使本类成为整个测试套件中唯一需要公网的用例,且在代码
+ * 完全相同的情况下会在 CI 中出现结果翻转。规则本身未变、依然全部覆盖,
+ * 固定的只是解析器。
+ *
+ * 字面量 IP 地址从不经过解析器(生产代码和这里都是),因此
+ * 私网/链路本地/元数据地址的用例仍然走真实的地址分类逻辑。
  */
 class OutboundNetworkPolicyTest {
 
-    /** Reserved-for-testing TLD; stands in for any public hostname. */
+    /** 专用于测试的保留 TLD;用来代表任意的公网主机名。 */
     private static final String PUBLIC_HOST = "public.example.test";
     private static final String PUBLIC_V4 = "140.82.112.3";
     private static final String PUBLIC_V6 = "2606:50c0:8000::153";
@@ -37,9 +37,8 @@ class OutboundNetworkPolicyTest {
             "localhost", "127.0.0.1");
 
     /**
-     * Resolves the mapped hosts, passes literal addresses straight through, and
-     * reports every other name as unresolvable — exactly the three outcomes the
-     * policy has to tell apart.
+     * 解析已映射的主机,字面量地址直接透传,其余名称一律报告无法解析——
+     * 恰好覆盖策略需要区分的三种结果。
      */
     private static OutboundNetworkPolicy policyResolving(Map<String, String> hosts) {
         return new OutboundNetworkPolicy(false, host -> {
@@ -103,7 +102,7 @@ class OutboundNetworkPolicyTest {
                 .isInstanceOf(OutboundPolicyViolationException.class);
     }
 
-    /** DNS-rebinding shape: a public name that resolves into private space. */
+    /** DNS rebinding 形态:公网名称解析到私网地址。 */
     @Test
     void publicNameResolvingToPrivateAddressIsRejected() {
         OutboundNetworkPolicy rebound = policyResolving(Map.of("rebind.example.test", "10.1.2.3"));
@@ -144,7 +143,7 @@ class OutboundNetworkPolicyTest {
                 .doesNotThrowAnyException();
     }
 
-    /** A redirect must not reach the metadata endpoint either. */
+    /** 重定向同样不能访问元数据端点。 */
     @Test
     void redirectToMetadataEndpointIsRejected() {
         assertThatThrownBy(() -> policy.validateRedirect(

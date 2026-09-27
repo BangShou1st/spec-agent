@@ -16,14 +16,14 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Host Function Tool {@code skill.search}: metadata-only fallback for a
- * truncated Skill catalog. It narrows candidates — it never activates
- * anything. The model makes the final semantic decision and then calls
- * {@code skill.activate} explicitly.
+ * 文件名:SkillSearchHostTool.java
  *
- * <p>Visibility is owned by the snapshot builder: this tool is only
- * model-visible when the projected catalog was truncated. Read-only, NONE
- * side-effect class.
+ * 用途:Host Function Tool {@code skill.search}:Skill 目录被截断时的
+ * 仅元数据回退检索。它只缩小候选范围 —— 绝不激活任何东西。模型做出最终的
+ * 语义决定,然后显式调用 {@code skill.activate}。
+ *
+ * 可见性由快照构建方负责:只有当投影出的目录被截断时,这个工具才对模型
+ * 可见。只读、NONE 副作用等级。
  */
 @Component
 public class SkillSearchHostTool implements InternalCapabilityAdapter {
@@ -63,9 +63,8 @@ public class SkillSearchHostTool implements InternalCapabilityAdapter {
         }
         String boundedQuery = query.length() > 512
                 ? query.substring(0, 512) : query;
-        // The model's own query flows through the typed search context into
-        // the shared retriever — search ranks the full eligible universe, and
-        // the service already bounds to searchMaxResults.
+        // 模型自己的查询词经类型化的搜索上下文流入共享检索器 —— 搜索对完整
+        // 合格集合排序,服务层已按 searchMaxResults 限界。
         List<SkillSearchCandidate> candidates = discoveryService
                 .search(SkillDiscoveryContext.forSearch(boundedQuery));
         List<Map<String, Object>> views = candidates.stream().map(candidate -> {

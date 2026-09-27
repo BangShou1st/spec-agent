@@ -1,6 +1,8 @@
+// 文件名:routePresentation.ts
+// 用途:路线生命周期与节点关系类型的展示文案全项目唯一定点:生命周期徽章/筛选项文案、关系类型中文标签与路线的可读显示名。
 import type { GraphWorkspaceRouteView, RouteLifecycleStatus } from '@/shared/contracts/types'
 
-/**
+/*
  * 路线生命周期与节点关系类型的展示文案,全项目唯一定点。
  * label 供徽章/筛选项共用,badgeClass 替代此前的动态类名拼接
  * (`badge-${status}` 的隐式全局类契约)。
@@ -33,9 +35,9 @@ export function relationTypeLabel(type: string): string {
   return RELATION_TYPE_LABELS[type] ?? type
 }
 
-/** Human-readable route name. Never falls back to a raw id slice: an
- * unlabeled route is described by its branch origin, then by whether it
- * is the Active route. RouteSidebar 与节点卡片（接入路线按钮等）共用。 */
+/** 路线的可读显示名。绝不回退到原始 id 切片:未命名的路线按其分支来源
+ * 描述,其次按是否是 Active 路线。RouteSidebar 与节点卡片(接入路线按钮
+ * 等)共用。 */
 export function routeDisplayName(route: GraphWorkspaceRouteView): string {
   if (route.label?.trim()) return route.label.trim()
   if (route.branchType === 'fork') return '分支路线'

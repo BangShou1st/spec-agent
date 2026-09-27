@@ -9,8 +9,12 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * The durable run-failure record must say which cause it was without changing
- * the payload shape of every failure that has no known copy.
+ * 文件名:RunFailureReasonsTest.java
+ *
+ * 测试目标:持久化的 run 失败记录必须能说明失败原因,同时不改变那些没有已知
+ * 文案映射的失败的载荷形状:brain 失败码保留各自的 reasonCode,旧的双参异常仍是
+ * 不透明码,已分类失败获得 reason/errorCode/summary 载荷,未分类失败保持旧的单键
+ * 载荷。
  */
 class RunFailureReasonsTest {
 

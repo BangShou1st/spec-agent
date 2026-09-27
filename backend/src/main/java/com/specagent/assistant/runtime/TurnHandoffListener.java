@@ -7,8 +7,10 @@ import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
 /**
- * Backend-owned continuation. Listens for run-terminal events AFTER_COMMIT
- * so successor creation never races the old run's terminal commit.
+ * 文件名:TurnHandoffListener.java
+ *
+ * 用途:后端自主的轮次续转监听器。在 AFTER_COMMIT 阶段监听 run 终态事件,
+ * 保证继任 run 的创建不会与旧 run 的终态提交产生竞态。
  */
 @Component
 public class TurnHandoffListener {

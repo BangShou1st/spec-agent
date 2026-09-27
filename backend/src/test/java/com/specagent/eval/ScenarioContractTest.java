@@ -10,14 +10,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Scenario contract/schema tests (P2 evaluation harness, TDD).
+ * 文件名:ScenarioContractTest.java
  *
- * <p>Scenarios must be data-driven declarations, not bespoke test logic.
- * The contract carries identity, given (initial graph + user event +
- * route/focus context + capabilities + resources + brain script), and expect
- * (invariants, properties, actions, state deltas, call budget). Variants
- * parametrize one scenario without rebinding it to fixed UUIDs, fixed
- * sentences, fixed ordering, or fixed route names.
+ * 测试目标:场景契约/schema(P2 评估工具链,TDD)。场景必须是数据驱动的
+ * 声明,而非定制测试逻辑。契约包含身份、given(初始图 + 用户事件 +
+ * 路由/focus 上下文 + 能力 + 资源 + 大脑脚本)和 expect(不变量、属性、
+ * 动作、状态增量、调用预算)。变体在不把场景绑定到固定 UUID、固定句子、
+ * 固定顺序或固定路由名的前提下参数化同一个场景。
  */
 class ScenarioContractTest {
 

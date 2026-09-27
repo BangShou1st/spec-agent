@@ -11,13 +11,15 @@ import java.util.UUID;
 import org.springframework.stereotype.Component;
 
 /**
- * Dedicated Global Assistant inference path. Provider-neutral: only the
- * ModelInferenceGateway seam is used. No OpenCode settings/client, no
- * provider adapters, no second client, no retry/fallback, no function calling.
+ * 文件名:GlobalAssistantBrain.java
  *
- * <p>V2 production uses exactly one fixed output mode for all models and all
- * scenarios. No model-specific branch, no per-scenario switch, no semantic
- * retry switching modes.
+ * 用途:全局助手专属的模型推理入口,是"决策大脑"——把渲染好的上下文交给
+ * 模型、把模型输出解析并校验成 {@link GlobalAssistantDecision}。
+ * 供应商中立:只依赖 {@code ModelInferenceGateway} 这个接缝,不碰 OpenCode
+ * 配置/客户端、不挂供应商适配器、没有第二个客户端、不做重试/降级、不做函数调用。
+ *
+ * V2 生产路径对所有模型、所有场景使用唯一固定的输出模式:没有按模型分支、
+ * 没有按场景切换,也没有语义重试时偷偷换模式。
  */
 @Component
 public class GlobalAssistantBrain {
@@ -36,9 +38,9 @@ public class GlobalAssistantBrain {
         this.validator = validator;
     }
     /**
-     * Frozen V1 production output mode: JSON_OBJECT.
-     * Single fixed contract for every model and scenario. No model branch,
-     * no per-scenario switch, no silent fallback.
+     * 冻结的 V1 生产输出模式:JSON_OBJECT。
+     * 对所有模型、所有场景都是同一份固定契约。没有按模型分支、
+     * 没有按场景切换,也没有静默降级。
      */
     public static ModelOutputContract productionContract() {
         return ModelOutputContract.jsonObject();
@@ -47,16 +49,16 @@ public class GlobalAssistantBrain {
             List<Map<String, Object>> observations) {
         return decide(runId, context, observations, productionContract());
     }
-    /** Qualification / test path with an explicit contract. No silent fallback. */
+    /** 带显式契约的资格验证/测试路径。不做静默降级。 */
     public GlobalAssistantDecision decide(UUID runId, GlobalAssistantContext context,
             List<Map<String, Object>> observations, ModelOutputContract contract) {
         return completeDecision(runId, DECISION_CALL_TYPE,
                 renderer.render(context, observations), contract);
     }
     /**
-     * Exactly one structural repair inference for a rejected semantic decision.
-     * Same context, observations and production output contract; only a short
-     * bounded rejection reason is added. Never loops internally.
+     * 对被拒绝的语义决策做且仅做一次结构性修复推理。
+     * 上下文、观察列表与生产输出契约完全不变,只附加一段简短且有界的
+     * 拒绝原因。内部绝不循环。
      */
     public GlobalAssistantDecision repairDecision(UUID runId, GlobalAssistantContext context,
             List<Map<String, Object>> observations, String rejectionReason) {
@@ -88,12 +90,11 @@ public class GlobalAssistantBrain {
     }
 
     /**
-     * Streaming variant of {@link #decide(UUID, GlobalAssistantContext, List)}.
-     * Every real provider fragment first consults {@code shouldContinue},
-     * so cancellation is polled even when the fragment carries no releasable
-     * prose (e.g. TOOL JSON). Only releasable assistant prose (per contract
-     * kind) reaches {@code fragmentSink}, never control JSON. The returned
-     * decision comes from the same strict parse+validate path as the blocking variant.
+     * {@link #decide(UUID, GlobalAssistantContext, List)} 的流式变体。
+     * 每个真实模型片段都会先询问 {@code shouldContinue},因此即使片段里没有
+     * 可释放的正文(例如 TOOL JSON),取消也能被轮询到。只有按契约 kind
+     * 可释放的助手正文会进入 {@code fragmentSink},控制 JSON 绝不外漏。
+     * 返回的决策仍走与阻塞变体相同的严格解析+校验路径。
      */
     public GlobalAssistantDecision decideStreaming(UUID runId, GlobalAssistantContext context,
             List<Map<String, Object>> observations, java.util.function.BooleanSupplier shouldContinue,
@@ -102,7 +103,7 @@ public class GlobalAssistantBrain {
                 renderer.render(context, observations), productionContract(), shouldContinue, fragmentSink);
     }
 
-    /** Streaming variant of {@link #repairDecision(UUID, GlobalAssistantContext, List, String)}. */
+    /** {@link #repairDecision(UUID, GlobalAssistantContext, List, String)} 的流式变体。 */
     public GlobalAssistantDecision repairDecisionStreaming(UUID runId, GlobalAssistantContext context,
             List<Map<String, Object>> observations, String rejectionReason, java.util.function.BooleanSupplier shouldContinue,
             com.specagent.model.contract.FragmentListener fragmentSink) {
@@ -120,9 +121,8 @@ public class GlobalAssistantBrain {
         try {
             response = gateway.completeStreaming(new ModelInferenceRequest(runId, callType, messages,
                     1024, contract), fragment -> {
-                // Flow control first: every provider fragment is a cancellation
-                // checkpoint, even with no releasable prose. Presentation
-                // emission stays a separate step below.
+                // 流控优先:每个模型片段都是一次取消检查点,
+                // 即使片段里没有可释放的正文。展示层的放行在下面单独一步进行。
                 if (!shouldContinue.getAsBoolean()) {
                     return false;
                 }

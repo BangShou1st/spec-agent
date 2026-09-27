@@ -28,11 +28,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Question-draft cutover integration tests: the real
- * {@code POST /api/v1/projects/{id}/agent-runs} endpoint returns 202 + runId
- * for {@code DRAFT_QUESTION}, the background worker executes the single-
- * DECISION cycle, and the produced question node lands on the active route
- * (root node on an empty route, tip child afterwards).
+ * 文件名:AgentCommandApiIntegrationTest.java
+ *
+ * 测试目标:问题草稿(question-draft)切换后的 API 集成测试——真实的
+ * {@code POST /api/v1/projects/{id}/agent-runs} 端点对 {@code DRAFT_QUESTION} 返回
+ * 202 + runId 且 run 先处于排队状态,后台 worker 执行单 DECISION 循环后,产出的问题
+ * 节点落在激活路线上(空路线为根节点,已有 tip 则为其子节点);响应不得暴露任何
+ * 原始模型材料。
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -65,8 +67,7 @@ class AgentCommandApiIntegrationTest {
 
         String runId = enqueueDraft(project);
 
-        // The HTTP command returned before any model work happened: the run
-        // is still queued at this point.
+        // HTTP 命令在任何模型工作发生之前就返回了:此刻 run 仍处于排队状态。
         assertThat(agentRunService.getRun(UUID.fromString(runId)).orElseThrow().status())
                 .isEqualTo(AgentRunStatus.CREATED);
 
@@ -113,8 +114,8 @@ class AgentCommandApiIntegrationTest {
         Project project = projectService.createProject("Draft child project");
         Node root = nodeService.createRootNode(project.id(), project.activeRouteId(),
                 "Root question", null, List.of(), true);
-        // An unanswered Question must remain the route tip; answer it before
-        // the next draft can append a child.
+        // 未回答的 Question 必须保持为路线 tip;
+        // 先回答根节点,下一轮草稿才能追加子节点。
         var answer = answerService.finalizeAnswer(project.id(), project.activeRouteId(),
                 root.id(), null, "answered root", "test-user");
         answerPatchService.save(project.id(), project.activeRouteId(), root.id(),

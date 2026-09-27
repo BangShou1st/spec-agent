@@ -1,3 +1,6 @@
+// 文件名:settingsRoutes.spec.ts
+// 用途:路由表单测:验证设置区各子路由(models/skills/connections 及详情页)已注册、
+//       根路径重定向到模型页,且项目/工作台路由不受影响。
 import { describe, expect, it } from 'vitest'
 import router from '@/app/router/index'
 

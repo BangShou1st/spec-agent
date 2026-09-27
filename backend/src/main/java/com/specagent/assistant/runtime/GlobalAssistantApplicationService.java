@@ -27,21 +27,21 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 /**
- * Application-owned orchestration: threads, runs, steer, stop, delete.
- * Delegates conversation, handoff, activity and runtime work to owners.
+ * 文件名:GlobalAssistantApplicationService.java
  *
- * <p>Lives in {@code com.specagent.assistant.runtime} rather than
- * {@code ...globalassistant.api}: it is use-case orchestration, and this move
- * also removes the package's reverse dependency on the outermost API package
- * (it used to import {@code api.common.ApiException}, which was the
- * {@code globalassistant -> api} edge of the
- * {@code agent -> model -> globalassistant -> api -> agent} package cycle).
+ * 用途:应用层编排入口——线程、运行(run)、steer(中途转向)、停止、删除
+ * 等用例都从这里发起,再委托给各自的负责方:对话、接力、活跃度、运行时。
  *
- * <p>{@link GlobalAssistantRunRepository} is still injected directly: the run
- * read path here needs {@code findById} plus the {@code requestCancel} write,
- * and {@link GlobalAssistantConversationService} exposes neither (it owns
- * threads, messages and working state), so there is no equivalent read path to
- * delegate to without widening that service's contract.
+ * 它放在 {@code com.specagent.assistant.runtime} 而不是
+ * {@code ...globalassistant.api},因为这是用例编排;同时这样也消除了本包对
+ * 最外层 API 包的反向依赖(此前它 import 了 {@code api.common.ApiException},
+ * 那是 {@code agent -> model -> globalassistant -> api -> agent} 包环中
+ * {@code globalassistant -> api} 的一条边)。
+ *
+ * {@link GlobalAssistantRunRepository} 仍被直接注入:这里的 run 读路径
+ * 需要 {@code findById} 加 {@code requestCancel} 写操作,而
+ * {@link GlobalAssistantConversationService} 两者都不提供(它只管线程、消息
+ * 和工作状态),不拓宽该服务契约的前提下没有等价的委托读路径。
  */
 @Service
 public class GlobalAssistantApplicationService {

@@ -49,14 +49,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Repair/resume semantic replay guarantee: when an answer cycle fails after
- * the Answer (and optionally its patch checkpoint) was persisted, the retry
- — routed through {@code RESUME_ANSWER} — must rebuild the DECISION/STATE_UPDATE
- * inputs from the immutable persisted Answer. The second attempt's triggering
- * event must be semantically identical to the first user submission
- * (ANSWER_SUBMITTED + selectedOptionId + freeText + source node), never a
- * context-free CONTINUE, and retry must never create a second Answer or a
- * second patch.
+ * 文件名:AnswerResumeSemanticReplayIntegrationTest.java
+ *
+ * 测试目标:修复/续跑的语义重放保证:当答题循环在 Answer(以及可选的 patch 检查点)
+ * 已持久化之后失败,重试——经由 {@code RESUME_ANSWER} 路由——必须从不可变的持久化
+ * Answer 重建 DECISION/STATE_UPDATE 输入。第二次尝试的触发事件必须与首次用户提交
+ * 语义一致(ANSWER_SUBMITTED + selectedOptionId + freeText + 来源节点),绝不能退化为
+ * 无上下文的 CONTINUE,且重试绝不创建第二个 Answer 或第二个 patch。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -95,8 +94,8 @@ class AnswerResumeSemanticReplayIntegrationTest {
     }
 
     /**
-     * Deterministic engine that records every envelope it receives and can
-     * be told to fail the Nth STATE_UPDATE or DECISION call.
+     * 确定性引擎:记录收到的每个 envelope,可被指定在第 N 次 STATE_UPDATE
+     * 或 DECISION 调用时失败。
      */
     static class ScriptedDecisionEngine implements AgentDecisionEngine {
 
@@ -183,8 +182,8 @@ class AnswerResumeSemanticReplayIntegrationTest {
         route = routeRepository.findById(project.activeRouteId()).orElseThrow();
         rootNode = nodeService.createRootNode(project.id(), route.id(),
                 "最重要的目标是什么？", null, List.of(), true);
-        // Free-text-only submission: the node owns its options, and a random
-        // option id would be rejected before any Answer is persisted.
+        // 仅自由文本提交:选项归节点所有,随机的选项 id 会在任何 Answer
+        // 持久化之前被拒绝。
         selectedOptionId = null;
         freeText = "聚焦离线同步的冲突处理";
         scriptedEngine.stateUpdates.clear();
@@ -195,8 +194,8 @@ class AnswerResumeSemanticReplayIntegrationTest {
 
     @Test
     void resumeAfterDecisionFailureReplaysOriginalSubmissionSemantics() {
-        // 1. Submit with option X + free text Y; STATE_UPDATE succeeds (patch
-        //    persisted), first DECISION fails.
+        // 1. 用选项 X + 自由文本 Y 提交;STATE_UPDATE 成功(patch 已持久化),
+        //    第一次 DECISION 失败。
         scriptedEngine.failDecisionAt = 1;
         UUID firstRunId = runService.createQueuedRunWithInput(
                 project.id(), "ANSWER_TIP", rootNode.id(),
@@ -205,14 +204,14 @@ class AnswerResumeSemanticReplayIntegrationTest {
         assertThatThrownBy(() -> worker.executeRun(firstClaimed))
                 .isInstanceOf(RuntimeException.class);
 
-        // The safe checkpoints survived: exactly one Answer, exactly one patch.
+        // 安全检查点幸存:恰好一个 Answer、恰好一个 patch。
         List<Answer> answers = answerService.findAnswersForRouteAndNodeIds(
                 route.id(), List.of(rootNode.id()));
         assertThat(answers).hasSize(1);
         UUID answerId = answers.get(0).id();
         assertThat(answerPatchService.findBySourceAnswerId(answerId)).isPresent();
 
-        // 2. Retry routes to RESUME_ANSWER with the persisted answer id.
+        // 2. 重试路由到 RESUME_ANSWER,携带持久化的答案 id。
         UUID secondRunId = runService.createQueuedRunWithInput(
                 project.id(), "RESUME_ANSWER", rootNode.id(),
                 null, null, answerId);
@@ -221,13 +220,12 @@ class AnswerResumeSemanticReplayIntegrationTest {
         assertThat(agentRunService.getRun(secondRunId).orElseThrow().status())
                 .isEqualTo(com.specagent.agent.runtime.AgentRunStatus.COMPLETED);
 
-        // 3. The resumed cycle reused the persisted patch instead of
-        //    re-running STATE_UPDATE.
+        // 3. 续跑循环复用了持久化的 patch,而不是重新执行 STATE_UPDATE。
         assertThat(scriptedEngine.stateUpdates).as("STATE_UPDATE calls").hasSize(1);
         assertThat(eventService.findByRunId(secondRunId)).anySatisfy(event ->
                 assertThat(event.eventType()).isEqualTo("STATE_UPDATE_SKIPPED"));
 
-        // 4. Semantic equivalence of both DECISION envelopes.
+        // 4. 两个 DECISION envelope 语义等价。
         assertThat(scriptedEngine.decisions).hasSize(2);
         var firstEvent = scriptedEngine.decisions.get(0).event();
         var resumedEvent = scriptedEngine.decisions.get(1).event();
@@ -242,7 +240,7 @@ class AnswerResumeSemanticReplayIntegrationTest {
         assertThat(resumedEvent.freeText()).isEqualTo(freeText);
         assertThat(resumedEvent.anchorNodeId()).isEqualTo(rootNode.id());
 
-        // 5. No duplicate durable artifacts after the retry.
+        // 5. 重试之后没有重复的持久化工件。
         assertThat(answerService.findAnswersForRouteAndNodeIds(
                 route.id(), List.of(rootNode.id()))).hasSize(1);
         assertThat(answerPatchService.findBySourceAnswerId(answerId)).isPresent();
@@ -251,7 +249,7 @@ class AnswerResumeSemanticReplayIntegrationTest {
 
     @Test
     void resumeWithoutPersistedPatchRebuildsStateUpdateFromPersistedAnswer() {
-        // First attempt fails during STATE_UPDATE: answer exists, no patch yet.
+        // 第一次尝试在 STATE_UPDATE 中失败:答案已存在,patch 尚无。
         scriptedEngine.failStateUpdateAt = 1;
         UUID firstRunId = runService.createQueuedRunWithInput(
                 project.id(), "ANSWER_TIP", rootNode.id(),
@@ -265,8 +263,8 @@ class AnswerResumeSemanticReplayIntegrationTest {
         assertThat(answers).hasSize(1);
         assertThat(answerPatchService.findBySourceAnswerId(answers.get(0).id())).isEmpty();
 
-        // Resume must rebuild the STATE_UPDATE input from the persisted
-        // Answer and still never create a second Answer.
+        // 续跑必须从持久化的 Answer 重建 STATE_UPDATE 输入,
+        // 且仍然绝不创建第二个 Answer。
         UUID answerId = answers.get(0).id();
         runService.createQueuedRunWithInput(
                 project.id(), "RESUME_ANSWER", rootNode.id(),
@@ -292,16 +290,14 @@ class AnswerResumeSemanticReplayIntegrationTest {
     }
 
     /**
-     * T5 — repair with a live-workspace drift: after the first attempt's
-     * DECISION failed (post-state snapshot + frozen projection already
-     * durable), a capability result lands in the project. The RESUME_ANSWER
-     * retry must skip STATE_UPDATE, create no second Answer, and give DECISION
-     * the ORIGINAL frozen post-state model context — same snapshot id, same
-     * capability observations — not a live rebuild over the drifted workspace.
+     * T5——带活跃工作区漂移的修复:第一次尝试的 DECISION 失败后(状态后快照与
+     * 冻结投影已持久化),一个能力结果落入了项目。RESUME_ANSWER 重试必须跳过
+     * STATE_UPDATE、不创建第二个 Answer,并把原始的冻结状态后模型上下文交给
+     * DECISION——相同的快照 id、相同的能力观察——而不是在已漂移的工作区上重建。
      */
     @Test
     void resumeReplaysOriginalFrozenPostStateDecisionInputDespiteLiveDrift() {
-        // 1. First attempt: STATE_UPDATE persists the patch, DECISION fails.
+        // 1. 第一次尝试:STATE_UPDATE 持久化 patch,DECISION 失败。
         scriptedEngine.failDecisionAt = 1;
         runService.createQueuedRunWithInput(
                 project.id(), "ANSWER_TIP", rootNode.id(),
@@ -315,33 +311,30 @@ class AnswerResumeSemanticReplayIntegrationTest {
         UUID answerId = answerService.findAnswersForRouteAndNodeIds(
                 route.id(), List.of(rootNode.id())).get(0).id();
 
-        // 2. Live drift after the failed attempt: a new capability result
-        //    becomes visible to any live rebuild.
+        // 2. 失败之后的活跃漂移:新的能力结果对任何活跃重建都可见。
         capabilityRuntime.invoke("resume-drift-" + UUID.randomUUID(),
                 "test.resume-drift", project.id(), null, Map.of());
 
-        // 3. Repair through RESUME_ANSWER.
+        // 3. 通过 RESUME_ANSWER 修复。
         runService.createQueuedRunWithInput(
                 project.id(), "RESUME_ANSWER", rootNode.id(),
                 null, null, answerId);
         AgentRun secondClaimed = runService.claimNextAnswerCycle().orElseThrow();
         worker.executeRun(secondClaimed);
 
-        // 4. STATE_UPDATE was not rerun; DECISION ran again.
+        // 4. STATE_UPDATE 没有重跑;DECISION 再次执行。
         assertThat(scriptedEngine.stateUpdates).as("no STATE_UPDATE rerun").hasSize(1);
         assertThat(scriptedEngine.decisions).hasSize(2);
 
-        // 5. The resumed DECISION received the ORIGINAL frozen post-state
-        //    model context: identical snapshot identity AND identical payload
-        //    — the drifted capability observation is absent, exactly as in the
-        //    first attempt.
+        // 5. 续跑的 DECISION 收到的是原始的冻结状态后模型上下文:快照身份
+        //    相同且载荷相同——漂移的能力观察缺席,与第一次尝试完全一致。
         var resumedEnvelope = scriptedEngine.decisions.get(1);
         assertThat(resumedEnvelope.snapshot()).isEqualTo(originalDecisionEnvelope.snapshot());
         assertThat(resumedEnvelope.snapshot().capabilityResults())
                 .as("post-freeze capability drift must not enter the replayed input")
                 .isEqualTo(originalDecisionEnvelope.snapshot().capabilityResults());
 
-        // 6. No second Answer, no second patch.
+        // 6. 没有第二个 Answer,也没有第二个 patch。
         assertThat(answerService.findAnswersForRouteAndNodeIds(
                 route.id(), List.of(rootNode.id()))).hasSize(1);
         assertThat(answerPatchService.findBySourceAnswerId(answerId)).isPresent();

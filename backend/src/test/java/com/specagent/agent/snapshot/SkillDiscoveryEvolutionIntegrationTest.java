@@ -34,13 +34,12 @@ import java.util.zip.CRC32;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Phase 4 acceptance: Skill discovery follows evolving Agent context.
+ * 文件名:SkillDiscoveryEvolutionIntegrationTest.java
  *
- * <p>Round one sees a broad task with a generic catalog; after a
- * capability/MCP observation lands (e.g. a database migration surfaced by a
- * tool call), a fresh continuation snapshot re-runs discovery and the newly
- * relevant Skill appears. The same frozen snapshot always replays the
- * identical catalog.
+ * 测试目标:Phase 4 验收——Skill 发现跟随演化的 Agent 上下文。第一轮面对宽泛任务,
+ * 目录为空;当能力/MCP 观察落地(如工具调用暴露了一次数据库迁移)后,新的续写快照重新
+ * 运行发现,新相关的 Skill 出现。同一个冻结快照始终重放完全相同的目录;目录截断时
+ * skill.search 才可见,且重放保持一致。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -84,15 +83,14 @@ class SkillDiscoveryEvolutionIntegrationTest {
         Project project = projectService.createProject("演进发现项目");
         UUID runId = UUID.randomUUID();
 
-        // Round one: broad task, no Skills installed yet — catalog is empty.
+        // 第一轮:宽泛任务,尚未安装任何 Skill——目录为空。
         ContextSnapshot first = contextBuilder.buildFromActiveRoute(
                 project.id(), runId, ContextOperationType.NORMAL);
         AgentInputSnapshot firstProjected = snapshotBuilder.build(first);
         assertThat(firstProjected.availableSkills().skills()).isEmpty();
 
-        // A capability observation lands (e.g. an MCP tool surfaced a
-        // destructive database migration). Claim + complete it as a record
-        // scoped to this project so the next fresh snapshot sees it.
+        // 一次能力观察落地(例如 MCP 工具暴露了一次破坏性数据库迁移)。
+        // 以本 project 为范围认领并完成该记录,让下一个新快照能看到它。
         UUID invocationId = Ids.random();
         CapabilityInvocation invocation = new CapabilityInvocation(invocationId,
                 "obs-key-1", "mcp.conn-x.db_migrate", project.id(), runId,
@@ -104,14 +102,13 @@ class SkillDiscoveryEvolutionIntegrationTest {
                 Map.of("value", "migration plan: ALTER TABLE orders"),
                 List.of(), Map.of("kind", "MCP_TOOL"), List.of()));
 
-        // The migration-safety Skill gets installed before the continuation.
+        // 在续写之前安装 migration-safety Skill。
         SkillImportService.StagedResult staged = importService.stageZip(zip(MIGRATION_SKILL_MD));
         SkillImportService.InstalledResult installed =
                 importService.install(staged.stagedImportId());
         importService.enable(installed.skillRowId());
 
-        // Round two: a fresh continuation snapshot re-runs discovery and the
-        // newly relevant Skill is now visible.
+        // 第二轮:新的续写快照重新运行发现,新相关的 Skill 现在可见。
         ContextSnapshot second = contextBuilder.buildFromActiveRoute(
                 project.id(), runId, ContextOperationType.NORMAL);
         AgentInputSnapshot secondProjected = snapshotBuilder.build(second);
@@ -120,7 +117,7 @@ class SkillDiscoveryEvolutionIntegrationTest {
                 .contains("migration-safety-skill");
         assertThat(secondProjected.availableSkills().fingerprint()).isNotBlank();
 
-        // Same frozen snapshot replays the exact same catalog.
+        // 同一冻结快照重放完全相同的目录。
         AgentInputSnapshot replayed = snapshotBuilder.build(second);
         assertThat(replayed.availableSkills().skills())
                 .isEqualTo(secondProjected.availableSkills().skills());
@@ -131,7 +128,7 @@ class SkillDiscoveryEvolutionIntegrationTest {
     @Test
     void skillSearchOnlyVisibleWhenCatalogTruncated() {
         Project project = projectService.createProject("截断门禁项目");
-        // One small Skill: catalog is not truncated, so skill.search stays hidden.
+        // 只有一个小 Skill:目录未截断,skill.search 保持隐藏。
         SkillImportService.StagedResult staged = importService.stageZip(zip(MIGRATION_SKILL_MD));
         SkillImportService.InstalledResult installed =
                 importService.install(staged.stagedImportId());
@@ -152,8 +149,8 @@ class SkillDiscoveryEvolutionIntegrationTest {
     @Test
     void largeCatalogTruncatesAndReplayStaysConsistent() {
         Project project = projectService.createProject("大目录截断项目");
-        // 39 filler Skills + the migration target parked last: the automatic
-        // catalog (maxVisible=24) truncates and skill.search becomes visible.
+        // 39 个填充 Skill + 排在最后的迁移目标:自动目录(maxVisible=24)被截断,
+        // skill.search 变为可见。
         for (int i = 0; i < 39; i++) {
             String padded = String.format("%02d", i);
             installSkill("aaa-filler-" + padded,
@@ -176,7 +173,7 @@ class SkillDiscoveryEvolutionIntegrationTest {
                 .extracting(com.specagent.agent.protocol.CapabilityDescriptor::id)
                 .contains("skill.search");
 
-        // Same frozen snapshot replays catalog + search visibility identically.
+        // 同一冻结快照一致地重放目录与 search 可见性。
         AgentInputSnapshot replayed = snapshotBuilder.build(snapshot);
         assertThat(replayed.availableSkills().skills())
                 .isEqualTo(projected.availableSkills().skills());

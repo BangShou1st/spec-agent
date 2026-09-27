@@ -35,14 +35,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Graph workspace read endpoint integration tests.
+ * 文件名:GraphWorkspaceApiIntegrationTest.java
  *
- * <p>Proves the Phase 7.3 read-only graph surface: shared nodes are
- * deduplicated, route-specific answers stay separate, fork never copies
- * answers, regenerate replacement lineage never injects the superseded target,
- * every lifecycle status is inspectable, and corrupt lineage fails closed with
- * {@code INTERNAL_INVARIANT_VIOLATION} instead of a partial graph. Runs
- * against the default fake model gateway (zero public provider requests).
+ * 测试目标:图工作区只读接口(/graph)的集成测试。验证 Phase 7.3 的只读图
+ * 读取面:共享节点去重渲染、各路线的回答按路线区分、fork 不拷贝回答、
+ * 重新生成的替换路线谱系不包含被取代的目标子树、所有生命周期状态均可查看,
+ * 谱系损坏时快速失败并返回 {@code INTERNAL_INVARIANT_VIOLATION} 而非残缺的图。
+ * 运行于默认的假模型网关(不产生任何真实模型请求)。
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -105,18 +104,18 @@ class GraphWorkspaceApiIntegrationTest {
                 "Child question", null, List.of(), true);
         Node grandchild = nodeService.createChildNode(project.id(), originalRouteId, child.id(),
                 "Grandchild question", null, List.of(), true);
-        // Old route answers its child node.
+        // 原路线回答其 child 节点。
         com.specagent.workspace.answer.Answer oldAnswer = answerService.finalizeAnswer(project.id(),
                 originalRouteId, child.id(), null, "old route child answer", "user");
 
-        // Fork from the child: shared history nodes are not copied, the fork
-        // route points at the same immutable nodes, and no answer is copied.
+        // 从 child 节点 fork:共享的历史节点不被拷贝,fork 路线指向同一批
+        // 不可变节点,且不拷贝任何回答。
         Route fork = routeService.forkFromNode(project.id(), originalRouteId, child.id(), "Fork from child");
         UUID forkRouteId = fork.id();
         assertThat(fork.tipNodeId()).isEqualTo(child.id());
         assertThat(nodeRepository.findByProject(project.id())).hasSize(3);
-        // The fork route references the SAME immutable Answer identity for the
-        // shared node; a second distinct Answer is an invariant violation.
+        // fork 路线对共享节点引用的是同一个不可变 Answer 身份;出现第二个
+        // 不同的 Answer 即违反不变量。
         assertThatThrownBy(() -> answerService.finalizeAnswer(project.id(),
                 forkRouteId, child.id(), null, "fork route child answer", "user"))
                 .isInstanceOf(IllegalStateException.class)
@@ -131,16 +130,16 @@ class GraphWorkspaceApiIntegrationTest {
         assertThat(view.routes()).hasSize(2);
         assertThat(view.routes()).extracting(r -> r.id())
                 .containsExactly(originalRouteId, forkRouteId);
-        // Shared nodes are rendered exactly once.
+        // 共享节点只渲染一次。
         assertThat(view.nodes()).extracting(n -> n.id())
                 .containsExactly(root.id(), child.id(), grandchild.id());
-        // Route membership is authoritative per route.
+        // 路线成员资格以各路线自身为准。
         assertThat(view.routes().get(0).lineageNodeIds())
                 .containsExactly(root.id(), child.id(), grandchild.id());
         assertThat(view.routes().get(1).lineageNodeIds())
                 .containsExactly(root.id(), child.id());
-        // Fork inherits the shared answer (owner route + inherited route view)
-        // with the SAME Answer id — never a second identity for one node.
+        // fork 继承共享回答(属主路线 + 继承路线两个视图),Answer id 相同
+        // ——一个节点绝不出现第二个 Answer 身份。
         assertThat(view.answers()).extracting(a -> a.id())
                 .containsOnly(oldAnswer.id());
         assertThat(view.answers()).filteredOn(a -> a.nodeId().equals(child.id()))
@@ -179,19 +178,18 @@ class GraphWorkspaceApiIntegrationTest {
         String body = result.getResponse().getContentAsString();
         GraphWorkspaceView view = objectMapper.readValue(body, GraphWorkspaceView.class);
 
-        // Replacement route lineage = parent lineage + replacement node only.
+        // 替换路线的谱系 = 父谱系 + 替换节点本身。
         assertThat(view.routes()).extracting(r -> r.id())
                 .containsExactly(oldRouteId, replacementRouteId);
         assertThat(view.routes().get(0).lifecycleStatus()).isEqualTo("superseded");
         assertThat(view.routes().get(1).lineageNodeIds())
                 .containsExactly(root.id(), replacement.tipNodeId());
         assertThat(view.routes().get(1).replacementOfNodeId()).isEqualTo(child.id());
-        // The superseded target and its old child subtree never appear in the
-        // replacement route membership, and the old route keeps its subtree.
+        // 被取代的目标及其旧子树绝不进入替换路线的成员,旧路线保留自己的子树。
         assertThat(view.routes().get(0).lineageNodeIds())
                 .containsExactly(root.id(), child.id(), grandchild.id());
-        // The superseded target subtree is absent from the replacement route
-        // membership even though the old route still carries it on the graph.
+        // 被取代的目标子树虽然在图上仍被旧路线携带,但不会出现在替换路线
+        // 的成员里。
         assertThat(view.routes().get(1).lineageNodeIds())
                 .doesNotContain(child.id(), grandchild.id());
         assertThat(view.nodes()).extracting(n -> n.question())

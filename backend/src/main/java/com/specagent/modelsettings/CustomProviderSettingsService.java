@@ -16,6 +16,13 @@ import java.time.Instant;
 import java.util.List;
 import org.springframework.stereotype.Service;
 
+/**
+ * 文件名:CustomProviderSettingsService.java
+ *
+ * 用途:自定义模型提供商(兼容 OpenAI/Anthropic 协议的第三方服务)设置的应用服务,
+ * 负责配置的读取、保存(带配置版本号失效)、模型发现、兼容性验证,并通过
+ * CustomRuntimeSettingsPort 向推理侧提供激活前的校验门禁(未验证的配置不可用)。
+ */
 @Service
 public class CustomProviderSettingsService implements CustomRuntimeSettingsPort {
 
@@ -64,22 +71,28 @@ public class CustomProviderSettingsService implements CustomRuntimeSettingsPort 
     }
 
     /**
-     * Model discovery for a draft (unsaved) config. 404/405/501 -> manual.
-     * Key semantics mirror save: a non-empty provided key wins; null reuses
-     * the stored key when one exists; explicit empty means unauthenticated.
-     * The stored key is never returned.
+     * 针对未保存草稿配置的模型发现。404/405/501 一律退回手动填模型模式。
+     * 密钥语义与保存一致:传入非空密钥则优先使用;传 null 时复用已存密钥(若有);
+     * 显式传空串表示无鉴权(本地服务)。已存密钥本身不会返回给前端。
+     *
+     * 来源边界:已存密钥只在同一来源(scheme/host/有效端口)上复用;草稿
+     * URL 指向不同来源时必须显式输入新凭据,旧密钥绝不自动携带到新目标。
      */
     public Discovery discover(String formatCode, String baseUrlInput, String apiKeyInput) {
         CustomApiFormat format = CustomApiFormat.fromCode(formatCode);
         String normalized = ProviderUrlSecurity.validateAndNormalizeBaseUrl(baseUrlInput);
+        CustomProviderSettings stored = repository.find().orElse(null);
         String key;
         if (apiKeyInput != null && !apiKeyInput.isBlank()) {
             key = apiKeyInput.trim();
-        } else if (apiKeyInput == null) {
-            key = repository.find().map(CustomProviderSettings::apiKey).orElse(null);
-            if (key != null && key.isBlank()) {
-                key = null;
+        } else if (apiKeyInput == null && stored != null && stored.apiKey() != null
+                && !stored.apiKey().isBlank()) {
+            if (stored.baseUrl() == null
+                    || !ProviderUrlSecurity.sameOrigin(normalized, stored.baseUrl())) {
+                throw ModelProviderException.notConfigured("custom",
+                        "Base URL points to a different origin; enter the API key for it explicitly");
             }
+            key = stored.apiKey();
         } else {
             key = null;
         }
@@ -100,8 +113,8 @@ public class CustomProviderSettingsService implements CustomRuntimeSettingsPort 
     }
 
     /**
-     * Save with revision invalidation. {@code apiKeyInput}: null retains the
-     * stored key, empty clears to no-key (local services), non-empty sets new.
+     * 保存配置并使验证状态失效(修订号递增)。{@code apiKeyInput}:null 表示
+     * 沿用已存密钥,空串表示清空为无密钥(本地服务),非空表示设置新密钥。
      */
     public Status save(String formatCode, String baseUrlInput, String apiKeyInput, String modelInput,
                        String modelSourceInput) {
@@ -109,8 +122,8 @@ public class CustomProviderSettingsService implements CustomRuntimeSettingsPort 
     }
 
     /**
-     * Save with an explicit display name. {@code displayNameInput} null
-     * retains the stored name; blank falls back to the default label.
+     * 保存配置并指定显示名称。{@code displayNameInput} 为 null 表示沿用已存名称;
+     * 空白则回退到默认标签。
      */
     public Status save(String formatCode, String baseUrlInput, String apiKeyInput, String modelInput,
                        String modelSourceInput, String displayNameInput) {
@@ -119,6 +132,16 @@ public class CustomProviderSettingsService implements CustomRuntimeSettingsPort 
         String model = ProviderUrlSecurity.normalizeModelId(modelInput);
         String modelSource = "MANUAL".equals(modelSourceInput) ? "MANUAL" : "DISCOVERED";
         CustomProviderSettings existing = repository.find().orElse(null);
+        // 来源守卫:地址被改到不同来源(scheme/host/有效端口)时,沿用旧密钥
+        // 等于把密钥静默交给新服务。必须显式输入新密钥,或显式传空串清空。
+        if (apiKeyInput == null && existing != null && existing.apiKey() != null
+                && !existing.apiKey().isBlank()
+                && (existing.baseUrl() == null
+                        || !ProviderUrlSecurity.sameOrigin(normalized, existing.baseUrl()))) {
+            throw ModelProviderException.notConfigured("custom",
+                    "Base URL points to a different origin; enter the API key for it explicitly "
+                            + "or clear the key");
+        }
         String displayName;
         if (displayNameInput == null) {
             displayName = existing == null ? null : existing.displayName();
@@ -126,6 +149,7 @@ public class CustomProviderSettingsService implements CustomRuntimeSettingsPort 
             String trimmed = displayNameInput.trim();
             displayName = trimmed.isEmpty() ? null : trimmed;
         }
+        // 密钥解析:null 沿用旧密钥与脱敏后缀,空串清空,非空取新密钥并重算后缀
         String resolvedKey;
         String masked;
         if (apiKeyInput == null) {
@@ -139,6 +163,7 @@ public class CustomProviderSettingsService implements CustomRuntimeSettingsPort 
             masked = suffix(resolvedKey);
         }
         Instant now = Instant.now();
+        // 配置内容与已存完全一致时直接返回当前状态,不递增修订号(避免无谓地使验证失效)
         if (existing != null && existing.apiFormat().equals(format.name())
                 && existing.baseUrl().equals(normalized)
                 && equalsNullable(existing.apiKey(), resolvedKey)
@@ -153,7 +178,7 @@ public class CustomProviderSettingsService implements CustomRuntimeSettingsPort 
         return status();
     }
 
-    /** Compatibility test on the saved configuration. */
+    /** 对已保存的配置做兼容性验证。 */
     public Status validate() {
         CustomProviderSettings s = requireStored();
         CustomApiFormat format = CustomApiFormat.fromCode(s.apiFormat());
@@ -193,9 +218,8 @@ public class CustomProviderSettingsService implements CustomRuntimeSettingsPort 
     }
 
     /**
-     * Inference-port projection: stored settings gated by the activatable
-     * check, fail closed — the historical requireStored + requireActivatable
-     * sequence the gateway ran per request.
+     * 推理端口投影:先取已存配置,再走激活资格检查,失败即拒绝(fail closed)——
+     * 等价于网关历史上每次请求执行的 requireStored + requireActivatable 序列。
      */
     @Override
     public RuntimeCustomSettings requireRuntimeSettings() {
@@ -204,7 +228,7 @@ public class CustomProviderSettingsService implements CustomRuntimeSettingsPort 
         return new RuntimeCustomSettings(s.apiFormat(), s.baseUrl(), s.apiKey(), s.selectedModel());
     }
 
-    /** API-boundary preview so controllers never depend on model packages. */
+    /** 供控制器使用的端点预览,避免控制器直接依赖 model 包。 */
     public String previewEndpoint(String formatCode, String baseUrlInput) {
         try {
             CustomApiFormat format = CustomApiFormat.fromCode(formatCode);
@@ -225,7 +249,7 @@ public class CustomProviderSettingsService implements CustomRuntimeSettingsPort 
         return a.equals(b);
     }
 
-    /** Pill label fallback; keeps the UI contract total for legacy rows. */
+    /** 标签兜底:历史数据可能缺显示名称,这里保证 UI 契约始终有值。 */
     private static String normalizeDisplayName(String raw) {
         if (raw == null || raw.isBlank()) {
             return "Custom";
@@ -233,6 +257,7 @@ public class CustomProviderSettingsService implements CustomRuntimeSettingsPort 
         return raw.trim();
     }
 
+    /** 取密钥末 4 位作为脱敏后缀;密钥过短时原样返回(本地服务多为无密钥场景)。 */
     static String suffix(String key) {
         if (key == null || key.isEmpty()) {
             return null;

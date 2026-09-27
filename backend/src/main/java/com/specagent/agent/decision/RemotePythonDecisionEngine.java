@@ -25,22 +25,23 @@ import java.net.SocketTimeoutException;
 import java.util.concurrent.TimeoutException;
 
 /**
- * Default decision engine: the remote Python {@code agent-brain} service.
+ * 文件名:RemotePythonDecisionEngine.java
  *
- * <p>Sends the frozen request envelope, parses the response with the strict
- * contract mapper (unknown fields/versions fail closed), and validates it
- * through {@link AgentBrainResponseValidator} before returning. Transport
- * failures become typed {@link AgentBrainUnavailableException}s; no retry and
- * no fallback happens here.
+ * 用途:默认决策引擎,即远程的 Python {@code agent-brain} 服务。
+ *
+ * 发送冻结的请求信封,用严格的契约 mapper 解析响应(未知字段/版本一律
+ * fail-closed),并在返回前先通过 {@link AgentBrainResponseValidator} 校验。
+ * 传输失败会转换为类型化的 {@link AgentBrainUnavailableException};此处
+ * 不做任何重试,也没有降级兜底。
  */
 @Component
 @ConditionalOnProperty(name = "spec.agent.brain.engine", havingValue = "remote-python")
 public class RemotePythonDecisionEngine implements AgentDecisionEngine {
 
-    /** The brain's typed detail prefix: {@code brain_failure:<ErrorType>}. */
+    /** Brain 的类型化 detail 前缀:{@code brain_failure:<ErrorType>}。 */
     static final String BRAIN_FAILURE_MARKER = "brain_failure:";
 
-    /** Brain error types that mean "the model output violated a contract". */
+    /** 表示"模型输出违反了契约"的 Brain 错误类型。 */
     private static final java.util.List<String> BRAIN_CONTRACT_ERROR_TYPES = java.util.List.of(
             "Contract",
             "AmbiguousSourceRefs",
@@ -94,7 +95,7 @@ public class RemotePythonDecisionEngine implements AgentDecisionEngine {
         return response;
     }
 
-    /** Typed 5xx/409 failure: the code comes from the brain's own detail. */
+    /** 类型化的 5xx/409 失败:失败码取自 Brain 自己的 detail。 */
     private static AgentBrainUnavailableException brainFailure(
             String path, HttpStatusCodeException ex) {
         return new AgentBrainUnavailableException(
@@ -103,12 +104,12 @@ public class RemotePythonDecisionEngine implements AgentDecisionEngine {
     }
 
     /**
-     * Typed transport failure: a real timeout is not "the brain is down".
+     * 类型化的传输失败:真正的超时不等于"Brain 宕机"。
      *
-     * <p>A read timeout does not always arrive as
-     * {@code ResourceAccessException} — the response-extraction path wraps
-     * {@link SocketTimeoutException} in a plain {@code RestClientException} —
-     * so the timeout is detected from the cause chain instead of the type.
+     * 读取超时并不总是以 {@code ResourceAccessException} 的形式出现——
+     * 响应提取路径会把 {@link SocketTimeoutException} 包在普通的
+     * {@code RestClientException} 里——所以超时要从 cause 链检测,
+     * 而不是靠异常类型判断。
      */
     private static AgentBrainUnavailableException brainFailure(
             String path, RestClientException ex) {
@@ -119,11 +120,10 @@ public class RemotePythonDecisionEngine implements AgentDecisionEngine {
     }
 
     /**
-     * Maps the brain's typed failure detail onto a failure code.
+     * 把 Brain 的类型化失败 detail 映射为失败码。
      *
-     * <p>Only the error type the brain actually named is classified; an absent
-     * or unrecognized detail stays the historical opaque code, so the engine
-     * never invents a cause it cannot prove.
+     * 只对 Brain 实际声明的错误类型做归类;detail 缺失或无法识别时保持
+     * 历史的不透明失败码,引擎绝不臆造一个无法证实的成因。
      */
     static BrainFailureCode classifyBrainFailureDetail(String responseBody) {
         if (responseBody == null) {
@@ -144,9 +144,9 @@ public class RemotePythonDecisionEngine implements AgentDecisionEngine {
         if (errorType.contains("BrokerTimeoutError")) {
             return BrainFailureCode.BRAIN_TIMEOUT;
         }
-        // Explicit allow-list of the brain's own output-contract error types:
-        // only a type the brain can actually raise is classified, so a rename or
-        // a new type degrades to the opaque code instead of a wrong diagnosis.
+        // 对 Brain 自身输出契约错误类型的显式白名单:只归类 Brain 真正可能
+        // 抛出的类型,这样 Brain 侧改名或新增类型只会退化为不透明失败码,
+        // 而不会得到错误的诊断。
         for (String contractError : BRAIN_CONTRACT_ERROR_TYPES) {
             if (errorType.contains(contractError)) {
                 return BrainFailureCode.MODEL_CONTRACT_VIOLATION;

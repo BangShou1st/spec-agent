@@ -1,3 +1,6 @@
+// 文件名:ConnectionDetailView.spec.ts
+// 用途:Connection 详情页组件测试:mock 连接 API,验证详情渲染不泄露 secret 明文、
+//       生命周期操作入口可用、删除前有二次确认。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'

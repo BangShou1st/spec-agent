@@ -24,11 +24,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Sequential protection of the proposal terminal lifecycle: every illegal
- * transition out of a decided state fails with
- * {@link ProposalAlreadyDecidedException} and leaves the winning decision
- * untouched. Guards against regressing the repository back to an
- * unconditional {@code UPDATE ... WHERE id = :id}.
+ * 文件名:AgentProposalTerminalTransitionIntegrationTest.java
+ *
+ * 测试目标:验证提案终态生命周期的顺序保护——从已决定状态出发的每一种非法迁移
+ * 都必须抛出 {@link ProposalAlreadyDecidedException} 且不改变已有的胜出决定;
+ * 防止仓储层退化回无条件的 {@code UPDATE ... WHERE id = :id}。
  */
 @SpringBootTest
 @ActiveProfiles("test")

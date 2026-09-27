@@ -34,11 +34,11 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 
 /**
- * Route isolation at the model-facing envelope level, exercised through the
- * async AgentRun surface. The spy delegates to the real deterministic engine
- * and captures every {@link AgentRequestEnvelope}: after forking or archiving,
- * the active route's envelopes must exclude sibling sentinels, superseded ids,
- * and any record outside the frozen context.
+ * 文件名:ScriptedRouteIsolationIntegrationTest.java
+ *
+ * 测试目标:在模型可见的 envelope 层面验证路由隔离,经由异步 AgentRun 表面驱动。
+ * spy 委托给真实确定性引擎并捕获每个 {@link AgentRequestEnvelope}:fork 或归档之后,
+ * 活动路由的 envelope 必须排除兄弟哨兵、被取代的 id,以及冻结上下文之外的任何记录。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -82,7 +82,7 @@ class ScriptedRouteIsolationIntegrationTest {
         }).when(decisionEngine).runDecision(any(AgentRequestEnvelope.class));
     }
 
-    /** Flattened envelope projection used for exclusion assertions. */
+    /** 用于排除性断言的 envelope 扁平化投影。 */
     private String envelopeText(AgentRequestEnvelope envelope) {
         StringBuilder combined = new StringBuilder();
         combined.append("route:").append(envelope.snapshot().routeId()).append('\n');
@@ -116,8 +116,8 @@ class ScriptedRouteIsolationIntegrationTest {
     void forkActiveRouteEnvelopesExcludeSiblingSentinelAndSupersededIds() {
         Project project = projectService.createProject("Fork isolation");
 
-        // Route R1: root -> A -> A2. The answer on A carries the sentinel that
-        // must never reach the fork route's model input.
+        // 路由 R1:root -> A -> A2。A 上的答案携带哨兵,
+        // 它绝不能出现在 fork 路由的模型输入里。
         var draftRun = draftDriver.draftQuestion(project.id());
         Node root = nodeService.getNode(draftRun.producedNodeId()).orElseThrow();
         var rootRun = answerDriver.submitFreeText(project.id(), "First answer on R1 root");
@@ -127,24 +127,23 @@ class ScriptedRouteIsolationIntegrationTest {
         Node a2 = nodeService.getNode(siblingRun.producedNodeId()).orElseThrow();
         UUID r1RouteId = rootRun.run().routeId();
 
-        // Fork from the root: a new active route R2 whose context is only the
-        // shared root lineage; R1 nodes, answers, and patches are excluded.
+        // 从根节点 fork:新的活动路由 R2 的上下文只包含共享根血统;
+        // R1 的节点、答案与 patch 均被排除。
         Route fork = routeService.forkFromNode(project.id(), r1RouteId, root.id(), "Fork at root");
         UUID r2RouteId = fork.id();
 
         int forkPoint = captured.size();
-        // The shared root is already answered on R1 and carries ONE immutable
-        // Answer identity, so R2 cannot re-answer it. The first branch action
-        // drafts the next Question on R2 (parent = shared root), then the
-        // user answers that new Question.
+        // 共享根在 R1 上已被回答,且只持有一个不可变的 Answer 身份,
+        // 因此 R2 不能再次回答它。第一个分支动作在 R2 上起草下一个
+        // Question(父节点 = 共享根),随后用户回答这个新 Question。
         var forkDraft = draftDriver.draftQuestion(project.id());
         Node b = nodeService.getNode(forkDraft.producedNodeId()).orElseThrow();
         assertThat(b.parentNodeId()).isEqualTo(root.id());
         var forkRun = answerDriver.submitFreeText(project.id(),
                 "Fork branch answer that stays local to R2");
 
-        // Envelope-level isolation: fork envelopes may see the frozen R1 root
-        // prefix, but never the sibling-only nodes or sentinel.
+        // envelope 级隔离:fork 的 envelope 可以看到冻结的 R1 根前缀,
+        // 但绝不能看到仅属于兄弟分支的节点或哨兵。
         List<AgentRequestEnvelope> forkEnvelopes =
                 captured.subList(forkPoint, captured.size());
         assertThat(forkEnvelopes).isNotEmpty();
@@ -173,7 +172,7 @@ class ScriptedRouteIsolationIntegrationTest {
                     });
         }
 
-        // The shared root answer stays present in the fork lineage.
+        // 共享根的答案保持在 fork 血统之中。
         assertThat(forkEnvelopes).anySatisfy(envelope -> {
             boolean found = envelope.snapshot().lineage().stream()
                     .anyMatch(entry -> entry.answer() != null
@@ -186,14 +185,14 @@ class ScriptedRouteIsolationIntegrationTest {
     void regenerateProjectionExcludesOldAnswerPatchAndChildSubtree() {
         Project project = projectService.createProject("Regenerate isolation");
 
-        // Route: root answered, then A answered (its answer and patch carry the
-        // sentinel), which also produced A's child node.
+        // 路由:root 已回答,随后 A 已回答(其答案与 patch 携带哨兵),
+        // A 的回答还产出了 A 的子节点。
         var draftRun = draftDriver.draftQuestion(project.id());
         Node root = nodeService.getNode(draftRun.producedNodeId()).orElseThrow();
         answerDriver.submitFreeText(project.id(), "Root answer stays");
         var targetRun = answerDriver.submitFreeText(project.id(),
                 OLD_ANSWER_SENTINEL + " the replaced answer");
-        // The answered node is the run's recorded input node (the tip at submit time).
+        // 被回答的节点就是 run 记录的输入节点(提交时的 tip)。
         Node target = nodeService.getNode(targetRun.run().inputNodeId()).orElseThrow();
         Node child = nodeService.getNode(targetRun.producedNodeId()).orElseThrow();
 
@@ -209,8 +208,7 @@ class ScriptedRouteIsolationIntegrationTest {
                 committed.oldRoute(), committed.replacementRoute(),
                 committed.replacementNode());
 
-        // The frozen regenerate context carries only the shared parent lineage,
-        // old question text and the user instruction.
+        // 冻结的再生成上下文只携带共享父血统、旧问题文本和用户指令。
         assertThat(context.includedNodeIds())
                 .contains(root.id())
                 .doesNotContain(target.id())
@@ -220,7 +218,7 @@ class ScriptedRouteIsolationIntegrationTest {
         assertThat(context.includedPatchIds())
                 .doesNotContain(targetRun.patchId());
 
-        // The regenerated route is open, active, and points at a fresh node.
+        // 再生成后的路由是打开、活动的,并指向一个全新节点。
         Route replacement = routeService.getRoute(
                 projectService.getProject(project.id()).orElseThrow().activeRouteId()).orElseThrow();
         assertThat(replacement.lifecycleStatus()).isEqualTo(RouteLifecycleStatus.OPEN);
@@ -240,9 +238,8 @@ class ScriptedRouteIsolationIntegrationTest {
         routeService.archiveRoute(project.id(), r1RouteId);
 
         int forkPoint = captured.size();
-        // The shared root cannot be re-answered on the fork route (single
-        // immutable Answer identity); draft the next Question on the active
-        // fork route first, then answer it.
+        // 共享根不能在 fork 路由上被再次回答(单一不可变 Answer 身份);
+        // 先在活动的 fork 路由上起草下一个 Question,再回答它。
         var forkDraft = draftDriver.draftQuestion(project.id());
         Node b = nodeService.getNode(forkDraft.producedNodeId()).orElseThrow();
         assertThat(b.parentNodeId()).isEqualTo(root.id());

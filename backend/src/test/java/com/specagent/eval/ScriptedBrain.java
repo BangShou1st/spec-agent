@@ -23,17 +23,18 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * B-fast scripted brain: replaces the production model at the structured
- * Brain-output boundary. Java canonical runtime (graph, validation, policy,
- * execution) is untouched — only {@code STATE_UPDATE}/{@code DECISION}
- * structured outputs are scripted from the scenario contract.
+ * 文件名:ScriptedBrain.java
  *
- * <p>Registered as {@code @Primary} in eval tests so the production answer
- * cycle drives it through the real {@code AgentDecisionEngine} port.
+ * 测试目标:B-fast 脚本化大脑:在结构化大脑输出边界替换生产模型。
+ * Java 权威运行时(图、校验、policy、执行)不动——只有
+ * {@code STATE_UPDATE}/{@code DECISION} 的结构化输出按场景契约脚本化。
+ *
+ * 在评估测试中注册为 {@code @Primary},使生产回答循环通过真实的
+ * {@code AgentDecisionEngine} 端口驱动它。
  */
 public class ScriptedBrain implements AgentDecisionEngine, BrainScriptInstaller {
 
-    /** Active script installed before each attempt. */
+    /** 每次尝试前安装的当前脚本。 */
     public record ActiveScript(
             BrainScript brainScript,
             String scenarioId,
@@ -50,7 +51,7 @@ public class ScriptedBrain implements AgentDecisionEngine, BrainScriptInstaller 
     private final List<String> requestPayloads = new ArrayList<>();
     private int providerRetries;
 
-    /** Test wiring: exposes this brain as the primary decision engine. */
+    /** 测试装配:把该大脑暴露为主决策引擎。 */
     @TestConfiguration
     public static class Config {
         @Bean
@@ -247,10 +248,9 @@ public class ScriptedBrain implements AgentDecisionEngine, BrainScriptInstaller 
     }
 
     /**
-     * Renders the scenario-declared payload against the live request
-     * snapshot: {@code node:} refs that name a step (e.g. {@code step:tip})
-     * resolve to the snapshot's anchor; literal snapshot refs pass through
-     * so the Java validator stays authoritative.
+     * 按实时请求快照渲染场景声明的载荷:命名了步骤的 {@code node:} 引用
+     * (如 {@code step:tip})解析为快照的锚点;字面快照引用原样透传,
+     * 保证 Java 校验器始终权威。
      */
     private Map<String, Object> renderPayload(String family, Map<String, Object> declared,
                                               ActiveScript script, AgentRequestEnvelope request) {

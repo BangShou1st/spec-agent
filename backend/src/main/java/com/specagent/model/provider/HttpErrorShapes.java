@@ -2,7 +2,12 @@ package com.specagent.model.provider;
 
 import com.specagent.model.contract.ModelGatewayErrorCategory;
 
-/** Shared HTTP status to neutral-category mapping. No provider names leak to Agent. */
+/**
+ * 文件名:HttpErrorShapes.java
+ *
+ * 用途:各提供商共用的"HTTP 状态码 -> 提供商无关错误分类"映射。提供商名称
+ * 不会泄漏给 Agent 层。
+ */
 final class HttpErrorShapes {
     private HttpErrorShapes() {
     }

@@ -9,8 +9,12 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /**
- * Provider-neutral prompt rendering. Short, stable, tool-oriented.
- * No phrase-to-tool mappings, no benchmark examples, no few-shot patches.
+ * 文件名:GlobalAssistantPromptRenderer.java
+ *
+ * 用途:全局助手的提示词渲染器,供应商中立。把 {@link GlobalAssistantContext}
+ * 与工具观察列表拼装成系统/用户消息对,是"模型看什么"的唯一来源。
+ * 提示词短小、稳定、面向工具:不做短语到工具的映射,不放基准测试示例,
+ * 也不打 few-shot 补丁。
  */
 @Component
 public class GlobalAssistantPromptRenderer {
@@ -180,9 +184,9 @@ public class GlobalAssistantPromptRenderer {
         return messages;
     }
     /**
-     * Repair rendering: same context/observations/contract as {@link #render},
-     * plus one short structural note. Never embeds raw invalid output, only a
-     * bounded sanitized rejection reason.
+     * 修复推理的渲染:上下文/观察/契约与 {@link #render} 完全一致,
+     * 只额外追加一条简短的结构性说明。绝不内嵌原始无效输出,
+     * 只附带一段有界且脱敏的拒绝原因。
      */
     public List<ModelInferenceMessage> renderRepair(GlobalAssistantContext context,
             List<Map<String, Object>> observations, String rejectionReason) {

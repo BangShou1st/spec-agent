@@ -37,13 +37,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Replacement cutover integration tests: {@code POST /agent-runs} with
- * {@code operation=REGENERATE_NODE} returns 202 + runId, the worker executes
- * ONE DECISION for the replacement content, and the deterministic runtime
- * commit keeps the frozen topology semantics — old route SUPERSEDED,
- * replacement route OPEN and active, replacement node supersedes the target,
- * and the frozen regenerate context excludes the target's own
- * answer/patch/subtree.
+ * 文件名:RegenerateApiIntegrationTest.java
+ *
+ * 测试目标:重新生成(replacement cutover)的集成测试——
+ * {@code POST /agent-runs} 且 {@code operation=REGENERATE_NODE} 时返回
+ * 202 + runId,worker 为替换内容执行一次 DECISION,确定性的运行时提交保持
+ * 冻结拓扑语义:旧路线 SUPERSEDED、替换路线 OPEN 且活跃、替换节点取代
+ * 目标节点,冻结的 regenerate 上下文排除目标自身的回答/补丁/子树。
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -52,7 +52,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class RegenerateApiIntegrationTest {
 
     private static final String OLD_ANSWER_SENTINEL = "REGEN_OLD_ANSWER_DO_NOT_LEAK_3c1e";
-    /** The deterministic fake DECISION always proposes this replacement content. */
+    /** 确定性假 DECISION 总是提出这个替换内容。 */
     private static final String FAKE_REPLACEMENT_QUESTION =
             "A sharper version of the rejected question.";
     private static final String REGEN_INSTRUCTION =
@@ -84,9 +84,8 @@ class RegenerateApiIntegrationTest {
     }
 
     /**
-     * Builds root → answered lineage where the regenerate target carries its
-     * own distinct question, so the deterministic replacement can differ from
-     * it (the duplicate-question guard would otherwise reject the fake).
+     * 构建 root -> 已回答谱系,其中 regenerate 目标携带自己独立的问题,
+     * 以便确定性替换内容可以与它不同(否则重复问题守卫会拒绝假内容)。
      */
     private RegenerateSetup buildLineageWithAnsweredTarget() {
         Project project = projectService.createProject("Regenerate project");
@@ -94,7 +93,7 @@ class RegenerateApiIntegrationTest {
         Node root = nodeService.getNode(draftRun.producedNodeId()).orElseThrow();
         answerDriver.submitFreeText(project.id(), "Root answer stays");
         var second = answerDriver.submitFreeText(project.id(), "Second answer stays");
-        // A manually appended question gives the target non-fake content.
+        // 手动追加一个问题,让目标节点带有非假内容。
         UUID activeRouteId = second.run().routeId();
         Node targetParent = nodeService.getNode(second.producedNodeId()).orElseThrow();
         Node target = nodeService.createChildNode(
@@ -107,7 +106,7 @@ class RegenerateApiIntegrationTest {
                 activeRouteId, targetAnswer.answerId(), targetAnswer.patchId());
     }
 
-    /** Enqueues the replacement through the real API surface; returns the runId. */
+    /** 通过真实 API 面把替换任务入队;返回 runId。 */
     private String enqueueRegenerate(Project project, UUID nodeId,
                                      UUID sourceRouteId, String instruction) throws Exception {
         MvcResult created = mockMvc.perform(
@@ -142,7 +141,7 @@ class RegenerateApiIntegrationTest {
         String runId = enqueueRegenerate(s.project(), s.target().id(),
                 s.sourceRouteId(), REGEN_INSTRUCTION);
 
-        // The command returned 202 before any model work happened.
+        // 命令在任何模型工作发生之前就已返回 202。
         assertThat(agentRunService.getRun(UUID.fromString(runId)).orElseThrow().status())
                 .isEqualTo(AgentRunStatus.CREATED);
 
@@ -159,15 +158,14 @@ class RegenerateApiIntegrationTest {
         Route oldRoute = routeService.getRoute(s.sourceRouteId()).orElseThrow();
         assertThat(oldRoute.lifecycleStatus()).isEqualTo(RouteLifecycleStatus.SUPERSEDED);
 
-        // The replacement node carries the deterministic proposal content and
-        // the runtime-owned topology identity.
+        // 替换节点携带确定性提案内容,以及运行时所有的拓扑身份。
         Node replacement = nodeService.getNode(done.producedNodeId()).orElseThrow();
         assertThat(replacement.question()).isEqualTo(FAKE_REPLACEMENT_QUESTION);
         assertThat(replacement.supersedesNodeId()).isEqualTo(s.target().id());
         assertThat(replacement.options()).hasSize(1);
         assertThat(replacement.options().get(0).label()).isEqualTo("Clarify the primary goal");
 
-        // Frozen regenerate context: parent lineage only.
+        // 冻结的 regenerate 上下文:只包含父谱系。
         ContextSnapshot regen = contextSnapshotRepository
                 .findByRoute(replacementRoute.id()).stream()
                 .filter(snapshot -> snapshot.operationType() == ContextOperationType.REGENERATE)

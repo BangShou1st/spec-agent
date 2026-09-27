@@ -18,14 +18,13 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * The provider registry: one uniform list over presets and user-defined rows.
+ * 文件名:ModelProvidersController.java
  *
- * <p>This is the extension point. Adding a provider is a POST here, never a
- * new controller, table or enum value. Presets stay projected in
- * {@link ModelProviderViewService} because their request shapes are special —
- * OpenCode Zen issues absolute direct calls with extra headers, and OpenRouter
- * runs a qualification pass — but to the settings page they are just two more
- * cards in the same list.
+ * 用途:提供商注册表的 REST 接口(/api/v1/settings/providers),把预设与
+ * 用户自建行合成一份统一列表。这是系统的扩展点:新增提供商就是一次 POST,
+ * 不需要新增控制器、表或枚举值。预设的请求形状比较特殊(OpenCode Zen 需要
+ * 带额外头部的绝对直连调用,OpenRouter 有资格验证流程),其投影仍保留在
+ * {@link ModelProviderViewService} 中,但对设置页而言它们只是列表里普通的两张卡片。
  */
 @RestController
 @RequestMapping("/api/v1/settings/providers")
@@ -78,7 +77,7 @@ public class ModelProvidersController {
         return list();
     }
 
-    /** Draft probe: the card may test a base URL / protocol before saving. */
+    /** 草稿探测:卡片可以在保存之前先测试某个 Base URL / 协议。 */
     @PostMapping("/{id}/probe")
     public DiscoveryView probe(@PathVariable String id, @RequestBody ProbeRequest request) {
         String format = request == null ? null : request.apiFormat();
@@ -87,7 +86,7 @@ public class ModelProvidersController {
         return toView(providers.discover(requireRowId(id), format, baseUrl, apiKey));
     }
 
-    /** Lists the catalog with the stored credential; never asks for the key again. */
+    /** 用已存密钥列出模型目录;不会要求重新提供密钥。 */
     @GetMapping("/{id}/models")
     public DiscoveryView models(@PathVariable String id) {
         return toView(providers.listModels(requireRowId(id)));
@@ -110,7 +109,7 @@ public class ModelProvidersController {
                 request.baseUrl(), request.apiKey(), request.selectedModel(), request.modelSource());
     }
 
-    /** Row ids are UUIDs; a preset code is never a valid target here. */
+    /** 行 id 必须是 UUID;预设编码在这里不是合法目标。 */
     private static UUID requireRowId(String raw) {
         try {
             return UUID.fromString(raw);

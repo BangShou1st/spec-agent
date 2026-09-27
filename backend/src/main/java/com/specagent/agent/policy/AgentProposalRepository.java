@@ -11,6 +11,19 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * 文件名:AgentProposalRepository.java
+ *
+ * 用途:动作提案(AgentProposal)的 JDBC 持久化仓库,负责提案行的写入、
+ * 查询与生命周期状态流转。
+ *
+ * 关键并发语义:idempotency_key 部分唯一索引是幂等插入的最终仲裁者,
+ * 并发创建者只会有一个插入成功;{@code findByIdForUpdate} 用行锁串行化
+ * 同一提案的并发终态决策;{@code transitionFromProposed} 用条件 UPDATE
+ * 实现"仅从 PROPOSED 流转"的单胜者 compare-and-set,绝不覆盖已有终态。
+ *
+ * 协作:被 AgentProposalService 使用,是提案生命周期数据的唯一读写层。
+ */
 @Repository
 public class AgentProposalRepository {
 
@@ -55,11 +68,9 @@ public class AgentProposalRepository {
     }
 
     /**
-     * Atomically inserts the proposal only when no row with the same
-     * idempotency key exists yet — the partial unique index is the final
-     * arbiter, so concurrent creators cannot both insert and neither caller
-     * sees a constraint failure. Returns true exactly when this call
-     * inserted the row.
+     * 仅当不存在相同幂等键的行时才原子地插入提案——部分唯一索引是最终
+     * 仲裁者,并发创建者不可能都插入成功,任何调用方也看不到约束冲突。
+     * 当且仅当本次调用插入成功时返回 true。
      */
     public boolean insertIfAbsent(AgentProposal proposal) {
         String sql = """
@@ -129,10 +140,9 @@ public class AgentProposalRepository {
     }
 
     /**
-     * Locking read of one proposal for a lifecycle decision. The row lock is
-     * held until the surrounding transaction commits or rolls back, so
-     * concurrent terminal transitions on the same proposal serialize behind
-     * this read and each one re-observes the committed status.
+     * 为一次生命周期决策做加锁读取。行锁会一直持有到外层事务提交或回滚,
+     * 因此同一提案的并发终态流转都会在这个读取点排队串行执行,
+     * 每个调用方都会重新观察到已提交的最新状态。
      */
     public Optional<AgentProposal> findByIdForUpdate(UUID id) {
         List<AgentProposal> results = jdbc.query(
@@ -143,11 +153,9 @@ public class AgentProposalRepository {
     }
 
     /**
-     * Compare-and-set terminal transition out of PROPOSED. The conditional
-     * WHERE clause is the final arbiter: exactly one concurrent caller
-     * observes an affected row count of 1 (the winner); every other caller
-     * sees 0 and must treat the proposal as already decided. Never overwrites
-     * an existing terminal state.
+     * 用 compare-and-set 把提案从 PROPOSED 流转到终态。条件 WHERE 子句是
+     * 最终仲裁者:并发调用方中恰好有一个观察到影响行数为 1(胜者),
+     * 其余调用方看到 0,必须把提案视为已被决定。绝不覆盖已有的终态。
      */
     public boolean transitionFromProposed(UUID id, ProposalStatus targetStatus,
                                           Instant decidedAt, String decidedBy) {

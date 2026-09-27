@@ -27,6 +27,14 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+/**
+ * 文件名:RouteLifecycleIntegrationTest.java
+ *
+ * 测试目标:路线生命周期服务的集成测试——激活指针只能指向 OPEN 路线
+ * (DELETED/ARCHIVED/SUPERSEDED/跨项目均被拒绝)、归档与软删除清除活跃指针
+ * 且不做隐式路线选择、恢复重新打开并激活路线、软删除保留节点/回答/补丁,
+ * 以及 ContextBuilder 对损坏的活跃路线状态快速失败。
+ */
 @SpringBootTest
 @ActiveProfiles("test")
 @Transactional
@@ -113,10 +121,9 @@ class RouteLifecycleIntegrationTest {
     }
 
     /**
-     * Archiving the active route clears the active pointer even when another OPEN
-     * route exists. RouteService must NOT auto-select the other OPEN route — the
-     * caller decides the next active route explicitly. This locks the no-implicit-
-     * selection contract and the active-route invariant.
+     * 归档活跃路线时即使存在另一条 OPEN 路线也要清除活跃指针。RouteService
+     * 绝不能自动选择另一条 OPEN 路线——由调用方显式决定下一条活跃路线。
+     * 这锁定"无隐式选择"契约与活跃路线不变量。
      */
     @Test
     void archiveActiveRouteClearsPointerAndDoesNotAutoSelectAnotherOpenRoute() {
@@ -197,34 +204,33 @@ class RouteLifecycleIntegrationTest {
 
     @Test
     void contextBuilderRejectsSupersededActiveRoute() {
-        // Create a superseded route by performing a regenerate operation.
+        // 通过 regenerate 操作制造一条 SUPERSEDED 路线。
         Fixture f = createProjectWithData();
-        // Need a child node to regenerate from; create one.
+        // 需要一个 child 节点作为 regenerate 的来源;先创建一个。
         Node child = nodeService.createChildNode(f.project().id(), f.routeId(), f.root().id(),
                 "Child question", null, List.of(), true);
-        // Regenerate to make the original route SUPERSEDED.
+        // regenerate 使原路线变为 SUPERSEDED。
         RegenerateResult result = routeService.commitReplacementFromNode(
                 f.project().id(), f.routeId(), child.id(), child.id(), null,
                 "New question", "New purpose", List.of(), true);
 
-        // The old route is now SUPERSEDED.
+        // 旧路线现在是 SUPERSEDED。
         Route supersededRoute = routeService.getRoute(f.routeId()).orElseThrow();
         assertThat(supersededRoute.lifecycleStatus()).isEqualTo(RouteLifecycleStatus.SUPERSEDED);
 
-        // Force the superseded route to be active (simulating invalid state).
+        // 强行把 SUPERSEDED 路线置为活跃(模拟非法状态)。
         forceActiveRoute(f.project().id(), f.routeId());
 
-        // ContextBuilder should reject it.
+        // ContextBuilder 应当拒绝它。
         assertThatThrownBy(() -> contextBuilder.buildFromActiveRoute(
                 f.project().id(), null, ContextOperationType.NORMAL))
                 .isInstanceOf(IllegalStateException.class);
     }
 
     /**
-     * Directly repoints the active route pointer to a non-open route. This
-     * simulates an invalid project state that ContextBuilder must reject.
-     * RouteService.setActiveRoute cannot be used here because it correctly
-     * refuses non-open routes.
+     * 直接把活跃路线指针重指到非 OPEN 路线,模拟 ContextBuilder 必须拒绝的
+     * 非法项目状态。不能使用 RouteService.setActiveRoute,因为它会正确地
+     * 拒绝非 OPEN 路线。
      */
     private void forceActiveRoute(UUID projectId, UUID routeId) {
         projectRepository.updateActiveRoute(projectId, routeId, Instant.now());

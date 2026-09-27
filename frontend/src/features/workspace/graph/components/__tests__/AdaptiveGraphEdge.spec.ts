@@ -1,3 +1,5 @@
+// 文件名:AdaptiveGraphEdge.spec.ts
+// 用途:AdaptiveGraphEdge 边组件单元测试:验证贝塞尔曲线渲染、marker 透传以及替代/弱化等类名与虚线样式。
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { Position } from '@vue-flow/core'

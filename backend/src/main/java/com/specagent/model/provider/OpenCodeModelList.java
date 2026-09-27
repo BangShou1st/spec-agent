@@ -3,11 +3,11 @@ package com.specagent.model.provider;
 import java.util.List;
 
 /**
- * Parsed {@code GET /models} payload from OpenCode Zen.
+ * 文件名:OpenCodeModelList.java
  *
- * <p>The wire payload is {@code {"object":"list","data":[{"id":...,"object":"model",...}]}}
- * as verified against the live endpoint; entries without an id are skipped so
- * the parse is robust to payload drift.
+ * 用途:OpenCode Zen {@code GET /models} 载荷的解析结果。线上载荷为
+ * {@code {"object":"list","data":[{"id":...,"object":"model",...}]}}(已与线上
+ * 端点核对);没有 id 的条目直接跳过,使解析对载荷漂移保持健壮。
  */
 public record OpenCodeModelList(List<OpenCodeModel> data) {
 

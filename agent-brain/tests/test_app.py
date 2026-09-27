@@ -1,4 +1,7 @@
-"""HTTP surface tests: health, strict request validation, internal token."""
+"""文件名:test_app.py
+
+用途:HTTP 接口层测试:health 端点、严格的请求校验、内部 token 鉴权。
+"""
 
 import copy
 import json
@@ -68,7 +71,7 @@ def test_decisions_endpoint_returns_valid_envelope_with_fake_model(settings):
     body = response.json()
     assert body["protocolVersion"] == "agent-decision.v2"
     assert body["actionProposal"]["actionFamily"] == "REQUEST_USER_INPUT"
-    # The envelope must echo the runtime-owned base context, never invent one.
+    # 信封必须回显 runtime 持有的 base context,绝不允许凭空编造一个。
     payload = _request_payload()
     assert body["actionProposal"]["baseContextSnapshotId"] == \
         payload["snapshot"]["snapshotId"]
@@ -161,12 +164,12 @@ def test_no_provider_key_material_anywhere_in_responses(settings):
 
 
 def test_routeless_node_query_decision_endpoint_accepts_fake_model(settings):
-    """The HTTP boundary must accept a routeless NODE_QUERY without 422.
+    """HTTP 边界必须接受无路由的 NODE_QUERY,而不是返回 422。
 
-    This proves the FastAPI request parser, the strict Pydantic envelope, and
-    the fake-model decision path all agree on the routeless wire shape. Java
-    sends exactly this payload; a contract_violation here would mean a real
-    integration break, not just a unit-test failure.
+    这证明 FastAPI 请求解析器、严格的 Pydantic 信封以及 fake-model 的
+    decision 路径对无路由的线上形态达成一致。Java 发送的就是这个 payload;
+    这里若出现 contract_violation 就意味着真实的集成断裂,而不只是
+    单元测试失败。
     """
     payload = _load_fixture("agent-input-routeless-node-query-valid.json")
     response = _client(settings).post(
@@ -176,24 +179,24 @@ def test_routeless_node_query_decision_endpoint_accepts_fake_model(settings):
     assert response.status_code != 422, response.text
     assert response.status_code == 200, response.text
     body = response.json()
-    # The response must follow the existing fake decision contract, not 502.
+    # 响应必须遵循既有的 fake decision 契约,而不是 502。
     assert body["protocolVersion"] == "agent-decision.v2"
     assert body["actionProposal"] is not None
     assert body["actionProposal"]["baseContextSnapshotId"] == \
         payload["snapshot"]["snapshotId"]
     assert body["actionProposal"]["baseContextHash"] == \
         payload["snapshot"]["contextHash"]
-    # And it must echo the trusted run id, never a fabricated one.
+    # 且必须回显可信的 run id,绝不允许伪造。
     assert body["runId"] == payload["runId"]
 
 
 def test_non_node_query_with_null_route_id_is_422(settings):
-    """The real HTTP boundary must reject route-id-bleed on non-NODE_QUERY.
+    """真实 HTTP 边界必须在非 NODE_QUERY 事件上拒绝 route id 泄漏。
 
-    The narrow routeless contract only admits null route ids for NODE_QUERY.
-    A ``STATE_UPDATE`` / ``ANSWER_SUBMITTED`` / ``CONTINUE`` / ``INITIAL``
-    envelope that tries to leak a null route id must be turned into a 422
-    contract_violation at the FastAPI edge, not silently accepted.
+    收窄后的无路由契约只允许 NODE_QUERY 携带 null route id。试图泄漏
+    null route id 的 ``STATE_UPDATE`` / ``ANSWER_SUBMITTED`` /
+    ``CONTINUE`` / ``INITIAL`` 信封必须在 FastAPI 边缘变成 422
+    contract_violation,绝不能被悄悄接受。
     """
     payload = copy.deepcopy(_request_payload())
     payload["snapshot"]["routeId"] = None
@@ -206,11 +209,11 @@ def test_non_node_query_with_null_route_id_is_422(settings):
 
 
 def test_decisions_endpoint_accepts_semantic_node_query_fixture(settings):
-    """The real HTTP boundary must accept the semantic NODE_QUERY fixture.
+    """真实 HTTP 边界必须接受语义 NODE_QUERY fixture。
 
-    The fixture carries bounded 1-hop relations + relatedNodes with body
-    content; a contract_violation at the FastAPI edge would break the
-    production Java -> Python request path, not just a unit test.
+    fixture 携带受控的 1-hop relations 与带正文的 relatedNodes;若在
+    FastAPI 边缘出现 contract_violation,断裂的将是生产环境的
+    Java -> Python 请求链路,而不只是一个单元测试。
     """
     payload = _load_fixture("agent-input-node-query-semantic-context-valid.json")
     response = _client(settings).post(
@@ -222,7 +225,7 @@ def test_decisions_endpoint_accepts_semantic_node_query_fixture(settings):
     body = response.json()
     assert body["protocolVersion"] == "agent-decision.v2"
     assert body["actionProposal"] is not None
-    # The response must echo the semantic query's base context exactly.
+    # 响应必须精确回显该语义查询的 base context。
     assert body["actionProposal"]["baseContextSnapshotId"] == \
         payload["snapshot"]["snapshotId"]
     assert body["actionProposal"]["baseContextHash"] == payload["snapshot"]["contextHash"]

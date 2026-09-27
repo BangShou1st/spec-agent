@@ -12,9 +12,11 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * On-demand Skill resource reads with strict containment and provenance.
- * Phase one serves text resources only; binary assets are refused with a
- * typed failure. Reads require an already visible/activated Skill version.
+ * 文件名:SkillResourceService.java
+ *
+ * 用途:按需读取 Skill 资源,执行严格的路径包含检查并附带溯源信息。一期
+ * 只提供文本资源;二进制资源以类型化失败拒绝。读取的前提是该 Skill 版本已
+ * 可见/已激活。
  */
 @Service
 public class SkillResourceService {
@@ -28,12 +30,12 @@ public class SkillResourceService {
     }
 
     /**
-     * Reads one resource inside an activated Skill version.
+     * 读取一个已激活 Skill 版本内的指定资源。
      *
-     * @param versionId    the immutable activated version id
-     * @param relativePath normalized, containment-checked resource path; SKILL.md
-     *                     included, since it is shown read-only by the detail page
-     * @throws SkillImportException on traversal, oversize, missing, or binary
+     * @param versionId    不可变的已激活版本 id
+     * @param relativePath 已归一化、包含性校验的资源路径;包含 SKILL.md,因为
+     *                     详情页需要以只读方式展示它
+     * @throws SkillImportException 路径穿越、超大、不存在或二进制时抛出
      */
     public ResourceRead readResource(UUID versionId, String relativePath) {
         String normalized = normalizePath(relativePath);
@@ -68,16 +70,14 @@ public class SkillResourceService {
             throw new SkillResourceRejectedException(
                     "Skill resource path rejected: " + path);
         }
-        // SKILL.md is readable like any other text resource so the detail page can
-        // show what the Skill actually says. Reading it never changes execution
-        // semantics: running the Skill still goes through activation, which is
-        // what injects the instructions.
+        // SKILL.md 可以像其他文本资源一样被读取,详情页借此展示 Skill 的真实
+        // 内容。读它不会改变执行语义:Skill 的运行仍要走激活流程,指令由
+        // 激活动作注入。
         return normalized;
     }
 
     /**
-     * Verifies the returned content hash matches the immutable package hash
-     * (provenance self-check).
+     * 校验返回内容的哈希与不可变的包哈希一致(溯源自检)。
      */
     public boolean verifies(ResourceRead read) {
         return read.sha256().equals(Hashes.sha256Hex(read.content()));

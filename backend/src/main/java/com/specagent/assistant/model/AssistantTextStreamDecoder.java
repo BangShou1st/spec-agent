@@ -1,17 +1,17 @@
 package com.specagent.assistant.model;
 
 /**
- * Incremental presentation decoder for the frozen model-output contract.
+ * 文件名:AssistantTextStreamDecoder.java
  *
- * <p>Understands ONLY generic JSON structure: it locates the top-level
- * {@code kind} and {@code assistantText} string values and progressively
- * decodes the text value (including escapes split across fragments). It never
- * inspects user prompts, keywords, capability ids, project names, or prose
- * meaning. Text is released only after {@code kind} is fully known and allows
- * user-visible prose (FINAL, CLARIFY, NAVIGATE); TOOL drafts and unknown
- * kinds stay buffered forever. Malformed or truncated input simply stops
- * releasing; the strict full-document parser remains the fail-closed
- * authority for control decisions.
+ * 用途:面向冻结的模型输出契约的增量展示解码器,服务于流式输出链路——
+ * 模型片段一边到达,一边把可对用户展示的正文逐段"放行"给前端。
+ *
+ * 它只识别通用 JSON 结构:定位顶层的 {@code kind} 与 {@code assistantText}
+ * 字符串值,并对文本值做渐进式解码(包括被网络分片截断的转义序列)。
+ * 它绝不窥探用户提示词、关键词、能力 ID、项目名或正文语义。
+ * 只有当 {@code kind} 完整可读且属于允许用户可见正文的类型
+ * (FINAL、CLARIFY、NAVIGATE)时才释放文本;TOOL 草稿与未知 kind 会一直缓冲。
+ * 输入畸形或被截断时只是停止释放——控制决策仍以严格的全文档解析器为准(fail-closed)。
  */
 public final class AssistantTextStreamDecoder {
 
@@ -21,7 +21,7 @@ public final class AssistantTextStreamDecoder {
 
     public record AppendResult(boolean kindKnown, String kind, String releasableText) {}
 
-    /** Appends one raw provider fragment; returns newly releasable plaintext. */
+    /** 追加一段原始模型片段;返回本次新近可释放的明文。 */
     public AppendResult append(String fragment) {
         if (fragment != null && !fragment.isEmpty()) {
             raw.append(fragment);
@@ -34,10 +34,9 @@ public final class AssistantTextStreamDecoder {
             String decoded = decodeTopLevelStringPrefix(raw, "assistantText");
             if (decoded != null && decoded.length() > emitted) {
                 releasable = decoded.substring(emitted);
-                // Release only the maximal Unicode-scalar-valid prefix: a
-                // trailing high surrogate is held for its low half, and an
-                // unpaired high or lone low surrogate is never released.
-                // Presentation-only fail-safe; the strict parser stays authoritative.
+                // 只释放"完整的 Unicode 标量值"前缀:末尾若悬着高位代理项,
+                // 先扣住等低位代理项配对;孤立的高位或低位代理项绝不释放。
+                // 这是展示层的兜底保护;严格的解析器仍是权威。
                 releasable = scalarValidPrefix(releasable);
                 emitted += releasable.length();
             }
@@ -46,10 +45,9 @@ public final class AssistantTextStreamDecoder {
     }
 
     /**
-     * Maximal prefix containing only complete Unicode scalar values.
-     * A high surrogate with no following char is held; with a valid low
-     * surrogate it is released as a pair; with a non-low follower, or for
-     * a standalone low surrogate, release stops before it (fail-closed).
+     * 只含完整 Unicode 标量值的最大前缀。
+     * 高位代理项后面没有字符时先扣住;跟有效低位代理项则成对释放;
+     * 后面跟的不是低位代理项,或者出现孤立低位代理项,则释放到它之前为止(fail-closed)。
      */
     private static String scalarValidPrefix(String s) {
         int end = s.length();
@@ -71,7 +69,7 @@ public final class AssistantTextStreamDecoder {
         return s.substring(0, end);
     }
 
-    /** Reads a complete top-level string member; null unless fully closed. */
+    /** 读取一个完整的顶层字符串成员;未闭合时返回 null。 */
     private static String scanTopLevelString(StringBuilder buf, String key) {
         int at = findMemberValueStart(buf, key);
         if (at < 0) return null;
@@ -80,9 +78,8 @@ public final class AssistantTextStreamDecoder {
     }
 
     /**
-     * Decodes as much of a top-level string member as is complete.
-     * Stops at an incomplete escape or unterminated value; null when the
-     * member is absent or is not a string.
+     * 尽可能多地解码顶层字符串成员中已完成的部分。
+     * 遇到不完整的转义或未终止的值就停;成员不存在或不是字符串时返回 null。
      */
     private static String decodeTopLevelStringPrefix(StringBuilder buf, String key) {
         int at = findMemberValueStart(buf, key);
@@ -92,7 +89,7 @@ public final class AssistantTextStreamDecoder {
         return out.toString();
     }
 
-    /** Index of a top-level member value start, or -1 while incomplete. */
+    /** 定位顶层成员值的起始下标;未就绪时返回 -1。 */
     private static int findMemberValueStart(StringBuilder buf, String key) {
         int depth = 0;
         boolean inString = false;
@@ -133,7 +130,7 @@ public final class AssistantTextStreamDecoder {
         return c == ' ' || c == '\t' || c == '\n' || c == '\r';
     }
 
-    /** End index of the closing quote, or -1 while unterminated. */
+    /** 字符串闭合引号的下标;未终止时返回 -1。 */
     private static int scanStringEnd(StringBuilder buf, int open) {
         boolean escaped = false;
         for (int i = open + 1; i < buf.length(); i++) {
@@ -155,8 +152,8 @@ public final class AssistantTextStreamDecoder {
     }
 
     /**
-     * Appends decoded chars until input runs out mid-value. Returns false only
-     * when the value is not a string at all; an incomplete escape simply pauses.
+     * 持续追加解码出的字符,直到输入在值中途耗尽。
+     * 只有当该值根本不是字符串时返回 false;不完整的转义只是暂停等待。
      */
     private static boolean readJsonStringPrefix(StringBuilder buf, int open, StringBuilder out) {
         int i = open + 1;

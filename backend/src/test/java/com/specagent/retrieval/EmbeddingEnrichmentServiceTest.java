@@ -16,6 +16,13 @@ import java.util.UUID;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
+/**
+ * 文件名:EmbeddingEnrichmentServiceTest.java
+ *
+ * 测试目标:验证 EmbeddingEnrichmentService 的失败隔离语义——提供方
+ * 不可用时仅将派生行标记为 UNAVAILABLE,提供方抛异常时仅标记为 FAILED,
+ * 均不影响源数据行。
+ */
 class EmbeddingEnrichmentServiceTest {
 
     @Test

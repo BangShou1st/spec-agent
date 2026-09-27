@@ -1,3 +1,5 @@
+// 文件名:RouteSidebar.spec.ts
+// 用途:RouteSidebar 组件单元测试,验证路线卡导航、只看镜头、生命周期筛选、Focus/Active 指示与纯视图操作和运行时操作的分离。
 import { beforeEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
@@ -144,7 +146,7 @@ describe('route sidebar', () => {
     expect(text).toContain('已归档')
     expect(text).toContain('已删除')
     expect(text).toContain('运行路线')
-    // lineage length shown for route 1
+    // 路线 1 显示 lineage 长度。
     expect(text).toContain('2')
     const active = wrapper.find('[data-route-id="r1"]')
     expect(active.text()).toContain('运行路线')

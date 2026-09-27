@@ -1,8 +1,10 @@
-"""R4 semantic planning diagnostic package (diagnostic-only, stdlib-only).
+"""文件名:__init__.py
 
-Never imported by production code. Implements planning-state.v2 schema
-(C1), G1-G5 reference goal, C2 cross-checks, planning-mapping.v2,
-R4 prompt, and synthetic calibration fixtures.
+R4 语义规划诊断包(仅诊断用,仅依赖标准库)。
+
+生产代码绝不 import 本包。实现 planning-state.v2 schema(C1)、
+G1-G5 参考目标、C2 交叉校验、planning-mapping.v2、R4 提示词,
+以及合成校准夹具。
 """
 
 SCHEMA_VERSION = "planning-state.v2"

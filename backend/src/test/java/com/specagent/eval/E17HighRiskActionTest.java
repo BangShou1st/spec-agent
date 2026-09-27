@@ -17,13 +17,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * E17 — High-risk action (P2 corpus).
+ * 文件名:E17HighRiskActionTest.java
  *
- * <p>Variant A (unconfirmed): the proposal waits for approval and no
- * capability executes. Variant B (confirmed): accepting the pending
- * proposal executes the authorized capability exactly once. Variant C
- * (stale confirmation): advancing the graph before acceptance fails
- * closed and executes nothing.
+ * 测试目标:E17——高风险动作(P2 语料)。变体 A(未确认):提案等待批准,
+ * 无能力执行。变体 B(已确认):接受待处理提案后,授权能力恰好执行一次。
+ * 变体 C(过期确认):图在验收前发生变化时失败关闭,不执行任何动作。
+ * 另验证诱饵能力(decoy)绝不被调用。
  */
 class E17HighRiskActionTest extends EvalHarnessBase {
 
@@ -80,8 +79,8 @@ class E17HighRiskActionTest extends EvalHarnessBase {
         UUID proposalId = pendingProposalId(observation);
         UUID projectId = scenarioRunner.lastProjectId();
 
-        // The confirmation was granted against the frozen context. Retracting
-        // the referenced node afterwards must fail the acceptance closed.
+        // 确认是针对冻结上下文做出的。之后撤回提案引用的节点,
+        // 验收必须失败关闭。
         retractProposalNodeRef(projectId, proposalId);
 
         assertThatThrownBy(() -> acceptanceService.acceptAndExecute(proposalId, "eval-test"))
@@ -114,7 +113,7 @@ class E17HighRiskActionTest extends EvalHarnessBase {
         return UUID.fromString(observation.executionResult().substring(prefix.length()));
     }
 
-    /** Retracts the node the pending proposal references so acceptance goes stale. */
+    /** 撤回待处理提案引用的节点,使验收因上下文过期而失效。 */
     private void retractProposalNodeRef(UUID projectId, UUID proposalId) {
         UUID activeRouteId = projectService.getProject(projectId).orElseThrow().activeRouteId();
         Route route = routeRepository.findById(activeRouteId).orElseThrow();

@@ -1,11 +1,12 @@
 <script lang="ts">
-/**
- * Reusable in-node process panel for an in-flight AgentRun.
+// 文件名:GraphRunProcessPanel.vue
+// 用途:进行中 AgentRun 的节点内过程面板(可复用):渲染阶段文案、最新汇总与后端白名单的步骤时间线;不读 store、不解释 run 语义,节点卡与 Inspector 都可嵌入。
+/*
+ * 进行中 AgentRun 的节点内过程面板(可复用)。
  *
- * Presentation-only: it renders the phase copy, the latest composed summary
- * and the step timeline that the backend whitelisted for display. It reads
- * nothing from stores and never interprets run semantics, so the node card
- * and the Inspector can embed it without coupling to the run registry.
+ * 纯展示:渲染阶段文案、最新汇总以及后端允许展示的步骤时间线。它不读
+ * 任何 store,也绝不解释 run 语义,因此节点卡片和 Inspector 都可以嵌入
+ * 它而不与 run 注册表耦合。
  */
 export default { name: 'GraphRunProcessPanel' }
 </script>
@@ -19,9 +20,9 @@ const props = withDefaults(defineProps<{
   phase?: string | null
   summary?: string | null
   steps?: RunProgressStep[]
-  /** False while the run is still executing; a failed run shows no spinner. */
+  /** run 仍在执行时为 false;失败的 run 不显示转圈。 */
   running?: boolean
-  /** Compact mode renders fewer steps (the tail) for small cards. */
+  /** 紧凑模式为小卡片渲染更少的步骤(尾部)。 */
   compact?: boolean
 }>(), {
   phase: null,
@@ -31,7 +32,7 @@ const props = withDefaults(defineProps<{
   compact: false,
 })
 
-/** Timeline direction: oldest at the top, newest at the bottom. */
+/** 时间线方向:最旧在上,最新在下。 */
 const visibleSteps = computed(() => {
   const steps = props.steps.filter((step) => step.summary != null)
   return props.compact && steps.length > 3 ? steps.slice(-3) : steps

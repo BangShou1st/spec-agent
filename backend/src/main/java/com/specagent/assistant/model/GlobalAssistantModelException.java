@@ -1,7 +1,11 @@
 package com.specagent.assistant.model;
 
 /**
- * Typed model failure with a stable public error code.
+ * 文件名:GlobalAssistantModelException.java
+ *
+ * 用途:模型链路的类型化失败异常,携带稳定的对外错误码
+ * (如 MODEL_UNAVAILABLE、MODEL_INVALID_RESPONSE),供上层映射为
+ * 统一错误响应;运行时靠它把"模型侧的问题"与其他失败区分开。
  */
 public class GlobalAssistantModelException extends RuntimeException {
     private final String errorCode;

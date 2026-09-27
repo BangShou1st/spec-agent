@@ -24,6 +24,15 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+/**
+ * 文件名:ProposalActionExecutorTest.java
+ *
+ * 测试目标:验证 ProposalActionExecutor 对各动作族的执行语义——REQUEST_USER_INPUT/
+ * CREATE_NODE 产出子节点(未回答的 INTERACTION Question 必须先定稿 Answer 才允许追加)、
+ * RESPOND_TO_USER 返回消息、WAIT 为空操作、INVOKE_CAPABILITY 经能力运行时执行(未知
+ * 能力以带类型的 FAILED 结果 fail-closed 记录)、GENERATE_ARTIFACT/UPDATE_NODE/未知动作族
+ * 分别抛出不支持/需确认/非法参数异常。
+ */
 @SpringBootTest
 @ActiveProfiles("test")
 @Transactional
@@ -56,8 +65,8 @@ class ProposalActionExecutorTest {
 
     @Test
     void requestUserInputCreatesChildNode() {
-        // An unanswered INTERACTION Question must remain the route tip; answer
-        // it before an agent REQUEST_USER_INPUT child can be appended.
+        // 未回答的 INTERACTION Question 必须保持为路线 tip;
+        // 先为根节点定稿 Answer,才允许追加 agent 的 REQUEST_USER_INPUT 子节点。
         var answer = answerService.finalizeAnswer(project.id(), route.id(), rootNode.id(),
                 null, "answered root", "test-user");
         answerPatchService.save(project.id(), route.id(), rootNode.id(), answer.id(), List.of(), null);
@@ -125,8 +134,8 @@ class ProposalActionExecutorTest {
 
     @Test
     void invokeCapabilityExecutesThroughCapabilityRuntime() {
-        // Unknown capability ids now execute as typed FAILED results
-        // (fail-closed recording in the invocation log), never as crashes.
+        // 未知的能力 id 现在以带类型的 FAILED 结果执行(fail-closed 记录到调用日志),
+        // 而不是直接崩溃。
         ActionProposal proposal = proposal("INVOKE_CAPABILITY", Map.of(
                 "capabilityId", "no.such.capability"));
         ActionExecutionContext context = context(rootNode.id());

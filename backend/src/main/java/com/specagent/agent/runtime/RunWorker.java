@@ -22,18 +22,18 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Background executor for queued runs. Dispatches by trigger type:
- * <ul>
- *   <li>DECISION_CYCLE → DecisionCycleService: single DECISION question draft
- *       with policy + execution.</li>
- *   <li>ANSWER_CYCLE → AnswerCycleService: 2-call convergence with policy +
- *       execution.</li>
- *   <li>GENERATE_SPEC → ArtifactCycleService: single ARTIFACT_GENERATION call
- *       with preserved grounding gates.</li>
- *   <li>REGENERATE_NODE → ReplacementCycleService: single DECISION content +
- *       deterministic topology commit.</li>
- * </ul>
- */
+ * 文件名:RunWorker.java
+ *
+ * 用途:排队 run 的后台执行器。在"命令 → 持久化 → Brain → 校验 →
+ * checkpoint"链路中,它是消费端:从各队列认领 run,并按 trigger type 分发到
+ * 对应的周期服务:
+ * - DECISION_CYCLE → DecisionCycleService:单次 DECISION 问题起草,
+ *       带 policy + 执行。
+ * - ANSWER_CYCLE → AnswerCycleService:2 次调用收敛,带 policy + 执行。
+ * - GENERATE_SPEC → ArtifactCycleService:单次 ARTIFACT_GENERATION 调用,
+ *       保留 grounding 守卫。
+ * - REGENERATE_NODE → ReplacementCycleService:单次 DECISION 决定内容,
+ *       拓扑提交是确定性的。 */
 @Component
 public class RunWorker {
 
@@ -50,6 +50,7 @@ public class RunWorker {
     private final NodeQueryService nodeQueryService;
     private final ContinuationCycleService continuationCycleService;
     private final ContinuationDispatchService continuationDispatch;
+    private final ExecutionFence executionFence;
 
     public RunWorker(RunService runService,
                             AgentRunService agentRunService,
@@ -61,7 +62,8 @@ public class RunWorker {
                             ReplacementCycleService replacementCycleService,
                             NodeQueryService nodeQueryService,
                             ContinuationCycleService continuationCycleService,
-                            ContinuationDispatchService continuationDispatch) {
+                            ContinuationDispatchService continuationDispatch,
+                            ExecutionFence executionFence) {
         this.runService = runService;
         this.agentRunService = agentRunService;
         this.agentRunFailureService = agentRunFailureService;
@@ -73,11 +75,12 @@ public class RunWorker {
         this.nodeQueryService = nodeQueryService;
         this.continuationCycleService = continuationCycleService;
         this.continuationDispatch = continuationDispatch;
+        this.executionFence = executionFence;
     }
 
-    /** Claims and executes at most one queued run from each queue. */
+    /** 从每个队列各认领并执行至多一个排队 run。 */
     public void tryClaimAndExecute() {
-        // Try DECISION_CYCLE first, then ANSWER_CYCLE, then NODE_QUERY.
+        // 先试 DECISION_CYCLE,再试 ANSWER_CYCLE,再试 NODE_QUERY。
         runService.claimNext().ifPresent(this::executeRun);
         runService.claimNextAnswerCycle().ifPresent(this::executeRun);
         runService.claimNextArtifact().ifPresent(this::executeRun);
@@ -87,16 +90,18 @@ public class RunWorker {
     }
 
     /**
-     * Dispatches a claimed run to the appropriate handler based on trigger type.
+     * 按触发类型把认领到的 run 分发到对应处理器。
      *
-     * <p>Fail-closed entry: the worker only executes freshly claimed
-     * {@code RUNNING} rows. A {@code CREATED} row passed directly (without a
-     * claim) is rejected so tests and callers cannot bypass the
-     * claim-and-execute path; a terminal {@code COMPLETED}/{@code FAILED} row
-     * is never re-executed — a duplicate delivery must go through
-     * {@link ContinuationDispatchService#process} instead.
+     * fail-closed 入口:worker 只执行刚被认领的 {@code RUNNING} 行。
+     * 直接传入的 {@code CREATED} 行(未经认领)会被拒绝,防止测试或调用方
+     * 绕过 claim-and-execute 路径;终态 {@code COMPLETED}/{@code FAILED} 行
+     * 绝不重复执行——重复投递必须改走
+     * {@link ContinuationDispatchService#process}。
      */
     public void executeRun(AgentRun run) {
+        // 执行入口的同步所有权验证:租约丢失(数据库重启、会话被终止等)
+        // 后,本进程绝不继续执行新认领的 run。
+        executionFence.assertOwnership();
         AgentRun latest = agentRunService.getRun(run.id()).orElse(run);
         if (latest.status() != AgentRunStatus.RUNNING) {
             throw new IllegalStateException(
@@ -114,8 +119,8 @@ public class RunWorker {
     }
 
     /**
-     * Spec snapshot generation: one ARTIFACT_GENERATION call plus the
-     * preserved grounding gates in {@link ArtifactCycleService}.
+     * spec snapshot 生成:一次 ARTIFACT_GENERATION 调用,加上
+     * {@link ArtifactCycleService} 中保留的 grounding 守卫。
      */
     private void executeArtifactGeneration(AgentRun run) {
         UUID runId = run.id();
@@ -128,8 +133,8 @@ public class RunWorker {
     }
 
     /**
-     * Replacement: one DECISION for the content, deterministic topology
-     * commit in {@link ReplacementCycleService}.
+     * 替换:一次 DECISION 决定内容,拓扑提交由
+     * {@link ReplacementCycleService} 确定性地完成。
      */
     private void executeRegenerate(AgentRun run) {
         UUID runId = run.id();
@@ -153,8 +158,8 @@ public class RunWorker {
     }
 
     /**
-     * Question draft: single DECISION plus policy/execution in
-     * {@link DecisionCycleService}.
+     * 问题起草:单次 DECISION,加 {@link DecisionCycleService} 中的
+     * policy/执行链。
      */
     private void executeDecisionCycle(AgentRun run) {
         UUID runId = run.id();
@@ -168,12 +173,11 @@ public class RunWorker {
     }
 
     /**
-     * Rebuilds the route selection recorded at enqueue time.
+     * 重建入队时记录的 route 选择。
      *
-     * <p>Returns the run's own route id when the client asked for an explicit
-     * route (multi-route work), and null when the run follows the project
-     * Active route — the historical behaviour, including failing closed if the
-     * Active pointer moved in between.
+     * 客户端要求显式 route(多 route 并行工作)时返回 run 自己的
+     * route id;run 跟随项目 Active route 时返回 null——即历史行为,
+     * 包括 Active 指针中途变动时 fail-closed。
      */
     private UUID explicitRouteIdOf(UUID runId, AgentRun run) {
         Map<String, Object> input = readRunInput(runId);
@@ -181,19 +185,19 @@ public class RunWorker {
     }
 
     /**
-     * Answer cycle: 2-call convergence with policy + execution.
-     * Reads input parameters from the persisted run event payload.
+     * 回答周期:2 次调用收敛,带 policy + 执行。
+     * 从持久化的 run 事件 payload 中读取输入参数。
      */
     private void executeAnswerCycle(AgentRun run) {
         UUID runId = run.id();
         try {
-            // Read input parameters from the RUN_CREATED event payload.
+            // 从 RUN_CREATED 事件 payload 读取输入参数。
             Map<String, Object> input = readRunInput(runId);
             String operation = run.operation() != null ? run.operation() : "ANSWER_TIP";
             UUID selectedOptionId = input.containsKey("selectedOptionId")
                     ? UUID.fromString((String) input.get("selectedOptionId")) : null;
-            // Multi-select answers carry the FULL selection; fall back to the
-            // legacy single id so pre-multi-select runs keep working.
+            // 多选回答携带完整的选择列表;回退到旧的单个 id,
+            // 保证多选功能上线之前的 run 仍能工作。
             List<UUID> selectedOptionIds = readSelectedOptionIds(input, selectedOptionId);
             String freeText = (String) input.get("freeText");
             UUID answerId = input.containsKey("answerId")
@@ -211,9 +215,8 @@ public class RunWorker {
                 result = answerCycleService.submitAnswer(run, run.projectId(), selectedOptionIds, freeText,
                         persistenceIntent, explicitRouteId);
             }
-            // Historical checkpoint recovery deliberately produces no new
-            // graph fact. Do not create an autonomous continuation after a
-            // recovery-only run; the route already contains the later tip.
+            // 历史 checkpoint 恢复刻意不产生任何新的图事实。仅恢复型的
+            // run 之后不要创建自治续跑:route 里已经有更靠后的 tip 了。
             if (!"historical_recovery".equals(result.status())) {
                 evaluateContinuationAfterTerminal(runId);
             }
@@ -223,7 +226,7 @@ public class RunWorker {
         }
     }
 
-    /** Payload list first; null/absent falls back to the legacy single id. */
+    /** 优先读 payload 列表;为 null 或缺失时回退到旧的单个 id。 */
     private List<UUID> readSelectedOptionIds(Map<String, Object> input, UUID selectedOptionId) {
         Object raw = input.get("selectedOptionIds");
         if (raw instanceof List<?> list && !list.isEmpty()) {
@@ -235,8 +238,7 @@ public class RunWorker {
     }
 
     /**
-     * Autonomous continuation: one fresh DECISION in
-     * {@link ContinuationCycleService}.
+     * 自治续跑:在 {@link ContinuationCycleService} 中做一次全新的 DECISION。
      */
     private void executeContinuationCycle(AgentRun run) {
         UUID runId = run.id();
@@ -250,17 +252,14 @@ public class RunWorker {
     }
 
     /**
-     * Single terminal continuation hook for every cycle that may legally
-     * continue (decision, answer, continuation). Terminalization already
-     * committed the continuation-check request in the same transaction, so
-     * this hook only dispatches the low-latency fast path — best-effort: a
-     * dispatch failure is logged and left pending for
-     * {@link ContinuationDispatchService#recoverPending()}, and never fails
-     * the already-COMPLETED run. Inside a managed transaction dispatch waits
-     * for afterCommit, otherwise the preceding terminal writes already
-     * committed and the dispatch runs inline. No cycle service calls the
-     * dispatcher itself, and no execution result, policy verdict, or model
-     * observation is passed — the input stays one run id.
+     * 所有允许合法续跑的周期(decision、answer、continuation)共用的唯一
+     * 终态续跑钩子。终态化服务已在同一事务里提交了 continuation-check 请求,
+     * 因此这个钩子只负责派发低延迟快速通道——尽力而为:派发失败仅记日志并
+     * 保持 pending,交给 {@link ContinuationDispatchService#recoverPending()},
+     * 绝不会让已经 COMPLETED 的 run 变成失败。在受管事务内,派发会等到
+     * afterCommit 之后再执行;若前置的终态写入已提交,则派发就地内联执行。
+     * 任何周期服务都不直接调用派发器,也不传入任何执行结果、policy 判定或
+     * 模型观察——输入始终只有一个 run id。
      */
     private void evaluateContinuationAfterTerminal(UUID runId) {
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
@@ -277,10 +276,9 @@ public class RunWorker {
     }
 
     /**
-     * Best-effort fast-path delivery of one terminal run's continuation
-     * check. Only post-terminal delivery failures are isolated here — cycle
-     * execution exceptions never reach this method (each cycle's catch
-     * terminalizes and rethrows before this hook runs).
+     * 单个终态 run 的续跑检查的尽力而为快速通道投递。这里只隔离"终态之后"
+     * 的投递失败——周期执行的异常永远到不了本方法(每个周期在自己的 catch
+     * 里先终态化再抛出,本钩子在其之后才运行)。
      */
     void dispatchContinuationBestEffort(UUID runId) {
         try {
@@ -292,24 +290,23 @@ public class RunWorker {
     }
 
     /**
-     * Crash-recovery entry: replays pending continuation checks left by a
-     * lost afterCommit. Called by the poll loop after claiming; one bad row
-     * never blocks the queues.
+     * 崩溃恢复入口:重放因 afterCommit 丢失而遗留的 pending continuation
+     * check。由轮询循环在认领之后调用;单个坏行绝不阻塞整个队列。
      */
     public void recoverPendingContinuationChecks() {
         continuationDispatch.recoverPending();
     }
 
     /**
-     * Node query: one DECISION call answering a contextual question about a
-     * node; read-only by construction (mutations become pending proposals).
+     * 节点查询:一次 DECISION 调用,回答关于某个节点的情境化问题;
+     * 构造上只读(变更会变成 pending proposal)。
      */
     private void executeNodeQuery(AgentRun run) {
         UUID runId = run.id();
         try {
             Map<String, Object> input = readRunInput(runId);
-            // routeId is OPTIONAL: floating nodes query with a null route and
-            // the anchor node as the sole context.
+            // routeId 是可选的:游离节点(floating node)查询时 route 为
+            // null,仅以锚点节点作为上下文。
             Object routeRaw = input.get("routeId");
             UUID routeId = routeRaw == null || String.valueOf(routeRaw).isBlank()
                     ? run.routeId() : UUID.fromString((String) routeRaw);
@@ -327,7 +324,7 @@ public class RunWorker {
     }
 
     /**
-     * Reads the input parameters from the RUN_CREATED event for this run.
+     * 从该 run 的 RUN_CREATED 事件读取输入参数。
      */
     private Map<String, Object> readRunInput(UUID runId) {
         List<AgentRunEvent> events = eventService.findByRunId(runId);
@@ -344,13 +341,19 @@ public class RunWorker {
         AgentRun latest = agentRunService.getRun(runId).orElse(null);
         if (latest != null && latest.status() != AgentRunStatus.FAILED
                 && latest.status() != AgentRunStatus.COMPLETED) {
-            agentRunFailureService.fail(runId, "failed:" + reason);
-            eventService.append(runId, AgentRunPhase.FAILED, "RUN_FAILED",
-                    RunFailureReasons.payload(reason));
+            // 状态转换与 RUN_FAILED 事件由失败服务在同一 REQUIRES_NEW 事务
+            // 内原子提交;仅当状态转换真正生效时才存在"本次失败已发生"的
+            // 业务事件。所有权拒绝只记本地诊断,绝不改变业务解释。
+            AgentRunFailureService.FailureOutcome outcome =
+                    agentRunFailureService.fail(runId, "failed:" + reason, reason);
+            if (outcome == AgentRunFailureService.FailureOutcome.OWNERSHIP_REFUSED) {
+                LOG.warn("Agent run {} failure not applied (ownership refused); "
+                        + "recovery belongs to the current owner", runId);
+            }
         }
     }
 
-    /** Stable failure code for a run that never reached a terminal state. */
+    /** 未到达终态的 run 的稳定失败码。 */
     private String failureStepFor(RuntimeException ex) {
         return RunFailureReasons.reasonCode(ex);
     }

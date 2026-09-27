@@ -12,9 +12,12 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Append-only persistence for {@code agent_run_events}. Events are never
- * updated or deleted; the per-run sequence is assigned atomically at insert
- * time so concurrent writers cannot interleave numbering.
+ * 文件名:AgentRunEventRepository.java
+ *
+ * 用途:{@code agent_run_events} 表的只追加(append-only)持久化。
+ *
+ * 约束:事件绝不更新或删除;每次运行的 sequence 在插入时原子分配,
+ * 保证并发写入者不会交错编号。
  */
 @Repository
 public class AgentRunEventRepository {
@@ -37,10 +40,9 @@ public class AgentRunEventRepository {
     }
 
     /**
-     * Appends one event with the next per-run sequence number in a single
-     * atomic statement. Event conflicts are intentionally visible to callers;
-     * create-run idempotency only lets the database winner append RUN_CREATED,
-     * so this repository does not swallow conflicts for later runtime events.
+     * 以单条原子语句追加事件并分配下一个 per-run sequence。
+     * 事件冲突刻意对调用方可见:仅 create-run 幂等允许数据库竞争的胜者
+     * 追加 RUN_CREATED,因此本仓库不会吞掉后续运行时事件的冲突。
      */
     public void append(AgentRunEvent event) {
         String sql = """

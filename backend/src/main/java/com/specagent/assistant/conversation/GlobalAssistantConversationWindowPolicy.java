@@ -1,9 +1,13 @@
 package com.specagent.assistant.conversation;
 /**
- * One deterministic window contract shared by context projection and the
- * rolling summary. Recent history always retains every not-yet-summarized
- * message inside a hard bound, so a pending remainder never disappears
- * while a lagging summary can never grow context without limit.
+ * 文件名:GlobalAssistantConversationWindowPolicy.java
+ *
+ * 用途:定义上下文投影与滚动摘要共用的唯一确定性"窗口契约":
+ * 最近多少条消息保留在上下文里、多少条被摘要吞并、窗口从哪里开始。
+ *
+ * 角色:纯静态策略常量与计算函数。核心不变式:近期窗口在硬上限内
+ * 始终保留所有尚未被摘要覆盖的消息——既保证待摘要的剩余消息不会凭空
+ * 消失,也保证滞后的摘要永远不会让上下文无限增长。
  */
 public final class GlobalAssistantConversationWindowPolicy {
     private GlobalAssistantConversationWindowPolicy() {

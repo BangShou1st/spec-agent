@@ -1,5 +1,8 @@
-"""Engine tests: deterministic fake path, strict model-output parsing, and
-source-ref containment before a response ever leaves the brain."""
+"""文件名:test_engines.py
+
+用途:引擎层测试:确定性 fake 路径、严格的模型输出解析,以及响应离开
+brain 之前的 source-ref 越界拦截。
+"""
 
 import json
 from pathlib import Path
@@ -190,12 +193,12 @@ def test_broker_client_error_status_raises_typed_error_without_retry():
         http_client=httpx.Client(transport=httpx.MockTransport(handler)))
     with pytest.raises(ModelClientError):
         client.complete(RUN_ID, "STATE_UPDATE", [ChatMessage(role="user", content="u")])
-    assert calls["count"] == 1  # no hidden retry
+    assert calls["count"] == 1  # 没有隐藏的重试
 
 
 def test_prompt_renders_related_node_body_and_relation_direction():
-    """The real model prompt must show the related node body text and the
-    direction-preserving relation, not only opaque ids."""
+    """真实的模型 prompt 必须展示相关节点的正文与保持方向性的关系,
+    而不是只有不可读的 id。"""
     request = _semantic_node_query_request()
     rendered = render_user_prompt(request)
     payload = json.loads(rendered)
@@ -210,20 +213,20 @@ def test_prompt_renders_related_node_body_and_relation_direction():
     assert len(related) == 1
     assert related[0]["nodeId"] == "06000000-0000-0000-0000-000000000006"
     assert related[0]["direction"] == "OUTGOING"
-    # The body text of the related node really reaches the model.
+    # 相关节点的正文确实到达了模型。
     assert "离线队列容量上限 2048 条" in rendered
     assert related[0]["node"]["body"]["text"] == "同步方案外部评审记录:离线队列容量上限 2048 条"
     assert related[0]["node"]["kind"] == "RESOURCE"
-    # The related node is a first-class allowed source ref.
+    # 相关节点是一等公民的允许 source ref。
     assert "node:06000000-0000-0000-0000-000000000006" in snapshot["allowedSourceRefs"]
-    # The related node is NOT part of the lineage.
+    # 相关节点不属于 lineage。
     assert [entry["node"]["id"] for entry in snapshot["lineage"]] == [
         "05000000-0000-0000-0000-000000000005"]
 
 
 def test_prompt_renders_related_node_without_second_hop_inference():
-    """No second-hop node is inferred: only the single directly-related node
-    appears, in both relations and relatedNodes."""
+    """不推断第二跳:无论 relations 还是 relatedNodes,都只出现那一个
+    直接关联的节点。"""
     request = _semantic_node_query_request()
     payload = json.loads(render_user_prompt(request))
     assert len(payload["snapshot"]["relatedNodes"]) == 1
@@ -233,9 +236,8 @@ def test_prompt_renders_related_node_without_second_hop_inference():
 
 
 def test_decision_fake_path_accepts_semantic_node_query():
-    """handle_decision accepts the semantic NODE_QUERY envelope end-to-end:
-    the strict model parses it, the prompt renders it, and the fake model
-    produces a valid response."""
+    """handle_decision 端到端接受语义 NODE_QUERY 信封:严格模型能解析它,
+    prompt 能渲染它,fake 模型能产出合法响应。"""
     request = _semantic_node_query_request()
     response = handle_decision(request, FakeModelClient())
     assert str(response.run_id) == "01000000-0000-0000-0000-000000000001"

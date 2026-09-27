@@ -7,7 +7,14 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.*;
 
-/** Layered qualification: free identity, metadata capability, then probe. */
+/**
+ * 文件名:OpenRouterQualificationTest.java
+ *
+ * 测试目标:验证 OpenRouter 模型的分层准入规则:先看免费身份(仅 id 后缀 :free),
+ * 再看元数据能力(需支持 response_format 等参数、输出模态为文本),最后由线上探测确认。
+ * 覆盖免费且兼容的纳入、缺结构化输出/纯嵌入或音频/付费模型/显示名免费而 id 不免费/
+ * 能力元数据缺失等情况的排除,以及 openrouter/free 豁免元数据但仍需探测。
+ */
 class OpenRouterQualificationTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();

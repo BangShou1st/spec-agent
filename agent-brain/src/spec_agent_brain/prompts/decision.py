@@ -1,7 +1,10 @@
-"""DECISION prompt: reflection + planning + primary action in ONE response.
+"""文件名:decision.py
 
-Reflection and Planning are deliberately part of the same model call; this
-boundary must never force them into separate HTTP/LLM round trips.
+用途:DECISION 的 prompt 模板与用户消息渲染:reflection + planning +
+主动作合并在一个响应里完成。
+
+Reflection 与 Planning 有意放在同一次模型调用中;这个边界绝不把两者
+拆成多次 HTTP/LLM 往返。
 """
 
 import json
@@ -54,7 +57,7 @@ SYSTEM_PROMPT = """你是需求工作区的决策引擎。你在一次响应中�
 
 
 def _related_node_view(ref) -> Dict[str, Any]:
-    """Projection of one related node: provenance plus the full node body."""
+    """投影一个相关节点:provenance 信息加上完整的节点 body。"""
     return {
         "nodeId": str(ref.node_id),
         "relationType": ref.relation_type,

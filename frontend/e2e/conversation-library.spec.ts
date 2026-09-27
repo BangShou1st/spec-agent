@@ -1,5 +1,5 @@
-import { test, expect } from '@playwright/test'
 
+import { test, expect, type Page } from './helpers'
 const THREAD_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 const THREAD_B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
 const THREAD_MAIN = '11111111-1111-4111-8111-111111111111'

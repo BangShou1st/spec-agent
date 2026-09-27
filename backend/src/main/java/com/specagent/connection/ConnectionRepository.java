@@ -17,9 +17,13 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Durable store for saved Connections. A Connection row is the product concept;
- * protocol/transport details live behind the MCP runtime and secrets behind
- * {@code SecretStore} — never in this table.
+ * 文件名:ConnectionRepository.java
+ *
+ * 用途:已保存 Connection 的持久化仓库,封装 connections 表的全部
+ * 读写操作(插入、按 id/connectionId 查询、状态与凭据引用更新、删除等)。
+ *
+ * Connection 行是产品概念;协议/传输细节藏在 MCP 运行时之后,密钥藏在
+ * {@code SecretStore} 之后——都不落这张表。
  */
 @Repository
 public class ConnectionRepository {

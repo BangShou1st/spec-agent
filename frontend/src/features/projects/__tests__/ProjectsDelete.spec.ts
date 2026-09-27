@@ -1,3 +1,5 @@
+// 文件名:ProjectsDelete.spec.ts
+// 用途:项目删除交互测试:菜单打开、删除需确认且确认文案完整、确认后调用删除 API。
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'

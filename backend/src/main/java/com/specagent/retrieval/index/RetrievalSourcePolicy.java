@@ -7,7 +7,15 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 
-/** Conservative allow-list boundary before any canonical text enters indexing. */
+/**
+ * 文件名:RetrievalSourcePolicy.java
+ *
+ * 用途:任何规范化文本进入检索索引之前的保守放行白名单边界,
+ * 防止密码、token、私钥等敏感内容进入模型可见的检索通道。
+ *
+ * 按两类规则拦截:疑似承载密钥的字段名(键名归一化后匹配),以及
+ * 正文中的密钥形态文本(私钥块、Bearer 头、常见 token 前缀等)。
+ */
 public class RetrievalSourcePolicy {
 
     private static final Set<String> SECRET_KEYS = Set.of(

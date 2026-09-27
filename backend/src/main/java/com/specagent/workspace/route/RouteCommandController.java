@@ -12,11 +12,13 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.UUID;
 
 /**
- * Route command API. Commands go through {@link RouteCommandService} and the
- * existing {@link com.specagent.workspace.route.RouteService}; the controller never
- * writes database state and never mutates {@code Project.activeRouteId}
- * directly. Reads and commands never turn route lifecycle into
- * {@code active}.
+ * 文件名:RouteCommandController.java
+ *
+ * 用途:路线命令 API。命令统一经过 {@link RouteCommandService} 与
+ * 既有 {@link com.specagent.workspace.route.RouteService} 执行;控制器本身
+ * 绝不直接写数据库状态,也绝不直接改 {@code Project.activeRouteId}。
+ * 读取与命令都不会把路线生命周期改成 {@code active}(激活只能走
+ * activate 命令)。
  */
 @RestController
 @RequestMapping("/api/v1/projects/{projectId}")
@@ -67,9 +69,9 @@ public class RouteCommandController {
                 request.sourceRouteId(), request.label());
     }
 
-    /** Starts a NEW standalone route from a floating knowledge/resource node
-     * ("想法继续生成问题"): the node becomes the route's root+tip and the
-     * next question draft anchors there. */
+    /** 从一个游离的知识/资源节点启动一条全新的独立路线
+     * ("想法继续生成问题"):该节点成为路线的 root+tip,
+     * 下一份问题草稿也锚定在此节点上。 */
     @PostMapping("/nodes/{nodeId}/start-route")
     public RouteMutationResponse startRoute(@PathVariable UUID projectId,
                                             @PathVariable UUID nodeId,

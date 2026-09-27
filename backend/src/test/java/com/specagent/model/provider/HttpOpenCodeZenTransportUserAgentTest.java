@@ -15,6 +15,13 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * 文件名:HttpOpenCodeZenTransportUserAgentTest.java
+ *
+ * 测试目标:验证 HttpOpenCodeZenTransport 对所有 OpenCode HTTP 路径(/models、
+ * /chat/completions)都携带产品 User-Agent 与桌面客户端身份头集(CLIENT_ID、
+ * msg_ 前缀的请求 ID、全局项目 ID);同一会话跨多个请求时消息 ID 必须保持唯一。
+ */
 class HttpOpenCodeZenTransportUserAgentTest {
 
     private HttpServer server;
@@ -85,7 +92,7 @@ class HttpOpenCodeZenTransportUserAgentTest {
                         .matches("[0-9a-zA-Z_]+"));
         assertThat(projects).hasSize(4)
                 .allSatisfy(id -> assertThat(id).isEqualTo(OpenCodeZenTransport.GLOBAL_PROJECT));
-        // One session spans many requests: every request still gets a fresh message id.
+        // 一个会话横跨多个请求:每个请求仍要拿到全新的消息 ID。
         assertThat(requests).doesNotHaveDuplicates();
     }
 

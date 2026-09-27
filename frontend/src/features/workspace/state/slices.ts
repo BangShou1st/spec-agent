@@ -1,42 +1,37 @@
-/**
- * Domain slices: narrow, type-level views over the workspace store.
+// 文件名:slices.ts
+// 用途:领域切片:对工作区 store 的窄化类型级视图,把跨域状态写入限制在类型层(DeepReadonly + @ts-expect-error 负向证明),每个切片分只读输入/本域可写状态/跨域命令三类成员。
+/*
+ * 领域切片:对工作区 store 的窄化、类型级视图。
  *
- * Each domain module receives one of these instead of the full
- * `WorkspaceStore`. Because the slice is a structural type, the real store
- * satisfies it without any wrapper — but any access to a member NOT listed
- * here is a compile error, so cross-domain state writes are limited at the
- * type level instead of by comment convention.
+ * 每个领域模块拿到的都是其中一个切片,而不是完整的 `WorkspaceStore`。
+ * 由于切片是结构化类型,真实 store 无需任何包装即可满足它——但访问任何
+ * 未在此列出的成员都是编译错误,因此跨域状态写入在类型层受限,而不是靠
+ * 注释约定。
  *
- * Three kinds of members are expressed separately in every slice:
+ * 每个切片中的成员分为三类,分别表达:
  *
- * 1. Read-only inputs (`ReadonlyPick`) — project identity and canonical
- *    backend reads (`graphView`, `activeState`, …). The slice may READ them
- *    (including nested properties and array entries), but reassignment AND
- *    nested mutation are compile errors: `DeepReadonly` makes every nested
- *    object and array deeply readonly, not just the top-level reference.
- * 2. Domain-owned writable state (`Pick`) — the flags/caches this domain
- *    sets, clears, and reconciles. Single-writer-per-UI-intent stays a
- *    review convention here; ownership across sessions is enforced at
- *    runtime by the session guards, not by the type system.
- * 3. Cross-domain commands — the established convention: cross-domain calls
- *    go through store actions (`store.xxx()`), never by importing a sibling
- *    domain module directly (that would create an import cycle).
+ * 1. 只读输入(`ReadonlyPick`)——项目身份与 canonical 后端读取
+ *    (`graphView`、`activeState` 等)。切片可以读它们(包括嵌套属性与
+ *    数组条目),但重新赋值与嵌套修改都是编译错误:`DeepReadonly` 让每个
+ *    嵌套对象与数组深度只读,而不只是顶层引用。
+ * 2. 领域自有可写状态(`Pick`)——该领域设置、清除与对账的标志/缓存。
+ *    "每个 UI 意图单一写者"在这里仍是评审约定;跨会话的归属由会话守卫
+ *    在运行时强制,而非类型系统。
+ * 3. 跨域命令——既定约定:跨域调用走 store action(`store.xxx()`),
+ *    绝不直接导入兄弟领域模块(那会造成 import 环)。
  *
- * Negative compile-time proof lives in
- * `state/__tests__/slicesReadonly.spec.ts`: every forbidden
- * cross-domain write is marked `@ts-expect-error`, so the typecheck fails if
- * the read-only contract ever regresses.
+ * 负向的编译期证明位于 `state/__tests__/slicesReadonly.spec.ts`:每个被
+ * 禁止的跨域写入都标了 `@ts-expect-error`,只读契约一旦回归 typecheck
+ * 就会失败。
  *
- * To add a member to a slice you must justify it here, in the grouping
- * comments. That is the review gate.
+ * 要往切片里加成员,必须在这里的分组注释中给出理由。这就是评审关口。
  */
 import type { WorkspaceStore } from './workspaceStore'
 
-/**
- * Deeply readonly view of a value. Functions are preserved as-is (mapped
- * types would destroy call signatures), arrays become readonly arrays with
- * readonly elements, and objects become objects with readonly properties
- * whose types are themselves deeply readonly.
+/*
+ * 值的深度只读视图。函数原样保留(mapped type 会破坏调用签名),数组变成
+ * 元素只读的 readonly 数组,对象变成属性只读且属性类型同样深度只读的
+ * 对象。
  */
 export type DeepReadonly<T> =
   T extends (...args: never[]) => unknown ? T
@@ -44,33 +39,30 @@ export type DeepReadonly<T> =
       : T extends object ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
         : T
 
-/**
- * Picks members of S and exposes them deeply read-only: no reassignment of
- * the member, no mutation of nested objects or arrays.
+/*
+ * 从 S 中挑选成员并暴露为深度只读:成员不可重新赋值,嵌套对象/数组不可
+ * 修改。
  */
 type ReadonlyPick<S, K extends keyof S> = {
   readonly [P in K]: DeepReadonly<S[P]>
 }
 
-/**
- * What the async run-orchestration domain (`workspaceRuns.ts`) may touch:
+/*
+ * 异步 run 编排领域(`workspaceRuns.ts`)可触碰的内容:
  *
- * - Read-only inputs: project identity (captured at async start,
- *   re-validated after every await) and the canonical graph + Active
- *   pointer, read for route-tip/answer resolution and the explicit
- *   "current route" semantics (draft/retry/repair target the route the
- *   user is reading). Never written by this domain.
- * - Answer-run sessions — owned by this domain.
- * - Run orchestration flags — single-writer-per-UI-intent flags this domain
- *   sets and clears (drafting, repairing, projections, manual retry, fork
- *   draft retry).
- * - Global UI feedback (`feedback`/`error`) — intentionally shared surfaces;
- *   every write must be behind a stale-identity check.
+ * - 只读输入:项目身份(异步开始时捕获,每次 await 后重新校验)与
+ *   canonical 图 + Active 指针,用于路线末端/回答解析与显式"当前路线"
+ *   语义(起草/重试/修复以用户正在阅读的路线为目标)。本领域绝不写它们。
+ * - 回答 run 会话——本领域自有。
+ * - run 编排标志——本领域设置与清除的单写者标志(drafting、repairing、
+ *   投影、手动重试、fork 起草重试)。
+ * - 全局 UI 反馈(`feedback`/`error`)——有意共享的表面;每次写入都必须
+ *   有过期身份检查护航。
  */
 export type AnswerRunSlice =
   ReadonlyPick<
     WorkspaceStore,
-    // Read-only inputs: project identity + canonical graph/Active pointer
+    // 只读输入:项目身份 + canonical 图/Active 指针
     'projectId'
     | 'projectSessionId'
     | 'project'
@@ -78,33 +70,30 @@ export type AnswerRunSlice =
     | 'activeState'
   > & Pick<
     WorkspaceStore,
-    // Answer-run sessions (owned by this domain)
+    // 回答 run 会话(本领域自有)
     | 'answerRunSessions'
-    | 'canonicalRepairableAnswerId'
     | 'focusedAnswerSession'
     | 'submittedRouteIdForCleanup'
     | 'resubmitAnswerPayload'
     | 'answerRunsInFlight'
     | 'submitting'
-    // Run orchestration flags (single-writer)
+    // run 编排标志(单写者)
     | 'drafting'
     | 'repairingAnswer'
     | 'pendingDraftRespondMessage'
-    | 'forkDraftRetryRouteId'
     | 'manualModelRetry'
     | 'pendingRouteProjection'
     | 'routeCommandPending'
-    // Shared UI feedback surfaces (write only behind a stale-identity check)
+    // 共享 UI 反馈表面(仅在过期身份检查后写入)
     | 'feedback'
     | 'error'
-    // Cross-domain actions via the store facade
+    // 经 store 门面调用的跨域 action
     | 'refreshWorkspace'
     | 'draftQuestion'
     | 'markPendingRouteFailed'
     | 'updatePendingRouteProjection'
     | 'setFocusAfterMutation'
     | 'focusAfterMutation'
-    | 'retryForkDraft'
     | 'retryManualModelOperation'
     | 'submitAnswer'
     | 'pollAnswerRun'
@@ -112,17 +101,22 @@ export type AnswerRunSlice =
     | 'pollRunChainToTerminal'
     | 'finishSuccessfulAnswerRun'
     | 'reconcileFailedAnswerRun'
-    | 'findFinalizedAnswerForActiveTip'
     | 'reconcileSpecRetry'
     | 'reconcileRegenerateRetry'
     | 'generateSpec'
     | 'regenerateNode'
+    // 任务级失败恢复(服务端判定的未解决失败)
+    | 'rebuildUnresolvedFailures'
+    | 'retryFailedRun'
+    // 节点查询重试成功后的检查器结果刷新(6-5,只读写入 nodeQuery)
+    | 'nodeQuery'
+    | 'refreshNodeQueryResult'
   >
 
-/**
- * Proposal (node query) domain: loading and polling node query proposals.
- * Owns `nodeQuery`, the two durable proposal lists, and their lifecycle
- * transitions; identity and canonical action helpers are read-only.
+/*
+ * 提案(node query)领域:加载与轮询节点查询提案。
+ * 自有 `nodeQuery`、两个持久化提案列表及其生命周期流转;身份与 canonical
+ * action 辅助函数只读。
  */
 export type ProposalSlice =
   ReadonlyPick<WorkspaceStore, 'projectId' | 'projectSessionId'> & Pick<
@@ -140,10 +134,10 @@ export type ProposalSlice =
     | 'error'
   >
 
-/**
- * Resource/graph-command domain: forking routes and resource graph commands.
- * Canonical graph + Active route are read-only inputs (route membership and
- * tip resolution); this domain never rewrites them locally.
+/*
+ * 资源/图命令领域:fork 路线与资源图命令。
+ * canonical 图 + Active 路线是只读输入(路线归属与末端解析);本领域绝不
+ * 在本地改写它们。
  */
 export type ResourceSlice =
   ReadonlyPick<
@@ -161,13 +155,11 @@ export type ResourceSlice =
     | 'error'
   >
 
-/**
- * Spec-dock domain: requirement/spec generation, export, and per-route spec
- * state. Identity, the Active pointer, and the run-orchestration lock
- * (`routeCommandPending`) are read-only inputs. The domain OWNS the
- * `spec`-kind entries of `manualModelRetry` (generation/reconciliation write
- * and clear them), its per-route caches, and its own loading/generation
- * flags.
+/*
+ * Spec 停靠栏领域:需求状态/规格快照的生成、导出与逐路线规格状态。
+ * 身份、Active 指针与 run 编排锁(`routeCommandPending`)是只读输入。
+ * 本领域自有 `manualModelRetry` 的 spec 类条目(生成/对账负责写入与
+ * 清除)、其逐路线缓存以及自身的加载/生成标志。
  */
 export type SpecDockSlice =
   ReadonlyPick<
@@ -190,10 +182,9 @@ export type SpecDockSlice =
     | 'error'
   >
 
-/**
- * Graph undo domain: undo/redo availability and graph history commands.
- * Only its own availability cache, lock flag, and the shared feedback
- * surfaces are writable.
+/*
+ * 图撤销领域:撤销/重做可用性与图历史命令。
+ * 只有自身的可用性缓存、锁标志与共享反馈表面可写。
  */
 export type GraphUndoSlice =
   ReadonlyPick<WorkspaceStore, 'projectId' | 'projectSessionId'> & Pick<
@@ -206,13 +197,11 @@ export type GraphUndoSlice =
     | 'error'
   >
 
-/**
- * Route-command domain: route lifecycle commands (activate/close/…), draft
- * orchestration hand-off, and post-mutation focus. Canonical graph/Active
- * pointer and the answer-run lock (`submitting`) are read-only inputs.
- * Writes `drafting`/`manualModelRetry`/`forkDraftRetryRouteId` because route
- * commands drive runs; those flags remain single-writer-per-UI-intent by
- * convention.
+/*
+ * 路线命令领域:路线生命周期命令(激活/关闭/…)、起草编排交接与
+ * mutation 后的聚焦。canonical 图/Active 指针与回答 run 锁(`submitting`)
+ * 是只读输入。写入 `drafting`/`manualModelRetry`,
+ * 因为路线命令驱动 run;这些标志按约定保持"每个 UI 意图单一写者"。
  */
 export type RouteCommandSlice =
   ReadonlyPick<
@@ -224,7 +213,6 @@ export type RouteCommandSlice =
     | 'routeCommandPending'
     | 'drafting'
     | 'manualModelRetry'
-    | 'forkDraftRetryRouteId'
     | 'draftQuestion'
     | 'reconcileRegenerateRetry'
     | 'pollRunChainToTerminal'
@@ -234,9 +222,9 @@ export type RouteCommandSlice =
     | 'error'
   >
 
-/**
- * Minimal identity view for shared helpers (`captureProjectSession`).
- * Identity is immutable for every consumer.
+/*
+ * 共享辅助函数(`captureProjectSession`)所需的最小身份视图。
+ * 对每个消费方而言身份不可变。
  */
 export type ProjectSessionSlice = ReadonlyPick<
   WorkspaceStore,

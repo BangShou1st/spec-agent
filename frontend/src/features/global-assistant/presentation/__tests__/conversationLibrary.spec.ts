@@ -1,3 +1,6 @@
+// 文件名:conversationLibrary.spec.ts
+// 用途:会话库展示逻辑单测:线程按 今天/昨天/最近7天/更早 分组且不重复、保持后端顺序,
+//       相对时间的紧凑格式,以及当前会话标题的"新对话"兜底。
 import { describe, expect, it } from 'vitest'
 import { currentGaTitle, formatGaRelativeTime, groupGaThreads } from '@/features/global-assistant/presentation/conversationLibrary'
 import type { GaThreadListItem } from '@/features/global-assistant/api/globalAssistant'

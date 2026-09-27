@@ -1,7 +1,9 @@
-"""Calibration fixture tests — TDD Unit 6.
+"""文件名:test_r4_calibration.py
 
-Pins: 8 synthetic non-benchmark cases, wire-legal shapes, no benchmark
-identity leakage, reference-goal coherence, and ideal-state mapping.
+校准夹具测试——TDD 单元 6。
+
+锁定:8 个合成的非基准用例、线上合法形状、无基准身份泄露、
+参考目标一致性,以及理想状态的映射结果。
 """
 import re
 import uuid

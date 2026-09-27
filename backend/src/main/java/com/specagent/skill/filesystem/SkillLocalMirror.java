@@ -15,18 +15,17 @@ import java.util.Comparator;
 import java.util.List;
 
 /**
- * DB-authoritative local mirror of installed Skill packages under
- * {@code ./data/skills} relative to the backend working directory
- * (configurable via {@code spec.agent.skill.local-mirror-root}).
+ * 文件名:SkillLocalMirror.java
  *
- * <p>The database stays the only activation-time authority — activation,
- * discovery and resource reads never touch this tree. The mirror exists so
- * users can browse, back up and version their skills on disk, and so
- * built-in, git-imported and uploaded skills all surface in one local
- * directory instead of living only inside Postgres. Writes are best-effort:
- * a mirror failure is logged and never breaks the authoritative install,
- * enable or activation pipeline. Missing files self-heal from the database
- * on the next install or the startup backfill.
+ * 用途:已安装 Skill 包的本地镜像,以数据库为权威。镜像目录位于后端工作
+ * 目录下的 {@code ./data/skills}(可通过
+ * {@code spec.agent.skill.local-mirror-root} 配置)。
+ *
+ * 数据库始终是激活时的唯一权威 —— 激活、发现、资源读取都不碰这棵目录。
+ * 镜像的存在是为了让用户能在磁盘上浏览、备份、用版本工具管理自己的 skill,
+ * 并让内置、git 导入、上传的 skill 统一呈现在同一个本地目录里,而不是只存在
+ * 于 Postgres 中。写入是尽力而为:镜像失败只记日志,绝不破坏权威的安装、
+ * 启用或激活管线。缺失的文件会在下次安装或启动回填时从数据库自愈。
  */
 @Component
 public class SkillLocalMirror {
@@ -40,23 +39,22 @@ public class SkillLocalMirror {
     public SkillLocalMirror(SkillProperties properties) {
         this.properties = properties;
         String configured = properties.getLocalMirrorRoot();
-        // Relative default keeps the mirror inside the project tree (the
-        // backend working directory in dev); toAbsolutePath anchors it here.
+        // 相对默认值让镜像保持在项目树内(dev 下即后端工作目录);
+        // toAbsolutePath 在此处锚定绝对路径。
         this.root = Path.of(configured == null || configured.isBlank()
                 ? "./data/skills"
                 : configured).toAbsolutePath().normalize();
     }
 
-    /** Mirror root for diagnostics and tests. */
+    /** 供诊断与测试使用的镜像根目录。 */
     public Path root() {
         return root;
     }
 
     /**
-     * Writes every package file of one installed version to
-     * {@code <root>/<skillId>/v<versionNo>/<relativePath>}. Existing files are
-     * overwritten from the authoritative bytes (the mirror is a projection,
-     * never a source).
+     * 把一个已安装版本的全部包文件写入
+     * {@code <root>/<skillId>/v<versionNo>/<relativePath>}。已存在的文件会被
+     * 权威字节覆盖(镜像只是投影,永远不是数据源)。
      */
     public void mirrorVersion(String skillId, int versionNo, List<SkillSourceFile> files) {
         if (!properties.isLocalMirrorEnabled() || files == null || files.isEmpty()) {
@@ -64,8 +62,7 @@ public class SkillLocalMirror {
         }
         try {
             Path versionDir = versionDir(skillId, versionNo);
-            // Resolve and validate every target first so an unsafe path can
-            // never leave a partially created directory tree behind.
+            // 先解析并校验全部目标路径,确保不安全路径不会留下半创建的目录树。
             var writes = new java.util.LinkedHashMap<Path, byte[]>();
             for (SkillSourceFile file : files) {
                 if (file.content() == null || file.content().length == 0) {
@@ -88,7 +85,7 @@ public class SkillLocalMirror {
         }
     }
 
-    /** Convenience overload for repository-backed package files. */
+    /** 仓储层包文件的便捷重载。 */
     public void mirrorPackageFiles(String skillId, int versionNo, List<SkillPackageFile> files) {
         if (files == null) {
             return;
@@ -98,7 +95,7 @@ public class SkillLocalMirror {
                 .toList());
     }
 
-    /** Removes the whole skill directory (called when the skill is deleted). */
+    /** 删除整个 skill 目录(在 skill 被删除时调用)。 */
     public void removeSkill(String skillId) {
         if (!properties.isLocalMirrorEnabled()) {
             return;
@@ -118,8 +115,8 @@ public class SkillLocalMirror {
                 try {
                     Files.deleteIfExists(path);
                 } catch (IOException ignored) {
-                    // Best-effort cleanup; a locked file on Windows is caught
-                    // by the surrounding walk failure path.
+                    // 尽力而为的清理;Windows 上文件被占用的情况
+                    // 由外层 walk 的失败路径兜底。
                 }
             });
         } catch (IOException ex) {
@@ -135,7 +132,7 @@ public class SkillLocalMirror {
         return safeChild(skillDir(skillId), VERSION_PREFIX + versionNo);
     }
 
-    /** Skill ids and version segments are host-controlled: reject separators. */
+    /** skillId 与版本段属于宿主可控输入:拒绝任何路径分隔符。 */
     private Path safeChild(Path base, String segment) {
         if (segment == null || segment.isBlank()
                 || segment.contains("/") || segment.contains("\\") || segment.contains("..")) {
@@ -148,7 +145,7 @@ public class SkillLocalMirror {
         return resolved;
     }
 
-    /** Package-relative paths come from validated imports; re-verify anyway. */
+    /** 包内相对路径已在导入时校验过,这里仍然再校验一遍。 */
     private Path safeResolve(Path versionDir, String relativePath) {
         if (relativePath == null || relativePath.isBlank()
                 || relativePath.startsWith("/") || relativePath.contains("..")

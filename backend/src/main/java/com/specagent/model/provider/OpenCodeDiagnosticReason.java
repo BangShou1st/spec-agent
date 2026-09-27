@@ -1,10 +1,10 @@
 package com.specagent.model.provider;
 
 /**
- * Safe internal reasons for an OpenCode response that cannot be consumed.
+ * 文件名:OpenCodeDiagnosticReason.java
  *
- * <p>The reason is diagnostic metadata only. The public API deliberately keeps
- * returning the stable provider-neutral INVALID_RESPONSE category.</p>
+ * 用途:OpenCode 响应无法被消费时的安全内部原因枚举。该原因只是诊断元数据;
+ * 对外 API 刻意继续返回稳定的提供商无关分类 INVALID_RESPONSE。
  */
 public enum OpenCodeDiagnosticReason {
     CONNECT_TIMEOUT,

@@ -39,7 +39,11 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * FIX K/L/M RED: cross-run continuity, single current request, summary loop.
+ * 文件名:GlobalAssistantContinuitySummaryTest.java
+ *
+ * 测试目标:验证全局助手跨运行的对话连续性与摘要机制。
+ * 覆盖场景:当前请求在上下文中只出现一次、跨运行的歧义候选与 waitingFor
+ * 状态能延续到下一轮、摘要按版本每次只推进一个分块且输入顺序由游标确定。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -143,9 +147,8 @@ class GlobalAssistantContinuitySummaryTest {
         for (int i = 30; i < 34; i++) {
             conversations.appendUserMessage(thread.id(), "chunk talk " + i, null);
         }
-        // The cursor partitions the deterministic read order, which is the
-        // only order the service may assume (same-millisecond rows tie on
-        // created_at and fall back to id).
+        // 游标把确定性读取顺序切成分块;服务只能依赖这个顺序
+        // (同一毫秒内 created_at 相同的行回退按 id 排序)。
         java.util.List<String> order34 = conversations.listMessages(thread.id()).stream()
                 .map(m -> m.content()).toList();
         assertThat(order34).hasSize(34);

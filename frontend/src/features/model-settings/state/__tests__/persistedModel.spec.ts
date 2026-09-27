@@ -1,3 +1,6 @@
+// 文件名:persistedModel.spec.ts
+// 用途:已持久化模型选择的可见性规则单测:展示列表注入已存值、
+//       可用列表不含已下架值、保存门槛据此禁止写回不可用模型、手动模式不受影响。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useOpenRouterStore } from '@/features/model-settings/state/openRouterStore'
@@ -54,12 +57,12 @@ describe('persisted model restoration', () => {
     const store = useOpenRouterStore()
     await store.loadStatus()
     await store.refreshModels()
-    // Visible for transparency.
+    // 注入值保证可见性。
     expect(store.allModels).toContain('saved:free')
-    // True available list excludes the injected unavailable value.
+    // 真实可用列表不包含注入的不可用值。
     expect(store.availableModels).not.toContain('saved:free')
     expect(store.availableModels).toContain('other:free')
-    // Component save gating: display includes selected but available does not.
+    // 组件保存门槛:展示列表含选中项而可用列表不含。
     const canSave = store.selectedModel !== null
       && store.allModels.includes(store.selectedModel)
       && (store.availableModels.length > 0
@@ -140,7 +143,7 @@ describe('persisted model restoration', () => {
     expect(isUnavailable).toBe(true)
     const canSave = store.baseUrl.trim().length > 0 && selected.length > 0 && !isUnavailable
     expect(canSave).toBe(false)
-    // Manual mode is unaffected: same selected value in manual mode saves.
+    // 手动模式不受影响:同样的选中值在手动模式下可以保存。
     store.manualModel = true
     const manualBlocked = store.manualModel
       ? false

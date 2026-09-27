@@ -12,6 +12,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+/**
+ * 文件名:RunProgressAssemblerTest.java
+ *
+ * 测试目标:验证 RunProgressAssembler 把运行事件装配为进度视图——空事件产生空视图、
+ * 只装配白名单事件且非 note 事件不暴露任何 payload 内容、取最新的 summary、
+ * 步骤数量截断到最新的 MAX_STEPS 窗口。
+ */
 class RunProgressAssemblerTest {
 
     private final AgentRunEventService eventService = mock(AgentRunEventService.class);
@@ -46,7 +53,7 @@ class RunProgressAssemblerTest {
         assertThat(note.event()).isEqualTo(RunProgressRecorder.PROCESS_NOTE_EVENT);
         assertThat(note.summary()).isEqualTo("需求要点整理完成，共 2 条");
         assertThat(note.items()).containsExactly("要点一", "要点二");
-        // Non-note events expose no payload content at all.
+        // 非 note 事件不暴露任何 payload 内容。
         assertThat(view.steps().get(0).summary()).isNull();
         assertThat(view.steps().get(0).items()).isNull();
     }

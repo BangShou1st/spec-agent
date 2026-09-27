@@ -33,11 +33,11 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Stage support-matrix contract (hardening): every action family the
- * response validator accepts receives a deterministic policy verdict, and
- * every verdict that persists a PROPOSED proposal corresponds to an
- * acceptance that executes successfully. A proposal the user can accept but
- * whose acceptance is guaranteed to fail must not be able to exist.
+ * 文件名:ActionFamilyContractIntegrationTest.java
+ *
+ * 测试目标:验证动作族支持矩阵契约(加固)——响应校验器接受的每个动作族都必须获得
+ * 确定性的 policy 判定,且每个会持久化 PROPOSED 提案的判定都必须对应一次能成功执行的
+ * 接受操作。"用户可接受但接受必然失败"的提案不允许存在。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -107,8 +107,7 @@ class ActionFamilyContractIntegrationTest {
 
     @Test
     void everyValidatorAcceptedFamilyHasADeterministicVerdict() {
-        // Keep this loop closed over the Java enum so adding a validator family
-        // cannot silently bypass the runtime policy matrix.
+        // 遍历必须封闭在 Java 枚举之上:新增校验器动作族时不允许悄悄绕过运行时策略矩阵。
         for (ActionFamily family : ActionFamily.values()) {
             PolicyDecision decision = verdict(family.code(), payloadFor(family), tip.id());
             switch (family) {
@@ -124,11 +123,11 @@ class ActionFamilyContractIntegrationTest {
             }
         }
 
-        // CONTINUATION topology belongs to the continuation commands.
+        // CONTINUATION 拓扑属于续写命令的职责。
         assertThat(verdict("CONNECT_NODE",
                 Map.of("relationClass", "CONTINUATION"), tip.id()).denyReason()).isNotBlank();
 
-        // Unknown / external capabilities stay denied.
+        // 未知/外部能力保持拒绝。
         assertThat(verdict("INVOKE_CAPABILITY",
                 Map.of("capabilityId", "no.such.capability"), tip.id()).denyReason()).isNotBlank();
     }
@@ -145,9 +144,8 @@ class ActionFamilyContractIntegrationTest {
         assertThat(result.actionFamily()).isEqualTo("INVOKE_CAPABILITY");
         assertThat(proposalService.getProposal(pending.id()).orElseThrow().status())
                 .isEqualTo(ProposalStatus.ACCEPTED);
-        // An effect-free capability acceptance must NOT record the
-        // non-reversible ACCEPT_AGENT_PROPOSAL barrier — it has no graph
-        // effect, so it must never lock the undo history.
+        // 无副作用的能力接受操作不得记录不可回退的 ACCEPT_AGENT_PROPOSAL 屏障
+        // ——它没有图效果,绝不能锁死 undo 历史。
         assertThat(commandService.listOperations(project.id()))
                 .noneSatisfy(op -> assertThat(op.type())
                         .isEqualTo(GraphOperation.Type.ACCEPT_AGENT_PROPOSAL));
@@ -161,8 +159,8 @@ class ActionFamilyContractIntegrationTest {
                 Map.of("capabilityId", "test.local_durable",
                        "arguments", Map.of("nodeRef", "node:" + resource.id())));
 
-        // The endpoint node is retracted before acceptance; acceptance must
-        // reject instead of executing against dead graph state.
+        // 端点节点在接受之前被撤回;接受操作必须拒绝,
+        // 而不是对着已经失效的图状态执行。
         nodeService.setRetracted(resource.id(), true);
 
         org.assertj.core.api.Assertions.assertThatThrownBy(
@@ -174,9 +172,8 @@ class ActionFamilyContractIntegrationTest {
 
     @Test
     void nonTipAnchorMutationsNeverBecomeAcceptableProposals() {
-        // A historical anchor confirms under policy (not append-only), but
-        // acceptance requires the anchor to still be the route tip — so the
-        // proposal-creating call sites must not persist one.
+        // 历史锚点在 policy 下会走"需确认"(非 append-only),但接受操作要求锚点
+        // 仍然是路线 tip——所以创建提案的调用方绝不能持久化这种提案。
         ActionProposal createAtHistory = new ActionProposal("CREATE_NODE", knowledgePayload(),
                 UUID.randomUUID(), "hash", List.of(), UUID.randomUUID(),
                 "idem-" + UUID.randomUUID(), List.of());
@@ -187,7 +184,7 @@ class ActionFamilyContractIntegrationTest {
         assertThat(policyEngine.canProduceAcceptableProposal(createAtHistory, historicalContext))
                 .isFalse();
 
-        // At the live tip the same family is acceptable after confirmation.
+        // 在存活 tip 上,同一动作族确认之后是可接受的。
         assertThat(policyEngine.canProduceAcceptableProposal(
                 new ActionProposal("CREATE_NODE", knowledgePayload(), UUID.randomUUID(),
                         "hash", List.of(), UUID.randomUUID(), "idem-x", List.of()),

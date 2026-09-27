@@ -1,3 +1,6 @@
+// 文件名:WorkspaceView.spec.ts
+// 用途:工作台主页面集成测试:mock 各 API 与 GraphCanvas(stub),
+//       验证外壳的装配与数据流转(路线列表/图/需求状态/运行命令/Spec 导出)。
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
@@ -65,8 +68,8 @@ const mockedGetAgentRun = vi.mocked(getAgentRun)
 const mockedListRouteSpecs = vi.mocked(listRouteSpecs)
 
 /**
- * GraphCanvas stub: real Vue Flow cannot render in jsdom; the shell tests
- * cover wiring while GraphCanvas.spec covers canvas behavior itself.
+ * GraphCanvas 替身:真实 Vue Flow 无法在 jsdom 中渲染;外壳测试只覆盖装配接线,
+ * 画布行为本身由 GraphCanvas.spec 覆盖。
  */
 const locateSpy = vi.fn()
 const GraphCanvasStub = defineComponent({

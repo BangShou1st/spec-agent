@@ -1,11 +1,13 @@
 package com.specagent.workspace.route;
 
 /**
- * Route lifecycle status.
+ * 文件名:RouteLifecycleStatus.java
  *
- * <p>Note: {@code active} is NOT a lifecycle status. The current working route
- * is expressed by {@code Project.activeRouteId}. A route may be {@code open}
- * without being the active route.
+ * 用途:路线生命周期状态枚举。
+ *
+ * 注意:{@code active} 不是一个生命周期状态。当前工作路线由
+ * {@code Project.activeRouteId} 表达;一条路线可以是 {@code open},
+ * 但并不一定是活跃路线。
  */
 public enum RouteLifecycleStatus {
     OPEN,

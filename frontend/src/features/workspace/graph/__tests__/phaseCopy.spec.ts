@@ -1,3 +1,5 @@
+// 文件名:phaseCopy.spec.ts
+// 用途:运行阶段文案映射的单元测试:验证已知阶段到中文文案的映射、未知阶段不泄漏原始阶段名,以及终态阶段判定。
 import { describe, it, expect } from 'vitest'
 import { phaseToCopy, isTerminalPhase } from '@/features/workspace/graph/phaseCopy'
 

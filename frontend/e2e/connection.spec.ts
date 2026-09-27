@@ -1,6 +1,5 @@
-import { test, expect, type Page } from '@playwright/test'
-import { buildThreeNodeLineage, clickCanvasBlank, closeFloatingWorkspaceWindows, createProject, fitGraph } from './helpers'
 
+import { test, expect, createProject, fitGraph, closeFloatingWorkspaceWindows, clickCanvasBlank, buildThreeNodeLineage, type Page } from './helpers'
 /**
  * 真实 Chromium mouse drag: source handle → target handle 只产生 Pending
  * Relation Proposal。此时 backend 没有任何变化(relations = 0)；用户选择

@@ -8,8 +8,11 @@ import org.springframework.stereotype.Component;
 import java.util.UUID;
 
 /**
- * Runtime implementation of {@link RunProjectLookup} backed by durable AgentRun
- * persistence. Lives in the runtime package where repository access is permitted.
+ * 文件名:AgentRunProjectLookup.java
+ *
+ * 用途:{@link RunProjectLookup} 的 runtime 侧实现,基于持久化的 AgentRun
+ * 查询某个 run 所属的项目 ID。放在 runtime 包内是因为这里允许访问 repository,
+ * 供 broker 等外层通过端口接口调用。
  */
 @Component
 public class AgentRunProjectLookup implements RunProjectLookup {

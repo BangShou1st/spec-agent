@@ -1,10 +1,11 @@
-"""C2 deterministic cross-checks (Architecture Section 11, checks 1-8).
+"""文件名:validation_v2.py
 
-Input must already be C1-clean. Returns a list of C2 violation codes;
-empty means clean. The validator rejects machine-verifiable
-contradictions only: it never judges novelty, and it cannot read claim
-text, so a CONFIRMED authorization citation is accepted on target status
-alone (documented limitation; text-content truth stays a model duty).
+C2 确定性交叉校验(架构文档第 11 节,检查项 1-8)。
+
+输入必须已通过 C1。返回 C2 违规码列表;为空即通过。校验器只拒绝
+机器可验证的矛盾:不判断新颖性,也无法读取 claim 文本,因此
+CONFIRMED 授权引用仅按目标状态判定即可通过(已记录的局限;
+文本内容的真实性仍由模型负责)。
 """
 from __future__ import annotations
 
@@ -27,11 +28,10 @@ def _descriptors(model_input: dict) -> dict:
 
 
 def project_risk(descriptor: dict):
-    """Mechanical descriptor -> riskLevel projection (Section 8 table).
+    """机械的描述符 -> riskLevel 投影(按第 8 节表格)。
 
-    Returns None when the descriptor matches no known row (reserved or
-    novel side-effect class): the validator cannot project, which is
-    itself a C2 condition for e=true.
+    描述符匹配不到任何已知行(保留或新的副作用类别)时返回 None:
+    校验器无法投影,这本身就是 e=true 时的一个 C2 条件。
     """
     if not isinstance(descriptor, dict):
         return None
@@ -48,7 +48,7 @@ def project_risk(descriptor: dict):
 
 
 def _claim_entry(model_input: dict, ref: str):
-    """Resolve a claim: ref to its claim dict, or None."""
+    """把 claim: 引用解析到对应的 claim 字典,失败返回 None。"""
     snap = _snapshot(model_input)
     if ref.startswith("claim:effective/"):
         try:
@@ -123,18 +123,18 @@ def _cited_claim_refs(block: dict) -> list:
 
 
 def check_c2(state: dict, model_input: dict) -> list:
-    """Run C2 checks 1-8. Returns violation codes (empty = clean)."""
+    """执行 C2 检查项 1-8。返回违规码列表(为空即通过)。"""
     viol: list = []
     u = state["userInputRequired"]["value"]
     e = state["externalStepRequired"]["value"]
     d = state["directResponseSufficient"]["value"]
     n = state["newDurableKnowledgePresent"]["value"]
 
-    # Check 1: reference goal match.
+    # 检查项 1:与参考目标一致。
     if state.get("goalType") != derive_reference_goal_type(model_input):
         viol.append("C2:GOAL_MISMATCH")
 
-    # Checks 2-3: mutual exclusion.
+    # 检查项 2-3:互斥。
     if u and d:
         viol.append("C2:MUTEX_UD")
     if u and e:
@@ -142,7 +142,7 @@ def check_c2(state: dict, model_input: dict) -> list:
     if u and n:
         viol.append("C2:MUTEX_UN")
 
-    # Checks 4-6: capability binding, risk, threshold, auth.
+    # 检查项 4-6:能力绑定、风险、门槛、授权。
     if e:
         assess = state["externalStepRequired"].get("capabilityAssessment")
         descs = _descriptors(model_input)
@@ -157,17 +157,17 @@ def check_c2(state: dict, model_input: dict) -> list:
                 viol.append("C2:CANNOT_PROJECT_RISK")
             elif assess.get("riskLevel") != projected:
                 viol.append("C2:RISK_MISMATCH")
-            # No-splicing: every capability: ref in the e block names cap_id.
+            # 禁止拼接引用:e 块中的每个 capability: 引用都必须指向 cap_id。
             for ref in state["externalStepRequired"].get("evidenceRefs",
                                                          []):
                 if ref.startswith("capability:") and \
                         ref != "capability:" + str(cap_id):
                     viol.append("C2:SPLICED_EVIDENCE")
                     break
-            # Necessity gate.
+            # 必要性门槛。
             if assess.get("executionNecessity") != "REQUIRED_NOW":
                 viol.append("C2:NEEDS_REQUIRED_NOW")
-            # Threshold row (check 4/5 machinery, incl. ADVISOR escape).
+            # 门槛表(检查项 4/5 的机制,含 ADVISOR 例外)。
             risk = assess.get("riskLevel")
             args = assess.get("argumentCompleteness")
             auth = assess.get("authorizationStatus")
@@ -186,7 +186,7 @@ def check_c2(state: dict, model_input: dict) -> list:
             elif risk == "EXTERNAL_IRREVERSIBLE":
                 if args != "GROUNDED" or auth != "CONFIRMED":
                     viol.append("C2:IRREVERSIBLE_ROW")
-            # Argument citation presence (deterministic half of hybrid).
+            # 参数引用存在性(混合校验中可确定的那一半)。
             cited = [r for r in _cited_claim_refs(
                 state["externalStepRequired"])
                 if _claim_entry(model_input, r) is not None]
@@ -194,7 +194,7 @@ def check_c2(state: dict, model_input: dict) -> list:
                 viol.append("C2:ARGS_UNCITED")
             if args == "MISSING" and cited:
                 viol.append("C2:ARGS_CONTRADICTION")
-            # Authorization citation (check 6): path A or path B.
+            # 授权引用(检查项 6):路径 A 或路径 B 二选一。
             if auth == "CONFIRMED":
                 path_a = any(
                     _is_confirmed(_claim_entry(model_input, r))
@@ -208,7 +208,7 @@ def check_c2(state: dict, model_input: dict) -> list:
                 if not (path_a or path_b):
                     viol.append("C2:FAKE_AUTH")
 
-    # Check 7: direct grounding + citation.
+    # 检查项 7:直接响应的依据与引用。
     if d:
         if derive_reference_goal_type(model_input) != \
                 "PRODUCE_DIRECT_RESPONSE":
@@ -223,7 +223,7 @@ def check_c2(state: dict, model_input: dict) -> list:
                        _iter_input_claims(model_input)):
                 viol.append("C2:DIRECT_UNGROUNDED")
 
-    # Check 8: WAIT implies quiet flags.
+    # 检查项 8:WAIT 要求四个标志全部为 false。
     if state.get("goalType") == "WAIT_FOR_RUNTIME_DEPENDENCY":
         if u or e or d or n:
             viol.append("C2:WAIT_NONQUIET")

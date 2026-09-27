@@ -1,7 +1,9 @@
-"""Golden-fixture contract tests shared with the Java side.
+"""文件名:test_contracts.py
 
-The fixtures under ``contracts/fixtures`` are the single cross-language
-authority: valid ones must parse, ``invalid`` ones must be rejected.
+用途:与 Java 侧共享的 golden fixture 契约测试。
+
+``contracts/fixtures`` 下的 fixture 是跨语言的唯一权威:合法的必须能解析,
+``invalid`` 的必须被拒绝。
 """
 
 import copy
@@ -36,7 +38,7 @@ def test_valid_request_fixture_parses():
     assert str(envelope.run_id) == "22222222-2222-2222-2222-222222222222"
     assert envelope.snapshot.metadata.project_title == "内部工单系统探索"
     assert len(envelope.snapshot.lineage) == 2
-    # Phase 4: legacy fixtures without availableSkills parse to an empty catalog.
+    # Phase 4:不含 availableSkills 的旧 fixture 解析为空目录。
     assert envelope.snapshot.available_skills.skills == []
     assert envelope.snapshot.available_skills.truncated is False
 
@@ -55,7 +57,7 @@ def test_skill_catalog_round_trips_with_fingerprint():
     reparsed = parse_request_envelope(payload)
     assert [s.skill_id for s in reparsed.snapshot.available_skills.skills] == ["sk-1"]
     assert reparsed.snapshot.available_skills.fingerprint == "fp-1"
-    # Unknown skill fields still fail closed.
+    # 未知的 skill 字段仍然 fail-closed。
     bad = copy.deepcopy(payload)
     bad["snapshot"]["availableSkills"]["skills"][0]["filesystemPath"] = "/tmp/x"
     with pytest.raises(ValidationError):
@@ -63,28 +65,28 @@ def test_skill_catalog_round_trips_with_fingerprint():
 
 
 def test_routeless_node_query_fixture_parses_with_null_route_ids():
-    # A NODE_QUERY against a Floating (routeless) Graph node is the one
-    # semantic flow allowed to carry null route ids; see Stage C NODE_QUERY
-    # routeless nullability in contracts/README.md.
+    # 对 Floating(无路由)Graph 节点的 NODE_QUERY 是唯一允许携带 null
+    # route id 的语义流程;见 contracts/README.md 中 Stage C 的 NODE_QUERY
+    # 无路由可空性说明。
     envelope = parse_request_envelope(
         _load("agent-input-routeless-node-query-valid.json"))
     assert envelope.event.kind == "NODE_QUERY"
     assert envelope.snapshot.route_id is None
     assert envelope.snapshot.route_context.route_id is None
-    # The route-bound mirror must still be required for normal flows: the
-    # baseline fixture's route ids stay present and parseable.
+    # 绑定路由的镜像字段在普通流程中仍为必填:基线 fixture 的 route id
+    # 保持存在且可解析。
     baseline = parse_request_envelope(_load("agent-input-valid.json"))
     assert baseline.snapshot.route_id is not None
     assert baseline.snapshot.route_context.route_id is not None
-    # Routeless shape must never invent a ``route:`` source ref.
+    # 无路由形态绝不允许发明 ``route:`` source ref。
     for ref in envelope.snapshot.allowed_source_refs:
         assert not ref.startswith("route:")
 
 
 def test_node_query_semantic_context_fixture_parses_with_bounded_one_hop():
-    # Stage C bounded 1-hop semantic context: relations preserve direction,
-    # relatedNodes carry the actual projected node body, node:<relatedId> is a
-    # first-class allowedSourceRef, and the related node never enters lineage.
+    # Stage C 有界的 1-hop 语义上下文:relations 保留方向,relatedNodes
+    # 携带真实投影后的节点 body,node:<relatedId> 是一等公民的
+    # allowedSourceRef,且相关节点绝不进入 lineage。
     envelope = parse_request_envelope(
         _load("agent-input-node-query-semantic-context-valid.json"))
     assert envelope.event.kind == "NODE_QUERY"
@@ -102,11 +104,11 @@ def test_node_query_semantic_context_fixture_parses_with_bounded_one_hop():
     assert str(ref.node_id) == "06000000-0000-0000-0000-000000000006"
     assert ref.relation_type == "SUPPORTS"
     assert ref.direction == "OUTGOING"
-    # The related node's real body content travels on the wire.
+    # 相关节点的真实正文内容会随线上格式传输。
     assert "离线队列容量上限 2048 条" in ref.node.body.text
     assert ref.node.kind == "RESOURCE"
 
-    # Related node is a source ref and stays out of the lineage.
+    # 相关节点是一个 source ref,并且不进入 lineage。
     assert "node:06000000-0000-0000-0000-000000000006" in envelope.snapshot.allowed_source_refs
     assert len(envelope.snapshot.lineage) == 1
     assert envelope.snapshot.lineage[0].node.id != ref.node_id
@@ -249,10 +251,9 @@ def test_invalid_decision_response_fixtures_are_rejected(fixture_name: str):
 @pytest.mark.parametrize(
     "fixture_name",
     [
-        # These two are structurally valid envelopes: the invented source ref
-        # and stale base context are semantic violations rejected by the Java
-        # fail-closed validator (and pre-checked by the brain engine itself),
-        # not schema violations.
+        # 这两个 fixture 在结构上是合法的信封:捏造的 source ref 与过期的
+        # base context 属于语义违规,由 Java 的 fail-closed 校验器拒绝
+        # (brain 引擎自身也会预检),不属于 schema 违规。
         "decision-response-invalid-invented-source-ref.json",
         "decision-response-invalid-stale-base-context.json",
     ],
@@ -269,8 +270,8 @@ def test_state_update_response_fixture_parses():
 
 
 def test_runtime_owned_claim_id_is_rejected():
-    # The brain must never emit runtime-owned identity fields; the strict
-    # model rejects the unknown key instead of silently accepting it.
+    # brain 绝不能产出 runtime 持有的标识字段;严格模型拒绝这个未知键,
+    # 而不是悄悄接受。
     payload = _load("state-update-response-invalid-runtime-owned-id.json")
     with pytest.raises(ValidationError):
         AgentV2ResponseEnvelope.model_validate(payload)
@@ -284,10 +285,10 @@ def test_fake_model_constants_match_golden_fixtures():
 
 
 def test_observation_entries_shaped_like_objects_are_coerced_to_strings():
-    # With longer contexts the model sometimes mimics the observation entries
-    # it was shown and emits objects instead of strings. Reflection entries
-    # are not a trust boundary, so the contract coerces them deterministically
-    # instead of failing the whole DECISION cycle as brain_unavailable.
+    # 上下文变长后,模型有时会模仿它看到过的 observation 条目,输出对象
+    # 而不是字符串。reflection 条目不属于信任边界,所以契约对它们做
+    # 确定性的字符串化,而不是让整个 DECISION 周期以 brain_unavailable
+    # 的形式失败。
     view = ObservationView.model_validate({
         "known": [
             {"sourceRef": "answer:28f1", "excerpt": "用户要做技术设计评审"},
@@ -310,10 +311,9 @@ def test_observation_entry_object_without_text_content_is_rejected():
 
 
 # ---------------------------------------------------------------------------
-# Routeless NODE_QUERY contract: only NODE_QUERY may use null route ids, and
-# snapshot.routeId / snapshot.routeContext.routeId must always agree. These
-# tests are derived programmatically from the existing valid fixtures; the
-# golden fixtures themselves stay untouched.
+# 无路由 NODE_QUERY 契约:只有 NODE_QUERY 可以使用 null route id,且
+# snapshot.routeId / snapshot.routeContext.routeId 必须始终一致。这些测试
+# 由现有合法 fixture 程序化派生;golden fixture 本身保持不动。
 # ---------------------------------------------------------------------------
 
 _ANSWER_BOUND = _load("agent-input-valid.json")
@@ -356,7 +356,7 @@ def test_initial_with_null_route_id_is_rejected():
 
 
 def test_node_query_with_only_snapshot_route_id_null_is_rejected():
-    # Mixed state: snapshot null, routeContext has a UUID.
+    # 混合状态:snapshot 为 null,routeContext 有 UUID。
     payload = copy.deepcopy(_ROUTELESS)
     _set_route_ids(
         payload,
@@ -368,7 +368,7 @@ def test_node_query_with_only_snapshot_route_id_null_is_rejected():
 
 
 def test_node_query_with_only_route_context_route_id_null_is_rejected():
-    # Mixed state: snapshot has a UUID, routeContext null.
+    # 混合状态:snapshot 有 UUID,routeContext 为 null。
     payload = copy.deepcopy(_ROUTELESS)
     _set_route_ids(
         payload,
@@ -380,7 +380,7 @@ def test_node_query_with_only_route_context_route_id_null_is_rejected():
 
 
 def test_route_bound_node_query_with_mismatched_route_ids_is_rejected():
-    # NODE_QUERY with two non-null but unequal route ids must be rejected.
+    # NODE_QUERY 两个 route id 都非空但不相等,必须被拒绝。
     payload = copy.deepcopy(_ROUTELESS)
     _set_route_ids(
         payload,

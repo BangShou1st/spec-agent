@@ -1,12 +1,16 @@
+<!--
+  文件名:ProviderModelField.vue
+  用途:所有 Provider 卡片共用的模型选择字段:可选"仅免费"过滤、模型目录下拉,
+       并覆盖目录的两种状态(为空;保存了 Provider 已不再提供的模型)。
+       收口在一个组件里,避免三张卡片对同一种情形长出不同文案与规则。
+-->
 <script setup lang="ts">
 /**
- * The model-selection field every provider card shares: an optional 仅免费
- * filter, the catalog select, and the two states a catalog can be in (empty,
- * or holding a saved selection the provider no longer exposes).
+ * 所有 Provider 卡片共用的模型选择字段:可选的「仅免费」过滤、
+ * 模型目录下拉,以及目录的两种状态(为空;或保存了该 Provider 已不再提供的模型)。
  *
- * Keeping this in one component is what stops the three cards from slowly
- * growing different placeholder text, different disabled rules and different
- * warning copy for the same situation.
+ * 把这些收口在一个组件里,正是为了防止三张卡片对同一种情形
+ * 慢慢长出不同的占位文案、不同的禁用规则和不同的警告文案。
  *
  * 「仅免费」开关原为独立组件 FreeOnlyToggle，但它只有本字段一个消费者、没有
  * 自身状态与独立测试，属无转发价值的包装，故内联在这里；渲染出的 DOM、class
@@ -23,7 +27,7 @@ withDefaults(defineProps<{
   placeholder?: string
   /** 拉取中：此时列表为空只代表「还没到」，不代表「没有」。 */
   loading?: boolean
-  /** Renders the 仅免费 checkbox when the caller owns that filter. */
+  /** 由调用方持有"仅免费"过滤状态时,渲染该复选框。 */
   freeOnly?: boolean
   freeToggleId?: string
 }>(), {

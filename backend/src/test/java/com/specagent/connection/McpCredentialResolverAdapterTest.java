@@ -22,12 +22,13 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
- * Issue #14 credential-seam regression: the MCP runtime resolves connection
- * credentials through the MCP-owned {@link com.specagent.mcp.runtime.McpCredentialResolver}
- * port, never the SecretStore directly. Blank refs and vanished credential
- * rows stay unauthenticated (null auth header), an existing ref produces the
- * historical "Bearer &lt;token&gt;" header, and plaintext never appears in
- * any message or projection.
+ * 文件名:McpCredentialResolverAdapterTest.java
+ *
+ * 测试目标:验证 Issue #14 凭据接缝回归——MCP 运行时通过 MCP 自有的
+ * {@link com.specagent.mcp.runtime.McpCredentialResolver} 端口解析连接凭据,
+ * 绝不直接依赖 SecretStore。空引用与凭据行消失时保持未认证(auth header
+ * 为 null),存在的引用生成历史的 "Bearer &lt;token&gt;" 请求头,明文
+ * 绝不出现在任何消息或投影中。
  */
 @ExtendWith(MockitoExtension.class)
 class McpCredentialResolverAdapterTest {

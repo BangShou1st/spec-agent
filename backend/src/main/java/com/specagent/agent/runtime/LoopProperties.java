@@ -4,21 +4,22 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
 /**
- * Autonomous continuation chain budget.
+ * 文件名:LoopProperties.java
  *
- * <p>{@code maxCycles} is the total number of AgentRuns allowed in one
- * autonomous continuation chain, chain root included. It bounds execution
- * volume only; it never judges when the model should stop reasoning.
+ * 用途:自治续跑链的预算配置(对应 {@code spec.agent.loop} 前缀)。
+ *
+ * {@code maxCycles} 是一条自治续跑链允许的 AgentRun 总数,链根也计入。
+ * 它只限制执行轮数,绝不判断模型何时"应该"停止推理。
  */
 @Component
 @ConfigurationProperties(prefix = "spec.agent.loop")
 public class LoopProperties {
 
     /**
-     * Total runs per chain: root (cycle 0) plus continuations. A child may
-     * be created exactly while {@code cycleIndex + 1 < maxCycles}, so the
-     * remaining budget derives deterministically from the persisted cycle
-     * index and this setting — no remaining-budget counter is stored.
+     * 每条链的 run 总数:链根(第 0 轮)加所有续跑。只要
+     * {@code cycleIndex + 1 < maxCycles} 就恰好可以创建一个子 run,因此
+     * 剩余预算由持久化的 cycle index 与本配置确定性推导——不需要额外存储
+     * 剩余预算计数器。
      */
     private int maxCycles = 3;
 

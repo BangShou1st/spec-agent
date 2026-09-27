@@ -7,14 +7,16 @@ import java.util.Map;
 import java.util.TreeMap;
 
 /**
- * Live evaluation aggregation with behavioral quality and provider
- * reliability kept as separate dimensions.
+ * 文件名:LiveStabilitySummary.java
  *
- * <p>{@code passed}, {@code failed}, and {@code passRate} are behavioral
- * values over attempts that completed the behavioral pipeline. Provider or
- * transport failures are exposed through {@code infrastructureFailed} and
- * {@code providerFailureClasses}; they are never included in behavioral
- * failure counts.</p>
+ * 用途:live 评测的聚合报告,把"行为质量"与"provider 可靠性"保持为
+ * 两个独立维度。{@code passed} / {@code failed} / {@code passRate} 只统计
+ * 走完行为流水线的尝试;provider 或传输失败通过 {@code infrastructureFailed}
+ * 与 {@code providerFailureClasses} 呈现,绝不计入行为失败。另含可用率、
+ * 稳定性(重复间结果是否一致)以及 token / 延迟 / 调用开销统计。
+ *
+ * 协作:从 {@link ObservationEnvelope} 列表聚合,依赖
+ * {@link LiveFailureClassifier} 区分基础设施失败与行为失败。
  */
 public record LiveStabilitySummary(
         int plannedAttempts,
@@ -37,7 +39,7 @@ public record LiveStabilitySummary(
         Map<String, String> scenarioResults,
         List<String> notes) {
 
-    /** Compatibility overload: observed attempts are the planned set. */
+    /** 兼容重载:观察到的尝试即计划集合。 */
     public static LiveStabilitySummary from(List<ObservationEnvelope> attempts,
                                             int repetitionsPerVariant) {
         return from(attempts, repetitionsPerVariant,
@@ -45,8 +47,8 @@ public record LiveStabilitySummary(
     }
 
     /**
-     * Aggregates repeated live observations. The planned count is supplied by
-     * the suite so missing attempts remain visible in availability reporting.
+     * 聚合多次重复的 live 观察。计划数由测试套件提供,这样缺失的尝试
+     * 在可用率报告中仍然可见。
      */
     public static LiveStabilitySummary from(List<ObservationEnvelope> attempts,
                                             int repetitionsPerVariant,
@@ -123,16 +125,14 @@ public record LiveStabilitySummary(
         double passRate = behavioralCompleted == 0
                 ? 0.0 : (double) passed / behavioralCompleted;
         double layerARate = executed == 0 ? 0.0 : (double) layerAPassed / executed;
-        // A provider is available for an attempt only when the behavioral
-        // pipeline completed. Runtime/domain failures remain executed
-        // observations but do not reduce provider availability; missing or
-        // infrastructure-failed attempts do.
+        // 只有行为流水线走完,该次尝试才算 provider 可用。运行时/领域失败
+        // 仍算已执行的观察,但不降低 provider 可用率;缺失或基础设施失败的
+        // 尝试才会降低。
         double availability = plannedAttempts <= 0 ? 0.0
                 : (double) behavioralCompleted / plannedAttempts;
 
-        // Stability is computed only from behavioral outcomes. A provider-only
-        // run has no behavioral denominator and therefore cannot be reported
-        // as stable.
+        // 稳定性只由行为结果计算。纯 provider 运行没有行为分母,
+        // 因此不能被报告为"稳定"。
         long unanimous = perKey.values().stream()
                 .filter(outcomes -> outcomes.stream().distinct().count() == 1)
                 .count();

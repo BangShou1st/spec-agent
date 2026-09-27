@@ -14,9 +14,11 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * The assistant may start a Skill import, never finish one. These cases pin
- * that boundary: staging is a reviewable row, ambiguity is asked back to the
- * user, and invalid arguments never reach the import service at all.
+ * 文件名:SkillImportCapabilityTest.java
+ *
+ * 测试目标:助手可以发起 Skill 导入,但绝不能替用户完成导入。
+ * 这些用例钉死这条边界:暂存只是落一条待人工审查的记录、
+ * 有歧义时把选择交还给用户,非法参数则根本不会触及导入服务。
  */
 class SkillImportCapabilityTest {
 
@@ -76,7 +78,7 @@ class SkillImportCapabilityTest {
         assertThat(result.content()).containsEntry("requiresChoice", true);
         assertThat(result.content()).containsEntry("candidateCount", 2);
         assertThat(result.content()).doesNotContainKey("stagedImportId");
-        // Nothing is staged while the user still has to choose.
+        // 用户尚未做出选择前,什么都不会被暂存。
         Mockito.verify(imports, Mockito.never())
                 .stageGit(Mockito.anyString(), Mockito.any(), Mockito.anyString());
     }

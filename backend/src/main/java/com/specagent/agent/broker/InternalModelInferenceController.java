@@ -31,16 +31,20 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Internal, authenticated model inference broker for the Python agent brain.
+ * 文件名:InternalModelInferenceController.java
  *
- * <p>This is not a product API. The brain calls it so provider transport is
- * never duplicated into Python: credentials, model selection and the frozen
- * OpenCode transport stay Java-side, and Python never receives a key.
+ * 用途:面向 Python agent Brain 的内部、需认证的模型推理 broker。
+ * 这不是产品 API。Brain 调用它,使 provider 传输层绝不在 Python 中重复:
+ * 凭据、模型选择和冻结的 OpenCode 传输都留在 Java 侧,Python 永远
+ * 拿不到任何密钥。
  *
- * <p>Safety requirements enforced here: shared internal secret (constant-time
- * compare), requests tied to a {@code runId} and closed call-type set, bounded
- * prompt size, no arbitrary URL/header forwarding, no provider fallback, no
- * hidden retry, and sanitized AgentRun events (call type + hashes only).
+ * 此处强制的安全要求:共享内部密钥(恒定时间比较)、请求必须绑定
+ * {@code runId} 且调用类型属于封闭集合、提示词大小有界、不转发任意
+ * URL/header、无 provider 回退、无隐藏重试,AgentRun 事件只记录
+ * 脱敏信息(仅调用类型 + 哈希)。
+ *
+ * 协作:Python Brain 在执行推理时调用本端点;Java 侧经
+ * ModelInferenceGateway 转发到 provider。
  */
 @RestController
 @RequestMapping("/internal/v1/model-inference")
@@ -89,9 +93,8 @@ public class InternalModelInferenceController {
         long startedAt = System.nanoTime();
         ModelInferenceResponse response;
         try {
-            // One project is one provider-side conversation: the run's owning
-            // project becomes the conversation identity, so every model call
-            // inside a project shares one session while request ids stay per call.
+            // 一个项目即一个 provider 侧会话:run 所属项目成为会话身份,
+            // 因此项目内的每次模型调用共享一个会话,而请求 id 仍按次区分。
             UUID conversationId = resolveConversationId(request.runId());
             response = gateway.complete(new ModelInferenceRequest(
                     request.runId(),
@@ -100,11 +103,11 @@ public class InternalModelInferenceController {
                             .map(message -> new ModelInferenceMessage(message.role(), message.content()))
                             .toList(),
                     request.maxOutputTokens(),
-                    ModelOutputContract.jsonObject(), // brain parses strictly as JSON; force structured output
+                    ModelOutputContract.jsonObject(), // brain 严格按 JSON 解析;强制结构化输出
                     conversationId));
         } catch (ModelGatewayException ex) {
             recordFailure(request, ex);
-            // Provider-neutral category only; provider payloads never leave here.
+            // 只返回 provider 中立的错误类别;provider 载荷绝不离开此处。
             return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(new ModelInferenceHttpResponse(
                     AgentProtocol.INFERENCE_PROTOCOL_VERSION, "", "error", null));
         }
@@ -128,9 +131,8 @@ public class InternalModelInferenceController {
     }
 
     /**
-     * Project affinity is a correlation detail, never a reason to fail a model
-     * call: an unresolvable project means the conversation simply falls back to
-     * the run.
+     * 项目亲和只是关联细节,绝不是模型调用失败的理由:项目无法解析时,
+     * 会话简单地回退为按 run 区分。
      */
     private UUID resolveConversationId(UUID runId) {
         try {

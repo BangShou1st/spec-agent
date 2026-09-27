@@ -9,21 +9,22 @@ import com.specagent.modelsettings.ModelProvidersService;
 import org.springframework.stereotype.Component;
 
 /**
- * Resolves the currently active model target as sanitized display
- * accounting ({@code providerLabel} + {@code modelId}) for message
- * attribution. Read-only and fail-safe: any resolution failure returns
- * {@code null} fields — attribution is cosmetic and must never break a run.
+ * 文件名:GlobalAssistantModelTargetResolver.java
  *
- * <p>The presets are NOT rows in {@code model_providers} (V37 keeps OpenCode
- * Zen and OpenRouter on their dedicated settings tables), so each provider
- * kind reads its model from the store the routing gateway actually uses:
- * OpenCode runtime settings, the OpenRouter status, and only CUSTOM from the
- * provider registry.
+ * 用途:解析当前激活的模型目标,产出脱敏后的展示信息
+ * ({@code providerLabel} + {@code modelId}),用于消息的模型归属展示。
+ * 只读且 fail-safe:任何解析失败都返回 {@code null} 字段——归属信息只是
+ * 装饰性的,绝不能因此打断一次运行。
+ *
+ * 各预设并不是 {@code model_providers} 表里的一行(V37 中 OpenCode Zen
+ * 与 OpenRouter 走各自专用的设置表),所以每种供应商都从路由网关实际读取的
+ * 存储里取模型:OpenCode 运行时设置、OpenRouter 状态,只有 CUSTOM
+ * 才查供应商注册表。
  */
 @Component
 public class GlobalAssistantModelTargetResolver {
 
-    /** Provider display label + selected model id, both nullable. */
+    /** 供应商展示名 + 所选模型 ID,两者都可能为 null。 */
     public record ModelTarget(String providerLabel, String modelId) {
     }
 
@@ -42,7 +43,7 @@ public class GlobalAssistantModelTargetResolver {
         this.openRouterSettings = openRouterSettings;
     }
 
-    /** Resolves the active target at call time; never throws. */
+    /** 调用时解析当前激活目标;绝不抛异常。 */
     public ModelTarget resolveActive() {
         try {
             ModelProvider active = providerSettings.activeProvider();
@@ -75,8 +76,8 @@ public class GlobalAssistantModelTargetResolver {
                 }
             }
         }
-        // Preset-style code-only activation: the first custom row is the one
-        // the routing gateway delegates to. Unconfigured -> null, not a throw.
+        // 预设式的仅代码激活:第一个 CUSTOM 行就是路由网关实际委托的对象。
+        // 未配置时返回 null,而不是抛异常。
         try {
             return providers.findFirstByPreset(ModelProvider.CUSTOM);
         } catch (RuntimeException ex) {

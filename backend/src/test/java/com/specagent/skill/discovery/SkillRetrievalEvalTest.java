@@ -9,16 +9,15 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Retrieval evaluation harness (deterministic, offline): pins recall-style
- * accounting for the small-catalog first version so later retriever swaps can
- * be measured against the same gates.
+ * 文件名:SkillRetrievalEvalTest.java
  *
- * <p>Definitions used here:
- * <ul>
- *   <li>Visibility recall: eligible fraction of the installed catalog.</li>
- *   <li>Retrieval Recall@K: retrieved fraction of the eligible set.</li>
- *   <li>Catalog cost: bounded entry count + bounded metadata bytes.</li>
- * </ul>
+ * 测试目标:检索评估基座(确定性、离线)——为小目录首版固定 recall 式
+ * 的度量口径,便于后续替换检索器时用同一组关卡衡量。
+ *
+ * 这里使用的定义:
+ * - Visibility recall:已安装目录中符合条件( eligible )的比例。
+ * - Retrieval Recall@K:符合条件集合中被检索到的比例。
+ * - Catalog cost:有界的条目数 + 有界的元数据字节数。
  */
 class SkillRetrievalEvalTest {
 
@@ -82,8 +81,8 @@ class SkillRetrievalEvalTest {
 
     @Test
     void searchRateIsZeroWhenCatalogFits() {
-        // Small catalogs never truncate, so skill.search is never exposed and
-        // the search invocation rate for this gate is zero by construction.
+        // 小目录绝不截断,因此 skill.search 永远不会暴露,
+        // 该关卡的搜索调用率按构造为零。
         List<SkillCatalogEntry> eligible = List.of(entry("sk-a", "x"));
         SkillCatalogProjector.Projection projection =
                 projector.project(eligible, false);
@@ -92,9 +91,9 @@ class SkillRetrievalEvalTest {
 
     @Test
     void largeCatalogSearchRecallAtKContainsTarget() {
-        // Baseline for future retriever swaps: 40 eligible, K=10, the target
-        // parked outside the automatic Top-24 must appear in search Recall@10.
-        // Gates relevance, not just retrieved.size() == K.
+        // 为将来替换检索器准备的基线:40 个符合条件、K=10,被排在自动
+        // Top-24 之外的目标必须出现在 search 的 Recall@10 中。
+        // 这里校验相关性,而不仅仅是 retrieved.size() == K。
         List<SkillCatalogEntry> eligible = new java.util.ArrayList<>();
         for (int i = 0; i < 39; i++) {
             eligible.add(new SkillCatalogEntry("sk-aaa-" + String.format("%02d", i),

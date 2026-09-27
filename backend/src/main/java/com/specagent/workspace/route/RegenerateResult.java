@@ -3,16 +3,16 @@ package com.specagent.workspace.route;
 import com.specagent.workspace.node.Node;
 
 /**
- * Deterministic result of a regenerate operation.
+ * 文件名:RegenerateResult.java
  *
- * <p>Carries the old route, the replacement route, and the replacement node.
- * The old route is marked superseded; the replacement route is open and active.
+ * 用途:replacement(重新生成)操作的确定性结果,携带旧路线、
+ * replacement 路线和 replacement 节点。旧路线会被标记为 superseded,
+ * replacement 路线处于 OPEN 且激活状态。
  *
- * <p>Historically this also carried a {@code ContextSnapshot}, but the
- * production replacement cycle never populated it (always {@code null}) and
- * never read it; the frozen regenerate context is built by the caller that
- * needs it (see {@code ReplacementCycleService}). The dead field was removed
- * to break the route -> context dependency edge.
+ * 历史上这里还携带过 {@code ContextSnapshot},但生产环境的 replacement
+ * 流程从未填充它(始终为 {@code null})也从未读取;冻结的重新生成上下文
+ * 由真正需要它的调用方构建(见 {@code ReplacementCycleService})。
+ * 移除这个死字段同时切断了 route -&gt; context 的依赖边。
  */
 public class RegenerateResult {
 

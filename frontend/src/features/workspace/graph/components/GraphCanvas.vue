@@ -1,3 +1,7 @@
+<!--
+  文件名:GraphCanvas.vue
+  用途:Graph-first 工作台画布:基于 Vue Flow 渲染投影后的节点/边,负责选择镜像、拖拽位置持久化、路线/节点定位、空项目占位与显式自动布局;绝不修改运行时(Runtime)状态。
+-->
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import {
@@ -38,25 +42,23 @@ import type {
   ContextualAiTarget,
   GraphNodeRuntimeState,
   GraphPendingProjection,
+  GraphRecoveryState,
+  UnresolvedFailure,
 } from '@/features/workspace/graph/graphProjection'
 import { useGraphUiStore } from '@/features/workspace/state/graphUiStore'
 import type { GraphWorkspaceView, SubmitAnswerRequest } from '@/shared/contracts/types'
 import { resolveRouteFocusIntent } from '@/features/workspace/graph/graphInteraction'
 
-/**
- * Graph-first workspace canvas (Phase 7.3).
+/*
+ * Graph-first 工作台画布(Phase 7.3)。
  *
- * Vue Flow owns viewport/rendering/selection/dragging; this component owns
- * the browser-only wiring: projection of canonical graph data, selection
- * mirroring, group-move persistence on drag stop, route/node location,
- * the empty-project placeholder and the explicit auto-layout command.
- * It never mutates Runtime state.
+ * Vue Flow 负责视口/渲染/选中/拖拽;本组件只负责浏览器侧的接线:canonical
+ * 图数据投影、选中镜像、拖拽结束时的成组位置持久化、路线/节点定位、
+ * 空项目占位与显式自动布局命令。它绝不修改运行时状态。
  *
- * All fit-style operations are deterministic: they compute the viewport
- * transform from the current projected node coordinates plus known/safe
- * fallback dimensions and apply it with setViewport. Vue Flow's
- * measurement-dependent `fitView` is deliberately not used so a refresh
- * can never fit against stale/absent node measurements.
+ * 所有 fit 类操作都是确定性的:从当前投影出的节点坐标加已知/安全兜底尺寸
+ * 计算视口 transform,再用 setViewport 应用。刻意不使用依赖节点测量的
+ * Vue Flow `fitView`,这样刷新绝不会基于过期/缺失的节点测量做适配。
  */
 const props = defineProps<{
   view: GraphWorkspaceView | null
@@ -64,9 +66,11 @@ const props = defineProps<{
   submitting: boolean
   drafting: boolean
   pending: boolean
-  /** Per-node runtime overlays for in-flight runs on existing nodes. */
+  /** 已有节点上进行中 run 的逐节点运行时覆盖层。 */
   runtimeByNode?: Record<string, GraphNodeRuntimeState>
-  /** Browser-only cards for runs whose target node does not exist yet. */
+  /** 任务级失败恢复:键 `${nodeId}::${routeId ?? '*'}`(共享节点不互覆盖)。 */
+  recoveryByNode?: Record<string, GraphRecoveryState>
+  /** 目标节点尚不存在时,为这些 run 生成仅浏览器端卡片。 */
   pendings?: GraphPendingProjection[]
   safeRegion?: import('@/features/workspace/graph/graphViewport').FitViewportRegion | null
 }>()
@@ -81,20 +85,20 @@ const emit = defineEmits<{
   'add-idea': []
   'add-resource': []
   'contextual-ai': [target: ContextualAiTarget]
-  'retry-pending': []
+  'retry-failure': [failure: UnresolvedFailure]
   'viewport-settled': []
   'activate-route': [routeId: string]
   /** 已回答的路线末端：沿该路线起草下一个问题（显式路线模式）。 */
   'draft-next': [routeId: string]
-  // A canvas drag (source handle → target handle) only raises a PENDING
-  // relation proposal; nothing is persisted until the user confirms a type
-  // and direction. This replaced the old "drag => immediate RELATED_TO".
+  // 画布拖线(源 handle → 目标 handle)只抛出一个 PENDING 关系提案;在用户
+  // 确认类型与方向之前不持久化任何东西。这取代了旧的"拖线 => 立即
+  // RELATED_TO"行为。
   'relation-proposal': [payload: { sourceNodeId: string; targetNodeId: string }],
-  /** Drag between a floating node and a routed node: attach intent. */
+  /** 浮动节点与已接入路线节点之间拖线:接入意图。 */
   'connect-floating': [payload: { floatingNodeId: string; anchorNodeId: string }]
-  // Vue Flow forwards the raw 'connect' event through <VueFlow @connect>;
-  // declaring it here silences the Vue "neither declared in the emits option
-  // nor as an onConnect prop" warning and documents the bridge.
+  // Vue Flow 会把原始 'connect' 事件通过 <VueFlow @connect> 透传;在这里
+  // 声明它可以消除 Vue 的"既未在 emits 选项声明也未作为 onConnect prop"
+  // 警告,同时记录这层桥接。
   connect: [connection: Connection]
   undo: []
   redo: []
@@ -104,11 +108,10 @@ const graphUi = useGraphUiStore()
 const vf = useVueFlow('spec-agent-graph-canvas')
 
 type FlowCanvasNode = Node<SpecAgentGraphNodeData, Record<string, never>, string>
-// shallowRef: Vue Flow already stores nodes/edges internally (and swaps the
-// array on every change batch), and the recursive Edge/GraphEdge types make
-// Vue's deep UnwrapRef instantiation explode (TS2589) when a .value is
-// passed to a helper. shallowRef keeps the exact types and matches Vue
-// Flow's own guidance for node/edge collections.
+// shallowRef:Vue Flow 已在内部保存节点/边(并且每次变更批次都会整体换数组),
+// 而递归的 Edge/GraphEdge 类型会让 Vue 的深度 UnwrapRef 实例化在把 .value
+// 传给辅助函数时爆栈(TS2589)。shallowRef 既保留精确类型,也符合 Vue Flow
+// 对节点/边集合的官方建议。
 const flowNodes = shallowRef<FlowCanvasNode[]>([])
 const flowEdges = shallowRef<Edge[]>([])
 const shiftSelecting = ref(false)
@@ -122,11 +125,11 @@ onUnmounted(() => {
   stopContainerResizeObserver()
 })
 
-/**
- * One-shot explicit Fit revalidation intent (ephemeral, per-component).
+/*
+ * 一次性的显式 Fit 重校验意图(临时的,组件级)。
  *
- * Declared before the projection watcher below: the watcher's immediate run
- * may call maybeRevalidatePendingFit, which reads this binding.
+ * 声明在下方的投影 watcher 之前:watcher 的 immediate 首次运行可能调用
+ * maybeRevalidatePendingFit,而后者会读取这个绑定。
  */
 interface PendingFitIntent {
   runId: string
@@ -157,46 +160,43 @@ const projection = computed(() => {
     },
     savedPositions: graphUi.nodePositions,
     runtimeByNode: props.runtimeByNode,
+    recoveryByNode: props.recoveryByNode,
     pendings: props.pendings,
   })
 })
 
-// Canonical refresh must never move existing nodes, and must never hand Vue
-// Flow's runtime state back to Vue Flow.
+// canonical 刷新绝不移动已有节点,也绝不把 Vue Flow 的运行时状态回写给
+// Vue Flow。
 //
-// `next.nodes` are pure projection descriptors (id / type / position / data /
-// dragHandle / class). Vue Flow merges each descriptor into its own internal
-// node with `Object.assign(internalNode, descriptor)`, so every key we do NOT
-// send through is preserved on the internal node: dimensions, handleBounds,
-// computedPosition, initialized, selected, dragging.
+// `next.nodes` 是纯投影描述符(id / type / position / data / dragHandle /
+// class)。Vue Flow 用 `Object.assign(internalNode, descriptor)` 把每个描述
+// 符合并进自己的内部节点,因此我们没有发过去的每个 key 都会在内部节点上
+// 保留:dimensions、handleBounds、computedPosition、initialized、selected、
+// dragging。
 //
-// Merging the previous local snapshot back in (`{ ...existing, ...node }`) was
-// the BUG-02 root cause. That snapshot is whatever `flowNodes` currently holds,
-// which may predate Vue Flow's measurement — in that case it carries
-// `dimensions: { width: 0, height: 0 }`, and writing it back zeroes the real
-// measurement. NodeWrapper then renders the node `visibility: hidden`, and
-// because the element's box never changes afterwards the ResizeObserver never
-// re-measures it, so the node stays hidden permanently (refresh, Fit View and
-// zoom cannot recover it).
+// 把上一次的本地快照合并回去(`{ ...existing, ...node }`)正是 BUG-02 的
+// 根因。那个快照是 `flowNodes` 当前持有的内容,可能早于 Vue Flow 的测量
+// ——此时它带着 `dimensions: { width: 0, height: 0 }`,写回去会把真实测量
+// 清零。NodeWrapper 于是以 `visibility: hidden` 渲染节点,而元素盒子之后
+// 不再变化,ResizeObserver 也就永远不会重新测量,节点从此永久隐藏
+// (刷新、Fit View、缩放都无法恢复)。
 watch(
   projection,
   (next) => {
     flowNodes.value = next.nodes.map((node) => ({ ...node }))
     flowEdges.value = next.edges.map((edge) => ({ ...edge }))
     adoptProjectedPositions()
-    // A pending → real replacement lands through the canonical projection;
-    // revalidate the explicit Fit once the real geometry is measurable.
+    // pending → 真实节点的替换经 canonical 投影落地;等真实几何可测量后
+    // 再重新校验显式 Fit。
     maybeRevalidatePendingFit()
   },
   { immediate: true },
 )
 
-// Real node measurement arrives through Vue Flow after the projection swap
-// (no fixed timeout): re-check the armed intent when dimensions change.
-// Measurement is Vue Flow's own state (see measuredSizeById), so this watches
-// Vue Flow's store; the update-node-internals handler covers the explicit
-// Vue Flow measurement event (jsdom-safe: both are no-ops without an armed
-// intent).
+// 投影替换后,真实的节点测量经由 Vue Flow 到达(不设固定超时):尺寸变化
+// 时重新检查已武装的意图。测量是 Vue Flow 自己的状态(见 measuredSizeById),
+// 所以这里监听 Vue Flow 的 store;update-node-internals 处理器覆盖显式的
+// Vue Flow 测量事件(jsdom 安全:没有武装意图时两者都是空操作)。
 watch(
   () => vf.nodes.value.map((node) => {
     const measured = (node as { dimensions?: Dimensions }).dimensions
@@ -207,23 +207,20 @@ watch(
   },
 )
 
-/**
- * Vue Flow reports measured node geometry through update-node-internals
- * after rendering/measuring. The measurement stays in Vue Flow's own store —
- * it is deliberately NOT copied into the local flow nodes, because those
- * descriptors are handed straight back to Vue Flow and would then overwrite
- * the measurement they were copied from (BUG-02). This handler only re-checks
- * an armed intent.
+/*
+ * Vue Flow 在渲染/测量后通过 update-node-internals 报告实测节点几何。
+ * 测量值保留在 Vue Flow 自己的 store 里——刻意不复制进本地 flow 节点,
+ * 因为那些描述符会原样交还给 Vue Flow,一旦带测量就会覆盖它们复制自的
+ * 测量值(BUG-02)。这个处理器只重新检查已武装的意图。
  */
 function onUpdateNodeInternals(_ids?: string[]): void {
   maybeRevalidatePendingFit()
 }
 
-/**
- * Stores browser-locally any position the projection just assigned for the
- * first time (first-ever layout or incremental new-node placement), so a
- * later canonical refresh recognizes those nodes as "existing" and never
- * re-lays them out. Positions are never sent to the backend.
+/*
+ * 把投影刚刚首次分配的位置(首次布局或增量新节点放置)保存到浏览器本地,
+ * 这样后续的 canonical 刷新会把这些节点识别为"已存在",绝不再重新布局。
+ * 位置绝不发送到后端。
  */
 function adoptProjectedPositions(): void {
   const toSave: Record<string, GraphPosition> = {}
@@ -250,9 +247,8 @@ function clearActiveNodeFitTimer(): void {
   }
 }
 
-/** Runtime commands identify canonical nodes; Vue Flow renders visual
- * instances. Resolve a command target through the Active route so a
- * Re-answer/Replace branch can still be located without guessing a route. */
+/** 运行时命令标识的是 canonical 节点;Vue Flow 渲染的是视觉实例。通过
+ * Active 路线解析命令目标,这样重新回答/替换分支也能被定位而不必猜测路线。 */
 function resolveFlowNodeId(nodeId: string): string {
   if (flowNodes.value.some((node) => node.id === nodeId)) {
     return nodeId
@@ -284,9 +280,8 @@ function nodeVisibilityFraction(nodeId: string): number {
   const top = target.position.y * vp.zoom + vp.y
   const right = left + width * vp.zoom
   const bottom = top + height * vp.zoom
-  // Floating windows overlay the canvas and never reserve layout space. Reveal
-  // therefore uses the actual canvas viewport rather than legacy sidebar
-  // geometry.
+  // 浮动窗口覆盖在画布上且从不预留布局空间,因此 reveal 以画布实际视口
+  // 为准,而不是旧版侧栏几何。
   const visibleWidth = Math.max(0, Math.min(right, canvasWidth) - Math.max(left, 0))
   const visibleHeight = Math.max(0, Math.min(bottom, canvasHeight) - Math.max(top, 0))
   const total = width * height * vp.zoom * vp.zoom
@@ -371,7 +366,7 @@ function measuredSizeById(): Map<string, Dimensions> {
   return measured
 }
 
-/** Converts current flow nodes into viewport inputs (measured size when known). */
+/** 把当前 flow 节点转换为视口计算输入(已知时用实测尺寸)。 */
 function collectViewportNodes(ids?: Set<string> | null): ViewportNode[] {
   const measured = measuredSizeById()
   const result: ViewportNode[] = []
@@ -390,19 +385,16 @@ function collectViewportNodes(ids?: Set<string> | null): ViewportNode[] {
   return result
 }
 
-/**
- * True viewport settlement contract.
+/*
+ * 真实的视口落定(settled)契约。
  *
- * - data-viewport-settled means the latest requested viewport transition
- *   has COMPLETED (not started).
- * - applyViewport increments a monotonic request id immediately but only
- *   exposes/advances the settled revision after setViewport's Promise
- *   resolves. While the Promise is pending, settled remains unchanged.
- * - A stale Promise (overlapping request) never marks a newer request as
- *   settled — checked via monotonic request ids.
- * - User-driven viewport-change-end (pan/zoom) is orthogonal and advances
- *   settled independently; programmatic setViewport transitions never
- *   double-count via that event for the same request id.
+ * - data-viewport-settled 表示最近一次请求的视口过渡已经"完成"(而非开始)。
+ * - applyViewport 立即递增单调的请求 id,但只在 setViewport 的 Promise
+ *   resolve 后才暴露/推进 settled 版本号。Promise 挂起期间 settled 不变。
+ * - 过期的 Promise(重叠请求)绝不能把更新的请求标记为 settled——通过
+ *   单调请求 id 检查。
+ * - 用户驱动的 viewport-change-end(平移/缩放)是正交的,独立推进 settled;
+ *   程序化 setViewport 过渡绝不通过该事件对同一请求 id 重复计数。
  */
 const viewportSettledRevision = ref(0)
 const viewportRequestRevision = ref(0)
@@ -437,11 +429,10 @@ function applyViewport(transform: ViewportTransform | null, duration: number): v
 }
 
 function onViewportChangeEnd(): void {
-  // Programmatic setViewport runs through a d3 transition without a
-  // sourceEvent, which never reaches this handler (verified against the
-  // bundled Vue Flow: `if (!event.sourceEvent) return null`). Reaching here
-  // therefore means a genuine user pan/zoom gesture — a new viewport intent
-  // that invalidates an armed pending-fit revalidation.
+  // 程序化 setViewport 走的 d3 transition 没有 sourceEvent,永远到不了这个
+  // 处理器(对照过打包的 Vue Flow 源码:`if (!event.sourceEvent) return null`)。
+  // 能进到这里就说明是真实的用户平移/缩放手势——一个新的视口意图,应使
+  // 已武装的 pending-fit 重校验失效。
   clearPendingFitIntent()
   const requestId = ++viewportRequestRevision.value
   latestSettledRequestId.value = requestId
@@ -502,7 +493,7 @@ function performFitView(): void {
   )
 }
 
-/** Measured (not fallback, not pending) flow node ids currently on canvas. */
+/** 当前画布上实测过(非兜底、非 pending)的 flow 节点 id 集合。 */
 function measuredRealNodeIds(): Set<string> {
   const ids = new Set<string>()
   const measured = measuredSizeById()
@@ -517,10 +508,9 @@ function measuredRealNodeIds(): Set<string> {
   return ids
 }
 
-/**
- * Consumes the armed intent when its pending run has been replaced by a
- * measured real node. Called after projection refreshes and after node
- * measurement updates; no-ops unless every gate holds.
+/*
+ * 当武装意图的 pending run 已被实测过的真实节点取代时,消费该意图。
+ * 在投影刷新与节点测量更新之后调用;所有门槛不满足时是空操作。
  */
 function maybeRevalidatePendingFit(): void {
   const intent = pendingFitIntent
@@ -529,13 +519,13 @@ function maybeRevalidatePendingFit(): void {
   }
   const pendings = props.pendings ?? []
   const sameRun = pendings.find((entry) => entry.runId === intent.runId) ?? null
-  // The fitted pending run is still in flight: keep the intent armed.
+  // 被 fit 的 pending run 仍在进行:保持意图武装。
   if (sameRun && sameRun.status !== 'FAILED') {
     return
   }
-  // Any live pending (a different run, or the same run re-polled) means the
-  // replacement has not completed: expire only if it can never match again.
-  // A FAILED run without replacement expires the intent with no revalidation.
+  // 任何在途 pending(另一个 run,或同一 run 的再次轮询)都说明替换尚未
+  // 完成:只有当它永远不可能再匹配时才过期。已 FAILED 且无替换的 run
+  // 直接过期意图,不做重校验。
   if (pendings.some((entry) => entry.status !== 'FAILED')) {
     if (!sameRun) {
       pendingFitIntent = null
@@ -584,11 +574,10 @@ function manualFitNode(nodeId: string): void {
   )
 }
 
-/**
- * Ensures the current answerable node stays fully inside the Graph region.
- * Called when a sibling (the Spec Dock) resizes the canvas so the active
- * node is never left clipped behind it. Only adjusts the viewport transform;
- * it never moves node coordinates or saved positions.
+/*
+ * 确保当前可作答节点完整留在 Graph 区域内。兄弟区域(Spec Dock)改变画布
+ * 尺寸时调用,保证活跃节点绝不被它裁切。只调整视口 transform;绝不移动
+ * 节点坐标或已保存位置。
  */
 function ensureActiveNodeInView(): void {
   const activeNodeId = props.activeNodeId
@@ -606,10 +595,9 @@ function ensureActiveNodeInView(): void {
   }
   const { width, height } = getNodeSize(target)
   const vp = vf.viewport.value
-  // A 1px tolerance keeps a node that merely touches an edge (e.g. the root
-  // node at the top-left of a fresh layout) from being treated as clipped,
-  // while a node genuinely pushed past the canvas boundary (e.g. behind the
-  // expanded Spec Dock) is re-fitted.
+  // 1px 容差:只是贴到边缘的节点(例如新布局中位于左上角的根节点)不算
+  // 被裁切;而真正被推出画布边界的节点(例如被展开的 Spec Dock 挡住)才
+  // 重新适配。
   const tolerance = 1
   const left = target.position.x * vp.zoom + vp.x
   const top = target.position.y * vp.zoom + vp.y
@@ -624,8 +612,8 @@ function ensureActiveNodeInView(): void {
 }
 
 function onNodesChange(changes: NodeChange[]): void {
-  // Vue Flow emits one select change per affected node per batch; mirror the
-  // accumulated result without depending on the internal store state.
+  // Vue Flow 对每个批次里的每个受影响节点各发一次 select change;这里
+  // 镜像累计结果,不依赖内部 store 状态。
   const selected = new Set(graphUi.selectedNodeIds)
   let touched = false
   for (const change of changes) {
@@ -644,19 +632,17 @@ function onNodesChange(changes: NodeChange[]): void {
   }
 }
 
-/**
- * Browser-only drag-time rerouting: while a node is being dragged, every
- * edge endpoint re-selects its source/target handle from the CURRENT flow
- * positions, so the edge follows the natural quadrant immediately (A right
- * of B switches to A left, horizontal switches to vertical, ...).
+/*
+ * 仅浏览器端的拖拽中重路由:节点拖动期间,每条边的端点都从"当前 flow 位置"
+ * 重新选择 source/target handle,让边立刻跟随自然的象限方向(A 在 B 右侧
+ * 就切到 A 左锚点,横向关系切到纵向……)。
  *
- * Contract: this never writes localStorage (positions persist only on drag
- * stop), never triggers a canonical graph refresh and never mutates Runtime
- * state — it only re-derives the handle ids of the existing flow edges.
+ * 契约:绝不写 localStorage(位置只在拖拽结束时持久化),绝不触发 canonical
+ * 刷新,绝不修改运行时状态——只重新推导既有 flow 边的 handle id。
  */
 function onNodeDrag(event: NodeDragEvent): void {
-  // Vue Flow already moved the flow nodes (v-model); the event snapshot is
-  // applied for robustness in tests and multi-node drags.
+  // Vue Flow 已经移动了 flow 节点(v-model);应用事件快照是为了测试与
+  // 多节点拖拽的健壮性。
   const moved = new Map<string, GraphPosition>()
   for (const dragged of event.nodes) {
     moved.set(dragged.id, { x: dragged.position.x, y: dragged.position.y })
@@ -670,10 +656,10 @@ function onNodeDrag(event: NodeDragEvent): void {
   flowEdges.value = rerouteEdgeHandles(flowNodes.value, flowEdges.value)
 }
 
-/**
- * Re-derives every edge's source/target handles from the current flow-node
- * positions (measured size when known). Standalone so the edge loop never
- * needs the deeply generic NodeDragEvent type in scope.
+/*
+ * 从当前 flow 节点位置(已知时用实测尺寸)重新推导每条边的 source/target
+ * handle。独立成函数,让边循环不必把深度泛型的 NodeDragEvent 类型拉进
+ * 作用域。
  */
 function rerouteEdgeHandles(nodes: FlowCanvasNode[], edges: Edge[]): Edge[] {
   const byId = new Map(nodes.map((n): [string, FlowCanvasNode] => [n.id, n]))
@@ -699,7 +685,7 @@ function rerouteEdgeHandles(nodes: FlowCanvasNode[], edges: Edge[]): Edge[] {
   return nextEdges
 }
 
-/** Flow node -> routing geometry: measured size when known, safe fallback otherwise. */
+/** flow 节点 → 路由几何:已知时用实测尺寸,否则安全兜底。 */
 function toNodeGeometry(node: FlowCanvasNode, measured?: Map<string, Dimensions>): NodeGeometry {
   const size = (measured ?? measuredSizeById()).get(node.id)
   return {
@@ -709,9 +695,9 @@ function toNodeGeometry(node: FlowCanvasNode, measured?: Map<string, Dimensions>
   }
 }
 
-/**
- * Persists positions only when a drag actually stops. Mid-drag moves stay
- * inside Vue Flow; localStorage is never written per pointer-move.
+/*
+ * 只在拖拽真正停止时持久化位置。拖拽中途的移动留在 Vue Flow 内;
+ * localStorage 绝不随每次指针移动写入。
  */
 function onNodeDragStop(event: NodeDragEvent): void {
   const positions: Record<string, GraphPosition> = {}
@@ -728,8 +714,8 @@ function hasSelectionModifier(event: MouseEvent | TouchEvent | undefined): boole
   return event.ctrlKey || event.metaKey || event.shiftKey
 }
 
-/** A normal node click selects and resolves browser Focus; modified clicks
- * remain pure multi-selection and never move the reading context. */
+/** 普通点击选中节点并解析浏览器 Focus;带修饰键的点击只做多选,
+ * 绝不移动阅读上下文。 */
 function onNodeClick(event: NodeMouseEvent): void {
   if (hasSelectionModifier(event.event)) {
     return
@@ -746,14 +732,14 @@ function onNodeClick(event: NodeMouseEvent): void {
   }
 }
 
-/** Edge clicks use the same deterministic route resolution as nodes. */
+/** 边点击与节点使用同一套确定性路线解析。 */
 function onEdgeClick(event: EdgeMouseEvent): void {
   const allRouteIds = [...new Set(
     ((event.edge.data as { routeIds?: string[] } | undefined)?.routeIds ?? []),
   )]
   if (allRouteIds.length > 1) {
-    // A shared physical edge is an ambiguous route segment. Selecting it is
-    // browser-only; Focus must not guess a member route.
+    // 共享物理边是有歧义的路线段。选中它只是浏览器行为;Focus 绝不猜测
+    // 成员路线。
     graphUi.selectEdge(event.edge.id, allRouteIds)
     return
   }
@@ -776,19 +762,17 @@ function onPaneClick(event?: MouseEvent): void {
   graphUi.clearFocusRoute()
 }
 
-/**
- * Manual node-to-node connection (drag from a source handle to a target
- * handle). Two intents are distinguished:
+/*
+ * 手动节点间连线(从源 handle 拖到目标 handle)。区分两种意图:
  *
- *  - floating ↔ routed: connecting a standalone node into a lineage. The
- *    canvas only reports the pair; the workspace resolves the explicit route
- *    (never Active/first/latest) and runs the Runtime connect command. A
- *    dropped connection is NEVER persisted on its own.
- *  - routed ↔ routed: a relation proposal. No relation is persisted until the
- *    user confirms a type and direction in the proposal chooser.
+ *  - 浮动 ↔ 已接入:把独立节点接入谱系。画布只上报这一对;工作台解析出
+ *    显式路线(绝不猜测 Active/第一个/最新)并执行运行时接入命令。一次
+ *    放下的连接绝不会单独持久化。
+ *  - 已接入 ↔ 已接入:关系提案。在提案选择器里用户确认类型与方向之前,
+ *    不持久化任何关系。
  *
- * Cancel/Esc/click-away clears a pending proposal with zero backend calls.
- * Pending projection cards and self-connections are ignored.
+ * 取消/Esc/点击空白会清掉待定提案,零后端调用。Pending 投影卡与自连接
+ * 被忽略。
  */
 function onConnect(connection: Connection): void {
   const endpointOf = (
@@ -807,7 +791,7 @@ function onConnect(connection: Connection): void {
     return
   }
   if (source.floating !== target.floating) {
-    // Exactly one side belongs to a route: this drag means "接入路线".
+    // 恰好一侧属于某条路线:这次拖线的含义是"接入路线"。
     emit('connect-floating', {
       floatingNodeId: source.floating ? source.canonicalNodeId : target.canonicalNodeId,
       anchorNodeId: source.floating ? target.canonicalNodeId : source.canonicalNodeId,
@@ -827,16 +811,15 @@ function emitContextualAi(nodeId: string, visualNodeKey?: string): void {
   })
 }
 
-/** Brings one node into view without changing Focus or Active. */
+/** 把单个节点带进视野,不改变 Focus 或 Active。 */
 async function locateNode(nodeId: string): Promise<void> {
   clearActiveNodeFitTimer()
   clearPendingFitIntent()
   manualFitNode(nodeId)
 }
 
-/**
- * Fits/centers only the visible nodes of one route. Never sets Focus and
- * never changes Active.
+/*
+ * 只对某条路线的可见节点做适配/居中。绝不设置 Focus,也绝不改变 Active。
  */
 async function locateRoute(routeId: string): Promise<void> {
   clearActiveNodeFitTimer()
@@ -885,13 +868,12 @@ async function fitView(): Promise<void> {
   manualFitView()
 }
 
-/**
- * Explicit user command: recompute every visible node position from scratch
- * and persist the result. Requires confirmation because it overwrites the
- * user's manual layout. Runtime history never changes. The follow-up fit is
- * computed from the fresh positions, never from Vue Flow measurements.
+/*
+ * 显式用户命令:从头重算所有可见节点位置并持久化结果。需要确认弹窗,
+ * 因为它会覆盖用户手工调整的布局。运行时历史绝不改变。后续 fit 基于新
+ * 位置计算,绝不基于 Vue Flow 测量。
  */
-/** 确认弹窗状态：用站内 UiConfirmDialog 取代原生 window.confirm。 */
+/** 确认弹窗状态:用站内 UiConfirmDialog 取代原生 window.confirm。 */
 const autoLayoutConfirmOpen = ref(false)
 
 function requestAutoLayout(): void {
@@ -945,10 +927,10 @@ function showAll(): void {
   graphUi.showAll()
 }
 
-/**
- * "只看这条路线" is a modal view state: every other route is off-canvas, so the
- * canvas must say which route is isolated and offer a one-click way out.
- * Rendered here (not in the toolbar) because the toolbar is a narrow rail.
+/*
+ * "只看这条路线"是模态的视图状态:其它所有路线都移出画布,所以画布必须
+ * 说明当前隔离的是哪条路线,并提供一键退出。渲染在这里(而不是工具栏),
+ * 因为工具栏只是一条窄轨。
  */
 const isolatedRouteLabel = computed<string | null>(() => {
   const routeId = graphUi.isolatedRouteId
@@ -1035,7 +1017,7 @@ const isEmptyProject = computed(() =>
             @regenerate="(id) => emit('regenerate', id)"
             @disconnect="(id) => emit('disconnect', id)"
             @contextual-ai="(id) => emitContextualAi(id, nodeProps.data.visualNodeKey)"
-            @retry-pending="emit('retry-pending')"
+            @retry-failure="(failure) => emit('retry-failure', failure)"
             @activate-route="(routeId) => emit('activate-route', routeId)"
             @draft-next="(routeId) => emit('draft-next', routeId)"
           />

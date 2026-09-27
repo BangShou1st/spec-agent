@@ -1,3 +1,5 @@
+// 文件名:RelationProposalDialog.spec.ts
+// 用途:RelationProposalDialog 单元测试:验证确认时提交选中类型与方向、有向类型的反转、pending 禁用以及取消/Esc 行为。
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import RelationProposalDialog from '@/features/workspace/graph/components/RelationProposalDialog.vue'

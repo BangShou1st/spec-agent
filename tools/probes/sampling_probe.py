@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Provider sampling capability probe. DIAGNOSTIC ONLY."""
+"""文件名:sampling_probe.py
+
+探测模型供应商的采样能力(temperature/top_p/seed 等参数是否生效)。
+仅用于诊断,不影响正式流程。
+"""
 import json, time, urllib.request, urllib.error
 from pathlib import Path
 

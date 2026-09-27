@@ -23,9 +23,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Route command integration tests: activate, archive, restore, soft delete.
- * All commands go through RouteService; lifecycle status is never
- * {@code active}, and the active pointer is always {@code Project.activeRouteId}.
+ * 文件名:RouteCommandApiIntegrationTest.java
+ *
+ * 测试目标:路线命令的集成测试——activate、archive、restore、软删除。
+ * 所有命令都经由 RouteService;生命周期状态绝不出现 {@code active},
+ * 活跃指针始终是 {@code Project.activeRouteId}。
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -45,7 +47,7 @@ class RouteCommandApiIntegrationTest {
     @Test
     void activateOpenRouteSucceedsAndChangesActivePointer() throws Exception {
         Project project = projectService.createProject("Activation project");
-        // A second OPEN route that is not active.
+        // 另一条非活跃的 OPEN 路线。
         var other = routeService.createRoute(project.id(), RouteLifecycleStatus.OPEN, "second open route");
 
         mockMvc.perform(post("/api/v1/projects/{projectId}/routes/{routeId}/activate",
@@ -56,7 +58,7 @@ class RouteCommandApiIntegrationTest {
                 .andExpect(jsonPath("$.route.isActive").value(true))
                 .andExpect(jsonPath("$.activeRouteId").value(other.id().toString()));
 
-        // The runtime pointer really changed; lifecycle stays OPEN.
+        // 运行时指针确实变化;生命周期保持 OPEN。
         var projectAfter = projectService.getProject(project.id()).orElseThrow();
         assertThat(projectAfter.activeRouteId()).isEqualTo(other.id());
         assertThat(routeService.getRoute(other.id()).orElseThrow().lifecycleStatus())
@@ -130,7 +132,7 @@ class RouteCommandApiIntegrationTest {
                 .andExpect(jsonPath("$.route.lifecycleStatus").value("archived"))
                 .andExpect(jsonPath("$.route.isActive").value(false));
 
-        // Active pointer cleared; nodes/answers are preserved, not deleted.
+        // 活跃指针被清除;节点/回答被保留而非删除。
         var projectAfter = projectService.getProject(project.id()).orElseThrow();
         assertThat(projectAfter.activeRouteId()).isNull();
         assertThat(nodeService.getNode(node.id())).isPresent();
@@ -166,7 +168,7 @@ class RouteCommandApiIntegrationTest {
                 .andExpect(jsonPath("$.route.lifecycleStatus").value("deleted"))
                 .andExpect(jsonPath("$.route.isActive").value(false));
 
-        // No physical deletion: the node and the route row still exist.
+        // 没有物理删除:节点与路线记录仍然存在。
         assertThat(nodeService.getNode(node.id())).isPresent();
         assertThat(routeService.getRoute(project.activeRouteId())).isPresent();
         assertThat(projectService.getProject(project.id()).orElseThrow().activeRouteId()).isNull();

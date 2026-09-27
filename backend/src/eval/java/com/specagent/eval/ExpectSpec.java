@@ -8,9 +8,14 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 
 /**
- * The {@code expect} block of one scenario: runtime invariants, required
- * properties, acceptable/forbidden primary actions, expected/forbidden
- * state deltas, and the call budget.
+ * 文件名:ExpectSpec.java
+ *
+ * 用途:场景定义中 {@code expect} 块的结构化声明:运行时不变量、必填属性
+ * 校验({@link PropertyCheck})、可接受/禁止的主动作、期望/禁止的状态增量,
+ * 以及调用预算({@link CallBudget})。是分层校验的期望基准。
+ *
+ * 协作:由 {@link ScenarioDefinition} 持有,校验器据此产出
+ * {@link CheckResult} 与 {@link Violation}。
  */
 public record ExpectSpec(
         Set<String> runtimeInvariants,

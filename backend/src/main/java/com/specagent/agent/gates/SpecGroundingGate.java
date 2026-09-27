@@ -8,11 +8,16 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Deterministic validator for a spec draft.
+ * 文件名:SpecGroundingGate.java
  *
- * <p>Every spec section must be non-blank and carry source references, so the
- * generated spec is always grounded in the exploration context. Unresolved
- * items may exist, but they never replace section source references.
+ * 用途:spec 草稿的确定性校验门禁。
+ *
+ * 每个 spec 分节都必须非空并携带来源引用,使生成的 spec 始终
+ * grounded 在探索上下文之上。允许存在未解决条目,但它们绝不能替代
+ * 分节的来源引用。
+ *
+ * 协作:由 spec 生成流程调用,位于 SpecSourceReferenceGuard 之前;
+ * 拒绝时返回带错误列表的 ReflectionResult。
  */
 @Component
 public class SpecGroundingGate {

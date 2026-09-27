@@ -4,9 +4,10 @@ import com.specagent.skill.domain.Skill;
 import com.specagent.skill.domain.SkillVersion;
 
 /**
- * One bounded, model-facing Skill catalog entry. The Brain only ever reads
- * these small entries — never filesystem paths, DB internals, embedding
- * scores, or full package content.
+ * 文件名:SkillCatalogEntry.java
+ *
+ * 用途:面向模型的单个 Skill 目录条目(有界视图)。Brain 只读取这种小
+ * 条目 —— 永远接触不到文件系统路径、数据库内部结构、向量分数或完整包内容。
  */
 public record SkillCatalogEntry(
         String skillId,

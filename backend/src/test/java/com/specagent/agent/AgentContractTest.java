@@ -15,6 +15,13 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+/**
+ * 文件名:AgentContractTest.java
+ *
+ * 测试目标:验证决策相关值对象(AgentAction、AgentTaskType、ModelRequest、ModelResponse、
+ * NodeDraft、ReflectionResult)的契约约束:合法枚举码可解析、非法输入被拒绝、
+ * 必填字段缺失时抛出 IllegalArgumentException、ReflectionResult 的接受态结构正确。
+ */
 class AgentContractTest {
 
     @Test

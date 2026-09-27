@@ -26,8 +26,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Project API integration tests. Runs against the normal test runtime setup
- * with the default fake model gateway; zero public provider requests.
+ * 文件名:ProjectApiIntegrationTest.java
+ *
+ * 测试目标:项目 API 的集成测试,运行在常规测试环境与默认假模型网关之下
+ * (不产生任何真实模型请求)。覆盖创建、重命名、标题唯一性(含大小写不敏感
+ * 与删除后回收)、列表过滤与通配符转义、参数校验等契约。
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -66,7 +69,7 @@ class ProjectApiIntegrationTest {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("PROJECT_TITLE_ALREADY_EXISTS"));
 
-        // Uniqueness is case-insensitive, matching the title search semantics.
+        // 唯一性对大小写不敏感,与标题搜索语义一致。
         mockMvc.perform(post("/api/v1/projects")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"title\": \"taken TITLE\"}"))
@@ -81,8 +84,8 @@ class ProjectApiIntegrationTest {
         mockMvc.perform(delete("/api/v1/projects/{id}", project.id()))
                 .andExpect(status().isNoContent());
 
-        // Deleting a project frees its title: uniqueness describes the projects
-        // that exist now, not every title ever used.
+        // 删除项目会释放其标题:唯一性描述的是当前存在的项目,
+        // 而不是历史上用过的所有标题。
         mockMvc.perform(post("/api/v1/projects")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"title\": \"Recycled title\"}"))
@@ -106,7 +109,7 @@ class ProjectApiIntegrationTest {
     void renameKeepingOwnTitleAllowed() throws Exception {
         var owner = projectService.createProject("Stable title");
 
-        // Renaming a project to the title it already holds is not a duplicate.
+        // 项目改名为它当前已有的标题不算重复。
         mockMvc.perform(put("/api/v1/projects/" + owner.id() + "/title")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"title\": \"Stable title\"}"))
@@ -216,7 +219,7 @@ class ProjectApiIntegrationTest {
     @Test
     void listProjects() throws Exception {
         var p1 = projectService.createProject("First");
-        Thread.sleep(5); // distinct created_at so ordering is deterministic
+        Thread.sleep(5); // created_at 不同,保证排序确定
         var p2 = projectService.createProject("Second");
 
         MvcResult result = mockMvc.perform(get("/api/v1/projects"))
@@ -228,11 +231,11 @@ class ProjectApiIntegrationTest {
                 new TypeReference<List<ProjectSummaryResponse>>() {
                 });
 
-        // The shared test database may contain projects created by other
-        // non-transactional tests; only the projects created here are asserted.
+        // 共享测试库中可能存在其他非事务测试创建的项目;这里只断言本测试
+        // 创建的项目。
         List<UUID> ids = projects.stream().map(ProjectSummaryResponse::id).toList();
         assertThat(ids).contains(p1.id(), p2.id());
-        // Deterministic order: created_at ASC.
+        // 排序确定:created_at ASC。
         assertThat(projects.stream().map(ProjectSummaryResponse::id).toList())
                 .containsSubsequence(p1.id(), p2.id());
         assertThat(projects).extracting(ProjectSummaryResponse::title).contains("First", "Second");
@@ -248,7 +251,7 @@ class ProjectApiIntegrationTest {
     @Test
     void listProjectsFiltersByTitleCaseInsensitively() throws Exception {
         var alpha = projectService.createProject("Alpha requirements");
-        Thread.sleep(5); // distinct created_at so ordering is deterministic
+        Thread.sleep(5); // created_at 不同,保证排序确定
         var beta = projectService.createProject("Beta login flow");
         Thread.sleep(5);
         var lower = projectService.createProject("alpha lowercase");
@@ -258,10 +261,10 @@ class ProjectApiIntegrationTest {
                 .andReturn();
         List<UUID> ids = parse(result).stream().map(ProjectSummaryResponse::id).toList();
 
-        // Case-insensitive substring: both "Alpha" and "alpha" titles match.
+        // 大小写不敏感的子串匹配:"Alpha" 与 "alpha" 都命中。
         assertThat(ids).contains(alpha.id(), lower.id());
         assertThat(ids).doesNotContain(beta.id());
-        // Deterministic order preserved: created_at ASC.
+        // 排序保持确定:created_at ASC。
         assertThat(ids).containsSubsequence(alpha.id(), lower.id());
     }
 
@@ -288,8 +291,8 @@ class ProjectApiIntegrationTest {
         Thread.sleep(5);
         var plain = projectService.createProject("100 percent done");
 
-        // A literal '%' in the query must match only the title that contains '%',
-        // proving the ILIKE wildcards are escaped rather than interpreted.
+        // 查询中的字面 '%' 必须只匹配确实包含 '%' 的标题,
+        // 证明 ILIKE 通配符被转义而非被解释。
         MvcResult result = mockMvc.perform(get("/api/v1/projects").param("title", "100%"))
                 .andExpect(status().isOk())
                 .andReturn();

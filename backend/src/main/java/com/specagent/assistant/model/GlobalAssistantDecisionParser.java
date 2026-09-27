@@ -9,9 +9,12 @@ import java.util.Set;
 import org.springframework.stereotype.Component;
 
 /**
- * Strict discriminated decision parse V2. Fail-closed on any schema violation.
- * Parses {@code kind} first, then only the corresponding branch. No legacy
- * compatibility path, no leniency.
+ * 文件名:GlobalAssistantDecisionParser.java
+ *
+ * 用途:把模型输出严格解析为 {@link GlobalAssistantDecision}。
+ * V2 判别式解析:先读 {@code kind},再只解析对应分支;任何违反 schema 的
+ * 输入一律 fail-closed(抛 {@link GlobalAssistantModelException})。
+ * 没有遗留兼容路径,也没有任何宽容放行。
  */
 @Component
 public class GlobalAssistantDecisionParser {

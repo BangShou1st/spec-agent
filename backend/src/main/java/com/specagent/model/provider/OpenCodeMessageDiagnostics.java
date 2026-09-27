@@ -2,7 +2,11 @@ package com.specagent.model.provider;
 
 import com.specagent.common.Hashes;
 
-/** Safe per-message request metadata; message text is never retained. */
+/**
+ * 文件名:OpenCodeMessageDiagnostics.java
+ *
+ * 用途:单条消息的安全请求元数据(字符数、字节数、SHA-256);绝不保留消息文本。
+ */
 public record OpenCodeMessageDiagnostics(
         int charCount,
         int byteCount,

@@ -1,3 +1,13 @@
+// 文件名:graphLayoutStorage.ts
+// 用途:画布布局与工作台 UI 偏好的 localStorage 防御式持久化:节点位置、路线显示状态、侧栏宽度等,读写全部 best-effort,绝不向运行时流程抛错。
+/*
+ * 图布局与工作台 UI 的防御式 localStorage 持久化。
+ *
+ * 所有辅助函数都是 best-effort:损坏、过期或不可用的存储绝不能向运行时
+ * 流程抛异常。非法 JSON 回退到默认值,非有限坐标被忽略,超出范围的侧栏
+ * 宽度被钳制,每次读写失败都被静默吞掉。
+ */
+
 import type {
   GraphPosition,
   GraphRouteDisplayState,
@@ -6,14 +16,6 @@ import type {
   WorkspaceUiPreferencesV1,
 } from './graphTypes'
 
-/**
- * Defensive localStorage persistence for graph layout and workspace UI.
- *
- * All helpers are best-effort: corrupt, stale, or unavailable storage must
- * never throw into Runtime flows. Invalid JSON falls back to defaults,
- * non-finite coordinates are ignored, out-of-range sidebar widths are
- * clamped, and every read/write failure is swallowed.
- */
 
 const PROJECT_KEY_PREFIX = 'spec-agent.graph-layout.v1.'
 const PROJECT_V2_KEY_PREFIX = 'spec-agent.graph-layout.v2.'
@@ -87,7 +89,7 @@ export function saveProjectGraphPreferences(
   try {
     localStorage.setItem(PROJECT_KEY_PREFIX + projectId, JSON.stringify(value))
   } catch {
-    // Best-effort only: never block Runtime flows on storage failures.
+    // 仅 best-effort:存储失败绝不能阻塞运行时流程。
   }
 }
 
@@ -128,7 +130,7 @@ export function saveProjectGraphPreferencesV2(
   try {
     localStorage.setItem(PROJECT_V2_KEY_PREFIX + projectId, JSON.stringify(value))
   } catch {
-    // Browser presentation state is best-effort only.
+    // 浏览器展示状态,仅 best-effort。
   }
 }
 
@@ -179,7 +181,7 @@ export function saveWorkspaceUiPreferences(value: WorkspaceUiPreferencesV1): voi
   try {
     localStorage.setItem(WORKSPACE_KEY, JSON.stringify(value))
   } catch {
-    // Best-effort only.
+    // 仅 best-effort。
   }
 }
 

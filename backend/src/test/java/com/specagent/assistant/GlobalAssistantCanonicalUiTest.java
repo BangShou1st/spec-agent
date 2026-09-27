@@ -44,7 +44,14 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * FIX C/G RED: canonical UI validation, no fabricated tool results.
+ * 文件名:GlobalAssistantCanonicalUiTest.java
+ *
+ * 测试目标:验证全局助手 UI 动作的规范化校验——不允许伪造工具结果。
+ * 覆盖场景:导航到不存在的项目时运行失败且不发出 UI_ACTION 事件、
+ * 导航到已存在项目时发出带正确 resourceId 的 UI_ACTION、
+ * 过期的选中项目引用不会被投影为可信上下文、
+ * 基础设施故障只会以 TOOL_EXECUTION_FAILED 收尾而不会伪造工具完成结果、
+ * 工作状态 JSON 损坏时运行以脱敏方式失败(错误负载不泄露原始内容)。
  */
 @SpringBootTest
 @ActiveProfiles("test")

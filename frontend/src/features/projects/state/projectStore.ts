@@ -1,14 +1,18 @@
+// 文件名:projectStore.ts
+// 用途:项目列表/创建的 Pinia 状态仓:列表加载(带乱序守护)、创建、原地重命名与删除;
+//       后端始终是权威数据源,这里只镜像列表数据与创建结果。
+
 import { defineStore } from 'pinia'
 import { createProject, deleteProject, listProjects, renameProject } from '@/features/projects/api/projects'
 import { toDisplayError, type DisplayError } from '@/shared/http/displayError'
 import type { ProjectResponse, ProjectSummaryResponse } from '@/shared/contracts/types'
 
-// Module-level monotonically increasing token for loadProjects race safety.
+// 模块级单调递增令牌,用于 loadProjects 的竞态安全。
 let loadToken = 0
 
 /**
- * Project list/create application state. Backend remains authoritative for
- * everything; this store only mirrors list data and creation results.
+ * 项目列表/创建的应用状态。一切以后端为准;
+ * 这个 store 只镜像列表数据与创建结果。
  */
 export const useProjectStore = defineStore('project', {
   state: () => ({
@@ -20,9 +24,9 @@ export const useProjectStore = defineStore('project', {
     error: null as DisplayError | null,
   }),
   actions: {
-    // Monotonic token so a slow, stale list response can never overwrite a
-    // newer one. Typing triggers several in-flight requests; only the latest
-    // wins. This is lighter than debouncing and keeps the list responsive.
+    // 单调递增令牌:迟到的旧列表响应绝不能覆盖更新的响应。
+    // 输入会同时触发多个在途请求,只有最新一次生效。
+    // 这比防抖更轻,列表保持即时响应。
     async loadProjects(title?: string): Promise<void> {
       const token = ++loadToken
       this.loading = true
@@ -61,7 +65,7 @@ export const useProjectStore = defineStore('project', {
       }
     },
 
-    /** Renames one project in place; list order and history stay untouched. */
+    /** 原地重命名一个项目;列表顺序与创建历史保持不动。 */
     async renameProject(id: string, title: string): Promise<boolean> {
       if (this.renamingId) return false
       this.renamingId = id

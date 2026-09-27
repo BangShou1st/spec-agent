@@ -13,6 +13,13 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * 文件名:ProfileRepository.java
+ *
+ * 用途:Profile 的 JDBC 仓储,负责画像的读写:按 id/name 查询与
+ * 全量列表;aspects、spec_section_definitions、question_policy_hints
+ * 三个列表字段以 JSON 存储,由 {@code Json} 辅助类序列化/反序列化。
+ */
 @Repository
 public class ProfileRepository {
 

@@ -1,3 +1,5 @@
+// 文件名:graphViewport.spec.ts
+// 用途:视口辅助函数的单元测试:验证兜底/实测尺寸、包围盒合并、fit 与单节点居中的确定性数学以及 maxZoom 钳制。
 import { describe, expect, it } from 'vitest'
 import {
   computeBounds,
@@ -9,11 +11,10 @@ import {
 } from '@/features/workspace/graph/graphViewport'
 import type { ViewportNode } from '@/features/workspace/graph/graphViewport'
 
-/**
- * Deterministic viewport helpers: transforms are computed purely from the
- * current projected node coordinates plus known/safe fallback dimensions.
- * No Vue Flow node-measurement/`fitView` state is ever consulted, so the
- * result is identical no matter whether the canvas has measured nodes yet.
+/*
+ * 确定性的视口辅助函数:transform 完全由当前投影的节点坐标加已知/安全
+ * 兜底尺寸计算,绝不查询 Vue Flow 的节点测量或 `fitView` 状态,因此无论
+ * 画布是否已完成节点测量,结果都完全一致。
  */
 describe('graph viewport helpers', () => {
   it('uses fallback dimensions when a node has no measured size', () => {
@@ -77,7 +78,7 @@ describe('graph viewport helpers', () => {
       { padding: 48 },
     )
     expect(transform).not.toBeNull()
-    // bounds: x 360..680, y 0..220 -> center (520, 110); zoom capped at 1.
+    // 包围盒:x 360..680,y 0..220 → 中心 (520, 110);zoom 钳制到 1。
     expect(transform?.zoom).toBe(1)
     expect(transform?.x).toBe(1200 / 2 - 520 * 1)
     expect(transform?.y).toBe(800 / 2 - 110 * 1)
@@ -96,14 +97,14 @@ describe('graph viewport helpers', () => {
       { padding: 48 },
     )
     expect(transform).not.toBeNull()
-    // content box: x 0..1400, y 0..880
+    // 内容盒子:x 0..1400,y 0..880
     const expectedZoom = Math.min(
       (1200 - 96) / 1400,
       (800 - 96) / 880,
       1,
     )
     expect(transform?.zoom).toBeCloseTo(expectedZoom, 6)
-    // viewport centers the content box
+    // 视口把内容盒子居中
     const centerX = 700
     const centerY = 440
     expect(transform?.x).toBeCloseTo(1200 / 2 - centerX * (transform?.zoom ?? 1), 6)

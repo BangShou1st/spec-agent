@@ -33,13 +33,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Failure-path integration tests for the fake full loop: rejected proposals
- * must never be persisted, the run must end FAILED, and the route tip must not
- * be polluted.
+ * 文件名:FakeFullLoopFailureIntegrationTest.java
  *
- * <p>Deliberately not {@code @Transactional}: the whole point is that a FAILED
- * agent run must remain queryable after the surrounding agent cycle fails, and
- * rejected artifacts must stay absent from the database.
+ * 测试目标:fake 全循环的失败路径集成测试:被拒绝的提案绝不能持久化,run 必须以
+ * FAILED 结束,路由末梢不能被污染。
+ *
+ * 刻意不加 {@code @Transactional}:测试要点正是 FAILED 的 agent run 在外层
+ * agent 循环失败之后仍可查询,且被拒绝的工件在数据库中保持缺席。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -67,9 +67,8 @@ class FakeFullLoopFailureIntegrationTest {
     private Json json;
 
     /**
-     * A STATE_UPDATE whose output violates the strict brain contract fails the
-     * run after the immutable Answer persisted. The FAILED run stays queryable,
-     * no patch or node is persisted, and the route tip is untouched.
+     * 输出违反严格 brain 契约的 STATE_UPDATE,会在不可变 Answer 持久化之后使 run
+     * 失败。FAILED 的 run 保持可查询,不持久化任何 patch 或节点,路由末梢不受影响。
      */
     @Test
     void failedAnswerRunKeepsAnswerAndDoesNotPersistRejectedArtifacts() {
@@ -77,8 +76,8 @@ class FakeFullLoopFailureIntegrationTest {
         Node tip = nodeService.createRootNode(project.id(), project.activeRouteId(),
                 "What is the primary outcome?", null, List.of(), true);
 
-        // The stale-target scenario drives the same fail-closed path a
-        // provider failure takes: nothing persists after the failure point.
+        // 过期目标场景走的是与供应商失败相同的 fail-closed 路径:失败点之后
+        // 什么都不会持久化。
         // 派生知识不再顶掉问题 tip,所以用新问题子节点把 tip 真正推走。
         UUID runId = runService.createQueuedRunWithInput(
                 project.id(), "ANSWER_TIP", tip.id(), null, "clarified", null);
@@ -88,7 +87,7 @@ class FakeFullLoopFailureIntegrationTest {
         assertThatThrownBy(() -> worker.executeRun(runService.claimNextAnswerCycle().orElseThrow()))
                 .isInstanceOf(RuntimeException.class);
 
-        // The failed run is queryable.
+        // 失败的 run 可查询。
         AgentRun run = agentRunService.getRun(runId).orElseThrow();
         assertThat(run.status()).isEqualTo(AgentRunStatus.FAILED);
         assertThat(run.completedAt()).isNotNull();
@@ -96,10 +95,10 @@ class FakeFullLoopFailureIntegrationTest {
         assertThat(run.producedPatchId()).isNull();
         assertThat(run.producedNodeId()).isNull();
 
-        // No patch entered requirement state.
+        // 没有 patch 进入 requirement 状态。
         assertThat(answerPatchService.findByRoute(project.activeRouteId())).isEmpty();
 
-        // Route tip moved on with the user's own node; no answer landed there.
+        // 路由末梢随用户自己的节点推进;那里没有落任何答案。
         Route route = routeService.getRoute(project.activeRouteId()).orElseThrow();
         assertThat(route.tipNodeId()).isNotEqualTo(tip.id());
     }

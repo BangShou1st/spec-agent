@@ -1,23 +1,24 @@
 package com.specagent.model.provider;
 
 /**
- * Semantics needed by the provider compatibility probe: decide whether a raw
- * completion is a legal FINAL decision.
+ * 文件名:CompatibilityDecisionSemantics.java
  *
- * <p>The probe protocol (what a "legal decision" is) belongs to the assistant
- * domain, but the probe itself runs inside the provider layer. Depending on
- * this port instead of the concrete parser/validator breaks the
- * model &lt;-&gt; globalassistant package cycle; the adapter lives on the
- * assistant side and only forwards parse/validate/kind checks.
+ * 用途:提供商兼容性探测所需要的语义能力:判断一次原始补全是否是合法的
+ * FINAL 决策。
+ *
+ * 探测协议(什么算"合法决策")属于 assistant 领域,但探测本身在 provider 层
+ * 运行。依赖本端口而非具体的解析器/校验器,可以打破 model 与 globalassistant
+ * 两个包之间的循环依赖;真正的适配器放在 assistant 侧,只负责转发
+ * parse/validate/kind 三类检查。
  */
 public interface CompatibilityDecisionSemantics {
 
-    /** Parses the raw completion into an opaque decision value; throws if unparsable. */
+    /** 把原始补全解析为不透明的决策对象;无法解析时抛异常。 */
     Object parseDecision(String content) throws Exception;
 
-    /** Authoritative validation of a decision produced by {@link #parseDecision}. */
+    /** 对 {@link #parseDecision} 产出的决策做权威校验。 */
     void validateDecision(Object decision) throws Exception;
 
-    /** True when the decision carries the FINAL kind required by the probe. */
+    /** 判断决策是否携带探测所需的 FINAL 类型。 */
     boolean isFinal(Object decision);
 }

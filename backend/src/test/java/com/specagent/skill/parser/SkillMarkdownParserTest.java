@@ -7,8 +7,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * SKILL.md parsing rules: required name/description, safe YAML handling,
- * front-matter tolerance, and typed failures on malformed packages.
+ * 文件名:SkillMarkdownParserTest.java
+ *
+ * 测试目标:验证 SKILL.md 的解析规则——必需的 name/description、安全的
+ * YAML 处理、对 front-matter 的宽容处理,以及格式损坏时返回类型化的失败。
  */
 class SkillMarkdownParserTest {
 

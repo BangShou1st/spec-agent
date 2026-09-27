@@ -1,17 +1,24 @@
+<!--
+  文件名:GraphQuestionNode.vue
+  用途:画布上的交互(问题)节点卡片:当前节点内嵌作答表单(选项/多选/自由文本,草稿按项目+节点+阅读路线持久化),历史节点按选中状态在紧凑导航卡与完整问答卡之间切换,并渲染运行时进度面板。
+-->
 <script lang="ts">
-// The shared node chassis (edge anchors, drag header, action rail) lives in
-// GraphNodeShell; this card only contributes question-specific content.
+// 共享的节点外壳(边锚点、拖拽头、操作轨道)在 GraphNodeShell 中;
+// 本卡片只贡献问题相关的内容。
 import GraphNodeShell from './GraphNodeShell.vue'
 import GraphRunProcessPanel from './GraphRunProcessPanel.vue'
+import NodeRecoveryBar, { type RecoveryItem } from './NodeRecoveryBar.vue'
 import { runtimeStatusLabel as runtimeStatusCopy } from '@/shared/lib/statusCopy'
-export default { components: { GraphNodeShell, GraphRunProcessPanel } }
+export default { components: { GraphNodeShell, GraphRunProcessPanel, NodeRecoveryBar } }
 </script>
+
 
 <script setup lang="ts">
 import { computed, useId } from 'vue'
 import type { SubmitAnswerRequest } from '@/shared/contracts/types'
 import type { SpecAgentGraphNodeData } from '@/features/workspace/graph/graphProjection'
 import { useInputDraftStore, type InputDraft } from '@/features/workspace/state/inputDraftStore'
+import { useRunRegistryStore } from '@/features/workspace/state/runRegistryStore'
 import { actionsFor, type NodeAction } from '@/features/workspace/graph/nodeActions'
 import RichAssistantText from '@/shared/ui/RichAssistantText.vue'
 
@@ -29,7 +36,10 @@ const emit = defineEmits<{
   reanswer: [nodeId: string]
   regenerate: [nodeId: string]
   'contextual-ai': [nodeId: string]
-  'retry-pending': []
+  /** 任务级失败恢复:按钮携带失败任务身份,绝不猜测全局重试目标。 */
+  'retry-failure': [failure: import('@/features/workspace/api/agentRuns').UnresolvedFailure]
+  'go-settings': []
+  'locate-failure': [failure: import('@/features/workspace/api/agentRuns').UnresolvedFailure]
   'activate-route': [routeId: string]
   /** 已回答的路线末端：让 AI 在这条路线起草下一个问题（显式路线模式）。 */
   'draft-next': [routeId: string]
@@ -37,28 +47,24 @@ const emit = defineEmits<{
   disconnect: [nodeId: string]
 }>()
 
-/**
- * Graph node for the Phase 7.3 workspace.
+/*
+ * Phase 7.3 工作台的画布节点。
  *
- * Only the backend Active node without a finalized answer is answerable;
- * answer inputs live directly inside the node. Historical nodes are
- * read-only: selected (clicked) historical nodes show the complete question
- * and answer at the same fidelity as the current node; unselected ones stay
- * a compact navigation card so a long history never buries the canvas.
- * Route-by-route answer history and provenance remain in the Inspector.
+ * 只有后端 Active 节点且尚无定稿回答时可作答;作答输入直接放在节点内。
+ * 历史节点只读:被选中(点击)的历史节点以与当前节点同等的规格展示完整
+ * 问答;未选中的保持紧凑导航卡,长历史绝不会淹没画布。逐路线的回答历史
+ * 与出处仍在 Inspector 中。
  *
- * Drag safety: only the header drags. Interactive body controls (options,
- * textarea, buttons) stop click propagation so they neither drag
- * nor break multi-selection, while the non-interactive body surface still
- * reaches Vue Flow so clicking it selects the node normally.
+ * 拖拽安全:只有标题栏可拖。正文里的交互控件(选项、textarea、按钮)都
+ * 阻止 click 冒泡,既不会触发拖拽也不会破坏多选;非交互的正文表面仍会
+ * 到达 Vue Flow,点击它可正常选中节点。
  */
 
 const inputDraftStore = useInputDraftStore()
 
-// Read directly from the complete draft identity. Vue Flow can update route
-// context in place without replacing the node or remounting its textarea.
-// Only input events write drafts: focus/render changes never copy an old
-// local value into a new route, nor recreate a draft cleared after success.
+// 直接从完整的草稿身份读取。Vue Flow 可以原地更新路线上下文,而不必替换
+// 节点或重新挂载 textarea。只有输入事件写草稿:focus/渲染变化绝不把旧的
+// 本地值复制进新路线,也不会重建一个成功提交后被清掉的草稿。
 const draftNodeId = computed(() => props.data.canonicalNodeId ?? props.data.node.id)
 const draft = computed(() => inputDraftStore.getDraft(
   props.data.projectId, draftNodeId.value, props.data.readingRouteId,
@@ -83,7 +89,7 @@ const freeText = computed({
   get: () => draft.value?.freeText ?? '',
   set: (text: string) => updateDraft({ freeText: text }),
 })
-// Independent visible cards must not belong to the same native radio group.
+// 独立可见的卡片绝不能属于同一个原生 radio 组。
 const answerOptionGroup = useId()
 
 function isSelected(optionId: string): boolean {
@@ -108,10 +114,9 @@ const isPendingCard = computed(() =>
   && props.data.runtimeStatus != null,
 )
 
-/**
- * In-flight run overlay on a real (already persisted) node: only while the
- * run is pending/running or just failed, never after success — a succeeded
- * run's outcome is the canonical content itself.
+/*
+ * 真实(已持久化)节点上的在途 run 覆盖层:只在 run 待处理/运行中或刚失败时
+ * 显示,成功后绝不显示——成功 run 的产出就是 canonical 内容本身。
  */
 const showNodeRuntimePanel = computed(() =>
   !isPendingCard.value
@@ -172,9 +177,8 @@ function submit(): void {
     freeText: props.data.node.allowFreeAnswer && freeText.value.trim().length > 0
       ? freeText.value.trim()
       : null,
-    // Explicit target: when this card is the tip of the route the user is
-    // reading (e.g. a non-Active route), the answer must be written to THAT
-    // route instead of whatever route happens to be Active.
+    // 显式目标:当本卡片是用户正在阅读的路线的末端时(例如非 Active 路线),
+    // 回答必须写入"那条"路线,而不是恰好处于 Active 的路线。
     nodeId: props.data.canonicalNodeId ?? props.data.node.id,
     routeId: props.data.readingRouteId,
   })
@@ -214,6 +218,19 @@ function onAction(action: NodeAction): void {
 }
 
 const readingRouteOptions = computed(() => props.data.routeMembership ?? [])
+
+/** 节点上的未解决失败 → 恢复栏条目(附路线展示名)。 */
+const recoveryItems = computed<RecoveryItem[]>(() =>
+  (props.data.recovery?.failures ?? []).map((failure) => ({
+    failure,
+    routeLabel: props.data.routeMembership?.find(
+      (membership) => membership.routeId === failure.routeId,
+    )?.label,
+  })),
+)
+function isFailureRetrying(failedRunId: string): boolean {
+  return useRunRegistryStore().isRetrying(failedRunId)
+}
 
 /**
  * 当前查看 = 已确定时只展示（默认由 Focus / 只看这条路线 / 唯一可见归属填满），
@@ -362,8 +379,7 @@ function setReadingRoute(event: Event): void {
         </select>
       </div>
 
-      <!-- Virtual AgentRun projection; it is replaced by a real node after the
-           Runtime persists the validated result. -->
+      <!-- 虚拟的 AgentRun 投影;运行时持久化校验结果后被真实节点取代。 -->
       <template v-if="isPendingCard">
         <div class="graph-runtime-state" data-test="pending-card">
           <p class="graph-node-question">{{ node.question }}</p>
@@ -377,18 +393,20 @@ function setReadingRoute(event: Event): void {
           />
           <p v-if="data.runtimeMessage" class="graph-runtime-error">{{ data.runtimeMessage }}</p>
           <button
-            v-if="data.runtimeStatus === 'FAILED'"
+            v-if="data.runtimeStatus === 'FAILED' && data.pendingFailure"
             class="btn btn-primary graph-action nodrag"
             data-test="retry-pending"
-            @click.stop="emit('retry-pending')"
+            :disabled="isFailureRetrying(data.pendingFailure.runId)"
+            :aria-label="data.pendingFailure.actionLabel"
+            @click.stop="emit('retry-failure', data.pendingFailure)"
           >
-            重试
+            {{ isFailureRetrying(data.pendingFailure.runId) ? '重试中…' : data.pendingFailure.actionLabel }}
           </button>
         </div>
       </template>
 
-      <!-- In-flight run on an existing node: a slim process strip under the
-           regular content. Never blocks answering; progress only. -->
+      <!-- 已有节点上的在途 run:常规内容下方的一条细进度条。
+           绝不阻塞作答;只展示进度。 -->
       <GraphRunProcessPanel
         v-if="showNodeRuntimePanel && data.runtimeProgress"
         class="graph-runtime-state__panel graph-runtime-state__panel--inline nodrag"
@@ -399,7 +417,7 @@ function setReadingRoute(event: Event): void {
         compact
       />
 
-      <!-- Current answerable node: direct answer interaction.
+      <!-- 当前可作答节点:直接进行作答交互。
            !isPendingCard 守卫:pending 投影已在上方完整渲染,此模板链对
            pending 卡片必须整体短路,否则紧凑历史分支会再渲染一次问题标题。 -->
       <template v-if="!isPendingCard && data.canAnswer">
@@ -556,6 +574,18 @@ function setReadingRoute(event: Event): void {
         >等待回答</p>
         <p v-else class="meta-text graph-node-expand-hint" data-test="expand-hint">点击查看完整回答</p>
       </template>
+
+      <!-- 任务级失败恢复栏:回答已保存→继续处理 / 换题失败→重试换题 /
+           问 AI 失败→重试该查询 / 配置错误→前往模型设置。32px 图标常驻。
+           刻意放在 v-if/v-else-if 内容链之外,绝不破坏分支互斥。 -->
+      <NodeRecoveryBar
+        v-if="!isPendingCard && recoveryItems.length > 0"
+        :items="recoveryItems"
+        :is-retrying="isFailureRetrying"
+        @retry="(failure) => emit('retry-failure', failure)"
+        @go-settings="emit('go-settings')"
+        @locate="(failure) => emit('locate-failure', failure)"
+      />
     </div>
 
     <!-- 操作轨道按钮：统一来自 nodeActions 配置表；轨道容器与显隐在

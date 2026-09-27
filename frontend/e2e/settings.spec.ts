@@ -1,5 +1,5 @@
-import { test, expect } from '@playwright/test'
 
+import { test, expect } from './helpers'
 test('model settings probes, selects, and saves without exposing the key', async ({ page }) => {
   // 更具体的路由必须先注册：已保存密钥的模型列表与设置本体是两个端点。
   await page.route('**/api/v1/settings/opencode/models', async (route) => {

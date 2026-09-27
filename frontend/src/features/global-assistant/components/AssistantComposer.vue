@@ -1,3 +1,9 @@
+<!--
+  文件名:AssistantComposer.vue
+  用途:全局助手的输入区组件:多行输入框 + 发送/停止按钮。运行中时进入"调整方向(steer)"
+       模式,展示运行中提示与待生效的调整;处理 Enter 发送/Shift+Enter 换行,
+       并用 composition 事件避免中文输入法选词时误触发发送;接近字数上限时显示计数。
+-->
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import AppIcon from '@/shared/ui/AppIcon.vue'
@@ -133,7 +139,7 @@ defineExpose({ focusComposer })
 .ga-composer__hint { font-size: 11.5px; color: var(--color-text-muted); }
  .ga-composer__count { font-size: 11.5px; color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
 .ga-composer__spacer { flex: 1; }
-/* Icon-only round action buttons: send = accent, stop = danger red. */
+/* 仅图标的圆形操作按钮:发送 = 强调色,停止 = 危险红。 */
 .ga-composer__icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 999px; border: 1px solid transparent; cursor: pointer; transition: background 140ms ease, box-shadow 140ms ease, opacity 140ms ease; }
 .ga-composer__icon-btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .ga-composer__icon-btn:disabled { cursor: default; opacity: 0.45; }

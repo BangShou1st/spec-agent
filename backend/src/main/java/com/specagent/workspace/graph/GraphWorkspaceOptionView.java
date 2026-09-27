@@ -5,12 +5,12 @@ import com.specagent.workspace.node.NodeOption;
 import java.util.UUID;
 
 /**
- * Read-only option view inside a graph node.
+ * 文件名:GraphWorkspaceOptionView.java
  *
- * <p>Option ids are runtime-owned and read-only. Clients never supply option
- * ids back to the runtime for creation; a replacement option is expressed only
- * by label and impact. {@code recommended} marks the model's context-based
- * suggestion — advice for the user, never a pre-selected answer.
+ * 用途:图节点内部选项的只读视图。选项 id 由运行时生成且只读。
+ * 客户端永远不会把选项 id 回传给运行时来创建答案;替换选项只能用
+ * label + impact 表达。{@code recommended} 标记模型基于上下文的建议——
+ * 是给用户的参考,绝不是预选答案。
  */
 public record GraphWorkspaceOptionView(
         UUID id,

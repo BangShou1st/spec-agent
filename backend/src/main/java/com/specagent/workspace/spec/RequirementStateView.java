@@ -9,12 +9,12 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Read-only requirement-state view grouped by the actual runtime claim status.
+ * 文件名:RequirementStateView.java
  *
- * <p>Grouping follows {@code ClaimStatus} exactly (confirmed, assumed,
- * unresolved, rejected) and is derived on the backend; a client never infers a
- * status. {@code routeId} is {@code null} when the project has no active route
- * and the view is a safe empty read model instead of an invented route.
+ * 用途:只读的需求状态视图,按运行时真实的 claim 状态分组返回给前端。分组
+ * 严格遵循 {@code ClaimStatus}(confirmed、assumed、unresolved、rejected),由
+ * 后端派生;客户端从不自行推断状态。项目没有活跃 route 时 {@code routeId} 为
+ * {@code null},视图退化为安全的空读模型,而不是凭空造一个 route。
  */
 public record RequirementStateView(
         UUID projectId,
@@ -25,7 +25,7 @@ public record RequirementStateView(
         List<RequirementClaimView> rejected,
         Instant builtAt) {
 
-    /** Safe empty read model for a project without an active route. */
+    /** 项目没有活跃 route 时的安全空读模型。 */
     public static RequirementStateView empty(UUID projectId) {
         return new RequirementStateView(projectId, null,
                 List.of(), List.of(), List.of(), List.of(), Instant.now());

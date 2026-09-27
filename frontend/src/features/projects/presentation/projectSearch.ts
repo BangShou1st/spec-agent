@@ -1,35 +1,31 @@
-/**
- * Project list search — client-side helpers for the *highlight* only.
- *
- * Filtering moved to the backend: `GET /projects?title=` returns the matched
- * subset (case-insensitive substring), so the authoritative result set lives
- * on the server and scales independently of the list size. The frontend keeps
- * two pure helpers here because the highlight still needs the raw query term:
- *
- *  - `normalizeQuery` trims the input; an all-whitespace query means "no term".
- *  - `splitTitleSegments` splits a title into plain / matched segments for
- *    highlight rendering. It returns data instead of HTML so the view never
- *    needs `v-html` — project titles are user input and must never be injected
- *    as markup.
- */
+// 文件名:projectSearch.ts
+// 用途:项目列表搜索——只为高亮服务的客户端辅助函数。
+//
+// 过滤已迁移到后端:`GET /projects?title=` 返回命中的子集(大小写不敏感的子串匹配),
+// 权威结果集在服务端,规模与列表大小无关。前端保留两个纯函数,
+// 因为高亮仍然需要原始查询词:
+//
+//  - `normalizeQuery` 去除首尾空白;全空白的查询等同于"没有查询词"。
+//  - `splitTitleSegments` 把标题拆成 普通/命中 片段用于高亮渲染。
+//    它返回数据而不是 HTML,视图因此永远不需要 v-html——
+//    项目标题是用户输入,绝不能被当作标记注入。
 
 export interface TitleSegment {
   text: string
   matched: boolean
 }
 
-/** Trims the raw input. An all-whitespace query means "no term". */
+/** 去除原始输入的首尾空白;全空白的查询等同于"没有查询词"。 */
 export function normalizeQuery(query: string): string {
   return query.trim()
 }
 
 /**
- * Splits a title into plain / matched segments for highlight rendering.
- * Matching rules mirror the backend filter so the highlight and the result
- * set never disagree:
- *  - the query is trimmed; an empty query yields one unmatched segment
- *  - case-insensitive substring match
- *  - every occurrence is highlighted, not just the first one
+ * 把标题拆成 普通/命中 片段用于高亮渲染。
+ * 匹配规则镜像后端过滤器,保证高亮与结果集永远一致:
+ *  - 查询词去除首尾空白;空查询返回单个未命中片段
+ *  - 大小写不敏感的子串匹配
+ *  - 所有出现位置都高亮,而不只是第一处
  */
 export function splitTitleSegments(title: string, query: string): TitleSegment[] {
   const needle = normalizeQuery(query)

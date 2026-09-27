@@ -16,6 +16,13 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * 文件名:NodeRepository.java
+ *
+ * 用途:nodes 表的持久化访问。负责节点的写入与查询、行级锁、
+ * 草稿原地编辑、知识状态流转、父指针(lineage 归属)更新,以及
+ * 软撤回。撤回是软删除:只写 {@code retracted_at},行永不物理删除。
+ */
 @Repository
 public class NodeRepository {
 
@@ -74,11 +81,9 @@ public class NodeRepository {
     }
 
     /**
-     * Locks the node row for the current transaction, or fails fast when the
-     * node does not exist. Used to serialize concurrent mutations that must
-     * decide against the node-wide state (e.g. the single-Answer invariant) —
-     * the lock makes the later existence re-check authoritative instead of
-     * race-prone.
+     * 为当前事务锁定节点行,节点不存在时立即失败。用于串行化必须基于
+     * 节点全局状态做判断的并发变更(如单一 Answer 不变量)——先加锁,
+     * 后续的存在性复查才是权威的,而不是存在竞态的。
      */
     public void lockById(UUID id) {
         String sql = "SELECT id FROM nodes WHERE id = :id FOR UPDATE";
@@ -94,10 +99,8 @@ public class NodeRepository {
     }
 
     /**
-     * Returns the supplied project nodes and all descendants below them. The
-     * recursive query keeps route provenance refresh proportional to the
-     * affected canonical prefix/material instead of scanning the whole
-     * project in the route service.
+     * 返回给定的项目节点及其全部后代。递归查询使路线出处刷新的开销
+     * 与受影响的规范前缀/材料成正比,而不是由 route service 扫全项目。
      */
     public List<Node> findDescendants(UUID projectId, Collection<UUID> rootNodeIds) {
         if (rootNodeIds == null || rootNodeIds.isEmpty()) {
@@ -121,7 +124,7 @@ public class NodeRepository {
                 """, Maps.of("projectId", projectId, "rootNodeIds", rootNodeIds), rowMapper);
     }
 
-    /** In-place edit of a still-editable user draft: subtype and content only. */
+    /** 仍可编辑的用户草稿的原地编辑:仅 subtype 与 content。 */
     public void updateDraft(UUID nodeId, String subtype, Map<String, Object> content, Instant updatedAt) {
         String sql = """
                 UPDATE nodes
@@ -149,12 +152,12 @@ public class NodeRepository {
     }
 
     /**
-     * Sets (or clears) a node's single parent — i.e. its lineage membership.
+     * 设置(或清空)节点唯一的父节点——即它的 lineage 归属。
      *
-     * <p>Only the explicit connect/disconnect commands use this: a node's
-     * belonging is expressed by the {@code parent_node_id} chain plus the
-     * owning route's tip, never by a {@code node_route} join table. Callers
-     * must therefore update the route tip in the same transaction.
+     * 只有显式的 connect/disconnect 命令会用到它:节点的归属由
+     * {@code parent_node_id} 链加所属路线的 tip 表达,绝不通过
+     * {@code node_route} 关联表。因此调用方必须在同一事务里同步更新
+     * 路线 tip。
      */
     public void updateParent(UUID nodeId, UUID parentNodeId, Instant updatedAt) {
         String sql = """
@@ -184,12 +187,11 @@ public class NodeRepository {
     }
 
     /**
-     * Mirrors {@link #existsByParentNodeId} but ignores soft-retracted children.
-     * Undo/Redo must treat a node with only retracted descendants as a leaf:
-     * otherwise undoing the parent after the child was already undone would be
-     * permanently rejected, breaking the linear stack (the second undo would
-     * never succeed). "Live" children are those whose {@code retracted_at} is
-     * still null.
+     * 与 {@link #existsByParentNodeId} 对应,但忽略已软撤回的子节点。
+     * Undo/Redo 必须把"只剩已撤回后代"的节点当作叶子:否则在子节点
+     * 已被撤销之后再撤销父节点会被永久拒绝,线性栈就断了(第二次撤销
+     * 永远不会成功)。"存活"子节点指 {@code retracted_at} 仍为 null 的
+     * 节点。
      */
     public boolean existsActiveByParentNodeId(UUID parentNodeId) {
         String sql = "SELECT EXISTS(SELECT 1 FROM nodes WHERE parent_node_id = :parentNodeId AND retracted_at IS NULL)";

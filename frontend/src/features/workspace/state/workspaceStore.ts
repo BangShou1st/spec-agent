@@ -1,6 +1,8 @@
+// 文件名:workspaceStore.ts
+// 用途:工作区应用状态 store(Pinia):canonical 服务器状态 + 运行时命令;每个 action 名保留在此,函数体拆分到 state/ 下的领域模块并经 this 委托,避免模块环。
 import { defineStore } from 'pinia'
 import type { DisplayError } from '@/shared/http/displayError'
-import type { AgentRunView } from '@/features/workspace/api/agentRuns'
+import type { AgentRunView, UnresolvedFailure } from '@/features/workspace/api/agentRuns'
 import type { SpecExportVariant } from '@/features/workspace/api/spec'
 import type {
   ActiveProjectStateResponse,
@@ -19,16 +21,14 @@ import {
   loadWorkspaceAction,
   nodeRouteIdsAction,
   rebuildRunRegistryAction,
+  rebuildUnresolvedFailuresAction,
   refreshWorkspaceAction,
-  restoreCanonicalRecoveryCheckpointsAction,
 } from './workspaceLoader'
 import {
   answerTargetRouteTipAction,
   consumeFocusAfterMutationAction,
   draftQuestionAction,
-  findFinalizedAnswerForActiveTipAction,
   findFinalizedAnswerForNodeAction,
-  findForkDraftRetryRouteIdAction,
   finishSuccessfulAnswerRunAction,
   markPendingRouteFailedAction,
   pollAnswerRunAction,
@@ -40,9 +40,8 @@ import {
   reconcileUnknownAnswerOutcomeAction,
   repairAnswerForActiveFlowAction,
   resubmitFailedAnswerAction,
-  retryForkDraftAction,
   retryManualModelOperationAction,
-  retryPendingAgentRunAction,
+  retryFailedRunAction,
   setFocusAfterMutationAction,
   submitAnswerAction,
   updatePendingRouteProjectionAction,
@@ -83,6 +82,7 @@ import {
   askNodeAIAction,
   loadNodeQueryProposalsAction,
   pollNodeQueryAction,
+  refreshNodeQueryResultAction,
   rejectConfirmableProposalAction,
   rejectNodeQueryProposalAction,
 } from './proposals'
@@ -101,34 +101,31 @@ export type {
   PendingRouteCommand,
 } from './types'
 
-/**
- * Workspace application state (canonical server state + Runtime commands).
+/*
+ * 工作区应用状态(canonical 服务器状态 + 运行时命令)。
  *
- * The frontend never reconstructs Runtime history: after every command the
- * canonical backend read APIs are refreshed and this store only mirrors what
- * the backend returned. RequirementState is backend-derived and never
- * promoted client-side. Route lifecycle is never mutated locally — every
- * transition goes through the existing route command API.
+ * 前端绝不重建运行时历史:每次命令之后刷新 canonical 的后端读取 API,
+ * 本 store 只镜像后端返回的内容。RequirementState 是后端派生的,客户端
+ * 绝不晋升。路线生命周期绝不在本地修改——每次流转都走既有的路线命令
+ * API。
  *
- * Browser-only view state (selection, focus, filters, layout, sidebars)
- * lives in `graphUiStore`; this store never imports it and never lets Focus
- * change command targeting — draft/submit/spec generation always target the
- * backend Active route.
+ * 仅浏览器的视图状态(选中、Focus、筛选、布局、侧栏)存放在
+ * `graphUiStore`;本 store 绝不导入它,也绝不让 Focus 改变命令目标——
+ * 起草/提交/规格生成始终以 后端 Active 路线为目标。
  *
- * Every action name stays here with its original signature; the body lives in
- * the per-domain module under `state/` and is called through `this`,
- * so an action may call an action of any domain without a module cycle.
+ * 每个 action 名连同其原始签名都留在这里;函数体位于 `state/` 下的领域
+ * 模块,并经 `this` 调用,因此一个 action 可以调用任何领域的 action 而
+ * 不产生模块环。
  */
 export const useWorkspaceStore = defineStore('workspace', {
   state: () => ({
     projectId: null as string | null,
-    /**
-     * Project-session counter, bumped by `beginProject`. Every async action
-     * captures it (plus `projectId`) when it starts and re-validates after
-     * each `await`, BEFORE writing store state — a slow request for project A
-     * must never overwrite project B's canonical state, error, or flags, and
-     * must not release B's loading/locks. `projectId` alone is not enough:
-     * A→B→A and same-project reloads are only distinguished by the counter.
+    /*
+     * 项目会话计数器,由 `beginProject` 递增。每个异步 action 在开始时
+     * 捕获它(加 `projectId`),并在每个 `await` 之后、写入 store 状态之前
+     * 重新校验——针对项目 A 的慢请求绝不能覆盖项目 B 的 canonical 状态、
+     * 错误或标志,也绝不能释放 B 的加载/锁。只有 `projectId` 不够:
+     * A→B→A 与同项目刷新只能靠计数器区分。
      */
     projectSessionId: 0,
     project: null as ProjectResponse | null,
@@ -141,55 +138,50 @@ export const useWorkspaceStore = defineStore('workspace', {
     repairingAnswer: false,
     feedback: null as string | null,
     error: null as DisplayError | null,
-    /**
-     * Per-answer-run sessions (one entry per submit attempt), keyed by the
-     * client request id on the session itself. ALL answer-run lifecycle
-     * state (pending node, run id/phase/status, unknown outcome, repair and
-     * resubmit affordances, cleanup identity) lives on the session — the
-     * single-value fields below are read-only derived views. Concurrent
-     * answers on different routes therefore never overwrite or clear each
-     * other's state; see `AnswerRunSessionState`.
+    /*
+     * 逐回答 run 的会话(每次提交尝试一条),以会话自身的客户端请求 id
+     * 为键。所有回答 run 的生命周期状态(待处理节点、run id/阶段/状态、
+     * 未知结果、修复与重提交入口、清理身份)都放在会话上——下方的单值
+     * 字段只是只读的派生视图。因此不同路线上的并发回答绝不覆盖或清除
+     * 彼此的状态;见 `AnswerRunSessionState`。
      */
     answerRunSessions: [] as AnswerRunSessionState[],
-    /**
-     * Reload-derived repair checkpoint: an owned Answer on the Active route
-     * tip whose follow-up generation never finished. Rebuilt from canonical
-     * reads on every load/refresh; run-scoped repair affordances live on the
-     * sessions and take precedence in the `repairableAnswerId` getter.
+    /*
+     * 刷新派生的修复检查点:Active 路线末端上一个后续生成未完成的已归属
+     * 回答。每次加载/刷新时从 canonical 读取重建;run 范围的修复入口在
+     * 会话上,并在 `repairableAnswerId` getter 中优先。
      */
-    canonicalRepairableAnswerId: null as string | null,
     manualModelRetry: null as ManualModelRetryIntent | null,
     focusAfterMutation: null as MutationFocusTarget | null,
 
-    // Canonical graph read (Phase 7.3A): replaced from the backend on every
-    // refresh; the frontend never patches it locally.
+    // canonical 图读取(Phase 7.3A):每次刷新从后端整体替换;前端绝不
+    // 在本地打补丁。
     graphView: null as GraphWorkspaceView | null,
-    // Route-scoped requirement-state cache, indexed by explicit route id.
+    // 路线级需求状态缓存,以显式路线 id 为索引。
     requirementStatesByRoute: {} as Record<string, RequirementStateView>,
     loadingRequirementRouteId: null as string | null,
-    // Route-scoped spec selection, indexed by explicit route id.
+    // 路线级规格选择,以显式路线 id 为索引。
     selectedSpecIdByRoute: {} as Record<string, string | null>,
 
-    // Route command lockout: one precise command at a time.
+    // 路线命令锁定:一次只允许一条精确命令。
     routeCommandPending: false,
     pendingRouteCommand: null as PendingRouteCommand,
-    /** Browser-only virtual card for a queued/failed AgentRun. */
+    /** 排队/失败 AgentRun 的仅浏览器虚拟卡片。 */
     pendingRouteProjection: null as GraphPendingProjection | null,
-    /** Latest terminal RESPOND leaf message of the last completed draft chain. */
+    /** 最近一条完成的起草链的终态 RESPOND 叶子消息。 */
     pendingDraftRespondMessage: null as string | null,
-    /** Fork is durable even when its follow-up Draft command fails. */
-    forkDraftRetryRouteId: null as string | null,
+    /** 即使后续起草命令失败,fork 也已持久化。 */
 
-    // Spec snapshots per route (backend-derived, never authored here).
+    // 逐路线的规格快照(后端派生,绝不在本地撰写)。
     generatingSpec: false,
     exportingSpec: false,
     loadingSpecs: false,
     specsByRoute: {} as Record<string, SpecSnapshotResponse[]>,
 
-    // Graph workspace commands: one mutation in flight at a time.
+    // 图工作区命令:一次只允许一个 mutation 在途。
     graphCommandPending: false,
     undoRedo: { canUndo: false, canRedo: false } as { canUndo: boolean; canRedo: boolean },
-    // In-flight / finished contextual node query ("ask AI about this node").
+    // 在途/已完成的上下文节点查询("问 AI 这个节点")。
     nodeQuery: null as {
       nodeId: string
       routeId: string | null
@@ -201,12 +193,11 @@ export const useWorkspaceStore = defineStore('workspace', {
       proposalStatus?: string | null
       actionFamily?: string | null
     } | null,
-    /**
-     * Durable pending NodeQuery proposals discovered from the backend proposal
-     * list API. A PROPOSED AgentProposal must survive a page reload and a
-     * newer query (which replaces `nodeQuery`): this list is reloaded on every
-     * workspace load/refresh and keyed by the canonical anchor node id so the
-     * Inspector on that node still exposes the pending proposal.
+    /*
+     * 从后端提案列表 API 发现的持久待确认 NodeQuery 提案。一条 PROPOSED
+     * AgentProposal 必须在页面刷新与更新查询(取代 `nodeQuery`)之后存活:
+     * 该列表在每次工作区加载/刷新时重新加载,并以 canonical 锚节点 id 为
+     * 键,该节点的 Inspector 仍能展示这条待确认提案。
      */
     nodeQueryProposals: [] as ProjectProposalSummary[],
     /** 回答/决策周期的待确认提案（意图变更，需用户显式接受/拒绝）。 */
@@ -216,13 +207,12 @@ export const useWorkspaceStore = defineStore('workspace', {
     activeRoute(state): RouteResponse | null {
       return state.activeState?.activeRoute ?? null
     },
-    /**
-     * The session the single-value views below resolve to.
+    /*
+     * 下方单值视图所解析到的那个会话。
      *
-     * A session that needs the user's decision (unknown outcome, repair, or
-     * resubmit) wins — latest first; otherwise the most recently started
-     * live session is shown. This is presentation focus ONLY: every action
-     * reads and writes its own session object directly, never this getter.
+     * 需要用户决策的会话(结果未知、修复或重提交)获胜——新的优先;
+     * 否则展示最近开始的活跃会话。这只是展示焦点:每个 action 直接读写
+     * 自己的会话对象,绝不读写这个 getter。
      */
     focusedAnswerSession(state): AnswerRunSessionState | null {
       const live = state.answerRunSessions
@@ -238,53 +228,45 @@ export const useWorkspaceStore = defineStore('workspace', {
       }
       return live.length > 0 ? live[live.length - 1] : null
     },
-    /** Node whose answer run is being observed (derived, read-only). */
+    /** 回答 run 正在被观察的节点(派生,只读)。 */
     pendingAnswerNodeId(): string | null {
       return this.focusedAnswerSession?.nodeId ?? null
     },
-    /** In-flight answer run (async Runtime); null when no run is being polled. */
+    /** 在途回答 run(异步运行时);没有 run 在轮询时为 null。 */
     answerRunId(): string | null {
       return this.focusedAnswerSession?.runId ?? null
     },
-    /** Latest observed phase of the in-flight answer run. */
+    /** 在途回答 run 最近观察到的阶段。 */
     answerRunPhase(): string | null {
       return this.focusedAnswerSession?.phase ?? null
     },
-    /** Runtime status is kept separate from immutable answer/knowledge state. */
+    /** 运行时状态与不可变的回答/知识状态分开保存。 */
     answerRunStatus(): GraphRuntimeStatus | null {
       return this.focusedAnswerSession?.runStatus ?? null
     },
     answerOutcomeUnknown(): boolean {
       return this.focusedAnswerSession?.status === 'UNKNOWN'
     },
-    /**
-     * Repair affordance: a run-scoped repairable session wins; otherwise the
-     * reload-derived canonical checkpoint (Active-route tip answer).
-     */
-    repairableAnswerId(): string | null {
-      return this.focusedAnswerSession?.repairableAnswerId ?? this.canonicalRepairableAnswerId
-    },
-    /** Provably-safe one-shot resubmit payload of the focused session. */
+    /** 焦点会话可证明安全的一次性重提交载荷。 */
     resubmitAnswerPayload(): SubmitAnswerRequest | null {
       const session = this.focusedAnswerSession
       return session !== null && session.status === 'RESUBMITTABLE'
         ? { ...session.payload }
         : null
     },
-    /**
-     * Submission identity of the focused session: the route the answered node
-     * belonged to at submission time. Success cleanup clears the draft under
-     * THIS route identity even if the runtime created or switched routes.
+    /*
+     * 焦点会话的提交身份:被回答节点在提交时所属的路线。成功清理按这条
+     * 路线身份清除草稿,即使运行时创建或切换了路线。
      */
     submittedRouteIdForCleanup(): string | null {
       return this.focusedAnswerSession?.routeId ?? null
     },
-    /**
-     * Routes with an answer run currently in flight.
+    /*
+     * 回答 run 当前在途的路线。
      *
-     * The lock is PER ROUTE, not global: independent routes must not block one
-     * another, while the same route can never run two competing answer cycles.
-     * `submitting` is the derived "any route is busy" flag kept for the UI.
+     * 锁是逐路线的,不是全局:独立路线绝不能互相阻塞,而同一条路线绝不
+     * 能同时跑两个竞争的回答周期。`submitting` 是为 UI 保留的派生
+     * "任意路线忙碌"标志。
      */
     answerRunsInFlight(): string[] {
       return this.answerRunSessions
@@ -294,7 +276,7 @@ export const useWorkspaceStore = defineStore('workspace', {
     submitting(): boolean {
       return this.answerRunSessions.some((session) => session.status === 'RUNNING')
     },
-    /** Resolves the selected snapshot for one explicit route. */
+    /** 为一条显式路线解析选中的快照。 */
     selectedSpecForRoute(): (routeId: string) => SpecSnapshotResponse | null {
       return (routeId: string) => {
         const id = this.selectedSpecIdByRoute[routeId]
@@ -310,8 +292,8 @@ export const useWorkspaceStore = defineStore('workspace', {
     beginProject(projectId: string): void { beginProjectAction(this, projectId) },
     async loadWorkspace(projectId: string): Promise<void> { return loadWorkspaceAction(this, projectId) },
     async refreshWorkspace(): Promise<boolean> { return refreshWorkspaceAction(this) },
-    restoreCanonicalRecoveryCheckpoints(): void { restoreCanonicalRecoveryCheckpointsAction(this) },
     async rebuildRunRegistry(): Promise<void> { return rebuildRunRegistryAction(this) },
+    async rebuildUnresolvedFailures(): Promise<void> { return rebuildUnresolvedFailuresAction(this) },
 
     // ---- Async runs: state/workspaceRuns.ts ----
     updatePendingRouteProjection(view: AgentRunView): void { updatePendingRouteProjectionAction(this, view) },
@@ -354,12 +336,10 @@ export const useWorkspaceStore = defineStore('workspace', {
       return repairAnswerForActiveFlowAction(this, answerId, routeId, nodeId)
     },
     async resubmitFailedAnswer(): Promise<boolean> { return resubmitFailedAnswerAction(this) },
-    findFinalizedAnswerForActiveTip(): string | null { return findFinalizedAnswerForActiveTipAction(this) },
     findFinalizedAnswerForNode(nodeId: string | null, routeId?: string | null): string | null {
       return findFinalizedAnswerForNodeAction(this, nodeId, routeId)
     },
     answerTargetRouteTip(): string | null { return answerTargetRouteTipAction(this) },
-    findForkDraftRetryRouteId(): string | null { return findForkDraftRetryRouteIdAction(this) },
     setFocusAfterMutation(target: MutationFocusTarget | null): void { setFocusAfterMutationAction(this, target) },
     consumeFocusAfterMutation(): MutationFocusTarget | null { return consumeFocusAfterMutationAction(this) },
     async retryManualModelOperation(): Promise<boolean> { return retryManualModelOperationAction(this) },
@@ -382,8 +362,7 @@ export const useWorkspaceStore = defineStore('workspace', {
     async forkNode(nodeId: string, sourceRouteId: string, label?: string | null): Promise<boolean> {
       return forkNodeAction(this, nodeId, sourceRouteId, label)
     },
-    async retryForkDraft(): Promise<boolean> { return retryForkDraftAction(this) },
-    async retryPendingAgentRun(): Promise<boolean> { return retryPendingAgentRunAction(this) },
+    async retryFailedRun(failure: UnresolvedFailure): Promise<boolean> { return retryFailedRunAction(this, failure) },
     async reanswerNode(nodeId: string, sourceRouteId: string, label?: string | null): Promise<boolean> {
       return reanswerNodeAction(this, nodeId, sourceRouteId, label)
     },
@@ -450,7 +429,7 @@ export const useWorkspaceStore = defineStore('workspace', {
     async askNodeAI(nodeId: string, routeId: string | null, question: string): Promise<boolean> {
       return askNodeAIAction(this, nodeId, routeId, question)
     },
-    /** Resolves the route memberships of a canonical node from the graph read. */
+    /** 从图读取解析 canonical 节点的路线归属。 */
     nodeRouteIds(nodeId: string): string[] { return nodeRouteIdsAction(this, nodeId) },
     async pollNodeQuery(query: {
       runId: string
@@ -461,6 +440,14 @@ export const useWorkspaceStore = defineStore('workspace', {
       return pollNodeQueryAction(this, query)
     },
     async loadNodeQueryProposals(): Promise<void> { return loadNodeQueryProposalsAction(this) },
+    /** 节点查询重试成功后刷新检查器展示的结果(6-5)。 */
+    async refreshNodeQueryResult(
+      nodeId: string,
+      runId: string,
+      fallback: { routeId: string | null; question: string },
+    ): Promise<void> {
+      return refreshNodeQueryResultAction(this, nodeId, runId, fallback)
+    },
     async acceptNodeQueryProposal(proposalId: string): Promise<boolean> {
       return acceptNodeQueryProposalAction(this, proposalId)
     },
@@ -476,10 +463,8 @@ export const useWorkspaceStore = defineStore('workspace', {
   },
 })
 
-/**
- * Public store type. The per-domain modules under `state/` receive
- * the store instance and declare it with this type, which they import as a
- * `import type` — so there is no runtime module cycle between the store and its
- * domain modules.
+/*
+ * store 的公开类型。`state/` 下的领域模块接收 store 实例并用该类型声明,
+ * 以 `import type` 导入——因此 store 与其领域模块之间没有运行时模块环。
  */
 export type WorkspaceStore = ReturnType<typeof useWorkspaceStore>

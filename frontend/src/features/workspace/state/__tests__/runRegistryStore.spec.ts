@@ -1,3 +1,5 @@
+// 文件名:runRegistryStore.spec.ts
+// 用途:runRegistryStore 单元测试:验证 run 条目的注册/喂送/重建对账规则(提交时事实幸存、成功条目丢弃)。
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useRunRegistryStore } from '@/features/workspace/state/runRegistryStore'
@@ -70,8 +72,8 @@ describe('runRegistryStore', () => {
     registry.register({ runId: 'run-done', operation: 'ANSWER_TIP', routeId: 'r1', sourceNodeId: 'n3' })
     registry.feed(viewOf({ runId: 'run-done', status: 'completed' }))
 
-    // run-gone is RUNNING but absent from the backend listing (still polled);
-    // run-done is terminal and absent — success is canonical, so it is dropped.
+    // run-gone 是 RUNNING 但不在后端列表中(仍在轮询);run-done 已终态
+    // 且不在列表——成功已是 canonical,因此条目被丢弃。
     registry.rebuild([viewOf({ runId: 'run-a', routeId: 'r1' })])
 
     expect(Object.keys(registry.runs).sort()).toEqual(['run-a', 'run-gone'])

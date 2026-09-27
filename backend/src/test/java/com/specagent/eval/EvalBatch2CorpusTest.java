@@ -8,12 +8,11 @@ import java.util.Set;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Second corpus batch (P2 Phase 2) — B-fast verification.
+ * 文件名:EvalBatch2CorpusTest.java
  *
- * <p>Every batch-2 scenario must pass scripted before entering the live
- * baseline corpus, so a live red always means live behavior — never a
- * malformed scenario. Capability scenarios additionally assert the probe
- * invocation counts the contract implies.
+ * 测试目标:第二批语料(P2 Phase 2)——B-fast 脚本验证。每个 batch-2 场景
+ * 必须先在脚本模式下通过才能进入 live 基线语料,保证 live 红灯永远代表真实
+ * 行为问题,而非场景本身畸形。能力类场景额外断言契约隐含的探针调用次数。
  */
 class EvalBatch2CorpusTest extends EvalHarnessBase {
 

@@ -9,10 +9,10 @@ import org.springframework.stereotype.Component;
 import java.util.UUID;
 
 /**
- * Test-only driver for the async question draft: enqueues a DRAFT_QUESTION
- * run and executes it synchronously through the worker. Drives exactly the
- * production draft path in test fixtures so
- * isolation/recovery suites exercise exactly the production draft path.
+ * 文件名:DecisionCycleTestDriver.java
+ *
+ * 测试目标:仅供测试使用的异步问题草稿驱动:入队 DRAFT_QUESTION run 并通过 worker
+ * 同步执行。让 fixture 精确走生产草稿路径,使隔离/恢复类测试套件覆盖的正是生产逻辑。
  */
 @Component
 public class DecisionCycleTestDriver {
@@ -26,9 +26,8 @@ public class DecisionCycleTestDriver {
     }
 
     /**
-     * Drafts the next question on the project's active route and drives the
-     * run to its terminal state. The claim is targeted at the enqueued run id
-     * so an unrelated queued row can never be picked up instead.
+     * 在项目活动路由上起草下一个问题,并把 run 驱动到终态。领取时按入队的
+     * run id 精确定位,因此绝不会误取无关的排队行。
      */
     public AgentRun draftQuestion(UUID projectId) {
         AgentRun enqueued = runService.createQueuedDraftQuestion(projectId);
@@ -42,8 +41,7 @@ public class DecisionCycleTestDriver {
     }
 
     /**
-     * Generates a spec snapshot on the project's active route through the
-     * production artifact path.
+     * 通过生产工件路径,在项目活动路由上生成规格快照。
      */
     public AgentRun generateSpec(UUID projectId) {
         AgentRun enqueued = runService.createQueuedArtifactGeneration(projectId);
@@ -58,8 +56,7 @@ public class DecisionCycleTestDriver {
     }
 
     /**
-     * Regenerates the given node on its explicit source route through the
-     * production replacement path.
+     * 通过生产替换路径,在其显式来源路由上重新生成指定节点。
      */
     public AgentRun regenerateNode(UUID projectId, UUID sourceRouteId,
                                    UUID nodeId, String instruction) {

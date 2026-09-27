@@ -1,9 +1,10 @@
 package com.specagent.mcp.transport;
 
 /**
- * Typed failure for MCP transport/handshake/discovery problems. Raw SDK
- * exception class names may be referenced for diagnosis, but provider
- * exception/stack details never reach the model or user.
+ * 文件名:McpTransportException.java
+ *
+ * 用途:MCP 传输/握手/发现问题的带类型失败。允许引用 SDK 异常类名用于诊断,
+ * 但 Provider 的异常与堆栈细节永远不会到达模型或用户。
  */
 public class McpTransportException extends RuntimeException {
 

@@ -1,3 +1,8 @@
+<!--
+  文件名:SettingsLayout.vue
+  用途:设置区整体布局("设置外壳"),提供页面标题与 模型/Skills/Connections 三个子页的导航,
+       子页面通过内部 RouterView 渲染。
+-->
 <script setup lang="ts">
 import { RouterLink, RouterView } from 'vue-router'
 </script>

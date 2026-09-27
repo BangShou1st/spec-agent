@@ -5,7 +5,9 @@ import com.specagent.workspace.node.NodeOption;
 import java.util.List;
 
 /**
- * Draft of a clarification node proposed by the agent loop.
+ * 文件名:NodeDraft.java
+ *
+ * 用途:Agent 循环提议的澄清(clarification)节点草稿。
  */
 public record NodeDraft(
         String question,

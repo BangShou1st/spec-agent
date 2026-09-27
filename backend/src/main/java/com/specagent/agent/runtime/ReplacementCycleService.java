@@ -44,16 +44,16 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Replacement cycle: exactly 1 DECISION call producing the replacement
- * question CONTENT, then a deterministic runtime commit. The model never
- * mutates the graph here — the replacement topology (old route SUPERSEDED,
- * new OPEN route with a fresh identity, source-route provenance) stays owned
- * by {@code RouteService.commitReplacementFromNode}, and the proposal's base
- * context must still be the live snapshot before the commit.
+ * 文件名:ReplacementCycleService.java
  *
- * <p>Fail-closed guards: the target node must still sit in the source
- * route's lineage at execution time, and the replacement question must
- * differ from the rejected question.
+ * 用途:替换(replacement)周期:恰好 1 次 DECISION 调用产出替换问题的
+ * 内容,随后由 runtime 确定性地提交拓扑。模型在这里绝不直接修改图——
+ * 替换拓扑(旧 route 置为 SUPERSEDED、新建一条全新身份的 OPEN route、
+ * 记录来源 route 的出处)始终由 {@code RouteService.commitReplacementFromNode}
+ * 掌控,且提交前必须确认 proposal 的基础上下文仍是当前活跃快照。
+ *
+ * fail-closed 守卫:执行时目标节点必须仍位于源 route 的谱系中,且替换
+ * 问题必须与被拒绝的问题不同。
  */
 @Service
 public class ReplacementCycleService {
@@ -72,6 +72,8 @@ public class ReplacementCycleService {
     private final RouteRepository routeRepository;
     private final RouteService routeService;
     private final RunProgressRecorder progressRecorder;
+    private final ExecutionFence executionFence;
+    private final org.springframework.transaction.support.TransactionTemplate transactionTemplate;
 
     public ReplacementCycleService(AgentRunService agentRunService,
                                    AgentRunFailureService agentRunFailureService,
@@ -84,7 +86,9 @@ public class ReplacementCycleService {
                                    NodeService nodeService,
                                    RouteRepository routeRepository,
                                    RouteService routeService,
-                                   RunProgressRecorder progressRecorder) {
+                                   RunProgressRecorder progressRecorder,
+                                   ExecutionFence executionFence,
+                                org.springframework.transaction.support.TransactionTemplate transactionTemplate) {
         this.agentRunService = agentRunService;
         this.agentRunFailureService = agentRunFailureService;
         this.contextBuilder = contextBuilder;
@@ -97,11 +101,13 @@ public class ReplacementCycleService {
         this.routeRepository = routeRepository;
         this.routeService = routeService;
         this.progressRecorder = progressRecorder;
+        this.executionFence = executionFence;
+        this.transactionTemplate = transactionTemplate;
     }
 
     /**
-     * Executes one regeneration run: frozen replacement context, one DECISION,
-     * deterministic topology commit.
+     * 执行一次重新生成 run:冻结替换上下文,一次 DECISION,确定性的
+     * 拓扑提交。
      */
     public RegenerateResult regenerate(AgentRun run, UUID projectId,
                                        UUID sourceRouteId, UUID targetNodeId,
@@ -130,8 +136,7 @@ public class ReplacementCycleService {
                 throw new ModelContractException("Replacement context rejected");
             }
 
-            // The user instruction rides on the event's free text; the anchor
-            // is the rejected target node itself.
+            // 用户指令随事件的 free text 传递;锚点就是被拒绝的目标节点本身。
             AgentRequestEnvelope envelope = snapshotBuilder.buildEnvelope(
                     run.id(), snapshot,
                     new AgentEvent("CONTINUE", targetNodeId, null, userInstruction),
@@ -171,19 +176,18 @@ public class ReplacementCycleService {
                         "Replacement question must differ from the rejected question");
             }
 
-            // The proposal was built against the frozen replacement snapshot;
-            // it must still be the live one before any topology commits.
+            // proposal 是基于冻结的替换快照构建的;提交任何拓扑之前,
+            // 必须确认它仍是当前的活跃快照。
             ActionExecutionContext execContext = new ActionExecutionContext(
                     run.id(), projectId, sourceRouteId, snapshot.id(),
                     targetNodeId, null, userInstruction);
             staleContextChecker.check(proposal, execContext, snapshot);
 
-            // Live-state regression guard: the frozen snapshot proves what the
-            // model saw; this re-checks that the source route itself has not
-            // moved since (new tip appended, route deleted, target removed).
-            // Route lifecycle validity is re-verified inside commit via
-            // requireExplorationSource; here we pin tip identity and lineage.
-            // A decision made on an outdated route state must never commit.
+            // 活跃状态回归守卫:冻结快照证明了模型当时看到的内容;这里
+            // 再次检查源 route 自那之后没有移动(追加了新 tip、route 被删除、
+            // 目标被移除)。route 生命周期有效性由 commit 内部的
+            // requireExplorationSource 重新校验;这里只钉死 tip 身份与谱系。
+            // 基于过期 route 状态做出的决策绝不允许提交。
             staleContextChecker.verifyLiveExecutionPreconditions(
                     sourceRouteId, sourceRoute.tipNodeId(),
                     targetNodeId);
@@ -192,27 +196,40 @@ public class ReplacementCycleService {
             eventService.append(run.id(), AgentRunPhase.EXECUTING, "EXECUTING",
                     Map.of("actionFamily", "COMMIT_REPLACEMENT"));
 
-            // The frozen expected tip is passed into the commit boundary so the
-            // same stale-tip check is re-applied under the project lock, inside
-            // the commit transaction (no TOCTOU window between this service's
-            // read and the topology mutation).
-            RegenerateResult result = routeService.commitReplacementFromNode(
-                    projectId, sourceRouteId, targetNodeId, sourceRoute.tipNodeId(),
-                    null, question, purpose, options, allowFreeAnswer, allowMultiSelect);
-
-            // Freeze the durable regenerate context onto the replacement
-            // route (parent lineage only, target excluded) — the same record
-            // the deterministic command always persisted.
-            contextBuilder.buildForRegenerate(projectId, sourceRouteId, targetNodeId,
-                    result.replacementRoute().id(), result.replacementNode().id(),
-                    userInstruction);
-
-            trace = appendTrace(trace, "persisted_node");
-            agentRunService.markPersistedNode(run.id(), result.replacementNode().id(), trace);
+            // 把冻结的期望 tip 传入提交边界,使同一个 stale-tip 检查在项目锁
+            // 之下、提交事务内部再执行一次(本服务的读取与拓扑变更之间
+            // 不留 TOCTOU 窗口)。
+            // 拓扑提交与带所有权条件的检查点/终态写入在同一事务(原子协议):
+            // 丢锁执行器的检查点落空(0 行)即整体回滚,替换节点绝不脱离
+            // 所有权提交到图上。
+            final UUID commitTargetNodeId = targetNodeId;
+            final String commitQuestion = question;
+            final String commitPurpose = purpose;
+            final List<NodeOption> commitOptions = options;
+            final boolean commitAllowFree = allowFreeAnswer;
+            final boolean commitAllowMulti = allowMultiSelect;
+            final String baseTrace = trace;
+            RegenerateResult result = transactionTemplate.execute(tx -> {
+                // 所有权协议(第四轮):事务第一条语句取所有权行 FOR SHARE 并
+                // 验证代次——所有权锁先于拓扑/项目行锁,接管的代次递增与本
+                // 事务互斥;丢锁执行器在取锁处即被整体拒绝(R4-A/R4-C)。
+                executionFence.lockOwnershipForWrite();
+                RegenerateResult committed = routeService.commitReplacementFromNode(
+                        projectId, sourceRouteId, commitTargetNodeId, sourceRoute.tipNodeId(),
+                        null, commitQuestion, commitPurpose, commitOptions,
+                        commitAllowFree, commitAllowMulti);
+                contextBuilder.buildForRegenerate(projectId, sourceRouteId, commitTargetNodeId,
+                        committed.replacementRoute().id(), committed.replacementNode().id(),
+                        userInstruction);
+                String stepTrace = appendTrace(baseTrace, "persisted_node");
+                agentRunService.markPersistedNode(run.id(), committed.replacementNode().id(), stepTrace);
+                stepTrace = appendTrace(stepTrace, "completed");
+                agentRunService.complete(run.id(), AgentRunStatus.COMPLETED, stepTrace);
+                eventService.append(run.id(), AgentRunPhase.COMPLETED, "RUN_COMPLETED", Map.of(
+                        "producedNodeId", committed.replacementNode().id().toString()));
+                return committed;
+            });
             trace = appendTrace(trace, "completed");
-            agentRunService.complete(run.id(), AgentRunStatus.COMPLETED, trace);
-            eventService.append(run.id(), AgentRunPhase.COMPLETED, "RUN_COMPLETED", Map.of(
-                    "producedNodeId", result.replacementNode().id().toString()));
 
             return result;
         } catch (RuntimeException ex) {
@@ -251,9 +268,7 @@ public class ReplacementCycleService {
         if (latest != null && latest.status() != AgentRunStatus.FAILED
                 && latest.status() != AgentRunStatus.COMPLETED) {
             String reason = RunFailureReasons.reasonCode(ex);
-            agentRunFailureService.fail(runId, appendTrace(trace, "failed:" + reason));
-            eventService.append(runId, AgentRunPhase.FAILED, "RUN_FAILED",
-                    RunFailureReasons.payload(reason));
+            agentRunFailureService.fail(runId, appendTrace(trace, "failed:" + reason), ex);
         }
     }
 

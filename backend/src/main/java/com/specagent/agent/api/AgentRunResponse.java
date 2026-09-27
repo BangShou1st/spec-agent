@@ -8,14 +8,15 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Safe operator read of an agent run.
+ * 文件名:AgentRunResponse.java
  *
- * <p>Exposes run metadata and a safe trace-step list only. The stored trace is
- * a newline-joined sequence of diagnostic lifecycle steps (for example
- * {@code ["created", "context_built", "model_called:DRAFT_NODE", "completed"]});
- * it never carries API credentials, raw prompts, raw model/provider payloads,
- * or stack traces, and neither does this DTO. The controller decodes the
- * persisted trace into the step list before calling {@link #from}.
+ * 用途:agent run 的面向运维者的安全读取 DTO。
+ *
+ * 只暴露 run 元数据和安全的 trace 步骤列表。存储的 trace 是换行拼接的
+ * 诊断性生命周期步骤序列(例如 {@code ["created", "context_built",
+ * "model_called:DRAFT_NODE", "completed"]});它绝不携带 API 凭据、原始
+ * 提示词、原始模型/provider 载荷或堆栈跟踪,本 DTO 同样不携带。控制器会
+ * 先把持久化的 trace 解码成步骤列表,再调用 {@link #from}。
  */
 public record AgentRunResponse(
         UUID id,

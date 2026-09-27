@@ -14,23 +14,22 @@ import java.util.function.IntPredicate;
 import java.util.function.Supplier;
 
 /**
- * Outbound route for the Skill git import.
+ * 文件名:GitTransportProxy.java
  *
- * <p>JGit speaks HTTPS through the JVM's default {@link ProxySelector}, and the
- * JVM default is direct unless the host was started with
- * {@code -Djava.net.useSystemProxies=true} or explicit {@code https.proxyHost}
- * properties. That is why a machine whose <em>browser</em> reaches a git host
- * through a local proxy can still fail the import with a bare
- * {@code TransportException}: the browser uses the OS proxy, the JVM does not.
+ * 用途:Skill git 导入的出站路由决策。
  *
- * <p>Resolution order for the default {@code AUTO} mode mirrors what the browser
- * environment already does: an explicit proxy environment variable wins, then
- * the Windows system proxy (the one the browser itself uses, read from the
- * per-user Internet Settings registry key), then a listening local proxy on a
- * well-known port (Clash 7897 / 7890, v2ray 10809, SOCKS 1080 and friends),
- * then direct. {@code DIRECT} force-bypasses any proxy, and {@code host:port}
- * pins one. Nothing here relaxes the import security posture — it only decides
- * which socket the same validated clone travels over.
+ * JGit 通过 JVM 默认的 {@link ProxySelector} 走 HTTPS,而 JVM 默认直连,
+ * 除非宿主以 {@code -Djava.net.useSystemProxies=true} 或显式
+ * {@code https.proxyHost} 属性启动。这正是为什么"浏览器"能通过本地代理访问
+ * git 主机的机器,导入却仍然以裸 {@code TransportException} 失败:浏览器走
+ * 操作系统代理,JVM 不走。
+ *
+ * 默认 {@code AUTO} 模式的解析顺序与浏览器环境的行为一致:显式代理环境
+ * 变量优先,其次 Windows 系统代理(浏览器自己用的那个,从用户级 Internet
+ * Settings 注册表键读取),然后是常见本地端口的在听代理(Clash 7897/7890、
+ * v2ray 10809、SOCKS 1080 等),最后直连。{@code DIRECT} 强制绕过任何代理,
+ * {@code host:port} 则固定某个代理。这里没有任何东西放松导入安全姿态 ——
+ * 它只决定同一份已校验的 clone 走哪个 socket。
  */
 public final class GitTransportProxy {
 
@@ -38,14 +37,14 @@ public final class GitTransportProxy {
     public static final String MODE_DIRECT = "DIRECT";
     public static final String PROPERTY_NAME = "spec.agent.skill.git.proxy";
 
-    /** Environment variables honoured before falling back to local probing. */
+    /** 在回退到本地探测之前,优先读取的代理环境变量。 */
     private static final List<String> PROXY_ENV_VARS = List.of(
             "HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "HTTP_PROXY", "http_proxy");
 
-    /** Local ports probed in order when no environment proxy is set. */
+    /** 未设置环境代理时按序探测的本地端口。 */
     private static final List<Integer> AUTO_LOCAL_PORTS = List.of(7897, 7890, 10809, 1080);
 
-    /** Registry key holding the per-user proxy the browser (WinINET) uses. */
+    /** 存放浏览器(WinINET)用户级代理的注册表键。 */
     private static final String WINDOWS_INTERNET_SETTINGS_KEY =
             "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings";
 
@@ -53,7 +52,7 @@ public final class GitTransportProxy {
 
     private static final Object DEFAULT_SELECTOR_LOCK = new Object();
 
-    /** The resolved route plus a description safe to log and to show on failure. */
+    /** 解析出的路由,附带可安全记录与展示在失败信息中的描述。 */
     public record Route(ProxySelector selector, String description) {
     }
 
@@ -61,14 +60,14 @@ public final class GitTransportProxy {
     }
 
     /**
-     * Resolves the route for one import.
+     * 为一次导入解析路由。
      *
-     * @param mode         {@code AUTO} (default), {@code DIRECT}, or {@code host:port}
-     * @param env          environment to read proxy variables from
-     * @param portOpen     probe used to detect a listening local proxy
-     * @param systemProxy  supplier returning the OS/browser proxy as {@code host:port},
-     *                     or null when none is configured (real implementation reads the
-     *                     Windows Internet Settings registry; injectable for tests)
+     * @param mode         {@code AUTO}(默认)、{@code DIRECT} 或 {@code host:port}
+     * @param env          用于读取代理变量的环境
+     * @param portOpen     用于探测本地在听代理的探针
+     * @param systemProxy  返回操作系统/浏览器代理({@code host:port} 格式)的
+     *                     供应商,未配置时返回 null(真实实现读取 Windows
+     *                     Internet Settings 注册表;测试可注入)
      */
     public static Route resolve(String mode, Map<String, String> env, IntPredicate portOpen,
                                 Supplier<String> systemProxy) {
@@ -113,23 +112,22 @@ public final class GitTransportProxy {
                 + address.getPort());
     }
 
-    /** Resolves with the process environment and a real TCP probe. */
+    /** 使用进程环境与真实 TCP 探针解析。 */
     public static Route resolve(String mode) {
         return resolve(mode, System.getenv(), GitTransportProxy::isLocalPortOpen,
                 GitTransportProxy::windowsSystemProxy);
     }
 
-    /** Three-argument overload kept for existing callers and tests (no system proxy). */
+    /** 为既有调用方与测试保留的三参重载(不读系统代理)。 */
     public static Route resolve(String mode, Map<String, String> env, IntPredicate portOpen) {
         return resolve(mode, env, portOpen, () -> null);
     }
 
     /**
-     * Reads the per-user Windows proxy — the exact setting the browser uses —
-     * from {@code HKCU\...\Internet Settings} via {@code reg query}. Returns
-     * {@code host:port} when ProxyEnable is on, null otherwise. Every failure
-     * (non-Windows, missing key, timeout, unparsable value) is fail-safe: it
-     * just falls through to the next AUTO step.
+     * 通过 {@code reg query} 从 {@code HKCU\...\Internet Settings} 读取用户级
+     * Windows 代理 —— 即浏览器实际使用的那个设置。ProxyEnable 开启时返回
+     * {@code host:port},否则返回 null。任何失败(非 Windows、键缺失、超时、
+     * 值无法解析)都是安全的:只是落入 AUTO 的下一步。
      */
     static String windowsSystemProxy() {
         String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
@@ -159,10 +157,9 @@ public final class GitTransportProxy {
     }
 
     /**
-     * Extracts the proxy from one {@code reg query} dump. Enabled is judged by
-     * {@code ProxyEnable} being 1; {@code ProxyServer} is either a bare
-     * {@code host:port} or a per-protocol {@code http=...;https=...} list where
-     * the https (then http) entry wins.
+     * 从一份 {@code reg query} 输出中提取代理。是否启用由 {@code ProxyEnable}
+     * 为 1 判定;{@code ProxyServer} 既可能是裸 {@code host:port},也可能是
+     * 按协议的 {@code http=...;https=...} 列表(https 优先,其次 http)。
      */
     static String parseRegistryProxy(String regQueryOutput) {
         if (regQueryOutput == null) {
@@ -192,7 +189,7 @@ public final class GitTransportProxy {
                 if (address.isEmpty()) {
                     continue;
                 }
-                // https wins immediately; http is only a fallback.
+                // https 立即胜出;http 仅作回退。
                 if (protocol.equals("https")) {
                     return address;
                 }
@@ -206,9 +203,8 @@ public final class GitTransportProxy {
     }
 
     /**
-     * Runs {@code action} with the route's selector installed, restoring the
-     * previous JVM default afterwards. The default selector is process-wide
-     * state, so installs are serialized.
+     * 安装路由的 selector 后运行 {@code action},结束后恢复先前的 JVM 默认值。
+     * 默认 selector 是进程级全局状态,因此安装动作串行化。
      */
     public static <T> T callWith(Route route, Callable<T> action) throws Exception {
         if (route.selector() == null) {
@@ -225,7 +221,7 @@ public final class GitTransportProxy {
         }
     }
 
-    /** Parses {@code host:port}, tolerating a scheme prefix and trailing slash. */
+    /** 解析 {@code host:port},容忍 scheme 前缀与末尾斜杠。 */
     static InetSocketAddress parse(String raw) {
         if (raw == null) {
             return null;
@@ -243,7 +239,7 @@ public final class GitTransportProxy {
         if (slash >= 0) {
             value = value.substring(0, slash);
         }
-        // Credentials are not supported: they would have to be stored in config.
+        // 不支持带凭据的代理:凭据将不得不存进配置文件。
         if (value.contains("@")) {
             return null;
         }

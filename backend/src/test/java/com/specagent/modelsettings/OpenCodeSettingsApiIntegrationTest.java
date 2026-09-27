@@ -26,6 +26,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+/**
+ * 文件名:OpenCodeSettingsApiIntegrationTest.java
+ *
+ * 测试目标:通过 MockMvc 对 OpenCode 设置 REST API 做集成测试:状态接口永不返回
+ * apiKey、probe 只做发现不持久化候选键;保存要求模型必须是当前免费列表中的模型,
+ * 且响应只返回安全投影(maskedKey,不出现明文 Key);Provider 限流错误映射为 429
+ * 且不替换已有设置;已保存 Key 后的 models / model 接口既不需要提交 Key 也不回显 Key。
+ */
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")

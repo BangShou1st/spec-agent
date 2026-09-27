@@ -15,25 +15,21 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * P2 Phase 2 — Live agent behavioral baseline (non-blocking).
+ * 文件名:EvalLiveBaselineSuiteTest.java
  *
- * <p>Runs the same Scenario Contract through the real {@code Python Brain +
- * live provider} chain: identical canonical Java runtime setup, identical
- * Layer A invariants, identical Layer B expectations, identical call budget.
- * The scenario's scripted {@code given.brainScript} is never installed and
- * never consulted — the production Brain wiring answers STATE_UPDATE +
- * DECISION.
+ * 测试目标:P2 Phase 2——live agent 行为基线(非阻塞)。用真实的
+ * {@code Python 大脑 + live Provider} 链路运行同一套 Scenario Contract:
+ * 相同的权威 Java 运行时配置、相同的 Layer A 不变量、相同的 Layer B 期望、
+ * 相同的调用预算。场景的脚本化 {@code given.brainScript} 从不安装、
+ * 从不被读取——由生产大脑接线回答 STATE_UPDATE + DECISION。
  *
- * <p>Each scenario variant repeats {@value #LIVE_REPETITIONS} times; the
- * recorded artifact ({@code results.jsonl}, {@code stability.json},
- * {@code stability.txt} under {@code build/eval-live}) captures the raw
- * behavioral baseline. The suite records reality and never asserts pass —
- * a red baseline must not trigger prompt tuning by itself, and live-provider
- * behavioral results must never block PR CI.
+ * 每个场景变体重复 {@value #LIVE_REPETITIONS} 次;产物
+ * ({@code build/eval-live} 下的 {@code results.jsonl}、{@code stability.json}、
+ * {@code stability.txt})记录原始行为基线。本套件只记录现实、从不断言通过——
+ * 基线变红不得自动触发提示词调优,live Provider 的行为结果绝不能阻塞 PR CI。
  *
- * <p>Requires a running agent-brain in broker mode plus explicit external
- * OpenCode configuration. Missing/invalid provider settings fail before the
- * first scenario; an unavailable brain is skipped.
+ * 前置条件:agent-brain 以 broker 模式运行,且显式提供外部 OpenCode 配置。
+ * Provider 配置缺失/无效时在第一个场景前失败;大脑不可用时跳过。
  */
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.DEFINED_PORT,
@@ -109,17 +105,15 @@ class EvalLiveBaselineSuiteTest extends EvalLiveHarnessBase {
         System.out.println("Eval live baseline: " + outputDir.toAbsolutePath());
         System.out.println(stability.toText());
 
-        // Non-blocking by design: record the baseline, do not gate on it.
-        // The printed stability report is the deliverable; failures here are
-        // behavioral data for Phase 3 triage, not CI signals.
+        // 设计上非阻塞:只记录基线,不做门禁。打印的稳定性报告就是交付物;
+        // 这里的失败是 Phase 3 分诊用的行为数据,不是 CI 信号。
     }
 
     /**
-     * Live corpus: the already-frozen B-fast scenarios (smoke, conflict,
-     * confirmation, frozen context) plus the verified batch-2 scenarios.
-     * Every expectation is the unchanged Scenario Contract — no scenario is
-     * relaxed for live. Batch-2 scenarios passed B-fast first, so a live red
-     * always means live behavior, never a malformed scenario.
+     * live 语料:已冻结的 B-fast 场景(冒烟、冲突、确认、冻结上下文)
+     * 加上已验证的 batch-2 场景。所有期望都保持 Scenario Contract 原样——
+     * 不为 live 放宽任何场景。batch-2 场景已先通过 B-fast,因此 live 红灯
+     * 永远代表真实行为问题,而非场景本身畸形。
      */
     static List<ScenarioDefinition> liveCorpus() {
         List<ScenarioDefinition> corpus = new ArrayList<>(List.of(
@@ -132,7 +126,7 @@ class EvalLiveBaselineSuiteTest extends EvalLiveHarnessBase {
         return List.copyOf(corpus);
     }
 
-    /** Provider identity for the run stamp; never a secret or key material. */
+    /** 运行标记用的 Provider 身份;绝不含密钥或凭据材料。 */
     private static String liveProvider() {
         return "opencode-zen";
     }

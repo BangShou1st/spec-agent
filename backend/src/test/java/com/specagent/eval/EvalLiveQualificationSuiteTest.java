@@ -18,10 +18,11 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Provider qualification only. This is a five-cycle protocol probe, not a
- * behavioral score used to select a model. The fixed E01/base setup exercises
- * the existing STATE_UPDATE -> DECISION production path; only completion,
- * schema/protocol evidence, retries, latency, and provider failures are used.
+ * 文件名:EvalLiveQualificationSuiteTest.java
+ *
+ * 测试目标:仅用于 Provider 资格认证。这是一个五循环协议探针,
+ * 不是用于选型的行为评分。固定的 E01/base 配置检验既有 STATE_UPDATE -> DECISION
+ * 生产路径;只采集完成情况、schema/协议证据、重试、延迟与 Provider 故障。
  */
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.DEFINED_PORT,
@@ -104,8 +105,8 @@ class EvalLiveQualificationSuiteTest extends EvalLiveHarnessBase {
         System.out.println("Reference qualification: " + outputDir.toAbsolutePath());
         System.out.println(reliability.toText());
 
-        // Qualification is intentionally stricter than behavioral baseline:
-        // every protocol probe must complete without provider/schema failure.
+        // 资格认证刻意比行为基线更严格:每个协议探针都必须完成,
+        // 且无 Provider/schema 故障。
         assertThat(completedCycles).as("completed protocol cycles").isEqualTo(QUALIFICATION_CYCLES);
         assertThat(reliability.infrastructureFailed()).as("provider failures").isZero();
         assertThat(schemaFailures).as("schema failures").isZero();

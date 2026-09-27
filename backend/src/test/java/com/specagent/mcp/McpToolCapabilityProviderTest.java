@@ -32,10 +32,12 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 /**
- * Dynamic MCP tool visibility without network: connected+enabled connections
- * expose one descriptor per tool; disabled/disconnected connections expose
- * none. Unknown side effects stay conservative (never NONE). Connections reach
- * the provider only through the MCP-owned lookup projection.
+ * 文件名:McpToolCapabilityProviderTest.java
+ *
+ * 测试目标:验证动态 MCP 工具可见性(不依赖网络)——connected+enabled
+ * 的连接每个工具暴露一个描述符;禁用/断开的连接不暴露任何工具。未知的
+ * 副作用保持保守(绝不等于 NONE)。连接只能通过 MCP 自有的 lookup 投影
+ * 触达 provider。
  */
 @ExtendWith(MockitoExtension.class)
 class McpToolCapabilityProviderTest {

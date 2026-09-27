@@ -20,23 +20,22 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Centralized write-time graph invariant validation.
+ * 文件名:GraphInvariantValidator.java
  *
- * <p>Domain rules live here instead of being scattered across controllers,
- * services, Undo/Redo, and the runtime. Every mutation command that can
- * advance lineage, branch routes, finalize answers, or create relations must
- * pass the matching validation before writing. Validators fail closed with
- * stable domain error codes ({@code UNANSWERED_QUESTION_HAS_CHILD},
- * {@code SHARED_STATE_DIVERGENCE}, {@code ROUTE_PROVENANCE_CYCLE},
- * {@code RELATION_DEPENDENCY_CYCLE}, {@code RETRACTED_NODE_REFERENCE}, ...)
- * as {@link IllegalStateException} (state conflict → 409) or
- * {@link IllegalArgumentException} (malformed request → 400).
+ * 用途:写入时集中校验图不变量。领域规则集中在这里,而不是散落在
+ * controller、service、Undo/Redo 和 runtime 中。任何可能推进 lineage、
+ * 分支出路线、定稿答案或创建关系的变更命令,写库前都必须通过对应的
+ * 校验。校验失败即拒绝(fail-closed),并抛出带稳定领域错误码
+ * ({@code UNANSWERED_QUESTION_HAS_CHILD}、{@code SHARED_STATE_DIVERGENCE}、
+ * {@code ROUTE_PROVENANCE_CYCLE}、{@code RELATION_DEPENDENCY_CYCLE}、
+ * {@code RETRACTED_NODE_REFERENCE} 等)的 {@link IllegalStateException}
+ * (状态冲突 → 409)或 {@link IllegalArgumentException}
+ * (请求不合法 → 400)。
  *
- * <p>A canonical Question Node carries exactly one immutable semantic Answer
- * identity project-wide. Route branches arrive at that answer either because
- * they own it (route-local) or because they reference it through
- * {@code route_inherited_answers}; re-answering a shared Question must create
- * a new Question Node instead of a second Answer on the same canonical node.
+ * 一个规范的 Question 节点在整个项目中只携带一个不可变的语义 Answer
+ * 身份。分支路线到达该答案,要么是它自己拥有(路线局部),要么通过
+ * {@code route_inherited_answers} 引用它;对共享 Question 重新作答必须
+ * 创建新的 Question 节点,而不是在同一个规范节点上挂第二个 Answer。
  */
 @Service
 public class GraphInvariantValidator {
@@ -63,30 +62,26 @@ public class GraphInvariantValidator {
     }
 
     /**
-     * {@code UNANSWERED_QUESTION_HAS_CHILD}: an INTERACTION/QUESTION node
-     * without a finalized effective answer on the advancing route may not
-     * gain a lineage child. Unanswered Questions must stay route tips — no
-     * line advancing command may cross them. Non-question parents (knowledge,
-     * resource, artifact) are always valid continuation points.
+     * {@code UNANSWERED_QUESTION_HAS_CHILD}:一个 INTERACTION/QUESTION 节点
+     * 在前进路线上尚无定稿的有效答案时,不允许获得 lineage 子节点。
+     * 未回答的问题必须保持为路线 tip——任何推进链的命令都不得越过它。
+     * 非问题节点(知识、资源、产物)永远是合法的续写点。
      *
-     * <p>Strict form: the child kind is unknown, so the guard applies in full.
+     * 严格形态:不知道子节点的 kind,规则全量生效。
      */
     public void validateQuestionCanHaveChild(UUID projectId, UUID routeId, UUID parentNodeId) {
         validateQuestionCanHaveChild(projectId, routeId, parentNodeId, null);
     }
 
     /**
-     * Kind-aware form used when the caller already knows what is being
-     * attached. A non-interaction child (resource / knowledge / artifact)
-     * carries no answerable question of its own, so hanging it off the
-     * current tip never skips a question the user still has to answer —
-     * it only supplies material for the question that is already pending.
-     * Rejecting those attachments would make the tip permanently
-     * unattachable, because a route tip is by construction the newest
-     * unanswered question.
+     * 按 kind 区分的形态,供调用方已经知道要挂什么时使用。非交互子节点
+     * (资源/知识/产物)自身没有可回答的问题,把它挂到当前 tip 之下
+     * 不会跳过用户仍需回答的问题——只是为已挂起的问题补充材料。
+     * 如果拒绝这类挂载,tip 会变得永远挂不上东西,因为路线 tip
+     * 按构造就是最新的未回答问题。
      *
-     * <p>{@code childKind == null} means "unknown" and falls back to the
-     * strict behaviour, so existing call sites keep their semantics.
+     * {@code childKind == null} 表示"未知",退回严格行为,
+     * 既有调用点的语义保持不变。
      */
     public void validateQuestionCanHaveChild(UUID projectId,
                                              UUID routeId,
@@ -107,9 +102,9 @@ public class GraphInvariantValidator {
                 .orElseThrow(() -> new IllegalArgumentException("Route not found: " + routeId));
         List<UUID> lineage = routeHistoryResolver.resolveLineage(route.tipNodeId());
         if (!lineage.contains(parentNodeId)) {
-            // The parent is not on this route's lineage; the caller already
-            // owns the require-lineage check for its own paths. This validator
-            // only guards unanswered crossing on the advancing lineage.
+            // 父节点不在这条路线的 lineage 上;require-lineage 校验由
+            // 调用方在自己的路径上负责。本校验只把关前进 lineage 上的
+            // "越过未回答问题"。
             return;
         }
         boolean answered = routeHistoryResolver.resolveEffectiveAnswerRefs(routeId, lineage).stream()
@@ -120,10 +115,9 @@ public class GraphInvariantValidator {
                             + " has no finalized effective answer and cannot gain a lineage child");
         }
 
-        // A finalized Answer without its STATE_UPDATE checkpoint must remain
-        // recoverable at the original answer boundary. Do not let an agent
-        // graph mutation advance the route over it, including a run that was
-        // queued before the checkpoint became missing/visible to the worker.
+        // 已定稿的 Answer 若缺失 STATE_UPDATE checkpoint,必须仍能在
+        // 原答案边界处恢复。不要让任何 agent 图变更把路线推过它——
+        // 包括在 checkpoint 丢失、对 worker 可见之前就已入队的 run。
         for (var answer : routeHistoryResolver.resolveEffectiveAnswers(routeId, lineage)) {
             if (answerPatchRepository.findBySourceAnswerId(answer.id()).isEmpty()) {
                 throw new GraphRuleViolationException(
@@ -135,10 +129,9 @@ public class GraphInvariantValidator {
     }
 
     /**
-     * {@code SHARED_STATE_DIVERGENCE}: the canonical node already carries an
-     * immutable Answer identity (on any route of the project). A second Answer
-     * for the same canonical node would split shared state; re-answering must
-     * create a new Question Node instead.
+     * {@code SHARED_STATE_DIVERGENCE}:规范节点已经携带不可变的 Answer
+     * 身份(在项目的任意路线上)。同一规范节点出现第二个 Answer 会分裂
+     * 共享状态;重新作答必须创建新的 Question 节点。
      */
     public void validateSharedQuestionState(UUID projectId, UUID nodeId) {
         Node node = nodeRepository.findById(nodeId)
@@ -154,10 +147,9 @@ public class GraphInvariantValidator {
     }
 
     /**
-     * {@code ROUTE_PROVENANCE_CYCLE}: the {@code sourceRouteId} ancestry of a
-     * route must be acyclic. Every new branch records its source; following
-     * {@code sourceRouteId} from any route must terminate, never revisit a
-     * route already seen.
+     * {@code ROUTE_PROVENANCE_CYCLE}:路线的 {@code sourceRouteId} 祖先链
+     * 必须无环。每个新分支都会记录其来源;从任何路线沿 {@code sourceRouteId}
+     * 追溯必须终止,绝不能重新经过已见过的路线。
      */
     public void validateRouteProvenance(UUID sourceRouteId) {
         Set<UUID> seen = new HashSet<>();
@@ -174,9 +166,8 @@ public class GraphInvariantValidator {
 
     /**
      * {@code INVALID_RELATION_ENDPOINT} / {@code RETRACTED_NODE_REFERENCE} /
-     * {@code CROSS_PROJECT_REFERENCE}: a semantic relation may only connect
-     * two persisted, non-retracted canonical nodes of the same project; self
-     * relations are malformed.
+     * {@code CROSS_PROJECT_REFERENCE}:语义关系只能连接同一项目中两个已
+     * 持久化、未被撤回的规范节点;自指关系视为非法请求。
      */
     public void validateRelationEndpoints(UUID projectId, UUID sourceNodeId, UUID targetNodeId) {
         if (sourceNodeId != null && sourceNodeId.equals(targetNodeId)) {
@@ -203,11 +194,10 @@ public class GraphInvariantValidator {
     }
 
     /**
-     * Canonical endpoint order for symmetric relation types. RELATED_TO and
-     * CONFLICTS_WITH are symmetric, so {@code A → B} and {@code B → A} are the
-     * same fact: the stored endpoints are normalized to {@code (minId, maxId)}
-     * so the partial unique index deduplicates both directions. Directional
-     * types (DEPENDS_ON, DERIVED_FROM, SUPPORTS) keep the authored direction.
+     * 对称关系类型的端点规范化。RELATED_TO 与 CONFLICTS_WITH 是对称的,
+     * {@code A → B} 与 {@code B → A} 是同一条事实:存储的端点被规范化为
+     * {@code (minId, maxId)},部分唯一索引才能对两个方向去重。有向类型
+     * (DEPENDS_ON、DERIVED_FROM、SUPPORTS)保留创建时的方向。
      */
     public static CanonicalEndpoints endpointsCanonicalized(UUID sourceNodeId, UUID targetNodeId, NodeRelationType type) {
         boolean symmetric = type == NodeRelationType.RELATED_TO || type == NodeRelationType.CONFLICTS_WITH;
@@ -221,10 +211,9 @@ public class GraphInvariantValidator {
     }
 
     /**
-     * Relation creation gates: endpoint validity, symmetric duplicate
-     * detection (already canonicalized by the caller), and the
-     * {@code DEPENDS_ON} / {@code DERIVED_FROM} causal-provenance DAG.
-     * {@code SUPPORTS} intentionally does NOT join the DAG.
+     * 关系创建的三道闸:端点合法性、对称重复检测(调用方已做端点规范化),
+     * 以及 {@code DEPENDS_ON} / {@code DERIVED_FROM} 的因果/出处 DAG。
+     * {@code SUPPORTS} 有意不加入该 DAG。
      */
     public void validateRelationCreation(UUID projectId,
                                          UUID sourceNodeId,
@@ -237,12 +226,11 @@ public class GraphInvariantValidator {
     }
 
     /**
-     * {@code RELATION_DEPENDENCY_CYCLE}: DEPENDS_ON and DERIVED_FROM jointly
-     * form the causal/provenance dependency DAG. Adding {@code source → target}
-     * must not create a cycle — i.e. {@code target} must not already reach
-     * {@code source} through any chain of active DEPENDS_ON / DERIVED_FROM
-     * edges. The check runs at the backend command layer; the frontend only
-     * pre-hints.
+     * {@code RELATION_DEPENDENCY_CYCLE}:DEPENDS_ON 与 DERIVED_FROM 联合
+     * 构成因果/出处依赖 DAG。加入 {@code source → target} 不得产生环——
+     * 即 {@code target} 不得已经通过任意一条激活的 DEPENDS_ON /
+     * DERIVED_FROM 边链到达 {@code source}。该校验在后端命令层执行;
+     * 前端只做预提示。
      */
     public void validateDependencyCycle(UUID projectId,
                                         UUID sourceNodeId,

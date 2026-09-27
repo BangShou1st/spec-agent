@@ -1,3 +1,5 @@
+// 文件名:NodeInspector.spec.ts
+// 用途:NodeInspector 组件单元测试,验证信息层级优先级以及"问 AI"提案的接受/拒绝交互与状态刷新逻辑。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'

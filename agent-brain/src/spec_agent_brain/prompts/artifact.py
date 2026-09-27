@@ -1,7 +1,10 @@
-"""ARTIFACT_GENERATION prompt: grounded context -> derived artifact.
+"""文件名:artifact.py
 
-Language contract: instructions and any user-visible generated text are
-Simplified Chinese; machine protocol keys and enum values stay unchanged.
+用途:ARTIFACT_GENERATION 的 prompt 模板与用户消息渲染:把 grounded 的
+上下文转换为派生工件。
+
+语言约定:指令与任何用户可见的生成文本使用简体中文;机器协议键与枚举
+值保持英文原样。
 """
 
 import json

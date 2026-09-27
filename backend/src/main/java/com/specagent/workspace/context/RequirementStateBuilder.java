@@ -15,11 +15,11 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Derives {@link RequirementState} by replaying answer patches.
+ * 文件名:RequirementStateBuilder.java
  *
- * <p>RequirementState is derived, not source of truth. It can be cached, but the
- * immutable lineage, answers, and patches remain authoritative. Replaying the
- * same patches always yields the same state.
+ * 用途:通过回放回答补丁派生 {@link RequirementState}。需求状态是派生物,
+ * 不是事实源——不可变的世系、回答与补丁才具权威性;可以缓存,但相同补丁的
+ * 回放永远得到相同的状态。规格生成前的需求汇总即由此构建。
  */
 @Service
 public class RequirementStateBuilder {
@@ -42,8 +42,8 @@ public class RequirementStateBuilder {
     }
 
     /**
-     * Rebuilds requirement state from an explicit ordered list of patches.
-     * Replaying the same patches yields the same state (deterministic, cacheable).
+     * 从显式给定的有序补丁列表重建需求状态。回放相同补丁必然得到相同状态
+     * (确定性、可缓存)。
      */
     public RequirementState rebuild(List<AnswerPatch> patches) {
         List<Claim> claims = new ArrayList<>();
@@ -58,8 +58,7 @@ public class RequirementStateBuilder {
     }
 
     /**
-     * Builds requirement state for a route by loading that route's answer patches
-     * in creation order and replaying them.
+     * 为一条 route 构建需求状态:按创建顺序加载该 route 的回答补丁并逐一回放。
      */
     public RequirementState buildForRoute(UUID projectId, UUID routeId) {
         if (routeHistoryResolver != null && routeRepository != null) {
@@ -79,13 +78,11 @@ public class RequirementStateBuilder {
     }
 
     /**
-     * Builds requirement state from the patches referenced by a context snapshot.
+     * 从上下文快照引用的补丁构建需求状态。
      *
-     * <p>Patches are replayed in the explicit order recorded by
-     * {@code snapshot.includedPatchIds()}. Order is authoritative: the same
-     * patches in different order can yield different requirement state, so the
-     * snapshot's patch list is replayed verbatim rather than derived from the
-     * answer list.
+     * 补丁严格按 {@code snapshot.includedPatchIds()} 记录的显式顺序回放。
+     * 顺序即权威:相同补丁按不同顺序回放可能得到不同的需求状态,因此原样重放
+     * 快照中的补丁列表,而不是从回答列表重新推导。
      */
     public RequirementState buildForContext(ContextSnapshot snapshot) {
         List<AnswerPatch> patches = answerPatchRepository.findByIdsPreservingOrder(snapshot.includedPatchIds());

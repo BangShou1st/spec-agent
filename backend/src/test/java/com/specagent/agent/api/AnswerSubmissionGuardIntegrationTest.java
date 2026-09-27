@@ -33,14 +33,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Recovery of an unfinished answer cycle must reuse the persisted Answer and
- * its checkpoint — and must never accept a *different* submission by silently
- * replaying the old one.
+ * 文件名:AnswerSubmissionGuardIntegrationTest.java
  *
- * <p>Regression for the acceptance-case loss boundary: a tip whose answer was
- * already persisted was rewritten into a resume of that old answer, and the
- * newly submitted content was discarded without a trace, so the constraint the
- * user typed never reached the graph or the generated spec.
+ * 测试目标:验证答案提交守卫——未完成答案循环的恢复必须复用持久化的 Answer 及其
+ * 检查点,且绝不能通过静默重放旧答案来"接受"一份不同的提交。回归背景:tip 已持久化
+ * 答案时的重新提交曾被改写成对旧答案的 resume,新提交内容被无痕丢弃,用户输入的约束
+ * 从未到达图或生成的规格。
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -112,8 +110,7 @@ class AnswerSubmissionGuardIntegrationTest {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("ANSWER_CONTENT_MISMATCH"));
 
-        // Nothing was overwritten, and no run was queued that could have replayed
-        // the old answer while dropping the new text.
+        // 没有任何内容被覆盖,也没有排队任何会把旧答案重放并丢弃新文本的 run。
         assertSingleAnswer(project.activeRouteId(), root.id(), "original answer");
         assertThat(runService.claimNextAnswerCycle()).isEmpty();
     }
@@ -227,9 +224,8 @@ class AnswerSubmissionGuardIntegrationTest {
 
     @Test
     void resumeByIdWithoutNodeIdStillEnforcesTheContentGuard() throws Exception {
-        // P1-A: answerId is a complete identity on its own; omitting the
-        // optional nodeId must not bypass the content guard, or the worker
-        // silently replays the persisted answer while dropping the new text.
+        // P1-A:answerId 本身就是完整的身份;省略可选的 nodeId 不得绕过内容守卫,
+        // 否则 worker 会静默重放持久化的答案并丢弃新文本。
         Project project = projectService.createProject("Guard by answer id");
         Node root = nodeService.createRootNode(project.id(), project.activeRouteId(),
                 "What matters?", null, List.of(), true);
@@ -241,16 +237,15 @@ class AnswerSubmissionGuardIntegrationTest {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("ANSWER_CONTENT_MISMATCH"));
 
-        // Nothing was overwritten and no run was queued to replay the old answer.
+        // 没有任何内容被覆盖,也没有排队重放旧答案的 run。
         assertSingleAnswer(project.activeRouteId(), root.id(), "original answer");
         assertThat(runService.claimNextAnswerCycle()).isEmpty();
     }
 
     @Test
     void resumeByIdWithoutNodeIdAcceptsTheIdenticalResubmission() throws Exception {
-        // The same request shape without differing content stays a legitimate
-        // resume: the identity is unambiguous, the content matches, so the
-        // checkpoint resume proceeds without creating a second answer.
+        // 相同请求形态且内容一致时仍是合法恢复:身份无歧义、内容匹配,
+        // 检查点恢复继续进行,不产生第二条答案。
         Project project = projectService.createProject("Guard by answer id identical");
         Node root = nodeService.createRootNode(project.id(), project.activeRouteId(),
                 "What matters?", null, List.of(), true);
@@ -276,8 +271,7 @@ class AnswerSubmissionGuardIntegrationTest {
 
     @Test
     void contentlessResumeByIdWithoutNodeIdStillResumesThePersistedAnswer() throws Exception {
-        // A pure recovery (no content at all) by answer id alone remains the
-        // supported recovery entry.
+        // 仅凭 answerId 的纯恢复(不带任何内容)仍是受支持的恢复入口。
         Project project = projectService.createProject("Guard by answer id contentless");
         Node root = nodeService.createRootNode(project.id(), project.activeRouteId(),
                 "What matters?", null, List.of(), true);
@@ -297,14 +291,13 @@ class AnswerSubmissionGuardIntegrationTest {
 
     @Test
     void crossRouteAnswerIdIsRejectedWithoutSideEffects() throws Exception {
-        // An answerId that belongs to a different route must be refused on its
-        // own merits — not silently resolved against the active route's tip.
+        // 属于其他路线的 answerId 必须按其自身原因被拒绝——
+        // 绝不能被静默解析到激活路线的 tip 上。
         Project project = projectService.createProject("Guard cross-route id");
         Node root = nodeService.createRootNode(project.id(), project.activeRouteId(),
                 "What matters?", null, List.of(), true);
         Answer persisted = persistedFreeTextAnswer(project, root, "original answer");
-        // The fork moves the project's active pointer to the branch; the answer
-        // stays owned by the source route.
+        // 分叉把项目的激活指针移到分支上;答案仍归源路线所有。
         routeService.forkFromNode(project.id(), project.activeRouteId(),
                 root.id(), "fork route");
 
@@ -319,8 +312,7 @@ class AnswerSubmissionGuardIntegrationTest {
 
     @Test
     void resumeByIdWithMismatchedNodeIdIsRejected() throws Exception {
-        // Naming an answerId that lives on node X while pointing nodeId at node
-        // Y is an inconsistent identity: refuse instead of guessing.
+        // answerId 属于节点 X 而 nodeId 指向节点 Y 是不一致的身份:拒绝而不是猜测。
         Project project = projectService.createProject("Guard mismatched ids");
         Node root = nodeService.createRootNode(project.id(), project.activeRouteId(),
                 "What matters?", null, List.of(), true);

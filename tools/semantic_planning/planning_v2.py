@@ -1,11 +1,13 @@
-"""planning-state.v2 schema constants + C1 raw-contract validator.
+"""文件名:planning_v2.py
 
-Diagnostic-only, stdlib-only. C1 covers machine-checkable shape/enum/
-reason/evidence/citation/nullability violations. Anything failing here
-returns CONTRACT_VIOLATION_C1 and never reaches C2 or mapping.
+planning-state.v2 schema 常量 + C1 原始契约校验器。
 
-Reason polarity (true-code on true flag only) is enforced at C1: a code
-from the wrong polarity subset is an invalid reason code for that value.
+仅诊断用,仅依赖标准库。C1 覆盖机器可校验的形状/枚举/reason code/
+evidence/引用/可空性违规。凡在此处失败的一律返回
+CONTRACT_VIOLATION_C1,不再进入 C2 或映射。
+
+reason code 的极性(真标志只允许"真码")在 C1 层强制:取自
+错误极性子集的 code 对该取值而言就是非法 reason code。
 """
 from __future__ import annotations
 
@@ -67,7 +69,7 @@ NECESSITY = (
     "OPTIONAL",
 )
 
-# Reason codes split by polarity per flag: (true_codes, false_codes).
+# 每个标志的 reason code 按极性分组:(真码, 假码)。
 REASON_CODES = {
     "userInputRequired": (
         ("INTENT_GAP", "CHOICE_GAP", "CONFIRMATION_GAP",
@@ -98,7 +100,7 @@ TOP_KEYS = ("version", "goalType") + FLAG_NAMES
 
 
 def schema_spec() -> dict:
-    """Canonical machine-readable schema spec (hashed for manifest)."""
+    """规范的机器可读 schema 说明(供 manifest 哈希)。"""
     return {
         "version": SCHEMA_VERSION,
         "goalTypes": list(GOAL_TYPES),
@@ -142,9 +144,9 @@ def _snapshot_of(model_input: dict) -> dict:
 
 
 def resolvable_refs(model_input: dict) -> set:
-    """Build the allowed evidence-ref set from the actual model input.
+    """从实际模型输入构建允许的 evidence-ref 集合。
 
-    Accepts frozen camelCase shapes. Prefix alone is never sufficient.
+    只接受冻结的 camelCase 形状。仅有前缀不算可解析。
     """
     refs: set = set()
     event = _get(model_input, "event")
@@ -193,7 +195,7 @@ def resolvable_refs(model_input: dict) -> set:
 
 
 def _check_flag_block(name: str, block, allowed: set):
-    """Validate one flag block. Returns C1 error string or None."""
+    """校验单个标志块。返回 C1 错误串,合法则返回 None。"""
     if not isinstance(block, dict):
         return "C1:BAD_TYPE:" + name
     if name == "userInputRequired":
@@ -264,7 +266,7 @@ def _check_flag_block(name: str, block, allowed: set):
 
 
 def validate_c1(parsed, model_input: dict):
-    """C1 validation. Returns (state_dict, None) or (None, C1 error)."""
+    """C1 校验。返回 (state 字典, None) 或 (None, C1 错误)。"""
     if not isinstance(parsed, dict):
         return None, "C1:BAD_SHAPE"
     if set(parsed) != set(TOP_KEYS):

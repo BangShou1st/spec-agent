@@ -13,6 +13,12 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
+/**
+ * 文件名:RunProgressRecorderTest.java
+ *
+ * 测试目标:验证 RunProgressRecorder 记录进度事件时的 payload 白名单与截断规则——
+ * note 事件只组合白名单内的字段、超长 summary 与 items 按上限截断、空 items 不写入 payload。
+ */
 class RunProgressRecorderTest {
 
     private final AgentRunEventService eventService = mock(AgentRunEventService.class);

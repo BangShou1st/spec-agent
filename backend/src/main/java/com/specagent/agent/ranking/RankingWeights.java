@@ -1,6 +1,16 @@
 package com.specagent.agent.ranking;
 
-/** Versioned generic scorecard weights; no action family receives a fixed priority. */
+/**
+ * 文件名:RankingWeights.java
+ *
+ * 用途:带版本号的通用计分卡权重,决定 RankingScores 各维度在总分中的占比。
+ * 权重对所有动作族一视同仁,不给任何动作族固定的优先级,保证排序的中立性。
+ *
+ * 协作:defaults() 提供内置默认权重;每条排序结果都会记录所用权重版本,
+ * 便于事后审计。
+ *
+ * 注意:各权重取值限定在 0~10,越界抛异常。
+ */
 public record RankingWeights(String version,
                              int priorityClassWeight,
                              int blockerClosureWeight,

@@ -25,10 +25,11 @@ import java.util.concurrent.TimeUnit;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Database-backed idempotency of proposal creation: concurrent creations
- * with the same idempotency key must converge on one persisted row, return
- * the same proposal to every caller, and never leak a unique-constraint
- * failure — the database is the final arbiter, not a check-then-insert.
+ * 文件名:AgentProposalIdempotencyConcurrencyIntegrationTest.java
+ *
+ * 测试目标:验证提案创建的数据库级幂等性——携带相同幂等键的并发创建必须收敛到同一行
+ * 持久化记录,所有调用方拿到同一个提案,且绝不泄漏唯一约束冲突;最终仲裁者是数据库本身,
+ * 而不是"先查后插"。另验证顺序重复创建返回已存在提案且不产生第二行。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -81,8 +82,7 @@ class AgentProposalIdempotencyConcurrencyIntegrationTest {
 
             List<UUID> returnedIds = new ArrayList<>();
             for (Future<AgentProposal> future : futures) {
-                // A unique-violation leaking here would be the exact race the
-                // atomic insert must close.
+            // 唯一约束冲突如果在这里泄漏,正是原子插入要堵住的那个竞态。
                 returnedIds.add(future.get(30, TimeUnit.SECONDS).id());
             }
 

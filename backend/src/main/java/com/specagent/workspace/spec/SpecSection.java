@@ -6,10 +6,10 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 
 /**
- * A section of a generated spec snapshot.
+ * 文件名:SpecSection.java
  *
- * <p>Sections are derived output. Confirmed content must remain traceable through
- * the snapshot's source references.
+ * 用途:生成的规格快照中的一个章节(id + 标题 + 正文)。章节是派生输出;
+ * 已确认的内容必须能通过快照的来源引用(source references)追溯到运行时记录。
  */
 public class SpecSection {
 

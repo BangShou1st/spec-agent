@@ -8,6 +8,15 @@ import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * 文件名:GlobalAssistantToolPresentationTest.java
+ *
+ * 测试目标:验证全局助手工具结果的前端呈现层——运行中的文案、
+ * 结果 kind、项目资源引用的投影、候选对与直接项目 id 的提取。
+ * 覆盖场景:已上线工具有产品级文案、未知能力安全回退不崩溃、
+ * 列表/搜索/单对象三种形态的投影、非法 UUID 被跳过、
+ * 标签截断按 code point 计数且在 emoji 边界处不产生未配对代理。
+ */
 class GlobalAssistantToolPresentationTest {
 
     @Test

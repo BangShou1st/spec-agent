@@ -18,7 +18,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * "继续生成问题"的路由语义:
+ * 文件名:FloatingNodeRouteStartIntegrationTest.java
+ *
+ * 测试目标:"继续生成问题"的路由语义:
  * 1. 浮动的知识/资源节点可以开启一条新独立路线(节点成为根+tip);
  * 2. 已挂在某条路线谱系上的知识节点可以作为 fork 分支点(无需答案——
  *    "分支点必须有答案"只约束可回答的问题节点);

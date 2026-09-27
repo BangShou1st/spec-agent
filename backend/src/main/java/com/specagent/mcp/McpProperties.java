@@ -4,7 +4,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
 /**
- * MCP Runtime limits. Model output can never change these.
+ * 文件名:McpProperties.java
+ *
+ * 用途:MCP 运行时的限额与开关配置(通过 spec.agent.mcp 前缀注入)。
+ * 模型输出永远无法改变这些配置。
  */
 @Component
 @ConfigurationProperties(prefix = "spec.agent.mcp")
@@ -36,7 +39,7 @@ public class McpProperties {
     public int getMaxDescriptionChars() { return maxDescriptionChars; }
     public void setMaxDescriptionChars(int v) { maxDescriptionChars = v; }
 
-    /** Explicit opt-in for localhost HTTP MCP servers (test/local tooling). */
+    /** 是否显式允许 localhost HTTP MCP Server(用于测试/本地工具,默认关闭)。 */
     public boolean isAllowLocalhostHttp() { return allowLocalhostHttp; }
     public void setAllowLocalhostHttp(boolean v) { allowLocalhostHttp = v; }
 

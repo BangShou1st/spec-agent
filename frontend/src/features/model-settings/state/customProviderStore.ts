@@ -1,3 +1,7 @@
+// 文件名:customProviderStore.ts
+// 用途:自定义 Provider 的 Pinia 状态仓:状态加载、模型发现、保存(含显示名称与
+//       modelSource)、兼容性校验;维护"可用列表 vs 展示列表"与已存选中项的可见性规则。
+
 import { defineStore } from 'pinia'
 import { toDisplayError } from '@/shared/http/displayError'
 import {
@@ -20,18 +24,19 @@ export const useCustomProviderStore = defineStore('customProvider', {
     configured: false,
     apiFormat: 'CHAT_COMPLETIONS' as CustomApiFormat,
     baseUrl: '',
+    /** 最近一次已持久化的 Base URL;凭据复用守卫据此判断"地址换了来源"。 */
+    savedBaseUrl: null as string | null,
     endpointPreview: null as string | null,
     hasKey: false,
     maskedKey: null as string | null,
     selectedModel: '' as string,
     discoveredModels: [] as string[],
-    // True available models from the last successful discover.
-    // discoveredModels is the display list (available + injected persisted).
-    // Save gating must use availableModels for discovered mode; manual mode
-    // is unaffected.
+    // 最近一次成功 discover 得到的真实可用模型。
+    // discoveredModels 是展示列表(可用列表 + 注入的已持久化值)。
+    // 发现模式的保存门槛必须用 availableModels;手动模式不受影响。
     availableModels: [] as string[],
     manualModel: false,
-    /** Pill label from the backend; falls back to 'Custom' at render time. */
+    /** 后端返回的状态胶囊标签;渲染时回退为 'Custom'。 */
     displayName: null as string | null,
     configRevision: 0,
     validated: false,
@@ -44,8 +49,8 @@ export const useCustomProviderStore = defineStore('customProvider', {
   }),
   actions: {
     ensurePersistedVisible(): void {
-      // Same rule as OpenRouter: the persisted selection stays visible
-      // before (re)fetch; manual mode is driven by persisted modelSource.
+      // 与 OpenRouter 相同的规则:(重新)拉取之前已持久化的选中项保持可见;
+      // 手动模式由持久化的 modelSource 驱动。
       if (!this.manualModel && this.selectedModel
         && !this.discoveredModels.includes(this.selectedModel)) {
         this.discoveredModels = [this.selectedModel, ...this.discoveredModels]
@@ -58,6 +63,7 @@ export const useCustomProviderStore = defineStore('customProvider', {
         this.configured = s.configured
         this.apiFormat = s.apiFormat
         this.baseUrl = s.baseUrl ?? ''
+        this.savedBaseUrl = s.baseUrl ?? null
         this.endpointPreview = s.endpointPreview
         this.hasKey = s.hasKey
         this.maskedKey = s.maskedKey
@@ -75,7 +81,7 @@ export const useCustomProviderStore = defineStore('customProvider', {
     setFormat(format: CustomApiFormat): void {
       if (this.apiFormat !== format) {
         this.apiFormat = format
-        // Changing format invalidates discovery + validation presentation.
+        // 更换格式会使发现与校验的展示结果失效。
         this.discoveredModels = []
         this.availableModels = []
         this.manualModel = false
@@ -103,7 +109,7 @@ export const useCustomProviderStore = defineStore('customProvider', {
       } catch (err) {
         this.error = displayError(err)
         this.failed = true
-        // Auth/network failures never degrade to manual fallback.
+        // 认证/网络失败绝不降级为手动回退。
         this.manualModel = false
       } finally {
         this.discovering = false
@@ -121,6 +127,7 @@ export const useCustomProviderStore = defineStore('customProvider', {
         this.configured = s.configured
         this.apiFormat = s.apiFormat
         this.baseUrl = s.baseUrl
+        this.savedBaseUrl = s.baseUrl
         this.endpointPreview = s.endpointPreview
         this.hasKey = s.hasKey
         this.maskedKey = s.maskedKey

@@ -28,12 +28,13 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Skill import lifecycle: stage (validate + hash without executing), review,
- * install (immutable version), enable/disable/delete.
+ * 文件名:SkillImportService.java
  *
- * <p>Nothing is executed during staging or install: no scripts, no dependency
- * installation, no hooks. The database is the authoritative state; installed
- * versions are immutable rows keyed by content hash.
+ * 用途:Skill 导入的全生命周期:暂存(校验 + 哈希,不执行任何内容)、
+ * 审阅、安装(生成不可变版本)、启用/停用/删除。
+ *
+ * 暂存与安装全程不执行任何东西:不跑脚本、不装依赖、不触发 hooks。数据库
+ * 是权威状态;已安装版本是以内容哈希为键的不可变记录。
  */
 @Service
 public class SkillImportService {
@@ -59,12 +60,11 @@ public class SkillImportService {
         this.localMirror = localMirror;
     }
 
-    // ---- staging ---------------------------------------------------------
+    // ---- 暂存 -------------------------------------------------------------
 
     /**
-     * Stages an uploaded ZIP for review. Validates structure + bounds + SKILL.md
-     * metadata and stores the validated content under a staged import id.
-     * No execution of any kind happens here.
+     * 暂存一个上传的 ZIP 供审阅。校验结构 + 限额 + SKILL.md 元数据,并把
+     * 已校验的内容存到暂存导入 id 之下。这里不发生任何形式的执行。
      */
     @Transactional
     public StagedResult stageZip(byte[] archiveBytes) {
@@ -76,9 +76,8 @@ public class SkillImportService {
     }
 
     /**
-     * Stages an HTTPS git import for review. The resolved commit becomes the
-     * immutable source identity; {@code subPath} selects one Skill directory
-     * inside a larger repository (blank = the repository root package).
+     * 暂存一个 HTTPS git 导入供审阅。解析出的 commit 成为不可变的源身份;
+     * {@code subPath} 用于在较大仓库中选择一个 Skill 目录(留空 = 仓库根包)。
      */
     @Transactional
     public StagedResult stageGit(String repoUrl, String ref, String subPath) {
@@ -90,16 +89,15 @@ public class SkillImportService {
                 extracted.files(), extracted.totalBytes());
     }
 
-    /** Stages the repository-root Skill package (no subdirectory selected). */
+    /** 暂存仓库根的 Skill 包(未选择子目录)。 */
     @Transactional
     public StagedResult stageGit(String repoUrl, String ref) {
         return stageGit(repoUrl, ref, null);
     }
 
     /**
-     * Lists the Skill packages a repository offers, without staging anything.
-     * A repository holding one Skill returns exactly one candidate; a library
-     * or marketplace returns its Skill directories so one can be chosen.
+     * 列出仓库提供的 Skill 包,但不做任何暂存。只含一个 Skill 的仓库返回
+     * 恰好一个候选;Skill 库或市场仓库则返回其 Skill 目录供选择其一。
      */
     public DiscoveryResult discoverGit(String repoUrl, String ref) {
         GitSkillImporter.TreeInventory inventory = gitImporter.fetchTree(repoUrl, ref);
@@ -124,8 +122,8 @@ public class SkillImportService {
                     description = manifest.description();
                     parseable = true;
                 } catch (RuntimeException ignored) {
-                    // A malformed SKILL.md is reported as an unusable candidate
-                    // instead of failing discovery for the whole repository.
+                    // 格式错误的 SKILL.md 被报告为"不可用候选",
+                    // 而不是让整个仓库的发现流程失败。
                 }
             }
             candidates.add(new DiscoveryCandidate(root.path(), name, description,
@@ -144,9 +142,8 @@ public class SkillImportService {
     }
 
     /**
-     * Plugin source prefixes declared by the repository's marketplace
-     * manifests. Attribution only: an unreadable manifest is ignored, it never
-     * widens what may be imported and never fails the discovery.
+     * 仓库市场清单声明的插件源前缀。仅用于归属判定:无法读取的清单直接忽略,
+     * 绝不放宽可导入范围,也绝不让发现流程失败。
      */
     private List<String> declaredPluginSources(List<SkillSourceFile> manifests) {
         List<String> declared = new ArrayList<>();
@@ -159,7 +156,7 @@ public class SkillImportService {
                         });
                 declared.addAll(SkillPackageLayout.declaredPluginSources(parsed));
             } catch (RuntimeException ignored) {
-                // Ignored by design: see javadoc.
+                // 刻意忽略:见方法 javadoc。
             }
         }
         return declared;
@@ -177,9 +174,9 @@ public class SkillImportService {
                                        String rawSkillMarkdown,
                                        List<SkillSourceFile> files,
                                        long totalBytes) {
-        // Validate the manifest now (fail-fast at staging time) but store the
-        // raw markdown; install re-parses the same bytes so no drift is
-        // possible between what was reviewed and what gets installed.
+        // 现在就校验 manifest(暂存期快速失败),但存储的是原始 markdown;
+        // 安装时对同一批字节重新解析,因此"审阅所见"与"实际安装"之间
+        // 不可能产生偏差。
         SkillManifest manifest = parser.parse(rawSkillMarkdown);
         List<SkillRepository.StagedFile> stagedFiles = files.stream()
                 .map(f -> new SkillRepository.StagedFile(
@@ -197,13 +194,12 @@ public class SkillImportService {
                 contentHash, files.size(), totalBytes);
     }
 
-    // ---- install ---------------------------------------------------------
+    // ---- 安装 -------------------------------------------------------------
 
     /**
-     * Installs a staged import as an immutable version on a Skill row. When a
-     * Skill with the same source identity exists, the new version becomes its
-     * current version; otherwise a fresh Skill row is created (disabled by
-     * default — nothing becomes agent-visible until explicitly enabled).
+     * 把一条暂存导入安装为 Skill 行上的不可变版本。若已存在相同源身份的
+     * Skill,新版本成为其当前版本;否则创建全新的 Skill 行(默认停用 ——
+     * 在显式启用之前,任何东西都不会对 Agent 可见)。
      */
     @Transactional
     public InstalledResult install(UUID stagedImportId) {
@@ -219,8 +215,8 @@ public class SkillImportService {
                     + stagedImportId);
         }
 
-        // Re-parse the exact reviewed bytes; nothing is trusted from the row
-        // alone (manifest parse is deterministic and validates bounds).
+        // 重新解析被审阅过的原始字节;不单独信任行内任何数据
+        // (manifest 解析是确定性的,且会做边界校验)。
         SkillManifest manifest = parser.parse(staged.manifest());
         List<SkillRepository.StagedFile> stagedFiles =
                 repository.listStagedFiles(stagedImportId);
@@ -234,10 +230,9 @@ public class SkillImportService {
                     "Staged import content hash mismatch — tampered or corrupted staging row");
         }
 
-        // Same source kind + package name -> same Skill row (stable skillId,
-        // new immutable version). A genuinely different skill sharing the
-        // name is kept as a separate row and the enabled-name unique guard
-        // prevents semantic ambiguity between two enabled same-name skills.
+        // 相同来源类型 + 相同包名 -> 同一 Skill 行(稳定的 skillId,新增不可变
+        // 版本)。确实不同的 skill 即使重名也会保留为单独的行,"启用名单唯一"
+        // 守卫避免两个同名启用 skill 之间产生语义歧义。
         Skill skill = repository.listSkills().stream()
                 .filter(s -> s.sourceKind() == staged.sourceKind()
                         && s.name().equalsIgnoreCase(manifest.name()))
@@ -255,9 +250,8 @@ public class SkillImportService {
                         Instant.now())));
 
         int nextVersion = repository.nextVersionNo(skill.id());
-        // Immutable content identity: installing byte-identical content again
-        // (same package, same optional resource set) reuses the existing
-        // immutable version instead of failing or duplicating it.
+        // 不可变的内容身份:重复安装字节完全相同的内容(同包、同可选资源集)
+        // 直接复用已有的不可变版本,而不是失败或产生重复。
         Optional<SkillVersion> existing = repository.findVersionByContentHash(contentHash);
         SkillVersion version;
         if (existing.isPresent()) {
@@ -277,16 +271,16 @@ public class SkillImportService {
         repository.updateSkillCurrentVersion(skill.id(), version.id(), manifest.description());
         repository.updateStagedImportStatus(stagedImportId,
                 SkillStagedImport.Status.INSTALLED, null);
-        // Staged file bytes are no longer needed after a successful install.
+        // 安装成功后暂存文件字节不再需要。
         repository.deleteStagedFiles(stagedImportId);
-        // Best-effort local mirror (DB stays authoritative); also re-projects
-        // an already-known version whose files were lost on disk.
+        // 尽力而为的本地镜像(数据库仍是权威);若某个已知版本的文件在磁盘上
+        // 丢失,这里也会顺带重新投影。
         localMirror.mirrorVersion(skill.skillId(), version.versionNo(), files);
         return new InstalledResult(skill.skillId(), skill.id(), version.id(),
                 existing.isPresent() ? nextVersion - 1 : nextVersion);
     }
 
-    // ---- lifecycle -------------------------------------------------------
+    // ---- 生命周期 -----------------------------------------------------------
 
     @Transactional
     public void enable(UUID skillRowId) {
@@ -296,7 +290,7 @@ public class SkillImportService {
             throw new SkillImportException("Skill has no installed version to enable: "
                     + skill.skillId());
         }
-        // Semantic ambiguity guard: only one enabled Skill may own a display name.
+        // 语义歧义守卫:同一个显示名最多只能属于一个已启用的 Skill。
         repository.listSkills().stream()
                 .filter(other -> other.enabled() && other.name().equals(skill.name())
                         && !other.id().equals(skill.id()))
@@ -336,7 +330,7 @@ public class SkillImportService {
         repository.deleteStagedImport(stagedImportId);
     }
 
-    // ---- helpers ---------------------------------------------------------
+    // ---- 辅助方法 -----------------------------------------------------------
 
     private String contentHashOf(List<SkillSourceFile> files) {
         List<String> parts = files.stream()
@@ -396,10 +390,10 @@ public class SkillImportService {
     }
 
     /**
-     * One Skill package found inside a repository.
+     * 仓库中发现的一个 Skill 包。
      *
-     * @param path      repository-relative directory ("" = repository root)
-     * @param parseable whether its SKILL.md could be parsed as a manifest
+     * @param path      相对仓库的目录("" = 仓库根)
+     * @param parseable 其 SKILL.md 能否被解析为 manifest
      */
     public record DiscoveryCandidate(String path, String name, String description,
                                      String kind, String declaredBy, int fileCount,
@@ -407,10 +401,9 @@ public class SkillImportService {
     }
 
     /**
-     * Repository inventory for choosing a Skill package.
+     * 供选择 Skill 包使用的仓库清单。
      *
-     * @param suggestedPath path of the first usable candidate, or null when the
-     *                      repository holds no Skill package at all
+     * @param suggestedPath 首个可用候选的路径;仓库完全不含 Skill 包时为 null
      */
     public record DiscoveryResult(String commitSha, String suggestedPath,
                                   List<DiscoveryCandidate> candidates) {

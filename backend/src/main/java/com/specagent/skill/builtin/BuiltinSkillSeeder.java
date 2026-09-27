@@ -23,25 +23,21 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
 /**
- * Registers the Skill packages that ship inside the application.
+ * 文件名:BuiltinSkillSeeder.java
  *
- * <p>Built-in only changes <em>where the bytes come from</em>: every package
- * goes through the same staging, install and enable pipeline as an uploaded
- * ZIP. There is therefore exactly one install path, and a built-in package can
- * never bypass a package rule that an uploaded one has to satisfy.
+ * 用途:把随应用一起打包内置的 Skill 包注册进系统(应用启动时自动播种)。
  *
- * <p>Two properties matter for testability:
- * <ul>
- *   <li><b>Idempotent</b> — a package whose source identity is already enabled
- *       is skipped, so restarts do not accumulate staged rows or versions;</li>
- *   <li><b>Never fatal</b> — a broken package is logged and skipped. Shipping
- *       content must not be able to stop the application from starting, so a
- *       malformed built-in degrades to "that one skill is missing".</li>
- * </ul>
+ * "内置"只改变字节来源,不改变流程:每个包都走与上传 ZIP 完全相同的
+ * 暂存、安装、启用管线。因此全系统只有一条安装路径,内置包不可能绕过
+ * 上传包必须满足的任何包规则。
  *
- * <p>Enabled by {@code spec.agent.skill.builtin.seed-enabled} (default true);
- * the test profile turns it off because the skill integration tests assert
- * exact catalog states.
+ * 两条对可测试性很重要的约束:
+ * - 【幂等】 —— 源身份已处于启用状态的包直接跳过,重启不会累积暂存
+ *       记录或新版本;
+ * - 【绝不致命】 —— 损坏的包只记录日志并跳过。内置内容不允许阻止应用
+ *       启动,格式错误的内置包退化为"缺少那一个 skill"。 *
+ * 由 {@code spec.agent.skill.builtin.seed-enabled} 开关控制(默认 true);
+ * test profile 会关闭它,因为 skill 集成测试需要断言目录的精确状态。
  */
 @Component
 @ConditionalOnProperty(name = "spec.agent.skill.builtin.seed-enabled",
@@ -55,7 +51,7 @@ public class BuiltinSkillSeeder implements ApplicationRunner {
     private static final String MANIFEST = "SKILL.md";
     private static final String IDENTITY_PREFIX = "builtin:";
 
-    /** Extensions whose package files are searchable text rather than a blob. */
+    /** 包文件按这些扩展名视为可搜索文本,否则视为二进制。 */
     private static final Set<String> TEXT_EXTENSIONS = Set.of(
             ".md", ".markdown", ".txt", ".json", ".yaml", ".yml", ".csv");
 
@@ -80,8 +76,7 @@ public class BuiltinSkillSeeder implements ApplicationRunner {
     }
 
     /**
-     * Installs every package listed in the index and returns the names that
-     * were newly enabled (already-enabled packages are not reported).
+     * 安装索引中列出的所有包,返回本次新启用的包名(已启用的包不计入)。
      */
     public List<String> seed() {
         List<String> newlyEnabled = new ArrayList<>();
@@ -111,7 +106,7 @@ public class BuiltinSkillSeeder implements ApplicationRunner {
             totalBytes += content.length;
             files.add(new SkillSourceFile(relative, content, kindOf(relative)));
         }
-        // Same staging -> install -> enable path an uploaded package takes.
+        // 与上传包完全相同的 暂存 -> 安装 -> 启用 路径。
         SkillImportService.StagedResult staged =
                 importService.stageBuiltin(packageName, markdown, files, totalBytes);
         SkillImportService.InstalledResult installed =
@@ -127,15 +122,13 @@ public class BuiltinSkillSeeder implements ApplicationRunner {
     }
 
     /**
-     * Reads the explicit index, preserving order and grouping by package.
+     * 读取显式维护的索引文件,保持顺序并按包分组。
      *
-     * <p>The index is explicit rather than a runtime classpath directory scan:
-     * once packaged into a jar, directory enumeration depends on the concrete
-     * URL protocol, so an explicit list keeps dev and jar on one code path.
+     * 索引用显式清单而不是运行时扫描 classpath 目录:打包成 jar 后目录枚举
+     * 依赖具体的 URL 协议,显式列表能让 dev 与 jar 环境走同一条代码路径。
      *
-     * <p>Package-private so the grouping can be unit-tested directly: it is the
-     * only input to {@link #install}, and a wrong grouping would make a package
-     * silently unseeded rather than fail loudly.
+     * 包级可见(便于单测直接验证分组):它是 {@link #install} 的唯一输入,
+     * 一旦分组错误,某个包会被静默漏装而不是大声失败。
      */
     Map<String, List<String>> readIndex() {
         String text = new String(readBytes(INDEX), StandardCharsets.UTF_8);

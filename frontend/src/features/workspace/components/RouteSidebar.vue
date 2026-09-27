@@ -1,3 +1,7 @@
+<!--
+  文件名:RouteSidebar.vue
+  用途:画布工作台左侧的路线导航栏,提供路线筛选、定位、只看(单路线镜头)与生命周期操作(设为运行路线 / 恢复 / 归档),只读展示 + 意图上报。
+-->
 <script setup lang="ts">
 import { computed } from 'vue'
 import { ROUTE_LIFECYCLE_META, routeDisplayName, routeLifecycleLabel } from '@/features/workspace/presentation/routePresentation'
@@ -6,22 +10,19 @@ import { useGraphUiStore } from '@/features/workspace/state/graphUiStore'
 import type { GraphRouteDisplayState } from '@/features/workspace/graph/graphTypes'
 
 /**
- * Left route navigator for the graph workspace.
+ * 本组件只有两个视图概念:定位(viewport)与"只看这条路线"(单路线镜头),
+ * 外加运行时生命周期操作(设为运行路线 / 恢复 / 归档并隐藏)。阅读焦点(Focus)
+ * 通过点击路线卡片(openRoute)设置,因此不需要单独的"浏览此路线"开关。
+ * 独立的"弱化 / 隐藏 / 删除"操作已移除:归档默认隐藏,而逐路线弱化与
+ * 生命周期筛选功能重复。
  *
- * Two concepts only — 定位 (viewport) and 只看这条路线 (single-route lens) — plus
- * the Runtime lifecycle commands (设为运行路线 / 恢复 / 归档并隐藏). Reading Focus
- * is set by clicking a route card (`openRoute`), so no separate "浏览此路线"
- * toggle is needed. The separate 弱化 / 隐藏 / 删除 actions were removed: 归档 now
- * defaults to hidden, and per-route dimming duplicated the lifecycle filters.
+ * "只看这条路线"是一个开关:镜头生效时同一菜单项显示"退出只看",点击另一张
+ * 路线卡片会把镜头移过去(绝不静默无操作)。镜头是唯一会隐藏运行路线的视图
+ * 状态,且始终携带阅读焦点。
  *
- * 只看这条路线 is a toggle: the same menu item reads 退出只看 while the lens is
- * active, and clicking another route card moves the lens (never a silent no-op).
- * The lens is the one view state that also hides the running route, and it
- * always carries Focus with it.
- *
- * View-only state (定位/只看/筛选) lives in graphUiStore and never touches
- * Runtime state; Runtime route actions are emitted to the workspace shell. The
- * Active route can never be hidden manually — only the isolate lens may hide it.
+ * 纯视图状态(定位 / 只看 / 筛选)存放在 graphUiStore,绝不触碰运行时状态;
+ * 运行时路线操作通过事件抛给工作台外壳。Active 路线不允许手动隐藏,只有
+ * 单路线镜头可以隐藏它。
  */
 const props = defineProps<{
   routes: GraphWorkspaceRouteView[]
@@ -63,7 +64,7 @@ function isIsolated(routeId: string): boolean {
   return graphUi.isolatedRouteId === routeId
 }
 
-/** Focus must never point at a route that a lifecycle filter has hidden. */
+/** 焦点路线绝不能指向被生命周期筛选器隐藏的路线。 */
 function setFilter(status: RouteLifecycleStatus, visible: boolean): void {
   if (!visible) {
     const focused = props.routes.find((route) => route.id === graphUi.focusRouteId)
@@ -83,12 +84,11 @@ function isolateRoute(route: GraphWorkspaceRouteView): void {
 }
 
 /**
- * The card is secondary navigation: reading Focus plus viewport location.
+ * 路线卡片是二级导航:设置阅读焦点 + 视口定位。
  *
- * While the isolate lens is on, every other route is off-canvas, so a plain
- * "focus + locate" would target an invisible route. Clicking a different card
- * therefore moves the lens instead of silently doing nothing; clicking the
- * isolated card itself keeps the lens.
+ * 当单路线镜头开启时,其它路线都已移出画布,单纯的"聚焦 + 定位"会指向一条
+ * 不可见的路线。因此点击另一张卡片会移动镜头而不是静默无操作;点击当前
+ * 被镜头锁定的卡片则保持镜头不变。
  */
 function openRoute(route: GraphWorkspaceRouteView): void {
   if (graphUi.isRouteHidden(route.id) || !graphUi.lifecycleFilters[route.lifecycleStatus]) {

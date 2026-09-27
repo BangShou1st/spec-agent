@@ -36,9 +36,10 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Success-path integration tests for the fake full loop through the async
- * ANSWER_CYCLE: question draft, answer, answer patch, next node, and spec
- * snapshot generation.
+ * 文件名:FakeFullLoopIntegrationTest.java
+ *
+ * 测试目标:fake 全循环走异步 ANSWER_CYCLE 的成功路径集成测试:
+ * 问题草稿、答题、答案 patch、下一个节点、规格快照生成。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -75,18 +76,18 @@ class FakeFullLoopIntegrationTest {
         var result = answerDriver.submitFreeText(
                 project.id(), "I need to clarify the main outcome");
 
-        // Run completed and recorded all produced ids.
+        // run 完成并记录了所有产出的 id。
         assertThat(result.run().status()).isEqualTo(AgentRunStatus.COMPLETED);
         assertThat(result.run().producedAnswerId()).isNotNull();
         assertThat(result.run().producedPatchId()).isNotNull();
         assertThat(result.run().producedNodeId()).isNotNull();
 
-        // Answer persisted.
+        // 答案已持久化。
         Answer answer = answerService.getAnswer(result.answerId()).orElseThrow();
         assertThat(answer.nodeId()).isEqualTo(answeredNodeId);
         assertThat(answer.freeText()).isEqualTo("I need to clarify the main outcome");
 
-        // Patch persisted with real provenance.
+        // patch 已持久化,来源信息真实。
         AnswerPatch patch = answerPatchService.getPatch(result.patchId()).orElseThrow();
         assertThat(patch.sourceNodeId()).isEqualTo(answeredNodeId);
         assertThat(patch.sourceAnswerId()).isEqualTo(answer.id());
@@ -101,15 +102,15 @@ class FakeFullLoopIntegrationTest {
         assertThat(confirmed.sourceNodeId()).isEqualTo(answeredNodeId);
         assertThat(confirmed.sourceAnswerId()).isEqualTo(answer.id());
 
-        // Next node exists and extends the answered node.
+        // 下一个节点已存在,且扩展自被回答的节点。
         Node nextNode = nodeService.getNode(result.producedNodeId()).orElseThrow();
         assertThat(nextNode.parentNodeId()).isEqualTo(answeredNodeId);
 
-        // Route tip advanced to the next node.
+        // 路由末梢推进到下一个节点。
         Route route = routeService.getRoute(project.activeRouteId()).orElseThrow();
         assertThat(route.tipNodeId()).isEqualTo(nextNode.id());
 
-        // A fresh context built from the active route includes everything.
+        // 从活动路由新构建的上下文包含全部内容。
         ContextSnapshot context = contextBuilder.buildFromActiveRoute(
                 project.id(), result.run().id(), ContextOperationType.NORMAL);
         assertThat(context.includedNodeIds()).contains(answeredNodeId, nextNode.id());

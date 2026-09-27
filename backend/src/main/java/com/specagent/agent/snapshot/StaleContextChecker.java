@@ -33,13 +33,17 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
- * Verifies that an action proposal's frozen input still has valid live
- * preconditions before a durable mutation is executed.
+ * 文件名:StaleContextChecker.java
  *
- * <p>Snapshot id/hash prove proposal-to-frozen-input identity. Mutable node
- * bodies/liveness and the bounded NODE_QUERY semantic-relation set are checked
- * independently against authoritative live state. Read-only responses remain
- * replayable from the original frozen payload even after workspace drift.
+ * 用途:在执行持久化变更之前,校验动作提案的冻结输入是否仍具备有效的
+ * 活体前置条件(stale 检查)。
+ *
+ * snapshot id/哈希证明提案与冻结输入的身份一致;易变节点正文/存活状态
+ * 以及有界的 NODE_QUERY 语义关系集合,则独立对照权威活状态逐一核验。
+ * 只读响应在 workspace 发生漂移之后仍可从原始冻结 payload 回放。
+ *
+ * 协作:由动作执行链路(ActionEligibilityValidator/ProposalActionExecutor)
+ * 在消费提案前调用,任何前置条件不满足即抛 StaleProposalException。
  */
 @Component
 public class StaleContextChecker {
@@ -70,8 +74,7 @@ public class StaleContextChecker {
     }
 
     /**
-     * Validates that a mutating proposal still satisfies the live preconditions
-     * of the exact frozen model input it was based on.
+     * 校验一个变更型提案是否仍满足其依据的那份冻结模型输入的活体前置条件。
      */
     public void check(ActionProposal proposal, ActionExecutionContext context,
                       ContextSnapshot currentSnapshot) {
@@ -115,13 +118,12 @@ public class StaleContextChecker {
     }
 
     /**
-     * Verifies all model-visible mutable nodes. Current projection rows use the
-     * persisted rich P1 fingerprints. Legacy projection rows whose fingerprint
-     * column is empty derive the expected hashes only from their immutable
-     * frozen payload; current live state is never used to reconstruct history.
+     * 核验全部模型可见的易变节点。当前投影行使用持久化的丰富 P1 指纹。
+     * 指纹列为空的遗留投影行,只从其不可变冻结 payload 推导期望哈希;
+     * 绝不用当前活状态重建历史。
      *
-     * <p>Missing, cross-project, or retracted nodes are stale even if their
-     * persisted body bytes would otherwise hash to the same value.
+     * 节点缺失、跨项目或已撤回,都视为 stale——即使其持久化的正文字节
+     * 本可以哈希出相同的值。
      */
     public void verifyMutableSourcesStillFresh(ContextSnapshot snapshot) {
         AgentInputProjectionRepository.FrozenInputProjection frozen =
@@ -200,11 +202,10 @@ public class StaleContextChecker {
     }
 
     /**
-     * NODE_QUERY exposes one bounded hop of ACTIVE semantic relations touching
-     * its anchor. Recompute exactly that same bounded set from live state and
-     * compare the source/target/type facts. This catches both retraction/removal
-     * and newly-added relevant relations without making unrelated project
-     * relation changes stale.
+     * NODE_QUERY 只暴露触达其锚点的一跳有界 ACTIVE 语义关系。
+     * 这里从活状态重新计算同一份有界集合,并逐项比较 source/target/type
+     * 事实。这样既能发现关系被撤回/删除或新增了相关关系的情况,
+     * 又不会让项目中无关的关系变更把提案误判为 stale。
      */
     private void verifyRelevantRelationsStillFresh(ContextSnapshot snapshot) {
         if (snapshot.operationType() != ContextOperationType.NODE_QUERY || snapshot.tipNodeId() == null) {
@@ -235,8 +236,8 @@ public class StaleContextChecker {
     }
 
     /**
-     * Deterministic live preconditions for a replacement commit, evaluated
-     * AFTER the model returned but BEFORE any topology mutation.
+     * 为替换型提交(replacement)校验确定性的活体前置条件,时机是
+     * 模型返回之后、任何拓扑变更之前。
      */
     public void verifyLiveExecutionPreconditions(UUID expectedSourceRouteId,
                                                  UUID expectedSourceRouteTip,

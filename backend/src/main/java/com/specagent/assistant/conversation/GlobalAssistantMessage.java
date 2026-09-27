@@ -4,9 +4,15 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * User-facing conversation message only. Persisted roles are USER|ASSISTANT.
- * No THOUGHT/REASONING/TOOL/SYSTEM roles are persisted here; tool detail
- * lives in capability invocations + run events.
+ * 文件名:GlobalAssistantMessage.java
+ *
+ * 用途:面向用户的会话消息(不可变 record),对应持久化表中的
+ * 一条 USER/ASSISTANT 消息,带线程、Run 归属与序号。
+ *
+ * 角色:conversation 包的消息领域模型。持久化只保留 USER 与
+ * ASSISTANT 两种角色;THOUGHT/REASONING/TOOL/SYSTEM 等中间产物一律
+ * 不落在这里,工具执行细节由能力调用记录(capability invocations)
+ * 和 Run 事件承载。
  */
 public record GlobalAssistantMessage(
         UUID id,

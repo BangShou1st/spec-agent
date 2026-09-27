@@ -16,9 +16,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 
 /**
- * The mirror is a DB-authoritative projection: it writes bounded, contained
- * paths only, overwrites from authoritative bytes, and cleans up per skill.
- * A mirror failure must never escalate into the install pipeline.
+ * 文件名:SkillLocalMirrorTest.java
+ *
+ * 测试目标:验证本地镜像作为"数据库为权威来源"的投影——只写入有界、
+ * 受控的路径,用权威字节覆盖旧内容,并按 Skill 粒度清理。镜像失败绝不能
+ * 升级为安装管线的失败。
  */
 class SkillLocalMirrorTest {
 
@@ -58,8 +60,8 @@ class SkillLocalMirrorTest {
 
     @Test
     void unsafePathsAreSwallowedAndWriteNothing() throws Exception {
-        // The mirror is best-effort: an unsafe path is logged and dropped,
-        // never propagated into the install pipeline, and nothing escapes.
+        // 镜像是尽力而为的:不安全路径只会被记录并丢弃,不会传播进
+        // 安装管线,也不会有任何内容逃逸出根目录。
         mirror.mirrorVersion("sk_abc123", 1,
                 List.of(new SkillSourceFile("../escape.md", "x".getBytes(), FileKind.TEXT)));
         mirror.mirrorVersion("../evil", 1,

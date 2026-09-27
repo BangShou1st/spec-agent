@@ -5,10 +5,11 @@ import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 /**
- * Startup entry point for orphan recovery. This bean owns the event
- * subscription only; the transactional work lives in the separate
- * {@link GlobalAssistantRunRecoveryService} so the ApplicationReady path
- * always runs inside a real transaction (no proxy self-invocation).
+ * 文件名:GlobalAssistantRunRecoveryListener.java
+ *
+ * 用途:孤儿 run 恢复的启动入口。这个 bean 只负责订阅应用就绪事件;
+ * 事务性工作放在独立的 {@link GlobalAssistantRunRecoveryService} 里,
+ * 保证 ApplicationReady 路径始终运行在真实事务中(避免代理自调用失效)。
  */
 @Component
 public class GlobalAssistantRunRecoveryListener {

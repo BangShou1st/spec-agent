@@ -1,6 +1,5 @@
-import { test, expect } from '@playwright/test'
-import { createProject, draftFirstQuestion, openRouteFilters, openRouteMore } from './helpers'
 
+import { test, expect, createProject, openRouteMore, openRouteFilters, draftFirstQuestion } from './helpers'
 /**
  * Route lifecycle through the graph route sidebar: archive active route →
  * no active route; restore → OPEN + ACTIVE. Every transition goes through the

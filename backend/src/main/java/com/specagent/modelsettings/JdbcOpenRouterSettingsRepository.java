@@ -8,22 +8,33 @@ import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
+/**
+ * 文件名:JdbcOpenRouterSettingsRepository.java
+ *
+ * 用途:OpenRouterSettingsRepository 的 JDBC 实现。OpenRouter 提供商设置
+ * 单行存储(singleton_id = 1),带配置修订号与验证修订号,markValidated
+ * 只在修订号未变时生效,防止过期验证结果落到新配置上。
+ */
 @Repository
 public class JdbcOpenRouterSettingsRepository implements OpenRouterSettingsRepository {
 
     private final NamedParameterJdbcTemplate jdbc;
-    private final RowMapper<OpenRouterSettings> rowMapper = (rs, rowNum) -> new OpenRouterSettings(
-            rs.getString("api_key"),
-            rs.getString("masked_suffix"),
-            rs.getString("selected_model"),
-            rs.getLong("config_revision"),
-            rs.getObject("validated_revision") == null ? null : rs.getLong("validated_revision"),
-            rs.getTimestamp("created_at").toInstant(),
-            rs.getTimestamp("updated_at").toInstant(),
-            rs.getTimestamp("validated_at") == null ? null : rs.getTimestamp("validated_at").toInstant());
+    private final ModelCredentialCrypto crypto;
+    private final RowMapper<OpenRouterSettings> rowMapper;
 
-    public JdbcOpenRouterSettingsRepository(NamedParameterJdbcTemplate jdbc) {
+    public JdbcOpenRouterSettingsRepository(NamedParameterJdbcTemplate jdbc,
+                                            ModelCredentialCrypto crypto) {
         this.jdbc = jdbc;
+        this.crypto = crypto;
+        this.rowMapper = (rs, rowNum) -> new OpenRouterSettings(
+                crypto.decrypt(rs.getString("api_key")),
+                rs.getString("masked_suffix"),
+                rs.getString("selected_model"),
+                rs.getLong("config_revision"),
+                rs.getObject("validated_revision") == null ? null : rs.getLong("validated_revision"),
+                rs.getTimestamp("created_at").toInstant(),
+                rs.getTimestamp("updated_at").toInstant(),
+                rs.getTimestamp("validated_at") == null ? null : rs.getTimestamp("validated_at").toInstant());
     }
 
     @Override
@@ -49,7 +60,7 @@ public class JdbcOpenRouterSettingsRepository implements OpenRouterSettingsRepos
                     updated_at = EXCLUDED.updated_at,
                     validated_at = EXCLUDED.validated_at
                 """, Maps.of(
-                "apiKey", settings.apiKey(),
+                "apiKey", crypto.encrypt(settings.apiKey()),
                 "maskedSuffix", settings.maskedSuffix(),
                 "selectedModel", settings.selectedModel(),
                 "configRevision", settings.configRevision(),

@@ -4,13 +4,13 @@ import com.specagent.workspace.node.NodeResponse;
 import com.specagent.workspace.route.RouteResponse;
 
 /**
- * Runtime-visible active project state.
+ * 文件名:ActiveProjectStateResponse.java
  *
- * <p>Conceptually {@code {project, activeRoute, activeNode}}. {@code active}
- * follows {@code Project.activeRouteId} only; it is not a route lifecycle
- * status. {@code activeRoute} is {@code null} when the project has no active
- * route, and {@code activeNode} is {@code null} when the active route exists
- * but has no tip node yet. No initial node is ever invented.
+ * 用途:运行时可见的活跃项目状态,概念上是
+ * {@code {project, activeRoute, activeNode}}。{@code active} 只跟随
+ * {@code Project.activeRouteId},它不是路线的生命周期状态。项目没有
+ * 活跃路线时 {@code activeRoute} 为 {@code null};活跃路线存在但还没有
+ * tip 节点时 {@code activeNode} 为 {@code null}。绝不凭空捏造初始节点。
  */
 public record ActiveProjectStateResponse(
         ProjectResponse project,

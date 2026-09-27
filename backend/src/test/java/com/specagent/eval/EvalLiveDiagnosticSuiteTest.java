@@ -17,9 +17,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Phase 3B targeted live diagnostic rerun. This is deliberately a separate
- * opt-in task and artifact directory; it never rewrites the formal 90-attempt
- * baseline under {@code build/eval-live}.
+ * 文件名:EvalLiveDiagnosticSuiteTest.java
+ *
+ * 测试目标:Phase 3B 定向 live 诊断复跑。刻意作为独立的、可选择性执行的
+ * 任务和产物目录;绝不改写 {@code build/eval-live} 下的正式 90 次尝试基线。
  */
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.DEFINED_PORT,

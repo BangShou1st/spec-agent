@@ -13,6 +13,13 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * 文件名:WorkingContextSelectorTest.java
+ *
+ * 测试目标:验证 WorkingContextSelector 的工作集裁剪——派生节点尾部不能挤掉当前
+ * tip 与最近的路线 lineage(优先保留 INTERACTION 链),预算按面向模型的答案/补丁
+ * 字符数计算,超预算时裁掉较旧节点。
+ */
 class WorkingContextSelectorTest {
 
     private final WorkingContextSelector selector = new WorkingContextSelector();

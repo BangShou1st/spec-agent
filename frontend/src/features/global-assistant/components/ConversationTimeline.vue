@@ -1,3 +1,9 @@
+<!--
+  文件名:ConversationTimeline.vue
+  用途:全局助手的对话时间线:依次渲染历史消息、工具活动、追问(需补充信息)、
+       待生效的调整方向、状态行与流式输出中的回复;空态时展示引导文案与建议提问。
+       滚动容器自动吸底:用户贴近底部时新内容自动滚动,否则显示"回到底部"按钮。
+-->
 <script setup lang="ts">
 import { nextTick, ref, watch } from 'vue'
 import AssistantMessage from './AssistantMessage.vue'
@@ -23,6 +29,7 @@ const scrollRef = ref<HTMLElement | null>(null)
 const nearBottom = ref(true)
 const hasNewActivity = ref(false)
 
+// 距底部 96px 以内视为"贴近底部",新消息到来时才自动滚动,避免打断用户回看历史。
 function isNearBottom(el: HTMLElement): boolean {
   return el.scrollHeight - el.scrollTop - el.clientHeight < 96
 }

@@ -1,11 +1,5 @@
-import { expect, test, type Page, type APIRequestContext } from '@playwright/test'
-import {
-  buildThreeNodeLineage,
-  closeFloatingWorkspaceWindows,
-  createProject,
-  fitGraph,
-} from './helpers'
 
+import { test, expect, createProject, fitGraph, closeFloatingWorkspaceWindows, buildThreeNodeLineage, type Page, type APIRequestContext } from './helpers'
 /**
  * 真实 browser + 真实 proposal 端点（不 synthetic bypass，不 skip）。
  *

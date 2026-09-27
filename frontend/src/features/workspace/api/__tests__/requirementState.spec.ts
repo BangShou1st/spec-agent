@@ -1,3 +1,5 @@
+// 文件名:requirementState.spec.ts
+// 用途:需求状态读取 API 单测:验证按项目与按路线两种读取端点的 URL 拼装。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { apiClient } from '@/shared/http/client'
 import { getRequirementState, getRouteRequirementState } from '@/features/workspace/api/requirementState'

@@ -1,3 +1,8 @@
+<!--
+  文件名:SkillsListView.vue
+  用途:Skills 管理页(设置区):列出已安装 Skill、提供 ZIP/Git 导入(含 Git 仓库
+       只读探测)、待导入评审入口,以及启用/禁用/删除等操作;数据由 skillsStore 提供。
+-->
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import ApiErrorBanner from '@/shared/ui/ApiErrorBanner.vue'
@@ -49,7 +54,7 @@ async function submitGit(url: string, ref?: string, subPath?: string): Promise<v
   }
 }
 
-/** Read-only repository inspection: fills the candidate list, stages nothing. */
+/** 只读的仓库探测:只填充候选列表,不做任何暂存。 */
 async function discoverGit(url: string, ref?: string): Promise<void> {
   await store.discoverGit(url, ref)
 }

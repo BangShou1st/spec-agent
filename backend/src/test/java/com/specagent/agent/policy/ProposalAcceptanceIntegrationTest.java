@@ -29,9 +29,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Acceptance of Advisor proposals re-validates staleness against current
- * graph facts, executes through the command layer, and records the
- * acceptance in the typed operation log.
+ * 文件名:ProposalAcceptanceIntegrationTest.java
+ *
+ * 测试目标:验证 Advisor 提案的接受流程——接受时针对当前图事实重新校验新鲜度
+ * (锚点过期则拒绝且保持 PROPOSED)、经命令层执行变更(CREATE_NODE/SEMANTIC 连接)、
+ * 在带类型的操作日志中记录接受操作;并覆盖重复接受拒绝、持久化 run 回传 originRunId
+ * 并登记续写检查、幽灵 runId 返回 null 且不写检查等场景。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -105,7 +108,7 @@ class ProposalAcceptanceIntegrationTest {
     void acceptRejectsStaleAnchorAndStaysPending() {
         AgentProposal pending = createPendingNodeProposal();
 
-        // The route tip moves on before acceptance.
+        // 在接受之前路线 tip 被推进。
         graphCommandService.appendContinuation(
                 project.id(), route.id(), tip.id(), "NOTE", Map.of("text", "new tip"));
 

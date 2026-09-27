@@ -1,11 +1,12 @@
 package com.specagent.model.contract;
 
 /**
- * Cooperative cancellation signal for a streaming provider call. Thrown when
- * the fragment listener declines further content, which only happens because
- * the owning run was cancelled. Never synthesized for provider errors,
- * timeouts, or malformed output. Must propagate unwrapped so the runtime can
- * terminalize the run as CANCELLED instead of FAILED.
+ * 文件名:StreamCancelledException.java
+ *
+ * 用途:流式提供商调用的协作式取消信号。当片段监听器拒绝继续接收内容时抛出,
+ * 而这只会因为所属 run 已被取消。绝不用于提供商错误、超时或非法输出的场景。
+ * 该异常必须原样向上传播(不做包装),让运行时能把 run 终止为 CANCELLED
+ * 而不是 FAILED。
  */
 public final class StreamCancelledException extends RuntimeException {
 

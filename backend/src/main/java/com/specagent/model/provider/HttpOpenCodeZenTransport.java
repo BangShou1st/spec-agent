@@ -36,23 +36,23 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * JDK {@link HttpClient} implementation of the OpenCode Zen transport.
+ * 文件名:HttpOpenCodeZenTransport.java
  *
- * <p>Production completions follow the OpenAI-compatible streaming shape used
- * by the verified OpenCode client: {@code stream=true}, no provider JSON-mode
- * field, and SSE delta aggregation. The transport converts that wire shape
- * back to the existing {@link OpenCodeCompletionResponse} contract, so the
- * runtime and structured-output validation remain provider-agnostic.</p>
+ * 用途:OpenCode Zen 传输接口的 JDK {@link HttpClient} 实现。
  *
- * <p>Every request carries the transport-owned identity policy: User-Agent
- * {@code opencode/1.18.31 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14},
- * bearer authorization when a key is available, the full OpenCode client
- * identity set ({@code x-opencode-client: cli}, {@code x-opencode-session},
- * {@code x-opencode-request}, {@code x-opencode-project: global}) so OpenCode
- * recognizes the request as client-originated, and JSON content type for
- * payload-bearing requests. Production completions use
- * an unbounded JDK request/client policy; model discovery and credential probes
- * use a separate bounded settings policy.</p>
+ * 生产补全遵循已验证的 OpenCode 客户端所用的 OpenAI 兼容流式形态:
+ * {@code stream=true}、不带提供商的 JSON-mode 字段、按 SSE delta 聚合内容。
+ * 传输层把这种线上形态转换回既有的 {@link OpenCodeCompletionResponse} 契约,
+ * 因此运行时和结构化输出校验依然与提供商无关。
+ *
+ * 每个请求都携带传输层自有的身份策略:User-Agent
+ * {@code opencode/1.18.31 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14}、
+ * 有密钥时携带 bearer 授权、完整的 OpenCode 客户端身份头集合
+ * ({@code x-opencode-client: cli}、{@code x-opencode-session}、
+ * {@code x-opencode-request}、{@code x-opencode-project: global}),让 OpenCode
+ * 把请求识别为客户端发起;携带载荷的请求还要设置 JSON content type。生产补全
+ * 使用不设超时上限的 JDK 请求/客户端策略;模型发现和凭据探测使用单独的
+ * 有界 settings 策略。
  */
 @Component
 public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
@@ -60,25 +60,23 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
     private static final Logger LOG = LoggerFactory.getLogger(HttpOpenCodeZenTransport.class);
     private static final int MAX_DIAGNOSTIC_BODY_BYTES = 16 * 1024;
 
-    /** Bounded probe payload; probe wire shape is intentionally independent. */
+    /** 有界的探测载荷;探测请求的线上形态刻意保持独立。 */
     private static final String PROBE_USER_CONTENT = "Return only {\"action\":\"finish\"}.";
     private static final int PROBE_MAX_TOKENS = 256;
 
     /**
-     * Transport-owned gate tools, sent on every chat completion.
+     * 传输层自有的"守门"工具集,随每次 chat completion 一起发送。
      *
-     * <p>OpenCode Zen admits the free tier only for requests that look like a real
-     * client call. Three conditions were isolated by A/B on the wire, and all are
-     * required: the client identity header set (see {@link OpenCodeZenTransport#CLIENT_HEADER}),
-     * a non-empty {@code tools} array containing functions literally named
-     * {@code bash} and {@code read} (case-sensitive; descriptions/parameters may
-     * be fake), and {@code stream=true}. Missing any one, or renaming either
-     * tool, yields {@code FreeTierError} (HTTP 403).
+     * OpenCode Zen 只对看起来像真实客户端调用的请求开放免费额度。经线上 A/B
+     * 对照隔离出三个必要条件,缺一不可:客户端身份头集合(见
+     * {@link OpenCodeZenTransport#CLIENT_HEADER})、一个非空的 {@code tools} 数组
+     * 且其中包含字面名称为 {@code bash} 和 {@code read} 的函数(大小写敏感;
+     * 描述和参数可以是假的),以及 {@code stream=true}。缺少任何一条,或重命名
+     * 任一工具,都会得到 {@code FreeTierError}(HTTP 403)。
      *
-     * <p>The model is never expected to call these tools: the runtime prompt still
-     * drives the JSON action contract, and the tools exist purely so the request
-     * carries the client-shaped payload Zen expects. Verified that a real prompt
-     * with these tools present still returns ordinary text content.
+     * 模型永远不会真的调用这些工具:运行时提示词仍按 JSON 动作契约驱动,
+     * 这些工具纯粹是为了让请求带上 Zen 期望的客户端形态载荷。已验证:真实提示词
+     * 附带这些工具时,模型仍返回普通文本内容。
      */
     private static final List<Map<String, Object>> RESERVED_TOOLS = List.of(
             Map.<String, Object>of(
@@ -124,12 +122,12 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
     }
 
     /**
-     * Explicit proxy selector for Zen HTTP clients. Default is DIRECT (NO_PROXY):
-     * Zen requests never inherit the JVM/system default {@link java.net.ProxySelector},
-     * so no application-level HTTP/SOCKS proxy can interpose regardless of the host
-     * environment unless {@code spec.agent.model.opencode.proxy} is explicitly set to
-     * {@code http://host:port}. Scoped to this transport's own clients only; the JVM
-     * default selector is never modified and system proxy env is never read.
+     * 为 Zen HTTP 客户端指定显式的代理选择器。默认为 DIRECT(NO_PROXY):
+     * Zen 请求绝不继承 JVM/系统默认的 {@link java.net.ProxySelector},因此无论宿主
+     * 环境如何,应用层 HTTP/SOCKS 代理都无法介入——除非把
+     * {@code spec.agent.model.opencode.proxy} 显式设置为 {@code http://host:port}。
+     * 该策略只作用于本传输层自己的客户端;不修改 JVM 默认选择器,也不读取系统
+     * 代理环境变量。
      */
     private static HttpClient.Builder directHttpClientBuilder() {
         return HttpClient.newBuilder().proxy(HttpClient.Builder.NO_PROXY);
@@ -171,10 +169,8 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
     }
 
     /**
-     * Fail-closed session gate for production completions: a missing,
-     * blank or CR/LF-containing value never reaches the wire and is never
-     * silently replaced, because the stable run affinity is a gateway
-     * contract that callers must honor explicitly.
+     * 生产补全的 fail-closed 会话门禁:缺失、空白或含 CR/LF 的值绝不上线,也绝不
+     * 被静默替换——稳定的 run 亲和性是网关契约的一部分,调用方必须显式遵守。
      */
     private static String requireSessionId(String sessionId) {
         if (sessionId == null || sessionId.isBlank()) {
@@ -379,10 +375,9 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
     }
 
     /**
-     * Logs only allowlisted, bounded provider diagnostics for the hard-stop
-     * rate-limit case. The response body is parsed in memory but never logged
-     * wholesale; Authorization, API keys, prompts, and arbitrary headers are
-     * never included.
+     * 对硬性中断的限流场景,只记录白名单内、有界大小的提供商诊断信息。响应体会在
+     * 内存中解析,但绝不整体落日志;Authorization、API key、提示词与任意请求头
+     * 一律不包含。
      */
     private void logProviderDiagnostics(OpenCodeModelException exception, String category) {
         OpenCodeFailureDiagnostics diagnostics = exception.diagnostics();
@@ -418,7 +413,7 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
             JsonNode root = mapper.readTree(responseBody == null ? "" : responseBody);
             error = root == null ? null : root.get("error");
         } catch (IOException ignored) {
-            // Keep safe "not provided" diagnostics for non-JSON provider bodies.
+            // 提供商返回非 JSON 响应体时,保留安全的 "not provided" 诊断。
         }
         OpenCodeFailureDiagnostics diagnostics = OpenCodeFailureDiagnostics.httpFailure(
                 selectedModel,
@@ -502,7 +497,7 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
                     }
                     eventData.append(data);
                 }
-                // SSE comments, event names and ids do not affect content.
+                // SSE 注释、事件名和 id 不影响内容提取。
             }
 
             if (!done && eventData.length() > 0) {
@@ -551,14 +546,12 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
     }
 
     /**
-     * Delivers one decoded provider fragment to the streaming listener. A
-     * declined fragment aborts the read loop: the try-with-resources closes
-     * the HTTP stream and the run terminalizes as CANCELLED upstream.
+     * 把一个解码后的提供商片段投递给流式监听器。监听器拒绝片段时中断读取循环:
+     * try-with-resources 关闭 HTTP 流,由上游把 run 终止为 CANCELLED。
      *
-     * <p>Every provider SSE event is a cancellation checkpoint, including
-     * content-less reasoning/usage events delivered as an empty string.
-     * Empty fragments are flow-control only and never displayable text;
-     * reasoning content is observed for accounting and never shown.
+     * 每个提供商 SSE 事件都是一次取消检查点,包括以空字符串形式送达的
+     * 无内容 reasoning/usage 事件。空片段只用于流控,绝不是可展示文本;
+     * reasoning 内容仅用于计量观察,绝不展示。
      */
     private static void offerFragment(FragmentListener listener, String content) {
         if (!listener.onFragment(content == null ? "" : content)) {
@@ -794,22 +787,22 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
                 : Hashes.sha256Hex(new String(body, StandardCharsets.UTF_8));
     }
 
-    /** Package-private contract hooks used only by deterministic transport tests. */
+    /** 包私有契约钩子,仅供确定性的传输层测试使用。 */
     HttpRequest completionRequestForTest(OpenCodeChatCompletionRequest request) {
         return prepareCompletionRequest(null, OpenCodeZenSessionIds.newEphemeral(), request).request();
     }
 
-    /** Package-private contract hook used only by deterministic transport tests. */
+    /** 包私有契约钩子,仅供确定性的传输层测试使用。 */
     HttpClient productionHttpClientForTest() {
         return productionHttpClient;
     }
 
-    /** Package-private contract hook used only by deterministic transport tests. */
+    /** 包私有契约钩子,仅供确定性的传输层测试使用。 */
     Duration settingsTimeoutForTest() {
         return settingsTimeout;
     }
 
-    /** Package-private contract hook used only by deterministic transport tests. */
+    /** 包私有契约钩子,仅供确定性的传输层测试使用。 */
     HttpClient settingsHttpClientForTest() {
         return settingsHttpClient;
     }

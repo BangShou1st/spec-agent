@@ -25,7 +25,15 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
- * Backend V1 public contracts. HTTP/SSE only; no domain logic here.
+ * 文件名:GlobalAssistantController.java
+ *
+ * 用途:全局助手的后端 V1 对外 HTTP/SSE 接口,覆盖线程、消息、Run、
+ * 事件流、取消、Steer、活动查询与删除等全部公开端点。
+ *
+ * 角色:api 层唯一控制器,只做协议转换(DTO 组装、游标解析、SSE 订阅),
+ * 不含任何领域逻辑;所有业务都转发给 runtime 层的
+ * {@link GlobalAssistantApplicationService} 与
+ * {@link GlobalAssistantStreamService} 处理。
  */
 @RestController
 @RequestMapping("/api/v1/global-assistant")
@@ -124,10 +132,10 @@ public class GlobalAssistantController {
         return streams.listEnvelopes(runId);
     }
     /**
-     * SSE stream. Error statuses stay bare: a JSON error body cannot be
-     * content-negotiated for an event-stream Accept, so unknown runs answer
-     * 404 and malformed cursors answer 400 without a negotiated body. The
-     * JSON read endpoints keep the typed error bodies.
+     * SSE 事件流端点。错误状态码保持裸返回:对 Accept: text/event-stream 的
+     * 请求做 JSON 错误体内容协商没有意义,所以 Run 不存在时直接回 404、
+     * 游标非法时直接回 400,不带协商后的错误体。JSON 读端点则保留类型化
+     * 的错误响应体。
      */
     @GetMapping(value = "/runs/{runId}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public org.springframework.http.ResponseEntity<SseEmitter> streamEvents(@PathVariable UUID runId,

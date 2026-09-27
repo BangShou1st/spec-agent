@@ -37,10 +37,11 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Capability observations must follow route-lineage visibility: a result
- * produced in a shared prefix is visible to every inheriting branch, a
- * branch-private result stays on its own route, and unattributable rows
- * stay hidden (fail-closed). Observations never create graph truth.
+ * 文件名:CapabilityObservationLineageVisibilityIntegrationTest.java
+ *
+ * 测试目标:验证能力观察遵循路线 lineage 可见性——共享前缀中产生的结果对所有继承
+ * 分支可见,分支私有结果只留在自己的路线,无法归属的行保持隐藏(fail-closed)。
+ * 观察永远不创造图事实。
  */
 @SpringBootTest
 @ActiveProfiles("test")

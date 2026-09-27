@@ -1,13 +1,10 @@
+// 文件名:spec.ts
+// 用途:Spec(规格)读取与生成 API。
+// 前端从不编写 SpecSnapshot:生成走既有的后端命令,产出的派生制品再从后端重读。
+// 快照是派生物,永远不是事实源。
+
 import { API_BASE_URL, ApiError, GENERIC_ERROR_MESSAGE, apiClient } from '@/shared/http/client'
 import type { SpecGenerationResponse, SpecSnapshotResponse } from '@/shared/contracts/types'
-
-/**
- * Spec read + generation API.
- *
- * The frontend never authors a SpecSnapshot: generation goes through the
- * existing backend command and the resulting derived artifact is re-read from
- * the backend. Snapshots are derived, never source of truth.
- */
 
 export function generateSpec(projectId: string): Promise<SpecGenerationResponse> {
   return apiClient.post<SpecGenerationResponse>(`/projects/${projectId}/specs/generate`)
@@ -27,20 +24,18 @@ export function getSpecSnapshot(snapshotId: string): Promise<SpecSnapshotRespons
 }
 
 /**
- * Export variant of a spec snapshot's Markdown rendering. The backend renders
- * the stored snapshot deterministically — no model call, no second copy.
+ * Spec 快照 Markdown 渲染的导出变体。后端对存储的快照做确定性渲染——
+ * 不调用模型,也没有第二份副本。
  *
- * - `snapshot`: faithful, provenance-complete export (audit view).
- * - `delivery`: development handoff document (PRD-style, provenance in
- *   appendix).
+ * - `snapshot`:忠实、溯源完整的导出(审计视图)。
+ * - `delivery`:开发交接文档(PRD 风格,溯源信息放附录)。
  */
 export type SpecExportVariant = 'snapshot' | 'delivery'
 
 /**
- * Downloads one snapshot's Markdown export and triggers a browser save.
- * Resolves after the download was handed to the browser; throws ApiError on
- * any failure. The backend is fetched directly (the typed client parses JSON
- * only), with the same error-contract handling.
+ * 下载一个快照的 Markdown 导出并触发浏览器保存。
+ * 下载交付给浏览器后即 resolve;任何失败抛 ApiError。
+ * 直接 fetch 后端(类型化客户端只解析 JSON),错误契约处理保持一致。
  */
 export async function downloadSpecMarkdown(
   snapshotId: string,
@@ -86,7 +81,7 @@ async function toApiError(response: Response): Promise<ApiError> {
       }
     }
   } catch {
-    // Fall through to the generic failure below.
+    // 解析失败则继续走下面的通用失败分支。
   }
   return new ApiError(GENERIC_ERROR_MESSAGE, 'UNKNOWN_ERROR', response.status)
 }

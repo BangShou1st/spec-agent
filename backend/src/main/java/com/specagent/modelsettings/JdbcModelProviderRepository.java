@@ -14,8 +14,11 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 /**
- * Row-per-provider storage. Every provider — preset or user-defined — is a row
- * here, so adding a provider is an insert and never a schema or enum change.
+ * 文件名:JdbcModelProviderRepository.java
+ *
+ * 用途:ModelProviderRepository 的 JDBC 实现,采用"每个提供商一行"的存储模型:
+ * 无论内置预设还是用户自建的提供商都落在 model_providers 表里,
+ * 因此新增提供商只需插入一行,不需要改表结构或枚举。
  */
 @Repository
 public class JdbcModelProviderRepository implements ModelProviderRepository {
@@ -26,27 +29,31 @@ public class JdbcModelProviderRepository implements ModelProviderRepository {
             created_at, updated_at, validated_at
             """;
 
-    /** Presets first (OpenCode Zen, OpenRouter), then user rows in creation order. */
+    /** 排序:预设在前(OpenCode Zen、OpenRouter),用户自建的按创建顺序排在后面。 */
     private static final String ORDER = """
             ORDER BY CASE preset WHEN 'OPENCODE_ZEN' THEN 0 WHEN 'OPENROUTER' THEN 1 ELSE 2 END,
                      position, created_at
             """;
 
     private final NamedParameterJdbcTemplate jdbc;
-    private final RowMapper<ModelProviderRecord> rowMapper = JdbcModelProviderRepository::mapRow;
+    private final ModelCredentialCrypto crypto;
+    private final RowMapper<ModelProviderRecord> rowMapper;
 
-    public JdbcModelProviderRepository(NamedParameterJdbcTemplate jdbc) {
+    public JdbcModelProviderRepository(NamedParameterJdbcTemplate jdbc, ModelCredentialCrypto crypto) {
         this.jdbc = jdbc;
+        this.crypto = crypto;
+        this.rowMapper = (rs, rowNum) -> mapRow(rs, rowNum, crypto);
     }
 
-    private static ModelProviderRecord mapRow(ResultSet rs, int rowNum) throws SQLException {
+    private static ModelProviderRecord mapRow(ResultSet rs, int rowNum,
+                                              ModelCredentialCrypto crypto) throws SQLException {
         return new ModelProviderRecord(
                 rs.getObject("id", UUID.class),
                 ModelProvider.fromCode(rs.getString("preset")),
                 rs.getString("display_name"),
                 rs.getString("api_format"),
                 rs.getString("base_url"),
-                rs.getString("api_key"),
+                crypto.decrypt(rs.getString("api_key")),
                 rs.getString("masked_suffix"),
                 rs.getString("selected_model"),
                 readModelSource(rs),
@@ -58,7 +65,7 @@ public class JdbcModelProviderRepository implements ModelProviderRepository {
                 rs.getTimestamp("validated_at") == null ? null : rs.getTimestamp("validated_at").toInstant());
     }
 
-    /** Tolerates pre-V35 rows and unknown values the same way the old reader did. */
+    /** 兼容 V35 之前的旧行与未知取值,回退方式与旧读取逻辑保持一致。 */
     private static String readModelSource(ResultSet rs) throws SQLException {
         String value = rs.getString("model_source");
         if (value == null || (!"MANUAL".equals(value) && !"DISCOVERED".equals(value))) {
@@ -101,7 +108,7 @@ public class JdbcModelProviderRepository implements ModelProviderRepository {
                 "displayName", record.effectiveDisplayName(),
                 "apiFormat", record.apiFormat(),
                 "baseUrl", record.baseUrl(),
-                "apiKey", record.apiKey(),
+                "apiKey", crypto.encrypt(record.apiKey()),
                 "maskedSuffix", record.maskedSuffix(),
                 "selectedModel", record.selectedModel(),
                 "modelSource", record.modelSource() == null ? "DISCOVERED" : record.modelSource(),
@@ -135,7 +142,7 @@ public class JdbcModelProviderRepository implements ModelProviderRepository {
                 "displayName", record.effectiveDisplayName(),
                 "apiFormat", record.apiFormat(),
                 "baseUrl", record.baseUrl(),
-                "apiKey", record.apiKey(),
+                "apiKey", crypto.encrypt(record.apiKey()),
                 "maskedSuffix", record.maskedSuffix(),
                 "selectedModel", record.selectedModel(),
                 "modelSource", record.modelSource() == null ? "DISCOVERED" : record.modelSource(),
@@ -154,8 +161,8 @@ public class JdbcModelProviderRepository implements ModelProviderRepository {
     @Override
     public void markValidated(UUID id, long configRevision) {
         Instant now = Instant.now();
-        // The revision guard makes a stale test result a no-op rather than
-        // blessing a configuration that changed while the probe was running.
+        // 修订号守卫:配置在探测期间又被改过时,这条 UPDATE 不生效,
+        // 避免把过期的验证结果安到新配置头上
         jdbc.update("""
                 UPDATE model_providers
                 SET validated_revision = :configRevision, validated_at = :validatedAt, updated_at = :validatedAt

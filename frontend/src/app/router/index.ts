@@ -1,3 +1,6 @@
+// 文件名:index.ts
+// 用途:应用路由表定义:声明项目列表、工作台、设置区(模型/Skills/Connections)等路由,
+//       并配置设置区子路由切换时的滚动行为。
 import { createRouter, createWebHistory } from 'vue-router'
 import ProjectsView from '@/features/projects/ProjectsView.vue'
 import WorkspaceView from '@/features/workspace/WorkspaceView.vue'

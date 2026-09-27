@@ -9,19 +9,29 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.Optional;
 
+/**
+ * 文件名:JdbcOpenCodeSettingsRepository.java
+ *
+ * 用途:OpenCodeSettingsRepository 的 JDBC 实现。OpenCode(Zen)提供商的设置
+ * 在库中只有一行(singleton_id = 1),保存密钥(含脱敏后缀)与选中模型。
+ */
 @Repository
 public class JdbcOpenCodeSettingsRepository implements OpenCodeSettingsRepository {
 
     private final NamedParameterJdbcTemplate jdbc;
-    private final RowMapper<OpenCodeSettings> rowMapper = (rs, rowNum) -> new OpenCodeSettings(
-            rs.getString("api_key"),
-            rs.getString("masked_suffix"),
-            rs.getString("selected_model"),
-            rs.getTimestamp("created_at").toInstant(),
-            rs.getTimestamp("updated_at").toInstant());
+    private final ModelCredentialCrypto crypto;
+    private final RowMapper<OpenCodeSettings> rowMapper;
 
-    public JdbcOpenCodeSettingsRepository(NamedParameterJdbcTemplate jdbc) {
+    public JdbcOpenCodeSettingsRepository(NamedParameterJdbcTemplate jdbc,
+                                          ModelCredentialCrypto crypto) {
         this.jdbc = jdbc;
+        this.crypto = crypto;
+        this.rowMapper = (rs, rowNum) -> new OpenCodeSettings(
+                crypto.decrypt(rs.getString("api_key")),
+                rs.getString("masked_suffix"),
+                rs.getString("selected_model"),
+                rs.getTimestamp("created_at").toInstant(),
+                rs.getTimestamp("updated_at").toInstant());
     }
 
     @Override
@@ -43,7 +53,7 @@ public class JdbcOpenCodeSettingsRepository implements OpenCodeSettingsRepositor
                     selected_model = EXCLUDED.selected_model,
                     updated_at = EXCLUDED.updated_at
                 """, Maps.of(
-                "apiKey", settings.apiKey(),
+                "apiKey", crypto.encrypt(settings.apiKey()),
                 "maskedSuffix", settings.maskedSuffix(),
                 "selectedModel", settings.selectedModel(),
                 "createdAt", Timestamp.from(settings.createdAt() == null ? now : settings.createdAt()),

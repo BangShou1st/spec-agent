@@ -1,6 +1,11 @@
 package com.specagent.agent.protocol;
 
-/** Machine-readable reasons for deterministic eligibility decisions. */
+/**
+ * 文件名:ActionEligibilityReasonCode.java
+ *
+ * 用途:确定性可用性判定(reasoning 不参与)给出的机器可读原因码,
+ * 用于解释某个动作家族为何被允许或拒绝,便于审计与前端展示。
+ */
 public enum ActionEligibilityReasonCode {
     ANSWER_ALREADY_DURABLE,
     NO_NEW_DURABLE_UNIT,

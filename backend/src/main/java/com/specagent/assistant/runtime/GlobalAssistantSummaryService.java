@@ -12,10 +12,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 /**
- * Threshold-based rolling summary loop. Summarizes bounded evicted facts
- * through the same provider-neutral gateway; never every round, never
- * unbounded input. A failed summary never breaks the completed user run
- * and never overwrites the previous summary; the next threshold retries.
+ * 文件名:GlobalAssistantSummaryService.java
+ *
+ * 用途:基于阈值的滚动对话摘要循环。对"有界且已被窗口淘汰"的对话事实
+ * 做增量摘要,走与决策相同的供应商中立网关;绝不每轮都摘要,
+ * 也绝不喂入无界输入。摘要失败不影响已完成的用户 run,也不会覆盖
+ * 旧摘要,等下一次达到阈值再重试。
  */
 @Service
 public class GlobalAssistantSummaryService {

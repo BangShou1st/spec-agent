@@ -30,12 +30,11 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * Unit tests for the canonical graph workspace read model.
+ * 文件名:GraphWorkspaceQueryServiceTest.java
  *
- * <p>Covers deduplicated shared nodes, route-specific answers that stay
- * separate, inspection across every lifecycle state, replacement metadata that
- * never injects the superseded target into the replacement lineage, and
- * fail-closed behavior for missing/foreign/cyclic/root-mismatched lineage data.
+ * 测试目标:图工作区权威读取模型的单元测试。覆盖:共享节点去重、各路线
+ * 的回答按路线区分、全部生命周期状态可查看、替换元数据不会把被取代目标
+ * 注入替换谱系,以及缺失/跨项目/成环/根不匹配等脏谱系数据的快速失败行为。
  */
 @ExtendWith(MockitoExtension.class)
 class GraphWorkspaceQueryServiceTest {
@@ -134,10 +133,9 @@ class GraphWorkspaceQueryServiceTest {
         Node d = node(dId, projectId, bId, "D");
         Route routeA = route(routeAId, projectId, aId, cId, RouteLifecycleStatus.OPEN, null);
         Route routeB = route(routeBId, projectId, aId, dId, RouteLifecycleStatus.OPEN, null);
-        // One canonical Question carries ONE immutable Answer identity; both
-        // routes resolve the shared node to the SAME answer id (route B via an
-        // inherited reference), so the read model exposes per-route views that
-        // never diverge by content.
+        // 一个权威 Question 只携带一个不可变 Answer 身份;两条路线把共享节点
+        // 解析到同一个 answer id(路线 B 通过继承引用),因此读取模型暴露的
+        // 按路线视图在内容上绝不产生分歧。
         UUID sharedAnswerId = UUID.randomUUID();
         Answer answerB = new Answer(sharedAnswerId, projectId, routeAId, bId,
                 "opt", "B answer", "user", NOW);
@@ -160,8 +158,8 @@ class GraphWorkspaceQueryServiceTest {
         assertThat(view.routes()).hasSize(2);
         assertThat(view.routes().get(0).lineageNodeIds()).containsExactly(aId, bId, cId);
         assertThat(view.routes().get(1).lineageNodeIds()).containsExactly(aId, bId, dId);
-        // Per-route answer views exist (owner + inherited), all carrying the
-        // SAME Answer identity, never two competing answers for one node.
+        // 存在按路线的回答视图(属主 + 继承),均携带同一个 Answer 身份,
+        // 一个节点绝不出现两个相互竞争的回答。
         assertThat(view.answers()).hasSize(2);
         assertThat(view.answers()).extracting(GraphWorkspaceAnswerView::id)
                 .containsOnly(sharedAnswerId);
@@ -187,9 +185,8 @@ class GraphWorkspaceQueryServiceTest {
         Node d = node(dId, projectId, bId, "D");
         Route routeA = route(routeAId, projectId, aId, cId, RouteLifecycleStatus.OPEN, null);
         Route routeB = route(routeBId, projectId, aId, dId, RouteLifecycleStatus.OPEN, null);
-        // The shared node carries the SAME effective Answer identity on both
-        // routes (route B via an inherited reference); the read model must not
-        // treat this as a divergence.
+        // 共享节点在两条路线上携带同一个有效 Answer 身份(路线 B 通过继承
+        // 引用);读取模型不得将其判定为分歧。
         UUID sharedAnswerId = UUID.randomUUID();
         Answer answer = new Answer(sharedAnswerId, projectId, routeAId, bId,
                 "opt", "B answer", "user", NOW);
@@ -229,9 +226,9 @@ class GraphWorkspaceQueryServiceTest {
         Node d = node(dId, projectId, bId, "D");
         Route routeA = route(routeAId, projectId, aId, cId, RouteLifecycleStatus.OPEN, null);
         Route routeB = route(routeBId, projectId, aId, dId, RouteLifecycleStatus.OPEN, null);
-        // The shared canonical Question node b is answered on route A but left
-        // unanswered on route B (no effective answer resolves for it there) —
-        // an answered/unanswered divergence, not a normal UI mode.
+        // 共享的权威 Question 节点 b 在路线 A 上已回答、在路线 B 上未回答
+        // (该路线上没有解析出有效回答)——这是"已答/未答"分歧,
+        // 不是正常的 UI 状态。
         Answer answerB = new Answer(UUID.randomUUID(), projectId, routeAId, bId,
                 "opt", "B answer", "user", NOW);
 
@@ -399,13 +396,13 @@ class GraphWorkspaceQueryServiceTest {
         assertThat(view.routes()).extracting(GraphWorkspaceRouteView::id)
                 .containsExactly(oldRouteId, replacementRouteId);
         GraphWorkspaceRouteView replacementView = view.routes().get(1);
-        // Parent lineage plus the replacement node only; the superseded target
-        // and its old child subtree never enter the replacement lineage.
+        // 替换谱系 = 父谱系 + 替换节点本身;被取代目标及其旧子树
+        // 绝不进入替换谱系。
         assertThat(replacementView.lineageNodeIds()).containsExactly(rootId, replacementId);
         assertThat(replacementView.replacementOfNodeId()).isEqualTo(childId);
         assertThat(view.routes().get(0).lineageNodeIds())
                 .containsExactly(rootId, childId, grandchildId);
-        // SupersedesNodeId is metadata only, exposed on the node view.
+        // SupersedesNodeId 只是元数据,在节点视图上暴露。
         assertThat(view.nodes()).filteredOn(n -> n.id().equals(replacementId))
                 .singleElement()
                 .satisfies(n -> assertThat(n.supersedesNodeId()).isEqualTo(childId));
@@ -492,7 +489,7 @@ class GraphWorkspaceQueryServiceTest {
         UUID rootBId = UUID.randomUUID();
         UUID childBId = UUID.randomUUID();
         Project project = new Project(projectId, "p", routeId, null, NOW, NOW);
-        // Route root stays rootA but the tip walks a rootB lineage.
+        // 路线根仍是 rootA,但 tip 沿 rootB 的谱系行走。
         Route route = route(routeId, projectId, rootAId, childBId, RouteLifecycleStatus.OPEN, null);
         Node rootA = node(rootAId, projectId, null, "Root A");
         Node childA = node(childAId, projectId, rootAId, "Child of A");

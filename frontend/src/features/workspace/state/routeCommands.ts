@@ -1,11 +1,13 @@
-/**
- * Route command domain: the explicit route lifecycle commands (activate,
- * restore, archive, delete, fork, re-answer, regenerate) and the fail-closed
- * reconciliation of a regenerate whose outcome could not be observed.
+// 文件名:routeCommands.ts
+// 用途:路线命令领域逻辑:显式路线生命周期命令(激活/恢复/归档/删除/fork/重答/换题)以及换题结果不可观测时的 fail-closed 对账,从 workspaceStore 拆出。
+/*
+ * 路线命令领域:显式路线生命周期命令(activate、restore、archive、delete、
+ * fork、re-answer、regenerate),以及结果无法观测的 regenerate 的
+ * fail-closed 对账。
  *
- * Every function is the verbatim action body lifted out of `workspaceStore.ts`
- * with `this` replaced by the store instance passed in as the first argument.
- * The store keeps the action names and delegates, so no caller changes.
+ * 每个函数都是从 `workspaceStore.ts` 原样搬出的 action 主体,只是把
+ * `this` 换成了作为第一个参数传入的 store 实例。store 保留原 action 名
+ * 并委托到这里,调用方零改动。
  */
 import { createAgentRun } from '@/features/workspace/api/agentRuns'
 import { toDisplayError } from '@/shared/http/displayError'
@@ -49,9 +51,8 @@ export async function activateRouteAction(
     )
     return false
   } finally {
-    // Only the owning session releases the lock: a stale command's cleanup
-    // must not release the NEW session's route-command lock (beginProject
-    // has already reset it on switch).
+    // 只有持有会话的一方释放锁:过期命令的清理绝不能释放新会话的
+    // route-command 锁(beginProject 在切换时已经重置过它)。
     if (isCurrent()) {
       store.routeCommandPending = false
       store.pendingRouteCommand = null
@@ -148,10 +149,9 @@ export async function deleteRouteAction(
   }
 }
 
-/**
- * Forks a new route from a historical node. The runtime creates the new
- * route id and makes it active; the frontend then refreshes canonical
- * reads and never guesses the new route id.
+/*
+ * 从历史节点 fork 一条新路线。运行时创建新路线 id 并把它设为活跃;前端
+ * 随后刷新 canonical 读取,绝不猜测新路线 id。
  */
 export async function forkNodeAction(
   store: RouteCommandSlice,
@@ -170,7 +170,6 @@ export async function forkNodeAction(
   store.routeCommandPending = true
   store.pendingRouteCommand = 'fork'
   store.error = null
-  store.forkDraftRetryRouteId = null
   try {
     const result = await forkNode(projectId, nodeId, {
       sourceRouteId,
@@ -178,19 +177,22 @@ export async function forkNodeAction(
     })
     await store.refreshWorkspace()
     if (!isCurrent()) return false
-    // Fork and first-child Draft are separate Runtime commands. The
-    // route is intentionally preserved if Draft fails.
+    // Fork 和首个子问题起草是两条独立的运行时命令。起草失败时有意保留
+    // 新路线。
     store.routeCommandPending = false
     store.pendingRouteCommand = null
     const drafted = await store.draftQuestion()
     if (!isCurrent()) return false
     if (!drafted) {
-      store.forkDraftRetryRouteId = result.route.id
+      // 分支已创建但首个问题起草失败:不再写全局"重试起草"状态。起草
+      // run 的失败由服务端未解决失败清单承接,在该路线下游的失败占位卡
+      // 上重试;未形成 run 的提交失败可从路线菜单的正常"起草下一个问题"
+      // 动作再次发起(绑定该路线,不回落 Active)。
       store.setFocusAfterMutation({
         routeId: result.route.id,
         nodeId: store.activeState?.activeRoute?.tipNodeId ?? result.route.tipNodeId,
       })
-      store.feedback = '分支已创建，但首个后续问题起草失败，可重试'
+      store.feedback = '分支已创建，但首个后续问题起草失败'
       return false
     }
     store.setFocusAfterMutation({
@@ -242,11 +244,9 @@ export async function reanswerNodeAction(
   }
 }
 
-/**
- * Deterministically regenerates a historical node. Old route becomes
- * SUPERSEDED and the replacement route becomes OPEN + active via the
- * runtime; the frontend refreshes canonical reads instead of
- * reconstructing the transition locally.
+/*
+ * 确定性地重新生成一个历史节点。旧路线变为 SUPERSEDED,替代路线经运行时
+ * 变为 OPEN + active;前端刷新 canonical 读取,而不是在本地重建这次流转。
  */
 export async function regenerateNodeAction(
   store: RouteCommandSlice,
@@ -262,8 +262,8 @@ export async function regenerateNodeAction(
   store.error = null
   const beforeRouteIds = store.graphView?.routes.map((route) => route.id) ?? []
   const beforeActiveRouteId = store.activeState?.activeRoute?.id ?? null
-  // The integrated dialog supplies the explicit sourceRouteId required by
-  // the Runtime contract; no compatibility payload is synthesized here.
+  // 集成对话框提供了运行时契约要求的显式 sourceRouteId;这里不再合成
+  // 兼容用的载荷。
   try {
     const run = await createAgentRun(projectId, {
       operation: 'REGENERATE_NODE',
@@ -281,9 +281,8 @@ export async function regenerateNodeAction(
     const outcome = await store.pollRunChainToTerminal(run.runId)
     if (!isCurrent()) return false
     if (outcome !== 'unknown' && outcome !== 'failed') {
-      // Terminal chain leaf: the replacement route is now the active
-      // route; the canonical refresh owns every id — never reconstructed
-      // locally. A RESPOND leaf message wins over the default copy.
+      // 终态链叶子:替代路线现在是活跃路线;canonical 刷新负责所有
+      // id——绝不在本地重建。RESPOND 叶子的消息优先于默认文案。
       const replacementNodeId = outcome.producedNodeId
       await store.refreshWorkspace()
       if (!isCurrent()) return false
@@ -298,9 +297,8 @@ export async function regenerateNodeAction(
       }
       return true
     }
-    // FAILED or unknown: reconcile canonical reads through the shared
-    // fail-closed reconciliation (a completed-after-poll transition shows
-    // up as a brand-new active replacement route).
+    // FAILED 或 unknown:通过共享的 fail-closed 对账刷新 canonical 读取
+    // (轮询后才完成的流转会以一条全新的活跃替代路线出现)。
     const intent: Extract<ManualModelRetryIntent, { kind: 'regenerate' }> = {
       kind: 'regenerate',
       nodeId,
@@ -322,8 +320,7 @@ export async function regenerateNodeAction(
     store.manualModelRetry = intent
     return false
   } catch (err) {
-    // Create-run request itself failed; reconcile canonical reads before
-    // any retry affordance.
+    // 创建 run 的请求本身失败;在任何重试入口之前先对账 canonical 读取。
     if (!isCurrent()) return false
     const safeError = toDisplayError(err)
     store.error = safeError

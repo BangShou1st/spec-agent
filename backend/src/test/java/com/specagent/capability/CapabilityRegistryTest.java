@@ -9,8 +9,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Registry ownership rules: discovery, permission filtering (invisible — not
- * merely blocked — when permissions are missing), and duplicate rejection.
+ * 文件名:CapabilityRegistryTest.java
+ *
+ * 测试目标:验证能力注册表的归属规则——能力发现、权限过滤(缺少权限时
+ * 能力"不可见"而非仅仅"被拦截")以及重复能力 id 的拒绝。
  */
 class CapabilityRegistryTest {
 

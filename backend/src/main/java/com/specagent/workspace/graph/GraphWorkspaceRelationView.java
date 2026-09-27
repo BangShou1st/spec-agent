@@ -6,11 +6,11 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * Read-only view of an active semantic relation.
+ * 文件名:GraphWorkspaceRelationView.java
  *
- * <p>Semantic relations are reasoning metadata shown in the Inspector or a
- * selectable relation layer; they are never projected as default Canvas
- * continuation edges.
+ * 用途:激活状态语义关系的只读视图。语义关系是展示在 Inspector 或
+ * 可选关系图层中的推理元数据;它们绝不会被投影成画布上默认的
+ * 续写连线。
  */
 public record GraphWorkspaceRelationView(
         UUID id,

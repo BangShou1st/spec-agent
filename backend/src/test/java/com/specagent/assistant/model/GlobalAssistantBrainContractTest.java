@@ -18,9 +18,11 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 /**
- * Caller-side contract wiring: decisions require structured output while
- * summaries stay plain text. Also proves a second provider adapter can honor
- * the same neutral seam without any provider types.
+ * 文件名:GlobalAssistantBrainContractTest.java
+ *
+ * 测试目标:验证调用方的契约装配——决策请求使用结构化输出契约,
+ * 摘要保持纯文本契约;同时证明第二个供应商适配器可以在完全不引入
+ * 供应商类型的前提下,遵守同一个中立接缝。
  */
 class GlobalAssistantBrainContractTest {
 

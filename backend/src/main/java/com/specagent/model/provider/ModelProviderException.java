@@ -4,14 +4,13 @@ import com.specagent.model.contract.ModelGatewayErrorCategory;
 import com.specagent.model.contract.ModelGatewayException;
 
 /**
- * Provider-neutral failure for OpenRouter / Custom boundaries.
+ * 文件名:ModelProviderException.java
  *
- * <p>Maps every protocol-specific failure onto the existing
- * {@link ModelGatewayErrorCategory} vocabulary so Agent business code never
- * sees {@code ANTHROPIC_429}, {@code OPENROUTER_ERROR} or
- * {@code RESPONSES_BAD_EVENT}. Provider / format context stays in the
- * message prefix (safe for Settings API) while secrets never enter the
- * message.
+ * 用途:OpenRouter / Custom 边界的提供商无关失败异常。把每一种协议专属失败
+ * 映射到既有的 {@link ModelGatewayErrorCategory} 词汇上,使 Agent 业务代码永远
+ * 看不到 {@code ANTHROPIC_429}、{@code OPENROUTER_ERROR} 或
+ * {@code RESPONSES_BAD_EVENT} 之类的原始错误。提供商/格式上下文只保留在消息
+ * 前缀中(对 Settings API 是安全的),密钥绝不进入消息。
  */
 public class ModelProviderException extends ModelGatewayException {
 

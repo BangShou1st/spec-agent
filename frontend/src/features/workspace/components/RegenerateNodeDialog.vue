@@ -1,3 +1,8 @@
+<!--
+  文件名:RegenerateNodeDialog.vue
+  用途:重新生成节点(替代问题)的弹窗:输入新问题内容并提交 regenerate 事件,
+       携带来源路线 id;打开时预填,提交中禁用操作。
+-->
 <script setup lang="ts">
 import { computed, ref, toRef } from 'vue'
 import { useDialogReset } from '@/shared/ui/useDialogForm'

@@ -1,3 +1,5 @@
+// 文件名:ApiErrorBanner.spec.ts
+// 用途:ApiErrorBanner 组件单元测试:验证安全消息渲染与原始错误内容不外泄。
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import ApiErrorBanner from '@/shared/ui/ApiErrorBanner.vue'

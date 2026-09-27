@@ -1,7 +1,13 @@
 package com.specagent.assistant;
 
 /**
- * Typed public error codes. Never stack traces / SQL / provider internals.
+ * 文件名:GlobalAssistantErrorCode.java
+ *
+ * 用途:定义全局助手对外暴露的公共错误码常量。所有返回给前端的错误都
+ * 必须使用这里的类型化错误码,绝不把堆栈、SQL 或模型提供方内部细节泄露出去。
+ *
+ * 角色:位于包根,是被 runtime / conversation / api 各层共用的错误码字典,
+ * 保证了错误码字符串只有一处定义来源。
  */
 public final class GlobalAssistantErrorCode {
     private GlobalAssistantErrorCode() {

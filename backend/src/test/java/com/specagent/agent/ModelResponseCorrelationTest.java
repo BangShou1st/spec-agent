@@ -18,6 +18,13 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+/**
+ * 文件名:ModelResponseCorrelationTest.java
+ *
+ * 测试目标:验证模型响应与请求的关联校验:agentRunId、contextSnapshotId、taskType
+ * 完全匹配时通过;任一字段不匹配或关联字段为空则抛出 ModelContractException /
+ * IllegalArgumentException。
+ */
 class ModelResponseCorrelationTest {
 
     private final UUID projectId = UUID.randomUUID();

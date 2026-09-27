@@ -1,12 +1,13 @@
 package com.specagent.agent.protocol;
 
 /**
- * Closed set of generic action families a decision may propose.
+ * 文件名:ActionFamily.java
  *
- * <p>The families are deliberately domain-neutral product mechanics. Business
- * abilities are added as payload semantics or capability descriptors, never as
- * new action names. Stage A validates membership and payload shape only; no
- * family is executed by the Stage A worker.
+ * 用途:决策可以提出的通用动作家族的封闭集合(Brain → Runtime 契约的一部分)。
+ *
+ * 约束:家族刻意保持领域中立,属于产品机制层;业务能力只能通过
+ * payload 语义或能力描述符(CapabilityDescriptor)注入,绝不允许新增
+ * 动作名。Stage A 只校验家族合法性与 payload 形状,Stage A worker 不执行任何家族。
  */
 public enum ActionFamily {
     CREATE_NODE,

@@ -1,8 +1,10 @@
 package archfixture;
 
 /**
- * VIOLATION fixture for {@code coreMustNotDependOnHttpOnlyDtos}: a core
- * service holding a reference to an HTTP-only DTO.
+ * 文件名:SampleCoreService.java
+ *
+ * 违规样例夹具,对应规则 {@code coreMustNotDependOnHttpOnlyDtos}:
+ * 核心服务持有仅限 HTTP 层的 DTO 引用,应被架构门禁拦截。
  */
 public class SampleCoreService {
 

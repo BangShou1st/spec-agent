@@ -6,8 +6,11 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /**
- * Single boundary for protocol routing. Agent code never branches on
- * {@link CustomApiFormat}; it asks this registry once.
+ * 文件名:ProtocolAdapterRegistry.java
+ *
+ * 用途:协议路由的唯一边界。Agent 代码绝不在 {@link CustomApiFormat} 上做
+ * 分支判断,只需向本注册表查询一次即可拿到对应的协议适配器。启动时校验所有
+ * 格式都已注册,防止运行期出现缺适配器的隐患。
  */
 @Component
 public class ProtocolAdapterRegistry {

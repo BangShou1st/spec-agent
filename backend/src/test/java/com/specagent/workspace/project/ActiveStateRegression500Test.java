@@ -24,13 +24,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Regression lock for the historical "500 after route mutation" symptom
- * (see {@code BUG_ROOT_CAUSE_INVESTIGATION.md} BUG-02). After every route
- * mutation command, the next {@code GET /api/v1/projects/{id}/active} must
- * succeed with a fully populated active state — never 500, never a half-built
- * response. This test exists so a future change that re-introduces a
- * record-style serialization gap or an unhandled {@code IllegalStateException}
- * in the command path is caught immediately.
+ * 文件名:ActiveStateRegression500Test.java
+ *
+ * 测试目标:锁定历史上"路线变更后 500"的症状(见
+ * {@code BUG_ROOT_CAUSE_INVESTIGATION.md} BUG-02)。每个路线变更命令之后,
+ * 下一次 {@code GET /api/v1/projects/{id}/active} 必须成功返回完整的活跃
+ * 状态——绝不 500、绝不返回残缺响应。本测试存在的意义:未来任何重新引入
+ * record 风格序列化缺口或命令路径未处理 {@code IllegalStateException} 的
+ * 改动都会被立即捕获。
  */
 @SpringBootTest
 @AutoConfigureMockMvc

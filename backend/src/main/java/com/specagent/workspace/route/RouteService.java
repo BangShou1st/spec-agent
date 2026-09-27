@@ -19,12 +19,14 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Manages explicit exploration routes, their lifecycle status, the active route
- * pointer, and deterministic route control operations (fork and regenerate).
+ * 文件名:RouteService.java
  *
- * <p>Lifecycle status is {@code open | superseded | archived | deleted}. The
- * active route is tracked by {@code Project.activeRouteId}, never by a route
- * status. This service is deterministic and does not call any model.
+ * 用途:管理显式探索路线:路线的生命周期状态、活跃路线指针,以及
+ * 确定性的路线控制操作(分叉、重新回答、重新生成)。
+ *
+ * 生命周期状态为 {@code open | superseded | archived | deleted}。
+ * 活跃路线由 {@code Project.activeRouteId} 记录,绝不用路线状态表达。
+ * 本服务是确定性的,不调用任何模型。
  */
 @Service
 public class RouteService {
@@ -80,12 +82,10 @@ public class RouteService {
     }
 
     /**
-     * Bare lifecycle transition without the active-pointer side effects and
-     * without an operation-log entry. This is the mutation core shared by the
-     * user-facing lifecycle commands (which log) and the undo/redo
-     * compensations (which must NOT log — the compensation acts ON an
-     * existing log entry, it is not new user work). Callers own any
-     * active-route pointer maintenance.
+     * 裸的生命周期状态迁移:不带活跃指针的副作用,也不写操作日志。
+     * 这是面向用户的生命周期命令(需要记日志)与撤销/重做补偿
+     * (绝不能记日志——补偿作用于既有日志条目,不是新的用户操作)
+     * 共享的变更核心。活跃路线指针的维护由调用方自行负责。
      */
     @Transactional
     public void transitionLifecycle(UUID projectId, UUID routeId, RouteLifecycleStatus target) {
@@ -95,7 +95,7 @@ public class RouteService {
         routeRepository.updateLifecycle(routeId, target, Instant.now());
     }
 
-    /** Active-route pointer restore used by undo/redo compensations. */
+    /** 供撤销/重做补偿使用的活跃路线指针恢复。 */
     @Transactional
     public void setActiveRoutePointer(UUID projectId, UUID routeId) {
         projectPort.lockProject(projectId);
@@ -103,7 +103,7 @@ public class RouteService {
         assertActiveRouteInvariant(projectId);
     }
 
-    /** Valid explicit source for branch/exploration mutations. */
+    /** 分支/探索类变更的合法显式来源路线。 */
     public Route requireExplorationSource(UUID projectId, UUID sourceRouteId) {
         Route route = requireRouteInProject(projectId, sourceRouteId);
         if (route.lifecycleStatus() != RouteLifecycleStatus.OPEN
@@ -122,10 +122,9 @@ public class RouteService {
     }
 
     /**
-     * Sets the active route for a project. The route must exist, belong to the
-     * project, and be {@code OPEN}. The active route is represented only by
-     * {@code Project.activeRouteId}; the route lifecycle status is never changed
-     * to {@code active}.
+     * 设置项目的活跃路线。路线必须存在、属于该项目且处于 {@code OPEN}
+     * 状态。活跃路线只由 {@code Project.activeRouteId} 表达;
+     * 路线的生命周期状态绝不会被改成 {@code active}。
      */
     @Transactional
     public void setActiveRoute(UUID projectId, UUID routeId) {
@@ -141,9 +140,8 @@ public class RouteService {
     }
 
     /**
-     * Archives an open route. If the archived route is the project's active
-     * route, the active route is cleared. No nodes, answers, patches, or shared
-     * ancestors are deleted, and no other route is implicitly activated.
+     * 归档一条 open 路线。若被归档的是项目当前活跃路线,则清空活跃指针。
+     * 不删除任何节点、答案、补丁或共享祖先,也不会隐式激活其他路线。
      */
     @Transactional
     public void archiveRoute(UUID projectId, UUID routeId) {
@@ -159,9 +157,8 @@ public class RouteService {
     }
 
     /**
-     * Soft-deletes a route by marking it {@code DELETED}. Historical data is
-     * preserved. If the deleted route is the project's active route, the active
-     * route is cleared.
+     * 软删除路线:标记为 {@code DELETED},历史数据保留。若被删除的是
+     * 项目当前活跃路线,则清空活跃指针。
      */
     @Transactional
     public void softDeleteRoute(UUID projectId, UUID routeId) {
@@ -177,8 +174,8 @@ public class RouteService {
     }
 
     /**
-     * Explicitly restores an archived, deleted, or superseded route back to
-     * {@code OPEN} and makes it the project's active route.
+     * 显式地把一条 archived、deleted 或 superseded 路线恢复为
+     * {@code OPEN},并使其成为项目的活跃路线。
      */
     @Transactional
     public void restoreRoute(UUID projectId, UUID routeId) {
@@ -212,22 +209,19 @@ public class RouteService {
     }
 
     /**
-     * Forks a new route view from a historical node. The fork route points at the
-     * same immutable node lineage: root stays the source route's root, tip is the
-     * source node, and {@code createdFromNodeId} records the fork origin. No
-     * nodes, answers, patches, or sibling routes are copied, and the old route is
-     * not modified. The new route becomes the project's active route.
-     */
-    /**
-     * Explicit-source Fork. The accepted answer at the branch point is frozen
-     * as an immutable reference in the new route prefix.
+     * 从历史节点分叉出一条新的路线视图。分叉路线指向同一份不可变节点
+     * lineage:root 保持来源路线的 root,tip 是来源节点,
+     * {@code createdFromNodeId} 记录分叉起点。不复制任何节点、答案、补丁
+     * 或兄弟路线,旧路线不被修改。新路线成为项目的活跃路线。
+     *
+     * 显式来源的分叉:分支点上已接受的答案会作为不可变引用冻结进
+     * 新路线的前缀。
      */
     @Transactional
     public Route forkFromNode(UUID projectId, UUID sourceRouteId, UUID sourceNodeId, String label) {
-        // Serialize with archive/restore/activate and graph mutations: the fork
-        // reads the source route lifecycle and creates a new Active route, so
-        // it must hold the project-row lock before any state read (order:
-        // project → node/route → mutation).
+        // 与 archive/restore/activate 及图变更串行化:分叉要读来源路线的
+        // 生命周期并创建新的活跃路线,所以必须在任何状态读取之前持有
+        // 项目行锁(顺序:project → node/route → mutation)。
         projectPort.lockProject(projectId);
         Node sourceNode = nodeRepository.findById(sourceNodeId)
                 .orElseThrow(() -> new IllegalArgumentException("Node not found: " + sourceNodeId));
@@ -277,16 +271,15 @@ public class RouteService {
     }
 
     /**
-     * Starts a NEW standalone route from a floating (route-less) node — the
-     * "想法继续生成问题" entry: the idea becomes the new route's root and tip,
-     * the next question draft anchors at it, and the new route becomes the
-     * project's active route. The node keeps its id, kind and content and is
-     * never copied; the source route (if the node visually hangs under one)
-     * is untouched. The node must not already belong to any route lineage.
+     * 从一个游离的(不属于任何路线的)节点启动一条全新的独立路线——
+     * 即"想法继续生成问题"入口:该想法成为新路线的 root 和 tip,
+     * 下一份问题草稿锚定在它上面,新路线成为项目的活跃路线。
+     * 节点保持自身的 id、kind 与内容,绝不复制;来源路线(若该节点在
+     * 画布上挂在某条路线之下)不受影响。节点必须尚未属于任何路线 lineage。
      */
     @Transactional
     public Route startRouteFromNode(UUID projectId, UUID nodeId, String label) {
-        // Serialize like fork: project lock before any read/mutation.
+        // 与 fork 一样串行化:任何读取/变更前先拿项目锁。
         projectPort.lockProject(projectId);
         Node node = nodeRepository.findById(nodeId)
                 .orElseThrow(() -> new IllegalArgumentException("Node not found: " + nodeId));
@@ -328,12 +321,11 @@ public class RouteService {
     }
 
     /**
-     * Creates a Re-answer route whose tip is a NEW Question Node. The old
-     * Question is never reused: its immutable semantics (question, purpose,
-     * options, allowFreeAnswer) are copied onto a fresh canonical id sharing
-     * the old parent, the inherited prefix freezes the old Question's
-     * ancestors only (the old Answer stays on the source route), and the
-     * source route and its Answers are left untouched.
+     * 创建一条重新回答(Re-answer)路线,其 tip 是一个全新的 Question
+     * 节点。旧 Question 绝不被复用:它的不可变语义(question、purpose、
+     * options、allowFreeAnswer)被复制到一个共享旧父节点的新规范 id 上;
+     * 继承前缀只冻结旧 Question 的祖先(旧 Answer 仍留在来源路线);
+     * 来源路线及其 Answers 完全不动。
      */
     @Transactional
     public Route reanswerFromNode(UUID projectId,
@@ -353,10 +345,9 @@ public class RouteService {
 
         UUID routeId = Ids.random();
         Instant now = Instant.now();
-        // The new route's history starts at the old target's position: root
-        // stays the source root, tip is temporarily the old target so the
-        // frozen inherited prefix is anchored, then the cloned Question
-        // advances the tip onto its own canonical identity.
+        // 新路线的历史从旧 target 的位置开始:root 保持来源 root,tip
+        // 暂时指向旧 target,让冻结的继承前缀有锚点;随后克隆出的
+        // Question 把 tip 推进到它自己的规范 id 上。
         Route route = new Route(routeId, projectId,
                 targetNode.parentNodeId() == null ? null : sourceRoute.rootNodeId(),
                 targetNodeId,
@@ -364,8 +355,7 @@ public class RouteService {
                 targetNodeId, null, null, null,
                 RouteBranchType.REANSWER, sourceRouteId, targetNodeId, now, now);
         routeRepository.save(route);
-        // Inherited prefix excludes the old target's answer: the re-answered
-        // Question starts waiting again.
+        // 继承前缀不含旧 target 的答案:重新回答的问题重新进入等待状态。
         routeHistoryResolver.snapshotInheritedPrefix(routeId, sourceRouteId, targetNodeId, false);
         Node clonedNode = nodeService.createReanswerNode(
                 projectId, routeId, targetNode.parentNodeId(),
@@ -389,15 +379,14 @@ public class RouteService {
     }
 
     /**
-     * Commits an already accepted replacement proposal. The method is the only
-     * place that creates canonical replacement history: proposal parsing,
-     * reflection, and validation happen before entering this transaction.
+     * 提交一个已被接受的 replacement(换题)提案。本方法是唯一创建规范
+     * replacement 历史的地方:提案解析、reflection 与校验都在进入此事务
+     * 之前完成。
      *
-     * <p>{@code expectedSourceRouteTip} freezes the source tip the decision was
-     * made against. The caller captures it BEFORE this transaction; inside the
-     * transaction, after the project lock is held, the source route is re-read
-     * and the expected tip is re-verified, closing the check-then-act window
-     * against a concurrent continuation that advanced the source tip.
+     * {@code expectedSourceRouteTip} 冻结决策所依据的来源 tip。调用方
+     * 在本事务之前捕获它;事务内部在持有项目锁之后重新读取来源路线并
+     * 重新校验期望的 tip,从而封死"先检查后执行"的窗口,防止并发的
+     * continuation 在决策与提交之间推进了来源 tip。
      */
     @Transactional
     public RegenerateResult commitReplacementFromNode(UUID projectId,
@@ -413,7 +402,7 @@ public class RouteService {
                 expectedSourceRouteTip, label, question, purpose, options, allowFreeAnswer, false);
     }
 
-    /** Multi-select-aware replacement commit (copies the model's flag). */
+    /** 支持多选的 replacement 提交(复制模型的 allowMultiSelect 标志)。 */
     @Transactional
     public RegenerateResult commitReplacementFromNode(UUID projectId,
                                                       UUID sourceRouteId,
@@ -425,11 +414,10 @@ public class RouteService {
                                                       List<NodeOption> options,
                                                       boolean allowFreeAnswer,
                                                       boolean allowMultiSelect) {
-        // Serialize with archive/restore/activate and graph mutations: the
-        // replacement supersedes the source route and changes Active, so the
-        // project-row lock is taken before any state read. The stale-tip check
-        // happens under this lock, so a concurrent continuation can never
-        // advance the source tip between the decision and the commit.
+        // 与 archive/restore/activate 及图变更串行化:replacement 会把来源
+        // 路线标记为 superseded 并改变活跃路线,所以在任何状态读取之前
+        // 先取项目行锁。stale-tip 检查在该锁内进行,并发的 continuation
+        // 不可能在决策与提交之间推进来源 tip。
         projectPort.lockProject(projectId);
         Node targetNode = requireNodeInProject(projectId, targetNodeId);
         if (targetNode.parentNodeId() == null) {
@@ -437,9 +425,8 @@ public class RouteService {
         }
         Route sourceRoute = requireExplorationSource(projectId, sourceRouteId);
         graphSupport.validateRouteProvenance(sourceRouteId);
-        // Re-verify under the project lock that the source has not moved since
-        // the frozen decision: the tip must still be exactly the expected one,
-        // and the target must still sit on that exact source lineage.
+        // 在项目锁内重新校验:自决策被冻结以来来源没有移动——tip 必须仍
+        // 精确等于期望值,且 target 仍位于这条确切的来源 lineage 上。
         if (!java.util.Objects.equals(sourceRoute.tipNodeId(), expectedSourceRouteTip)) {
             throw new IllegalStateException(
                     "Source route tip moved after the replacement snapshot: expected "
@@ -510,10 +497,9 @@ public class RouteService {
     }
 
     /**
-     * Checks if a node lies on the route's lineage: the chain from
-     * {@code tipNodeId} up through {@code parentNodeId} pointers to the root.
-     * Replacement relationships are deliberately ignored here — a replacement
-     * node never enters the normal lineage of the route it supersedes.
+     * 判断节点是否位于路线的 lineage 上:即从 {@code tipNodeId} 沿
+     * {@code parentNodeId} 指针走到根的链。这里刻意忽略 replacement 关系——
+     * replacement 节点永远不会进入它所取代路线的正常 lineage。
      */
     private boolean lineageContains(Route route, UUID nodeId) {
         if (nodeId == null || route.tipNodeId() == null) {
@@ -603,8 +589,8 @@ public class RouteService {
     }
 
     private void clearActiveRouteIfMatches(UUID projectId, UUID routeId) {
-        // Port contract: a missing project throws inside the port; an existing
-        // project without an active route yields null here (original semantics).
+        // 端口契约:项目不存在时在端口内抛异常;项目存在但没有活跃路线
+        // 时这里得到 null(保持原始语义)。
         UUID activeRouteId = projectPort.findActiveRouteId(projectId).orElse(null);
         if (activeRouteId != null && activeRouteId.equals(routeId)) {
             projectPort.updateActiveRoute(projectId, null, Instant.now());
@@ -612,19 +598,17 @@ public class RouteService {
     }
 
     /**
-     * Fail-closed enforcement of the active-route pointer invariant, checked
-     * after every lifecycle / active-route change while the project row is still
-     * locked: {@code activeRouteId} is either null, or points to a route that
-     * exists, belongs to this project, and has lifecycle status {@code OPEN}.
+     * 以 fail-closed 方式执行活跃路线指针的不变量检查,在项目行锁仍被持有
+     * 时、每次生命周期/活跃路线变更之后调用:{@code activeRouteId} 要么为
+     * null,要么指向一条存在、属于本项目且生命周期为 {@code OPEN} 的路线。
      *
-     * <p>This is a safety net on top of the explicit maintenance above — it never
-     * auto-selects another route when the active pointer would otherwise dangle.
-     * A violation indicates either a regression in this service or pre-existing
-     * corruption, and is surfaced as a stable {@code IllegalStateException}.
+     * 这是在上述显式维护之上的一道安全网——当活跃指针即将悬空时,
+     * 它绝不会自动挑选其他路线。违反不变量说明本服务出现回归或数据早已
+     * 损坏,会以稳定的 {@code IllegalStateException} 浮出。
      */
     private void assertActiveRouteInvariant(UUID projectId) {
-        // Port contract: a missing project throws inside the port; an existing
-        // project without an active route yields null here (original semantics).
+        // 端口契约:项目不存在时在端口内抛异常;项目存在但没有活跃路线
+        // 时这里得到 null(保持原始语义)。
         UUID activeRouteId = projectPort.findActiveRouteId(projectId).orElse(null);
         if (activeRouteId == null) {
             return;

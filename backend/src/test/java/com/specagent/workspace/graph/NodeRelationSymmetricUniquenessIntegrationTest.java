@@ -27,19 +27,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Blocker 6: symmetric relation migration / DB uniqueness backstop.
+ * 文件名:NodeRelationSymmetricUniquenessIntegrationTest.java
  *
- * <p>These tests exercise the contract introduced by V18: ACTIVE
- * {@code RELATED_TO} / {@code CONFLICTS_WITH} relations are a single unordered
- * fact per node pair, enforced by the partial unique index
- * {@code idx_node_relations_symmetric_active_unique} (identity
- * {@code (project_id, relation_type, LEAST, GREATEST)}). Directional types keep
- * their authored-direction uniqueness. The repository also canonicalizes
- * symmetric endpoints at write time, mirroring the index identity.
+ * 测试目标:Blocker 6——对称关系的迁移与数据库唯一性兜底。
  *
- * <p>The suite's test database has V18 applied at context start, so the unique
- * index is already present; the tests probe both the application-level
- * canonicalization and the raw database backstop.
+ * V18 引入的契约:ACTIVE 状态的 {@code RELATED_TO} / {@code CONFLICTS_WITH}
+ * 关系在同一个节点对上是无序的单一事实,由部分唯一索引
+ * {@code idx_node_relations_symmetric_active_unique}(身份为
+ * {@code (project_id, relation_type, LEAST, GREATEST)})强制保证;方向性类型
+ * 保留按编写方向去重的语义。仓储层在写入时也会把对称关系的端点规范化,
+ * 与索引身份保持一致。
+ *
+ * 测试数据库在上下文启动时已应用 V18,唯一索引已存在;用例同时探测
+ * 应用层的规范化逻辑和原始数据库层的兜底约束。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -78,11 +78,10 @@ class NodeRelationSymmetricUniquenessIntegrationTest {
         jdbcTemplate.update("DELETE FROM projects WHERE id = ?", project.id());
     }
 
-    /** Raw insert of the reverse direction must be blocked by the unique index. */
+    /** 反方向的原始插入必须被唯一索引拦截。 */
     @Test
     void reverseRelatedToDuplicateIsRejectedByUniqueIndex() {
-        // First row is written canonically (as the application always does); a
-        // raw reverse-direction insert must then be rejected by the index.
+        // 第一行按应用层的规范方向写入;随后反方向的原始插入必须被索引拒绝。
         relationRepository.insertActiveOrThrowDuplicate(
                 project.id(), nodeA.id(), nodeB.id(), NodeRelationType.RELATED_TO,
                 NodeRelation.Origin.USER, null, null);
@@ -91,7 +90,7 @@ class NodeRelationSymmetricUniquenessIntegrationTest {
                 relationRepository.save(makeRelation(nodeB.id(), nodeA.id(), NodeRelationType.RELATED_TO)))
                 .isInstanceOf(DuplicateKeyException.class);
 
-        // Exactly one ACTIVE row survives, in canonical (min, max) order.
+        // 恰好保留一条 ACTIVE 记录,且处于规范的 (min, max) 顺序。
         List<NodeRelation> active = relationRepository.findActiveByProject(project.id());
         assertThat(active).hasSize(1);
         assertThat(active.get(0).sourceNodeId())
@@ -112,9 +111,8 @@ class NodeRelationSymmetricUniquenessIntegrationTest {
     }
 
     /**
-     * Directional types are NOT deduplicated by the symmetric index: A DEPENDS_ON
-     * B and B DEPENDS_ON A stay distinct, preserving the original directed
-     * uniqueness contract.
+     * 方向性类型不参与对称索引的去重:A DEPENDS_ON B 与 B DEPENDS_ON A
+     * 各自独立存在,保留原有的有向唯一性契约。
      */
     @Test
     void directionalRelationKeepsAuthoredDirectionUniqueness() {
@@ -126,7 +124,7 @@ class NodeRelationSymmetricUniquenessIntegrationTest {
         assertThat(active).allMatch(r -> r.relationType() == NodeRelationType.DEPENDS_ON);
     }
 
-    /** The canonical pair lookup ignores endpoint order for symmetric types. */
+    /** 对称类型的规范节点对查询忽略端点顺序。 */
     @Test
     void canonicalPairLookupIgnoresEndpointOrder() {
         relationRepository.insertActiveOrThrowDuplicate(
@@ -135,18 +133,17 @@ class NodeRelationSymmetricUniquenessIntegrationTest {
 
         assertThat(relationRepository.findActiveByCanonicalPair(
                 project.id(), nodeA.id(), nodeB.id(), NodeRelationType.RELATED_TO)).isPresent();
-        // Order reversed — still the same canonical fact.
+        // 顺序反转——仍是同一个规范事实。
         assertThat(relationRepository.findActiveByCanonicalPair(
                 project.id(), nodeB.id(), nodeA.id(), NodeRelationType.RELATED_TO)).isPresent();
-        // A different type must not match.
+        // 不同类型不得命中。
         assertThat(relationRepository.findActiveByCanonicalPair(
                 project.id(), nodeA.id(), nodeB.id(), NodeRelationType.CONFLICTS_WITH)).isEmpty();
     }
 
     /**
-     * The repository canonicalizes symmetric endpoints itself, so a reverse
-     * authored direction is rejected as a controlled conflict (not a raw 500),
-     * and the persisted row is in canonical order.
+     * 仓储层会自行规范化对称关系的端点,因此反方向写入会被当作受控冲突拒绝
+     * (而不是原始 500),且落库的记录处于规范顺序。
      */
     @Test
     void insertActiveOrThrowDuplicateCanonicalizesAndRejectsReverse() {
@@ -167,18 +164,16 @@ class NodeRelationSymmetricUniquenessIntegrationTest {
     }
 
     /**
-     * V18 Step 2: a single historical ACTIVE symmetric row stored in reverse
-     * order is canonicalized to (min, max) by the migration's UPDATE. Validated
-     * here by running the same UPDATE against a seeded reverse row within a
-     * rolled-back transaction.
+     * V18 Step 2:迁移的 UPDATE 会把历史上以反序存储的单条 ACTIVE 对称关系
+     * 规范化为 (min, max)。这里在可回滚事务内对种子数据执行同一 UPDATE
+     * 来验证该转换。
      */
     @Test
     void migrationCanonicalizesReverseSingleActiveRow() throws Exception {
-        // The migration's canonical direction is the database's own uuid
-        // ordering (LEAST/GREATEST), which can differ from Java's
-        // UUID.compareTo for some random ids. Compute the DB-canonical pair in
-        // SQL and seed the row in the REVERSE direction so the swap is always
-        // observable, independent of the node ids.
+        // 迁移的规范方向是数据库自身的 uuid 排序(LEAST/GREATEST),对某些
+        // 随机 id 而言可能与 Java 的 UUID.compareTo 不同。这里先用 SQL 计算
+        // 数据库视角的规范节点对,再以"反方向"写入种子行,从而让交换效果
+        // 一定可观察,与具体节点 id 无关。
         Map<String, Object> pair = jdbcTemplate.queryForMap(
                 "SELECT LEAST(CAST(? AS uuid), CAST(? AS uuid)) AS lo, "
                         + "GREATEST(CAST(? AS uuid), CAST(? AS uuid)) AS hi",
@@ -192,10 +187,9 @@ class NodeRelationSymmetricUniquenessIntegrationTest {
                         + "relation_type, origin, status, created_at) VALUES (?, ?, ?, ?, 'RELATED_TO', 'USER', 'ACTIVE', NOW())",
                 UUID.randomUUID(), project.id(), source, target);
 
-        // Exactly the migration's Step-2 transformation, scoped to this test's
-        // project only so the commit cannot touch other tests' rows. The
-        // transformation (swap reverse ACTIVE symmetric rows to min/max) is
-        // identical to V18's unscoped UPDATE.
+        // 与迁移 Step 2 完全一致的转换,但只限定在本测试的项目范围内,以免
+        // 提交时影响其他测试的数据。转换逻辑(把反序的 ACTIVE 对称行交换为
+        // min/max)与 V18 的无范围 UPDATE 相同。
         jdbcTemplate.update(
                 "UPDATE node_relations "
                         + "SET source_node_id = LEAST(source_node_id, target_node_id), "
@@ -213,23 +207,21 @@ class NodeRelationSymmetricUniquenessIntegrationTest {
     }
 
     /**
-     * V18 Step 1 (preflight) fails closed when an unordered pair already carries
-     * more than one ACTIVE symmetric relation. Validated by dropping the
-     * symmetric index, seeding two reversed ACTIVE rows, then running the
-     * migration's preflight guard and asserting it raises with an actionable
-     * error. Everything is rolled back so the shared test DB is untouched.
+     * V18 Step 1(预检)在同一个无序节点对上已存在多条 ACTIVE 对称关系时必须
+     * 快速失败。验证方式:先删除对称索引,种子写入两条反序的 ACTIVE 记录,
+     * 再执行迁移的预检守卫,断言其抛出带可操作信息的错误。全部操作会回滚,
+     * 共享测试库不受影响。
      */
     @Test
     void preflightFailsWhenDuplicateActiveSymmetricRelationExists() throws Exception {
         try (Connection conn = dataSource.getConnection()) {
             conn.setAutoCommit(false);
             try (Statement st = conn.createStatement()) {
-                // Remove the backstop so the conflicting pair can be seeded.
+                // 移除兜底索引,以便种子写入冲突的节点对。
                 st.execute("DROP INDEX IF EXISTS idx_node_relations_symmetric_active_unique");
 
-                // Two ACTIVE RELATED_TO rows on the same unordered node pair,
-                // stored in opposite directions. Uses this test's real project
-                // and nodes (FK-safe); the preflight groups by project + pair.
+                // 同一无序节点对上的两条 ACTIVE RELATED_TO 记录,方向相反。
+                // 使用本测试真实的项目和节点(外键安全);预检按项目 + 节点对分组。
                 UUID a = nodeA.id();
                 UUID b = nodeB.id();
                 st.execute("INSERT INTO node_relations (id, project_id, source_node_id, target_node_id, "
@@ -284,19 +276,18 @@ class NodeRelationSymmetricUniquenessIntegrationTest {
     }
 
     /**
-     * Regression: PostgreSQL's uuid ordering (byte-wise RFC 4122, unsigned) is
-     * NOT guaranteed to match Java's {@code UUID.compareTo} (two signed 64-bit
-     * halves). A row canonicalized by the V18 migration stores the pair in the
-     * database's own order; the application duplicate pre-check must therefore
-     * use the order-independent canonical-pair lookup, or it would miss the
-     * migrated row and surface a raw {@link DuplicateKeyException} from the
-     * unique index instead of the controlled "already exists" conflict.
+     * 回归:PostgreSQL 的 uuid 排序(按 RFC 4122 字节序、无符号)并不保证与
+     * Java 的 {@code UUID.compareTo}(两个有符号 64 位半段)一致。被 V18
+     * 迁移规范化过的记录以数据库自身的顺序存储节点对;因此应用层的重复
+     * 预检查必须使用与顺序无关的规范节点对查询,否则会漏掉迁移后的记录,
+     * 并把唯一索引的原始 {@link DuplicateKeyException} 暴露出来,而不是
+     * 抛出受控的 "already exists" 冲突。
      */
     @Test
     void javaAndPostgresOrderingDivergenceIsRejectedAsControlledConflict() {
-        // Deliberately divergent pair: the high bit of A's first 64-bit half is
-        // set, so Java sees A < B (signed) while PostgreSQL compares A's first
-        // byte 0x80 > B's first byte 0x00, so the DB sees A > B.
+        // 刻意构造排序分歧的节点对:A 的前 64 位半段最高位为 1,Java 判定
+        // A < B(有符号),而 PostgreSQL 比较 A 的首字节 0x80 > B 的首字节
+        // 0x00,判定 A > B。
         UUID a = UUID.fromString("80000000-0000-0000-0000-000000000000");
         UUID b = UUID.fromString("00000000-0000-0000-0000-000000000001");
         assertThat(a.compareTo(b))
@@ -311,9 +302,9 @@ class NodeRelationSymmetricUniquenessIntegrationTest {
                 .isEqualTo(b);
         assertThat(pair.get("hi")).isEqualTo(a);
 
-        // Seed the pair as the migrated row already canonicalized to the
-        // database's own order (source = DB LEAST, target = DB GREATEST) —
-        // exactly what V18 Step 2 leaves behind for such a divergent pair.
+        // 按迁移后的状态种子写入该节点对:记录已按数据库自身顺序规范化
+        // (source = 数据库的 LEAST,target = 数据库的 GREATEST)——
+        // 这正是 V18 Step 2 对此类分歧节点对留下的结果。
         seedNodeRow(a, "KNOWLEDGE");
         seedNodeRow(b, "KNOWLEDGE");
         jdbcTemplate.update(
@@ -322,8 +313,8 @@ class NodeRelationSymmetricUniquenessIntegrationTest {
                         + "VALUES (?, ?, ?, ?, 'RELATED_TO', 'USER', 'ACTIVE', NOW())",
                 UUID.randomUUID(), project.id(), b, a);
 
-        // Normal application creation in EITHER direction must be a controlled
-        // domain conflict, never a raw DuplicateKeyException.
+        // 应用层无论从哪个方向正常创建,都必须得到受控的领域冲突,
+        // 绝不能是原始 DuplicateKeyException。
         assertThatThrownBy(() -> relationRepository.insertActiveOrThrowDuplicate(
                 project.id(), a, b, NodeRelationType.RELATED_TO,
                 NodeRelation.Origin.USER, null, null))
@@ -337,8 +328,7 @@ class NodeRelationSymmetricUniquenessIntegrationTest {
                 .hasMessageContaining("already exists")
                 .isNotInstanceOf(DuplicateKeyException.class);
 
-        // Exactly one ACTIVE relation remains, unchanged in the DB-canonical
-        // direction the migration established.
+        // 恰好剩一条 ACTIVE 关系,且保持迁移建立的数据库规范方向不变。
         List<NodeRelation> active = relationRepository.findActiveByProject(project.id());
         assertThat(active).hasSize(1);
         assertThat(active.get(0).sourceNodeId()).isEqualTo(b);

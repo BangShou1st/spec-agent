@@ -5,11 +5,16 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Layer A — deterministic runtime invariants (CI-blocking).
+ * 文件名:LayerA.java
  *
- * <p>Every check reads canonical Java runtime state and reuses production
- * validators/services where one exists. No check depends on model wording,
- * provider behavior, or harness re-derivation of truth.
+ * 用途:Layer A——确定性运行时不变量校验(CI 阻塞门禁)。每项检查都读取
+ * 规范的 Java 运行时状态,并尽可能复用生产环境的校验器/服务;任何检查都不
+ * 依赖模型措辞、provider 行为或评测框架对事实的二次推导。涵盖图完整性、
+ * 路由隔离、答案不可变、未授权能力不执行、缺确认时 fail-closed、单周期至多
+ * 一次变更、无意外状态增量等不变量。
+ *
+ * 协作:由 {@link ScenarioRunner} 按 {@link ExpectSpec} 声明的不变量调用,
+ * 产出 {@link CheckResult} 列表。
  */
 public final class LayerA {
 

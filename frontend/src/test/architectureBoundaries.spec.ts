@@ -1,29 +1,26 @@
-/**
- * Frontend structure boundaries, asserted against the real source tree.
+// 文件名:architectureBoundaries.spec.ts
+// 用途:前端结构边界的守护测试:用 TypeScript 解析器逐语句分类导入,断言 src 模块间无运行时 import 环、shared/ 绝不引用 features/ 或 app/(含类型引用)。
+/*
+ * 针对真实源码树断言的前端结构边界。
  *
- * The backend has an ArchUnit gate for this; the frontend had none, which is
- * how scattered directories appeared in the first place. Two rules are
- * enforced here:
+ * 后端有 ArchUnit 门禁,前端此前没有——散乱的目录结构正是因此出现的。
+ * 这里强制两条规则:
  *
- *  1. No runtime import cycles between src modules. An edge is a *runtime* edge
- *     only when the module is actually loaded — `import type` and
- *     `export type ... from` are removed outright and so cannot close a cycle;
- *     everything else (including `import { type T }`, which the compiler keeps
- *     as `import {} from '...'`) is loaded.
- *  2. `shared/` never reaches into `features/` or `app/`. This rule counts
- *     type-only references too: letting `shared` depend on a business type
- *     drags the bottom layer back up the graph and is the same coupling in a
- *     cheaper disguise.
+ *  1. src 模块之间没有运行时 import 环。只有模块被实际加载时一条边才是
+ *     "运行时"边——`import type` 与 `export type ... from` 被整体擦除,
+ *     因此不可能成环;其余形式(包括编译器保留为 `import {} from '...'`
+ *     的 `import { type T }`)都会加载。
+ *  2. `shared/` 绝不伸入 `features/` 或 `app/`。这条规则把纯类型引用也算
+ *     进去:让 shared 依赖一个业务类型,会把最底层重新拖回依赖图上方,
+ *     是同一种耦合换了件更便宜的外衣。
  *
- * Classification is done per statement with the TypeScript parser rather than
- * per specifier string: `import type { A } from './m'` followed by
- * `import { b } from './m'` is one erased import and one real runtime import,
- * and a string-keyed "type-only" set would wrongly drop the latter. What counts
- * as erased is decided by the same flag the compiler uses, never by the shape of
- * the binding list — see the emitted-forms table on `importIsErased` below.
+ * 分类按语句用 TypeScript 解析器完成,而不是按说明符字符串:
+ * `import type { A } from './m'` 之后跟 `import { b } from './m'`,是一条
+ * 被擦除的导入加一条真实运行时导入,按字符串维护的"仅类型"集合会错误地
+ * 丢掉后者。什么算被擦除,由编译器自己使用的同一个标志决定,绝不看绑定
+ * 列表的形状——见下方 `importIsErased` 的产出形式表。
  *
- * Test files are excluded from the graph: they import production modules by
- * design and are never part of a shipped bundle.
+ * 测试文件不参与依赖图:它们按设计导入生产模块,永远不会进入发布包。
  */
 import { describe, expect, it } from 'vitest'
 import ts from 'typescript'
@@ -38,7 +35,7 @@ const sources = import.meta.glob('../**/*.{ts,vue}', {
   import: 'default',
 }) as Record<string, string>
 
-/** `../features/workspace/WorkspaceView.vue` -> `src/features/workspace/WorkspaceView.vue` */
+/** `../features/workspace/WorkspaceView.vue` → `src/features/workspace/WorkspaceView.vue` */
 function moduleOf(globKey: string): string {
   return `src/${globKey.replace(/^\.\.\//, '')}`
 }
@@ -53,14 +50,14 @@ const shipped = [...known]
   .filter((path) => !path.includes('__tests__') && !path.endsWith('.spec.ts'))
   .sort()
 
-/** The script section of a single-file component, or the file itself for `.ts`. */
+/** 单文件组件的 script 段;`.ts` 文件则是文件本身。 */
 function scriptOf(path: string, text: string): string {
   if (!path.endsWith('.vue')) return text
   const blocks = [...text.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].map((match) => match[1])
   return blocks.join('\n')
 }
 
-/** Resolve a specifier to a tracked module, or null when it is external/CSS. */
+/** 把说明符解析到被追踪的模块;外部依赖/CSS 返回 null。 */
 function resolve(importer: string, specifier: string): string | null {
   const spec = specifier.split('?')[0]
   const raw = spec.startsWith('@/')
@@ -84,38 +81,36 @@ function resolve(importer: string, specifier: string): string | null {
 }
 
 interface References {
-  /** Statements that still exist after compilation. */
+  /** 编译后仍然存在的语句。 */
   runtime: string[]
-  /** Statements the compiler removes. */
+  /** 编译器移除的语句。 */
   erased: string[]
 }
 
-/**
- * Whether the compiler drops the module specifier entirely — the only condition
- * under which an import edge does not exist at runtime.
+/*
+ * 编译器是否把模块说明符完全丢弃——这是 import 边在运行时不存在的唯一
+ * 条件。
  *
- * The naive rules are both wrong. Each form below was emitted with this
- * repository's own compiler settings (`verbatimModuleSyntax: true`) to record
- * what actually happens:
+ * 朴素的两种规则都是错的。下面的每种形式都用本仓库自己的编译器设置
+ * (`verbatimModuleSyntax: true`)实际产出过,记录真实行为:
  *
- *   import type { T } from './m'        -> (nothing)                   erased
+ *   import type { T } from './m'        -> (无输出)                    erased
  *   import { type T } from './m'        -> import {} from './m'        runtime
  *   import value, { type T } from './m' -> import value, {} from './m' runtime
  *   import * as ns from './m'           -> import * as ns from './m'   runtime
  *   import './m'                        -> import './m'                runtime
  *
- * So "all named bindings are type-marked" does NOT erase the statement (the
- * module is still loaded), and a default binding is always a value. Reading the
- * single flag the compiler itself uses removes that whole class of mistake.
+ * 所以"所有具名绑定都标了 type"并不会擦除该语句(模块仍被加载),而默认
+ * 绑定永远是值。读取编译器自己使用的那个标志,就能消除这一整类错误。
  */
 function importIsErased(node: ts.ImportDeclaration): boolean {
   const clause = node.importClause
-  if (clause === undefined) return false // bare `import './x'` is a real side effect
+  if (clause === undefined) return false // 裸的 `import './x'` 是真实副作用
   return clause.isTypeOnly
 }
 
-/**
- * Same question for re-exports. Verified emission:
+/*
+ * re-export 的同一个问题。已验证的产出:
  *
  *   export type { T } from './m' -> export {};               erased
  *   export { type T } from './m' -> export {} from './m';    runtime
@@ -149,7 +144,7 @@ function classify(importer: string, text: string): References {
     }
   }
 
-  // `import('x')` can appear anywhere: a runtime call, or a type-position query.
+  // `import('x')` 可能出现在任何位置:运行时调用,或类型位置的查询。
   const visit = (node: ts.Node): void => {
     if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
       const argument = node.arguments[0]
@@ -175,7 +170,7 @@ function addEdge(graph: Graph, from: string, to: string): void {
 }
 
 const runtimeGraph: Graph = new Map()
-/** Runtime plus erased references: the layering rule cares about both. */
+/** 运行时加上被擦除的引用:分层规则两者都关心。 */
 const referenceGraph: Graph = new Map()
 
 for (const importer of shipped) {
@@ -246,8 +241,8 @@ describe('frontend structure boundaries', () => {
   })
 
   it('classifies erased imports per statement, not per specifier', () => {
-    // Regression guard for the bug this gate used to have: an erased import and a
-    // real import of the SAME path must not collapse into "erased".
+    // 回归守护:此门禁曾有过的 bug——同一路径的一条被擦除导入与一条
+    // 真实导入绝不能合并归类为"被擦除"。
     const probe = [
       "import type { OnlyType } from './probe-target'",
       "import { realValue } from './probe-target'",
@@ -259,9 +254,8 @@ describe('frontend structure boundaries', () => {
   })
 
   it('classifies edges the way the compiler actually emits them', () => {
-    // Each expectation was verified by emitting the form with this repo's
-    // `verbatimModuleSyntax: true`. The two shapes that used to be misread are
-    // the default-binding form and the all-type-marked named form.
+    // 每条预期都用本仓库的 `verbatimModuleSyntax: true` 实际产出验证过。
+    // 过去被误读的两种形状是默认绑定形式与全类型标记的具名形式。
     const cases: Array<[statement: string, expected: 'runtime' | 'erased']> = [
       ["import type { T } from './m'", 'erased'],
       ["import type D from './m'", 'erased'],

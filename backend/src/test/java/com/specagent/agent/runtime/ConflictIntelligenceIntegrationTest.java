@@ -45,11 +45,11 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * Conflict-intelligence closure: STATE_UPDATE persists the new patch first,
- * and the immediately-following DECISION must read a post-state snapshot that
- * includes that patch/effective conflict claim. Repair/resume must reuse an
- * existing patch without another STATE_UPDATE while preserving the same
- * post-state DECISION semantics.
+ * 文件名:ConflictIntelligenceIntegrationTest.java
+ *
+ * 测试目标:冲突智能闭环:STATE_UPDATE 先持久化新 patch,紧随其后的 DECISION 必须
+ * 读取包含该 patch/有效冲突声明的状态后快照。修复/续跑必须复用既有 patch 而不再执行
+ * STATE_UPDATE,同时保持相同的状态后 DECISION 语义。
  */
 @SpringBootTest
 @ActiveProfiles("test")

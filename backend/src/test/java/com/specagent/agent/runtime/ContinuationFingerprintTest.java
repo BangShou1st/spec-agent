@@ -8,10 +8,11 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Slice 0: deterministic continuation fingerprints carry loop identity only.
+ * 文件名:ContinuationFingerprintTest.java
  *
- * <p>No semantic fields (conflict, goal, planning flags) may enter the
- * fingerprint; it names a child slot in a chain, nothing more.
+ * 测试目标:Slice 0:确定性续跑指纹只携带循环身份。相同输入产生相同指纹;
+ * 父 run、循环序号、项目任一不同则指纹不同。指纹中不得进入任何语义字段
+ * (conflict、goal、planning 标志);它只命名链中的一个子槽位。
  */
 class ContinuationFingerprintTest {
 

@@ -1,6 +1,6 @@
+import { test, expect, createProject, type Page, type Locator } from './helpers'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { expect, test, type Locator, type Page } from '@playwright/test'
 
 /**
  * BUG-02 regression: Vue Flow must never leave a projected graph node
@@ -42,11 +42,8 @@ async function stubGraphReadModel(page: Page, projectId: string): Promise<void> 
 }
 
 async function openStubbedProject(page: Page, title: string): Promise<string> {
-  await page.goto('/projects')
-  await page.getByLabel('Project title').fill(title)
-  await page.getByRole('button', { name: '创建项目' }).click()
-  await page.waitForURL(/\/projects\/[0-9a-f-]+/)
-  const projectId = page.url().replace(/.*\/projects\//, '')
+  // 统一经 helpers 创建:唯一标题(避免同名遗留项目 409)+ 自动清理登记。
+  const projectId = await createProject(page, title)
   await stubGraphReadModel(page, projectId)
   await page.goto(`/projects/${projectId}`)
   await expect(page.getByTestId('graph-canvas')).toBeVisible()
@@ -138,10 +135,7 @@ test('projected nodes stay visible and measured through selection and viewport i
 test('floating idea is immediately visible, editable and stays visible after save', async ({ page }) => {
   // No stub here: creating an idea never calls the model, so this exercises
   // the real end-to-end path.
-  await page.goto('/projects')
-  await page.getByLabel('Project title').fill('BUG02 Floating Idea')
-  await page.getByRole('button', { name: '创建项目' }).click()
-  await page.waitForURL(/\/projects\/[0-9a-f-]+/)
+  await createProject(page, 'BUG02 Floating Idea')
   await expect(page.getByTestId('graph-start-placeholder')).toBeVisible()
 
   await page.getByTestId('graph-start-placeholder').getByTestId('add-idea').click()

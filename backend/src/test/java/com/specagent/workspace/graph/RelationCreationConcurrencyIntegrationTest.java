@@ -27,21 +27,17 @@ import java.util.concurrent.TimeUnit;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Semantic-relation creation concurrency. Per-project row locking serializes
- * relation creation so two racing transactions both read a stable relation
- * graph:
+ * 文件名:RelationCreationConcurrencyIntegrationTest.java
  *
- * <ul>
- *   <li>causal opposite edges (A DEPENDS_ON B racing B DEPENDS_ON A): exactly
- *       one persists, the loser is rejected as a cycle, and the active causal
- *       DAG stays acyclic — never two edges.</li>
- *   <li>symmetric duplicate (A RELATED_TO B racing B RELATED_TO A): exactly
- *       one persists and the loser is a controlled conflict, never a raw
- *       {@link DuplicateKeyException} / 500.</li>
- * </ul>
+ * 测试目标:语义关系创建的并发正确性。项目级行锁串行化关系创建,使两个
+ * 竞争事务都读到稳定的关系图:
  *
- * <p>Deliberately NOT {@code @Transactional}: the racers run in real
- * independent transactions, so the setup rows are committed first.
+ * - 因果互反边并发(A DEPENDS_ON B 与 B DEPENDS_ON A 竞争):恰好一条
+ *       落库,失败方以成环被拒,活跃因果 DAG 保持无环——绝不出两条边。
+ * - 对称重复(A RELATED_TO B 与 B RELATED_TO A 竞争):恰好一条落库,
+ *       失败方得到受控冲突,而不是原始 {@link DuplicateKeyException} / 500。 *
+ * 刻意不使用 {@code @Transactional}:竞争线程运行在真实、相互独立的
+ * 事务中,因此准备数据需要先提交落库。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -93,9 +89,9 @@ class RelationCreationConcurrencyIntegrationTest {
     }
 
     /**
-     * Causal opposite edges raced concurrently: A DEPENDS_ON B vs B DEPENDS_ON
-     * A. The project lock serializes the graph read + cycle validation, so
-     * exactly one edge persists and the loser fails as RELATION_DEPENDENCY_CYCLE.
+     * 因果互反边并发竞争:A DEPENDS_ON B 对 B DEPENDS_ON A。项目锁把
+     * 图读取 + 成环校验串行化,因此恰好一条边落库,失败方以
+     * RELATION_DEPENDENCY_CYCLE 失败。
      */
     @Test
     void concurrentOppositeDependencyEdgesKeepExactlyOneAcyclicEdge() throws Exception {
@@ -118,25 +114,25 @@ class RelationCreationConcurrencyIntegrationTest {
             Attempt attemptA = forward.get(60, TimeUnit.SECONDS);
             Attempt attemptB = reverse.get(60, TimeUnit.SECONDS);
 
-            // Exactly one edge persists.
+            // 恰好一条边落库。
             assertThat(attemptA.success ^ attemptB.success)
                     .as("exactly one causal relation must be created")
                     .isTrue();
-            // The loser is rejected as a cycle — it observed the winner's edge.
+            // 失败方以成环被拒——它观察到了获胜方写入的边。
             Attempt loser = attemptA.success ? attemptB : attemptA;
             assertThat(loser.error)
                     .isInstanceOf(com.specagent.workspace.graph.GraphRuleViolationException.class)
                     .hasMessageContaining("RELATION_DEPENDENCY_CYCLE");
 
-            // Never two edges; the active causal DAG is a single acyclic edge.
+            // 绝不出现两条边;活跃因果 DAG 是一条无环边。
             List<NodeRelation> active = relationRepository.findActiveByProject(project.id());
             assertThat(active).hasSize(1);
             assertThat(active.get(0).relationType()).isEqualTo(NodeRelationType.DEPENDS_ON);
-            // The persisted direction is one of the two raced edges.
+            // 落库的方向是两条竞争边之一。
             assertThat(active.get(0).sourceNodeId()).isIn(nodeA.id(), nodeB.id());
             assertThat(active.get(0).targetNodeId()).isIn(nodeA.id(), nodeB.id());
             assertThat(active.get(0).sourceNodeId()).isNotEqualTo(active.get(0).targetNodeId());
-            // Only the winner wrote an operation entry.
+            // 只有获胜方写入了操作日志。
             assertThat(commandService.listOperations(project.id())
                     .stream().filter(op -> op.type() == GraphOperation.Type.CREATE_SEMANTIC_RELATION)
                     .count()).isEqualTo(1);
@@ -146,10 +142,9 @@ class RelationCreationConcurrencyIntegrationTest {
     }
 
     /**
-     * Symmetric duplicate raced in both directions: A RELATED_TO B vs B
-     * RELATED_TO A canonicalize to the same endpoints. Exactly one persists
-     * and the loser is a controlled conflict — never a raw
-     * {@link DuplicateKeyException} (which would surface as HTTP 500).
+     * 对称重复双向并发竞争:A RELATED_TO B 对 B RELATED_TO A,二者会规范化到
+     * 相同的端点。恰好一条落库,失败方得到受控冲突——绝不出现原始
+     * {@link DuplicateKeyException}(那会表现为 HTTP 500)。
      */
     @Test
     void concurrentSymmetricDuplicateIsAControlledConflictNever500() throws Exception {
@@ -172,12 +167,12 @@ class RelationCreationConcurrencyIntegrationTest {
             Attempt attemptAb = ab.get(60, TimeUnit.SECONDS);
             Attempt attemptBa = ba.get(60, TimeUnit.SECONDS);
 
-            // Exactly one persisted.
+            // 恰好一条落库。
             assertThat(attemptAb.success ^ attemptBa.success)
                     .as("exactly one symmetric relation must be created")
                     .isTrue();
-            // The loser is a controlled duplicate conflict (409 semantics),
-            // never a raw DuplicateKeyException (500).
+            // 失败方是受控的重复冲突(409 语义),绝不是原始
+            // DuplicateKeyException(500)。
             Attempt loser = attemptAb.success ? attemptBa : attemptAb;
             assertThat(loser.error)
                     .isInstanceOf(IllegalStateException.class)
@@ -187,7 +182,7 @@ class RelationCreationConcurrencyIntegrationTest {
             List<NodeRelation> active = relationRepository.findActiveByProject(project.id());
             assertThat(active).hasSize(1);
             assertThat(active.get(0).relationType()).isEqualTo(NodeRelationType.RELATED_TO);
-            // Canonicalized to one endpoint order regardless of direction.
+            // 无论方向如何,都规范化到同一端点顺序。
             assertThat(active.get(0).sourceNodeId())
                     .isEqualTo(nodeA.id().compareTo(nodeB.id()) <= 0 ? nodeA.id() : nodeB.id());
             assertThat(active.get(0).targetNodeId())
@@ -200,7 +195,7 @@ class RelationCreationConcurrencyIntegrationTest {
         }
     }
 
-    /** One racer's outcome: success, or the exact exception it failed with. */
+    /** 单个竞争者的结果:成功,或失败时抛出的具体异常。 */
     private record Attempt(boolean success, Throwable error) {
         static Attempt run(Callable<?> action) {
             try {

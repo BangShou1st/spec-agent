@@ -8,8 +8,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Conversation delete owner. Removes GA conversation rows only;
- * durable product-side effects (projects) are never rolled back.
+ * 文件名:ConversationDeleteService.java
+ *
+ * 用途:会话删除的唯一入口,负责在单个事务里清空一个线程相关的全部
+ * 会话数据:Run 事件、能力调用记录、待处理轮次(PendingTurn)、消息、
+ * Run,最后删除线程本身。
+ *
+ * 角色:conversation 包的删除兜底服务。只删 GA 侧的会话数据;产品侧
+ * 已产生的持久化副作用(如创建出的项目)不会被回滚。删除前校验线程上
+ * 没有活跃 Run 和未决轮次,否则以 THREAD_ACTIVE 拒绝删除。
  */
 @Service
 public class ConversationDeleteService {

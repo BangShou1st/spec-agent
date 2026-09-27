@@ -2,7 +2,11 @@ package com.specagent.support;
 
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 
-/** Test helper that makes global OpenCode settings state explicit per test. */
+/**
+ * 文件名:OpenCodeSettingsCleanup.java
+ *
+ * 测试辅助类:清空全局 OpenCode 设置表,让每个测试都从明确的空状态开始。
+ */
 public final class OpenCodeSettingsCleanup {
 
     private OpenCodeSettingsCleanup() {

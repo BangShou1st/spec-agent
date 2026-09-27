@@ -12,10 +12,11 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.UUID;
 
 /**
- * Skill activation. Activation is bounded to the current run/continuation
- * context: it returns the bounded full instructions of an installed, enabled,
- * visible Skill plus a bundled resource inventory, records version/content
- * hash provenance, and does not permanently pollute future user turns.
+ * 文件名:SkillActivationService.java
+ *
+ * 用途:Skill 激活服务。激活被限定在当前 run/续跑上下文内:返回一个已安装、
+ * 已启用且可见 Skill 的有界完整指令与随包资源清单,记录版本/内容哈希溯源,
+ * 且不会永久污染后续的用户轮次。
  */
 @Service
 public class SkillActivationService {
@@ -33,10 +34,9 @@ public class SkillActivationService {
     }
 
     /**
-     * Activates an installed, enabled Skill for one run.
+     * 为一次运行激活一个已安装且已启用的 Skill。
      *
-     * @throws SkillImportException when the Skill is unknown, disabled, or has
-     *                              no installed version
+     * @throws SkillImportException Skill 未知、已停用或没有已安装版本时抛出
      */
     @Transactional
     public ActivatedSkill activate(UUID projectId, UUID runId, String skillId) {

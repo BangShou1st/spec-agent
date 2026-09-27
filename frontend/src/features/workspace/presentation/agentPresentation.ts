@@ -1,7 +1,9 @@
-/**
- * 纯产品文案映射：Runtime phase / actionFamily → 面向用户的中文标签。
+// 文件名:agentPresentation.ts
+// 用途:Agent 运行状态的纯产品文案映射:运行阶段 / 动作族 / run operation → 面向用户的中文标签,未知输入一律回退通用文案且绝不暴露原始枚举。
+/*
+ * 纯产品文案映射:Runtime phase / actionFamily → 面向用户的中文标签。
  *
- * 只做查表映射，不读 store、不推断链语义。未知输入一律回退到通用文案，
+ * 只做查表映射,不读 store、不推断链语义。未知输入一律回退到通用文案,
  * 绝不把 raw phase / actionFamily 拼进默认 UI。
  */
 

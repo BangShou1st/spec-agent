@@ -12,10 +12,14 @@ import java.util.UUID;
 import java.util.function.Function;
 
 /**
- * Selects the bounded model-facing working window from the full immutable
- * ContextSnapshot manifest. Route lineage and derived material have different
- * priorities: derived nodes may fill unused capacity, but never displace the
- * current route tip or the recent route lineage.
+ * 文件名:WorkingContextSelector.java
+ *
+ * 用途:从完整且不可变的 ContextSnapshot 清单中,选出有界的、面向模型的
+ * 工作上下文窗口。路由血缘与派生材料的优先级不同:派生节点只能填补剩余
+ * 容量,绝不能挤掉当前路由 tip 或最近的路线血缘。
+ *
+ * 协作:由 AgentInputSnapshotBuilder 在首次冻结投影时调用,决定血缘
+ * (lineage)里实际进入模型输入的节点集合。
  */
 @Component
 public class WorkingContextSelector {
@@ -23,15 +27,15 @@ public class WorkingContextSelector {
     public static final int MAX_WORKING_LINEAGE_ENTRIES = 12;
     public static final int MAX_WORKING_LINEAGE_CHARS = 12_000;
 
-    /** Compatibility aliases for callers that used the original names. */
+    /** 兼容别名,供使用旧命名的调用方继续使用。 */
     public static final int MAX_LINEAGE_ENTRIES = MAX_WORKING_LINEAGE_ENTRIES;
     public static final int MAX_LINEAGE_CHARS = MAX_WORKING_LINEAGE_CHARS;
 
     /**
-     * Selects mandatory anchors first, then the newest route lineage, and only
-     * then bounded derived material. {@code modelFacingChars} must measure the
-     * actual wire projection of the supplied ordered Node list; this keeps the
-     * budget at the Brain boundary instead of estimating canonical Nodes.
+     * 先选必选锚点,再选最新的路由血缘,最后才补充有界的派生材料。
+     * {@code modelFacingChars} 必须测量给定有序 Node 列表实际投影到
+     * wire 上的体积;这样预算就卡在 Brain 边界上,而不是对规范化
+     * Node 做粗略估算。
      */
     public List<Node> select(List<Node> canonicalRouteLineage,
                              List<Node> derivedMaterial,
@@ -47,8 +51,8 @@ public class WorkingContextSelector {
                 ? ignored -> 0 : modelFacingChars;
 
         LinkedHashSet<UUID> selectedIds = new LinkedHashSet<>();
-        // Mandatory nodes are never budget-evicted. In normal snapshots this is
-        // the current tip plus at most one event anchor.
+        // 必选节点永远不会因预算被淘汰。在正常 snapshot 里,
+        // 它就是当前 tip 加上至多一个事件锚点。
         for (Node node : ordered) {
             if (mandatory.contains(node.id())) {
                 selectedIds.add(node.id());

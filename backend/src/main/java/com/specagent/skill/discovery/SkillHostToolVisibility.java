@@ -7,15 +7,15 @@ import org.springframework.stereotype.Service;
 import java.util.UUID;
 
 /**
- * Decides whether Skill-related Host Function Tools ({@code skill.activate},
- * {@code skill.read_resource}) should be model-visible in a given snapshot.
+ * 文件名:SkillHostToolVisibility.java
  *
- * <p>These tools return procedural knowledge, so they are useful only when
- * the project actually has an installed + enabled Skill to activate.
- * Blanket visibility in every context would violate the
- * "installed != loaded" invariant and pollute every decision input with
- * tooling the model cannot use. The gating fact here is fully deterministic:
- * "does this project have any enabled Skill?" — never user wording.
+ * 用途:决定 Skill 相关的 Host Function Tool({@code skill.activate}、
+ * {@code skill.read_resource})在给定快照下是否对模型可见。
+ *
+ * 这两个工具返回的是过程性知识,只有项目确实存在"已安装且已启用"的
+ * Skill 可激活时才有用。在所有上下文里一律可见会违反"installed != loaded"
+ * 不变量,并用模型根本用不上的工具污染每一次决策输入。这里的门控事实完全
+ * 确定:"本项目是否存在已启用的 Skill?" —— 永远不参考用户措辞。
  */
 @Service
 public class SkillHostToolVisibility {

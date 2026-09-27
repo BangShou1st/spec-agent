@@ -1,3 +1,5 @@
+// 文件名:SpecDock.spec.ts
+// 用途:SpecDock 组件单元测试,验证折叠摘要、展开详情、快照导出与"查看路线 vs 生成路线"的语义(只发意图,不改 Focus)。
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import SpecDock from '@/features/workspace/components/SpecDock.vue'

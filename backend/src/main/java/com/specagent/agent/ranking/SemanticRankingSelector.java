@@ -10,7 +10,23 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/** Pure Runtime selector for model-produced, eligible semantic assessments. */
+/**
+ * 文件名:SemanticRankingSelector.java
+ *
+ * 用途:纯函数式的 Runtime 排序裁决器。对模型给出的语义评估做完整校验后,
+ * 用权重计分卡打分并选出胜出动作族,全过程不产生副作用、不依赖模型参与打分。
+ *
+ * 协作:由 Runtime 在消费 Brain 的排序响应时调用,输入资格判定结果与
+ * SemanticRanking,输出 SemanticRankingSelection。
+ *
+ * 校验规则(fail-closed):
+ * - 资格判定版本、依据哈希、权重版本三者必须与排序结果完全一致;
+ * - 评估列表必须恰好覆盖全部有资格的动作族,不允许出现资格外的动作族;
+ * - 没有任何"可适用"的动作族时直接抛异常,而不是勉强挑选。
+ *
+ * 同分决胜:总分相同的情况下按枚举声明顺序(ordinal)稳定裁决,
+ * 并在结果中标记 tieBreakApplied。
+ */
 public final class SemanticRankingSelector {
 
     private SemanticRankingSelector() {

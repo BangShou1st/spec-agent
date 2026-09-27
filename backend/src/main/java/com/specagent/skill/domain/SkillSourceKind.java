@@ -1,9 +1,10 @@
 package com.specagent.skill.domain;
 
 /**
- * Skill package source kind. A Skill is procedural/context knowledge, not
- * another agent; these kinds determine how a package was obtained and how it
- * may be refreshed.
+ * 文件名:SkillSourceKind.java
+ *
+ * 用途:Skill 包的来源类型。Skill 是过程性/上下文知识,不是另一个 Agent;
+ * 这些类型记录包是怎么获取的,以及之后可以通过什么方式刷新。
  */
 public enum SkillSourceKind {
 

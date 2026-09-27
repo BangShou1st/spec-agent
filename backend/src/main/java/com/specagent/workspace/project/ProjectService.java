@@ -13,12 +13,12 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Creates and retrieves requirement exploration projects.
+ * 文件名:ProjectService.java
  *
- * <p>Project creation also opens an initial {@code open} route and sets it as the
- * active route. Active-route control and route lifecycle transitions are owned by
- * {@link com.specagent.workspace.route.RouteService}; this service intentionally does not
- * expose an active-route setter that could bypass lifecycle validation.
+ * 用途:创建和检索需求探索项目。项目创建会同时打开一条初始的
+ * {@code open} 路线并将其设为活跃路线。活跃路线控制与路线生命周期迁移
+ * 由 {@link com.specagent.workspace.route.RouteService} 负责;本服务刻意
+ * 不暴露任何可能绕过生命周期校验的活跃路线 setter。
  */
 @Service
 public class ProjectService {
@@ -36,13 +36,12 @@ public class ProjectService {
     }
 
     /**
-     * Enforces the unique-title rule for user-driven create/rename.
+     * 为用户驱动的创建/重命名执行标题唯一性规则。
      *
-     * <p>The check is opt-in rather than baked into
-     * {@link #createProject(String)}: this factory is also used by tests and
-     * seeders that legitimately build fixtures with repeated titles, while the
-     * product surface must never accept a duplicate. Deleting a project frees
-     * its title, so recreating the same name afterwards stays allowed.
+     * 该检查是按需调用而非内置在 {@link #createProject(String)} 中:
+     * 这个工厂方法也被测试和数据种子器使用,它们合法地构造重复标题的
+     * 夹具;而产品入口绝不能接受重复标题。删除项目会释放标题,因此
+     * 之后再创建同名项目仍然被允许。
      */
     public void requireTitleAvailable(String title) {
         String normalized = title == null ? "" : title.trim();
@@ -52,8 +51,8 @@ public class ProjectService {
     }
 
     /**
-     * Same as {@link #requireTitleAvailable(String)} but ignores one project,
-     * so a project can keep its own title when only other fields change.
+     * 与 {@link #requireTitleAvailable(String)} 相同,但忽略一个指定的
+     * 项目,使项目在只修改其他字段时能保留自己的标题。
      */
     public void requireTitleAvailable(String title, UUID excludeProjectId) {
         String normalized = title == null ? "" : title.trim();
@@ -67,8 +66,8 @@ public class ProjectService {
         UUID routeId = Ids.random();
         Instant now = Instant.now();
 
-        // Insert the project first so the route's project_id FK is satisfiable,
-        // then open the initial route and point the project's active route at it.
+        // 先插入项目,使路线的 project_id 外键可满足;然后打开初始路线,
+        // 并把项目的活跃路线指向它。
         Project project = new Project(projectId, title, null,
                 profileService.getDefaultProfileId(), now, now);
         projectRepository.save(project);
@@ -87,8 +86,8 @@ public class ProjectService {
     }
 
     /**
-     * Renames a project. Title validation matches creation rules (non-blank,
-     * bounded); unknown ids fail with the same not-found semantics as reads.
+     * 重命名项目。标题校验与创建时规则一致(非空、有界);未知 id 按
+     * 与读取相同的 not-found 语义失败。
      */
     public Project renameProject(UUID projectId, String title) {
         String normalized = requireValidTitle(title);
@@ -112,18 +111,17 @@ public class ProjectService {
     }
 
     /**
-     * Lists all projects in deterministic order ({@code created_at} ascending).
-     * Read-only; never mutates project or route state.
+     * 按确定顺序列出全部项目({@code created_at} 升序)。
+     * 只读;绝不修改项目或路线状态。
      */
     public List<Project> listProjects() {
         return projectRepository.findAll();
     }
 
     /**
-     * Lists projects whose title contains {@code title} (case-insensitive
-     * substring). A blank or null query returns every project, identical to
-     * {@link #listProjects()}, so the list endpoint stays backward compatible
-     * when the parameter is omitted.
+     * 列出标题包含 {@code title} 的项目(不区分大小写的子串匹配)。
+     * 查询为空白或 null 时返回全部项目,与 {@link #listProjects()} 完全
+     * 一致,保证省略参数时列表端点向后兼容。
      */
     public List<Project> listProjects(String title) {
         if (title == null || title.isBlank()) {

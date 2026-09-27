@@ -1,6 +1,10 @@
+// 文件名:globalAssistant.ts
+// 用途:全局助手(Global Assistant)的 API 封装与类型契约:线程/消息/运行/事件的 CRUD,
+//       转向(steer)、取消、停止、删除等操作,以及路由状态到 UI 上下文、UI 动作到路由的映射。
+
 import { apiClient } from '@/shared/http/client'
 
-/** Global Assistant V1 public contracts (frozen backend). */
+/** 全局助手 V1 的公开契约(后端已冻结)。 */
 export type GaCurrentPage = 'PROJECTS' | 'PROJECT' | 'SKILLS' | 'CONNECTIONS' | 'SETTINGS' | 'UNKNOWN'
 
 export interface GaSelectedEntity {
@@ -31,7 +35,7 @@ export interface GaMessage {
   content: string
   runId: string | null
   createdAt: string
-  /** Model accounting attribution; only assistant messages carry it. */
+  /** 模型用量归属信息;只有 assistant 消息会携带。 */
   providerLabel?: string | null
   modelId?: string | null
 }
@@ -172,13 +176,13 @@ export function listGaThreads(): Promise<GaThreadListItem[]> {
   return apiClient.get<GaThreadListItem[]>(BASE + '/threads')
 }
 
-/** Minimal route shape so the mapper stays testable without vue-router. */
+/** 最小化的路由形状,让映射函数不依赖 vue-router 也能测试。 */
 export interface GaRouteLike {
   path: string
   params?: Record<string, string | string[] | undefined>
 }
 
-/** Deterministic UI context projection from Vue Router state. */
+/** 从 Vue Router 状态确定性地投影出 UI 上下文。 */
 export function buildGaUiContext(route: GaRouteLike): GaUiContext {
   const path = route.path || ''
   const rawId = route.params?.projectId
@@ -203,7 +207,7 @@ export function buildGaUiContext(route: GaRouteLike): GaUiContext {
 
 export type GaUiDestination = 'PROJECT' | 'PROJECTS' | 'SKILLS' | 'CONNECTIONS' | 'SETTINGS'
 
-/** Typed UI_ACTION destination mapping. Only UI_ACTION drives navigation. */
+/** 类型化 UI_ACTION 目标映射。只有 UI_ACTION 事件会驱动页面导航。 */
 export function gaUiActionToRoute(destination: string, resourceId?: string | null): string | null {
   switch (destination) {
     case 'PROJECT':

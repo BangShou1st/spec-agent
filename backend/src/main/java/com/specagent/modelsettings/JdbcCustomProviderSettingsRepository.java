@@ -8,29 +8,41 @@ import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
+/**
+ * 文件名:JdbcCustomProviderSettingsRepository.java
+ *
+ * 用途:CustomProviderSettingsRepository 的 JDBC 实现。自定义提供商配置在库中
+ * 只有一行(singleton_id = 1),upsert 使用 ON CONFLICT 覆盖写;
+ * markValidated 带 configRevision 条件,配置在验证期间被改过则本次验证作废。
+ */
 @Repository
 public class JdbcCustomProviderSettingsRepository implements CustomProviderSettingsRepository {
 
     private final NamedParameterJdbcTemplate jdbc;
-    private final RowMapper<CustomProviderSettings> rowMapper = (rs, rowNum) -> new CustomProviderSettings(
-            rs.getString("api_format"),
-            rs.getString("base_url"),
-            rs.getString("api_key"),
+    private final ModelCredentialCrypto crypto;
+    private final RowMapper<CustomProviderSettings> rowMapper;
+
+    public JdbcCustomProviderSettingsRepository(NamedParameterJdbcTemplate jdbc,
+                                                ModelCredentialCrypto crypto) {
+        this.jdbc = jdbc;
+        this.crypto = crypto;
+        this.rowMapper = (rs, rowNum) -> new CustomProviderSettings(
+                rs.getString("api_format"),
+                rs.getString("base_url"),
+                crypto.decrypt(rs.getString("api_key")),
             rs.getString("masked_suffix"),
             rs.getString("selected_model"),
             readModelSource(rs),
             rs.getString("display_name"),
             rs.getLong("config_revision"),
             rs.getObject("validated_revision") == null ? null : rs.getLong("validated_revision"),
-            rs.getTimestamp("created_at").toInstant(),
-            rs.getTimestamp("updated_at").toInstant(),
-            rs.getTimestamp("validated_at") == null ? null : rs.getTimestamp("validated_at").toInstant());
-
-    public JdbcCustomProviderSettingsRepository(NamedParameterJdbcTemplate jdbc) {
-        this.jdbc = jdbc;
+                rs.getTimestamp("created_at").toInstant(),
+                rs.getTimestamp("updated_at").toInstant(),
+                rs.getTimestamp("validated_at") == null ? null : rs.getTimestamp("validated_at").toInstant());
     }
 
     private static String readModelSource(java.sql.ResultSet rs) throws java.sql.SQLException {
+        // model_source 列可能是旧表结构缺失或值非法,这里统一兜底为 DISCOVERED
         String v;
         try {
             v = rs.getString("model_source");
@@ -72,7 +84,7 @@ public class JdbcCustomProviderSettingsRepository implements CustomProviderSetti
                 """, Maps.of(
                 "apiFormat", settings.apiFormat(),
                 "baseUrl", settings.baseUrl(),
-                "apiKey", settings.apiKey(),
+                "apiKey", crypto.encrypt(settings.apiKey()),
                 "maskedSuffix", settings.maskedSuffix(),
                 "selectedModel", settings.selectedModel(),
                 "modelSource", settings.modelSource() == null ? "DISCOVERED" : settings.modelSource(),

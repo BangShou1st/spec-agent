@@ -3,18 +3,18 @@ package com.specagent.workspace.graph;
 import com.specagent.common.PreciseConflictException;
 
 /**
- * Thrown when a graph mutation violates a topology/state rule the user can
- * act on (dependency cycle, detach/connect at a non-tip node, ...). Carries a
- * stable reason code so the API layer surfaces a precise 409 with product
- * copy instead of a generic runtime conflict.
+ * 文件名:GraphRuleViolationException.java
  *
- * <p>Extends {@link PreciseConflictException} (itself an
- * {@code IllegalStateException}): a rule violation is a state precondition
- * failure, matching the historical
- * {@code IllegalStateException("<CODE>: ...")} contract the graph validators
- * documented, while the API layer maps the concrete type to a precise 409 and
- * {@code CommandExecution} preserves it instead of degrading it to
- * {@code RUNTIME_CONFLICT}.
+ * 用途:当图变更违反用户可以自行纠正的拓扑/状态规则时抛出
+ * (依赖成环、在非 tip 节点上摘线/连线等)。异常携带稳定的 reason code,
+ * 让 API 层能返回带产品文案的精确 409,而不是笼统的运行时冲突。
+ *
+ * 继承自 {@link PreciseConflictException}(它本身是
+ * {@code IllegalStateException}):规则违反本质是状态前置条件失败,
+ * 与图校验器沿用的 {@code IllegalStateException("<CODE>: ...")} 历史契约
+ * 一致;API 层把这个具体类型映射为精确 409,
+ * {@code CommandExecution} 会原样保留它,而不是降级为
+ * {@code RUNTIME_CONFLICT}。
  */
 public class GraphRuleViolationException extends PreciseConflictException {
 

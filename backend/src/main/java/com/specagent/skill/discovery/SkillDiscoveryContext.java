@@ -4,16 +4,16 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Deterministic discovery input derived from the frozen model context. Only
- * structured facts live here (never raw user wording, which would invite
- * lexical routing): current goal/operation hints, resource kinds already in
- * context, and bounded recent capability observations.
+ * 文件名:SkillDiscoveryContext.java
  *
- * <p>The optional {@code searchQuery} carries an explicit model-authored
- * search string for the {@code skill.search} fallback path only. It is never
- * populated from ambient user text by the runtime — only the model's own
- * search-tool argument flows here — so generic token matching cannot become
- * covert keyword routing.
+ * 用途:由冻结的模型上下文推导出的、确定性的发现输入。这里只放结构化事实
+ * (绝不放用户的原始措辞 —— 那会诱导词法路由):当前目标/操作提示、上下文中
+ * 已出现的资源类型、有界的近期能力观察记录。
+ *
+ * 可选的 {@code searchQuery} 只承载模型显式编写的搜索词,仅供
+ * {@code skill.search} 回退路径使用。运行时绝不会用环境中的用户文本填充它
+ * —— 只有模型自己调用搜索工具的参数才会流到这里 —— 以此保证通用的词元
+ * 匹配不会变成变相的关键词路由。
  */
 public record SkillDiscoveryContext(
         String operation,
@@ -29,7 +29,7 @@ public record SkillDiscoveryContext(
         scopeFacts = scopeFacts == null ? Map.of() : Map.copyOf(scopeFacts);
     }
 
-    /** Legacy constructor for callers without an explicit search query. */
+    /** 兼容旧调用方的构造器:未显式给出搜索词的场景使用。 */
     public SkillDiscoveryContext(String operation,
                                  List<String> resourceKinds,
                                  List<String> recentCapabilityIds,
@@ -41,7 +41,7 @@ public record SkillDiscoveryContext(
         return new SkillDiscoveryContext(null, List.of(), List.of(), Map.of());
     }
 
-    /** Explicit search query for the fallback path; null when not searching. */
+    /** 回退路径的显式搜索词;非搜索场景为 null。 */
     public static SkillDiscoveryContext forSearch(String query) {
         return new SkillDiscoveryContext(null, List.of(), List.of(), Map.of(), query);
     }

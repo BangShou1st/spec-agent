@@ -28,12 +28,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Concurrency and recovery semantics of the capability invocation log,
- * verified against real PostgreSQL: the unique index on invocation_key is
- * the final arbiter of execution ownership, so concurrent invocations of one
- * key execute the adapter at most once without leaking constraint failures,
- * and recorded RUNNING/SUCCEEDED/FAILED states are never confused with each
- * other on retry.
+ * 文件名:CapabilityConcurrencyIntegrationTest.java
+ *
+ * 测试目标:针对真实 PostgreSQL 验证能力调用日志的并发与恢复语义——
+ * invocation_key 上的唯一索引是执行归属的最终仲裁者,同一 key 的并发调用
+ * 至多执行一次适配器且不泄漏约束冲突;已记录的 RUNNING/SUCCEEDED/FAILED
+ * 状态在重试时不会互相混淆。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -112,8 +112,8 @@ class CapabilityConcurrencyIntegrationTest {
 
             List<CapabilityResult> results = new ArrayList<>();
             for (Future<CapabilityResult> future : futures) {
-                // Losing racers must read back the winner's recorded result —
-                // a unique-constraint error leaking here is a contract break.
+                // 竞争失败方必须读到胜出方已记录的结果——
+                // 这里泄漏唯一约束错误即视为契约被破坏。
                 results.add(future.get(30, TimeUnit.SECONDS));
             }
 
@@ -157,8 +157,8 @@ class CapabilityConcurrencyIntegrationTest {
 
         assertThat(first.status()).isEqualTo(CapabilityResult.Status.FAILED);
         assertThat(String.valueOf(first.content().get("reason"))).contains("failed");
-        // The recorded failure is returned verbatim; the adapter is not
-        // invoked again and no second external attempt happens.
+        // 原样返回已记录的失败;适配器不会被再次调用,
+        // 也不会产生第二次外部尝试。
         assertThat(retry.status()).isEqualTo(CapabilityResult.Status.FAILED);
         assertThat(retry.content()).isEqualTo(first.content());
         assertThat(CountingCapabilityConfig.EXECUTIONS.get()).isEqualTo(1);
@@ -169,8 +169,7 @@ class CapabilityConcurrencyIntegrationTest {
     @Test
     void runningInvocationIsNeitherReplayedAsSuccessNorReExecuted() {
         String key = KEY_PREFIX + Ids.random();
-        // Simulate a concurrent owner / crash-window row: claimed but never
-        // completed.
+        // 模拟并发持有者/崩溃窗口中的记录:已被认领但从未完成。
         invocationRepository.claim(new CapabilityInvocation(Ids.random(), key,
                 "test.counting", project.id(), null, Map.of()));
 

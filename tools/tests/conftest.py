@@ -1,4 +1,7 @@
-"""pytest path setup for diagnostic tools tests (no production imports)."""
+"""文件名:conftest.py
+
+诊断工具测试的 pytest 路径配置(不 import 生产代码)。
+"""
 import sys
 from pathlib import Path
 

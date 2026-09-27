@@ -41,6 +41,14 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+/**
+ * 文件名:RuntimeKernelIntegrationTest.java
+ *
+ * 测试目标:验证运行时内核的核心集成行为——项目与激活路线创建、根/子
+ * 节点构建、基于路线 lineage 的上下文快照、按声明顺序重放 AnswerPatch 得到
+ * 需求状态、兄弟/已删除/已被取代路线的排除规则、答案不可覆盖,以及
+ * Spec 快照与 AgentRun 记录。
+ */
 @SpringBootTest
 @ActiveProfiles("test")
 @Transactional
@@ -148,8 +156,8 @@ class RuntimeKernelIntegrationTest {
     @Test
     void buildForContextReplaysPatchesInDeclaredOrder() {
         ProjectSetup s = setupBasicProject();
-        // p1 carries c1 ("Build an app"), p2 carries c2 ("Single developer").
-        // A context snapshot whose patch list is reversed must replay p2 before p1.
+        // p1 携带 c1("Build an app"),p2 携带 c2("Single developer")。
+        // patch 列表被反转的上下文快照必须先重放 p2 再重放 p1。
         ContextSnapshot reversedPatchOrder = new ContextSnapshot(
                 Ids.random(),
                 s.project().id(),
@@ -169,7 +177,7 @@ class RuntimeKernelIntegrationTest {
         RequirementState state = requirementStateBuilder.buildForContext(reversedPatchOrder);
 
         assertThat(state.claims()).hasSize(2);
-        // Order is driven by includedPatchIds, not by includedAnswerIds (which is [a1, a2]).
+        // 顺序由 includedPatchIds 决定,而不是 includedAnswerIds(后者是 [a1, a2])。
         assertThat(state.claims().get(0).text()).isEqualTo("Single developer");
         assertThat(state.claims().get(1).text()).isEqualTo("Build an app");
     }

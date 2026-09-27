@@ -21,14 +21,14 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Sole place that constructs MCP SDK clients. Everything above this class
- * speaks only the {@code McpDiscovery}/{@code McpTool}... domain types; SDK
- * classes never leak into agent/brain/graph/policy/skill code.
+ * 文件名:McpClientFactory.java
  *
- * <p>Transport choice: Remote Streamable HTTP (the current official remote
- * transport). Local stdio is deliberately deferred. The outbound network
- * policy is enforced before any connection, and redirect/size/timeout limits
- * are applied here.
+ * 用途:构造 MCP SDK 客户端的唯一位置。本类之上的代码只接触
+ * {@code McpDiscovery}/{@code McpTool} 等领域类型;SDK 类绝不泄漏到
+ * agent/brain/graph/policy/skill 等代码中。
+ *
+ * 传输方式:远程 Streamable HTTP(当前官方远程传输)。本地 stdio 被刻意延后。
+ * 出站网络策略在任何连接建立之前强制执行;重定向/大小/超时限制也在这里生效。
  */
 @Component
 public class McpClientFactory {
@@ -38,27 +38,26 @@ public class McpClientFactory {
 
     public McpClientFactory(McpProperties properties, OutboundNetworkPolicy networkPolicy) {
         this.properties = properties;
-        // Explicit localhost opt-in (test/local tooling) relaxes the shared
-        // policy for the MCP boundary only; SSRF defense stays otherwise.
+        // 显式允许 localhost(测试/本地工具)时,仅为 MCP 边界放宽共享策略;
+        // 其余 SSRF 防御保持不变。
         this.networkPolicy = properties.isAllowLocalhostHttp()
                 ? new OutboundNetworkPolicy(true) : networkPolicy;
     }
 
     /**
-     * Opens a remote Streamable HTTP MCP session for one connection.
+     * 为一个连接打开远程 Streamable HTTP MCP 会话。
      *
-     * @return an initialized session; caller owns {@link Session#close()}
-     * @throws McpTransportException on policy violation, handshake, or
-     *                               discovery failure — never a raw SDK error
+     * @return 已完成初始化的会话;调用方负责 {@link Session#close()}
+     * @throws McpTransportException 策略违规、握手或发现失败时抛出——
+     *                               绝不抛出原始 SDK 错误
      */
     public Session open(String serverUrl, Map<String, Object> headers, String authHeader) {
         URI uri = validateUrl(serverUrl);
-        // The SDK resolves the final POST target as baseUri + endpoint, and
-        // its default endpoint ("/mcp") is an absolute path that would replace
-        // any custom base path. To keep the configured server URL
-        // authoritative, split it: scheme+authority stays the base and the URL
-        // path (when present) becomes the endpoint. A bare host keeps the SDK
-        // default "/mcp" convention.
+        // SDK 把最终 POST 目标解析为 baseUri + endpoint,而它的默认 endpoint
+        // ("/mcp") 是绝对路径,会替换掉任何自定义基础路径。为了让配置的
+        // Server URL 保持权威,这里做拆分:scheme+authority 作为 base,
+        // URL 路径(如果存在)作为 endpoint。纯主机名则沿用 SDK 默认的
+        // "/mcp" 约定。
         HttpClientStreamableHttpTransport.Builder builder =
                 HttpClientStreamableHttpTransport
                         .builder(uri.getScheme() + "://" + uri.getAuthority())
@@ -76,8 +75,7 @@ public class McpClientFactory {
             });
         }
         if (authHeader != null && !authHeader.isBlank()) {
-            // Credential-derived authorization leaves through the transport
-            // only; it never enters descriptors, results, or model context.
+            // 由凭据派生的授权头只经传输层出去;绝不进入描述符、结果或模型上下文。
             builder.customizeRequest(request ->
                     request.header("Authorization", authHeader));
         }
@@ -103,9 +101,9 @@ public class McpClientFactory {
             throw new McpTransportException("MCP server URL is empty");
         }
         try {
-            // HTTPS required; the policy also blocks private/link-local/
-            // metadata hosts. Custom MCP servers must pass the same outbound
-            // gate as git imports — one policy, not two ad-hoc checks.
+            // 必须使用 HTTPS;策略同时拦截私网/链路本地/元数据主机。
+            // 自定义 MCP Server 必须通过与 git 导入相同的出站门禁——
+            // 一套策略,而不是两套临时检查。
             return networkPolicy.validateOutboundUrl(serverUrl.trim(),
                     properties.getConnectionMaxRedirects());
         } catch (OutboundPolicyViolationException ex) {
@@ -114,7 +112,7 @@ public class McpClientFactory {
         }
     }
 
-    /** Normalized, transport-agnostic MCP session. */
+    /** 规范化的、与具体传输无关的 MCP 会话。 */
     public interface Session extends AutoCloseable {
         McpDiscovery discover();
         McpToolResult callTool(String toolName, Map<String, Object> arguments);
@@ -154,8 +152,8 @@ public class McpClientFactory {
                                 bound(resource.mimeType(), 64)));
                     }
                 } catch (RuntimeException ex) {
-                    // A server without resources support is legitimate: the
-                    // primitive just stays empty rather than failing discovery.
+                    // Server 不支持 resources 是合法情况:该原始类型保持为空,
+                    // 而不是让整个发现失败。
                 }
 
                 List<McpPrompt> prompts = new ArrayList<>();
@@ -168,7 +166,7 @@ public class McpClientFactory {
                                 prompt.arguments() == null ? 0 : prompt.arguments().size()));
                     }
                 } catch (RuntimeException ex) {
-                    // Same for prompts.
+                    // prompts 同理。
                 }
 
                 McpSchema.Implementation serverInfo = client.getServerInfo();
@@ -189,9 +187,8 @@ public class McpClientFactory {
                 McpSchema.CallToolRequest request = new McpSchema.CallToolRequest(
                         toolName, arguments == null ? Map.of() : arguments);
                 McpSchema.CallToolResult result = client.callTool(request);
-                // MCP models tool-level failure as a result with isError=true,
-                // not a transport exception — surface it as a typed failure so
-                // callers can distinguish it from a successful observation.
+                // MCP 把工具级失败建模为 isError=true 的结果,而不是传输异常
+                // ——这里把它转成带类型的失败,让调用方能与成功的观测区分开。
                 if (Boolean.TRUE.equals(result.isError())) {
                     Object content = extractContent(result);
                     String detail = "tool reported an error";
@@ -264,10 +261,9 @@ public class McpClientFactory {
             return Map.of("value", bound(String.valueOf(content),
                     properties.getResultMaxInlineBytes()));
         }
-        // True byte budget: large tool payloads are truncated to a bounded
-        // prefix so a giant result can never pollute model context. Values
-        // are stringified for measurement; structured fidelity beyond the
-        // bound is intentionally sacrificed for context safety.
+        // 按真实字节预算截断:过大的工具载荷只会保留有界前缀,巨型结果
+        // 绝不可能污染模型上下文。为便于计量把值转成字符串;超出预算后的
+        // 结构保真度被有意牺牲,以换取上下文安全。
         Map<String, Object> bounded = new java.util.LinkedHashMap<>();
         int budget = properties.getResultMaxInlineBytes();
         for (Map.Entry<?, ?> entry : map.entrySet()) {
@@ -306,7 +302,7 @@ public class McpClientFactory {
         return map;
     }
 
-    /** Best-effort root-cause summary for SDK errors (never raw stack). */
+    /** 对 SDK 错误做尽力而为的根因摘要(绝不输出原始堆栈)。 */
     private String rootCauseMessage(RuntimeException ex) {
         Throwable cause = ex;
         while (cause.getCause() != null && cause.getCause() != cause) {
@@ -339,7 +335,7 @@ public class McpClientFactory {
         return Map.of();
     }
 
-    /** Converts a JsonSchema record into a bounded, model-safe map. */
+    /** 把 JsonSchema record 转换成有界、对模型安全的 Map。 */
     private Map<String, Object> schemaToMap(McpSchema.JsonSchema schema) {
         if (schema == null) {
             return Map.of();

@@ -1,3 +1,8 @@
+<!--
+  文件名:ModelSettingsView.vue
+  用途:设置区的"模型"页面:页面标题与副标题,内部承载 ProviderSettingsSection
+       完成各 Provider 的配置管理。
+-->
 <script setup lang="ts">
 import ProviderSettingsSection from '@/features/model-settings/components/ProviderSettingsSection.vue'
 </script>

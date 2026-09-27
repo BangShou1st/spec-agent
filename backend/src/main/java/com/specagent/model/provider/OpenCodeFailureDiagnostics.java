@@ -5,11 +5,11 @@ import com.specagent.common.Hashes;
 import java.util.List;
 
 /**
- * Bounded, allowlisted diagnostics for one OpenCode failure.
+ * 文件名:OpenCodeFailureDiagnostics.java
  *
- * <p>This record intentionally contains metadata and hashes only. It never
- * carries a request prompt, Authorization value, raw SSE event, or complete
- * model output.</p>
+ * 用途:一次 OpenCode 失败的有界、白名单化诊断信息。该 record 刻意只包含
+ * 元数据和哈希值,绝不携带请求提示词、Authorization 值、原始 SSE 事件或
+ * 完整的模型输出。
  */
 public record OpenCodeFailureDiagnostics(
         String task,
@@ -38,7 +38,7 @@ public record OpenCodeFailureDiagnostics(
         String reasoningSha256,
         OpenCodeRequestDiagnostics requestDiagnostics) {
 
-    /** Compatibility constructor for diagnostics without reasoning metadata. */
+    /** 兼容构造器:不带 reasoning 元数据的诊断信息。 */
     public OpenCodeFailureDiagnostics(
             String task,
             String selectedModel,
@@ -68,7 +68,7 @@ public record OpenCodeFailureDiagnostics(
                 cfRay, traceId, 0, 0, Hashes.sha256Hex(""), OpenCodeRequestDiagnostics.empty());
     }
 
-    /** Compatibility constructor for diagnostics with reasoning metadata. */
+    /** 兼容构造器:带 reasoning 元数据的诊断信息。 */
     public OpenCodeFailureDiagnostics(
             String task,
             String selectedModel,

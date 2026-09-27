@@ -21,45 +21,38 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Narrow transactional boundary for agent-driven graph mutations.
+ * 文件名:AgentGraphMutationService.java
  *
- * <p>The model/policy chain (a Decision or Answer cycle) runs OUTSIDE any
- * transaction or lock. Only after the model and policy have completed does the
- * mutation enter this bean, which re-validates the decision against CURRENT
- * graph facts inside one transaction:
+ * 用途:agent 驱动的图变更的窄事务边界。
  *
- * <ol>
- *   <li>{@code projectRepository.lockById} — the project row lock that every
- *       project-wide graph writer takes first (order: project → route/node →
- *       graph write), so an auto-execute can never interleave with a
- *       concurrent Undo, continuation, or archive into a half-applied tip.</li>
- *   <li>The exact route is re-read and verified to belong to the project and
- *       to be {@code OPEN}.</li>
- *   <li>The expected anchor (the tip the model decided against) is re-checked
- *       against the CURRENT route tip: a null anchor requires a still-empty
- *       route, a non-null anchor must still be the tip. A moved-on route fails
- *       closed with {@link StaleProposalException} instead of silently
- *       rebasing onto newer state — a stale auto-execute must never overwrite
- *       a newer tip.</li>
- *   <li>The normal lineage/question invariants are validated.</li>
- *   <li>The node is created and the route tip/root advanced in the SAME
- *       transaction.</li>
- * </ol>
+ * 模型/策略链路(Decision 或 Answer 循环)运行在事务和锁之外。只有当
+ * 模型与策略全部完成后,变更才进入本 bean,并在一个事务内对照当前图状态
+ * 重新校验决策:
  *
- * <p>Normal auto-execute enters here through {@link ProposalActionExecutor};
- * accepted proposals join the same bean through the acceptance transaction
- * ({@code REQUIRED} propagation). Read-only actuator families
- * (RESPOND_TO_USER / WAIT / capability invocations) never enter this bean and
- * stay outside the graph lock.
+ * 1. {@code projectRepository.lockById} —— 所有项目级图写入方都首先
+ *       获取的项目行锁(顺序:project → route/node → graph write),
+ *       因此自动执行绝不可能与并发的 Undo、续跑或归档交错,
+ *       产生"半应用的 tip"。
+ * 1. 重新读取并校验路由属于该项目且处于 {@code OPEN} 状态。
+ * 2. 重新核对期望锚点(模型做出决策时的 tip)与当前路由 tip:锚点为
+ *       null 要求路由仍为空;锚点非 null 则必须仍是 tip。路由已经前进时
+ *       fail-closed 抛 {@link StaleProposalException},绝不静默 rebase 到
+ *       更新的状态——过期的自动执行绝不能覆盖更新的 tip。
+ * 1. 校验常规的血缘/提问不变量。
+ * 2. 在同一个事务内创建节点并推进路由 tip/root。
+ *
+ * 协作:常规自动执行经由 {@link ProposalActionExecutor} 进入;已接受的
+ * 提案通过接受事务({@code REQUIRED} 传播)进入同一 bean。只读的执行族
+ * (RESPOND_TO_USER / WAIT / 能力调用)从不进入本 bean,保持在图锁之外。
  */
 @Service
 public class AgentGraphMutationService {
 
-    /** The node creation to apply inside the transactional boundary. */
+    /** 事务边界内要执行的节点创建。 */
     public sealed interface NodeCreation permits InteractionNode, WorkspaceNode {
     }
 
-    /** An INTERACTION question node (REQUEST_USER_INPUT / CREATE_NODE question). */
+    /** 一个 INTERACTION 提问节点(REQUEST_USER_INPUT / CREATE_NODE 提问)。 */
     public record InteractionNode(String questionText,
                                   String purpose,
                                   List<NodeOption> options,
@@ -67,7 +60,7 @@ public class AgentGraphMutationService {
                                   boolean allowMultiSelect) implements NodeCreation {
     }
 
-    /** A generic workspace node (CREATE_NODE with a non-INTERACTION kind). */
+    /** 一个通用 workspace 节点(CREATE_NODE,非 INTERACTION 类型)。 */
     public record WorkspaceNode(NodeKind kind,
                                 String subtype,
                                 Map<String, Object> content) implements NodeCreation {
@@ -92,16 +85,14 @@ public class AgentGraphMutationService {
     }
 
     /**
-     * Applies one agent node creation atomically. {@code expectedTipNodeId} is
-     * the anchor the model decided against (the route tip at decision time, or
-     * null for an empty-route root). Node insert and route tip/root advancement
-     * commit together.
+     * 原子地应用一次 agent 节点创建。{@code expectedTipNodeId} 是模型做出
+     * 决策时的锚点(决策时刻的路由 tip;空路由的根节点则为 null)。
+     * 节点插入与路由 tip/root 推进一起提交。
      *
-     * <p>{@code causedBy} records the proposal/run provenance on the appended
-     * {@link com.specagent.workspace.graph.GraphOperation} — agent creations are
-     * user-visible durable mutations and MUST enter the same undo log as user
-     * commands (actor AGENT), or the undo stack drifts away from the real
-     * graph.
+     * {@code causedBy} 会在追加的 {@link com.specagent.workspace.graph.GraphOperation}
+     * 上记录提案/run 来源——agent 创建是用户可见的持久化变更,
+     * 必须与用户命令进入同一个 undo 日志(actor 为 AGENT),
+     * 否则 undo 栈会与真实图状态脱节。
      */
     @Transactional
     public Node executeNodeCreation(UUID projectId,
@@ -111,22 +102,22 @@ public class AgentGraphMutationService {
         return executeNodeCreation(projectId, routeId, expectedTipNodeId, creation, null);
     }
 
-    /** Same as above with operation-log provenance (e.g. {@code proposal:<id>}). */
+    /** 与上面的重载相同,但携带操作日志来源(例如 {@code proposal:<id>})。 */
     @Transactional
     public Node executeNodeCreation(UUID projectId,
                                     UUID routeId,
                                     UUID expectedTipNodeId,
                                     NodeCreation creation,
                                     String causedBy) {
-        // Lock order: project -> route/node -> graph write.
+        // 加锁顺序:project -> route/node -> graph write。
         projectRepository.lockById(projectId);
         Route route = requireOpenRouteInProject(projectId, routeId);
         verifyAnchorIsCurrentTip(route, expectedTipNodeId);
 
         Node node;
         if (expectedTipNodeId == null) {
-            // Empty-route root: the anchor was null and the route still has no
-            // tip, so the new node becomes both root and tip.
+            // 空路由的根节点:锚点为 null 且路由仍无 tip,
+            // 因此新节点同时成为 root 和 tip。
             node = switch (creation) {
                 case InteractionNode n -> nodeService.createRootNode(
                         projectId, routeId, n.questionText(), n.purpose(),
@@ -160,10 +151,9 @@ public class AgentGraphMutationService {
     }
 
     /**
-     * The anchor the model decided against must still describe the CURRENT
-     * route: an empty route requires a null anchor, an append requires the
-     * anchor to be the live tip. Anything else means the graph moved on under
-     * the queued decision — fail closed, never rebase onto newer state.
+     * 模型决策时的锚点必须仍然描述当前的路由:空路由要求锚点为 null,
+     * 追加节点要求锚点就是活 tip。其他任何情况都意味着在排队决策期间
+     * 图已经前进——fail-closed,绝不 rebase 到更新的状态。
      */
     private void verifyAnchorIsCurrentTip(Route route, UUID expectedTipNodeId) {
         if (expectedTipNodeId == null) {

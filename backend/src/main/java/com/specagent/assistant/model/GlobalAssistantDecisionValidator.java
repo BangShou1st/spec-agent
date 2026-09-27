@@ -6,16 +6,19 @@ import java.util.UUID;
 import org.springframework.stereotype.Component;
 
 /**
- * Fail-closed discriminated decision validation V2. Model output is never
- * authorization. Schema is the generation contract, parser is the syntactic
- * application contract, this validator is the executable safety contract.
+ * 文件名:GlobalAssistantDecisionValidator.java
+ *
+ * 用途:对解析后的 {@link GlobalAssistantDecision} 做 fail-closed 的判别式校验(V2)。
+ * 模型的输出永远不等于授权:schema 是生成契约,parser 是句法上的应用契约,
+ * 本校验器则是可执行的安全契约——逐分支检查"该有的必须有、不该有的不能有",
+ * 并核对工具是否在目录内、参数形状是否合法。
  */
 @Component
 public class GlobalAssistantDecisionValidator {
     /**
-     * User-visible prose must contain only complete Unicode scalar values.
-     * Jackson accepts lone surrogates, so this explicit fail-closed check
-     * routes them into the bounded repair path instead of the UI.
+     * 用户可见正文只能包含完整的 Unicode 标量值。
+     * Jackson 会接受孤立的代理项,所以这里显式做 fail-closed 检查,
+     * 把这类输出送进有界的修复路径,而不是直接漏到 UI。
      */
     static void requireScalarValidText(String assistantText) {
         if (assistantText == null) return;
@@ -172,11 +175,10 @@ public class GlobalAssistantDecisionValidator {
         }
     }
     /**
-     * Bounds-only shape validation for skill.import arguments: url is a
-     * required bounded string, ref/skill are optional bounded strings. The
-     * value rules (HTTPS, private-host rejection, ref syntax) stay in the
-     * capability/adapter, which fails as a tool execution result rather than
-     * as a contract rejection — the model can correct those and retry.
+     * 只做边界形状校验的 skill.import 参数检查:url 是必填且有界字符串,
+     * ref/skill 是可选且有界字符串。值级规则(必须 HTTPS、拒绝内网地址、
+     * ref 语法)留在能力/适配器层,失败时作为工具执行结果返回而不是契约拒绝——
+     * 这样模型还能纠正后重试。
      */
     private void validateSkillImportArguments(Map<String, Object> args) {
         Object url = args.get("url");
@@ -192,10 +194,9 @@ public class GlobalAssistantDecisionValidator {
         requireOptionalBoundedString(args, "skill", 512, "skill.import skill");
     }
     /**
-     * Bounds-only shape validation for skill.import.discover arguments: url is
-     * a required bounded string, ref is an optional bounded string. Same
-     * policy as skill.import: value rules (HTTPS, private-host rejection)
-     * stay in the capability and fail as tool execution results.
+     * 只做边界形状校验的 skill.import.discover 参数检查:url 是必填且有界
+     * 字符串,ref 是可选且有界字符串。策略与 skill.import 相同:值级规则
+     * (必须 HTTPS、拒绝内网地址)留在能力层,失败时作为工具执行结果返回。
      */
     private void validateSkillDiscoverArguments(Map<String, Object> args) {
         Object url = args.get("url");

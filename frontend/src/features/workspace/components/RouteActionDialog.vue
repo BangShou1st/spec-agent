@@ -1,3 +1,7 @@
+<!--
+  文件名:RouteActionDialog.vue
+  用途:画布上"开新路线(fork)"与"重新回答(reanswer)"共用的路线操作对话框,负责来源路线校验、归档恢复入口与路线命名输入。
+-->
 <script setup lang="ts">
 import { computed, ref, toRef } from 'vue'
 import { useDialogReset } from '@/shared/ui/useDialogForm'

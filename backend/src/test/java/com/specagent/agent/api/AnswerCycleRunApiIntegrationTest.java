@@ -33,11 +33,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Answer production cutover integration tests: the real
- * {@code POST /api/v1/projects/{id}/agent-runs} endpoint returns 202 + runId,
- * the background worker executes the ANSWER_CYCLE, and the run read view
- * exposes real phases plus produced ids. Covers success, resume (exactly one
- * Answer / one patch), stale target rejection and duplicate-answer safety.
+ * 文件名:AnswerCycleRunApiIntegrationTest.java
+ *
+ * 测试目标:答案生产(answer)切换后的 API 集成测试——真实的
+ * {@code POST /api/v1/projects/{id}/agent-runs} 端点返回 202 + runId,后台 worker 执行
+ * ANSWER_CYCLE,run 读视图暴露真实阶段与产出 id。覆盖成功路径、恢复(恰好一条 Answer /
+ * 一个补丁)、过期目标拒绝、重复答案安全、无效选项拒绝与跨项目隔离。
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -89,20 +90,19 @@ class AnswerCycleRunApiIntegrationTest {
         String body = created.getResponse().getContentAsString();
         String runId = extractString(body, "runId");
 
-        // The HTTP command returned before any model work happened: the run is
-        // still CREATED/queued at this point.
+        // HTTP 命令在任何模型工作发生之前就返回了:此刻 run 仍处于 CREATED/排队状态。
         assertThat(agentRunService.getRun(UUID.fromString(runId)).orElseThrow().status())
                 .isEqualTo(AgentRunStatus.CREATED);
 
-        // Worker claims and executes the queued run.
+        // worker 认领并执行排队的 run。
         var claimed = runService.claimNextAnswerCycle().orElseThrow();
         worker.executeRun(claimed);
 
-        // Run completed through the full 2-call cycle.
+        // run 走完完整的 2 次调用循环后完成。
         assertThat(agentRunService.getRun(UUID.fromString(runId)).orElseThrow().status())
                 .isEqualTo(AgentRunStatus.COMPLETED);
 
-        // Exactly one immutable Answer was persisted.
+        // 恰好持久化了一条不可变的 Answer。
         List<Answer> answers = answerRepository.findByRouteAndNodeIds(
                 project.activeRouteId(), List.of(tipNodeId));
         assertThat(answers).hasSize(1);
@@ -149,7 +149,7 @@ class AnswerCycleRunApiIntegrationTest {
                 "Question?", null, List.of(), true);
         UUID tipNodeId = routeService.getRoute(project.activeRouteId()).orElseThrow().tipNodeId();
 
-        // First submission completes and persists the Answer.
+        // 第一次提交完成并持久化 Answer。
         MvcResult first = mockMvc.perform(
                         post("/api/v1/projects/{projectId}/agent-runs", project.id())
                                 .contentType(MediaType.APPLICATION_JSON)
@@ -166,9 +166,8 @@ class AnswerCycleRunApiIntegrationTest {
                 .orElseThrow().producedAnswerId();
         assertThat(persistedAnswerId).isNotNull();
 
-        // Second submission of the same answered node: the original cycle
-        // already completed (the tip moved on), so the backend rejects the
-        // duplicate synchronously — no second Answer can ever be created.
+        // 对同一个已回答节点再次提交:原循环已完成(tip 已推进),后端同步拒绝
+        // 重复提交——绝不允许产生第二条 Answer。
         mockMvc.perform(post("/api/v1/projects/{projectId}/agent-runs", project.id())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"operation\": \"ANSWER_TIP\", \"nodeId\": \"" + tipNodeId
@@ -189,14 +188,13 @@ class AnswerCycleRunApiIntegrationTest {
                 "Question?", null, List.of(), true);
         UUID tipNodeId = routeService.getRoute(project.activeRouteId()).orElseThrow().tipNodeId();
 
-        // Simulate a cycle that persisted the Answer but failed before the
-        // tip advanced: finalize an answer directly (the repair gate state).
+        // 模拟一个持久化了 Answer 但在 tip 推进前失败的循环:
+        // 直接定稿一条答案(修复门禁的状态)。
         var answer = answerService.finalizeAnswer(
                 project.id(), project.activeRouteId(), tipNodeId, null,
                 "saved but unfinished", "user");
 
-        // Re-submitting the SAME answer routes to RESUME_ANSWER so the cycle
-        // resumes from its own checkpoint instead of failing.
+        // 重新提交相同答案会路由到 RESUME_ANSWER,让循环从自己的检查点恢复而不是失败。
         MvcResult second = mockMvc.perform(
                         post("/api/v1/projects/{projectId}/agent-runs", project.id())
                                 .contentType(MediaType.APPLICATION_JSON)
@@ -225,8 +223,7 @@ class AnswerCycleRunApiIntegrationTest {
                 project.id(), project.activeRouteId(), tipNodeId, null,
                 "saved but unfinished", "user");
 
-        // Newly supplied content would be discarded by a resume (the cycle
-        // replays the persisted answer), so it must fail closed instead.
+        // 新提交的内容会被恢复流程丢弃(循环重放持久化的答案),所以必须 fail-closed 拒绝。
         mockMvc.perform(post("/api/v1/projects/{projectId}/agent-runs", project.id())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"operation\": \"ANSWER_TIP\", \"nodeId\": \"" + tipNodeId
@@ -251,14 +248,14 @@ class AnswerCycleRunApiIntegrationTest {
         Route route = routeService.getRoute(project.activeRouteId()).orElseThrow();
         UUID staleTipId = route.tipNodeId();
 
-        // Enqueue against the current tip...
+        // 先对当前 tip 入队……
         mockMvc.perform(post("/api/v1/projects/{projectId}/agent-runs", project.id())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"operation\": \"ANSWER_TIP\", \"nodeId\": \"" + staleTipId
                                 + "\", \"freeText\": \"late answer\"}"))
                 .andExpect(status().isAccepted());
 
-        // ...then advance the graph before the worker claims the run.
+        // ……然后在 worker 认领 run 之前推进图。
         // 派生知识不再顶掉问题 tip,用真正的新问题把 tip 推走。
         nodeService.createChildNode(project.id(), project.activeRouteId(), staleTipId,
                 "A newer question", null, List.of(), true);
@@ -268,10 +265,10 @@ class AnswerCycleRunApiIntegrationTest {
             worker.executeRun(claimed);
             org.junit.jupiter.api.Assertions.fail("stale answer target must fail the run");
         } catch (RuntimeException expected) {
-            // The worker rethrows after marking the run FAILED.
+            // worker 在把 run 标记为 FAILED 后重新抛出。
         }
 
-        // No answer landed on the stale node.
+        // 过期节点上没有落下任何答案。
         List<Answer> answers = answerRepository.findByRouteAndNodeIds(
                 project.activeRouteId(), List.of(staleTipId));
         assertThat(answers).isEmpty();
@@ -297,7 +294,6 @@ class AnswerCycleRunApiIntegrationTest {
         } catch (RuntimeException expected) {
             // fail-closed
         }
-
         assertThat(answerRepository.findByRouteAndNodeIds(
                 project.activeRouteId(), List.of(tipNodeId))).isEmpty();
     }
@@ -311,8 +307,7 @@ class AnswerCycleRunApiIntegrationTest {
                         post("/api/v1/projects/{projectId}/agent-runs", projectA.id())
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"operation\": \"ANSWER_TIP\", \"freeText\": \"x\"}"))
-                // A has no tip node yet; the enqueue itself still succeeds
-                // because validation happens at execution time.
+                // A 还没有 tip 节点;入队本身仍然成功,因为校验发生在执行时。
                 .andExpect(status().isAccepted())
                 .andReturn();
         String runId = extractString(

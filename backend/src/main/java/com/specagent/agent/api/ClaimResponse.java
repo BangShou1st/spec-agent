@@ -5,11 +5,14 @@ import com.specagent.workspace.patch.Claim;
 import java.util.UUID;
 
 /**
- * Read-only claim inside an answer patch response.
+ * 文件名:ClaimResponse.java
  *
- * <p>Exposes content and runtime-grounded provenance. The runtime-owned claim
- * id is deliberately omitted to keep the API surface minimal; the claim is
- * never treated as a client-writable object.
+ * 用途:Answer patch 响应中的只读 claim 视图。
+ *
+ * 暴露内容与 Runtime grounding 的来源信息。刻意省略 Runtime 持有的
+ * claim id 以保持 API 面最小;claim 绝不会被当作客户端可写对象。
+ *
+ * 协作:由 from(Claim) 从领域对象构造,随 patch 响应返回给前端。
  */
 public record ClaimResponse(
         String kind,

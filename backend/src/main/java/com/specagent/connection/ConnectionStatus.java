@@ -1,9 +1,12 @@
 package com.specagent.connection;
 
 /**
- * Connection lifecycle status. Only TESTED/CONNECTED states may become
- * agent-visible; DISABLED/FAILED connections are invisible to planner
- * candidates by construction.
+ * 文件名:ConnectionStatus.java
+ *
+ * 用途:Connection 生命周期的状态枚举,描述连接从创建到可用的演进。
+ *
+ * 只有 TESTED/CONNECTED 状态才可能对 agent 可见;DISABLED/FAILED 状态的
+ * 连接从构造上就不会进入 planner 候选。
  */
 public enum ConnectionStatus {
 

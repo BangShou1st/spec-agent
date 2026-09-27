@@ -1,3 +1,5 @@
+// 文件名:readerZoom.spec.ts
+// 用途:readerZoom 几何规则的单元测试:验证阅读器图片/画布的尺寸计算(适应窗口为基准、缩放倍数真实生效)。
 import { describe, expect, it } from 'vitest'
 import { readerCanvasSize, readerImageSize } from '@/shared/document/readerZoom'
 

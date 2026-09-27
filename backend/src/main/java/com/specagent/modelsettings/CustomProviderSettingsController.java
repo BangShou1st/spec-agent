@@ -10,6 +10,13 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+/**
+ * 文件名:CustomProviderSettingsController.java
+ *
+ * 用途:自定义模型提供商设置的 REST 接口(/api/v1/settings/custom),
+ * 提供状态查询、模型发现、保存配置和兼容性验证四个端点。
+ * 入参在进入 service 前做基础校验(API 格式、Base URL、模型、显示名长度)。
+ */
 @RestController
 @RequestMapping("/api/v1/settings/custom")
 public class CustomProviderSettingsController {
@@ -79,9 +86,9 @@ public class CustomProviderSettingsController {
         if (model == null || model.isBlank()) {
             throw new IllegalArgumentException("Model is required");
         }
-        // apiKey null retains the stored key; empty clears; non-empty sets new.
-        // modelSource MANUAL persists manual-model mode across reloads.
-        // displayName is the user-facing pill label; null retains the stored one.
+        // apiKey 为 null 表示沿用已存密钥;空串表示清空;非空表示设置新密钥。
+        // modelSource 为 MANUAL 时,手动填模型的状态在重载后仍然保留。
+        // displayName 是界面上展示的标签;null 表示沿用已存的名称。
         if (request.displayName() != null && request.displayName().trim().length() > 64) {
             throw new IllegalArgumentException("Display name must be at most 64 characters");
         }

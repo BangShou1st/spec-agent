@@ -1,11 +1,11 @@
 package com.specagent.workspace.patch;
 
 /**
- * Generic kind of a requirement claim.
+ * 文件名:ClaimKind.java
  *
- * <p>These kinds are domain-neutral requirement mechanics. They must never encode
- * concrete business domains (software features, marketing channels, ecommerce
- * products, course assignments, etc.).
+ * 用途:需求 claim 的通用类型。这些类型是领域中立的需求机制,
+ * 绝不允许编码具体的业务领域(软件功能、营销渠道、电商商品、
+ * 课程作业等)。
  */
 public enum ClaimKind {
     GOAL,

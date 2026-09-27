@@ -7,7 +7,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/** Runtime-derived action eligibility mask for one event and frozen snapshot. */
+/**
+ * 文件名:ActionEligibility.java
+ *
+ * 用途:Runtime 针对"单个决策事件 + 冻结快照"计算出的动作可用性掩码,
+ * 告诉 Brain 哪些动作家族(ActionFamily)在当前上下文中允许被提出。
+ *
+ * 约束:紧凑构造器执行 fail-closed 校验——版本号必须等于 {@link #VERSION},
+ * eligibleFamilies 不得重复且必须是合法家族码,constraints 必须覆盖全部家族
+ * 并与 eligibleFamilies 一致,basisHash 必须是 64 位 SHA-256 十六进制摘要。
+ */
 public record ActionEligibility(
         String version,
         List<String> eligibleFamilies,

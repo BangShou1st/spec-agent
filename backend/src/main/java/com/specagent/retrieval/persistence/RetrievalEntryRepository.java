@@ -20,6 +20,13 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.Optional;
 
+/**
+ * 文件名:RetrievalEntryRepository.java
+ *
+ * 用途:retrieval_entries 表的持久化仓库,是检索索引的存取核心。
+ * 提供条目的 upsert/删除/收回、路线 provenance 更新,以及词法
+ * (tsquery)、trigram、向量三条检索通道的查询能力。
+ */
 @Repository
 public class RetrievalEntryRepository {
 
@@ -127,9 +134,8 @@ public class RetrievalEntryRepository {
     }
 
     /**
-     * Updates only derived route provenance. Content and embedding columns are
-     * deliberately untouched so a metadata-only route membership change does
-     * not discard a valid READY embedding.
+     * 只更新派生的路线 provenance。内容与向量相关列刻意不动,
+     * 保证仅元数据的路线归属变化不会丢弃已生成的有效 READY 向量。
      */
     public void updateRouteProvenance(UUID projectId,
                                       String sourceRef,
@@ -140,7 +146,7 @@ public class RetrievalEntryRepository {
                 "source_ref = :sourceRef", Map.of("sourceRef", sourceRef));
     }
 
-    /** Updates route provenance for all chunks belonging to one resource. */
+    /** 更新一个资源的全部分块的路线 provenance。 */
     public void updateRouteProvenancePrefix(UUID projectId,
                                             String sourceRefPrefix,
                                             UUID routeId,
@@ -173,7 +179,7 @@ public class RetrievalEntryRepository {
                 """.formatted(predicate), params);
     }
 
-    /** Retraction keeps the derived audit row but removes it from retrieval. */
+    /** 收回时保留派生的审计行,但把它从检索中剔除。 */
     public void retractSource(UUID projectId, String sourceRef) {
         jdbcTemplate.update("""
                 UPDATE retrieval_entries
@@ -213,7 +219,7 @@ public class RetrievalEntryRepository {
                 "limit", Math.max(1, Math.min(limit, 512))), rowMapper);
     }
 
-    /** Project ids with pending derived work for the background enrichment worker. */
+    /** 供后台向量增强 worker 使用:列出还有 PENDING 派生工作的项目 id。 */
     public List<UUID> findPendingProjectIds(int limit) {
         return jdbcTemplate.queryForList("""
                 SELECT DISTINCT project_id FROM retrieval_entries

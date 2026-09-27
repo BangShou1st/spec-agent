@@ -1,14 +1,17 @@
+// 文件名:providerPresentation.ts
+// 用途:Provider 展示层的共享映射:自定义 API 格式选项与标签、端点预览、
+//       Provider 显示名、卡片状态的统一映射与状态文案。
+
 import type { CustomApiFormat, ModelProvider } from '@/features/model-settings/api/modelProviders'
 
-/** Single place for Custom API format presentation. No apiFormat branching elsewhere. */
+/** 自定义 API 格式展示的唯一出处;其他地方不允许按 apiFormat 分支。 */
 export const CUSTOM_FORMAT_OPTIONS: Array<{ value: CustomApiFormat; label: string }> = [
   { value: 'CHAT_COMPLETIONS', label: 'Chat Completions (/chat/completions)' },
   { value: 'RESPONSES', label: 'Responses (/responses)' },
 ]
 
-// V1 product surface hides Anthropic Messages: it cannot serve the GA
-// production JSON_OBJECT contract and is not activatable. The enum, adapter
-// groundwork and endpoint suffix below stay for a future V1.1.
+// V1 产品界面隐藏 Anthropic Messages:它无法满足 GA 生产环境的 JSON_OBJECT
+// 契约,也不可激活。下面的枚举、适配器铺垫与端点后缀为将来的 V1.1 保留。
 export function formatLabel(format: CustomApiFormat): string {
   const found = CUSTOM_FORMAT_OPTIONS.find((o) => o.value === format)
   if (found) {
@@ -26,7 +29,7 @@ const SUFFIX: Record<CustomApiFormat, string> = {
   ANTHROPIC_MESSAGES: '/messages',
 }
 
-/** Deterministic preview mirroring backend canonical logic (presentation only). */
+/** 确定性的端点预览,镜像后端规范化逻辑(仅展示层)。 */
 export function endpointPreview(baseUrl: string, format: CustomApiFormat): string | null {
   const raw = (baseUrl ?? '').trim()
   if (!raw) {
@@ -62,8 +65,8 @@ export type ProviderState =
   | 'active'
 
 /**
- * Single state mapping for every provider card. `busy` lets a card show the
- * in-flight state without inventing a fourth mapping.
+ * 所有 Provider 卡片共用的单一状态映射。
+ * `busy` 让卡片展示进行中状态,而不必新增第四种映射分支。
  */
 export function providerCardState(
   configured: boolean,

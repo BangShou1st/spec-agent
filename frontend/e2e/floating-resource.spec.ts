@@ -1,6 +1,5 @@
-import { test, expect, type Page } from '@playwright/test'
-import { createProject, draftFirstQuestion, fitGraph, openToolbarMore } from './helpers'
 
+import { test, expect, createProject, fitGraph, openToolbarMore, draftFirstQuestion, type Page } from './helpers'
 /**
  * 资源独立性：资源先作为**浮动节点**落到画布 —— 不要求 Active 路线、不挂 tip、
  * 不推进任何血缘；用户之后才用鼠标把它连到某条路线的末端节点上接入。

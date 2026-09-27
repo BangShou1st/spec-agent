@@ -1,7 +1,9 @@
 package com.specagent.agent.decision;
 
 /**
- * Closed set of model tasks the agent loop may dispatch.
+ * 文件名:AgentTaskType.java
+ *
+ * 用途:Agent 循环可以派发给模型的任务类型的封闭集合(枚举)。
  */
 public enum AgentTaskType {
     GAP_ANALYSIS,

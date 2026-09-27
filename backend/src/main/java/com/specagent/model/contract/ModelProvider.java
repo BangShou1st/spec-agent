@@ -1,21 +1,19 @@
 package com.specagent.model.contract;
 
 /**
- * Provider identity, now acting as the <em>preset kind</em> of a stored row.
+ * 文件名:ModelProvider.java
  *
- * <p>A row in {@code model_providers} carries a preset plus its own credential
- * and model selection, so there can be any number of providers. The preset
- * only decides the parts the user must not be able to get wrong:
+ * 用途:模型提供商标识,现在同时充当存储行的"预设类型"。{@code model_providers}
+ * 表中的每一行都携带一个预设及自己的凭据与模型选择,因此可以有任意多个提供商。
+ * 预设只决定那些用户不应出错的部分:
  *
- * <ul>
- *   <li>the fixed base URL and request shape — OpenCode Zen is deliberately
- *       NOT plain OpenAI-compatible, so its transport stays special-cased;</li>
- *   <li>which catalog a selected model is validated against;</li>
- *   <li>which edit affordances the settings card may show.</li>
- * </ul>
+ * - 固定的 base URL 和请求形态——OpenCode Zen 特意不兼容标准 OpenAI 协议,
+ *       所以其传输层保持特殊处理;
+ * - 所选模型针对哪个目录做校验;
+ * - 设置卡片允许展示哪些可编辑项。
  *
- * <p>Custom API format is still NOT a provider identity; it is carried by
- * {@link CustomApiFormat} and routed inside the Custom boundary.
+ * 自定义 API 格式仍然不是提供商身份;它由 {@link CustomApiFormat} 承载,
+ * 在 Custom 边界内部路由。
  */
 public enum ModelProvider {
 
@@ -48,39 +46,39 @@ public enum ModelProvider {
         this.builtInCatalog = builtInCatalog;
     }
 
-    /** Label used when the user has not named the provider yet. */
+    /** 用户尚未给提供商命名时使用的默认标签。 */
     public String defaultDisplayName() {
         return defaultDisplayName;
     }
 
-    /** Base URL the row starts from; user-editable only when {@link #editableBaseUrl()}. */
+    /** 该行配置的初始 base URL;仅当 {@link #editableBaseUrl()} 为 true 时用户可编辑。 */
     public String defaultBaseUrl() {
         return defaultBaseUrl;
     }
 
-    /** Whether the settings card may expose a 显示名称 field. */
+    /** 设置卡片是否允许展示"显示名称"字段。 */
     public boolean userNamed() {
         return userNamed;
     }
 
-    /** Whether the settings card may expose an API Format selector. */
+    /** 设置卡片是否允许展示 API Format 选择器。 */
     public boolean selectableFormat() {
         return selectableFormat;
     }
 
-    /** Whether the settings card may expose a Base URL field. */
+    /** 设置卡片是否允许展示 Base URL 字段。 */
     public boolean editableBaseUrl() {
         return editableBaseUrl;
     }
 
-    /** OpenCode Zen / OpenRouter cannot be saved without a credential. */
+    /** OpenCode Zen / OpenRouter 必须提供凭据才能保存。 */
     public boolean requiresApiKey() {
         return requiresApiKey;
     }
 
     /**
-     * True when the provider publishes its own model catalog, so the card
-     * offers 获取模型/刷新模型 instead of a manual model id.
+     * 提供商是否自带模型目录:为 true 时设置卡片提供"获取模型/刷新模型"按钮,
+     * 而不是手动填写模型 id。
      */
     public boolean builtInCatalog() {
         return builtInCatalog;

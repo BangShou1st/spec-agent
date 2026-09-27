@@ -32,19 +32,19 @@ import java.util.Objects;
 import java.util.UUID;
 
 /**
- * Pure-continuation reasoning: exactly 1 DECISION call, no STATE_UPDATE.
+ * 文件名:DecisionCycleService.java
  *
- * <p>Used for question drafting ({@code DRAFT_QUESTION}): there is no new
- * Answer to interpret, so the cycle goes straight from the frozen context
- * snapshot to one DECISION, then through the same fail-closed chain as the
- * answer cycle — validator → policy → auto-execute / persist proposal +
- * AWAITING_APPROVAL / deny. A {@code REQUEST_USER_INPUT} proposal executes as
- * an INTERACTION node appended at the route tip (or the route's root node on
- * an empty route); the runtime owns every ID and the tip advancement.
+ * 用途:纯续跑推理周期:只做 1 次 DECISION 调用,不做 STATE_UPDATE。
+ * 在"命令 → 持久化 → Brain → 校验 → checkpoint"链路中,它接管与 answer cycle
+ * 无关的续跑分支(目前用于问题起草 {@code DRAFT_QUESTION}):没有新 Answer
+ * 需要解释,周期从冻结上下文快照直接进入一次 DECISION,随后走与 answer cycle
+ * 相同的 fail-closed 链——validator → policy → 自动执行 / 持久化 proposal +
+ * AWAITING_APPROVAL / 拒绝。{@code REQUEST_USER_INPUT} proposal 会作为
+ * INTERACTION 节点追加到 route tip(空 route 时追加到根节点)执行;
+ * 所有 ID 与 tip 推进都由 runtime 掌控。
  *
- * <p>Fail-closed guards mirror the answer cycle: the run's recorded target
- * (tip at enqueue time) must still be the active route tip at execution, and
- * the active route must not have changed underneath the queued run.
+ * fail-closed 守卫与 answer cycle 一致:run 记录的目标(入队时的 tip)
+ * 在执行时必须仍是活跃 route 的 tip,且排队期间活跃 route 不得被换掉。
  */
 @Service
 public class DecisionCycleService {
@@ -88,30 +88,28 @@ public class DecisionCycleService {
     }
 
     /**
-     * Executes one question-draft run: single DECISION, then the shared
-     * policy/execution chain.
+     * 执行一次问题起草 run:单次 DECISION,然后走共享的 policy/执行链。
      */
     public DecisionCycleResult draftQuestion(AgentRun run) {
         return draftQuestion(run, null);
     }
 
     /**
-     * Question draft with an optional EXPLICIT target route.
+     * 带可选 EXPLICIT 目标 route 的问题起草。
      *
-     * <p>With {@code explicitRouteId != null} the run drafts on its own route
-     * (context built per-route, Active-equality skipped in the guard), which is
-     * what lets route B keep generating while route A is the Active route.
-     * {@code null} keeps the original Active-route behaviour exactly.
+     * 当 {@code explicitRouteId != null} 时,run 在自己的 route 上起草
+     * (上下文按 route 构建,guard 中跳过 Active 相等校验),这正是 route B
+     * 能在 route A 处于 Active 状态时继续生成的原因。传 {@code null} 则
+     * 完全保持原先的 Active-route 行为。
      */
     public DecisionCycleResult draftQuestion(AgentRun run, UUID explicitRouteId) {
         Route route = loadDraftTargetRoute(run, explicitRouteId);
         boolean explicitRoute = explicitRouteId != null;
         String trace = "created";
         try {
-            // DRAFT_QUESTION advances the route tip. Re-check immediately
-            // before building/calling the model so a run queued while the
-            // answer was still complete cannot cross a newly visible missing
-            // STATE_UPDATE checkpoint.
+            // DRAFT_QUESTION 会推进 route tip。在构建/调用模型前立即复查,
+            // 避免在回答"看起来已完整"时入队的 run 跨过新近暴露出的
+            // 缺失 STATE_UPDATE checkpoint。
             answerProcessingGate.firstUnprocessedAnswer(route.id(), route.tipNodeId())
                     .ifPresent(pending -> {
                         throw new IncompleteAnswerCycleException(
@@ -135,8 +133,8 @@ public class DecisionCycleService {
                 throw new ModelContractException("Context guard rejected agent run");
             }
 
-            // Pure continuation: one DECISION call, never a mechanical
-            // STATE_UPDATE (there is no Answer to interpret).
+            // 纯续跑:一次 DECISION 调用,绝不做机械的 STATE_UPDATE
+            // (没有需要解释的 Answer)。
             AgentRequestEnvelope envelope = actionEligibilityGate.prepareDecisionRequest(
                     snapshotBuilder.buildEnvelope(
                             run.id(), snapshot,
@@ -160,15 +158,13 @@ public class DecisionCycleService {
     }
 
     /**
-     * Loads and validates the run's draft target: the tip recorded at enqueue
-     * time must still be the route's tip. Both may be null together (root
-     * draft on an empty route).
+     * 加载并校验 run 的起草目标:入队时记录的 tip 必须仍是该 route 的 tip。
+     * 两者可以同时为 null(空 route 上的根节点起草)。
      *
-     * <p>In Active mode (the default) the run's route must ALSO still be the
-     * project Active route. In explicit mode that equality is deliberately not
-     * required — the run owns its route — while ownership and OPEN-ness are
-     * still enforced by {@code RunService.resolveTargetRoute} at enqueue time
-     * and re-validated here through the route lookup.
+     * Active 模式(默认)下,run 所在的 route 还必须是项目的 Active route。
+     * explicit 模式刻意不要求这一相等性——run 拥有自己的 route——但归属关系
+     * 与 OPEN 状态仍由入队时的 {@code RunService.resolveTargetRoute} 强制,
+     * 并在此处通过 route 查询重新校验。
      */
     private Route loadDraftTargetRoute(AgentRun run, UUID explicitRouteId) {
         if (explicitRouteId == null) {
@@ -200,9 +196,7 @@ public class DecisionCycleService {
         if (latest != null && latest.status() != AgentRunStatus.FAILED
                 && latest.status() != AgentRunStatus.COMPLETED) {
             String reason = RunFailureReasons.reasonCode(ex);
-            agentRunFailureService.fail(runId, appendTrace(trace, "failed:" + reason));
-            eventService.append(runId, AgentRunPhase.FAILED, "RUN_FAILED",
-                    RunFailureReasons.payload(ex));
+            agentRunFailureService.fail(runId, appendTrace(trace, "failed:" + reason), ex);
         }
     }
 
@@ -210,7 +204,7 @@ public class DecisionCycleService {
         return trace + ">" + step;
     }
 
-    /** Post-run view over one question-draft cycle. */
+    /** 一次问题起草周期结束后的结果视图。 */
     public record DecisionCycleResult(UUID runId, UUID producedNodeId,
                                       UUID proposalId, String outcome) {
     }

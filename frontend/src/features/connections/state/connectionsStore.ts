@@ -1,3 +1,8 @@
+// 文件名:connectionsStore.ts
+// 用途:连接(Connection)的 Pinia 状态仓:负责连接列表/详情与 tools/resources/prompts
+//       能力数据的加载缓存,以及创建、编辑、测试、连接、刷新、启用/禁用、删除等生命周期操作;
+//       只管理连接本身,不涉及工作台或 Skills,语义动作只由用户显式触发。
+
 import { defineStore } from 'pinia'
 import { toDisplayError } from '@/shared/http/displayError'
 import { connectConnection, createConnection, deleteConnection, disableConnection, enableConnection, getConnection, listConnectionPrompts, listConnectionResources, listConnectionTools, listConnections, readConnectionResource, refreshConnection, testConnection, updateConnection } from '@/features/connections/api/connections'
@@ -11,8 +16,8 @@ export interface ConnectionsStoreError {
 const displayError: (err: unknown) => ConnectionsStoreError = toDisplayError
 
 /**
- * Saved Connection and MCP primitive reads. Never touches workspace or skills.
- * No semantic routing: explicit user lifecycle actions only.
+ * 已保存连接与 MCP 原语(工具/资源/prompt)的读取。
+ * 不触碰工作台或 Skills 数据;不做语义路由,只有用户显式触发的生命周期操作。
  */
 export const useConnectionsStore = defineStore('connections', {
   state: () => ({

@@ -13,11 +13,13 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Diagnostic-only fingerprint of decision-relevant semantics.
+ * 文件名:SemanticFingerprint.java
  *
- * <p>Runtime identities, snapshot ids and ordering noise are intentionally
- * excluded.  The fingerprint is never put into a model request; it only
- * supports repeated-attempt stability analysis.
+ * 用途:仅用于诊断的"决策相关语义"指纹(sha256),比较同一语义下
+ * 不同尝试的结果是否稳定。
+ *
+ * 约束:刻意排除 Runtime 身份标识、快照 id 和顺序噪声;指纹绝不
+ * 进入模型请求,只用于重复尝试的稳定性分析。
  */
 public final class SemanticFingerprint {
 
@@ -35,7 +37,7 @@ public final class SemanticFingerprint {
         return Hashes.sha256Hex(AgentContracts.write(semantic));
     }
 
-    /** Fingerprint for the post-state semantic projection, excluding runtime ids. */
+    /** 后状态语义投影的指纹,排除 Runtime id。 */
     public static String forSnapshot(AgentInputSnapshot snapshot) {
         return Hashes.sha256Hex(AgentContracts.write(snapshotSemantics(snapshot)));
     }

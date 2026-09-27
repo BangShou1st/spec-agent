@@ -9,9 +9,11 @@ import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 /**
- * Canonical UI-action validation. Shape checks live in the decision
- * validator; existence checks live here against canonical project state.
- * Client-supplied selected entities are hints, never authorization.
+ * 文件名:GlobalAssistantUiActionValidator.java
+ *
+ * 用途:UI 动作的权威校验。形状检查归决策校验器管;
+ * 存在性检查(项目是否真的存在)归这里,对着权威项目状态核对。
+ * 客户端上报的选中实体只是线索,绝不构成授权。
  */
 @Service
 public class GlobalAssistantUiActionValidator {

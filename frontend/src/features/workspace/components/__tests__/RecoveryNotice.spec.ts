@@ -1,3 +1,5 @@
+// 文件名:RecoveryNotice.spec.ts
+// 用途:RecoveryNotice 组件单元测试,验证恢复提示卡片文案、单一主 CTA 事件上报、无操作提示不渲染按钮且不暴露原始错误码。
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import RecoveryNotice from '@/features/workspace/components/RecoveryNotice.vue'

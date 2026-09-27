@@ -3,6 +3,14 @@ package com.specagent.model.provider;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.*;
 
+/**
+ * 文件名:ProviderUrlSecurityTest.java
+ *
+ * 测试目标:验证自定义 Provider Base URL 的安全校验与规范化:HTTPS 公网/私网地址合法;
+ * HTTP 仅允许环回地址(localhost/127.0.0.1/[::1]);公网 HTTP、携带 userinfo/query/fragment、
+ * 非 http(s) scheme、云元数据链路本地地址(169.254.169.254)一律拒绝;
+ * canonicalEndpoint 按协议格式正确拼接端点路径。
+ */
 class ProviderUrlSecurityTest {
     @Test void httpsPublicValid() {
         assertThat(ProviderUrlSecurity.validateAndNormalizeBaseUrl("https://api.example.com/v1"))

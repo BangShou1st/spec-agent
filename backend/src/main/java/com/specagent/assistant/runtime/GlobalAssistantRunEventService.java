@@ -9,9 +9,11 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 /**
- * Single path for persisted public run events. Events publish to live
- * subscribers only after their transaction commits, so a rolled-back
- * transaction never emits a ghost event. No broker framework.
+ * 文件名:GlobalAssistantRunEventService.java
+ *
+ * 用途:持久化 run 公开事件的唯一通道。事件只有在所属事务提交之后
+ * 才会推送给在线订阅者,因此回滚的事务绝不会产生"幽灵事件"。
+ * 不引入任何消息代理框架。
  */
 @Service
 public class GlobalAssistantRunEventService {

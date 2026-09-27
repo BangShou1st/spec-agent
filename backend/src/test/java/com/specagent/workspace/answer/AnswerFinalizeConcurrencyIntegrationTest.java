@@ -26,15 +26,15 @@ import java.util.concurrent.TimeUnit;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Shared-Answer concurrency: two independent transactions finalizing the same
- * canonical Question through two routes must never produce two Answer
- * identities. The node-row lock serializes finalization: exactly one
- * transaction persists, the loser observes the persisted Answer and reaches
- * the SHARED_STATE_DIVERGENCE conflict path.
+ * 文件名:AnswerFinalizeConcurrencyIntegrationTest.java
  *
- * <p>Deliberately NOT {@code @Transactional}: both racers must run in real
- * independent transactions against the database, so the setup rows are
- * committed before the threads start.
+ * 测试目标:验证共享回答的并发正确性——两条路线对同一个权威 Question 节点
+ * 并发执行 finalize 时,不允许产生两个 Answer 身份。节点行锁会串行化最终落库:
+ * 恰好一个事务提交成功,失败方观察到已持久化的 Answer 并走到
+ * SHARED_STATE_DIVERGENCE 冲突分支。
+ *
+ * 刻意不使用 {@code @Transactional}:两个竞争线程必须运行在真实、相互独立
+ * 的事务中,因此准备数据需要在启动线程前先提交落库。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -77,7 +77,7 @@ class AnswerFinalizeConcurrencyIntegrationTest {
     void concurrentFinalizeOnSharedQuestionPersistsExactlyOneAnswer() throws Exception {
         project = projectService.createProject("共享回答并发 " + UUID.randomUUID());
         UUID firstRouteId = project.activeRouteId();
-        // One canonical Question node reached by two routes.
+        // 两条路线到达同一个权威 Question 节点。
         Node question = nodeService.createRootNode(
                 project.id(), firstRouteId, "共享问题?", null, List.of(), true);
         UUID secondRouteId = routeService.createRoute(project.id(), RouteLifecycleStatus.OPEN, "并发第二条路线").id();
@@ -100,19 +100,17 @@ class AnswerFinalizeConcurrencyIntegrationTest {
             Attempt attemptA = futureA.get(60, TimeUnit.SECONDS);
             Attempt attemptB = futureB.get(60, TimeUnit.SECONDS);
 
-            // Exactly one transaction succeeded.
+            // 恰好一个事务成功。
             assertThat(attemptA.success ^ attemptB.success)
                     .as("exactly one finalization must succeed")
                     .isTrue();
-            // The loser reached the expected conflict path: the canonical
-            // Question already carries one immutable Answer identity.
+            // 失败方走到的预期冲突分支:权威 Question 已携带一个不可变的 Answer 身份。
             Attempt loser = attemptA.success ? attemptB : attemptA;
             assertThat(loser.error)
                     .isInstanceOf(IllegalStateException.class)
                     .hasMessageContaining("SHARED_STATE_DIVERGENCE");
 
-            // Exactly one Answer row exists for the canonical node — never two
-            // Answer identities.
+            // 权威节点只应存在一条 Answer 记录——绝不出现两个 Answer 身份。
             assertThat(answerCountFor(question.id())).isEqualTo(1);
         } finally {
             pool.shutdownNow();
@@ -124,7 +122,7 @@ class AnswerFinalizeConcurrencyIntegrationTest {
                 "SELECT COUNT(*) FROM answers WHERE node_id = ?", Long.class, nodeId);
     }
 
-    /** One racer's outcome: success, or the exact exception it failed with. */
+    /** 单个竞争者的结果:成功,或失败时抛出的具体异常。 */
     private record Attempt(boolean success, Throwable error) {
         static Attempt run(Callable<?> action) {
             try {

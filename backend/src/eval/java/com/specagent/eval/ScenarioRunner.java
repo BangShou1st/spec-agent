@@ -38,25 +38,25 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * P2 evaluation scenario runner.
+ * 文件名:ScenarioRunner.java
  *
- * <p>Real execution chain for one attempt:
- * <pre>
- * declarative Scenario
- *   → canonical Java runtime setup (project, graph, capabilities, resources)
- *   → production answer cycle (RunService + RunWorker + AnswerCycleService)
- *   → STATE_UPDATE → Java validate/apply → post-update ContextSnapshot
- *   → DECISION → Java policy/execution
- *   → Observation (canonical state only) → Layer A / B-fast checks
- *   → JSONL-ready ObservationEnvelope
- * </pre>
+ * 用途:P2 评测场景运行器,单个评测尝试的真实执行链路:
+ * 声明式 Scenario
+ *   → 规范的 Java 运行时搭建(项目、图、能力、资源)
+ *   → 生产回答周期(RunService + RunWorker + AnswerCycleService)
+ *   → STATE_UPDATE → Java 校验/应用 → 更新后的 ContextSnapshot
+ *   → DECISION → Java 策略/执行
+ *   → 观察(只读规范状态)→ Layer A / B-fast 校验
+ *   → 可写 JSONL 的 ObservationEnvelope
  *
- * <p>The runner only observes, orchestrates, and asserts. Graph, routes,
- * nodes, Answer persistence, patch lifecycle, snapshots, authorization,
- * confirmation, capability policy, and canonical mutation stay owned by
- * the Java runtime. The scripted B-fast brain replaces only the Brain
- * structured output at the boundary; production call counting reads the
- * scripted engine's recorded stages.
+ * 运行器只做观察、编排和断言。图、路由、节点、Answer 持久化、patch
+ * 生命周期、快照、授权、确认、能力策略和规范变更全部仍归 Java 运行时所有。
+ * 脚本化 B-fast Brain 只在边界处替代 Brain 的结构化输出;生产调用计数读取
+ * 脚本引擎记录的阶段。
+ *
+ * 协作:消费 {@link ScenarioDefinition} / {@link VariantSpec},产出
+ * {@link ObservationEnvelope};被 LayerA / LayerBFast 消费的
+ * {@link AttemptContext} 也在这里构造。
  */
 @Component
 public class ScenarioRunner {
@@ -124,28 +124,26 @@ public class ScenarioRunner {
         return lastProjectId;
     }
 
-    /** Runs one scenario variant end to end and returns its observation. */
+    /** 端到端运行一个场景变体并返回其观察记录。 */
     public ObservationEnvelope run(ScenarioDefinition scenario, VariantSpec variant) {
         return run(scenario, variant, EvaluationProfile.B_FAST);
     }
 
     /**
-     * P2 Phase 2 — Live behavioral baseline entry.
+     * P2 阶段二——live 行为基线入口。
      *
-     * <p>Runs the identical Scenario Contract (same canonical Java runtime
-     * setup, same Layer A invariants, same Layer B expectations, same call
-     * budget) but lets the production Brain wiring answer STATE_UPDATE +
-     * DECISION instead of installing a scripted Brain output. The scenario's
-     * {@code given.brainScript} is ignored — never copied as an expectation —
-     * so a live Brain that genuinely converges on an acceptable action still
-     * passes, and one that diverges fails through the unchanged contract.
+     * 执行完全相同的场景契约(同样的规范 Java 运行时搭建、同样的 Layer A
+     * 不变量、同样的 Layer B 期望、同样的调用预算),但由生产 Brain 装配来
+     * 回答 STATE_UPDATE + DECISION,而不是安装脚本化 Brain 输出。场景的
+     * {@code given.brainScript} 被忽略——绝不会被当作期望复制——因此真正
+     * 收敛到可接受动作的 live Brain 依然通过,发散的则按同一契约失败。
      *
-     * <p>Requires that no {@code BrainScriptInstaller} bean is active: when a
-     * scripted brain is installed the runner refuses to run live, so live
-     * observations can never silently come from scripted outputs.
+     * 要求没有任何 {@code BrainScriptInstaller} bean 处于激活状态:一旦
+     * 装了脚本化 Brain,运行器拒绝以 live 方式运行,live 观察绝不可能悄悄
+     * 来自脚本输出。
      *
-     * @param repetitionSeed recorded seed for this repetition (N=3 runs of
-     *     the same variant differ only by this seed, never by semantics)
+     * @param repetitionSeed 本次重复的记录种子(N=3 次同一变体的运行只在这个
+     *     种子上不同,语义完全一致)
      */
     public ObservationEnvelope runLive(ScenarioDefinition scenario, VariantSpec variant,
                                        long repetitionSeed) {
@@ -153,7 +151,7 @@ public class ScenarioRunner {
         return run(scenario, variant, EvaluationProfile.LIVE_PROVIDER, repetitionSeed);
     }
 
-    /** Validates the concrete Spring beans before a B-live attempt is started. */
+    /** 在启动 B-live 尝试前校验具体的 Spring bean 身份。 */
     LiveExecutionGuard.Evidence requireLiveWiring() {
         return LiveExecutionGuard.requireRemoteProvider(
                 decisionEngines.getIfAvailable(),
@@ -216,8 +214,8 @@ public class ScenarioRunner {
             failureDetail = ex.getClass().getSimpleName() + ": " + ex.getMessage();
         }
 
-        // Post-observe even on failure: fail-closed means canonical state
-        // must show no unintended mutation.
+        // 失败也要后置观察:fail-closed 意味着规范状态必须显示没有发生
+        // 意料之外的变更。
         long latencyMs = (System.nanoTime() - startNanos) / 1_000_000L;
         if (brain == null) {
             AttemptContext context = observeLive(
@@ -231,7 +229,7 @@ public class ScenarioRunner {
         return assemble(scenario, variant, context, profile, observationSeed);
     }
 
-    // -- setup -----------------------------------------------------------------
+    // -- 搭建(setup)-----------------------------------------------------------
 
     private String renderTitle(ScenarioDefinition scenario, VariantSpec variant) {
         String label = "eval-" + scenario.scenarioId() + "-" + variant.variantId()
@@ -242,7 +240,7 @@ public class ScenarioRunner {
         return label;
     }
 
-    /** Builds the declarative initial graph; keys map step refs to nodes/routes. */
+    /** 按声明搭建初始图;键把步骤引用映射到节点/路由。 */
     private Setup buildGraph(ScenarioDefinition scenario, VariantSpec variant, Project project) {
         Setup setup = new Setup();
         Route activeRoute = routeRepository.findById(project.activeRouteId()).orElseThrow();
@@ -254,10 +252,9 @@ public class ScenarioRunner {
             ordered.add(Map.entry("step-" + index, declared.get(index)));
         }
         if (variant.shuffleIrrelevantContext()) {
-            // Reorder only dependency-free context: steps are executed in
-            // topological order (dependencies first) with the shuffle key as
-            // the tie-break, so references never dangle while irrelevant
-            // ordering still varies across variants.
+            // 只重排无依赖关系的上下文:步骤按拓扑序执行(依赖优先),
+            // 以 shuffle 键做同层排序的平局裁断,这样引用不会悬空,
+            // 而无关内容的排列顺序仍能跨变体变化。
             ordered = topologicalWithShuffleTieBreak(ordered, variant.seed());
         }
         for (Map.Entry<String, GraphStep> entry : ordered) {
@@ -312,10 +309,9 @@ public class ScenarioRunner {
             setup.activeRoute = routeRepository.findById(setup.activeRoute.id()).orElseThrow();
         }
 
-        // Focus differs from active: visit another route, then return to the
-        // target route so the answer cycle runs where the scenario declares.
-        // Focus never selects an Answer; this only proves focus placement
-        // cannot change answer ownership.
+        // 焦点不同于活动路由:先访问另一条路由,再回到目标路由,让回答周期
+        // 在场景声明的位置执行。焦点永远不选中 Answer;这一步只是证明
+        // 焦点放置无法改变 Answer 的归属。
         if (variant.focusDiffersFromActive() && setup.forkRoute != null) {
             routeService.setActiveRoute(project.id(), setup.forkRoute.id());
             routeService.setActiveRoute(project.id(), setup.activeRoute.id());
@@ -326,10 +322,9 @@ public class ScenarioRunner {
             setup.activeRoute = routeRepository.findById(setup.forkRoute.id()).orElseThrow();
         } else if (scenario.given().routeContext().kind() == RouteContextSpec.Kind.ACTIVE_TIP
                 && setup.forkRoute != null) {
-            // forkFromNode moves the workspace active route onto the fork.
-            // An ACTIVE_TIP declaration means the answer cycle runs on the
-            // pre-fork route, so restore it (idempotent when focus handling
-            // already returned there).
+            // forkFromNode 会把工作区活动路由移到分叉上。ACTIVE_TIP 声明
+            // 表示回答周期要在分叉前的原路由上运行,所以这里恢复它
+            // (若焦点处理已经回到原路由,此操作幂等)。
             routeService.setActiveRoute(project.id(), setup.activeRoute.id());
             setup.activeRoute = routeRepository.findById(setup.activeRoute.id()).orElseThrow();
         }
@@ -391,9 +386,8 @@ public class ScenarioRunner {
     }
 
     /**
-     * Setup-time answer used to satisfy fork preconditions (branch points
-     * need a finalized answer). Goes through the production AnswerService so
-     * shared-state/divergence invariants stay authoritative.
+     * 搭建期答案,用于满足分叉前置条件(分叉点需要一个已定稿的 Answer)。
+     * 走生产 AnswerService,保证共享状态/发散类不变量依然权威。
      */
     private void answerForSetup(UUID projectId, UUID routeId, UUID nodeId) {
         if (answerRepository.existsByRouteAndNode(routeId, nodeId)) {
@@ -401,16 +395,15 @@ public class ScenarioRunner {
         }
         Answer answer = answerService.finalizeAnswer(projectId, routeId, nodeId,
                 (String) null, "eval setup answer", "user");
-        // Setup answers model a completed user cycle. Keep the fixture legal
-        // under the route-advancement invariant: an Answer without its
-        // STATE_UPDATE checkpoint is intentionally recoverable, not a normal
-        // precondition for later graph setup.
+        // 搭建期答案模拟一次已完成的用户周期。保持夹具在"路由推进"不变量
+        // 之下仍然合法:没有 STATE_UPDATE 检查点的 Answer 被刻意设计为
+        // 可恢复状态,而不是后续图搭建的正常前置条件。
         answerPatchService.save(projectId, routeId, nodeId, answer.id(), List.of(), null);
     }
 
-    // -- drive -------------------------------------------------------------------
+    // -- 驱动(drive)--------------------------------------------------------------
 
-    /** Carries the queued run id even when the production path fails closed. */
+    /** 即使生产链路 fail-closed,也把排队的 run id 带出来。 */
     private record DriveResult(UUID runId) {
     }
 
@@ -477,28 +470,25 @@ public class ScenarioRunner {
         throw new IllegalArgumentException("Unknown user event: " + event);
     }
 
-    /** Runs are claimed by id, so the failing state names itself in the error. */
+    /** run 按 id 认领,因此失败状态会在错误信息里自报身份。 */
     private String describeRun(UUID runId) {
         return runService.getRun(runId)
                 .map(run -> "status=" + run.status().code() + ", trigger=" + run.triggerType().code())
                 .orElse("row missing");
     }
 
-    // -- observe -------------------------------------------------------------------
+    // -- 观察(observe)-------------------------------------------------------------
 
     /**
-     * P2 Phase 2 — live observation.
+     * P2 阶段二——live 观察。
      *
-     * <p>Reads the same canonical Java runtime facts as {@link #observe}, but
-     * derives production-call accounting from the persisted run events instead
-     * of a scripted brain: {@code STATE_UPDATE_STARTED} / {@code DECISION_STARTED}
-     * mark the two production calls, {@code MODEL_INFERENCE_FAILED} marks
-     * provider retries (never new production steps), and per-call latency
-     * comes from the broker's {@code MODEL_INFERENCE} {@code elapsedMillis}.
-     * Tokens stay null (the runtime persists only hashes + category + timing,
-     * never token counts into run events) and cost stays {@code unknown} —
-     * the harness never guesses either. Capability invocations still come
-     * from the probe adapters.
+     * 读取与 {@link #observe} 相同的规范 Java 运行时事实,但生产调用记账
+     * 从持久化的运行事件推导,而非脚本化 Brain:{@code STATE_UPDATE_STARTED} /
+     * {@code DECISION_STARTED} 标记两次生产调用,{@code MODEL_INFERENCE_FAILED}
+     * 标记 provider 重试(绝不算新的生产步骤),每次调用的延迟来自 broker 的
+     * {@code MODEL_INFERENCE} 事件里的 {@code elapsedMillis}。token 保持 null
+     * (运行时只把哈希 + 类别 + 计时写入运行事件,从不写 token 数),成本保持
+     * {@code unknown}——评测框架两者都不臆测。能力调用仍来自探针适配器。
      */
     private AttemptContext observeLive(ScenarioDefinition scenario, VariantSpec variant,
                                        Project project, UUID runId,
@@ -547,12 +537,10 @@ public class ScenarioRunner {
     }
 
     /**
-     * Derives live call accounting from persisted run events (canonical truth).
-     * Production calls are the brain-operation boundaries the AnswerCycle owns
-     * (STATE_UPDATE then DECISION); provider retries are broker-side inference
-     * failures that never become new production steps. Both counts come from
-     * events the runtime already persists — the harness adds no second model
-     * of the flow.
+     * 从持久化的运行事件推导 live 调用记账(权威事实来源)。生产调用是
+     * AnswerCycle 拥有的 brain 操作边界(先 STATE_UPDATE 后 DECISION);
+     * provider 重试是 broker 侧的推理失败,绝不变成新的生产步骤。两个计数
+     * 都来自运行时本就持久化的事件——评测框架不添加第二套流程模型。
      */
     private static LiveCallAccounting deriveLiveCallAccounting(
             List<AttemptContext.AgentRunEventView> events) {
@@ -722,7 +710,7 @@ public class ScenarioRunner {
         return graphCommandService.listRelations(projectId).size();
     }
 
-    /** Canonical answer identities of the project (every route × its nodes). */
+    /** 项目的规范 Answer 身份列表(每条路由 × 其节点)。 */
     private List<UUID> answerIds(UUID projectId) {
         List<Node> nodes = nodeService.listProject(projectId);
         List<UUID> nodeIds = nodes.stream().map(Node::id).toList();
@@ -737,7 +725,7 @@ public class ScenarioRunner {
         return ids;
     }
 
-    // -- assemble -------------------------------------------------------------------
+    // -- 组装(assemble)-----------------------------------------------------------
 
     private ObservationEnvelope assemble(ScenarioDefinition scenario, VariantSpec variant,
                                          AttemptContext context) {
@@ -745,12 +733,9 @@ public class ScenarioRunner {
     }
 
     /**
-     * Shared contract assembly for both profiles: Layer A invariants, Layer B
-     * expectations, call budget — then the envelope stamped with the profile
-     * that actually produced the observation. Expectations are never copied
-     * from the scenario's scripted brain output; B-live reuses the same
-     * acceptable/forbidden actions, properties and deltas the contract
-     * declares.
+     * 两种档位共用的契约组装:Layer A 不变量、Layer B 期望、调用预算——然后
+     * 用实际产生观察的档位给信封盖章。期望绝不会从场景的脚本化 Brain 输出
+     * 复制;B-live 复用契约声明的同一套可接受/禁止动作、属性和增量。
      */
     private ObservationEnvelope assemble(ScenarioDefinition scenario, VariantSpec variant,
                                          AttemptContext context, EvaluationProfile profile,
@@ -842,22 +827,20 @@ public class ScenarioRunner {
         return result;
     }
 
-    // -- test-scope probe bridge ------------------------------------------------------
+    // -- 测试范围的探针桥接 -----------------------------------------------------------
     //
-    // Probe capabilities live in test scope (fixed generic fixtures). The
-    // runner reads their invocation counts and installs per-scenario
-    // success flags through this narrow reflective bridge so main-scope
-    // code never depends on test types.
+    // 探针能力位于测试范围(固定的通用夹具)。运行器通过这条窄的反射桥读取
+    // 它们的调用计数、安装按场景的成功标志,使 main 范围的代码永远不依赖
+    // 测试类型。
 
     private void resetProbeCapabilities() {
         invokeProbe("reset");
     }
 
     /**
-     * Installs the per-scenario capability success flags for live attempts.
-     * Probe adapters default to success; scenarios that declare a capability
-     * with {@code succeed=false} need the flag written through the same
-     * reflective bridge (main scope never depends on test types).
+     * 为 live 尝试安装按场景的能力成功标志。探针适配器默认成功;声明了
+     * {@code succeed=false} 能力的场景需要通过同一条反射桥写入标志
+     * (main 范围的代码永远不依赖测试类型)。
      */
     private void installCapabilitySuccessFlags(ScenarioDefinition scenario) {
         for (CapabilitySpec capability : scenario.given().capabilities()) {

@@ -7,8 +7,15 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Bounded structured facts for the unfinished task only.
- * Conversation memory is continuity; canonical truth always comes from tools/DB.
+ * 文件名:GlobalAssistantWorkingState.java
+ *
+ * 用途:线程的"工作状态"——只为当前未完成任务保存有界的结构化事实
+ * (目标、候选项目、等待项、最近工具结果引用等),并负责与 Map 的
+ * 双向序列化。
+ *
+ * 角色:conversation 包的会话记忆载体。会话记忆只负责"连续性",
+ * 规范事实(canonical truth)永远以工具/数据库查询结果为准。所有字段
+ * 都有硬上限(候选 20 条、单值 300 字符),防止状态无限膨胀。
  */
 public record GlobalAssistantWorkingState(
         String goal,
@@ -19,10 +26,9 @@ public record GlobalAssistantWorkingState(
         SkillDiscovery lastSkillDiscovery) {
 
     /**
-     * The most recent read-only skill repository discovery. Persists the
-     * tool-observed candidate list across turns so multi-turn skill selection
-     * stays grounded in what skill.import.discover actually returned instead
-     * of drifting back to model memory.
+     * 最近一次只读技能仓库发现(skill.import.discover)的结果。把工具实际
+     * 观察到的候选列表跨轮次持久化,使多轮技能选择始终锚定在真实工具
+     * 返回上,而不是漂移回模型记忆。
      */
     public record SkillDiscovery(String url, String ref, String suggestedPath,
                                  List<Map<String, String>> candidates) {

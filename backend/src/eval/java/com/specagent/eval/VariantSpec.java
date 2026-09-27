@@ -4,17 +4,18 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * One anti-overfit parametrization of a scenario.
+ * 文件名:VariantSpec.java
  *
- * <p>A scenario is never bound to fixed UUIDs, fixed natural-language
- * sentences, fixed ordering, or fixed route names. Variants express the
- * perturbation axes (paraphrased wording via {@code paraphraseIndex},
- * shuffled irrelevant context, active/focus divergence, decoy capabilities
- * and resources, route membership variations) while the scenario semantics
- * stay fixed. {@code seed} keeps every variant reproducible.
+ * 用途:场景的一个防过拟合参数化变体。场景从不绑定固定 UUID、固定自然
+ * 语言句子、固定顺序或固定路由名。变体表达扰动轴(通过 {@code paraphraseIndex}
+ * 改写措辞、打乱无关上下文、焦点与活动路由分离、诱饵能力与资源、路由成员
+ * 变化),而场景语义保持不变。{@code seed} 保证每个变体可复现。
  *
- * <p>Usage tags support the calibration/holdout discipline: calibration
- * variants may inform prompt tuning, holdout variants never do.
+ * usage 标签支撑校准/保留(holdout)纪律:CALIBRATION 变体可以参与
+ * prompt 调优,HOLDOUT 变体绝不参与。
+ *
+ * 协作:由 {@link ScenarioDefinition} 持有,传给 {@link ScenarioRunner}
+ * 驱动具体执行。
  */
 public record VariantSpec(
         String variantId,

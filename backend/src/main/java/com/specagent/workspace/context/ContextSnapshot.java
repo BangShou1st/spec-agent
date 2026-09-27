@@ -5,12 +5,13 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * The exact lineage context used for one agent run.
+ * 文件名:ContextSnapshot.java
  *
- * <p>Built deterministically from the active route's tip by replaying the parent
- * lineage. Sibling, superseded, archived, and deleted routes are excluded by
- * default and recorded in {@code excludedRouteIds}. This is derived context, not
- * source of truth.
+ * 用途:一次 agent 运行所用的精确世系上下文快照,交给 Brain 推理。快照由
+ * {@code ContextBuilder} 从当前 route 的 tip 沿父世系回放、确定性构建,一经
+ * 生成即冻结不可变,保证同一次推理可复现。兄弟 route 及被取代/归档/删除的
+ * route 默认排除,并记录在 {@code excludedRouteIds} 中。它是派生上下文,不是
+ * 事实源(source of truth)。
  */
 public class ContextSnapshot {
 
@@ -24,15 +25,13 @@ public class ContextSnapshot {
     private final List<UUID> includedPatchIds;
     private final List<UUID> excludedRouteIds;
     /**
-     * Bounded 1-hop semantic context for a node query: the canonical node ids at
-     * the other end of every ACTIVE relation touching the anchor. These are NOT
-     * part of the lineage and never pollute it.
+     * 节点查询的有界一跳语义上下文:与锚点之间存在 ACTIVE 关系的另一端规范化
+     * 节点 id。它们不属于世系,也绝不污染世系。
      */
     private final List<UUID> relatedNodeIds;
     /**
-     * The ACTIVE semantic relations (direction preserved) touching the anchor,
-     * used as bounded 1-hop semantic context for a node query. Empty for every
-     * other operation type.
+     * 触及锚点的 ACTIVE 语义关系(保持方向),作为节点查询的有界一跳语义上下文。
+     * 其他操作类型下恒为空。
      */
     private final List<ContextRelation> relations;
     private final String specialInputs;

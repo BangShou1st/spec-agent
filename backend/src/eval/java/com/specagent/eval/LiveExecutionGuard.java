@@ -6,13 +6,15 @@ import com.specagent.model.contract.ModelInferenceGateway;
 import com.specagent.model.provider.OpenCodeModelInferenceGateway;
 
 /**
- * Fail-fast identity guard for the B-live evaluation profile.
+ * 文件名:LiveExecutionGuard.java
  *
- * <p>A live label is meaningful only when the Java boundary reaches the
- * remote Python brain and the Java broker reaches the real OpenCode gateway.
- * The guard deliberately checks concrete production bean identities at the
- * evaluation boundary: a test-only scripted brain or fake inference gateway
- * must never be able to masquerade as a live-provider observation.
+ * 用途:B-live(真实 provider)评测档位的快速失败身份守卫。只有当
+ * Java 边界确实连到远程 Python Brain、Java broker 确实连到真实 OpenCode
+ * 网关时,"live" 标签才有意义。守卫刻意在评测边界检查具体的生产 bean 身份:
+ * 测试用的脚本化 Brain 或伪造推理网关绝不能冒充 live-provider 观察。
+ *
+ * 协作:由 live 档位的运行链路在执行前调用 {@link #requireRemoteProvider},
+ * 通过后返回 {@link Evidence} 存入 {@link ObservationEnvelope}。
  */
 public final class LiveExecutionGuard {
 
@@ -48,7 +50,7 @@ public final class LiveExecutionGuard {
         return value == null ? "<none>" : value.getClass().getName();
     }
 
-    /** Safe bean identity evidence; contains no credentials or prompt data. */
+    /** 安全的 bean 身份证据;不含任何凭据或 prompt 数据。 */
     public record Evidence(String decisionEngine, String inferenceGateway) {
     }
 }

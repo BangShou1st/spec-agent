@@ -8,6 +8,12 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * 文件名:RouteInheritedAnswerRepository.java
+ *
+ * 用途:RouteInheritedAnswer(分支路线继承的答案引用)的 JDBC 仓储,
+ * 负责批量保存与按分支路线查询这些冻结的引用。
+ */
 @Repository
 public class RouteInheritedAnswerRepository {
 

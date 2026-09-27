@@ -1,3 +1,9 @@
+<!--
+  文件名:CustomProviderSettings.vue
+  用途:自定义 Provider 的展示卡片:只渲染已存配置与运行时操作(设置/重新测试/设为当前),
+       所有编辑都收口在 CustomProviderDialog;正因如此显示名称在创建后仍可编辑
+       (此前表单挂在卡片上,卡片根本不展示名称)。
+-->
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import ProviderCard from './ProviderCard.vue'
@@ -7,16 +13,16 @@ import { useProviderSettingsStore } from '@/features/model-settings/state/provid
 import { providerCardState } from '@/features/model-settings/presentation/providerPresentation'
 
 /**
- * The user-defined provider's card. It renders the stored configuration and
- * the runtime actions only — every edit lives in CustomProviderDialog, reached
- * through 「设置」. That is what makes 显示名称 editable after creation: the
- * card used to own the form and therefore never exposed the name at all.
+ * 用户自定义 Provider 的卡片。只渲染已存配置与运行时操作,
+ * 所有编辑都收口在 CustomProviderDialog,经由「设置」进入。
+ * 这正是显示名称创建后仍可编辑的原因:此前卡片自己持有表单,
+ * 导致名称从来不被展示。
  */
 const emit = defineEmits<{ (e: 'edit'): void }>()
 
 const store = useCustomProviderStore()
 const providers = useProviderSettingsStore()
-// The credential input lives only in the dialog; the card never holds a key.
+// 凭证输入只存在于弹窗中;卡片绝不持有密钥。
 const refreshing = ref(false)
 
 const isActive = computed(() => providers.activeProvider === 'CUSTOM')

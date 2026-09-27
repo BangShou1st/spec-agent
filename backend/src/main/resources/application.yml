@@ -16,6 +16,11 @@ spring:
 
 server:
   port: ${SERVER_PORT:8080}
+  # 本机单用户交付:默认只绑定回环接口,不向局域网暴露产品 API。
+  # 需要非本机访问时必须显式设置 SERVER_ADDRESS 并提供认证入口,
+  # 且通过 SPEC_AGENT_ALLOW_NON_LOOPBACK=true 确认接受风险
+  # (启动守卫 LoopbackBindingGuard 强制此决定)。
+  address: ${SERVER_ADDRESS:127.0.0.1}
 
 management:
   endpoints:
@@ -61,7 +66,11 @@ spec:
       # provider days; killing it early wastes the completed model response.
       connect-timeout-ms: ${SPEC_AGENT_BRAIN_CONNECT_TIMEOUT_MS:2000}
       read-timeout-seconds: ${SPEC_AGENT_BRAIN_READ_TIMEOUT_SECONDS:300}
-      internal-secret: ${SPEC_AGENT_BRAIN_INTERNAL_SECRET:dev-internal-secret}
+      # 内部密钥不再有仓库级的固定默认值:未配置时由
+      # InstallInternalSecret 在首次启动生成安装实例独有的随机密钥并
+      # 持久化到 ./data/internal-secret.txt,后端与 Brain 使用同一值。
+      # CI/测试通过环境变量或 test profile 显式注入确定性值。
+      internal-secret: ${SPEC_AGENT_BRAIN_INTERNAL_SECRET:}
       engine: ${SPEC_AGENT_BRAIN_ENGINE:remote-python}
       worker:
         # Must stay enabled in any deployment whose API accepts
@@ -69,6 +78,12 @@ spec:
         # when this process accepts runs without its own executor.
         enabled: ${SPEC_AGENT_BRAIN_WORKER_ENABLED:true}
         poll-interval-ms: ${SPEC_AGENT_BRAIN_WORKER_POLL_INTERVAL_MS:2000}
+        # Startup orphan recovery: on boot, runs left non-terminal by a dead
+        # executor are honestly terminalized as failed (no replay of model
+        # calls, answers or external side effects). Valid for the supported
+        # single-instance deployment only; disable when a second live
+        # executor process could own runs in the same database.
+        startup-recovery: ${SPEC_AGENT_BRAIN_WORKER_STARTUP_RECOVERY:true}
       broker:
         max-prompt-chars: ${SPEC_AGENT_BROKER_MAX_PROMPT_CHARS:200000}
         max-output-tokens: ${SPEC_AGENT_BROKER_MAX_OUTPUT_TOKENS:32768}

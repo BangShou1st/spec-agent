@@ -16,10 +16,11 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Discovery is the grounding source for skill names: read-only, staging-free,
- * and bounded. These cases pin that nothing here can stage, install, or
- * execute, and that untrusted repository metadata enters the context only in
- * bounded form.
+ * 文件名:SkillDiscoverCapabilityTest.java
+ *
+ * 测试目标:skill 发现能力是 skill 名称的佐证来源——只读、不暂存、
+ * 有界。这些用例钉死:它不会暂存、安装或执行任何东西,
+ * 不可信的仓库元数据只以有界形式进入上下文。
  */
 class SkillDiscoverCapabilityTest {
 

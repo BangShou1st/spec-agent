@@ -16,10 +16,12 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Route-tip semantics for derived knowledge: a knowledge/resource node may
- * hang off the current tip for provenance, but it must never displace an
- * INTERACTION tip — burying the pending question makes the route
- * un-answerable (the tip is the only answerable node).
+ * 文件名:WorkspaceNodeTipAdvancementTest.java
+ *
+ * 测试目标:派生知识节点的路线 tip 语义——知识/资源节点可以作为溯源挂在
+ * 当前 tip 之下,但绝不能顶掉 INTERACTION 类型的 tip(埋掉待回答的问题会让
+ * 路线无法被回答,tip 是唯一可回答的节点);同时验证知识节点仍可作为空路线
+ * 的起点推进 tip。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -46,8 +48,8 @@ class WorkspaceNodeTipAdvancementTest {
                 NodeKind.KNOWLEDGE, "REQUIREMENT", Map.of("text", "可以接入插件"),
                 NodeAuthorKind.AGENT, KnowledgeStatus.CONFIRMED);
 
-        // The knowledge node keeps its provenance parent, but the tip stays on
-        // the pending question so the user can still answer it.
+        // 知识节点保留其溯源父节点,但 tip 仍停留在待回答的问题上,
+        // 用户仍可回答它。
         assertThat(knowledge.parentNodeId()).isEqualTo(question.id());
         assertThat(routeRepository.findById(route.id()).orElseThrow().tipNodeId())
                 .isEqualTo(question.id());
@@ -67,7 +69,7 @@ class WorkspaceNodeTipAdvancementTest {
         assertThat(reloaded.tipNodeId()).isEqualTo(knowledge.id());
         assertThat(reloaded.rootNodeId()).isEqualTo(knowledge.id());
 
-        // A question created after the knowledge head advances the tip again.
+        // 知识节点成为头部之后,新创建的问题会再次推进 tip。
         Node question = nodeService.createChildNode(
                 project.id(), route.id(), knowledge.id(), "下一步问什么？", null,
                 List.of(), true);

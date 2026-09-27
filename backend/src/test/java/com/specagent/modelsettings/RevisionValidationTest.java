@@ -25,6 +25,14 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.*;
 
+/**
+ * 文件名:RevisionValidationTest.java
+ *
+ * 测试目标:验证配置修订(revision)校验语义:OpenRouter / 自定义 Provider 的
+ * 配置一旦变更(模型、baseUrl、协议格式),配置修订号递增并清除校验标记,
+ * requireActivatable 在重新校验前 fail-closed,重新 markValidated 后放行;
+ * Anthropic Messages 格式始终不可校验、也不可激活。
+ */
 class RevisionValidationTest {
 
     static class MemOpenRouterRepo implements OpenRouterSettingsRepository {
@@ -80,8 +88,8 @@ class RevisionValidationTest {
         MemOpenRouterRepo repo = new MemOpenRouterRepo();
         Instant now = Instant.now();
         repo.stored = new OpenRouterSettings("k1", "k1", "m:free", 1, 1L, now, now, now);
-        // Simulate save with changed model via direct repo bump (service.save does live discovery,
-        // so revision semantics are asserted at the repository + gate level here).
+        // 通过直接写 repo 模拟"换模型后的保存"(service.save 会做线上发现,
+        // 所以修订语义在这里只在 repository + 门禁层面断言)。
         repo.stored = new OpenRouterSettings("k1", "k1", "m2:free", 2, null, now, now, null);
         OpenRouterSettingsService svc = new OpenRouterSettingsService(repo, new ObjectMapper(), registry(), noopProbe());
         assertThatThrownBy(svc::requireActivatable)
@@ -96,10 +104,10 @@ class RevisionValidationTest {
         repo.stored = new CustomProviderSettings("CHAT_COMPLETIONS", "http://localhost:11434/v1", null, null, "m", "DISCOVERED", null, 1, 1L, now, now, now);
         CustomProviderSettingsService svc = new CustomProviderSettingsService(repo, new ObjectMapper(), registry(), noopProbe());
         svc.requireActivatable();
-        // Change baseUrl bumps revision and clears validation.
+        // 变更 baseUrl 会递增修订号并清除校验标记。
         repo.stored = new CustomProviderSettings("CHAT_COMPLETIONS", "http://localhost:11435/v1", null, null, "m", "DISCOVERED", null, 2, null, now, now, null);
         assertThatThrownBy(svc::requireActivatable).isInstanceOf(ModelProviderException.class);
-        // Change format also invalidates.
+        // 变更协议格式同样使设置失效。
         repo.stored = new CustomProviderSettings("RESPONSES", "http://localhost:11435/v1", null, null, "m", "DISCOVERED", null, 3, null, now, now, null);
         assertThatThrownBy(svc::requireActivatable).isInstanceOf(ModelProviderException.class);
         repo.markValidated(3);

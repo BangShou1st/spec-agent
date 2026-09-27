@@ -36,11 +36,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Slice 1: {@code ContinuationCoordinator.evaluate} reads durable Runtime
- * truth only and never consults semantic fields.
+ * 文件名:ContinuationCoordinatorTest.java
  *
- * <p>No behavior test depends on the configured default budget: the budget
- * is widened explicitly per test run, and budget tests set their own value.
+ * 测试目标:Slice 1:{@code ContinuationCoordinator.evaluate} 只读取持久化的
+ * 运行时事实,绝不参考语义字段。覆盖各种裁决:SUCCEEDED/FAILED 能力结果、图变更、
+ * 用户输入暂停、审批暂停、终态回应、策略拒绝、预算耗尽、已有子 run 等。
+ *
+ * 没有行为测试依赖配置的默认预算:每个测试显式放宽预算,预算用例自行设值。
  */
 @SpringBootTest
 @ActiveProfiles("test")

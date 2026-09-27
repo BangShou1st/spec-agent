@@ -31,11 +31,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Connection + MCP runtime integration against the real Postgres store and an
- * SDK-backed in-process fake MCP server (same protocol implementation as the
- * client): lifecycle, dynamic tool capabilities, read-only invocation,
- * conservative side-effect defaults, disabled-hides-capabilities, and
- * credential secrecy.
+ * 文件名:ConnectionMcpIntegrationTest.java
+ *
+ * 测试目标:针对真实 Postgres 存储与 SDK 实现的进程内 fake MCP 服务端
+ * (与客户端同一套协议实现)验证连接 + MCP 运行时集成——生命周期、动态
+ * 工具能力、只读调用、保守的副作用默认值、禁用即隐藏能力、以及凭据保密。
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @Import(SdkFakeMcpServerConfig.class)
@@ -58,8 +58,8 @@ class ConnectionMcpIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        // Points at the exact SDK transport endpoint (/fake-mcp/* mapping +
-        // /fake-mcp/mcp endpoint); the client keeps the URL authoritative.
+        // 指向 SDK 传输端点(/fake-mcp/* 映射 + /fake-mcp/mcp 端点);
+        // URL 以客户端保存的为准。
         fakeServerUrl = "http://127.0.0.1:" + serverPort + "/fake-mcp/mcp";
         fakes.calls().set(0);
         fakes.setFailToolCall(false);
@@ -173,8 +173,8 @@ class ConnectionMcpIntegrationTest {
         Connection connection = lifecycleService.create(ConnectionKind.CUSTOM_MCP,
                 "fake-mcp-e", Map.of("serverUrl", fakeServerUrl), null);
         lifecycleService.connect(connection.id());
-        // The connection is CONNECTED but never enabled, so its MCP tool must
-        // not appear — while unrelated static capabilities may still be listed.
+        // 连接处于 CONNECTED 但从未 enable,因此它的 MCP 工具不能出现——
+        // 无关的静态能力仍可列出。
         assertThat(capabilityRegistry.descriptorsFor(CapabilityQueryContext.empty())
                 .stream().noneMatch(
                         d -> d.capabilityId().endsWith("." + SdkFakeMcpServerConfig.TOOL_NAME)))
@@ -229,12 +229,10 @@ class ConnectionMcpIntegrationTest {
     }
 
     /**
-     * Issue #14 connection/MCP regression: one full lifecycle keeps the
-     * MCP-owned discovery cache and the credential store consistent at every
-     * step — create, test/discovery writes the cache, enable, secret update
-     * invalidates the cache and rotates the credential, refresh re-discovers
-     * and re-caches, delete removes both rows. The cache table stays
-     * MCP-owned; the connections table stays connection-owned.
+     * Issue #14 connection/MCP 回归:一次完整生命周期在每一步都保持 MCP
+     * 自有的发现缓存与凭据存储一致——create、test/discovery 写入缓存、
+     * enable、更新密钥使缓存失效并轮换凭据、refresh 重新发现并重新缓存、
+     * delete 清除两行。缓存表归 MCP 所有;connections 表归连接模块所有。
      */
     @Test
     void fullLifecycleKeepsDiscoveryCacheAndCredentialsConsistent() {
@@ -246,7 +244,7 @@ class ConnectionMcpIntegrationTest {
         assertThat(credentialRows()).isEqualTo(1);
         String firstCredentialRef = created.credentialRef();
 
-        // test/discovery success -> cache written
+        // test/discovery 成功 -> 写入缓存
         McpDiscovery testedDiscovery = lifecycleService.test(created.id());
         assertThat(testedDiscovery.tools()).hasSize(1);
         assertThat(cacheRows()).isEqualTo(1);
@@ -259,8 +257,8 @@ class ConnectionMcpIntegrationTest {
                 .enabled()).isTrue();
         assertThat(cacheRows()).isEqualTo(1);
 
-        // config+secret update -> cache invalidated, lifecycle reset,
-        // old credential row rotated away
+        // 更新 config+secret -> 缓存失效、生命周期重置、
+        // 旧凭据行被轮换掉
         Connection updated = lifecycleService.updateByConnectionId(
                 created.connectionId(), null,
                 Map.of("serverUrl", fakeServerUrl + "?v=2"),
@@ -275,13 +273,13 @@ class ConnectionMcpIntegrationTest {
         assertThat(updated.credentialRef()).isNotEqualTo(firstCredentialRef);
         assertThat(updated.credentialRef()).doesNotContain("lifecycle-secret-2");
 
-        // refresh -> live re-discovery, cache written again
+        // refresh -> 重新实时发现,再次写入缓存
         lifecycleService.refresh(updated.id());
         assertThat(cacheRows()).isEqualTo(1);
         assertThat(lifecycleService.findByRowId(created.id()).orElseThrow()
                 .status().code()).isEqualTo("CONNECTED");
 
-        // delete -> cache and credential cleanup
+        // delete -> 清除缓存与凭据
         lifecycleService.delete(updated.id());
         assertThat(cacheRows()).isZero();
         assertThat(credentialRows()).isZero();

@@ -1,11 +1,12 @@
 package com.specagent.connection;
 
 /**
- * Typed not-found for Connection management by product-level connectionId.
+ * 文件名:ConnectionNotFoundException.java
  *
- * <p>Maps to 404 CONNECTION_NOT_FOUND with a stable safe message.
- * Raw ids and internals never leak; the message carries only the
- * product-level connectionId supplied by the caller.
+ * 用途:按产品层 connectionId 管理 Connection 时找不到连接的类型化异常。
+ *
+ * 映射为 404 CONNECTION_NOT_FOUND,消息稳定且安全。原始 id 与内部细节
+ * 绝不泄露;消息只携带调用方提供的产品层 connectionId。
  */
 public class ConnectionNotFoundException extends RuntimeException {
 

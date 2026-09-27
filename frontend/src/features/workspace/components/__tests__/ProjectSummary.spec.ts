@@ -1,3 +1,5 @@
+// 文件名:ProjectSummary.spec.ts
+// 用途:ProjectSummary 组件单元测试,验证摘要文案的可读性(不暴露原始 id)与进入完整需求视图的入口事件。
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import ProjectSummary from '@/features/workspace/components/ProjectSummary.vue'

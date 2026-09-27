@@ -38,10 +38,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Result API for a contextual node query run. Verifies the node-identity
- * guard (a run may only be served under the node it targeted) and that the
- * result view surfaces the advisory proposal a downgraded mutation action
- * produced for the run.
+ * 文件名:NodeQueryRunControllerApiIntegrationTest.java
+ *
+ * 测试目标:验证上下文节点查询 run 的结果 API——节点身份守卫(run 只能在它所针对的
+ * 节点下被读取),以及结果视图要暴露降级变更动作为该 run 产生的顾问提案;覆盖
+ * AWAITING_APPROVAL、无提案、POLICY_DENIED、NOT_CONFIRMABLE(均来自持久事件)、
+ * 普通只读完成等结果状态。
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -80,8 +82,8 @@ class NodeQueryRunControllerApiIntegrationTest {
         UUID runId = runService.createQueuedNodeQuery(
                 project.id(), routeId, nodeA.id(), "A 的问题？");
 
-        // The run belongs to nodeA; requesting it under nodeB must fail closed
-        // with 404 rather than leaking another node's run result.
+        // run 属于 nodeA;在 nodeB 下请求它必须 fail-closed 返回 404,
+        // 而不是泄漏其他节点的 run 结果。
         mockMvc.perform(get("/api/v1/projects/{projectId}/nodes/{nodeId}/query/{runId}",
                         project.id(), nodeB.id(), runId))
                 .andExpect(status().isNotFound());
@@ -96,9 +98,8 @@ class NodeQueryRunControllerApiIntegrationTest {
         assertThat(agentRunService.getRun(runId).orElseThrow().status())
                 .isEqualTo(AgentRunStatus.COMPLETED);
 
-        // A node-query run that downgrades a mutation action to an approval
-        // produces a proposal linked by runId; attach it the same way the
-        // runtime would and confirm the result view exposes it.
+        // 把变更动作降级为待审批的 node-query run 会产生一条按 runId 关联的提案;
+        // 按运行时的方式挂上它,确认结果视图能暴露出来。
         var proposal = proposalService.createProposal(
                 new ActionProposal("CREATE_NODE",
                         Map.of("kind", "KNOWLEDGE"),
@@ -131,7 +132,7 @@ class NodeQueryRunControllerApiIntegrationTest {
         JsonNode proposalId = body.get("proposalId");
         JsonNode proposalStatus = body.get("proposalStatus");
         JsonNode actionFamily = body.get("actionFamily");
-        // No proposal was produced for this run: the fields are present but null.
+        // 该 run 没有产生提案:字段存在但为 null。
         assertThat(proposalId == null || proposalId.isNull()).isTrue();
         assertThat(proposalStatus == null || proposalStatus.isNull()).isTrue();
         assertThat(actionFamily == null || actionFamily.isNull()).isTrue();
@@ -139,9 +140,8 @@ class NodeQueryRunControllerApiIntegrationTest {
 
     @Test
     void policyDeniedOutcomeIsRealizedFromDurableEvent() throws Exception {
-        // A query whose proposal was denied by policy completes its run but must
-        // surface POLICY_DENIED, not collapse into COMPLETED. The outcome is
-        // derived from the durable POLICY_DENIED runtime event.
+        // 提案被 policy 拒绝的查询会完成 run,但必须呈现 POLICY_DENIED,
+        // 而不是塌缩成 COMPLETED。结果从持久的 POLICY_DENIED 运行事件派生。
         UUID runId = runService.createQueuedNodeQuery(
                 project.id(), routeId, nodeA.id(), "A 的问题？");
         AgentRun claimed = runService.claimNextNodeQuery().orElseThrow();
@@ -161,9 +161,8 @@ class NodeQueryRunControllerApiIntegrationTest {
 
     @Test
     void notConfirmableOutcomeIsRealizedFromDurableEvent() throws Exception {
-        // A query whose mutation action cannot produce an acceptable proposal
-        // must surface NOT_CONFIRMABLE, again from the durable runtime event,
-        // never from a parse of the trace string.
+        // 变更动作无法产出可接受提案的查询必须呈现 NOT_CONFIRMABLE,同样来自
+        // 持久运行事件,绝不能从 trace 字符串解析而来。
         UUID runId = runService.createQueuedNodeQuery(
                 project.id(), routeId, nodeA.id(), "A 的问题？");
         AgentRun claimed = runService.claimNextNodeQuery().orElseThrow();
@@ -183,8 +182,7 @@ class NodeQueryRunControllerApiIntegrationTest {
 
     @Test
     void plainCompletedRunStillReportsCompleted() throws Exception {
-        // The normal read-only completion keeps COMPLETED: only explicit
-        // durable event evidence changes the semantic status.
+        // 正常的只读完成保持 COMPLETED:只有显式的持久事件证据才会改变语义状态。
         UUID runId = runService.createQueuedNodeQuery(
                 project.id(), routeId, nodeA.id(), "A 的问题？");
         AgentRun claimed = runService.claimNextNodeQuery().orElseThrow();

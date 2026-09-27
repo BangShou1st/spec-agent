@@ -35,10 +35,11 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * The input snapshot projection over a real frozen ContextSnapshot: the
- * durable manifest stays authoritative, the projection carries generic Graph
- * language, runtime-owned ids, and the project title only as low-authority
- * metadata.
+ * 文件名:AgentInputSnapshotBuilderIntegrationTest.java
+ *
+ * 测试目标:验证在真实冻结 ContextSnapshot 之上的输入快照投影——持久化清单始终是
+ * 权威来源,投影只携带通用 Graph 语言与运行时持有的 id,项目标题仅作为低权威元数据;
+ * 并覆盖资源检索分块的来源引用与冻结重放稳定性。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -93,9 +94,9 @@ class AgentInputSnapshotBuilderIntegrationTest {
                 .isEqualTo("减少邮件沟通");
         assertThat(envelope.snapshot().lineage().get(0).patches().get(0).id()).isEqualTo(patch.id());
         assertThat(envelope.snapshot().effectiveClaims()).hasSize(1);
-        // Project title is low-authority metadata only.
+        // 项目标题只是低权威元数据。
         assertThat(envelope.snapshot().metadata().projectTitle()).isEqualTo("快照投影项目");
-        // Allowed source refs cover exactly the manifest plus context/route.
+        // 允许的来源引用恰好覆盖清单加上 context/route。
         assertThat(envelope.snapshot().allowedSourceRefs())
                 .contains("node:" + root.id(), "answer:" + rootAnswer.id(),
                         "patch:" + patch.id(), "route:" + routeId,
@@ -124,7 +125,7 @@ class AgentInputSnapshotBuilderIntegrationTest {
                 .doesNotContain("INTERPRET_ANSWER")
                 .contains("\"body\"")
                 .contains("\"acceptsFreeText\"");
-        // Round-trips through the strict mapper (unknown fields would fail).
+        // 经过严格 mapper 往返(未知字段会失败)。
         assertThat(AgentContracts.read(wire, AgentRequestEnvelope.class).runId())
                 .isEqualTo(envelope.runId());
     }
@@ -152,7 +153,7 @@ class AgentInputSnapshotBuilderIntegrationTest {
             assertThat(projected.allowedSourceRefs()).contains(item.sourceRef());
         });
 
-        // Frozen replay must not re-run retrieval or observe a mutable index.
+        // 冻结重放不得重新执行检索,也不得观察可变索引。
         assertThat(snapshotBuilder.build(snapshot).retrievedContext())
                 .isEqualTo(projected.retrievedContext());
     }

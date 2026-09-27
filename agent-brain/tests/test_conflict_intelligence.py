@@ -1,3 +1,9 @@
+"""文件名:test_conflict_intelligence.py
+
+用途:验证 DECISION 引擎的冲突智能:存在未解决冲突时必须在
+observation.conflicts 中如实暴露,并覆盖唯一允许的一次有界补救调用。
+"""
+
 import json
 from pathlib import Path
 
@@ -24,10 +30,10 @@ class ScriptedClient:
 
 
 class SequencedClient:
-    """Returns one scripted output per call and records the messages it saw.
+    """每次调用返回一个预设输出,并记录它收到的消息。
 
-    The last output repeats if the engine asks for more calls than scripted, so
-    a test that forbids a second call still fails for the right reason.
+    若引擎请求的调用次数超过预设数量,就重复最后一个输出,保证禁止第二次
+    调用的测试仍然因正确的原因失败。
     """
 
     def __init__(self, outputs: list):
@@ -107,9 +113,8 @@ def test_state_update_prompt_exposes_effective_claims_for_cross_claim_check():
 
 
 def test_unresolved_conflict_accepts_any_action_once_reported():
-    # Slice 4: the action-family whitelist is removed. Once the conflict is
-    # faithfully reported, WAIT is as acceptable as any other family —
-    # execution safety belongs to the Java Runtime gates.
+    # Slice 4:移除了 action-family 白名单。只要冲突被如实报告,WAIT 和
+    # 其他任何 family 一样可接受——执行安全属于 Java Runtime 的门禁。
     request = _request_with_unresolved_conflict()
     output = _decision_output(
         "WAIT",

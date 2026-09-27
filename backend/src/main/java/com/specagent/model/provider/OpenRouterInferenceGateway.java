@@ -26,8 +26,10 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 /**
- * OpenRouter provider gateway. Fixed base URL, fixed Chat Completions format.
- * No fallback, no format auto-detection.
+ * 文件名:OpenRouterInferenceGateway.java
+ *
+ * 用途:OpenRouter 提供商的推理网关。固定 base URL,固定使用 Chat Completions
+ * 格式。不做降级(fallback),不做格式自动探测。
  */
 @Component
 @ConditionalOnProperty(name = "spec.agent.model.inference", havingValue = "opencode", matchIfMissing = true)

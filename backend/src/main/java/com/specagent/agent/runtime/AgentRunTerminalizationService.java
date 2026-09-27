@@ -10,23 +10,22 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Atomic run terminalization: the run status transition, its terminal
- * runtime event, and its continuation-check request commit in ONE transaction.
+ * 文件名:AgentRunTerminalizationService.java
  *
- * <p>The NodeQuery result contract derives semantic terminal outcomes
- * (POLICY_DENIED, MUTATION_NOT_CONFIRMABLE) from durable runtime events, never
- * from a trace string. Without a shared commit, a poll could observe the run
- * as COMPLETED before the required semantic event row exists — an externally
- * visible transient where {@code status == COMPLETED} but the required event
- * is absent. This boundary makes the two writes externally visible together,
- * so no observer can ever see COMPLETED without the semantic event.
+ * 用途:run 终态化的原子边界:run 状态迁移、其终止运行时事件、续跑检查
+ * (continuation-check)请求,三者在同一个事务内一起提交。
  *
- * <p>Slice 3C adds the continuation outbox to the same commit: the terminal
- * status, the terminal event, and the {@code agent_run_continuation_checks}
- * request become visible together. The worker's afterCommit dispatch is only
- * the low-latency fast path; a crash after COMMIT but before dispatch leaves
- * a pending check row for the recovery scanner. No semantic fields are stored
- * — the coordinator re-reads durable run facts to decide.
+ * NodeQuery 结果契约依据持久化的运行时事件(而非 trace 字符串)推导出语义
+ * 终态(POLICY_DENIED、MUTATION_NOT_CONFIRMABLE)。若没有这里的共享提交,
+ * 轮询方可能先观察到 run 已 COMPLETED 而必需的语义事件行尚未写入——即出现
+ * {@code status == COMPLETED} 但必需事件缺失的外部可见瞬态。此事务边界让两次
+ * 写入对外同时可见,任何观察者都不会看到"有 COMPLETED 却没有语义事件"的状态。
+ *
+ * Slice 3C 把续跑 outbox 也并入同一提交:终态、终止事件与
+ * {@code agent_run_continuation_checks} 请求同时对外可见。worker 的
+ * afterCommit 分发只是低延迟快速路径;COMMIT 之后、分发之前崩溃会留下
+ * 一条待处理的 check 行,由恢复扫描器兜底。这里不存储任何语义字段——
+ * 由协调器重新读取持久化的 run 事实来做决策。
  */
 @Service
 public class AgentRunTerminalizationService {
@@ -44,8 +43,8 @@ public class AgentRunTerminalizationService {
     }
 
     /**
-     * Marks the run terminal and appends its terminal event atomically. A
-     * reader under READ_COMMITTED sees either both writes or neither.
+     * 原子地把 run 置为终态并追加其终止事件。READ_COMMITTED 隔离级别下的
+     * 读方要么看到两次写入都生效,要么都看不到。
      */
     @Transactional
     public void completeWithEvent(UUID runId,
@@ -60,9 +59,8 @@ public class AgentRunTerminalizationService {
     }
 
     /**
-     * Terminal without a semantic event (deny branch): COMPLETED and the
-     * continuation-check request commit together. No new event semantics are
-     * invented — the existing trace reason stays the deny evidence.
+     * 终态但无语义事件(拒绝分支):COMPLETED 与续跑检查请求一起提交。
+     * 不引入新的事件语义——既有的 trace 原因即拒绝证据。
      */
     @Transactional
     public void completeWithCheck(UUID runId,
@@ -73,13 +71,11 @@ public class AgentRunTerminalizationService {
     }
 
     /**
-     * Slice 5 terminal-response terminal: the user-visible message event,
-     * the run COMPLETED transition, the RUN_COMPLETED marker, and the
-     * continuation-check request commit together. The RESPOND_MESSAGE row is
-     * the single source of truth for the terminal message — the read model
-     * and API derive it from this event, never from the trace string or a
-     * second message store. The coordinator reads the same event to park
-     * the chain (TERMINAL_RESPONSE), so no child follows a response.
+     * Slice 5 的终态响应收尾:用户可见的消息事件、run 的 COMPLETED 迁移、
+     * RUN_COMPLETED 标记事件、续跑检查请求,四者一起提交。RESPOND_MESSAGE
+     * 事件行是终态消息的唯一事实来源——读模型与 API 从该事件派生消息,
+     * 绝不从 trace 字符串或第二个消息存储读取。协调器读取同一事件来停靠
+     * 链路(TERMINAL_RESPONSE),因此不会有子 run 跟在一条响应之后。
      */
     @Transactional
     public void completeWithResponse(UUID runId,

@@ -1,3 +1,6 @@
+// 文件名:providerPresentation.spec.ts
+// 用途:Provider 展示层单测:V1 仅有的两个格式选项、已存 Anthropic 值的只读标签解析、
+//       端点预览与状态标签映射。
 import { describe, expect, it } from 'vitest'
 import {
   CUSTOM_FORMAT_OPTIONS,
@@ -14,7 +17,7 @@ describe('provider presentation', () => {
     expect(labels).toContain('Responses (/responses)')
     expect(labels).not.toContain('Anthropic Messages (/v1/messages)')
     expect(CUSTOM_FORMAT_OPTIONS).toHaveLength(2)
-    // Stored Anthropic values still resolve a label for read-only display.
+    // 已存的 Anthropic 值在只读展示时仍能解析出标签。
     expect(formatLabel('ANTHROPIC_MESSAGES')).toBe('Anthropic Messages (/v1/messages)')
   })
 

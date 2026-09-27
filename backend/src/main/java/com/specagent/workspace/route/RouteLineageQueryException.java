@@ -1,27 +1,26 @@
 package com.specagent.workspace.route;
 
 /**
- * Read-model-neutral failure raised by route-lineage reads.
+ * 文件名:RouteLineageQueryException.java
  *
- * <p>The read-model/application layer must not depend on the outer HTTP API
- * layer, so expected query failures are expressed with this closed reason
- * instead of an API exception. The API boundary translates the reason into the
- * stable HTTP contract (404 {@code PROJECT_NOT_FOUND}, 404
- * {@code ROUTE_NOT_FOUND}, 500 {@code INTERNAL_INVARIANT_VIOLATION}).
+ * 用途:路线 lineage 读取失败时抛出的、与读模型无关的异常。读模型/
+ * 应用层不允许依赖外层 HTTP API 层,因此预期内的查询失败用这个封闭
+ * reason 集合表达,而不是 API 异常;API 边界再把 reason 翻译成稳定的
+ * HTTP 契约(404 {@code PROJECT_NOT_FOUND}、404 {@code ROUTE_NOT_FOUND}、
+ * 500 {@code INTERNAL_INVARIANT_VIOLATION})。
  *
- * <p>Messages are static and safe: they never carry secrets, raw persistence
- * data, or provider payloads, and the API boundary never echoes them to the
- * client.
+ * 消息是静态且安全的:绝不携带机密、原始持久化数据或 provider 负载,
+ * API 边界也绝不把它们回显给客户端。
  */
 public class RouteLineageQueryException extends RuntimeException {
 
-    /** Closed, strongly bounded failure reasons for route-lineage reads. */
+    /** 路线 lineage 读取失败原因的封闭、强边界枚举。 */
     public enum Reason {
-        /** The requested project does not exist. */
+        /** 请求的项目不存在。 */
         PROJECT_NOT_FOUND,
-        /** The requested route does not exist or does not belong to the project. */
+        /** 请求的路线不存在,或不属于该项目。 */
         ROUTE_NOT_FOUND,
-        /** The route lineage failed an integrity/ownership invariant check. */
+        /** 路线 lineage 未通过完整性/归属不变量检查。 */
         INVARIANT_VIOLATION
     }
 

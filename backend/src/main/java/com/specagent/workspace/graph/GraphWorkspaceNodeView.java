@@ -8,15 +8,15 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Read-only view of one workspace-unit node on the project graph.
+ * 文件名:GraphWorkspaceNodeView.java
  *
- * <p>Nodes are deduplicated across routes: shared nodes are rendered once and
- * route membership is supplied by each route's {@code lineageNodeIds}. Only
- * safe immutable node fields are exposed; answers, patches, context snapshots,
- * model payloads, provider data, and database internals are never exposed.
+ * 用途:项目图上单个工作区节点的只读视图。节点跨路线去重:共享节点
+ * 只渲染一次,其路线归属由各路线的 {@code lineageNodeIds} 提供。只暴露
+ * 安全的不可变节点字段;答案、patch、上下文快照、模型载荷、provider
+ * 数据和数据库内部结构一律不暴露。
  *
- * <p>Non-interaction nodes carry their payload in {@code content}; legacy
- * question nodes keep {@code question} as their authoritative body.
+ * 非交互节点的负载放在 {@code content};遗留问题节点仍以
+ * {@code question} 作为权威正文。
  */
 public record GraphWorkspaceNodeView(
         UUID id,

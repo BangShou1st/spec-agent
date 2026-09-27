@@ -27,6 +27,14 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+/**
+ * 文件名:OpenCodeModelInferenceGatewayTest.java
+ *
+ * 测试目标:验证 OpenCode 模型推理网关的行为:外部环境评估可使用指定的非免费参考模型;
+ * 会话复用规则(同一项目复用一个会话、不同项目/不同运行使用不同会话);
+ * 数据库配置的模型可在存活列表限定内使用;以及文本 / JSON Schema / JSON Object
+ * 三种输出契约向 Provider response_format 的正确映射,输出模式之间不做静默回退。
+ */
 class OpenCodeModelInferenceGatewayTest {
 
     private static final String EXTERNAL_SOURCE =
@@ -62,7 +70,7 @@ class OpenCodeModelInferenceGatewayTest {
 
         var captor = org.mockito.ArgumentCaptor.forClass(String.class);
         var gateway = new OpenCodeModelInferenceGateway(transport, settings);
-        // Same project, different runs: the provider must see ONE conversation.
+        // 同一项目、不同运行:Provider 必须看到同一个会话。
         gateway.complete(request(runId, projectId));
         gateway.complete(request(UUID.randomUUID(), projectId));
 
@@ -126,8 +134,8 @@ class OpenCodeModelInferenceGatewayTest {
         when(transport.complete(eq("test-key"), any(String.class), any(OpenCodeChatCompletionRequest.class)))
                 .thenReturn(new OpenCodeCompletionResponse("{}", "stop", 1, 1, 2));
 
-        // Selection was already gated against the live provider list at
-        // save time; the runtime path no longer re-imposes a cost policy.
+        // 保存时已对照存活 Provider 列表做过限定;
+        // 运行时路径不再重新施加成本策略。
         assertThat(new OpenCodeModelInferenceGateway(transport, settings)
                 .complete(request()).content()).isEqualTo("{}");
     }

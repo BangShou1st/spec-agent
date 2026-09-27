@@ -12,15 +12,15 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Host Function Tool {@code skill.activate}: activates an installed, enabled,
- * visible Skill for the current run, returning bounded instructions plus a
- * bundled resource inventory. It is a Host Function Tool that calls the Skill
- * Runtime — a Skill is procedural knowledge, not another agent and not (by
- * default) an executable Capability.
+ * 文件名:SkillActivateHostTool.java
  *
- * <p>Read-only, NONE side-effect class: no scripts execute, no dependency is
- * installed, no durable external mutation occurs. Activation provenance is
- * persisted by {@link SkillActivationService}.
+ * 用途:Host Function Tool {@code skill.activate}:为当前运行激活一个已安装、
+ * 已启用且可见的 Skill,返回有界的指令与随包资源清单。它是调用 Skill Runtime
+ * 的 Host Function Tool —— Skill 是过程性知识,不是另一个 Agent,默认也不是
+ * 可执行的 Capability。
+ *
+ * 只读、NONE 副作用等级:不执行任何脚本、不安装任何依赖、不产生持久的
+ * 外部变更。激活的溯源信息由 {@link SkillActivationService} 持久化。
  */
 @Component
 public class SkillActivateHostTool implements InternalCapabilityAdapter {

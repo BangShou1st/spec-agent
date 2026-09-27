@@ -14,20 +14,18 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Concrete executor that dispatches validated action proposals by family.
+ * 文件名:ProposalActionExecutor.java
  *
- * <p>Families that produce graph mutations (REQUEST_USER_INPUT, CREATE_NODE)
- * delegate to {@link AgentGraphMutationService}, the narrow transactional
- * graph-action boundary: the node insert and route tip advancement commit
- * together under the project-row lock, and the expected anchor is re-verified
- * against the CURRENT route tip inside that transaction. Auto-execute enters
- * it after the model and policy have completed; accepted proposals join the
- * same boundary through the acceptance transaction. Read-only actuator
- * families and INVOKE_CAPABILITY stay outside the graph lock.
+ * 用途:ActionExecutor 的具体实现,按动作族分发已通过校验的动作提案。
  *
- * <p>Every execution is preceded by a stale-context liveness check. The
- * executor never invents IDs; all identity assignment is delegated to
- * runtime services.
+ * 会产生图变更的动作族(REQUEST_USER_INPUT、CREATE_NODE)委托给
+ * {@link AgentGraphMutationService}——图操作的窄事务边界:节点插入与
+ * 路由 tip 推进在项目行锁下一起提交,期望锚点在该事务内对照当前路由
+ * tip 重新校验。自动执行在模型与策略完成后才进入;已接受的提案经由
+ * 接受事务进入同一边界。只读的执行族与 INVOKE_CAPABILITY 保持在图锁之外。
+ *
+ * 每次执行之前都已做过 stale 上下文存活检查。执行器从不自行发明 ID;
+ * 所有身份分配都委托给 Runtime 服务。
  */
 @Component
 public class ProposalActionExecutor implements ActionExecutor {
@@ -59,12 +57,9 @@ public class ProposalActionExecutor implements ActionExecutor {
     }
 
     /**
-     * Invokes a capability through the runtime with a runtime-owned
-     * idempotency key: retrying the same proposal replays the recorded
-     * outcome (or surfaces a typed IN_PROGRESS state while an invocation is
-     * still unfinished) instead of re-executing the adapter. Typed failures
-     * come back as a message so the run can surface them instead of
-     * crashing.
+     * 通过 CapabilityRuntime 调用能力,使用 Runtime 持有的幂等键:重试同一
+     * 提案会回放已记录的结果(若调用尚未结束则返回类型化的 IN_PROGRESS 状态),
+     * 而不是重复执行适配器。类型化失败以消息形式返回,供 run 上报而不是崩溃。
      */
     @SuppressWarnings("unchecked")
     private ActionResult executeInvokeCapability(ActionProposal proposal,
@@ -94,10 +89,9 @@ public class ProposalActionExecutor implements ActionExecutor {
         boolean allowMultiSelect = payload.get("allowMultiSelect") instanceof Boolean b && b;
         List<NodeOption> options = parseOptions(payload.get("options"));
 
-        // The anchor is the route tip the model decided against (null on an
-        // empty route). The transactional boundary re-verifies it against the
-        // CURRENT tip before inserting; an anchor-less decision over a route
-        // that has since gained a tip fails closed instead of mis-anchoring.
+        // 锚点是模型决策时的路由 tip(空路由为 null)。事务边界会在插入前
+        // 对照当前 tip 重新校验;无锚点的决策若路由此后已产生 tip,
+        // 会 fail-closed 而不是错误地锚定到新节点上。
         Node node = agentGraphMutationService.executeNodeCreation(
                 context.projectId(), context.routeId(), context.anchorNodeId(),
                 new AgentGraphMutationService.InteractionNode(
@@ -114,8 +108,8 @@ public class ProposalActionExecutor implements ActionExecutor {
         String kind = payload.get("kind") instanceof String s ? s : "INTERACTION";
 
         if (!"INTERACTION".equals(kind)) {
-            // Generic workspace unit: payload lives in content; the runtime
-            // validates the subtype whitelist at creation.
+            // 通用 workspace 单元:载荷放在 content 里;subtype 白名单
+            // 由 Runtime 在创建时校验。
             String subtype = asString(payload.get("subtype"), "subtype");
             Map<String, Object> content = payload.get("content") instanceof Map<?, ?> map
                     ? (Map<String, Object>) map : Map.of();
@@ -128,8 +122,8 @@ public class ProposalActionExecutor implements ActionExecutor {
             return new ActionResult("CREATE_NODE", node.id(), null, null);
         }
 
-        // Interaction node: the question payload stays authoritative. Accept
-        // both the documented questionText key and the legacy question key.
+        // 交互节点:提问载荷保持权威。同时接受文档规定的 questionText 键
+        // 与遗留的 question 键。
         String questionText = payload.get("questionText") instanceof String q && !q.isBlank()
                 ? q : asString(payload.get("question"), "question");
         String purpose = asString(payload.get("purpose"), "purpose");
@@ -176,8 +170,8 @@ public class ProposalActionExecutor implements ActionExecutor {
         for (Object item : optionList) {
             if (item instanceof Map<?, ?> map) {
                 String label = asString(map.get("label"), "option.label");
-                // recommended: the model's context-based suggestion, shown as a
-                // badge in the UI; it is advice only, never a pre-selected answer.
+                // recommended:模型基于上下文给出的建议,在 UI 中显示为角标;
+                // 它只是建议,绝不是预先选中的答案。
                 boolean recommended = map.get("recommended") instanceof Boolean b && b;
                 result.add(new NodeOption(UUID.randomUUID(), label, null, recommended));
             }

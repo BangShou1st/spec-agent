@@ -13,9 +13,11 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.*;
 
 /**
- * V1 frozen decision: Anthropic Messages cannot serve the GA production
- * JSON_OBJECT contract. It must fail before any HTTP request, never with a
- * guessed wire payload, and never become validatable or activatable.
+ * 文件名:AnthropicFailClosedTest.java
+ *
+ * 测试目标:验证 V1 冻结决策——Anthropic Messages 协议不能承载 GA 生产所需的
+ * JSON_OBJECT 输出契约:必须在发起任何 HTTP 请求之前就失败(不发出猜测的报文),
+ * 兼容性探测对 Anthropic 格式直接拒绝,且智能体决策契约始终保持 JSON_OBJECT。
  */
 class AnthropicFailClosedTest {
 
@@ -33,8 +35,7 @@ class AnthropicFailClosedTest {
     }
 
     @Test void noFakeJsonObjectWirePayload() {
-        // Text and JsonSchema groundwork remain but must never claim the
-        // GA production contract shape.
+        // 文本与 JsonSchema 的基础能力仍在,但绝不能伪装成 GA 生产的契约形态。
         var textReq = new ModelInferenceRequest(UUID.randomUUID(), "p",
                 List.of(new ModelInferenceMessage("user", "hi")), 256, ModelOutputContract.text());
         assertThat(adapter.buildRequestBody(textReq, "m")).doesNotContainKey("response_format");

@@ -1,13 +1,13 @@
-/**
- * Regression tests for multi-route CONCURRENT answer runs (issue: shared
- * finish-up state).
+// 文件名:workspaceAnswerSessions.spec.ts
+// 用途:多路线并发回答 run 的回归测试(受控 Promise,无真实时序):锁定逐会话隔离——A 路线完成绝不清除 B 路线的输入草稿、恢复入口或错误状态。
+/*
+ * 多路线并发回答 run 的回归测试(问题:共享的收尾状态)。
  *
- * Before the answer-run-session model, every submit attempt wrote its
- * lifecycle into single shared store fields (pendingAnswerNodeId,
- * submittedRouteIdForCleanup, lastSubmittedAnswerPayload, ...), so a
- * completing run on route A cleared route B's input draft, recovery
- * affordances, or error state while B was still running. These tests pin
- * the per-session isolation with controlled promises — no real timing.
+ * 在回答 run 会话模型之前,每次提交尝试都把生命周期写进共享的单值 store
+ * 字段(pendingAnswerNodeId、submittedRouteIdForCleanup、
+ * lastSubmittedAnswerPayload……),于是 A 路线上完成的 run 会在 B 仍在
+ * 运行时清掉 B 的输入草稿、恢复入口或错误状态。这些测试用受控 Promise
+ * 锁定逐会话隔离——没有真实时序。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
@@ -190,11 +190,11 @@ describe('concurrent multi-route answer runs (per-session isolation)', () => {
       expect(store.answerRunSessions.filter((s) => s.status === 'RUNNING').length).toBe(2),
     )
 
-    // A finishes FIRST while B is still in flight.
+    // A 先完成,而 B 仍在途。
     poll.resolve('run-a', runView({ runId: 'run-a', routeId: R1, respondMessage: 'A done' }))
     expect(await submitA).toBe(true)
     expect(drafts.getDraft(P1, N1, R1)).toBeUndefined()
-    // B's draft, error and session state are exactly as B left them.
+    // B 的草稿、错误与会话状态与 B 留下时分毫不差。
     expect(drafts.getDraft(P1, N2, R2)?.freeText).toBe('B input')
     expect(store.answerRunsInFlight).toEqual([R2])
     expect(store.submitting).toBe(true)
@@ -259,7 +259,7 @@ describe('concurrent multi-route answer runs (per-session isolation)', () => {
       expect(store.answerRunSessions.filter((s) => s.status === 'RUNNING').length).toBe(2),
     )
 
-    // A succeeds; B's run FAILS and nothing landed (canonical reads prove it).
+    // A 成功;B 的 run 失败且什么都没落地(canonical 读取证明)。
     poll.resolve('run-a', runView({ runId: 'run-a', routeId: R1, respondMessage: 'A done' }))
     expect(await submitA).toBe(true)
     poll.resolve(
@@ -268,7 +268,7 @@ describe('concurrent multi-route answer runs (per-session isolation)', () => {
     )
     expect(await submitB).toBe(false)
 
-    // B's session survives with ITS OWN payload; A's session is gone.
+    // B 的会话带着它自己的载荷幸存;A 的会话已消失。
     expect(store.answerRunSessions).toHaveLength(1)
     expect(store.resubmitAnswerPayload).toMatchObject({
       nodeId: N2,
@@ -276,7 +276,7 @@ describe('concurrent multi-route answer runs (per-session isolation)', () => {
       freeText: 'B answer',
     })
     expect(store.answerRunsInFlight).toEqual([])
-    // A's success cleanup never touched B's draft.
+    // A 的成功清理从未触碰 B 的草稿。
     expect(drafts.getDraft(P1, N2, R2)?.freeText).toBe('B input')
     expect(drafts.getDraft(P1, N1, R1)).toBeUndefined()
   })
@@ -294,7 +294,7 @@ describe('concurrent multi-route answer runs (per-session isolation)', () => {
     const submitA = store.submitAnswer({ selectedOptionId: 'opt-a' })
     await vi.waitFor(() => expect(store.answerRunId).toBe('run-a'))
 
-    // Switch projects while the run is in flight.
+    // 在 run 在途期间切换项目。
     const projects = await import('@/features/projects/api/projects')
     vi.mocked(projects.getProject).mockResolvedValue(
       makeProject({ id: 'p2', activeRouteId: null }),
@@ -303,16 +303,16 @@ describe('concurrent multi-route answer runs (per-session isolation)', () => {
     expect(store.projectId).toBe('p2')
     expect(store.answerRunSessions).toEqual([])
 
-    // The old run then resolves — the detached session must not write
-    // anything into the NEW project (no error, no feedback, no cleanup).
+    // 旧 run 随后落定——被脱离的会话绝不能向新项目写任何东西
+    //(无错误、无反馈、无清理)。
     poll.resolve('run-a', runView({ runId: 'run-a', routeId: R1, respondMessage: 'late A' }))
     expect(await submitA).toBe(true)
     expect(store.projectId).toBe('p2')
     expect(store.feedback).toBeNull()
     expect(store.error).toBeNull()
     expect(store.answerRunSessions).toEqual([])
-    // The p1 draft was NOT cleared by anyone: cleanup only ever targets its
-    // own project/route/node, and its session was dropped on switch.
+    // p1 的草稿没有被任何人清除:清理只针对它自己的项目/路线/节点,
+    // 而且它的会话在切换时已被丢弃。
     expect(drafts.getDraft(P1, N1, R1)?.freeText).toBe('A input')
   })
 
@@ -327,11 +327,11 @@ describe('concurrent multi-route answer runs (per-session isolation)', () => {
     void store.submitAnswer({ selectedOptionId: 'opt-a' })
     await vi.waitFor(() => expect(store.answerRunsInFlight).toEqual([R1]))
 
-    // Same route: rejected, no second run created.
+    // 同一条路线:被拒绝,不创建第二个 run。
     expect(await store.submitAnswer({ selectedOptionId: 'opt-a2', nodeId: N1, routeId: R1 })).toBe(false)
     expect(mockedCreateAgentRun).toHaveBeenCalledTimes(1)
 
-    // Another route: allowed.
+    // 另一条路线:允许。
     void store.submitAnswer({ selectedOptionId: 'opt-b', nodeId: N2, routeId: R2 })
     await vi.waitFor(() =>
       expect(store.answerRunSessions.filter((s) => s.status === 'RUNNING').length).toBe(2),
@@ -358,8 +358,8 @@ describe('concurrent multi-route answer runs (per-session isolation)', () => {
       expect(store.answerRunSessions.filter((s) => s.status === 'RUNNING').length).toBe(2),
     )
 
-    // B fails AND its reconciliation read fails → outcome UNKNOWN (scoped
-    // to B's session). Make only the NEXT graph read fail once.
+    // B 失败且它的对账读取也失败 → 结果 UNKNOWN(只限于 B 的会话)。
+    // 让下一次图读取恰好失败一次。
     const graph = await import('@/features/workspace/api/graph')
     vi.mocked(graph.getProjectGraph)
       .mockRejectedValueOnce(new Error('reconcile read lost'))
@@ -372,7 +372,7 @@ describe('concurrent multi-route answer runs (per-session isolation)', () => {
     const unknownSession = store.answerRunSessions.find((s) => s.runId === 'run-b')
     expect(unknownSession?.status).toBe('UNKNOWN')
 
-    // A then completes: its cleanup must not resolve/clear B's UNKNOWN state.
+    // A 随后完成:它的清理绝不能解除/清除 B 的 UNKNOWN 状态。
     poll.resolve('run-a', runView({ runId: 'run-a', routeId: R1, respondMessage: 'A done' }))
     expect(await submitA).toBe(true)
     const stillUnknown = store.answerRunSessions.find((s) => s.runId === 'run-b')

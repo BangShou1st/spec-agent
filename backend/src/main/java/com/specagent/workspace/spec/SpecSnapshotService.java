@@ -8,11 +8,11 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Persists generated spec snapshots.
+ * 文件名:SpecSnapshotService.java
  *
- * <p>A spec snapshot is a derived artifact for one route tip and one context
- * snapshot. It is not source of truth. Confirmed spec claims must carry source
- * references, which this service records and exposes for verification.
+ * 用途:持久化生成的规格快照。规格快照是绑定单个 route tip 与单个上下文
+ * 快照的派生产物,不是事实源。已确认的规格 claim 必须携带来源引用,本服务负责
+ * 把这些引用一并记录下来,并对外提供查询以供核验。
  */
 @Service
 public class SpecSnapshotService {

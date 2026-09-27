@@ -1,3 +1,5 @@
+// 文件名:client.spec.ts
+// 用途:HTTP 客户端的单元测试:验证成功解析、204/空体处理以及错误响应按契约折叠为安全文案。
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { apiClient, ApiError, GENERIC_ERROR_MESSAGE } from '@/shared/http/client'
 

@@ -27,6 +27,14 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+/**
+ * 文件名:ContextBuilderLineageTest.java
+ *
+ * 测试目标:验证 {@link ContextBuilder} 从活跃路线构建上下文时,对节点谱系
+ * (lineage) 异常的处理必须委托给权威解析器 {@link RouteHistoryResolver}:
+ * 环路、节点缺失、深度超限三类失败原样抛出,不允许被静默截断或吞掉,
+ * 也不会在失败时写入上下文快照。
+ */
 @ExtendWith(MockitoExtension.class)
 class ContextBuilderLineageTest {
 

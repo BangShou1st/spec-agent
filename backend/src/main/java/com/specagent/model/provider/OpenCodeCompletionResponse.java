@@ -3,10 +3,10 @@ package com.specagent.model.provider;
 import com.specagent.common.Hashes;
 
 /**
- * Parsed chat completion result from OpenCode Zen.
+ * 文件名:OpenCodeCompletionResponse.java
  *
- * <p>Only the fields the runtime needs are carried; usage fields are optional
- * because the provider may omit them.
+ * 用途:OpenCode Zen chat completion 的解析结果。只携带运行时需要的字段;
+ * 用量字段是可选的,因为提供商可能省略它们。
  */
 public record OpenCodeCompletionResponse(
         String content,
@@ -30,7 +30,7 @@ public record OpenCodeCompletionResponse(
                 null, 0, 0, 0, Hashes.sha256Hex(""), OpenCodeRequestDiagnostics.empty());
     }
 
-    /** Compatibility constructor for callers that do not observe reasoning metadata. */
+    /** 兼容构造器:供不观察 reasoning 元数据的调用方使用。 */
     public OpenCodeCompletionResponse(String content,
                                       String finishReason,
                                       Integer promptTokens,
@@ -43,7 +43,7 @@ public record OpenCodeCompletionResponse(
                 OpenCodeRequestDiagnostics.empty());
     }
 
-    /** Compatibility constructor for callers that observe reasoning metadata. */
+    /** 兼容构造器:供观察 reasoning 元数据的调用方使用。 */
     public OpenCodeCompletionResponse(String content,
                                       String finishReason,
                                       Integer promptTokens,

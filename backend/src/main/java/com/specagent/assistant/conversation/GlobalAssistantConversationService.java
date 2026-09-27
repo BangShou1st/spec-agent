@@ -9,8 +9,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Conversation owner: threads, messages, runs, working state, summary CAS.
- * Never calls the model, never selects tools, never emits SSE.
+ * 文件名:GlobalAssistantConversationService.java
+ *
+ * 用途:会话数据的唯一属主,统一管理线程、消息、Run、工作状态
+ * (working state)的读写,以及摘要的乐观并发更新(带期望版本的 CAS)。
+ *
+ * 角色:conversation 包的核心服务。只做数据读写与事务边界,绝不调用
+ * 模型、不挑选工具、不推送 SSE——那些是 runtime 层的职责。其中
+ * createRunWithUserMessage 把 Run 与当轮用户消息放在同一事务里原子创建,
+ * 由 api/runtime 层在事务提交后再调度执行。
  */
 @Service
 public class GlobalAssistantConversationService {
@@ -51,7 +58,7 @@ public class GlobalAssistantConversationService {
         return messages.append(threadId, GlobalAssistantMessage.Role.ASSISTANT, content, runId);
     }
 
-    /** Append an assistant message with model accounting attribution. */
+    /** 追加一条助手消息,并附带模型计费归属(provider 与 model 标识)。 */
     @Transactional
     public GlobalAssistantMessage appendAssistantMessage(UUID threadId, String content, UUID runId,
             String providerLabel, String modelId) {
@@ -65,9 +72,9 @@ public class GlobalAssistantConversationService {
         return runs.create(threadId, promptVersion, contextProjectionVersion, toolCatalogFingerprint);
     }
     /**
-     * Atomic run + current USER message creation: both commit or both roll
-     * back, so no orphan active run survives without its user message.
-     * Callers schedule execution only after this transaction commits.
+     * 原子创建 Run 与当轮用户消息:两者要么一起提交、要么一起回滚,
+     * 不会留下没有用户消息的孤儿活跃 Run。调用方必须在本事务提交后
+     * 才能调度执行。
      */
     @Transactional
     public GlobalAssistantRun createRunWithUserMessage(UUID threadId, String content, String promptVersion,

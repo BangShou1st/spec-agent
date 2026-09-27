@@ -1,27 +1,26 @@
 package com.specagent.workspace.spec;
 
 /**
- * Read-model-neutral failure raised by requirement-state query reads.
+ * 文件名:RequirementStateQueryException.java
  *
- * <p>The read-model/application layer must not depend on the outer HTTP API
- * layer, so expected query failures are expressed with this closed reason
- * instead of an API exception. The API boundary translates the reason into the
- * stable HTTP contract (404 {@code PROJECT_NOT_FOUND}, 404
- * {@code ROUTE_NOT_FOUND}, 500 {@code INTERNAL_INVARIANT_VIOLATION}).
+ * 用途:需求状态查询读取失败时抛出的读模型中立异常。读模型/应用层不得依赖
+ * 外层 HTTP API 层,因此预期内的查询失败用这个封闭的 reason 枚举表达,而不是
+ * 抛 API 异常;API 边界再把 reason 翻译成稳定的 HTTP 契约(404
+ * {@code PROJECT_NOT_FOUND}、404 {@code ROUTE_NOT_FOUND}、500
+ * {@code INTERNAL_INVARIANT_VIOLATION})。
  *
- * <p>Messages are static and safe: they never carry secrets, raw persistence
- * data, or provider payloads, and the API boundary never echoes them to the
- * client.
+ * 消息是静态且安全的:绝不携带机密、原始持久化数据或提供商负载,API 边界
+ * 也绝不把它们回显给客户端。
  */
 public class RequirementStateQueryException extends RuntimeException {
 
-    /** Closed, strongly bounded failure reasons for requirement-state reads. */
+    /** 需求状态读取失败的封闭、强受限 reason 集合。 */
     public enum Reason {
-        /** The requested project does not exist. */
+        /** 请求的项目不存在。 */
         PROJECT_NOT_FOUND,
-        /** The requested route does not exist or does not belong to the project. */
+        /** 请求的 route 不存在,或不属于该项目。 */
         ROUTE_NOT_FOUND,
-        /** The active route pointer failed to resolve to a route owned by the project. */
+        /** 活跃 route 指针未能解析到该项目拥有的 route。 */
         INVARIANT_VIOLATION
     }
 

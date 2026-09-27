@@ -23,10 +23,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 
 /**
- * Fail-closed safety of the artifact cycle: a response whose sections are not
- * grounded, or whose source references leave the frozen snapshot's allowed
- * set, fails the run before any snapshot persists. The spy keeps production
- * behavior for everything it does not stub.
+ * 文件名:ArtifactCycleSafetyTest.java
+ *
+ * 测试目标:验证工件(artifact)循环的 fail-closed 安全性:章节缺乏依据、或其来源
+ * 引用超出冻结快照允许集合的响应,都会在任何快照持久化之前使 run 失败。spy 对未打桩的
+ * 行为保持生产逻辑。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -84,8 +85,8 @@ class ArtifactCycleSafetyTest {
                 "Overview", "content citing a foreign ref",
                 List.of("context:" + UUID.randomUUID()));
         stubArtifact(section);
-        // A stubbed engine bypasses the engine-side validator, so this proves
-        // the runtime's own source-reference guard fails closed too.
+        // 打桩的引擎绕过了引擎侧校验器,因此这里证明的是运行时自身的
+        // 来源引用守卫同样 fail closed。
         assertThatThrownBy(() -> execute(runId))
                 .isInstanceOf(com.specagent.agent.protocol.ModelContractException.class)
                 .hasMessageContaining("source reference guard rejected");

@@ -1,3 +1,5 @@
+// 文件名:agentPresentation.spec.ts
+// 用途:agentPresentation 文案映射的单元测试:验证已知阶段/动作族的中文标签与未知输入的通用回退(不泄漏原始枚举)。
 import { describe, expect, it } from 'vitest'
 import { agentActionLabel, agentPhaseLabel } from '@/features/workspace/presentation/agentPresentation'
 

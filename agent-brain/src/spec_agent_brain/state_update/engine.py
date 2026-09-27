@@ -1,4 +1,8 @@
-"""STATE_UPDATE engine: one model call, strict parse, runtime-stamped envelope."""
+"""文件名:engine.py
+
+用途:STATE_UPDATE 引擎——一次模型调用,严格解析模型输出,再组装由
+runtime 盖章的响应信封。
+"""
 
 import json
 
@@ -16,7 +20,7 @@ from ..prompts import state_update as state_update_prompt
 
 
 class BrainContractError(RuntimeError):
-    """Raised when a model output violates the brain's own output contract."""
+    """模型输出违反 brain 自身输出契约时抛出。"""
 
 
 def handle_state_update(request: AgentV2RequestEnvelope, client: ModelClient) -> AgentV2ResponseEnvelope:
@@ -51,5 +55,5 @@ def _parse_model_output(content: str) -> ModelStateUpdateOutput:
         raise BrainContractError("model output is not valid JSON") from exc
     try:
         return ModelStateUpdateOutput.model_validate(raw)
-    except Exception as exc:  # pydantic ValidationError -> typed brain failure
+    except Exception as exc:  # pydantic ValidationError -> 转成有类型的 brain 失败
         raise BrainContractError(f"model output violates the STATE_UPDATE contract: {exc}") from exc

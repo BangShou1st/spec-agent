@@ -1,11 +1,11 @@
 package com.specagent.agent.decision;
 
 /**
- * Closed set of actions the agent loop may produce.
+ * 文件名:AgentAction.java
  *
- * <p>The action enum is deliberately closed: the agent may never emit an
- * arbitrary string action, and route lifecycle operations are not part of it.
- * Route lifecycle stays under runtime service control.
+ * 用途:定义 Agent 循环可能产出的动作的封闭集合(枚举)。动作集合刻意保持
+ * 封闭:Agent 不允许发出任意字符串动作;路由(route)生命周期操作也不在其中,
+ * 路由生命周期始终由运行时服务(runtime service)控制。
  */
 public enum AgentAction {
     ASK_NEXT_QUESTION,

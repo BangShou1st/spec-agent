@@ -9,6 +9,12 @@ import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
+/**
+ * 文件名:JdbcModelProviderSettingsRepository.java
+ *
+ * 用途:ModelProviderSettingsRepository 的 JDBC 实现,保存"当前激活的模型提供商"
+ * 这一条全局设置(singleton 行),setActive 用于切换激活提供商。
+ */
 @Repository
 public class JdbcModelProviderSettingsRepository implements ModelProviderSettingsRepository {
 

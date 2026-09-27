@@ -29,9 +29,11 @@ import java.util.stream.Collectors;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * End-to-end answer cycle integration test: enqueues a run, the worker
- * claims and executes it through the full STATE_UPDATE → DECISION path,
- * and asserts the correct outcomes.
+ * 文件名:AnswerCycleIntegrationTest.java
+ *
+ * 测试目标:端到端答题循环集成测试:入队 run,由 worker 领取并执行完整的
+ * STATE_UPDATE → DECISION 路径,断言正确的结果(两次模型调用、新子节点、答案持久化、
+ * RUN_CREATED 事件保留输入参数、重试走 RESUME_ANSWER 且答案唯一)。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -61,22 +63,22 @@ class AnswerCycleIntegrationTest {
 
     @Test
     void answerCycleCreatesNodeWithTwoProviderCalls() {
-        // 1. Enqueue answer-cycle run.
+        // 1. 入队答题循环 run。
         UUID runId = runService.createQueuedRunWithInput(
                 project.id(), "ANSWER_TIP", rootNode.id(),
                 null, "明确首要目标", null);
 
-        // 2. Worker claims and executes.
+        // 2. worker 领取并执行。
         AgentRun claimed = runService.claimNextAnswerCycle().orElseThrow();
         worker.executeRun(claimed);
 
-        // 3. Assert run completed.
+        // 3. 断言 run 已完成。
         AgentRun completed = agentRunService.getRun(runId).orElseThrow();
         assertThat(completed.status()).isEqualTo(AgentRunStatus.COMPLETED);
 
-        // 4. Assert 2 provider calls were made (STATE_UPDATE + DECISION).
-        //    The fake engine records phase events, not MODEL_INFERENCE events
-        //    (which only come from the internal inference broker path).
+        // 4. 断言发生了 2 次模型调用(STATE_UPDATE + DECISION)。
+        //    fake 引擎记录的是阶段事件,而不是 MODEL_INFERENCE 事件
+        //    (后者只来自内部推理 broker 路径)。
         List<AgentRunPhase> phases = eventService.findByRunId(runId).stream()
                 .map(AgentRunEvent::phase)
                 .distinct()
@@ -87,13 +89,13 @@ class AnswerCycleIntegrationTest {
                 AgentRunPhase.DECIDING,
                 AgentRunPhase.PROPOSAL_CREATED);
 
-        // 5. Assert a new child node was created.
+        // 5. 断言创建了新的子节点。
         AgentRunEvent nodeEvent = eventService.findByRunId(runId).stream()
                 .filter(e -> "PROPOSAL_CREATED".equals(e.eventType()))
                 .findFirst().orElseThrow();
         assertThat(nodeEvent.payload().get("actionFamily")).isEqualTo("REQUEST_USER_INPUT");
 
-        // 6. Assert answer was persisted.
+        // 6. 断言答案已持久化。
         List<Answer> answers = answerService.findAnswersForRouteAndNodeIds(
                 route.id(), List.of(rootNode.id()));
         assertThat(answers).hasSize(1);
@@ -102,12 +104,12 @@ class AnswerCycleIntegrationTest {
 
     @Test
     void retrySameNodeUsesResumePathWithSingleAnswer() {
-        // 1. Simulate a cycle that persisted the Answer but did not finish:
-        //    the answered node is still the active route tip.
+        // 1. 模拟一个持久化了 Answer 但未完成的循环:
+        //    被回答的节点仍是活动路由末梢。
         Answer persisted = answerService.finalizeAnswer(project.id(), route.id(), rootNode.id(),
                 null, "第一次回答", "user");
 
-        // 2. Resume with the explicit persisted answer id (the repair path).
+        // 2. 使用显式的持久化答案 id 续跑(修复路径)。
         UUID secondRunId = runService.createQueuedRunWithInput(
                 project.id(), "RESUME_ANSWER", rootNode.id(),
                 null, null, persisted.id());
@@ -117,7 +119,7 @@ class AnswerCycleIntegrationTest {
         AgentRun secondCompleted = agentRunService.getRun(secondRunId).orElseThrow();
         assertThat(secondCompleted.status()).isEqualTo(AgentRunStatus.COMPLETED);
 
-        // 3. Answer count stays exactly 1.
+        // 3. 答案数量保持恰好为 1。
         List<Answer> answers = answerService.findAnswersForRouteAndNodeIds(
                 route.id(), List.of(rootNode.id()));
         assertThat(answers).hasSize(1);
@@ -129,7 +131,7 @@ class AnswerCycleIntegrationTest {
                 project.id(), "ANSWER_TIP", rootNode.id(),
                 UUID.randomUUID(), "自由文本输入", null);
 
-        // Verify the RUN_CREATED event carries the input.
+        // 验证 RUN_CREATED 事件携带了输入参数。
         AgentRunEvent created = eventService.findByRunId(runId).stream()
                 .filter(e -> "RUN_CREATED".equals(e.eventType()))
                 .findFirst().orElseThrow();

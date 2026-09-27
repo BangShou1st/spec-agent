@@ -1,3 +1,5 @@
+// 文件名:projectPresentation.spec.ts
+// 用途:项目页展示层单测:项目创建时间格式化文案(今天/昨天/日期)。
 import { describe, expect, it } from 'vitest'
 import { formatProjectCreatedAt } from '@/features/projects/presentation/projectPresentation'
 

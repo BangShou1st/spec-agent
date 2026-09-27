@@ -7,12 +7,11 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Call-budget tracking tests (P2 evaluation harness, TDD).
+ * 文件名:CallBudgetTrackingTest.java
  *
- * <p>Production reasoning calls, provider retries, judge calls, and
- * capability calls are tracked independently. A provider retry is never a
- * new production reasoning step, and a judge call is never a production
- * call. A normal answer cycle expects exactly STATE_UPDATE + DECISION.
+ * 测试目标:调用预算追踪(P2 评估工具链,TDD)。生产推理调用、Provider 重试、
+ * 评审(judge)调用与能力调用独立计数:Provider 重试不算新的生产推理步,
+ * 评审调用不算生产调用。一次普通回答循环恰好期望 STATE_UPDATE + DECISION。
  */
 class CallBudgetTrackingTest {
 
@@ -51,8 +50,7 @@ class CallBudgetTrackingTest {
 
         assertThat(tracker.productionModelCalls()).isEqualTo(2);
         assertThat(tracker.providerRetries()).isEqualTo(1);
-        // The normal cycle allows no retries: the retry itself is tracked
-        // separately and breaches the retry dimension only.
+        // 普通循环不允许重试:重试被单独计数,只突破重试维度。
         assertThat(tracker.check(CallBudget.normalAnswerCycle()))
                 .extracting(Violation::failureClass)
                 .containsExactly(FailureClass.CALL_BUDGET);

@@ -16,13 +16,14 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Fail-closed validation of every brain response before any persistence or
- * execution. The brain is untrusted input: a response that invents runtime
- * identity, references sources outside the frozen snapshot, echoes a stale
- * base context, bypasses an unresolved requirement conflict, exceeds its call
- * budget, or carries an unknown action family is rejected as a whole.
+ * 文件名:AgentBrainResponseValidator.java
  *
- * <p>Pure contract logic: no repositories, no gateway, no persistence.
+ * 用途:对 Brain 的每一次响应做 fail-closed 校验,任何响应必须先通过校验
+ * 才允许落库或执行。Brain 被视为不可信输入:凡是伪造运行时身份、引用冻结
+ * 快照之外的来源、回显过期的 base context、绕过未消解的需求冲突、超出调用
+ * 预算,或携带未知动作族(action family)的响应,都会被整体拒绝。
+ *
+ * 纯契约逻辑:不依赖仓储、网关,也不做任何持久化。
  */
 public final class AgentBrainResponseValidator {
 
@@ -36,7 +37,7 @@ public final class AgentBrainResponseValidator {
     private AgentBrainResponseValidator() {
     }
 
-    /** Validates a {@code POST /v1/state-updates} response against its request. */
+    /** 针对 {@code POST /v1/state-updates} 的响应,对照请求做校验。 */
     public static void validateStateUpdate(AgentRequestEnvelope request,
                                            AgentResponseEnvelope response) {
         validateCommon(request, response);
@@ -57,10 +58,9 @@ public final class AgentBrainResponseValidator {
     }
 
     /**
-     * Validates an artifact generation response against its request: the
-     * artifact must be a supported type, every section must be non-blank and
-     * cite at least one allowed source ref, and no runtime-owned identity may
-     * appear anywhere in the derived content.
+     * 针对产物(artifact)生成响应,对照请求做校验:产物必须是受支持的类型,
+     * 每个小节(section)必须非空且至少引用一个允许的来源 ref,并且派生内容
+     * 中任何位置都不允许出现运行时拥有的身份字段。
      */
     public static void validateArtifact(AgentRequestEnvelope request,
                                         AgentArtifactResponse response) {
@@ -119,7 +119,7 @@ public final class AgentBrainResponseValidator {
         }
     }
 
-    /** Validates a {@code POST /v1/decisions} response against its request. */
+    /** 针对 {@code POST /v1/decisions} 的响应,对照请求做校验。 */
     public static void validateDecision(AgentRequestEnvelope request,
                                         AgentResponseEnvelope response) {
         validateCommon(request, response);
@@ -241,14 +241,12 @@ public final class AgentBrainResponseValidator {
     }
 
     /**
-     * An unresolved conflict must still be surfaced faithfully: the response
-     * must carry a non-empty {@code observation.conflicts}. The ACTION
-     * choice itself is never restricted here (Slice 4): a read-only
-     * capability invocation is as acceptable as asking the user — Runtime
-     * policy, stale-context, permission, and graph-invariant gates own
-     * execution safety, never this contract check. NODE_QUERY remains exempt
-     * entirely: it is a contextual read flow and must stay usable while the
-     * workspace still contains unresolved planning conflicts.
+     * 未消解的冲突必须被如实呈现:响应必须携带非空的
+     * {@code observation.conflicts}。ACTION 选择本身在此不做限制(Slice 4):
+     * 只读能力调用与向用户提问同样可接受——执行安全由 Runtime 策略、
+     * 过期上下文、权限以及图不变量等关卡负责,而不是由本契约校验负责。
+     * NODE_QUERY 完全豁免:它属于上下文读取流程,即使工作区仍存在未消解的
+     * 规划冲突,也必须保持可用。
      */
     private static void validateConflictAction(AgentRequestEnvelope request,
                                                AgentResponseEnvelope response) {
@@ -271,12 +269,11 @@ public final class AgentBrainResponseValidator {
             java.util.List.of("node:", "answer:", "patch:", "context:", "route:");
 
     /**
-     * INVOKE_CAPABILITY payload: a non-blank capabilityId plus an optional
-     * arguments object. Any argument value shaped like a runtime ref must be
-     * inside the snapshot's allowed refs — a generic anti-smuggling rule,
-     * not tied to any particular argument name. Unknown capability ids are
-     * denied by policy (fail-closed at execution); the validator checks wire
-     * shape only.
+     * INVOKE_CAPABILITY 的 payload:一个非空 capabilityId 加上一个可选的
+     * arguments 对象。任何形似运行时 ref 的参数值都必须落在快照允许的
+     * refs 之内——这是一条通用的防夹带(anti-smuggling)规则,不绑定任何
+     * 具体参数名。未知 capability id 由策略拒绝(执行时 fail-closed);
+     * 本校验器只检查线上传输的形状。
      */
     private static void validateInvokeCapability(Map<String, Object> payload,
                                                  AgentInputSnapshot snapshot) {
@@ -300,10 +297,9 @@ public final class AgentBrainResponseValidator {
     }
 
     /**
-     * Family-specific payload shape checks. Payloads are generic maps on the
-     * wire; anything that smuggles runtime-owned identity fields is rejected
-     * regardless of family. Shape is validated here; kind/subtype whitelists
-     * are enforced by the runtime at execution time.
+     * 按动作族(family)做 payload 形状校验。payload 在传输层是通用 map;
+     * 无论属于哪个 family,凡夹带运行时拥有的身份字段一律拒绝。形状在此
+     * 校验;kind/subtype 白名单由运行时在执行时强制。
      */
     private static void validatePayload(ActionFamily family, Map<String, Object> payload,
                                          AgentInputSnapshot snapshot) {
@@ -315,8 +311,8 @@ public final class AgentBrainResponseValidator {
             case INVOKE_CAPABILITY -> validateInvokeCapability(payload, snapshot);
             case UPDATE_NODE, CREATE_ROUTE, RESPOND_TO_USER,
                  GENERATE_ARTIFACT, WAIT -> {
-                // Shape-free families: only the generic identity rules apply.
-                // RESPOND_TO_USER message presence is checked by the executor.
+                // 无形状要求的 family:只适用通用的身份字段规则。
+                // RESPOND_TO_USER 的 message 是否存在由执行器(executor)检查。
             }
         }
     }
@@ -325,9 +321,9 @@ public final class AgentBrainResponseValidator {
             "KNOWLEDGE", "INTERACTION", "RESOURCE", "ARTIFACT");
 
     /**
-     * CREATE_NODE payload: either an interaction question (questionText +
-     * options + allowFreeAnswer, kind defaults to INTERACTION/QUESTION) or a
-     * non-interaction workspace unit (kind + subtype + content.text).
+     * CREATE_NODE 的 payload:要么是交互式提问(questionText + options +
+     * allowFreeAnswer,kind 默认为 INTERACTION/QUESTION),要么是非交互的
+     * 工作区单元(kind + subtype + content.text)。
      */
     @SuppressWarnings("unchecked")
     private static void validateCreateNode(Map<String, Object> payload) {
@@ -353,9 +349,9 @@ public final class AgentBrainResponseValidator {
             "RELATED_TO", "DEPENDS_ON", "DERIVED_FROM", "CONFLICTS_WITH", "SUPPORTS");
 
     /**
-     * CONNECT_NODE payload: relation class is explicit. Semantic relations
-     * name their endpoints as allowed {@code node:} refs; the runtime owns
-     * all node identity.
+     * CONNECT_NODE 的 payload:关系类别(relation class)必须显式给出。
+     * 语义关系的端点用允许的 {@code node:} ref 表示;所有节点身份都由
+     * 运行时拥有。
      */
     private static void validateConnectNode(Map<String, Object> payload,
                                             AgentInputSnapshot snapshot) {

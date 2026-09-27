@@ -1,12 +1,13 @@
-/**
- * InputDraftStore: persists user input (selected option + free text) per
- * node + route/read context key. This prevents input loss when the user
- * drags the canvas, switches focus, submits, or the component remounts.
- * Session storage also survives page reloads in this tab. Drafts remain
- * browser-only input, never canonical Answers; successful submission clears
- * only its own identity from both memory and storage.
+// 文件名:inputDraftStore.ts
+// 用途:输入草稿 store(Pinia):按 项目+节点+路线/阅读上下文 键持久化用户未提交输入(选项+自由文本),防止拖画布/切焦点/重挂载丢输入;提交成功只清除自己的草稿。
+/*
+ * InputDraftStore:按 节点 + 路线/阅读上下文 键持久化用户输入
+ * (选中的选项 + 自由文本)。防止用户拖动画布、切换焦点、提交或组件重挂载
+ * 时丢输入。会话存储还能在本标签页内跨页面刷新存活。草稿始终只是浏览器
+ * 侧输入,绝不是 canonical 回答;提交成功只从内存与存储中清除它自己的
+ * 那条身份。
  *
- * Key format: `${projectId}:${nodeId}:${routeId ?? ''}:${readContext ?? ''}`
+ * 键格式:`${projectId}:${nodeId}:${routeId ?? ''}:${readContext ?? ''}`
  */
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
@@ -41,7 +42,7 @@ function restoreDrafts(): Map<string, InputDraft> {
       }
     }
   } catch {
-    // Unavailable storage or invalid JSON must not prevent typing.
+    // 存储不可用或 JSON 非法绝不能妨碍输入。
   }
   return restored
 }
@@ -63,7 +64,7 @@ export const useInputDraftStore = defineStore('inputDraft', () => {
       if (drafts.value.size === 0) sessionStorage.removeItem(INPUT_DRAFT_STORAGE_KEY)
       else sessionStorage.setItem(INPUT_DRAFT_STORAGE_KEY, JSON.stringify([...drafts.value]))
     } catch {
-      // Quota/private-mode failures preserve the live in-memory input.
+      // 配额/隐私模式失败时保留内存中的实时输入。
     }
   }
 

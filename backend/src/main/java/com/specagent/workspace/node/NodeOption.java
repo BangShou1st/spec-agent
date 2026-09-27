@@ -8,11 +8,11 @@ import com.specagent.common.Ids;
 import java.util.UUID;
 
 /**
- * A selectable option presented on a clarification node.
+ * 文件名:NodeOption.java
  *
- * <p>Options are part of the immutable node prompt; they cannot be edited after
- * the node is created. {@code recommended} marks the model's context-based
- * suggestion — advice shown to the user, never a pre-selected answer.
+ * 用途:澄清节点上呈现的一个可选项。选项是节点不可变提示的一部分,
+ * 节点创建后不可编辑。{@code recommended} 标记模型基于上下文的建议——
+ * 只是展示给用户的参考,绝不是预选答案。
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class NodeOption {

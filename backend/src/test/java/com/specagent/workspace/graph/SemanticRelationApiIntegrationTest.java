@@ -23,15 +23,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Regression lock for the semantic-relation creation path. The drag-to-connect
- * affordance in {@code connection.spec.ts} only ever records a relation by
- * calling {@code POST /api/v1/projects/{id}/relations}. This test covers the
- * whole contract: identity (sourceNodeId, targetNodeId, relationType) is
- * stored verbatim, the line-typed relation kind defaults to RELATED_TO, the
- * origin is USER for human-authored drags, and the relation is immediately
- * visible in the read-model graph view that the UI uses to render the
- * Inspector. If any of these invariants ever regress, the on-canvas drag
- * would silently do nothing.
+ * 文件名:SemanticRelationApiIntegrationTest.java
+ *
+ * 测试目标:语义关系创建路径的回归锁定。前端 {@code connection.spec.ts}
+ * 的拖拽连线只通过 {@code POST /api/v1/projects/{id}/relations} 记录关系,
+ * 本测试覆盖完整契约:身份三元组 (sourceNodeId, targetNodeId, relationType)
+ * 原样存储、线型关系默认 RELATED_TO、人工拖拽的 origin 为 USER,以及关系
+ * 立即在 UI 渲染 Inspector 所用的读取模型图视图中可见。以上任一不变量回归,
+ * 画布上的拖拽都会静默失效。
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -59,15 +58,14 @@ class SemanticRelationApiIntegrationTest {
         Node target = nodeService.createChildNode(project.id(), route.id(), root.id(),
                 "Drag target", null, List.of(), true);
 
-        // The drag-to-connect affordance always sends these three fields;
-        // anything else is rejected by the controller.
+        // 拖拽连线只会发送这三个字段;其余字段会被控制器拒绝。
         String body = objectMapper.writeValueAsString(Map.of(
                 "sourceNodeId", root.id().toString(),
                 "targetNodeId", target.id().toString(),
                 "relationType", "RELATED_TO"));
 
-        // RELATED_TO is symmetric: the stored endpoints are canonicalized to
-        // (minId, maxId) so both drag directions are the same fact.
+        // RELATED_TO 是对称的:存储的端点被规范化为 (minId, maxId),
+        // 因此两个拖拽方向是同一个事实。
         var canonical = com.specagent.workspace.graph.GraphInvariantValidator
                 .endpointsCanonicalized(root.id(), target.id(),
                         com.specagent.workspace.graph.NodeRelationType.RELATED_TO);
@@ -92,10 +90,9 @@ class SemanticRelationApiIntegrationTest {
         Node nodeB = nodeService.createRootNode(projectB.id(), projectB.activeRouteId(),
                 "B node", null, List.of(), true);
 
-        // sourceNodeId from project A used inside project B must fail as a
-        // client error (the source node does not belong to project B), never
-        // as a 500. The API never silently accepts cross-project relations,
-        // which is what the drag-to-connect path must also honor.
+        // 在项目 B 中使用项目 A 的 sourceNodeId 必须以客户端错误失败
+        // (source 节点不属于项目 B),绝不能是 500。API 从不静默接受跨项目
+        // 关系,拖拽连线路径也必须遵守这一约束。
         String body = objectMapper.writeValueAsString(Map.of(
                 "sourceNodeId", nodeA.id().toString(),
                 "targetNodeId", nodeB.id().toString(),
@@ -126,14 +123,14 @@ class SemanticRelationApiIntegrationTest {
                         .content(body))
                 .andExpect(status().isCreated());
 
-        // Second drag on the same pair must be rejected.
+        // 同一节点对的第二次拖拽必须被拒绝。
         mockMvc.perform(post("/api/v1/projects/{pid}/relations", project.id())
                         .contentType("application/json")
                         .content(body))
                 .andExpect(status().isConflict());
 
-        // RELATED_TO is symmetric: the REVERSE direction is the SAME fact and
-        // must also be rejected (canonicalized endpoints deduplicate it).
+        // RELATED_TO 是对称的:反方向是同一个事实,也必须被拒绝
+        // (规范化端点后去重)。
         String reverseBody = objectMapper.writeValueAsString(Map.of(
                 "sourceNodeId", target.id().toString(),
                 "targetNodeId", root.id().toString(),
@@ -153,7 +150,7 @@ class SemanticRelationApiIntegrationTest {
         Node target = nodeService.createChildNode(project.id(), route.id(), root.id(),
                 "Target", null, List.of(), true);
 
-        // DEPENDS_ON is directional: A -> B and B -> A are DIFFERENT facts.
+        // DEPENDS_ON 是方向性的:A -> B 与 B -> A 是不同的事实。
         mockMvc.perform(post("/api/v1/projects/{pid}/relations", project.id())
                         .contentType("application/json")
                         .content(objectMapper.writeValueAsString(Map.of(
@@ -164,8 +161,8 @@ class SemanticRelationApiIntegrationTest {
                 .andExpect(jsonPath("$.sourceNodeId").value(root.id().toString()))
                 .andExpect(jsonPath("$.targetNodeId").value(target.id().toString()));
 
-        // B -> A DEPENDS_ON would be a direct 2-cycle: rejected specifically as
-        // a dependency cycle, not silently stored.
+        // B -> A 的 DEPENDS_ON 会形成直接的 2 节点环:必须以依赖环被明确拒绝,
+        // 而不是静默存储。
         mockMvc.perform(post("/api/v1/projects/{pid}/relations", project.id())
                         .contentType("application/json")
                         .content(objectMapper.writeValueAsString(Map.of(

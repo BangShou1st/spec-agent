@@ -1,9 +1,13 @@
+// 文件名:connections.ts
+// 用途:连接(Connection)管理的 API 封装。以后端 ConnectionController 为准;
+//       所有端点均使用产品层 connectionId,不涉及任何 provider 关键字。
+
 import { apiClient } from '@/shared/http/client'
 import type { ConnectionDetail, ConnectionDiscovery, ConnectionPromptView, ConnectionResourceContent, ConnectionResourceView, ConnectionSummary, ConnectionToolView, CreateConnectionRequest, UpdateConnectionRequest } from './connectionTypes'
 
 /**
- * Connection management API wrappers. Backend ConnectionController is authority.
- * Every endpoint uses product-level connectionId. No provider keywords here.
+ * 连接(Connection)管理的 API 封装。以后端 ConnectionController 为准;
+ * 所有端点均使用产品层 connectionId,这里不出现任何 provider 关键字。
  */
 
 export function listConnections(): Promise<ConnectionSummary[]> {

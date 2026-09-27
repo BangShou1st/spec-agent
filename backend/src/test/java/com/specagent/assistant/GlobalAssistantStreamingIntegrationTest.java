@@ -38,7 +38,15 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
-/** True-streaming runtime semantics over a scripted fragment gateway. */
+/**
+ * 文件名:GlobalAssistantStreamingIntegrationTest.java
+ *
+ * 测试目标:基于脚本化分段网关验证真实流式(分片回调)的运行时语义。
+ * 覆盖场景:分片先于供应商返回即发出、工具轮次不泄露草稿、
+ * 澄清/导航决策按契约流式输出、修复时用 RESET 重开一代、
+ * 断连/取消不留半截消息、重复字段拒绝且不执行工具、
+ * emoji 代理对边界不产生未配对字符。
+ */
 @SpringBootTest
 @ActiveProfiles("test")
 @Transactional
@@ -61,7 +69,7 @@ class GlobalAssistantStreamingIntegrationTest {
     @Autowired com.specagent.assistant.runtime.GlobalAssistantSummaryService summaries;
     @Autowired ObjectMapper mapper;
 
-    /** Scripted fragment gateway: feeds fragments, records timing, optional hook/throw. */
+    /** 脚本化分段网关:按脚本喂分片,记录时间戳,支持可选钩子与抛异常。 */
     static final class ScriptedGateway implements ModelInferenceGateway {
         record Script(List<String> fragments, int hookAt, Runnable hook, RuntimeException throwAfter) {}
         final Deque<Script> scripts = new ArrayDeque<>();

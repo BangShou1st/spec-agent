@@ -16,26 +16,27 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Host tool: read-only discovery of the Skill packages an HTTPS git
- * repository actually contains.
+ * 文件名:SkillDiscoverCapability.java
  *
- * <p>This is the model's only trustworthy source for skill names, counts and
- * descriptions: every candidate comes from the repository's SKILL.md
- * manifests, never from model memory. It stages nothing — staging stays with
- * {@link SkillImportCapability}, so discovery can be called freely to ground
- * "which skills does this repo have" before any install decision.
+ * 用途:宿主工具——只读地探查一个 HTTPS git 仓库里实际包含哪些
+ * Skill 包,GA 工具目录中的 skill.import.discover 即本能力。
+ *
+ * 这是模型获取 skill 名称、数量与描述的唯一可信来源:每个候选都
+ * 来自仓库的 SKILL.md 清单,绝不来自模型记忆。它不暂存任何东西——
+ * 暂存归 {@link SkillImportCapability} 管,因此在做出安装决定之前,
+ * 可以放心调用它来回答"这个仓库有哪些 Skill"。
  */
 @Component
 public class SkillDiscoverCapability implements InternalCapabilityAdapter {
 
     public static final String CAPABILITY_ID = "skill.import.discover";
 
-    /** Candidate lists are bounded so one marketplace cannot flood the model. */
+    /** 候选列表有上限,防止单个仓库刷爆模型上下文。 */
     private static final int MAX_REPORTED_CANDIDATES = 20;
 
     /**
-     * Candidate metadata comes from an untrusted repository, so it enters the
-     * model context only in bounded, display-sized form.
+     * 候选元数据来自不受信任的仓库,只以有界、展示尺寸的形式
+     * 进入模型上下文。
      */
     private static final int MAX_CANDIDATE_DESCRIPTION_CHARS = 160;
 

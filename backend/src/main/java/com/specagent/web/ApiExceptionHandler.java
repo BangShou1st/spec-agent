@@ -31,24 +31,23 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Central API exception mapping.
+ * 文件名:ApiExceptionHandler.java
  *
- * <p>Policy:
+ * 用途:后端统一的 API 异常映射中心,把各业务包抛出的类型化异常
+ * 转换成稳定的 {@link ApiErrorResponse} 错误契约。
  *
- * <pre>
- * 400 BAD_REQUEST   malformed request / validation error / invalid UUID
- * 404 NOT_FOUND     project/route/node/answer/spec/run does not exist
- * 409 CONFLICT      request conflicts with runtime lifecycle/state
- * 422               model contract / reflection rejection
- * 500               unexpected internal failure (generic safe message)
- * </pre>
+ * 映射策略:
  *
- * <p>Provider/gateway failures are mapped by
- * {@code com.specagent.web.GatewayErrorAdvice} (the API boundary itself never
- * depends on model packages). Unexpected exceptions are logged server-side
- * using only the exception class name so no secret-like content (credentials,
- * provider error payloads) can reach the log, and the client always receives a
- * generic safe message.
+ * 400 BAD_REQUEST   请求格式错误 / 校验失败 / 非法 UUID
+ * 404 NOT_FOUND     project/route/node/answer/spec/run 不存在
+ * 409 CONFLICT      请求与运行时生命周期/状态冲突
+ * 422               模型契约 / 反思拒绝
+ * 500               未预期的内部失败(通用安全消息)
+ *
+ * 供应商/网关失败由 {@code com.specagent.web.GatewayErrorAdvice} 映射
+ * (API 边界本身绝不依赖 model 包)。未预期异常的服务端日志只记录异常类名,
+ * 保证凭据、供应商错误负载等敏感内容进不了日志;客户端永远只收到通用
+ * 的安全消息。
  */
 @RestControllerAdvice
 public class ApiExceptionHandler {
@@ -106,9 +105,8 @@ public class ApiExceptionHandler {
     }
 
     /**
-     * A queued run's recorded target no longer matches live state at claim
-     * time (for example the active route changed). Expected business outcome:
-     * deterministic conflict, never a 500.
+     * 排队的 run 在认领时刻记录的目标已与实时状态不符(例如活动路线已切换)。
+     * 预期业务结果:确定性的冲突,绝不返回 500。
      */
     @ExceptionHandler(StaleRunTargetException.class)
     public ResponseEntity<ApiErrorResponse> handleStaleRunTarget(StaleRunTargetException ex) {
@@ -118,10 +116,9 @@ public class ApiExceptionHandler {
     }
 
     /**
-     * A new run (draft question / answer / artifact) cannot target its route:
-     * the project has no active route pointer, or the requested route is no
-     * longer OPEN. Expected business outcome: deterministic conflict with a
-     * precise code, never a generic runtime-conflict 409.
+     * 新的 run(草稿问题/答案/工件)无法指向其路线:项目没有活动路线指针,
+     * 或请求的路线已不是 OPEN 状态。预期业务结果:携带精确错误码的确定性
+     * 冲突,绝不退化为通用的 runtime-conflict 409。
      */
     @ExceptionHandler(RouteTargetConflictException.class)
     public ResponseEntity<ApiErrorResponse> handleRouteTargetConflict(RouteTargetConflictException ex) {
@@ -136,9 +133,9 @@ public class ApiExceptionHandler {
     }
 
     /**
-     * A graph mutation violated a topology/state rule the user can act on
-     * (dependency cycle, detach or connect at a non-tip node). Deterministic
-     * 409 with the precise rule code, never a generic runtime conflict.
+     * 图变更违反了用户可以据此采取行动的拓扑/状态规则(依赖成环、
+     * 在非 tip 节点上摘除或连接)。返回携带精确规则码的确定性 409,
+     * 绝不是通用的 runtime conflict。
      */
     @ExceptionHandler(com.specagent.workspace.graph.GraphRuleViolationException.class)
     public ResponseEntity<ApiErrorResponse> handleGraphRuleViolation(
@@ -148,9 +145,8 @@ public class ApiExceptionHandler {
     }
 
     /**
-     * A proposal lifecycle decision lost the single-winner race (another
-     * accept/reject/expire committed first). Expected business outcome:
-     * deterministic 409, never a 500 or a constraint violation.
+     * 提案生命周期决策输掉了单赢家竞争(另一个 accept/reject/expire
+     * 先提交了)。预期业务结果:确定性的 409,绝不是 500 或约束违例。
      */
     @ExceptionHandler(ProposalAlreadyDecidedException.class)
     public ResponseEntity<ApiErrorResponse> handleProposalAlreadyDecided(
@@ -214,10 +210,9 @@ public class ApiExceptionHandler {
                 .body(ApiErrorResponse.of("CONNECTION_COMMAND_REJECTED", ex.getMessage()));
     }
 
-    // The MCP-owned twin of ConnectionCommandException: the mcp package must
-    // not import the connection service package, so MCP asset-access
-    // rejections throw their own typed exception and map to the exact same
-    // public contract here — never to 500/UNKNOWN_ERROR.
+    // ConnectionCommandException 的 mcp 包孪生版本:mcp 包不得 import
+    // connection 服务包,因此 MCP 资产访问被拒时抛出自己的类型化异常,
+    // 并在这里映射到完全相同的公开契约——绝不映射为 500/UNKNOWN_ERROR。
     @ExceptionHandler(McpConnectionCommandException.class)
     public ResponseEntity<ApiErrorResponse> handleMcpConnectionCommand(
             McpConnectionCommandException ex) {

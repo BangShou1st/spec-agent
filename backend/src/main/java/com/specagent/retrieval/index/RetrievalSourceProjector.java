@@ -37,7 +37,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-/** Projects canonical Runtime records into the rebuildable retrieval index. */
+/**
+ * 文件名:RetrievalSourceProjector.java
+ *
+ * 用途:把规范化的运行时记录(Node、Answer、AnswerPatch、资源节点)
+ * 投影进可重建的检索索引,是检索条目的实际生产者。既支持写入时的
+ * 增量投影,也支持按项目/按来源的全量重建。
+ */
 @Service
 public class RetrievalSourceProjector implements RouteMembershipProjectionPort {
 
@@ -68,9 +74,8 @@ public class RetrievalSourceProjector implements RouteMembershipProjectionPort {
     }
 
     /**
-     * Project the current canonical workspace. Rebuild is intentionally
-     * idempotent and may be used after index corruption; it never mutates
-     * nodes, answers, patches, routes, or graph operations.
+     * 把当前规范化的工作区内容整体投影一遍。重建刻意设计为幂等的,
+     * 可在索引损坏后使用;它绝不改动节点、答案、补丁、路线或图操作。
      */
     @Transactional
     public void rebuildProject(UUID projectId) {
@@ -132,7 +137,7 @@ public class RetrievalSourceProjector implements RouteMembershipProjectionPort {
         }
     }
 
-    /** Incrementally projects one canonical Node without touching other rows. */
+    /** 增量投影一个规范化 Node,不触碰其他行。 */
     @Transactional
     public void indexNode(Node node) {
         if (node == null) {
@@ -152,9 +157,8 @@ public class RetrievalSourceProjector implements RouteMembershipProjectionPort {
     }
 
     /**
-     * Refreshes only sources whose membership can change when a route starts
-     * from the supplied canonical prefix. This updates metadata in place and
-     * therefore preserves content hashes and valid embeddings.
+     * 只刷新那些在路线从给定规范化前缀启动时成员关系可能发生变化的来源。
+     * 这里就地更新元数据,因此内容哈希和已生成的有效向量都得以保留。
      */
     @Override
     @Transactional
@@ -196,7 +200,7 @@ public class RetrievalSourceProjector implements RouteMembershipProjectionPort {
         }
     }
 
-    /** Incrementally projects one immutable canonical Answer. */
+    /** 增量投影一个不可变的规范化 Answer。 */
     @Transactional
     public void indexAnswer(Answer answer) {
         if (answer == null) {
@@ -206,7 +210,7 @@ public class RetrievalSourceProjector implements RouteMembershipProjectionPort {
         projectAnswer(answer);
     }
 
-    /** Incrementally projects all claims in one immutable AnswerPatch. */
+    /** 增量投影一个不可变 AnswerPatch 里的全部 claims。 */
     @Transactional
     public void indexPatch(AnswerPatch patch) {
         if (patch == null) {
@@ -224,7 +228,7 @@ public class RetrievalSourceProjector implements RouteMembershipProjectionPort {
         projectPatch(patch);
     }
 
-    /** Retraction is durable in the projection; the canonical source remains. */
+    /** 收回在投影中是持久的;规范化来源本身保持原样。 */
     @Transactional
     public void retractSource(UUID projectId, String sourceRef) {
         entryRepository.retractSource(projectId, sourceRef);
@@ -333,10 +337,9 @@ public class RetrievalSourceProjector implements RouteMembershipProjectionPort {
     }
 
     /**
-     * Route membership is projection metadata, not canonical Node identity: a
-     * shared Node may be material in several routes. The resolver owns the
-     * route lineage semantics, while floating workspace nodes intentionally
-     * retain an empty provenance set.
+     * 路线归属是投影元数据,不是规范化 Node 身份的一部分:一个共享 Node
+     * 可能在多条路线中都有意义。路线谱系语义由 resolver 负责;游离的
+     * 工作区节点刻意保留空的 provenance 集合。
      */
     private void addRouteProvenance(UUID projectId, UUID nodeId,
                                      Map<String, Object> metadata) {

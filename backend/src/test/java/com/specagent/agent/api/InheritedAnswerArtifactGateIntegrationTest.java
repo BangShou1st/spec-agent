@@ -34,7 +34,6 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
@@ -48,20 +47,20 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * The spec gates must see the answers the spec context actually uses — the
- * route's own answers PLUS the legal inherited prefix — not merely the route's
- * own tip answer.
+ * 文件名:InheritedAnswerArtifactGateIntegrationTest.java
  *
- * <p>P1-B regression: forking from an answered node whose STATE_UPDATE never
- * completed inherits that answer into the branch context while both gates
- * (enqueue and pre-execution) looked only at the branch's own tip answer, so
- * the branch could generate a spec that reads as complete while silently
- * omitting the user's inherited answer.
+ * 测试目标:规格门禁必须看到规格上下文真正使用的答案——路线自身答案加上合法的
+ * 继承前缀,而不只是路线自己的 tip 答案。P1-B 回归:从"STATE_UPDATE 未完成"的已回答
+ * 节点分叉时,该答案被继承进分支上下文,而入队与执行前两道门禁都只检查分支自己的
+ * tip 答案,导致分支可能生成一份看似完整却静默遗漏用户继承答案的规格。
  */
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-@Transactional
+// 刻意不加 @Transactional(与 TypedRunFailureIntegrationTest 同理):失败终态化与
+// RUN_FAILED 事件在独立的 REQUIRES_NEW 事务内原子提交——第四轮所有权协议的一致性
+// 要求;外层测试事务会让 REQUIRES_NEW 看不到未提交的 run 行,从而掩盖本套件要断言
+// 的那条记录。生产中 claim 事务在 worker 执行之前已经提交,本形态与之完全一致。
 class InheritedAnswerArtifactGateIntegrationTest {
 
     @Autowired
@@ -90,10 +89,29 @@ class InheritedAnswerArtifactGateIntegrationTest {
     private RouteHistoryResolver routeHistoryResolver;
     @Autowired
     private ContextBuilder contextBuilder;
+    @Autowired
+    private org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate jdbc;
 
-    /** Route with one root question answered, its STATE_UPDATE never run. */
+    private final java.util.List<UUID> touchedProjectIds = new java.util.ArrayList<>();
+
+    @org.junit.jupiter.api.AfterEach
+    void cleanUpRunRows() {
+        for (UUID projectId : touchedProjectIds) {
+            jdbc.update("DELETE FROM agent_run_events WHERE run_id IN "
+                    + "(SELECT id FROM agent_runs WHERE project_id = :projectId)",
+                    java.util.Map.of("projectId", projectId));
+            jdbc.update("DELETE FROM agent_run_continuation_checks WHERE run_id IN "
+                    + "(SELECT id FROM agent_runs WHERE project_id = :projectId)",
+                    java.util.Map.of("projectId", projectId));
+            jdbc.update("DELETE FROM agent_runs WHERE project_id = :projectId",
+                    java.util.Map.of("projectId", projectId));
+        }
+    }
+
+    /** 路线上有一个已回答的根问题,其 STATE_UPDATE 从未执行。 */
     private Project projectWithAnsweredRoot() {
         Project project = projectService.createProject("Inherited gate project");
+        touchedProjectIds.add(project.id());
         Node root = nodeService.createRootNode(project.id(), project.activeRouteId(),
                 "What is the goal?", null, List.of(), true);
         answerService.finalizeAnswer(project.id(), project.activeRouteId(), root.id(),
@@ -107,7 +125,7 @@ class InheritedAnswerArtifactGateIntegrationTest {
                 "branch route");
     }
 
-    /** Gives every effective answer of the route a checkpoint patch. */
+    /** 给路线的每个有效答案补上检查点补丁。 */
     private void processAllEffectiveAnswers(UUID routeId) {
         Route route = routeService.getRoute(routeId).orElseThrow();
         List<UUID> lineage = routeHistoryResolver.resolveLineage(route.tipNodeId());
@@ -148,6 +166,7 @@ class InheritedAnswerArtifactGateIntegrationTest {
     @Test
     void queuedDraftFailsClosedIfTheAnswerBecomesUnprocessedBeforeExecution() {
         Project project = projectService.createProject("Queued draft race " + UUID.randomUUID());
+        touchedProjectIds.add(project.id());
         UUID routeId = project.activeRouteId();
         Node root = nodeService.createRootNode(project.id(), routeId,
                 "What is required?", null, List.of(), true);
@@ -169,8 +188,8 @@ class InheritedAnswerArtifactGateIntegrationTest {
         Project project = projectWithAnsweredRoot();
         Route fork = forkFromRoot(project);
 
-        // The branch's own tip is clean (no route-local answer), yet the spec
-        // context inherits the unprocessed answer through the fork point.
+        // 分支自己的 tip 是干净的(没有路线本地答案),但规格上下文会通过分叉点
+        // 继承那个未处理的答案。
         mockMvc.perform(post("/api/v1/projects/{projectId}/agent-runs", project.id())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"operation\": \"GENERATE_ARTIFACT\"}"))
@@ -186,9 +205,8 @@ class InheritedAnswerArtifactGateIntegrationTest {
         Project project = projectWithAnsweredRoot();
         Route fork = forkFromRoot(project);
 
-        // The enqueue gate now correctly refuses this state (409); to exercise
-        // the executor gate directly, queue the run through RunService as if it
-        // had been enqueued before the inherited answer became unprocessed.
+        // 入队门禁现在会正确拒绝这种状态(409);为了直接测试执行器门禁,
+        // 假装在继承答案变未处理之前就已入队,直接经 RunService 排队该 run。
         AgentRun run = runService.createQueuedArtifactGeneration(
                 project.id(), null, "gate", fork.id());
 
@@ -206,9 +224,8 @@ class InheritedAnswerArtifactGateIntegrationTest {
 
     @Test
     void unprocessedAnswerThatIsNoLongerTheTipIsStillCaughtByTheEffectiveHistory() throws Exception {
-        // Historical compatibility fixture: create the already-invalid state
-        // directly. The fixed DRAFT path must never create this state; this
-        // fixture preserves coverage for rows written by the old path.
+        // 历史兼容夹具:直接构造这个现在已非法的状态。修复后的 DRAFT 路径绝不
+        // 会产生这种状态;该夹具为旧路径写入的行保留覆盖。
         Project project = projectWithAnsweredRoot();
         Route source = routeService.getRoute(project.activeRouteId()).orElseThrow();
         UUID rootId = source.rootNodeId();
@@ -230,13 +247,13 @@ class InheritedAnswerArtifactGateIntegrationTest {
     @Test
     void nonTipUnprocessedAnswerCanBeRecoveredThroughTheFormalEntryPoint() throws Exception {
         Project project = projectService.createProject("Historical recovery project " + UUID.randomUUID());
+        touchedProjectIds.add(project.id());
         UUID routeId = project.activeRouteId();
         Node root = nodeService.createRootNode(project.id(), routeId,
                 "What must be preserved?", null, List.of(), true);
 
-        // Compatibility fixture with the original pre-answer ContextSnapshot
-        // attached to the producing run. The answer is then made non-tip by a
-        // legacy direct node write, matching the state created by the old bug.
+        // 兼容夹具:给产生该答案的 run 附加原始的答案前 ContextSnapshot。
+        // 随后用一次旧式直接节点写入把答案变为非 tip,复现旧 bug 造出的状态。
         AgentRun original = runService.createQueuedRunWithInputResult(
                 project.id(), "ANSWER_TIP", root.id(), null, null, null, null);
         var originalSnapshot = contextBuilder.buildForRoute(
@@ -325,9 +342,8 @@ class InheritedAnswerArtifactGateIntegrationTest {
         UUID rootId = source.rootNodeId();
         Answer inherited = answerService.findAnswerForNode(source.id(), rootId).orElseThrow();
 
-        // Use the formal recovery entry on the owning route. This is not a
-        // direct AnswerPatch write: the runtime reuses the immutable answer,
-        // completes its checkpoint, and keeps the branch's tip untouched.
+        // 在所属路线上使用正式恢复入口。这不是直接的 AnswerPatch 写入:运行时
+        // 复用不可变答案、完成其检查点,并保持分支 tip 不被触碰。
         MvcResult recovery = mockMvc.perform(
                         post("/api/v1/projects/{projectId}/agent-runs", project.id())
                                 .contentType(MediaType.APPLICATION_JSON)
@@ -349,9 +365,8 @@ class InheritedAnswerArtifactGateIntegrationTest {
         assertThat(routeService.getRoute(fork.id()).orElseThrow().tipNodeId())
                 .isEqualTo(rootId);
 
-        // A second click is a historical, already-checkpointed recovery. It
-        // must be a durable no-op: no second STATE_UPDATE, Answer, Patch, or
-        // graph mutation.
+        // 第二次点击属于历史性、已有检查点的恢复。它必须是持久的空操作:
+        // 不产生第二条 STATE_UPDATE、Answer、Patch 或任何图变更。
         MvcResult repeatedRecovery = mockMvc.perform(
                         post("/api/v1/projects/{projectId}/agent-runs", project.id())
                                 .contentType(MediaType.APPLICATION_JSON)
@@ -376,8 +391,8 @@ class InheritedAnswerArtifactGateIntegrationTest {
                 .contains("STATE_UPDATE_SKIPPED")
                 .doesNotContain("DECISION_STARTED");
 
-        // The branch now passes the effective-history gate and its own
-        // artifact run can be claimed by id; no shared queue draining.
+        // 分支现在通过有效历史门禁,它自己的制品 run 可以按 id 认领;
+        // 不做共享队列的排空。
         MvcResult artifact = mockMvc.perform(post("/api/v1/projects/{projectId}/agent-runs", project.id())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"operation\": \"GENERATE_ARTIFACT\", \"sourceRouteId\": \""
@@ -399,9 +414,8 @@ class InheritedAnswerArtifactGateIntegrationTest {
         Route fork = forkFromRoot(project);
         processAllEffectiveAnswers(fork.id());
 
-        // A second branch of the same project keeps an unprocessed tip answer;
-        // it shares no lineage material with the fork beyond the processed
-        // root, and must not block the fork's generation.
+        // 同一项目的第二个分支保留了一个未处理的 tip 答案;除了已处理的根之外
+        // 它与分支不共享任何 lineage 材料,绝不能阻塞分支的生成。
         Route source = routeService.getRoute(fork.sourceRouteId()).orElseThrow();
         Node siblingTip = nodeService.createChildNode(project.id(), source.id(), source.tipNodeId(),
                 "Sibling question?", null, List.of(), true);

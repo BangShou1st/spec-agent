@@ -35,13 +35,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Route-lineage read endpoint integration tests.
+ * 文件名:RouteLineageApiIntegrationTest.java
  *
- * <p>Proves the Phase 7.2 UI-support read is a safe, read-only, route-scoped
- * view of one route's historical node chain: never calls a model, never writes
- * state, inspects every lifecycle status, follows fork/regenerate semantics,
- * and fails closed on corrupt lineage so foreign data can never be exposed.
- * Runs against the default fake model gateway (zero public provider requests).
+ * 测试目标:路线谱系读取接口(/lineage)的集成测试。验证 Phase 7.2 的
+ * UI 支持读取是安全、只读、按路线范围的历史节点链视图:绝不调用模型、
+ * 绝不写状态,可查看所有生命周期状态,遵循 fork/regenerate 语义,并在谱系
+ * 损坏时快速失败,绝不暴露外部数据。运行于默认假模型网关
+ * (不产生任何真实模型请求)。
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -211,7 +211,7 @@ class RouteLineageApiIntegrationTest {
         answerService.finalizeAnswer(chain.project().id(), chain.routeId(), chain.child().id(),
                 null, "Child answer", "user");
 
-        // Fork from the child node through the real command API.
+        // 通过真实命令 API 从 child 节点 fork。
         mockMvc.perform(post("/api/v1/projects/{projectId}/nodes/{nodeId}/fork",
                         chain.project().id(), chain.child().id())
                         .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
@@ -223,7 +223,7 @@ class RouteLineageApiIntegrationTest {
         Route fork = routeService.getRoute(forkRouteId).orElseThrow();
         assertThat(fork.tipNodeId()).isEqualTo(chain.child().id());
 
-        // No node copies; the same immutable nodes are shared.
+        // 没有节点拷贝;共享同一批不可变节点。
         assertThat(nodeRepository.findByProject(chain.project().id())).hasSize(nodeCountBefore);
 
         MvcResult result = getLineage(chain.project().id(), forkRouteId);
@@ -234,7 +234,7 @@ class RouteLineageApiIntegrationTest {
         assertThat(view.rootNodeId()).isEqualTo(chain.root().id());
         assertThat(view.tipNodeId()).isEqualTo(chain.child().id());
 
-        // The old route lineage is untouched and still root??ip complete.
+        // 旧路线谱系未被触碰,root 到 tip 依然完整。
         RouteLineageView oldView = objectMapper.readValue(
                 getLineage(chain.project().id(), originalRouteId)
                         .getResponse().getContentAsString(), RouteLineageView.class);
@@ -265,12 +265,12 @@ class RouteLineageApiIntegrationTest {
         assertThat(view.nodes().get(1).supersedesNodeId()).isEqualTo(chain.child().id());
         assertThat(view.nodes().get(1).options()).extracting(o -> o.label())
                 .containsExactly("Replacement option");
-        // The superseded target node and its old child subtree are absent.
+        // 被取代的目标节点及其旧子树不在其中。
         String body = result.getResponse().getContentAsString();
         assertThat(body).doesNotContain("Child question");
         assertThat(body).doesNotContain("Grandchild question");
 
-        // The old route still carries the full old subtree.
+        // 旧路线仍携带完整的旧子树。
         RouteLineageView oldView = objectMapper.readValue(
                 getLineage(chain.project().id(), chain.routeId())
                         .getResponse().getContentAsString(), RouteLineageView.class);
@@ -290,7 +290,7 @@ class RouteLineageApiIntegrationTest {
         Node foreignB = new Node(Ids.random(), projectB.id(), null, null, null,
                 "FOREIGN_SENTINEL_LINEAGE_5C21", null, List.of(), true, Instant.now());
         nodeRepository.save(foreignB);
-        // A's node points at a node owned by project B.
+        // 项目 A 的节点指向项目 B 拥有的节点。
         Node corruptA = new Node(Ids.random(), projectA.id(),
                 foreignB.id(), null, null, "A corrupt child question", null,
                 List.of(), true, Instant.now());
@@ -315,10 +315,9 @@ class RouteLineageApiIntegrationTest {
         Node root = new Node(Ids.random(), project.id(), null, null, null,
                 "Root question", null, List.of(), true, Instant.now());
         nodeRepository.save(root);
-        // The nodes table enforces parent_node_id referential integrity, so a
-        // genuinely dangling parent cannot be written normally. Bypass FK
-        // checks for this single insert to simulate the corrupt state the
-        // read must fail closed on.
+        // nodes 表强制 parent_node_id 的引用完整性,因此真正悬空的父节点
+        // 无法正常写入。对这一条插入绕过外键检查,以模拟读取必须快速失败
+        // 的损坏状态。
         NamedParameterJdbcTemplate jdbcTemplate = new NamedParameterJdbcTemplate(dataSource);
         jdbcTemplate.getJdbcOperations().execute("SET session_replication_role = replica");
         try {
@@ -365,7 +364,7 @@ class RouteLineageApiIntegrationTest {
         nodeRepository.save(childA);
         routeService.updateTip(routeId, childA.id(), rootA.id());
 
-        // A second root that is NOT the lineage root; route root stays rootA.
+        // 第二个根,不是谱系根;路线根仍是 rootA。
         Node rootB = new Node(Ids.random(), project.id(), null, null, null,
                 "Root B question", null, List.of(), true, Instant.now());
         nodeRepository.save(rootB);

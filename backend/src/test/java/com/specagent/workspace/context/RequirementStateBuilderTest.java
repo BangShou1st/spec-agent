@@ -12,6 +12,13 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * 文件名:RequirementStateBuilderTest.java
+ *
+ * 测试目标:验证 {@link RequirementStateBuilder} 能从 AnswerPatch 列表重建
+ * 需求状态:确认/未解决的 Claim 正确归类,且多次重放同一批 Patch 的重建
+ * 结果是确定性的。
+ */
 class RequirementStateBuilderTest {
 
     private final RequirementStateBuilder builder = new RequirementStateBuilder(null);

@@ -26,23 +26,20 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Reproduction for BUG-03: the E2E suite exercises the REAL async worker
- * poller ({@code spec.agent.brain.worker.enabled=true}) for DRAFT_QUESTION,
- * whereas every existing backend test drives the worker synchronously through
- * {@link com.specagent.agent.DecisionCycleTestDriver} (targeted claim by id).
- * This test reproduces the E2E scenario: it enqueues a DRAFT_QUESTION run and
- * lets the production {@link RunWorker} poller claim + execute it, then asserts
- * the run reaches COMPLETED with a produced node. No {@code @Transactional} so
- * the run is committed and visible to the background poller thread.
+ * 文件名:DraftQuestionAsyncPollerIntegrationTest.java
  *
- * <p><b>Isolation.</b> This is the only suite that runs the real
- * {@code RunWorkerPoller} against the shared test database. Spring caches the
- * test ApplicationContext, so without closing it here the {@code @Scheduled}
- * poller would keep running for the rest of the JVM and could claim/execute
- * runs enqueued by unrelated tests (and commit {@code context_snapshots} rows
- * while those tests clean their projects up — observed as a flaky foreign-key
- * violation inside eval cleanup). {@code @DirtiesContext} AFTER_CLASS shuts the
- * context (and its scheduler) down as soon as this class is done.
+ * 测试目标:复现 BUG-03:E2E 套件对 DRAFT_QUESTION 走的是真实异步 worker 轮询器
+ * ({@code spec.agent.brain.worker.enabled=true}),而所有既有后端测试都通过
+ * {@link com.specagent.agent.DecisionCycleTestDriver} 同步驱动 worker(按 id 精确领取)。
+ * 本测试复现 E2E 场景:入队一个 DRAFT_QUESTION run,交给生产 {@link RunWorker} 轮询器
+ * 领取并执行,然后断言 run 到达 COMPLETED 且产出了节点。不加 {@code @Transactional},
+ * 让 run 真实提交、对后台轮询线程可见。
+ *
+ * 【隔离性】。这是唯一针对共享测试数据库运行真实 {@code RunWorkerPoller} 的套件。
+ * Spring 会缓存测试 ApplicationContext,若不在此关闭上下文,{@code @Scheduled} 轮询器
+ * 会在 JVM 剩余生命周期里继续运行,可能领取/执行无关测试入队的 run(并在那些测试清理
+ * 项目时提交 {@code context_snapshots} 行——在评估清理阶段表现为偶发的外键违规)。
+ * {@code @DirtiesContext} AFTER_CLASS 保证本类结束后立即关闭上下文(及其调度器)。
  */
 @SpringBootTest
 @ActiveProfiles("test")

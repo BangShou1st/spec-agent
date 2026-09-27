@@ -14,17 +14,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * P1-2 production fail-safe: a deployment that serves the run API must never
- * report healthy while its worker is off. With the worker disabled the health
- * endpoint reports AGENT_WORKER_UNAVAILABLE (503); with it enabled the
- * process reports UP and the scheduling bean exists.
+ * 文件名:ProductionRuntimeWorkerHealthTest.java
+ *
+ * 测试目标:验证 P1-2 生产级保底规则——对外提供 run API 的部署在 worker
+ * 关闭时绝不能报告健康。worker 关闭时健康端点返回 AGENT_WORKER_UNAVAILABLE
+ * (503);worker 开启时进程报告 UP 且调度 bean 存在。
  */
 class ProductionRuntimeWorkerHealthTest {
 
-    // Same isolation rule as DraftQuestionAsyncPollerIntegrationTest: this is
-    // the other context that starts the real @Scheduled RunWorkerPoller against
-    // the shared test database, so it must not stay cached (and polling) for
-    // the rest of the JVM after the class finishes.
+    // 与 DraftQuestionAsyncPollerIntegrationTest 相同的隔离规则:这是另一个
+    // 会针对共享测试数据库启动真实 @Scheduled RunWorkerPoller 的上下文,
+    // 因此类结束后上下文不能继续缓存(否则轮询会一直跑)。
     @SpringBootTest
     @AutoConfigureMockMvc
     @ActiveProfiles("test")
@@ -41,7 +41,7 @@ class ProductionRuntimeWorkerHealthTest {
 
         @Test
         void productionRuntimeHasWorkingWorkerOrFailsFast() throws Exception {
-            // The executor scheduling bean exists when the worker is on.
+            // worker 开启时调度 bean 存在。
             assertThat(schedulingConfig).isNotNull();
             mockMvc.perform(get("/api/health"))
                     .andExpect(status().isOk())

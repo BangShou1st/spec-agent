@@ -10,6 +10,13 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+/**
+ * 文件名:OpenRouterSettingsController.java
+ *
+ * 用途:OpenRouter 提供商设置的 REST 接口(/api/v1/settings/openrouter),
+ * 提供状态查询、密钥探测、已存密钥模型列表、保存与验证端点;
+ * 响应中的密钥始终是脱敏形式,激活状态来自 ModelProviderSettingsService。
+ */
 @RestController
 @RequestMapping("/api/v1/settings/openrouter")
 public class OpenRouterSettingsController {

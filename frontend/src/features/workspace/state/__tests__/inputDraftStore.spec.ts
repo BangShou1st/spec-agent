@@ -1,3 +1,5 @@
+// 文件名:inputDraftStore.spec.ts
+// 用途:inputDraftStore 单元测试:验证草稿按 项目+节点+路线 键隔离、会话存储恢复与清除时机。
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { INPUT_DRAFT_STORAGE_KEY, useInputDraftStore } from '@/features/workspace/state/inputDraftStore'
@@ -41,8 +43,8 @@ describe('useInputDraftStore', () => {
     const store = useInputDraftStore()
     store.setDraft('proj-1', 'node-1', { selectedOptionId: 'opt-a', freeText: 'keep me' })
 
-    // Simulating a drag does not touch the store — only remount with a
-    // different node id would load a different key.
+    // 模拟拖动不会触碰 store——只有用不同节点 id 重新挂载才会加载
+    // 另一个键。
     const draft = store.getDraft('proj-1', 'node-1')
     expect(draft?.freeText).toBe('keep me')
   })
@@ -50,7 +52,7 @@ describe('useInputDraftStore', () => {
   it('submit does not clear draft until explicit clear', () => {
     const store = useInputDraftStore()
     store.setDraft('proj-1', 'node-1', { selectedOptionId: 'opt-a', freeText: '' })
-    // After submit, the draft stays until the run completes and clearDraft is called.
+    // 提交之后草稿保留,直到 run 完成并调用 clearDraft。
     expect(store.getDraft('proj-1', 'node-1')).toBeDefined()
     store.clearDraft('proj-1', 'node-1')
     expect(store.getDraft('proj-1', 'node-1')).toBeUndefined()

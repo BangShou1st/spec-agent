@@ -10,12 +10,17 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Deterministic validator for an answer patch draft.
+ * 文件名:PatchReflectionGate.java
  *
- * <p>Confirmed claims must carry full provenance (sourceNodeId + sourceAnswerId)
- * before they may enter requirement state. Assumed or unresolved claims may
- * lack sources for now, but they must never be treated as confirmed spec
- * claims during spec grounding.
+ * 用途:Answer patch 草稿的确定性校验门禁。
+ *
+ * confirmed 状态的 claim 必须携带完整来源(sourceNodeId +
+ * sourceAnswerId)才允许进入需求状态(requirement state)。assumed 或
+ * unresolved 的 claim 目前可以缺少来源,但在 spec grounding 期间
+ * 绝不会被当作已确认的 spec claim。
+ *
+ * 协作:由 Answer 周期的反思阶段调用,拒绝时返回带错误列表的
+ * ReflectionResult。
  */
 @Component
 public class PatchReflectionGate {

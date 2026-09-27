@@ -23,21 +23,19 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.doAnswer;
 
 /**
- * Re-answer / Fork transaction atomicity.
+ * 文件名:RouteMutationAtomicityIntegrationTest.java
  *
- * <p>Both mutations perform several durable writes (route save, inherited
- * prefix refs, Question node / Active change). A failure after route creation
- * must roll the WHOLE mutation back: no orphan route, no inherited refs, no
- * new Question, source route untouched, previous Active untouched.
+ * 测试目标:re-answer / fork 的事务原子性。两种变更都包含多个持久化写入
+ * (路线保存、继承前缀引用、Question 节点 / 活跃指针变更)。路线创建之后的
+ * 任何失败都必须回滚整个变更:不留孤儿路线、不留继承引用、不留新 Question,
+ * 源路线与先前的活跃指针均不被触碰。
  *
- * <p>The failure is injected at the inherited-prefix snapshot with a spy that
- * runs the REAL write first and throws afterwards — so the regression proves
- * the already-written inherited refs are rolled back too, not just that a
- * pre-write failure leaves nothing behind.
+ * 故障通过 spy 注入到继承前缀快照处:先执行真实写入、再抛出异常——因此
+ * 该回归证明的是已写入的继承引用也会被回滚,而不仅仅是"写入前失败什么
+ * 都不会留下"。
  *
- * <p>Deliberately NOT {@code @Transactional} — the regression only proves the
- * boundary if the service transaction really commits/rolls back against the
- * database.
+ * 刻意不使用 {@code @Transactional}——只有当服务事务真正对数据库提交/
+ * 回滚时,该回归才能证明事务边界。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -51,8 +49,8 @@ class RouteMutationAtomicityIntegrationTest {
     @Autowired private RouteRepository routeRepository;
     @Autowired private JdbcTemplate jdbcTemplate;
 
-    // Spy over the real resolver: the injected method performs the real
-    // durable write and then fails, everything else keeps production behavior.
+    // 对真实解析器的 spy:被注入的方法先执行真实的持久化写入、然后失败,
+    // 其余一切保持生产行为。
     @SpyBean private RouteHistoryResolver routeHistoryResolverSpy;
 
     @Test
@@ -69,9 +67,8 @@ class RouteMutationAtomicityIntegrationTest {
         long inheritedBefore = countInheritedRefs(project.id());
         Route sourceBefore = routeRepository.findById(activeRouteId).orElseThrow();
 
-        // Force a failure AFTER the new route row AND its inherited prefix
-        // were written but BEFORE the mutation completes: the real prefix
-        // snapshot runs, then the injection throws.
+        // 在新路线行及其继承前缀写入之后、变更完成之前强制失败:
+        // 真实的前缀快照先执行,然后注入点抛出异常。
         doAnswer(invocation -> {
             invocation.callRealMethod();
             throw new IllegalStateException("reanswer mutation exploded");
@@ -83,18 +80,18 @@ class RouteMutationAtomicityIntegrationTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("reanswer mutation exploded");
 
-        // No new route remains.
+        // 不残留新路线。
         assertThat(countRoutes(project.id())).isEqualTo(routesBefore);
-        // No inherited refs remain (they were written, then rolled back).
+        // 不残留继承引用(它们曾被写入,然后被回滚)。
         assertThat(countInheritedRefs(project.id())).isEqualTo(inheritedBefore);
-        // No new Question remains.
+        // 不残留新 Question。
         assertThat(countNodes(project.id())).isEqualTo(nodesBefore);
-        // Source route unchanged.
+        // 源路线不变。
         Route sourceAfter = routeRepository.findById(activeRouteId).orElseThrow();
         assertThat(sourceAfter.tipNodeId()).isEqualTo(sourceBefore.tipNodeId());
         assertThat(sourceAfter.rootNodeId()).isEqualTo(sourceBefore.rootNodeId());
         assertThat(sourceAfter.lifecycleStatus()).isEqualTo(sourceBefore.lifecycleStatus());
-        // Previous Active unchanged (still the source route).
+        // 先前的活跃指针不变(仍是源路线)。
         assertThat(projectRepository.findById(project.id()).orElseThrow().activeRouteId())
                 .isEqualTo(activeRouteId);
     }
@@ -112,9 +109,8 @@ class RouteMutationAtomicityIntegrationTest {
         long inheritedBefore = countInheritedRefs(project.id());
         Route sourceBefore = routeRepository.findById(activeRouteId).orElseThrow();
 
-        // Force a failure mid-mutation: the fork route row and its inherited
-        // prefix are written, then the write fails before the Active pointer
-        // moves.
+        // 在变更中途强制失败:fork 路线行及其继承前缀已写入,然后在活跃指针
+        // 移动之前写入失败。
         doAnswer(invocation -> {
             invocation.callRealMethod();
             throw new IllegalStateException("fork mutation exploded");
@@ -126,16 +122,16 @@ class RouteMutationAtomicityIntegrationTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("fork mutation exploded");
 
-        // No new route remains.
+        // 不残留新路线。
         assertThat(countRoutes(project.id())).isEqualTo(routesBefore);
-        // No inherited refs remain (they were written, then rolled back).
+        // 不残留继承引用(它们曾被写入,然后被回滚)。
         assertThat(countInheritedRefs(project.id())).isEqualTo(inheritedBefore);
-        // Source route unchanged.
+        // 源路线不变。
         Route sourceAfter = routeRepository.findById(activeRouteId).orElseThrow();
         assertThat(sourceAfter.tipNodeId()).isEqualTo(sourceBefore.tipNodeId());
         assertThat(sourceAfter.rootNodeId()).isEqualTo(sourceBefore.rootNodeId());
-        // Previous Active unchanged (the Active update is the last durable
-        // write, so a mid-mutation failure must never move it).
+        // 先前的活跃指针不变(活跃指针更新是最后一个持久化写入,因此变更中途
+        // 的失败绝不能移动它)。
         assertThat(projectRepository.findById(project.id()).orElseThrow().activeRouteId())
                 .isEqualTo(activeRouteId);
     }

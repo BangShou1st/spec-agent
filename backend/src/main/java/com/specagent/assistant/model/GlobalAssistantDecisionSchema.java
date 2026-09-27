@@ -5,22 +5,22 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Single source of truth for the Global Assistant decision JSON shape V2.
+ * 文件名:GlobalAssistantDecisionSchema.java
  *
- * <p>Discriminated executable state machine: top-level {@code kind} selects
- * exactly one of TOOL / CLARIFY / NAVIGATE / FINAL. Each branch forbids
- * additional properties so the schema describes legal decisions, not just
- * field types. Serves the neutral {@link ModelOutputContract} schema and
- * tests from one definition so the wire shape cannot drift from the strict
- * parser. The parser ({@link GlobalAssistantDecisionParser}) and the
- * validator ({@link GlobalAssistantDecisionValidator}) remain the executable
- * authority: invariants that cannot be expressed as static JSON Schema (for
- * example project existence) stay validator-only and are documented in the
- * parity test.
+ * 用途:全局助手决策 JSON 结构(V2)的唯一事实来源。
+ *
+ * 判别式的可执行状态机:顶层 {@code kind} 恰好选择 TOOL / CLARIFY /
+ * NAVIGATE / FINAL 之一。每个分支都禁止额外属性,因此这个 schema 描述的是
+ * "合法的决策"而不只是字段类型。它同时供中立的 {@link ModelOutputContract}
+ * schema 和测试使用,保证线上格式不会与严格解析器漂移。
+ * 解析器({@link GlobalAssistantDecisionParser})与校验器
+ * ({@link GlobalAssistantDecisionValidator})仍是可执行的权威:
+ * 无法用静态 JSON Schema 表达的不变量(例如项目是否存在)只由校验器把关,
+ * 并在一致性测试中留有记录。
  */
 public final class GlobalAssistantDecisionSchema {
 
-    /** Stable contract name sent to providers alongside the schema. */
+    /** 随 schema 一起下发给供应商的稳定契约名。 */
     public static final String CONTRACT_NAME = "global_assistant_decision";
 
     private static final Map<String, Object> SCHEMA = build();
@@ -28,12 +28,12 @@ public final class GlobalAssistantDecisionSchema {
     private GlobalAssistantDecisionSchema() {
     }
 
-    /** Immutable decision JSON Schema (plain JSON types only). */
+    /** 不可变的决策 JSON Schema(仅用普通 JSON 类型)。 */
     public static Map<String, Object> schema() {
         return SCHEMA;
     }
 
-    /** Neutral structured-output contract for decision inference. */
+    /** 决策推理用的中立结构化输出契约。 */
     public static ModelOutputContract.JsonSchema contract() {
         return ModelOutputContract.jsonSchema(CONTRACT_NAME, SCHEMA);
     }

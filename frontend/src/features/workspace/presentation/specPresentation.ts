@@ -1,6 +1,8 @@
+// 文件名:specPresentation.ts
+// 用途:Spec 快照展示层的纯函数集合:快照按创建时间倒序排序、选中 id 的兜底解析与来源引用去重。
 import type { SpecSnapshotResponse, SourceReferenceResponse } from '@/shared/contracts/types'
 
-/**
+/*
  * Spec 快照的展示层纯函数:排序、选中兜底、来源引用去重。
  * 原实现散在 SpecDock / SpecSnapshotPanel / SpecSnapshotList 三处,
  * 后两者已删除,唯一定点收敛在这里(带单测)。

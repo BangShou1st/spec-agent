@@ -14,6 +14,13 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * 文件名:SpecSnapshotRepository.java
+ *
+ * 用途:SpecSnapshot 的持久化仓储,基于 JDBC 访问 spec_snapshots 表,负责
+ * 规格快照的写入与按 id/route 查询。章节、未决事项与来源引用均以 jsonb 列
+ * 存储,读回时精确还原冻结内容。
+ */
 @Repository
 public class SpecSnapshotRepository {
 

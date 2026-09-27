@@ -1,3 +1,5 @@
+// 文件名:graphVisualIdentity.spec.ts
+// 用途:视觉节点身份的单元测试:验证 fork 共享分支点、reanswer/regenerate 立即限定 key、嵌套分支链与共享视觉端点的边去重及路线归属。
 import { describe, expect, it } from 'vitest'
 import type { GraphWorkspaceView } from '@/shared/contracts/types'
 import {

@@ -4,9 +4,11 @@ import com.specagent.model.provider.CompatibilityDecisionSemantics;
 import org.springframework.stereotype.Service;
 
 /**
- * Bridges the provider-layer compatibility probe to the authoritative
- * assistant decision semantics. Pure delegation: parsing, validation, and
- * kind checking stay exactly where they are today.
+ * 文件名:GlobalAssistantDecisionSemanticsAdapter.java
+ *
+ * 用途:把供应商层的兼容性探测口(CompatibilityDecisionSemantics)
+ * 桥接到助手侧权威的决策语义实现。纯委托:解析、校验与 kind 判断
+ * 仍然落在原有的 parser/validator 上,这里不做任何额外逻辑。
  */
 @Service
 public class GlobalAssistantDecisionSemanticsAdapter implements CompatibilityDecisionSemantics {

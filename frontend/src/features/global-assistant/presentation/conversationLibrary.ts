@@ -1,3 +1,8 @@
+// 文件名:conversationLibrary.ts
+// 用途:全局助手会话库的展示层逻辑:把线程列表按 今天/昨天/最近7天/更早 分组、
+//       生成紧凑相对时间文案,以及解析当前会话标题(带"新对话"兜底)。
+//       纯函数实现,便于测试。
+
 import type { GaThreadListItem } from '@/features/global-assistant/api/globalAssistant'
 
 export type GaHistoryGroupKey = 'today' | 'yesterday' | 'last7' | 'earlier'
@@ -27,7 +32,7 @@ export function groupGaThreads(
   const yesterday: GaThreadListItem[] = []
   const last7: GaThreadListItem[] = []
   const earlier: GaThreadListItem[] = []
-  // Backend already returns recency DESC; preserve that order inside groups.
+  // 后端已按最近更新倒序返回,分组内部保持该顺序。
   const seen = new Set<string>()
   for (const item of items) {
     if (!item || !item.threadId || seen.has(item.threadId)) continue

@@ -30,10 +30,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Write-time lineage invariants: an unanswered Question may never gain a
- * lineage (chain) child — knowledge/resources may hang below it as provenance,
- * but it stays the route tip until answered — lineage must be acyclic, and
- * {@code sourceRouteId} ancestry must be acyclic.
+ * 文件名:GraphLineageInvariantIntegrationTest.java
+ *
+ * 测试目标:写入时的谱系不变量——未回答的 Question 不允许获得谱系
+ * (链式)子节点(知识/资源可以作为溯源挂在它下面,但在回答之前它必须
+ * 一直是路线 tip);谱系必须无环;{@code sourceRouteId} 祖先链也必须无环。
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -73,7 +74,7 @@ class GraphLineageInvariantIntegrationTest {
                         .content("{\"routeId\":\"" + routeId + "\"," +
                                 "\"subtype\":\"NOTE\",\"content\":{\"text\":\"cross\"}}"))
                 .andExpect(status().isConflict());
-        // The route tip is unchanged: nothing crossed the unanswered Question.
+        // 路线 tip 未变:没有任何操作越过未回答的 Question。
         assertThat(routeService.getRoute(routeId).orElseThrow().tipNodeId())
                 .isEqualTo(root.id());
     }
@@ -85,9 +86,8 @@ class GraphLineageInvariantIntegrationTest {
         Node root = nodeService.createRootNode(project.id(), routeId, "未答问题", "P0",
                 List.of(NodeOption.of("A", "a")), true);
 
-        // A RESOURCE may hang off an unanswered question tip (kind-aware
-        // rule), but it must stay a provenance child: the question remains
-        // the route tip and keeps its answer inputs.
+        // RESOURCE 可以挂在未回答的问题 tip 上(按节点类型的规则),但只能
+        // 作为溯源子节点:问题仍是路线 tip,并保留其回答输入。
         mockMvc.perform(post("/api/v1/projects/{pid}/resources", project.id())
                         .contentType(APPLICATION_JSON)
                         .content("{\"routeId\":\"" + routeId + "\"," +
@@ -143,8 +143,8 @@ class GraphLineageInvariantIntegrationTest {
         answerService.finalizeAnswer(project.id(), routeId, b.id(), null, "b answer", "user");
         answerService.finalizeAnswer(project.id(), routeId, c.id(), null, "c answer", "user");
 
-        // Corrupt: A -> B -> C -> A. Any lineage-advancing command over the
-        // corrupted lineage must fail closed instead of silently continuing.
+        // 构造脏数据:A -> B -> C -> A。任何在损坏谱系上推进谱系的命令都必须
+        // 快速失败(fail closed),而不是默默继续。
         jdbc.update("UPDATE nodes SET parent_node_id = :parent WHERE id = :id",
                 Map.of("parent", c.id(), "id", a.id()));
 
@@ -169,14 +169,14 @@ class GraphLineageInvariantIntegrationTest {
         answerService.finalizeAnswer(project.id(), sibling.id(), siblingRoot.id(),
                 null, "sibling answer", "user");
 
-        // Corrupt provenance: sourceRouteId ancestry cycles
-        // (sibling -> routeId -> sibling).
+        // 构造脏数据:sourceRouteId 祖先链成环
+        // (sibling -> routeId -> sibling)。
         jdbc.update("UPDATE routes SET source_route_id = :source WHERE id = :id",
                 Map.of("source", routeId, "id", sibling.id()));
         jdbc.update("UPDATE routes SET source_route_id = :source WHERE id = :id",
                 Map.of("source", sibling.id(), "id", routeId));
 
-        // Forking from the corrupted sibling must be rejected before any write.
+        // 在损坏的 sibling 上执行 fork 必须在任何写入之前被拒绝。
         assertThatThrownBy(() -> routeService.forkFromNode(
                 project.id(), sibling.id(), siblingRoot.id(), "cycle fork"))
                 .isInstanceOf(IllegalStateException.class)

@@ -40,7 +40,12 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
   webServer: {
-    command: `set "VITE_API_PROXY_TARGET=http://localhost:${backendPort}" && npm run dev -- --port ${frontendPort} --strictPort`,
+    // Cross-platform (Windows cmd / Linux CI sh): the proxy target is passed
+    // through the env map instead of cmd's `set`, which does not exist in sh.
+    command: `npm run dev -- --port ${frontendPort} --strictPort`,
+    env: {
+      VITE_API_PROXY_TARGET: `http://localhost:${backendPort}`,
+    },
     url: baseURL,
     reuseExistingServer: true,
     timeout: 60_000,

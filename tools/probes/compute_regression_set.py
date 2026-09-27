@@ -1,4 +1,8 @@
-"""Compute R4 critical-regression identity set from R3 frozen results + oracle-v2. READ-ONLY."""
+"""文件名:compute_regression_set.py
+
+基于 R3 冻结结果 + oracle-v2 计算 R4 关键回归集合(按 identity 去重)。
+只读脚本,不修改任何结果文件。
+"""
 import json
 from pathlib import Path
 from collections import Counter

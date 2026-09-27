@@ -1,3 +1,5 @@
+// 文件名:graphVisualIdentity.ts
+// 用途:画布的"视觉节点身份"计算:根据路线分叉类型把 canonical 节点映射为视觉实例 key(共享历史共用卡片、分叉点之后各开卡片),并构建整张图的视觉实例列表。
 import type {
   GraphWorkspaceNodeView,
   GraphWorkspaceRouteView,
@@ -16,14 +18,12 @@ function routeById(view: GraphWorkspaceView): Map<string, GraphWorkspaceRouteVie
   return new Map(view.routes.map((route) => [route.id, route]))
 }
 
-/**
- * Shared history inherits the source route's key through the branch point;
- * explicit Re-answer/Replace branches qualify the key from the first
- * divergent node. Fork and free continuation share THROUGH the branch point
- * (the branch point itself is one canonical visual instance); Re-answer and
- * Regenerate diverge BEFORE the old target (the old Question stays on the
- * source route, the new Question/Replacement starts a route-specific card).
- * Runtime provenance is the only input to this identity.
+/*
+ * 共享历史沿分支点之前继承来源路线的 key;显式的重新回答/替换分支从第一个
+ * 分歧节点起改用带路线限定的 key。fork 与自由续问"穿过分支点共享"
+ * (分支点本身是同一个 canonical 视觉实例);重新回答与换题在旧目标之前
+ * 就分叉(旧问题留在来源路线上,新问题/替换节点开启路线专属卡片)。
+ * 运行时血缘(provenance)是这套身份的唯一输入。
  */
 export function visualNodeKeyFor(
   view: GraphWorkspaceView,
@@ -92,13 +92,11 @@ export function buildVisualInstances(view: GraphWorkspaceView): GraphVisualInsta
     }
   }
 
-  // Provenance children (knowledge/resources hung below a lineage node by the
-  // kind-aware connect) are route members without being ON the parent chain:
-  // the backend counts them as route members (see RouteHistoryResolver
-  // .belongsToRoute), so the projection must too — otherwise a connected idea
-  // still shows the "独立节点" badge, draws no lineage edge to its parent and
-  // loses its route actions. Membership (and the visual parent edge) is
-  // inherited transitively from the parent instance.
+  // 出处子节点(通过 kind 感知连接挂到谱系节点下的知识/资源)是路线成员,
+  // 但不在父链上:后端把它们算作路线成员(见 RouteHistoryResolver
+  // .belongsToRoute),投影必须同样处理——否则已连接的想法仍显示"独立节点"
+  // 徽标、不画到父节点的 lineage 边、丢失路线操作。归属(以及视觉父边)
+  // 从父实例传递继承。
   const lineagedNodeIds = new Set(
     view.routes.flatMap((route) => route.lineageNodeIds ?? []),
   )
@@ -119,7 +117,7 @@ export function buildVisualInstances(view: GraphWorkspaceView): GraphVisualInsta
       parentVisualNodeKey: parentInstance.visualNodeKey,
     })
   }
-  // Transitively attach deeper provenance chains (child of a child), if any.
+  // 传递挂接更深的出处链(子节点的子节点),如果有的话。
   let pending = orphans
   while (pending.length > 0) {
     const remaining: typeof view.nodes = []
@@ -140,10 +138,9 @@ export function buildVisualInstances(view: GraphWorkspaceView): GraphVisualInsta
     if (remaining.length === pending.length) break
     pending = remaining
   }
-  // Genuinely floating drafts (user ideas) belong to no route lineage: they
-  // are standalone graph content until manually connected. They project as
-  // route-less instances keyed by their canonical id so they stay visible
-  // and editable on the canvas.
+  // 真正的浮动草稿(用户想法)不属于任何路线谱系:在手动接入前它们是独立
+  // 的图内容。以 canonical id 为 key 投影成无路线实例,保证在画布上持续
+  // 可见、可编辑。
   for (const node of pending) {
     byKey.set(node.id, {
       visualNodeKey: node.id,

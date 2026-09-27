@@ -6,7 +6,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-/** Immutable semantic evidence for one AgentRun/attempt. */
+/**
+ * 文件名:SemanticTrace.java
+ *
+ * 用途:单个 AgentRun/attempt 的不可变语义证据集合,按阶段(stage)
+ * 组织,供评估流水线取走分析。
+ *
+ * 约束:对象一旦创建不可变,所有 with* 方法都返回新实例;所有写入
+ * 的值都会先经过 {@link SemanticTraceSanitizer} 脱敏。
+ */
 public final class SemanticTrace {
 
     public static final String SCHEMA_VERSION = "semantic-trace.v1";
@@ -82,8 +90,7 @@ public final class SemanticTrace {
             try {
                 attemptId = UUID.fromString(String.valueOf(rawId));
             } catch (IllegalArgumentException ignored) {
-                // A malformed diagnostic id is retained only as absent; the
-                // evaluation artifact remains readable and fail-closed.
+                // 格式错误的诊断 id 仅按"缺失"处理,评估产物仍保持可读且 fail-closed。
             }
         }
         Map<String, Map<String, Object>> stages = new LinkedHashMap<>();

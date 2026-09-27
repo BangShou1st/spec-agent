@@ -1,7 +1,8 @@
-/**
- * Runtime / knowledge / connection status label maps. Backend enum values
- * stay untouched; only the rendered text is mapped here, so every surface
- * renders the same word for the same state.
+// 文件名:statusCopy.ts
+// 用途:运行时/知识/连接状态的中文标签映射:后端枚举值原样保留,只映射展示文本,保证每个界面同一状态显示同一个词。
+/*
+ * 运行时 / 知识 / 连接状态标签映射。后端枚举值原样保留;只在这里映射
+ * 渲染文本,因此每个表面为同一状态渲染同一个词。
  */
 
 const KNOWLEDGE_STATUS_LABELS: Record<string, string> = {
@@ -26,7 +27,7 @@ export function runtimeStatusLabel(status: string): string | null {
   return RUNTIME_STATUS_LABELS[status] ?? null
 }
 
-/** Connection card status line: the enabled flag dominates the enum. */
+/** 连接卡片的状态行:enabled 标志优先于枚举。 */
 export function connectionStatusText(enabled: boolean, status: string): string {
   if (enabled) return '已启用'
   if (status === 'FAILED') return '连接失败'

@@ -1,3 +1,5 @@
+// 文件名:recoveryPresentation.spec.ts
+// 用途:恢复提示模型的单元测试:验证无恢复场景返回 null 以及各恢复场景(unknown/historical/resubmit/stale/blocked)的优先级与文案;并锁定旧的全局入口(全局"继续生成"/"重新请求")不再产生任何提示。
 import { describe, expect, it } from 'vitest'
 import { recoveryNoticeFromState } from '@/features/workspace/presentation/recoveryPresentation'
 
@@ -9,7 +11,6 @@ describe('recoveryNoticeFromState', () => {
   it('prioritizes unknown outcome over every other flag', () => {
     const model = recoveryNoticeFromState({
       answerOutcomeUnknown: true,
-      repairableAnswerId: 'a1',
       resubmitAnswerPayload: { selectedOptionId: 'o1', freeText: null },
       manualRetryState: 'ready',
     })
@@ -22,18 +23,29 @@ describe('recoveryNoticeFromState', () => {
     })
   })
 
-  it('offers resume when the answer is saved but continuation failed', () => {
-    const model = recoveryNoticeFromState({
-      repairableAnswerId: 'a1',
-      resubmitAnswerPayload: { selectedOptionId: 'o1', freeText: null },
+  it('no longer offers the global "继续生成" entry (deleted 2026-09-27)', () => {
+    // Answer 已保存但处理未完成的恢复统一走任务级失败恢复(服务端未解决
+    // 失败清单 + 节点恢复栏);全局入口必须返回 null,不得换名字回归。
+    expect(recoveryNoticeFromState({
+      resubmitAnswerPayload: null,
+      manualRetryState: null,
+    })).toBeNull()
+  })
+
+  it('no longer offers the global "重新请求" entry (deleted 2026-09-27)', () => {
+    // manualRetryState 'ready' 的全局重试按钮已删除:安全重试从对应失败
+    // 位置的任务级入口或正常业务动作发起。
+    expect(recoveryNoticeFromState({
       manualRetryState: 'ready',
-    })
+    })).toBeNull()
+  })
+
+  it('still offers reconcile-only guidance for the manual retry reconcile states', () => {
+    const model = recoveryNoticeFromState({ manualRetryState: 'needs_reconcile' })
     expect(model).toMatchObject({
-      kind: 'saved',
-      title: '回答已经保存',
-      message: '后续生成没有完成，不需要重新填写回答',
-      action: 'resume-answer',
-      actionLabel: '继续生成',
+      kind: 'stale',
+      action: 'refresh-workspace',
+      actionLabel: '同步状态',
     })
   })
 
@@ -66,10 +78,9 @@ describe('recoveryNoticeFromState', () => {
     })
   })
 
-  it('offers retry for an explicit ready manual retry', () => {
-    const model = recoveryNoticeFromState({ manualRetryState: 'ready' })
-    expect(model?.kind).toBe('retryable')
-    expect(model?.action).toBe('retry-model-operation')
+  it('never offers a global retry for a ready manual retry (entry deleted 2026-09-27)', () => {
+    // 全局"重新请求"入口已删除;安全重试从对应失败位置的任务级入口发起。
+    expect(recoveryNoticeFromState({ manualRetryState: 'ready' })).toBeNull()
   })
 
   it('reconciles first for ambiguous manual retry state', () => {

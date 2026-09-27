@@ -1,20 +1,21 @@
-"""Parse-layer compatibility for the one documented DECISION field deviation.
+"""文件名:test_decision_source_refs_compat.py
 
-The model occasionally hoists ``sourceRefs`` out of ``action`` to the top level
-of its JSON object. These tests pin the exact compatibility boundary:
+用途:解析层对唯一一个已记录在案的 DECISION 字段偏差的兼容性测试。
 
-- a lone *legal* top-level list is relocated, but only when ``action`` omits the
-  field entirely (key presence, not truthiness, decides "omitted");
-- two identical legal lists collapse to one;
-- two different legal lists — including an empty action list against a non-empty
-  top level — are rejected, never overwritten, merged or unioned;
-- an ``action.sourceRefs`` that is present but illegal (``null``, ``false``,
-  ``0``, ``""``, a non-string array, an object) is rejected and is *never*
-  repaired by the top-level copy;
-- anything unknown still fails closed, and a relocated list is validated exactly
-  like a well-placed one;
-- every diagnostic stays bounded: no unbounded model output reaches the log or
-  the typed error detail.
+模型偶尔会把 ``sourceRefs`` 从 ``action`` 里提升到自己 JSON 对象的顶层。
+这些测试钉死确切的兼容边界:
+
+- 顶层只有一份*合法*列表时会被搬移,但仅当 ``action`` 完全省略该字段
+  (看键是否存在,而不是看值是否为真,来判定"省略");
+- 两份相同的合法列表合并为一份;
+- 两份不同的合法列表——包括 action 是空列表而顶层非空——被拒绝,绝不
+  覆盖、合并或取并集;
+- ``action.sourceRefs`` 存在但非法(``null``、``false``、``0``、``""``、
+  非字符串数组、对象)时被拒绝,*绝不*被顶层副本修复;
+- 任何未知内容仍然 fail-closed,搬移过来的列表与放对位置的列表接受
+  完全相同的校验;
+- 所有诊断保持有界:任何无界的模型输出都不会进入日志或有类型的错误
+  detail。
 """
 
 import json
@@ -41,7 +42,7 @@ UNSET = "unset"
 
 
 class ScriptedClient:
-    """Returns one canned completion; the brain owns all parsing."""
+    """返回一个预设的补全;所有解析都由 brain 负责。"""
 
     def __init__(self, content: str):
         self._content = content
@@ -63,10 +64,10 @@ def _v3_request():
 
 
 def _decision_output(action_refs=UNSET, top_level_refs=UNSET, **extra) -> str:
-    """Builds a raw model output; ``unset`` means 'key absent'.
+    """构造一份原始模型输出;``unset`` 表示"键不存在"。
 
-    ``action_refs=None`` therefore emits an explicit ``"sourceRefs": null``,
-    which is a *present but illegal* value — distinct from an absent key.
+    因此 ``action_refs=None`` 会输出显式的 ``"sourceRefs": null``——
+    这是一个*存在但非法*的值,与键缺失是两回事。
     """
     action = {
         "actionFamily": "REQUEST_USER_INPUT",
@@ -94,7 +95,7 @@ def _decision_output(action_refs=UNSET, top_level_refs=UNSET, **extra) -> str:
     return json.dumps(raw, ensure_ascii=False)
 
 
-# --- shapes that are resolved ------------------------------------------------
+# --- 会被归一的形态 ---------------------------------------------------------
 
 
 def test_top_level_source_refs_duplicating_the_action_refs_is_dropped():
@@ -127,8 +128,7 @@ def test_lone_top_level_source_refs_is_relocated_into_the_action():
 
     response = handle_decision(_request(), ScriptedClient(content))
 
-    # The relocation is effective: the refs are the action's own, and the
-    # envelope carries them exactly once.
+    # 搬移生效:refs 变成 action 自己的,信封里恰好出现一次。
     assert response.action_proposal.source_refs == [ALLOWED_REF]
 
 
@@ -150,7 +150,7 @@ def test_relocated_refs_outside_allowed_refs_are_still_rejected():
         handle_decision(_request(), ScriptedClient(content))
 
 
-# --- shapes that are rejected ------------------------------------------------
+# --- 会被拒绝的形态 ---------------------------------------------------------
 
 
 def test_two_different_source_refs_lists_are_rejected_and_never_merged():
@@ -160,8 +160,7 @@ def test_two_different_source_refs_lists_are_rejected_and_never_merged():
         handle_decision(_request(), ScriptedClient(content))
 
     message = str(raised.value)
-    # Both lists are reported so the conflict is diagnosable, and neither the
-    # union nor an overwrite is ever produced.
+    # 两份列表都被上报,保证冲突可诊断;并且绝不产生并集或覆盖。
     assert ALLOWED_REF in message
     assert OTHER_ALLOWED_REF in message
 
@@ -175,9 +174,8 @@ def test_conflicting_lists_are_rejected_even_when_both_are_allowed():
 
 
 def test_empty_action_refs_against_non_empty_top_level_refs_is_rejected():
-    # A present-but-empty action list is *not* an omitted field: the top-level
-    # list must never overwrite it, so the output is rejected rather than
-    # silently gaining refs the action did not carry.
+    # 一个存在但为空的 action 列表*不是*省略字段:顶层的列表绝不能覆盖它,
+    # 所以直接拒绝输出,而不是让 action 悄悄获得它本来没有携带的 refs。
     content = _decision_output(action_refs=[], top_level_refs=[ALLOWED_REF])
 
     with pytest.raises(AmbiguousSourceRefsError):
@@ -197,9 +195,8 @@ def test_non_empty_action_refs_against_empty_top_level_refs_is_rejected():
     ids=["null", "false", "zero", "empty-string", "object", "ref-object"],
 )
 def test_present_but_illegal_action_refs_is_rejected_and_never_patched(illegal):
-    # The field exists, so the action is not "omitted"; a falsy or
-    # wrongly-typed value must not be treated as absent and back-filled from
-    # the top level. It still fails closed, as a plain contract violation.
+    # 字段存在,所以 action 并没有"省略";一个 falsy 或类型错误的值不能
+    # 被当成缺失然后从顶层回填。它仍然按普通契约违规 fail-closed。
     content = _decision_output(action_refs=illegal, top_level_refs=[ALLOWED_REF])
 
     with pytest.raises(BrainContractError) as raised:
@@ -222,9 +219,8 @@ def test_action_refs_with_non_string_entries_is_rejected_and_never_patched(illeg
 
 
 def test_action_refs_with_non_string_entries_is_rejected_even_when_identical():
-    # Identical byte-for-byte, but neither side is a legal ref list: the shim
-    # resolves only legal shapes, so this still fails closed instead of being
-    # accepted as a "duplicate".
+    # 两侧逐字节相同,但都不是合法的 ref 列表:垫片只归一合法形态,所以
+    # 这里仍然 fail-closed,而不是被当成"重复"接受。
     illegal = [1, 2]
     content = _decision_output(action_refs=illegal, top_level_refs=list(illegal))
 
@@ -257,13 +253,12 @@ def test_ungrounded_action_ref_is_typed_separately_from_a_malformed_output():
         handle_decision(_request(), ScriptedClient(content))
 
 
-# --- bounded diagnostics -----------------------------------------------------
+# --- 有界诊断 ---------------------------------------------------------------
 
 
 def test_contract_failure_diagnostic_reports_layout_without_model_content():
-    # A malformed *action* (unknown family) that also carries a stray top-level
-    # list: the failure must never be repaired by this shim, and the diagnostic
-    # must describe the layout only.
+    # 一个畸形的 *action*(未知 family)同时携带一份游离的顶层列表:该失败
+    # 绝不能被这个垫片修复,且诊断只能描述布局。
     content = json.dumps({
         "observation": {
             "known": ["敏感内容不应进入日志"],
@@ -280,13 +275,13 @@ def test_contract_failure_diagnostic_reports_layout_without_model_content():
     assert "layout=keys(" in message
     assert "topLevelSourceRefs=" in message
     assert "actionSourceRefs=" in message
-    # Bounded diagnostics: the model's own prose never leaks into the error.
+    # 有界诊断:模型自己的文本绝不能泄漏进错误信息。
     assert "敏感内容不应进入日志" not in message
 
 
 def test_ambiguous_source_refs_diagnostic_is_length_bounded():
-    # Refs are model output too: an oversized entry must be truncated rather
-    # than streamed whole into the log line or the typed error detail.
+    # refs 同样是模型输出:超长的条目必须被截断,而不是整段涌进日志行或
+    # 有类型的错误 detail。
     oversized = "r" * 8000
     content = _decision_output(
         action_refs=[oversized], top_level_refs=["s" * 8000])

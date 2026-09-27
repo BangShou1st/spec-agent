@@ -1,3 +1,6 @@
+// 文件名:ConnectionsListView.spec.ts
+// 用途:Connections 列表页组件测试:mock 连接 API,验证空态与新建弹窗的打开、
+//       以及按名称/服务器地址/可选 secret 创建连接的请求参数。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'

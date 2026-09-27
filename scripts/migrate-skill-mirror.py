@@ -1,7 +1,8 @@
-"""One-off migration: project installed skills from Postgres to the local
-mirror directory (~/.spec-agent/skills). The backend's startup backfill does
-the same job from now on; this script exists only to migrate the existing
-rows without waiting for a backend restart."""
+"""文件名:migrate-skill-mirror.py
+
+一次性迁移脚本:把 Postgres 中已安装的技能项目导出到本地镜像目录
+(~/.spec-agent/skills)。此后后端启动时的回填逻辑会承担同样的工作;
+本脚本只是为了迁移存量数据,无需等待后端重启。"""
 import base64
 import pathlib
 import subprocess

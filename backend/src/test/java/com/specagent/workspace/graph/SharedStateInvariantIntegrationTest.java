@@ -29,11 +29,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Shared-state / Answer-identity invariants under the final product model:
- * one canonical Question Node carries exactly ONE immutable Answer identity
- * project-wide. Branch routes reference the same Answer id through inherited
- * refs; a second distinct Answer for the same canonical node is a
- * SHARED_STATE_DIVERGENCE invariant violation, never a UI mode.
+ * 文件名:SharedStateInvariantIntegrationTest.java
+ *
+ * 测试目标:最终产品模型下的共享状态 / Answer 身份不变量——项目内一个
+ * 权威 Question 节点只携带一个不可变的 Answer 身份。分支路线通过继承引用
+ * 指向同一个 Answer id;同一权威节点出现第二个不同的 Answer 即是
+ * SHARED_STATE_DIVERGENCE 不变量违反,绝不是一种正常的 UI 状态。
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -69,8 +70,8 @@ class SharedStateInvariantIntegrationTest {
         answerService.finalizeAnswer(project.id(), routeId, root.id(),
                 null, "source answer", "user");
 
-        // Fork shares the canonical node; the fork route carries an inherited
-        // reference to the SAME answer id, so it must not finalize a new one.
+        // fork 共享权威节点;fork 路线通过继承引用携带同一个 answer id,
+        // 因此不允许再 finalize 一个新的。
         Route fork = routeService.forkFromNode(project.id(), routeId, root.id(), "共享 fork");
 
         assertThatThrownBy(() -> answerService.finalizeAnswer(
@@ -105,11 +106,9 @@ class SharedStateInvariantIntegrationTest {
         answerService.finalizeAnswer(project.id(), routeId, root.id(),
                 null, "first answer", "user");
 
-        // A fork route shares the canonical node through an inherited ref.
-        // Deliberately corrupt: insert a second, distinct Answer on the fork
-        // route for the SAME canonical node (bypassing the write-time
-        // invariant on purpose) to prove the read model detects the
-        // corruption instead of presenting it as a normal UI mode.
+        // fork 路线通过继承引用共享权威节点。刻意注入脏数据:绕过写入时
+        // 不变量,在 fork 路线上为同一个权威节点插入第二个不同的 Answer,
+        // 以证明读取模型能检测到该损坏,而不是把它当作正常 UI 状态展示。
         Route fork = routeService.forkFromNode(project.id(), routeId, root.id(), "corrupt fork");
         Answer second = new Answer(UUID.randomUUID(), project.id(), fork.id(), root.id(),
                 null, "second answer", "user", java.time.Instant.now());
@@ -128,9 +127,8 @@ class SharedStateInvariantIntegrationTest {
                 List.of(NodeOption.of("A", "a")), true);
         answerService.finalizeAnswer(project.id(), routeId, root.id(), null, "answer", "user");
 
-        // Re-answer creates a NEW Question node; the old node is no longer on
-        // the re-answer route's lineage, so the read model still resolves a
-        // single Answer identity per canonical node.
+        // 重新回答会创建新的 Question 节点;旧节点不再位于 re-answer 路线的
+        // 谱系上,因此读取模型对每个权威节点仍只解析出一个 Answer 身份。
         Route reanswer = routeService.reanswerFromNode(project.id(), routeId, root.id(), "retry");
         assertThat(nodeService.getNode(reanswer.tipNodeId()).orElseThrow().id())
                 .isNotEqualTo(root.id());

@@ -14,9 +14,11 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Route read API. Phase 6.1 exposes route reads only; activate/fork/archive/
- * delete/restore/regenerate belongs to Phase 6.2 and is not present here.
- * Reads never mutate route lifecycle.
+ * 文件名:RouteController.java
+ *
+ * 用途:路线读取 API。Phase 6.1 只暴露路线的读取;activate/fork/
+ * archive/delete/restore/regenerate 属于 Phase 6.2,不在此处。
+ * 读取操作绝不改变路线生命周期。
  */
 @RestController
 @RequestMapping("/api/v1/projects/{projectId}/routes")

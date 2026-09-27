@@ -1,3 +1,9 @@
+<!--
+  文件名:ProjectsView.vue
+  用途:项目列表页:展示项目卡片(含服务端搜索高亮)、创建入口、行内重命名、
+       删除二次确认;慢搜索时的加载圆环由延时器控制以免闪烁。
+       数据与操作通过 projectStore 完成。
+-->
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -32,10 +38,9 @@ const projectErrorText = computed(() =>
 )
 
 /**
- * Search is server-side: the backend filters by title and returns the matched
- * subset, so the authoritative result set lives there. We only mirror it here
- * and use the query locally to render the highlight — splitTitleSegments needs
- * the raw term, so highlighting stays client-side and never alters the data.
+ * 搜索是服务端的:后端按标题过滤并返回命中的子集,权威结果集在后端。
+ * 这里只做镜像,并本地持有查询词用于渲染高亮——splitTitleSegments 需要
+ * 原始查询词,所以高亮留在客户端,且绝不改动数据本身。
  */
 const hasQuery = computed(() => normalizeQuery(searchQuery.value).length > 0)
 const searching = computed(() => projectStore.loading && hasQuery)
@@ -120,8 +125,7 @@ async function confirmDelete(): Promise<void> {
 }
 
 onMounted(() => { void projectStore.loadProjects() })
-// Re-query the backend whenever the term changes; the store guards against
-// out-of-order responses so only the latest result is shown.
+// 查询词变化时重新请求后端;store 内有乱序响应守护,只展示最新一次结果。
 watch(searchQuery, (value) => { void projectStore.loadProjects(normalizeQuery(value)) })
 </script>
 <template>

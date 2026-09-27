@@ -10,11 +10,13 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Persists immutable answer patches derived from answers.
+ * 文件名:AnswerPatchService.java
  *
- * <p>An answer patch carries domain-neutral {@link Claim}s. Replaying patches
- * along the active route lineage derives the requirement state. Patches are
- * records written by the runtime; they are not produced by a model here.
+ * 用途:持久化由答案推导出的不可变 answer patch。
+ *
+ * 一条 answer patch 携带领域中立的 {@link Claim}。沿活跃路线 lineage
+ * 重放这些 patch 即可推导出需求状态。patch 是由运行时写入的记录;
+ * 本服务不在这里调用模型生成。
  */
 @Service
 public class AnswerPatchService {
@@ -49,9 +51,9 @@ public class AnswerPatchService {
     }
 
     /**
-     * Idempotent checkpoint write for concurrent recovery attempts. The
-     * unique source-answer constraint arbitrates the race; the loser reuses
-     * the winner's immutable patch instead of producing a second side effect.
+     * 面向并发恢复尝试的幂等 checkpoint 写入。唯一 source-answer 约束
+     * 负责仲裁竞态;输掉的一方复用赢家的不可变 patch,
+     * 而不是产生第二个副作用。
      */
     public AnswerPatch saveOrReuse(UUID projectId,
                                    UUID routeId,
@@ -80,9 +82,9 @@ public class AnswerPatchService {
     }
 
     /**
-     * Returns the one patch checkpoint for an answer, or empty when the patch
-     * step has not completed. Multiple rows are never resolved by first/latest
-     * fallback because that would hide a correctness violation.
+     * 返回一条答案对应的唯一 patch checkpoint;patch 步骤尚未完成时
+     * 返回空。多条结果绝不通过 first/latest 回退消解,那会掩盖
+     * 正确性违例。
      */
     public Optional<AnswerPatch> findBySourceAnswerId(UUID sourceAnswerId) {
         List<AnswerPatch> patches = answerPatchRepository.findBySourceAnswerId(sourceAnswerId);

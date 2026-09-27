@@ -19,13 +19,12 @@ import java.util.List;
 import org.springframework.stereotype.Service;
 
 /**
- * Model discovery, one code path per preset kind.
+ * 文件名:ProviderModelCatalogService.java
  *
- * <p>This is deliberately the ONLY place that knows how a given preset exposes
- * its catalog: OpenCode Zen and OpenRouter publish a qualified list behind
- * their special transports, while a Custom gateway is probed through the
- * negotiated protocol adapter and degrades to manual entry when it does not
- * implement {@code /models}.
+ * 用途:模型目录发现服务,每种预设类型走一条专属代码路径。这是刻意设计的
+ * 唯一知道"某预设如何暴露其目录"的地方:OpenCode Zen 与 OpenRouter 通过各自的
+ * 特殊传输层发布经过资格筛选的模型列表;Custom 网关则通过协商出的协议适配器
+ * 探测,不支持 {@code /models} 时退化为手动填写模型。
  */
 @Service
 public class ProviderModelCatalogService {
@@ -44,16 +43,16 @@ public class ProviderModelCatalogService {
     }
 
     /**
-     * One discovery result. {@code manualModel} means the gateway does not
-     * expose a list, so the UI must fall back to a typed model id.
+     * 一次发现的结果。{@code manualModel} 为 true 表示网关不提供模型列表,
+     * UI 必须退回到手动输入模型 id。
      */
     public record Discovery(List<String> allModels, List<String> freeModels,
                             boolean manualModel, String endpointPreview) {
     }
 
     /**
-     * Probes an unsaved candidate configuration. Draft values win over the
-     * stored ones so the card can test a base URL / protocol before saving.
+     * 探测一个未保存的候选配置。草稿值优先于已存值,
+     * 这样卡片可以在保存之前先测试某个 Base URL / 协议。
      */
     public Discovery probe(String presetCode, String draftApiFormat, String draftBaseUrl,
                            String apiKey, ModelProviderRecord stored) {
@@ -64,7 +63,7 @@ public class ProviderModelCatalogService {
         };
     }
 
-    /** Lists the catalog using the already stored credential. */
+    /** 使用已存密钥列出模型目录。 */
     public Discovery list(ModelProviderRecord record) {
         return switch (record.preset()) {
             case OPENCODE_ZEN -> discoverOpenCode(record.apiKey());
@@ -93,9 +92,13 @@ public class ProviderModelCatalogService {
     }
 
     /**
-     * Custom gateways negotiate their own protocol, so discovery runs through
-     * the adapter registry and 404/405/501 degrade to manual model entry.
-     * {@code apiKey == null} reuses the stored key; blank means unauthenticated.
+     * Custom 网关协商自己的协议,因此发现走适配器注册表;
+     * 404/405/501 一律退化为手动填写模型。{@code apiKey == null} 复用已存密钥;
+     * 空串表示无鉴权。
+     *
+     * 来源边界:已存密钥只允许在同一来源(scheme/host/有效端口)上复用。
+     * 用户把 base URL 指向新服务时必须显式输入该服务自己的凭据——绝不把
+     * 旧服务的密钥自动带到新来源的第一个请求上。
      */
     private Discovery discoverCustom(String formatCode, String baseUrlInput, String apiKey,
                                      ModelProviderRecord stored) {
@@ -105,6 +108,7 @@ public class ProviderModelCatalogService {
         if (apiKey != null && !apiKey.isBlank()) {
             key = apiKey.trim();
         } else if (apiKey == null && stored != null && stored.hasKey()) {
+            requireSameOriginForReuse(normalized, stored);
             key = stored.apiKey();
         } else {
             key = null;
@@ -122,7 +126,19 @@ public class ProviderModelCatalogService {
         return new Discovery(ids, ids, false, preview);
     }
 
-    /** Presentation-only canonical endpoint; never throws on malformed input. */
+    /**
+     * 凭据复用的来源守卫:目标 URL 与已存配置的规范化来源不一致时拒绝
+     * 自动携带旧密钥,要求显式输入新凭据(或显式清空为无鉴权)。
+     */
+    static void requireSameOriginForReuse(String normalizedTarget, ModelProviderRecord stored) {
+        if (stored.baseUrl() == null
+                || !ProviderUrlSecurity.sameOrigin(normalizedTarget, stored.baseUrl())) {
+            throw ModelProviderException.notConfigured("custom",
+                    "Base URL points to a different origin; enter the API key for it explicitly");
+        }
+    }
+
+    /** 仅供展示的端点规范化预览;输入不合法时返回 null 而不抛异常。 */
     public String previewEndpoint(String formatCode, String baseUrlInput) {
         try {
             return ProviderUrlSecurity.canonicalEndpoint(

@@ -3,9 +3,13 @@ package com.specagent.agent.protocol;
 import java.util.List;
 
 /**
- * Structured observation derived by the decision engine. Interpretation for
- * reasoning only — it is not durable truth and never bypasses the
- * deterministic Java validators.
+ * 文件名:ObservationView.java
+ *
+ * 用途:由决策引擎推导出的结构化观察(已知、未知、冲突、风险),
+ * 帮助模型理解当前局面。
+ *
+ * 约束:仅供推理参考——不是持久化的事实,绝不能绕过确定性的
+ * Java 校验器。
  */
 public record ObservationView(List<String> known,
                               List<String> unknowns,

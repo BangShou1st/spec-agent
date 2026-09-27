@@ -1,3 +1,7 @@
+<!--
+  文件名:UiFormField.vue
+  用途:通用表单字段外壳:统一 label/提示/错误信息的布局与必填标记。
+-->
 <script setup lang="ts">
 defineProps<{ label: string; htmlFor?: string | null; hint?: string | null; error?: string | null; required?: boolean }>()
 </script>

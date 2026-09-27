@@ -14,6 +14,13 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * 文件名:AnswerPatchRepository.java
+ *
+ * 用途:answer_patches 表的持久化访问。负责 patch(不可变记录)的
+ * 写入与按路线/答案/项目维度查询,以及保序批量读取。patch 与不可变
+ * 答案一一对应,多于一行的 patch 即为不变量违例。
+ */
 @Repository
 public class AnswerPatchRepository {
 
@@ -72,9 +79,9 @@ public class AnswerPatchRepository {
     }
 
     /**
-     * Reads every patch for one immutable answer. The list is deliberately
-     * retained here instead of using a first/latest query: more than one row
-     * is an invariant violation and callers must fail closed.
+     * 读取一条不可变答案的全部 patch。这里刻意保留完整列表而不是用
+     * first/latest 查询:多于一行的结果就是不变量违例,调用方必须
+     * fail-closed。
      */
     public List<AnswerPatch> findBySourceAnswerId(UUID sourceAnswerId) {
         String sql = """
@@ -86,11 +93,11 @@ public class AnswerPatchRepository {
     }
 
     /**
-     * Returns patches for the given ids, preserving the caller's order.
+     * 返回给定 id 的 patch,并保持调用方的顺序。
      *
-     * <p>Order matters for replay: the same patches replayed in different order
-     * can yield different requirement state. This method never reorders by
-     * database column; it reorders by the input list. Missing ids are skipped.
+     * 顺序对重放至关重要:同一批 patch 以不同顺序重放可能得到不同的
+     * 需求状态。本方法绝不按数据库列重新排序,只按输入列表排序;
+     * 缺失的 id 直接跳过。
      */
     public List<AnswerPatch> findByIdsPreservingOrder(List<UUID> patchIds) {
         if (patchIds == null || patchIds.isEmpty()) {
@@ -117,7 +124,7 @@ public class AnswerPatchRepository {
         return jdbcTemplate.query(sql, Maps.of("id", id), rowMapper).stream().findFirst();
     }
 
-    /** Canonical project-wide scan used only to rebuild derived retrieval data. */
+    /** 项目级规范扫描,仅用于重建派生的检索数据。 */
     public List<AnswerPatch> findByProject(UUID projectId) {
         String sql = """
                 SELECT * FROM answer_patches WHERE project_id = :projectId ORDER BY created_at, id

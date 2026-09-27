@@ -14,6 +14,14 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * 文件名:AnswerRepository.java
+ *
+ * 用途:Answer 的持久化仓储,基于 JDBC 直接访问 answers 表。负责回答的写入、
+ * 按 route/node/project 等维度的存在性检查与批量查询,是 answer 包与数据库之间
+ * 的唯一入口。行映射中兼容 legacy 的 {@code selected_option_id} 列与 jsonb 的
+ * {@code selected_option_ids} 列。
+ */
 @Repository
 public class AnswerRepository {
 
@@ -75,7 +83,7 @@ public class AnswerRepository {
         return count != null && count > 0;
     }
 
-    /** Cross-route answer existence: immutable answers block node retraction. */
+    /** 跨 route 的回答存在性检查:存在不可变回答的节点不允许被回撤。 */
     public boolean existsByNodeId(UUID nodeId) {
         String sql = "SELECT COUNT(*) FROM answers WHERE node_id = :nodeId";
         Integer count = jdbcTemplate.queryForObject(sql, Maps.of("nodeId", nodeId), Integer.class);
@@ -98,7 +106,7 @@ public class AnswerRepository {
         return jdbcTemplate.query(sql, Maps.of("id", id), rowMapper).stream().findFirst();
     }
 
-    /** Canonical project-wide scan used only to rebuild derived retrieval data. */
+    /** 项目级全量扫描,仅用于重建派生的检索数据。 */
     public List<Answer> findByProject(UUID projectId) {
         String sql = """
                 SELECT * FROM answers WHERE project_id = :projectId ORDER BY created_at, id

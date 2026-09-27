@@ -1,4 +1,8 @@
-"""Prompt-level assertions for the DECISION action-boundary experiment."""
+"""文件名:test_decision_prompt.py
+
+用途:针对 DECISION action 边界实验的 prompt 级断言,锁定 SYSTEM_PROMPT
+中关于动作资格与选择规则的关键约束文本。
+"""
 
 from spec_agent_brain.prompts.decision import SYSTEM_PROMPT
 

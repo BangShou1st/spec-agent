@@ -13,17 +13,16 @@ import org.springframework.stereotype.Service;
 import java.util.UUID;
 
 /**
- * Command composition for route mutations.
+ * 文件名:RouteCommandService.java
  *
- * <p>All route commands go through {@link RouteService}; this service only
- * pre-validates readable state for precise API errors and translates expected
- * runtime failures into safe API errors. It never writes database state itself
- * and never re-implements route semantics.
+ * 用途:路线变更命令的应用层组合服务。所有路线命令最终都经由
+ * {@link RouteService} 执行;本服务只做"可读状态的前置校验"以产生精确的
+ * API 错误,并把预期内的运行时失败翻译成安全的 API 错误。它自身绝不写
+ * 数据库状态,也绝不重新实现路线语义。
  *
- * <p>It is an application-layer use case (composed of runtime services and the
- * shared error kernel), so it lives in {@code com.specagent.workspace.route}
- * instead of the {@code api} package; the REST controller is a thin translation
- * layer on top of it.
+ * 它是应用层用例(由运行时切片服务与共享错误内核组合而成),因此
+ * 放在 {@code com.specagent.workspace.route} 而不是 {@code api} 包;
+ * REST 控制器只是它上面的一层薄翻译层。
  */
 @Service
 public class RouteCommandService {

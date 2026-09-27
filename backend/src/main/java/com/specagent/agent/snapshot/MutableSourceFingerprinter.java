@@ -13,13 +13,17 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Derives canonical hashes for mutable model-visible node sources.
+ * 文件名:MutableSourceFingerprinter.java
  *
- * <p>New frozen rows keep the richer persisted source fingerprint used by P1.
- * Legacy frozen rows that predate persisted fingerprints can still derive a
- * safe stale precondition from their immutable {@code AgentInputSnapshot}
- * payload via {@link #modelVisibleNodeHash(NodeView)}. That legacy derivation
- * hashes exactly the node fields the model saw, never current live state.
+ * 用途:为"模型可见的易变节点来源"推导规范化哈希。
+ *
+ * 新的冻结行保留 P1 使用的、更丰富的持久化来源指纹。早于持久化指纹的
+ * 遗留冻结行,仍可通过 {@link #modelVisibleNodeHash(NodeView)} 从其不可变的
+ * {@code AgentInputSnapshot} payload 推导出安全的 stale 前置条件。该遗留
+ * 推导只对模型当时看到的节点字段做哈希,绝不使用当前活状态。
+ *
+ * 协作:被 AgentInputSnapshotBuilder(冻结时生成指纹)和
+ * StaleContextChecker(执行前重算并比对)使用。
  */
 @Component
 public class MutableSourceFingerprinter {
@@ -45,8 +49,8 @@ public class MutableSourceFingerprinter {
     }
 
     /**
-     * Rich P1 fingerprint for rows created by the current projection schema.
-     * Kept stable for compatibility with already-frozen rows.
+     * 当前投影 schema 创建的行所用的丰富 P1 指纹。
+     * 为兼容已冻结的历史行而保持算法不变。
      */
     public String nodeBodyHash(Node node) {
         Map<String, Object> canonical = new LinkedHashMap<>();
@@ -62,9 +66,8 @@ public class MutableSourceFingerprinter {
     }
 
     /**
-     * Hashes only the model-visible NodeView semantics. Used to derive stale
-     * preconditions for legacy frozen projections whose source fingerprint
-     * column is empty. The live overload below builds the same canonical shape.
+     * 只对模型可见的 NodeView 语义做哈希。用于为 source fingerprint 列为空的
+     * 遗留冻结投影推导 stale 前置条件。下面对活节点的重载构建同样的规范化形状。
      */
     public String modelVisibleNodeHash(NodeView view) {
         Map<String, Object> canonical = new LinkedHashMap<>();

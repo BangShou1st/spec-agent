@@ -21,7 +21,14 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-/** Proves eval-style settings resolve externally and do not read test DB settings. */
+/**
+ * 文件名:OpenCodeLiveRuntimeSettingsProvenanceTest.java
+ *
+ * 测试目标:证明评估式(external-environment)运行时设置从外部解析:
+ * 优先于数据库设置(根本不读取 repository),使用真实传输层与 OpenCode 端点,
+ * 凭证来源标记为环境变量名,toString 不泄漏凭证明文;上下文装配上保持
+ * RoutingModelInferenceGateway 为权威入口且不存在 Fake 网关。
+ */
 @SpringBootTest(properties = {
         "spec.agent.model.inference=opencode",
         "spec.agent.model.runtime-settings-source=external-environment",
@@ -54,7 +61,7 @@ class OpenCodeLiveRuntimeSettingsProvenanceTest {
 
         RuntimeOpenCodeSettings resolved = service.requireRuntimeSettings();
 
-        // MODEL PROVIDERS V1: routing is the authoritative entry; OpenCode stays the delegate.
+        // MODEL PROVIDERS V1:路由网关是权威入口,OpenCode 保持为委托。
         assertThat(inferenceGateway).isInstanceOf(RoutingModelInferenceGateway.class);
         assertThat(context.getBeansOfType(OpenCodeModelInferenceGateway.class)).hasSize(1);
         assertThat(context.getBeansOfType(FakeModelInferenceGateway.class)).isEmpty();

@@ -20,6 +20,13 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+/**
+ * 文件名:ContextGuardTest.java
+ *
+ * 测试目标:验证 ContextGuard 门禁对上下文快照的校验逻辑——项目与路线必须存在、
+ * 路线必须处于 OPEN 状态、NORMAL 操作的路由必须与项目当前激活路由一致(REGENERATE 除外)、
+ * 快照必须携带 hash;覆盖合法通过与各类拒绝场景。
+ */
 class ContextGuardTest {
 
     private final ProjectRepository projectRepository = mock(ProjectRepository.class);

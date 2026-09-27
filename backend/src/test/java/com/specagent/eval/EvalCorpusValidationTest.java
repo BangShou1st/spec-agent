@@ -8,9 +8,10 @@ import java.util.Set;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Corpus validation (CI-blocking): every scenario in the corpus
- * validates, hashes stably, carries unique ids, and declares
- * calibration/holdout usage explicitly.
+ * 文件名:EvalCorpusValidationTest.java
+ *
+ * 测试目标:语料校验(阻塞 CI):语料中的每个场景都能通过 validate、
+ * 哈希稳定、场景 ID 唯一,并显式声明 calibration/holdout 用途。
  */
 class EvalCorpusValidationTest {
 

@@ -8,7 +8,12 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 
-/** Optional vector lane. An unavailable gateway returns no candidates. */
+/**
+ * 文件名:VectorCandidateRetriever.java
+ *
+ * 用途:混合检索中的可选向量通道,把查询文本嵌入成向量后按余弦距离
+ * 取近邻候选。嵌入网关不可用时返回空候选,不影响其他通道。
+ */
 @Service
 public class VectorCandidateRetriever {
 

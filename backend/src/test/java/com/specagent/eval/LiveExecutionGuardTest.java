@@ -21,7 +21,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-/** Regression guards for the boundary between B-fast and B-live. */
+/**
+ * 文件名:LiveExecutionGuardTest.java
+ *
+ * 测试目标:B-fast 与 B-live 边界的回归守护:live 运行必须拒绝 Java 假引擎、
+ * 脚本化大脑和假推理网关,只接受 RemotePythonDecisionEngine +
+ * OpenCodeModelInferenceGateway;bean 缺失不得当作回退,Provider 配置缺失时
+ * 失败关闭且不回退到假实现。
+ */
 class LiveExecutionGuardTest {
 
     private final AgentDecisionEngine remoteBrain =

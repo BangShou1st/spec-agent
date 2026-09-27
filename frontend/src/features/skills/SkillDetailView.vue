@@ -1,3 +1,8 @@
+<!--
+  文件名:SkillDetailView.vue
+  用途:单个 Skill 的详情页:展示来源、大小、版本历史与资源列表,提供启用/禁用开关、
+       资源阅读器弹窗,以及删除的二次确认;数据由 skillsStore 按路由参数 skillId 加载。
+-->
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'

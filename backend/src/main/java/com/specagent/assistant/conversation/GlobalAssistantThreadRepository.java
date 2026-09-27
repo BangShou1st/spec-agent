@@ -14,7 +14,14 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 /**
- * Durable threads with versioned working state + summary (optimistic CAS).
+ * 文件名:GlobalAssistantThreadRepository.java
+ *
+ * 用途:线程的持久化,对应 global_assistant_threads 表,支持带版本号
+ * 的工作状态与摘要更新(乐观 CAS)。
+ *
+ * 角色:conversation 包的线程存储层。版本化更新采用 fail-closed 策略:
+ * 期望版本不匹配时直接抛 GlobalAssistantVersionConflictException,绝不
+ * 静默覆盖并发写入。
  */
 @Repository
 public class GlobalAssistantThreadRepository {
@@ -50,7 +57,7 @@ public class GlobalAssistantThreadRepository {
         }
     }
     /**
-     * Versioned working-state update. Fails closed on version conflict.
+     * 带版本号的工作状态更新:版本冲突时 fail-closed(直接抛异常)。
      */
     public void updateWorkingState(UUID threadId, Map<String, Object> workingState, int expectedVersion) {
         String sql = "UPDATE global_assistant_threads SET working_state = CAST(:state AS jsonb), working_state_version = working_state_version + 1, updated_at = :now WHERE id = :id AND working_state_version = :expected";
@@ -64,7 +71,7 @@ public class GlobalAssistantThreadRepository {
         }
     }
     /**
-     * Versioned summary update. Fails closed on version conflict.
+     * 带版本号的摘要更新:版本冲突时 fail-closed(直接抛异常)。
      */
     public void updateSummary(UUID threadId, String summary, int expectedVersion) {
         String sql = "UPDATE global_assistant_threads SET summary = :summary, summary_version = summary_version + 1, updated_at = :now WHERE id = :id AND summary_version = :expected";

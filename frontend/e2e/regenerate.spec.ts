@@ -1,6 +1,5 @@
-import { test, expect } from '@playwright/test'
-import { buildThreeNodeLineage, closeFloatingWorkspaceWindows, createProject, fitGraph } from './helpers'
 
+import { test, expect, createProject, fitGraph, closeFloatingWorkspaceWindows, buildThreeNodeLineage } from './helpers'
 /**
  * Deterministic regenerate on the graph: an answered NON-ROOT historical
  * node is regenerated from a one-sentence direction through the deterministic

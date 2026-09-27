@@ -1,3 +1,7 @@
+<!--
+  文件名:UiDialogShell.vue
+  用途:通用对话框外壳:管理打开/关闭、Esc/遮罩关闭、层级与焦点行为,各业务弹窗复用。
+-->
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 import AppIcon from './AppIcon.vue'

@@ -27,7 +27,11 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
-/** Timing instrumentation must never swallow an uncaught Error from summaries. */
+/** 文件名:GlobalAssistantSummaryErrorPropagationTest.java
+ *
+ * 测试目标:验证计时插桩不会吞掉摘要链路中未被捕获的 Error——
+ * 摘要里抛出的 Error 必须原样向上传播,而不是被运行时静默吸收。
+ */
 @SpringBootTest
 @ActiveProfiles("test")
 @Transactional

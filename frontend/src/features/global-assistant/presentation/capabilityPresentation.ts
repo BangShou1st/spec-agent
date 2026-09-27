@@ -1,15 +1,13 @@
-/**
- * Central presentation metadata for Global Assistant capabilities.
- *
- * Labels come only from this registry keyed by capability id - never from
- * user prompt text, model prose, project names, or per-component special cases.
- * A new tool only needs one entry here; no Vue component learns new tools.
- * Unknown ids use the generic fallback so the UI never crashes.
- */
+// 文件名:capabilityPresentation.ts
+// 用途:全局助手能力(capability)展示元数据的中央注册表。
+// 标签只来自这个按 capabilityId 索引的注册表,绝不取自用户 prompt 文本、模型正文、
+// 项目名或组件内的特判;新增工具只需在此加一条,Vue 组件无需感知;
+// 未知 id 走通用兜底,保证 UI 不崩溃。
+
 export interface CapabilityPresentation {
-  /** Short action noun for the activity row, e.g. candidate search. */
+  /** 活动行的简短动作名词,例如"搜索项目"。 */
   actionLabel: string;
-  /** Result kind for generic count rendering, e.g. PROJECT_LIST. Null when none. */
+  /** 通用条数渲染使用的结果类型,例如 PROJECT_LIST;没有则为 null。 */
   resultKind: string | null;
 }
 
@@ -29,9 +27,9 @@ export function capabilityPresentation(capabilityId: string): CapabilityPresenta
 }
 
 /**
- * Completed-state line derived ONLY from the real result count.
- * Returns null when no trustworthy count exists so callers fall back
- * to the backend summary string. Never invents numbers.
+ * 完成态摘要行,只根据真实结果条数生成。
+ * 没有可信条数时返回 null,由调用方回退到后端 summary 字符串。
+ * 绝不编造数字。
  */
 export function completedCountLabel(capabilityId: string, count: number | null | undefined): string | null {
   if (count === null || count === undefined || !Number.isInteger(count) || (count as number) < 0) return null;

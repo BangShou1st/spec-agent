@@ -22,7 +22,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Slice 0: loop-linkage persistence round-trip for {@code AgentRun}.
+ * 文件名:AgentRunLoopLinkageTest.java
+ *
+ * 测试目标:Slice 0:验证 {@code AgentRun} 循环关联字段(parentRunId、rootRunId、
+ * cycleIndex)的持久化往返;旧数据行读出为 null;claimNextContinue 只领取 CONTINUE
+ * 触发类型的 run;按 parentRunId 查找子 run;无锚点的 CONTINUE 循环 fail closed。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -123,10 +127,9 @@ class AgentRunLoopLinkageTest {
 
     @Test
     void continueCycleWithoutAnchorFailsClosed() {
-        // Slice 3B: CONTINUE_CYCLE really executes through the production
-        // chain. An anchorless child on an empty route drafts the root
-        // question (INTERACTION), which parks the chain as an external
-        // boundary — it never spawns a further child.
+        // Slice 3B:CONTINUE_CYCLE 通过生产链路真实执行。空路由上无锚点的子 run
+        // 会起草根问题(INTERACTION),这会把链暂停在外部边界——它绝不再派生
+        // 更深的子 run。
         Project project = projectService.createProject("loop-linkage-stale");
         AgentRun continued = new AgentRun(UUID.randomUUID(), project.id(),
                 project.activeRouteId(), AgentRunTriggerType.CONTINUE_CYCLE,

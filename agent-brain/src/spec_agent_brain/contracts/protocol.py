@@ -1,7 +1,9 @@
-"""Frozen protocol constants of the V2 cross-language agent boundary.
+"""文件名:protocol.py
 
-Mirrors ``com.specagent.agent.protocol.AgentProtocol`` on the Java side
-and the authoritative ``contracts/README.md``.
+用途:V2 跨语言 agent 边界的冻结协议常量。
+
+与 Java 侧的 ``com.specagent.agent.protocol.AgentProtocol`` 以及权威文档
+``contracts/README.md`` 保持一致。
 """
 
 INPUT_PROTOCOL_VERSION = "agent-input.v2"

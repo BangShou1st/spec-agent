@@ -1,3 +1,9 @@
+<!--
+  文件名:OpenRouterProviderSettings.vue
+  用途:OpenRouter 的 Provider 卡片,也是其他 Provider 对齐的卡片范式:
+       头部 + 状态胶囊、当前配置摘要(单一"更换 API Key"入口)、常驻模型字段,
+       以及 保存并测试/重新测试/设为当前 Provider 操作行。
+-->
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import ProviderCard from './ProviderCard.vue'
@@ -8,10 +14,9 @@ import { useProviderSettingsStore } from '@/features/model-settings/state/provid
 import { providerCardState } from '@/features/model-settings/presentation/providerPresentation'
 
 /**
- * OpenRouter card. This is the provider-card paradigm the other providers are
- * aligned to: header + status pill, current-configuration summary with a
- * single 更换 API Key entry, one always-visible model field, and the
- * 保存并测试 / 重新测试 / 设为当前 Provider action row.
+ * OpenRouter 卡片。这是其他 Provider 都对齐的 Provider 卡片范式:
+ * 头部 + 状态胶囊、带单一 更换 API Key 入口的当前配置摘要、
+ * 一个常驻可见的模型字段,以及 保存并测试 / 重新测试 / 设为当前 Provider 操作行。
  */
 const store = useOpenRouterStore()
 const providers = useProviderSettingsStore()
@@ -31,9 +36,8 @@ const canProbe = computed(() => apiKey.value.trim().length > 0 && !store.probing
 const showCredentialForm = computed(() => !store.configured || changingCredential.value)
 
 /**
- * Display list contains the injected persisted value for visibility, but save
- * gating must use the true available list so an injected unavailable persisted
- * value cannot be written back.
+ * 展示列表会包含回填的已持久化值以保证可见性,
+ * 但保存门槛必须用真正可用的列表,否则已下架的持久化值会被原样写回。
  */
 const isUnavailableSelected = computed(() => {
   if (store.selectedModel === null) {

@@ -1,6 +1,14 @@
+<!--
+  文件名:CustomProviderForm.vue
+  用途:自定义 Provider 的唯一编辑表单,创建与编辑流程共用。刻意保持扁平:
+       无卡片头、无分区线、无状态胶囊,字段序列一气呵成
+       (显示名称 → API Format → Base URL → API Key → 获取模型 → Model → 操作),
+       不会因为外层壳的包裹把同一组字段拆成两块视觉区域。
+-->
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { productErrorMessage } from '@/shared/http/errorCopy'
+import { sameOrigin } from '@/shared/net/origin'
 import { useCustomProviderStore } from '@/features/model-settings/state/customProviderStore'
 import { useProviderSettingsStore } from '@/features/model-settings/state/providerSettingsStore'
 import { CUSTOM_FORMAT_OPTIONS, endpointPreview } from '@/features/model-settings/presentation/providerPresentation'
@@ -8,18 +16,16 @@ import ApiErrorBanner from '@/shared/ui/ApiErrorBanner.vue'
 import type { CustomApiFormat } from '@/features/model-settings/api/modelProviders'
 
 /**
- * The one editing surface for a user-defined provider, shared by the create
- * flow and the edit flow.
+ * 用户自定义 Provider 的唯一编辑界面,由创建流程与编辑流程共用。
  *
- * Deliberately flat: no card header, no section divider, no status pill. The
- * field sequence runs straight through — 显示名称 → API Format → Base URL →
- * API Key → 获取模型 → Model → actions — so the same fields are never split
- * into two visually separate blocks just because a shell wraps them.
+ * 刻意保持扁平:没有卡片头、没有分区线、没有状态胶囊。字段序列直线走完
+ * (显示名称 → API Format → Base URL → API Key → 获取模型 → Model → 操作),
+ * 同一组字段绝不因为包了个壳就被拆成视觉上分离的两块。
  */
 const props = withDefaults(defineProps<{
-  /** 'create' starts empty; 'edit' seeds every field from the stored config. */
+  /** 'create' 从空白开始;'edit' 用已存配置回填所有字段。 */
   mode?: 'create' | 'edit'
-  /** Dialog-owned id prefix so nested fields keep unique DOM ids. */
+  /** 由弹窗方提供 id 前缀,保证嵌套字段的 DOM id 唯一。 */
   idPrefix?: string
 }>(), {
   mode: 'create',
@@ -40,19 +46,36 @@ const preview = computed(() => endpointPreview(store.baseUrl, store.apiFormat))
 const safeErrorMessage = computed(() => productErrorMessage(store.error?.code ?? 'UNKNOWN_ERROR'))
 const isActive = computed(() => providers.activeProvider === 'CUSTOM')
 
-const canDiscover = computed(() => store.baseUrl.trim().length > 0 && !store.discovering && !store.saving)
+/**
+ * 凭据复用守卫(与后端 sameOrigin 守卫一致):已配置且存有密钥时,把
+ * Base URL 改到不同来源(scheme/host/有效端口)必须显式决定密钥——
+ * 输入新地址自己的密钥,或清空输入框表示无鉴权。绝不把旧服务的密钥
+ * 静默带到新来源。
+ */
+const credentialDecisionRequired = computed(() => {
+  if (!store.configured || !store.hasKey || !store.savedBaseUrl) {
+    return false
+  }
+  if (keyTouched.value) {
+    return false
+  }
+  return !sameOrigin(store.baseUrl.trim(), store.savedBaseUrl)
+})
+
+const canDiscover = computed(() => store.baseUrl.trim().length > 0 && !store.discovering && !store.saving
+  && !credentialDecisionRequired.value)
 const canSaveTest = computed(() => name.value.trim().length > 0
   && store.baseUrl.trim().length > 0
   && store.selectedModel.trim().length > 0
   && !isUnavailableSelected.value
-  && !store.saving && !store.validating)
+  && !store.saving && !store.validating
+  && !credentialDecisionRequired.value)
 const canActivate = computed(() => store.configured && store.validated
   && !isActive.value && !providers.activating)
 
 /**
- * The discovered display list carries the persisted value for visibility; the
- * save gate must use the true available list so an unavailable saved model can
- * never be written back.
+ * 发现得到的展示列表为了可见性会带上已持久化的值;
+ * 保存门槛必须用真正可用的列表,否则已保存但已下架的模型会被原样写回。
  */
 const isUnavailableSelected = computed(() => {
   if (store.manualModel) {
@@ -87,13 +110,13 @@ function onFormatChange(event: Event): void {
 }
 
 async function discover(): Promise<void> {
-  // Only a key the user actually typed is a candidate; otherwise reuse stored.
+  // 只有用户真实输入过的密钥才参与探测;否则复用已存密钥。
   const draft = keyTouched.value ? apiKey.value : null
   await store.discover(draft)
 }
 
 async function saveAndTest(): Promise<void> {
-  // undefined retains the stored key, empty clears it, non-empty replaces it.
+  // undefined 保留已存密钥,空串清除,非空替换。
   const payload = !keyTouched.value ? undefined : (apiKey.value === '' ? '' : apiKey.value.trim())
   const ok = await store.save(payload as string | null | undefined, name.value.trim())
   if (ok) {
@@ -195,6 +218,13 @@ onMounted(() => {
         :placeholder="isEdit && store.hasKey ? '已保存，留空则沿用' : '留空表示无鉴权'"
         @input="keyTouched = true"
       />
+      <span
+        v-if="credentialDecisionRequired"
+        class="settings-field__empty settings-field__warning"
+        data-test="custom-origin-warning"
+      >
+        Base URL 已指向新的服务地址：请输入新地址对应的 API Key，或清空输入框以无鉴权保存
+      </span>
     </label>
 
     <div class="settings-form__action-row">

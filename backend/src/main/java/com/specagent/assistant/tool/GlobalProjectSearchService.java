@@ -11,11 +11,13 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 
 /**
- * Dedicated application-level project search read model.
- * Does not change ProjectService.listProjects() (created_at ASC) semantics.
- * Deterministic lexical matching only: normalization, tokenization, exact /
- * prefix / substring, updatedAt tie-break, bounded results. No business
- * keyword weights, no synonym tables, no intent routing.
+ * 文件名:GlobalProjectSearchService.java
+ *
+ * 用途:全局助手专用的应用层项目搜索读模型。不改动
+ * ProjectService.listProjects()(created_at 升序)的既有语义。
+ * 只做确定性的词法匹配:归一化、分词、精确/前缀/子串匹配、
+ * updatedAt 决胜、结果有界。没有业务关键词权重、没有同义词表、
+ * 也没有意图路由。
  */
 @Service
 public class GlobalProjectSearchService {

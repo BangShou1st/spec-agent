@@ -7,19 +7,26 @@ import java.util.Map;
 import com.specagent.workspace.graph.GraphRuleViolationException;
 
 /**
- * One place that turns a thrown failure into the durable run-failure record:
- * a stable machine code plus, when the cause is a model/brain outcome the user
- * can act on, a bounded readable explanation.
+ * 文件名:RunFailureReasons.java
  *
- * <p>Codes stay machine-readable and are what the eval harness classifies; the
- * readable copy is exposed through the whitelisted progress summary so the UI
- * can say <em>why</em> a run stopped instead of a generic "generation failed".
- * Neither ever contains model output, prompts, or provider payloads.
+ * 用途:把抛出的失败统一转换成可持久化的 run 失败记录的唯一入口:
+ * 一个稳定的机器码,加上(当原因是用户可干预的模型/Brain 结果时)一段
+ * 有边界的可读解释。
+ *
+ * 机器码保持机器可读,是 eval harness 分类依据;可读文案通过白名单式的
+ * 进度摘要暴露给 UI,让它能说明 run 为什么停下,而不是笼统的"生成失败"。
+ * 两者都绝不含模型输出、prompt 或 provider 载荷。
  */
 public final class RunFailureReasons {
 
-    /** Artifact generation refused because the tip answer was never processed. */
+    /** 因 tip 上的回答从未被处理,artifact 生成被拒绝。 */
     public static final String ANSWER_CYCLE_INCOMPLETE = "ANSWER_CYCLE_INCOMPLETE";
+
+    /** 服务重启时该 run 的执行器已消失,启动恢复将其诚实地终态化为失败。 */
+    public static final String INTERRUPTED_BY_RESTART = "INTERRUPTED_BY_RESTART";
+
+    /** 执行器租约丢失(数据库重启/租约会话被终止),本进程停止一切写入。 */
+    public static final String EXECUTOR_LEASE_LOST = "EXECUTOR_LEASE_LOST";
 
     private static final Map<String, String> USER_COPY = Map.of(
             BrainFailureCode.MODEL_CONTRACT_VIOLATION.reasonCode(),
@@ -33,15 +40,26 @@ public final class RunFailureReasons {
             BrainFailureCode.MODEL_PROVIDER_FAILURE.reasonCode(),
             "模型服务调用失败，本次生成未完成，请稍后重试",
             ANSWER_CYCLE_INCOMPLETE,
-            "该问题已保存回答但后续处理未完成，请先重试该回答，再生成规格");
+            "该问题已保存回答但后续处理未完成，请先重试该回答，再生成规格",
+            INTERRUPTED_BY_RESTART,
+            "服务重启导致本次任务中断，未产生结果，可重新发起该操作",
+            EXECUTOR_LEASE_LOST,
+            "服务执行权已移交，本次结果未提交；重启服务后可重新发起该操作");
 
     private RunFailureReasons() {
     }
 
-    /** Stable machine code for a failed run; never null. */
-    public static String reasonCode(RuntimeException failure) {
-        if (failure instanceof AgentBrainUnavailableException brain) {
+    /** 已知失败码的用户可读文案;未知码返回 null(由 UI 回退到通用文案)。 */
+    public static String userCopyFor(String reasonCode) {
+        return reasonCode == null ? null : USER_COPY.get(reasonCode);
+    }
+
+    /** 失败 run 的稳定机器码;绝不为 null。 */
+    public static String reasonCode(RuntimeException failure) {        if (failure instanceof AgentBrainUnavailableException brain) {
             return brain.failureCode().reasonCode();
+        }
+        if (failure instanceof ExecutorLease.LeaseLostException) {
+            return EXECUTOR_LEASE_LOST;
         }
         if (failure instanceof IncompleteAnswerCycleException) {
             return ANSWER_CYCLE_INCOMPLETE;
@@ -54,10 +72,9 @@ public final class RunFailureReasons {
     }
 
     /**
-     * {@code RUN_FAILED} payload. The legacy {@code reason} field keeps its
-     * meaning (now carrying the typed code where one exists); {@code errorCode}
-     * and {@code summary} are added only for failures with known copy, so every
-     * other failure payload is byte-identical to what it was before.
+     * {@code RUN_FAILED} 事件的 payload。旧的 {@code reason} 字段含义不变
+     * (有类型化代码时改存该代码);{@code errorCode} 与 {@code summary} 仅为
+     * 有已知文案的失败补充,因此其他所有失败 payload 与之前逐字节一致。
      */
     public static Map<String, Object> payload(String reasonCode) {
         String copy = USER_COPY.get(reasonCode);
@@ -67,7 +84,7 @@ public final class RunFailureReasons {
         return Map.of("reason", reasonCode, "errorCode", reasonCode, "summary", copy);
     }
 
-    /** Adds only safe recovery identity to the incomplete-answer failure. */
+    /** 仅为"回答不完整"失败附加安全的恢复定位信息。 */
     public static Map<String, Object> payload(RuntimeException failure) {
         String reason = reasonCode(failure);
         if (!(failure instanceof IncompleteAnswerCycleException incomplete)

@@ -11,9 +11,11 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Discovers and stores MCP prompt assets. Prompts are assets for inspection —
- * they never become automatic system policy, and server-authored prompt text
- * carries no runtime authority. Phase one: discover + inspect only.
+ * 文件名:McpPromptAssetProvider.java
+ *
+ * 用途:发现并存储 MCP prompt 资产。Prompt 仅是供查看的资产——它们永远不会
+ * 变成自动注入的系统策略,Server 端编写的提示文本也不具有任何运行时权威。
+ * 第一阶段仅支持发现 + 查看。
  */
 @Component
 public class McpPromptAssetProvider {

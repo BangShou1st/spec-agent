@@ -1,7 +1,10 @@
+// 文件名:globalAssistantEvents.ts
+// 用途:全局助手运行的 SSE 事件流传输层:基于 fetch 流式读取解析 SSE 帧,
+//       支持从指定 sequence 游标重放(Last-Event-ID)、收到终止事件后自动关闭,
+//       传输断开绝不取消运行本身。
+
 import { isGaTerminalEventType, type GaEventEnvelope } from './globalAssistant'
 import { API_BASE_URL } from '@/shared/http/client'
-
-/** Focused fetch-stream SSE transport for Global Assistant runs. */
 
 export interface GaStreamHandlers {
   onEvent: (event: GaEventEnvelope) => void
@@ -14,15 +17,15 @@ export interface ParsedSse {
   rest: string
 }
 
-/** Pure SSE frame parser (testable): splits on blank lines. */
+/** 纯函数的 SSE 帧解析器(便于测试):按空行分帧。 */
 export function parseSseBuffer(buffer: string): ParsedSse {
   const events: Array<{ id: string; name: string; data: string }> = []
-  // Keep the trailing incomplete frame in rest.
+  // 末尾不完整的帧留在 rest 中,等待下次数据到达后补全。
   const parts = buffer.split(/\r?\n\r?\n/)
   const rest = parts.pop() ?? ''
   for (const part of parts) {
     if (!part.trim()) continue
-    // Heartbeat comments keep the connection alive.
+    // 心跳注释帧只用于保活,不作为事件处理。
     if (part.trimStart().startsWith(':')) continue
     let id = ''
     let name = ''
@@ -38,7 +41,7 @@ export function parseSseBuffer(buffer: string): ParsedSse {
   return { events, rest }
 }
 
-/** Parses one SSE data payload into a typed envelope; null when unknown. */
+/** 将一段 SSE data 载荷解析为类型化信封;无法识别时返回 null。 */
 export function parseGaEnvelope(data: string): GaEventEnvelope | null {
   try {
     const parsed = JSON.parse(data) as Partial<GaEventEnvelope>
@@ -52,10 +55,10 @@ export function parseGaEnvelope(data: string): GaEventEnvelope | null {
 }
 
 /**
- * Opens a Global Assistant SSE stream from a sequence cursor.
- * - Sends Last-Event-ID for replay.
- * - Closes automatically on terminal events.
- * - Never cancels the run on transport disconnect.
+ * 从指定 sequence 游标打开全局助手的 SSE 事件流。
+ * - 请求携带 Last-Event-ID 以支持重放。
+ * - 收到终止事件后自动关闭。
+ * - 传输层断开时绝不取消运行本身。
  */
 export function openGaEventStream(
   runId: string,

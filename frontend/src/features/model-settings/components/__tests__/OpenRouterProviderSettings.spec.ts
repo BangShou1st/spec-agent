@@ -1,3 +1,6 @@
+// 文件名:OpenRouterProviderSettings.spec.ts
+// 用途:OpenRouter 卡片组件测试:已配置时自动拉取模型、更换密钥必须输入新 Key、
+//       取消后回退已存密钥、探测后清空旧选择需重新挑选模型。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'

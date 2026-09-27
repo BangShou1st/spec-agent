@@ -12,9 +12,16 @@ import java.util.Set;
 import java.util.TreeMap;
 
 /**
- * Machine-readable artifact writer: one JSONL line per attempt plus
- * summary.json / summary.txt aggregates. Ships its own minimal JSON
- * renderer so the harness adds no new framework dependency.
+ * 文件名:EvalArtifactWriter.java
+ *
+ * 用途:机器可读的评测产物读写器:每次尝试写成一行 JSONL,另输出
+ * summary.json / summary.txt 汇总。自带一个极简 JSON 渲染器/解析器,
+ * 使评测框架不引入任何新框架依赖。同时提供 prompt 溯源
+ * ({@link #promptProvenance}):按语义阶段汇总去重后的 prompt 哈希。
+ *
+ * 协作:被 {@link ScenarioRunner} 写产物,被
+ * {@link ActionEligibilityShadowReplay} / {@link CausalReportGenerator} 等
+ * 离线分析工具读取回放。
  */
 public final class EvalArtifactWriter {
 
@@ -59,8 +66,7 @@ public final class EvalArtifactWriter {
             try {
                 builder.attemptId(java.util.UUID.fromString(str(map.get("attempt_id"))));
             } catch (IllegalArgumentException ignored) {
-                // Keep the artifact readable; malformed diagnostic identity
-                // is not allowed to make unrelated fields disappear.
+                // 保持产物可读;诊断身份字段格式不允许连累其他字段一起丢失。
             }
         }
         if (map.get("repetition") instanceof Number number) {
@@ -88,8 +94,8 @@ public final class EvalArtifactWriter {
     }
 
     /**
-     * Returns distinct prompt hashes grouped by semantic stage. Raw prompt
-     * text is intentionally not accepted or emitted by this helper.
+     * 按语义阶段返回去重后的 prompt 哈希。本工具刻意不接受、也不输出
+     * 原始 prompt 文本。
      */
     public static Map<String, Map<String, List<String>>> promptProvenance(
             List<ObservationEnvelope> observations) {
@@ -156,7 +162,7 @@ public final class EvalArtifactWriter {
                 result.add(new Violation(FailureClass.valueOf(failure),
                         str(map.get("detail"))));
             } catch (IllegalArgumentException ignored) {
-                // Unknown diagnostic taxonomy stays out of the typed view.
+                // 未知诊断分类不进入类型化视图。
             }
         }
         return result;
@@ -251,7 +257,7 @@ public final class EvalArtifactWriter {
         return result;
     }
 
-    /** Minimal JSON object parser sufficient for harness round-trips. */
+    /** 极简 JSON 对象解析器,满足评测框架自身的序列化往返即可。 */
     static Map<String, Object> parseObject(String json) {
         Parser parser = new Parser(json);
         Object parsed = parser.parseValue();

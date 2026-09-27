@@ -8,11 +8,11 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Derived requirement state for a route tip.
+ * 文件名:RequirementState.java
  *
- * <p>RequirementState is derived by replaying answer patches along the active
- * route lineage. It can be cached, but it is never the source of truth; the
- * immutable lineage, answers, and patches are.
+ * 用途:为 route tip 派生的需求状态,由沿活跃 route 世系回放回答补丁
+ * (answer patch)得到。它可以被缓存,但永远不是事实源——不可变的世系、回答
+ * 与补丁才是。下游规格生成据此判断哪些需求已确认、哪些仍未解决。
  */
 public class RequirementState {
 

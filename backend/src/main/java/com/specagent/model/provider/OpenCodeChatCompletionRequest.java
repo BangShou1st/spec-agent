@@ -4,14 +4,14 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Minimal chat completion payload for OpenCode Zen.
+ * 文件名:OpenCodeChatCompletionRequest.java
  *
- * <p>Production completion requests use the OpenAI-compatible streaming shape
- * required by the verified OpenCode client. The transport owns the wire-only
- * fields; this DTO carries only the model, the messages and the optional
- * provider-native format map translated from the neutral output contract.
- * A null format keeps the historical text shape byte-identical. Production
- * task types do not carry a task-specific generation limit.
+ * 用途:发给 OpenCode Zen 的最小化 chat completion 载荷。
+ *
+ * 生产补全请求使用已验证的 OpenCode 客户端所要求的 OpenAI 兼容流式形态。
+ * 仅存在于线上的字段由传输层负责;本 DTO 只携带模型名、消息列表,以及由
+ * 提供商无关输出契约翻译而来的可选提供商原生格式 map。格式为 null 时保持
+ * 与历史文本形态逐字节一致。生产任务类型不携带任务专属的生成上限。
  */
 public record OpenCodeChatCompletionRequest(
         String model,
@@ -32,7 +32,7 @@ public record OpenCodeChatCompletionRequest(
     }
 
     /**
-     * Historical shape: no provider format enforcement.
+     * 历史构造形态:不对提供商做任何格式强制。
      */
     public OpenCodeChatCompletionRequest(String model, List<OpenCodeChatMessage> messages) {
         this(model, messages, null);

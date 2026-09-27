@@ -3,8 +3,10 @@ package com.specagent.agent.decision;
 import java.util.List;
 
 /**
- * Interpretation of one user answer: which parts are confirmed, assumed,
- * unresolved, or in conflict with existing requirement state.
+ * 文件名:AnswerInterpretationResult.java
+ *
+ * 用途:对单条用户回答的解读结果:哪些部分是已确认的、属于假设的、
+ * 尚未消解的,或与既有需求状态相冲突的。
  */
 public record AnswerInterpretationResult(
         List<String> confirmedTexts,

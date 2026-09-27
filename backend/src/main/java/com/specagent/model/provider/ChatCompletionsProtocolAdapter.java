@@ -11,7 +11,11 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /**
- * OpenAI Chat Completions wire translation ({@code POST <base>/chat/completions}).
+ * 文件名:ChatCompletionsProtocolAdapter.java
+ *
+ * 用途:OpenAI Chat Completions 协议的线上格式适配器
+ * ({@code POST <base>/chat/completions})。把统一推理请求翻译成 OpenAI 风格的
+ * 请求体,并把非流式响应与 SSE 流式事件解析回统一契约。
  */
 @Component
 public class ChatCompletionsProtocolAdapter implements ProtocolAdapter {
@@ -80,11 +84,10 @@ public class ChatCompletionsProtocolAdapter implements ProtocolAdapter {
             throw ModelProviderException.invalidResponse(context, "Chat completions message has no text content");
         }
         String finish = extractFinishReason(choices.get(0));
-        // V1 fail-closed terminal semantics: only stop is a successful
-        // non-stream terminal. length is truncation, content_filter is not a
-        // complete authoritative response, and provider-native tool/function
-        // calling is disabled in Spec Agent. Missing/null has no [DONE] to
-        // prove completion, so it also fails closed.
+        // V1 fail-closed 终止语义:非流式下只有 stop 才算成功的终止。
+        // length 表示被截断,content_filter 不算完整可信的响应,而提供商原生的
+        // tool/function 调用在 Spec Agent 中已被禁用。缺失或为 null 的
+        // finish_reason 没有任何凭据能证明补全已完成,因此同样按失败处理。
         if (finish == null || finish.isBlank() || "null".equals(finish)) {
             throw ModelProviderException.invalidResponse(context, "Chat completions response has no finish_reason");
         }
@@ -121,8 +124,8 @@ public class ChatCompletionsProtocolAdapter implements ProtocolAdapter {
         if (delta == null || !delta.isObject()) {
             return null;
         }
-        // Whitelist ONLY choices[].delta.content. reasoning_content, reasoning,
-        // tool_calls, function_call, usage and provider metadata never surface.
+        // 白名单:只放行 choices[].delta.content。reasoning_content、reasoning、
+        // tool_calls、function_call、usage 以及提供商元数据一律不对外呈现。
         JsonNode content = delta.get("content");
         if (content != null && content.isTextual()) {
             String t = content.asText();
@@ -142,11 +145,11 @@ public class ChatCompletionsProtocolAdapter implements ProtocolAdapter {
 
     @Override
     public boolean isSuccessfulTerminal(String rawData, JsonNode data, String context) {
-        // V1 fail-closed: only stop and [DONE] are successful terminals.
-        // length (truncation), content_filter (not authoritative), and
-        // provider-native tool_calls/function_call (disabled) are failures.
-        // [DONE] without an explicit stop stays success when no failure
-        // finish reason preceded it (failures throw immediately in postSse).
+        // V1 fail-closed:只有 stop 和 [DONE] 才算成功终止。
+        // length(截断)、content_filter(不可信)以及提供商原生的
+        // tool_calls/function_call(已禁用)都按失败处理。
+        // 收到 [DONE] 但没有显式 stop 时,只要此前未出现过失败原因仍算成功
+        // (失败会在 postSse 中立即抛出)。
         if (rawData != null && rawData.trim().equals("[DONE]")) {
             return true;
         }
@@ -162,8 +165,8 @@ public class ChatCompletionsProtocolAdapter implements ProtocolAdapter {
         if (finish == null || finish.isBlank() || "null".equals(finish)) {
             return false;
         }
-        // Any non-stop finish_reason is a failure terminal (length,
-        // content_filter, tool_calls, function_call, and future values).
+        // 任何非 stop 的 finish_reason 都按失败终止处理(length、
+        // content_filter、tool_calls、function_call 以及未来新增的值)。
         return !"stop".equals(finish);
     }
 
@@ -172,7 +175,7 @@ public class ChatCompletionsProtocolAdapter implements ProtocolAdapter {
             return null;
         }
         JsonNode choices = data.has("choices") ? data.get("choices") : null;
-        // Non-stream passes choices.get(0) directly.
+        // 非流式响应直接传入 choices.get(0)。
         JsonNode holder = data;
         if (choices != null && choices.isArray() && !choices.isEmpty()) {
             holder = choices.get(0);

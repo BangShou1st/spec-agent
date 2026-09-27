@@ -1,11 +1,15 @@
+<!--
+  文件名:RelationProposalDialog.vue
+  用途:语义关系提案确认对话框:展示源/目标节点、让用户从 5 种关系类型中选择、对有向类型显示并允许反转方向;确认后才调用后端持久化关系。
+-->
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 
 /**
- * 真实 mouse drag（source handle → target handle）只产生 Pending Relation
- * Proposal。本组件是轻量确认器：显示 source/target、让用户选择 5 种关系
- * 类型、对 directional 类型明确显示方向并允许反转。Confirm 才调 backend；
- * Cancel / Esc / click-away 不产生任何持久化关系。
+ * 真实鼠标拖线(source handle → target handle)只产生待确认的关系提案。
+ * 本组件是轻量确认器:显示 source/target、让用户选择 5 种关系类型、对
+ * directional 类型明确显示方向并允许反转。确认才调后端;取消 / Esc /
+ * 点击遮罩不产生任何持久化关系。
  */
 const props = defineProps<{
   open: boolean

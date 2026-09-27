@@ -29,13 +29,13 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 
 /**
- * Failure-path integration tests for the question-draft decision cycle.
+ * 文件名:QuestionDraftFailureIntegrationTest.java
  *
- * <p>Deliberately not {@code @Transactional}: the whole point of this hardening
- * is that a FAILED agent run must remain queryable after the surrounding cycle
- * fails. A test transaction would hide rollback behavior. The failure is
- * injected at the decision-engine port — the same boundary a provider or
- * contract failure crosses in production.
+ * 测试目标:问题草稿决策循环的失败路径集成测试。
+ *
+ * 刻意不加 {@code @Transactional}:这套加固的要点正是 FAILED 的 agent run 在外层
+ * 循环失败之后仍可查询,而测试事务会掩盖回滚行为。失败注入在决策引擎端口——与生产中
+ * 供应商或契约失败跨越的边界相同。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -56,8 +56,7 @@ class QuestionDraftFailureIntegrationTest {
     @Autowired
     private com.specagent.workspace.node.NodeService nodeService;
 
-    // Spy over the real deterministic engine: failure tests override single
-    // methods, everything else keeps production behavior.
+    // 对真实确定性引擎做 spy:失败用例只覆写单个方法,其余行为保持生产逻辑。
     @SpyBean
     private AgentDecisionEngine decisionEngine;
 
@@ -77,7 +76,7 @@ class QuestionDraftFailureIntegrationTest {
     @Test
     void draftRunPersistsFailedRunWhenDecisionContractViolated() {
         Project project = projectService.createProject("Failure project");
-        // runId mismatch: the response can never belong to this run.
+        // runId 不匹配:响应不可能属于这个 run。
         doAnswer(invocation -> new AgentResponseEnvelope(
                         "agent-decision.v2",
                         java.util.UUID.randomUUID(),
@@ -97,8 +96,8 @@ class QuestionDraftFailureIntegrationTest {
     }
 
     /**
-     * A queued draft run whose recorded tip moved on before execution fails
-     * closed: no extra node appears and the failed run stays queryable.
+     * 排队中的草稿 run,若执行前其记录的 tip 已被推进,必须 fail closed:
+     * 不出现多余节点,失败的 run 保持可查询。
      */
     @Test
     void staleDraftTargetFailsClosed() {
@@ -109,8 +108,8 @@ class QuestionDraftFailureIntegrationTest {
         UUID recordedTip = routeService.getRoute(activeRouteId).orElseThrow().tipNodeId();
 
         AgentRun stale = runService.createQueuedDraftQuestion(project.id());
-        // Another writer appends at the tip before the worker claims the
-        // stale run, so its recorded tip is no longer current.
+        // 另一个写入者在 worker 领取这个过期 run 之前向 tip 追加了节点,
+        // 使其记录的 tip 不再是最新的。
         com.specagent.workspace.node.Node later = nodeService.createChildNode(
                 project.id(), activeRouteId, recordedTip,
                 "A later question", null, java.util.List.of(), true);
@@ -123,8 +122,7 @@ class QuestionDraftFailureIntegrationTest {
 
         assertThat(runService.getRun(stale.id()).orElseThrow().status())
                 .isEqualTo(AgentRunStatus.FAILED);
-        // Exactly the completed draft plus the manual append exist; the stale
-        // run produced nothing.
+        // 只存在完成的草稿加上手动追加的节点;过期 run 什么也没产出。
         assertThat(agentRunService.listByProject(project.id())).hasSize(2);
         assertThat(nodeService.getNode(later.id())).isPresent();
     }

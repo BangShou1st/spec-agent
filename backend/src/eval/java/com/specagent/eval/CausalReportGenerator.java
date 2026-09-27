@@ -13,8 +13,17 @@ import java.util.TreeMap;
 import java.util.stream.Collectors;
 
 /**
- * Deterministic, offline first-fault analysis over semantic trace artifacts.
- * No model, provider, runtime mutation, or evaluation result is invoked here.
+ * 文件名:CausalReportGenerator.java
+ *
+ * 用途:确定性的离线"首错(first-fault)"归因分析工具。对语义追踪
+ * (semantic trace)产物逐次尝试定位第一个出错的语义环节——是状态更新
+ * (STATE_UPDATE)写错、声明没有落到后置状态、决策输入投影丢失、决策本身
+ * 选错动作,还是输出 schema 问题——并产出按场景/变体/重复聚合的因果报告,
+ * 包含首错矩阵、症状矩阵和重复间指纹对比。
+ *
+ * 协作:纯离线分析,不调用任何模型、provider 或运行时变更。输入为
+ * {@link ObservationEnvelope} 列表和场景定义,借助
+ * {@link LiveFailureClassifier} 剔除基础设施类失败。
  */
 public final class CausalReportGenerator {
 
@@ -148,8 +157,7 @@ public final class CausalReportGenerator {
         boolean postUnresolvedConflict = hasClaim(postClaims, "conflict", "unresolved");
         String scenarioId = observation.scenarioId();
 
-        // These two scenario-family checks encode the semantic intent of the
-        // existing frozen contracts, not a prompt exception.
+        // 这两个场景族的检查编码的是既有冻结契约的语义意图,而不是针对某个 prompt 的特例。
         if ("E07".equals(scenarioId) && !unresolvedConflict) {
             evidence.add("STATE_UPDATE_OUTPUT lacks conflict/unresolved claim");
             return FirstFault.STATE_UPDATE_FIRST;

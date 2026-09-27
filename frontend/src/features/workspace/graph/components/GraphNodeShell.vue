@@ -1,7 +1,11 @@
+<!--
+  文件名:GraphNodeShell.vue
+  用途:所有画布节点类型共用的节点卡片外壳:卡片根元素(拖拽/选中/双击语义经属性透传落地)、四向自适应边锚点、拖拽头与悬停操作轨道;各类型内容通过插槽留在各自卡片组件中。
+-->
 <script lang="ts">
-// Registered through the options `components` block (not a script-setup
-// import) so the template resolves <Handle> by name; unit tests can then
-// stub it, while the real app renders Vue Flow's Handle as usual.
+// 通过 options 式 `components` 块注册(而不是 script-setup 导入),让模板
+// 按名字解析 <Handle>;单元测试因此可以 stub 它,真实应用照常渲染
+// Vue Flow 的 Handle。
 import { Handle } from '@vue-flow/core'
 export default { components: { Handle } }
 </script>
@@ -9,15 +13,15 @@ export default { components: { Handle } }
 <script setup lang="ts">
 import { Position } from '@vue-flow/core'
 
+
 /**
- * Shared node-card chassis for EVERY graph node type: the card root element
- * (drag / selection / dblclick semantics land here via attribute fallthrough),
- * the four-side adaptive edge anchors, the drag-handle header and the hover
- * action rail. Type-specific content stays in the per-kind card components
- * through slots — a new node kind reuses this chassis instead of copying it.
+ * 每种图节点类型共享的节点卡片外壳:卡片根元素(拖拽 / 选中 / 双击语义
+ * 经属性透传落到这里)、四向自适应边锚点、拖拽头与悬停操作轨道。
+ * 类型相关内容通过插槽留在各 kind 的卡片组件里——新节点 kind 复用这个
+ * 外壳,而不是复制它。
  *
- * Cards pass their identifying class / data-test / listeners as normal
- * attributes; Vue merges `class` onto the root and forwards the rest.
+ * 各卡片把标识类 class / data-test / 监听器当普通属性传入;Vue 会把
+ * `class` 合并到根元素并转发其余属性。
  */
 const ANCHOR_SIDES: Position[] = [
   Position.Left,
@@ -29,16 +33,16 @@ const SOURCE_ANCHORS = ANCHOR_SIDES.map((side) => ({ id: 'source-' + side, posit
 const TARGET_ANCHORS = ANCHOR_SIDES.map((side) => ({ id: 'target-' + side, position: side }))
 
 defineProps<{
-  /** Hides the whole action rail (e.g. while editing or answering inline). */
+  /** 隐藏整个操作轨道(例如编辑或行内作答时)。 */
   showActions?: boolean
 }>()
 </script>
 
 <template>
   <article class="graph-question-node" data-layout-role="graph-node">
-    <!-- Adaptive edge anchors: one source + one target handle per side.
-         Source handles accept manual drag-connections; target handles accept
-         incoming ones. Invisible until node hover (style.css). -->
+    <!-- 自适应边锚点:每侧一个 source + 一个 target handle。
+         source handle 接受向外拖线;target handle 接受到来的连线。
+         节点悬停前不可见(见 style.css)。 -->
     <Handle
       v-for="anchor in SOURCE_ANCHORS"
       :key="anchor.id"

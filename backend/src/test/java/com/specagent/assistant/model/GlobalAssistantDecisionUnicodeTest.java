@@ -3,7 +3,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
-/** Authoritative path rejects unpaired surrogates Jackson itself accepts. */
+/**
+ * 文件名:GlobalAssistantDecisionUnicodeTest.java
+ *
+ * 测试目标:权威解析/校验路径必须拒绝 Jackson 本身会接受的
+ * 未配对代理字符;合法的成对 emoji 则正常通过。
+ */
 class GlobalAssistantDecisionUnicodeTest {
     private final GlobalAssistantDecisionParser parser =
             new GlobalAssistantDecisionParser(new ObjectMapper());

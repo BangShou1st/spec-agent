@@ -1,6 +1,5 @@
-import { test, expect } from '@playwright/test'
-import { buildThreeNodeLineage, closeFloatingWorkspaceWindows, createProject, fitGraph, forkFromNode } from './helpers'
 
+import { test, expect, createProject, fitGraph, closeFloatingWorkspaceWindows, buildThreeNodeLineage, forkFromNode } from './helpers'
 test('fork from a focused visual node has no route picker and preserves history', async ({ page }) => {
   await createProject(page, 'E2E Fork Graph Flow')
   await buildThreeNodeLineage(page)

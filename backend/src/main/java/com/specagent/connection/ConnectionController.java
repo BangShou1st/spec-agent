@@ -30,15 +30,18 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Connection management backend API. Connection (product concept) and MCP
- * (protocol) stay separate in the model; the API exposes both facets. Auth
- * callbacks stay in the auth layer; this surface is the management contract
- * the future Connections UI consumes.
+ * 文件名:ConnectionController.java
  *
- * <p>Public identity is product-level connectionId on every endpoint. The
- * internal row UUID never becomes the public frontend contract. Secrets
- * never appear in responses: only the masked suffix and a has-credential
- * flag are exposed. Config is validated non-secret metadata.
+ * 用途:Connection 管理的后端 REST API,提供连接的增删改查、测试、
+ * 连接、启停,以及工具/资源/prompt 的发现与读取。
+ *
+ * 模型中 Connection(产品概念)与 MCP(协议)保持分离;该 API 把
+ * 两个侧面都暴露出来。认证回调留在 auth 层;本接口是未来 Connections
+ * UI 消费的管理契约。
+ *
+ * 所有端点对外一律使用产品层的 connectionId 作为标识,内部行 UUID
+ * 绝不出现在前端契约中。响应中绝不出现密钥:只暴露掩码后缀和是否已配置
+ * 凭据的标志。config 只允许经过校验的非敏感元数据。
  */
 @RestController
 @RequestMapping("/api/v1/connections")
@@ -206,7 +209,7 @@ public class ConnectionController {
         return lifecycleService.maskedSuffix(connection);
     }
 
-    // ---- DTOs ------------------------------------------------------------
+    // ---- DTO -------------------------------------------------------------
 
     public record ConnectionResponse(String connectionId, String name, String kind,
                                      String status, boolean enabled, Map<String, Object> config,

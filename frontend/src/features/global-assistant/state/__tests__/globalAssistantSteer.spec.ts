@@ -1,3 +1,6 @@
+// 文件名:globalAssistantSteer.spec.ts
+// 用途:全局助手转向(steer)store 单测:运行中发送消息转为乐观 steer、
+//       STEER_PENDING 冲突时保留草稿等行为。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useGlobalAssistantStore } from '@/features/global-assistant/state/globalAssistantStore'

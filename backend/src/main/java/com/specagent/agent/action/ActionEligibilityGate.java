@@ -16,8 +16,14 @@ import org.springframework.stereotype.Service;
 import java.util.List;
 
 /**
- * Runtime orchestration for eligibility shadow/enforcement modes. Shadow mode
- * records the exact verdict but never changes the proposal or execution path.
+ * 文件名:ActionEligibilityGate.java
+ *
+ * 用途:动作资格评估的 Runtime 编排入口,支持 shadow(影子)与
+ * enforced(强制)两种模式。shadow 模式只记录准确的裁决结果,
+ * 绝不改变提案或执行路径;enforced 模式则会在不合格时真正否决。
+ *
+ * 协作:决策请求经 prepareDecisionRequest 附加资格信息后发给模型;
+ * Brain 响应的消费方调用 assess 得到裁决,再调用 enforce 执行否决。
  */
 @Service
 public class ActionEligibilityGate {
@@ -50,8 +56,8 @@ public class ActionEligibilityGate {
     }
 
     /**
-     * Shadow requests remain byte-compatible V2. Enforcement sends V3 and
-     * exposes the Runtime-owned mask to the model.
+     * shadow 模式的请求保持字节级兼容的 V2;enforced 模式发送 V3,
+     * 并把 Runtime 持有的资格掩码暴露给模型。
      */
     public AgentRequestEnvelope prepareDecisionRequest(AgentRequestEnvelope base) {
         if (mode == Mode.SHADOW) {

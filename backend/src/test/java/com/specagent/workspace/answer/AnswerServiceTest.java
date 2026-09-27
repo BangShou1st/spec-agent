@@ -16,11 +16,11 @@ import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 /**
- * Unit tests for the read boundary of {@link AnswerService}.
+ * 文件名:AnswerServiceTest.java
  *
- * <p>Covers the route-scoped batch answer read used by the graph read model.
- * The read is a pure delegation to the repository query: no lifecycle logic,
- * copying, mutation, or fallback belongs in the service layer.
+ * 测试目标:验证 {@link AnswerService} 的读取边界。覆盖图读取模型使用的
+ * 按路线批量读取回答的查询:该读取是对仓储查询的纯委托,服务层不应包含
+ * 生命周期逻辑、拷贝、修改或兜底行为。
  */
 @ExtendWith(MockitoExtension.class)
 class AnswerServiceTest {

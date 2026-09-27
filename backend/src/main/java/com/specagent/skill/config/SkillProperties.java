@@ -4,60 +4,59 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
 /**
- * Skill Runtime limits and security bounds. Every limit is a semantic
- * configuration knob with conservative defaults; model output can never
- * change them.
+ * 文件名:SkillProperties.java
+ *
+ * 用途:Skill Runtime 的限额与安全边界配置。每一项都是语义化的配置旋钮,
+ * 取保守默认值;模型输出永远无法修改这些上限。
  */
 @Component
 @ConfigurationProperties(prefix = "spec.agent.skill")
 public class SkillProperties {
 
-    // ---- import bounds -------------------------------------------------
+    // ---- 导入限额 -------------------------------------------------------
     private long maxArchiveBytes = 2_097_152;        // 2 MiB
     private long maxExtractedBytes = 10_485_760;     // 10 MiB
     private int maxFiles = 256;
     private int maxDepth = 8;
     private int maxPathChars = 512;
 
-    // ---- catalog bounds ------------------------------------------------
+    // ---- 目录限额 --------------------------------------------------------
     private int maxVisible = 24;
     private int maxMetadataBytes = 4096;
     private int maxDescriptionChars = 320;
 
-    // ---- search / activation / resource bounds -------------------------
+    // ---- 搜索 / 激活 / 资源限额 --------------------------------------------
     private int searchMaxResults = 10;
     private int activationMaxInstructionBytes = 60_000;
     private int resourceMaxInlineBytes = 20_000;
     private int maxResourcesListed = 500;
 
-    // ---- git import bounds ---------------------------------------------
+    // ---- git 导入限额 ----------------------------------------------------
     private long gitCloneBytes = 10_485_760;         // 10 MiB
     private int gitTimeoutSeconds = 30;
     private int gitMaxRedirects = 3;
     /**
-     * Outbound route for the Skill git import: AUTO (default — proxy env var,
-     * else a listening local proxy, else direct), DIRECT, or host:port. The JVM
-     * does not inherit the OS/browser proxy on its own, which is why a clone can
-     * fail even when the browser reaches the same host.
+     * Skill git 导入的出站路由:AUTO(默认 —— 优先代理环境变量,其次探测本机
+     * 正在监听的代理端口,否则直连)、DIRECT 或 host:port。JVM 不会自动继承
+     * 操作系统/浏览器的代理设置,这正是浏览器能访问同一主机而 clone 却失败的
+     * 常见原因。
      */
-    /** Default outbound git route value; resolution semantics live in importing.GitTransportProxy. */
+    /** 出站 git 路由的默认值;解析语义见 importing.GitTransportProxy。 */
     public static final String GIT_PROXY_MODE_AUTO = "AUTO";
 
     private String gitProxy = GIT_PROXY_MODE_AUTO;
 
-    // ---- local mirror ---------------------------------------------------
+    // ---- 本地镜像 ---------------------------------------------------------
     /**
-     * DB-authoritative local mirror of installed packages. The database stays
-     * the only activation-time authority; the mirror lets users browse, back
-     * up and version their skills on disk. Null root resolves to
-     * {@code ./data/skills} (relative to the backend working directory) at
-     * use time so tests can stay hermetic by disabling the mirror or pointing
-     * it at a temp dir.
+     * 已安装包的本地镜像,以数据库为准。数据库始终是激活时的唯一权威来源;
+     * 镜像只是让用户能在磁盘上浏览、备份和用版本工具管理自己的 skill。
+     * root 为 null 时在使用时解析为 {@code ./data/skills}(相对后端工作目录),
+     * 这样测试可以通过禁用镜像或指向临时目录来保持封闭性。
      */
     private boolean localMirrorEnabled = true;
     private String localMirrorRoot;
 
-    // ---- public accessors ----------------------------------------------
+    // ---- 访问器 ----------------------------------------------------------
     public long getMaxArchiveBytes() { return maxArchiveBytes; }
     public void setMaxArchiveBytes(long v) { maxArchiveBytes = v; }
 

@@ -12,6 +12,12 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * 文件名:RouteRepository.java
+ *
+ * 用途:Route 聚合的 JDBC 仓储,负责路线行的读写:保存路线、
+ * 更新 tip/root 指针、更新生命周期状态,以及按 id/项目/tip 节点查询。
+ */
 @Repository
 public class RouteRepository {
 
@@ -92,8 +98,8 @@ public class RouteRepository {
     }
 
     /**
-     * Clears both tip and root. Used only by undo compensation of root-node
-     * creation; unlike {@link #updateTipAndRoot} this may null the root.
+     * 同时清空 tip 和 root。仅用于根节点创建的撤销补偿;
+     * 与 {@link #updateTipAndRoot} 不同,这里允许把 root 置空。
      */
     public void clearTipAndRoot(UUID routeId, Instant updatedAt) {
         String sql = """

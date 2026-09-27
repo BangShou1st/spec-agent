@@ -32,9 +32,11 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
- * Active-provider routing through the model-owned {@link ActiveProviderPort}
- * boundary: exactly one delegate per request, no cross-provider fallback,
- * no retry — the historical RoutingModelInferenceGateway semantics.
+ * 文件名:RoutingModelInferenceGatewayTest.java
+ *
+ * 测试目标:验证基于 {@link ActiveProviderPort} 的活跃 Provider 路由语义:
+ * 每个请求恰好分发给一个委托网关(OpenCode / OpenRouter / Custom),流式调用遵循相同路由;
+ * 委托失败时异常直接向上传播,不做跨 Provider 回退、也不重试。
  */
 @ExtendWith(MockitoExtension.class)
 class RoutingModelInferenceGatewayTest {

@@ -1,9 +1,11 @@
 package com.specagent.workspace.node;
 
 /**
- * Narrow outbound port for rebuildable projections interested in Node writes.
- * The Node domain owns this interface so the retrieval package cannot create a
- * dependency cycle back into the canonical write path.
+ * 文件名:NodeIndexPort.java
+ *
+ * 用途:面向"可重建投影"的窄出站端口,关注 Node 的写入事件。
+ * 接口由 Node 领域自己拥有,这样检索(retrieval)包就无法对规范写入
+ * 路径形成依赖环。
  */
 public interface NodeIndexPort {
 

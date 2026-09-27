@@ -3,7 +3,15 @@ package com.specagent.eval;
 import java.util.List;
 import java.util.Map;
 
-/** A capability the runner registers for the scenario (test adapter). */
+/**
+ * 文件名:CapabilitySpec.java
+ *
+ * 用途:声明运行器为场景注册的一个能力(capability)的测试适配器:
+ * 能力 ID、副作用类别、是否成功以及返回内容。{@code canonical()} 生成排序后
+ * 的规范化字符串,供分层校验比对。
+ *
+ * 协作:由 {@link ScenarioDefinition} 声明,运行器据此注册桩能力。
+ */
 public record CapabilitySpec(
         String capabilityId,
         String sideEffectClass,

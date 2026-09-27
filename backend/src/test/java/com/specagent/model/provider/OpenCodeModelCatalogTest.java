@@ -6,6 +6,12 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * 文件名:OpenCodeModelCatalogTest.java
+ *
+ * 测试目标:验证 OpenCode 模型目录的列表行为:listFreeModels 只返回以 "-free"
+ * 结尾的模型,listAllModels 返回全部模型且去重排序,没有免费模型或空报文时返回空列表。
+ */
 class OpenCodeModelCatalogTest {
 
     private static OpenCodeModelCatalog catalogWith(OpenCodeModel... models) {
@@ -31,8 +37,8 @@ class OpenCodeModelCatalogTest {
 
     @Test
     void listFreeModelsReturnsOnlyFreeSuffixedModels() {
-        // Mirrors the live OpenCode /models payload shape: data entries with an
-        // id; free models are exposed with a trailing "-free".
+        // 模拟线上 OpenCode /models 报文形态:data 条目带 id;
+        // 免费模型以 "-free" 后缀暴露。
         OpenCodeModelCatalog catalog = catalogWith(
                 new OpenCodeModel("paid-model", "opencode"),
                 new OpenCodeModel("one-free", "opencode"),

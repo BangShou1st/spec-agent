@@ -1,3 +1,5 @@
+// 文件名:graphUiStore.spec.ts
+// 用途:graphUiStore 单元测试:验证选中/Focus/只看镜头/生命周期筛选/隐藏修复/侧栏宽度钳制与 reconcile 对账逻辑。
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useGraphUiStore } from '@/features/workspace/state/graphUiStore'
@@ -194,7 +196,7 @@ describe('graph ui store', () => {
     const store = useGraphUiStore()
     store.reconcile(graphView())
     store.setFocusRoute('rFocus')
-    // Hidden state that bypassed hideRoute (e.g. persisted) still repairs Focus.
+    // 绕过 hideRoute 的隐藏状态(例如持久化下来的)同样会修复 Focus。
     store.routeDisplayStates = { ...store.routeDisplayStates, rFocus: 'hidden' }
     store.reconcile(graphView())
     expect(store.focusRouteId).toBeNull()
@@ -340,14 +342,14 @@ describe('graph ui store', () => {
     const view = graphView()
     view.activeRouteId = ACTIVE_ROUTE_ID
     store.reconcile(view)
-    // archived routes are hidden by the default lifecycle filter.
+    // 默认生命周期筛选会隐藏已归档路线。
     expect(store.focusRouteId).toBeNull()
   })
 
   it('reconcile repairs a persisted hidden state on the active route', () => {
     const store = useGraphUiStore()
     store.reconcile(graphView())
-    // Simulate a persisted hidden state that somehow landed on the active route.
+    // 模拟一种不知怎么落到活跃路线上的持久化隐藏状态。
     store.routeDisplayStates = { ...store.routeDisplayStates, [ACTIVE_ROUTE_ID]: 'hidden' }
     store.persistProjectState()
     const saved = JSON.parse(localStorage.getItem('spec-agent.graph-layout.v1.p1') ?? '{}')

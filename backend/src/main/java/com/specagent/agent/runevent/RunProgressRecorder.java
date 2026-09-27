@@ -8,13 +8,14 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Records user-readable {@code PROCESS_NOTE} events on a run.
+ * 文件名:RunProgressRecorder.java
  *
- * <p>Summaries are composed by the backend from counts, outcome labels and
- * already user-facing content (e.g. claim texts that are persisted to the
- * graph anyway). Prompt text, provider payloads and hidden chain-of-thought
- * remain forbidden — the {@link AgentRunEvent} sanitization contract is
- * unchanged; this class is the single place that composes displayable text.
+ * 用途:在某个运行上记录用户可读的 {@code PROCESS_NOTE} 进度事件。
+ *
+ * 约束:摘要由后端从计数、结果标签和本就面向用户的内容(例如
+ * 无论如何都会持久化到图谱的 claim 文本)组合而成;prompt 原文、
+ * provider 载荷与隐藏思维链依然被禁止——{@link AgentRunEvent} 的脱敏
+ * 契约不变;本类是唯一组合可展示文本的地方。
  */
 @Service
 public class RunProgressRecorder {
@@ -31,12 +32,12 @@ public class RunProgressRecorder {
         this.eventService = eventService;
     }
 
-    /** One user-readable progress note inside the given phase. */
+    /** 在给定阶段内记录一条用户可读的进度说明。 */
     public void note(UUID runId, AgentRunPhase phase, String summary) {
         noteWithItems(runId, phase, summary, null);
     }
 
-    /** A progress note plus optional short highlight items (capped). */
+    /** 记录进度说明并附带可选的短高亮条目(有数量上限)。 */
     public void noteWithItems(UUID runId, AgentRunPhase phase,
                               String summary, List<String> items) {
         Map<String, Object> payload = new LinkedHashMap<>();

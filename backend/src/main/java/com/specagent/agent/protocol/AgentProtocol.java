@@ -3,40 +3,43 @@ package com.specagent.agent.protocol;
 import java.util.Set;
 
 /**
- * Frozen protocol constants of the cross-language agent boundary.
+ * 文件名:AgentProtocol.java
  *
- * <p>These values are part of the versioned wire contract shared with the
- * Python agent brain (see {@code contracts/README.md}). Unknown protocol
- * versions are rejected fail-closed by both implementations.
+ * 用途:跨语言 Agent 边界的冻结协议常量集中地(版本号、调用类型、
+ * 事件类型、内部令牌头等)。
+ *
+ * 约束:这些值是与 Python Brain 共享的带版本线上(wire)契约的一部分
+ * (见 {@code contracts/README.md});任何一侧遇到未知协议版本都必须
+ * fail-closed 拒绝。
  */
 public final class AgentProtocol {
 
     public static final String INPUT_PROTOCOL_VERSION_V2 = "agent-input.v2";
     public static final String INPUT_PROTOCOL_VERSION_V3 = "agent-input.v3";
 
-    /** Default legacy request version; eligibility Decisions use V3 explicitly. */
+    /** 默认的旧版请求协议版本;携带 eligibility 的决策走 V3。 */
     public static final String INPUT_PROTOCOL_VERSION = INPUT_PROTOCOL_VERSION_V2;
 
     public static final String DECISION_PROTOCOL_VERSION_V2 = "agent-decision.v2";
     public static final String DECISION_PROTOCOL_VERSION_V3 = "agent-decision.v3";
 
-    /** Default legacy response version; eligibility Decisions use V3 explicitly. */
+    /** 默认的旧版响应协议版本;携带 eligibility 的决策走 V3。 */
     public static final String DECISION_PROTOCOL_VERSION = DECISION_PROTOCOL_VERSION_V2;
 
-    /** Response envelope version for derived artifact generation. */
+    /** 派生产物(artifact)生成的响应信封版本。 */
     public static final String ARTIFACT_PROTOCOL_VERSION = "agent-artifact.v1";
 
-    /** Internal model inference broker contract version (Python to Spring). */
+    /** 内部模型推理代理(Python → Spring)的契约版本。 */
     public static final String INFERENCE_PROTOCOL_VERSION = "model-inference.v1";
 
-    /** Internal shared-secret header used in both directions. */
+    /** 双向通信共用的内部共享密钥请求头。 */
     public static final String INTERNAL_TOKEN_HEADER = "X-Spec-Agent-Internal-Token";
 
-    /** Closed set of brain call types; the endpoint determines the call type. */
+    /** Brain 调用类型的封闭集合;由所调用的端点决定具体类型。 */
     public static final Set<String> CALL_TYPES = Set.of(
             "STATE_UPDATE", "DECISION", "ARTIFACT_GENERATION");
 
-    /** Closed set of event kinds the runtime may send to the brain. */
+    /** Runtime 可以发送给 Brain 的事件类型的封闭集合。 */
     public static final Set<String> EVENT_KINDS = Set.of(
             "INITIAL", "CONTINUE", "ANSWER_SUBMITTED", "NODE_QUERY");
 

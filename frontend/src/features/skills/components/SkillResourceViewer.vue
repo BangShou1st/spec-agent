@@ -1,3 +1,8 @@
+<!--
+  文件名:SkillResourceViewer.vue
+  用途:Skill 资源阅读器:内嵌快速预览 + 项目内同款的全屏阅读器弹窗,
+       Markdown 富文本与代码等宽渲染均复用共享的 ResourceBody。
+-->
 <script setup lang="ts">
 import { ref } from 'vue'
 import FilePreviewDialog from '@/shared/document/FilePreviewDialog.vue'

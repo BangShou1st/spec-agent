@@ -1,16 +1,16 @@
-"""FastAPI application of the Python agent-brain service.
+"""文件名:app.py
 
-HTTP surface (Stage A):
+用途:Python agent-brain 服务的 FastAPI 应用,定义对 Java Runtime 暴露的
+HTTP 接口(Stage A):
 
     GET  /health
     POST /v1/state-updates
     POST /v1/decisions
     POST /v1/artifacts
 
-The service is stateless: it receives a frozen versioned request envelope,
-runs one brain operation (one model call through the Java internal inference
-broker or the deterministic fake), and returns a proposal-only response that
-Java validates fail-closed before any persistence.
+服务本身无状态:接收冻结的带版本号请求信封,执行一次 brain 操作
+(通过 Java 内部推理 broker 发起一次模型调用,或走确定性的 fake 实现),
+返回 proposal-only 的响应,由 Java 侧在持久化之前做 fail-closed 校验。
 """
 
 import hmac
@@ -22,7 +22,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import ValidationError
 
 from . import __version__
-from .config import Settings, load_settings
+from .config import ConfigurationError, Settings, load_settings
 from .contracts.protocol import (
     ARTIFACT_PROTOCOL_VERSION,
     INPUT_PROTOCOL_VERSION,
@@ -40,13 +40,12 @@ logger = logging.getLogger("spec_agent_brain")
 
 
 def _fail(reason: Exception, run_id: Any, operation: str) -> HTTPException:
-    """Logs the real reason before collapsing it into the 502 status.
+    """把真实失败原因写进服务日志,再折叠成统一的 502 状态码。
 
-    Only the exception class used to survive the HTTP boundary, so six very
-    different causes (budget exhausted, model emitted non-JSON, contract
-    violation, broker unreachable, ...) all surfaced to Java as the same
-    opaque "brain_unavailable" run failure. The status code and the detail
-    shape are unchanged; the diagnosis now lands in the service log.
+    以前只有异常类名能穿过 HTTP 边界,导致预算耗尽、模型输出非 JSON、
+    违反输出契约、broker 不可达等完全不同的原因,到达 Java 时都变成了
+    同一种不可分辨的 "brain_unavailable" 失败。这里保持状态码和 detail
+    格式不变,把诊断信息落到服务日志里。
     """
     logger.warning("%s failed run=%s: %s: %s",
                    operation, run_id, type(reason).__name__, reason)
@@ -68,20 +67,37 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     }
 
     def record_invocation(call_type: str, run_id: str) -> None:
-        # Safe operational evidence only: counts and run ids. Prompts,
-        # completions, reasoning, and credentials never enter this probe.
+        # 只记录可用于运维的安全信息:调用计数与 run id。
+        # prompt、补全内容、推理过程和凭证一律不进入这个探针。
         with invocation_lock:
             invocation_counts[call_type] += 1
             last_run_ids[call_type] = run_id
 
     def model_client() -> ModelClient:
+        # 配置校验在 load_settings 已保证只有 fake/broker 能到达这里;
+        # 手工构造的非法 Settings 仍在此显式失败,绝不静默回落 fake。
         if resolved.model_mode == "broker":
             return BrokerModelClient(
                 resolved.broker_url,
                 resolved.internal_secret,
                 resolved.broker_timeout_seconds,
             )
-        return FakeModelClient()
+        if resolved.model_mode == "fake":
+            return FakeModelClient()
+        raise ConfigurationError(f"Unknown model mode: {resolved.model_mode!r}")
+
+    def config_error() -> str | None:
+        try:
+            if resolved.model_mode not in ("fake", "broker"):
+                return "unknown model mode"
+            if resolved.model_mode == "broker" and (
+                not resolved.broker_url.startswith(("http://", "https://"))
+                or not resolved.internal_secret
+            ):
+                return "broker mode requires a valid broker URL and an internal secret"
+            return None
+        except Exception as exc:  # pragma: no cover - 防御性
+            return str(exc)
 
     def require_internal_token(
         x_spec_agent_internal_token: Annotated[
@@ -100,10 +116,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         with invocation_lock:
             counts = dict(invocation_counts)
             runs = dict(last_run_ids)
+        error = config_error()
         return {
-            "status": "ok",
+            # 配置错误时服务不报告就绪,即使进程仍在运行
+            "status": "ok" if error is None else "config_error",
+            "ready": error is None,
+            "configError": error,
             "protocolVersion": INPUT_PROTOCOL_VERSION,
             "modelMode": resolved.model_mode,
+            "authEnabled": resolved.auth_enabled,
             "invocations": {
                 "stateUpdates": counts["STATE_UPDATE"],
                 "decisions": counts["DECISION"],

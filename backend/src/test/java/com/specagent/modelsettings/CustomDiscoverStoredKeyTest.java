@@ -25,7 +25,13 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.*;
 
-/** discover(null) reuses the stored key; only explicit empty means no auth. */
+/**
+ * 文件名:CustomDiscoverStoredKeyTest.java
+ *
+ * 测试目标:验证自定义 Provider 模型发现(discover)的鉴权键策略:
+ * 显式传入 null 时复用已存储的 API Key,显式传入新 Key 则覆盖,
+ * 无存储 Key 或显式传空字符串都表示不带鉴权访问。
+ */
 class CustomDiscoverStoredKeyTest {
 
     static class MemRepo implements CustomProviderSettingsRepository {

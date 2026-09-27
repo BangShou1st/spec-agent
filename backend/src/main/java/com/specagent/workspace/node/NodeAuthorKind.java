@@ -1,8 +1,10 @@
 package com.specagent.workspace.node;
 
 /**
- * Who created a node. Provenance is runtime-owned and never inferred from
- * model output.
+ * 文件名:NodeAuthorKind.java
+ *
+ * 用途:标记节点的创建者。出处由运行时权威记录,绝不从模型输出
+ * 推断。
  */
 public enum NodeAuthorKind {
 

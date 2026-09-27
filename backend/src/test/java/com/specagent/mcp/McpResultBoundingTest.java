@@ -10,9 +10,10 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Result bounding: giant tool payloads are truncated to the configured byte
- * budget with a truncation marker — they never flow unbounded into model
- * context.
+ * 文件名:McpResultBoundingTest.java
+ *
+ * 测试目标:验证结果截断规则——超大的工具载荷按配置的字节预算截断并
+ * 附加截断标记,绝不会不受限制地流入模型上下文。
  */
 class McpResultBoundingTest {
 

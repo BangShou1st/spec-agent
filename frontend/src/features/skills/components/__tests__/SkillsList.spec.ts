@@ -1,3 +1,5 @@
+// 文件名:SkillsList.spec.ts
+// 用途:Skills 列表组件测试:验证行内名称/描述/来源渲染与启用开关、删除事件。
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import SkillsList from '@/features/skills/components/SkillsList.vue'
@@ -14,12 +16,12 @@ describe('SkillsList', () => {
     expect(w.get('[data-test="skill-status-s1"]').text()).toContain('已启用')
     expect(w.get('[data-test="skill-status-s2"]').text()).toContain('已禁用')
 
-    // The lifecycle control is a real switch, so its state is exposed to AT.
+    // 生命周期控件是真实的 switch,所以它的状态会暴露给辅助技术(AT)。
     const on = w.get('[data-test="skill-disable-s1"]')
     expect(on.attributes('role')).toBe('switch')
     expect(on.attributes('aria-checked')).toBe('true')
     expect(w.get('[data-test="skill-enable-s2"]').attributes('aria-checked')).toBe('false')
-    // `find` is the existence-check form; `get` asserts presence and omits exists().
+    // `find` 是存在性检查;`get` 断言必须存在,不需要再写 exists()。
     expect(w.find('[data-test="skill-delete-s1"]').exists()).toBe(true)
   })
 

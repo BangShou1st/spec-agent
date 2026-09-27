@@ -6,13 +6,14 @@ import org.springframework.stereotype.Component;
 import java.util.UUID;
 
 /**
- * Thin implementation of the answer-consumed {@link SharedQuestionStatePort}
- * on top of {@link GraphInvariantValidator}.
+ * 文件名:SharedQuestionStatePortAdapter.java
  *
- * <p>It adds no logic of its own: the rule is the existing
- * {@code validateSharedQuestionState} method, including its conflict code and
- * fail-closed behaviour. Its only job is to keep the port's dependency
- * direction intact, so the answer package never imports the graph package.
+ * 用途:answer 包消费的 {@link SharedQuestionStatePort} 在图侧的薄实现,
+ * 底层委托给 {@link GraphInvariantValidator}。
+ *
+ * 它自身不新增任何逻辑:规则就是既有的 {@code validateSharedQuestionState}
+ * 方法,包括其冲突码与 fail-closed 行为。它的唯一职责是保住端口的依赖
+ * 方向,让 answer 包永远不 import graph 包。
  */
 @Component
 public class SharedQuestionStatePortAdapter implements SharedQuestionStatePort {

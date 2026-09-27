@@ -1,8 +1,9 @@
-"""R4 diagnostic system prompt (planning-state.v2).
+"""文件名:prompt_v2.py
 
-Diagnostic-only. Never wired to production decision.py. Contains no
-benchmark hints, scenario names, action-family names, case material,
-or gaming language (pinned by tests).
+R4 诊断用系统提示词(planning-state.v2)。
+
+仅诊断使用,绝不接入生产 decision.py。内容不含任何基准提示、
+场景名、动作族名、案例素材或"应试"话术(由测试锁定)。
 """
 from __future__ import annotations
 

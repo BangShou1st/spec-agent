@@ -3,14 +3,15 @@ package com.specagent.assistant.tool;
 import java.util.UUID;
 
 /**
- * Central presentation metadata for Global Assistant capabilities.
+ * 文件名:GlobalAssistantToolPresentation.java
  *
- * <p>Labels shown while a tool runs or after it completes come from here,
- * keyed only by capability id - never from user prompt text, model prose,
- * project names, or per-page special cases. Adding a capability means adding
- * one entry here (plus implementation and registration); no UI switch statements
- * need to learn the new tool. Unknown ids fall back to generic labels so the
- * UI can never crash on a new tool.
+ * 用途:全局助手各能力的集中展示元数据登记表。
+ *
+ * 工具运行中/完成后展示的文案都出自这里,仅按能力 ID 索引——
+ * 绝不取自用户提示词、模型正文、项目名或分页面特例。
+ * 新增一个能力只需要在这里加一条(外加实现与注册),任何 UI 的
+ * switch 语句都不必学习新工具。未知 ID 走通用兜底文案,
+ * UI 永远不会因为新工具而崩溃。
  */
 public final class GlobalAssistantToolPresentation {
 
@@ -28,7 +29,7 @@ public final class GlobalAssistantToolPresentation {
 
     private static final Presentation FALLBACK = new Presentation("Working", null);
 
-    /** Generic message shown when the final model phase starts after a tool. */
+    /** 工具结束后、最终模型阶段开始时展示的通用文案。 */
     public static final String COMPOSING_MESSAGE = "Composing answer";
 
     public static Presentation forCapability(String capabilityId) {
@@ -45,10 +46,9 @@ public final class GlobalAssistantToolPresentation {
     }
 
     /**
-     * Per-capability result shape. {@code listKey} names the result field
-     * holding project items, or is null for single-result tools whose
-     * content object itself is the item. The shared PROJECT field names
-     * below apply to every V1 capability; only the list field varies.
+     * 各能力的结果形状。{@code listKey} 指向结果里存放项目列表的字段名;
+     * 单结果工具为 null,其内容对象本身就是条目。下方共享的 PROJECT
+     * 字段名适用于所有 V1 能力,只有列表字段各不相同。
      */
     public record ResultShape(String listKey) {}
 
@@ -65,15 +65,15 @@ public final class GlobalAssistantToolPresentation {
             "project.list_recent", new ResultShape("projects"),
             "project.get_summary", new ResultShape(null));
 
-    /** Result shape for a capability, or null when the registry knows none. */
+    /** 能力的结果形状;登记表中没有时返回 null。 */
     public static ResultShape resultShapeOf(String capabilityId) {
         if (capabilityId == null) return null;
         return RESULT_SHAPES.get(capabilityId);
     }
 
     /**
-     * Code-point-safe bounded truncation: never splits a UTF-16 surrogate
-     * pair. No grapheme library needed; lone surrogates cannot be emitted.
+     * 按码点安全的有界截断:绝不拆开 UTF-16 代理项对。
+     * 不需要字素库;孤立的代理项不会被产出。
      */
     static String truncateLabel(String value) {
         if (value == null) return null;
@@ -82,9 +82,8 @@ public final class GlobalAssistantToolPresentation {
     }
 
     /**
-     * Typed PROJECT resource refs projected from a capability result.
-     * Only real UUIDs qualify. Unknown capabilities yield an empty list.
-     * Never reads model prose, only structured tool content.
+     * 从能力结果投影出类型化的 PROJECT 资源引用。只有真实 UUID 才入选;
+     * 未知能力返回空列表。只读结构化的工具内容,绝不读模型正文。
      */
     public static java.util.List<java.util.Map<String, Object>> projectResources(
             String capabilityId, java.util.Map<String, Object> content) {
@@ -131,9 +130,8 @@ public final class GlobalAssistantToolPresentation {
     }
 
     /**
-     * Working-state candidate id/title pairs for list-shaped capabilities.
-     * Single-result and unknown capabilities yield an empty list so callers
-     * leave continuity state untouched, exactly as before.
+     * 列表形状能力的候选 ID/标题对,写入工作状态。
+     * 单结果与未知能力返回空列表,调用方因此保持连续性状态原样不动。
      */
     public static java.util.List<java.util.Map<String, String>> candidatePairs(
             String capabilityId, java.util.Map<String, Object> content) {
@@ -156,8 +154,8 @@ public final class GlobalAssistantToolPresentation {
     }
 
     /**
-     * Direct project id for single-result capabilities, or null when absent
-     * or the shape is not single-result. Mirrors prior resolution semantics.
+     * 单结果能力的直接项目 ID;缺失或形状不是单结果时返回 null。
+     * 与此前的解析语义保持一致。
      */
     public static String directProjectId(String capabilityId, java.util.Map<String, Object> content) {
         ResultShape shape = resultShapeOf(capabilityId);

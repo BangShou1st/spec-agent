@@ -1,8 +1,10 @@
-"""Model client that calls the Java internal inference broker.
+"""文件名:broker_client.py
 
-Safety properties: the client sends only the shared internal token (never a
-provider key, because it never has one), posts to one fixed configured URL,
-performs no retry and no fallback, and raises a typed error on any failure.
+用途:调用 Java 内部推理 broker 的模型客户端。
+
+安全属性:客户端只发送共享的内部 token(永远不发厂商 key,因为它根本
+没有),只 POST 到一个固定的配置 URL,不重试、不回退,任何失败都抛出
+有类型的错误。
 """
 
 from typing import Optional, Sequence

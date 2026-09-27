@@ -8,14 +8,14 @@ import com.specagent.agent.policy.PolicyDecision;
 import java.util.UUID;
 
 /**
- * Write-side port for the optional semantic trace recorder.
+ * 文件名:AgentTracePort.java
  *
- * <p>The agent reasoning layer must not depend on the trace package: the
- * trace implementation consumes agent contract DTOs, so the natural
- * dependency direction is trace -> agent. This port inverts the write side
- * (agent -> trace) so the package pair stays acyclic. Implemented by
- * {@code com.specagent.agent.trace.SemanticTraceRecorder}; disabled-by-default
- * semantics are the implementation's concern.
+ * 用途:可选的语义 trace 记录器的写侧端口(六边形架构出站端口)。
+ *
+ * Agent 推理层不允许依赖 trace 包:trace 实现会消费 agent 契约 DTO,
+ * 自然的依赖方向是 trace → agent。本端口反转了写侧方向(agent → trace),
+ * 使两个包之间保持无环。由 {@code com.specagent.agent.trace.SemanticTraceRecorder}
+ * 实现;"默认关闭"等语义属于实现细节。
  */
 public interface AgentTracePort {
 

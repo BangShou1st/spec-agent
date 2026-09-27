@@ -7,11 +7,11 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Safe node representation for read models and the REST boundary.
+ * 文件名:NodeResponse.java
  *
- * <p>Exposes future-frontend-relevant immutable node data. Options carry
- * runtime-owned ids that are read-only. A node is never invented by the API;
- * an absent tip node is represented as {@code null} upstream.
+ * 用途:面向读模型与 REST 边界的安全节点表示。只暴露与未来前端
+ * 相关的不可变节点数据。选项携带运行时生成的只读 id。API 绝不凭空
+ * 造出节点;上游以 {@code null} 表示缺失的 tip 节点。
  */
 public record NodeResponse(
         UUID id,

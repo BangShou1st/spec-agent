@@ -13,14 +13,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
- * Live tail + persisted replay for public run events.
- * Transport disconnect never fails or cancels the run.
+ * 文件名:GlobalAssistantStreamService.java
  *
- * <p>Ordering contract for one run: strictly increasing sequence, no
- * duplicates, no gaps. Publish happens only after the event transaction
- * commits; subscribe replays committed events after the cursor and then
- * tails live under a per-run lock, with each subscriber tracking its own
- * last-sent sequence for dedup. Terminal events complete the emitter.
+ * 用途:公开 run 事件的实时推送(SSE)与持久化回放。
+ * 传输断开绝不会让 run 失败或取消。
+ *
+ * 单个 run 的顺序契约:序列号严格递增、不重复、不缺号。
+ * 发布只发生在事件事务提交之后;subscribe 先回放 cursor 之后的已提交事件,
+ * 再在 per-run 锁的保护下挂机实时监听,每个订阅者各自维护
+ * 最后发送的序列号用于去重。终态事件会关闭对应的 emitter。
  */
 @Service
 public class GlobalAssistantStreamService {

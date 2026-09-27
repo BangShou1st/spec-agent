@@ -1,3 +1,6 @@
+// 文件名:skills.spec.ts
+// 用途:Skills API 封装单测:stub 全局 fetch,验证列表/详情/版本/资源、Git 探测与暂存、
+//       安装/拒绝/删除、启用/禁用等端点的 URL 与方法。
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { deleteSkill, deleteStagedImport, disableSkill, discoverSkillGit, enableSkill, getSkill, installStagedImport, listSkills, listSkillVersions, readSkillResource, rejectStagedImport, stageSkillGit } from '@/features/skills/api/skills'
 

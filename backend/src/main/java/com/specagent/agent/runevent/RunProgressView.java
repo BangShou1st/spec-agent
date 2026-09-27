@@ -4,12 +4,15 @@ import java.time.Instant;
 import java.util.List;
 
 /**
- * Whitelisted run-progress read model handed to API responses. Only composed
- * summary fields are exposed — raw event payloads never leave the backend.
+ * 文件名:RunProgressView.java
+ *
+ * 用途:交给 API 响应的白名单化运行进度读模型。
+ *
+ * 约束:只暴露组合出的摘要字段——原始事件 payload 绝不离开后端。
  */
 public record RunProgressView(String phase, String summary, List<Step> steps) {
 
-    /** One displayable progress step; {@code summary}/{@code items} may be null. */
+    /** 一条可展示的进度步骤;{@code summary}/{@code items} 可能为 null。 */
     public record Step(int sequence, String phase, String event,
                        String summary, List<String> items, Instant at) {
     }

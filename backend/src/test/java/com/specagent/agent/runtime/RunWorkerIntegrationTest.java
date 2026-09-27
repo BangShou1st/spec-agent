@@ -20,11 +20,12 @@ import java.util.stream.Collectors;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Question-draft decision cycle through the local fake engine: a queued run
- * is claimed, executes ONE DECISION against the decision engine port,
- * records every phase as an append-only event, and the auto-executed
- * REQUEST_USER_INPUT proposal lands as a real INTERACTION node — the route's
- * root node on an empty route, a tip child afterwards.
+ * 文件名:RunWorkerIntegrationTest.java
+ *
+ * 测试目标:经本地 fake 引擎的问题草稿决策循环:排队 run 被领取,对决策引擎端口
+ * 执行恰好一次 DECISION,把每个阶段记录为 append-only 事件,自动执行的
+ * REQUEST_USER_INPUT 提案落地为真实 INTERACTION 节点——空路由上是路由根节点,
+ * 之后是 tip 的子节点。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -73,8 +74,8 @@ class RunWorkerIntegrationTest {
         List<String> lifecycle = eventRepository.findByRunId(run.id()).stream()
                 .map(event -> event.eventType())
                 .collect(Collectors.toList());
-        // Pure continuation: one DECISION, no STATE_UPDATE phase. PROCESS_NOTE
-        // entries are the user-facing progress notes (decision + executing).
+        // 纯续跑:一次 DECISION,没有 STATE_UPDATE 阶段。PROCESS_NOTE 条目
+        // 是面向用户的进度注记(decision + executing)。
         assertThat(lifecycle).containsExactly(
                 "RUN_CREATED",
                 "SNAPSHOT_BUILT",
@@ -91,8 +92,8 @@ class RunWorkerIntegrationTest {
         Project project = projectService.createProject("认领执行项目");
         Node root = nodeService.createRootNode(project.id(), project.activeRouteId(),
                 "谁是最主要的用户？", null, List.of(), true);
-        // An unanswered Question must remain the route tip; answer it before
-        // the next draft can append a child.
+        // 未回答的 Question 必须保持为路由 tip;先回答它,
+        // 下一次草稿才能追加子节点。
         var answer = answerService.finalizeAnswer(project.id(), project.activeRouteId(),
                 root.id(), null, "answered root", "test-user");
         answerPatchService.save(project.id(), project.activeRouteId(), root.id(),

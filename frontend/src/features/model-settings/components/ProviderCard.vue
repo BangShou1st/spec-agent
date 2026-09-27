@@ -1,3 +1,9 @@
+<!--
+  文件名:ProviderCard.vue
+  用途:Provider 卡片的通用外壳,由 OpenCode Zen、OpenRouter 与自定义网关共用:
+       提供头部(标题/描述)、状态胶囊、错误横幅与纵向节奏,
+       卡片自身内容通过插槽注入。
+-->
 <script setup lang="ts">
 import { computed } from 'vue'
 import ApiErrorBanner from '@/shared/ui/ApiErrorBanner.vue'
@@ -6,20 +12,19 @@ import { productErrorMessage } from '@/shared/http/errorCopy'
 import type { ProviderState } from '@/features/model-settings/presentation/providerPresentation'
 
 /**
- * The provider-card paradigm, extracted from the OpenRouter card and shared by
- * OpenCode Zen, OpenRouter and the user's Custom gateway.
+ * Provider 卡片范式,从 OpenRouter 卡片抽出,由 OpenCode Zen、OpenRouter
+ * 和用户的自定义网关共用。
  *
- * A card contributes only its own content through slots — `summary` for the
- * current-configuration items, the default slot for its form/fields and
- * `footer` for its actions. Header, status pill, error banner and the vertical
- * rhythm therefore live in exactly one place and can never drift apart.
+ * 每张卡片只通过插槽贡献自己的内容 —— `summary` 放当前配置项、
+ * 默认插槽放表单/字段、`footer` 放操作按钮。
+ * 头部、状态胶囊、错误横幅和纵向节奏因此只活在一处,绝不会各自走样。
  */
 const props = defineProps<{
   title: string
   description: string
   state: ProviderState
   cardTestId: string
-  /** Error projection owned by the card's own store; null means no banner. */
+  /** 由卡片自己的 store 持有的错误投影;null 表示不显示横幅。 */
   error: { code: string } | null
   titleTestId?: string
   stateTestId?: string

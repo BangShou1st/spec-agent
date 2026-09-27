@@ -12,9 +12,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Dynamic provider ownership rules: static adapters and dynamic providers
- * coexist, duplicate ids fail closed across sources, permissions filter
- * provider descriptors, and provider availability controls visibility.
+ * 文件名:CapabilityDynamicProviderTest.java
+ *
+ * 测试目标:验证动态能力提供方的归属规则——静态适配器与动态提供方可以
+ * 共存;跨来源的能力 id 重复时快速失败;权限不足时描述符不可见;提供方
+ * 可用性决定能力是否出现在目录中。
  */
 class CapabilityDynamicProviderTest {
 
@@ -51,8 +53,8 @@ class CapabilityDynamicProviderTest {
                 List.of(stubAdapter("dup.id")),
                 List.of(new FixedProvider("dup.id",
                         descriptor("dup.id", List.of(), Set.of()))));
-        // Providers are dynamic: the duplicate-id gate runs when the catalog
-        // is built for a query, not at construction time.
+        // 提供方是动态的:重复 id 的校验发生在为某次查询构建目录时,
+        // 而不是构造时。
         assertThatThrownBy(() -> registry.descriptorsFor(CapabilityQueryContext.empty()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Duplicate capability id");
@@ -123,7 +125,7 @@ class CapabilityDynamicProviderTest {
                 List.of(stubAdapter("context.free"),
                         stubAdapter("resource.tool")),
                 List.of());
-        // Give resource.tool a supports declaration.
+        // 给 resource.tool 声明 supports。
         registry = new CapabilityRegistry(
                 List.of(
                         stubAdapter("context.free"),
@@ -132,12 +134,12 @@ class CapabilityDynamicProviderTest {
         CapabilityVisibilityService visibility =
                 new CapabilityVisibilityService(registry, CapabilityCatalogLimits.defaults());
 
-        // Empty context: context-free capability visible, resource-bound one hidden.
+        // 空上下文:无上下文依赖的能力可见,绑定资源的能力不可见。
         assertThat(visibility.visibleCapabilities(CapabilityQueryContext.empty()))
                 .extracting(CapabilityDescriptor::capabilityId)
                 .containsExactly("context.free");
 
-        // A RESOURCE:FILE context node makes the resource capability visible.
+        // RESOURCE:FILE 上下文节点使资源类能力可见。
         assertThat(visibility.visibleCapabilities(new CapabilityQueryContext(
                 Set.of(), List.of("RESOURCE", "RESOURCE:FILE"), Map.of())))
                 .extracting(CapabilityDescriptor::capabilityId)
@@ -199,7 +201,7 @@ class CapabilityDynamicProviderTest {
         };
     }
 
-    /** Provider with a fixed descriptor set. */
+    /** 拥有固定描述符集合的提供方。 */
     private static final class FixedProvider implements CapabilityProvider {
         private final String id;
         private final CapabilityDescriptor descriptor;
@@ -237,7 +239,7 @@ class CapabilityDynamicProviderTest {
         }
     }
 
-    /** Provider whose availability can be toggled (mimics connection state). */
+    /** 可切换可用性的提供方(模拟连接状态)。 */
     private static final class ToggleProvider implements CapabilityProvider {
         private final String id;
         private volatile boolean available;
@@ -283,7 +285,7 @@ class CapabilityDynamicProviderTest {
         }
     }
 
-    /** Provider that counts invocations (proves adapter bridging dispatches). */
+    /** 统计调用次数的提供方(证明适配器桥接确实分发了调用)。 */
     private static final class CountingProvider implements CapabilityProvider {
         private final String id;
         private int calls;

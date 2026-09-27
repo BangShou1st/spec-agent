@@ -1,3 +1,5 @@
+// 文件名:RequirementDetailView.spec.ts
+// 用途:RequirementDetailView 组件单元测试,验证需求断言文案默认隐藏技术元数据,以及技术详情折叠展示与返回事件。
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import RequirementDetailView from '@/features/workspace/components/RequirementDetailView.vue'

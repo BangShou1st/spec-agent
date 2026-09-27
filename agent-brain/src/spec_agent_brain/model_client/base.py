@@ -1,8 +1,9 @@
-"""Model client boundary of the brain.
+"""文件名:base.py
 
-The brain owns prompts and orchestration; the actual provider transport stays
-in Java. Implementations either call the Java internal inference broker or
-serve deterministic fake outputs for tests and offline development.
+用途:brain 的模型客户端边界。
+
+Brain 负责编写 prompt 与流程编排;真正的厂商传输留在 Java 侧。实现要么
+调用 Java 内部推理 broker,要么为测试与离线开发提供确定性的 fake 输出。
 """
 
 from dataclasses import dataclass
@@ -11,7 +12,7 @@ from typing import List, Protocol, Sequence
 
 @dataclass(frozen=True)
 class ChatMessage:
-    role: str  # "system" | "user"
+    role: str  # "system" 或 "user"
     content: str
 
 
@@ -22,14 +23,14 @@ class Completion:
 
 
 class ModelClientError(RuntimeError):
-    """Raised when model inference fails; never carries provider payloads."""
+    """模型推理失败时抛出;绝不携带厂商的原始 payload。"""
 
 
 class BrokerTimeoutError(ModelClientError):
-    """Raised when the broker call times out (connect or read).
+    """broker 调用超时(连接或读取)时抛出。
 
-    Carries the same contract as ModelClientError but lets the HTTP boundary
-    classify a timeout differently from an ordinary provider failure.
+    契约与 ModelClientError 相同,但让 HTTP 边界能把超时与普通厂商失败
+    区分开。
     """
 
 
@@ -41,7 +42,7 @@ class ModelClient(Protocol):
         messages: Sequence[ChatMessage],
         max_output_tokens: int = 2048,
     ) -> Completion:
-        """Runs one model completion for one durable run. No retry, no fallback."""
+        """为一次持久化 run 执行一次模型补全。不重试、不回退。"""
         ...
 
 

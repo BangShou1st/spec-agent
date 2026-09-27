@@ -16,9 +16,11 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Resolves the effective immutable answer history of a route. Branch routes
- * carry frozen references to source Answers; this service is the only place
- * that combines those references with route-local Answers.
+ * 文件名:RouteHistoryResolver.java
+ *
+ * 用途:解析一条路线生效的不可变答案历史。分支路线持有对来源
+ * Answer 的冻结引用;本服务是唯一把"继承的来源引用"与"路线本地的
+ * Answer"合并起来的地方。
  */
 @Service
 public class RouteHistoryResolver {
@@ -41,8 +43,8 @@ public class RouteHistoryResolver {
     }
 
     /**
-     * Freezes effective source-route answer references through a branch point.
-     * The source Answer/Patch rows remain owned by their original route.
+     * 冻结穿过分支点的、生效的来源路线答案引用。来源 Answer/Patch 行
+     * 仍归原路线所有。
      */
     public List<RouteInheritedAnswer> snapshotInheritedPrefix(UUID newRouteId,
                                                                UUID sourceRouteId,
@@ -77,7 +79,7 @@ public class RouteHistoryResolver {
         return List.copyOf(references);
     }
 
-    /** Effective answer records in canonical root-to-tip node order. */
+    /** 按规范的根到尾节点顺序返回生效的答案记录。 */
     public List<Answer> resolveEffectiveAnswers(UUID routeId, List<UUID> lineageNodeIds) {
         Map<UUID, Answer> byNode = new HashMap<>();
         for (RouteInheritedAnswer reference : inheritedAnswerRepository.findByBranchRouteId(routeId)) {
@@ -96,7 +98,7 @@ public class RouteHistoryResolver {
         return List.copyOf(resolved);
     }
 
-    /** Effective immutable Answer references in root-to-tip order. */
+    /** 按根到尾顺序返回生效的不可变 Answer 引用。 */
     public List<RouteInheritedAnswer> resolveEffectiveAnswerRefs(UUID routeId, List<UUID> lineageNodeIds) {
         Map<UUID, RouteInheritedAnswer> byNode = new HashMap<>();
         for (RouteInheritedAnswer ref : inheritedAnswerRepository.findByBranchRouteId(routeId)) {
@@ -140,12 +142,10 @@ public class RouteHistoryResolver {
     }
 
     /**
-     * True when {@code nodeId} belongs to the route's material: it sits on the
-     * tip lineage itself, or it is KNOWLEDGE/RESOURCE derived material hanging
-     * under a node on that lineage. An interaction child after a fork point is
-     * owned by the route whose tip contains that child; it must not leak into a
-     * sibling route merely because its parent is shared. Detached/floating
-     * nodes are "no".
+     * 判断 {@code nodeId} 是否属于该路线的资产:它要么本身位于 tip 谱系上,
+     * 要么是挂在谱系节点下的 KNOWLEDGE/RESOURCE 派生物。分叉点之后的
+     * interaction 子节点归属于"其 tip 包含该子节点的路线";不能仅因父节点
+     * 被共享就泄漏到兄弟路线。游离节点(detached/floating)一律判否。
      */
     public boolean belongsToRoute(Route route, UUID nodeId) {
         if (nodeId == null || route.tipNodeId() == null) {

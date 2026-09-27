@@ -4,11 +4,12 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Parsed runtime metadata of a Skill package. The open Agent Skills
- * {@code SKILL.md} YAML front-matter is the package format authority; only
- * {@code name} and {@code description} are mandatory. Additional runtime
- * metadata (skillId, source, hashes, enabled state) is owned by the runtime
- * store, never by the package format.
+ * 文件名:SkillManifest.java
+ *
+ * 用途:Skill 包解析出的运行时元数据。开放 Agent Skills 规范的
+ * {@code SKILL.md} YAML front-matter 是包格式的权威定义;其中仅
+ * {@code name} 与 {@code description} 为必填。其余运行时元数据(skillId、
+ * 来源、哈希、启用状态)归运行时存储所有,不属于包格式。
  */
 public record SkillManifest(
         String name,

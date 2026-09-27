@@ -18,10 +18,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * API error contract integration tests: stable validation responses, safe
- * malformed-UUID handling, and a generic 500 that never exposes a stack trace
- * or internal message. The throwaway probe controller is registered only for
- * this test and triggers an unexpected failure.
+ * 文件名:ApiErrorHandlingIntegrationTest.java
+ *
+ * 测试目标:验证 API 错误契约——校验错误的响应结构稳定、畸形 UUID
+ * 安全处理、通用 500 错误绝不泄漏堆栈或内部消息。一次性探针控制器仅
+ * 为本测试注册,用于触发一个意外失败。
  */
 @SpringBootTest
 @AutoConfigureMockMvc

@@ -1,3 +1,6 @@
+// 文件名:globalAssistantStore.spec.ts
+// 用途:全局助手 store 与 GaRunProjection 单测:事件去重与乱序丢弃、助手增量按序累积、
+//       工具生命周期(运行/完成/失败)追踪、终止事件收尾等运行期行为。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { GaRunProjection, useGlobalAssistantStore } from '@/features/global-assistant/state/globalAssistantStore'

@@ -29,9 +29,11 @@ import java.util.zip.CRC32;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * "Installed != loaded" for Skill Host Function Tools: skill.* tools are
- * exposed to the planner only when the project actually has an enabled Skill
- * to activate — never as blanket-visible tooling in every context.
+ * 文件名:SkillHostToolVisibilityIntegrationTest.java
+ *
+ * 测试目标:验证 Skill Host 功能工具的"已安装 != 已加载"规则——只有当
+ * 项目确实存在已启用的 Skill 可供激活时,skill.* 工具才对规划器可见,
+ * 绝不会作为全局可见的工具出现在所有上下文中。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -81,7 +83,7 @@ class SkillHostToolVisibilityIntegrationTest {
     @Test
     void skillToolsAppearWhenAnEnabledSkillExists() {
         Project project = projectService.createProject("有 Skill 项目");
-        // Install + enable a Skill.
+        // 安装并启用一个 Skill。
         SkillImportService.StagedResult staged = importService.stageZip(zip());
         SkillImportService.InstalledResult installed = importService.install(staged.stagedImportId());
         importService.enable(installed.skillRowId());

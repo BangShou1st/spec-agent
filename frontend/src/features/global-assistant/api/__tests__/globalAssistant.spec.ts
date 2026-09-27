@@ -1,3 +1,7 @@
+// 文件名:globalAssistant.spec.ts
+// 用途:全局助手 API 层单测:stub 全局 fetch,验证线程/消息/运行/事件等端点 URL、
+//       UI 上下文投影与 UI 动作到路由的映射、类型化 ApiError 的抛出,
+//       以及 SSE 帧与信封解析对非法输入的容错。
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '@/shared/http/client'
 import {

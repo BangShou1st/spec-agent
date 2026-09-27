@@ -5,11 +5,10 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Generic requirement profile.
+ * 文件名:Profile.java
  *
- * <p>A profile is configuration, not code. It defines generic requirement
- * dimensions and output preferences. It must never introduce runtime
- * domain-specific branches.
+ * 用途:通用需求画像(profile)。画像是一种配置,而不是代码:
+ * 它定义通用的需求维度与输出偏好,绝不允许引入运行时的领域特定分支。
  */
 public class Profile {
 

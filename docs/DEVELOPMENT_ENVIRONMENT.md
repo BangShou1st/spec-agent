@@ -162,32 +162,40 @@ It should not deliver model integration, frontend UI, Redis, MinIO, or external 
 ## 10. V2 Agent Brain (Stage A)
 
 The Python decision engine lives in `agent-brain/` and is part of the dev
-environment from Stage A (`docs/v2/PYTHON_AGENT_RUNTIME_BOUNDARY.md`):
-
-```text
-docker compose up -d          # postgres + agent-brain (broker mode)
-```
-
-Local (no Docker) alternative:
+environment from Stage A (`docs/v2/PYTHON_AGENT_RUNTIME_BOUNDARY.md`). The
+brain no longer runs in Docker: `docker compose up -d` starts PostgreSQL only
+(bound to `127.0.0.1:5434`), and the brain runs on the host:
 
 ```bash
 cd agent-brain
 python -m venv .venv && .venv/Scripts/pip install -e ".[dev]"
 .venv/Scripts/python -m pytest
-.venv/Scripts/uvicorn spec_agent_brain.app:app --port 8100
+.venv/Scripts/uvicorn spec_agent_brain.app:app --host 127.0.0.1 --port 8100
 ```
 
-Environment defaults:
+Environment:
 
-- `SPEC_AGENT_BRAIN_INTERNAL_SECRET=dev-internal-secret` — shared internal
-  token for brain requests and the Spring inference broker.
-- `SPEC_AGENT_BRAIN_MODEL_MODE=fake|broker` — fake runs fully offline;
-  broker routes model calls through Spring at
-  `SPEC_AGENT_INTERNAL_BROKER_URL`.
+- `SPEC_AGENT_BRAIN_MODEL_MODE` is a strict two-value enum: `fake` (fully
+  offline, test/demo only) or `broker` (routes model calls through Spring at
+  `SPEC_AGENT_INTERNAL_BROKER_URL`). Any other value — including typos —
+  fails at startup instead of silently falling back to fake. Broker mode
+  additionally requires a non-empty `SPEC_AGENT_BRAIN_INTERNAL_SECRET`.
+  `GET /health` reports `ready` and `configError` truthfully.
+- `SPEC_AGENT_BRAIN_INTERNAL_SECRET` — shared internal token for brain
+  requests and the Spring inference broker. There is NO repository-wide
+  default anymore: when unset, the backend generates a per-install random
+  secret on first boot and persists it to `backend/data/internal-secret.txt`.
+  `start-dev.bat` generates the same file and passes the identical value to
+  both processes. The test profile pins the historical `dev-internal-secret`
+  for deterministic offline tests.
 - `SPEC_AGENT_BRAIN_WORKER_ENABLED=true` — background run worker (post-cutover
   default is ON in the default profile; a process that accepts
   `POST /agent-runs` must also execute queued runs. `/api/health` reports
   `AGENT_WORKER_UNAVAILABLE` (503) when the worker is disabled).
+- `SPEC_AGENT_BRAIN_WORKER_STARTUP_RECOVERY=true` (default) — on boot,
+  runs left non-terminal by a dead executor are honestly terminalized as
+  failed (`INTERRUPTED_BY_RESTART`); no model calls, answers or external
+  side effects are replayed. Valid for the single-instance deployment only.
 
 The brain has no database driver and no provider SDK by design. The
 cross-language integration test
@@ -223,9 +231,13 @@ provider credentials.
 ### Local development
 
 In local development, both Spring and the Python brain run on
-`localhost` and share the default `dev-internal-secret`. This is
-acceptable because the machine is single-tenant. The same shared secret
-must never be used in production.
+`127.0.0.1` (loopback only — the backend binds `server.address=127.0.0.1`
+by default and a `LoopbackBindingGuard` refuses to start with a
+non-loopback bind unless `SPEC_AGENT_ALLOW_NON_LOOPBACK=true` is set
+explicitly). The shared internal secret is generated per install into
+`backend/data/internal-secret.txt` when not explicitly configured; the
+fixed `dev-internal-secret` exists only in the test profile. The same
+shared secret must never be used across machines.
 
 ## 12. Provider Troubleshooting
 

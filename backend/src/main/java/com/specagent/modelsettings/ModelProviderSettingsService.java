@@ -6,12 +6,11 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 
 /**
- * Singleton active-provider persistence. Defaults to OPENCODE_ZEN for upgrades.
+ * 文件名:ModelProviderSettingsService.java
  *
- * <p>The active target is tracked twice on purpose: the preset code keeps the
- * original routing behaviour intact, and the row id is what makes several
- * user-defined providers distinguishable. A preset activated through the
- * legacy code-only path simply leaves the row id null.
+ * 用途:全局单例的激活提供商设置服务,升级场景下默认激活 OPENCODE_ZEN。
+ * 激活目标被刻意记录两份:预设编码保持原有路由行为不变,行 id 用于区分
+ * 多个用户自建提供商。通过遗留"仅编码"路径激活预设时,行 id 为 null。
  */
 @Service
 public class ModelProviderSettingsService implements ActiveProviderPort {
@@ -33,7 +32,7 @@ public class ModelProviderSettingsService implements ActiveProviderPort {
         return activeProvider().name();
     }
 
-    /** Exact active row, or null when a preset was activated by code only. */
+    /** 激活的具体行 id;通过编码激活预设时为 null。 */
     public UUID activeProviderId() {
         return repository.find().map(ModelProviderSettings::activeProviderId).orElse(null);
     }
@@ -50,12 +49,12 @@ public class ModelProviderSettingsService implements ActiveProviderPort {
         repository.setActive(provider.name(), null);
     }
 
-    /** API-boundary helper so controllers never depend on model packages. */
+    /** 面向 API 的便捷方法,避免控制器直接依赖 model 包。 */
     public void setActiveProviderByCode(String code) {
         repository.setActive(ModelProvider.fromCode(code).name(), null);
     }
 
-    /** Activates an exact row; the preset code is derived from the row itself. */
+    /** 激活一个具体行;预设编码从该行自身推导。 */
     public void setActiveTarget(String code, UUID activeProviderId) {
         repository.setActive(ModelProvider.fromCode(code).name(), activeProviderId);
     }

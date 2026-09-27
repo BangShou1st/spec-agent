@@ -1,3 +1,8 @@
+<!--
+  文件名:ProjectCreateForm.vue
+  用途:项目创建表单组件:输入标题后提交 create 事件,创建中禁用输入与按钮。
+       客户端只做 UX 层面的空值校验,标题校验以后端为准。
+-->
 <script setup lang="ts">
 import { ref } from 'vue'
 import AppIcon from '@/shared/ui/AppIcon.vue'

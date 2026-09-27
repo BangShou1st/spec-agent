@@ -1,3 +1,7 @@
+<!--
+  文件名:RichAssistantText.vue
+  用途:富文本渲染组件:基于 marked 把 AI/用户的长文本渲染为段落、列表、代码与引用,供节点卡片与全局助手共用。
+-->
 <script setup lang="ts">
 import { computed } from 'vue'
 import { marked } from 'marked'

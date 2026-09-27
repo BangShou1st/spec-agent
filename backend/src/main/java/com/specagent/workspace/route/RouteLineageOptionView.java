@@ -5,11 +5,11 @@ import com.specagent.workspace.node.NodeOption;
 import java.util.UUID;
 
 /**
- * Read-only option view inside a route lineage node.
+ * 文件名:RouteLineageOptionView.java
  *
- * <p>Option ids are runtime-owned and read-only. Clients never supply option
- * ids back to the runtime for creation; a replacement option is expressed only
- * by label and impact.
+ * 用途:路线 lineage 节点内选项的只读视图。选项 id 由运行时持有、
+ * 只读;客户端绝不在创建时把选项 id 回传给运行时,replacement 选项
+ * 仅通过 label 和 impact 表达。
  */
 public record RouteLineageOptionView(
         UUID id,

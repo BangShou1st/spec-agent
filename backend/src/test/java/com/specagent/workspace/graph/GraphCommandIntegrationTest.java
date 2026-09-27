@@ -25,9 +25,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Graph workspace command integration tests: zero-model-call authoring,
- * free continuation with explicit branching, draft editing semantics, and
- * semantic relations — all append-preserving.
+ * 文件名:GraphCommandIntegrationTest.java
+ *
+ * 测试目标:图工作区命令的集成测试——零模型调用的草稿编写、在 tip 续写与
+ * 从历史节点续写时的显式分支、草稿编辑语义(仅 PROPOSED 可改)、语义关系的
+ * 去重与自引用校验,所有操作都必须保持追加语义、不改写历史。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -64,7 +66,7 @@ class GraphCommandIntegrationTest {
         assertThat(route.rootNodeId()).isEqualTo(node.id());
         assertThat(route.tipNodeId()).isEqualTo(node.id());
 
-        // Zero model calls: no agent run was created by graph commands.
+        // 零模型调用:图命令不应创建任何 agent 运行记录。
         assertThat(agentRunRepository.findByProject(project.id())).isEmpty();
 
         assertThat(commandService.listOperations(project.id()))
@@ -98,7 +100,7 @@ class GraphCommandIntegrationTest {
                 project.id(), initialRoute.id(), root.id(), "REQUIREMENT",
                 Map.of("text", "tip 内容")).node();
 
-        // Continue from the historical root: must branch, not insert.
+        // 从历史根节点续写:必须开分支,而不是插入。
         GraphCommandService.ContinuationResult result = commandService.appendContinuation(
                 project.id(), initialRoute.id(), root.id(), "IDEA", Map.of("text", "从根分叉"));
 
@@ -109,12 +111,12 @@ class GraphCommandIntegrationTest {
         assertThat(branch.branchAtNodeId()).isEqualTo(root.id());
         assertThat(result.node().parentNodeId()).isEqualTo(root.id());
 
-        // The original route's history is untouched: root->tip lineage intact.
+        // 原路线的历史未被触碰:root->tip 的谱系保持完整。
         Route original = routeRepository.findById(initialRoute.id()).orElseThrow();
         assertThat(original.tipNodeId()).isEqualTo(tip.id());
         assertThat(original.rootNodeId()).isEqualTo(root.id());
 
-        // The branch became the active route.
+        // 分支成为当前的活跃路线。
         assertThat(projectService.getProject(project.id()).orElseThrow().activeRouteId())
                 .isEqualTo(branch.id());
     }

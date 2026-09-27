@@ -1,3 +1,8 @@
+// 文件名:modelProviders.ts
+// 用途:模型设置(Provider)的 API 封装与类型:激活的 Provider 查询/切换,
+//       OpenRouter 的状态/探测/模型列表/保存/校验,以及自定义 Provider 的
+//       状态/发现/保存/校验端点。
+
 import { apiClient } from '@/shared/http/client'
 
 export type ModelProvider = 'OPENCODE_ZEN' | 'OPENROUTER' | 'CUSTOM'
@@ -25,7 +30,7 @@ export interface CustomStatus {
   maskedKey: string | null
   selectedModel: string
   manualModel: boolean
-  /** User-facing pill label; backend falls back to 'Custom' for legacy rows. */
+  /** 面向用户的状态胶囊标签;后端对旧数据行回退为 'Custom'。 */
   displayName: string | null
   configRevision: number
   validated: boolean
@@ -72,10 +77,10 @@ export function saveCustom(apiFormat: CustomApiFormat, baseUrl: string, apiKey: 
 }
 
 export function saveCustomWithSource(apiFormat: CustomApiFormat, baseUrl: string, apiKey: string | null | undefined, selectedModel: string, modelSource: 'DISCOVERED' | 'MANUAL' | undefined, displayName?: string | null): Promise<CustomStatus> {
-  // undefined = retain stored key; null/empty = clear; non-empty = new key.
-  // JSON omits undefined, so retain semantics survive the wire.
-  // modelSource persists manual-model mode across reloads.
-  // displayName names the provider pill; undefined retains the stored name.
+  // undefined = 保留已存密钥;null/空串 = 清除;非空 = 新密钥。
+  // JSON 序列化会省略 undefined 字段,因此"保留"语义能在线上存活。
+  // modelSource 用于跨刷新保留手动填写模型模式。
+  // displayName 命名 Provider 状态胶囊;undefined 表示保留已存名称。
   return apiClient.put<CustomStatus>('/settings/custom', { apiFormat, baseUrl, apiKey, selectedModel, modelSource, displayName })
 }
 

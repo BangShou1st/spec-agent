@@ -12,14 +12,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Layout rules that decide what counts as a Skill package inside a repository.
- * Every case here is offline and pure: discovery navigates real-world
- * repository shapes (a Skills library, a plugin marketplace) without loosening
- * any containment rule.
+ * 文件名:SkillPackageLayoutTest.java
+ *
+ * 测试目标:验证决定"什么算一个 Skill 包"的仓库布局规则。所有用例均
+ * 离线且为纯逻辑:发现过程要能适配真实的仓库形态(Skill 库、插件市场),
+ * 同时不放松任何路径受控规则。
  */
 class SkillPackageLayoutTest {
 
-    // ---- discovery --------------------------------------------------------
+    // ---- 发现 -------------------------------------------------------------
 
     @Test
     void rootPackageComesFirstAndNestedPackagesFollowByName() {
@@ -52,7 +53,7 @@ class SkillPackageLayoutTest {
 
     @Test
     void marketplaceDeclaredPluginsAttributeTheirOwnSkillDirectories() {
-        // Same payload shape as obra/superpowers/.claude-plugin/marketplace.json
+        // 与 obra/superpowers/.claude-plugin/marketplace.json 相同的载荷结构
         Map<String, Object> marketplace = Map.of(
                 "name", "superpowers-dev",
                 "plugins", List.of(Map.of(
@@ -66,7 +67,7 @@ class SkillPackageLayoutTest {
                 "skills/brainstorming/SKILL.md",
                 "docs/notes/SKILL.md"), declared);
 
-        // A plugin whose source is the repository root owns every Skill below it.
+        // source 指向仓库根的插件拥有其下所有 Skill。
         assertThat(roots).extracting(SkillPackageLayout.SkillRoot::kind)
                 .containsOnly(SkillPackageLayout.Kind.MARKETPLACE);
         assertThat(roots.get(0).declaredBy()).isEmpty();
@@ -124,7 +125,7 @@ class SkillPackageLayoutTest {
                 .hasSize(SkillPackageLayout.MAX_CANDIDATES);
     }
 
-    // ---- subdirectory selection -------------------------------------------
+    // ---- 子目录选择 ---------------------------------------------------------
 
     @Test
     void subPathIsNormalizedAndBlankMeansRoot() {

@@ -23,10 +23,11 @@ import java.util.zip.CRC32;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * End-to-end fallback loop against the real discovery stack (40 enabled
- * Skills, maxVisible=24): the automatic catalog truncates and hides the
- * migration target; {@code skill.search(query)} recalls it from the full
- * eligible universe with metadata only and without activating anything.
+ * 文件名:SkillSearchFallbackIntegrationTest.java
+ *
+ * 测试目标:针对真实发现技术栈的端到端兜底回路(40 个已启用 Skill、
+ * maxVisible=24)——自动目录截断并隐藏迁移目标,{@code skill.search(query)}
+ * 从完整的符合条件集合中召回它,且只返回元数据、不激活任何东西。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -58,27 +59,27 @@ class SkillSearchFallbackIntegrationTest {
                 "Reviews schema migrations for backwards compatibility "
                         + "and destructive changes.");
 
-        // Case B: the target is recalled from outside the automatic Top-K.
+        // 用例 B:目标从自动 Top-K 之外被召回。
         CapabilityResult result = search("schema migration backwards compatibility");
         assertThat(result.status()).isEqualTo(CapabilityResult.Status.SUCCEEDED);
         List<?> candidates = (List<?>) result.content().get("candidates");
         assertThat(candidates.stream().map(Object::toString).toList().toString())
                 .contains("zzz-postgres-migration-safety");
 
-        // Case C: paraphrase without exact wording still recalls it.
+        // 用例 C:不逐字复述原文的改写查询仍可召回。
         CapabilityResult paraphrased =
                 search("review backwards-compatible schema migrations");
         assertThat(((List<?>) paraphrased.content().get("candidates"))
                 .stream().map(Object::toString).toList().toString())
                 .contains("zzz-postgres-migration-safety");
 
-        // Case F: metadata only — no bodies, paths, or internals.
+        // 用例 F:只返回元数据——不含正文、路径或内部细节。
         String wire = result.content().toString();
         assertThat(wire).doesNotContain("SKILL.md")
                 .doesNotContain("filesystem")
                 .doesNotContain("embedding");
 
-        // Case G: search never auto-activates.
+        // 用例 G:搜索绝不自动激活。
         Integer activations = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM skill_activations", Integer.class);
         assertThat(activations).isZero();

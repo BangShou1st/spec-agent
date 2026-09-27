@@ -39,11 +39,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Regression for the model-owned runtime-settings ports introduced to break
- * the model <-> settings package cycle: the settings services implement the
- * narrow ports, the projections keep every field the gateways consume, the
- * fail-closed (unconfigured / unvalidated-revision) semantics survive, and
- * provider keys never appear in projection toString diagnostics.
+ * 文件名:RuntimeSettingsPortTest.java
+ *
+ * 测试目标:针对"模型自有的运行时设置端口"(用于打破 model 与 settings 包之间的循环依赖)
+ * 的回归测试:各设置服务实现窄端口接口,投影保留网关消费的全部字段,
+ * fail-closed 语义(未配置 / 修订号未校验)保持不变,且 Provider Key 绝不出现在
+ * 投影的 toString 诊断输出中。覆盖 OpenRouter / Custom / OpenCode 三条端口。
  */
 class RuntimeSettingsPortTest {
 
@@ -63,7 +64,7 @@ class RuntimeSettingsPortTest {
     void openRouterPortFailsClosedWhenRevisionIsNotValidated() {
         MemOpenRouterRepo repo = new MemOpenRouterRepo();
         Instant now = Instant.now();
-        // Never validated at the current config revision.
+        // 从未在当前配置修订号下校验过。
         repo.stored = new OpenRouterSettings("or-secret-key", "e-key", "m:free",
                 2, null, now, now, null);
         OpenRouterRuntimeSettingsPort port = openRouterService(repo);
@@ -71,7 +72,7 @@ class RuntimeSettingsPortTest {
         assertThatThrownBy(port::requireRuntimeSettings)
                 .isInstanceOf(ModelProviderException.class);
 
-        // Validated at a stale revision stays fail closed as well.
+        // 在过期修订号下校验过的同样 fail-closed。
         repo.stored = new OpenRouterSettings("or-secret-key", "e-key", "m:free",
                 2, 1L, now, now, now);
         assertThatThrownBy(port::requireRuntimeSettings)
@@ -127,8 +128,7 @@ class RuntimeSettingsPortTest {
 
         RuntimeCustomSettings settings = port.requireRuntimeSettings();
 
-        // The gateway derives format + canonical endpoint + auth + model from
-        // exactly these four fields — none may be dropped by the projection.
+        // 网关正是从这四个字段推导协议格式 + 规范端点 + 鉴权 + 模型——投影一个都不能丢。
         assertThat(settings.apiFormat()).isEqualTo("RESPONSES");
         assertThat(settings.baseUrl()).isEqualTo("http://localhost:11435/v1");
         assertThat(settings.apiKey()).isEqualTo("ck-secret-key");

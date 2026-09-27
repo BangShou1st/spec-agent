@@ -5,16 +5,15 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Test-only live smoke environment readiness.
+ * 文件名:LiveSmokeEnvironment.java
  *
- * <p>Reads the process environment and decides whether an explicit OpenCode
- * live smoke may run, printing safe diagnostics (gateway selector, selected
- * model, masked key suffix only). The full API key is never printed or
- * returned; {@link #maskSuffix} only exposes the last four characters.
+ * 测试专用:live smoke 环境就绪性检查。读取进程环境变量,判断一次显式的
+ * OpenCode live smoke 是否允许运行,并打印安全诊断信息(仅网关选择器、所选模型、
+ * 掩码后的 key 后缀)。完整 API key 绝不打印或返回;
+ * {@link #maskSuffix} 只暴露最后四个字符。
  *
- * <p>The checker is a pure function over a supplied env map so it can be unit
- * tested without touching the process environment. {@link #check()} delegates
- * to {@link #check(Map)} with {@link System#getenv()}.
+ * 检查逻辑是对传入 env map 的纯函数,便于单元测试而不触碰进程环境。
+ * {@link #check()} 委托 {@link #check(Map)},传入 {@link System#getenv()}。
  */
 public final class LiveSmokeEnvironment {
 
@@ -54,9 +53,8 @@ public final class LiveSmokeEnvironment {
     }
 
     /**
-     * Last four characters of the secret, or {@code "?"} when the secret is
-     * missing or too short to leave a meaningful suffix. Never returns the full
-     * secret or more than the suffix.
+     * 返回密钥的最后四个字符;密钥缺失或太短、无法留下有意义后缀时返回 {@code "?"}。
+     * 绝不返回完整密钥或超出后缀范围的内容。
      */
     public static String maskSuffix(String secret) {
         if (secret == null || secret.isBlank() || secret.length() <= 4) {

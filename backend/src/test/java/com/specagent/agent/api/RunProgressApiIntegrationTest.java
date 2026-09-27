@@ -24,10 +24,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Run progress visibility for the frontend in-flight run registry: the run
- * read view and the active-runs listing both expose the whitelisted progress
- * (phase + composed summary steps), and the active listing only contains
- * non-terminal runs.
+ * 文件名:RunProgressApiIntegrationTest.java
+ *
+ * 测试目标:为前端进行中 run 注册表提供运行进度可见性——run 读视图与 active-runs
+ * 列表都暴露白名单内的进度(阶段 + 组合的摘要步骤),且 active 列表只包含非终态 run。
  */
 @SpringBootTest
 @AutoConfigureMockMvc

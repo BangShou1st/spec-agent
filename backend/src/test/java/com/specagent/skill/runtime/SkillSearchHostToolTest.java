@@ -21,8 +21,10 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 /**
- * skill.search contract: metadata-only candidates, never auto-activation,
- * blank queries fail closed, results bounded.
+ * 文件名:SkillSearchHostToolTest.java
+ *
+ * 测试目标:验证 skill.search 契约——候选只含元数据、绝不自动激活、
+ * 空白查询快速失败、结果数量有界。
  */
 @ExtendWith(MockitoExtension.class)
 class SkillSearchHostToolTest {

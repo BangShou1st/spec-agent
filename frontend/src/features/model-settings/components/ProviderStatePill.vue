@@ -1,12 +1,17 @@
+<!--
+  文件名:ProviderStatePill.vue
+  用途:Provider 状态胶囊组件:把共享的 ProviderState 映射为统一的视觉变体,
+       是所有 Provider 卡片状态展示的单一来源。
+-->
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { ProviderState } from '@/features/model-settings/presentation/providerPresentation'
 import { stateLabel } from '@/features/model-settings/presentation/providerPresentation'
 
 /**
- * Single source for provider status pills across all provider cards.
- * Every card maps its own domain state onto the shared ProviderState,
- * so visual variants can never drift between cards.
+ * 所有 Provider 卡片状态胶囊的单一来源。
+ * 每张卡片把自己的领域状态映射到共享的 ProviderState 上,
+ * 视觉变体因此绝不在卡片之间走样。
  */
 const props = defineProps<{ state: ProviderState; testId?: string }>()
 const label = computed(() => stateLabel(props.state))

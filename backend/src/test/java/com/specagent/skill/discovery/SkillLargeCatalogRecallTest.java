@@ -18,16 +18,15 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
- * Merge-review acceptance: with 40 enabled Skills and maxVisible=24, a target
- * Skill parked past the automatic Top-K must be recallable through
- * {@code skill.search(query)} backed by the real query-aware retriever —
- * never a mocked search, never a keyword table.
+ * 文件名:SkillLargeCatalogRecallTest.java
  *
- * <p>Cases: (A) automatic catalog truncates and hides the target; (B) search
- * recalls it; (C) a lexical paraphrase still recalls it (no exact-match
- * dependence); (D) an unrelated Skill ranks below the target; (E) disabled
- * Skills never inflate truncation; (F) search returns metadata only;
- * (G) search never activates.
+ * 测试目标:合并评审验收——40 个已启用 Skill、maxVisible=24 时,被排在
+ * 自动 Top-K 之外的目标 Skill 必须能通过 {@code skill.search(query)} 召回,
+ * 背后是真实的查询感知检索器——绝不使用 mock 搜索,也绝不使用关键词表。
+ *
+ * 用例:(A) 自动目录截断并隐藏目标;(B) 搜索能召回;(C) 词汇改写仍可
+ * 召回(不依赖精确匹配);(D) 无关 Skill 排在目标之后;(E) 禁用的 Skill
+ * 不虚增截断;(F) 搜索只返回元数据;(G) 搜索绝不触发激活。
  */
 class SkillLargeCatalogRecallTest {
 
@@ -49,15 +48,15 @@ class SkillLargeCatalogRecallTest {
 
     private void givenUniverse() {
         List<Skill> all = new ArrayList<>();
-        // 39 alphabetically-first filler Skills with migration-free metadata.
+        // 39 个按字母序排在最前、元数据不含迁移内容的填充 Skill。
         for (int i = 0; i < 39; i++) {
             String padded = String.format("%02d", i);
             all.add(skill("sk-aaa-" + padded, "aaa-filler-" + padded,
                     "General workspace note-taking helper number " + padded, true));
         }
-        // The target sorts last alphabetically and is inserted last.
+        // 目标按字母序排在最后,并且最后插入。
         all.add(skill(TARGET_ID, TARGET_NAME, TARGET_DESCRIPTION, true));
-        // An unrelated Skill with clearly disjoint metadata.
+        // 一个元数据明显不相关的 Skill。
         all.add(skill("sk-frontend-a11y", "frontend-accessibility-review",
                 "Checks user interface color contrast and keyboard navigation.", true));
         when(queryService.listSkills()).thenReturn(List.copyOf(all));
@@ -91,9 +90,8 @@ class SkillLargeCatalogRecallTest {
     @Test
     void paraphraseWithoutExactWordingStillRecallsTarget() {
         givenUniverse();
-        // Shares lexical overlap (schema/migration/backwards/compatibility
-        // stems) without copying the description verbatim: proves the ranker
-        // is not an exact full-string match.
+        // 与描述存在词汇重叠(schema/migration/backwards/compatibility 的词干),
+        // 但没有逐字复制描述:证明排序器不是精确的整串匹配。
         List<SkillSearchCandidate> results = service().search(
                 SkillDiscoveryContext.forSearch(
                         "review backwards-compatible schema migrations"));
@@ -112,8 +110,8 @@ class SkillLargeCatalogRecallTest {
         List<String> ids = results.stream()
                 .map(SkillSearchCandidate::skillId).toList();
         assertThat(ids).contains(TARGET_ID);
-        // The unrelated Skill either misses Top-N entirely or sorts after the
-        // target — never above it. No absolute score asserted.
+        // 无关的 Skill 要么完全不在 Top-N 里,要么排在目标之后——绝不会
+        // 排在目标之前。不断言绝对分数。
         int targetRank = ids.indexOf(TARGET_ID);
         int unrelatedRank = ids.indexOf("sk-frontend-a11y");
         assertThat(unrelatedRank == -1 || unrelatedRank > targetRank).isTrue();

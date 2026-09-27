@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Offline B-2 shadow ranking replay.
+"""文件名:semantic_ranking_shadow.py
 
-This evaluator derives generic semantic facts from frozen trace snapshots and
-never branches on scenario, variant, repetition, seed, or benchmark labels.
-An optional external oracle is used only by the reporting layer to compare a
-shadow winner with historical scorer expectations.
+离线 B-2 影子排名回放(shadow ranking replay)。
+
+本评估器只从冻结的 trace 快照推导通用的语义事实,绝不依据场景、
+变体、重复次数、seed 或基准标签做分支。可选的外部 oracle 只在
+报告层使用,用于对比影子赢家与历史评分器的期望。
 """
 
 from __future__ import annotations
@@ -62,10 +63,10 @@ def _unresolved_claims(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _generic_eligibility(snapshot: dict[str, Any]) -> list[str]:
-    """Mirror only the existing generic hard mask for C replay.
+    """只镜像现有的通用硬性掩码,供 C 组回放使用。
 
-    This deliberately contains no scenario-specific condition and is not the
-    production evaluator. B+ replay consumes the recorded Runtime mask.
+    刻意不包含任何场景特定条件,也不是生产评估器。
+    B+ 回放消费的是运行时记录下的资格掩码。
     """
     eligible = list(protocol.ACTION_FAMILIES)
     eligible.remove("WAIT")
@@ -201,7 +202,7 @@ def _assessment(family: str, facts: dict[str, bool], snapshot: dict[str, Any]) -
 
 
 def _representation_fingerprint(ranking: SemanticRanking) -> str:
-    """Fingerprint rank semantics while ignoring Runtime UUID values in refs."""
+    """对排名语义做指纹,但忽略 refs 中的 Runtime UUID 值。"""
     normalized = []
     for assessment in sorted(ranking.assessments, key=lambda value: value.family):
         normalized.append({

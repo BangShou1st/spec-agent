@@ -1,8 +1,9 @@
-"""Brain-side broker timeout classification.
+"""文件名:test_broker_timeout.py
 
-A broker timeout must surface as a distinct error type from an ordinary
-provider failure, so the Java engine can map it to a timeout code instead
-of misclassifying it as a provider error.
+用途:验证 brain 侧对 broker 超时的分类。
+
+broker 超时必须以区别于普通厂商失败的独立错误类型呈现,这样 Java 引擎
+才能把它映射为超时码,而不是误判为厂商错误。
 """
 
 import json

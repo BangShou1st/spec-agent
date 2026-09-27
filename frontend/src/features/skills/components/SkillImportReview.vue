@@ -1,3 +1,8 @@
+<!--
+  文件名:SkillImportReview.vue
+  用途:暂存导入的评审弹窗:展示待导入 Skill 的元信息、manifest 与源文件列表/原文,
+       提供安装与拒绝操作;评审以只读方式查看,不执行其中任何脚本。
+-->
 <script setup lang="ts">
 import { computed } from 'vue'
 import ApiErrorBanner from '@/shared/ui/ApiErrorBanner.vue'

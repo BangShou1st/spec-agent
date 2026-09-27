@@ -1,10 +1,11 @@
+// 文件名:client.ts
+// 用途:Phase 6 API 的统一类型化 HTTP 客户端与 ApiError 类型:每个响应都按稳定的 API 错误契约解析,不匹配契约的内容一律回退为通用文案,绝不泄漏原始响应体。
 import type { ApiErrorPayload, ApiFieldError } from '@/shared/contracts/types'
 
-/**
- * Typed API failure surfaced to the UI. `message` is always safe to render:
- * it is either the backend's sanitized stable message or the generic
- * frontend fallback. Raw response bodies, stack traces, HTML error pages,
- * and provider payloads are never exposed.
+/*
+ * 呈现给 UI 的类型化 API 失败。`message` 始终可以安全渲染:它要么是后端
+ * 消毒过的稳定消息,要么是通用的前端兜底文案。原始响应体、堆栈、HTML
+ * 错误页与 provider 载荷绝不被暴露。
  */
 export class ApiError extends Error {
   readonly code: string
@@ -30,13 +31,12 @@ export class ApiError extends Error {
 
 export const GENERIC_ERROR_MESSAGE = '操作失败，请稍后重试'
 
-/** Single API base authority shared by the typed client and the SSE stream. */
+/** 类型化客户端与 SSE 流共享的单一 API 基准地址。 */
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api/v1'
 
-/**
- * One typed HTTP client for the Phase 6 API. Every response is parsed against
- * the stable API error contract; anything that does not match the contract
- * becomes a generic frontend fallback instead of leaking a raw body.
+/*
+ * Phase 6 API 的唯一类型化 HTTP 客户端。每个响应都按稳定的 API 错误契约
+ * 解析;任何不符合契约的内容都变成通用前端兜底,而不是泄漏原始响应体。
  */
 class ApiClient {
   async get<T>(path: string): Promise<T> {
@@ -124,10 +124,9 @@ class ApiClient {
     throw await this.toApiError(response)
   }
 
-  /**
-   * Parses a failure response against the API error contract
-   * ({code, message, timestamp, errors}). A body that cannot be parsed as the
-   * contract yields the generic fallback, never a raw body or HTML page.
+  /*
+   * 按API 错误契约({code, message, timestamp, errors})解析失败响应。
+   * 无法按契约解析的响应体产出通用兜底文案,绝不是原始响应体或 HTML 页。
    */
   private async toApiError(response: Response): Promise<ApiError> {
     let payload: ApiErrorPayload | null = null

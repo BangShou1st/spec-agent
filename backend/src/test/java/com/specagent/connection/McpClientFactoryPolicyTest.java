@@ -10,9 +10,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * MCP transport boundary contract (no network): outbound policy is enforced
- * before any handshake, empty URLs fail closed, and the localhost opt-in only
- * relaxes loopback for the MCP boundary.
+ * 文件名:McpClientFactoryPolicyTest.java
+ *
+ * 测试目标:验证 MCP 传输边界的契约(不依赖网络)——出站策略在任何
+ * 握手之前强制执行、空 URL 快速失败、localhost 显式放行只对 MCP 边界
+ * 放松回环限制。
  */
 class McpClientFactoryPolicyTest {
 
@@ -32,9 +34,9 @@ class McpClientFactoryPolicyTest {
 
     @Test
     void localhostHttpPassesWithExplicitOptIn() {
-        // The handshake itself will fail (nothing listens), but the failure
-        // must be a handshake failure — not a policy rejection. That proves
-        // the test-only opt-in relaxes loopback while keeping SSRF defense.
+        // 握手本身会失败(没有服务在监听),但失败必须是握手失败——
+        // 而不是策略拒绝。这证明仅测试用的 opt-in 放松了回环限制,
+        // 同时保留了 SSRF 防御。
         assertThatThrownBy(() -> factory(true)
                 .open("http://127.0.0.1:9/fake-mcp/mcp", null, null))
                 .isInstanceOf(McpTransportException.class)

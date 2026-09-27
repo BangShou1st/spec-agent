@@ -1,3 +1,5 @@
+// 文件名:errorCopy.spec.ts
+// 用途:errorCopy 的单元测试:验证错误码到产品文案的映射、未知码的安全回退与模型失败分类。
 import { describe, expect, it } from 'vitest'
 import {
   classifyModelFailure,

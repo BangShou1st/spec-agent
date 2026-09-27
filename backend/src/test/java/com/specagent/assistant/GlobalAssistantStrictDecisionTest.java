@@ -22,7 +22,14 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * FIX A+B RED: strict JSON + decision invariants (review repair).
+ * 文件名:GlobalAssistantStrictDecisionTest.java
+ *
+ * 测试目标:验证决策输出的严格 JSON 与决策不变量(供修复机制审查)。
+ * 覆盖场景:散文前缀、代码围栏、尾部多余文本/对象、未知顶层字段、
+ * 缺失或类型错误的 done 字段都会被拒绝;工具决策不得夹带
+ * assistantText 或 uiAction;PROJECT 导航必须携带 resourceId 而
+ * 其他目的地不得携带;FINAL 必须有文本;各工具拒绝未知参数,
+ * limit 必须是整数。
  */
 @SpringBootTest
 @ActiveProfiles("test")

@@ -17,10 +17,11 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
- * A model-authored DECISION changes confirmed product intent. Even when it is
- * append-only at the current route tip it must never be silently auto-applied;
- * explicit user confirmation is the deterministic backstop if the model
- * incorrectly infers delegation from natural language.
+ * 文件名:ConflictDecisionPolicyTest.java
+ *
+ * 测试目标:验证模型产生的 DECISION(决策)节点策略——DECISION 变更的是已确认的产品
+ * 意图,即使它 append-only 地落在当前路线 tip 上,也绝不能被静默自动应用;显式的用户确认
+ * 是模型从自然语言错误推断"已获授权"时的确定性兜底。
  */
 class ConflictDecisionPolicyTest {
 

@@ -29,12 +29,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Failure-path integration tests for the scripted full loop: a run that fails
- * mid-cycle must keep the safe checkpoints that already persisted (immutable
- * answer, accepted patch) and must never persist artifacts after the failure
- * point. The deterministic fake engine cannot be scripted to explode, so the
- * failure is injected at the runtime boundary with a stale target — the same
- * fail-closed path a provider failure takes.
+ * 文件名:ScriptedModelGatewayFullLoopIntegrationTest.java
+ *
+ * 测试目标:脚本化全循环的失败路径集成测试:中途失败的 run 必须保留已持久化的
+ * 安全检查点(不可变答案、已接受的 patch),且绝不在失败点之后持久化工件。确定性
+ * fake 引擎无法被脚本化成崩溃,因此在运行时边界注入过期目标制造失败——与供应商
+ * 失败走的是同一条 fail-closed 路径。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -69,9 +69,9 @@ class ScriptedModelGatewayFullLoopIntegrationTest {
 
     @org.junit.jupiter.api.AfterEach
     void cleanUp() {
-        // Deliberately not @Transactional: the FAILED marking runs in its own
-        // REQUIRES_NEW transaction, so cleanup must be manual. agent_runs hold
-        // FKs to the produced answers/patches/nodes, so they go first.
+        // 刻意不加 @Transactional:FAILED 标记在独立的 REQUIRES_NEW 事务中执行,
+        // 因此清理必须手动做。agent_runs 持有指向产出的 answers/patches/nodes
+        // 的外键,所以要先删它们。
         if (project == null) {
             return;
         }
@@ -81,8 +81,8 @@ class ScriptedModelGatewayFullLoopIntegrationTest {
         jdbcTemplate.update("DELETE FROM context_snapshots WHERE project_id = ?", project.id());
         jdbcTemplate.update("DELETE FROM answer_patches WHERE project_id = ?", project.id());
         jdbcTemplate.update("DELETE FROM answers WHERE project_id = ?", project.id());
-        // Agent graph mutations now enter the operation log; the rows hold a
-        // project FK and must go before the project itself.
+        // Agent 图变更现在会进入操作日志;这些行持有项目外键,
+        // 必须在项目本身之前删除。
         jdbcTemplate.update("DELETE FROM graph_operations WHERE project_id = ?", project.id());
         jdbcTemplate.update("DELETE FROM nodes WHERE project_id = ?", project.id());
         jdbcTemplate.update("DELETE FROM routes WHERE project_id = ?", project.id());
@@ -90,8 +90,8 @@ class ScriptedModelGatewayFullLoopIntegrationTest {
     }
 
     /**
-     * A run whose target moved on before execution fails closed: nothing
-     * persists, and the failed run stays queryable with its trace.
+     * 目标在执行前已被推进的 run 必须 fail closed:什么都不持久化,
+     * 失败的 run 连同其 trace 保持可查询。
      */
     @Test
     void staleTargetFailurePersistsNothing() {
@@ -99,7 +99,7 @@ class ScriptedModelGatewayFullLoopIntegrationTest {
         Node rootNode = nodeService.createRootNode(project.id(), project.activeRouteId(),
                 "What is the primary outcome?", "Clarify the outcome", List.of(), true);
 
-        // Enqueue the answer run, then move the graph on before it is claimed.
+        // 先入队答题 run,然后在它被领取之前把图推进。
         // 派生知识节点不再顶掉问题 tip,所以用一个新问题子节点把 tip 真正
         // 推走,制造"run 的目标已不是路线 tip"的过期场景。
         UUID queuedRunId = answerDriver.enqueueOnly(project.id(), "ANSWER_TIP",
@@ -118,16 +118,15 @@ class ScriptedModelGatewayFullLoopIntegrationTest {
         assertThat(run.producedPatchId()).isNull();
         assertThat(run.producedNodeId()).isNull();
 
-        // Nothing entered requirement state.
+        // 没有任何内容进入 requirement 状态。
         assertThat(answerRepository.findByRouteAndNodeIds(
                 project.activeRouteId(), List.of(rootNode.id()))).isEmpty();
         assertThat(answerPatchService.findByRoute(project.activeRouteId())).isEmpty();
     }
 
     /**
-     * A completed cycle keeps every artifact it persisted, and a subsequent
-     * resume against the historical answer is an idempotent checkpoint-only
-     * recovery without duplicating any of them.
+     * 完成的循环保留它持久化的每一个工件;对历史答案的后续 resume 是
+     * 仅检查点的幂等恢复,不复制任何工件。
      */
     @Test
     void completedCycleArtifactsSurviveAFailedFollowup() {
@@ -139,13 +138,12 @@ class ScriptedModelGatewayFullLoopIntegrationTest {
         UUID answeredNodeId = first.run().inputNodeId();
         assertThat(answeredNodeId).isNotNull();
 
-        // The completed cycle persisted exactly one answer and one patch.
+        // 完成的循环恰好持久化了一个答案和一个 patch。
         assertThat(answerService.getAnswer(first.answerId())).isPresent();
         assertThat(answerPatchService.findByRoute(project.activeRouteId())).hasSize(1);
 
-        // A follow-up resume against the now-historical answered node is a
-        // checkpoint-only no-op: it must not replay the later decision or
-        // touch the completed cycle's artifacts.
+        // 对已成为历史的已回答节点做后续 resume 是仅检查点的 no-op:
+        // 不能重放后续决策,也不能碰已完成循环的工件。
         UUID followupRunId = answerDriver.enqueueOnly(project.id(), "RESUME_ANSWER",
                 null, null, null, first.answerId());
         var followup = answerCycleClaim(followupRunId);
@@ -153,21 +151,19 @@ class ScriptedModelGatewayFullLoopIntegrationTest {
         AgentRun recovered = agentRunService.getRun(followupRunId).orElseThrow();
         assertThat(recovered.status()).isEqualTo(AgentRunStatus.COMPLETED);
 
-        // Exactly one answer and one patch remain.
+        // 恰好剩一个答案和一个 patch。
         assertThat(answerRepository.findByRouteAndNodeIds(
                 project.activeRouteId(), List.of(answeredNodeId))).hasSize(1);
         assertThat(answerPatchService.findByRoute(project.activeRouteId())).hasSize(1);
     }
 
     /**
-     * Claims exactly the run this fixture enqueued.
+     * 精确领取本 fixture 入队的 run。
      *
-     * <p>The ANSWER_CYCLE queue is shared with every other fixture in the same
-     * database, so "the oldest queued run" is not necessarily ours: a queue-wide
-     * claim can be handed an unrelated run and then fail its own identity check
-     * depending on execution order. Claiming by id is the contract the
-     * production path and {@code AnswerCycleTestDriver} already use (see
-     * {@code AnswerCycleClaimOwnershipIntegrationTest}).
+     * ANSWER_CYCLE 队列与同一数据库中的所有其他 fixture 共享,因此"最旧的
+     * 排队 run"不一定是我们的:按队列领取可能拿到无关 run,再因身份校验失败而
+     * 出错(取决于执行顺序)。按 id 领取是生产路径与 {@code AnswerCycleTestDriver}
+     * 已经采用的契约(见 {@code AnswerCycleClaimOwnershipIntegrationTest})。
      */
     private AgentRun answerCycleClaim(UUID expectedRunId) {
         return runService.claimAnswerCycleRun(expectedRunId)

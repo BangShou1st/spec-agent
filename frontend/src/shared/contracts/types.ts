@@ -1,13 +1,15 @@
-/**
- * TypeScript contracts for the frozen Phase 6 backend API plus the one
- * Phase 7.1 UI-support read endpoint. Types mirror the real backend DTO
- * response fields; nothing is inferred from a schema generator.
+// 文件名:types.ts
+// 用途:前后端共享的 TypeScript 契约类型:冻结的 Phase 6 后端 API 加 Phase 7.1 的 UI 辅助读取端点,类型镜像真实后端 DTO 字段,不经过 schema 生成器推断。
+/*
+ * 冻结的 Phase 6 后端 API 加上唯一的 Phase 7.1 UI 辅助读取端点的
+ * TypeScript 契约。类型镜像真实后端 DTO 响应字段;不从 schema 生成器
+ * 推断任何东西。
  */
 
-/** Route lifecycle only. `active` is NOT a lifecycle status. */
+/** 仅路线生命周期。`active` 不是生命周期状态。 */
 export type RouteLifecycleStatus = 'open' | 'superseded' | 'archived' | 'deleted'
 
-/** Backend claim statuses; status is never inferred in the frontend. */
+/** 后端断言状态;前端绝不自行推断状态。 */
 export type ClaimStatus = 'confirmed' | 'assumed' | 'unresolved' | 'rejected'
 
 export interface ApiFieldError {
@@ -20,7 +22,7 @@ export interface ApiErrorPayload {
   message: string
   timestamp?: string
   errors?: ApiFieldError[]
-  /** Bounded, non-sensitive recovery identity for actionable conflicts. */
+  /** 面向可操作冲突的有界、非敏感恢复身份。 */
   details?: Record<string, string>
 }
 
@@ -52,10 +54,10 @@ export interface OpenCodeSettingsStatus {
 }
 
 export interface OpenCodeProbeResponse {
-  /** Every model id the provider currently exposes (free and paid).
-   *  Older backends omit this field; stores fall back to freeModels. */
+  /** 提供方当前暴露的全部模型 id(免费与付费)。
+   *  旧后端省略此字段;store 回退到 freeModels。 */
   allModels?: string[]
-  /** Free subset; always present. */
+  /** 免费子集;始终存在。 */
   freeModels: string[]
 }
 
@@ -78,7 +80,7 @@ export interface RouteResponse {
   branchAtNodeId?: string | null
   createdAt: string
   updatedAt: string
-  /** Backend-derived: routeId === Project.activeRouteId at read time. */
+  /** 后端派生:读取时 routeId === Project.activeRouteId。 */
   isActive: boolean
 }
 
@@ -167,7 +169,7 @@ export interface DraftQuestionResponse {
   producedNode: NodeResponse
 }
 
-/** Answer request: both inputs optional at the API, at least one required. */
+/** 回答请求:API 层两个输入都可选,但至少需要一个。 */
 export interface SubmitAnswerRequest {
   selectedOptionId?: string | null
   /** 多选题的全量选择（用户顺序）；单选题不传，走 selectedOptionId。 */
@@ -202,16 +204,16 @@ export interface RequirementStateView {
   builtAt: string
 }
 
-/** Fresh state after a route mutation command. */
+/** 路线 mutation 命令之后的新鲜状态。 */
 export interface RouteMutationResponse {
   projectId: string
   route: RouteResponse
   activeRouteId: string | null
-  /** Present only on the resume command. */
+  /** 仅 resume 命令携带。 */
   resumedNewRoute?: boolean
 }
 
-/** Explicit-source Fork request; runtime owns every generated route id. */
+/** 显式来源的 fork 请求;运行时拥有所有生成的路线 id。 */
 export interface ForkRouteRequest {
   sourceRouteId: string
   label?: string | null
@@ -222,13 +224,13 @@ export interface ReanswerRouteRequest {
   label?: string | null
 }
 
-/** Model-powered replacement request; model content is never browser-authored. */
+/** 模型驱动的换题请求;模型内容绝不在浏览器端撰写。 */
 export interface RegenerateNodeRequest {
   sourceRouteId: string
   instruction?: string | null
 }
 
-/** Deterministic regenerate result from the runtime. */
+/** 运行时的确定性换题结果。 */
 export interface RegenerateResponse {
   projectId: string
   oldRoute: RouteResponse
@@ -254,7 +256,7 @@ export interface RouteLineageNodeView {
   createdAt: string
 }
 
-/** Backend-derived route lineage read view (root→tip order). */
+/** 后端派生的路线谱系读取视图(根→末端顺序)。 */
 export interface RouteLineageView {
   projectId: string
   routeId: string
@@ -265,26 +267,26 @@ export interface RouteLineageView {
   nodes: RouteLineageNodeView[]
 }
 
-/** Read-only section of a derived spec snapshot. */
+/** 派生规格快照的只读章节。 */
 export interface SpecSectionResponse {
   id: string
   title: string
   content: string
 }
 
-/** Read-only unresolved item of a derived spec snapshot. */
+/** 派生规格快照的只读未解决项。 */
 export interface UnresolvedItemResponse {
   text: string
   category: string
 }
 
-/** Read-only provenance pointer from a spec claim to a runtime record. */
+/** 规格断言到运行时记录的只读出处指针。 */
 export interface SourceReferenceResponse {
   kind: string
   refId: string
 }
 
-/** Derived spec snapshot; never source of truth. */
+/** 派生的规格快照;绝不是权威来源。 */
 export interface SpecSnapshotResponse {
   id: string
   projectId: string
@@ -299,12 +301,12 @@ export interface SpecSnapshotResponse {
   createdAt: string
 }
 
-/** Result of a spec generation command. */
+/** 规格生成命令的结果。 */
 export interface SpecGenerationResponse {
   agentRun: AgentRunResponse
   specSnapshot: SpecSnapshotResponse
 }
-/** Read-only option view inside the canonical project graph. */
+/** canonical 项目图内的只读选项视图。 */
 export interface GraphWorkspaceOptionView {
   id: string
   label: string
@@ -313,10 +315,10 @@ export interface GraphWorkspaceOptionView {
   recommended: boolean
 }
 
-/** Stable outer node kind; subtypes refine it (no per-business node types). */
+/** 稳定的外层节点 kind;子类型做细化(没有按业务的节点类型)。 */
 export type GraphNodeKind = 'KNOWLEDGE' | 'INTERACTION' | 'RESOURCE' | 'ARTIFACT'
 
-/** Read-only node view on the canonical project graph (deduplicated). */
+/** canonical 项目图上的只读节点视图(已去重)。 */
 export interface GraphWorkspaceNodeView {
   id: string
   projectId: string
@@ -336,7 +338,7 @@ export interface GraphWorkspaceNodeView {
   userEditableDraft: boolean
 }
 
-/** Read-only answer presentation view; identity stays routeId + nodeId. */
+/** 只读回答展示视图;身份始终是 routeId + nodeId。 */
 export interface GraphWorkspaceAnswerView {
   id: string
   routeId: string
@@ -350,7 +352,7 @@ export interface GraphWorkspaceAnswerView {
   createdAt: string
 }
 
-/** Read-only route view on the canonical project graph. */
+/** canonical 项目图上的只读路线视图。 */
 export interface GraphWorkspaceRouteView {
   id: string
   label: string | null
@@ -367,7 +369,7 @@ export interface GraphWorkspaceRouteView {
   lineageNodeIds: string[]
 }
 
-/** Active semantic relation (Inspector data; never a default Canvas edge). */
+/** 活跃的语义关系(Inspector 数据;绝不是默认画布边)。 */
 export interface GraphWorkspaceRelationView {
   id: string
   sourceNodeId: string
@@ -378,7 +380,7 @@ export interface GraphWorkspaceRelationView {
   createdAt: string
 }
 
-/** Canonical read-only project graph for the workspace. */
+/** 工作区使用的 canonical 只读项目图。 */
 export interface GraphWorkspaceView {
   projectId: string
   activeRouteId: string | null

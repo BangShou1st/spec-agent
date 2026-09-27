@@ -1,3 +1,7 @@
+<!--
+  文件名:FilePreviewDialog.vue
+  用途:文件预览弹窗:teleport 到 body 顶层展示资源原件(图片/PDF/Markdown/代码)或提取文本,提供缩放/平移/折行等阅读工具。
+-->
 <script setup lang="ts">
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import ResourceBody from './ResourceBody.vue'

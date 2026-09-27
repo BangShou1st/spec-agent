@@ -1,3 +1,6 @@
+// 文件名:modelSettings.spec.ts
+// 用途:模型设置 API 封装单测:验证探测/保存等端点调用正确,
+//       且读取接口不会把密钥明文暴露出来。
 import { describe, expect, it, vi } from 'vitest'
 import {
   getOpenCodeSettings,

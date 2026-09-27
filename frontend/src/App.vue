@@ -1,3 +1,8 @@
+<!--
+  文件名:App.vue
+  用途:应用根组件,渲染全局顶栏(应用名、项目/设置导航、全局助手入口)与当前路由页面出口,
+       并根据是否处于工作台路由调整顶栏与主区域的样式。
+-->
 <script setup lang="ts">
 import { computed } from 'vue'
 import { RouterLink, RouterView } from 'vue-router'

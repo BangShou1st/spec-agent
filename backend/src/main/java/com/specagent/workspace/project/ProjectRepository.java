@@ -15,10 +15,12 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Implements the route-side {@link ProjectActiveRoutePort} so the route domain
- * can serialize on the project row and maintain the active-route pointer
- * without depending on this package (dependency inversion; the route side of
- * project &lt;-&gt; route stays acyclic).
+ * 文件名:ProjectRepository.java
+ *
+ * 用途:项目聚合的 JDBC 仓储,同时实现路线侧的
+ * {@link ProjectActiveRoutePort},让路线域能按项目行串行化并维护
+ * 活跃路线指针,而不必依赖本包(依赖反转;project &lt;-&gt; route 的
+ * route 一侧保持无循环)。
  */
 @Repository
 public class ProjectRepository implements ProjectActiveRoutePort, ProjectRowLockPort {
@@ -62,7 +64,7 @@ public class ProjectRepository implements ProjectActiveRoutePort, ProjectRowLock
                 "updatedAt", Timestamp.from(updatedAt)));
     }
 
-    /** Renames the project and bumps updated_at; returns rows affected. */
+    /** 重命名项目并顺带刷新 updated_at;返回受影响行数。 */
     public int updateTitle(UUID projectId, String title, Instant updatedAt) {
         String sql = """
                 UPDATE projects SET title = :title, updated_at = :updatedAt
@@ -80,15 +82,27 @@ public class ProjectRepository implements ProjectActiveRoutePort, ProjectRowLock
     }
 
     /**
-     * Locks the project row for the current transaction, or fails fast when
-     * the project does not exist. Used to serialize write commands whose
-     * decision depends on project-wide graph state — e.g. semantic-relation
-     * creation, where the cycle validation and duplicate check must observe a
-     * stable relation graph. The lock is per project row; it never locks
-     * other projects.
+     * 为当前事务锁定项目行,项目不存在时快速失败。用于串行化那些"决策
+     * 依赖项目级图状态"的写命令——例如语义关系的创建:环校验与重复
+     * 检查必须观察到一个稳定的关系图。锁只作用于单个项目行,
+     * 绝不锁定其他项目。
      */
     public void lockById(UUID id) {
         String sql = "SELECT id FROM projects WHERE id = :id FOR UPDATE";
+        List<UUID> locked = jdbcTemplate.queryForList(sql, Maps.of("id", id), UUID.class);
+        if (locked.isEmpty()) {
+            throw new IllegalArgumentException("Project not found: " + id);
+        }
+    }
+
+    /**
+     * 入队专用的弱化项目行锁(FOR KEY SHARE)。与删除保护的 FOR UPDATE
+     * 互斥——入队与删除仍然串行化——但不与其他入队(包括同线程嵌套的
+     * REQUIRES_NEW 验收事务再次入队)互斥,避免"外层事务持锁、内层事务
+     * 再取同一把写锁"的自死锁。项目不存在时快速失败。
+     */
+    public void lockByIdForKeyShare(UUID id) {
+        String sql = "SELECT id FROM projects WHERE id = :id FOR KEY SHARE";
         List<UUID> locked = jdbcTemplate.queryForList(sql, Maps.of("id", id), UUID.class);
         if (locked.isEmpty()) {
             throw new IllegalArgumentException("Project not found: " + id);
@@ -102,16 +116,16 @@ public class ProjectRepository implements ProjectActiveRoutePort, ProjectRowLock
 
     @Override
     public Optional<UUID> findActiveRouteId(UUID projectId) {
-        // Contract: a missing PROJECT still throws (matching findById-based
-        // callers); an existing project without an active route yields empty.
+        // 契约:项目不存在时仍然抛异常(与基于 findById 的调用方一致);
+        // 项目存在但没有活跃路线时返回 empty。
         Project project = findById(projectId)
                 .orElseThrow(() -> new IllegalArgumentException("Project not found: " + projectId));
         return Optional.ofNullable(project.activeRouteId());
     }
 
     /**
-     * Lists all projects in deterministic order ({@code created_at} ascending,
-     * then {@code id} ascending as a stable tiebreak).
+     * 按确定顺序列出全部项目({@code created_at} 升序,再以 {@code id}
+     * 升序作为稳定的次序补充)。
      */
     public List<Project> findAll() {
         String sql = "SELECT * FROM projects ORDER BY created_at, id";
@@ -119,8 +133,8 @@ public class ProjectRepository implements ProjectActiveRoutePort, ProjectRowLock
     }
 
     /**
-     * Case-insensitive exact title match. Project titles must be unique among
-     * the projects that currently exist; a deleted project frees its title.
+     * 不区分大小写的标题精确匹配。项目标题必须在"当前存在的项目"中
+     * 唯一;被删除的项目会释放其标题。
      */
     public boolean existsByTitleIgnoreCase(String title) {
         String sql = "SELECT COUNT(*) FROM projects WHERE lower(title) = lower(:title)";
@@ -129,9 +143,9 @@ public class ProjectRepository implements ProjectActiveRoutePort, ProjectRowLock
     }
 
     /**
-     * Same as {@link #existsByTitleIgnoreCase(String)} but ignores one project.
-     * Renaming a project to its own title must stay allowed, so the project
-     * being renamed is excluded from the check.
+     * 与 {@link #existsByTitleIgnoreCase(String)} 相同,但忽略一个指定的
+     * 项目。把项目重命名为它自己的标题必须被允许,因此检查时要排除
+     * 正在被重命名的项目。
      */
     public boolean existsByTitleIgnoreCase(String title, UUID excludeProjectId) {
         String sql = "SELECT COUNT(*) FROM projects WHERE lower(title) = lower(:title) AND id <> :excludeId";
@@ -141,10 +155,10 @@ public class ProjectRepository implements ProjectActiveRoutePort, ProjectRowLock
     }
 
     /**
-     * Case-insensitive substring match on the title. The raw input is escaped so
-     * that {@code %}, {@code _} and {@code \} — which are ILIKE wildcards — are
-     * matched literally, then wrapped with {@code %} to match anywhere. Ordering
-     * matches {@link #findAll()} so the list and a filtered list sort identically.
+     * 不区分大小写的标题子串匹配。原始输入会被转义,使 {@code %}、
+     * {@code _} 和 {@code \}(它们是 ILIKE 通配符)按字面匹配,再包上
+     * {@code %} 实现任意位置匹配。排序与 {@link #findAll()} 一致,
+     * 保证全量列表与过滤列表的排序相同。
      */
     public List<Project> findByTitleContaining(String rawTitle) {
         String escaped = rawTitle

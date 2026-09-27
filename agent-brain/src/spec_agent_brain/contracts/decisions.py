@@ -1,9 +1,11 @@
-"""Strict Pydantic contracts for the response envelope (Python -> Spring)
-and for the model outputs the brain parses inside one cycle.
+"""文件名:decisions.py
 
-The response envelope mirrors the Java ``AgentV2ResponseEnvelope`` record.
-Model-output models are what the LLM itself must emit; they are parsed with
-the same strictness and then stamped into a runtime-owned envelope.
+用途:响应信封(Python -> Spring)以及 brain 在单个周期内解析的模型输出
+的严格 Pydantic 契约。
+
+响应信封与 Java 侧的 ``AgentV2ResponseEnvelope`` record 一一对应。模型输出
+模型是 LLM 本身必须产出的结构,用同等严格度解析,然后填入由 runtime
+持有 id 的信封。
 """
 
 from typing import Any, Dict, List, Literal, Optional, TYPE_CHECKING
@@ -53,14 +55,13 @@ class ObservationView(StrictModel):
     @field_validator("known", "unknowns", "conflicts", "risks", mode="before")
     @classmethod
     def _coerce_entries_to_strings(cls, value: Any) -> Any:
-        """Tolerate model shape drift on reflection entries.
+        """容忍模型在 reflection 条目上的形态漂移。
 
-        With longer contexts the model sometimes mimics the observation
-        entries it was shown and emits objects (``{"sourceRef": ...,
-        "excerpt": ...}``) instead of plain strings. These entries are
-        model-authored reflection text, not a trust boundary, so a
-        deterministic stringification is safer than failing the whole
-        DECISION cycle (which surfaced as an opaque brain_unavailable).
+        上下文变长后,模型有时会模仿它看到过的 observation 条目,输出对象
+        (``{"sourceRef": ..., "excerpt": ...}``)而不是纯字符串。这些条目是
+        模型生成的 reflection 文本,不属于信任边界,所以确定性的字符串化
+        比让整个 DECISION 周期失败更安全(否则只会表现为一个不可诊断的
+        brain_unavailable)。
         """
         if isinstance(value, list):
             return [_coerce_observation_entry(item) for item in value]
@@ -142,7 +143,7 @@ class AgentV3ResponseEnvelope(AgentV2ResponseEnvelope):
 def validate_v3_response_for_request(
         request: "AgentV3RequestEnvelope",
         response: AgentV3ResponseEnvelope) -> None:
-    """Mirrors Java's V3 eligibility trust-boundary checks."""
+    """与 Java 侧的 V3 eligibility 信任边界校验保持一致。"""
     eligibility = request.action_eligibility
     if response.selected_eligibility_version != eligibility.version:
         raise ValueError("selected eligibility version does not match request")
@@ -157,11 +158,11 @@ def validate_v3_response_for_request(
         raise ValueError("eligibility evidence ref is outside allowed source refs")
 
 
-# --- Model output contracts (what the LLM must emit, strictly parsed) -------
+# --- 模型输出契约(LLM 必须产出的内容,严格解析) -----------------------------
 
 
 class ModelStateUpdateOutput(StrictModel):
-    """STATE_UPDATE model output: grounded claims only."""
+    """STATE_UPDATE 的模型输出:只允许 grounded 的 claims。"""
 
     claims: List[ProposedClaim]
 
@@ -181,7 +182,7 @@ class ModelDecisionAction(StrictModel):
 
 
 class ModelDecisionOutput(StrictModel):
-    """DECISION model output: reflection + planning in one response."""
+    """DECISION 的模型输出:reflection 与 planning 合并在一个响应里。"""
 
     observation: ObservationView
     action: ModelDecisionAction

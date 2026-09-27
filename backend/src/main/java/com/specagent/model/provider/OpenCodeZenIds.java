@@ -4,26 +4,23 @@ import java.util.Locale;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * OpenCode Zen wire identifiers.
+ * 文件名:OpenCodeZenIds.java
  *
- * <p>Zen admits its free tier only for requests whose identifier headers look
- * like the ones a real client sends, and the session header has a frozen shape:
- * {@code x-opencode-session} must be {@code ses_} plus 26 characters - a 12-char
- * lowercase-hex time prefix followed by 14 base62 characters. This was isolated
- * by single-variable A/B on the wire against a live free model:
+ * 用途:OpenCode Zen 的线上标识符生成。
  *
- * <ul>
- *   <li>{@code ses_} + 32-char UUID  → 403 {@code FreeTierError}</li>
- *   <li>{@code ses_} + 26-char time-prefixed id → 200</li>
- *   <li>header absent → 403</li>
- * </ul>
+ * Zen 只对标识符头看起来像真实客户端的请求开放免费额度,而会话头有冻结的
+ * 形态:{@code x-opencode-session} 必须是 {@code ses_} 加 26 个字符——12 个
+ * 小写十六进制字符的时间前缀,后接 14 个 base62 字符。以下结论是与线上免费模型
+ * 做单变量 A/B 对照隔离出来的:
  *
- * <p>The prefix encodes a millisecond timestamp shifted by {@code 0x1000} plus a
- * 12-bit counter, optionally bitwise-negated for descending ids; the suffix is
- * random. The algorithm mirrors the verified client so the ids are
- * indistinguishable from genuine ones. Sequential-alphabet ids (abcdefg...)
- * are rejected by an upstream low-entropy blacklist; this timestamp+random
- * scheme never produces them.
+ * - {@code ses_} + 32 位 UUID  → 403 {@code FreeTierError}
+ * - {@code ses_} + 26 位带时间前缀的 id → 200
+ * - 缺少该头 → 403
+ *
+ * 前缀编码了一个毫秒时间戳(乘以 {@code 0x1000} 后加一个 12 位计数器),
+ * 可按位取反以得到降序 id;后缀是随机的。该算法与已验证的客户端保持一致,因此
+ * 生成的 id 与真实 id 无法区分。顺序字母表式 id(abcdefg...)会被上游的低熵
+ * 黑名单拒绝;这种"时间戳 + 随机"的方案永远不会产生它们。
  */
 final class OpenCodeZenIds {
 
@@ -35,12 +32,12 @@ final class OpenCodeZenIds {
     private OpenCodeZenIds() {
     }
 
-    /** {@code ses_} conversation/session id; stable per run, descending prefix. */
+    /** {@code ses_} 会话 id;同一 run 内稳定不变,前缀为降序。 */
     static String sessionId() {
         return "ses_" + generate(true);
     }
 
-    /** {@code msg_} id; one fresh value per HTTP request, ascending prefix. */
+    /** {@code msg_} 请求 id;每个 HTTP 请求生成一个新值,前缀为升序。 */
     static String requestId() {
         return "msg_" + generate(false);
     }

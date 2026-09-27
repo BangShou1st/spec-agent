@@ -13,7 +13,15 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.*;
 
-/** True HTTP/SSE fixture tests for postSse. Local mock server only. */
+/**
+ * 文件名:ProviderHttpSseTest.java
+ *
+ * 测试目标:用本地 SSE mock 服务器对 postSse 做真实 HTTP/SSE 的夹具测试:多事件流
+ * 以 [DONE]/finish_reason=stop/response.completed 终止时成功;EOF 无终止符、超大单事件、
+ * 超大聚合体、超大请求体在发送前、Responses 的 incomplete/failed、Chat 的 length 及其他
+ * 失败 finish_reason 一律抛异常;监听器拒绝(含在不可见事件期间的取消)抛 StreamCancelledException;
+ * 长流正常透传。
+ */
 class ProviderHttpSseTest {
 
     private static final String NL = String.valueOf((char) 10);

@@ -1,3 +1,5 @@
+// 文件名:fixtures.ts
+// 用途:测试夹具工厂:makeProject/makeRoute/makeNode/makeSpecSnapshot 等构造合法测试数据的统一入口。
 import type {
   ActiveProjectStateResponse,
   AgentRunResponse,

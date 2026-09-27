@@ -1,5 +1,5 @@
-import { test, expect } from '@playwright/test'
 
+import { test, expect } from './helpers'
 type Conn = { connectionId: string; name: string; status: string; enabled: boolean; serverUrl: string; secret: string | null }
 
 const seed: Conn[] = [

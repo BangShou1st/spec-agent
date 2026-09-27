@@ -51,12 +51,13 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Artifact generation cycle: exactly 1 ARTIFACT_GENERATION call producing a
- * derived, read-only spec snapshot. There is no graph mutation and no answer
- * to interpret, so there is no STATE_UPDATE and no policy chain — but the
- * same fail-closed grounding semantics as the legacy loop
- * ({@link SpecGroundingGate} + {@link SpecSourceReferenceGuard}) run before
- * anything persists, and the snapshot carries its run provenance.
+ * 文件名:ArtifactCycleService.java
+ *
+ * 用途:规格(artifact)生成循环的执行器——恰好 1 次 ARTIFACT_GENERATION 调用,
+ * 产出一个派生的只读规格快照。此循环不改动图、也没有回答需要解析,因此没有
+ * STATE_UPDATE、也没有策略链;但在任何内容落库之前,仍要跑与遗留循环相同的
+ * fail-closed 落锚校验({@link SpecGroundingGate} + {@link SpecSourceReferenceGuard}),
+ * 且快照携带其 run 来源信息。
  */
 @Service
 public class ArtifactCycleService {
@@ -72,6 +73,8 @@ public class ArtifactCycleService {
     private final SpecGroundingGate specGroundingGate;
     private final SpecSourceReferenceGuard specSourceReferenceGuard;
     private final SpecSnapshotService specSnapshotService;
+    private final ExecutionFence executionFence;
+    private final org.springframework.transaction.support.TransactionTemplate transactionTemplate;
     private final AgentRunEventService eventService;
     private final RouteRepository routeRepository;
     private final com.specagent.workspace.project.ProjectRepository projectRepository;
@@ -88,6 +91,8 @@ public class ArtifactCycleService {
                                 SpecGroundingGate specGroundingGate,
                                 SpecSourceReferenceGuard specSourceReferenceGuard,
                                 SpecSnapshotService specSnapshotService,
+                                ExecutionFence executionFence,
+                                org.springframework.transaction.support.TransactionTemplate transactionTemplate,
                                 AgentRunEventService eventService,
                                 RouteRepository routeRepository,
                                 com.specagent.workspace.project.ProjectRepository projectRepository,
@@ -103,6 +108,8 @@ public class ArtifactCycleService {
         this.specGroundingGate = specGroundingGate;
         this.specSourceReferenceGuard = specSourceReferenceGuard;
         this.specSnapshotService = specSnapshotService;
+        this.executionFence = executionFence;
+        this.transactionTemplate = transactionTemplate;
         this.eventService = eventService;
         this.routeRepository = routeRepository;
         this.projectRepository = projectRepository;
@@ -112,18 +119,15 @@ public class ArtifactCycleService {
     }
 
     /**
-     * Executes one spec-snapshot generation run against the run's own frozen
-     * target (route + input node). The context snapshot is built for exactly
-     * {@code run.routeId} / {@code run.inputNodeId}; the project's active
-     * route pointer is never consulted to choose a context or persistence
-     * target, so a queued run cannot contaminate its snapshot with another
-     * route.
+     * 针对 run 自身冻结的目标(路线 + 输入节点)执行一次规格快照生成。
+     * 上下文快照严格按 {@code run.routeId} / {@code run.inputNodeId} 构建;
+     * 绝不读取项目的 Active 路线指针来选择上下文或落库目标,因此排队中的
+     * run 不会把其他路线的内容混进自己的快照。
      *
-     * <p>Live-state validation before any model call: the run's route must
-     * still exist, belong to the run's project, be OPEN, and still be the
-     * project's ACTIVE route with {@code run.inputNodeId} as its tip. If the
-     * user switched the active route while this run was queued, the run fails
-     * closed (STALE) instead of generating a mixed or outdated spec.
+     * 任何模型调用前先做实时状态校验:run 的路线必须仍然存在、属于该
+     * run 的项目、处于 OPEN 状态,且仍是项目的 ACTIVE 路线并以
+     * {@code run.inputNodeId} 为 tip。若用户在 run 排队期间切换了活跃路线,
+     * run 会 fail-closed(STALE),绝不生成混合或过期的规格。
      */
     public SpecGenerationOutcome generateSpec(AgentRun run) {        Route route = routeRepository.findById(run.routeId())
                 .orElseThrow(() -> new IllegalStateException(
@@ -145,10 +149,9 @@ public class ArtifactCycleService {
                 .orElseThrow(() -> new IllegalStateException(
                         "Project not found: " + run.projectId()));
         boolean explicitRoute = isExplicitRouteRun(run);
-        // Active mode keeps the original fail-closed guarantee: a spec is never
-        // generated for a route the user stopped working on. Explicit-route
-        // runs target their own route instead (its OPEN-ness and tip are still
-        // checked above).
+        // Active 模式保留原有的 fail-closed 保证:绝不替用户已不再处理的路线
+        // 生成规格。显式路线 run 则以自己的路线为目标(其 OPEN 状态与 tip
+        // 已在上面检查)。
         if (!explicitRoute && !java.util.Objects.equals(project.activeRouteId(), run.routeId())) {
             throw new StaleRunTargetException(
                     "Active route changed while artifact run was queued: run route "
@@ -164,7 +167,7 @@ public class ArtifactCycleService {
         String trace = "created";
         try {
             trace = appendTrace(trace, "context_built");
-            // Route-bound build: never re-reads the active route pointer.
+            // 绑定路线构建:绝不重新读取活跃路线指针。
             ContextSnapshot snapshot = contextBuilder.buildForRoute(
                     run.projectId(), run.routeId(), run.inputNodeId(),
                     run.id(), ContextOperationType.NORMAL);
@@ -177,7 +180,7 @@ public class ArtifactCycleService {
                 throw new ModelContractException("Context guard rejected agent run");
             }
 
-            // Pure derivation: one artifact call, never a STATE_UPDATE.
+            // 纯派生:一次 artifact 调用,绝不是 STATE_UPDATE。
             AgentRequestEnvelope envelope = snapshotBuilder.buildEnvelope(
                     run.id(), snapshot,
                     new AgentEvent("CONTINUE", route.tipNodeId(), null, null),
@@ -191,8 +194,7 @@ public class ArtifactCycleService {
             AgentArtifactResponse response = decisionEngine.runArtifactGeneration(envelope);
             AgentArtifactResponse.ArtifactGenerationResult result = response.artifact();
 
-            // Grounding gates preserved from the legacy loop, in the same
-            // order and with the same failure semantics.
+            // 保留自遗留循环的落锚门,顺序与失败语义完全一致。
             SpecDraft draft = toSpecDraft(result);
             ReflectionResult grounding = specGroundingGate.validate(draft);
             trace = appendTrace(trace, "reflected:SPEC_GROUNDING");
@@ -222,8 +224,8 @@ public class ArtifactCycleService {
                     .map(text -> UnresolvedItem.of(text, "unresolved"))
                     .toList();
 
-            // Persistence invariant guard: run target == context == spec
-            // identity must hold right before anything is written.
+            // 落库不变式守卫:写入任何内容之前,run 目标 == 上下文 == 规格
+            // 身份三者必须一致。
             if (!snapshot.projectId().equals(run.projectId())
                     || !snapshot.routeId().equals(route.id())
                     || !snapshot.tipNodeId().equals(route.tipNodeId())
@@ -232,11 +234,21 @@ public class ArtifactCycleService {
                 throw new ModelContractException(
                         "Artifact persistence invariant violated: run/context/spec targets diverged");
             }
-            SpecSnapshot persisted = specSnapshotService.createSnapshot(
-                    run.projectId(), route.id(), route.tipNodeId(), snapshot.id(),
-                    "markdown", sections, unresolvedItems, sourceRefs, run.id());
+            // 所有权 fencing(原子协议):规格快照落库与带所有权条件的检查点
+            // 写入(markPersistedSpecSnapshot)在同一事务——新执行器接管后,
+            // 旧执行器的条件检查点落空(0 行),整个事务回滚,快照不落库。
+            final String gateTrace = trace;
+            SpecSnapshot persisted = transactionTemplate.execute(tx -> {
+                // 所有权协议(第四轮):事务第一条语句取所有权行 FOR SHARE
+                // 并验证代次,锁保持到提交——接管与本事务互斥(R4-A)。
+                executionFence.lockOwnershipForWrite();
+                SpecSnapshot created = specSnapshotService.createSnapshot(
+                        run.projectId(), route.id(), route.tipNodeId(), snapshot.id(),
+                        "markdown", sections, unresolvedItems, sourceRefs, run.id());
+                agentRunService.markPersistedSpecSnapshot(run.id(), created.id(), gateTrace);
+                return created;
+            });
             trace = appendTrace(trace, "persisted_spec_snapshot");
-            agentRunService.markPersistedSpecSnapshot(run.id(), persisted.id(), trace);
             progressRecorder.note(run.id(), AgentRunPhase.ARTIFACT_GENERATING,
                     "规格文档已生成，共 " + sections.size() + " 个章节");
             trace = appendTrace(trace, "completed");
@@ -251,7 +263,7 @@ public class ArtifactCycleService {
         }
     }
 
-    /** Runtime-owned source-ref parsing; the model never invents ids. */
+    /** runtime 侧持有来源引用解析;模型绝不能自造 id。 */
     private List<SourceReference> distinctSourceRefs(
             AgentArtifactResponse.ArtifactGenerationResult result) {
         Set<String> refs = new LinkedHashSet<>();
@@ -284,9 +296,9 @@ public class ArtifactCycleService {
     }
 
     /**
-     * Whether this run was queued against an EXPLICIT route (recorded in its
-     * RUN_CREATED payload by {@code RunService}). Only then may the artifact
-     * run skip the Active-equality rule; Active-mode runs keep failing closed.
+     * 判断本 run 是否是针对显式路线排队的(由 {@code RunService} 记录在
+     * RUN_CREATED 事件载荷里)。只有显式路线 run 才允许跳过 Active 相等规则;
+     * Active 模式 run 保持 fail-closed。
      */
     private boolean isExplicitRouteRun(AgentRun run) {
         return eventService.findByRunId(run.id()).stream()
@@ -298,18 +310,14 @@ public class ArtifactCycleService {
     }
 
     /**
-     * Refuses to derive an artifact from a state that is missing an answer the
-     * user already gave.
+     * 拒绝从"丢失了用户已给出回答"的状态派生规格。
      *
-     * <p>The judge is the shared {@link AnswerProcessingGate} over the route's
-     * effective answer history — route-local answers plus the frozen inherited
-     * prefix, exactly what {@code ContextBuilder} folds into the spec context.
-     * The previous route-local tip-only lookup assumed an inherited answer is
-     * always already processed; that assumption is false, so forking from an
-     * answered node whose STATE_UPDATE never completed let this gate pass and
-     * the spec silently omitted the inherited answer. The command surface
-     * rejects the same state before queueing; this gate covers a run that was
-     * queued first.
+     * 判定器是共享的 {@link AnswerProcessingGate},作用于路线的有效回答
+     * 历史——路线本地回答加上冻结的继承前缀,正是 {@code ContextBuilder}
+     * 折入规格上下文的集合。此前只查路线本地 tip 的实现假设继承回答总是
+     * 已处理;该假设不成立,因此从"STATE_UPDATE 从未完成"的已回答节点分叉
+     * 时,这个门会放行,规格静默遗漏继承回答。命令入口在入队前会拒绝同样的
+     * 状态;本门兜底覆盖"先排队、后失效"的 run。
      */
     private void failIfTipAnswerUnprocessed(Route route) {
         answerProcessingGate.firstUnprocessedAnswer(route.id(), route.tipNodeId())
@@ -329,9 +337,7 @@ public class ArtifactCycleService {
         if (latest != null && latest.status() != AgentRunStatus.FAILED
                 && latest.status() != AgentRunStatus.COMPLETED) {
             String reason = RunFailureReasons.reasonCode(ex);
-            agentRunFailureService.fail(runId, appendTrace(trace, "failed:" + reason));
-            eventService.append(runId, AgentRunPhase.FAILED, "RUN_FAILED",
-                    RunFailureReasons.payload(ex));
+            agentRunFailureService.fail(runId, appendTrace(trace, "failed:" + reason), ex);
         }
     }
 
@@ -339,7 +345,7 @@ public class ArtifactCycleService {
         return trace + ">" + step;
     }
 
-    /** Post-run view over one spec generation cycle. */
+    /** 一次规格生成循环结束后的事后视图。 */
     public record SpecGenerationOutcome(UUID runId, UUID producedSpecSnapshotId) {
     }
 }

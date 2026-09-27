@@ -30,6 +30,14 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+/**
+ * 文件名:AgentRunIdempotencyIntegrationTest.java
+ *
+ * 测试目标:通过 HTTP 入口验证 agent run 创建的幂等性:同 key 同项目同请求重放
+ * 返回原 run(包括原 run 已完成、tip 已变化、活动路由已切换等场景);不同项目同 key
+ * 互相独立;key 复用但请求不同返回 409 IDEMPOTENCY_KEY_REUSED;并发同请求只创建一个
+ * run;多选指纹(选择集合、顺序、完整列表持久化)与旧单选形状的兼容性。
+ */
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -90,21 +98,19 @@ class AgentRunIdempotencyIntegrationTest {
         var root = nodeService.createRootNode(project.id(), project.activeRouteId(), "Root?", null, List.of(), true);
         String sharedKey = key("draft-tip");
 
-        // Fail-fast contract (new): DRAFT_QUESTION on a route whose tip is still
-        // an unanswered question is rejected up-front with 409
-        // UNANSWERED_QUESTION_HAS_CHILD. The decision append would violate the
-        // UNANSWERED_QUESTION_HAS_CHILD graph invariant anyway, so the API no
-        // longer enqueues a run that is doomed to fail. The eligibility check
-        // runs only for NEW requests: an idempotent replay is matched by
-        // fingerprint before the check and keeps returning the original run.
+        // 快速失败契约(新增):对 tip 仍是未回答问题的路由执行 DRAFT_QUESTION,
+        // 会在入口直接被 409 UNANSWERED_QUESTION_HAS_CHILD 拒绝。决策追加本来就会
+        // 违反 UNANSWERED_QUESTION_HAS_CHILD 图不变量,所以 API 不再入队一个注定
+        // 失败的 run。资格检查只针对新请求:幂等重放在检查之前先按指纹匹配,
+        // 继续返回原 run。
         mockMvc.perform(post("/api/v1/projects/{projectId}/agent-runs", project.id())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestPayload("DRAFT_QUESTION", null, null, null, sharedKey)))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("UNANSWERED_QUESTION_HAS_CHILD"));
 
-        // Once the tip question is answered the draft is accepted; the idempotent
-        // replay must still return the original run even though the tip moved.
+        // 一旦 tip 问题被回答,草稿即被接受;即使 tip 已推进,
+        // 幂等重放仍必须返回原 run。
         var answer = answerService.finalizeAnswer(project.id(), project.activeRouteId(), root.id(), null,
                 "answered before drafting", "test-user");
         answerPatchService.save(project.id(), project.activeRouteId(), root.id(),
@@ -237,7 +243,7 @@ class AgentRunIdempotencyIntegrationTest {
         assertThat(runCount(sharedKey)).isEqualTo(1);
     }
 
-    // ---- Multi-select fingerprints (HTTP entry, not just the hash utility) ----
+    // ---- 多选指纹(HTTP 入口,不只是哈希工具)----
 
     @Test
     void multiSelectSameSelectionReplaysSameRun() throws Exception {
@@ -265,8 +271,8 @@ class AgentRunIdempotencyIntegrationTest {
         UUID optionC = UUID.randomUUID();
         createMultiSelectRunViaHttp(project.id(), sharedKey, "ANSWER_TIP", root.id(),
                 List.of(optionA, optionB), null);
-        // Same first option, different rest of the selection: a DIFFERENT
-        // answer, so the idempotency key must conflict instead of replaying.
+        // 首选项相同、其余选择不同:这是一个不同的答案,因此幂等 key 必须
+        // 冲突而不是重放。
         mockMvc.perform(post("/api/v1/projects/{projectId}/agent-runs", project.id())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(multiSelectPayload("ANSWER_TIP", root.id(),
@@ -285,8 +291,8 @@ class AgentRunIdempotencyIntegrationTest {
         UUID optionB = UUID.randomUUID();
         createMultiSelectRunViaHttp(project.id(), sharedKey, "ANSWER_TIP", root.id(),
                 List.of(optionA, optionB), null);
-        // User order is part of the selection semantics: swapping the order is
-        // a different request and must conflict on the same key.
+        // 用户选择的顺序属于选择语义的一部分:交换顺序是不同的请求,
+        // 在同一个 key 上必须冲突。
         mockMvc.perform(post("/api/v1/projects/{projectId}/agent-runs", project.id())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(multiSelectPayload("ANSWER_TIP", root.id(),
@@ -302,13 +308,12 @@ class AgentRunIdempotencyIntegrationTest {
         var root = nodeService.createRootNode(project.id(), project.activeRouteId(), "Root?", null, List.of(), true);
         String sharedKey = key("single-compat");
         UUID optionA = UUID.randomUUID();
-        // Old client shape: selectedOptionId only, no selectedOptionIds field.
+        // 旧客户端形状:只有 selectedOptionId,没有 selectedOptionIds 字段。
         UUID first = createRunViaHttp(project.id(), sharedKey, "ANSWER_TIP", root.id(), optionA, "single");
         UUID second = createRunViaHttp(project.id(), sharedKey, "ANSWER_TIP", root.id(), optionA, "single");
         assertThat(second).isEqualTo(first);
         assertThat(runCount(sharedKey)).isEqualTo(1);
-        // And a single-select still conflicts against a multi-select that
-        // names the same option plus one more.
+        // 且单选对"同一选项再加一个"的多选请求仍必须冲突。
         mockMvc.perform(post("/api/v1/projects/{projectId}/agent-runs", project.id())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(multiSelectPayload("ANSWER_TIP", root.id(),
@@ -326,8 +331,8 @@ class AgentRunIdempotencyIntegrationTest {
         UUID optionB = UUID.randomUUID();
         createMultiSelectRunViaHttp(project.id(), sharedKey, "ANSWER_TIP", root.id(),
                 List.of(optionA, optionB), null);
-        // The full selection (not just the first option) must reach the
-        // runtime: the RUN_CREATED payload is what the worker replays.
+        // 完整选择(而不只是第一个选项)必须到达运行时:worker 重放的
+        // 正是 RUN_CREATED 载荷。
         String payload = jdbcTemplate.queryForObject(
                 "SELECT e.payload FROM agent_run_events e JOIN agent_runs r ON r.id = e.run_id "
                         + "WHERE r.idempotency_key = ? AND e.event_type = 'RUN_CREATED'",

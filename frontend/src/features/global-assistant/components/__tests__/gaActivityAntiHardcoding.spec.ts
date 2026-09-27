@@ -1,3 +1,7 @@
+// 文件名:gaActivityAntiHardcoding.spec.ts
+// 用途:工具活动"反硬编码"测试:工具活动必须来自 TOOL_STARTED/TOOL_COMPLETED 事件,
+//       绝不从 prompt 文本或用户话术中解析;完成条数遵循真实数量(0/1/N),
+//       未知 capability 走通用兜底且不崩溃。
 import { describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ToolActivityItem from '@/features/global-assistant/components/ToolActivityItem.vue';

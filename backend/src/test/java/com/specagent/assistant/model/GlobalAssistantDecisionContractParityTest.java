@@ -13,9 +13,11 @@ import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 
 /**
- * Decision Contract V2 parity: schema / parser / validator must agree on the
- * executable state machine. Legal branches are valid in all three layers.
- * Illegal shapes must never validate as executable.
+ * 文件名:GlobalAssistantDecisionContractParityTest.java
+ *
+ * 测试目标:决策契约 V2 的一致性(parity)——schema、解析器、校验器
+ * 三层必须对同一台可执行状态机达成一致。合法分支在三层全部有效;
+ * 非法形态绝不能在任何一层被判定为可执行。
  */
 class GlobalAssistantDecisionContractParityTest {
 

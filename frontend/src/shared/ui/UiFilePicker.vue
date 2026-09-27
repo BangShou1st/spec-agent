@@ -1,3 +1,7 @@
+<!--
+  文件名:UiFilePicker.vue
+  用途:通用文件选择控件:封装 file input 的按钮样式、禁用态与选中文件名展示。
+-->
 <script setup lang="ts">
 import { computed, ref, useId } from 'vue'
 const props = defineProps<{ accept?: string; disabled?: boolean; testId?: string; buttonLabel?: string; placeholder?: string }>()

@@ -11,8 +11,13 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Post-projection vector enrichment. It is deliberately separate from
- * canonical writes: provider failure changes only derived embedding status.
+ * 文件名:EmbeddingEnrichmentService.java
+ *
+ * 用途:投影完成之后的向量增强服务,把待处理的检索条目交给
+ * {@link EmbeddingGateway} 生成向量并回写状态。
+ *
+ * 它与规范化写入刻意分离:嵌入服务失败只会改变派生的 embedding 状态,
+ * 不会影响既有的词法检索通道。
  */
 @Service
 public class EmbeddingEnrichmentService {
@@ -40,7 +45,7 @@ public class EmbeddingEnrichmentService {
         return enriched;
     }
 
-    /** Returns true only when a READY vector was persisted. */
+    /** 只有成功持久化 READY 状态的向量时才返回 true。 */
     public boolean enrich(RetrievalEntry entry) {
         if (entry == null || entry.retractedAt() != null) {
             return false;

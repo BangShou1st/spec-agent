@@ -4,10 +4,20 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The bounded, runtime-owned description of one capability as exposed to the
- * planner. Descriptors are filtered by permissions and context relevance
- * before model exposure; the planner never sees implementation classes,
- * SDK clients, or credentials.
+ * 文件名:CapabilityDescriptor.java
+ *
+ * 用途:单个能力暴露给规划器的有界描述,由运行时持有。描述符在呈现给模型前
+ * 会经过权限过滤和上下文相关性筛选;规划器永远看不到实现类、SDK 客户端或凭据。
+ *
+ * @param capabilityId        能力唯一标识
+ * @param version             能力版本
+ * @param description         面向模型的能力说明
+ * @param inputSchema         输入参数的 JSON Schema
+ * @param outputSchema        输出结果的 JSON Schema
+ * @param readOnly            是否只读(无外部副作用)
+ * @param sideEffectClass     副作用分类
+ * @param requiredPermissions 调用该能力所需的权限列表
+ * @param supports            能力支持的附加声明
  */
 public record CapabilityDescriptor(
         String capabilityId,

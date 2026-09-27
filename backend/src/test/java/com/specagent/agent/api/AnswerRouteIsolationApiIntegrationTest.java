@@ -34,12 +34,12 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Answer isolation at the model-facing envelope level, exercised through the
- * async AgentRun command surface. The spy delegates to the real deterministic
- * engine and captures every {@link AgentRequestEnvelope} the runtime sends.
- * After forking to a new active route, every subsequent answer run must carry
- * only the active lineage (shared root, run-local answer) and exclude the
- * sibling sentinel, sibling answers/patches/nodes, and the old route id.
+ * 文件名:AnswerRouteIsolationApiIntegrationTest.java
+ *
+ * 测试目标:在面向模型的信封层面验证答案隔离,经由异步 AgentRun 命令入口触发。spy
+ * 委托给真实的确定性引擎并捕获运行时发出的每个 {@link AgentRequestEnvelope}。
+ * 分叉到新的激活路线后,后续每个答案 run 只能携带激活 lineage(共享根、run 本地答案),
+ * 必须排除兄弟哨兵文本、兄弟路线的答案/补丁/节点以及旧路线 id。
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -82,11 +82,11 @@ class AnswerRouteIsolationApiIntegrationTest {
         }).when(decisionEngine).runDecision(any(AgentRequestEnvelope.class));
     }
 
-    /** Flattened envelope projection used for exclusion assertions. */
+    /** 用于排除性断言的拍平信封投影。 */
     private String envelopeText(AgentRequestEnvelope envelope) {
         StringBuilder combined = new StringBuilder();
         combined.append("route:").append(envelope.snapshot().routeId()).append('\n');
-        // The run-local event carries the triggering answer input.
+        // run 本地的事件携带触发本次运行的答案输入。
         if (envelope.event() != null && envelope.event().freeText() != null) {
             combined.append(envelope.event().freeText()).append('\n');
         }
@@ -119,8 +119,7 @@ class AnswerRouteIsolationApiIntegrationTest {
 
         NodeResponse root = draftNext(project.id());
 
-        // Answer the root and then a second node on route R1 with a unique
-        // sibling sentinel.
+        // 回答根节点,然后在路线 R1 上回答第二个节点,文本带唯一的兄弟哨兵。
         AnswerRunView rootAnswer = submitAnswer(project.id(), "Root answer stays on R1");
         NodeResponse nodeA = nextNodeAfter(rootAnswer);
         AnswerRunView branchAnswer = submitAnswer(
@@ -129,15 +128,14 @@ class AnswerRouteIsolationApiIntegrationTest {
         UUID r1RouteId = branchAnswer.routeId();
         UUID r1AnswerId = branchAnswer.producedAnswerId();
 
-        // Fork from the shared root: R2 becomes active.
+        // 从共享根分叉:R2 变为激活路线。
         RouteMutationResponse fork = fork(project.id(), root.id());
         UUID r2RouteId = fork.route().id();
 
         int forkPoint = captured.size();
-        // The shared root is already answered on R1 (single immutable Answer
-        // identity), so R2 cannot re-answer it — the first fork action drafts
-        // the next Question on R2 (parent = shared root), then the user
-        // answers that new Question.
+        // 共享根已在 R1 上回答过(单一不可变 Answer 身份),所以 R2 不能重新回答它
+        // ——分叉后的第一个动作是在 R2 上起草下一个 Question(parent = 共享根),
+        // 然后用户回答这个新 Question。
         NodeResponse forkChild = draftNext(project.id());
         AnswerRunView forkAnswer = submitAnswer(
                 project.id(), "Fork branch answer local to R2");
@@ -159,15 +157,14 @@ class AnswerRouteIsolationApiIntegrationTest {
                     .as("fork envelopes target the active fork route")
                     .isEqualTo(r2RouteId);
         }
-        // Active lineage stays present in at least one fork envelope: the
-        // shared root node and the run-local answer text.
+        // 激活 lineage 至少出现在一个分叉信封中:共享根节点与 run 本地的答案文本。
         assertThat(forkEnvelopes).anySatisfy(envelope -> {
             String text = envelopeText(envelope);
             assertThat(text).contains("node:" + root.id())
                     .contains("Fork branch answer local to R2");
         });
 
-        // No sibling-route lineage entry leaked into any fork envelope.
+        // 任何兄弟路线的 lineage 条目都没有泄漏进任何分叉信封。
         assertThat(forkEnvelopes)
                 .allSatisfy(envelope -> assertThat(envelope.snapshot().lineage())
                         .allSatisfy(entry -> {
@@ -187,8 +184,8 @@ class AnswerRouteIsolationApiIntegrationTest {
     }
 
     /**
-     * Enqueues an ANSWER_TIP run against the current active tip and drives it
-     * through the worker; returns the run read view.
+     * 对当前激活 tip 入队一个 ANSWER_TIP run 并驱动 worker 执行;
+     * 返回 run 读视图。
      */
     private AnswerRunView submitAnswer(UUID projectId, String freeText) throws Exception {
         MvcResult created = mockMvc.perform(
@@ -215,14 +212,13 @@ class AnswerRouteIsolationApiIntegrationTest {
                 view.get("status").asText());
     }
 
-    /** Reads the canonical node the completed run produced (test fixture read). */
+    /** 读取已完成 run 产出的规范节点(测试夹具读取)。 */
     private NodeResponse nextNodeAfter(AnswerRunView view) {
         return NodeResponse.from(nodeService.getNode(view.producedNodeId()).orElseThrow());
     }
 
     private NodeResponse draftNext(UUID projectId) throws Exception {
-        // The synchronous draft endpoint is retired; drive the async
-        // DRAFT_QUESTION run through the production runtime path.
+        // 同步草稿端点已退役;改经生产运行时路径驱动异步 DRAFT_QUESTION run。
         com.specagent.agent.runtime.AgentRun draftRun = draftDriver.draftQuestion(projectId);
         return NodeResponse.from(nodeService.getNode(draftRun.producedNodeId()).orElseThrow());
     }

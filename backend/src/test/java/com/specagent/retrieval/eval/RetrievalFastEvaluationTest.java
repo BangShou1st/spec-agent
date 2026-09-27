@@ -43,9 +43,10 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Deterministic offline retrieval corpus for the blocking RAG gate. Every
- * metric below is calculated from the ordered retrieval results produced by
- * the real hybrid retriever or the real bounded retrieval-context selector.
+ * 文件名:RetrievalFastEvaluationTest.java
+ *
+ * 测试目标:面向阻塞式 RAG 关卡的确定性离线检索评估语料。以下每个指标
+ * 都由真实的混合检索器或有界的检索上下文选择器产出的有序检索结果计算而来。
  */
 @SpringBootTest(properties = "spec.agent.retrieval.embedding.provider=fake")
 @ActiveProfiles("test")
@@ -77,8 +78,8 @@ class RetrievalFastEvaluationTest {
         List<ScenarioResult> scenarios = new ArrayList<>();
         int maxWorkingLineage = 0;
 
-        // E1 — long route recall, plus the working-memory evidence used by the
-        // artifact. The historical fact is outside the recent route window.
+        // E1 — 长路线召回,以及 artifact 依赖的工作记忆证据。
+        // 历史事实位于最近的路线窗口之外。
         Project longRouteProject = projectService.createProject("eval E1 long route");
         UUID longRoute = longRouteProject.activeRouteId();
         Node oldFact = nodeService.createRootNode(longRouteProject.id(), longRoute,
@@ -95,7 +96,7 @@ class RetrievalFastEvaluationTest {
         scenarios.add(fromSnapshot("E1-long-route-recall", longRouteProject.id(), longRoute,
                 List.of("node:" + oldFact.id()), longSnapshot.retrievedContext()));
 
-        // E2/E3 — the same project has two routes with conflicting evidence.
+        // E2/E3 — 同一项目下两条路线存在相互冲突的证据。
         Project routeProject = projectService.createProject("eval E2 route isolation");
         UUID routeA = routeProject.activeRouteId();
         Node routeAFact = nodeService.createRootNode(routeProject.id(), routeA,
@@ -113,8 +114,8 @@ class RetrievalFastEvaluationTest {
                         routeProject.id(), routeA, routeAFact.id(), "PROJECT", "按量收费",
                         List.of(RetrievalScope.PROJECT), 8, 8_000, Set.of(), Set.of()))));
 
-        // E4 — another project contains identical text; project scoping must
-        // still make the P2 row impossible to return for a P1 query.
+        // E4 — 另一项目含有相同文本;项目作用域必须保证 P2 的记录
+        // 绝不可能出现在 P1 的查询结果里。
         Project p1 = projectService.createProject("eval E4 P1");
         Node p1Fact = nodeService.createFloatingWorkspaceNode(p1.id(), NodeKind.KNOWLEDGE,
                 "NOTE", Map.of("text", "跨项目隔离的相似事实"), NodeAuthorKind.USER,
@@ -129,8 +130,7 @@ class RetrievalFastEvaluationTest {
                         List.of(RetrievalScope.PROJECT), 8, 8_000, Set.of(), Set.of()))));
         assertThat(entryRepository.findBySourceRef(p2.id(), "node:" + p2Fact.id())).isPresent();
 
-        // E5 — resource chunks retain their source reference and are retrieved
-        // through the resource lane.
+        // E5 — 资源分块保留其来源引用,并通过资源通道被检索到。
         Project resourceProject = projectService.createProject("eval E5 resource");
         UUID resourceRoute = resourceProject.activeRouteId();
         Node resourceAnchor = nodeService.createRootNode(resourceProject.id(), resourceRoute,
@@ -149,7 +149,7 @@ class RetrievalFastEvaluationTest {
                         "数据留存要求180天", List.of(RetrievalScope.RESOURCE), 8, 8_000,
                         Set.of(), Set.of()))));
 
-        // E6 — authority ordering is observed from the real fused ordering.
+        // E6 — 权威排序从真实的融合排序结果中观察。
         Project authorityProject = projectService.createProject("eval E6 authority");
         String authorityText = "权威排序的确定性事实";
         Node confirmed = nodeService.createFloatingWorkspaceNode(authorityProject.id(),
@@ -168,8 +168,7 @@ class RetrievalFastEvaluationTest {
         assertThat(entryRepository.findBySourceRef(authorityProject.id(), "node:" + proposed.id()))
                 .isPresent();
 
-        // E7 — the context selector removes duplicate content hashes while
-        // preserving ordered source references.
+        // E7 — 上下文选择器剔除重复的内容哈希,同时保持来源引用的有序性。
         Project duplicateProject = projectService.createProject("eval E7 duplicate");
         UUID duplicateRoute = duplicateProject.activeRouteId();
         Node duplicateA = nodeService.createRootNode(duplicateProject.id(), duplicateRoute,
@@ -183,7 +182,7 @@ class RetrievalFastEvaluationTest {
         scenarios.add(fromSnapshot("E7-duplicate-elimination", duplicateProject.id(), duplicateRoute,
                 List.of("node:" + duplicateA.id(), "node:" + duplicateB.id()), duplicateItems));
 
-        // E8 — after enrichment, vector is one of the actual candidate lanes.
+        // E8 — 完成向量化后,vector 是实际参与的候选通道之一。
         Project vectorProject = projectService.createProject("eval E8 vector");
         Node vectorNode = nodeService.createFloatingWorkspaceNode(vectorProject.id(), NodeKind.KNOWLEDGE,
                 "NOTE", Map.of("text", "向量 lane 的确定性检索事实"), NodeAuthorKind.USER,
@@ -197,8 +196,8 @@ class RetrievalFastEvaluationTest {
         scenarios.add(fromEntries("E8-vector-lane", vectorProject.id(), null,
                 List.of("node:" + vectorNode.id()), retrieve(vectorQuery)));
 
-        // E9 — provider unavailability only removes vector candidates; lexical
-        // retrieval remains live after the derived row becomes UNAVAILABLE.
+        // E9 — 提供方不可用只会移除 vector 候选;派生行变为 UNAVAILABLE 后
+        // lexical 检索仍然可用。
         Project fallbackProject = projectService.createProject("eval E9 fallback");
         Node fallbackNode = nodeService.createFloatingWorkspaceNode(fallbackProject.id(), NodeKind.KNOWLEDGE,
                 "NOTE", Map.of("text", "provider unavailable 时仍可用的 lexical 事实"),
@@ -213,7 +212,7 @@ class RetrievalFastEvaluationTest {
         scenarios.add(fromEntries("E9-vector-unavailable-fallback", fallbackProject.id(), null,
                 List.of("node:" + fallbackNode.id()), retrieve(fallbackQuery)));
 
-        // E10 — secret-shaped content is absent from the index.
+        // E10 — 密钥形态的内容不进入索引。
         Project secretProject = projectService.createProject("eval E10 secret");
         Node safeNode = nodeService.createFloatingWorkspaceNode(secretProject.id(), NodeKind.KNOWLEDGE,
                 "NOTE", Map.of("text", "安全索引内容"), NodeAuthorKind.USER,

@@ -26,27 +26,26 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
- * HTTPS Git Skill import backed by JGit. The client never runs hooks, never
- * initializes submodules, and never smudges LFS content — matching the
- * no-execution/no-dependency-installation import posture.
+ * 文件名:GitSkillImporter.java
  *
- * <p>Security controls (fail-closed):
- * <ul>
- *   <li>HTTPS only (via {@link OutboundNetworkPolicy});</li>
- *   <li>URL validated before connect — private/link-local/metadata hosts are
- *       rejected by resolved address, not just by name;</li>
- *   <li>depth-1 bare clone bounds the download to the resolved commit;</li>
- *   <li>extracted tree walked with path containment + size limits;</li>
- *   <li>the resolved commit SHA becomes the immutable source identity — ref
- *       moves never rewrite an installed version.</li>
- * </ul>
- */
+ * 用途:基于 JGit 的 HTTPS Git Skill 导入器。客户端绝不运行 hooks、绝不
+ * 初始化子模块、绝不 smudge LFS 内容 —— 与"不执行代码/不安装依赖"的导入
+ * 安全姿态保持一致。
+ *
+ * 安全控制(默认失败关闭):
+ * - 仅允许 HTTPS(经由 {@link OutboundNetworkPolicy});
+ * - 连接前校验 URL —— 私有/链路本地/元数据主机按解析后的地址拒绝,
+ *       而不只是按主机名拒绝;
+ * - depth-1 裸 clone 把下载范围限制在解析出的那个 commit;
+ * - 提取的目录树以路径包含性 + 大小限额遍历;
+ * - 解析出的 commit SHA 成为不可变的源身份 —— ref 移动绝不会改写已安装
+ *       的版本。 */
 @Component
 public class GitSkillImporter {
 
     private static final String SKILL_MD = "SKILL.md";
 
-    /** Upper bound on Skill directories named in one failure message. */
+    /** 单条失败消息中最多列出的 Skill 目录数量上限。 */
     private static final int MAX_REPORTED_SKILL_ROOTS = 5;
 
     private final SkillProperties properties;
@@ -58,20 +57,18 @@ public class GitSkillImporter {
     }
 
     /**
-     * Imports a Skill from an HTTPS git repository into an in-memory validated
-     * package model. The working tree of the resolved commit is walked with
-     * the same containment and size rules as ZIP imports.
+     * 从 HTTPS git 仓库导入一个 Skill,产出内存中的、已校验的包模型。解析出的
+     * commit 工作树按与 ZIP 导入相同的包含性与大小规则遍历。
      *
-     * @param ref commit-ish (branch/tag/SHA) to pin; blank means remote HEAD
+     * @param ref 要固定的 commit-ish(分支/标签/SHA);留空表示远程 HEAD
      */
     public ExtractedResult importHttps(String repoUrl, String ref) {
         return importHttps(repoUrl, ref, null);
     }
 
     /**
-     * Imports one Skill package out of the repository. {@code subPath} selects
-     * a nested Skill directory (for example {@code skills/brainstorming});
-     * blank selects the repository root package.
+     * 从仓库导入一个 Skill 包。{@code subPath} 用于选择嵌套的 Skill 目录
+     * (例如 {@code skills/brainstorming});留空表示仓库根目录的包。
      */
     public ExtractedResult importHttps(String repoUrl, String ref, String subPath) {
         TreeInventory inventory = fetchTree(repoUrl, ref);
@@ -82,10 +79,9 @@ public class GitSkillImporter {
     }
 
     /**
-     * Walks the resolved commit's tree without requiring a package shape, so a
-     * repository that holds many Skills can be inspected and offered for
-     * selection instead of failing outright. Rules are identical to extraction:
-     * hidden entries skipped, path containment, file-count and byte bounds.
+     * 遍历解析出的 commit 树但不要求包形态,从而可以检视一个含多个 Skill 的
+     * 仓库并供用户选择,而不是直接失败。规则与提取完全一致:跳过隐藏条目、
+     * 路径包含性、文件数与字节上限。
      */
     public TreeInventory fetchTree(String repoUrl, String ref) {
         String url = policy.validateOutboundUrl(repoUrl, properties.getGitMaxRedirects())
@@ -121,10 +117,9 @@ public class GitSkillImporter {
     }
 
     /**
-     * A transport failure is reported with its real cause and with the route
-     * that was used, so "TransportException" is never a dead end: the operator
-     * can see whether the JVM went direct while the browser used a proxy, and
-     * which knob changes it.
+     * 传输失败会带上真实原因和当时使用的路由一起上报,让 "TransportException"
+     * 不再是死胡同:运维可以看清 JVM 是直连而浏览器走了代理,以及改哪个
+     * 配置项能解决。
      */
     private SkillImportException transportFailure(String url, GitTransportProxy.Route route,
                                                   Exception cause) {
@@ -158,19 +153,19 @@ public class GitSkillImporter {
     }
 
     /**
-     * Walked, validated contents of one resolved commit.
+     * 一次解析出的 commit 的、已遍历校验的内容。
      *
-     * @param files     package files (hidden entries excluded)
-     * @param manifests marketplace manifests, read for attribution only
+     * @param files     包文件(已排除隐藏条目)
+     * @param manifests 市场清单文件,仅用于归属判定而读取
      */
     public record TreeInventory(String commitSha, List<SkillSourceFile> files, long totalBytes,
                                 List<SkillSourceFile> manifests) {
     }
 
     /**
-     * Bare depth-1 clone: downloads only the pinned commit's objects, creates
-     * no working tree, and — because JGit is the client — never runs any git
-     * hook, never initializes submodules, and never smudges LFS content.
+     * 裸 depth-1 clone:只下载被固定 commit 的对象,不创建工作树;而且因为
+     * 客户端是 JGit,绝不会运行任何 git hook、不会初始化子模块、不会
+     * smudge LFS 内容。
      */
     private String cloneBare(String url, String ref, Path dir)
             throws GitAPIException, IOException {
@@ -232,10 +227,9 @@ public class GitSkillImporter {
                 treeWalk.setRecursive(true);
                 while (treeWalk.next()) {
                     String path = treeWalk.getPathString();
-                    // Marketplace manifests are read for attribution only: they
-                    // stay out of the package (they are repository metadata),
-                    // but discovery needs them to know which plugin owns which
-                    // Skill directory.
+                    // 市场清单只为归属判定而读取:它们不进入包(属于仓库
+                    // 元数据),但发现功能需要靠它知道哪个 Skill 目录属于
+                    // 哪个插件。
                     EntryDisposition disposition = dispositionOf(path);
                     if (disposition == EntryDisposition.SKIP) {
                         continue;
@@ -271,20 +265,19 @@ public class GitSkillImporter {
         }
     }
 
-    /** What one repository tree entry becomes during an import. */
+    /** 一次导入中,单个仓库树条目的去向。 */
     enum EntryDisposition {
-        /** Becomes part of the Skill package. */
+        /** 成为 Skill 包的一部分。 */
         PACKAGE,
-        /** Read for attribution, never packaged. */
+        /** 仅供归属判定读取,绝不打包。 */
         MANIFEST,
-        /** Repository metadata: ignored entirely. */
+        /** 仓库元数据:完全忽略。 */
         SKIP
     }
 
     /**
-     * Classifies one tree entry. A marketplace manifest is metadata too, but it
-     * must be readable even though it is never packaged — discovery uses it to
-     * attribute Skill directories to a plugin.
+     * 判定单个树条目的去向。市场清单文件同样属于元数据,虽然绝不打包,但必须
+     * 可读 —— 发现功能靠它把 Skill 目录归属到插件。
      */
     static EntryDisposition dispositionOf(String path) {
         if (SkillPackageLayout.MARKETPLACE_MANIFESTS.contains(path)) {
@@ -294,11 +287,10 @@ public class GitSkillImporter {
     }
 
     /**
-     * Repository metadata is never Skill content. Hidden entries — {@code .git},
-     * {@code .github/...}, {@code .agents/...}, {@code .claude-plugin/...} and
-     * every other dot-prefixed segment — are skipped exactly like the VCS
-     * bookkeeping always was, so a marketplace-style monorepo carrying dot
-     * directories next to its skills no longer fails the whole import.
+     * 仓库元数据绝不是 Skill 内容。隐藏条目 —— {@code .git}、
+     * {@code .github/...}、{@code .agents/...}、{@code .claude-plugin/...} 以及
+     * 其他一切以点开头的路径段 —— 一律像 VCS 簿记文件那样跳过,这样市场式
+     * monorepo 在 skill 旁边携带点目录时,不会再导致整个导入失败。
      */
     static boolean isHiddenEntry(String path) {
         if (path.startsWith(".")) {
@@ -313,15 +305,13 @@ public class GitSkillImporter {
     }
 
     /**
-     * A Skill package is one Skill: SKILL.md at the package root. When the
-     * selected directory is instead part of a library (a plugin marketplace or
-     * a monorepo), the failure names the Skill directories the repository
-     * actually offers, so the caller can retry with one of them instead of
-     * guessing.
+     * 一个 Skill 包就是一个 Skill:SKILL.md 必须位于包根。若所选目录实际是
+     * 一个"库"(插件市场或 monorepo)的一部分,失败消息会列出仓库实际提供
+     * 的 Skill 目录,调用方可改用其中之一重试,而不用猜。
      *
-     * @param files     the selected package files (already sliced)
-     * @param catalogue every file in the repository, used only to report candidates
-     * @param subPath   the selected subdirectory, "" for the repository root
+     * @param files     所选包文件(已切分)
+     * @param catalogue 仓库内全部文件,仅用于报告候选目录
+     * @param subPath   所选子目录,仓库根为 ""
      */
     SkillSourceFile requireRootSkillMarkdown(List<SkillSourceFile> files,
                                              List<SkillSourceFile> catalogue,
@@ -358,16 +348,15 @@ public class GitSkillImporter {
                 + "), for example " + skillRoots.get(0) + ".");
     }
 
-    /** Overload for the repository-root case. */
+    /** 仓库根目录场景的重载。 */
     SkillSourceFile requireRootSkillMarkdown(List<SkillSourceFile> files) {
         return requireRootSkillMarkdown(files, files, "");
     }
 
-    /** Package-private for path-rule tests; the containment rule itself is unchanged. */
+    /** 包级可见以便路径规则单测;包含性规则本身不变。 */
     String normalizePath(String path) {
         String normalized = path.replace('\\', '/');
-        // Hidden entries were already skipped, so every remaining reachable
-        // case here is a genuine escape attempt.
+        // 隐藏条目已被跳过,因此走到这里的可触发情形都是真正的越界尝试。
         if (normalized.startsWith("/") || normalized.contains("..")) {
             throw new SkillImportException("Git package entry escapes the package root: "
                     + path);

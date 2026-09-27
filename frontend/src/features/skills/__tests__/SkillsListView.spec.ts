@@ -1,3 +1,5 @@
+// 文件名:SkillsListView.spec.ts
+// 用途:Skills 列表页组件测试:mock Skill API,验证列表渲染、导入弹窗入口与页面操作。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'

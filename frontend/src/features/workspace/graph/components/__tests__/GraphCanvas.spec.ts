@@ -1,3 +1,5 @@
+// 文件名:GraphCanvas.spec.ts
+// 用途:GraphCanvas 画布组件单元测试(以 Vue Flow stub 驱动):验证投影挂载、选中/拖拽事件、定位与视口契约。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { defineComponent, h, nextTick } from 'vue'
@@ -9,11 +11,10 @@ import { makeGraphWorkspaceView, makeNode } from '@/test/fixtures'
 import type { GraphWorkspaceView } from '@/shared/contracts/types'
 import { HORIZONTAL_GAP } from '@/features/workspace/graph/graphLayout'
 
-/**
- * Vue Flow stub: jsdom cannot render the real viewport; the canvas only
- * needs the props/events contract to be testable. All fit-style operations
- * are asserted through the deterministic `setViewport` path — the Vue Flow
- * measurement-dependent `fitView` must never be called by the canvas.
+/*
+ * Vue Flow stub:jsdom 无法渲染真实视口;画布只需要 props/事件契约即可
+ * 测试。所有 fit 类操作都通过确定性的 `setViewport` 路径断言——画布绝不
+ * 允许调用依赖节点测量的 Vue Flow `fitView`。
  */
 const VueFlowStub = defineComponent({
   name: 'VueFlow',
@@ -120,7 +121,7 @@ describe('graph canvas', () => {
     expect(wrapper.text()).toContain('还没有任何内容')
     await wrapper.find('[data-test="draft-question"]').trigger('click')
     expect(wrapper.emitted('draft')).toHaveLength(1)
-    // The placeholder never creates a fake node or persists a coordinate.
+    // 占位符绝不创建假节点,也绝不持久化坐标。
     expect(useGraphUiStore().nodePositions).toEqual({})
   })
 
@@ -179,7 +180,7 @@ describe('graph canvas', () => {
     await nextTick()
     expect(fitViewSpy).not.toHaveBeenCalled()
     expect(setViewport).toHaveBeenCalledTimes(1)
-    // bounds n1(0,0,320,220)+n2(HORIZONTAL_GAP,0,...) -> center in viewport
+    // 包围盒 n1(0,0,320,220)+n2(HORIZONTAL_GAP,0,...) → 视口居中
     expect(setViewport).toHaveBeenCalledWith(
       expect.objectContaining({ x: 652 - ((320 + HORIZONTAL_GAP) / 2), y: 312, zoom: 1 }),
       expect.objectContaining({ duration: 0 }),
@@ -217,9 +218,9 @@ describe('graph canvas', () => {
   it('deletion shortcuts are disabled: no node may be dropped from the canvas client-side', () => {
     const wrapper = mountCanvas(viewWithNodes())
     const flow = wrapper.findComponent(VueFlowStub)
-    // Vue Flow defaults deleteKeyCode to 'Backspace'; that only removes the
-    // node from its own in-memory store, so a canonical refresh resurrects it.
-    // Runtime has no single-node delete command -> the shortcut stays off.
+    // Vue Flow 默认把 deleteKeyCode 设为 'Backspace',那只从它自己的内存
+    // store 里删节点,canonical 刷新会让节点复活。运行时没有单节点删除
+    // 命令 → 该快捷键保持关闭。
     expect(flow.props('deleteKeyCode')).toBeNull()
   })
 
@@ -247,7 +248,7 @@ describe('graph canvas', () => {
     const setViewport = vi.spyOn(vf, 'setViewport').mockResolvedValue(true)
     const exposed = wrapper.vm as unknown as { locateNode: (nodeId: string) => Promise<void> }
     await exposed.locateNode('n2')
-    // n2 at (HORIZONTAL_GAP, 0) 320x220 -> centered in the viewport
+    // n2 位于 (HORIZONTAL_GAP, 0) 320x220 → 视口居中
     expect(setViewport).toHaveBeenCalledWith(
       expect.objectContaining({ x: 652 - (HORIZONTAL_GAP + 160), y: 312, zoom: 1 }),
       expect.objectContaining({ duration: 400 }),
@@ -532,7 +533,7 @@ describe('graph canvas', () => {
     const wrapper = mountCanvas(viewWithNodes())
     const flow = wrapper.findComponent(VueFlowStub)
     const edges = flow.props('edges') as unknown[]
-    // Both node states use the stable 320px footprint; routing remains adaptive.
+    // 两种节点状态都用稳定的 320px 外框;路由保持自适应。
     expect(edges[0]).toMatchObject({
       id: 'n1->n2',
       type: 'adaptive',
@@ -561,7 +562,7 @@ describe('graph canvas', () => {
   it('drag-time rerouting switches to vertical handles when the node is dragged below', async () => {
     const wrapper = mountCanvas(viewWithNodes())
     const flow = wrapper.findComponent(VueFlowStub)
-    // n2 (200, 500) center (360, 610): dx=200 < |dy| * 0.8 -> vertical, below.
+    // n2 (200, 500) 中心 (360, 610):dx=200 < |dy| * 0.8 → 纵向,在下。
     ;(flow.vm as unknown as { $emit: (e: string, ...a: unknown[]) => void }).$emit('node-drag', {
       event: {},
       nodes: [{ id: 'n2', position: { x: 200, y: 500 } }],
@@ -598,7 +599,7 @@ describe('graph canvas', () => {
     const flow = wrapper.findComponent(VueFlowStub)
     const ui = useGraphUiStore()
     const before = localStorage.getItem('spec-agent.graph-layout.v1.p1')
-    // Mid-drag moves must stay browser-only.
+    // 拖拽中途的移动必须只留在浏览器端。
     ;(flow.vm as unknown as { $emit: (e: string, ...a: unknown[]) => void }).$emit('node-drag', {
       event: {},
       nodes: [{ id: 'n2', position: { x: -500, y: 0 } }],
@@ -606,7 +607,7 @@ describe('graph canvas', () => {
     })
     expect(localStorage.getItem('spec-agent.graph-layout.v1.p1')).toBe(before)
     expect(ui.nodePositions.n2).toEqual({ x: HORIZONTAL_GAP, y: 0 })
-    // Only the drag stop persists the new position.
+    // 只有拖拽结束时才持久化新位置。
     flow.vm.$emit('node-drag-stop', {
       nodes: [{ id: 'n2', position: { x: -500, y: 0 } }],
     })
@@ -649,8 +650,7 @@ describe('GraphCanvas onConnect (connection affordance)', () => {
       targetHandle: 'target-left',
     })
     await wrapper.vm.$nextTick()
-    // pending:run-x is not a canonical Node; the frontend refuses to even
-    // raise a relation proposal.
+    // pending:run-x 不是 canonical 节点;前端连关系提案都不抛出。
     expect(wrapper.emitted('relation-proposal')).toBeUndefined()
   })
 
@@ -704,7 +704,7 @@ describe('GraphCanvas onConnect (connection affordance)', () => {
     })
     await wrapper.vm.$nextTick()
     // 真实 mouse drag → ONLY a relation proposal; nothing is persisted and no
-    // create-relation event is raised until the user confirms type/direction.
+    // 在用户确认类型/方向之前绝不发出 create-relation 事件。
     expect(wrapper.emitted('relation-proposal')?.[0]?.[0]).toEqual({
       sourceNodeId: 'n1',
       targetNodeId: 'n2',
@@ -721,14 +721,14 @@ describe('GraphCanvas viewport settlement contract', () => {
     vi.restoreAllMocks()
   })
 
-  /**
-   * Contract:
-   * - data-viewport-settled MUST NOT advance when applyViewport starts
-   * - while setViewport Promise unresolved it MUST remain unchanged
-   * - after Promise resolves it advances exactly once
-   * - viewport-change-end is a separate path; it advances once per user/pan
-   *   interaction and must not double-count the same programmatic transition
-   * - overlapping requests: stale Promise resolution must not mark newer request as settled
+  /*
+   * 契约:
+   * - applyViewport 启动时 data-viewport-settled 绝不能推进
+   * - setViewport 的 Promise 未解决期间必须保持不变
+   * - Promise 解决后恰好推进一次
+   * - viewport-change-end 是另一条路径;每次用户平移/缩放各推进一次,
+   *   且绝不能对同一次程序化过渡重复计数
+   * - 重叠请求:过期的 Promise 解决绝不能把更新的请求标记为 settled
    */
   function deferred<T = boolean>(): { promise: Promise<T>; resolve: (v: T) => void } {
     let resolve!: (v: T) => void
@@ -747,19 +747,19 @@ describe('GraphCanvas viewport settlement contract', () => {
     const first = deferred<boolean>()
     const setViewport = vi.spyOn(vf, 'setViewport').mockReturnValue(first.promise as unknown as ReturnType<typeof vf.setViewport>)
 
-    // Trigger one programmatic viewport transition (toolbar fit-view uses duration 300)
+    // 触发一次程序化视口过渡(工具栏 fit-view 使用 duration 300)
     await wrapper.find('[data-test="fit-view"]').trigger('click')
-    // While the transition Promise is still pending, settled must NOT have advanced
+    // 过渡 Promise 仍挂起时,settled 绝不能已推进
     const during = settled(wrapper)
     expect(setViewport).toHaveBeenCalledTimes(1)
-    // The bug was: revision incremented immediately at start, so `during` already changed.
-    // Correct: during is still undefined (no settled write yet).
+    // 曾有的 bug:revision 在启动时立即递增,导致 during 已经变化。
+    // 正确行为:during 仍是 undefined(尚未写 settled)。
     expect(during).toBeUndefined()
     expect(wrapper.emitted('viewport-settled')).toBeUndefined()
 
     first.resolve(true)
     await first.promise
-    // Vue's next microtask chain after .then() must have written exactly once
+    // .then() 之后 Vue 的下一轮微任务链必须恰好写入一次
     await nextTick()
     await nextTick()
     const after = settled(wrapper)
@@ -771,7 +771,7 @@ describe('GraphCanvas viewport settlement contract', () => {
     const wrapper = mountCanvas(viewWithNodes())
     const vf = useVueFlow('spec-agent-graph-canvas')
     setCanvasSize(vf)
-    // Prime with an already-settled transition so baseline is 1
+    // 先用一次已 settled 的过渡铺底,使基线为 1
     const d1 = deferred<boolean>()
     const setViewport = vi.spyOn(vf, 'setViewport').mockReturnValue(d1.promise as unknown as ReturnType<typeof vf.setViewport>)
     await wrapper.find('[data-test="fit-view"]').trigger('click')
@@ -781,12 +781,12 @@ describe('GraphCanvas viewport settlement contract', () => {
     await nextTick()
     expect(settled(wrapper)).toBe('1')
 
-    // Second request: keep it pending indefinitely
+    // 第二个请求:让它无限期挂起
     const d2 = deferred<boolean>()
     setViewport.mockReturnValue(d2.promise as unknown as ReturnType<typeof vf.setViewport>)
     await wrapper.find('[data-test="fit-view"]').trigger('click')
     expect(settled(wrapper)).toBe('1')
-    // Still 1 even after a few ticks while d2 is unresolved
+    // d2 未解决期间,即使过了几个 tick 也仍是 1
     await nextTick()
     await nextTick()
     expect(settled(wrapper)).toBe('1')
@@ -807,7 +807,7 @@ describe('GraphCanvas viewport settlement contract', () => {
     await nextTick()
     expect(settled(wrapper)).toBe('1')
     expect(wrapper.emitted('viewport-settled')).toHaveLength(1)
-    // No second increment from the same transition
+    // 同一次过渡绝不产生第二次递增
     await nextTick()
     expect(settled(wrapper)).toBe('1')
     expect(wrapper.emitted('viewport-settled')).toHaveLength(1)
@@ -821,18 +821,18 @@ describe('GraphCanvas viewport settlement contract', () => {
     const dB = deferred<boolean>()
     const setViewport = vi.spyOn(vf, 'setViewport').mockReturnValue(dA.promise as unknown as ReturnType<typeof vf.setViewport>)
 
-    // Request A
+    // 请求 A
     await wrapper.find('[data-test="fit-view"]').trigger('click')
     expect(setViewport).toHaveBeenCalledTimes(1)
     expect(settled(wrapper)).toBeUndefined()
 
-    // Request B starts before A resolves
+    // 请求 B 在 A 解决之前启动
     setViewport.mockReturnValue(dB.promise as unknown as ReturnType<typeof vf.setViewport>)
     await wrapper.find('[data-test="fit-view"]').trigger('click')
     expect(setViewport).toHaveBeenCalledTimes(2)
     expect(settled(wrapper)).toBeUndefined()
 
-    // A resolves late — must be ignored
+    // A 迟到解决——必须被忽略
     dA.resolve(true)
     await dA.promise
     await nextTick()
@@ -840,7 +840,7 @@ describe('GraphCanvas viewport settlement contract', () => {
     expect(settled(wrapper)).toBeUndefined()
     expect(wrapper.emitted('viewport-settled')).toBeUndefined()
 
-    // B resolves — now exactly one settlement for the latest request
+    // B 解决——对最新请求恰好一次落定
     dB.resolve(true)
     await dB.promise
     await nextTick()
@@ -964,8 +964,8 @@ describe('GraphCanvas one-shot explicit fit revalidation', () => {
     const d1 = deferred<boolean>()
     const setViewport = vi.spyOn(vf, 'setViewport').mockReturnValue(d1.promise as unknown as ReturnType<typeof vf.setViewport>)
 
-    // Explicit Fit View while only the pending card exists (measured 320x150
-    // via fallback-aware collect; the write must use pending geometry).
+    // 只有 pending 卡片存在时显式 Fit View(经兜底感知的 collect 实测为
+    // 320x150;写入必须使用 pending 几何)。
     await reportMeasured(wrapper, 'pending:run-1', 320, 150)
     await nextTick()
     await wrapper.find('[data-test="fit-view"]').trigger('click')
@@ -975,7 +975,7 @@ describe('GraphCanvas one-shot explicit fit revalidation', () => {
     await nextTick()
     await nextTick()
 
-    // Pending disappears; the real canonical node appears with measured size.
+    // Pending 消失,带有实测尺寸的真实 canonical 节点出现。
     const d2 = deferred<boolean>()
     setViewport.mockReturnValue(d2.promise as unknown as ReturnType<typeof vf.setViewport>)
     await wrapper.setProps({ view: viewWithRealNode(), pendings: [], activeNodeId: 'n1' })
@@ -984,8 +984,8 @@ describe('GraphCanvas one-shot explicit fit revalidation', () => {
     await nextTick()
     await nextTick()
 
-    // The one-shot revalidation must issue exactly one second write using
-    // the real node geometry — not the stale pending fit.
+    // 一次性重校验必须恰好发出第二次写入,使用真实节点几何——
+    // 而不是过期的 pending fit。
     expect(setViewport).toHaveBeenCalledTimes(2)
     d2.resolve(true)
     await d2.promise
@@ -1010,8 +1010,7 @@ describe('GraphCanvas one-shot explicit fit revalidation', () => {
     await nextTick()
     await nextTick()
 
-    // Real node arrives but Vue Flow has not measured it yet: NO revalidation,
-    // intent stays armed.
+    // 真实节点已到达但 Vue Flow 尚未测量:绝不重校验,意图保持武装。
     const dLater = deferred<boolean>()
     setViewport.mockReturnValue(dLater.promise as unknown as ReturnType<typeof vf.setViewport>)
     await wrapper.setProps({ view: viewWithRealNode(), pendings: [], activeNodeId: 'n1' })
@@ -1019,7 +1018,7 @@ describe('GraphCanvas one-shot explicit fit revalidation', () => {
     await nextTick()
     expect(setViewport).toHaveBeenCalledTimes(1)
 
-    // Measurement arrives later: exactly one revalidation fires.
+    // 测量随后到达:恰好触发一次重校验。
     await reportMeasured(wrapper, 'n1', 320, 286)
     await nextTick()
     await nextTick()
@@ -1039,14 +1038,14 @@ describe('GraphCanvas one-shot explicit fit revalidation', () => {
     await nextTick()
     await wrapper.find('[data-test="fit-view"]').trigger('click')
     expect(setViewport).toHaveBeenCalledTimes(1)
-    // Programmatic settlement of the explicit fit itself must NOT cancel.
+    // 显式 fit 本身的程序化落定绝不能取消意图。
     d1.resolve(true)
     await d1.promise
     await nextTick()
     await nextTick()
     expect(setViewport).toHaveBeenCalledTimes(1)
 
-    // User zoom is a new viewport intent: cancels the pending-fit intent.
+    // 用户缩放是新的视口意图:取消 pending-fit 意图。
     await wrapper.find('[data-test="zoom-in"]').trigger('click')
     expect(zoomIn).toHaveBeenCalledTimes(1)
 
@@ -1074,7 +1073,7 @@ describe('GraphCanvas one-shot explicit fit revalidation', () => {
     await nextTick()
     await nextTick()
 
-    // A genuine user pan/zoom gesture ends: cancels the pending-fit intent.
+    // 一次真实的用户平移/缩放手势结束:取消 pending-fit 意图。
     const flow = wrapper.findComponent(VueFlowStub)
     flow.vm.$emit('viewport-change-end')
     await nextTick()
@@ -1116,8 +1115,8 @@ describe('GraphCanvas one-shot explicit fit revalidation', () => {
     await nextTick()
     await nextTick()
 
-    // Later unrelated refreshes (same view object shape, safeRegion-only
-    // prop updates) must NOT trigger a third fit.
+    // 后续无关刷新(view 对象形状不变、仅 safeRegion prop 更新)绝不能
+    // 触发第三次 fit。
     await wrapper.setProps({ view: viewWithRealNode() })
     await nextTick()
     await nextTick()
@@ -1156,7 +1155,7 @@ describe('GraphCanvas one-shot explicit fit revalidation', () => {
     await nextTick()
     await nextTick()
 
-    // An unrelated refresh afterwards must not produce any automatic fit.
+    // 之后的无关刷新绝不能产生任何自动 fit。
     await wrapper.setProps({ view: viewWithRealNode() })
     await nextTick()
     await nextTick()

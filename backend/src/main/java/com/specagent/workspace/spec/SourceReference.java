@@ -6,10 +6,11 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.UUID;
 
 /**
- * A provenance pointer from a spec claim to a runtime record.
+ * 文件名:SourceReference.java
  *
- * <p>Confirmed claims must carry at least one source reference so the spec is
- * traceable to nodes, answers, patches, context snapshots, or routes.
+ * 用途:从规格 claim 指向运行时记录的溯源指针(kind + refId)。已确认的
+ * claim 必须携带至少一条来源引用,使规格可以追溯到节点、回答、补丁、上下文
+ * 快照或 route——这是规格可审计、可复现的关键。
  */
 public class SourceReference {
 

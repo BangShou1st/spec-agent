@@ -1,6 +1,5 @@
-import { test, expect } from '@playwright/test'
-import { buildThreeNodeLineage, closeFloatingWorkspaceWindows, createProject, fitGraph } from './helpers'
 
+import { test, expect, createProject, fitGraph, closeFloatingWorkspaceWindows, buildThreeNodeLineage } from './helpers'
 test('re-answer creates a NEW Question Node; old Question and Answer stay untouched', async ({ page, request }) => {
   await createProject(page, 'E2E Re-answer New Node')
   await buildThreeNodeLineage(page)

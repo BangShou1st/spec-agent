@@ -28,8 +28,10 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Slices C+D: bounded context, strict parser, fail-closed validator,
- * provider-neutral brain (stubbed gateway, no OpenCode coupling).
+ * 文件名:GlobalAssistantSliceCDTest.java
+ *
+ * 测试目标:Slice C+D——有界的上下文构建、严格解析器、失败收场的校验器,
+ * 以及供应商中立的大脑(网关打桩,不与 OpenCode 耦合)。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -50,10 +52,9 @@ class GlobalAssistantSliceCDTest {
         }
         GlobalAssistantContext context = contextBuilder.build(thread.id(), "current",
                 new GlobalAssistantContextBuilder.UiRequest("PROJECTS", null));
-        // No summary yet: every message is unsummarized remainder inside the hard bound.
+        // 尚无摘要:所有未摘要消息都在硬上限内保留。
         assertThat(context.recentConversation()).hasSizeLessThanOrEqualTo(33);
-        // Six V1 tools: the four project tools plus the read-only skill
-        // discovery and the staging-only skill import.
+        // V1 的六个工具:四个项目工具,加上只读的 skill 发现与只做暂存的 skill 导入。
         assertThat(context.toolDescriptors()).hasSize(6);
         assertThat(context.recentProjectHints()).hasSizeLessThanOrEqualTo(5);
         for (GlobalAssistantContext.ConversationTurn turn : context.recentConversation()) {
@@ -110,10 +111,10 @@ class GlobalAssistantSliceCDTest {
     }
     @Test
     void validatorAcceptsSkillImportDecision() {
-        // The documented V1 contract: the assistant may stage a Skill import.
-        // Regression guard for the incident where the catalog advertised
-        // skill.import but the decision validator rejected it as unknown,
-        // surfacing as MODEL_INVALID_RESPONSE on every install attempt.
+        // V1 文档化契约:助手可以暂存一条 Skill 导入。
+        // 这里是对一次线上事故的回归守护:当时目录已声明 skill.import,
+        // 但决策校验器把它当未知工具拒绝,导致每次安装都以
+        // MODEL_INVALID_RESPONSE 收场。
         GlobalAssistantDecision decision = new GlobalAssistantDecision(
                 GlobalAssistantDecision.DecisionKind.TOOL, null,
                 new GlobalAssistantDecision.ToolRequest("skill.import",
@@ -152,8 +153,7 @@ class GlobalAssistantSliceCDTest {
                 new GlobalAssistantContextBuilder.UiRequest("SKILLS", null));
         String tools = renderer.render(context, List.of()).get(1).content();
 
-        // The new tool must actually reach the model, with its arguments and its
-        // side-effect class, or the assistant still cannot start an import.
+        // 新工具必须真正到达模型,包括参数和副作用类别,否则助手依然无法发起导入。
         assertThat(tools).contains("skill.import");
         assertThat(tools).contains("\"url\"");
         assertThat(tools).contains("\"ref\"");

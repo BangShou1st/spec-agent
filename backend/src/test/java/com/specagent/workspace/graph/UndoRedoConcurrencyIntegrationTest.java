@@ -36,15 +36,15 @@ import java.util.concurrent.TimeUnit;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Undo/Redo concurrency: two real independent transactions racing on the same
- * project/operation stack must serialize against each other and against live
- * graph mutations, so the linear undo/redo stack is never half-applied or
- * double-applied.
+ * 文件名:UndoRedoConcurrencyIntegrationTest.java
  *
- * <p>Deliberately NOT {@code @Transactional}: each racer must run in its own
- * database transaction (the service methods are transactional and acquire the
- * relevant row locks), so the setup rows are committed before the threads
- * start and the locks actually contend.
+ * 测试目标:撤销/重做的并发正确性——两个真实独立事务在同一项目的操作栈
+ * 上竞争时,必须彼此串行化、也必须与进行中的图变更串行化,从而线性
+ * undo/redo 栈永远不会出现半应用或重复应用。
+ *
+ * 刻意不使用 {@code @Transactional}:每个竞争者必须运行在自己的数据库
+ * 事务中(服务方法本身有事务并获取相关行锁),因此准备数据需要先提交,
+ * 行锁才能真正产生竞争。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -92,11 +92,10 @@ class UndoRedoConcurrencyIntegrationTest {
     }
 
     /**
-     * B2.3: Answer finalization and Undo race on the same node. The node-row
-     * lock serializes them, so exactly one wins — and the forbidden state "a
-     * retracted node carrying an immutable Answer" can never be observed. If the
-     * Answer wins, Undo fails closed (node stays active); if Undo wins, the
-     * later Answer fails closed (RETRACTED_NODE_REFERENCE).
+     * B2.3:Answer 落库与 Undo 在同一节点上竞争。节点行锁将二者串行化,恰好
+     * 一方获胜——"已撤回节点却携带不可变 Answer"这一禁止状态永远不可被观察到。
+     * Answer 获胜则 Undo 快速失败(节点保持活跃);Undo 获胜则随后的 Answer
+     * 快速失败(RETRACTED_NODE_REFERENCE)。
      */
     @Test
     void undoAndAnswerFinalizationNeverCoexistRetractedNodeWithImmutableAnswer() throws Exception {
@@ -121,7 +120,7 @@ class UndoRedoConcurrencyIntegrationTest {
             Attempt undoAttempt = undoFuture.get(60, TimeUnit.SECONDS);
             Attempt answerAttempt = answerFuture.get(60, TimeUnit.SECONDS);
 
-            // Exactly one of the two conflicting operations succeeds.
+            // 两个冲突操作中恰好一个成功。
             assertThat(undoAttempt.success ^ answerAttempt.success)
                     .as("exactly one of undo / finalize may succeed")
                     .isTrue();
@@ -129,7 +128,7 @@ class UndoRedoConcurrencyIntegrationTest {
             boolean nodeRetracted = nodeRepository.findById(root.id()).orElseThrow().isRetracted();
             boolean answerExists = answerService.existsAnswerFor(routeId, root.id());
 
-            // The forbidden coexistence is never observed.
+            // 禁止的共存状态永远不可被观察到。
             assertThat(nodeRetracted && answerExists)
                     .as("a retracted node must never carry an immutable answer")
                     .isFalse();
@@ -150,18 +149,16 @@ class UndoRedoConcurrencyIntegrationTest {
     }
 
     /**
-     * B2.5: two concurrent undos of a single undoable operation must not act on
-     * the same operation twice. The project-row lock serializes them: the first
-     * transaction undoes the operation (UNDONE), the second re-reads the stack
-     * under the lock and finds nothing left to undo. Exactly one transition
-     * occurs.
+     * B2.5:两个并发 undo 作用于同一个可撤销操作时,不得对同一操作作用两次。
+     * 项目行锁将二者串行化:第一个事务撤销该操作(UNDONE),第二个事务在锁内
+     * 重读操作栈,发现已无可撤销内容。恰好发生一次状态迁移。
      */
     @Test
     void concurrentUndoOfSingleOperationDoesNotDoubleApply() throws Exception {
         project = projectService.createProject("并发撤销 " + UUID.randomUUID());
         UUID routeId = project.activeRouteId();
         commandService.createRootDraftNode(project.id(), routeId, "NOTE", Map.of("text", "root"));
-        // Exactly one reversible ACTIVE operation exists.
+        // 存在恰好一个可回滚的 ACTIVE 操作。
 
         CyclicBarrier startLine = new CyclicBarrier(2);
         ExecutorService pool = Executors.newFixedThreadPool(2);
@@ -191,13 +188,10 @@ class UndoRedoConcurrencyIntegrationTest {
     }
 
     /**
-     * B2.5: Undo racing a live graph mutation (creating a semantic relation)
-     * must never produce a half-applied stack. The project-row lock serializes
-     * the two transactions, so each observes a consistent operation log. Either
-     * the child is retracted and the relation creation refuses the retracted
-     * endpoint, or the relation is created on a live child and then undone — but
-     * the child is never simultaneously retracted AND referenced by an active
-     * relation.
+     * B2.5:Undo 与进行中的图变更(创建语义关系)竞争时,绝不能产生半应用的
+     * 操作栈。项目行锁串行化两个事务,各自都观察到一致的操作日志:要么
+     * child 被撤回、关系创建拒绝已撤回端点;要么关系创建在 child 存活时成功、
+     * 之后被撤销——但 child 绝不会同时处于"已撤回"且"被活跃关系引用"的状态。
      */
     @Test
     void undoAndConcurrentMutationAreSerializedWithoutHalfAppliedStack() throws Exception {
@@ -225,20 +219,19 @@ class UndoRedoConcurrencyIntegrationTest {
             Attempt undoAttempt = undoFuture.get(60, TimeUnit.SECONDS);
             Attempt relAttempt = relFuture.get(60, TimeUnit.SECONDS);
 
-            // Undo always targets a valid ACTIVE operation, so it succeeds.
+            // Undo 总是针对有效的 ACTIVE 操作,因此必然成功。
             assertThat(undoAttempt.success).isTrue();
 
             boolean childRetracted = nodeRepository.findById(child.id()).orElseThrow().isRetracted();
             boolean relationActive = !relationRepository.findActiveByProject(project.id()).isEmpty();
 
-            // No half-applied intermediate: a retracted child is never the live
-            // endpoint of an active relation.
+            // 不存在半应用的中间状态:已撤回的 child 绝不会是活跃关系的端点。
             assertThat(childRetracted && relationActive)
                     .as("retracted child must not be referenced by an active relation")
                     .isFalse();
 
-            // The relation creation, if it ran, either succeeded (child was live)
-            // or failed closed on the retracted endpoint — never a partial state.
+            // 关系创建(如果执行了)要么成功(child 存活),要么因端点已撤回
+            // 而快速失败——绝不出现部分状态。
             if (relationActive) {
                 assertThat(relAttempt.success).isTrue();
                 assertThat(childRetracted).isFalse();
@@ -249,10 +242,9 @@ class UndoRedoConcurrencyIntegrationTest {
     }
 
     /**
-     * Item 3 (deep review) — Undo racing appendContinuation. Both writers take
-     * the same project-row lock first, so the final materialized graph and the
-     * GraphOperation stack are always linear: no ACTIVE creation op can point
-     * at a retracted node, and no UNDONE creation op can point at a live one.
+     * 深度评审第 3 项——Undo 与 appendContinuation 竞争。两个写方都先获取同一
+     * 项目行锁,因此最终物化的图与 GraphOperation 栈始终是线性的:ACTIVE 的
+     * 创建操作不可能指向已撤回的节点,UNDONE 的创建操作也不可能指向存活节点。
      */
     @Test
     void undoAndAppendContinuationLeaveLinearStackAndGraph() throws Exception {
@@ -279,10 +271,9 @@ class UndoRedoConcurrencyIntegrationTest {
             Attempt undoAttempt = undoFuture.get(60, TimeUnit.SECONDS);
             Attempt appendAttempt = appendFuture.get(60, TimeUnit.SECONDS);
 
-            // The undo always succeeds (there is always a valid ACTIVE op it
-            // targets); the continuation either succeeds before the undo (then
-            // the undo rolls it back) or fails after it (child no longer on
-            // the tip lineage). Never a half-applied intermediate.
+            // undo 总是成功(总有它可以针对的有效 ACTIVE 操作);续写要么在
+            // undo 之前成功(随后被 undo 回滚),要么在其之后失败(child 已
+            // 不在 tip 谱系上)。绝不出现半应用的中间状态。
             assertThat(undoAttempt.success).isTrue();
             assertLinearOperationStack(project.id());
             assertThat(nodeRepository.findById(root.id()).orElseThrow().isRetracted()).isFalse();
@@ -292,12 +283,10 @@ class UndoRedoConcurrencyIntegrationTest {
     }
 
     /**
-     * Item 3 (deep review) — Undo racing reviseDraftNode. The project row lock
-     * serializes the two transactions: either the revision lands first and the
-     * undo restores the prior content, or the undo lands first and the
-     * revision applies on the restored state. The final node content must be
-     * exactly one of the two serial orders and the operation log must stay a
-     * consistent linear stack.
+     * 深度评审第 3 项——Undo 与 reviseDraftNode 竞争。项目行锁串行化两个事务:
+     * 要么编辑先落库、undo 恢复先前内容;要么 undo 先落库、编辑应用在恢复后的
+     * 状态上。最终节点内容必须是两种串行顺序之一,操作日志必须保持一致的
+     * 线性栈。
      */
     @Test
     void undoAndReviseDraftNodeNeverLoseOrDoubleApplyARevision() throws Exception {
@@ -326,15 +315,14 @@ class UndoRedoConcurrencyIntegrationTest {
             assertThat(undoAttempt.success).isTrue();
             assertLinearOperationStack(project.id());
 
-            // The draft itself must never be retracted by these two operations.
+            // 草稿本身绝不能被这两个操作撤回。
             assertThat(nodeRepository.findById(draft.id()).orElseThrow().isRetracted()).isFalse();
-            // Final content is one of the serial outcomes: v1 (undo after
-            // revise) or v2 (revise after undo). "v0" would mean the revision
-            // was silently lost.
+            // 最终内容是两种串行结果之一:v1(undo 在编辑后执行)或 v2(编辑在
+            // undo 后执行)。出现 "v0" 意味着编辑被静默丢失。
             String finalText = (String) nodeRepository.findById(draft.id())
                     .orElseThrow().content().get("text");
             assertThat(finalText).isIn("v1", "v2");
-            // The last ACTIVE EDIT op must describe the content that is live.
+            // 最后一条 ACTIVE 的 EDIT 操作必须描述当前生效的内容。
             var activeEdit = operationRepository.findByProject(project.id()).stream()
                     .filter(op -> op.type() == GraphOperation.Type.EDIT_DRAFT_NODE)
                     .filter(op -> op.status() == GraphOperation.Status.ACTIVE)
@@ -349,12 +337,11 @@ class UndoRedoConcurrencyIntegrationTest {
     }
 
     /**
-     * Item 3 (deep review) — Undo racing an accepted CREATE_NODE proposal.
-     * Acceptance now takes the project lock (project → proposal → graph) just
-     * like every other user-visible graph writer, so a stale accept can never
-     * resurrect a retracted anchor: either the acceptance lands first and the
-     * later undo hits the non-reversible ACCEPT barrier, or the undo lands
-     * first and the acceptance fails stale. The proposal bar is never crossed.
+     * 深度评审第 3 项——Undo 与已被接受的 CREATE_NODE 提案竞争。接受操作现在
+     * 和所有其他用户可见的图写方一样先获取项目锁(项目 → 提案 → 图),因此
+     * 过期的接受绝不能复活已撤回的锚点:要么接受先落库、随后的 undo 命中
+     * 不可回滚的 ACCEPT 屏障;要么 undo 先落库、接受因过期而失败。
+     * 提案永远不会越过既定边界。
      */
     @Test
     void undoAndAcceptedCreateNodeNeverResurrectRetractedAnchor() throws Exception {
@@ -369,9 +356,8 @@ class UndoRedoConcurrencyIntegrationTest {
                         "content", Map.of("text", "agent 结论")),
                 UUID.randomUUID(), "hash-" + UUID.randomUUID(),
                 List.of(), UUID.randomUUID(), "idem-" + UUID.randomUUID(),
-                // Node-creating proposals anchor at the route tip; the anchor
-                // is what the acceptance stale-revalidation and the
-                // transactional boundary re-verify against the CURRENT tip.
+                // 创建节点的提案以路线 tip 作为锚点;接受操作的过期重校验和
+                // 事务边界都依据当前 tip 重新核验该锚点。
                 List.of("node:" + root.id()));
         AgentProposal pending = proposalService.createProposal(
                 proposal, UUID.randomUUID(), project.id(), routeId);
@@ -392,13 +378,13 @@ class UndoRedoConcurrencyIntegrationTest {
             Attempt acceptAttempt = acceptFuture.get(60, TimeUnit.SECONDS);
 
             assertLinearOperationStack(project.id());
-            // The proposal was decided exactly once, never resurrected.
+            // 提案恰好被裁决一次,绝不复活。
             ProposalStatus finalStatus = proposalService.getProposal(pending.id())
                     .orElseThrow().status();
 
             if (acceptAttempt.success) {
-                // Acceptance won the lock: the produced node is live and the
-                // undo then hit the non-reversible ACCEPT barrier.
+                // 接受赢得了锁:生成的节点存活,随后的 undo 命中不可回滚的
+                // ACCEPT 屏障。
                 assertThat(finalStatus).isEqualTo(ProposalStatus.ACCEPTED);
                 assertThat(undoAttempt.error).isInstanceOf(IllegalStateException.class)
                         .hasMessageContaining("不可撤销");
@@ -407,15 +393,14 @@ class UndoRedoConcurrencyIntegrationTest {
                         .anyMatch(op -> op.type() == GraphOperation.Type.ACCEPT_AGENT_PROPOSAL
                                 && op.status() == GraphOperation.Status.ACTIVE)).isTrue();
             } else {
-                // Undo won the lock: the anchor was retracted before the
-                // acceptance re-validated, so acceptance failed stale.
+                // undo 赢得了锁:锚点在接受重校验之前已被撤回,接受因过期失败。
                 assertThat(finalStatus).isEqualTo(ProposalStatus.PROPOSED);
                 assertThat(acceptAttempt.error).isInstanceOf(StaleProposalException.class);
                 assertThat(nodeRepository.findById(root.id()).orElseThrow().isRetracted()).isTrue();
                 assertThat(operationRepository.findByProject(project.id()).stream()
                         .noneMatch(op -> op.type() == GraphOperation.Type.ACCEPT_AGENT_PROPOSAL)).isTrue();
             }
-            // The anchor's route tip is never a retracted node.
+            // 锚点所在路线的 tip 绝不是已撤回的节点。
             Route route = routeRepository.findById(routeId).orElseThrow();
             if (route.tipNodeId() != null) {
                 assertThat(nodeRepository.findById(route.tipNodeId())
@@ -427,10 +412,9 @@ class UndoRedoConcurrencyIntegrationTest {
     }
 
     /**
-     * Linear-stack invariant after any race: a node-creation operation that is
-     * ACTIVE must reference a live (non-retracted) node, and one that is
-     * UNDONE must reference a retracted node. Any violation would mean a
-     * half-applied undo/mutation interleave.
+     * 任意竞争之后的线性栈不变量:ACTIVE 的节点创建操作必须引用存活
+     * (未撤回)的节点,UNDONE 的创建操作必须引用已撤回的节点。任何违反都
+     * 意味着出现了半应用的 undo/变更交错。
      */
     private void assertLinearOperationStack(UUID projectId) {
         for (GraphOperation op : operationRepository.findByProject(projectId)) {
@@ -453,7 +437,7 @@ class UndoRedoConcurrencyIntegrationTest {
         }
     }
 
-    /** One racer's outcome: success, or the exact exception it failed with. */
+    /** 单个竞争者的结果:成功,或失败时抛出的具体异常。 */
     private record Attempt(boolean success, Throwable error) {
         static Attempt run(Callable<?> action) {
             try {

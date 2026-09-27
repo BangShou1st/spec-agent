@@ -1,3 +1,6 @@
+// 文件名:globalAssistantComponents.spec.ts
+// 用途:全局助手各组件的集成测试:输入框的 Enter/Shift+Enter 与禁用规则、
+//       运行中停止控件、steer 待生效状态、消息归属展示、时间线滚动吸底等交互行为。
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
@@ -103,7 +106,7 @@ describe('assistant message timestamps', () => {
     })
     expect(attributed.find('[data-test="ga-message-attribution"]').text()).toBe('OpenCode Zen · mimo-v2.5-free')
 
-    // USER messages and un-attributed assistant messages stay bare.
+    // USER 消息与未带归属信息的 assistant 消息保持无归属展示。
     const user = mount(AssistantMessage, {
       props: { role: 'USER', content: 'hi', createdAt: '2026-01-01T00:00:00Z', providerLabel: 'OpenCode Zen', modelId: 'mimo-v2.5-free' },
     })

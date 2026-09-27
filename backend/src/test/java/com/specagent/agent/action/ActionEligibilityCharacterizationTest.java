@@ -25,8 +25,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
 /**
- * Generic state-fact characterization for the eligibility boundary. These
- * cases deliberately contain no evaluation scenario ids or benchmark seeds.
+ * 文件名:ActionEligibilityCharacterizationTest.java
+ *
+ * 测试目标:对 eligibility 边界做通用状态事实(状态刻画)测试。这些用例刻意不包含
+ * 任何评测场景 id 或基准种子,聚焦重复持久化状态(NOTE/DECISION 重复当前答案或已确认
+ * Claim)、缺少运行时持有的 persistenceIntent、无 pending 依赖的 WAIT、不可见能力、
+ * 未落地引用等拒绝原因,以及"冲突未解决不否决 CREATE_NODE/只读能力"的冻结原则。
  */
 class ActionEligibilityCharacterizationTest {
 
@@ -172,11 +176,10 @@ class ActionEligibilityCharacterizationTest {
 
     @Test
     void allowsOrdinaryNoteCreationWhileConflictIsUnresolved() throws Exception {
-        // Frozen principle: constrain execution, not reasoning. An unresolved
-        // conflict/open_question never denies CREATE_NODE at the eligibility
-        // boundary. A plain KNOWLEDGE/NOTE that does not duplicate durable
-        // state passes the validator; policy/runtime safety still applies
-        // downstream (auto-executable vs confirmable vs denied).
+        // 冻结原则:约束执行而不是约束推理。eligibility 边界上,未解决的
+        // conflict/open_question 绝不否决 CREATE_NODE。不与持久化状态重复的普通
+        // KNOWLEDGE/NOTE 通过校验;下游仍适用 policy/runtime 安全分级
+        // (可自动执行 / 需确认 / 拒绝)。
         AgentRequestEnvelope base = request();
         AgentInputSnapshot snapshot = base.snapshot();
         List<ClaimView> claims = new ArrayList<>(snapshot.effectiveClaims());
@@ -206,10 +209,9 @@ class ActionEligibilityCharacterizationTest {
 
     @Test
     void allowsVisibleReadOnlyCapabilityWhileConflictIsUnresolved() throws Exception {
-        // Unresolved conflict does not deny INVOKE_CAPABILITY either: a
-        // visible read-only capability with grounded arguments stays eligible.
-        // Eligibility never grants execution authority — policy still owns
-        // auto-executable vs confirmable vs denied.
+        // 未解决的冲突同样不否决 INVOKE_CAPABILITY:可见的只读能力加上已落地的
+        // 参数,仍然保持 eligible。eligibility 从不授予执行权——是否可自动执行
+        // 仍由 policy 决定。
         AgentRequestEnvelope base = request();
         AgentInputSnapshot snapshot = base.snapshot();
         List<ClaimView> claims = new ArrayList<>(snapshot.effectiveClaims());

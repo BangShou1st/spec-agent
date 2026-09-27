@@ -15,29 +15,29 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Durable store for frozen model-input projections: the immutable, per-
- * snapshot evidence of exactly what the model received.
+ * 文件名:AgentInputProjectionRepository.java
  *
- * <p>Identity is {@code snapshot_id} with a unique index — one frozen
- * projection per ContextSnapshot, forever. Rows are written once via
- * insert-if-absent and are never updated, deleted, or rebuilt from live
- * records by this repository.
+ * 用途:冻结模型输入投影(frozen projection)的持久化存储。每次冻结的投影
+ * 就是"模型当时到底收到了什么"的不可变证据。
  *
- * <p>{@code source_fingerprints} is a TEXT column containing canonical JSON.
- * Keeping that representation explicit avoids coupling Flyway storage type to
- * PostgreSQL jsonb while still using the strict application JSON codec.
+ * 主键是 {@code snapshot_id} 并带唯一索引——每个 ContextSnapshot 只允许
+ * 存在一份冻结投影,永久有效。行只写入一次(insert-if-absent),本仓库
+ * 从不更新、删除,也不会基于活数据重建。
+ *
+ * {@code source_fingerprints} 是 TEXT 列,存放规范化 JSON。显式采用这种
+ * 表示方式,避免 Flyway 存储类型与 PostgreSQL jsonb 绑定,同时仍使用严格的
+ * 应用层 JSON 编解码器。
  */
 @Repository
 public class AgentInputProjectionRepository {
 
     /**
-     * Durable projection schema version, intentionally independent of the
-     * cross-language wire envelope version.
+     * 投影 schema 的持久化版本号,刻意独立于跨语言 wire 信封版本。
      */
     public static final String SUPPORTED_PROJECTION_VERSION = "agent-input-projection.v2";
-    /** V1 rows are immutable and remain readable for replay compatibility. */
+    /** V1 行不可变,为回放兼容保持可读。 */
     public static final String LEGACY_PROJECTION_VERSION_V1 = "agent-input-projection.v1";
-    /** Legacy value shipped in V20 before the review fix. Accepted for reading old rows. */
+    /** V20 迁移在评审修复前写入的遗留值,仅用于读取旧数据。 */
     private static final String LEGACY_PROJECTION_VERSION = "agent-input.v2";
 
     private static final TypeReference<List<MutableSourceFingerprint>> FINGERPRINT_LIST =
@@ -79,9 +79,9 @@ public class AgentInputProjectionRepository {
     }
 
     /**
-     * Writes the frozen projection unless one already exists for the snapshot.
-     * Returns true exactly when this call won the freeze; a concurrent loser
-     * must reload the winner's row instead of persisting its own build.
+     * 写入冻结投影,但若该 snapshot 已存在投影则不写。仅当本次调用"赢得冻结"
+     * 时返回 true;并发竞争中落败的一方必须改读胜者写入的行,
+     * 而不是坚持持久化自己构建的版本。
      */
     public boolean insertIfAbsent(FrozenInputProjection projection) {
         String sql = """
@@ -101,7 +101,7 @@ public class AgentInputProjectionRepository {
                 "createdAt", Timestamp.from(projection.createdAt()))) == 1;
     }
 
-    /** Immutable frozen evidence of one model-facing input projection. */
+    /** 一次面向模型的输入投影的不可变冻结证据。 */
     public record FrozenInputProjection(UUID id,
                                         UUID snapshotId,
                                         String projectionVersion,

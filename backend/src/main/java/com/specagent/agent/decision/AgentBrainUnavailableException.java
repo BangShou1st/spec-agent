@@ -1,13 +1,14 @@
 package com.specagent.agent.decision;
 
 /**
- * Typed failure when the remote agent brain cannot be reached or fails before
- * returning a parseable response. The runtime maps this onto the durable run
- * failure path; no automatic fallback to another planner/provider happens.
+ * 文件名:AgentBrainUnavailableException.java
  *
- * <p>{@link BrainFailureCode} says <em>which</em> of those causes it was, so the
- * durable failure record and the user-facing copy can stay honest instead of
- * reporting every cause as "brain unavailable".
+ * 用途:远程 Agent Brain 无法触达,或在返回可解析响应之前就失败时的类型化
+ * 异常。运行时会把该异常映射到持久化的 run 失败路径;不会自动降级到其他
+ * 规划器(planner)或提供方(provider)。
+ *
+ * {@link BrainFailureCode} 说明具体属于上述哪种原因,使持久化的失败记录和
+ * 面向用户的文案保持真实,而不是把所有原因都笼统地报成 "brain unavailable"。
  */
 public class AgentBrainUnavailableException extends RuntimeException {
 
@@ -24,7 +25,7 @@ public class AgentBrainUnavailableException extends RuntimeException {
                 ? BrainFailureCode.BRAIN_UNAVAILABLE : failureCode;
     }
 
-    /** Classified cause of this failure; never null. */
+    /** 本次失败的归类原因;永不为 null。 */
     public BrainFailureCode failureCode() {
         return failureCode;
     }

@@ -3,7 +3,9 @@ package com.specagent.agent.decision;
 import java.util.List;
 
 /**
- * Result of a reflection task over a node draft or an answer patch draft.
+ * 文件名:ReflectionResult.java
+ *
+ * 用途:对节点草稿或回答补丁草稿执行 Reflection 任务的结果。
  */
 public record ReflectionResult(
         boolean accepted,

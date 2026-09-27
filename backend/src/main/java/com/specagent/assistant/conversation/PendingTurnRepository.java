@@ -16,8 +16,14 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 /**
- * Persistence owner for durable steers. DB partial unique index is the
- * final arbiter of max-one-unresolved-per-thread.
+ * 文件名:PendingTurnRepository.java
+ *
+ * 用途:可持久化 Steer(待处理轮次)的持久化属主,覆盖插入、
+ * 查询、加锁、认领、消费、丢弃与删除,对应 global_assistant_pending_turns 表。
+ *
+ * 角色:conversation 包的 Steer 存储层。"每线程最多一条未决 Steer"
+ * 不变式的最终裁决者是数据库部分唯一索引:并发插入冲突在 insert 里被
+ * 捕获并映射为 {@link SteerPendingException}(上层转 409)。
  */
 @Repository
 public class PendingTurnRepository {

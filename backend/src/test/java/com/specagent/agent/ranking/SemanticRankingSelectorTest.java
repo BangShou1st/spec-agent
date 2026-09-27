@@ -18,6 +18,14 @@ import java.nio.file.Path;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+/**
+ * 文件名:SemanticRankingSelectorTest.java
+ *
+ * 测试目标:验证 SemanticRankingSelector 的动作选择逻辑——跨语言黄金 fixture 严格解析、
+ * BLOCKING(阻塞用户信息)优先于 DIRECT_COMPLETION、需要外部信息的能力调用优先于澄清与
+ * 直接完成、无阻塞时直接完成胜出、排序与证据顺序不影响胜者、不在 eligibility 内的动作族
+ * 出现在排序中必须抛异常。
+ */
 class SemanticRankingSelectorTest {
 
     @Test

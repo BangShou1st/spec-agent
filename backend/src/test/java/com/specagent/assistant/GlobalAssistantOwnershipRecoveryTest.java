@@ -42,7 +42,13 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
 /**
- * FIX F/S RED: single execution owner + orphan recovery.
+ * 文件名:GlobalAssistantOwnershipRecoveryTest.java
+ *
+ * 测试目标:验证全局助手运行的单一执行所有权与孤儿运行恢复。
+ * 覆盖场景:同一运行的并发重复派发只会产生一个副作用(只创建一个项目)、
+ * 恢复监听器在应用就绪时通过事务服务把孤儿运行标记为 RUN_INTERRUPTED 失败、
+ * 恢复监听器是独立 Bean 且服务内没有自调用监听方法、
+ * 孤儿恢复失败收场并释放并发槽位。
  */
 @SpringBootTest
 @ActiveProfiles("test")

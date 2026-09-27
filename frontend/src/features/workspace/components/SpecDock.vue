@@ -1,14 +1,20 @@
+<!--
+  文件名:SpecDock.vue
+  用途:Graph 中央的规格停靠栏(Dock),默认折叠、展开后展示规格快照、未解决项与来源追溯,负责生成 / 导出 / 选择快照等意图上报,不改变 Focus / Active 路线。
+-->
 <script setup lang="ts">
 import { formatShanghaiDateTime as formatTime } from '@/shared/lib/formatTime'
 import { computed, ref } from 'vue'
 import type { SpecExportVariant } from '@/features/workspace/api/spec'
 import type { SpecSnapshotResponse } from '@/shared/contracts/types'
+import type { UnresolvedFailure } from '@/features/workspace/api/agentRuns'
+import NodeRecoveryBar from '@/features/workspace/graph/components/NodeRecoveryBar.vue'
 import { sortSnapshotsDesc, resolveSelectedSpec, dedupeSourceRefs } from '@/features/workspace/presentation/specPresentation'
 
 /**
- * Graph 中央 Spec Dock：默认折叠（约 48px），展开约占中央区 40%（上限 45%）。
- * Graph 始终挂载可见；Dock 只发 generate-spec / export-spec / select-snapshot
- * 意图，绝不改变 Focus / Active 路线。
+ * Graph 中央 Spec Dock:默认折叠(约 48px),展开约占中央区 40%(上限 45%)。
+ * Graph 始终挂载可见;Dock 只发 generate-spec / export-spec / select-snapshot
+ * 意图,绝不改变 Focus / Active 路线。
  */
 const props = defineProps<{
   readingRouteId: string | null
@@ -20,6 +26,9 @@ const props = defineProps<{
   generating: boolean
   exporting: boolean
   commandPending: boolean
+  /** 规格生成的未解决失败(服务端判定,绑定生成路线)。 */
+  specFailures?: UnresolvedFailure[]
+  isRetrying?: (failedRunId: string) => boolean
 }>()
 
 const emit = defineEmits<{
@@ -27,6 +36,7 @@ const emit = defineEmits<{
   'export-spec': [snapshotId: string, variant: SpecExportVariant]
   'select-snapshot': [snapshotId: string]
   'expanded-change': [expanded: boolean]
+  'retry-failure': [failure: UnresolvedFailure]
 }>()
 
 const expanded = ref(false)
@@ -67,6 +77,16 @@ function toggle(): void {
   expanded.value = !expanded.value
   emit('expanded-change', expanded.value)
 }
+
+/** 父级(顶部恢复定位)把规格失败定位到本面板时调用:展开并保持既有语义。 */
+function open(): void {
+  if (!expanded.value) {
+    expanded.value = true
+    emit('expanded-change', expanded.value)
+  }
+}
+
+defineExpose({ open })
 
 function onSelectSnapshot(event: Event): void {
   const value = (event.target as HTMLSelectElement).value
@@ -131,6 +151,14 @@ function onSelectSnapshot(event: Event): void {
         >
           你目前正在查看 {{ readingRouteLabel }}，生成操作将针对当前路线 {{ activeRouteLabel }}。
         </p>
+        <!-- 规格生成失败的恢复入口(服务端判定,绑定生成路线;面板只展示
+             正在查看路线的失败,标签与该路线一致)。 -->
+        <NodeRecoveryBar
+          v-if="specFailures && specFailures.length > 0"
+          :items="specFailures.map((failure) => ({ failure, routeLabel: readingRouteLabel }))"
+          :is-retrying="(id) => (isRetrying ? isRetrying(id) : false)"
+          @retry="(failure) => emit('retry-failure', failure)"
+        />
         <div class="spec-dock__actions">
           <button
             class="btn btn-primary btn-small"
@@ -232,8 +260,8 @@ function onSelectSnapshot(event: Event): void {
 <style scoped>
 .spec-dock {
   border-top: 1px solid var(--color-border);
-  /* A whisper of tint helps the Dock read as a graph-derived deliverable
-     region without ever competing with the Graph for attention. */
+  /* 一点淡淡的底色让 Dock 看起来像从 Graph 派生的产物区域,
+     又不会和 Graph 抢视觉注意力。 */
   background: #fbfbfe;
 }
 
@@ -252,9 +280,8 @@ function onSelectSnapshot(event: Event): void {
   flex-direction: column;
 }
 
-/* Without a snapshot the expanded body has almost nothing to show: collapse
-   the Dock to its real content height so the Graph keeps the space instead
-   of a large empty slab. */
+/* 没有快照时展开后的正文几乎没内容可显示:把 Dock 折叠到实际内容高度,
+   让 Graph 保留这块空间,而不是留一大片空白。 */
 .spec-dock--expanded.spec-dock--empty {
   flex: 0 0 auto;
 }

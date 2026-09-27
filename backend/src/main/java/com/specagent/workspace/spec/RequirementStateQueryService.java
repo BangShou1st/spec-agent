@@ -11,19 +11,16 @@ import org.springframework.stereotype.Service;
 import java.util.UUID;
 
 /**
- * Thin read-model bridge that derives the current requirement state for the
- * project's active route.
+ * 文件名:RequirementStateQueryService.java
  *
- * <p>This is the only UI-support read bridge added for the first frontend: it
- * composes existing runtime reads and {@link RequirementStateBuilder}, and it
- * never writes state, never calls a model, never builds or persists a
- * {@code ContextSnapshot}, and never makes RequirementState the source of
- * truth. It is not a second Runtime Kernel.
+ * 用途:薄读模型桥接,为项目活跃 route 派生当前需求状态。这是为首个前端
+ * 唯一新增的 UI 支撑读桥:组合既有的运行时读取与 {@link RequirementStateBuilder},
+ * 绝不写状态、绝不调用模型、绝不构建或落库 {@code ContextSnapshot},也绝不把
+ * RequirementState 当成事实源。它不是第二个运行时内核。
  *
- * <p>When the project has no active route, a safe empty read model is returned
- * instead of inventing a route. If the active pointer ever fails to resolve to
- * a route owned by this project, the read fails closed as an internal
- * invariant violation so foreign data can never be exposed.
+ * 项目没有活跃 route 时,返回安全的空读模型而不是凭空造一个 route。若活跃
+ * 指针未能解析到本项目的 route,读取以内部不变量违反的方式 fail-closed,外部
+ * 数据永远不会被暴露。
  */
 @Service
 public class RequirementStateQueryService {
@@ -41,11 +38,10 @@ public class RequirementStateQueryService {
     }
 
     /**
-     * Derives the requirement state for an explicitly named route owned by the
-     * project. Every lifecycle status (open, superseded, archived, deleted) is
-     * readable; a foreign or missing route is indistinguishable at the API
-     * edge and surfaces as 404 {@code ROUTE_NOT_FOUND}. Never writes state and
-     * never builds or persists a {@code ContextSnapshot}.
+     * 为项目显式指定的 route 派生需求状态。任何生命周期状态(open、superseded、
+     * archived、deleted)都可读取;不属于本项目的 route 与不存在的 route 在 API
+     * 边界不可区分,统一表现为 404 {@code ROUTE_NOT_FOUND}。绝不写状态,绝不
+     * 构建或落库 {@code ContextSnapshot}。
      */
     public RequirementStateView getForRoute(UUID projectId, UUID routeId) {
         Project project = projectService.getProject(projectId)
@@ -78,10 +74,9 @@ public class RequirementStateQueryService {
                 .orElseThrow(() -> RequirementStateQueryException.of(
                         RequirementStateQueryException.Reason.INVARIANT_VIOLATION,
                         "The active route pointer does not resolve"));
-        // Defensive fail-closed guard: under correct runtime invariants the
-        // active pointer always resolves to a route owned by this project. If
-        // it ever does not, neither the foreign route nor its claims may be
-        // exposed; the read fails as an internal invariant violation.
+        // 防御性 fail-closed 守卫:在正确的运行时不变量下,活跃指针总是解析到
+        // 本项目拥有的 route。一旦不满足,外来 route 及其 claims 都不得暴露,
+        // 读取以内部不变量违反的方式失败。
         if (!activeRoute.projectId().equals(project.id())) {
             throw RequirementStateQueryException.of(
                     RequirementStateQueryException.Reason.INVARIANT_VIOLATION,

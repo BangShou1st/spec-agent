@@ -6,8 +6,11 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * The only retrieval shape exposed to the Brain. Runtime ranking details are
- * intentionally absent; source, scope, authority, and provenance remain.
+ * 文件名:RetrievedContextItem.java
+ *
+ * 用途:唯一暴露给 Brain 的检索结果形态,携带来源、范围、权威级别
+ * 与溯源信息。运行时的排序细节被刻意省略,只保留模型理解上下文所需
+ * 的元数据。
  */
 public record RetrievedContextItem(String sourceRef,
                                   RetrievalSourceKind sourceKind,

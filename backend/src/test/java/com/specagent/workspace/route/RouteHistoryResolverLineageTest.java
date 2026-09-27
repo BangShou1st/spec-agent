@@ -21,6 +21,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
+/**
+ * 文件名:RouteHistoryResolverLineageTest.java
+ *
+ * 测试目标:验证 {@link RouteHistoryResolver} 解析节点谱系时的失败边界:
+ * 谱系成环、节点缺失被拒绝,深度上限是显式的(1 万个节点可解析,
+ * 第 1 万零一个节点抛出深度超限)。
+ */
 @ExtendWith(MockitoExtension.class)
 class RouteHistoryResolverLineageTest {
 

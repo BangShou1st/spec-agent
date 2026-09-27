@@ -38,6 +38,15 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * 文件名:GlobalAssistantFinalInteractionTest.java
+ *
+ * 测试目标:验证全局助手的终态交互控制——取消、转向(steer)与线程级停止/删除。
+ * 覆盖场景:模型调用中/澄清前/UI 动作前取消都会生效且不落盘最终答案、
+ * 工具持久化完成后可在下一步前停止、转向请求持久化为待处理并取消活跃运行、
+ * 重复转向被拒绝、终态运行转向直接创建后继、线程停止的幂等性、
+ * 会话活动状态的真实性,以及删除线程只清会话不动项目。
+ */
 @SpringBootTest
 @ActiveProfiles("test")
 @Transactional

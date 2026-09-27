@@ -27,14 +27,13 @@ import java.util.concurrent.TimeUnit;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * T7 — concurrent first freeze: several threads projecting the SAME never
- * frozen ContextSnapshot must produce exactly one durable frozen identity.
- * The unique index on snapshot_id is the final arbiter; losers read back the
- * winner's row (first-writer-wins), so there is no duplicate row and no
- * last-writer-wins mutation of the frozen payload.
+ * 文件名:AgentInputFrozenProjectionConcurrencyIntegrationTest.java
  *
- * <p>Deliberately NOT {@code @Transactional}: the racing inserts must commit
- * in their own connections for the unique index to arbitrate for real.
+ * 测试目标:T7——并发首次冻结:多个线程投影同一个从未冻结过的 ContextSnapshot,
+ * 必须恰好产生一个持久的冻结身份。snapshot_id 上的唯一索引是最终仲裁者;失败者回读
+ * 赢家的行(first-writer-wins),既没有重复行,也不会出现 last-writer-wins 式的
+ * 冻结载荷变异。刻意不加 {@code @Transactional}:竞争的插入必须在各自连接里提交,
+ * 唯一索引才能真正仲裁。
  */
 @SpringBootTest
 @ActiveProfiles("test")

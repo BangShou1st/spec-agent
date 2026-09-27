@@ -1,3 +1,8 @@
+<!--
+  文件名:RequirementDetailView.vue
+  用途:完整需求状态的二级视图:按 已确认/未解决/假定/已拒绝 四组展示需求条目,
+       默认只显示可读文本,技术详情(来源节点/回答/置信度/路线 UUID)折叠收起。
+-->
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { RequirementClaimView, RequirementStateView } from '@/shared/contracts/types'
@@ -116,9 +121,8 @@ function confidenceText(claim: RequirementClaimView): string {
   font-size: 13px;
 }
 
-/* Semantic color only carries the group category — never the whole card —
-   so claim text stays the focus and the list never reads as four dashboard
-   tiles. */
+/* 语义颜色只承载分组类别——绝不上到整张卡片——
+   让 claim 文本保持焦点,列表不会被看成四块仪表盘磁贴。 */
 .requirement-detail__group--confirmed > h4 { color: var(--color-success); }
 .requirement-detail__group--unresolved > h4 { color: var(--color-warn); }
 .requirement-detail__group--assumed > h4 { color: var(--color-focus); }
@@ -140,8 +144,7 @@ function confidenceText(claim: RequirementClaimView): string {
   background: var(--color-surface);
 }
 
-/* Very light tint per category reinforces the group without saturating the
-   list. */
+/* 每个类别一层很浅的底色,起到强化分组的作用又不至于让列表过饱和。 */
 .requirement-detail__group--confirmed .requirement-detail__claim { background: var(--color-success-soft); border-color: color-mix(in srgb, var(--color-success) 24%, var(--color-border)); }
 .requirement-detail__group--unresolved .requirement-detail__claim { background: var(--color-warn-soft); border-color: color-mix(in srgb, var(--color-warn) 24%, var(--color-border)); }
 .requirement-detail__group--assumed .requirement-detail__claim { background: var(--color-focus-soft); border-color: color-mix(in srgb, var(--color-focus) 24%, var(--color-border)); }

@@ -24,6 +24,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+/**
+ * 文件名:ActionEligibilityGateTest.java
+ *
+ * 测试目标:验证 ActionEligibilityGate 在 SHADOW 与 ENFORCED 两种模式下的行为——
+ * SHADOW 模式保持 V2 信封且不携带 actionEligibility,只记录"本应否决"的评估结果而不抛异常;
+ * ENFORCED 模式升级为 V3 并携带 eligibility,违规选择抛出带类型的 ActionIneligibleException;
+ * 合法选择在两种模式下都通过,确定性引擎在 ENFORCED 模式下回显 basisHash。
+ */
 class ActionEligibilityGateTest {
 
     private static final Path FIXTURES = Path.of("../contracts/fixtures");

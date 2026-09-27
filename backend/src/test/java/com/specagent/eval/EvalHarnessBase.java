@@ -10,13 +10,13 @@ import org.springframework.test.context.ActiveProfiles;
 import java.util.UUID;
 
 /**
- * Shared harness base: boots the production Spring context with the
- * scripted B-fast brain, runs scenarios through the real production
- * answer cycle, and cleans up project-scoped rows afterwards.
+ * 文件名:EvalHarnessBase.java
  *
- * <p>Cleanup is manual (not {@code @Transactional}) because run failure
- * marking commits in its own transaction — mirroring the existing
- * full-loop integration tests.
+ * 测试目标:评估套件共享基座。启动生产 Spring 上下文并接入脚本化 B-fast
+ * 大脑,把场景跑过真实的生产回答循环,之后清理项目相关的数据行。
+ *
+ * 清理是手动的(不用 {@code @Transactional}),因为运行失败标记在自己
+ * 的事务中提交——与既有的全链路集成测试保持一致。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -69,7 +69,7 @@ public abstract class EvalHarnessBase {
         activeProjectId = null;
     }
 
-    /** Allows a preservation test to clean an intermediate comparison run. */
+    /** 供行为保持类测试清理中间对比运行。 */
     protected void cleanUpProject(UUID projectId) {
         jdbcTemplate.update(
                 "DELETE FROM agent_run_events WHERE run_id IN (SELECT id FROM agent_runs WHERE project_id = ?)",
@@ -95,8 +95,8 @@ public abstract class EvalHarnessBase {
         jdbcTemplate.update("DELETE FROM node_relations WHERE project_id = ?", projectId);
         jdbcTemplate.update("DELETE FROM graph_operations WHERE project_id = ?", projectId);
         jdbcTemplate.update("DELETE FROM spec_snapshots WHERE project_id = ?", projectId);
-        // Routes reference nodes (branch_at_node_id) and nodes reference
-        // routes only logically, so routes go before nodes.
+        // 路由通过 branch_at_node_id 引用节点,节点仅逻辑上引用路由,
+        // 因此先删路由再删节点。
         jdbcTemplate.update("DELETE FROM routes WHERE project_id = ?", projectId);
         jdbcTemplate.update("DELETE FROM nodes WHERE project_id = ?", projectId);
         jdbcTemplate.update("DELETE FROM projects WHERE id = ?", projectId);

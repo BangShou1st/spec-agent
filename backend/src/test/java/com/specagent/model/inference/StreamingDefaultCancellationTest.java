@@ -17,7 +17,13 @@ import com.specagent.model.contract.StreamCancelledException;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
-/** Both streaming defaults honor a declining listener per their contract. */
+/**
+ * 文件名:StreamingDefaultCancellationTest.java
+ *
+ * 测试目标:验证流式接口的默认实现遵守"监听器拒绝片段即取消"的契约:
+ * ModelInferenceGateway 与 OpenCodeZenTransport 两个层级的 completeStreaming,
+ * 当监听器拒绝片段时抛出 StreamCancelledException,接受片段时正常返回内容。
+ */
 class StreamingDefaultCancellationTest {
     private static final FragmentListener ACCEPT = fragment -> true;
     private static final FragmentListener DECLINE = fragment -> false;

@@ -1,3 +1,5 @@
+// 文件名:workspaceStore.spec.ts
+// 用途:workspaceStore 核心单元测试:验证加载/刷新镜像后端状态、回答提交的会话生命周期、起草流程与恢复入口。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { ApiError } from '@/shared/http/client'
@@ -154,7 +156,7 @@ describe('workspaceStore', () => {
     mockedGetRequirementState.mockResolvedValue(state)
     mockedGetRouteLineage.mockResolvedValue(makeRouteLineage())
     mockedGetProjectGraph.mockResolvedValue(makeGraphWorkspaceView())
-    // A fresh project has no pending proposals by default.
+    // 新项目默认没有任何待确认提案。
     mockedListProposals.mockResolvedValue([])
   }
 
@@ -291,8 +293,8 @@ describe('workspaceStore', () => {
     expect(store.activeState?.activeNode).toBeNull()
     const readCallsBefore = mockedGetActiveState.mock.calls.length
 
-    // After the draft run completes the backend serves the new tip node; the
-    // frontend must re-read it instead of building it locally.
+    // 起草 run 完成后,后端提供新的末端节点;前端必须重新读取,而不是
+    // 在本地拼装。
     mockedGetActiveState.mockResolvedValue(makeActiveState({ activeNode: draftedNode }))
 
     const ok = await store.draftQuestion()
@@ -458,8 +460,7 @@ describe('workspaceStore', () => {
 
     const pending = store.submitAnswer({ freeText: 'async answer' })
 
-    // The create call returned 202 already; the run is being polled in the
-    // background while submitAnswer has NOT resolved yet.
+    // 创建调用已返回 202;run 正在后台轮询,而 submitAnswer 尚未 resolve。
     await vi.waitFor(() => expect(mockedCreateAgentRun).toHaveBeenCalledTimes(1))
     expect(mockedCreateAgentRun).toHaveBeenCalledWith('p1', {
       operation: 'ANSWER_TIP',
@@ -707,8 +708,7 @@ describe('workspaceStore', () => {
 
     expect(store.requirementState?.confirmed).toHaveLength(0)
 
-    // The backend now reports the new state; the frontend must re-read it
-    // after the run completes.
+    // 后端现在报告新状态;前端必须在 run 完成后重新读取它。
     mockedGetRequirementState.mockResolvedValue(after)
     mockedGetActiveState.mockResolvedValue(
       makeActiveState({ activeNode: makeNode({ question: 'Drafted next question' }) }),
@@ -733,8 +733,8 @@ describe('workspaceStore', () => {
     const store = useWorkspaceStore()
     await store.loadWorkspace('p1')
 
-    // The failed run reconciles against canonical reads; nothing landed, so a
-    // one-shot resubmit affordance is offered instead of an opaque error.
+    // 失败的 run 对照 canonical 读取对账;什么都没落地,因此提供一次性
+    // 重提交入口,而不是一句晦涩的错误。
     const ok = await store.submitAnswer({ freeText: 'answer' })
 
     expect(ok).toBe(false)
@@ -771,7 +771,7 @@ describe('workspaceStore', () => {
       operation: 'ANSWER_TIP',
       phase: 'CREATED',
     })
-    // The Answer persisted but DECISION crashed afterwards → run FAILED.
+    // 回答已持久化,但随后的 DECISION 崩溃 → run 失败。
     mockedGetAgentRun.mockResolvedValue(completedRunView({
       status: 'failed',
       phase: 'FAILED',
@@ -781,7 +781,8 @@ describe('workspaceStore', () => {
     await store.loadWorkspace('p1')
 
     expect(await store.submitAnswer({ freeText: 'answer' })).toBe(false)
-    expect(store.repairableAnswerId).toBe('answer-1')
+    // 修复身份是会话级的(全局 canonical 入口已删除,失败恢复走任务级清单)
+    expect(store.focusedAnswerSession?.repairableAnswerId ?? null).toBe('answer-1')
     expect(mockedCreateAgentRun).toHaveBeenCalledTimes(1)
   })
 
@@ -811,7 +812,7 @@ describe('workspaceStore', () => {
       nodeId: 'node-1',
       answerId: 'answer-1',
     })
-    expect(store.repairableAnswerId).toBeNull()
+    expect(store.focusedAnswerSession?.repairableAnswerId ?? null).toBeNull()
     expect(mockedGetAgentRun).toHaveBeenCalledWith('p1', 'resume-run-1')
   })
 
@@ -879,15 +880,15 @@ describe('workspaceStore', () => {
     expect(store.feedback).toContain('历史回答恢复未完成')
     expect(store.answerRunSessions).toHaveLength(1)
 
-    // Unknown-result reconciliation must use the saved historical identity,
-    // not the already-advanced route tip, and must keep the same retry target.
+    // 未知结果的对账必须使用保存的历史身份,而不是已前进的路线末端,
+    // 并且必须保持同一个重试目标。
     session.status = 'UNKNOWN'
     expect(await store.reconcileAnswerOutcome()).toBe(true)
     expect(session.status).toBe('REPAIRABLE')
     expect(session.repairableAnswerId).toBe('answer-1')
 
-    // The first failed session is still present; a successful retry must
-    // remove both it and the new session so the recovery prompt disappears.
+    // 第一个失败会话仍在;成功的重试必须同时移除它和新会话,恢复提示
+    // 随之消失。
     mockedGetAgentRun.mockResolvedValue(completedRunView({
       runId: 'historical-resume-2',
       operation: 'RESUME_ANSWER',
@@ -899,7 +900,7 @@ describe('workspaceStore', () => {
     }))
     expect(await store.repairAnswerForActiveFlow('answer-1', 'r1', 'node-1')).toBe(true)
     expect(store.answerRunSessions).toHaveLength(0)
-    expect(store.repairableAnswerId).toBeNull()
+    expect(store.focusedAnswerSession?.repairableAnswerId ?? null).toBeNull()
   })
 
   it('keeps a historical recovery target when failed-run reconciliation is unavailable', async () => {
@@ -1102,8 +1103,8 @@ describe('workspaceStore', () => {
     const store = useWorkspaceStore()
     await store.loadWorkspace('p1')
 
-    // A runtime mutation added a second node; the backend response is the
-    // only authority and the store must replace the whole view.
+    // 运行时 mutation 新增了第二个节点;后端响应是唯一权威,store 必须
+    // 整体替换视图。
     const refreshedGraph = makeGraphWorkspaceView({
       projectId: active.project.id,
       activeRouteId: active.activeRoute?.id ?? 'route-1',
@@ -1172,7 +1173,7 @@ describe('workspaceStore', () => {
       label: 'future branch',
     })
     expect(mockedCreateAgentRun).toHaveBeenCalledWith('p1', { operation: 'DRAFT_QUESTION', sourceRouteId: null })
-    expect(store.forkDraftRetryRouteId).toBe('forked')
+    // 旧的全局"重试起草"状态已删除:分支失败由任务级恢复入口承接
     expect(store.feedback).toContain('分支已创建')
   })
 
@@ -1192,7 +1193,6 @@ describe('workspaceStore', () => {
     await store.loadWorkspace('p1')
 
     await store.forkNode('node-1', 'r1', 'future branch')
-    expect(store.forkDraftRetryRouteId).toBe('forked')
 
     const routeA = makeRoute({ id: 'route-a', projectId: 'p1', isActive: true })
     const routeB = makeRoute({ id: 'forked', projectId: 'p1', isActive: false })
@@ -1235,9 +1235,9 @@ describe('workspaceStore', () => {
     expect(await store.activateRoute('route-a')).toBe(true)
     mockedCreateAgentRun.mockClear()
 
-    expect(await store.retryForkDraft()).toBe(false)
+    // 旧的全局 retryForkDraft 分发已删除:不存在可从错误路线触发的重试
+    expect((store as unknown as Record<string, unknown>).retryForkDraft).toBeUndefined()
     expect(mockedCreateAgentRun).not.toHaveBeenCalled()
-    expect(store.forkDraftRetryRouteId).toBeNull()
   })
 
   it('does not retain a Fork retry checkpoint after a successful first Draft', async () => {
@@ -1273,9 +1273,9 @@ describe('workspaceStore', () => {
 
     expect(await store.forkNode('n1', 'r1', 'future branch')).toBe(true)
     expect(mockedCreateAgentRun).toHaveBeenCalledTimes(1)
-    expect(store.forkDraftRetryRouteId).toBeNull()
 
-    expect(await store.retryForkDraft()).toBe(false)
+    // 旧的全局 retryForkDraft 分发已删除
+    expect((store as unknown as Record<string, unknown>).retryForkDraft).toBeUndefined()
     expect(mockedCreateAgentRun).toHaveBeenCalledTimes(1)
   })
 
@@ -1321,15 +1321,14 @@ describe('workspaceStore', () => {
     mockedForkNode.mockResolvedValue({
       projectId: 'p1', route: forkRoute, activeRouteId: 'forked',
     })
-    // The create-run request is lost on the network; the canonical reads
-    // afterwards prove the draft actually landed (tip advanced to n2).
+    // 创建 run 的请求在网络中丢失;之后的 canonical 读取证明草稿其实
+    // 已落地(末端前进到 n2)。
     mockedCreateAgentRun.mockRejectedValue(new ApiError('network lost', 'NETWORK_ERROR', 0))
     const store = useWorkspaceStore()
     await store.loadWorkspace('p1')
 
     expect(await store.forkNode('n1', 'r1', 'future branch')).toBe(true)
     expect(mockedCreateAgentRun).toHaveBeenCalledTimes(1)
-    expect(store.forkDraftRetryRouteId).toBeNull()
     expect(store.manualModelRetry).toBeNull()
     expect(store.error).toBeNull()
     expect(store.feedback).toBe('已创建新分支路线')
@@ -1348,8 +1347,7 @@ describe('workspaceStore', () => {
 
     expect(await store.undoGraph()).toBe(true)
 
-    // The user must be able to tell WHICH node the undo compensated, not only
-    // which operation type it was.
+    // 用户必须能看出 undo 补偿的是哪个节点,而不仅仅是哪种操作类型。
     expect(store.feedback).toBe('已撤销「Agent 生成的节点标题」')
   })
 
@@ -1401,7 +1399,10 @@ describe('workspaceStore', () => {
 
     await store.loadWorkspace('p1')
 
-    expect(store.repairableAnswerId).toBe('answer-owned')
+    // 全局 canonical 修复入口已删除: owned 回答不再产生全局修复身份,
+    // 也没有会话(修复统一走任务级失败清单 / 回答会话)。
+    expect(store.focusedAnswerSession).toBeNull()
+    expect((store as unknown as Record<string, unknown>).repairableAnswerId).toBeUndefined()
   })
 
   it('never treats an inherited active-tip Answer as a repair target', async () => {
@@ -1436,10 +1437,11 @@ describe('workspaceStore', () => {
 
     await store.loadWorkspace('p1')
 
-    expect(store.repairableAnswerId).toBeNull()
+    expect(store.focusedAnswerSession).toBeNull()
+    expect((store as unknown as Record<string, unknown>).repairableAnswerId).toBeUndefined()
   })
 
-  it('reload restores the failed Fork first-draft checkpoint', async () => {
+  it('reload no longer restores the deleted global Fork first-draft checkpoint', async () => {
     const active = makeActiveState({
       project: makeProject({ id: 'p1', activeRouteId: 'r-fork' }),
       activeRoute: makeRoute({
@@ -1471,7 +1473,9 @@ describe('workspaceStore', () => {
 
     await store.loadWorkspace('p1')
 
-    expect(store.forkDraftRetryRouteId).toBe('r-fork')
+    // 旧的全局 fork 起草检查点已删除(能力由服务端失败清单在 fork 路线
+    // 下游的失败占位卡上恢复,绑定任务身份,不回落 Active)。
+    expect((store as unknown as Record<string, unknown>).retryForkDraft).toBeUndefined()
   })
 
   it('reconciles a lost regenerate response after persistence without a second POST', async () => {
@@ -1655,7 +1659,7 @@ describe('workspaceStore', () => {
     mockBackendViews(makeActiveState(), makeRequirementState())
     const store = useWorkspaceStore()
     await store.loadWorkspace('p1')
-    // Seed a settled session carrying the failed attempt's resubmit payload.
+    // 预置一个带着失败尝试重提交载荷的已落定会话。
     store.answerRunSessions.push({
       clientRequestId: 'req-resubmit-guard',
       projectId: 'p1',
@@ -1683,7 +1687,7 @@ describe('workspaceStore', () => {
     const oldSnapshot = makeSpecSnapshot({ id: 'spec-old', routeId: 'r1' })
     const newSnapshot = makeSpecSnapshot({ id: 'spec-new', routeId: 'r1' })
     mockBackendViews(active, makeRequirementState())
-    // FIRST generation: the baseline read fails.
+    // 第一代:基线读取失败。
     mockedListRouteSpecs.mockRejectedValueOnce(new ApiError('read failed', 'NETWORK_ERROR', 0))
     const store = useWorkspaceStore()
     await store.loadWorkspace('p1')
@@ -1692,13 +1696,11 @@ describe('workspaceStore', () => {
 
     expect(mockedCreateAgentRun).not.toHaveBeenCalled()
     expect(store.manualModelRetry).toBeNull()
-    // The failure path released its own generation lock: a later
-    // generation of the SAME session must not be blocked by residue.
+    // 失败路径释放了自己的代际锁:同一会话的后续代际绝不能被残留阻塞。
     expect(store.generatingSpec).toBe(false)
     expect(store.error).not.toBeNull()
 
-    // SECOND generation (recovery): baseline read succeeds and the run
-    // completes — the lock residue must not block it.
+    // 第二代(恢复):基线读取成功且 run 完成——锁的残留绝不能阻塞它。
     mockedListRouteSpecs
       .mockResolvedValueOnce([oldSnapshot])
       .mockResolvedValueOnce([oldSnapshot, newSnapshot])
@@ -1784,8 +1786,8 @@ describe('workspaceStore', () => {
     const pending = store.submitAnswer({ freeText: 'async answer' })
 
     await vi.waitFor(() => expect(store.answerRunId).toBe('run-1'))
-    // While the run is in flight the UI is not globally frozen: a
-    // node-scoped pending marker names exactly the node being answered.
+    // run 在途期间 UI 不会全局冻结:节点级的 pending 标记精确指向被回答
+    // 的那个节点。
     expect(store.submitting).toBe(true)
     expect(store.pendingAnswerNodeId).toBe(answeringNodeId)
 
@@ -1793,8 +1795,8 @@ describe('workspaceStore', () => {
     expect(await pending).toBe(true)
 
     expect(store.submitting).toBe(false)
-    // The canonical graph is re-read from the backend after the run
-    // completes — never patched locally from optimistic state.
+    // run 完成后从后端重新读取 canonical 图——绝不用乐观状态在本地
+    // 打补丁。
     expect(mockedGetProjectGraph.mock.calls.length).toBeGreaterThan(graphReadsBeforeSubmit)
   })
 
@@ -1817,8 +1819,7 @@ describe('workspaceStore', () => {
     const pending = store.submitAnswer({ freeText: 'answer' })
     await vi.waitFor(() => expect(store.answerRunId).toBe('run-1'))
 
-    // Switching projects clears run observation state; the poll loop exits
-    // without ever resolving the old run.
+    // 切换项目会清除 run 观察状态;轮询循环退出,且从不 resolve 旧的 run。
     await store.loadWorkspace('p2')
     expect(store.answerRunId).toBeNull()
     expect(store.pendingAnswerNodeId).toBeNull()
@@ -1858,22 +1859,21 @@ describe('workspaceStore', () => {
         operation: 'ANSWER_TIP',
         phase: 'CREATED',
       })
-      // Every poll read fails (network loss after the run was created).
+      // 每次轮询读取都失败(run 创建之后网络丢失)。
       mockedGetAgentRun.mockRejectedValue(new ApiError('network lost', 'NETWORK_ERROR', 0))
       const store = useWorkspaceStore()
       await store.loadWorkspace('p1')
 
       const pending = store.submitAnswer({ freeText: 'answer' })
-      // Drive the full poll budget (120 attempts × 1.5s) instantly.
+      // 瞬时驱动完整轮询预算(120 次 × 1.5s)。
       await vi.runAllTimersAsync()
       await pending
 
-      // The create-run call happened exactly once; no automatic second
-      // mutation was issued despite the polls all failing. Canonical
-      // reconciliation found the persisted Answer → repair affordance.
+      // 创建 run 的调用恰好发生一次;尽管轮询全部失败,也没有发出自动的
+      // 第二个 mutation。canonical 对账发现了已持久化的回答 → 修复入口。
       expect(mockedCreateAgentRun).toHaveBeenCalledTimes(1)
       expect(store.resubmitAnswerPayload).toBeNull()
-      expect(store.repairableAnswerId).toBe('answer-1')
+      expect(store.focusedAnswerSession?.repairableAnswerId ?? null).toBe('answer-1')
     } finally {
       vi.useRealTimers()
     }
@@ -1904,8 +1904,8 @@ describe('workspaceStore', () => {
     const pending = store.submitAnswer({ freeText: 'final answer' })
     await vi.waitFor(() => expect(store.answerRunId).toBe('run-1'))
 
-    // Simulate a canonical refresh while the run is pending: the typed draft
-    // must survive it.
+    // 模拟 run 在途期间的一次 canonical 刷新:已输入的草稿必须在刷新中
+    // 幸存。
     await store.refreshWorkspace()
     expect(useInputDraftStore().getDraft('p1', nodeId)?.freeText).toBe('draft being typed')
 
@@ -1925,8 +1925,8 @@ describe('workspaceStore', () => {
     })
     mockDraftRunFailure()
     const forkedRoute = makeRoute({ id: 'forked', projectId: 'p1', isActive: true })
-    // Canonical reads after the fork list both routes; the failed draft has
-    // produced nothing yet (the forked route tip is still the branch point).
+    // fork 之后的 canonical 读取列出两条路线;失败的起草尚未产出任何
+    // 东西(分支路线的末端仍是分支点)。
     mockedGetActiveState.mockResolvedValue(makeActiveState({
       project: makeProject({ id: 'p1', activeRouteId: 'forked' }),
       activeRoute: forkedRoute,
@@ -1970,15 +1970,13 @@ describe('workspaceStore', () => {
 
     await store.forkNode('node-1', 'r1', 'future branch')
 
-    // The new route is immediately visible without waiting for any AI
-    // draft, and the other routes stay visible too.
+    // 新路线立即可见,无需等待任何 AI 起草,其它路线也保持可见。
     const visibleIds = store.routes.map((route) => route.id)
     expect(visibleIds).toContain('forked')
     expect(visibleIds).toContain('r1')
     expect(store.graphView?.routes.map((route) => route.id)).toEqual(['r1', 'forked'])
-    // The failed draft leaves an explicit retry affordance for the forked
-    // route instead of dropping it.
-    expect(store.forkDraftRetryRouteId).toBe('forked')
+    // 失败的起草不再写全局重试状态:重试入口在分支路线下游的失败占位卡
+    // 上(任务级,绑定服务端失败身份),而不是全局横幅。
     expect(store.feedback).toContain('分支已创建')
   })
 })
@@ -2016,9 +2014,8 @@ describe('workspaceStore createIdea', () => {
     const route = makeRoute({ isActive: true, rootNodeId: 'node-root', tipNodeId: 'node-tip' })
     const active = makeActiveState({ activeRoute: route })
     mockBackendViewsFor(active)
-    // Backend response for a floating node carries routeId = null to signal
-    // the canonical node is route-less. The frontend must NOT claim a
-    // route membership based on the response.
+    // 浮动节点的后端响应带 routeId = null,表示 canonical 节点不属于任何
+    // 路线。前端绝不能据此响应声明路线归属。
     mockedCreateFloatingDraftNode.mockResolvedValue({
       ...createdNodeResponse('idea-1'),
       routeId: null,
@@ -2106,8 +2103,7 @@ describe('workspaceStore.createSemanticRelation (identity contract)', () => {
     })
     const store = useWorkspaceStore()
     await store.loadWorkspace('p1')
-    // SUPPORTS is directional: n2→n1 is a distinct fact, never a duplicate of
-    // the existing n1→n2 edge.
+    // SUPPORTS 是有向的:n2→n1 是另一个事实,绝不是既有 n1→n2 边的重复。
     const ok = await store.createSemanticRelation('n2', 'n1', 'SUPPORTS')
     expect(ok).toBe(true)
     expect(mockedCreateRelation).toHaveBeenCalledWith('p1', 'n2', 'n1', 'SUPPORTS')
@@ -2120,10 +2116,9 @@ describe('workspaceStore.createSemanticRelation (identity contract)', () => {
     mockedCreateRelation.mockRejectedValue(new ApiError('duplicate', 'DUPLICATE', 409))
     const store = useWorkspaceStore()
     await store.loadWorkspace('p1')
-    // RELATED_TO is symmetric: A RELATED_TO B == B RELATED_TO A. The backend
-    // canonicalizes the unordered pair, so n2→n1 IS the already-existing fact
-    // and comes back as a controlled 409 duplicate. The store command must
-    // fail safely instead of minting a second symmetric fact.
+    // RELATED_TO 是对称的:A RELATED_TO B 等价于 B RELATED_TO A。后端对
+    // 无序对做规范化,因此 n2→n1 就是已存在的事实,返回受控的 409 重复
+    // 错误。store 命令必须安全失败,而不是铸造第二个对称事实。
     const ok = await store.createSemanticRelation('n2', 'n1', 'RELATED_TO')
     expect(ok).toBe(false)
     expect(mockedCreateRelation).toHaveBeenCalledWith('p1', 'n2', 'n1', 'RELATED_TO')
@@ -2137,8 +2132,8 @@ describe('workspaceStore.createSemanticRelation (identity contract)', () => {
     const store = useWorkspaceStore()
     await store.loadWorkspace('p1')
     const ok = await store.createSemanticRelation('n1', 'n2', 'RELATED_TO')
-    // API call still goes through; the backend, not the frontend, is the
-    // authority for identity dedup (via insertActiveOrThrowDuplicate).
+    // API 调用照常发出;身份去重的权威是后端而不是前端
+    //(经 insertActiveOrThrowDuplicate)。
     expect(ok).toBe(false)
     expect(mockedCreateRelation).toHaveBeenCalledWith('p1', 'n1', 'n2', 'RELATED_TO')
   })
@@ -2168,7 +2163,7 @@ describe('node query (ask AI) semantics and polling', () => {
   })
 
   function sharedGraphView(): ReturnType<typeof makeGraphWorkspaceView> {
-    // Put the node into BOTH routes so nodeRouteIds reports a shared node.
+    // 把节点放进两条路线,让 nodeRouteIds 报告一个共享节点。
     const routeA: GraphWorkspaceRouteView = {
       id: 'rA', label: 'A', lifecycleStatus: 'open', isActive: true,
       rootNodeId: 'shared-1', tipNodeId: 'shared-1', createdFromNodeId: null,
@@ -2222,8 +2217,8 @@ describe('node query (ask AI) semantics and polling', () => {
       store.projectId = 'p1'
       store.graphView = makeGraphWorkspaceView({ routes: [], nodes: [makeNode({ id: 'n1' })] })
       mockedCreateNodeQuery.mockResolvedValue({ runId: 'run-cb', phase: 'CREATED' })
-      // The result API reports the intermediate CONTEXT_BUILT phase verbatim
-      // while the worker builds the snapshot; it is NOT a terminal outcome.
+      // worker 构建快照期间,结果 API 原样报告中间的 CONTEXT_BUILT 阶段;
+      // 它不是终态。
       mockedGetNodeQueryResult
         .mockResolvedValueOnce({
           runId: 'run-cb', status: 'CONTEXT_BUILT', producedNodeId: null, message: null,
@@ -2342,7 +2337,7 @@ describe('node query (ask AI) semantics and polling', () => {
     expect(mockedListProposals).toHaveBeenCalledWith('p1', 'PROPOSED', {
       triggerTypes: ['node_query'],
     })
-    // The pending proposal is discoverable by its canonical anchor node.
+    // 待确认提案可以通过它的 canonical 锚节点被发现。
     expect(store.nodeQueryProposals).toHaveLength(1)
     expect(store.nodeQueryProposals[0].inputNodeId).toBe('n1')
   })
@@ -2350,10 +2345,9 @@ describe('node query (ask AI) semantics and polling', () => {
   it('proposal recovery asks the server for NODE_QUERY proposals only', async () => {
     const store = useWorkspaceStore()
     store.projectId = 'p1'
-    // The triggerType narrowing is a server-side filter: the store must request
-    // it explicitly instead of downloading the shared list and post-filtering.
-    // Answer/Decision proposals share the anchor-node shape (inputNodeId) but
-    // must never surface as contextual Ask-AI proposals in the NodeInspector.
+    // triggerType 收窄是服务端过滤:store 必须显式请求它,而不是下载共享
+    // 列表再后过滤。回答/决策提案共享锚节点形态(inputNodeId),但绝不能
+    // 在 NodeInspector 中以上下文问 AI 提案的面目出现。
     mockedListProposals.mockResolvedValue([{
       proposalId: 'prop-query', runId: 'run-query', triggerType: 'node_query',
       inputNodeId: 'n1', routeId: 'r1', actionFamily: 'CREATE_NODE',
@@ -2370,8 +2364,8 @@ describe('node query (ask AI) semantics and polling', () => {
   it('page reload keeps a pending proposal discoverable by its anchor node', async () => {
     const store = useWorkspaceStore()
     store.projectId = 'p1'
-    // Simulates a reload: nodeQuery was reset to null, only the durable
-    // proposal list remains — the proposal must be re-exposed on its anchor.
+    // 模拟一次刷新:nodeQuery 已被重置为 null,只剩持久的提案列表——提案
+    // 必须重新暴露在它的锚节点上。
     store.nodeQuery = null
     store.nodeQueryProposals = [{
       proposalId: 'prop-a', runId: 'run-a', triggerType: 'node_query',
@@ -2389,7 +2383,7 @@ describe('node query (ask AI) semantics and polling', () => {
       const store = useWorkspaceStore()
       store.projectId = 'p1'
       store.graphView = makeGraphWorkspaceView({ routes: [], nodes: [makeNode({ id: 'float-b' })] })
-      // A's durable proposal survives independently of the in-memory nodeQuery.
+      // A 的持久提案独立于内存中的 nodeQuery 幸存。
       store.nodeQueryProposals = [{
         proposalId: 'prop-a', runId: 'run-a', triggerType: 'node_query',
         inputNodeId: 'n1', routeId: null,
@@ -2404,7 +2398,7 @@ describe('node query (ask AI) semantics and polling', () => {
       await vi.advanceTimersByTimeAsync(1500)
       const ok = await askPromise
       expect(ok).toBe(true)
-      // nodeQuery now belongs to B...
+      // nodeQuery 现在属于 B……
       expect(store.nodeQuery?.runId).toBe('run-b')
       // ...but A's pending proposal is still discoverable via the durable list.
       expect(store.nodeQueryProposals.find((p) => p.inputNodeId === 'n1')?.proposalId)
@@ -2429,19 +2423,19 @@ describe('node query (ask AI) semantics and polling', () => {
       producedNodeId: 'n2', relationId: null,
     })
     mockedListProposals.mockResolvedValue([])
-    // The Inspector's Accept is keyed by proposalId, not by nodeQuery.
+    // Inspector 的接受操作以 proposalId 为键,而不是以 nodeQuery。
     const ok = await store.acceptNodeQueryProposal('prop-rel')
     expect(ok).toBe(true)
     expect(mockedAcceptProposal).toHaveBeenCalledWith('prop-rel')
-    // After acceptance the durable pending list no longer contains it.
+    // 接受之后,持久待确认列表不再包含它。
     expect(store.nodeQueryProposals).toHaveLength(0)
   })
 
   it('accepting durable proposal A never mutates an unrelated current query B', async () => {
     const store = useWorkspaceStore()
     store.projectId = 'p1'
-    // B is the current in-memory query (in-flight, no proposal of its own);
-    // A is a durable awaiting proposal being handled.
+    // B 是当前的内存查询(在途,自己没有提案);A 是正在被处理的持久
+    // 待确认提案。
     store.nodeQuery = {
       nodeId: 'n2', routeId: 'r1', question: 'B', runId: 'run-b',
       status: 'RUNNING', message: null, proposalId: null,
@@ -2455,8 +2449,7 @@ describe('node query (ask AI) semantics and polling', () => {
     const ok = await store.acceptNodeQueryProposal('prop-a')
     expect(ok).toBe(true)
     expect(mockedAcceptProposal).toHaveBeenCalledWith('prop-a')
-    // B stays completely unchanged: accepting A never marks an unrelated
-    // current query as accepted.
+    // B 完全不变:接受 A 绝不把无关的当前查询标记为已接受。
     expect(store.nodeQuery?.runId).toBe('run-b')
     expect(store.nodeQuery?.status).toBe('RUNNING')
     expect(store.nodeQuery?.proposalStatus ?? null).toBeNull()
@@ -2465,8 +2458,7 @@ describe('node query (ask AI) semantics and polling', () => {
   it('rejecting durable proposal A never mutates an unrelated current query B', async () => {
     const store = useWorkspaceStore()
     store.projectId = 'p1'
-    // B is the current completed read-only query; A is a durable awaiting
-    // proposal being rejected.
+    // B 是当前已完成的只读查询;A 是正在被拒绝的持久待确认提案。
     store.nodeQuery = {
       nodeId: 'n2', routeId: 'r1', question: 'B', runId: 'run-b',
       status: 'COMPLETED', message: 'ok', proposalId: null,
@@ -2477,8 +2469,7 @@ describe('node query (ask AI) semantics and polling', () => {
     const ok = await store.rejectNodeQueryProposal('prop-a')
     expect(ok).toBe(true)
     expect(mockedRejectProposal).toHaveBeenCalledWith('prop-a')
-    // B stays completely unchanged: rejecting A never marks an unrelated
-    // current query as rejected.
+    // B 完全不变:拒绝 A 绝不把无关的当前查询标记为已拒绝。
     expect(store.nodeQuery?.runId).toBe('run-b')
     expect(store.nodeQuery?.status).toBe('COMPLETED')
     expect(store.nodeQuery?.proposalStatus ?? null).toBeNull()

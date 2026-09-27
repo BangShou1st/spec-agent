@@ -1,8 +1,11 @@
 package com.specagent.agent.runevent;
 
 /**
- * Public run phases appended to {@code agent_run_events}. The UI progress
- * text must derive from these real phases, never from invented copy.
+ * 文件名:AgentRunPhase.java
+ *
+ * 用途:写入 {@code agent_run_events} 的公开运行阶段枚举。
+ *
+ * 约束:UI 的进度文案必须从这些真实阶段推导,绝不允许凭空编造。
  */
 public enum AgentRunPhase {
     CREATED,

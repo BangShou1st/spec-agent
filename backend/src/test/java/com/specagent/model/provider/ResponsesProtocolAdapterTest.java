@@ -10,6 +10,15 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.*;
 
+/**
+ * 文件名:ResponsesProtocolAdapterTest.java
+ *
+ * 测试目标:验证 OpenAI Responses 协议适配器:JSON Object 契约映射到 text.format
+ * (不拷贝 response_format 字段)、非流式输出文本提取、流式仅透出 output_text.delta
+ * (reasoning 及事件类型不完全匹配的增量不透出)、response.completed 为终止事件;
+ * 非流式响应只有 status=completed 才通过,incomplete/failed/cancelled/in_progress/queued、
+ * 顶层 error、缺失 status、incomplete_details 等情况即使带输出也 fail-closed。
+ */
 class ResponsesProtocolAdapterTest {
     private final ObjectMapper mapper = new ObjectMapper();
     private final ResponsesProtocolAdapter adapter = new ResponsesProtocolAdapter();
@@ -35,7 +44,7 @@ class ResponsesProtocolAdapterTest {
         assertThat(adapter.extractVisibleText(good, "r")).isEqualTo("Hi");
         var reasoning = mapper.readTree("{\"type\":\"response.reasoning.delta\",\"delta\":\"secret\"}");
         assertThat(adapter.extractVisibleText(reasoning, "r")).isNull();
-        // Substring delta without exact event type must not surface.
+        // 事件类型不完全匹配的子串增量不能透出。
         var fake = mapper.readTree("{\"type\":\"other\",\"delta\":\"Hi\"}");
         assertThat(adapter.extractVisibleText(fake, "r")).isNull();
     }

@@ -1,3 +1,7 @@
+<!--
+  文件名:UiConfirmDialog.vue
+  用途:通用确认对话框:基于 UiDialogShell 提供标题、描述、确认/取消按钮与加载态,取代原生 confirm。
+-->
 <script setup lang="ts">
 import UiDialogShell from './UiDialogShell.vue'
 defineProps<{ open: boolean; title: string; description: string; confirmLabel?: string; cancelLabel?: string; loading?: boolean; error?: string | null; testId?: string; zIndex?: number; confirmTestId?: string; cancelTestId?: string }>()

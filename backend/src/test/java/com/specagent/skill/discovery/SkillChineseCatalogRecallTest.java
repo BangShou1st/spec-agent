@@ -18,13 +18,13 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
- * Chinese large-catalog acceptance: 40 enabled Skills, maxVisible=24, the
- * Chinese target parked outside the automatic Top-K must be recallable via
- * {@code skill.search(中文查询)} through the real Unicode-aware retriever.
- * Covers the core gate (target hidden → truncated → search recalls),
- * a lexical paraphrase, both negative-control directions, and a
- * mixed-language query. English regression lives in
- * {@link SkillLargeCatalogRecallTest} and must stay green untouched.
+ * 文件名:SkillChineseCatalogRecallTest.java
+ *
+ * 测试目标:中文大目录验收——40 个已启用的 Skill、maxVisible=24 时,
+ * 被挤出自动 Top-K 的中文目标 Skill 必须能通过 {@code skill.search(中文查询)}
+ * 借助真实的支持 Unicode 的检索器召回。覆盖核心关卡(目标被隐藏 ->
+ * 目录截断 -> 搜索召回)、词汇改写、两个方向的阴性对照以及中英混合查询。
+ * 英文回归用例见 {@link SkillLargeCatalogRecallTest},须保持原样通过。
  */
 class SkillChineseCatalogRecallTest {
 
@@ -120,7 +120,7 @@ class SkillChineseCatalogRecallTest {
         assertThat(ids).contains(UNRELATED_ID);
         int unrelatedRank = ids.indexOf(UNRELATED_ID);
         int targetRank = ids.indexOf(TARGET_ID);
-        // Proves ranking follows the query, not a fixed skill position.
+        // 证明排序跟随查询内容,而不是固定的 Skill 位置。
         assertThat(targetRank == -1 || unrelatedRank < targetRank).isTrue();
     }
 

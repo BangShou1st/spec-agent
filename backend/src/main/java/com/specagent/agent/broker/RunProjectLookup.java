@@ -3,21 +3,21 @@ package com.specagent.agent.broker;
 import java.util.UUID;
 
 /**
- * Port interface for resolving the owning project of a run before the internal
- * inference broker processes a request.
+ * 文件名:RunProjectLookup.java
  *
- * <p>Provider-side conversation identity is per project, so the broker needs the
- * project of the run it is serving. The implementation lives in the runtime
- * package and delegates to durable persistence, keeping the broker free of
- * repository dependencies.
+ * 用途:端口接口,供内部推理 broker 在处理请求前解析 run 的所属项目。
  *
- * <p>An unknown run returns {@code null}. Callers treat that as "no project
- * affinity" and fall back to the run, never as a request failure: a run that
- * cannot be resolved here was already rejected by {@link RunExistenceCheck}.
+ * provider 侧的会话身份按项目划分,因此 broker 需要知道所服务 run 的
+ * 项目。实现位于 runtime 包、委托给持久化存储,使 broker 不依赖任何
+ * 仓库(repository)。
+ *
+ * 协作:未知的 run 返回 {@code null};调用方将其视为"无项目亲和"
+ * 并回退为按 run 区分会话,绝不视为请求失败:无法在此解析的 run
+ * 早已被 {@link RunExistenceCheck} 拒绝。
  */
 @FunctionalInterface
 public interface RunProjectLookup {
 
-    /** Owning project of the run, or {@code null} when it cannot be resolved. */
+    /** run 的所属项目;无法解析时返回 {@code null}。 */
     UUID projectIdOf(UUID runId);
 }

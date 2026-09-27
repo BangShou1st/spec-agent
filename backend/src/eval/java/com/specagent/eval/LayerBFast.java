@@ -7,13 +7,16 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Layer B-fast — deterministic evaluation profile (CI-blocking).
+ * 文件名:LayerBFast.java
  *
- * <p>Judges the scripted Brain output at the boundary through the real
- * production flow: acceptable/forbidden primary action, required
- * properties, expected/forbidden state deltas, and the call budget.
- * Natural-language wording is never asserted — only the action family,
- * canonical state facts, and budgets.
+ * 用途:Layer B-fast——确定性评测档位(CI 阻塞门禁)。在真实生产流程的
+ * 边界处评判脚本化 Brain 输出:可接受/禁止的主动作、必填属性、期望/禁止的
+ * 状态增量和调用预算。绝不断言自然语言措辞——只看动作族、规范的状态事实
+ * 和预算。
+ *
+ * 协作:由 {@link ScenarioRunner} 调用,依据 {@link ExpectSpec} 的
+ * {@link PropertyCheck} 与状态增量声明,产出 {@link CheckResult} /
+ * {@link Violation}。
  */
 public final class LayerBFast {
 

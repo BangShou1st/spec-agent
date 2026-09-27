@@ -5,26 +5,27 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * OpenRouter model qualification: free identity, then conservative
- * metadata capability filtering, then the real compatibility probe.
+ * 文件名:OpenRouterModelQualification.java
  *
- * <p>No hardcoded model names. Metadata explicitly incompatible, missing,
- * or insufficient for the GA production JSON_OBJECT contract excludes the
- * candidate. The documented exception is {@code openrouter/free}: the
- * official router selects a capable free model per request, so it skips
- * the metadata layer but still faces the real probe.
+ * 用途:OpenRouter 模型资格判定:先看免费身份,再做保守的元数据能力过滤,
+ * 最后由真实的兼容性探测把关。
+ *
+ * 不硬编码任何模型名。元数据明确不兼容、缺失,或不足以支撑 GA 生产所需的
+ * JSON_OBJECT 契约的候选模型会被排除。文档化的例外是 {@code openrouter/free}:
+ * 官方路由会为每次请求挑选一个有能力的免费模型,因此它跳过元数据层,但仍要
+ * 通过真实探测。
  */
 public final class OpenRouterModelQualification {
 
     private OpenRouterModelQualification() {
     }
 
-    /** Free-only identity: exact router id or the {@code :free} suffix. */
+    /** 免费身份判定:精确的路由 id,或带 {@code :free} 后缀。 */
     public static boolean isFreeModelId(String id) {
         return OpenRouterGatewaySupport.isFreeModelId(id);
     }
 
-    /** Full qualification of one raw {@code GET /models} data entry. */
+    /** 对一条原始 {@code GET /models} 数据条目做完整资格判定。 */
     public static boolean isQualified(JsonNode entry) {
         if (entry == null || !entry.isObject()) {
             return false;
@@ -43,7 +44,7 @@ public final class OpenRouterModelQualification {
         return hasTextOutput(entry) && hasStructuredOutput(entry);
     }
 
-    /** The model must be able to produce text. */
+    /** 模型必须能够产出文本。 */
     static boolean hasTextOutput(JsonNode entry) {
         JsonNode arch = entry.get("architecture");
         if (arch == null || !arch.isObject()) {
@@ -61,7 +62,7 @@ public final class OpenRouterModelQualification {
         return false;
     }
 
-    /** The GA production contract needs native JSON structured output. */
+    /** GA 生产契约需要原生 JSON 结构化输出能力。 */
     static boolean hasStructuredOutput(JsonNode entry) {
         JsonNode params = entry.get("supported_parameters");
         if (params == null || !params.isArray()) {
@@ -76,20 +77,19 @@ public final class OpenRouterModelQualification {
         return false;
     }
 
-    /** Qualified ids from a raw model list payload, sorted and bounded. */
+    /** 从原始模型列表载荷中提取合格 id,排序并限量。 */
     public static List<String> qualifiedIds(JsonNode root, String context) {
         return qualifiedModelIds(root, context).qualified();
     }
 
-    /** Full qualification result: displayable ids plus the free subset. */
+    /** 完整资格结果:可展示的全部 id 及其中的免费合格子集。 */
     public record QualifiedModelIds(List<String> all, List<String> qualified) {
     }
 
     /**
-     * Extracts every displayable model id (free and paid) plus the free
-     * qualified subset from one raw {@code GET /models} payload. The paid
-     * entries skip metadata capability filtering: showing them is a display
-     * concern, while save/validate still gate on the real probe.
+     * 从一条原始 {@code GET /models} 载荷中提取全部可展示的模型 id(免费 + 付费)
+     * 以及免费合格子集。付费条目跳过元数据能力过滤:展示它们只是显示层面的事,
+     * 保存/校验时仍由真实探测把关。
      */
     public static QualifiedModelIds qualifiedModelIds(JsonNode root, String context) {
         if (root == null || !root.isObject()) {

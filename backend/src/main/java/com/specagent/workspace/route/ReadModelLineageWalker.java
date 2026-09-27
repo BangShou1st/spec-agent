@@ -12,12 +12,12 @@ import java.util.UUID;
 import java.util.function.Function;
 
 /**
- * Shared fail-closed parent-chain traversal for read models.
+ * 文件名:ReadModelLineageWalker.java
  *
- * <p>The walker owns only the mechanical chain traversal. Callers retain
- * ownership checks and route-specific root/tip semantics at their API boundary.
- * The runtime context path has its own authoritative {@code RouteHistoryResolver};
- * this helper keeps the two display read models from drifting apart.
+ * 用途:读模型共用的、fail-closed 的父链遍历器。本类只负责机械的
+ * 链路遍历;归属校验和路线特有的根/尾节点语义仍由调用方在自己的 API
+ * 边界处理。运行时上下文路径有自己权威的 {@code RouteHistoryResolver};
+ * 这个辅助类的作用是避免两个展示用读模型各自实现遍历逻辑而逐渐不一致。
  */
 public final class ReadModelLineageWalker {
 

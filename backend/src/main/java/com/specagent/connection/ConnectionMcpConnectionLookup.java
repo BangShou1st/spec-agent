@@ -10,14 +10,14 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Thin implementation of the MCP-owned {@link McpConnectionLookupPort} on top
- * of {@link ConnectionRepository}.
+ * 文件名:ConnectionMcpConnectionLookup.java
  *
- * <p>It adds no persistence logic of its own: every read is the existing
- * repository statement plus the single projection to
- * {@link McpConnectionTarget}. Its only job is to keep the port's dependency
- * direction intact, so the mcp package never imports the connection package
- * and the connection store stays the single source of truth.
+ * 用途:在 {@link ConnectionRepository} 之上,对 MCP 侧的
+ * {@link McpConnectionLookupPort} 做薄实现,把已保存的连接投影给 MCP 运行时。
+ *
+ * 自身不新增任何持久化逻辑:每次读取就是既有的 repository 查询,再加一次
+ * 到 {@link McpConnectionTarget} 的单一投影。它的唯一职责是保持该端口依赖
+ * 方向不变——mcp 包永远不 import connection 包,同时连接存储仍是唯一事实源。
  */
 @Component
 public class ConnectionMcpConnectionLookup implements McpConnectionLookupPort {
@@ -43,7 +43,7 @@ public class ConnectionMcpConnectionLookup implements McpConnectionLookupPort {
         return repository.findById(connectionId).map(ConnectionMcpConnectionLookup::toTarget);
     }
 
-    /** Projects a saved Connection into the narrow MCP-visible shape. */
+    /** 把一条已保存的 Connection 投影成 MCP 可见的窄视图。 */
     public static McpConnectionTarget toTarget(Connection connection) {
         Object url = connection.config().get("serverUrl");
         return new McpConnectionTarget(

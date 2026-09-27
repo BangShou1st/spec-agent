@@ -6,7 +6,12 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
-/** Shared {@code GET <base>/models} tolerant parser: {@code data[].id}. */
+/**
+ * 文件名:ModelListShapes.java
+ *
+ * 用途:各提供商共用的 {@code GET <base>/models} 宽容解析器:提取
+ * {@code data[].id} 并去重、排序、限量。
+ */
 final class ModelListShapes {
     private ModelListShapes() {
     }

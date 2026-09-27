@@ -25,11 +25,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 
 /**
- * P1 route-binding regression coverage: an artifact run is bound to the
- * route/tip it was enqueued against from snapshot build to persistence.
- * Switching the active route while the run is queued fails the run closed
- * (no snapshot), and a successful run's context + spec snapshot always carry
- * exactly the run's own route identity and tip.
+ * 文件名:ArtifactRouteBindingIntegrationTest.java
+ *
+ * 测试目标:P1 路由绑定回归覆盖:工件 run 从快照构建到持久化都绑定其入队时的
+ * 路由/tip。run 排队期间切换活动路由会使 run fail closed(不产出快照);成功 run 的
+ * 上下文与规格快照始终精确携带 run 自身的路由身份与 tip。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -62,11 +62,10 @@ class ArtifactRouteBindingIntegrationTest {
         Project project = projectService.createProject("Route binding " + UUID.randomUUID());
         var root = nodeService.createRootNode(project.id(), project.activeRouteId(),
                 "Root?", null, List.of(), true);
-        // Fork requires a finalized answer at the branch point. The seed answer
-        // carries its STATE_UPDATE checkpoint, because a route tip whose answer
-        // never completed its state update is refused by the artifact gate (see
-        // ArtifactGenerationAnswerGateIntegrationTest) — this fixture is about
-        // route binding, not about that gate.
+        // fork 要求分支点上有已定稿的答案。种子答案携带其 STATE_UPDATE 检查点,
+        // 因为答案未完成状态更新的路由 tip 会被工件门禁拒绝(见
+        // ArtifactGenerationAnswerGateIntegrationTest)——本 fixture 关注的是路由
+        // 绑定,而不是那个门禁。
         var seedAnswer = answerService.finalizeAnswer(project.id(), project.activeRouteId(),
                 root.id(), null, "seed answer", "user");
         answerPatchService.save(project.id(), project.activeRouteId(), root.id(),
@@ -85,7 +84,7 @@ class ArtifactRouteBindingIntegrationTest {
 
         UUID runId = runService.createQueuedArtifactGeneration(project.id()).id();
 
-        // User switches the active route while the artifact run waits.
+        // 用户在工件 run 等待期间切换了活动路由。
         var routeB = routeService.forkFromNode(project.id(), routeA, tipA, "switched");
         assertThat(projectService.getProject(project.id()).orElseThrow().activeRouteId())
                 .isEqualTo(routeB.id());
@@ -113,8 +112,8 @@ class ArtifactRouteBindingIntegrationTest {
         UUID runId = runService.createQueuedArtifactGeneration(project.id()).id();
         stubSuccessfulArtifact();
 
-        // Even if another route became active between enqueue and claim, the
-        // persisted context/snapshot must still bind to the RUN's route.
+        // 即使在入队与领取之间有其他路由变为活动,持久化的上下文/快照
+        // 也必须绑定到 run 自己的路由。
         var claimed = runService.claimNextArtifact()
                 .filter(run -> run.id().equals(runId))
                 .orElseThrow();
@@ -136,8 +135,8 @@ class ArtifactRouteBindingIntegrationTest {
 
     @Test
     void specSourceGuardRejectsRouteSnapshotMismatch() {
-        // Direct guard-level proof: route A + snapshot of B must be rejected
-        // before per-ref validation, even when every ref would resolve.
+        // 守卫级别的直接证明:路由 A + 路由 B 的快照必须在逐引用校验之前
+        // 被拒绝,即使每个引用本都能解析。
         var guard = new com.specagent.agent.gates.SpecSourceReferenceGuard(
                 org.mockito.Mockito.mock(com.specagent.workspace.route.RouteRepository.class),
                 org.mockito.Mockito.mock(com.specagent.workspace.node.NodeRepository.class),
@@ -154,8 +153,8 @@ class ArtifactRouteBindingIntegrationTest {
                 List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), null, "hash",
                 java.time.Instant.now());
 
-        // The ref itself is even a real NODE ref that would pass per-ref
-        // checks against snapshotOfB — only the route pairing is wrong.
+        // 该引用本身甚至是一个真实的 NODE 引用,对 snapshotOfB 能通过逐引用
+        // 检查——只有路由配对是错的。
         var result = guard.validate(projectId, routeA, snapshotOfB,
                 List.of(com.specagent.workspace.spec.SourceReference.of(
                         com.specagent.workspace.spec.SourceKind.CONTEXT, snapshotOfB.id())));

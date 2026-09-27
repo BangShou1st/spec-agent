@@ -14,8 +14,14 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 /**
- * Run lifecycle persistence. The DB partial unique index is the final arbiter
- * of the single-active-run invariant; constraint conflicts map to 409.
+ * 文件名:GlobalAssistantRunRepository.java
+ *
+ * 用途:Run 生命周期的持久化,覆盖创建、状态流转、步数累加、
+ * 取消请求与终态落库,对应 global_assistant_runs 表。
+ *
+ * 角色:conversation 包的 Run 存储层。"单线程单活跃 Run"不变式的
+ * 最终裁决者是数据库的部分唯一索引:并发插入冲突会在这里被捕获并
+ * 映射为 GlobalAssistantRunActiveException(上层转 409)。
  */
 @Repository
 public class GlobalAssistantRunRepository {
@@ -71,7 +77,7 @@ public class GlobalAssistantRunRepository {
                 Maps.of("threadId", threadId), rowMapper);
         return rows.stream().findFirst();
     }
-    /** Locks the run row FOR UPDATE inside the caller's transaction. */
+    /** 在调用方的事务内以 FOR UPDATE 锁定 Run 行。 */
     public GlobalAssistantRun lockById(UUID runId) {
         List<GlobalAssistantRun> rows = jdbc.query(
                 "SELECT * FROM global_assistant_runs WHERE id = :runId FOR UPDATE",
@@ -94,8 +100,8 @@ public class GlobalAssistantRunRepository {
                 Maps.of("runId", runId));
     }
     /**
-     * Cooperative cancel signal: sets cancel_requested_at for CREATED/RUNNING only.
-     * Never flips status directly. Idempotent.
+     * 协作式取消信号:仅对 CREATED/RUNNING 状态设置 cancel_requested_at,
+     * 绝不直接翻转状态。幂等(已设置过则保留原时间戳)。
      */
     public boolean requestCancel(UUID runId) {
         int updated = jdbc.update(
@@ -104,7 +110,7 @@ public class GlobalAssistantRunRepository {
         return updated == 1;
     }
     /**
-     * Terminal transition. Terminal runs are immutable: no resurrection.
+     * 终态迁移。进入终态的 Run 不可变:不允许任何"复活"。
      */
     public void terminalize(UUID runId, GlobalAssistantRunStatus terminal, String errorCode) {
         if (!terminal.isTerminal()) {

@@ -1,3 +1,6 @@
+// 文件名:globalAssistantPresentation.spec.ts
+// 用途:全局助手展示层单测:消息时间标签(今天只显时刻/昨天/同年/跨年)、
+//       空态建议提问的标签与真实 prompt,以及错误码到用户文案的映射。
 import { describe, expect, it } from 'vitest'
 import {
   GA_EMPTY_SUGGESTIONS,

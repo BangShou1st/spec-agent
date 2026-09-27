@@ -13,7 +13,10 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /**
- * Host tool: deterministic lexical project search over title metadata.
+ * 文件名:ProjectSearchCapability.java
+ *
+ * 用途:宿主工具——基于标题元数据的确定性词法项目搜索。
+ * GA 工具目录中的 project.search 即本能力。
  */
 @Component
 public class ProjectSearchCapability implements InternalCapabilityAdapter {

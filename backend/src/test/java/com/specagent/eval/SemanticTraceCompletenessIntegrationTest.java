@@ -7,9 +7,10 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Proves that the production answer-cycle boundary exposes the semantic
- * evidence needed for causal analysis, using the unchanged deterministic
- * scripted brain and unchanged scenario contracts.
+ * 文件名:SemanticTraceCompletenessIntegrationTest.java
+ *
+ * 测试目标:证明生产回答循环边界暴露了因果分析所需的语义证据,
+ * 使用保持不变的确定性脚本化大脑和保持不变的场景契约。
  */
 class SemanticTraceCompletenessIntegrationTest extends EvalHarnessBase {
 

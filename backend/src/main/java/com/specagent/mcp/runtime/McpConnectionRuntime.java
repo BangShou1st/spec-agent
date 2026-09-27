@@ -9,14 +9,15 @@ import org.springframework.stereotype.Service;
 import java.util.Map;
 
 /**
- * Owns the MCP protocol lifecycle for one saved Connection: open -> test ->
- * discover -> close. Connection (product state) and MCP (protocol) stay
- * separate; this class is the bridge that invokes the transport for a
- * connection's projected configuration and credential reference — it never
- * sees the connection domain object or the secret store directly.
+ * 文件名:McpConnectionRuntime.java
  *
- * <p>{@code testAndDiscover} never invokes arbitrary write operations: it
- * establishes the protocol, initializes, and discovers primitives only.
+ * 用途:为一个已保存的 Connection 管理 MCP 协议生命周期:打开 → 测试 →
+ * 发现 → 关闭。Connection(产品状态)与 MCP(协议)保持分离;本类是桥梁,
+ * 针对连接的投影配置和凭据引用调用传输层——它从不直接接触连接领域对象或
+ * 密钥存储。
+ *
+ * {@code testAndDiscover} 绝不调用任意写操作:只建立协议、初始化并发现
+ * 原始类型(工具/资源/提示)。
  */
 @Service
 public class McpConnectionRuntime {
@@ -41,7 +42,7 @@ public class McpConnectionRuntime {
         }
     }
 
-    /** Opens a live session bound to the connection's config + credential. */
+    /** 基于连接的配置 + 凭据,打开一个可用的协议会话。 */
     public McpClientFactory.Session openSession(McpConnectionTarget connection) {
         String authHeader = resolveAuthHeader(connection);
         return clientFactory.open(connection.serverUrl(), Map.of(), authHeader);
@@ -59,7 +60,7 @@ public class McpConnectionRuntime {
         }
     }
 
-    /** Reads one resource through a fresh session (stateless, safe). */
+    /** 通过全新会话读取一个资源(无状态、安全)。 */
     public com.specagent.mcp.domain.McpResourceContent openAndRead(McpConnectionTarget connection,
                                                                    String uri) {
         try (McpClientFactory.Session session = openSession(connection)) {
@@ -74,8 +75,8 @@ public class McpConnectionRuntime {
 
     private String resolveAuthHeader(McpConnectionTarget connection) {
         String token = credentialResolver.resolveOrNull(connection.credentialRef());
-        // Missing ref or vanished credential row resolves to null — the
-        // session proceeds unauthenticated, exactly as before.
+        // 引用缺失或凭据行已消失时解析为 null——会话以未认证方式继续,
+        // 与既有行为保持一致。
         return token == null ? null : "Bearer " + token;
     }
 }

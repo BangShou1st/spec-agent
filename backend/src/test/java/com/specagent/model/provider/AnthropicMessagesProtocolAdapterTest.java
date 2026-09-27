@@ -10,6 +10,14 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.*;
 
+/**
+ * 文件名:AnthropicMessagesProtocolAdapterTest.java
+ *
+ * 测试目标:验证 Anthropic Messages 协议适配器的报文构造与解析:
+ * 构建真实的 Anthropic 请求体(不含 response_format/choices/input)、
+ * 使用 x-api-key 与版本号做鉴权、非流式响应只取 text 块、
+ * 流式增量只透出 text_delta(text/thinking/tool/ping 区分)、message_stop 为终止事件。
+ */
 class AnthropicMessagesProtocolAdapterTest {
     private final ObjectMapper mapper = new ObjectMapper();
     private final AnthropicMessagesProtocolAdapter adapter = new AnthropicMessagesProtocolAdapter();

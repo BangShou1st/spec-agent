@@ -10,7 +10,14 @@ import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** Deterministic production-path reproductions for the enforced eligibility gate. */
+/**
+ * 文件名:ActionEligibilityEnforcementIntegrationTest.java
+ *
+ * 测试目标:在 production 路径上以确定性方式复现"强制模式(enforced)
+ * 动作资格门禁"的行为。覆盖:重复创建节点在 policy/执行器之前被否决、
+ * 授权的 DECISION 节点通过资格校验进入 policy、未解决冲突不阻止普通
+ * CREATE_NODE 和可见只读能力的资格判定。
+ */
 @TestPropertySource(properties = "spec.agent.action-eligibility.mode=enforced")
 class ActionEligibilityEnforcementIntegrationTest extends EvalHarnessBase {
 
@@ -79,10 +86,9 @@ class ActionEligibilityEnforcementIntegrationTest extends EvalHarnessBase {
 
     @Test
     void unresolvedConflictAllowsOrdinaryCreateNodeAndReachesPolicy() {
-        // Frozen principle: constrain execution, not reasoning. An unresolved
-        // conflict never denies CREATE_NODE at the eligibility boundary. A
-        // plain KNOWLEDGE/NOTE that does not duplicate durable state passes
-        // the validator; policy/runtime safety still applies downstream.
+        // 冻结原则:约束执行,而非约束推理。未解决冲突绝不在资格边界拒绝
+        // CREATE_NODE。不与持久化状态重复的普通 KNOWLEDGE/NOTE 通过校验器;
+        // policy 与运行时安全仍在下游生效。
         ObservationEnvelope observation = runScenario(
                 scenario("CAL-UNRESOLVED-CREATE", new UserEvent.AnswerTip("answer"),
                         new BrainScript(
@@ -112,10 +118,9 @@ class ActionEligibilityEnforcementIntegrationTest extends EvalHarnessBase {
 
     @Test
     void unresolvedConflictAllowsVisibleReadOnlyCapability() {
-        // Unresolved conflict does not deny INVOKE_CAPABILITY either: a
-        // visible read-only capability with grounded arguments stays eligible.
-        // Eligibility never grants execution authority — policy still owns
-        // auto-executable vs confirmable vs denied.
+        // 未解决冲突同样不拒绝 INVOKE_CAPABILITY:参数有依据的可见只读能力
+        // 保持资格。资格判定永不授予执行权限——自动执行/需确认/拒绝
+        // 仍由 policy 决定。
         ObservationEnvelope observation = runScenario(
                 scenarioWithCapabilities("CAL-UNRESOLVED-CAPABILITY",
                         new UserEvent.AnswerTip("answer"),

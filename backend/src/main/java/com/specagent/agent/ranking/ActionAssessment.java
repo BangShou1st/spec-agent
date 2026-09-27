@@ -5,7 +5,16 @@ import com.specagent.agent.protocol.ActionFamily;
 import java.util.HashSet;
 import java.util.List;
 
-/** One model-produced semantic assessment for one eligible action family. */
+/**
+ * 文件名:ActionAssessment.java
+ *
+ * 用途:表示模型(Brain)对单个有资格执行的动作族做出的一条语义评估结果,
+ * 包含适用性判断、优先级等级、理由码、证据引用和打分明细。
+ *
+ * 协作:由模型输出解析得到,供 SemanticRanking 聚合排序使用;
+ * 紧凑构造器负责校验:理由码非空且不重复、证据引用非空且不重复、
+ * "可适用"的评估必须带证据引用、打分明细不能为空。
+ */
 public record ActionAssessment(ActionFamily family,
                                boolean applicable,
                                RankingPriorityClass priorityClass,

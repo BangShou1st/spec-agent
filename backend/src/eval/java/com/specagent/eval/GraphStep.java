@@ -4,13 +4,15 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Declarative graph-setup steps of a scenario's {@code given} block.
+ * 文件名:GraphStep.java
  *
- * <p>Steps use stable seeds (questionSeed, answerSeed, ...) instead of
- * fixed UUIDs or fixed natural-language sentences: the runner derives
- * concrete texts deterministically from the scenario id, variant seed, and
- * paraphrase index, so variants never rebind the scenario to one exact
- * sentence.
+ * 用途:场景 {@code given} 块中声明式图搭建步骤的密封接口(sealed)。
+ * 步骤使用稳定种子(questionSeed、answerSeed 等)而非固定 UUID 或固定的
+ * 自然语言句子:运行器从场景 id、变体种子和改写索引确定性地推导出具体
+ * 文本,因此变体改写永远不会把场景绑定到某一个固定句子。
+ *
+ * 协作:由 {@link GivenSpec} 持有,{@link ScenarioRunner} 逐步执行搭建
+ * 初始工作区图;{@code canonical()} 参与场景哈希。
  */
 public sealed interface GraphStep
         permits GraphStep.CreateRootQuestion,
@@ -20,32 +22,32 @@ public sealed interface GraphStep
                 GraphStep.SetFocus,
                 GraphStep.SetKnowledgeStatus {
 
-    /** Creates the root INTERACTION/QUESTION on the active route. */
+    /** 在活动路由上创建根 INTERACTION/QUESTION。 */
     record CreateRootQuestion(String questionSeed, boolean allowFreeAnswer) implements GraphStep {
     }
 
-    /** Creates a child INTERACTION/QUESTION under the node built by an earlier step. */
+    /** 在前序步骤构建的节点下创建子 INTERACTION/QUESTION。 */
     record CreateChildQuestion(String parentStepRef, String questionSeed,
                                boolean allowFreeAnswer) implements GraphStep {
     }
 
-    /** Attaches a TEXT resource at the current tip (or on an empty route). */
+    /** 在当前末端(或空路由上)附加一个 TEXT 资源。 */
     record AttachResource(String textSeed) implements GraphStep {
     }
 
-    /** Forks a new route from the node built by an earlier step. */
+    /** 从前序步骤构建的节点分叉出新路由。 */
     record ForkFromNode(String sourceStepRef, String labelSeed) implements GraphStep {
     }
 
-    /** Moves working focus without changing the active route. */
+    /** 移动工作焦点,不改变活动路由。 */
     record SetFocus(String targetStepRef) implements GraphStep {
     }
 
-    /** Applies an explicit knowledge-state transition to a workspace node. */
+    /** 对工作区节点施加一次显式的知识状态迁移。 */
     record SetKnowledgeStatus(String targetStepRef, String status) implements GraphStep {
     }
 
-    /** Canonical rendering for the scenario hash. */
+    /** 场景哈希用的规范化渲染。 */
     static String canonical(List<GraphStep> steps) {
         StringBuilder rendered = new StringBuilder("[");
         for (GraphStep step : steps) {
@@ -73,7 +75,7 @@ public sealed interface GraphStep
         return rendered.append("]").toString();
     }
 
-    /** Placeholder rendering for user-visible text seeds (never asserted verbatim). */
+    /** 用户可见文本种子的占位渲染(断言永远不会逐字比较这些文本)。 */
     static String renderText(String scenarioId, String seed, int paraphraseIndex,
                              Map<String, List<String>> paraphrases) {
         List<String> options = paraphrases.get(seed);

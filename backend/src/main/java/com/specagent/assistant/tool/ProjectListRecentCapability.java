@@ -13,7 +13,10 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /**
- * Host tool: bounded recent projects ordered by updated_at DESC.
+ * 文件名:ProjectListRecentCapability.java
+ *
+ * 用途:宿主工具——按 updated_at 降序列出最近更新的项目,结果有界。
+ * GA 工具目录中的 project.list_recent 即本能力。
  */
 @Component
 public class ProjectListRecentCapability implements InternalCapabilityAdapter {

@@ -3,25 +3,23 @@ package com.specagent.capability;
 import java.util.List;
 
 /**
- * Boundary for MCP-server adapters. An MCP server may expose tools,
- * resources, and prompts; an adapter maps them intentionally:
+ * 文件名:McpAdapter.java
  *
- * <ul>
- *   <li>MCP tools → invokable capabilities with side-effect metadata;</li>
- *   <li>MCP resources → retrievable resource context with provenance;</li>
- *   <li>MCP prompts → reusable prompt assets, never automatic system-policy
- *       override.</li>
- * </ul>
+ * 用途:MCP Server 适配器的边界接口。一个 MCP Server 可能暴露工具(tools)、
+ * 资源(resources)和提示(prompts);适配器对它们做有意的映射:
  *
- * The application host owns connections, credentials, permissions, context
- * exposure, and user approvals. No MCP adapter is wired in this stage; when
- * one lands, it must expose its server's primitive kinds through
- * {@link #exposedPrimitiveKinds()} so the registry can classify them.
+ * - MCP 工具 → 可调用的能力,附带副作用元数据;
+ * - MCP 资源 → 可检索的资源上下文,附带溯源信息;
+ * - MCP 提示 → 可复用的提示资产,绝不作为系统策略的自动覆盖。
+ *
+ * 连接、凭据、权限、上下文暴露和用户审批都由应用宿主持有。本阶段尚未接入
+ * 任何 MCP 适配器;一旦接入,必须通过 {@link #exposedPrimitiveKinds()} 暴露其
+ * Server 支持的原始类型,以便注册表对它们分类。
  */
 public interface McpAdapter extends CapabilityAdapter {
 
     enum PrimitiveKind { TOOL, RESOURCE, PROMPT }
 
-    /** Which MCP primitive kinds this adapter maps. */
+    /** 该适配器映射了哪些 MCP 原始类型。 */
     List<PrimitiveKind> exposedPrimitiveKinds();
 }

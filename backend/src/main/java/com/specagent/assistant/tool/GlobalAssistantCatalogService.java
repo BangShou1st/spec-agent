@@ -6,11 +6,12 @@ import com.specagent.capability.CapabilityRegistry;
 import java.util.List;
 import org.springframework.stereotype.Service;
 /**
- * Model-facing GA product catalog. Resolution order is deliberate:
- * registry permission/provider resolution first, then the GA allowed-ID
- * filter, then the exact GA support-marker compatibility check, and only
- * then the bounded projection. Unrelated capabilities can never starve the
- * four V1 tools out of a global truncation window. No second registry.
+ * 文件名:GlobalAssistantCatalogService.java
+ *
+ * 用途:面向模型的 GA(全局助手)产品目录。解析顺序是刻意安排的:
+ * 先走注册表的权限/供应商解析,再过 GA 允许 ID 过滤器,然后做精确的
+ * GA 支持标记兼容检查,最后才做有界投影。这样无关能力永远不可能
+ * 在全局截断窗口里把 V1 的四个工具挤掉。不建第二套注册表。
  */
 @Service
 public class GlobalAssistantCatalogService {

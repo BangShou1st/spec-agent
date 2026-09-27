@@ -23,6 +23,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+/**
+ * 文件名:AdvisorPolicyEngineTest.java
+ *
+ * 测试目标:验证 AdvisorPolicyEngine 对各动作族的判定矩阵——WAIT/RESPOND_TO_USER/
+ * tip 上的 REQUEST_USER_INPUT/只读能力自动执行;非 tip 锚点与 LOCAL_DURABLE 能力需确认;
+ * 无执行路径的动作族(UPDATE_NODE/CREATE_ROUTE/GENERATE_ARTIFACT)直接拒绝而非"需确认";
+ * CONTINUATION 连接拒绝;外部副作用能力拒绝;置信度绝不构成授权信号。
+ */
 class AdvisorPolicyEngineTest {
 
     private AdvisorPolicyEngine engine;
@@ -91,9 +99,8 @@ class AdvisorPolicyEngineTest {
     }
 
     /**
-     * Contract closure: a family with no executable runtime command path must
-     * be denied outright — never classified as requiring confirmation, which
-     * would produce a PROPOSED proposal that fails on acceptance.
+     * 契约闭环:没有可执行运行时命令路径的动作族必须被直接拒绝——绝不能归为
+     * "需确认",否则会产生一个在接受时必然失败的 PROPOSED 提案。
      */
     @Test
     void updateNodeWithoutCommandPathIsDeniedNotConfirmed() {
@@ -132,8 +139,7 @@ class AdvisorPolicyEngineTest {
                 proposal("CONNECT_NODE", Map.of("relationClass", "SEMANTIC")),
                 context(tipNodeId));
 
-        // SEMANTIC relations have a real execution path (the graph command
-        // layer), so confirmation produces an acceptable proposal.
+        // SEMANTIC 关系有真实的执行路径(图命令层),所以确认会产生可接受的提案。
         assertThat(decision.requiresConfirmation()).isTrue();
         assertThat(decision.denyReason()).isNull();
     }
@@ -214,9 +220,8 @@ class AdvisorPolicyEngineTest {
 
     @Test
     void confidenceDoesNotAuthorizeExecution() {
-        // Even with high confidence, a family without an execution path stays
-        // denied and a destructive mutation still requires confirmation —
-        // confidence is never an authorization signal.
+        // 即使置信度很高,没有执行路径的动作族仍然被拒绝,破坏性变更仍然需要
+        // 确认——置信度绝不是授权信号。
         PolicyDecision unsupported = engine.evaluate(
                 proposal("UPDATE_NODE", Map.of("confidence", 0.95)),
                 context(tipNodeId));

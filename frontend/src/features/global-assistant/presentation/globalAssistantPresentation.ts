@@ -1,4 +1,9 @@
-/** Presentation-only mapping for Global Assistant (never decides semantics). */
+// 文件名:globalAssistantPresentation.ts
+// 用途:全局助手的展示层映射(只做展示,不决定语义):工具显示名、错误码到用户文案、
+//       网络失败原因透出、工具参数摘要、发送/生成阶段状态文案、消息时间标签、
+//       空态建议提问与后端运行状态文案的翻译。
+
+/** 全局助手的展示层专用映射(绝不决定语义)。 */
 import { capabilityPresentation } from './capabilityPresentation'
 
 export function gaToolDisplayName(capabilityId: string): string {
@@ -36,20 +41,19 @@ export function gaErrorMessage(code: string, fallback?: string): string {
 }
 
 /**
- * Exception names and socket-level phrases that mark a tool failure as a
- * network failure. The backend tool failures already carry the real cause
- * (transport exception + the outbound route it used); without this mapping
- * that reason is masked by the generic "请稍后再试" copy. Matched
- * case-insensitively against the raw reason text.
+ * 标记工具失败属于网络失败的异常名与套接字层面的短语。
+ * 后端的工具失败本身携带真实原因(传输异常 + 所使用的出站路由);
+ * 若不做这个映射,该原因会被通用的"请稍后再试"文案掩盖。
+ * 对原始原因文本做大小写不敏感匹配。
  */
 const NETWORK_FAILURE_PATTERN =
   /TransportException|ConnectException|SocketTimeout|SocketException|UnknownHost|SSLHandshake|SSLException|NoRouteToHost|Connection (?:timed out|refused|reset)|Read timed out|connect timed out/i
 
 /**
- * Network failures surface the backend's real reason instead of the generic
- * copy, so the user sees "网络连接失败：Git import failed: TransportException
- * via local proxy 127.0.0.1:7897 (Connection timed out)" rather than a dead
- * end. Returns null for anything that is not a network failure.
+ * 网络失败时透出后端的真实原因,而不是通用文案,让用户看到
+ * "网络连接失败:Git import failed: TransportException via local proxy
+ * 127.0.0.1:7897 (Connection timed out)" 这样的具体信息,而非死胡同。
+ * 非网络失败返回 null。
  */
 function networkFailureCopy(fallback?: string): string | null {
   const text = (fallback ?? '').trim()
@@ -58,7 +62,7 @@ function networkFailureCopy(fallback?: string): string | null {
   return '网络连接失败：' + bounded
 }
 
-/** Compact single-line summary for tool arguments (sanitized, conservative). */
+/** 工具参数的单行紧凑摘要(已清洗,保守截断)。 */
 export function gaArgsSummary(args: unknown): string | null {
   if (!args || typeof args !== 'object') return null
   const record = args as Record<string, unknown>
@@ -76,17 +80,16 @@ export function gaArgsSummary(args: unknown): string | null {
   if (picked.length === 0) return null
   return picked.join(' · ')
 }
-/** Optimistic send-time status, replaced once real runtime evidence arrives. */
+/** 乐观的发送期状态,真实运行事件到达后即被替换。 */
 export const GA_SENDING_STATUS = '正在处理…'
-/** Phase label used once streamed answer text is visibly generating. */
+/** 流式回答文本开始可见生成时的阶段标签。 */
 export const GA_GENERATING_STATUS = '正在生成回答…'
 /**
- * Presentation-only mapping for backend runtime status strings.
- * Keyed by the frozen backend message contract, never by prompt text,
- * capability branches in views, or per-scenario special cases.
- * Unknown messages pass through verbatim so information is never hidden.
+ * 后端运行状态字符串的展示层映射。
+ * 按(已冻结的)后端消息契约做键,绝不按 prompt 文本、视图内的 capability
+ * 分支或按场景特判;未知消息原样透出,不隐藏任何信息。
  */
-/** Calendar-day distance ignoring time-of-day, DST-safe (local calendar). */
+/** 忽略一天内时刻的日历天数差,对夏令时安全(按本地日历)。 */
 function dayDistance(from: Date, to: Date): number {
   const a = new Date(from.getFullYear(), from.getMonth(), from.getDate()).getTime()
   const b = new Date(to.getFullYear(), to.getMonth(), to.getDate()).getTime()
@@ -100,12 +103,11 @@ function clockOf(date: Date): string {
 }
 
 /**
- * Timestamp label for one conversation message. Same-day messages keep the
- * compact clock reading; anything older carries the actual date, so a
- * conversation that spans days is never ambiguous. Returns '' for missing or
- * unparseable input so callers hide the row instead of rendering garbage.
+ * 单条会话消息的时间戳标签。当天的消息只显示紧凑时刻;更早的消息携带真实日期,
+ * 跨天的会话不会产生歧义。输入缺失或无法解析时返回 '',
+ * 调用方据此隐藏该行而不是渲染乱码。
  *
- * Pure and `now`-injectable: the label is decided only by the two dates.
+ * 纯函数,可注入 `now`:标签只由两个日期决定。
  */
 export function gaMessageTimeLabel(iso?: string | null, now: Date = new Date()): string {
   if (!iso) return ''
@@ -122,17 +124,16 @@ export function gaMessageTimeLabel(iso?: string | null, now: Date = new Date()):
   return date.getFullYear() + '年' + monthDay + ' ' + clock
 }
 
-/** A starter prompt offered in the empty state. Label and prompt live here so
- * no component hard-codes copy and a new starter only needs one entry. */
+/** 空态展示的建议提问。label 与 prompt 都定义在此,
+ * 组件不做文案硬编码,新增建议只需加一条。 */
 export interface GaSuggestion {
   label: string
   prompt: string
 }
 
 /**
- * Starters are chosen to match what the tool whitelist can actually do
- * (project search, project summary read, navigation) — never a capability the
- * assistant cannot execute.
+ * 建议提问只挑选工具白名单真正能做的事
+ * (项目搜索、项目概要读取、页面导航),绝不承诺助手做不到的能力。
  */
 export const GA_EMPTY_SUGGESTIONS: readonly GaSuggestion[] = [
   { label: '找项目', prompt: '帮我找一下正在做的项目' },

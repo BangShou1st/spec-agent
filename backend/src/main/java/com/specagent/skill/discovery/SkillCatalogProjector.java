@@ -7,10 +7,11 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 
 /**
- * Bounded model-facing Skill catalog projection. Produces a small,
- * fingerprint-stable list with a {@code truncated} flag and a catalog
- * fingerprint so the same frozen snapshot always replays the exact same
- * projection.
+ * 文件名:SkillCatalogProjector.java
+ *
+ * 用途:生成面向模型的、有界的 Skill 目录投影。输出一个小的、指纹稳定的
+ * 条目列表,附带 {@code truncated} 标志与目录指纹,保证同一个冻结快照每次
+ * 都能重放出完全相同的投影。
  */
 @Component
 public class SkillCatalogProjector {

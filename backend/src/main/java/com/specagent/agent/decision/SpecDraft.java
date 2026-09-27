@@ -4,8 +4,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Draft of a requirements spec produced by the agent loop, with per-section
- * source references and a list of items still unresolved.
+ * 文件名:SpecDraft.java
+ *
+ * 用途:Agent 循环产出的需求 spec 草稿,包含每个小节的来源引用,
+ * 以及仍未消解的条目列表。
  */
 public record SpecDraft(
         Map<String, String> sections,

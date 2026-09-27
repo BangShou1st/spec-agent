@@ -5,16 +5,16 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Immutable user answer to a node.
+ * 文件名:Answer.java
  *
- * <p>Once finalized for a given {@code (routeId, nodeId)} pair, it must never be
- * overwritten. Re-answering creates a new route, replacement node, or answer
- * revision rather than mutating this record.
+ * 用途:用户对某个节点的不可变回答记录。回答一旦对给定 {@code (routeId, nodeId)}
+ * 定稿,就绝不允许被覆盖;重新作答只能通过新建 route、替换节点或回答修订来表达,
+ * 而不是修改这条记录。它是 answer 包的核心领域对象,上游由 {@code AnswerService}
+ * 定稿落库,下游供 graph/上下文构建等读取。
  *
- * <p>Multi-select questions ({@code allowMultiSelect}) carry the full selection
- * in {@code selectedOptionIds}; {@code selectedOptionId} always mirrors the
- * FIRST selected option so every single-selection consumer keeps its existing
- * semantics unchanged.
+ * 多选题({@code allowMultiSelect})把完整选择集放在 {@code selectedOptionIds}
+ * 中;{@code selectedOptionId} 始终镜像第一个被选中的选项,保证所有单选消费方的
+ * 既有语义不变。
  */
 public class Answer {
 
@@ -83,7 +83,7 @@ public class Answer {
         return selectedOptionId;
     }
 
-    /** Full selection for multi-select questions; single-select answers carry 0..1 entries. */
+    /** 多选题的完整选择集;单选回答只含 0..1 个条目。 */
     public List<String> selectedOptionIds() {
         return selectedOptionIds;
     }

@@ -1,3 +1,9 @@
+<!--
+  文件名:ConnectionDetailView.vue
+  用途:单个 Connection 的详情页:展示名称、地址、凭证掩码,提供编辑、测试/连接/刷新/启用等
+       生命周期操作、能力(tools/resources/prompts)浏览,以及禁用与二次确认删除。
+       数据全部来自 connectionsStore,按路由参数 connectionId 加载。
+-->
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'

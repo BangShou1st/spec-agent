@@ -1,12 +1,11 @@
 package com.specagent.workspace.graph;
 
 /**
- * Semantic relation vocabulary between nodes.
+ * 文件名:NodeRelationType.java
  *
- * <p>Semantic relations are stored separately from visible continuation
- * lineage and are never rendered as default Canvas edges. Model-inferred
- * relations enter as Advisor proposals; confidence alone never turns an
- * inferred relation into durable fact.
+ * 用途:节点间语义关系的类型词表。语义关系与可见的续写 lineage
+ * 分开存储,绝不渲染成默认画布边。模型推断的关系只能以 Advisor 提案
+ * 的形式进入;仅有置信度绝不足以把推断关系变成持久事实。
  */
 public enum NodeRelationType {
 

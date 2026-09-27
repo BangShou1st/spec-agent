@@ -5,11 +5,11 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Open-but-validated subtype vocabulary per node kind.
+ * 文件名:NodeSubtypes.java
  *
- * <p>Adding a subtype is a payload/content concern, not a new action family
- * and not a new business agent. The whitelist keeps model proposals and user
- * input from inventing opaque subtype strings.
+ * 用途:每种节点 kind 的"开放但经校验"的 subtype 词表。新增一个
+ * subtype 属于负载/内容层面的事,不是新的动作族、也不是新的业务
+ * agent。这份白名单防止模型提案和用户输入发明不透明的 subtype 字符串。
  */
 public final class NodeSubtypes {
 

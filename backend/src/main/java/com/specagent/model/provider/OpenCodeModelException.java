@@ -4,13 +4,13 @@ import com.specagent.model.contract.ModelGatewayErrorCategory;
 import com.specagent.model.contract.ModelGatewayException;
 
 /**
- * Diagnostic failure raised by the OpenCode Zen transport and gateway.
+ * 文件名:OpenCodeModelException.java
  *
- * <p>Messages never contain the API key or the Authorization header value, so
- * errors can be logged or persisted safely. The exception extends the
- * provider-neutral {@link ModelGatewayException}: the agent reasoning layer
- * catches the base type and reads {@link #gatewayCategory()}, while OpenCode
- * tests keep using the provider-specific {@link #category()}.
+ * 用途:OpenCode Zen 传输层与网关抛出的带诊断信息的失败异常。消息中永不包含
+ * API key 或 Authorization 头的值,因此可以安全地记录日志或持久化。该异常继承
+ * 提供商无关的 {@link ModelGatewayException}:agent 推理层捕获基类并读取
+ * {@link #gatewayCategory()},而 OpenCode 的测试代码继续使用提供商专属的
+ * {@link #category()}。
  */
 public class OpenCodeModelException extends ModelGatewayException {
 

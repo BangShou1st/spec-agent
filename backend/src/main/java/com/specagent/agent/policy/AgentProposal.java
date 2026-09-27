@@ -6,10 +6,15 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Persistent record of an action proposal's lifecycle. Tracks the proposal
- * from PROPOSED through ACCEPTED/MODIFIED/REJECTED/EXPIRED, making every
- * decision traceable and auditable. Anchor refs are persisted so acceptance
- * can re-validate staleness against current graph facts.
+ * 文件名:AgentProposal.java
+ *
+ * 用途:动作提案生命周期的持久化记录。跟踪提案从 PROPOSED 到
+ * ACCEPTED/MODIFIED/REJECTED/EXPIRED 的全过程,使每次决策可追溯、可审计。
+ * 锚点引用(anchorRefs)会被持久化,使接受操作能对照当前图状态
+ * 重新校验 staleness。
+ *
+ * 协作:由 AgentProposalService 创建与流转,接受/拒绝入口在
+ * AgentProposalController 与 ProposalAcceptanceService。
  */
 public record AgentProposal(UUID id,
                             UUID runId,

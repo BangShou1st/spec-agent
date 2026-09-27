@@ -17,7 +17,11 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * FIX H/J RED: structured error codes, corrupt state fails closed.
+ * 文件名:GlobalAssistantTypedFailureTest.java
+ *
+ * 测试目标:验证失败是类型化的、状态损坏时失败收场。
+ * 覆盖场景:未知项目返回结构化的 PROJECT_NOT_FOUND 错误码、
+ * 工作状态 JSON 损坏时抛出异常而不是返回空状态。
  */
 @SpringBootTest
 @ActiveProfiles("test")

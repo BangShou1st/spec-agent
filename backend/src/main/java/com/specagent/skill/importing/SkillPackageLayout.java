@@ -8,50 +8,49 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Layout rules for Skill packages, independent of how the bytes arrived
- * (ZIP upload or HTTPS git clone).
+ * 文件名:SkillPackageLayout.java
  *
- * <p>A Skill package is one Skill: {@code SKILL.md} at the package root. Real
- * repositories are frequently larger than that — a library of Skills under
- * {@code skills/<name>/}, a plugin marketplace declaring several plugins, a
- * plugin root nested deeper. Discovery exists so those repositories are
- * <em>navigated</em> instead of rejected, while every containment and size
- * rule stays exactly as strict as before: adaptation comes from finding the
- * right package, never from relaxing validation.
+ * 用途:Skill 包的布局规则,与字节来源无关(ZIP 上传或 HTTPS git clone
+ * 均适用)。
  *
- * <p>All methods here are pure: no network, no filesystem, no Spring.
+ * 一个 Skill 包就是一个 Skill:{@code SKILL.md} 位于包根。而现实中的仓库
+ * 往往更大 —— {@code skills/<name>/} 下的 Skill 库、声明了多个插件的市场
+ * 仓库、嵌套更深的插件根。发现(discovery)机制让这类仓库被<em>浏览</em>而
+ * 不是被拒收,同时一切包含性与大小规则保持原样严格:适配来自"找对包",
+ * 绝不来自放松校验。
+ *
+ * 本类所有方法都是纯函数:无网络、无文件系统、无 Spring。
  */
 public final class SkillPackageLayout {
 
     public static final String SKILL_MD = "SKILL.md";
 
     /**
-     * Marketplace manifests recognised in a repository tree. They are read as
-     * data only — a manifest can widen discoverability, never execution.
+     * 仓库树中被识别的市场清单文件。只作为数据读取 —— 清单可以扩大可发现
+     * 范围,但绝不带来执行能力。
      */
     public static final List<String> MARKETPLACE_MANIFESTS = List.of(
             ".claude-plugin/marketplace.json",
             ".agents/plugins/marketplace.json");
 
-    /** Upper bound on reported candidates, so a 200-Skill marketplace cannot flood a response. */
+    /** 候选报告数量上限,避免 200 个 Skill 的市场冲垮一次响应。 */
     public static final int MAX_CANDIDATES = 50;
 
     public enum Kind {
-        /** SKILL.md at the repository root — the smallest, oldest shape. */
+        /** SKILL.md 位于仓库根 —— 最小、最原始的形态。 */
         ROOT,
-        /** SKILL.md in a nested directory, e.g. {@code skills/<name>/}. */
+        /** SKILL.md 位于嵌套目录,如 {@code skills/<name>/}。 */
         NESTED,
-        /** Nested directory that lives under a marketplace-declared plugin source. */
+        /** 位于市场清单声明的插件源之下的嵌套目录。 */
         MARKETPLACE
     }
 
     /**
-     * One directory that owns a SKILL.md.
+     * 一个拥有 SKILL.md 的目录。
      *
-     * @param path       repository-relative directory, "" for the repository root
-     * @param declaredBy marketplace plugin source that declared this root; "" when
-     *                   the plugin source is the repository root itself, null when
-     *                   no manifest declared it
+     * @param path       相对仓库的目录,仓库根为 ""
+     * @param declaredBy 声明此根的市场插件源;插件源即仓库根本身时为 "",
+     *                   没有清单声明时为 null
      */
     public record SkillRoot(String path, Kind kind, String declaredBy) {
         public String displayPath() {
@@ -63,13 +62,12 @@ public final class SkillPackageLayout {
     }
 
     /**
-     * Every directory in {@code paths} that owns a SKILL.md. Hidden entries are
-     * expected to be filtered out by the caller before this point.
+     * 找出 {@code paths} 中所有拥有 SKILL.md 的目录。隐藏条目应已由调用方在
+     * 此之前过滤掉。
      *
-     * @param declaredPluginPrefixes repository-relative plugin sources declared by
-     *                               a marketplace manifest, used to attribute a root
-     *                               (never to widen what is accepted)
-     * @return the root package first when present, then candidates by path
+     * @param declaredPluginPrefixes 市场清单声明的、相对仓库的插件源,用于归属
+     *                               根目录(绝不用于放宽接受标准)
+     * @return 根包(若存在)排在首位,其余候选按路径排序
      */
     public static List<SkillRoot> discover(List<String> paths,
                                            List<String> declaredPluginPrefixes) {
@@ -110,9 +108,8 @@ public final class SkillPackageLayout {
     }
 
     /**
-     * Plugin source prefixes from one parsed marketplace manifest. Only
-     * repository-relative directories are accepted: an absolute path, a
-     * traversal, a URL or a hidden segment is ignored rather than trusted.
+     * 从一份解析后的市场清单提取插件源前缀。只接受相对仓库的目录:绝对路径、
+     * 路径穿越、URL 或隐藏段一律忽略而非信任。
      */
     public static List<String> declaredPluginSources(Map<String, Object> marketplace) {
         if (marketplace == null) {
@@ -140,9 +137,8 @@ public final class SkillPackageLayout {
     }
 
     /**
-     * Normalizes an optional subdirectory selector to a path relative to the
-     * repository root; "" selects the root package. Fails closed on absolute
-     * paths, traversal, empty segments and hidden segments.
+     * 把可选的子目录选择器归一化为相对仓库根的路径;"" 表示选择根包。对绝对
+     * 路径、路径穿越、空段与隐藏段一律失败关闭。
      */
     public static String normalizeSubPath(String subPath) {
         if (subPath == null || subPath.isBlank()) {
@@ -184,8 +180,8 @@ public final class SkillPackageLayout {
     }
 
     /**
-     * Keeps only the files under {@code subPath} and strips that prefix, so the
-     * selected directory becomes the package root. "" returns the files as-is.
+     * 只保留 {@code subPath} 之下的文件并剥掉该前缀,使所选目录成为包根。
+     * subPath 为 "" 时原样返回文件。
      */
     public static List<SkillSourceFile> slice(List<SkillSourceFile> files, String subPath) {
         String prefix = normalizeSubPath(subPath);

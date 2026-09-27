@@ -1,9 +1,10 @@
 package archfixture;
 
 /**
- * NON-violation fixture: an application orchestration service (name role
- * *CommandService) may reference an HTTP DTO — this proves the role
- * distinction in the gate (orchestration is exempt, core is not).
+ * 文件名:SampleOrchestrationCommandService.java
+ *
+ * 非违规样例夹具:应用层编排服务(命名角色为 *CommandService)允许引用
+ * HTTP DTO——以此证明门禁中的角色区分(编排服务豁免,核心服务不豁免)。
  */
 public class SampleOrchestrationCommandService {
 

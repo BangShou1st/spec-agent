@@ -1,5 +1,7 @@
-/** Stable product copy for safe API error codes. Provider payloads and raw
- * backend messages never become user-facing text through this mapper. */
+// 文件名:errorCopy.ts
+// 用途:API 错误码到产品文案的映射:安全错误码的稳定中文文案、模型失败的分类(可重试/未知/不重试)以及项目页的专用文案策略。
+/** 安全 API 错误码的稳定产品文案。provider 载荷与原始后端消息绝不经过
+ * 此映射变成用户可见文本。 */
 const ERROR_COPY: Record<string, string> = {
   NOT_CONFIGURED: '尚未配置模型，请前往模型设置',
   AUTHENTICATION: '当前 API Key 已失效，请更换 API Key',
@@ -90,10 +92,9 @@ export function managementErrorMessage(code: string, safeBackendMessage?: string
   return productErrorMessage(code)
 }
 
-/**
- * Copy for the projects page. Backend messages are English by contract, so the
- * codes this page can surface are mapped to product copy here; anything else
- * keeps the backend message rather than being flattened into a generic one.
+/*
+ * 项目页专用文案。按契约,后端消息是英文,因此本页面可能出现的错误码
+ * 在这里映射为产品文案;其余错误保留后端消息,而不是被压平成通用文案。
  */
 export function projectErrorMessage(code: string, backendMessage: string): string {
   const normalized = code.toUpperCase()
@@ -110,10 +111,10 @@ export function requiresModelSettings(code: string): boolean {
 
 export type ModelFailureDisposition = 'retryable' | 'unknown' | 'none'
 
-/**
- * Classifies only model/provider failures that are safe to offer as a manual
- * model retry. Network outcome is deliberately separate: a request with an
- * unknown result must reconcile canonical state before any new mutation.
+/*
+ * 只对可以安全提供"手动模型重试"的模型/提供方失败做分类。网络结果刻意
+ * 单独处理:结果未知的请求必须先对账 canonical 状态,才能发起新的
+ * mutation。
  */
 export function classifyModelFailure(code: string, status?: number): ModelFailureDisposition {
   const normalized = stableCode(code)

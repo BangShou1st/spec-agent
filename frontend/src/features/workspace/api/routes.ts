@@ -1,3 +1,9 @@
+// 文件名:routes.ts
+// 用途:路线命令与谱系读取 API。
+// 命令走既有的后端路线命令端点;前端从不在本地复现路线状态转移。
+// Fork/重新生成发送显式的 sourceRouteId 加用户控制的内容;
+// 运行时生成的 id(routeId、rootNodeId、tipNodeId、选项 id、生命周期状态)绝不出现在请求里。
+
 import { apiClient } from '@/shared/http/client'
 import type {
   ForkRouteRequest,
@@ -9,13 +15,12 @@ import type {
 } from '@/shared/contracts/types'
 
 /**
- * Route command + lineage read API.
+ * 路线命令 + 谱系读取 API。
  *
- * Commands go through the existing backend route command endpoints; the
- * frontend never reproduces route transitions locally. Fork/regenerate send
- * explicit sourceRouteId plus user-controlled content; runtime-generated ids
- * (routeId, rootNodeId, tipNodeId, option ids, lifecycle status) are never
- * included in requests.
+ * 命令走既有的后端路线命令端点;前端从不在本地复现路线状态转移。
+ * Fork/重新生成发送显式的 sourceRouteId 加用户控制的内容;
+ * 运行时生成的 id(routeId、rootNodeId、tipNodeId、选项 id、生命周期状态)
+ * 绝不包含在请求中。
  */
 
 export function activateRoute(projectId: string, routeId: string): Promise<RouteMutationResponse> {
@@ -53,9 +58,9 @@ export function forkNode(
   )
 }
 
-/** Starts a NEW standalone route from a floating knowledge/resource node:
- * the node becomes the route's root+tip; the next question draft anchors
- * there. The node keeps its id, kind and content. */
+/** 从一个浮动的知识/资源节点开启一条全新的独立路线:
+ * 该节点成为路线的根+末端;下一个问题草稿锚定在此。
+ * 节点保留自己的 id、kind 和内容。 */
 export function startRouteFromNode(
   projectId: string,
   nodeId: string,

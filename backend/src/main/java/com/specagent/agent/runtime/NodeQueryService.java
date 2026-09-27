@@ -34,29 +34,30 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Contextual AI query on an arbitrary node: exactly one DECISION call.
+ * 文件名:NodeQueryService.java
  *
- * <p>This is the "ask AI about this node" path of the graph workspace model.
- * The context is the anchor node's lineage plus the explicit read route;
- * the answer must come back as {@code RESPOND_TO_USER} (or {@code WAIT}) and
- * never mutates the graph. If the model proposes a mutation action instead,
- * it is persisted as an Advisor proposal awaiting user confirmation — a query
- * has no side effects.
+ * 用途:针对任意节点的情境化 AI 查询:恰好一次 DECISION 调用。
+ *
+ * 这是图工作区模型中"问 AI 这个节点"的路径。上下文由锚点节点的谱系
+ * 加显式指定的只读 route 构成;回答必须以 {@code RESPOND_TO_USER}(或
+ * {@code WAIT})返回,绝不修改图。如果模型提出的是变更动作,它会被持久化为
+ * 等待用户确认的 Advisor proposal——查询本身没有副作用。
+ * 在"命令 → 持久化 → Brain → 校验 → checkpoint"链路中,它是 NODE_QUERY
+ * 触发类型的执行服务。
  */
 @Service
 public class NodeQueryService {
 
     /**
-     * @deprecated Read {@link AgentRunEventTypes} instead. Kept only so
-     * existing callers keep compiling; the values forward to the shared
-     * run-event protocol and must stay identical to it.
+     * @deprecated 请改读 {@link AgentRunEventTypes}。保留仅为让既有调用方
+     * 继续编译;值直接转发到共享的 run 事件协议,必须与其保持一致。
      */
     @Deprecated(forRemoval = true)
     public static final String RESPOND_MESSAGE_EVENT = AgentRunEventTypes.RESPOND_MESSAGE_EVENT;
-    /** @deprecated Read {@link AgentRunEventTypes#POLICY_DENIED_EVENT} instead. */
+    /** @deprecated 请改读 {@link AgentRunEventTypes#POLICY_DENIED_EVENT}。 */
     @Deprecated(forRemoval = true)
     public static final String POLICY_DENIED_EVENT = AgentRunEventTypes.POLICY_DENIED_EVENT;
-    /** @deprecated Read {@link AgentRunEventTypes#MUTATION_NOT_CONFIRMABLE_EVENT} instead. */
+    /** @deprecated 请改读 {@link AgentRunEventTypes#MUTATION_NOT_CONFIRMABLE_EVENT}。 */
     @Deprecated(forRemoval = true)
     public static final String MUTATION_NOT_CONFIRMABLE_EVENT =
             AgentRunEventTypes.MUTATION_NOT_CONFIRMABLE_EVENT;
@@ -100,7 +101,7 @@ public class NodeQueryService {
     }
 
     /**
-     * Executes the node query: snapshot → 1 DECISION call → policy.
+     * 执行节点查询:快照 → 1 次 DECISION 调用 → policy。
      */
     public NodeQueryResult executeNodeQuery(AgentRun run, UUID routeId,
                                             UUID anchorNodeId, String question) {
@@ -132,11 +133,10 @@ public class NodeQueryService {
                     runId, run.projectId(), routeId, snapshot.id(), anchorNodeId, null, question));
             if (policyDecision.denyReason() != null) {
                 trace = trace + "\npolicy_denied:" + policyDecision.denyReason();
-                // Durable terminal-outcome evidence: the result view derives
-                // POLICY_DENIED from this event, never from the trace string.
-                // The COMPLETED transition and the semantic event commit
-                // atomically, so a poll can never observe COMPLETED while the
-                // POLICY_DENIED event is absent.
+                // 可持久化的终态证据:结果视图从这条事件推导 POLICY_DENIED,
+                // 绝不从 trace 字符串推导。COMPLETED 状态迁移与语义事件
+                // 原子提交,因此轮询永远不会观察到"COMPLETED 但
+                // POLICY_DENIED 事件缺失"的中间态。
                 terminalizationService.completeWithEvent(runId, AgentRunStatus.COMPLETED, trace,
                         AgentRunPhase.COMPLETED, POLICY_DENIED_EVENT,
                         Map.of("denyReason", policyDecision.denyReason(),
@@ -144,12 +144,10 @@ public class NodeQueryService {
                 return new NodeQueryResult(runId, "policy_denied", null, null);
             }
 
-            // A query never mutates the graph: read-only families execute,
-            // every confirmable mutation family is downgraded to a pending
-            // proposal. Families that could never be executed after
-            // acceptance (no command path, non-tip anchor, dead endpoints)
-            // are reported as not confirmable instead of creating a
-            // clickable-but-unexecutable proposal.
+            // 查询绝不修改图:只读 family 直接执行,所有可确认的变更
+            // family 都降级为 pending proposal。确认后也永远无法执行的
+            // family(没有命令路径、锚点非 tip、端点已失效)按
+            // not_confirmable 报告,而不是生成"能点但无法执行"的 proposal。
             boolean readOnly = switch (ActionFamily.fromCode(proposal.actionFamily())) {
                 case RESPOND_TO_USER, WAIT -> true;
                 case CREATE_NODE, UPDATE_NODE, CONNECT_NODE, CREATE_ROUTE,
@@ -160,10 +158,9 @@ public class NodeQueryService {
                         runId, run.projectId(), routeId, snapshot.id(), anchorNodeId, null, question);
                 if (!policyEngine.canProduceAcceptableProposal(proposal, downgradeContext)) {
                     trace = trace + "\nnot_confirmable:" + proposal.actionFamily();
-                    // Same atomic terminalization as the deny path: COMPLETED
-                    // and MUTATION_NOT_CONFIRMABLE commit together, so a poll
-                    // can never transiently observe COMPLETED without the
-                    // semantic event.
+                    // 与拒绝路径相同的原子终态化:COMPLETED 与
+                    // MUTATION_NOT_CONFIRMABLE 一起提交,轮询永远不会短暂地
+                    // 观察到"COMPLETED 但语义事件缺失"。
                     terminalizationService.completeWithEvent(runId, AgentRunStatus.COMPLETED, trace,
                             AgentRunPhase.COMPLETED, MUTATION_NOT_CONFIRMABLE_EVENT,
                             Map.of("actionFamily", proposal.actionFamily()));
@@ -199,9 +196,7 @@ public class NodeQueryService {
         AgentRun latest = agentRunService.getRun(runId).orElse(null);
         if (latest != null && latest.status() != AgentRunStatus.FAILED
                 && latest.status() != AgentRunStatus.COMPLETED) {
-            agentRunFailureService.fail(runId, "failed:" + reason);
-            eventService.append(runId, AgentRunPhase.FAILED, "RUN_FAILED",
-                    RunFailureReasons.payload(reason));
+            agentRunFailureService.fail(runId, "failed:" + reason, ex);
         }
     }
 }
