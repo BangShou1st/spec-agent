@@ -166,8 +166,10 @@ class GlobalAssistantSliceFStreamTest {
     @Test
     void sseReplayCursorSemantics() throws Exception {
         String threadId = createThread();
-        String runId = createRun(threadId, "replay check");
-        waitForTerminal(runId);
+        var fixture = conversations.createRunWithUserMessage(UUID.fromString(threadId), "replay check", "test", "test", "test");
+        lifecycle.claimAndStart(fixture.id());
+        lifecycle.completeWithAssistant(UUID.fromString(threadId), fixture.id(), "已完成");
+        String runId = fixture.id().toString();
         UUID runUuid = UUID.fromString(runId);
         var all = events.findByRun(runUuid);
         assertThat(all).isNotEmpty();

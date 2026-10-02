@@ -1,16 +1,17 @@
 <!--
   文件名:ProjectResourceList.vue
-  用途:工具活动下的"相关项目"资源列表:只保留 id 为合法 UUID 的 PROJECT 资源(最多 10 条),
-       展示名称与更新时间,点击跳转到对应项目工作台。
+  用途:工具活动下的宿主来源列表:项目、内部检索证据及外部网页来源，最多10条。
+       项目可导航；网页展示链接、获取时间、内容阶段与有界摘要。
 -->
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
+import { safeWebUrl } from '../presentation/webSources'
 export interface GaResourceRef { kind: string; id: string; label: string; metadata?: Record<string, unknown> | null }
 const props = defineProps<{ resources: GaResourceRef[] }>()
 const router = useRouter()
 const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
-const items = computed(() => (props.resources ?? []).filter((r) => r && (r.kind === 'PROJECT' || r.kind === 'SOURCE') && typeof r.id === 'string' && UUID_RE.test(r.id) && typeof r.label === 'string' && r.label.length > 0).slice(0, 10))
+const items = computed(() => (props.resources ?? []).filter((r) => r && ['PROJECT', 'SOURCE', 'WEB_SOURCE'].includes(r.kind) && typeof r.id === 'string' && UUID_RE.test(r.id) && typeof r.label === 'string' && r.label.length > 0 && (r.kind !== 'WEB_SOURCE' || safeWebUrl(r.metadata?.url))).slice(0, 10))
 function updatedAtOf(r: GaResourceRef): string {
   const m = (r.metadata ?? {}) as Record<string, unknown>
   const v = m['updatedAt']
@@ -30,6 +31,12 @@ async function openProject(id: string): Promise<void> { await router.push('/proj
           <span class="ga-resources__label">{{ r.label }}</span>
           <span v-if="updatedAtOf(r)" class="ga-resources__meta">更新于 {{ updatedAtOf(r) }}</span>
         </button>
+        <div v-else-if="r.kind === 'WEB_SOURCE'" class="ga-resources__btn" data-test="ga-web-source">
+          <a class="ga-resources__label" :href="safeWebUrl(r.metadata?.url) ?? undefined" target="_blank" rel="noopener noreferrer">{{ r.label }}</a>
+          <span class="ga-resources__meta">{{ r.metadata?.contentStage === 'EXTRACTED_TEXT' ? '已提取正文' : '搜索摘要' }} · 外部参考<template v-if="r.metadata?.truncated"> · 内容已截断</template></span>
+          <span class="ga-resources__meta">获取于 {{ r.metadata?.fetchedAt }}</span>
+          <p class="ga-source-excerpt">{{ r.metadata?.excerpt }}</p>
+        </div>
         <div v-else class="ga-resources__btn" data-test="ga-source-evidence">
           <span class="ga-resources__label">{{ r.label }}</span>
           <span class="ga-resources__meta">来源版本 {{ r.metadata?.sourceVersion }}<template v-if="r.metadata?.startOffset !== undefined"> · 位置 {{ r.metadata.startOffset }}–{{ r.metadata.endOffset }}</template></span>

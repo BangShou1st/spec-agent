@@ -1,6 +1,7 @@
 package com.specagent.assistant;
 
-import com.specagent.agent.broker.AgentBrainProperties;
+import com.specagent.assistant.config.GaBrainSettings;
+
 import com.specagent.assistant.conversation.*;
 import com.specagent.assistant.runtime.*;
 import com.specagent.model.contract.GaModelContract;
@@ -25,8 +26,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 /** Product dispatch/lifecycle with real Python HTTP; provider is deterministic unless explicitly qualified. */
-@SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties="spec.global-assistant.engine=langchain-ga.v1")
+@SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
 class GaExecutionCoordinatorIntegrationTest {
     @Autowired GlobalAssistantConversationService conversations;
@@ -41,13 +41,14 @@ class GaExecutionCoordinatorIntegrationTest {
     @Autowired com.specagent.workspace.project.ProjectDeletionService projectDeletion;
     @Autowired com.specagent.workspace.project.ProjectService projects;
     @Autowired GlobalAssistantRunLifecycleService lifecycle;
-    @Autowired AgentBrainProperties properties;
+    @Autowired GaBrainSettings properties;
     @Autowired JdbcTemplate jdbc;
     @LocalServerPort int port;
     @MockBean OpenCodeSettingsRepository settings;
     @MockBean OpenCodeZenTransport transport;
     @MockBean com.specagent.skill.importing.GitSkillImporter gitImporter;
     @SpyBean com.specagent.assistant.tool.GaCatalogProjection catalogs;
+    @SpyBean com.specagent.assistant.tool.TavilyWebService web;
     UUID thread;
     Process python;
     Path output;
@@ -81,6 +82,25 @@ class GaExecutionCoordinatorIntegrationTest {
             jdbc.update("DELETE FROM skill_staged_imports WHERE id=?",staged);
         }
         deleteTestLog();
+    }
+    @Test void defaultRunEngineAndLegacyHistoryRemainDistinct() {
+        var old=create("历史消息");
+        jdbc.update("UPDATE global_assistant_runs SET engine_version='java-legacy.v1',status='COMPLETED' WHERE id=?",old.id());
+        conversations.appendAssistantMessage(thread,"历史回答",old.id());
+        var current=create("新消息");
+        assertEquals("langchain-ga.v1",jdbc.queryForObject("SELECT engine_version FROM global_assistant_runs WHERE id=?",String.class,current.id()));
+        assertEquals("java-legacy.v1",jdbc.queryForObject("SELECT engine_version FROM global_assistant_runs WHERE id=?",String.class,old.id()));
+        assertEquals("历史回答",conversations.listMessages(thread).get(1).content());
+        assertThrows(GlobalAssistantRunClaimedException.class,()->preparation.prepare(thread,old.id(),"历史消息",null));
+    }
+    @Test void absentPythonFailsExplicitlyWithoutJavaFallback() throws Exception {
+        int unused; try(var socket=new java.net.ServerSocket(0)) { unused=socket.getLocalPort(); }
+        properties.setBaseUrl("http://127.0.0.1:"+unused);
+        var run=application.createRun(thread,"无 Python 服务",null);
+        awaitTerminal(run.id());
+        assertEquals(GlobalAssistantRunStatus.FAILED,runs.findById(run.id()).orElseThrow().status());
+        assertTrue(events.findByRun(run.id()).stream().anyMatch(e->e.type().equals("RUN_FAILED") && "GA_PYTHON_UNAVAILABLE".equals(e.payload().get("errorCode"))));
+        verifyNoInteractions(transport);
     }
     @Test void durableExecutorClaimBindsEnvelopeAndCannotRestart() {
         var run=create("准备执行");
@@ -224,7 +244,7 @@ class GaExecutionCoordinatorIntegrationTest {
     }
     @Test void freshJavaStartupAndBrowserRestoreLegacyHistoryAndUnknownWriteWithoutReplay() throws Exception {
         Assumptions.assumeTrue("true".equals(System.getenv("SPEC_AGENT_GA_RESTART_BROWSER_TEST")));
-        var legacy=create("迁移前旧引擎请求"); runs.markRunning(legacy.id());
+        var legacy=create("迁移前旧引擎请求"); jdbc.update("UPDATE global_assistant_runs SET engine_version='java-legacy.v1' WHERE id=?",legacy.id()); runs.markRunning(legacy.id());
         lifecycle.completeWithAssistant(thread,legacy.id(),"迁移前旧引擎回答",null,null);
         startPython(); when(transport.completeNativeGa(any(),any(),any(),any(),any(),any())).thenReturn(reply("新引擎已完成回答"));
         var completed=application.createRun(thread,"新引擎已完成请求",null); awaitTerminal(completed.id());
@@ -673,6 +693,37 @@ class GaExecutionCoordinatorIntegrationTest {
             Files.createDirectories(file.getParent()); new com.fasterxml.jackson.databind.ObjectMapper().writerWithDefaultPrettyPrinter().writeValue(file.toFile(),evidence);
         }
     }
+    @Test void liveMimoSearchesFetchesAndCitesWebSources() throws Exception {
+        Assumptions.assumeTrue("true".equals(System.getenv("SPEC_AGENT_GA_LIVE_WEB")));
+        String key=System.getenv("SPEC_AGENT_TAVILY_API_KEY");
+        assertTrue(key!=null && !key.isBlank(), "Tavily key required for real integration");
+        var actual=new com.specagent.assistant.tool.TavilyWebService(key);
+        doReturn(true).when(web).configured();
+        doAnswer(i -> actual.prepare(i.getArgument(0),i.getArgument(1),i.getArgument(2)))
+                .when(web).prepare(anyString(),anyMap(),any());
+        startPython();
+        var target=configureLive(Set.of("web.search","web.fetch"));
+        var run=application.createRun(thread,"请先用 web.search 搜索 LangChain Python create_agent 官方文档，然后从搜索结果选一个官方网页调用 web.fetch 读取正文，最后用中文解释聊天模型如何调用搜索工具。必须完成搜索和读取，引用本轮返回的 [web:sourceId]，不要编造来源。",null);
+        long until=System.nanoTime()+TimeUnit.SECONDS.toNanos(150);
+        while(System.nanoTime()<until && runs.findById(run.id()).orElseThrow().status().isActive()) Thread.sleep(50);
+        assertEquals(GlobalAssistantRunStatus.COMPLETED,runs.findById(run.id()).orElseThrow().status(),failure(run.id()));
+        var publicEvents=events.findByRun(run.id());
+        String serialized=new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules().writeValueAsString(publicEvents);
+        assertTrue(serialized.contains("web.search"), "Search must be dispatched");
+        assertTrue(serialized.contains("web.fetch"), "Fetch must be dispatched");
+        assertTrue(serialized.contains("EXTRACTED_TEXT"), "Real extraction must succeed");
+        String answer=conversations.listMessages(thread).getLast().content();
+        assertTrue(answer.contains("[web:"), "Answer must cite returned sources");
+        assertFalse(serialized.contains(key));
+        var evidence=new LinkedHashMap<String,Object>();
+        evidence.put("recordedAt",Instant.now().toString()); evidence.put("model",target.selectedModel());
+        evidence.put("engineVersion",jdbc.queryForObject("SELECT engine_version FROM global_assistant_runs WHERE id=?",String.class,run.id()));
+        evidence.put("status","PASS"); evidence.put("scope","real configured chat model + Tavily search/extract + Java host + Python create_agent + durable events/checkpoint; test database");
+        evidence.put("events",publicEvents.stream().filter(e->e.type().startsWith("RUN_") || e.type().startsWith("TOOL_")).toList()); evidence.put("answer",answer);
+        evidence.put("eventSelection","Durable RUN/TOOL envelopes; streaming fragments omitted");
+        var path=Path.of("../docs/v2/evidence/GLOBAL_ASSISTANT_WEB_INTEGRATION.json");
+        Files.createDirectories(path.getParent()); new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules().writerWithDefaultPrettyPrinter().writeValue(path.toFile(),evidence);
+    }
     private OpenCodeSettings configureLive(Set<String> allowed) {
         var source=new org.springframework.jdbc.datasource.DriverManagerDataSource(
                 System.getenv().getOrDefault("SPEC_AGENT_GA_QUALIFICATION_DB_URL","jdbc:postgresql://localhost:5434/spec_agent"),
@@ -720,6 +771,7 @@ class GaExecutionCoordinatorIntegrationTest {
         var builder=new ProcessBuilder(executable.toString(),"-m","uvicorn","spec_agent_brain.app:create_app","--factory",
                 "--host","127.0.0.1","--port",Integer.toString(brainPort));
         builder.directory(Path.of("../agent-brain").toFile());
+        builder.environment().remove("SPEC_AGENT_TAVILY_API_KEY");
         builder.environment().put("SPEC_AGENT_BRAIN_MODEL_MODE","broker");
         builder.environment().put("PYTHONFAULTHANDLER","1");
         builder.environment().put("SPEC_AGENT_INTERNAL_BROKER_URL","http://127.0.0.1:"+port+"/internal/v1/model-inference");

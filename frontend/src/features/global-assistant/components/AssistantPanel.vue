@@ -5,20 +5,34 @@
        草稿回填、会话切换与删除,以及断线重连。
 -->
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ConversationTimeline from './ConversationTimeline.vue'
 import AssistantComposer from './AssistantComposer.vue'
 import ConversationHistory from './ConversationHistory.vue'
 import AppIcon from '@/shared/ui/AppIcon.vue'
-import { buildGaUiContext } from '@/features/global-assistant/api/globalAssistant'
+import { getGaToolsStatus, buildGaUiContext } from '@/features/global-assistant/api/globalAssistant'
 import { useGlobalAssistantStore } from '@/features/global-assistant/state/globalAssistantStore'
+import { gaRetrievalStatusMessage } from '../presentation/globalAssistantPresentation'
 import { currentGaTitle } from '@/features/global-assistant/presentation/conversationLibrary'
 
 const store = useGlobalAssistantStore()
 const route = useRoute()
 const router = useRouter()
 const composerText = ref('')
+const webConfigured = ref<boolean | null>(null)
+const retrievalStatus = ref<string | null>(null)
+let toolsTimer: ReturnType<typeof setInterval> | undefined
+let disposed = false
+async function refreshTools() {
+  try {
+    const status = await getGaToolsStatus()
+    if (disposed) return
+    webConfigured.value = status.webConfigured
+    retrievalStatus.value = status.retrievalReady ? 'READY' : status.retrievalStatus ?? 'RETRIEVAL_UNAVAILABLE'
+  } catch { }
+}
+onUnmounted(() => { disposed = true; if (toolsTimer) clearInterval(toolsTimer) })
 const composerRef = ref<InstanceType<typeof AssistantComposer> | null>(null)
 
 const running = computed(() => store.isRunning)
@@ -35,6 +49,8 @@ function handleReconnect(): void {
 }
 
 onMounted(() => {
+  void refreshTools()
+  toolsTimer = setInterval(() => { void refreshTools() }, 15000)
   void store.init().then(() => {
     if (store.draft) composerText.value = store.draft
   })
@@ -201,6 +217,8 @@ function handleClose(): void {
         @confirm-delete="handleConfirmDelete"
       />
     </div>
+    <p v-if="webConfigured === false" class="ga-web-status" data-test="ga-web-unconfigured">联网未配置；当前可使用工作区工具。</p>
+    <p v-if="retrievalStatus && retrievalStatus !== 'READY'" class="ga-web-status" data-test="ga-retrieval-unready">{{ gaRetrievalStatusMessage(retrievalStatus) }}</p>
     <ConversationTimeline
       v-if="!historyOpen"
       :messages="store.messages"
@@ -231,6 +249,7 @@ function handleClose(): void {
 </template>
 
 <style scoped>
+.ga-web-status { margin: 0; padding: 6px 12px; color: var(--color-text-muted); font-size: 12px; }
 .ga-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--color-surface); }
 .ga-panel__header { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--color-border); background: var(--color-surface); }
 .ga-panel__history-btn[aria-expanded='true'] { background: var(--color-focus-soft); color: var(--color-focus-strong); box-shadow: inset 0 0 0 1px var(--color-focus); }

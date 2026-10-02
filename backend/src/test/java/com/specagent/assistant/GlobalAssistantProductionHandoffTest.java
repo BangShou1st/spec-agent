@@ -7,7 +7,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 
 import com.specagent.assistant.runtime.GlobalAssistantApplicationService;
-import com.specagent.assistant.runtime.GlobalAssistantContextBuilder;
+import com.specagent.assistant.runtime.GaHostContext;
 import com.specagent.assistant.conversation.GlobalAssistantConversationService;
 import com.specagent.assistant.conversation.GlobalAssistantMessage;
 import com.specagent.assistant.conversation.GlobalAssistantRun;
@@ -73,8 +73,8 @@ class GlobalAssistantProductionHandoffTest {
         threads.clear();
     }
 
-    private GlobalAssistantContextBuilder.UiRequest ui() {
-        return new GlobalAssistantContextBuilder.UiRequest("PROJECTS", null);
+    private GaHostContext.UiRequest ui() {
+        return new GaHostContext.UiRequest("PROJECTS", null);
     }
 
     private UUID newThread() {

@@ -224,11 +224,15 @@ public class GaExecutionCompletion {
     }
     @Transactional
     public void failed(UUID runId,String model,StreamState state) {
+        failed(runId,model,state,"GA_EXECUTION_FAILED");
+    }
+    @Transactional
+    public void failed(UUID runId,String model,StreamState state,String code) {
         var run=runs.lockById(runId);
         if(!run.status().isActive()) return;
         if(state!=null) state.publisher.discard();
         if(run.cancelRequestedAt()!=null) lifecycle.cancelAndTerminalize(runId);
-        else lifecycle.failWithAssistant(run.threadId(),runId,"这一步未能完成，请稍后重试。","GA_EXECUTION_FAILED",
+        else lifecycle.failWithAssistant(run.threadId(),runId,"GA_PYTHON_UNAVAILABLE".equals(code)?"全局助手 Python 服务不可用，请检查启动状态。":"这一步未能完成，请稍后重试。",code,
                 "Execution unavailable or interrupted","OpenCode Zen",model);
     }
 }

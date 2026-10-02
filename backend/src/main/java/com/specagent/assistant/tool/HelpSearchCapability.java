@@ -10,11 +10,10 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 
 /** Curated product help through the exact shared Python RAG service. */
 @Component
-@ConditionalOnExpression("'${spec.agent.retrieval.engine:java-hybrid.v1}' == 'python-rag.v1' && '${spec.global-assistant.engine:java-legacy.v1}' == 'langchain-ga.v1'")
 public class HelpSearchCapability implements PreparedCapabilityAdapter {
     private final SharedRetrievalHost retrieval;
     private final RetrievalStore store;
-    public HelpSearchCapability(SharedRetrievalHost retrieval,RetrievalStore store) { this.retrieval=retrieval; this.store=store; }
+    public HelpSearchCapability(GaRetrievalAccess retrieval,RetrievalStore store) { this.retrieval=retrieval.host(); this.store=store; }
     public CapabilityDescriptor descriptor() {
         return new CapabilityDescriptor("help.search","1","Search curated Spec Agent product help using shared Python RAG. Help is a separate allowed corpus in the same index, contains no project/user facts, and cannot confirm graph requirements. Returns original excerpts, versions and positions. Limit 1-8 results, 8000 chars. No arbitrary file, URL or database access.",
             Map.of("query",Map.of("type","string","required",true,"maxLength",2000),"limit",Map.of("type","integer","required",false,"minimum",1,"maximum",8)),

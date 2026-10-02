@@ -98,9 +98,10 @@ public class GaCapabilityBroker {
         if (success) {
             var projects=GlobalAssistantToolPresentation.projectResources(request.capabilityId(),result.content());
             var sources=GlobalAssistantToolPresentation.retrievalResources(request.capabilityId(),result.content());
-            var refs=new ArrayList<Map<String,Object>>(projects); refs.addAll(sources);
+            var web=GlobalAssistantToolPresentation.webResources(request.capabilityId(),result.content());
+            var refs=new ArrayList<Map<String,Object>>(projects); refs.addAll(sources); refs.addAll(web);
             var payload=new LinkedHashMap<String,Object>();
-            payload.putAll(Map.of("capabilityId",request.capabilityId(),"toolCallId",request.toolCallId(),"resourceRefs",refs,"resultCount",request.capabilityId().equals("help.search")?sources.size():projects.size()));
+            payload.putAll(Map.of("capabilityId",request.capabilityId(),"toolCallId",request.toolCallId(),"resourceRefs",refs,"resultCount",request.capabilityId().startsWith("web.")?web.size():request.capabilityId().equals("help.search")?sources.size():projects.size()));
             String kind=GlobalAssistantToolPresentation.resultKind(request.capabilityId());
             if (kind!=null) payload.put("resultKind",kind);
             events.append(request.runId(),GlobalAssistantEventType.TOOL_COMPLETED,payload);

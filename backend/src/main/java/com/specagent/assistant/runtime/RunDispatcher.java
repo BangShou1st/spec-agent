@@ -1,14 +1,10 @@
 package com.specagent.assistant.runtime;
 
-import com.specagent.assistant.runtime.GlobalAssistantContextBuilder;
 import com.specagent.assistant.GlobalAssistantErrorCode;
-import com.specagent.assistant.runtime.GlobalAssistantRunLifecycleService;
-import com.specagent.assistant.runtime.GlobalAssistantRuntime;
 import java.util.UUID;
 import java.util.concurrent.Executor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 /**
@@ -21,30 +17,26 @@ import org.springframework.stereotype.Service;
 public class RunDispatcher {
     private static final Logger log = LoggerFactory.getLogger(RunDispatcher.class);
     private final Executor gaExecutor;
-    private final ObjectProvider<GlobalAssistantRuntime> runtime;
+
     private final GlobalAssistantRunLifecycleService lifecycle;
     private final com.specagent.assistant.conversation.GlobalAssistantRunRepository runs;
-    private ObjectProvider<GaExecutionCoordinator> coordinator;
-    private String engine="java-legacy.v1";
-
+    private final GaExecutionCoordinator coordinator;
     @org.springframework.beans.factory.annotation.Autowired
-    void configureEngine(ObjectProvider<GaExecutionCoordinator> coordinator,
-            @org.springframework.beans.factory.annotation.Value("${spec.global-assistant.engine:java-legacy.v1}") String engine) {
-        if(!java.util.Set.of("java-legacy.v1","langchain-ga.v1").contains(engine))
-            throw new IllegalArgumentException("Unknown Global Assistant engine");
-        this.coordinator=coordinator; this.engine=engine;
+    void validateEngine(@org.springframework.beans.factory.annotation.Value("${spec.global-assistant.engine:langchain-ga.v1}") String engine) {
+        if (!"langchain-ga.v1".equals(engine))
+            throw new IllegalArgumentException("Global Assistant only supports langchain-ga.v1; java-legacy.v1 has been removed");
     }
 
-    public RunDispatcher(Executor gaExecutor, ObjectProvider<GlobalAssistantRuntime> runtime,
+    public RunDispatcher(Executor gaExecutor, GaExecutionCoordinator coordinator,
             GlobalAssistantRunLifecycleService lifecycle,
             com.specagent.assistant.conversation.GlobalAssistantRunRepository runs) {
         this.gaExecutor = gaExecutor;
-        this.runtime = runtime;
+        this.coordinator = coordinator;
         this.lifecycle = lifecycle;
         this.runs = runs;
     }
 
-    public void dispatch(UUID threadId, UUID runId, String message, GlobalAssistantContextBuilder.UiRequest uiRequest) {
+    public void dispatch(UUID threadId, UUID runId, String message, GaHostContext.UiRequest uiRequest) {
         try {
             gaExecutor.execute(() -> executeSafely(threadId, runId, message, uiRequest));
         } catch (java.util.concurrent.RejectedExecutionException ex) {
@@ -54,10 +46,9 @@ public class RunDispatcher {
         }
     }
 
-    private void executeSafely(UUID threadId, UUID runId, String message, GlobalAssistantContextBuilder.UiRequest uiRequest) {
+    private void executeSafely(UUID threadId, UUID runId, String message, GaHostContext.UiRequest uiRequest) {
         try {
-            if("langchain-ga.v1".equals(engine)) coordinator.getObject().executeRun(threadId,runId,message,uiRequest);
-            else runtime.getObject().executeRun(threadId, runId, message, uiRequest);
+            coordinator.executeRun(threadId, runId, message, uiRequest);
         } catch (Exception ex) {
             // 这里必须打完整堆栈:这个 catch 是终态化的最后一道网,
             // 缺了它,运行时 bug(比如工具结果之后的 NPE)就会不可见——

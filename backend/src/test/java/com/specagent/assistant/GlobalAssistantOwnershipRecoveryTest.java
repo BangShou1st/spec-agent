@@ -4,22 +4,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.specagent.capability.CapabilityRuntime;
-import com.specagent.assistant.runtime.GlobalAssistantContextBuilder;
+import com.specagent.assistant.runtime.GaHostContext;
 import com.specagent.assistant.conversation.GlobalAssistantConversationService;
 import com.specagent.assistant.conversation.GlobalAssistantRun;
 import com.specagent.assistant.conversation.GlobalAssistantRunEventRepository;
 import com.specagent.assistant.conversation.GlobalAssistantRunRepository;
 import com.specagent.assistant.conversation.GlobalAssistantRunStatus;
 import com.specagent.assistant.conversation.GlobalAssistantThread;
-import com.specagent.assistant.model.GlobalAssistantBrain;
-import com.specagent.assistant.model.GlobalAssistantDecisionParser;
-import com.specagent.assistant.model.GlobalAssistantDecisionValidator;
-import com.specagent.assistant.model.GlobalAssistantPromptRenderer;
-import com.specagent.assistant.runtime.GlobalAssistantSummaryService;
+import com.specagent.assistant.runtime.GaHostContext;
 import com.specagent.assistant.runtime.GlobalAssistantRunLifecycleService;
-import com.specagent.assistant.runtime.GlobalAssistantRuntime;
-import com.specagent.assistant.runtime.GlobalAssistantRuntimeProperties;
-import com.specagent.assistant.runtime.GlobalAssistantToolArgumentCanonicalizer;
 import com.specagent.assistant.runtime.GlobalAssistantUiActionValidator;
 import com.specagent.assistant.runtime.GlobalAssistantRunEventService;
 import com.specagent.model.contract.ModelInferenceGateway;
@@ -55,19 +48,13 @@ import org.springframework.test.context.ActiveProfiles;
 class GlobalAssistantOwnershipRecoveryTest {
     @Autowired com.specagent.assistant.model.GlobalAssistantModelTargetResolver modelTargets;
     @Autowired GlobalAssistantConversationService conversations;
-    @Autowired GlobalAssistantContextBuilder contextBuilder;
-    @Autowired GlobalAssistantPromptRenderer renderer;
-    @Autowired GlobalAssistantDecisionParser parser;
-    @Autowired GlobalAssistantDecisionValidator validator;
+    @Autowired GaHostContext contextBuilder;
     @Autowired CapabilityRuntime capabilities;
     @Autowired GlobalAssistantRunRepository runs;
     @Autowired GlobalAssistantRunEventRepository events;
-    @Autowired GlobalAssistantToolArgumentCanonicalizer canonicalizer;
-    @Autowired GlobalAssistantRuntimeProperties budgets;
     @Autowired GlobalAssistantRunLifecycleService lifecycle;
     @Autowired GlobalAssistantRunEventService runEvents;
     @Autowired GlobalAssistantUiActionValidator uiValidator;
-    @Autowired GlobalAssistantSummaryService summaries;
     @Autowired ProjectService projects;
     @Autowired ObjectMapper mapper;
     @Autowired com.specagent.assistant.runtime.GlobalAssistantRunRecoveryService recovery;
@@ -81,58 +68,8 @@ class GlobalAssistantOwnershipRecoveryTest {
         jdbc.update("DELETE FROM global_assistant_messages");
         jdbc.update("DELETE FROM global_assistant_threads");
     }
-    private GlobalAssistantRuntime runtimeFor(Queue<String> scripts) {
-        ModelInferenceGateway stub = request -> new ModelInferenceResponse(scripts.poll(), "stop", 0, 0);
-        GlobalAssistantBrain brain = new GlobalAssistantBrain(renderer, stub, parser, validator);
-        return new GlobalAssistantRuntime(conversations, contextBuilder, brain, capabilities,
-                runs, canonicalizer, budgets, lifecycle, runEvents, uiValidator, summaries, modelTargets);
-    }
-    @Test
-    void duplicateDispatchCreatesOnlyOneProject() throws Exception {
-        GlobalAssistantThread thread = conversations.createThread();
-        String title = "Dup Dispatch " + UUID.randomUUID();
-        GlobalAssistantRun run = conversations.createRunWithUserMessage(thread.id(),
-                "create " + title, "v1", "v1", "fp");
-         String createJson = "{\"kind\":\"TOOL\", \"toolRequest\":{\"capabilityId\":\"project.create\","
-                + " \"arguments\":{\"title\":\"" + title + "\"}}}";
-         String doneJson = "{\"kind\":\"FINAL\", \"assistantText\":\"Created.\"}";
-        ExecutorService pool = Executors.newFixedThreadPool(2);
-        CountDownLatch start = new CountDownLatch(1);
-        try {
-            Future<?> first = pool.submit(() -> {
-                try {
-                    start.await();
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
-                runtimeFor(new ArrayDeque<>(List.of(createJson, doneJson)))
-                        .executeRun(thread.id(), run.id(), "create " + title,
-                                new GlobalAssistantContextBuilder.UiRequest("PROJECTS", null));
-                return null;
-            });
-            Future<?> second = pool.submit(() -> {
-                try {
-                    start.await();
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
-                runtimeFor(new ArrayDeque<>(List.of(createJson, doneJson)))
-                        .executeRun(thread.id(), run.id(), "create " + title,
-                                new GlobalAssistantContextBuilder.UiRequest("PROJECTS", null));
-                return null;
-            });
-            start.countDown();
-            first.get();
-            second.get();
-        } finally {
-            pool.shutdownNow();
-        }
-        List<Map<String, Object>> matching = jdbc.queryForList(
-                "SELECT id FROM projects WHERE title = ?", title);
-        assertThat(matching).hasSize(1);
-        assertThat(runs.findById(run.id()).orElseThrow().status())
-                .isEqualTo(GlobalAssistantRunStatus.COMPLETED);
-    }
+
+
     @Test
     void listenerPathRecoversOrphanThroughTransactionalService() {
         GlobalAssistantThread thread = conversations.createThread();

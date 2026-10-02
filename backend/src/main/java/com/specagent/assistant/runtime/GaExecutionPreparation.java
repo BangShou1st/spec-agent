@@ -1,6 +1,7 @@
 package com.specagent.assistant.runtime;
 
-import com.specagent.agent.broker.AgentBrainProperties;
+import com.specagent.assistant.config.GaBrainSettings;
+
 import com.specagent.assistant.conversation.*;
 import com.specagent.assistant.tool.GaCatalogProjection;
 import com.specagent.common.Hashes;
@@ -21,22 +22,22 @@ public class GaExecutionPreparation {
     private final GlobalAssistantRunRepository runs;
     private final GlobalAssistantConversationService conversations;
     private final GlobalAssistantRunLifecycleService lifecycle;
-    private final GlobalAssistantContextBuilder context;
+    private final GaHostContext context;
     private final GaCatalogProjection catalogs;
     private final OpenCodeSettingsRepository settings;
     private final ModelProviderSettingsService providers;
-    private final AgentBrainProperties properties;
+    private final GaBrainSettings properties;
     private final JdbcTemplate jdbc;
     public GaExecutionPreparation(GaExecutionStore executions, GlobalAssistantRunRepository runs,
             GlobalAssistantConversationService conversations, GlobalAssistantRunLifecycleService lifecycle,
-            GlobalAssistantContextBuilder context, GaCatalogProjection catalogs, OpenCodeSettingsRepository settings,
-            ModelProviderSettingsService providers, AgentBrainProperties properties, JdbcTemplate jdbc) {
+            GaHostContext context, GaCatalogProjection catalogs, OpenCodeSettingsRepository settings,
+            ModelProviderSettingsService providers, GaBrainSettings properties, JdbcTemplate jdbc) {
         this.executions=executions; this.runs=runs; this.conversations=conversations; this.lifecycle=lifecycle;
         this.context=context; this.catalogs=catalogs; this.settings=settings; this.providers=providers;
         this.properties=properties; this.jdbc=jdbc;
     }
     @Transactional
-    public Prepared prepare(UUID thread, UUID runId, String text, GlobalAssistantContextBuilder.UiRequest ui) {
+    public Prepared prepare(UUID thread, UUID runId, String text, GaHostContext.UiRequest ui) {
         var run=runs.lockById(runId);
         if (run.status()!=GlobalAssistantRunStatus.CREATED) throw new GlobalAssistantRunClaimedException(run.status());
         if (!run.threadId().equals(thread)) throw new IllegalArgumentException("GA thread mismatch");
@@ -62,9 +63,9 @@ public class GaExecutionPreparation {
             history.add(Map.of("messageId",m.id().toString(),"role",m.role().name().toLowerCase(Locale.ROOT),"content",content));
         }
         if(history.size()>128) throw new IllegalStateException("GA_HISTORY_LIMIT");
-        var projected=context.build(thread,runId,text,ui);
-        UUID selected=projected.uiContext().selectedEntity()!=null && "PROJECT".equals(projected.uiContext().selectedEntity().type())
-                ? UUID.fromString(projected.uiContext().selectedEntity().id()) : null;
+        var projected=context.project(ui);
+        UUID selected=projected.selectedEntity()!=null && "PROJECT".equals(projected.selectedEntity().type())
+                ? UUID.fromString(projected.selectedEntity().id()) : null;
         var catalog=catalogs.current();
         var scope=new GaExecutionStore.Scope(runId,1,UUID.randomUUID());
         UUID binding=UUID.randomUUID();
@@ -72,7 +73,7 @@ public class GaExecutionPreparation {
                 "threadId",thread.toString(),"runId",runId.toString(),"executionEpoch",1,"leaseId",scope.leaseId().toString(),
                 "messageId",current.getFirst().id().toString(),"content",text,"modelBindingId",binding.toString(),
                 "policyVersion","1","catalogHash",catalog.hash(),"historyBoundary",history.isEmpty()?null:history.getLast().get("messageId"),
-                "history",history,"uiContext",Maps.of("currentPage",projected.uiContext().currentPage(),"selectedEntity",selected),
+                "history",history,"uiContext",Maps.of("currentPage",projected.currentPage(),"selectedEntity",selected),
                 "structuredRefs",selected==null ? List.of() : List.of("project:"+selected),"capabilities",catalog.descriptors(),
                 "budget",Map.of("maxModelCalls",6,"maxToolCalls",5,"maxDurationSeconds",180));
         String body=catalogs.canonical(envelope);

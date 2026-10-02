@@ -4,6 +4,7 @@
 //       断线重连、乐观消息与草稿、会话历史与删除,以及 thread/run/panel 的本地持久化。
 
 import { defineStore } from 'pinia'
+import { safeWebUrl } from '../presentation/webSources'
 import { readStored, writeStored } from '@/shared/lib/safeStorage'
 import { ApiError } from '@/shared/http/client'
 import {
@@ -72,7 +73,7 @@ export function sanitizeGaResourceRefs(raw: unknown): GaResourceRef[] {
   for (const item of raw) {
     if (!item || typeof item !== 'object') continue
     const m = item as Record<string, unknown>
-    if (m.kind !== 'PROJECT' && m.kind !== 'SOURCE') continue
+    if (m.kind !== 'PROJECT' && m.kind !== 'SOURCE' && m.kind !== 'WEB_SOURCE') continue
     if (typeof m.id !== 'string' || !GA_UUID_RE.test(m.id)) continue
     if (typeof m.label !== 'string' || !m.label) continue
     const label = truncateGaLabel(m.label)
@@ -87,8 +88,15 @@ export function sanitizeGaResourceRefs(raw: unknown): GaResourceRef[] {
         if (typeof mm.projectId === 'string' && GA_UUID_RE.test(mm.projectId)) metadata.projectId = mm.projectId
         for (const key of ['startOffset', 'endOffset']) if (typeof mm[key] === 'number' && Number.isSafeInteger(mm[key]) && (mm[key] as number) >= 0) metadata[key] = mm[key]
       }
+      if (m.kind === 'WEB_SOURCE') {
+        const url = safeWebUrl(mm.url)
+        if (!url || mm.sourceRef !== 'web:' + m.id || typeof mm.fetchedAt !== 'string'
+          || !['SEARCH_SNIPPET', 'EXTRACTED_TEXT'].includes(String(mm.contentStage)) || mm.authority !== 'EXTERNAL_EVIDENCE') continue
+        metadata = { url, sourceRef: mm.sourceRef, fetchedAt: mm.fetchedAt.slice(0, 64), contentStage: mm.contentStage,
+          authority: mm.authority, truncated: mm.truncated === true, excerpt: typeof mm.excerpt === 'string' ? truncateGaLabel(mm.excerpt, 800) : '' }
+      }
     }
-    if (m.kind === 'SOURCE' && !metadata) continue
+    if ((m.kind === 'SOURCE' || m.kind === 'WEB_SOURCE') && !metadata) continue
     if (out.some(r => r.kind === m.kind && r.id === m.id)) continue
     out.push({ kind: m.kind, id: m.id, label, metadata })
     if (out.length >= 10) break

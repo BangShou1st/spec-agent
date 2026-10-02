@@ -137,7 +137,8 @@ class GlobalAssistantSliceBIntegrationTest {
                 ProjectListRecentCapability.CAPABILITY_ID,
                 ProjectGetSummaryCapability.CAPABILITY_ID,
                 SkillImportCapability.CAPABILITY_ID,
-                com.specagent.assistant.tool.SkillDiscoverCapability.CAPABILITY_ID);
+                com.specagent.assistant.tool.SkillDiscoverCapability.CAPABILITY_ID,
+                "help.search", "project.content.discover", "web.search", "web.fetch");
         Set<String> skillRuntimeHostTools = Set.of(
                 SkillActivateHostTool.CAPABILITY_ID,
                 SkillSearchHostTool.CAPABILITY_ID,

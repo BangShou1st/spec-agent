@@ -1,7 +1,7 @@
 package com.specagent.assistant.runtime;
 
 import com.specagent.common.ApiException;
-import com.specagent.assistant.runtime.GlobalAssistantContextBuilder;
+import com.specagent.assistant.runtime.GaHostContext;
 import com.specagent.assistant.conversation.GlobalAssistantConversationService;
 import com.specagent.assistant.conversation.GlobalAssistantMessage;
 import com.specagent.assistant.conversation.GlobalAssistantRun;
@@ -9,7 +9,7 @@ import com.specagent.assistant.conversation.GlobalAssistantRunActiveException;
 import com.specagent.assistant.conversation.GlobalAssistantRunRepository;
 import com.specagent.assistant.conversation.GlobalAssistantThread;
 import com.specagent.assistant.conversation.GlobalAssistantThreadListItem;
-import com.specagent.assistant.model.GlobalAssistantPromptRenderer;
+import com.specagent.assistant.runtime.GaHostContext;
 import com.specagent.assistant.GlobalAssistantErrorCode;
 import com.specagent.assistant.runtime.GlobalAssistantRunLifecycleService;
 import com.specagent.assistant.conversation.ConversationDeleteService;
@@ -87,7 +87,7 @@ public class GlobalAssistantApplicationService {
         return runs.findById(runId);
     }
     public GlobalAssistantRun createRun(UUID threadId, String message,
-            GlobalAssistantContextBuilder.UiRequest uiRequest) {
+            GaHostContext.UiRequest uiRequest) {
         requireThread(threadId);
         if (message == null || message.isBlank()) {
             throw ApiException.badRequest("MESSAGE_REQUIRED", "Message must not be blank");
@@ -99,8 +99,8 @@ public class GlobalAssistantApplicationService {
         GlobalAssistantRun run;
         try {
             run = conversations.createRunWithUserMessage(threadId, trimmed,
-                    GlobalAssistantPromptRenderer.PROMPT_VERSION,
-                    GlobalAssistantContextBuilder.CONTEXT_PROJECTION_VERSION,
+                    GaHostContext.PROMPT_VERSION,
+                    GaHostContext.CONTEXT_PROJECTION_VERSION,
                     GlobalAssistantToolCatalog.FINGERPRINT);
         } catch (GlobalAssistantRunActiveException ex) {
             throw ApiException.conflict(GlobalAssistantRunActiveException.CODE,
@@ -112,7 +112,7 @@ public class GlobalAssistantApplicationService {
     }
     public record SteerResult(PendingTurn pending, TurnHandoffService.Successor successor) {
     }
-    public SteerResult steerRun(UUID targetRunId, String message, GlobalAssistantContextBuilder.UiRequest uiRequest) {
+    public SteerResult steerRun(UUID targetRunId, String message, GaHostContext.UiRequest uiRequest) {
         GlobalAssistantRun target = requireRun(targetRunId);
         UUID threadId = target.threadId();
         requireThread(threadId);

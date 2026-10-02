@@ -46,7 +46,7 @@ public class GlobalAssistantRunRepository {
         UUID id = Ids.random();
         try {
             jdbc.update(
-                    "INSERT INTO global_assistant_runs (id, thread_id, status, step_count, started_at, prompt_version, context_projection_version, tool_catalog_fingerprint) VALUES (:id, :threadId, 'CREATED', 0, :now, :prompt, :context, :fingerprint)",
+                    "INSERT INTO global_assistant_runs (id, thread_id, status, step_count, started_at, prompt_version, context_projection_version, tool_catalog_fingerprint, engine_version) VALUES (:id, :threadId, 'CREATED', 0, :now, :prompt, :context, :fingerprint, 'langchain-ga.v1')",
                     Maps.of("id", id, "threadId", threadId, "now", Timestamp.from(Instant.now()),
                             "prompt", promptVersion, "context", contextProjectionVersion, "fingerprint", toolCatalogFingerprint));
         } catch (DataIntegrityViolationException ex) {

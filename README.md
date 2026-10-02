@@ -581,3 +581,13 @@ Agent 不需要知道 GitHub、MCP、Skill 等具体执行细节。
 项目仍在持续演进，但核心方向已经固定：
 
 > **把 Agent 做成一个受 Runtime 约束、历史可追踪、状态可恢复、能力可扩展的需求推理系统，而不是一个“什么都能聊”的黑盒聊天机器人。**
+
+## 全局助手启动与联网工具（2026-10-02）
+
+全局助手唯一使用 Python LangChain `create_agent`；`start-dev.bat` 默认启动独立 GA Brain（8101），Java 保留宿主与模型 broker。项目 Agent 的现有 Brain 环境、运行时与检索默认不变。GA 首次启动需要 uv 创建锁定的 CPython 3.11.14 独立环境，或设置 `SPEC_AGENT_GA_PYTHON` 指向已资格环境。
+
+在运行启动器的终端为 Java 设置 `SPEC_AGENT_TAVILY_API_KEY` 可启用 `web.search` / `web.fetch`；无需改聊天模型。未配置时界面显示联网未配置，两工具不进入模型目录。不要把密钥写进仓库。网页调用、来源与正文提取阶段展示在各轮处理过程中；检索能力按实际 Python/Ollama/store readiness 开放。
+
+完整范围、参数与验证见 [实施记录](docs/v2/GLOBAL_ASSISTANT_SINGLE_ENGINE_IMPLEMENTATION_STATUS.md)。
+
+日常启动已验证四个服务及前端代理；检索未就绪会提示Ollama、共享存储或帮助索引的具体状态。配置Tavily环境变量、Ollama及索引的步骤见上述实施记录“完整日常启动收尾”。root `data/internal-secret.txt` 为本地忽略文件，禁止提交。

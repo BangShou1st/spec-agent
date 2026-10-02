@@ -26,7 +26,7 @@ public final class GlobalAssistantToolCatalog {
     public static final String FINGERPRINT = "ga-v1:project.create,project.search,"
             + "project.list_recent,project.get_summary,skill.import,skill.import.discover";
     public static boolean isAllowed(String capabilityId) {
-        return TOOL_IDS.contains(capabilityId) || Set.of("help.search","project.content.discover").contains(capabilityId);
+        return TOOL_IDS.contains(capabilityId) || Set.of("help.search","project.content.discover","web.search","web.fetch").contains(capabilityId);
     }
     /**
      * V1 各工具的精确参数契约。未知键一律被决策校验器拒绝;
@@ -56,6 +56,8 @@ public final class GlobalAssistantToolCatalog {
         }
         if("help.search".equals(capabilityId)) return Set.of("query","limit");
         if("project.content.discover".equals(capabilityId)) return Set.of("query","projectId","limit");
+        if("web.search".equals(capabilityId)) return Set.of("query","limit","topic","timeRange");
+        if("web.fetch".equals(capabilityId)) return Set.of("url","query");
         return null;
     }
     /**

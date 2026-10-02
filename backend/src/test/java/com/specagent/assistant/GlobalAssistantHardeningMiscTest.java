@@ -8,11 +8,10 @@ import com.specagent.capability.CapabilityDescriptor;
 import com.specagent.capability.CapabilityInvocation;
 import com.specagent.capability.CapabilityResult;
 import com.specagent.capability.SideEffectClass;
-import com.specagent.assistant.model.GlobalAssistantContext;
-import com.specagent.assistant.runtime.GlobalAssistantContextBuilder;
+import com.specagent.assistant.runtime.GaHostContext;
 import com.specagent.assistant.conversation.GlobalAssistantConversationService;
 import com.specagent.assistant.conversation.GlobalAssistantThread;
-import com.specagent.assistant.model.GlobalAssistantPromptRenderer;
+import com.specagent.assistant.runtime.GaHostContext;
 import com.specagent.assistant.tool.GlobalAssistantCatalogService;
 import com.specagent.assistant.tool.GlobalAssistantToolCatalog;
 import com.specagent.assistant.tool.GlobalProjectSummaryQueryService;
@@ -84,9 +83,7 @@ class GlobalAssistantHardeningMiscTest {
         }
     }
     @Autowired GlobalAssistantCatalogService catalog;
-    @Autowired GlobalAssistantContextBuilder contextBuilder;
     @Autowired GlobalAssistantConversationService conversations;
-    @Autowired GlobalAssistantPromptRenderer renderer;
     @Autowired ProjectService projects;
     @Autowired Executor gaExecutor;
     @Test
@@ -120,31 +117,8 @@ class GlobalAssistantHardeningMiscTest {
                 "project.create", "project.search", "project.list_recent", "project.get_summary",
                 "skill.import", "skill.import.discover");
     }
-    @Test
-    void toolDescriptorsProjectStructuredSchemas() {
-        GlobalAssistantThread thread = conversations.createThread();
-        GlobalAssistantContext context = contextBuilder.build(thread.id(), "do something",
-                new GlobalAssistantContextBuilder.UiRequest("PROJECTS", null));
-        String rendered = renderer.render(context, List.of()).get(1).content();
-        assertThat(rendered).contains("inputSchema");
-        assertThat(rendered).contains("sideEffectClass");
-        assertThat(rendered).contains("outputSchema");
-        assertThat(rendered).doesNotContain("benchmark");
-    }
-    @Test
-    void observationsRenderAsStableJson() {
-        GlobalAssistantThread thread = conversations.createThread();
-        GlobalAssistantContext context = contextBuilder.build(thread.id(), "do something",
-                new GlobalAssistantContextBuilder.UiRequest("PROJECTS", null));
-        Map<String, Object> observation = new java.util.LinkedHashMap<>();
-        observation.put("capabilityId", "project.search");
-        observation.put("ok", true);
-        observation.put("candidates", List.of(Map.of("projectId", "abc", "title", "Demo")));
-        String rendered = renderer.render(context, List.of(observation)).get(1).content();
-        assertThat(rendered).contains("\"capabilityId\"");
-        assertThat(rendered).contains("\"candidates\"");
-        assertThat(rendered).doesNotContain("{capabilityId=");
-    }
+
+
     @Test
     void executorIsBoundedAndManaged() {
         assertThat(gaExecutor).isInstanceOf(ThreadPoolTaskExecutor.class);
@@ -162,19 +136,17 @@ class GlobalAssistantHardeningMiscTest {
         java.util.concurrent.Executor rejecting = runnable -> {
             throw new java.util.concurrent.RejectedExecutionException("saturated");
         };
-        @SuppressWarnings("unchecked")
-        org.springframework.beans.factory.ObjectProvider<com.specagent.assistant.runtime.GlobalAssistantRuntime> provider =
-                Mockito.mock(org.springframework.beans.factory.ObjectProvider.class);
-        var dispatcher = new com.specagent.assistant.runtime.RunDispatcher(rejecting, provider, runLifecycle, runRepository);
+        var coordinator = Mockito.mock(com.specagent.assistant.runtime.GaExecutionCoordinator.class);
+        var dispatcher = new com.specagent.assistant.runtime.RunDispatcher(rejecting, coordinator, runLifecycle, runRepository);
         var service = new com.specagent.assistant.runtime.GlobalAssistantApplicationService(
                 conversations, runRepository, runLifecycle, handoff, activitySvc, deletes, dispatcher);
         GlobalAssistantThread thread = conversations.createThread();
         var first = service.createRun(thread.id(), "hello",
-                new GlobalAssistantContextBuilder.UiRequest("PROJECTS", null));
+                new GaHostContext.UiRequest("PROJECTS", null));
         assertThat(runRepository.findById(first.id()).orElseThrow().status().name())
                 .isEqualTo("FAILED");
         var second = service.createRun(thread.id(), "again",
-                new GlobalAssistantContextBuilder.UiRequest("PROJECTS", null));
+                new GaHostContext.UiRequest("PROJECTS", null));
         assertThat(runRepository.findById(second.id()).orElseThrow().status().name())
                 .isEqualTo("FAILED");
     }

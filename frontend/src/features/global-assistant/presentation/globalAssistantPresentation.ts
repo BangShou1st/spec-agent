@@ -11,6 +11,18 @@ export function gaToolDisplayName(capabilityId: string): string {
 }
 
 const GA_ERROR_COPY: Record<string, string> = {
+  GA_PYTHON_UNAVAILABLE: '全局助手 Python 服务不可用，请检查启动状态',
+  GA_EXECUTION_FAILED: '本次任务未能完成，请重新发送',
+  PROJECT_INDEX_NOT_READY: '项目内容索引尚未准备，当前无法检索',
+  WEB_NOT_CONFIGURED: '联网未配置',
+  WEB_AUTHENTICATION_FAILED: '联网凭据无效，请检查 Tavily 配置',
+  WEB_RATE_LIMITED: '联网请求受到限流，请稍后重试',
+  WEB_PROVIDER_FAILED: '网页服务请求失败，请稍后重试',
+  WEB_CONNECTION_FAILED: '无法连接网页服务，请检查网络',
+  WEB_TIMEOUT: '网页请求超时，请稍后重试',
+  WEB_EXTRACT_FAILED: '无法读取该网页正文，可能需要登录或不支持提取',
+  WEB_INVALID_RESPONSE: '网页服务返回了无效结果',
+  WEB_RESPONSE_TOO_LARGE: '网页响应超过大小限制',
   PROJECT_NOT_FOUND: '该项目不存在，可能已被删除',
   TOOL_ARGUMENT_INVALID: '请求参数有误，请调整后重试',
   TOOL_EXECUTION_FAILED: '工具执行失败，请稍后再试',
@@ -67,7 +79,7 @@ export function gaArgsSummary(args: unknown): string | null {
   if (!args || typeof args !== 'object') return null
   const record = args as Record<string, unknown>
   const picked: string[] = []
-  for (const key of ['query', 'title', 'keyword', 'projectId', 'limit']) {
+  for (const key of ['query', 'url', 'title', 'keyword', 'projectId', 'limit']) {
     const value = record[key]
     if (typeof value === 'string' && value.trim().length > 0) {
       const text = value.trim()
@@ -152,4 +164,16 @@ const GA_STATUS_COPY: Record<string, string> = {
 export function gaStatusMessage(message: string): string {
   if (!message) return message
   return GA_STATUS_COPY[message] ?? message
+}
+
+export function gaRetrievalStatusMessage(status?: string): string {
+  const messages: Record<string, string> = {
+    DISABLED: '内容检索已关闭；项目查找和网页工具仍可独立使用。',
+    PYTHON_UNAVAILABLE: '内容检索未就绪：请检查全局助手 Python 服务。',
+    STORE_UNAVAILABLE: '内容检索未就绪：请检查后端存储与共享令牌。',
+    OLLAMA_UNAVAILABLE: '内容检索未就绪：请启动 Ollama 并准备 qwen3-embedding:0.6b。',
+    HELP_INDEX_NOT_READY: '帮助索引正在准备；稍后自动恢复内容检索。',
+    RETRIEVAL_UNAVAILABLE: '内容检索暂不可用，请检查 Ollama、后端存储和索引准备状态。',
+  }
+  return status === 'READY' ? '' : (messages[status ?? ''] ?? '内容检索正在准备。')
 }

@@ -1,0 +1,175 @@
+{
+  "recordedAt": "2026-10-02T02:06:36.942844600Z",
+  "model": "mimo-v2.6-flash-free",
+  "engineVersion": "langchain-ga.v1",
+  "status": "PASS",
+  "scope": "real configured chat model + Tavily search/extract + Java host + Python create_agent + durable events/checkpoint; test database",
+  "events": [
+    {
+      "id": "d1150201-a5af-4d98-988e-cbf905e62e27",
+      "runId": "c220b6ae-7f9e-4219-a424-32d925a75e7e",
+      "sequence": 1,
+      "type": "RUN_STARTED",
+      "payload": {
+        "threadId": "e2873d55-88a4-491a-a686-b6310ddb1176"
+      },
+      "createdAt": 1790906762.744133
+    },
+    {
+      "id": "ce42bd2b-0f89-43c0-a53f-719ad845b0f1",
+      "runId": "c220b6ae-7f9e-4219-a424-32d925a75e7e",
+      "sequence": 2,
+      "type": "TOOL_STARTED",
+      "payload": {
+        "capabilityId": "web.search",
+        "arguments": {
+          "limit": 5,
+          "query": "LangChain Python create_agent official documentation"
+        },
+        "toolCallId": "call_90b0365f37984e54a91c6f47"
+      },
+      "createdAt": 1790906766.359738
+    },
+    {
+      "id": "8122a19e-deb9-44f4-98f9-e656bf8ab212",
+      "runId": "c220b6ae-7f9e-4219-a424-32d925a75e7e",
+      "sequence": 3,
+      "type": "TOOL_COMPLETED",
+      "payload": {
+        "capabilityId": "web.search",
+        "resourceRefs": [
+          {
+            "id": "77f8a3e5-6e30-4348-aaf9-c7b72d77bb26",
+            "kind": "WEB_SOURCE",
+            "label": "LangChain overview - Docs by LangChain",
+            "metadata": {
+              "url": "https://docs.langchain.com/oss/python/langchain/overview",
+              "excerpt": "LangChain provides create\\_agent: a minimal, highly configurable agent harness. Compose exactly the agent your use case needs from model, tools, prompt, and middleware.\n\n`create_agent`\n`create_agent`\n\n## ​ Create an agent\n\n`# pip install -qU langchain \"langchain[openai]\"\nfrom langchain.agents import create_agent\n\ndef get_weather(city: str) -> str:\n \"\"\"Get weather for a given city.\"\"\"\n return f\"It's always sunny in {city}!\" [...] agent = create_agent(\n model=\"fireworks:accounts/fireworks/models/qwen3p5-397b-a17b\",\n tools=[get_weather],\n system_prompt=\"You are a helpful assistant\",\n)\n\nresult = agent.invoke(\n {\"messages\": [{\"role\": \"user\", \"content\": \"What's the weather in San Francisco?\"}]}\n)\nprint(result[\"messages\"][-1].content_blocks)`\n`# pip install -qU langchain langchain-baseten\nfrom la",
+              "authority": "EXTERNAL_EVIDENCE",
+              "fetchedAt": "2026-10-02T02:06:07.960777600Z",
+              "sourceRef": "web:77f8a3e5-6e30-4348-aaf9-c7b72d77bb26",
+              "truncated": false,
+              "contentStage": "SEARCH_SNIPPET"
+            }
+          },
+          {
+            "id": "fd4c770b-08ef-4d0e-bdaa-ea2d058b6d2e",
+            "kind": "WEB_SOURCE",
+            "label": "create_agent | langchain | LangChain Reference",
+            "metadata": {
+              "url": "https://reference.langchain.com/python/langchain/agents/factory/create_agent",
+              "excerpt": "Creates an agent graph that calls tools in a loop until a stopping condition is met.\n\nFor more details on using `create_agent`, visit the Agents docs. [...] | Name | Type | Description |\n --- \n| `model`\\ | `|` | The language model for the agent.  Can be a string identifier (e.g., `\"openai:gpt-5.5\"`) or a direct chat model instance (e.g., `ChatOpenAI` or other another LangChain chat model).  For a full list of supported model strings, see `init_chat_model`.  Tip  See the Models docs for more information. |\n| `tools` | `[ | [..., ] | [, ]] | None` | Default:`None` |\n| `system_prompt` | `| | None` | Default:`None` | [...] A list of tools, `dict`, or `Callable`.\n\nIf `None` or an empty list, the agent will consist of a model node without a tool calling loop.\n\nTip\n\nSee the Tools docs for more in",
+              "authority": "EXTERNAL_EVIDENCE",
+              "fetchedAt": "2026-10-02T02:06:07.960777600Z",
+              "sourceRef": "web:fd4c770b-08ef-4d0e-bdaa-ea2d058b6d2e",
+              "truncated": false,
+              "publishedAt": "Fri, 03 Apr 2026 00:14:55 GMT",
+              "contentStage": "SEARCH_SNIPPET"
+            }
+          },
+          {
+            "id": "d99e97e7-302c-4f0a-ad89-a8d71331ed98",
+            "kind": "WEB_SOURCE",
+            "label": "Agents - Docs by LangChain",
+            "metadata": {
+              "url": "https://docs.langchain.com/oss/python/langchain/agents",
+              "excerpt": "agent = create_agent(\n model=\"fireworks:accounts/fireworks/models/glm-5p2\",\n tools=[search],\n middleware=[\n FilesystemMiddleware(backend=backend),\n TodoListMiddleware(),\n SubAgentMiddleware(\n backend=backend,\n subagents=[\n {\n \"name\": \"researcher\",\n \"description\": \"Searches and returns a structured summary.\",\n \"system_prompt\": \"Use the search tool to research the question and summarize key points.\",\n \"tools\": [search],\n \"model\": \"anthropic:claude-sonnet-4-6\",\n \"middleware\": [],\n }\n ],\n ),\n ], [...] agent = create_agent(\n model=\"openai:gpt-5.5\",\n tools=[search],\n middleware=[\n FilesystemMiddleware(backend=backend),\n TodoListMiddleware(),\n SubAgentMiddleware(\n backend=backend,\n subagents=[\n {\n \"name\": \"researcher\",\n \"description\": \"Searches and returns a structured summary.\",\n \"system_prompt\"",
+              "authority": "EXTERNAL_EVIDENCE",
+              "fetchedAt": "2026-10-02T02:06:07.960777600Z",
+              "sourceRef": "web:d99e97e7-302c-4f0a-ad89-a8d71331ed98",
+              "truncated": false,
+              "contentStage": "SEARCH_SNIPPET"
+            }
+          },
+          {
+            "id": "50d7afdc-e093-4d13-b226-acacf6483516",
+            "kind": "WEB_SOURCE",
+            "label": "What's new in LangChain v1 - Docs by LangChain",
+            "metadata": {
+              "url": "https://docs.langchain.com/oss/python/releases/langchain-v1",
+              "excerpt": "`create_agent`\n`from langchain.agents import create_agent\nfrom langchain.agents.structured_output import ToolStrategy\nfrom pydantic import BaseModel\n\nclass Weather(BaseModel):\n temperature: float\n condition: str\n\ndef weather_tool(city: str) -> str:\n \"\"\"Get the weather for a city.\"\"\"\n return f\"it's sunny and 70 degrees in {city}\"\n\nagent = create_agent(\n \"gpt-5.4-mini\",\n tools=[weather_tool],\n response_format=ToolStrategy(Weather)\n) [...] | Module | What’s available | Notes |\n --- \n| `langchain.agents` | `create_agent`, `AgentState` | Core agent creation functionality |\n| `langchain.messages` | Message types, content blocks, `trim_messages` | Re-exported from `langchain-core` |\n| `langchain.tools` | `@tool`, `BaseTool`, injection helpers | Re-exported from `langchain-core` |\n| `langchain.cha",
+              "authority": "EXTERNAL_EVIDENCE",
+              "fetchedAt": "2026-10-02T02:06:07.960777600Z",
+              "sourceRef": "web:50d7afdc-e093-4d13-b226-acacf6483516",
+              "truncated": false,
+              "publishedAt": "Tue, 14 Oct 2025 00:00:00 GMT",
+              "contentStage": "SEARCH_SNIPPET"
+            }
+          },
+          {
+            "id": "ea6969d3-f480-4e5d-a39e-69d8a3a046c4",
+            "kind": "WEB_SOURCE",
+            "label": "agents | langchain | LangChain Reference",
+            "metadata": {
+              "url": "https://reference.langchain.com/python/langchain/agents",
+              "excerpt": "### AgentState\n\nState schema for the agent.Class\n\n### ModelRequest\n\nModel request information for the agent.Class\n\n### ToolStrategy\n\nUse a tool calling strategy for model responses.Class\n\n### ProviderStrategy\n\nUse the model provider's native structured output method.Class\n\n### AutoStrategy\n\nAutomatically select the best strategy for structured output.\n\n## Functions\n\nFunction\n\n### create\\_agent\n\nCreates an agent graph that calls tools in a loop until a stopping condition is met. [...] For more details on using `create_agent`, visit the [AgentsFunction\n\n### before\\_model\n\nDecorator used to dynamically create a middleware with the `before_model` hook.Function\n\n### after\\_model\n\nDecorator used to dynamically create a middleware with the `after_model` hook.Function\n\n### wrap\\_model\\_call\n\nCreat",
+              "authority": "EXTERNAL_EVIDENCE",
+              "fetchedAt": "2026-10-02T02:06:07.960777600Z",
+              "sourceRef": "web:ea6969d3-f480-4e5d-a39e-69d8a3a046c4",
+              "truncated": false,
+              "contentStage": "SEARCH_SNIPPET"
+            }
+          }
+        ],
+        "resultCount": 5,
+        "toolCallId": "call_90b0365f37984e54a91c6f47",
+        "resultKind": "WEB_SOURCE"
+      },
+      "createdAt": 1790906767.984767
+    },
+    {
+      "id": "fefa937a-9369-4d50-b24c-ef5b192048b8",
+      "runId": "c220b6ae-7f9e-4219-a424-32d925a75e7e",
+      "sequence": 10,
+      "type": "TOOL_STARTED",
+      "payload": {
+        "capabilityId": "web.fetch",
+        "arguments": {
+          "url": "https://docs.langchain.com/oss/python/langchain/agents",
+          "query": "create_agent chat model calls search tool tool-calling loop"
+        },
+        "toolCallId": "call_74cbd621c9104c18ab811315"
+      },
+      "createdAt": 1790906770.936716
+    },
+    {
+      "id": "41a41d3c-8472-48bc-99d7-ed54c927144a",
+      "runId": "c220b6ae-7f9e-4219-a424-32d925a75e7e",
+      "sequence": 11,
+      "type": "TOOL_COMPLETED",
+      "payload": {
+        "capabilityId": "web.fetch",
+        "resourceRefs": [
+          {
+            "id": "6fe9ae0e-b78d-490b-a503-5b148c31e540",
+            "kind": "WEB_SOURCE",
+            "label": "Agents - Docs by LangChain",
+            "metadata": {
+              "url": "https://docs.langchain.com/oss/python/langchain/agents",
+              "excerpt": "agent = create_agent(\n model=\"fireworks:accounts/fireworks/models/glm-5p2\",\n tools=[search],\n middleware=[HumanInTheLoopMiddleware(interrupt_on={\"write_file\": True})],\n)\nfrom langchain.agents import create_agent\nfrom langchain.agents.middleware import HumanInTheLoopMiddleware\nfrom langchain.tools import tool\n\n@tool\ndef search(query: str) -> str:\n \"\"\"Search for a query and return a short summary.\"\"\"\n return f\"Search results for: {query}\"\n\nagent = create_agent(\n model=\"baseten:zai-org/GLM-5.2\",\n tools=[search],\n middleware=[HumanInTheLoopMiddleware(interrupt_on={\"write_file\": True})],\n)\nfrom langchain.agents import create_agent\nfrom langchain.agents.middleware import HumanInTheLoopMiddleware\nfrom langchain.tools import tool [...] agent = create_agent(\n model=\"openai:gpt-5.5\",\n tools=[search]",
+              "authority": "EXTERNAL_EVIDENCE",
+              "fetchedAt": "2026-10-02T02:06:11.767996100Z",
+              "sourceRef": "web:6fe9ae0e-b78d-490b-a503-5b148c31e540",
+              "truncated": false,
+              "contentStage": "EXTRACTED_TEXT"
+            }
+          }
+        ],
+        "resultCount": 1,
+        "toolCallId": "call_74cbd621c9104c18ab811315",
+        "resultKind": "WEB_SOURCE"
+      },
+      "createdAt": 1790906771.791068
+    },
+    {
+      "id": "83f2837e-c62a-4665-8310-e7d37a7d64f9",
+      "runId": "c220b6ae-7f9e-4219-a424-32d925a75e7e",
+      "sequence": 303,
+      "type": "RUN_COMPLETED",
+      "payload": {},
+      "createdAt": 1790906796.863798
+    }
+  ],
+  "answer": "搜索和正文读取均已完成。以下基于本轮返回的官方文档内容进行说明。\n\n## 本轮执行情况\n\n1. **搜索**：`web.search` 查询 \"LangChain Python create_agent official documentation\"，返回 5 条结果，包括官方文档站 docs.langchain.com 和参考手册 reference.langchain.com [web:77f8a3e5-6e30-4348-aaf9-c7b72d77bb26][web:fd4c770b-08ef-4d0e-bdaa-ea2d058b6d2e][web:d99e97e7-302c-4f0a-ad89-a8d71331ed98][web:50d7afdc-e093-4d13-b226-acacf6483516][web:ea6969d3-f480-4e5d-a39e-69d8a3a046c4]\n2. **读取**：从搜索结果中选取官方 Agents 文档页 `docs.langchain.com/oss/python/langchain/agents`，用 `web.fetch` 成功读取正文 [web:6fe9ae0e-b78d-490b-a503-5b148c31e540]\n\n## 聊天模型如何调用搜索工具（中文解释）\n\n**1. 定义搜索工具**\n\n用 `@tool` 装饰器把一个 Python 函数包装成工具。文档示例中 `search` 函数带有 docstring（\"Search for a query and return a short summary\"），这个 docstring 会作为工具描述提供给聊天模型，模型据此判断什么情况下该调用它 [web:6fe9ae0e-b78d-490b-a503-5b148c31e540]。\n\n**2. 把工具注册进 agent**\n\n调用 `create_agent(model=..., tools=[search], ...)` 时，工具列表会随模型请求一起传给聊天模型。`create_agent` 的参数说明指出：`model` 可以是字符串标识（如 `\"openai:gpt-5.5\"`）或聊天模型实例；`tools` 是工具列表，**如果为 `None` 或空列表，agent 就只是模型节点、没有工具调用循环**——也就是说，正是 tools 参数的存在触发了工具调用机制 [web:fd4c770b-08ef-4d0e-bdaa-ea2d058b6d2e]。\n\n**3. 模型发起工具调用，进入循环**\n\n`create_agent` 的官方定义是\"创建一个 agent 图（graph），在满足停止条件之前**循环调用工具**\" [web:fd4c770b-08ef-4d0e-bdaa-ea2d058b6d2e][web:ea6969d3-f480-4e5d-a39e-69d8a3a046c4]。具体流程为：\n\n- 用户消息（如 \"What's the weather in San Francisco?\"）进入 agent，聊天模型根据工具描述决定调用 `search(query=...)`，返回一个工具调用请求；\n- agent 图执行该工具，把搜索结果作为 `ToolMessage` 追加到消息列表；\n- 消息列表再次送回模型，模型看到搜索结果后，要么继续调用工具，要么产出最终回答——如此循环，直到没有更多工具调用（停止条件满足）[web:6fe9ae0e-b78d-490b-a503-5b148c31e540][web:77f8a3e5-6e30-4348-aaf9-c7b72d77bb26]。\n\n**4. 触发方式**\n\n`agent.invoke({\"messages\": [{\"role\": \"user\", \"content\": \"...\"}]})` 启动整个循环，最终答案在 `result[\"messages\"][-1]` 中 [web:77f8a3e5-6e30-4348-aaf9-c7b72d77bb26]。\n\n**5. 可选的控制手段**\n\n- 中间件（middleware）可介入循环，例如 `HumanInTheLoopMiddleware` 可对指定工具中断并等待人工确认 [web:6fe9ae0e-b78d-490b-a503-5b148c31e540]；\n- `SubAgentMiddleware` 可以给子 agent 单独配备 `search` 工具和独立的 system prompt，让子 agent 专职检索并返回结构化摘要 [web:6fe9ae0e-b78d-490b-a503-5b148c31e540]。\n\n**一句话总结**：聊天模型本身不\"执行\"搜索，它只是根据工具描述输出一个结构化的工具调用请求；由 `create_agent` 构建的 agent 图负责实际运行 `search` 函数、把结果回填进消息历史，再让模型继续推理，循环往复直到得出最终答案 [web:fd4c770b-08ef-4d0e-bdaa-ea2d058b6d2e][web:6fe9ae0e-b78d-490b-a503-5b148c31e540]。",
+  "eventSelection": "Durable RUN/TOOL envelopes; streaming fragments omitted"
+}

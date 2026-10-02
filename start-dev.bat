@@ -199,7 +199,7 @@ if "!WITH_BRAIN!"=="1" (
                 "%~dp0agent-brain\.venv\Scripts\python.exe" -m pip install --quiet -e "%~dp0agent-brain"
             )
             echo [2/3] Starting agent-brain locally [broker -^> backend !BACKEND_PORT!, loopback only] ...
-            start "Spec Agent Brain" /d "%~dp0agent-brain" cmd /k "set "SPEC_AGENT_INTERNAL_BROKER_URL=http://localhost:!BACKEND_PORT!/internal/v1/model-inference" && set "SPEC_AGENT_BRAIN_INTERNAL_SECRET=!INTERNAL_SECRET!" && set "SPEC_AGENT_BRAIN_MODEL_MODE=broker" && .venv\Scripts\python.exe -m uvicorn spec_agent_brain.app:app --host 127.0.0.1 --port !BRAIN_PORT!"
+            start "Spec Agent Brain" /d "%~dp0agent-brain" cmd /k "set "SPEC_AGENT_INTERNAL_BROKER_URL=http://localhost:!BACKEND_PORT!/internal/v1/model-inference" && set "SPEC_AGENT_BRAIN_INTERNAL_SECRET=!INTERNAL_SECRET!" && set "SPEC_AGENT_BRAIN_MODEL_MODE=broker" && set "SPEC_AGENT_TAVILY_API_KEY=" && .venv\Scripts\python.exe -m uvicorn spec_agent_brain.app:app --host 127.0.0.1 --port !BRAIN_PORT!"
             set "BRAIN_STATUS=starting"
         )
     )
@@ -208,10 +208,17 @@ if "!WITH_BRAIN!"=="1" (
 )
 
 rem ============================================================
-rem  Step 3: Backend then frontend, each in its own console.
+rem  Step 3: independent qualified GA Python, then backend and frontend.
 rem  start /d sets the working directory, so no nested quotes are needed
 rem  inside the command string (the old script's quoting trap).
 rem ============================================================
+if defined SPEC_AGENT_GA_BRAIN_PORT (set "GA_BRAIN_PORT=!SPEC_AGENT_GA_BRAIN_PORT!") else (set "GA_BRAIN_PORT=8101")
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start-ga-brain.ps1" -Port !GA_BRAIN_PORT! -BackendPort !BACKEND_PORT! -SecretFile "!SECRET_FILE!"
+if errorlevel 1 (
+    echo [FATAL] Global Assistant Python is unavailable. No Java fallback.
+    exit /b 1
+)
+set "SPEC_AGENT_GA_BRAIN_BASE_URL=http://127.0.0.1:!GA_BRAIN_PORT!"
 echo [3/3] Launching backend and frontend ...
 
 rem  SERVER__PORT (double underscore) is also bound to server.port by Spring's
@@ -219,8 +226,8 @@ rem  relaxed binding and is injected by some IDE/agent shells; clear it so the
 rem  port chosen here always wins.
 rem  The backend binds 127.0.0.1 by default (server.address) and receives the
 rem  SAME per-install internal secret as the brain.
-start "Spec Agent Backend" /d "%~dp0backend" cmd /k "set SERVER_PORT=!BACKEND_PORT! && set SERVER__PORT= && set SPEC_AGENT_BRAIN_INTERNAL_SECRET=!INTERNAL_SECRET! && call gradlew.bat bootRun"
-start "Spec Agent Frontend" /d "%~dp0frontend" cmd /k "set VITE_API_PROXY_TARGET=http://localhost:!BACKEND_PORT! && npm run dev -- --port !FRONTEND_PORT!"
+start "Spec Agent Backend" /d "%~dp0backend" cmd /k "set "SERVER_PORT=!BACKEND_PORT!" && set "SERVER__PORT=" && set "SPEC_AGENT_BRAIN_INTERNAL_SECRET=!INTERNAL_SECRET!" && set "SPEC_AGENT_BRAIN_BASE_URL=http://127.0.0.1:!BRAIN_PORT!" && call gradlew.bat bootRun"
+start "Spec Agent Frontend" /d "%~dp0frontend" cmd /k "set "VITE_API_PROXY_TARGET=http://localhost:!BACKEND_PORT!" && npm run dev -- --port !FRONTEND_PORT! --strictPort"
 
 rem ============================================================
 rem  Summary
@@ -233,6 +240,7 @@ echo   Frontend      http://localhost:!FRONTEND_PORT!
 echo   Backend       http://localhost:!BACKEND_PORT!   [loopback only]
 echo   Health        http://localhost:!BACKEND_PORT!/actuator/health
 echo   Brain         !BRAIN_STATUS!   [http://127.0.0.1:!BRAIN_PORT!/health]
+echo   GA Brain      http://127.0.0.1:!GA_BRAIN_PORT!/health [create_agent]
 echo   Internal secret  data\internal-secret.txt [per-install, keep it private]
 echo ------------------------------------------------------------
 echo.
@@ -251,43 +259,12 @@ rem ============================================================
 :portBusy
 rem %1 = port -> PORT_BUSY=1 when something is LISTENING on it
 set "PORT_BUSY=0"
-netstat -ano -p tcp | findstr /R /C:":%1 " | findstr /C:"LISTENING" >nul 2>&1
+netstat -ano | findstr /R /C:":%1 " | findstr /C:"LISTENING" >nul 2>&1
 if not errorlevel 1 set "PORT_BUSY=1"
 exit /b 0
 
 :stopOursOnly
-rem %1 = port -> stop every LISTENING process on it that verifiably
-rem belongs to this repository (command line contains the repo root or
-rem the agent-brain module marker). Foreign listeners are reported and
-rem left running.
-for /f "tokens=5" %%P in ('netstat -ano -p tcp ^| findstr /R /C:":%1 " ^| findstr /C:"LISTENING"') do (
-    call :identityKill %%P %1
-)
-exit /b 0
-
-:identityKill
-rem %1 = PID, %2 = port
-set "KILL_PID=%~1"
-set "KILL_PORT=%~2"
-set "CMDLINE="
-for /f "usebackq delims=" %%L in (`powershell -NoProfile -Command "(Get-CimInstance Win32_Process -Filter 'ProcessId = %KILL_PID%').CommandLine" 2^>nul`) do set "CMDLINE=%%L"
-rem 归一化分隔符后再匹配,避免 / 与 \ 形态差异漏判
-set "CHECKLINE=!CMDLINE:/=\!"
-set "IS_OURS=0"
-if not "!CHECKLINE!"=="" (
-    echo !CHECKLINE! | findstr /I /C:"!REPO_ROOT!" >nul 2>&1
-    if not errorlevel 1 set "IS_OURS=1"
-    echo !CHECKLINE! | findstr /I /C:"spec_agent_brain" >nul 2>&1
-    if not errorlevel 1 set "IS_OURS=1"
-)
-if "!IS_OURS!"=="1" (
-    echo        Restarting previous Spec Agent instance: PID !KILL_PID! on port !KILL_PORT!
-    taskkill /F /T /PID !KILL_PID! >nul 2>&1
-    call :waitForPortFree !KILL_PORT!
-) else (
-    echo        Port !KILL_PORT! is held by another application [PID !KILL_PID!] - leaving it alone.
-    echo        Command line: !CMDLINE!
-)
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\stop-dev-port.ps1" -Port %1
 exit /b 0
 
 :waitForPortFree

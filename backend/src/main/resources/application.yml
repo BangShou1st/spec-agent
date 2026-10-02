@@ -43,7 +43,10 @@ logging:
 
 spec:
   global-assistant:
-    engine: ${SPEC_AGENT_GLOBAL_ASSISTANT_ENGINE:java-legacy.v1}
+    brain-base-url: ${SPEC_AGENT_GA_BRAIN_BASE_URL:http://127.0.0.1:8101}
+    tavily-api-key: ${SPEC_AGENT_TAVILY_API_KEY:}
+    retrieval-enabled: ${SPEC_AGENT_GA_RETRIEVAL_ENABLED:true}
+    engine: ${SPEC_AGENT_GLOBAL_ASSISTANT_ENGINE:langchain-ga.v1}
   agent:
     action-eligibility:
       mode: ${SPEC_AGENT_ACTION_ELIGIBILITY_MODE:enforced}

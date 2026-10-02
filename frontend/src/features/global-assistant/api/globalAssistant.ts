@@ -232,3 +232,6 @@ export function isGaTerminalStatus(status: string): boolean {
 export function isGaTerminalEventType(type: string): boolean {
   return type === 'RUN_COMPLETED' || type === 'RUN_FAILED' || type === 'RUN_CANCELLED'
 }
+
+export interface GaToolsStatus { engineVersion: string; webConfigured: boolean; retrievalReady: boolean; retrievalStatus?: string; capabilities: string[] }
+export function getGaToolsStatus(): Promise<GaToolsStatus> { return apiClient.get('/global-assistant/tools') }

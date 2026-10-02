@@ -1,6 +1,7 @@
 package com.specagent.assistant.runtime;
 
-import com.specagent.agent.broker.AgentBrainProperties;
+import com.specagent.assistant.config.GaBrainSettings;
+
 import java.io.*;
 import java.net.URI;
 import java.net.http.*;
@@ -18,12 +19,12 @@ public class GaExecutionCoordinator {
     private final GaExecutionPreparation preparation;
     private final GaExecutionCompletion completion;
     private final GaExecutionStore executions;
-    private final AgentBrainProperties properties;
+    private final GaBrainSettings properties;
     public GaExecutionCoordinator(GaExecutionPreparation preparation,GaExecutionCompletion completion,
-            GaExecutionStore executions,AgentBrainProperties properties) {
+            GaExecutionStore executions,GaBrainSettings properties) {
         this.preparation=preparation; this.completion=completion; this.executions=executions; this.properties=properties;
     }
-    public void executeRun(UUID thread,UUID run,String text,GlobalAssistantContextBuilder.UiRequest ui) {
+    public void executeRun(UUID thread,UUID run,String text,GaHostContext.UiRequest ui) {
         GaExecutionPreparation.Prepared prepared=null;
         GaExecutionCompletion.StreamState state=null;
         try {
@@ -35,7 +36,10 @@ public class GaExecutionCoordinator {
             // A duplicate dispatcher cannot fail or replace the owning execution.
         } catch(Exception ex) {
             log.warn("GA coordination failed run={} category={}",run,ex.getClass().getSimpleName());
-            completion.failed(run,prepared==null?null:prepared.model(),state);
+            boolean unavailable=false;
+            for(Throwable cause=ex;cause!=null;cause=cause.getCause())
+                if(cause instanceof java.net.ConnectException || cause instanceof HttpConnectTimeoutException) unavailable=true;
+            completion.failed(run,prepared==null?null:prepared.model(),state,unavailable?"GA_PYTHON_UNAVAILABLE":"GA_EXECUTION_FAILED");
         }
     }
     private List<String> call(GaExecutionPreparation.Prepared prepared,GaExecutionCompletion.StreamState state) throws Exception {

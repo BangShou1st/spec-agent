@@ -52,6 +52,7 @@ class GlobalAssistantSseHardeningTest {
     @Autowired MockMvc mockMvc;
     @Autowired ObjectMapper mapper;
     @Autowired GlobalAssistantConversationService conversations;
+    @Autowired com.specagent.assistant.runtime.GlobalAssistantRunLifecycleService lifecycle;
     @Autowired GlobalAssistantRunEventService runEvents;
     @Autowired JdbcTemplate jdbc;
     @Autowired PlatformTransactionManager txm;
@@ -112,8 +113,10 @@ class GlobalAssistantSseHardeningTest {
     @Test
     void sseEnvelopeUsesUuidEventIdAndSequenceSseId() throws Exception {
         String threadId = createThread();
-        String runId = createRun(threadId, "stream check");
-        waitForTerminal(runId);
+        var fixture = conversations.createRunWithUserMessage(UUID.fromString(threadId), "stream check", "test", "test", "test");
+        lifecycle.claimAndStart(fixture.id());
+        lifecycle.completeWithAssistant(UUID.fromString(threadId), fixture.id(), "已完成");
+        String runId = fixture.id().toString();
         MvcResult started = mockMvc.perform(get("/api/v1/global-assistant/runs/" + runId + "/events")
                         .accept(MediaType.TEXT_EVENT_STREAM))
                 .andExpect(status().isOk())

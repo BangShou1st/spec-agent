@@ -87,3 +87,11 @@ describe('ga error messages', () => {
     expect(message.length).toBeLessThan(200)
   })
 })
+
+import { gaRetrievalStatusMessage } from '../globalAssistantPresentation'
+it('explains disabled, offline Ollama, storage and index readiness without claiming a search', () => {
+  expect(gaRetrievalStatusMessage('OLLAMA_UNAVAILABLE')).toContain('qwen3-embedding:0.6b')
+  expect(gaRetrievalStatusMessage('STORE_UNAVAILABLE')).toContain('共享令牌')
+  expect(gaRetrievalStatusMessage('HELP_INDEX_NOT_READY')).toContain('索引正在准备')
+  expect(gaRetrievalStatusMessage('READY')).toBe('')
+})

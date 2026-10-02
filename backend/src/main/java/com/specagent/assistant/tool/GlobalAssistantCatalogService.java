@@ -17,16 +17,21 @@ import org.springframework.stereotype.Service;
 public class GlobalAssistantCatalogService {
     private final CapabilityRegistry registry;
     private final CapabilityCatalogLimits limits;
-    public GlobalAssistantCatalogService(CapabilityRegistry registry, CapabilityCatalogLimits limits) {
+    private final TavilyWebService web;
+    private final GaRetrievalReadiness retrieval;
+    public GlobalAssistantCatalogService(CapabilityRegistry registry, CapabilityCatalogLimits limits, TavilyWebService web, GaRetrievalReadiness retrieval) {
         this.registry = registry;
+        this.web=web; this.retrieval=retrieval;
         this.limits = limits;
     }
     public List<CapabilityDescriptor> modelCatalog() {
         return registry.descriptorsFor(CapabilityQueryContext.empty()).stream()
                 .filter(descriptor -> GlobalAssistantToolCatalog.isAllowed(descriptor.capabilityId()))
                 .filter(descriptor -> descriptor.supports().contains(GlobalAssistantToolCatalog.SUPPORT_MARKER))
+                .filter(descriptor -> !descriptor.capabilityId().startsWith("web.") || web.configured())
+                .filter(descriptor -> !java.util.Set.of("help.search","project.content.discover").contains(descriptor.capabilityId()) || retrieval.ready())
                 .map(this::bound)
-                .limit(8)
+                .limit(10)
                 .toList();
     }
     private CapabilityDescriptor bound(CapabilityDescriptor descriptor) {

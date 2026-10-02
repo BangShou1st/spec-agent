@@ -2,9 +2,6 @@ package com.specagent.model.provider;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
-import com.specagent.assistant.model.GlobalAssistantDecisionParser;
-import com.specagent.assistant.model.GlobalAssistantDecisionSemanticsAdapter;
-import com.specagent.assistant.model.GlobalAssistantDecisionValidator;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
@@ -59,8 +56,7 @@ class CompatibilityProbeChainTest {
                         new ChatCompletionsProtocolAdapter(),
                         new ResponsesProtocolAdapter(),
                         new AnthropicMessagesProtocolAdapter())),
-                new GlobalAssistantDecisionSemanticsAdapter(new GlobalAssistantDecisionParser(new ObjectMapper()),
-                        new GlobalAssistantDecisionValidator()));
+                new com.specagent.model.provider.CompatibilityProbeSemantics());
     }
 
     @AfterEach void stop() {

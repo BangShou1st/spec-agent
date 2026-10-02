@@ -5,7 +5,7 @@ import com.specagent.assistant.conversation.GlobalAssistantMessage;
 import com.specagent.assistant.conversation.GlobalAssistantRun;
 import com.specagent.assistant.conversation.GlobalAssistantThread;
 import com.specagent.assistant.conversation.GlobalAssistantThreadListItem;
-import com.specagent.assistant.runtime.GlobalAssistantContextBuilder;
+import com.specagent.assistant.runtime.GaHostContext;
 import com.specagent.assistant.runtime.GlobalAssistantStreamService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -87,15 +87,15 @@ public class GlobalAssistantController {
     @PostMapping("/threads/{threadId}/runs")
     public CreateRunResponse createRun(@PathVariable UUID threadId,
             @Valid @RequestBody CreateRunRequest request) {
-        GlobalAssistantContextBuilder.UiRequest uiRequest = null;
+        GaHostContext.UiRequest uiRequest = null;
         if (request.uiContext() != null) {
-            GlobalAssistantContextBuilder.UiRequest.SelectedRef selected = null;
+            GaHostContext.UiRequest.SelectedRef selected = null;
             if (request.uiContext().selectedEntity() != null) {
-                selected = new GlobalAssistantContextBuilder.UiRequest.SelectedRef(
+                selected = new GaHostContext.UiRequest.SelectedRef(
                         request.uiContext().selectedEntity().type(),
                         request.uiContext().selectedEntity().id());
             }
-            uiRequest = new GlobalAssistantContextBuilder.UiRequest(
+            uiRequest = new GaHostContext.UiRequest(
                     request.uiContext().currentPage(), selected);
         }
         GlobalAssistantRun run = application.createRun(threadId, request.message(), uiRequest);
@@ -180,7 +180,7 @@ public class GlobalAssistantController {
     }
     @PostMapping("/runs/{runId}/steer")
     public SteerRunResponse steerRun(@PathVariable UUID runId, @Valid @RequestBody SteerRunRequest request) {
-        GlobalAssistantContextBuilder.UiRequest uiRequest = toUiRequest(request.uiContext());
+        GaHostContext.UiRequest uiRequest = toUiRequest(request.uiContext());
         var result = application.steerRun(runId, request.message(), uiRequest);
         var pending = result.pending();
         var successor = result.successor();
@@ -212,14 +212,14 @@ public class GlobalAssistantController {
                 run.cancelRequestedAt() == null ? null : run.cancelRequestedAt().toString(), run.startedAt().toString(),
                 run.completedAt() == null ? null : run.completedAt().toString(), run.errorCode());
     }
-    private GlobalAssistantContextBuilder.UiRequest toUiRequest(CreateRunRequest.UiContextDto dto) {
+    private GaHostContext.UiRequest toUiRequest(CreateRunRequest.UiContextDto dto) {
         if (dto == null) {
             return null;
         }
-        GlobalAssistantContextBuilder.UiRequest.SelectedRef selected = null;
+        GaHostContext.UiRequest.SelectedRef selected = null;
         if (dto.selectedEntity() != null) {
-            selected = new GlobalAssistantContextBuilder.UiRequest.SelectedRef(dto.selectedEntity().type(), dto.selectedEntity().id());
+            selected = new GaHostContext.UiRequest.SelectedRef(dto.selectedEntity().type(), dto.selectedEntity().id());
         }
-        return new GlobalAssistantContextBuilder.UiRequest(dto.currentPage(), selected);
+        return new GaHostContext.UiRequest(dto.currentPage(), selected);
     }
 }

@@ -119,7 +119,7 @@ watch(
         </div>
         <AssistantMessage v-for="message in turn.answers" :key="message.id" :role="message.role"
           :content="message.content" :created-at="message.createdAt" :provider-label="message.providerLabel"
-          :model-id="message.modelId" />
+          :model-id="message.modelId" :sources="turn.activities.filter(a => a.state === 'success').flatMap(a => a.resourceRefs)" />
         <template v-if="turn.key === transientTurnKey">
       <div v-if="props.waitingQuestion" class="ga-clarify" data-test="ga-clarification" role="status">
         <p class="ga-clarify__label">需要你补充信息</p>

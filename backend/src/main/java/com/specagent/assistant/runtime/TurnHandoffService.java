@@ -8,12 +8,12 @@ import com.specagent.assistant.conversation.PendingTurnRepository;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.specagent.common.Json;
 import com.specagent.common.Maps;
-import com.specagent.assistant.runtime.GlobalAssistantContextBuilder;
+import com.specagent.assistant.runtime.GaHostContext;
 import com.specagent.assistant.conversation.GlobalAssistantConversationService;
 import com.specagent.assistant.conversation.GlobalAssistantMessage;
 import com.specagent.assistant.conversation.GlobalAssistantRun;
 import com.specagent.assistant.conversation.GlobalAssistantRunRepository;
-import com.specagent.assistant.model.GlobalAssistantPromptRenderer;
+import com.specagent.assistant.runtime.GaHostContext;
 import com.specagent.assistant.tool.GlobalAssistantToolCatalog;
 import java.util.Map;
 import java.util.Optional;
@@ -53,7 +53,7 @@ public class TurnHandoffService {
     public record AcceptResult(PendingTurn pendingTurn, Optional<Successor> successor) {
     }
 
-    public record Successor(UUID pendingId, GlobalAssistantRun run, String message, GlobalAssistantContextBuilder.UiRequest uiRequest) {
+    public record Successor(UUID pendingId, GlobalAssistantRun run, String message, GaHostContext.UiRequest uiRequest) {
     }
 
     private void lockThread(UUID threadId) {
@@ -64,7 +64,7 @@ public class TurnHandoffService {
     }
 
     @Transactional
-    public AcceptResult acceptSteer(UUID threadId, UUID targetRunId, String rawMessage, GlobalAssistantContextBuilder.UiRequest uiRequest) {
+    public AcceptResult acceptSteer(UUID threadId, UUID targetRunId, String rawMessage, GaHostContext.UiRequest uiRequest) {
         if (rawMessage == null || rawMessage.isBlank()) {
             throw new SteerRejectedException(SteerRejectedException.Reason.BLANK, "Steer message must not be blank");
         }
@@ -156,8 +156,8 @@ public class TurnHandoffService {
         GlobalAssistantRun successor;
         try {
             successor = conversations.createRunWithUserMessage(threadId, pt.message(),
-                    GlobalAssistantPromptRenderer.PROMPT_VERSION,
-                    GlobalAssistantContextBuilder.CONTEXT_PROJECTION_VERSION,
+                    GaHostContext.PROMPT_VERSION,
+                    GaHostContext.CONTEXT_PROJECTION_VERSION,
                     GlobalAssistantToolCatalog.FINGERPRINT);
         } catch (com.specagent.assistant.conversation.GlobalAssistantRunActiveException ex) {
             return Optional.empty();
@@ -192,7 +192,7 @@ public class TurnHandoffService {
         return conversations.listMessages(threadId);
     }
 
-    private String uiContextJson(GlobalAssistantContextBuilder.UiRequest uiRequest) {
+    private String uiContextJson(GaHostContext.UiRequest uiRequest) {
         if (uiRequest == null) {
             return "{}";
         }
@@ -208,7 +208,7 @@ public class TurnHandoffService {
         }
     }
 
-    private GlobalAssistantContextBuilder.UiRequest parseUiRequest(String uiJson) {
+    private GaHostContext.UiRequest parseUiRequest(String uiJson) {
         if (uiJson == null || uiJson.isBlank()) {
             return null;
         }
@@ -219,15 +219,15 @@ public class TurnHandoffService {
             }
             Object page = map.get("currentPage");
             Object sel = map.get("selectedEntity");
-            GlobalAssistantContextBuilder.UiRequest.SelectedRef selected = null;
+            GaHostContext.UiRequest.SelectedRef selected = null;
             if (sel instanceof Map<?, ?> m) {
                 Object t = m.get("type");
                 Object i = m.get("id");
                 if (t != null && i != null) {
-                    selected = new GlobalAssistantContextBuilder.UiRequest.SelectedRef(String.valueOf(t), String.valueOf(i));
+                    selected = new GaHostContext.UiRequest.SelectedRef(String.valueOf(t), String.valueOf(i));
                 }
             }
-            return new GlobalAssistantContextBuilder.UiRequest(page == null ? null : String.valueOf(page), selected);
+            return new GaHostContext.UiRequest(page == null ? null : String.valueOf(page), selected);
         } catch (Exception ex) {
             return null;
         }

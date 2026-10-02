@@ -12,6 +12,8 @@ export interface CapabilityPresentation {
 }
 
 const REGISTRY: Record<string, CapabilityPresentation> = {
+  'web.search': { actionLabel: '搜索网页', resultKind: 'WEB_SOURCE' },
+  'web.fetch': { actionLabel: '读取网页', resultKind: 'WEB_SOURCE' },
   'project.create': { actionLabel: '创建项目', resultKind: 'PROJECT' },
   'project.search': { actionLabel: '搜索项目', resultKind: 'PROJECT_LIST' },
   'project.list_recent': { actionLabel: '查看最近项目', resultKind: 'PROJECT_LIST' },
@@ -41,6 +43,7 @@ export function completedCountLabel(capabilityId: string, count: number | null |
   const kind = capabilityPresentation(capabilityId).resultKind;
   if (kind === 'PROJECT_LIST') return '已获取 ' + count + ' 个项目';
   if (kind === 'SOURCE_LIST') return '已找到 ' + count + ' 条来源';
+  if (kind === 'WEB_SOURCE') return count === 0 ? '没有网页结果' : '已获取 ' + count + ' 条网页来源';
   if (kind === 'PROJECT') return '已就绪';
   return null;
 }

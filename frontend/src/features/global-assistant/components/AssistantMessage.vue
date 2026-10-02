@@ -6,6 +6,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import RichAssistantText from '@/shared/ui/RichAssistantText.vue'
+import GaCitedAnswer from './GaCitedAnswer.vue'
+import type { GaResourceRef } from '../state/globalAssistantStore'
 import { gaMessageTimeLabel } from '@/features/global-assistant/presentation/globalAssistantPresentation'
 const props = defineProps<{
   role: 'USER' | 'ASSISTANT'
@@ -13,6 +15,7 @@ const props = defineProps<{
   createdAt?: string | null
   providerLabel?: string | null
   modelId?: string | null
+  sources?: GaResourceRef[]
 }>()
 const bubbleClass = computed(() => (props.role === 'USER' ? 'ga-message--user' : 'ga-message--assistant'))
 /** 今天的消息只显示时刻;更早的消息带上真实日期。 */
@@ -31,7 +34,8 @@ const attributionLabel = computed(() => {
       <time v-if="timeLabel" class="ga-message__time" :datetime="props.createdAt ?? undefined">{{ timeLabel }}</time>
     </div>
     <div v-else class="ga-message__answer">
-      <RichAssistantText :content="props.content" />
+      <GaCitedAnswer v-if="props.content.includes('[web:')" :content="props.content" :sources="props.sources ?? []" />
+      <RichAssistantText v-else :content="props.content" />
       <div class="ga-message__meta">
         <time v-if="timeLabel" class="ga-message__time ga-message__time--answer" :datetime="props.createdAt ?? undefined">{{ timeLabel }}</time>
         <span v-if="attributionLabel" class="ga-message__attribution" data-test="ga-message-attribution">{{ attributionLabel }}</span>

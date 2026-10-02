@@ -47,7 +47,7 @@ public class GaExecutionStore {
             throw new IllegalArgumentException("Invalid GA execution binding");
         Map<String, Object> run = lockRun(scope.runId());
         if (!"CREATED".equals(run.get("status")) || run.get("cancel_requested_at") != null
-                || !binding.threadId().equals(run.get("thread_id")) || !"java-legacy.v1".equals(run.get("engine_version")))
+                || !binding.threadId().equals(run.get("thread_id")) || !"langchain-ga.v1".equals(run.get("engine_version")))
             throw new IllegalStateException("GA_EXECUTION_FENCE");
         var params = Maps.of("run", scope.runId(), "thread", binding.threadId(), "binding", binding.modelBindingId(),
                 "provider", binding.provider(), "model", binding.model(), "revision", binding.settingsRevision(),
@@ -59,7 +59,6 @@ public class GaExecutionStore {
                   execution_epoch,lease_id,deadline,allowed_tools,capability_catalog,catalog_hash)
                 VALUES (:run,:thread,:binding,:provider,:model,:revision,:epoch,:lease,:deadline,:tools,:catalog,:catalogHash)
                 """, params);
-        jdbc.update("UPDATE global_assistant_runs SET engine_version='langchain-ga.v1' WHERE id=:run", params);
         jdbc.update("INSERT INTO ga_checkpoint_heads(thread_id) VALUES (:thread) ON CONFLICT DO NOTHING", params);
     }
 

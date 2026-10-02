@@ -7,9 +7,6 @@ import com.specagent.model.provider.ChatCompletionsProtocolAdapter;
 import com.specagent.model.provider.CompatibilityProbeService;
 import com.specagent.model.provider.ProtocolAdapterRegistry;
 import com.specagent.model.provider.ResponsesProtocolAdapter;
-import com.specagent.assistant.model.GlobalAssistantDecisionParser;
-import com.specagent.assistant.model.GlobalAssistantDecisionSemanticsAdapter;
-import com.specagent.assistant.model.GlobalAssistantDecisionValidator;
 import com.specagent.modelsettings.CustomProviderSettings;
 import com.specagent.modelsettings.CustomProviderSettingsRepository;
 import com.specagent.modelsettings.CustomProviderSettingsService;
@@ -78,8 +75,7 @@ class CustomDiscoverStoredKeyTest {
                 new AnthropicMessagesProtocolAdapter()));
         svc = new CustomProviderSettingsService(repo, mapper, reg,
                 new CompatibilityProbeService(mapper, reg,
-                        new GlobalAssistantDecisionSemanticsAdapter(new GlobalAssistantDecisionParser(mapper),
-                                new GlobalAssistantDecisionValidator())));
+                        new com.specagent.model.provider.CompatibilityProbeSemantics()));
     }
 
     @AfterEach void stop() {

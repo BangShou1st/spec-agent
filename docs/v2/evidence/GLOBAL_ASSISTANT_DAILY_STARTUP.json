@@ -1,0 +1,37 @@
+{
+  "recordedAt": "2026-10-02T04:39:23.605743+00:00",
+  "scope": "Actual start-dev.bat default stack and restart, real frontend proxy and configured OpenCode Zen chat model; no fake provider",
+  "ports": {
+    "backend": 8080,
+    "frontend": 5173,
+    "projectBrain": 8100,
+    "gaBrain": 8101
+  },
+  "projectPython": {
+    "environment": "agent-brain/.venv",
+    "version": "3.11.15",
+    "binaryAndVenvConfigUnchanged": true
+  },
+  "gaPython": {
+    "environment": "agent-brain/.venv-ga",
+    "version": "3.11.14"
+  },
+  "health": "PASS_ALL_FOUR_SERVICES",
+  "proxy": "PASS",
+  "hostTokenAuthentication": "PASS",
+  "webConfigured": false,
+  "retrievalStatus": "READY",
+  "readOnlyRun": {
+    "runId": "b87016c5-a8c4-4c9c-98bb-5bdc3c9ee150",
+    "threadId": "882b3fb1-ba06-4000-a39b-84d5842ab329",
+    "engineVersion": "langchain-ga.v1",
+    "provider": "OpenCode Zen",
+    "model": "mimo-v2.6-flash-free",
+    "status": "COMPLETED",
+    "tool": "project.list_recent",
+    "checkpoint": "SAVED"
+  },
+  "browser": "PASS_REAL_DAILY_STACK",
+  "unreadyBrowserNotices": "PASS_CONTROLLED_FIXTURES_OLLAMA_STORE_HELP_INDEX",
+  "fullTestsRerun": false
+}

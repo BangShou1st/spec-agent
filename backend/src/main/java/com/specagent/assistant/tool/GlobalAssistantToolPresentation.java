@@ -27,7 +27,9 @@ public final class GlobalAssistantToolPresentation {
             "project.content.discover", new Presentation("Searching project content", "PROJECT_LIST"),
             "help.search", new Presentation("Searching product help", "SOURCE_LIST"),
             "skill.import", new Presentation("Staging skill import", null),
-            "skill.import.discover", new Presentation("Inspecting skill repository", null));
+            "skill.import.discover", new Presentation("Inspecting skill repository", null),
+            "web.search", new Presentation("Searching the web", "WEB_SOURCE"),
+            "web.fetch", new Presentation("Reading web page", "WEB_SOURCE"));
 
     private static final Presentation FALLBACK = new Presentation("Working", null);
 
@@ -156,6 +158,27 @@ public final class GlobalAssistantToolPresentation {
                 cards.add(java.util.Map.of("kind","SOURCE","id",source.entryId().toString(),"label",truncateLabel(source.sourceRef()),"metadata",metadata));
                 if(cards.size()>=8) break;
             } catch(RuntimeException invalid) { /* Never invent a source if a stored result is incompatible. */ }
+        }
+        return java.util.List.copyOf(cards);
+    }
+
+    /** Only sanitized host-generated sources, never URLs or references guessed from answer text. */
+    public static java.util.List<java.util.Map<String,Object>> webResources(String capabilityId,java.util.Map<String,Object> content) {
+        if (!java.util.Set.of("web.search","web.fetch").contains(capabilityId) || !(content.get("sources") instanceof java.util.List<?> sources))
+            return java.util.List.of();
+        var cards = new java.util.ArrayList<java.util.Map<String,Object>>();
+        for (var value : sources) {
+            if (!(value instanceof java.util.Map<?,?> source)) continue;
+            try {
+                String id=UUID.fromString((String)source.get("sourceId")).toString();
+                var metadata=new java.util.LinkedHashMap<String,Object>();
+                for (String key : java.util.List.of("url","fetchedAt","contentStage","truncated","authority","publishedAt"))
+                    if (source.get(key)!=null) metadata.put(key,source.get(key));
+                metadata.put("excerpt",TavilyWebService.bounded((String)source.get("content"),800));
+                metadata.put("sourceRef","web:"+id);
+                cards.add(java.util.Map.of("kind","WEB_SOURCE","id",id,"label",source.get("title"),"metadata",metadata));
+                if (cards.size()>=5) break;
+            } catch(RuntimeException incompatible) { }
         }
         return java.util.List.copyOf(cards);
     }

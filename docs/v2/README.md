@@ -40,6 +40,8 @@
 
 ### 全局助手专项设计
 
+- [GLOBAL_ASSISTANT_SINGLE_ENGINE_AND_WEB_TOOLS_PLAN.md](GLOBAL_ASSISTANT_SINGLE_ENGINE_AND_WEB_TOOLS_PLAN.md) — 2026-10-02 最新下一轮范围：仅全局助手删除旧Java决策引擎、默认使用Python/LangChain、加入Tavily搜索与网页提取；项目Agent及其检索选择不变。已实施，结果见 [单引擎实施记录](GLOBAL_ASSISTANT_SINGLE_ENGINE_IMPLEMENTATION_STATUS.md)。
+
 - `GLOBAL_ASSISTANT_IMPLEMENTATION_PLAN.md`、`GLOBAL_ASSISTANT_PHASE0_FREEZE.md` — 已实现全局助手 V1 的基线与冻结集成约束。
 - [GLOBAL_ASSISTANT_LANGCHAIN_REDESIGN.md](GLOBAL_ASSISTANT_LANGCHAIN_REDESIGN.md) — 2026-10-01 的下一阶段目标设计：Python LangChain 编排、应用级 Skill/MCP、产品帮助与项目内容检索、执行状态和迁移验收。目标功能尚未生产切换；按该文档阶段生效，不改变 Project Agent / Graph 核心语义。新开发会话从其 §16–17 开始。
 - [GLOBAL_ASSISTANT_LANGCHAIN_IMPLEMENTATION_STATUS.md](GLOBAL_ASSISTANT_LANGCHAIN_IMPLEMENTATION_STATUS.md) — 阶段 1 / 统一 RAG U1–U3 当前清单、真实模型/HTTPS/浏览器/重启证据、人工评测及剩余生产门禁。

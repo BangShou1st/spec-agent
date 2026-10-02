@@ -1,9 +1,6 @@
 package com.specagent.modelsettings;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.specagent.assistant.model.GlobalAssistantDecisionParser;
-import com.specagent.assistant.model.GlobalAssistantDecisionSemanticsAdapter;
-import com.specagent.assistant.model.GlobalAssistantDecisionValidator;
 import com.specagent.model.provider.CompatibilityProbeService;
 import com.specagent.model.provider.CustomApiFormat;
 import com.specagent.model.provider.ModelProviderException;
@@ -73,8 +70,7 @@ class RevisionValidationTest {
 
     private CompatibilityProbeService noopProbe() {
         return new CompatibilityProbeService(new ObjectMapper(), registry(),
-                new GlobalAssistantDecisionSemanticsAdapter(new GlobalAssistantDecisionParser(new ObjectMapper()),
-                        new GlobalAssistantDecisionValidator())) {
+                new com.specagent.model.provider.CompatibilityProbeSemantics()) {
             @Override
             public void probeOpenRouter(String apiKey, String model) {
             }
