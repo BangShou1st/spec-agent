@@ -35,6 +35,8 @@ const turns = computed(() => {
   return grouped
 })
 const transientTurnKey = computed(() => props.activeRunId ?? turns.value.at(-1)?.key)
+// 等待补充的问题只属于当前运行;但运行还没有可归属的轮次(消息尚未落库)时也不能消失。
+const transientTurnExists = computed(() => turns.value.some(turn => turn.key === transientTurnKey.value))
 const expandedTurns = ref<Record<string, boolean>>({})
 function processOpen(key: string): boolean {
   return expandedTurns.value[key] ?? (key === props.activeRunId || (!props.activeRunId && props.running))
@@ -142,6 +144,10 @@ watch(
       </div>
         </template>
       </section>
+      <div v-if="props.waitingQuestion && !transientTurnExists" class="ga-clarify" data-test="ga-clarification" role="status">
+        <p class="ga-clarify__label">需要你补充信息</p>
+        <p class="ga-clarify__q">{{ props.waitingQuestion }}</p>
+      </div>
 
     </div>
     <button

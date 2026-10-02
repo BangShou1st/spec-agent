@@ -76,6 +76,9 @@ test('open assistant from projects, first thread, submit and see ordered run tim
   await expect(page.getByTestId('ga-empty')).toBeVisible()
   await page.getByTestId('ga-composer-input').fill('找 AI 邮件项目')
   await page.getByTestId('ga-send').click()
+  // 完成的轮次默认折叠:等终端态出现"展开"后,展开"本轮处理过程"再断言工具活动。
+  await expect(page.getByTestId('ga-process-toggle')).toContainText('展开')
+  await page.getByTestId('ga-process-toggle').click()
   await expect(page.getByTestId('ga-tool-activity').first()).toBeVisible()
   await expect(page.getByText('找到 2 个候选').first()).toBeVisible()
   const timelineText = await page.getByTestId('ga-timeline').innerText()
