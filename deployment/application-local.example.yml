@@ -1,0 +1,18 @@
+# Copy to application-local.yml and adjust for YOUR installation. No provider keys.
+# The root launcher supplies one shared internal token to Java and both Python services.
+spring:
+  datasource:
+    url: jdbc:postgresql://${SPEC_AGENT_DB_HOST:localhost}:${SPEC_AGENT_DB_PORT:5434}/${SPEC_AGENT_DB_NAME:spec_agent}
+    username: ${SPEC_AGENT_DB_USER:spec_agent}
+    password: ${SPEC_AGENT_DB_PASSWORD:spec_agent_dev} # Public local compose default only.
+spec:
+  agent:
+    secret:
+      master-key-file: ./data/secret-master.key # Relative to backend working directory; keep across restarts.
+    brain:
+      base-url: http://127.0.0.1:8100
+  global-assistant:
+    brain-base-url: http://127.0.0.1:8101
+# Optional deployment-owned allowlist, never a browser-supplied authorization:
+# SPEC_AGENT_EMBEDDING_TRUSTED_ORIGINS: http://your-private-ollama-host:11434
+# Tavily and embedding provider credentials belong in Settings, encrypted by Java.

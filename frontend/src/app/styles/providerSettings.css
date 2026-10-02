@@ -1,4 +1,23 @@
 /* 与 Skills/Connections 子页（mgmt-page）同一节奏：同宽、同内边距、同标题层级。 */
+.service-settings > .settings-card + .settings-card { margin-top: 20px; }
+.service-settings .settings-card__header > div { min-width: 0; }
+.service-settings .settings-card__description { overflow-wrap: anywhere; }
+.service-settings .settings-field__hint { line-height: 1.6; color: var(--color-text-secondary); }
+.service-settings .settings-current-config__item > span { color: var(--color-text-secondary); }
+.service-settings .settings-current-config__item strong { white-space: normal; overflow-wrap: anywhere; }
+.service-settings .settings-current-config__item strong.provider-card__ellipsis { white-space: nowrap; }
+.service-settings__toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; }
+.service-settings__toggle input { width: 16px; height: 16px; min-height: 0; margin: 0; accent-color: var(--color-accent); }
+.service-settings__notice { margin: 0; font-size: 13px; line-height: 1.6; color: var(--color-text-secondary); }
+.service-settings__advanced summary { cursor: pointer; font-size: 13px; color: var(--color-text-secondary); }
+.service-settings__advanced[open] > .settings-form { margin-top: 16px; }
+.service-settings__advanced summary:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: 4px; }
+.service-settings__danger { color: var(--color-danger); }
+.service-settings__confirmation { width: 100%; display: flex; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
+.service-settings__confirmation p { width: 100%; margin: 0 0 4px; font-size: 13px; line-height: 1.6; }
+.service-settings .error-banner { flex-wrap: wrap; overflow-wrap: anywhere; }
+.service-settings .error-banner > div { min-width: 0; }
+
 .settings-page {
   width: 100%;
   max-width: 880px;

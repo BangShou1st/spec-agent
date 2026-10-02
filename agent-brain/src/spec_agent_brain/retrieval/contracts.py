@@ -68,7 +68,7 @@ class Limits(WireModel):
 
 
 class RetrievalEnvelope(WireModel):
-    protocol_version: Literal["retrieval.v1"] = Field(alias="protocolVersion")
+    protocol_version: Literal["retrieval.v1", "retrieval.v2"] = Field(alias="protocolVersion")
     request_id: UUID = Field(alias="requestId")
     workload: Workload
     scope_grant: Grant = Field(alias="scopeGrant")
@@ -104,12 +104,14 @@ LaneName = Literal["route-lexical", "route-trigram", "project-lexical", "project
 
 
 class QueryVector(WireModel):
-    dimensions: Literal[1024]
-    values: list[float] = Field(min_length=1024, max_length=1024)
+    dimensions: int = Field(ge=1, le=4096)
+    values: list[float] = Field(min_length=1, max_length=4096)
     checksum: str = Field(pattern=SHA256)
 
     @model_validator(mode="after")
     def vector(self) -> Self:
+        if self.dimensions != len(self.values):
+            raise ValueError("vector dimension mismatch")
         if not all(math.isfinite(v) for v in self.values):
             raise ValueError("nonfinite vector")
         if abs(math.sqrt(sum(v * v for v in self.values)) - 1.0) > 0.001:
@@ -294,21 +296,24 @@ class ValidationResponse(RetrievalEnvelope):
 
 
 class RetrievalFailure(WireModel):
-    protocol_version: Literal["retrieval.v1"] = Field(alias="protocolVersion")
+    protocol_version: Literal["retrieval.v1", "retrieval.v2"] = Field(alias="protocolVersion")
     request_id: UUID = Field(alias="requestId")
     error_code: Literal["UNSUPPORTED_PROFILE", "STALE_SCOPE_GRANT", "STALE_WORKLOAD", "SOURCE_VERSION_MISMATCH",
                         "INDEX_GENERATION_MISMATCH", "OLLAMA_UNAVAILABLE", "RETRIEVAL_UNAVAILABLE",
-                        "DEADLINE_EXCEEDED", "INVALID_VECTOR"] = Field(alias="errorCode")
+                        "DEADLINE_EXCEEDED", "INVALID_VECTOR", "EMBEDDING_NOT_CONFIGURED",
+                        "EMBEDDING_AUTHENTICATION_FAILED", "EMBEDDING_RATE_LIMITED", "EMBEDDING_PROVIDER_FAILED",
+                        "EMBEDDING_INVALID_RESPONSE", "EMBEDDING_DIMENSION_MISMATCH", "EMBEDDING_CONNECTION_FAILED",
+                        "EMBEDDING_TIMEOUT", "EMBEDDING_BUSY", "EMBEDDING_INTERRUPTED", "SERVICE_SETTINGS_FAILED"] = Field(alias="errorCode")
 
 
 class RetrievalHealth(WireModel):
-    protocol_version: Literal["retrieval.v1"] = Field(alias="protocolVersion")
+    protocol_version: Literal["retrieval.v1", "retrieval.v2"] = Field(alias="protocolVersion")
     retrieval_engine_version: Literal["python-rag.v1"] = Field(alias="retrievalEngineVersion")
     ready: bool
     store_ready: bool = Field(alias="storeReady")
     ollama_ready: bool = Field(alias="ollamaReady")
     ollama_version: str | None = Field(alias="ollamaVersion", max_length=64)
-    profile: EmbeddingProfile | None
+    profile: EmbeddingProfile | dict | None
     embedding_concurrency: Literal[1] = Field(alias="embeddingConcurrency")
     max_batch: Literal[16] = Field(alias="maxBatch")
 

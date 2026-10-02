@@ -39,13 +39,13 @@ public class GaRetrievalReadiness {
             var result=new com.fasterxml.jackson.databind.ObjectMapper().readTree(response.body());
             if (!"python-rag.v1".equals(result.path("retrievalEngineVersion").asText())) { status="PYTHON_UNAVAILABLE"; return; }
             if (!result.path("storeReady").asBoolean()) { status="STORE_UNAVAILABLE"; return; }
-            if (!result.path("ollamaReady").asBoolean() || !RetrievalWire.PROFILE.equals(result.path("profile").path("profileId").asText())) {
+            if (!result.path("ollamaReady").asBoolean() || !store.activeHelpProfile().equals(result.path("profile").path("profileId").asText())) {
                 status="OLLAMA_UNAVAILABLE"; return;
             }
             var generation=store.ensureHelpGeneration();
-            shared.splitOneHelp(generation); // one bounded document/batch per tick
+            if(RetrievalWire.PROFILE.equals(store.activeHelpProfile())) shared.splitOneHelp(generation); // legacy compatibility only
             shared.indexOneBatch(CuratedHelpSources.CORPUS,generation);
-            status=Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM retrieval_entries WHERE corpus_id=? AND index_generation=? AND profile_id=? AND embedding_status='READY' AND retracted_at IS NULL)",Boolean.class,CuratedHelpSources.CORPUS,generation,RetrievalWire.PROFILE)) ? "READY" : "HELP_INDEX_NOT_READY";
+            status=Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM retrieval_entries WHERE corpus_id=? AND index_generation=? AND profile_id=? AND embedding_status='READY' AND retracted_at IS NULL)",Boolean.class,CuratedHelpSources.CORPUS,generation,store.activeHelpProfile())) ? "READY" : "HELP_INDEX_NOT_READY";
         } catch (Exception unavailable) { status="RETRIEVAL_UNAVAILABLE"; }
     }
 }

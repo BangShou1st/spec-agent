@@ -19,24 +19,32 @@ import org.springframework.stereotype.Service;
 public class TavilyWebService {
     public record Observation(List<Map<String,Object>> sources, List<String> warnings, String errorCode) {}
     private final String key;
+    private com.specagent.assistant.config.SearchSettings settings;
     private final URI origin;
     private final ObjectMapper mapper = new ObjectMapper().enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
             .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
     @org.springframework.beans.factory.annotation.Autowired
-    public TavilyWebService(@Value("${spec.global-assistant.tavily-api-key:}") String key) {
-        this(key, URI.create("https://api.tavily.com/"));
+    public TavilyWebService(com.specagent.assistant.config.SearchSettings settings) {
+        this("", URI.create("https://api.tavily.com/")); this.settings=settings;
     }
+    public TavilyWebService(String key) { this(key,URI.create("https://api.tavily.com/")); }
     TavilyWebService(String key, URI origin) { this.key = key == null ? "" : key.trim(); this.origin = origin; }
-    public boolean configured() { return !key.isBlank(); }
+    public boolean configured() { return settings==null?!key.isBlank():settings.snapshot().configured(); }
+    public Observation testConnection(String candidateKey) {
+        return new TavilyWebService(candidateKey,origin).prepare("web.search",Map.of("query","Spec Agent connection test","limit",1),()->true);
+    }
     public Observation prepare(String capability, Map<String,Object> args, BooleanSupplier active) {
-        if (!configured()) return failure("WEB_NOT_CONFIGURED");
+        // Immutable request snapshot: a concurrent settings edit never changes its Authorization header.
+        var snapshot=settings==null?null:settings.snapshot();
+        final String requestKey=snapshot==null?key:snapshot.key();
+        if (snapshot==null?requestKey.isBlank():!snapshot.configured()) return failure("WEB_NOT_CONFIGURED");
         var input = new AtomicReference<InputStream>();
         var executor = Executors.newSingleThreadExecutor(r -> { var t = new Thread(r,"ga-tavily-http"); t.setDaemon(true); return t; });
         try (var client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).followRedirects(HttpClient.Redirect.NEVER).build()) {
             Future<Observation> future = executor.submit(() -> {
                 Map<String,Object> body = request(capability,args);
                 var request = HttpRequest.newBuilder(origin.resolve(capability.equals("web.search") ? "search" : "extract"))
-                        .timeout(Duration.ofSeconds(20)).header("Authorization","Bearer " + key)
+                        .timeout(Duration.ofSeconds(20)).header("Authorization","Bearer " + requestKey)
                         .header("Content-Type","application/json").POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body))).build();
                 var response = client.send(request,HttpResponse.BodyHandlers.ofInputStream());
                 input.set(response.body());

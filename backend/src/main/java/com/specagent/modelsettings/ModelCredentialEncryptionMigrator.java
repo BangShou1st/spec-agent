@@ -35,7 +35,10 @@ public class ModelCredentialEncryptionMigrator implements ApplicationRunner {
             new String[] {"model_providers", "id"},
             new String[] {"opencode_settings", "singleton_id"},
             new String[] {"openrouter_settings", "singleton_id"},
-            new String[] {"custom_provider_settings", "singleton_id"});
+            new String[] {"custom_provider_settings", "singleton_id"},
+            new String[] {"search_settings", "singleton_id"},
+            new String[] {"embedding_service_settings", "singleton_id"},
+            new String[] {"embedding_service_revisions", "revision"});
 
     private final NamedParameterJdbcTemplate jdbc;
     private final ModelCredentialCrypto crypto;

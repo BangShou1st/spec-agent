@@ -81,23 +81,26 @@ public class RetrievalSourceJobs implements com.specagent.retrieval.index.Resour
                 "RESOURCE_CHUNK",row.get("raw_hash").toString(),row.get("raw_text").toString());
     }
     @Transactional public Optional<SplitRequest> createSplitJob(UUID corpus,UUID project,UUID generation,String ref,String version,String kind,String hash,String text) {
-        if(jdbc.queryForList("SELECT id FROM retrieval_index_generations WHERE id=:id AND corpus_id=:corpus AND profile_id=:profile AND state IN ('ACTIVE','PREPARING') FOR UPDATE",Map.of("id",generation,"corpus",corpus,"profile",PROFILE)).size()!=1)
+        var generations=jdbc.queryForList("SELECT profile_id FROM retrieval_index_generations WHERE id=:id AND corpus_id=:corpus AND state IN ('ACTIVE','PREPARING') FOR UPDATE",Map.of("id",generation,"corpus",corpus));
+        if(generations.size()!=1)
             throw new IllegalStateException("INDEX_GENERATION_MISMATCH");
+        String profile=generations.getFirst().get("profile_id").toString();
+        if(project!=null && !PROFILE.equals(profile)) throw new IllegalStateException("UNSUPPORTED_PROFILE");
         if(Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM retrieval_index_jobs WHERE corpus_id=:corpus AND state='CLAIMED' AND deadline>clock_timestamp() AND request->>'sourceRef'=:ref)",Map.of("corpus",corpus,"ref",ref),Boolean.class))) return Optional.empty();
         UUID job=UUID.randomUUID(),lease=UUID.randomUUID(),grant=UUID.randomUUID(),request=UUID.randomUUID();
         Instant deadline=Instant.now().truncatedTo(ChronoUnit.MICROS).plusSeconds(30);
-        var split=new SplitRequest("retrieval.v1",request,new Workload("INDEX_JOB",job,1),new Grant(grant,1,deadline),PROFILE,generation,
+        var split=new SplitRequest(PROFILE.equals(profile)?"retrieval.v1":"retrieval.v2",request,new Workload("INDEX_JOB",job,1),new Grant(grant,1,deadline),profile,generation,
                 deadline,job,lease,0,ref,version,kind,hash,text);
         var scope=new RetrievalStore.Scope(corpus,project,null,Set.of(project==null?"HELP":"RESOURCE"),Set.of(),Set.of(),Set.of(),"",48,12,12000);
         jdbc.update("""
                 INSERT INTO retrieval_scope_grants(id,request_id,corpus_id,project_id,workload_kind,workload_id,epoch,profile_id,index_generation,deadline,scope)
                 VALUES(:grant,:request,:corpus,:project,'INDEX_JOB',:job,1,:profile,:generation,:deadline,CAST(:scope AS jsonb))
-                """,Maps.of("grant",grant,"request",request,"corpus",corpus,"project",project,"job",job,"profile",PROFILE,"generation",generation,
+                """,Maps.of("grant",grant,"request",request,"corpus",corpus,"project",project,"job",job,"profile",profile,"generation",generation,
                 "deadline",Timestamp.from(deadline),"scope",write(scope)));
         jdbc.update("""
                 INSERT INTO retrieval_index_jobs(id,corpus_id,index_generation,profile_id,lease_id,state,deadline,request)
                 VALUES(:job,:corpus,:generation,:profile,:lease,'CLAIMED',:deadline,CAST(:request AS jsonb))
-                """,Map.of("job",job,"corpus",corpus,"generation",generation,"profile",PROFILE,"lease",lease,"deadline",Timestamp.from(deadline),"request",write(split)));
+                """,Map.of("job",job,"corpus",corpus,"generation",generation,"profile",profile,"lease",lease,"deadline",Timestamp.from(deadline),"request",write(split)));
         return Optional.of(split);
     }
     public SplitRequest validateGrant(SplitRequest request) {

@@ -6,6 +6,8 @@ import ProjectsView from '@/features/projects/ProjectsView.vue'
 import WorkspaceView from '@/features/workspace/WorkspaceView.vue'
 import SettingsLayout from '@/app/layouts/SettingsLayout.vue'
 import ModelSettingsView from '@/features/model-settings/ModelSettingsView.vue'
+import SearchSettingsView from '@/features/service-settings/SearchSettingsView.vue'
+import RetrievalSettingsView from '@/features/service-settings/RetrievalSettingsView.vue'
 import SkillsListView from '@/features/skills/SkillsListView.vue'
 import SkillDetailView from '@/features/skills/SkillDetailView.vue'
 import ConnectionsListView from '@/features/connections/ConnectionsListView.vue'
@@ -32,6 +34,8 @@ const router = createRouter({
       children: [
         { path: '', redirect: '/settings/models' },
         { path: 'models', name: 'settings-models', component: ModelSettingsView },
+        { path: 'search', name: 'settings-search', component: SearchSettingsView },
+        { path: 'retrieval', name: 'settings-retrieval', component: RetrievalSettingsView },
         { path: 'skills', name: 'settings-skills', component: SkillsListView },
         { path: 'skills/:skillId', name: 'settings-skill-detail', component: SkillDetailView, props: true },
         { path: 'connections', name: 'settings-connections', component: ConnectionsListView },

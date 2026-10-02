@@ -37,6 +37,8 @@ logging:
     org.flywaydb: DEBUG
 
 spec:
+  embedding-settings:
+    worker-enabled: false
   global-assistant:
     retrieval-enabled: false
   agent:

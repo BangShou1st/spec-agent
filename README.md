@@ -586,7 +586,7 @@ Agent 不需要知道 GitHub、MCP、Skill 等具体执行细节。
 
 全局助手唯一使用 Python LangChain `create_agent`；`start-dev.bat` 默认启动独立 GA Brain（8101），Java 保留宿主与模型 broker。项目 Agent 的现有 Brain 环境、运行时与检索默认不变。GA 首次启动需要 uv 创建锁定的 CPython 3.11.14 独立环境，或设置 `SPEC_AGENT_GA_PYTHON` 指向已资格环境。
 
-在运行启动器的终端为 Java 设置 `SPEC_AGENT_TAVILY_API_KEY` 可启用 `web.search` / `web.fetch`；无需改聊天模型。未配置时界面显示联网未配置，两工具不进入模型目录。不要把密钥写进仓库。网页调用、来源与正文提取阶段展示在各轮处理过程中；检索能力按实际 Python/Ollama/store readiness 开放。
+现在可通过 `/settings/search` 配置 Tavily，并通过 `/settings/retrieval` 配置 Ollama 或 OpenAI-compatible Embeddings API、显式重建及启用全局助手 HELP 索引。设置由 Java 加密持久化并更新运行时；无需改聊天模型。首次无数据库设置时兼容 Java 的 `SPEC_AGENT_TAVILY_API_KEY`，保存或清除后不从环境自动恢复。未配置时两联网工具不进入模型目录；检索按实际服务及索引 readiness 开放。步骤和无凭据启动示例见 [本地配置说明](docs/v2/LOCAL_DEPLOYMENT_SERVICE_CONFIGURATION_GUIDE.md)。
 
 完整范围、参数与验证见 [实施记录](docs/v2/GLOBAL_ASSISTANT_SINGLE_ENGINE_IMPLEMENTATION_STATUS.md)。
 

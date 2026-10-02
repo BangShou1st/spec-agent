@@ -65,20 +65,21 @@ public class RetrievalStore {
     private Search issue(Scope scope,UUID generation,UUID workloadId,String workloadKind) {
         UUID request=UUID.randomUUID(),grant=UUID.randomUUID(); Instant deadline=Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS).plusSeconds(30);
         Workload workload=new Workload(workloadKind,workloadId,1);
+        String profile=(String)jdbc.queryForList("SELECT profile_id FROM retrieval_index_generations WHERE id=:id",Map.of("id",generation)).getFirst().get("profile_id");
         jdbc.update("""
                 INSERT INTO retrieval_scope_grants(id,request_id,corpus_id,project_id,route_id,workload_kind,workload_id,epoch,
                     profile_id,index_generation,deadline,scope)
                 VALUES(:id,:request,:corpus,:project,:route,:kind,:workload,1,:profile,:generation,:deadline,CAST(:scope AS jsonb))
                 """,Maps.of("id",grant,"request",request,"corpus",scope.corpusId(),"project",scope.projectId(),"route",scope.routeId(),
-                "kind",workloadKind,"workload",workloadId,"profile",PROFILE,"generation",generation,
+                "kind",workloadKind,"workload",workloadId,"profile",profile,"generation",generation,
                 "deadline",Timestamp.from(deadline),"scope",write(scope)));
-        return new Search("retrieval.v1",request,workload,new Grant(grant,1,deadline),PROFILE,generation,deadline,
+        return new Search(protocol(profile),request,workload,new Grant(grant,1,deadline),profile,generation,deadline,
                 "python-rag.v1",scope.query(),"HYBRID",new Limits(scope.maxItems(),scope.maxChars(),scope.laneLimit()));
     }
 
     public Scope guard(Envelope request) {
         validate(request);
-        if(!PROFILE.equals(request.profileId())) throw new IllegalStateException("UNSUPPORTED_PROFILE");
+        dimensions(request.profileId());
         if(!request.deadline().isAfter(Instant.now())) throw new IllegalStateException("DEADLINE_EXCEEDED");
         var rows=jdbc.queryForList("SELECT * FROM retrieval_scope_grants WHERE id=:id AND deadline>clock_timestamp() AND revoked=FALSE",
                 Map.of("id",request.scopeGrant().grantId()));
@@ -131,7 +132,8 @@ public class RetrievalStore {
                 || !LANES.containsAll(request.lanes()) || request.laneLimit()<1 || request.laneLimit()>scope.laneLimit()
                 || request.lanes().contains("vector")!=(request.queryVector()!=null)) throw new IllegalArgumentException("RETRIEVAL_PROTOCOL_ERROR");
         if(!Double.isFinite(request.maxVectorDistance()) || request.maxVectorDistance()<0 || request.maxVectorDistance()>0.65) throw new IllegalArgumentException("RETRIEVAL_PROTOCOL_ERROR");
-        if(request.queryVector()!=null) request.queryVector().validate();
+        if(request.queryVector()!=null) { request.queryVector().validate();
+            if(request.queryVector().dimensions()!=dimensions(request.profileId())) throw new IllegalArgumentException("INVALID_VECTOR"); }
         List<Lane> result=new ArrayList<>();
         for(String lane:request.lanes()) {
             if(!allowedLane(scope,lane)) continue;
@@ -154,13 +156,17 @@ public class RetrievalStore {
                 order="GREATEST(similarity(content,:query),word_similarity(:query,content)) DESC, source_ref";
             } else if(lane.equals("vector")) {
                 params.put("vector",vectorLiteral(request.queryVector().values())); params.put("profile",request.profileId());
-                params.put("generation",request.indexGeneration());
-                laneFilter=" AND embedding IS NOT NULL AND embedding_status='READY' AND embedding_dimensions=1024 AND profile_id=:profile AND index_generation=:generation";
+                params.put("generation",request.indexGeneration()); params.put("dimensions",dimensions(request.profileId()));
+                laneFilter=" AND embedding IS NOT NULL AND embedding_status='READY' AND embedding_dimensions=:dimensions AND profile_id=:profile AND index_generation=:generation";
                 params.put("maxVectorDistance",request.maxVectorDistance());
                 relevance="embedding <=> CAST(:vector AS vector) <= :maxVectorDistance"; order="embedding <=> CAST(:vector AS vector), source_ref";
             }
             String sql="SELECT * FROM retrieval_entries WHERE corpus_id=:corpus AND retracted_at IS NULL AND "+relevance+laneFilter
                     +authorizedFilter(scope,params)+" ORDER BY "+order+" LIMIT :limit";
+            if(lane.equals("vector")) {
+                // Materialize scope/profile/dimension filters BEFORE any distance operator; mixed dimensions are legal in this table.
+                sql="WITH eligible AS MATERIALIZED (SELECT * FROM retrieval_entries WHERE corpus_id=:corpus AND retracted_at IS NULL"+laneFilter+authorizedFilter(scope,params)+") SELECT * FROM eligible WHERE "+relevance+" ORDER BY "+order+" LIMIT :limit";
+            }
             var sources=jdbc.queryForList(sql,params).stream().filter(row->row.get("content") instanceof String text && !text.isBlank() && text.length()<=12000)
                     .filter(verifier::current).map(row->source(row,scope))
                     .filter(source->sourcePolicy.allowText(source.content()) && !source.content().isBlank() && source.content().length()<=12000).toList();
@@ -209,6 +215,22 @@ public class RetrievalStore {
         return sql;
     }
 
+    public static String protocol(String profile) { return PROFILE.equals(profile)?"retrieval.v1":"retrieval.v2"; }
+    public String activeHelpProfile() {
+        var rows=jdbc.queryForList("SELECT profile_id FROM retrieval_index_heads WHERE corpus_id=:id",Map.of("id",CuratedHelpSources.CORPUS));
+        return rows.isEmpty()?PROFILE:(String)rows.getFirst().get("profile_id");
+    }
+    public int dimensions(String profile) {
+        if(PROFILE.equals(profile)) return 1024;
+        var rows=jdbc.queryForList("SELECT (semantic->>'dimensions')::integer AS dimensions FROM embedding_profiles WHERE profile_id=:profile",Map.of("profile",profile));
+        if(rows.size()!=1) throw new IllegalStateException("UNSUPPORTED_PROFILE");
+        int value=((Number)rows.getFirst().get("dimensions")).intValue();
+        if(value<1 || value>4096) throw new IllegalStateException("UNSUPPORTED_PROFILE");
+        return value;
+    }
+    public String model(String profile) {
+        return PROFILE.equals(profile)?"qwen3-embedding:0.6b":jdbc.queryForObject("SELECT semantic->>'modelTag' FROM embedding_profiles WHERE profile_id=:profile",Map.of("profile",profile),String.class);
+    }
     public boolean storageReady() {
         return Boolean.TRUE.equals(jdbc.queryForObject("SELECT to_regclass('retrieval_entries') IS NOT NULL AND to_regclass('retrieval_scope_grants') IS NOT NULL AND EXISTS(SELECT 1 FROM pg_extension WHERE extname='vector')",Map.of(),Boolean.class));
     }

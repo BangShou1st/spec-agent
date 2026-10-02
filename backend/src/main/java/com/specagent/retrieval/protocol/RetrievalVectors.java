@@ -11,9 +11,9 @@ public final class RetrievalVectors {
     private RetrievalVectors() {}
 
     public static String checksum(double[] values) {
-        if (values == null || values.length != DIMENSIONS)
+        if (values == null || values.length < 1 || values.length > 4096)
             throw new IllegalArgumentException("retrieval vector dimensions mismatch");
-        ByteBuffer bytes = ByteBuffer.allocate(DIMENSIONS * Float.BYTES).order(ByteOrder.LITTLE_ENDIAN);
+        ByteBuffer bytes = ByteBuffer.allocate(values.length * Float.BYTES).order(ByteOrder.LITTLE_ENDIAN);
         double squaredNorm = 0;
         for (double value : values) {
             float stored = (float) value;

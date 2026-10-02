@@ -94,12 +94,12 @@ class LocalEmbedding:
         return self.documents([f"Instruct: {QUERY_INSTRUCTION}\nQuery: {text}"], timeout)[0]
 
 
-def normalized_vector(values: list[float]) -> QueryVector:
-    if len(values) != 1024 or not all(math.isfinite(value) for value in values):
+def normalized_vector(values: list[float], dimensions: int = 1024) -> QueryVector:
+    if len(values) != dimensions or not all(math.isfinite(value) for value in values):
         raise ValueError("Invalid Ollama vector")
     norm = math.sqrt(sum(value * value for value in values))
     if norm <= 0:
         raise ValueError("Zero embedding")
     # Store checksums over the actual float32 representation persisted by pgvector.
-    stored = list(struct.unpack("<1024f", struct.pack("<1024f", *[value / norm for value in values])))
-    return QueryVector.model_validate({"dimensions": 1024, "values": stored, "checksum": vector_checksum(stored)})
+    stored = list(struct.unpack(f"<{dimensions}f", struct.pack(f"<{dimensions}f", *[value / norm for value in values])))
+    return QueryVector.model_validate({"dimensions": dimensions, "values": stored, "checksum": vector_checksum(stored)})

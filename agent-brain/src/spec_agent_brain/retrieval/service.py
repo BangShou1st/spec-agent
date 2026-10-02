@@ -9,6 +9,7 @@ from .contracts import (RetrievalEnvelope, CandidateRequest, CandidateResponse, 
                         RankedSource, ValidationRequest, ValidationResponse, IndexBatchRequest, IndexBatchResponse,
                         IndexVector, RetrievalFailure, RetrievalHealth, SplitRequest, SplitResponse, SourceChunk)
 from .embedding import EmbeddingUnavailable, LocalEmbedding, fixed_profile
+from .configured_embedding import ApprovalResponse, BrokerResponse
 
 
 class RetrievalError(Exception):
@@ -25,7 +26,7 @@ def remaining(value: RetrievalEnvelope) -> float:
     seconds = (value.deadline - datetime.now(timezone.utc)).total_seconds()
     if seconds <= 0:
         raise RetrievalError("DEADLINE_EXCEEDED")
-    if value.profile_id != fixed_profile().profile_id:
+    if value.protocol_version == "retrieval.v1" and value.profile_id != fixed_profile().profile_id:
         raise RetrievalError("UNSUPPORTED_PROFILE")
     return min(seconds, 30.0)
 
@@ -85,8 +86,28 @@ class HostStore:
                             raise RetrievalError("RETRIEVAL_UNAVAILABLE")
                         raise RetrievalError(failure.error_code)
                     result = response_type.model_validate_json(bytes(body))
-                    same_binding(request, result)
+                    if response_type in {ApprovalResponse, BrokerResponse}:
+                        if result.profile_id != request.profile_id or (isinstance(result, BrokerResponse) and result.request_id != request.request_id):
+                            raise RetrievalError("UNSUPPORTED_PROFILE")
+                    else:
+                        same_binding(request, result)
                     return result
+        except (httpx.HTTPError, ValueError):
+            raise RetrievalError("RETRIEVAL_UNAVAILABLE") from None
+
+    def approval(self, request):
+        return self._post("/embedding-profile", request, ApprovalResponse)
+
+    def broker_vectors(self, request):
+        return self._post("/embeddings", request, BrokerResponse)
+
+    def active_embedding(self):
+        try:
+            with httpx.Client(timeout=3.0, trust_env=False, follow_redirects=False) as client:
+                response = client.get(self.base + "/active-embedding", headers={"X-Spec-Agent-Internal-Token": self.secret})
+                if response.status_code != 200 or len(response.content) > 8192:
+                    raise RetrievalError("RETRIEVAL_UNAVAILABLE")
+                return response.json()
         except (httpx.HTTPError, ValueError):
             raise RetrievalError("RETRIEVAL_UNAVAILABLE") from None
 
@@ -110,13 +131,26 @@ class SharedRetrieval:
     def health(self) -> RetrievalHealth:
         store_ready = self.store.health()
         try:
-            version = self.embedding.verify(3.0)
+            active = self.store.active_embedding() if hasattr(self.store, "active_embedding") else {"legacy": True}
+            profile = fixed_profile()
+            if not active.get("legacy", False):
+                from .configured_embedding import approval, verify_ollama
+                approved = approval({k: v for k, v in active.items() if k not in {"legacy", "available"}})
+                profile = {"profileId": approved["profileId"], **approved["semantic"]}
+                if approved["config"]["provider"] == "OLLAMA":
+                    version = verify_ollama(approved["config"], approved["semantic"]["modelDigest"], 3.0)
+                elif active.get("available"):
+                    version = "openai-compatible"
+                else:
+                    raise EmbeddingUnavailable("Credential unavailable")
+            else:
+                version = self.embedding.verify(3.0)
             ollama_ready = True
-        except EmbeddingUnavailable:
+        except (EmbeddingUnavailable, RetrievalError):
             version, ollama_ready = None, False
         return RetrievalHealth.model_validate({"protocolVersion": "retrieval.v1", "retrievalEngineVersion": "python-rag.v1",
             "ready": store_ready, "storeReady": store_ready, "ollamaReady": ollama_ready, "ollamaVersion": version,
-            "profile": fixed_profile() if ollama_ready else None, "embeddingConcurrency": 1, "maxBatch": 16})
+            "profile": profile if ollama_ready else None, "embeddingConcurrency": 1, "maxBatch": 16})
 
     def split(self, request: SplitRequest) -> SplitResponse:
         remaining(request)
@@ -136,11 +170,18 @@ class SharedRetrieval:
                 endOffset=c.end_offset, contentHash=c.content_hash, headings=list(c.headings)) for c in chunks]}
         return SplitResponse.model_validate_json(json.dumps(wire))
 
+    def embedding_for(self, request):
+        if request.protocol_version == "retrieval.v1":
+            return self.embedding
+        from .configured_embedding import ApprovedEmbedding
+        return ApprovedEmbedding(self.store.approval(request), self.store, request)
+
     def search(self, request: SearchRequest) -> SearchResponse:
+        embedding = self.embedding_for(request)
         budget = remaining(request)
         unavailable = False
         try:
-            vector = self.embedding.query(request.query, budget)
+            vector = embedding.query(request.query, budget)
         except EmbeddingUnavailable:
             if request.mode == "SEMANTIC_ONLY":
                 raise RetrievalError("OLLAMA_UNAVAILABLE") from None
@@ -201,7 +242,7 @@ class SharedRetrieval:
         if authorized != request:
             raise RetrievalError("STALE_WORKLOAD")
         try:
-            vectors = self.embedding.documents([source.text for source in request.sources], remaining(request))
+            vectors = self.embedding_for(request).documents([source.text for source in request.sources], remaining(request))
         except EmbeddingUnavailable:
             raise RetrievalError("OLLAMA_UNAVAILABLE") from None
         remaining(request)

@@ -188,4 +188,31 @@ query labelled HUMAN_REVIEWED; metrics cannot set these values automatically.
 
 Human review: `evaluation/HUMAN_REVIEW.md` lists all canonical fixture sources and 52 queries. Labels remain pending; only actual human review may promote the dataset to APPROVED, with reviewer identity/time and per-query HUMAN_REVIEWED status.
 
+## Local service settings extension (2026-10-02)
+
+The existing `retrieval.v1` profile and project defaults remain unchanged. `retrieval.v2`
+uses the same workload/grant/source/version/head fences with a Java-approved SHA-256
+profile from `embedding_profiles`. Its immutable semantic identity includes provider,
+service identity, model tag/digest, detected dimensions, query/document strategy,
+normalization, truncate policy, splitter and index schema version. Dimensions are
+1–4096; vector length, finiteness, normalization and float32 checksum must match the
+host-approved profile. Same-dimension different models are separate profiles.
+
+Authenticated Java `/internal/v1/retrieval-store/embedding-profile` accepts the original
+Search/IndexBatch envelope and returns only approved semantics, safe config and service
+revision. `/embeddings` accepts that same envelope; Java derives the texts from the
+authorized query or immutable source batch, captures the encrypted connection's key,
+checks response cardinality/order/index/dimensions and rechecks grant/source/deadline
+before returning vectors bound to requestId/profileId. Neither provider key nor arbitrary
+caller-supplied URL/text is accepted by Python. LangChain `Embeddings` is the algorithm
+interface; local Ollama remains Python-owned, remote protocol/authentication Java-owned.
+
+HELP rebuild uses the existing pending vector columns and one vector store. Successful
+preparation remains READY until explicit activation; activation verifies source versions,
+complete vectors and expected head version in one transaction. Failure preserves the old
+active head/vectors. Candidate settings do not change current retrieval; no automatic
+project migration occurs. Connection-only timeout/batch changes do not change profile
+identity. These configuration checks do not establish retrieval quality and do not
+promote the independent evaluation datasets above.
+
 Pre-release split: evaluation/chinese-queries.v1.json is DEVELOPMENT_CALIBRATION (distance .65→.50), never independent acceptance even after human review. evaluation/acceptance-candidate.v1.json has 68 unexecuted AI-authored independent candidates; config/code/data hashes in acceptance-freeze.v1.json, review table in ACCEPTANCE_HUMAN_REVIEW.md. Pending review is rejected before Python startup or indexing; candidate report output is separate. No AI tool promotes HUMAN_REVIEWED/APPROVED. Strict zero-hit diagnostics do not prove generated-answer refusal quality.

@@ -19,16 +19,20 @@ public class RetrievalIndexJobs {
     public RetrievalIndexJobs(NamedParameterJdbcTemplate jdbc,RetrievalStore store) { this.jdbc=jdbc; this.store=store; }
 
     @Transactional public UUID prepareGeneration(UUID corpus) {
-        UUID id=UUID.randomUUID();
+        return prepareGeneration(corpus,PROFILE);
+    }
+    @Transactional public UUID prepareGeneration(UUID corpus,String profile) {
+        store.dimensions(profile); UUID id=UUID.randomUUID();
         jdbc.update("INSERT INTO retrieval_index_generations(id,corpus_id,profile_id,state) VALUES(:id,:corpus,:profile,'PREPARING')",
-                Map.of("id",id,"corpus",corpus,"profile",PROFILE));
+                Map.of("id",id,"corpus",corpus,"profile",profile));
         return id;
     }
 
     @Transactional public Optional<IndexBatch> claim(UUID corpus,UUID generation) {
-        var gen=jdbc.queryForList("SELECT * FROM retrieval_index_generations WHERE id=:id AND corpus_id=:corpus AND profile_id=:profile AND state IN ('PREPARING','ACTIVE') FOR UPDATE",
-                Map.of("id",generation,"corpus",corpus,"profile",PROFILE));
+        var gen=jdbc.queryForList("SELECT * FROM retrieval_index_generations WHERE id=:id AND corpus_id=:corpus AND state IN ('PREPARING','ACTIVE') FOR UPDATE",
+                Map.of("id",generation,"corpus",corpus));
         if(gen.size()!=1) throw new IllegalStateException("INDEX_GENERATION_MISMATCH");
+        String profile=(String)gen.getFirst().get("profile_id"); store.dimensions(profile);
         // Expired derived computations may be re-claimed with a new job/lease; old results are fenced.
         jdbc.update("UPDATE retrieval_index_jobs SET state='STALE' WHERE corpus_id=:corpus AND state='CLAIMED' AND deadline<=clock_timestamp()",Map.of("corpus",corpus));
         // Exclude legacy oversized supplemental projections in bounded batches; canonical facts stay intact.
@@ -41,7 +45,7 @@ public class RetrievalIndexJobs {
                   AND NOT EXISTS(SELECT 1 FROM retrieval_index_jobs j, jsonb_array_elements(j.request->'sources') s
                     WHERE j.corpus_id=:corpus AND j.state='CLAIMED' AND j.deadline>clock_timestamp() AND s->>'entryId'=e.id::text)
                 ORDER BY e.source_ref LIMIT 16 FOR UPDATE OF e
-                """,Map.of("corpus",corpus,"generation",generation,"profile",PROFILE));
+                """,Map.of("corpus",corpus,"generation",generation,"profile",profile));
         if(rows.isEmpty()) return Optional.empty();
         UUID project=(UUID)rows.getFirst().get("project_id");
         var scope=new RetrievalStore.Scope(corpus,project,null,project==null?Set.of("HELP"):Set.of("PROJECT","RESOURCE","ROUTE"),
@@ -62,17 +66,17 @@ public class RetrievalIndexJobs {
         if(sources.isEmpty()) return Optional.empty();
         UUID job=UUID.randomUUID(),lease=UUID.randomUUID(),grant=UUID.randomUUID(),request=UUID.randomUUID();
         Instant deadline=Instant.now().truncatedTo(ChronoUnit.MICROS).plusSeconds(90);
-        var batch=new IndexBatch("retrieval.v1",request,new Workload("INDEX_JOB",job,1),new Grant(grant,1,deadline),PROFILE,
+        var batch=new IndexBatch(RetrievalStore.protocol(profile),request,new Workload("INDEX_JOB",job,1),new Grant(grant,1,deadline),profile,
                 generation,deadline,job,lease,0,List.copyOf(sources));
         jdbc.update("""
                 INSERT INTO retrieval_scope_grants(id,request_id,corpus_id,project_id,workload_kind,workload_id,epoch,profile_id,index_generation,deadline,scope)
                 VALUES(:grant,:request,:corpus,:project,'INDEX_JOB',:job,1,:profile,:generation,:deadline,CAST(:scope AS jsonb))
-                """,Maps.of("grant",grant,"request",request,"corpus",corpus,"project",project,"job",job,"profile",PROFILE,
+                """,Maps.of("grant",grant,"request",request,"corpus",corpus,"project",project,"job",job,"profile",profile,
                 "generation",generation,"deadline",Timestamp.from(deadline),"scope",write(scope)));
         jdbc.update("""
                 INSERT INTO retrieval_index_jobs(id,corpus_id,index_generation,profile_id,lease_id,state,deadline,request)
                 VALUES(:job,:corpus,:generation,:profile,:lease,'CLAIMED',:deadline,CAST(:request AS jsonb))
-                """,Map.of("job",job,"corpus",corpus,"generation",generation,"profile",PROFILE,"lease",lease,
+                """,Map.of("job",job,"corpus",corpus,"generation",generation,"profile",profile,"lease",lease,
                 "deadline",Timestamp.from(deadline),"request",write(batch)));
         return Optional.of(batch);
     }
@@ -97,6 +101,7 @@ public class RetrievalIndexJobs {
         Set<UUID> ids=new HashSet<>();
         for(var vector:result.vectors()) {
             vector.vector().validate();
+            if(vector.vector().dimensions()!=store.dimensions(result.profileId())) throw new IllegalArgumentException("INVALID_VECTOR");
             var source=request.sources().stream().filter(s->s.entryId().equals(vector.entryId())).findFirst().orElseThrow(()->new IllegalArgumentException("INVALID_VECTOR"));
             if(!ids.add(vector.entryId()) || !source.sourceRef().equals(vector.sourceRef()) || !source.sourceVersion().equals(vector.sourceVersion())
                     || !source.contentHash().equals(vector.contentHash()) || !source.location().equals(vector.location()))
@@ -109,11 +114,11 @@ public class RetrievalIndexJobs {
         }
         boolean active="ACTIVE".equals(generationRows.getFirst().get("state"));
         for(var vector:result.vectors()) {
-            var params=Map.of("id",vector.entryId(),"vector",RetrievalStore.vectorLiteral(vector.vector().values()),
+            var params=Map.of("model",store.model(result.profileId()),"dimensions",store.dimensions(result.profileId()),"id",vector.entryId(),"vector",RetrievalStore.vectorLiteral(vector.vector().values()),
                     "profile",result.profileId(),"generation",result.indexGeneration());
             jdbc.update(active?"""
                     UPDATE retrieval_entries SET embedding=CAST(:vector AS vector),profile_id=:profile,index_generation=:generation,
-                        embedding_model='qwen3-embedding:0.6b',embedding_dimensions=1024,embedding_status='READY' WHERE id=:id
+                        embedding_model=:model,embedding_dimensions=:dimensions,embedding_status='READY' WHERE id=:id
                     """:"""
                     UPDATE retrieval_entries SET pending_embedding=CAST(:vector AS vector),pending_profile_id=:profile,pending_generation=:generation WHERE id=:id
                     """,params);
@@ -144,23 +149,26 @@ public class RetrievalIndexJobs {
 
     /** One head CAS activates the fully prepared generation; never mixes profiles in a query. */
     @Transactional public void activate(UUID corpus,UUID generation,long expectedHeadVersion) {
+        var generations=jdbc.queryForList("SELECT profile_id FROM retrieval_index_generations WHERE id=:id AND corpus_id=:corpus",Map.of("id",generation,"corpus",corpus));
+        if(generations.size()!=1) throw new IllegalStateException("INDEX_GENERATION_MISMATCH");
+        String profile=(String)generations.getFirst().get("profile_id"); store.dimensions(profile);
         var heads=jdbc.queryForList("SELECT * FROM retrieval_index_heads WHERE corpus_id=:corpus FOR UPDATE",Map.of("corpus",corpus));
         if(heads.size()!=1 || ((Number)heads.getFirst().get("version")).longValue()!=expectedHeadVersion)
             throw new IllegalStateException("INDEX_GENERATION_MISMATCH");
         if(jdbc.queryForList("SELECT id FROM retrieval_index_generations WHERE id=:id AND corpus_id=:corpus AND state='PREPARING' AND profile_id=:profile FOR UPDATE",
-                Map.of("id",generation,"corpus",corpus,"profile",PROFILE)).size()!=1) throw new IllegalStateException("INDEX_GENERATION_MISMATCH");
+                Map.of("id",generation,"corpus",corpus,"profile",profile)).size()!=1) throw new IllegalStateException("INDEX_GENERATION_MISMATCH");
         if(jdbc.queryForObject("SELECT count(*) FROM retrieval_source_projections WHERE project_id=:corpus AND state='PENDING'",Map.of("corpus",corpus),Integer.class)!=0)
             throw new IllegalStateException("SOURCE_VERSION_MISMATCH");
         if(jdbc.queryForObject("SELECT count(*) FROM retrieval_entries WHERE corpus_id=:corpus AND retracted_at IS NULL AND NOT COALESCE(pending_generation=:id AND pending_profile_id=:profile AND pending_embedding IS NOT NULL,FALSE)",
-                Map.of("corpus",corpus,"id",generation,"profile",PROFILE),Integer.class)!=0) throw new IllegalStateException("SOURCE_VERSION_MISMATCH");
+                Map.of("corpus",corpus,"id",generation,"profile",profile),Integer.class)!=0) throw new IllegalStateException("SOURCE_VERSION_MISMATCH");
         jdbc.update("""
                 UPDATE retrieval_entries SET embedding=pending_embedding,profile_id=pending_profile_id,index_generation=pending_generation,
-                    embedding_model='qwen3-embedding:0.6b',embedding_dimensions=1024,embedding_status='READY',
+                    embedding_model=:model,embedding_dimensions=:dimensions,embedding_status='READY',
                     pending_embedding=NULL,pending_profile_id=NULL,pending_generation=NULL WHERE corpus_id=:corpus AND pending_generation=:id
-                """,Map.of("corpus",corpus,"id",generation));
+                """,Map.of("corpus",corpus,"id",generation,"model",store.model(profile),"dimensions",store.dimensions(profile)));
         jdbc.update("UPDATE retrieval_index_generations SET state='RETIRED' WHERE id=:id",Map.of("id",heads.getFirst().get("active_generation")));
         jdbc.update("UPDATE retrieval_index_generations SET state='ACTIVE',version=version+1 WHERE id=:id",Map.of("id",generation));
         jdbc.update("UPDATE retrieval_index_heads SET active_generation=:id,profile_id=:profile,version=version+1 WHERE corpus_id=:corpus",
-                Map.of("id",generation,"profile",PROFILE,"corpus",corpus));
+                Map.of("id",generation,"profile",profile,"corpus",corpus));
     }
 }

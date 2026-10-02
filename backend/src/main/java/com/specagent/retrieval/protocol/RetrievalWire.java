@@ -36,7 +36,7 @@ public final class RetrievalWire {
         public Vector { values=values==null ? null : values.clone(); }
         @Override public double[] values() { return values==null ? null : values.clone(); }
         public void validate() {
-            if(dimensions!=1024 || !RetrievalVectors.checksum(values).equals(checksum)) throw new IllegalArgumentException("INVALID_VECTOR");
+            if(dimensions<1 || dimensions>4096 || values==null || values.length!=dimensions || !RetrievalVectors.checksum(values).equals(checksum)) throw new IllegalArgumentException("INVALID_VECTOR");
         }
     }
     public record Location(Integer chunkIndex,Integer startOffset,Integer endOffset) {
@@ -113,7 +113,7 @@ public final class RetrievalWire {
                 "scopeGrant",envelope.scopeGrant(),"profileId",envelope.profileId(),"indexGeneration",envelope.indexGeneration(),"deadline",envelope.deadline());
     }
     public static void validate(Envelope envelope) {
-        if(!"retrieval.v1".equals(envelope.protocolVersion()) || envelope.requestId()==null || envelope.workload()==null
+        if(!("retrieval.v1".equals(envelope.protocolVersion()) && PROFILE.equals(envelope.profileId()) || "retrieval.v2".equals(envelope.protocolVersion()) && !PROFILE.equals(envelope.profileId())) || envelope.requestId()==null || envelope.workload()==null
                 || envelope.workload().id()==null || envelope.workload().executionEpoch()<1
                 || !Set.of("PROJECT_RUN","GA_RUN","CONTEXT_PROJECTION","INDEX_JOB").contains(envelope.workload().kind())
                 || envelope.scopeGrant()==null || envelope.scopeGrant().grantId()==null || envelope.scopeGrant().version()<1

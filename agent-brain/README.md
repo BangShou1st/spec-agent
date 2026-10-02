@@ -7,6 +7,14 @@ model inference goes through the Spring internal inference broker.
 
 ## HTTP surface
 
+The local service configuration extension also exposes authenticated
+`POST /internal/v1/retrieval/ollama-probe`: isolated real document/query embeddings,
+native dimension and model digest detection. Configured `retrieval.v2` workloads use
+LangChain's standard `Embeddings` interface and host-approved profiles. Remote provider
+keys stay in Java's encrypted revisions and Java embedding broker; Python receives only
+bound vectors and safe semantics. `retrieval.v1` and project Brain defaults are retained.
+See [local configuration guide](../docs/v2/LOCAL_DEPLOYMENT_SERVICE_CONFIGURATION_GUIDE.md).
+
 ```text
 GET  /health
 POST /v1/state-updates   # answer/evidence -> grounded claims

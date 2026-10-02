@@ -31,6 +31,7 @@ class GaRetrievalReadinessTest {
         var connection=new GaBrainSettings("http://127.0.0.1:"+server.getAddress().getPort(),auth);
         var access=mock(GaRetrievalAccess.class); when(access.host()).thenReturn(host);
         var store=mock(RetrievalStore.class); when(store.ensureHelpGeneration()).thenReturn(generation);
+        when(store.activeHelpProfile()).thenReturn(RetrievalWire.PROFILE);
         readiness=new GaRetrievalReadiness(connection,access,store,true,jdbc);
     }
     @AfterEach void stop() { server.stop(0); }

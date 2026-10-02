@@ -36,7 +36,7 @@ def retrieval_router(settings, authenticate):
         except RetrievalError as exc:
             from starlette.responses import JSONResponse
             return JSONResponse(status_code=503 if exc.code in {"OLLAMA_UNAVAILABLE", "RETRIEVAL_UNAVAILABLE"} else 409,
-                content={"protocolVersion": "retrieval.v1", "requestId": str(parsed.request_id), "errorCode": exc.code})
+                content={"protocolVersion": parsed.protocol_version, "requestId": str(parsed.request_id), "errorCode": exc.code})
 
     @router.get("/health")
     async def health(request: Request):
@@ -54,5 +54,20 @@ def retrieval_router(settings, authenticate):
     @router.post("/source-chunks")
     async def split(request: Request):
         return await execute(request, SplitRequest, "split")
+
+    @router.post("/ollama-probe")
+    async def ollama_probe(request: Request):
+        from .configured_embedding import probe_ollama
+        from .embedding import EmbeddingUnavailable
+        try:
+            body = await request.body()
+            if len(body) > 8192:
+                raise HTTPException(413, "RETRIEVAL_REQUEST_TOO_LARGE")
+            import json
+            return await asyncio.to_thread(probe_ollama, json.loads(body))
+        except EmbeddingUnavailable as exc:
+            raise HTTPException(503, str(exc)) from None
+        except ValueError:
+            raise HTTPException(422, "EMBEDDING_INVALID_RESPONSE") from None
 
     return router

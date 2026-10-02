@@ -18,12 +18,12 @@ public class PythonRetrievalClient {
     public SplitResult split(SplitRequest request) { return post("/source-chunks",request,SplitResult.class); }
     public SearchResult search(Search request) { return post("/search",request,SearchResult.class); }
     public IndexResult index(IndexBatch request) { return post("/index-batches",request,IndexResult.class); }
-    static final class LimitedBodySubscriber implements HttpResponse.BodySubscriber<byte[]> {
+    public static final class LimitedBodySubscriber implements HttpResponse.BodySubscriber<byte[]> {
         private final int limit;
         private final ByteArrayOutputStream bytes=new ByteArrayOutputStream();
         private final java.util.concurrent.CompletableFuture<byte[]> result=new java.util.concurrent.CompletableFuture<>();
         private java.util.concurrent.Flow.Subscription subscription;
-        LimitedBodySubscriber(int limit) { this.limit=limit; }
+        public LimitedBodySubscriber(int limit) { this.limit=limit; }
         public java.util.concurrent.CompletionStage<byte[]> getBody() { return result; }
         public void onSubscribe(java.util.concurrent.Flow.Subscription value) {
             if(subscription!=null) { value.cancel(); return; }
@@ -65,7 +65,7 @@ public class PythonRetrievalClient {
                 // Only whitelisted contract errors enter diagnostics, never raw response bodies or credentials.
                 var failure=JSON.readTree(response.body());
                 String code=failure.path("errorCode").asText();
-                if(java.util.Set.of("UNSUPPORTED_PROFILE","STALE_SCOPE_GRANT","STALE_WORKLOAD","SOURCE_VERSION_MISMATCH","INDEX_GENERATION_MISMATCH","OLLAMA_UNAVAILABLE","RETRIEVAL_UNAVAILABLE","DEADLINE_EXCEEDED","INVALID_VECTOR").contains(code)
+                if(java.util.Set.of("UNSUPPORTED_PROFILE","STALE_SCOPE_GRANT","STALE_WORKLOAD","SOURCE_VERSION_MISMATCH","INDEX_GENERATION_MISMATCH","OLLAMA_UNAVAILABLE","RETRIEVAL_UNAVAILABLE","DEADLINE_EXCEEDED","INVALID_VECTOR","EMBEDDING_NOT_CONFIGURED","EMBEDDING_AUTHENTICATION_FAILED","EMBEDDING_RATE_LIMITED","EMBEDDING_PROVIDER_FAILED","EMBEDDING_INVALID_RESPONSE","EMBEDDING_DIMENSION_MISMATCH","EMBEDDING_CONNECTION_FAILED","EMBEDDING_TIMEOUT","EMBEDDING_BUSY","EMBEDDING_INTERRUPTED").contains(code)
                         && request.requestId().toString().equals(failure.path("requestId").asText())) throw new IllegalStateException(code);
                 throw new IOException("Retrieval HTTP status "+response.statusCode());
             }

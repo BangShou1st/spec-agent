@@ -6,6 +6,7 @@
 -->
 <script setup lang="ts">
 import { computed } from 'vue'
+import SettingsCard from '@/shared/ui/SettingsCard.vue'
 import ApiErrorBanner from '@/shared/ui/ApiErrorBanner.vue'
 import ProviderStatePill from './ProviderStatePill.vue'
 import { productErrorMessage } from '@/shared/http/errorCopy'
@@ -40,36 +41,16 @@ const safeErrorMessage = computed(() => productErrorMessage(props.error?.code ??
 </script>
 
 <template>
-  <article class="settings-card" :data-test="cardTestId">
-    <header class="settings-card__header">
-      <div>
-        <h3 :data-test="titleTestId">{{ title }}</h3>
-        <p class="settings-card__description">{{ description }}</p>
-      </div>
-      <ProviderStatePill :state="state" :test-id="stateTestId" />
-    </header>
-
-    <ApiErrorBanner
-      v-if="error"
-      class="settings-error"
-      :data-test="errorTestId"
-      :message="safeErrorMessage"
-      :code="error.code"
-      :retry-label="retryLabel ?? '重试'"
-      :retrying="retrying ?? false"
-      @retry="emit('retry')"
-    />
-
-    <section v-if="$slots.summary" class="settings-current-config" :data-test="summaryTestId">
-      <slot name="summary" />
-    </section>
-
+  <SettingsCard :title="title" :description="description" :card-test-id="cardTestId" :title-test-id="titleTestId" :summary-test-id="summaryTestId">
+    <template #status><ProviderStatePill :state="state" :test-id="stateTestId" /></template>
+    <template #error>
+      <ApiErrorBanner v-if="error" class="settings-error" :data-test="errorTestId" :message="safeErrorMessage" :code="error.code"
+        :retry-label="retryLabel ?? '重试'" :retrying="retrying ?? false" @retry="emit('retry')" />
+    </template>
+    <template v-if="$slots.summary" #summary><slot name="summary" /></template>
     <slot />
-
-    <footer v-if="$slots.footer" class="settings-card__footer">
-      <slot name="footer" />
-    </footer>
-  </article>
+    <template v-if="$slots.footer" #footer><slot name="footer" /></template>
+  </SettingsCard>
 </template>
 
 <style scoped>

@@ -73,6 +73,7 @@ venv/
 
 # 本地复核/验收工作区(数据库备份、测试截图、trace、复核脚本),不入库
 /scratch/
+/deployment/application-local.yml
 
 # 工具会话的临时备份区(内嵌 git 仓库,不可入库)
 .workbuddy/scratch/
