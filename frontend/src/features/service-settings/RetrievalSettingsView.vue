@@ -3,18 +3,24 @@ import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import SettingsCard from '@/shared/ui/SettingsCard.vue'
 import ApiErrorBanner from '@/shared/ui/ApiErrorBanner.vue'
 import Summary from '@/features/model-settings/components/ProviderSummaryItem.vue'
-import { services, type EmbeddingConfig, type Probe, type RetrievalSettings } from './api'
+import { services, type EmbeddingConfig, type Probe, type Rebuild, type RetrievalSettings } from './api'
 import { serviceError, serviceMessage } from './presentation'
 
 const saved = ref<RetrievalSettings | null>(null)
 const form = reactive<EmbeddingConfig>({ provider: 'OLLAMA', baseUrl: 'http://127.0.0.1:11434', model: '', timeoutSeconds: 30, batchSize: 8, queryStrategy: 'raw-text.v1' })
-const key = ref(''), replacing = ref(false), confirming = ref(false), selected = ref(true)
+const key = ref(''), replacing = ref(false), confirming = ref(false), confirmDiscard = ref(false), selected = ref(true)
 const busy = ref('load'), error = ref<{ code: string } | null>(null), indexError = ref<{ code: string } | null>(null)
 const result = ref<Probe | null>(null), notice = ref('')
 const job = computed(() => saved.value?.index.job)
 const pendingCandidate = computed(() => !!saved.value?.service.candidateProfile && saved.value.service.candidateProfile !== saved.value.index.activeProfile)
 const building = computed(() => job.value?.state === 'QUEUED' || job.value?.state === 'RUNNING')
-const jobLabel = computed(() => job.value?.state === 'ACTIVE' && pendingCandidate.value ? '新配置待重建' : ({ QUEUED: '等待开始', RUNNING: '索引准备中', READY: '已准备好，等待启用', FAILED: '重建失败', ACTIVE: '已生效' })[job.value?.state ?? 'ACTIVE'])
+const jobLabel = computed(() => {
+  const state = job.value?.state
+  if (state === 'ACTIVE') return pendingCandidate.value ? '新配置待重建' : '已生效'
+  if (state === 'READY') return `已准备好，等待启用（${saved.value?.index.jobModel ?? '未知模型'}）`
+  const labels: Partial<Record<Rebuild['state'], string>> = { QUEUED: '等待开始', RUNNING: '索引准备中', FAILED: '重建失败' }
+  return (state && labels[state]) ?? ''
+})
 const candidateState = computed(() => !saved.value?.service.config ? '未配置' : saved.value.service.candidateProfile ? '已验证' : '已保存，待验证')
 const isDraft = computed(() => !!key.value || JSON.stringify(form) !== JSON.stringify(saved.value?.service.config))
 let timer: ReturnType<typeof setInterval> | undefined
@@ -35,7 +41,7 @@ async function action(name: string, work: () => Promise<void>, index = false) {
 function hydrate(value: RetrievalSettings) {
   saved.value = value
   if (value.service.config) Object.assign(form, value.service.config)
-  key.value = ''; replacing.value = false; confirming.value = false
+  key.value = ''; replacing.value = false; confirming.value = false; confirmDiscard.value = false
 }
 async function load() { await action('load', async () => hydrate(await services.retrieval())) }
 function payload() { return { config: { ...form }, revision: saved.value?.service.revision ?? 0, ...(key.value ? { apiKey: key.value } : {}) } }
@@ -64,6 +70,13 @@ async function rebuild() {
 }
 async function retry() { await action('retry', async () => { if (job.value) saved.value = await services.retry(job.value.id) }, true) }
 async function activate() { await action('activate', async () => { if (job.value) saved.value = await services.activate(job.value.id) }, true) }
+async function discard() {
+  await action('discard', async () => {
+    if (!job.value) return
+    saved.value = await services.discard(job.value.id)
+    confirmDiscard.value = false
+  }, true)
+}
 async function refresh() { await action('refresh', async () => { saved.value = await services.retrieval() }, true) }
 onMounted(async () => {
   await load()
@@ -116,7 +129,7 @@ onUnmounted(() => { disposed = true; if (timer) clearInterval(timer); key.value 
         <Summary label="当前使用" :value="saved?.index.activeModel ?? '尚无生效配置'" ellipsis />
         <Summary label="当前索引" :value="saved?.index.readyEntries ? `${saved.index.readyEntries} 个可用片段 · ${saved.index.activeDimensions} 维` : '尚无可用向量，基础功能仍可使用'" />
         <Summary label="候选配置" :value="saved?.service.config?.model ?? '尚未保存'" ellipsis />
-        <Summary label="待处理事项" :value="building ? '等待索引准备完成' : job?.state === 'READY' ? '显式启用新索引' : job?.state === 'FAILED' ? '修复服务后重试；仍使用原索引' : saved?.service.candidateProfile && saved.service.candidateProfile !== saved.index.activeProfile ? '新配置待建立索引' : saved?.service.config && !saved.service.candidateProfile ? '测试已保存配置' : '无需处理'" />
+        <Summary label="待处理事项" :value="building ? '等待索引准备完成' : job?.state === 'READY' ? `启用或放弃新索引（${saved?.index.jobModel ?? '未知模型'}）` : job?.state === 'FAILED' ? '修复服务后重试；仍使用原索引' : saved?.service.candidateProfile && saved.service.candidateProfile !== saved.index.activeProfile ? '新配置待建立索引' : saved?.service.config && !saved.service.candidateProfile ? '测试已保存配置' : '无需处理'" />
       </template>
       <label class="service-settings__toggle"><input v-model="selected" type="checkbox" :disabled="!!busy || building" />全局助手产品帮助</label>
       <p class="settings-field__hint">来自应用随包帮助文档，不包括你的项目内容。不会自动迁移全部项目。</p>
@@ -126,7 +139,11 @@ onUnmounted(() => { disposed = true; if (timer) clearInterval(timer); key.value 
       <template #footer>
         <button class="btn settings-action" :disabled="!!busy" @click="refresh">刷新状态</button>
         <button v-if="job?.state === 'FAILED'" class="btn settings-action" :disabled="!!busy" @click="retry">{{ busy === 'retry' ? '正在重试…' : '重试失败任务' }}</button>
-        <button v-if="job?.state === 'READY'" class="btn btn-primary settings-action" :disabled="!!busy" @click="activate">{{ busy === 'activate' ? '正在启用…' : '启用新索引' }}</button>
+        <template v-if="job?.state === 'READY'">
+          <button class="btn btn-primary settings-action" :disabled="!!busy" @click="activate">{{ busy === 'activate' ? '正在启用…' : '启用新索引' }}</button>
+          <button v-if="!confirmDiscard" class="btn settings-action" :disabled="!!busy" @click="confirmDiscard = true">放弃该索引</button>
+          <template v-else><button class="btn btn-danger settings-action" :disabled="!!busy" @click="discard">{{ busy === 'discard' ? '正在放弃…' : '确认放弃' }}</button><button class="btn settings-action" :disabled="!!busy" @click="confirmDiscard = false">取消</button></template>
+        </template>
         <button v-else class="btn btn-primary settings-action" :disabled="!!busy || !selected || !saved?.service.candidateProfile || building" @click="rebuild">{{ building ? '索引准备中…' : '重建所选索引' }}</button>
       </template>
     </SettingsCard>

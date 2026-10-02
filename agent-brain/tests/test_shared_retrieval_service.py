@@ -74,6 +74,33 @@ def test_ollama_failure_is_explicit_same_pipeline_and_semantic_only_fails():
         SharedRetrieval(store, embedding).search(request("SEMANTIC_ONLY"))
 
 
+class BrokerEmbedding:
+    """Mimics the v2 broker path: remote provider faults surface as coded RetrievalError from Java."""
+
+    def __init__(self, code):
+        self.code = code
+
+    def query(self, text, timeout):
+        raise RetrievalError(self.code)
+
+    def documents(self, texts, timeout):
+        raise RetrievalError(self.code)
+
+
+def test_remote_embedding_service_faults_degrade_but_credential_failures_stay_explicit():
+    for code in ["EMBEDDING_RATE_LIMITED", "EMBEDDING_CONNECTION_FAILED", "EMBEDDING_TIMEOUT", "EMBEDDING_BUSY",
+                 "EMBEDDING_PROVIDER_FAILED", "EMBEDDING_INTERRUPTED", "EMBEDDING_INVALID_RESPONSE"]:
+        store = Store([{"lane": "project-lexical", "entries": [source()]}])
+        result = SharedRetrieval(store, BrokerEmbedding(code)).search(request())
+        assert result.vector_unavailable and result.warnings == ["VECTOR_UNAVAILABLE"], code
+        assert store.requested.query_vector is None and "vector" not in store.requested.lanes, code
+    store = Store([{"lane": "project-lexical", "entries": [source()]}])
+    with pytest.raises(RetrievalError, match="EMBEDDING_AUTHENTICATION_FAILED"):
+        SharedRetrieval(store, BrokerEmbedding("EMBEDDING_AUTHENTICATION_FAILED")).search(request())
+    with pytest.raises(RetrievalError, match="EMBEDDING_RATE_LIMITED"):
+        SharedRetrieval(store, BrokerEmbedding("EMBEDDING_RATE_LIMITED")).search(request("SEMANTIC_ONLY"))
+
+
 def test_inconsistent_source_versions_in_lanes_are_not_merged():
     one = source(); changed = {**one, "sourceVersion": "v2"}
     store = Store([{"lane": "project-lexical", "entries": [one]}, {"lane": "vector", "entries": [changed]}])

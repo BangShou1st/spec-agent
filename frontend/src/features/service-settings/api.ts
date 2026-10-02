@@ -10,14 +10,14 @@ export interface EmbeddingConfig {
 }
 export interface Probe { success: boolean; code: string; target: 'SAVED' | 'DRAFT'; dimensions?: number; testId?: string }
 export interface Rebuild {
-  id: string; profile_id: string; state: 'QUEUED' | 'RUNNING' | 'READY' | 'FAILED' | 'ACTIVE'
+  id: string; profile_id: string; state: 'QUEUED' | 'RUNNING' | 'READY' | 'FAILED' | 'ACTIVE' | 'DISCARDED'
   processed: number; total: number; error_code: string | null
 }
 export interface RetrievalSettings {
   service: { config: EmbeddingConfig | null; configured: boolean; maskedKey: string | null; revision: number
     source: string; candidateProfile: string | null; dimensions: number | null; testCode: string | null; testedAt: string | null }
   index: { corpusId: string; name: string; activeModel: string | null; activeDimensions: number | null
-    activeGeneration: string | null; activeProfile: string | null; readyEntries: number; job: Rebuild | null }
+    activeGeneration: string | null; activeProfile: string | null; readyEntries: number; jobModel: string | null; job: Rebuild | null }
 }
 export const services = {
   search: () => apiClient.get<SearchSettings>('/settings/search'),
@@ -31,4 +31,5 @@ export const services = {
   rebuild: (corpusId: string, profileId: string) => apiClient.post<RetrievalSettings>('/settings/retrieval/rebuild', { corpusId, profileId }),
   retry: (id: string) => apiClient.post<RetrievalSettings>(`/settings/retrieval/rebuild/${id}/retry`),
   activate: (id: string) => apiClient.post<RetrievalSettings>(`/settings/retrieval/rebuild/${id}/activate`),
+  discard: (id: string) => apiClient.post<RetrievalSettings>(`/settings/retrieval/rebuild/${id}/discard`),
 }

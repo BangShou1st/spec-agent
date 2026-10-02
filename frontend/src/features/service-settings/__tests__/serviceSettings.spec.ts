@@ -7,7 +7,7 @@ import { services, type RetrievalSettings, type SearchSettings } from '../api'
 const search: SearchSettings = { enabled: true, configured: true, maskedKey: '••••1234', source: 'DATABASE', revision: 7, environmentAvailable: true, testCode: null, testedAt: null }
 const retrieval: RetrievalSettings = {
   service: { config: { provider: 'OPENAI_COMPATIBLE', baseUrl: 'https://fixture.invalid/v1', model: 'fixture-model', timeoutSeconds: 30, batchSize: 8, queryStrategy: 'raw-text.v1' }, configured: true, maskedKey: '••••1234', revision: 4, source: 'DATABASE', candidateProfile: null, dimensions: null, testCode: null, testedAt: null },
-  index: { corpusId: 'help-corpus', name: '全局助手产品帮助', activeModel: 'old-model', activeDimensions: 1024, activeProfile: 'old-profile', activeGeneration: 'old-generation', readyEntries: 3, job: null },
+  index: { corpusId: 'help-corpus', name: '全局助手产品帮助', activeModel: 'old-model', activeDimensions: 1024, activeProfile: 'old-profile', activeGeneration: 'old-generation', readyEntries: 3, jobModel: null, job: null },
 }
 const wrappers: ReturnType<typeof mount>[] = []
 function button(wrapper: ReturnType<typeof mount>, text: string) { return wrapper.findAll('button').find(b => b.text() === text)! }
@@ -52,5 +52,17 @@ describe('service settings credential and index semantics', () => {
     const w = mount(RetrievalView); wrappers.push(w); await flushPromises()
     expect(w.text()).toContain('重建失败，仍使用原索引'); expect(w.text()).toContain('old-model')
     await button(w, '重试失败任务').trigger('click'); await flushPromises(); expect(retry).toHaveBeenCalledWith('failed-job')
+  })
+  it('a ready job names its model and can be abandoned without activating', async () => {
+    vi.mocked(services.retrieval).mockResolvedValue({ ...retrieval, index: { ...retrieval.index, jobModel: 'ready-model', job: { id: 'ready-job', profile_id: 'ready-profile', state: 'READY', processed: 3, total: 3, error_code: null } } })
+    const activate = vi.spyOn(services, 'activate')
+    const discard = vi.spyOn(services, 'discard').mockResolvedValue(retrieval)
+    const w = mount(RetrievalView); wrappers.push(w); await flushPromises()
+    expect(w.text()).toContain('已准备好，等待启用（ready-model）')
+    await button(w, '放弃该索引').trigger('click'); expect(discard).not.toHaveBeenCalled()
+    await button(w, '取消').trigger('click'); expect(discard).not.toHaveBeenCalled()
+    await button(w, '放弃该索引').trigger('click')
+    await button(w, '确认放弃').trigger('click'); await flushPromises()
+    expect(discard).toHaveBeenCalledWith('ready-job'); expect(activate).not.toHaveBeenCalled()
   })
 })

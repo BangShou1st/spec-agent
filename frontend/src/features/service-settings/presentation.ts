@@ -25,7 +25,7 @@ const messages: Record<string, string> = {
   UNSUPPORTED_DIMENSIONS: '当前支持 1–4096 维，请选择支持范围内的模型。',
   EMBEDDING_TEST_EXPIRED: '验证已过期或配置已变化，请重新测试后保存。',
   SETTINGS_CHANGED: '配置已被其他操作更新，请重新加载最新设置。',
-  REBUILD_ALREADY_RUNNING: '已有索引正在准备或等待启用，请先处理该任务。',
+  REBUILD_ALREADY_RUNNING: '已有索引正在准备或等待启用，请先启用或放弃该任务。',
   REBUILD_NOT_READY: '索引尚未准备完成，请刷新状态后再操作。',
   INDEX_GENERATION_MISMATCH: '当前索引已变化，请重新建立候选索引。',
   SOURCE_VERSION_MISMATCH: '语料内容已变化，请重试重建；原索引保持可用。',

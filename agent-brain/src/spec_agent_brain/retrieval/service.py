@@ -18,6 +18,14 @@ class RetrievalError(Exception):
         super().__init__(code)
 
 
+# Remote broker service faults keep the keyword lanes usable; credential and configuration
+# failures must surface so the host fixes the service instead of silently losing vectors.
+DEGRADABLE_EMBEDDING_CODES = frozenset({
+    "EMBEDDING_RATE_LIMITED", "EMBEDDING_PROVIDER_FAILED", "EMBEDDING_INVALID_RESPONSE",
+    "EMBEDDING_CONNECTION_FAILED", "EMBEDDING_TIMEOUT", "EMBEDDING_BUSY", "EMBEDDING_INTERRUPTED",
+})
+
+
 def envelope(value: RetrievalEnvelope) -> dict:
     return value.model_dump(by_alias=True, mode="json", include=set(RetrievalEnvelope.model_fields))
 
@@ -185,6 +193,10 @@ class SharedRetrieval:
         except EmbeddingUnavailable:
             if request.mode == "SEMANTIC_ONLY":
                 raise RetrievalError("OLLAMA_UNAVAILABLE") from None
+            vector, unavailable = None, True
+        except RetrievalError as exc:
+            if request.mode == "SEMANTIC_ONLY" or exc.code not in DEGRADABLE_EMBEDDING_CODES:
+                raise
             vector, unavailable = None, True
         remaining(request)
         lanes = ["vector"] if request.mode == "SEMANTIC_ONLY" else [

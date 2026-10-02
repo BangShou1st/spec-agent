@@ -131,6 +131,30 @@ class LocalServiceSettingsIntegrationTest {
         var wrong=new Candidates(issued.protocolVersion(),issued.requestId(),workload,issued.scopeGrant(),issued.profileId(),issued.indexGeneration(),issued.deadline(),issued.query(),List.of("vector"),8,vector(4),0.65);
         assertThrows(IllegalArgumentException.class,()->store.candidates(wrong));
     }
+    @Test void readyRebuildBlocksOtherProfilesUntilExplicitlyDiscardedAndExposesItsModel() {
+        UUID corpus=CuratedHelpSources.CORPUS;
+        jdbc.update("DELETE FROM retrieval_scope_grants WHERE corpus_id=?",corpus);
+        jdbc.update("DELETE FROM retrieval_index_jobs WHERE corpus_id=?",corpus);
+        jdbc.update("DELETE FROM retrieval_index_heads WHERE corpus_id=?",corpus);
+        jdbc.update("DELETE FROM retrieval_index_generations WHERE corpus_id=?",corpus);
+        jdbc.update("DELETE FROM retrieval_entries WHERE corpus_id=?",corpus);
+        UUID old=store.ensureHelpGeneration(); insertHelp(help.document("projects"),old,PROFILE,1024);
+        var a=approved("model-a",3); UUID ready=jobs.prepareGeneration(corpus,a.profileId());
+        jdbc.update("INSERT INTO embedding_rebuilds(id,corpus_id,profile_id,expected_head_version,state) VALUES(?,?,?,0,'READY')",ready,corpus,a.profileId());
+        jdbc.update("UPDATE retrieval_entries SET pending_embedding=embedding,pending_profile_id=?,pending_generation=? WHERE corpus_id=?",a.profileId(),ready,corpus);
+        assertEquals("model-a",rebuilds.view().get("jobModel"));
+        var b=approved("model-b",3);
+        assertThrows(IllegalStateException.class,()->rebuilds.start(corpus,b.profileId()));
+        assertThrows(IllegalStateException.class,()->rebuilds.discard(UUID.randomUUID()));
+        rebuilds.discard(ready);
+        assertEquals("DISCARDED",jdbc.queryForObject("SELECT state FROM embedding_rebuilds WHERE id=?",String.class,ready));
+        assertEquals("DISCARDED",jdbc.queryForObject("SELECT state FROM retrieval_index_generations WHERE id=?",String.class,ready));
+        assertEquals(0,jdbc.queryForObject("SELECT count(*) FROM retrieval_entries WHERE corpus_id=? AND pending_generation=?",Integer.class,corpus,ready));
+        rebuilds.start(corpus,b.profileId());
+        // view() orders same-transaction rows by random uuid tiebreak; assert the new candidate directly.
+        assertEquals(1,jdbc.queryForObject("SELECT count(*) FROM embedding_rebuilds WHERE corpus_id=? AND profile_id=? AND state='QUEUED'",Integer.class,corpus,b.profileId()));
+        assertEquals("model-b",store.model(b.profileId()));
+    }
     private Vector vector(int dimensions) {
         double[] values=new double[dimensions]; values[0]=1;
         return new Vector(dimensions,values,RetrievalVectors.checksum(values));

@@ -33,4 +33,5 @@ public class EmbeddingSettingsController {
     @PostMapping("/rebuild") public Map<String,Object> rebuild(@RequestBody Rebuild request) { rebuilds.start(request.corpusId(),request.profileId()); return get(); }
     @PostMapping("/rebuild/{id}/retry") public Map<String,Object> retry(@PathVariable UUID id) { rebuilds.retry(id); return get(); }
     @PostMapping("/rebuild/{id}/activate") public Map<String,Object> activate(@PathVariable UUID id) { rebuilds.activate(id); return get(); }
+    @PostMapping("/rebuild/{id}/discard") public Map<String,Object> discard(@PathVariable UUID id) { rebuilds.discard(id); return get(); }
 }

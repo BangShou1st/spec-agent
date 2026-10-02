@@ -41,6 +41,7 @@ public class EmbeddingRebuilds {
         m.put("activeProfile",heads.isEmpty()?null:heads.getFirst().get("profile_id"));
         var rebuild=jdbc.queryForList("SELECT * FROM embedding_rebuilds WHERE corpus_id=? ORDER BY created_at DESC,id DESC LIMIT 1",CuratedHelpSources.CORPUS);
         m.put("job",rebuild.isEmpty()?null:rebuild.getFirst());
+        m.put("jobModel",rebuild.isEmpty()?null:store.model((String)rebuild.getFirst().get("profile_id")));
         m.put("readyEntries",jdbc.queryForObject("SELECT count(*) FROM retrieval_entries e JOIN retrieval_index_heads h ON h.corpus_id=e.corpus_id AND h.active_generation=e.index_generation AND h.profile_id=e.profile_id WHERE e.corpus_id=? AND e.retracted_at IS NULL AND e.embedding_status='READY'",Integer.class,CuratedHelpSources.CORPUS));
         return m;
     }
@@ -69,6 +70,16 @@ public class EmbeddingRebuilds {
         if(rows.size()!=1) throw new IllegalStateException("REBUILD_NOT_READY");
         var row=rows.getFirst(); jobs.activate((UUID)row.get("corpus_id"),generation,((Number)row.get("expected_head_version")).longValue());
         jdbc.update("UPDATE embedding_rebuilds SET state='ACTIVE' WHERE id=?",generation); return view();
+    }
+    /** A READY generation was never activated; abandoning it frees the head so a different profile can rebuild. */
+    @Transactional public Map<String,Object> discard(UUID generation) {
+        var rows=jdbc.queryForList("SELECT * FROM embedding_rebuilds WHERE id=? AND state='READY' FOR UPDATE",generation);
+        if(rows.size()!=1) throw new IllegalStateException("REBUILD_NOT_READY");
+        jdbc.update("UPDATE retrieval_entries SET pending_embedding=NULL,pending_profile_id=NULL,pending_generation=NULL WHERE corpus_id=? AND pending_generation=?",
+                CuratedHelpSources.CORPUS,generation);
+        jdbc.update("UPDATE retrieval_index_generations SET state='DISCARDED' WHERE id=? AND state='PREPARING'",generation);
+        jdbc.update("UPDATE embedding_rebuilds SET state='DISCARDED',error_code=NULL WHERE id=?",generation);
+        return view();
     }
     @EventListener(ApplicationReadyEvent.class) public void recover() {
         if(!enabled) return;
