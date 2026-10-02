@@ -18,7 +18,7 @@ const jobLabel = computed(() => {
   const state = job.value?.state
   if (state === 'ACTIVE') return pendingCandidate.value ? '新配置待重建' : '已生效'
   if (state === 'READY') return `已准备好，等待启用（${saved.value?.index.jobModel ?? '未知模型'}）`
-  const labels: Partial<Record<Rebuild['state'], string>> = { QUEUED: '等待开始', RUNNING: '索引准备中', FAILED: '重建失败' }
+  const labels: Partial<Record<Rebuild['state'], string>> = { QUEUED: '等待开始', RUNNING: '索引准备中', FAILED: '重建失败', DISCARDED: '已放弃，当前索引保持不变' }
   return (state && labels[state]) ?? ''
 })
 const candidateState = computed(() => !saved.value?.service.config ? '未配置' : saved.value.service.candidateProfile ? '已验证' : '已保存，待验证')

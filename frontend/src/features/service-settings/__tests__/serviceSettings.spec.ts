@@ -56,7 +56,8 @@ describe('service settings credential and index semantics', () => {
   it('a ready job names its model and can be abandoned without activating', async () => {
     vi.mocked(services.retrieval).mockResolvedValue({ ...retrieval, index: { ...retrieval.index, jobModel: 'ready-model', job: { id: 'ready-job', profile_id: 'ready-profile', state: 'READY', processed: 3, total: 3, error_code: null } } })
     const activate = vi.spyOn(services, 'activate')
-    const discard = vi.spyOn(services, 'discard').mockResolvedValue(retrieval)
+    // 后端放弃后仍返回最新任务行(DISCARDED),界面必须如实展示而不是留下空状态胶囊。
+    const discard = vi.spyOn(services, 'discard').mockResolvedValue({ ...retrieval, index: { ...retrieval.index, jobModel: 'ready-model', job: { id: 'ready-job', profile_id: 'ready-profile', state: 'DISCARDED', processed: 3, total: 3, error_code: null } } })
     const w = mount(RetrievalView); wrappers.push(w); await flushPromises()
     expect(w.text()).toContain('已准备好，等待启用（ready-model）')
     await button(w, '放弃该索引').trigger('click'); expect(discard).not.toHaveBeenCalled()
@@ -64,5 +65,6 @@ describe('service settings credential and index semantics', () => {
     await button(w, '放弃该索引').trigger('click')
     await button(w, '确认放弃').trigger('click'); await flushPromises()
     expect(discard).toHaveBeenCalledWith('ready-job'); expect(activate).not.toHaveBeenCalled()
+    expect(w.text()).toContain('已放弃，当前索引保持不变')
   })
 })
