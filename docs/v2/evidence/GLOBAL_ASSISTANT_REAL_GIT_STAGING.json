@@ -1,0 +1,11 @@
+{
+  "recordedAt" : "2026-10-01T19:41:02.737427Z",
+  "boundary" : "actual HTTPS JGit + host RPC + test database; model not exercised",
+  "url" : "https://github.com/obra/superpowers.git",
+  "discoveryCommit" : "8ca22dba9a94f28898bbce59f2537ff4d87c747d",
+  "skillPath" : "skills/brainstorming",
+  "stagingStatus" : "STAGED",
+  "installedOrEnabled" : false,
+  "elapsedMs" : 14611,
+  "productionEngineChanged" : false
+}

@@ -1,0 +1,1800 @@
+{
+  "version": "retrieval-acceptance-candidate.v1",
+  "datasetRole": "INDEPENDENT_ACCEPTANCE_CANDIDATE",
+  "authorship": "AI-authored candidate queries/labels; actual project expressions grounded in repository docs, not real user transcripts",
+  "humanReviewStatus": "PENDING",
+  "tuningUse": "NEVER_USED",
+  "executionStatus": "NOT_RUN",
+  "sources": [
+    {
+      "alias": "F00",
+      "kind": "NODE",
+      "text": "同一共享 Question 在项目内至多有一个不可变 Answer 身份；不同路线不能各自保存另一份已完成答案。 验收夹具标识 ACC-2100。",
+      "provenance": {
+        "repositoryPath": "docs/v2/GRAPH_MODEL_V2.md",
+        "kind": "AI paraphrase of actual project design; identifier is synthetic; not a user transcript",
+        "documentSha256": "04401e0dabc8b6eecc2d69958a1a1af91e0de9c39e8e72abfb7d839ffed7420d"
+      }
+    },
+    {
+      "alias": "F01",
+      "kind": "NODE",
+      "text": "模型只提出方案，Java Runtime 校验权限、事实和生命周期后决定是否持久化。 验收夹具标识 ACC-2101。",
+      "provenance": {
+        "repositoryPath": "docs/v2/AGENT_RUNTIME_ARCHITECTURE.md",
+        "kind": "AI paraphrase of actual project design; identifier is synthetic; not a user transcript",
+        "documentSha256": "0d2b85a1fb9b520fd08c8020dbd0e4607605e89dd99d9a6b4b9aa0542c403a39"
+      }
+    },
+    {
+      "alias": "F02",
+      "kind": "NODE",
+      "text": "不可变 Answer 不原地修改；重新回答创建新的规范 Question 身份，历史继续保留。 验收夹具标识 ACC-2102。",
+      "provenance": {
+        "repositoryPath": "docs/v2/GRAPH_MODEL_V2.md",
+        "kind": "AI paraphrase of actual project design; identifier is synthetic; not a user transcript",
+        "documentSha256": "04401e0dabc8b6eecc2d69958a1a1af91e0de9c39e8e72abfb7d839ffed7420d"
+      }
+    },
+    {
+      "alias": "F03",
+      "kind": "NODE",
+      "text": "路线分叉保留共享祖先节点身份，路线成员关系与语义关联分别维护。 验收夹具标识 ACC-2103。",
+      "provenance": {
+        "repositoryPath": "docs/v2/GRAPH_MODEL_V2.md",
+        "kind": "AI paraphrase of actual project design; identifier is synthetic; not a user transcript",
+        "documentSha256": "04401e0dabc8b6eecc2d69958a1a1af91e0de9c39e8e72abfb7d839ffed7420d"
+      }
+    },
+    {
+      "alias": "F04",
+      "kind": "NODE",
+      "text": "Focus 与 Active Route 分开；聚焦一个节点不等于切换当前业务路线。 验收夹具标识 ACC-2104。",
+      "provenance": {
+        "repositoryPath": "docs/v2/GRAPH_MODEL_V2.md",
+        "kind": "AI paraphrase of actual project design; identifier is synthetic; not a user transcript",
+        "documentSha256": "04401e0dabc8b6eecc2d69958a1a1af91e0de9c39e8e72abfb7d839ffed7420d"
+      }
+    },
+    {
+      "alias": "F05",
+      "kind": "NODE",
+      "text": "语义关系不充当探索 continuation 箭头；画布显示保持简洁。 验收夹具标识 ACC-2105。",
+      "provenance": {
+        "repositoryPath": "docs/v2/GRAPH_MODEL_V2.md",
+        "kind": "AI paraphrase of actual project design; identifier is synthetic; not a user transcript",
+        "documentSha256": "04401e0dabc8b6eecc2d69958a1a1af91e0de9c39e8e72abfb7d839ffed7420d"
+      }
+    },
+    {
+      "alias": "F06",
+      "kind": "NODE",
+      "text": "资源证据属于 EXTERNAL_EVIDENCE，不能仅因进入索引就变成已确认业务事实。 验收夹具标识 ACC-2106。",
+      "provenance": {
+        "repositoryPath": "docs/v2/UNIFIED_PYTHON_RAG_DESIGN.md",
+        "kind": "AI paraphrase of actual project design; identifier is synthetic; not a user transcript",
+        "documentSha256": "3df30b52035b5beaf109098d44748ebc9400a94d5e14a754a758e98d2584d86e"
+      }
+    },
+    {
+      "alias": "F07",
+      "kind": "NODE",
+      "text": "来源撤回及权限隔离在宿主候选查询和最终来源准入阶段生效，不等待向量重建。 验收夹具标识 ACC-2107。",
+      "provenance": {
+        "repositoryPath": "docs/v2/UNIFIED_PYTHON_RAG_DESIGN.md",
+        "kind": "AI paraphrase of actual project design; identifier is synthetic; not a user transcript",
+        "documentSha256": "3df30b52035b5beaf109098d44748ebc9400a94d5e14a754a758e98d2584d86e"
+      }
+    },
+    {
+      "alias": "F08",
+      "kind": "NODE",
+      "text": "全局助手工具目录从 Java 注册表冻结；模型自报新工具或权限不能扩权。 验收夹具标识 ACC-2108。",
+      "provenance": {
+        "repositoryPath": "docs/v2/GLOBAL_ASSISTANT_LANGCHAIN_REDESIGN.md",
+        "kind": "AI paraphrase of actual project design; identifier is synthetic; not a user transcript",
+        "documentSha256": "29fc3527a0e286907501d52fa713024c989f0ab7c65209a08cdaaa82835ebb74"
+      }
+    },
+    {
+      "alias": "F09",
+      "kind": "NODE",
+      "text": "项目必需上下文由 Runtime 保证；补充检索失败不能丢失当前路线的规范事实。 验收夹具标识 ACC-2109。",
+      "provenance": {
+        "repositoryPath": "docs/v2/PYTHON_AGENT_RUNTIME_BOUNDARY.md",
+        "kind": "AI paraphrase of actual project design; identifier is synthetic; not a user transcript",
+        "documentSha256": "13f2ca360b3541d2eeaebeefce1687afe4126408090cc754d5095c6cd3549cc7"
+      }
+    },
+    {
+      "alias": "F10",
+      "kind": "NODE",
+      "text": "未知结果 UNKNOWN 的工具不自动重放或通过换 callId 重试副作用。 验收夹具标识 ACC-2110。",
+      "provenance": {
+        "repositoryPath": "docs/v2/GLOBAL_ASSISTANT_LANGCHAIN_RELEASE_RUNBOOK.md",
+        "kind": "AI paraphrase of actual project design; identifier is synthetic; not a user transcript",
+        "documentSha256": "0ae37c8b2f309ade876e09e5e612b081419d28051a5b279e0380e22cdb3ce3ee"
+      }
+    },
+    {
+      "alias": "F11",
+      "kind": "NODE",
+      "text": "Skill 暂存不自动安装或启用，安装及启用继续使用已有设置页策略。 验收夹具标识 ACC-2111。",
+      "provenance": {
+        "repositoryPath": "docs/v2/GLOBAL_ASSISTANT_LANGCHAIN_RELEASE_RUNBOOK.md",
+        "kind": "AI paraphrase of actual project design; identifier is synthetic; not a user transcript",
+        "documentSha256": "0ae37c8b2f309ade876e09e5e612b081419d28051a5b279e0380e22cdb3ce3ee"
+      }
+    },
+    {
+      "alias": "F12",
+      "kind": "NODE",
+      "text": "历史工具活动可刷新恢复，但不会再次执行当时的页面导航。 验收夹具标识 ACC-2112。",
+      "provenance": {
+        "repositoryPath": "docs/v2/GLOBAL_ASSISTANT_TUTORIAL_REVIEW.md",
+        "kind": "AI paraphrase of actual project design; identifier is synthetic; not a user transcript",
+        "documentSha256": "f2d24628f5bc7edf05c77837fe863b27a5bc0dd181e65789e198b31d9f47b162"
+      }
+    },
+    {
+      "alias": "F13",
+      "kind": "NODE",
+      "text": "公开正文流不含工具参数、供应商协议或模型内部 reasoning。 验收夹具标识 ACC-2113。",
+      "provenance": {
+        "repositoryPath": "docs/v2/GLOBAL_ASSISTANT_LANGCHAIN_REDESIGN.md",
+        "kind": "AI paraphrase of actual project design; identifier is synthetic; not a user transcript",
+        "documentSha256": "29fc3527a0e286907501d52fa713024c989f0ab7c65209a08cdaaa82835ebb74"
+      }
+    },
+    {
+      "alias": "F14",
+      "kind": "NODE",
+      "text": "项目首次补充检索结果或失败状态随输入冻结，历史回放不重新搜索。 验收夹具标识 ACC-2114。",
+      "provenance": {
+        "repositoryPath": "docs/v2/PYTHON_AGENT_RUNTIME_BOUNDARY.md",
+        "kind": "AI paraphrase of actual project design; identifier is synthetic; not a user transcript",
+        "documentSha256": "13f2ca360b3541d2eeaebeefce1687afe4126408090cc754d5095c6cd3549cc7"
+      }
+    },
+    {
+      "alias": "F15",
+      "kind": "NODE",
+      "text": "正在执行的 run 在重启后按阶段一中断终止；新请求可读取最后完成的 checkpoint 边界。 验收夹具标识 ACC-2115。",
+      "provenance": {
+        "repositoryPath": "docs/v2/GLOBAL_ASSISTANT_LANGCHAIN_RELEASE_RUNBOOK.md",
+        "kind": "AI paraphrase of actual project design; identifier is synthetic; not a user transcript",
+        "documentSha256": "0ae37c8b2f309ade876e09e5e612b081419d28051a5b279e0380e22cdb3ce3ee"
+      }
+    },
+    {
+      "alias": "R00",
+      "kind": "RESOURCE",
+      "text": "# 来源位置说明 😀\r\n\r\n资源分块保留原始 UTF-16 起止位置、标题、来源版本和内容哈希。文档编号 POS-601。\r\n",
+      "provenance": {
+        "repositoryPath": "docs/v2/UNIFIED_PYTHON_RAG_DESIGN.md",
+        "kind": "AI-authored resource memo grounded in repository design; not a production upload",
+        "documentSha256": "3df30b52035b5beaf109098d44748ebc9400a94d5e14a754a758e98d2584d86e"
+      }
+    },
+    {
+      "alias": "R01",
+      "kind": "RESOURCE",
+      "text": "# 运行部署备忘\n\nPython 通过受认证宿主 RPC 使用 Java pgvector；Python 不直接连接生产数据库。文档编号 DEP-602。\n",
+      "provenance": {
+        "repositoryPath": "docs/v2/PYTHON_AGENT_RUNTIME_BOUNDARY.md",
+        "kind": "AI-authored resource memo grounded in repository design; not a production upload",
+        "documentSha256": "13f2ca360b3541d2eeaebeefce1687afe4126408090cc754d5095c6cd3549cc7"
+      }
+    },
+    {
+      "alias": "R02",
+      "kind": "RESOURCE",
+      "text": "# 索引代际备忘\n\n新 generation 完整准备后以 head CAS 激活；旧 grant 不能跨 generation 使用。文档编号 GEN-603。\n",
+      "provenance": {
+        "repositoryPath": "docs/v2/UNIFIED_PYTHON_RAG_DESIGN.md",
+        "kind": "AI-authored resource memo grounded in repository design; not a production upload",
+        "documentSha256": "3df30b52035b5beaf109098d44748ebc9400a94d5e14a754a758e98d2584d86e"
+      }
+    },
+    {
+      "alias": "R03",
+      "kind": "RESOURCE",
+      "text": "# 本地向量备忘\n\n首期本地 embedding 使用 qwen3-embedding:0.6b，固定1024维；4B仅为后续评估候选。文档编号 EMB-604。\n",
+      "provenance": {
+        "repositoryPath": "docs/v2/UNIFIED_PYTHON_RAG_DESIGN.md",
+        "kind": "AI-authored resource memo grounded in repository design; not a production upload",
+        "documentSha256": "3df30b52035b5beaf109098d44748ebc9400a94d5e14a754a758e98d2584d86e"
+      }
+    },
+    {
+      "alias": "S00",
+      "kind": "STALE_NODE",
+      "text": "过期试运行记录 OBS-OLD-0：当时计划自动接管正在运行的工具。此夹具索引后撤回规范来源。"
+    },
+    {
+      "alias": "P00",
+      "kind": "PRIVATE_NODE",
+      "text": "其他项目内部方案 AUDIT-RESTRICT-0：仅另一个项目授权可见。"
+    },
+    {
+      "alias": "S01",
+      "kind": "STALE_NODE",
+      "text": "过期试运行记录 OBS-OLD-1：当时计划自动接管正在运行的工具。此夹具索引后撤回规范来源。"
+    },
+    {
+      "alias": "P01",
+      "kind": "PRIVATE_NODE",
+      "text": "其他项目内部方案 AUDIT-RESTRICT-1：仅另一个项目授权可见。"
+    },
+    {
+      "alias": "S02",
+      "kind": "STALE_NODE",
+      "text": "过期试运行记录 OBS-OLD-2：当时计划自动接管正在运行的工具。此夹具索引后撤回规范来源。"
+    },
+    {
+      "alias": "P02",
+      "kind": "PRIVATE_NODE",
+      "text": "其他项目内部方案 AUDIT-RESTRICT-2：仅另一个项目授权可见。"
+    },
+    {
+      "alias": "S03",
+      "kind": "STALE_NODE",
+      "text": "过期试运行记录 OBS-OLD-3：当时计划自动接管正在运行的工具。此夹具索引后撤回规范来源。"
+    },
+    {
+      "alias": "P03",
+      "kind": "PRIVATE_NODE",
+      "text": "其他项目内部方案 AUDIT-RESTRICT-3：仅另一个项目授权可见。"
+    }
+  ],
+  "queries": [
+    {
+      "id": "A001",
+      "category": "PROJECT_EXPRESSION",
+      "query": "这个问题被两个分支共用，回答以后是不是只认同一个 Answer？",
+      "scopes": [
+        "PROJECT"
+      ],
+      "expectedAliases": [
+        "F00"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "表达来自真实项目语义，查询由 AI 编写；人工核对原文及边界。"
+    },
+    {
+      "id": "A002",
+      "category": "PROJECT_EXPRESSION",
+      "query": "模型刚提的变更是谁最后检查并落库？",
+      "scopes": [
+        "PROJECT"
+      ],
+      "expectedAliases": [
+        "F01"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "表达来自真实项目语义，查询由 AI 编写；人工核对原文及边界。"
+    },
+    {
+      "id": "A003",
+      "category": "PROJECT_EXPRESSION",
+      "query": "刚确认的答案要重答，是不是得另建问题而不是覆盖旧记录？",
+      "scopes": [
+        "PROJECT"
+      ],
+      "expectedAliases": [
+        "F02"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "表达来自真实项目语义，查询由 AI 编写；人工核对原文及边界。"
+    },
+    {
+      "id": "A004",
+      "category": "PROJECT_EXPRESSION",
+      "query": "分叉后祖先节点的身份和语义关系怎么保留？",
+      "scopes": [
+        "PROJECT"
+      ],
+      "expectedAliases": [
+        "F03"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "表达来自真实项目语义，查询由 AI 编写；人工核对原文及边界。"
+    },
+    {
+      "id": "A005",
+      "category": "PROJECT_EXPRESSION",
+      "query": "我点了一下节点让它聚焦，活动路线会一起切过去吗？",
+      "scopes": [
+        "PROJECT"
+      ],
+      "expectedAliases": [
+        "F04"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "表达来自真实项目语义，查询由 AI 编写；人工核对原文及边界。"
+    },
+    {
+      "id": "A006",
+      "category": "PROJECT_EXPRESSION",
+      "query": "画布上看不到所有语义边，是设计上把它们和探索箭头分开了吗？",
+      "scopes": [
+        "PROJECT"
+      ],
+      "expectedAliases": [
+        "F05"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "表达来自真实项目语义，查询由 AI 编写；人工核对原文及边界。"
+    },
+    {
+      "id": "A007",
+      "category": "PROJECT_EXPRESSION",
+      "query": "上传的参考材料被检索到后，能直接当已确认需求吗？",
+      "scopes": [
+        "PROJECT"
+      ],
+      "expectedAliases": [
+        "F06"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "表达来自真实项目语义，查询由 AI 编写；人工核对原文及边界。"
+    },
+    {
+      "id": "A008",
+      "category": "PROJECT_EXPRESSION",
+      "query": "资源撤回以后是不是必须等重建向量才不会被搜到？",
+      "scopes": [
+        "PROJECT"
+      ],
+      "expectedAliases": [
+        "F07"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "表达来自真实项目语义，查询由 AI 编写；人工核对原文及边界。"
+    },
+    {
+      "id": "A009",
+      "category": "PROJECT_EXPRESSION",
+      "query": "模型临时说它还有一个新工具，宿主会就这样放行吗？",
+      "scopes": [
+        "PROJECT"
+      ],
+      "expectedAliases": [
+        "F08"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "表达来自真实项目语义，查询由 AI 编写；人工核对原文及边界。"
+    },
+    {
+      "id": "A010",
+      "category": "PROJECT_EXPRESSION",
+      "query": "本地检索服务断了，项目 Agent 本轮必需的路线事实还在吗？",
+      "scopes": [
+        "PROJECT"
+      ],
+      "expectedAliases": [
+        "F09"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "表达来自真实项目语义，查询由 AI 编写；人工核对原文及边界。"
+    },
+    {
+      "id": "A011",
+      "category": "PROJECT_EXPRESSION",
+      "query": "写操作结果没有确认，恢复进程会不会再执行一次？",
+      "scopes": [
+        "PROJECT"
+      ],
+      "expectedAliases": [
+        "F10"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "表达来自真实项目语义，查询由 AI 编写；人工核对原文及边界。"
+    },
+    {
+      "id": "A012",
+      "category": "PROJECT_EXPRESSION",
+      "query": "仓库里的 Skill 暂存好了之后就已经装上并启用了吗？",
+      "scopes": [
+        "PROJECT"
+      ],
+      "expectedAliases": [
+        "F11"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "表达来自真实项目语义，查询由 AI 编写；人工核对原文及边界。"
+    },
+    {
+      "id": "A013",
+      "category": "PROJECT_EXPRESSION",
+      "query": "刷新历史聊天会再次跳到当时工具打开的页面吗？",
+      "scopes": [
+        "PROJECT"
+      ],
+      "expectedAliases": [
+        "F12"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "表达来自真实项目语义，查询由 AI 编写；人工核对原文及边界。"
+    },
+    {
+      "id": "A014",
+      "category": "PROJECT_EXPRESSION",
+      "query": "工具参数正在一点点到达时，聊天正文会显示这些内部 JSON 吗？",
+      "scopes": [
+        "PROJECT"
+      ],
+      "expectedAliases": [
+        "F13"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "表达来自真实项目语义，查询由 AI 编写；人工核对原文及边界。"
+    },
+    {
+      "id": "A015",
+      "category": "PROJECT_EXPRESSION",
+      "query": "同一项目输入重放时，是沿用当初检索结果还是再查一遍？",
+      "scopes": [
+        "PROJECT"
+      ],
+      "expectedAliases": [
+        "F14"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "表达来自真实项目语义，查询由 AI 编写；人工核对原文及边界。"
+    },
+    {
+      "id": "A016",
+      "category": "PROJECT_EXPRESSION",
+      "query": "重启后是续跑刚才那个工具，还是只让新请求读取完成边界？",
+      "scopes": [
+        "PROJECT"
+      ],
+      "expectedAliases": [
+        "F15"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "表达来自真实项目语义，查询由 AI 编写；人工核对原文及边界。"
+    },
+    {
+      "id": "A017",
+      "category": "EXACT_IDENTIFIER",
+      "query": "ACC-2100",
+      "scopes": [
+        "PROJECT"
+      ],
+      "expectedAliases": [
+        "F00"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": ""
+    },
+    {
+      "id": "A018",
+      "category": "EXACT_IDENTIFIER",
+      "query": "ACC-2101",
+      "scopes": [
+        "PROJECT"
+      ],
+      "expectedAliases": [
+        "F01"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": ""
+    },
+    {
+      "id": "A019",
+      "category": "EXACT_IDENTIFIER",
+      "query": "ACC-2102",
+      "scopes": [
+        "PROJECT"
+      ],
+      "expectedAliases": [
+        "F02"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": ""
+    },
+    {
+      "id": "A020",
+      "category": "EXACT_IDENTIFIER",
+      "query": "ACC-2103",
+      "scopes": [
+        "PROJECT"
+      ],
+      "expectedAliases": [
+        "F03"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": ""
+    },
+    {
+      "id": "A021",
+      "category": "EXACT_IDENTIFIER",
+      "query": "ACC-2104",
+      "scopes": [
+        "PROJECT"
+      ],
+      "expectedAliases": [
+        "F04"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": ""
+    },
+    {
+      "id": "A022",
+      "category": "EXACT_IDENTIFIER",
+      "query": "ACC-2105",
+      "scopes": [
+        "PROJECT"
+      ],
+      "expectedAliases": [
+        "F05"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": ""
+    },
+    {
+      "id": "A023",
+      "category": "EXACT_IDENTIFIER",
+      "query": "ACC-2106",
+      "scopes": [
+        "PROJECT"
+      ],
+      "expectedAliases": [
+        "F06"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": ""
+    },
+    {
+      "id": "A024",
+      "category": "EXACT_IDENTIFIER",
+      "query": "ACC-2107",
+      "scopes": [
+        "PROJECT"
+      ],
+      "expectedAliases": [
+        "F07"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": ""
+    },
+    {
+      "id": "A025",
+      "category": "EXACT_IDENTIFIER",
+      "query": "ACC-2108",
+      "scopes": [
+        "PROJECT"
+      ],
+      "expectedAliases": [
+        "F08"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": ""
+    },
+    {
+      "id": "A026",
+      "category": "EXACT_IDENTIFIER",
+      "query": "ACC-2109",
+      "scopes": [
+        "PROJECT"
+      ],
+      "expectedAliases": [
+        "F09"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": ""
+    },
+    {
+      "id": "A027",
+      "category": "EXACT_IDENTIFIER",
+      "query": "ACC-2110",
+      "scopes": [
+        "PROJECT"
+      ],
+      "expectedAliases": [
+        "F10"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": ""
+    },
+    {
+      "id": "A028",
+      "category": "EXACT_IDENTIFIER",
+      "query": "ACC-2111",
+      "scopes": [
+        "PROJECT"
+      ],
+      "expectedAliases": [
+        "F11"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": ""
+    },
+    {
+      "id": "A029",
+      "category": "EXACT_IDENTIFIER",
+      "query": "ACC-2112",
+      "scopes": [
+        "PROJECT"
+      ],
+      "expectedAliases": [
+        "F12"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": ""
+    },
+    {
+      "id": "A030",
+      "category": "EXACT_IDENTIFIER",
+      "query": "ACC-2113",
+      "scopes": [
+        "PROJECT"
+      ],
+      "expectedAliases": [
+        "F13"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": ""
+    },
+    {
+      "id": "A031",
+      "category": "EXACT_IDENTIFIER",
+      "query": "ACC-2114",
+      "scopes": [
+        "PROJECT"
+      ],
+      "expectedAliases": [
+        "F14"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": ""
+    },
+    {
+      "id": "A032",
+      "category": "EXACT_IDENTIFIER",
+      "query": "ACC-2115",
+      "scopes": [
+        "PROJECT"
+      ],
+      "expectedAliases": [
+        "F15"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": ""
+    },
+    {
+      "id": "A033",
+      "category": "RESOURCE_CONTENT",
+      "query": "POS-601",
+      "scopes": [
+        "RESOURCE"
+      ],
+      "expectedAliases": [
+        "R00"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": ""
+    },
+    {
+      "id": "A034",
+      "category": "RESOURCE_CONTENT",
+      "query": "资源里的表情和换行会影响引用位置的计算口径吗？",
+      "scopes": [
+        "RESOURCE"
+      ],
+      "expectedAliases": [
+        "R00"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "需引用原文；并不要求语言生成质量评估。"
+    },
+    {
+      "id": "A035",
+      "category": "RESOURCE_CONTENT",
+      "query": "DEP-602",
+      "scopes": [
+        "RESOURCE"
+      ],
+      "expectedAliases": [
+        "R01"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": ""
+    },
+    {
+      "id": "A036",
+      "category": "RESOURCE_CONTENT",
+      "query": "部署说明里 Python 到数据库的连接是谁管的？",
+      "scopes": [
+        "RESOURCE"
+      ],
+      "expectedAliases": [
+        "R01"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "需引用原文；并不要求语言生成质量评估。"
+    },
+    {
+      "id": "A037",
+      "category": "RESOURCE_CONTENT",
+      "query": "GEN-603",
+      "scopes": [
+        "RESOURCE"
+      ],
+      "expectedAliases": [
+        "R02"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": ""
+    },
+    {
+      "id": "A038",
+      "category": "RESOURCE_CONTENT",
+      "query": "新索引代际激活以后，旧的检索授权还能沿用吗？",
+      "scopes": [
+        "RESOURCE"
+      ],
+      "expectedAliases": [
+        "R02"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "需引用原文；并不要求语言生成质量评估。"
+    },
+    {
+      "id": "A039",
+      "category": "RESOURCE_CONTENT",
+      "query": "EMB-604",
+      "scopes": [
+        "RESOURCE"
+      ],
+      "expectedAliases": [
+        "R03"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": ""
+    },
+    {
+      "id": "A040",
+      "category": "RESOURCE_CONTENT",
+      "query": "这次首期本地 embedding 是什么模型和维度？",
+      "scopes": [
+        "RESOURCE"
+      ],
+      "expectedAliases": [
+        "R03"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "需引用原文；并不要求语言生成质量评估。"
+    },
+    {
+      "id": "A041",
+      "category": "MULTI_SOURCE",
+      "query": "共享问题只有一份答案和重答创建新问题这两条规则分别是什么？",
+      "scopes": [
+        "PROJECT",
+        "RESOURCE"
+      ],
+      "expectedAliases": [
+        "F00",
+        "F02"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "all-of：需要覆盖每个 Alias；不能只凭一个命中算完整覆盖。"
+    },
+    {
+      "id": "A042",
+      "category": "MULTI_SOURCE",
+      "query": "Focus 不切换路线以及语义边不作为探索箭头，各是哪条规则？",
+      "scopes": [
+        "PROJECT",
+        "RESOURCE"
+      ],
+      "expectedAliases": [
+        "F04",
+        "F05"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "all-of：需要覆盖每个 Alias；不能只凭一个命中算完整覆盖。"
+    },
+    {
+      "id": "A043",
+      "category": "MULTI_SOURCE",
+      "query": "检索故障不丢必需事实和历史输入不重检索，这两条怎么分别保证？",
+      "scopes": [
+        "PROJECT",
+        "RESOURCE"
+      ],
+      "expectedAliases": [
+        "F09",
+        "F14"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "all-of：需要覆盖每个 Alias；不能只凭一个命中算完整覆盖。"
+    },
+    {
+      "id": "A044",
+      "category": "MULTI_SOURCE",
+      "query": "重启中断旧 run 和 UNKNOWN 写不重放分别有哪些边界？",
+      "scopes": [
+        "PROJECT",
+        "RESOURCE"
+      ],
+      "expectedAliases": [
+        "F15",
+        "F10"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "all-of：需要覆盖每个 Alias；不能只凭一个命中算完整覆盖。"
+    },
+    {
+      "id": "A045",
+      "category": "MULTI_SOURCE",
+      "query": "来源引用位置怎样保留，撤回后又在哪两个准入阶段生效？",
+      "scopes": [
+        "PROJECT",
+        "RESOURCE"
+      ],
+      "expectedAliases": [
+        "R00",
+        "F07"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "all-of：需要覆盖每个 Alias；不能只凭一个命中算完整覆盖。"
+    },
+    {
+      "id": "A046",
+      "category": "MULTI_SOURCE",
+      "query": "Python 到宿主存储的连接方式，以及新索引代际激活的条件分别是什么？",
+      "scopes": [
+        "PROJECT",
+        "RESOURCE"
+      ],
+      "expectedAliases": [
+        "R01",
+        "R02"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "all-of：需要覆盖每个 Alias；不能只凭一个命中算完整覆盖。"
+    },
+    {
+      "id": "A047",
+      "category": "MULTI_SOURCE",
+      "query": "Skill 暂存不启用和模型不能临时扩权分别由哪些规则限制？",
+      "scopes": [
+        "PROJECT",
+        "RESOURCE"
+      ],
+      "expectedAliases": [
+        "F11",
+        "F08"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "all-of：需要覆盖每个 Alias；不能只凭一个命中算完整覆盖。"
+    },
+    {
+      "id": "A048",
+      "category": "MULTI_SOURCE",
+      "query": "正文不显示协议参数与历史刷新不重放导航分别是什么规则？",
+      "scopes": [
+        "PROJECT",
+        "RESOURCE"
+      ],
+      "expectedAliases": [
+        "F13",
+        "F12"
+      ],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "all-of：需要覆盖每个 Alias；不能只凭一个命中算完整覆盖。"
+    },
+    {
+      "id": "A049",
+      "category": "NEAR_NO_ANSWER",
+      "query": "已完成的 Answer 历史保留多少年？",
+      "scopes": [
+        "PROJECT",
+        "RESOURCE"
+      ],
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "与已有主题接近，但所问数量/期限/策略没有来源支持；主题相关片段不等于答案。"
+    },
+    {
+      "id": "A050",
+      "category": "NEAR_NO_ANSWER",
+      "query": "Focus 切换操作最多允许每秒点几次？",
+      "scopes": [
+        "PROJECT",
+        "RESOURCE"
+      ],
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "与已有主题接近，但所问数量/期限/策略没有来源支持；主题相关片段不等于答案。"
+    },
+    {
+      "id": "A051",
+      "category": "NEAR_NO_ANSWER",
+      "query": "参考资源可以上传多少个文件？",
+      "scopes": [
+        "PROJECT",
+        "RESOURCE"
+      ],
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "与已有主题接近，但所问数量/期限/策略没有来源支持；主题相关片段不等于答案。"
+    },
+    {
+      "id": "A052",
+      "category": "NEAR_NO_ANSWER",
+      "query": "来源撤回后自动恢复的等待时间是多少？",
+      "scopes": [
+        "PROJECT",
+        "RESOURCE"
+      ],
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "与已有主题接近，但所问数量/期限/策略没有来源支持；主题相关片段不等于答案。"
+    },
+    {
+      "id": "A053",
+      "category": "NEAR_NO_ANSWER",
+      "query": "UNKNOWN 操作需要多少位审批人签名才能重试？",
+      "scopes": [
+        "PROJECT",
+        "RESOURCE"
+      ],
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "与已有主题接近，但所问数量/期限/策略没有来源支持；主题相关片段不等于答案。"
+    },
+    {
+      "id": "A054",
+      "category": "NEAR_NO_ANSWER",
+      "query": "索引 generation 允许同时保留多少代？",
+      "scopes": [
+        "PROJECT",
+        "RESOURCE"
+      ],
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "与已有主题接近，但所问数量/期限/策略没有来源支持；主题相关片段不等于答案。"
+    },
+    {
+      "id": "A055",
+      "category": "NEAR_NO_ANSWER",
+      "query": "本地 embedding 每分钟有多少免费调用配额？",
+      "scopes": [
+        "PROJECT",
+        "RESOURCE"
+      ],
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "与已有主题接近，但所问数量/期限/策略没有来源支持；主题相关片段不等于答案。"
+    },
+    {
+      "id": "A056",
+      "category": "NEAR_NO_ANSWER",
+      "query": "Skill 安装成功后默认开放哪些网络域名？",
+      "scopes": [
+        "PROJECT",
+        "RESOURCE"
+      ],
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "与已有主题接近，但所问数量/期限/策略没有来源支持；主题相关片段不等于答案。"
+    },
+    {
+      "id": "A057",
+      "category": "STALE_VERSION",
+      "query": "OBS-OLD-0",
+      "scopes": [
+        "PROJECT"
+      ],
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "索引完成后撤回规范源；派生条目故意保留。"
+    },
+    {
+      "id": "A058",
+      "category": "STALE_VERSION",
+      "query": "OBS-OLD-1",
+      "scopes": [
+        "PROJECT"
+      ],
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "索引完成后撤回规范源；派生条目故意保留。"
+    },
+    {
+      "id": "A059",
+      "category": "STALE_VERSION",
+      "query": "OBS-OLD-2",
+      "scopes": [
+        "PROJECT"
+      ],
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "索引完成后撤回规范源；派生条目故意保留。"
+    },
+    {
+      "id": "A060",
+      "category": "STALE_VERSION",
+      "query": "OBS-OLD-3",
+      "scopes": [
+        "PROJECT"
+      ],
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "索引完成后撤回规范源；派生条目故意保留。"
+    },
+    {
+      "id": "A061",
+      "category": "PERMISSION_ISOLATION",
+      "query": "AUDIT-RESTRICT-0",
+      "scopes": [
+        "PROJECT"
+      ],
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "不同项目；未给本项目 grant，禁止泄漏。"
+    },
+    {
+      "id": "A062",
+      "category": "PERMISSION_ISOLATION",
+      "query": "AUDIT-RESTRICT-1",
+      "scopes": [
+        "PROJECT"
+      ],
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "不同项目；未给本项目 grant，禁止泄漏。"
+    },
+    {
+      "id": "A063",
+      "category": "PERMISSION_ISOLATION",
+      "query": "AUDIT-RESTRICT-2",
+      "scopes": [
+        "PROJECT"
+      ],
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "不同项目；未给本项目 grant，禁止泄漏。"
+    },
+    {
+      "id": "A064",
+      "category": "PERMISSION_ISOLATION",
+      "query": "AUDIT-RESTRICT-3",
+      "scopes": [
+        "PROJECT"
+      ],
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "不同项目；未给本项目 grant，禁止泄漏。"
+    },
+    {
+      "id": "A065",
+      "category": "NO_ANSWER",
+      "query": "下一季度客户接入方案的负责人是谁？",
+      "scopes": [
+        "PROJECT"
+      ],
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "看似真实业务请求，但候选语料没有相应事实。"
+    },
+    {
+      "id": "A066",
+      "category": "NO_ANSWER",
+      "query": "订单退款接口的具体状态码是什么？",
+      "scopes": [
+        "PROJECT"
+      ],
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "看似真实业务请求，但候选语料没有相应事实。"
+    },
+    {
+      "id": "A067",
+      "category": "NO_ANSWER",
+      "query": "移动端离线同步冲突最终由哪位运营审批？",
+      "scopes": [
+        "PROJECT"
+      ],
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "看似真实业务请求，但候选语料没有相应事实。"
+    },
+    {
+      "id": "A068",
+      "category": "NO_ANSWER",
+      "query": "该项目采购合同的准确续费金额是多少？",
+      "scopes": [
+        "PROJECT"
+      ],
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "S00",
+        "S01",
+        "S02",
+        "S03"
+      ],
+      "labelReview": "PENDING_HUMAN_REVIEW",
+      "reviewNotes": "看似真实业务请求，但候选语料没有相应事实。"
+    }
+  ]
+}

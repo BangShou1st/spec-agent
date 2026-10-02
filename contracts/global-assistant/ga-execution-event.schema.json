@@ -1,0 +1,164 @@
+{
+  "$defs": {
+    "DraftPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "callId": {
+          "format": "uuid",
+          "title": "Callid",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 131072,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "callId",
+        "text"
+      ],
+      "title": "DraftPayload",
+      "type": "object"
+    },
+    "FailurePayload": {
+      "additionalProperties": false,
+      "properties": {
+        "errorCode": {
+          "enum": [
+            "GA_EXECUTION_FAILED",
+            "GA_EXECUTION_PROTOCOL_ERROR",
+            "GA_REPEATED_TOOL_CALL"
+          ],
+          "title": "Errorcode",
+          "type": "string"
+        }
+      },
+      "required": [
+        "errorCode"
+      ],
+      "title": "FailurePayload",
+      "type": "object"
+    },
+    "ResetPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "callId": {
+          "format": "uuid",
+          "title": "Callid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "callId"
+      ],
+      "title": "ResetPayload",
+      "type": "object"
+    },
+    "StatusPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "stage": {
+          "const": "EXECUTING",
+          "title": "Stage",
+          "type": "string"
+        }
+      },
+      "required": [
+        "stage"
+      ],
+      "title": "StatusPayload",
+      "type": "object"
+    },
+    "TextPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "text": {
+          "maxLength": 131072,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "TextPayload",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "protocolVersion": {
+      "const": "ga-execution-event.v1",
+      "title": "Protocolversion",
+      "type": "string"
+    },
+    "runId": {
+      "format": "uuid",
+      "title": "Runid",
+      "type": "string"
+    },
+    "executionEpoch": {
+      "maximum": 9223372036854775807,
+      "minimum": 1,
+      "title": "Executionepoch",
+      "type": "integer"
+    },
+    "eventId": {
+      "format": "uuid",
+      "title": "Eventid",
+      "type": "string"
+    },
+    "sequence": {
+      "maximum": 8192,
+      "minimum": 1,
+      "title": "Sequence",
+      "type": "integer"
+    },
+    "type": {
+      "enum": [
+        "STATUS",
+        "TEXT_DELTA",
+        "TEXT_RESET",
+        "COMPLETED",
+        "USER_INPUT_REQUIRED",
+        "FAILED"
+      ],
+      "title": "Type",
+      "type": "string"
+    },
+    "payload": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/StatusPayload"
+        },
+        {
+          "$ref": "#/$defs/TextPayload"
+        },
+        {
+          "$ref": "#/$defs/FailurePayload"
+        },
+        {
+          "$ref": "#/$defs/DraftPayload"
+        },
+        {
+          "$ref": "#/$defs/ResetPayload"
+        }
+      ],
+      "title": "Payload"
+    }
+  },
+  "required": [
+    "protocolVersion",
+    "runId",
+    "executionEpoch",
+    "eventId",
+    "sequence",
+    "type",
+    "payload"
+  ],
+  "title": "ExecutionEvent",
+  "type": "object"
+}

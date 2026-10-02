@@ -1,0 +1,14 @@
+{
+  "profileId": "26810df4b6b4e7d0d2977bcc57175fcf7e944ebe99f447b5c4e690cb08b8c047",
+  "provider": "OLLAMA_LOCAL",
+  "modelTag": "qwen3-embedding:4b",
+  "modelDigest": "ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d",
+  "dimensions": 1024,
+  "queryStrategy": "qwen-instruct.v1",
+  "queryInstruction": "Retrieve relevant Spec Agent product documentation and requirement workspace passages for the query.",
+  "documentStrategy": "raw-text.v1",
+  "normalization": "l2",
+  "truncate": false,
+  "splitterVersion": "host-source-granularity.v1",
+  "indexSchemaVersion": "retrieval-index.v2"
+}

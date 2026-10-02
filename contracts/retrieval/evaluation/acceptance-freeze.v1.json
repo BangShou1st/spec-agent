@@ -1,0 +1,48 @@
+{
+  "version": "retrieval-evaluation-freeze.v1",
+  "datasetFile": "acceptance-candidate.v1.json",
+  "datasetSha256": "ae43db38dc1b99ae1a6feeca30fa8f11b16cea4e9ef180981f431c5258a8c5e8",
+  "datasetRole": "INDEPENDENT_ACCEPTANCE_CANDIDATE",
+  "humanReviewStatus": "PENDING",
+  "firstRunRequiresHumanReview": true,
+  "modelTag": "qwen3-embedding:0.6b",
+  "profileId": "26810df4b6b4e7d0d2977bcc57175fcf7e944ebe99f447b5c4e690cb08b8c047",
+  "maxVectorDistance": 0.5,
+  "rrfK": 60,
+  "maxItems": 8,
+  "maxChars": 8000,
+  "queryScopes": "explicit per-query scopes",
+  "metrics": [
+    "macro source Recall@8",
+    "first-relevant MRR",
+    "multi-source all-of coverage",
+    "no-answer zero-hit correctness by category",
+    "stale leaks",
+    "permission leaks",
+    "P50/P95"
+  ],
+  "thresholdStatus": "NOT_APPROVED; humans must set acceptance thresholds before first run; no post-result tuning",
+  "tiePolicy": "current engine order retained; disclose UUID/order tie sensitivity",
+  "codeHashes": {
+    "agent-brain/src/spec_agent_brain/retrieval/embedding.py": "7f72c0706779f7512d4ebce260b6e7f0e11f499b132c618757b12e96130ac69d",
+    "agent-brain/src/spec_agent_brain/retrieval/service.py": "7747a0ca55b02b9ff5fe37ee029e582673127bd5b14f5f44145c3b532ec0b1e9",
+    "agent-brain/src/spec_agent_brain/retrieval/chunks.py": "e6f4af9e25c6228122795ba9dedfab24a721c28c211ac6845b32bfa77bad6414",
+    "agent-brain/src/spec_agent_brain/retrieval/contracts.py": "d0e66cc9299c2596edd1cfec277637768c36922b893b7d25a40fbecafb8d10a2",
+    "backend/src/main/java/com/specagent/retrieval/protocol/RetrievalStore.java": "d9841bfae9d748c266002cad301200debd69132156104bb2d8d328f0bad31f24",
+    "backend/src/main/java/com/specagent/retrieval/protocol/RetrievalSourceVerifier.java": "3a799a671f413c689ce226f4c7a6464ebacf48be94ad12a0c929c36985f6bde2",
+    "backend/src/test/java/com/specagent/retrieval/SharedRetrievalIntegrationTest.java": "13b4c4094dca90ee59bbf93560c103ecb22c297d954b52e0813fa29ae952c810"
+  },
+  "governance": "Freeze is pre-review snapshot. Human label corrections create reviewed dataset revision and new dataset hash before first execution; engine/config changes retire this candidate from held-out acceptance.",
+  "supersedesPreReviewSnapshotSha256": "2570fa4d995f9e1b441c3624554e74bd775773270b5c65af3005f3ea1a1b7248",
+  "preReviewSnapshotRevisionReason": "Source-document fingerprints refreshed after release documentation; no query, source text, labels, retrieval configuration or results changed. No candidate execution.",
+  "requirementsLockSha256": "eb1bb4f240aeabb94e3a7fdee5edd6abe94590aec9e3431ca58a9794701a4ef6",
+  "metricDefinitions": {
+    "multiSource": "all-of source coverage; separate from first-relevant MRR",
+    "zeroHit": "strict retrieval abstention; near-topic context may be related but cannot answer; not generated-answer refusal evaluation",
+    "qualityDecision": "numeric quality minima have not been business-approved; set before first results, never infer from calibration scores",
+    "sourceLeakGates": {
+      "permissionLeaks": 0,
+      "canonicalStaleLeaks": 0
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "protocolVersion": "ga-model-inference.v1",
+  "content": "",
+  "toolCalls": [
+    {
+      "id": "native-1",
+      "name": "project_search",
+      "arguments": {
+        "query": "项目"
+      }
+    }
+  ],
+  "finishReason": "tool_calls",
+  "usage": {
+    "promptTokens": 10,
+    "completionTokens": 4
+  }
+}

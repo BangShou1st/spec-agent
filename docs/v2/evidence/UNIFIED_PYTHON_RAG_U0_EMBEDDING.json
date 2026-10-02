@@ -1,0 +1,34 @@
+{
+  "status": "PASS",
+  "ollamaVersion": "0.18.0",
+  "profile": {
+    "profileId": "26810df4b6b4e7d0d2977bcc57175fcf7e944ebe99f447b5c4e690cb08b8c047",
+    "provider": "OLLAMA_LOCAL",
+    "modelTag": "qwen3-embedding:0.6b",
+    "modelDigest": "ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d",
+    "dimensions": 1024,
+    "queryStrategy": "qwen-instruct.v1",
+    "queryInstruction": "Retrieve relevant Spec Agent product documentation and requirement workspace passages for the query.",
+    "documentStrategy": "raw-text.v1",
+    "normalization": "l2",
+    "truncate": false,
+    "splitterVersion": "host-source-granularity.v1",
+    "indexSchemaVersion": "retrieval-index.v2"
+  },
+  "documentBatch": 3,
+  "finiteVectors": true,
+  "normalizedVectors": true,
+  "dimensionsRequestedAndReturned": 1024,
+  "initialModelLoaded": false,
+  "firstBatchMs": 3439.46,
+  "queryMs": 88.9,
+  "warmQueryMs": 64.64,
+  "chineseRewriteTop1Expected": true,
+  "ranking": [
+    0,
+    2,
+    1
+  ],
+  "truncateFalseOverlongRejected": true,
+  "limitations": "single smoke pair; not 50-query evaluation, pgvector/store integration, P50/P95 or GPU peak"
+}

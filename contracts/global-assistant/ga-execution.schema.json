@@ -1,0 +1,269 @@
+{
+  "$defs": {
+    "Budget": {
+      "additionalProperties": false,
+      "properties": {
+        "maxModelCalls": {
+          "default": 6,
+          "maximum": 6,
+          "minimum": 1,
+          "title": "Maxmodelcalls",
+          "type": "integer"
+        },
+        "maxToolCalls": {
+          "default": 5,
+          "maximum": 5,
+          "minimum": 1,
+          "title": "Maxtoolcalls",
+          "type": "integer"
+        },
+        "maxDurationSeconds": {
+          "default": 180,
+          "maximum": 180,
+          "minimum": 1,
+          "title": "Maxdurationseconds",
+          "type": "integer"
+        }
+      },
+      "title": "Budget",
+      "type": "object"
+    },
+    "Descriptor": {
+      "additionalProperties": false,
+      "properties": {
+        "capabilityId": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Capabilityid",
+          "type": "string"
+        },
+        "version": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        },
+        "name": {
+          "pattern": "^[A-Za-z0-9_-]{1,64}$",
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "inputSchema": {
+          "additionalProperties": true,
+          "title": "Inputschema",
+          "type": "object"
+        },
+        "readOnly": {
+          "title": "Readonly",
+          "type": "boolean"
+        },
+        "sideEffectClass": {
+          "enum": [
+            "NONE",
+            "LOCAL_DURABLE"
+          ],
+          "title": "Sideeffectclass",
+          "type": "string"
+        }
+      },
+      "required": [
+        "capabilityId",
+        "version",
+        "name",
+        "description",
+        "inputSchema",
+        "readOnly",
+        "sideEffectClass"
+      ],
+      "title": "Descriptor",
+      "type": "object"
+    },
+    "HistoryMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "messageId": {
+          "format": "uuid",
+          "title": "Messageid",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "user",
+            "assistant"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "content": {
+          "maxLength": 131072,
+          "minLength": 1,
+          "title": "Content",
+          "type": "string"
+        }
+      },
+      "required": [
+        "messageId",
+        "role",
+        "content"
+      ],
+      "title": "HistoryMessage",
+      "type": "object"
+    },
+    "UiContext": {
+      "additionalProperties": false,
+      "properties": {
+        "currentPage": {
+          "maxLength": 128,
+          "title": "Currentpage",
+          "type": "string"
+        },
+        "selectedEntity": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Selectedentity"
+        }
+      },
+      "required": [
+        "currentPage"
+      ],
+      "title": "UiContext",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "runId": {
+      "format": "uuid",
+      "title": "Runid",
+      "type": "string"
+    },
+    "executionEpoch": {
+      "maximum": 9223372036854775807,
+      "minimum": 1,
+      "title": "Executionepoch",
+      "type": "integer"
+    },
+    "leaseId": {
+      "format": "uuid",
+      "title": "Leaseid",
+      "type": "string"
+    },
+    "protocolVersion": {
+      "const": "ga-execution.v1",
+      "title": "Protocolversion",
+      "type": "string"
+    },
+    "engineVersion": {
+      "const": "langchain-ga.v1",
+      "title": "Engineversion",
+      "type": "string"
+    },
+    "threadId": {
+      "format": "uuid",
+      "title": "Threadid",
+      "type": "string"
+    },
+    "messageId": {
+      "format": "uuid",
+      "title": "Messageid",
+      "type": "string"
+    },
+    "content": {
+      "maxLength": 4000,
+      "minLength": 1,
+      "title": "Content",
+      "type": "string"
+    },
+    "modelBindingId": {
+      "format": "uuid",
+      "title": "Modelbindingid",
+      "type": "string"
+    },
+    "policyVersion": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Policyversion",
+      "type": "string"
+    },
+    "catalogHash": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Cataloghash",
+      "type": "string"
+    },
+    "historyBoundary": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Historyboundary"
+    },
+    "history": {
+      "items": {
+        "$ref": "#/$defs/HistoryMessage"
+      },
+      "maxItems": 128,
+      "title": "History",
+      "type": "array"
+    },
+    "uiContext": {
+      "$ref": "#/$defs/UiContext"
+    },
+    "structuredRefs": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 64,
+      "title": "Structuredrefs",
+      "type": "array"
+    },
+    "capabilities": {
+      "items": {
+        "$ref": "#/$defs/Descriptor"
+      },
+      "maxItems": 12,
+      "title": "Capabilities",
+      "type": "array"
+    },
+    "budget": {
+      "$ref": "#/$defs/Budget"
+    }
+  },
+  "required": [
+    "runId",
+    "executionEpoch",
+    "leaseId",
+    "protocolVersion",
+    "engineVersion",
+    "threadId",
+    "messageId",
+    "content",
+    "modelBindingId",
+    "policyVersion",
+    "catalogHash",
+    "historyBoundary",
+    "uiContext",
+    "capabilities",
+    "budget"
+  ],
+  "title": "ExecutionRequest",
+  "type": "object"
+}

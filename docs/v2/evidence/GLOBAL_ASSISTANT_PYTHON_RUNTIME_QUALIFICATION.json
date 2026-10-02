@@ -1,0 +1,29 @@
+{
+  "recordedAt": "2026-10-01T23:32:36.176105+00:00",
+  "originalRuntime": "uv standalone CPython 3.11.15 Windows x86_64",
+  "originalStatus": "INTERMITTENT_NATIVE_ACCESS_VIOLATION_NOT_QUALIFIED",
+  "exitCode": "0xC0000005",
+  "faultModule": "python311.dll",
+  "observedStack": [
+    "pydantic_core/core_schema.py:model_field",
+    "pydantic/_internal/_generate_schema.py",
+    "ollama/_types.py module import",
+    "langchain_ollama module import",
+    "spec_agent_brain/retrieval/embedding.py import during app creation"
+  ],
+  "qualifiedValidationRuntime": "isolated CPython 3.11.14 Windows x86_64",
+  "originalVenvReplaced": false,
+  "dependencyLockChanged": false,
+  "sharedInstalledDistributionVersionDifferences": {},
+  "pydanticCoreNativeModuleSha256": "3c559df0e23edcce94f0d7d694c3c69bbfa2f9ec83c299a6dd2901e21ca40936",
+  "qualifiedTests": {
+    "pythonPassed": 221,
+    "javaTotal": 1739,
+    "javaFailures": 0,
+    "javaErrors": 0,
+    "javaSkipped": 13,
+    "freshPackagedJavaBrowserRecovery": "PASS"
+  },
+  "productionRuntimeChanged": false,
+  "rootCauseLimit": "Alternative runtime passed with identical library versions/binary; does not establish the exact native interpreter defect or qualify other platforms."
+}

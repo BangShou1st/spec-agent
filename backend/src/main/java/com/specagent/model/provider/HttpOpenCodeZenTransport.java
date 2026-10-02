@@ -168,6 +168,92 @@ public class HttpOpenCodeZenTransport implements OpenCodeZenTransport {
         return parseStreaming(response, request.model(), prepared.execution(), listener);
     }
 
+    @Override
+    public com.specagent.model.contract.GaModelContract.Response completeNativeGa(
+            String apiKey, String sessionId, com.specagent.model.contract.GaModelContract.Request request,
+            String pinnedModel, Duration remainingBudget, java.util.function.BooleanSupplier active) {
+        return streamNativeGa(apiKey, sessionId, request, pinnedModel, remainingBudget, active, text -> true);
+    }
+
+    @Override
+    public com.specagent.model.contract.GaModelContract.Response streamNativeGa(
+            String apiKey, String sessionId, com.specagent.model.contract.GaModelContract.Request request,
+            String pinnedModel, Duration remainingBudget, java.util.function.BooleanSupplier active,
+            FragmentListener listener) {
+        if (remainingBudget == null || remainingBudget.isNegative() || remainingBudget.isZero()
+                || remainingBudget.compareTo(Duration.ofSeconds(180)) > 0)
+            throw new IllegalArgumentException("Invalid GA execution deadline");
+        if (!active.getAsBoolean()) throw new StreamCancelledException("GA execution no longer active");
+        var payload = new GaChatCompletionsAdapter().streamingRequestBody(request, pinnedModel);
+        // Keep the verified Zen free-tier envelope. Reserved names have no host execution route;
+        // validateResponse below accepts only the actual run catalog.
+        if (request.tools().stream().anyMatch(tool -> tool.name().equals("bash") || tool.name().equals("read")))
+            throw new IllegalArgumentException("GA catalog conflicts with reserved Zen tool names");
+        List<Object> nativeTools = new ArrayList<>();
+        Object authorizedTools = payload.get("tools");
+        if (authorizedTools instanceof List<?> approved) nativeTools.addAll(approved);
+        nativeTools.addAll(RESERVED_TOOLS);
+        payload.put("tools", nativeTools);
+        payload.put("tool_choice", request.toolChoice());
+        payload.put("parallel_tool_calls", false);
+        PreparedRequest prepared = prepareRequest("POST", "/chat/completions", apiKey,
+                requireSessionId(sessionId), writeJson(payload), pinnedModel, RequestType.PRODUCTION_COMPLETION,
+                request.messages().stream().map(com.specagent.model.contract.GaModelContract.Message::content).toList(),
+                true, false);
+        var body = new java.util.concurrent.atomic.AtomicReference<InputStream>();
+        var executor = java.util.concurrent.Executors.newSingleThreadExecutor(task -> {
+            Thread thread = new Thread(task, "ga-native-model");
+            thread.setDaemon(true);
+            return thread;
+        });
+        long started = System.nanoTime();
+        var result = executor.submit(() -> {
+            // Register even an error body before diagnostics read, so cancellation can close it.
+            HttpResponse<InputStream> response = send(prepared, HttpResponse.BodyHandlers.ofInputStream());
+            body.set(response.body());
+            try (InputStream stream = response.body()) {
+                if (!active.getAsBoolean()) throw new StreamCancelledException("GA execution no longer active");
+                if (response.statusCode() < 200 || response.statusCode() >= 300)
+                    ensureSuccessful(response.statusCode(), prepared.path(), pinnedModel, readBounded(stream),
+                            response.headers(), prepared.execution());
+                if (!response.headers().firstValue("Content-Type").orElse("").toLowerCase(Locale.ROOT)
+                        .startsWith("text/event-stream"))
+                    throw new IllegalArgumentException("GA native response must be SSE");
+                return new GaNativeSseDecoder().decode(stream, active, listener);
+            }
+        });
+        try {
+            while (true) {
+                if (!active.getAsBoolean()) throw new StreamCancelledException("GA execution no longer active");
+                long remaining = remainingBudget.toNanos() - (System.nanoTime() - started);
+                if (remaining <= 0) throw new OpenCodeModelException(OpenCodeModelErrorCategory.TIMEOUT,
+                        "GA native request deadline exceeded", null, null);
+                try {
+                    var response = result.get(Math.min(remaining, Duration.ofMillis(100).toNanos()),
+                            java.util.concurrent.TimeUnit.NANOSECONDS);
+                    if (!active.getAsBoolean()) throw new StreamCancelledException("GA execution no longer active");
+                    if (System.nanoTime() - started >= remainingBudget.toNanos())
+                        throw new OpenCodeModelException(OpenCodeModelErrorCategory.TIMEOUT,
+                                "GA native request deadline exceeded", null, null);
+                    return new GaChatCompletionsAdapter().validateResponse(request, response);
+                } catch (java.util.concurrent.TimeoutException pending) {
+                    // Poll cancellation even when the provider sends no bytes.
+                }
+            }
+        } catch (java.util.concurrent.ExecutionException ex) {
+            if (ex.getCause() instanceof RuntimeException failure) throw failure;
+            throw new IllegalArgumentException("GA native request failed");
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new StreamCancelledException("GA native request interrupted");
+        } finally {
+            result.cancel(true);
+            InputStream stream = body.get();
+            if (stream != null) try { stream.close(); } catch (IOException ignored) { }
+            executor.shutdownNow();
+        }
+    }
+
     /**
      * 生产补全的 fail-closed 会话门禁:缺失、空白或含 CR/LF 的值绝不上线,也绝不
      * 被静默替换——稳定的 run 亲和性是网关契约的一部分,调用方必须显式遵守。

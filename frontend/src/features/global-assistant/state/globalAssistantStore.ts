@@ -33,7 +33,7 @@ export const GA_THREAD_KEY = 'spec-agent:global-assistant:thread:v1'
 export const GA_RUN_KEY = 'spec-agent:global-assistant:run:v1'
 export const GA_PANEL_KEY = 'spec-agent:global-assistant:panel:v1'
 
-export type GaToolState = 'running' | 'success' | 'failure'
+export type GaToolState = 'running' | 'success' | 'failure' | 'interrupted'
 
 export interface GaResourceRef {
   kind: string
@@ -72,22 +72,34 @@ export function sanitizeGaResourceRefs(raw: unknown): GaResourceRef[] {
   for (const item of raw) {
     if (!item || typeof item !== 'object') continue
     const m = item as Record<string, unknown>
-    if (m.kind !== 'PROJECT') continue
+    if (m.kind !== 'PROJECT' && m.kind !== 'SOURCE') continue
     if (typeof m.id !== 'string' || !GA_UUID_RE.test(m.id)) continue
     if (typeof m.label !== 'string' || !m.label) continue
     const label = truncateGaLabel(m.label)
     let metadata: Record<string, unknown> | null = null
     if (m.metadata && typeof m.metadata === 'object') {
       const mm = m.metadata as Record<string, unknown>
-      if (typeof mm.updatedAt === 'string') metadata = { updatedAt: mm.updatedAt.slice(0, 64) }
+      if (m.kind === 'PROJECT' && typeof mm.updatedAt === 'string') metadata = { updatedAt: mm.updatedAt.slice(0, 64) }
+      if (m.kind === 'SOURCE') {
+        if (typeof mm.sourceRef !== 'string' || typeof mm.sourceVersion !== 'string' || typeof mm.contentHash !== 'string' || !/^[0-9a-f]{64}$/.test(mm.contentHash)) continue
+        metadata = { sourceRef: mm.sourceRef.slice(0, 240), sourceVersion: mm.sourceVersion.slice(0, 128), contentHash: mm.contentHash }
+        if (typeof mm.excerpt === 'string') metadata.excerpt = truncateGaLabel(mm.excerpt, 800)
+        if (typeof mm.projectId === 'string' && GA_UUID_RE.test(mm.projectId)) metadata.projectId = mm.projectId
+        for (const key of ['startOffset', 'endOffset']) if (typeof mm[key] === 'number' && Number.isSafeInteger(mm[key]) && (mm[key] as number) >= 0) metadata[key] = mm[key]
+      }
     }
-    out.push({ kind: 'PROJECT', id: m.id, label, metadata })
+    if (m.kind === 'SOURCE' && !metadata) continue
+    if (out.some(r => r.kind === m.kind && r.id === m.id)) continue
+    out.push({ kind: m.kind, id: m.id, label, metadata })
     if (out.length >= 10) break
   }
   return out
 }
 
 export interface GaToolActivity {
+  runId?: string
+  toolCallId?: string | null
+  sequence?: number
   key: string
   capabilityId: string
   displayName: string
@@ -127,11 +139,16 @@ export class GaRunProjection {
   uiAction: { destination: string; resourceId: string | null } | null = null
   terminal: GaTerminal | null = null
   private toolSeq = 0
+  private runId: string | null = null
 
   /** 事件产生了可见变化时返回 true。 */
   apply(event: GaEventEnvelope): boolean {
     if (!event || typeof event.sequence !== 'number') return false
+    if (this.runId !== null && event.runId !== this.runId) return false
+    this.runId = event.runId
     if (event.sequence <= this.lastSequence) return false
+    // The terminal projection is immutable even if a reconnect delivers late frames.
+    if (this.terminal !== null) return false
     this.lastSequence = event.sequence
     const payload = (event.payload ?? {}) as Record<string, unknown>
     switch (event.type) {
@@ -186,6 +203,9 @@ export class GaRunProjection {
         const capabilityId = typeof payload.capabilityId === 'string' ? payload.capabilityId : 'unknown'
         this.toolSeq += 1
         this.activities.push({
+          runId: event.runId,
+          toolCallId: typeof payload.toolCallId === 'string' ? payload.toolCallId : null,
+          sequence: event.sequence,
           key: capabilityId + '#' + this.toolSeq + '#' + event.sequence,
           capabilityId,
           displayName: gaToolDisplayName(capabilityId),
@@ -207,8 +227,9 @@ export class GaRunProjection {
         const resourceRefs = sanitizeGaResourceRefs(payload.resourceRefs)
         const resultKind = typeof payload.resultKind === 'string' ? payload.resultKind : null
         const eventCount = sanitizeResultCount(payload.resultCount)
-        const resultCount = resourceRefs.length > 0 ? resourceRefs.length : eventCount
-        const target = findRunningActivity(this.activities, capabilityId)
+        const projects = resourceRefs.filter(r => r.kind === 'PROJECT')
+        const resultCount = projects.length > 0 ? projects.length : eventCount
+        const target = findRunningActivity(this.activities, capabilityId, event.runId, payload.toolCallId)
         if (target) {
           target.state = 'success'
           target.summary = summary
@@ -221,6 +242,9 @@ export class GaRunProjection {
         }
         this.toolSeq += 1
         this.activities.push({
+          runId: event.runId,
+          toolCallId: typeof payload.toolCallId === 'string' ? payload.toolCallId : null,
+          sequence: event.sequence,
           key: capabilityId + '#' + this.toolSeq + '#' + event.sequence,
           capabilityId,
           displayName: gaToolDisplayName(capabilityId),
@@ -241,7 +265,7 @@ export class GaRunProjection {
         const errorCode = typeof payload.errorCode === 'string' ? payload.errorCode : null
         const reason = typeof payload.reason === 'string' ? payload.reason : null
         const summary = errorCode ? gaErrorMessage(errorCode, reason ?? undefined) : (reason ?? '工具执行失败，请稍后再试')
-        const target = findRunningActivity(this.activities, capabilityId)
+        const target = findRunningActivity(this.activities, capabilityId, event.runId, payload.toolCallId)
         if (target) {
           target.state = 'failure'
           target.summary = summary
@@ -251,6 +275,9 @@ export class GaRunProjection {
         }
         this.toolSeq += 1
         this.activities.push({
+          runId: event.runId,
+          toolCallId: typeof payload.toolCallId === 'string' ? payload.toolCallId : null,
+          sequence: event.sequence,
           key: capabilityId + '#' + this.toolSeq + '#' + event.sequence,
           capabilityId,
           displayName: gaToolDisplayName(capabilityId),
@@ -285,32 +312,46 @@ export class GaRunProjection {
         return true
       }
       case 'RUN_COMPLETED':
+        this.interruptActivities(event)
         this.terminal = { type: 'RUN_COMPLETED', errorCode: null, reason: null }
         this.currentStatus = null
         return true
       case 'RUN_CANCELLED':
+        this.interruptActivities(event)
         this.terminal = { type: 'RUN_CANCELLED', errorCode: null, reason: null }
         this.currentStatus = null
+        this.streamingText = ''
         return true
       case 'RUN_FAILED': {
         const errorCode = typeof payload.errorCode === 'string' ? payload.errorCode : null
         const reason = typeof payload.reason === 'string' ? payload.reason : null
+        this.interruptActivities(event)
         this.terminal = { type: 'RUN_FAILED', errorCode, reason }
         this.currentStatus = null
+        this.streamingText = ''
         return true
       }
       default:
         return false
     }
   }
+  private interruptActivities(event: GaEventEnvelope): void {
+    for (const item of this.activities) {
+      if (item.state !== 'running' || (item.runId && item.runId !== event.runId)) continue
+      item.state = 'interrupted'
+      item.summary = event.type === 'RUN_CANCELLED' ? '本轮已取消，未收到工具完成确认' : '本轮已结束，未收到工具完成确认'
+      item.endedAt = event.createdAt
+      item.durationMs = diffMs(item.startedAt, item.endedAt)
+    }
+  }
 }
 
-function findRunningActivity(list: GaToolActivity[], capabilityId: string): GaToolActivity | null {
-  for (let i = list.length - 1; i >= 0; i -= 1) {
-    const item = list[i]
-    if (item && item.capabilityId === capabilityId && item.state === 'running') return item
-  }
-  return null
+function findRunningActivity(list: GaToolActivity[], capabilityId: string, runId: string, toolCallId: unknown): GaToolActivity | null {
+  const candidates = list.filter(item => item.capabilityId === capabilityId && item.state === 'running'
+    && (!item.runId || item.runId === runId)
+    && (typeof toolCallId === 'string' ? item.toolCallId === toolCallId : !item.toolCallId))
+  // Historical events without IDs are only associated when there is one unambiguous start.
+  return candidates.length === 1 ? candidates[0]! : null
 }
 
 function diffMs(startedAt: string, endedAt: string | null): number | null {
@@ -335,6 +376,8 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
     streamingText: '',
     streamGeneration: null as number | null,
     activities: [] as GaToolActivity[],
+    historicalActivities: {} as Record<string, GaToolActivity[]>,
+    historyLoadedRuns: [] as string[],
     currentStatus: null as string | null,
     sendStartedAt: null as number | null,
     firstVisibleUiMs: null as number | null,
@@ -365,6 +408,11 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
     successorAttachedRunId: null as string | null,
   }),
   getters: {
+    timelineActivities(state): GaToolActivity[] {
+      return [...Object.entries(state.historicalActivities)
+        .filter(([run]) => state.messages.some(m => m.runId === run) && run !== state.activeRunId && !state.activities.some(a => a.runId === run))
+        .flatMap(([, items]) => items), ...state.activities]
+    },
     isRunning(state): boolean {
       return state.activeRunId !== null && (state.activeStatus === 'CREATED' || state.activeStatus === 'RUNNING')
     },
@@ -407,6 +455,7 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
         await getGaThread(storedThread)
         this.threadId = storedThread
         this.messages = await listGaMessages(storedThread)
+        await this.restoreProcessHistory()
         await this.refreshActivity()
         if (this.activeRunId) {
           try {
@@ -550,6 +599,9 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
         writeStored(GA_THREAD_KEY, threadId)
         writeStored(GA_RUN_KEY, null)
         this.messages = messages
+        this.historicalActivities = {}
+        this.historyLoadedRuns = []
+        await this.restoreProcessHistory()
         this.streamingText = ''
       this.streamGeneration = null
         this.activities = []
@@ -604,6 +656,8 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
       // 上一个运行迟到的事件绝不能污染新运行:
       // 每个运行的 sequence 会重新从 0 计数,所以 runId 是权威过滤条件。
       if (this.activeRunId && event.runId !== this.activeRunId) return false
+      if (this.historyLoadedRuns.includes(event.runId) && event.runId !== this.activeRunId) return false
+      if (this.threadId && event.threadId !== this.threadId) return false
       if (event.sequence <= this.lastSequence) return false
       const projection = new GaRunProjection()
       projection.lastSequence = this.lastSequence
@@ -668,6 +722,10 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
       this.closeStream()
       this.connection = 'idle'
       writeStored(GA_RUN_KEY, null)
+      if (this.activeRunId) {
+        this.historicalActivities[this.activeRunId] = [...this.activities]
+        this.historyLoadedRuns.push(this.activeRunId)
+      }
       this.activeRunId = null
       void this.reconcileMessages()
       void this.loadThreads()
@@ -788,13 +846,43 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
       this.currentStatus = null
       if (reconcileCanonical) void this.reconcileMessages()
     },
+    async restoreProcessHistory(): Promise<void> {
+      const thread = this.threadId
+      if (!thread) return
+      const runs = [...new Set(this.messages.map(m => m.runId).filter((id): id is string => !!id))]
+        .filter(id => id !== this.activeRunId && !this.historyLoadedRuns.includes(id))
+      // Bounded concurrency; event replay never performs navigation or appends model drafts.
+      for (let start = 0; start < runs.length; start += 4) {
+        const batch = await Promise.allSettled(runs.slice(start, start + 4).map(async run => {
+          const projection = new GaRunProjection()
+          for (const event of await listGaEvents(run)) {
+            if (event.threadId === thread && event.runId === run) projection.apply(event)
+          }
+          return { run, projection }
+        }))
+        if (this.threadId !== thread) return
+        for (const result of batch) {
+          if (result.status !== 'fulfilled' || !result.value.projection.terminal) continue
+          const { run, projection } = result.value
+          this.historicalActivities[run] = projection.activities
+          this.historyLoadedRuns.push(run)
+        }
+      }
+    },
     async reconcileMessages(): Promise<void> {
-      if (!this.threadId) return
+      const thread = this.threadId
+      if (!thread) return
       try {
-        this.messages = await listGaMessages(this.threadId)
-        this.streamingText = ''
-        this.streamGeneration = null
+        const messages = await listGaMessages(thread)
+        if (this.threadId !== thread) return
+        this.messages = messages
+        // A history refresh during an active successor must not erase its live draft.
+        if (!this.activeRunId) {
+          this.streamingText = ''
+          this.streamGeneration = null
+        }
         this.dedupeOptimistic()
+        await this.restoreProcessHistory()
       } catch { /* 保留乐观投影 */ }
     },
     async sendMessage(text: string, uiContext: GaUiContext): Promise<void> {
@@ -913,6 +1001,7 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
           return
         }
         this.dedupeCreateOptimistic(optimistic.id, message)
+        this.messages = this.messages.map(m => m.id === optimistic.id ? { ...m, runId: created.runId } : m)
         this.activeRunId = created.runId
         this.activeStatus = created.status as GaRun['status']
         this.lastSequence = 0
@@ -1076,6 +1165,9 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
         writeStored(GA_THREAD_KEY, threadId)
         writeStored(GA_RUN_KEY, null)
         this.messages = messages
+        this.historicalActivities = {}
+        this.historyLoadedRuns = []
+        await this.restoreProcessHistory()
         this.streamingText = ''
       this.streamGeneration = null
         this.activities = []
@@ -1140,6 +1232,8 @@ export const useGlobalAssistantStore = defineStore('globalAssistant', {
       this.successorAttachedRunId = null
       this.closeStream()
       this.threadId = null
+      this.historicalActivities = {}
+      this.historyLoadedRuns = []
       this.messages = []
       this.activeRunId = null
       this.activeStatus = null

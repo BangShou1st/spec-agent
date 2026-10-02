@@ -1,0 +1,24 @@
+{
+  "protocolVersion": "retrieval.v1",
+  "requestId": "00000000-0000-4000-8000-000000000001",
+  "workload": {
+    "kind": "GA_RUN",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "executionEpoch": 1
+  },
+  "scopeGrant": {
+    "grantId": "00000000-0000-4000-8000-000000000001",
+    "version": 1,
+    "expiresAt": "2026-10-01T12:00:30Z"
+  },
+  "profileId": "26810df4b6b4e7d0d2977bcc57175fcf7e944ebe99f447b5c4e690cb08b8c047",
+  "indexGeneration": "00000000-0000-4000-8000-000000000001",
+  "deadline": "2026-10-01T12:00:20Z",
+  "retrievalEngineVersion": "python-rag.v1",
+  "status": "VECTOR_UNAVAILABLE",
+  "vectorUnavailable": true,
+  "items": [],
+  "warnings": [
+    "VECTOR_UNAVAILABLE"
+  ]
+}

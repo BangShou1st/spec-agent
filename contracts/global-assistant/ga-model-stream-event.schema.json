@@ -1,0 +1,179 @@
+{
+  "$defs": {
+    "ModelDeltaPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "text": {
+          "maxLength": 131072,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "ModelDeltaPayload",
+      "type": "object"
+    },
+    "ModelResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "protocolVersion": {
+          "const": "ga-model-inference.v1",
+          "title": "Protocolversion",
+          "type": "string"
+        },
+        "content": {
+          "maxLength": 131072,
+          "title": "Content",
+          "type": "string"
+        },
+        "toolCalls": {
+          "items": {
+            "$ref": "#/$defs/ToolCall"
+          },
+          "maxItems": 5,
+          "title": "Toolcalls",
+          "type": "array"
+        },
+        "finishReason": {
+          "enum": [
+            "stop",
+            "tool_calls"
+          ],
+          "title": "Finishreason",
+          "type": "string"
+        },
+        "usage": {
+          "$ref": "#/$defs/Usage"
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "content",
+        "finishReason",
+        "usage"
+      ],
+      "title": "ModelResponse",
+      "type": "object"
+    },
+    "ModelStreamFailure": {
+      "additionalProperties": false,
+      "properties": {
+        "errorCode": {
+          "const": "GA_MODEL_STREAM_FAILED",
+          "title": "Errorcode",
+          "type": "string"
+        }
+      },
+      "required": [
+        "errorCode"
+      ],
+      "title": "ModelStreamFailure",
+      "type": "object"
+    },
+    "ToolCall": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "pattern": "^[A-Za-z0-9_-]{1,64}$",
+          "title": "Name",
+          "type": "string"
+        },
+        "arguments": {
+          "additionalProperties": true,
+          "title": "Arguments",
+          "type": "object"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "arguments"
+      ],
+      "title": "ToolCall",
+      "type": "object"
+    },
+    "Usage": {
+      "additionalProperties": false,
+      "properties": {
+        "promptTokens": {
+          "maximum": 2147483647,
+          "minimum": 0,
+          "title": "Prompttokens",
+          "type": "integer"
+        },
+        "completionTokens": {
+          "maximum": 2147483647,
+          "minimum": 0,
+          "title": "Completiontokens",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "promptTokens",
+        "completionTokens"
+      ],
+      "title": "Usage",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "protocolVersion": {
+      "const": "ga-model-stream.v1",
+      "title": "Protocolversion",
+      "type": "string"
+    },
+    "callId": {
+      "format": "uuid",
+      "title": "Callid",
+      "type": "string"
+    },
+    "sequence": {
+      "maximum": 8192,
+      "minimum": 1,
+      "title": "Sequence",
+      "type": "integer"
+    },
+    "type": {
+      "enum": [
+        "TEXT_DELTA",
+        "COMPLETED",
+        "FAILED"
+      ],
+      "title": "Type",
+      "type": "string"
+    },
+    "payload": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ModelDeltaPayload"
+        },
+        {
+          "$ref": "#/$defs/ModelResponse"
+        },
+        {
+          "$ref": "#/$defs/ModelStreamFailure"
+        }
+      ],
+      "title": "Payload"
+    }
+  },
+  "required": [
+    "protocolVersion",
+    "callId",
+    "sequence",
+    "type",
+    "payload"
+  ],
+  "title": "ModelStreamEvent",
+  "type": "object"
+}

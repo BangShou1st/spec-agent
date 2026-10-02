@@ -1,0 +1,32 @@
+{
+  "recordedAt": "2026-10-02T00:24:34.170064+00:00",
+  "status": "STATIC_PRECHECK_PASS",
+  "queryCount": 68,
+  "sourceCount": 28,
+  "categories": {
+    "PROJECT_EXPRESSION": 16,
+    "EXACT_IDENTIFIER": 16,
+    "RESOURCE_CONTENT": 8,
+    "MULTI_SOURCE": 8,
+    "NEAR_NO_ANSWER": 8,
+    "STALE_VERSION": 4,
+    "PERMISSION_ISOLATION": 4,
+    "NO_ANSWER": 4
+  },
+  "exactQueryOverlapWithDevelopment": 0,
+  "exactSourceOverlapWithDevelopment": 0,
+  "candidateSha256": "ae43db38dc1b99ae1a6feeca30fa8f11b16cea4e9ef180981f431c5258a8c5e8",
+  "freezeSha256": "0c88f46f4e94c90412a789f7936217e789966d22c7e511e0fed209983386ec20",
+  "executedQueries": 0,
+  "labelsApproved": false,
+  "humanReviewStatus": "PENDING",
+  "semanticPrecheck": [
+    "Near-no-answer asks unsupported quantities/policies; related context is not sufficient to answer.",
+    "Multi-source labels are all-of, not any-hit; reviewers must check each source is necessary.",
+    "Repository-grounded expressions are AI paraphrases, not captured customer/user transcripts.",
+    "Shared Question/re-answer, Focus/route and restart/UNKNOWN topics overlap semantically; humans must check alternative relevant sources.",
+    "Eight near-no-answer labels and eight multi-source labels require particular human attention.",
+    "No exact overlap is not proof of statistical independence; same project domain and AI author remain limitations."
+  ],
+  "rootLimit": "AI static/semantic precheck is not human annotation or retrieval-quality acceptance."
+}

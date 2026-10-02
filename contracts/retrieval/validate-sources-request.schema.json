@@ -1,0 +1,288 @@
+{
+  "$defs": {
+    "Grant": {
+      "additionalProperties": false,
+      "properties": {
+        "grantId": {
+          "format": "uuid",
+          "title": "Grantid",
+          "type": "string"
+        },
+        "version": {
+          "minimum": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "expiresAt": {
+          "format": "date-time",
+          "title": "Expiresat",
+          "type": "string"
+        }
+      },
+      "required": [
+        "grantId",
+        "version",
+        "expiresAt"
+      ],
+      "title": "Grant",
+      "type": "object"
+    },
+    "Location": {
+      "additionalProperties": false,
+      "properties": {
+        "chunkIndex": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Chunkindex"
+        },
+        "startOffset": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Startoffset"
+        },
+        "endOffset": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Endoffset"
+        }
+      },
+      "title": "Location",
+      "type": "object"
+    },
+    "Source": {
+      "additionalProperties": false,
+      "properties": {
+        "entryId": {
+          "format": "uuid",
+          "title": "Entryid",
+          "type": "string"
+        },
+        "corpusId": {
+          "format": "uuid",
+          "title": "Corpusid",
+          "type": "string"
+        },
+        "projectId": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Projectid"
+        },
+        "originRouteId": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Originrouteid"
+        },
+        "sourceRef": {
+          "maxLength": 240,
+          "minLength": 1,
+          "title": "Sourceref",
+          "type": "string"
+        },
+        "sourceVersion": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Sourceversion",
+          "type": "string"
+        },
+        "contentHash": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Contenthash",
+          "type": "string"
+        },
+        "sourceKind": {
+          "enum": [
+            "NODE",
+            "ANSWER",
+            "CLAIM",
+            "RESOURCE_CHUNK",
+            "CAPABILITY_OBSERVATION",
+            "ROUTE_SUMMARY",
+            "HELP_CHUNK"
+          ],
+          "title": "Sourcekind",
+          "type": "string"
+        },
+        "scope": {
+          "enum": [
+            "ROUTE",
+            "PROJECT",
+            "RESOURCE",
+            "HELP"
+          ],
+          "title": "Scope",
+          "type": "string"
+        },
+        "authority": {
+          "enum": [
+            "CONFIRMED",
+            "USER_AUTHORED",
+            "EXTERNAL_EVIDENCE",
+            "DERIVED",
+            "ASSUMED",
+            "UNRESOLVED",
+            "REJECTED"
+          ],
+          "title": "Authority",
+          "type": "string"
+        },
+        "selectionTier": {
+          "maximum": 4,
+          "minimum": 0,
+          "title": "Selectiontier",
+          "type": "integer"
+        },
+        "content": {
+          "maxLength": 12000,
+          "minLength": 1,
+          "title": "Content",
+          "type": "string"
+        },
+        "location": {
+          "$ref": "#/$defs/Location"
+        }
+      },
+      "required": [
+        "entryId",
+        "corpusId",
+        "projectId",
+        "originRouteId",
+        "sourceRef",
+        "sourceVersion",
+        "contentHash",
+        "sourceKind",
+        "scope",
+        "authority",
+        "selectionTier",
+        "content",
+        "location"
+      ],
+      "title": "Source",
+      "type": "object"
+    },
+    "Workload": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "PROJECT_RUN",
+            "GA_RUN",
+            "CONTEXT_PROJECTION",
+            "INDEX_JOB"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "executionEpoch": {
+          "maximum": 9223372036854775807,
+          "minimum": 1,
+          "title": "Executionepoch",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "kind",
+        "id",
+        "executionEpoch"
+      ],
+      "title": "Workload",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "protocolVersion": {
+      "const": "retrieval.v1",
+      "title": "Protocolversion",
+      "type": "string"
+    },
+    "requestId": {
+      "format": "uuid",
+      "title": "Requestid",
+      "type": "string"
+    },
+    "workload": {
+      "$ref": "#/$defs/Workload"
+    },
+    "scopeGrant": {
+      "$ref": "#/$defs/Grant"
+    },
+    "profileId": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Profileid",
+      "type": "string"
+    },
+    "indexGeneration": {
+      "format": "uuid",
+      "title": "Indexgeneration",
+      "type": "string"
+    },
+    "deadline": {
+      "format": "date-time",
+      "title": "Deadline",
+      "type": "string"
+    },
+    "sources": {
+      "items": {
+        "$ref": "#/$defs/Source"
+      },
+      "maxItems": 12,
+      "title": "Sources",
+      "type": "array"
+    }
+  },
+  "required": [
+    "protocolVersion",
+    "requestId",
+    "workload",
+    "scopeGrant",
+    "profileId",
+    "indexGeneration",
+    "deadline",
+    "sources"
+  ],
+  "title": "ValidationRequest",
+  "type": "object"
+}

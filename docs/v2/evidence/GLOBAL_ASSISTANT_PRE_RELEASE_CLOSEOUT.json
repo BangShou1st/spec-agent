@@ -1,0 +1,89 @@
+{
+  "recordedAt": "2026-10-02T00:25:22.767843+00:00",
+  "status": "AUTHORIZED_PRE_RELEASE_CLOSEOUT_COMPLETE_EXTERNAL_GATES_PENDING",
+  "implemented": "Prior phase1 and shared RAG implementation retained; preparation, qualification and review tooling delivered.",
+  "integrationPassed": {
+    "newInterpreterStarts": 6,
+    "sustainedServiceMs": 65036,
+    "sustainedActualHybridQueries": 12,
+    "automaticRetries": 0,
+    "boundary": "fresh Python processes + actual Java RPC/test DB/pgvector/local Ollama; no live chat calls",
+    "pendingCandidateGateTest": {
+      "status": "PASS",
+      "testName": "pendingIndependentCandidateIsRejectedBeforePythonOrIndexing()",
+      "timestamp": "2026-10-02T00:13:28"
+    },
+    "scriptSyntax": "PASS",
+    "frozenCandidateStaticPrecheck": "PASS",
+    "diffWhitespace": "PASS"
+  },
+  "previousRegression": {
+    "report": "GLOBAL_ASSISTANT_RELEASE_VERIFICATION.json",
+    "rerun": false,
+    "reason": "Unaffected passed tests retained with original timestamps and scope; no new full-suite claim."
+  },
+  "originalEnvironment": {
+    "replaced": false,
+    "manifestRecordedFingerprintsUnchanged": true,
+    "nativeCrash": "0xC0000005 observed; root cause unproven",
+    "qualification": "UNQUALIFIED"
+  },
+  "ollamaDependencyFailure": {
+    "evidence": "GLOBAL_ASSISTANT_CANDIDATE_RUNTIME_OLLAMA_UNAVAILABLE.json",
+    "preserved": true,
+    "classification": "Ollama not listening; separate from original native import crash",
+    "subsequentQualification": "Explicit new run after restoring existing Ollama, not an automatic retry"
+  },
+  "evaluation": {
+    "developmentQueries": 52,
+    "developmentRole": "DEVELOPMENT_CALIBRATION",
+    "candidateQueries": 68,
+    "candidateRole": "INDEPENDENT_ACCEPTANCE_CANDIDATE",
+    "executedCandidateQueries": 0,
+    "humanReviewStatus": "PENDING",
+    "humanApprovedLabels": false,
+    "frozenConfiguration": true,
+    "businessQualityThresholds": "PENDING_BEFORE_FIRST_RUN"
+  },
+  "humanPending": [
+    "Review candidate source facts, labels, alternative sources and no-answer semantics.",
+    "Approve and freeze numeric quality minima before first results; execute separately only after real human review."
+  ],
+  "runtimePending": [
+    "Deployment target/platform/package validation and required operational soak.",
+    "Original native crash root cause remains unproven; candidate finite Windows results do not prove other platforms or long-term stability."
+  ],
+  "production": {
+    "authorized": false,
+    "engineChanged": false,
+    "modelChanged": false,
+    "originalEnvironmentAutomaticallyReplaced": false,
+    "acceptance": "NOT_RUN"
+  },
+  "phase1OverallAcceptance": "PENDING_BLOCKED_OLD_TEMP_CLEANUP",
+  "unifiedRagOverallAcceptance": "PENDING_HUMAN_REVIEW_AND_INDEPENDENT_EVALUATION",
+  "oldTempCleanup": {
+    "path": "C:/Users/32962/AppData/Local/Temp/spec-agent-git-skill-13327698071011337690",
+    "status": "AUTO_REVIEW_REJECTED",
+    "reason": "blocked by policy",
+    "moreSpecificReasonProvided": false,
+    "attemptedAgain": false,
+    "bypassed": false
+  },
+  "evidenceSha256": {
+    "docs/v2/evidence/GLOBAL_ASSISTANT_CANDIDATE_RUNTIME_MANIFEST.json": "b965050f794c27de065356d6050cfd667c297369004bc5163425cde600f71007",
+    "docs/v2/evidence/GLOBAL_ASSISTANT_CANDIDATE_RUNTIME_STARTUP.json": "a0a04262096a50a8b56c2a5ec3c8de2ec8af599e8c638f8060bdfb0d3f9c92db",
+    "docs/v2/evidence/GLOBAL_ASSISTANT_CANDIDATE_RUNTIME_OLLAMA_UNAVAILABLE.json": "53953a2c10c757a13d377dbe1daa5ede07226a044f34249465261d0505e6a258",
+    "docs/v2/evidence/GLOBAL_ASSISTANT_PYTHON_RUNTIME_QUALIFICATION.json": "1ba445b577b650c61cb7efd9204c6d30e7a8913eeda05725be8cca69abbc7102",
+    "docs/v2/evidence/GLOBAL_ASSISTANT_RELEASE_VERIFICATION.json": "0a0a3892d831934492c2b66cd758b7a39c8b5f6ca0a3963eb827685ee23a2cce",
+    "docs/v2/evidence/SHARED_RAG_ACCEPTANCE_PRECHECK.json": "d532c5efe49c70494874ce267998891f05120c2eddcdb90f978b470f46b3cf56",
+    "agent-brain/candidate-runtime.lock.json": "36b90ff5e39aad7709426e48980afd8f8e8857a08514b3c5c313b1eeb23b24d3",
+    "agent-brain/requirements.lock": "eb1bb4f240aeabb94e3a7fdee5edd6abe94590aec9e3431ca58a9794701a4ef6",
+    "agent-brain/scripts/prepare_candidate_runtime.ps1": "1c71a39668c5e18ca96bfbb515687ff49d148583f62c977e27df3a560e68be2f",
+    "agent-brain/scripts/runtime_manifest.py": "15f79d979693d5e1500dfc8ea97445f63df354009cc0bda82c3819386140a774",
+    "agent-brain/scripts/audit_retrieval_acceptance.py": "5d80e1a3da7db44161762530811a2b2f67406f7836657a2163ab19463169b266",
+    "contracts/retrieval/evaluation/acceptance-candidate.v1.json": "ae43db38dc1b99ae1a6feeca30fa8f11b16cea4e9ef180981f431c5258a8c5e8",
+    "contracts/retrieval/evaluation/acceptance-freeze.v1.json": "0c88f46f4e94c90412a789f7936217e789966d22c7e511e0fed209983386ec20",
+    "contracts/retrieval/evaluation/ACCEPTANCE_HUMAN_REVIEW.md": "a2d548bbccb0c3b21c27bcf6203ffdb1306312af64d7ab78a62ddb257ca9230e"
+  }
+}

@@ -318,8 +318,15 @@ public class AgentInputSnapshotBuilder {
                 mandatoryRetrievalRefs.add("node:" + claim.sourceNodeId());
             }
         });
-        List<RetrievedContextItem> retrievedContext = retrievalContextService.retrieve(
-                snapshot, mandatoryRetrievalRefs, retrievalQueryText);
+        List<RetrievedContextItem> retrievedContext;
+        SnapshotMetadata projectionMetadata=metadata(snapshot);
+        if(retrievalContextService.usesSharedPython()) {
+            var retrieval=retrievalContextService.retrieveWithStatus(snapshot,mandatoryRetrievalRefs,retrievalQueryText);
+            retrievedContext=retrieval.items(); var state=retrieval.state();
+            projectionMetadata=new SnapshotMetadata(projectionMetadata.projectTitle(),new SnapshotMetadata.RetrievalState(
+                    (String)state.get("retrievalEngineVersion"),(String)state.get("profileId"),(String)state.get("indexGeneration"),
+                    (Boolean)state.get("vectorUnavailable"),Boolean.TRUE.equals(state.get("supplementalRetrievalUnavailable"))));
+        } else retrievedContext=retrievalContextService.retrieve(snapshot,mandatoryRetrievalRefs,retrievalQueryText);
         AgentInputSnapshot projection = new AgentInputSnapshot(
                 snapshot.id().toString(),
                 snapshot.contextHash(),
@@ -329,7 +336,7 @@ public class AgentInputSnapshotBuilder {
                 routeContext(snapshot),
                 lineage(workingLineageNodes, answersByNodeId, patchesByAnswerId),
                 effectiveClaims,
-                metadata(snapshot),
+                projectionMetadata,
                 allowedSourceRefs(snapshot, workingLineageNodes, effectiveClaims,
                         relatedRefs, retrievedContext),
                 visibleCapabilityDescriptors(snapshot, workingLineageNodes, relatedNodes, skillCatalog),

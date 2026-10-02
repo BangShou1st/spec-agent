@@ -204,7 +204,8 @@ function handleClose(): void {
     <ConversationTimeline
       v-if="!historyOpen"
       :messages="store.messages"
-      :activities="store.activities"
+      :activities="store.timelineActivities"
+      :active-run-id="store.activeRunId"
       :streaming-text="store.streamingText"
       :current-status="store.currentStatus"
       :running="running"

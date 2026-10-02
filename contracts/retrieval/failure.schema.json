@@ -1,0 +1,37 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "protocolVersion": {
+      "const": "retrieval.v1",
+      "title": "Protocolversion",
+      "type": "string"
+    },
+    "requestId": {
+      "format": "uuid",
+      "title": "Requestid",
+      "type": "string"
+    },
+    "errorCode": {
+      "enum": [
+        "UNSUPPORTED_PROFILE",
+        "STALE_SCOPE_GRANT",
+        "STALE_WORKLOAD",
+        "SOURCE_VERSION_MISMATCH",
+        "INDEX_GENERATION_MISMATCH",
+        "OLLAMA_UNAVAILABLE",
+        "RETRIEVAL_UNAVAILABLE",
+        "DEADLINE_EXCEEDED",
+        "INVALID_VECTOR"
+      ],
+      "title": "Errorcode",
+      "type": "string"
+    }
+  },
+  "required": [
+    "protocolVersion",
+    "requestId",
+    "errorCode"
+  ],
+  "title": "RetrievalFailure",
+  "type": "object"
+}

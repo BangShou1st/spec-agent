@@ -22,7 +22,9 @@ public final class AgentContracts {
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, true)
             .configure(DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES, true)
             .configure(MapperFeature.ACCEPT_CASE_INSENSITIVE_ENUMS, false)
-            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+            // Stable on first construction and after JSON replay, including nested location/provenance maps.
+            .enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS);
 
     private static final Json JSON = new Json(STRICT_MAPPER);
 

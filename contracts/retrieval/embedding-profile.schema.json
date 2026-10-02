@@ -1,0 +1,81 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "profileId": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Profileid",
+      "type": "string"
+    },
+    "provider": {
+      "const": "OLLAMA_LOCAL",
+      "title": "Provider",
+      "type": "string"
+    },
+    "modelTag": {
+      "const": "qwen3-embedding:0.6b",
+      "title": "Modeltag",
+      "type": "string"
+    },
+    "modelDigest": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Modeldigest",
+      "type": "string"
+    },
+    "dimensions": {
+      "const": 1024,
+      "title": "Dimensions",
+      "type": "integer"
+    },
+    "queryStrategy": {
+      "const": "qwen-instruct.v1",
+      "title": "Querystrategy",
+      "type": "string"
+    },
+    "queryInstruction": {
+      "const": "Retrieve relevant Spec Agent product documentation and requirement workspace passages for the query.",
+      "title": "Queryinstruction",
+      "type": "string"
+    },
+    "documentStrategy": {
+      "const": "raw-text.v1",
+      "title": "Documentstrategy",
+      "type": "string"
+    },
+    "normalization": {
+      "const": "l2",
+      "title": "Normalization",
+      "type": "string"
+    },
+    "truncate": {
+      "const": false,
+      "title": "Truncate",
+      "type": "boolean"
+    },
+    "splitterVersion": {
+      "const": "host-source-granularity.v1",
+      "title": "Splitterversion",
+      "type": "string"
+    },
+    "indexSchemaVersion": {
+      "const": "retrieval-index.v2",
+      "title": "Indexschemaversion",
+      "type": "string"
+    }
+  },
+  "required": [
+    "profileId",
+    "provider",
+    "modelTag",
+    "modelDigest",
+    "dimensions",
+    "queryStrategy",
+    "queryInstruction",
+    "documentStrategy",
+    "normalization",
+    "truncate",
+    "splitterVersion",
+    "indexSchemaVersion"
+  ],
+  "title": "EmbeddingProfile",
+  "type": "object"
+}

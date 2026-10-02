@@ -1,0 +1,58 @@
+{
+  "protocolVersion": "ga-model-inference.v1",
+  "runId": "00000000-0000-4000-8000-000000000001",
+  "executionEpoch": 1,
+  "leaseId": "00000000-0000-4000-8000-000000000001",
+  "callId": "00000000-0000-4000-8000-000000000001",
+  "callType": "AGENT",
+  "modelBindingId": "00000000-0000-4000-8000-000000000001",
+  "messages": [
+    {
+      "role": "system",
+      "content": "Use approved tools"
+    },
+    {
+      "role": "user",
+      "content": "查找项目"
+    },
+    {
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "id": "native-1",
+          "name": "project_search",
+          "arguments": {
+            "query": "项目"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"projects\":[]}",
+      "toolCallId": "native-1"
+    }
+  ],
+  "tools": [
+    {
+      "name": "project_search",
+      "description": "Find projects",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ],
+  "toolChoice": "auto",
+  "maxOutputTokens": "2048",
+  "stream": false
+}

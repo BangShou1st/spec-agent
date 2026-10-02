@@ -86,6 +86,37 @@ class HttpOpenCodeZenTransportTest {
         }
     }
 
+    @Test
+    void nativeGaUsesAuthorizedCatalogAndPreservesToolResultFollowup() throws Exception {
+        var request = com.specagent.model.contract.GaModelContract.readRequest(java.nio.file.Files.readString(
+                java.nio.file.Path.of("../contracts/global-assistant/fixtures/ga-model-request-valid.json")));
+        stubBody = GaNativeSseDecoderTest.CALL;
+        var response = transport().completeNativeGa(TEST_KEY, TEST_SESSION, request, "pinned-model",
+                java.time.Duration.ofSeconds(5), () -> true);
+        assertThat(response.toolCalls().getFirst().arguments()).containsEntry("query", "中文");
+        assertThat(captured).hasSize(1);
+        JsonNode payload = mapper.readTree(captured.getFirst().body());
+        assertThat(payload.path("stream").asBoolean()).isTrue();
+        assertThat(payload.path("stream_options").path("include_usage").asBoolean()).isTrue();
+        assertThat(payload.path("messages").get(3).path("tool_call_id").asText()).isEqualTo("native-1");
+        assertThat(payload.path("tools").size()).isEqualTo(request.tools().size() + 2);
+        assertThat(payload.path("tools").get(request.tools().size()).path("function").path("name").asText()).isEqualTo("bash");
+        assertThat(payload.path("tools").get(request.tools().size() + 1).path("function").path("name").asText()).isEqualTo("read");
+        assertThat(payload.toString()).doesNotContain(TEST_KEY);
+    }
+
+    @Test
+    void nativeGaDeadlineInterruptsProviderWithNoResponseHeaders() throws Exception {
+        var request = com.specagent.model.contract.GaModelContract.readRequest(java.nio.file.Files.readString(
+                java.nio.file.Path.of("../contracts/global-assistant/fixtures/ga-model-request-valid.json")));
+        stallResponse = true;
+        long started = System.nanoTime();
+        assertThatThrownBy(() -> transport().completeNativeGa(TEST_KEY, TEST_SESSION, request, "pinned-model",
+                java.time.Duration.ofMillis(150), () -> true))
+                .isInstanceOf(OpenCodeModelException.class).hasMessageContaining("deadline");
+        assertThat(java.time.Duration.ofNanos(System.nanoTime() - started).toMillis()).isLessThan(1200);
+    }
+
     private OpenCodeZenTransport transport() {
         return new HttpOpenCodeZenTransport(mapper,
                 "http://127.0.0.1:" + server.getAddress().getPort(), 5, "DIRECT");

@@ -101,6 +101,10 @@ public class SkillImportService {
      */
     public DiscoveryResult discoverGit(String repoUrl, String ref) {
         GitSkillImporter.TreeInventory inventory = gitImporter.fetchTree(repoUrl, ref);
+        return discoverInventory(inventory);
+    }
+
+    public DiscoveryResult discoverInventory(GitSkillImporter.TreeInventory inventory) {
         List<String> declared = declaredPluginSources(inventory.manifests());
         List<SkillPackageLayout.SkillRoot> roots = SkillPackageLayout.discover(
                 inventory.files().stream().map(SkillSourceFile::relativePath).toList(), declared);
@@ -135,6 +139,21 @@ public class SkillImportService {
                 .map(DiscoveryCandidate::path)
                 .orElse(candidates.isEmpty() ? null : candidates.get(0).path());
         return new DiscoveryResult(inventory.commitSha(), suggested, candidates);
+    }
+
+    public GitSkillImporter.TreeInventory prepareGit(String repoUrl, String ref, java.util.function.BooleanSupplier active) {
+        return gitImporter.fetchTree(repoUrl, ref, active);
+    }
+
+    @Transactional
+    public StagedResult stagePreparedGit(GitSkillImporter.TreeInventory inventory, String subPath) {
+        String path = SkillPackageLayout.normalizeSubPath(subPath);
+        List<SkillSourceFile> files = SkillPackageLayout.slice(inventory.files(), path);
+        var skillMd = files.stream().filter(f -> "SKILL.md".equals(f.relativePath())).findFirst()
+                .orElseThrow(() -> new SkillImportException("Prepared package has no SKILL.md"));
+        return persistStaged(SkillSourceKind.GIT_HTTPS, gitIdentity(inventory.commitSha(), path),
+                new String(skillMd.content(), StandardCharsets.UTF_8), files,
+                files.stream().mapToLong(f -> f.content().length).sum());
     }
 
     private String gitIdentity(String commitSha, String subPath) {

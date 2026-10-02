@@ -35,6 +35,7 @@ export default defineConfig({
   reporter: [['list']],
   use: {
     baseURL,
+    channel: process.env.PLAYWRIGHT_CHANNEL,
     testIdAttribute: 'data-test',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',

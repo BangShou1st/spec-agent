@@ -9,6 +9,19 @@ function envelope(sequence: number, type: string, payload: Record<string, unknow
   return { eventId: 'e-' + sequence, runId: 'r-1', threadId: 't-1', type: type as GaEventEnvelope['type'], sequence, createdAt: '2026-01-01T00:00:0' + sequence + 'Z', payload }
 }
 describe('ga answer stream projection', () => {
+  it('ignores late text, reset and a second terminal after terminalization', () => {
+    for (const terminal of ['RUN_COMPLETED', 'RUN_CANCELLED', 'RUN_FAILED']) {
+      const projection = new GaRunProjection()
+      projection.apply(envelope(1, 'ANSWER_DELTA', { generation: 1, text: '草稿' }))
+      projection.apply(envelope(2, terminal))
+      const frozen = projection.streamingText
+      expect(projection.apply(envelope(3, 'ANSWER_DELTA', { generation: 1, text: '迟到正文' }))).toBe(false)
+      expect(projection.apply(envelope(4, 'ANSWER_STREAM_RESET', { generation: 2 }))).toBe(false)
+      expect(projection.apply(envelope(5, 'RUN_FAILED'))).toBe(false)
+      expect(projection.streamingText).toBe(frozen)
+      expect(projection.terminal?.type).toBe(terminal)
+    }
+  })
   it('starts a generation with a clean draft', () => {
     const projection = new GaRunProjection()
     expect(projection.apply(envelope(1, 'ANSWER_STREAM_STARTED', { generation: 1 }))).toBe(true)

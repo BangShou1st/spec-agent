@@ -105,8 +105,17 @@ class RouteContextView(StrictModel):
     label: Optional[str] = None
 
 
+class RetrievalState(StrictModel):
+    retrieval_engine_version: Literal["python-rag.v1"]
+    profile_id: str = Field(pattern=r"^[0-9a-f]{64}$")
+    index_generation: Optional[UUID] = None
+    vector_unavailable: Optional[bool] = None
+    supplemental_retrieval_unavailable: bool
+
+
 class SnapshotMetadata(StrictModel):
     project_title: Optional[str] = None
+    retrieval: Optional[RetrievalState] = None
 
 
 class AutonomyInputs(StrictModel):

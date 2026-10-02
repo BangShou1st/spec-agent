@@ -1,0 +1,26 @@
+import { test, expect } from './helpers'
+
+test('real host retrieval sources and failure restore inside their own turn', async ({ page }) => {
+  test.skip(!process.env.SPEC_AGENT_GA_RETRIEVAL_THREAD, 'Requires real shared retrieval fixture')
+  await page.addInitScript(thread => {
+    localStorage.setItem('spec-agent:global-assistant:thread:v1', thread)
+    localStorage.setItem('spec-agent:global-assistant:panel:v1', 'open')
+  }, process.env.SPEC_AGENT_GA_RETRIEVAL_THREAD!)
+  await page.goto('/projects')
+  await expect(page.getByTestId('ga-turn')).toHaveCount(1)
+  await page.getByTestId('ga-process-toggle').click()
+  await expect(page.getByTestId('ga-tool-activity')).toHaveCount(3)
+  await expect(page.locator('[data-test="ga-tool-activity"][data-state="failure"]')).toHaveCount(1)
+  const sources = page.getByTestId('ga-source-evidence')
+  await expect(sources.first()).toBeVisible()
+  await expect(sources.first()).toContainText('来源版本')
+  await expect(page.getByTestId('ga-timeline')).not.toContainText('进行中')
+  await expect(page.getByTestId('ga-timeline')).not.toContainText('protocolVersion')
+  const count = await sources.count()
+  expect(count).toBeGreaterThan(1)
+  await page.reload()
+  await page.getByTestId('ga-process-toggle').click()
+  await expect(page.getByTestId('ga-source-evidence')).toHaveCount(count)
+  await expect(page.getByTestId('ga-tool-activity')).toHaveCount(3)
+  await page.getByTestId('ga-panel').screenshot({ path: process.env.SPEC_AGENT_GA_RETRIEVAL_SCREENSHOT ?? 'test-results/ga-retrieval-sources.png' })
+})

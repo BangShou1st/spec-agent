@@ -5,6 +5,8 @@
 > Delivery strategy: **Backend one implementation round first, then Frontend one implementation round**  
 > Current baseline: Tool / Skill / MCP capability foundation is already completed; Global Assistant V1 intentionally uses **Host Function Tools（宿主函数工具） only**.
 
+> **2026-10-01 后续设计入口：** [GLOBAL_ASSISTANT_LANGCHAIN_REDESIGN.md](GLOBAL_ASSISTANT_LANGCHAIN_REDESIGN.md) 定义下一阶段的 LangChain 编排迁移及 Skill/MCP/RAG 扩展。本文件保留为已实现 V1 基线；目标变更只按新设计对应阶段生效，不表示当前已完成迁移。新会话先读新设计的实施阶段和交接说明。
+
 ---
 
 ## 0. Purpose

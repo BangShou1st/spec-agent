@@ -16,6 +16,11 @@ const REGISTRY: Record<string, CapabilityPresentation> = {
   'project.search': { actionLabel: '搜索项目', resultKind: 'PROJECT_LIST' },
   'project.list_recent': { actionLabel: '查看最近项目', resultKind: 'PROJECT_LIST' },
   'project.get_summary': { actionLabel: '读取项目概要', resultKind: 'PROJECT' },
+  'help.search': { actionLabel: '查询使用帮助', resultKind: 'SOURCE_LIST' },
+  'project.content.discover': { actionLabel: '检索项目内容', resultKind: 'PROJECT_LIST' },
+  'skill.import.discover': { actionLabel: '检查 Skill 仓库', resultKind: null },
+  'ui.navigate': { actionLabel: '打开页面', resultKind: null },
+  'user-input.request': { actionLabel: '请求补充信息', resultKind: null },
   'skill.import': { actionLabel: '获取 Skill', resultKind: null },
 };
 
@@ -35,6 +40,7 @@ export function completedCountLabel(capabilityId: string, count: number | null |
   if (count === null || count === undefined || !Number.isInteger(count) || (count as number) < 0) return null;
   const kind = capabilityPresentation(capabilityId).resultKind;
   if (kind === 'PROJECT_LIST') return '已获取 ' + count + ' 个项目';
+  if (kind === 'SOURCE_LIST') return '已找到 ' + count + ' 条来源';
   if (kind === 'PROJECT') return '已就绪';
   return null;
 }

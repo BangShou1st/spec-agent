@@ -241,10 +241,12 @@ public class GlobalAssistantRuntime {
                     lifecycle.cancelAndTerminalize(runId);
                     return;
                 }
+                String activityCallId = "legacy:" + runId + ":" + toolCalls;
                 String statusLabel = statusLabelFor(decision.toolRequest().capabilityId());
                 runEvents.append(runId, GlobalAssistantEventType.STATUS, Map.of("message", statusLabel));
                 runEvents.append(runId, GlobalAssistantEventType.TOOL_STARTED, Map.of(
                         "capabilityId", decision.toolRequest().capabilityId(),
+                        "toolCallId", activityCallId,
                         "arguments", sanitizedArgs(decision.toolRequest().arguments())));
                 CapabilityResult result;
                 try {
@@ -262,6 +264,7 @@ public class GlobalAssistantRuntime {
                             ex.getClass().getSimpleName(), ex);
                     runEvents.append(runId, GlobalAssistantEventType.TOOL_FAILED, Map.of(
                             "capabilityId", decision.toolRequest().capabilityId(),
+                        "toolCallId", activityCallId,
                             "errorCode", GlobalAssistantErrorCode.TOOL_EXECUTION_FAILED,
                             "reason", "Tool execution failed"));
                     failRun(threadId, runId, GlobalAssistantErrorCode.TOOL_EXECUTION_FAILED,
@@ -280,6 +283,7 @@ public class GlobalAssistantRuntime {
                                     .projectResources(decision.toolRequest().capabilityId(), result.content());
                     Map<String, Object> completedPayload = new LinkedHashMap<>();
                     completedPayload.put("capabilityId", decision.toolRequest().capabilityId());
+                    completedPayload.put("toolCallId", activityCallId);
                     completedPayload.put("summary", toolSummary(decision.toolRequest().capabilityId(), result));
                     completedPayload.put("resourceRefs", refs);
                     completedPayload.put("resultCount", refs.size());
@@ -300,6 +304,7 @@ public class GlobalAssistantRuntime {
                 } else if (result.status() == CapabilityResult.Status.IN_PROGRESS) {
                     runEvents.append(runId, GlobalAssistantEventType.TOOL_FAILED, Map.of(
                             "capabilityId", decision.toolRequest().capabilityId(),
+                        "toolCallId", activityCallId,
                             "errorCode", GlobalAssistantErrorCode.TOOL_EXECUTION_FAILED,
                             "reason", "Tool is still running; stopping the loop honestly."));
                     failRun(threadId, runId, GlobalAssistantErrorCode.TOOL_EXECUTION_FAILED,
@@ -311,6 +316,7 @@ public class GlobalAssistantRuntime {
                             : GlobalAssistantErrorCode.TOOL_EXECUTION_FAILED;
                     runEvents.append(runId, GlobalAssistantEventType.TOOL_FAILED, Map.of(
                             "capabilityId", decision.toolRequest().capabilityId(),
+                        "toolCallId", activityCallId,
                             "errorCode", errorCode,
                             "reason", sanitizedReason(result)));
                 }

@@ -95,6 +95,10 @@ public class ProjectDeletionService {
         jdbc.update("DELETE FROM routes WHERE project_id = :projectId", p);
         jdbc.update("UPDATE nodes SET parent_node_id = NULL, supersedes_node_id = NULL WHERE project_id = :projectId", p);
         jdbc.update("DELETE FROM nodes WHERE project_id = :projectId", p);
+        jdbc.update("DELETE FROM retrieval_scope_grants WHERE corpus_id = :projectId", p);
+        jdbc.update("DELETE FROM retrieval_index_jobs WHERE corpus_id = :projectId", p);
+        jdbc.update("DELETE FROM retrieval_index_heads WHERE corpus_id = :projectId", p);
+        jdbc.update("DELETE FROM retrieval_index_generations WHERE corpus_id = :projectId", p);
         int deleted = jdbc.update("DELETE FROM projects WHERE id = :projectId", Maps.of("projectId", projectId));
         if (deleted != 1) {
             throw new IllegalArgumentException("Project not found: " + projectId);

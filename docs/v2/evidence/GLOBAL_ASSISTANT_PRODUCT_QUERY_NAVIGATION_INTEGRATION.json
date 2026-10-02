@@ -1,0 +1,9 @@
+{
+  "recordedAt" : "2026-10-01T17:41:01.199958500Z",
+  "model" : "mimo-v2.6-flash-free",
+  "scope" : "real model + actual project.search/get_summary + host-verified UI navigation; isolated test database",
+  "productionAcceptance" : "NOT_RUN",
+  "status" : "PASS",
+  "modelCalls" : 4,
+  "toolCalls" : 3
+}

@@ -49,6 +49,27 @@ frontend/public/tesseract
 __pycache__/
 *.pyc
 agent-brain/.venv/
+.venv*/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Local credentials and environment overrides (examples may be committed)
+.env
+.env.*
+!.env.example
+!.env.sample
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Generated browser evidence is local; keep concise JSON evidence in Git
+/docs/v2/evidence/*.png
+/docs/v2/evidence/*.webm
+/docs/v2/evidence/*.zip
 
 # 本地复核/验收工作区(数据库备份、测试截图、trace、复核脚本),不入库
 /scratch/

@@ -1,0 +1,73 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "runId": {
+      "format": "uuid",
+      "title": "Runid",
+      "type": "string"
+    },
+    "executionEpoch": {
+      "maximum": 9223372036854775807,
+      "minimum": 1,
+      "title": "Executionepoch",
+      "type": "integer"
+    },
+    "leaseId": {
+      "format": "uuid",
+      "title": "Leaseid",
+      "type": "string"
+    },
+    "protocolVersion": {
+      "const": "ga-capability-invocation.v1",
+      "title": "Protocolversion",
+      "type": "string"
+    },
+    "toolCallId": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Toolcallid",
+      "type": "string"
+    },
+    "capabilityId": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Capabilityid",
+      "type": "string"
+    },
+    "descriptorVersion": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Descriptorversion",
+      "type": "string"
+    },
+    "catalogHash": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Cataloghash",
+      "type": "string"
+    },
+    "arguments": {
+      "additionalProperties": true,
+      "title": "Arguments",
+      "type": "object"
+    },
+    "argumentsHash": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Argumentshash",
+      "type": "string"
+    }
+  },
+  "required": [
+    "runId",
+    "executionEpoch",
+    "leaseId",
+    "protocolVersion",
+    "toolCallId",
+    "capabilityId",
+    "descriptorVersion",
+    "catalogHash",
+    "arguments",
+    "argumentsHash"
+  ],
+  "title": "CapabilityRequest",
+  "type": "object"
+}

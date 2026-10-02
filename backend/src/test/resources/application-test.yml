@@ -38,6 +38,12 @@ logging:
 
 spec:
   agent:
+    retrieval:
+      embedding:
+        worker:
+          # Cached test contexts share a DB; tests explicitly drive enrichment.
+          # Never let an old engine's background worker mutate a live RAG fixture.
+          enabled: false
     action-eligibility:
       # Existing deterministic corpus behavior remains a shadow baseline;
       # focused enforcement tests opt in explicitly.

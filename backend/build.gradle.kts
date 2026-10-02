@@ -166,6 +166,15 @@ tasks.register<JavaExec>("eligibilityShadowReplay") {
     }
 }
 
+// Explicit provider-native GA qualification using existing host settings, read only.
+// Does not boot product workers or qualify the authenticated host RPC chain.
+tasks.register<JavaExec>("qualifyGaNative") {
+    group = "verification"
+    description = "Records native SSE tool/followup qualification of the configured host model (no retry)."
+    classpath = eval.runtimeClasspath
+    mainClass.set("com.specagent.eval.GaNativeQualification")
+}
+
 // P2 Phase 2 — Live agent behavioral baseline (explicit, non-blocking).
 // Same Scenario Contract through Python Brain + live provider, N=3
 // repetitions per variant. The suite requires explicit external live

@@ -1,0 +1,192 @@
+{
+  "$defs": {
+    "Grant": {
+      "additionalProperties": false,
+      "properties": {
+        "grantId": {
+          "format": "uuid",
+          "title": "Grantid",
+          "type": "string"
+        },
+        "version": {
+          "minimum": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "expiresAt": {
+          "format": "date-time",
+          "title": "Expiresat",
+          "type": "string"
+        }
+      },
+      "required": [
+        "grantId",
+        "version",
+        "expiresAt"
+      ],
+      "title": "Grant",
+      "type": "object"
+    },
+    "QueryVector": {
+      "additionalProperties": false,
+      "properties": {
+        "dimensions": {
+          "const": 1024,
+          "title": "Dimensions",
+          "type": "integer"
+        },
+        "values": {
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 1024,
+          "minItems": 1024,
+          "title": "Values",
+          "type": "array"
+        },
+        "checksum": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Checksum",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dimensions",
+        "values",
+        "checksum"
+      ],
+      "title": "QueryVector",
+      "type": "object"
+    },
+    "Workload": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "PROJECT_RUN",
+            "GA_RUN",
+            "CONTEXT_PROJECTION",
+            "INDEX_JOB"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "executionEpoch": {
+          "maximum": 9223372036854775807,
+          "minimum": 1,
+          "title": "Executionepoch",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "kind",
+        "id",
+        "executionEpoch"
+      ],
+      "title": "Workload",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "protocolVersion": {
+      "const": "retrieval.v1",
+      "title": "Protocolversion",
+      "type": "string"
+    },
+    "requestId": {
+      "format": "uuid",
+      "title": "Requestid",
+      "type": "string"
+    },
+    "workload": {
+      "$ref": "#/$defs/Workload"
+    },
+    "scopeGrant": {
+      "$ref": "#/$defs/Grant"
+    },
+    "profileId": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Profileid",
+      "type": "string"
+    },
+    "indexGeneration": {
+      "format": "uuid",
+      "title": "Indexgeneration",
+      "type": "string"
+    },
+    "deadline": {
+      "format": "date-time",
+      "title": "Deadline",
+      "type": "string"
+    },
+    "query": {
+      "maxLength": 4000,
+      "minLength": 1,
+      "title": "Query",
+      "type": "string"
+    },
+    "lanes": {
+      "items": {
+        "enum": [
+          "route-lexical",
+          "route-trigram",
+          "project-lexical",
+          "project-trigram",
+          "resource-lexical",
+          "resource-trigram",
+          "graph",
+          "vector"
+        ],
+        "type": "string"
+      },
+      "maxItems": 8,
+      "minItems": 1,
+      "title": "Lanes",
+      "type": "array"
+    },
+    "laneLimit": {
+      "maximum": 48,
+      "minimum": 1,
+      "title": "Lanelimit",
+      "type": "integer"
+    },
+    "queryVector": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/QueryVector"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "maxVectorDistance": {
+      "default": 0.5,
+      "maximum": 0.65,
+      "minimum": 0.0,
+      "title": "Maxvectordistance",
+      "type": "number"
+    }
+  },
+  "required": [
+    "protocolVersion",
+    "requestId",
+    "workload",
+    "scopeGrant",
+    "profileId",
+    "indexGeneration",
+    "deadline",
+    "query",
+    "lanes",
+    "laneLimit",
+    "queryVector"
+  ],
+  "title": "CandidateRequest",
+  "type": "object"
+}

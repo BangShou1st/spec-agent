@@ -84,6 +84,13 @@ public class GitSkillImporter {
      * 路径包含性、文件数与字节上限。
      */
     public TreeInventory fetchTree(String repoUrl, String ref) {
+        return fetchTree(repoUrl, ref, () -> true);
+    }
+
+    public TreeInventory fetchTree(String repoUrl, String ref, java.util.function.BooleanSupplier active) {
+        long expires = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(properties.getGitTimeoutSeconds());
+        java.util.function.BooleanSupplier guard = () -> System.nanoTime() < expires && active.getAsBoolean();
+        requireActive(guard);
         String url = policy.validateOutboundUrl(repoUrl, properties.getGitMaxRedirects())
                 .toString();
         if (!url.toLowerCase(Locale.ROOT).startsWith("https://")) {
@@ -103,11 +110,12 @@ public class GitSkillImporter {
             String commitSha;
             try {
                 commitSha = GitTransportProxy.callWith(route,
-                        () -> cloneBare(url, pinnedRef, tempDir));
+                        () -> cloneBare(url, pinnedRef, tempDir, guard));
             } catch (Exception ex) {
                 throw transportFailure(url, route, ex);
             }
-            return extractTree(tempDir, commitSha);
+            requireActive(guard);
+            return extractTree(tempDir, commitSha, guard);
         } catch (IOException ex) {
             throw new SkillImportException("Git import failed: "
                     + ex.getClass().getSimpleName(), ex);
@@ -167,9 +175,27 @@ public class GitSkillImporter {
      * 客户端是 JGit,绝不会运行任何 git hook、不会初始化子模块、不会
      * smudge LFS 内容。
      */
-    private String cloneBare(String url, String ref, Path dir)
+    private String cloneBare(String url, String ref, Path dir, java.util.function.BooleanSupplier active)
             throws GitAPIException, IOException {
+        var http=new GuardedGitHttp(policy,active,properties.getGitCloneBytes());
+        var transport = new java.util.concurrent.atomic.AtomicReference<org.eclipse.jgit.transport.Transport>();
+        var watcher = java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
+            var thread = new Thread(r, "skill-git-fence"); thread.setDaemon(true); return thread;
+        });
+        watcher.scheduleWithFixedDelay(() -> {
+            try { if (!active.getAsBoolean()) { http.close(); var current = transport.get(); if (current != null) current.close(); } }
+            catch (RuntimeException ignored) { /* ProgressMonitor also fences; no new execution. */ }
+        }, 0, 100, java.util.concurrent.TimeUnit.MILLISECONDS);
         try (Git ignored = Git.cloneRepository()
+                .setTransportConfigCallback(value -> { transport.set(value); if(value instanceof org.eclipse.jgit.transport.TransportHttp remote) remote.setHttpConnectionFactory(http); })
+                .setProgressMonitor(new org.eclipse.jgit.lib.ProgressMonitor() {
+                    public void start(int totalTasks) { requireActive(active); }
+                    public void beginTask(String title, int totalWork) { requireActive(active); }
+                    public void update(int completed) { requireActive(active); }
+                    public void endTask() { requireActive(active); }
+                    public boolean isCancelled() { return !active.getAsBoolean(); }
+                    public void showDuration(boolean enabled) { }
+                })
                 .setURI(url)
                 .setDirectory(dir.toFile())
                 .setBare(true)
@@ -185,8 +211,9 @@ public class GitSkillImporter {
             if (resolved == null) {
                 throw new SkillImportException("Git repository resolved no HEAD commit");
             }
+            requireActive(active);
             return resolved.name();
-        }
+        } finally { watcher.shutdownNow(); http.close(); }
     }
 
     private String sanitizeRef(String ref) {
@@ -202,7 +229,7 @@ public class GitSkillImporter {
         return stripped;
     }
 
-    private TreeInventory extractTree(Path bareDir, String commitSha) throws IOException {
+    private TreeInventory extractTree(Path bareDir, String commitSha, java.util.function.BooleanSupplier active) throws IOException {
         Path gitDir = bareDir.resolve(".git");
         if (!Files.isDirectory(gitDir)) {
             gitDir = bareDir;
@@ -226,6 +253,7 @@ public class GitSkillImporter {
                 treeWalk.addTree(tree);
                 treeWalk.setRecursive(true);
                 while (treeWalk.next()) {
+                    requireActive(active);
                     String path = treeWalk.getPathString();
                     // 市场清单只为归属判定而读取:它们不进入包(属于仓库
                     // 元数据),但发现功能需要靠它知道哪个 Skill 目录属于
@@ -239,7 +267,9 @@ public class GitSkillImporter {
                                 + properties.getMaxFiles() + " files");
                     }
                     ObjectLoader loader = repository.open(treeWalk.getObjectId(0));
-                    byte[] content = loader.getBytes();
+                    if(loader.getSize()>properties.getMaxExtractedBytes()-totalBytes)
+                        throw new SkillImportException("Git package exceeds extracted byte limit");
+                    byte[] content = loader.getBytes((int)Math.min(Integer.MAX_VALUE,properties.getMaxExtractedBytes()-totalBytes));
                     totalBytes += content.length;
                     if (totalBytes > properties.getMaxExtractedBytes()) {
                         throw new SkillImportException("Git package exceeds the "
@@ -386,17 +416,38 @@ public class GitSkillImporter {
                 ? SkillPackageFile.FileKind.TEXT : SkillPackageFile.FileKind.BINARY;
     }
 
+    private static void requireActive(java.util.function.BooleanSupplier active) {
+        if (!active.getAsBoolean()) throw new SkillImportException("Git preparation cancelled or timed out");
+    }
+
     private void deleteRecursively(java.io.File file) {
-        if (file == null || !file.exists()) {
-            return;
-        }
-        java.io.File[] children = file.listFiles();
-        if (children != null) {
-            for (java.io.File child : children) {
-                deleteRecursively(child);
+        Path root = file.toPath().toAbsolutePath().normalize();
+        Path tempRoot = Path.of(System.getProperty("java.io.tmpdir")).toAbsolutePath().normalize();
+        if (!root.getParent().equals(tempRoot) || !root.getFileName().toString().startsWith("spec-agent-git-skill-"))
+            throw new SkillImportException("Git temporary directory containment violation");
+        for (int attempt = 0; attempt < 10; attempt++) {
+            try {
+                if (!Files.exists(root)) return;
+                try (var paths = Files.walk(root)) {
+                    for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) {
+                        // JGit marks pack objects read-only. Windows requires clearing that bit before deletion.
+                        if (Files.isRegularFile(path, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+                            var dos = Files.getFileAttributeView(path, java.nio.file.attribute.DosFileAttributeView.class,
+                                    java.nio.file.LinkOption.NOFOLLOW_LINKS);
+                            if (dos != null) dos.setReadOnly(false);
+                        }
+                        Files.deleteIfExists(path);
+                    }
+                }
+                return;
+            } catch (IOException ex) {
+                if (attempt == 9) throw new SkillImportException("Git temporary directory cleanup failed", ex);
+                try { Thread.sleep(50); } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new SkillImportException("Git temporary directory cleanup interrupted", interrupted);
+                }
             }
         }
-        file.delete();
     }
 
     public record ExtractedResult(String commitSha, byte[] skillMarkdown,

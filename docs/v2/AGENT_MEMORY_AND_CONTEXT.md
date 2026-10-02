@@ -2,6 +2,8 @@
 
 ## 1. Purpose
 
+> 2026-10-01 retrieval implementation target: see `UNIFIED_PYTHON_RAG_DESIGN.md`. Both Agents will use a shared Python retrieval pipeline; Java retains mandatory lineage, source/scope authority and first-freeze/replay ownership. Moving retrieval algorithms does not change the context or frozen-input semantics in this document. The supplemental-retrieval failure contract must be explicitly implemented and tested before cutover.
+
 This document defines how Spec Agent selects and freezes context without falling back to global chat-history prompting.
 
 Core principle:

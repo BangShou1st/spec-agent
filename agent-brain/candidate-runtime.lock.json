@@ -1,0 +1,13 @@
+{
+  "version": "candidate-runtime-lock.v1",
+  "pythonVersion": "3.11.14",
+  "implementation": "CPython",
+  "platform": "Windows x86_64",
+  "uvCatalogVersion": "0.12.2",
+  "standaloneBuild": "20260211",
+  "archiveUrl": "https://releases.astral.sh/github/python-build-standalone/releases/download/20260211/cpython-3.11.14%2B20260211-x86_64-pc-windows-msvc-install_only_stripped.tar.gz",
+  "pythonExeSha256": "77ce191aa5d30b17288a3d6adaf83813154998b8de82b82485d393d11ce47c58",
+  "pythonDllSha256": "2401df7182ab25100deab6632cdd4029b0809ae9984c0bb6f44c8510df6b7ebd",
+  "requirementsLockSha256": "eb1bb4f240aeabb94e3a7fdee5edd6abe94590aec9e3431ca58a9794701a4ef6",
+  "pydanticCoreNativeSha256": "3c559df0e23edcce94f0d7d694c3c69bbfa2f9ec83c299a6dd2901e21ca40936"
+}

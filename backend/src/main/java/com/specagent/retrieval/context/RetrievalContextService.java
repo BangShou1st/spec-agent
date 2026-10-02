@@ -40,6 +40,11 @@ public class RetrievalContextService {
     public List<RetrievedContextItem> retrieve(ContextSnapshot snapshot,
                                                Set<String> mandatorySourceRefs,
                                                String queryText) {
+        return retrieveWithStatus(snapshot,mandatorySourceRefs,queryText).items();
+    }
+    public boolean usesSharedPython() { return retriever.usesSharedPython(); }
+    public record ContextRetrieval(List<RetrievedContextItem> items,Map<String,Object> state) {}
+    public ContextRetrieval retrieveWithStatus(ContextSnapshot snapshot,Set<String> mandatorySourceRefs,String queryText) {
         Set<String> routeRefs = new LinkedHashSet<>();
         snapshot.includedNodeIds().forEach(id -> routeRefs.add("node:" + id));
         snapshot.includedAnswerIds().forEach(id -> routeRefs.add("answer:" + id));
@@ -58,7 +63,17 @@ public class RetrievalContextService {
                 MAX_ITEMS, MAX_CHARS, routeRefs, graphNodes);
 
         Set<String> mandatory = mandatoryRefs(snapshot, mandatorySourceRefs);
-        List<HybridRetriever.Candidate> candidates = retriever.retrieve(query);
+        List<HybridRetriever.Candidate> candidates;
+        Map<String,Object> state=Map.of();
+        if(retriever.usesSharedPython()) {
+            try {
+                var outcome=retriever.retrieveOutcome(query,snapshot.id(),"CONTEXT_PROJECTION",mandatory);
+                candidates=outcome.candidates(); state=outcome.state();
+            } catch(IllegalStateException ex) {
+                return new ContextRetrieval(List.of(),Map.of("retrievalEngineVersion","python-rag.v1",
+                        "profileId",com.specagent.retrieval.protocol.RetrievalWire.PROFILE,"supplementalRetrievalUnavailable",true));
+            }
+        } else candidates= retriever.retrieve(query);
         Set<String> selectedRefs = new HashSet<>();
         Set<String> selectedContentHashes = new HashSet<>();
         List<RetrievedContextItem> result = new ArrayList<>();
@@ -80,6 +95,7 @@ public class RetrievalContextService {
             }
             String content = item.content();
             if (content.length() > remaining) {
+                if(retriever.usesSharedPython()) continue; // Preserve the source hash/location of shared results.
                 content = content.substring(0, remaining);
                 item = new RetrievedContextItem(item.sourceRef(), item.sourceKind(), item.scope(),
                         item.originRouteId(), item.authority(), content, item.location(),
@@ -91,7 +107,7 @@ public class RetrievalContextService {
                 break;
             }
         }
-        return List.copyOf(result);
+        return new ContextRetrieval(List.copyOf(result),state);
     }
 
     private Set<String> mandatoryRefs(ContextSnapshot snapshot, Set<String> mandatorySourceRefs) {
@@ -119,6 +135,8 @@ public class RetrievalContextService {
         provenance.put("contentHash", entry.contentHash());
         provenance.put("sourceKind", entry.sourceKind().name());
         provenance.put("retrievalLanes", lanes);
+        for(String key:List.of("sourceVersion","retrievalEngineVersion","profileId","indexGeneration","vectorUnavailable"))
+            if(entry.metadata().containsKey(key)) provenance.put(key,entry.metadata().get(key));
         putRouteProvenance(entry, provenance);
         return new RetrievedContextItem(entry.sourceRef(), entry.sourceKind(), scope,
                 originRouteId, entry.authority(), entry.content(),

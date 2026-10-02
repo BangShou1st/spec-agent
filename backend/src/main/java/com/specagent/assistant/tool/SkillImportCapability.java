@@ -33,7 +33,7 @@ import java.util.Map;
  * 让助手去问用户要哪个,而不是瞎猜。
  */
 @Component
-public class SkillImportCapability implements InternalCapabilityAdapter {
+public class SkillImportCapability implements com.specagent.capability.PreparedCapabilityAdapter {
 
     public static final String CAPABILITY_ID = "skill.import";
 
@@ -98,61 +98,82 @@ public class SkillImportCapability implements InternalCapabilityAdapter {
 
     @Override
     public CapabilityResult invoke(CapabilityInvocation invocation) {
+        return prepareInvocation(invocation, () -> true, false).apply(invocation);
+    }
+
+    @Override
+    public java.util.function.Function<CapabilityInvocation,CapabilityResult> prepare(Map<String,Object> arguments,
+            java.util.function.BooleanSupplier active) {
+        var invocation = new CapabilityInvocation(java.util.UUID.randomUUID(), "prepare", CAPABILITY_ID, null, null, arguments);
+        return prepareInvocation(invocation, active, true);
+    }
+
+    private java.util.function.Function<CapabilityInvocation,CapabilityResult> ready(CapabilityResult result) {
+        return invocation -> new CapabilityResult(invocation.invocationId(), invocation.invocationKey(),
+                CAPABILITY_ID, result.status(), result.content(), result.sourceRefs(), result.provenance(), result.warnings());
+    }
+
+    private java.util.function.Function<CapabilityInvocation,CapabilityResult> prepareInvocation(
+            CapabilityInvocation invocation, java.util.function.BooleanSupplier active, boolean detached) {
         Map<String, Object> arguments = invocation.arguments();
         for (String key : arguments.keySet()) {
             if (!GlobalAssistantToolCatalog.allowedArguments(CAPABILITY_ID).contains(key)) {
-                return reject(invocation, "Unknown argument for " + CAPABILITY_ID + ": " + key);
+                return ready(reject(invocation, "Unknown argument for " + CAPABILITY_ID + ": " + key));
             }
         }
         String url = text(arguments, "url");
         if (url == null) {
-            return reject(invocation,
-                    "arguments.url is required and must be a non-blank HTTPS URL");
+            return ready(reject(invocation,
+                    "arguments.url is required and must be a non-blank HTTPS URL"));
         }
         if (url.length() > MAX_URL_CHARS) {
-            return reject(invocation, "arguments.url must be at most " + MAX_URL_CHARS + " chars");
+            return ready(reject(invocation, "arguments.url must be at most " + MAX_URL_CHARS + " chars"));
         }
         String ref = text(arguments, "ref");
         if (ref != null && ref.length() > MAX_REF_CHARS) {
-            return reject(invocation, "arguments.ref must be at most " + MAX_REF_CHARS + " chars");
+            return ready(reject(invocation, "arguments.ref must be at most " + MAX_REF_CHARS + " chars"));
         }
         String requested = text(arguments, "skill");
         if (requested != null && requested.length() > MAX_SKILL_CHARS) {
-            return reject(invocation,
-                    "arguments.skill must be at most " + MAX_SKILL_CHARS + " chars");
+            return ready(reject(invocation,
+                    "arguments.skill must be at most " + MAX_SKILL_CHARS + " chars"));
         }
 
+        com.specagent.skill.importing.GitSkillImporter.TreeInventory inventory;
         SkillImportService.DiscoveryResult discovery;
         try {
-            discovery = imports.discoverGit(url, ref);
+            inventory = detached ? imports.prepareGit(url, ref, active) : null;
+            discovery = detached ? imports.discoverInventory(inventory) : imports.discoverGit(url, ref);
         } catch (SkillImportException ex) {
-            return failure(invocation, ex.getMessage());
+            return ready(failure(invocation, ex.getMessage()));
         }
 
         List<SkillImportService.DiscoveryCandidate> usable = discovery.candidates().stream()
                 .filter(SkillImportService.DiscoveryCandidate::parseable)
                 .toList();
         if (usable.isEmpty()) {
-            return failure(invocation, "No Skill package (SKILL.md) was found in that repository");
+            return ready(failure(invocation, "No Skill package (SKILL.md) was found in that repository"));
         }
 
         List<SkillImportService.DiscoveryCandidate> matches = match(usable, requested);
         if (matches.isEmpty()) {
-            return reject(invocation, "arguments.skill matched no Skill in the repository."
-                    + " Available: " + summary(usable, MAX_REPORTED_CANDIDATES));
+            return ready(reject(invocation, "arguments.skill matched no Skill in the repository."
+                    + " Available: " + summary(usable, MAX_REPORTED_CANDIDATES)));
         }
         if (matches.size() > 1) {
             // 有歧义时这是该问用户的问题,不是猜一猜:报告候选,
             // 什么都不暂存。
-            return choiceResult(invocation, discovery, matches, requested != null);
+            return ready(choiceResult(invocation, discovery, matches, requested != null));
         }
 
         SkillImportService.DiscoveryCandidate selected = matches.get(0);
+        return committedInvocation -> {
         SkillImportService.StagedResult staged;
         try {
-            staged = imports.stageGit(url, ref, selected.path());
+            staged = detached ? imports.stagePreparedGit(inventory, selected.path())
+                    : imports.stageGit(url, ref, selected.path());
         } catch (SkillImportException ex) {
-            return failure(invocation, ex.getMessage());
+            return failure(committedInvocation, ex.getMessage());
         }
 
         Map<String, Object> content = new LinkedHashMap<>();
@@ -164,10 +185,11 @@ public class SkillImportCapability implements InternalCapabilityAdapter {
         content.put("skillPath", selected.path());
         content.put("fileCount", staged.fileCount());
         content.put("requiresChoice", false);
-        return new CapabilityResult(invocation.invocationId(), invocation.invocationKey(),
+        return new CapabilityResult(committedInvocation.invocationId(), committedInvocation.invocationKey(),
                 CAPABILITY_ID, CapabilityResult.Status.SUCCEEDED, content,
                 List.of("skill_import:" + staged.stagedImportId()),
                 Map.of("kind", "SKILL_IMPORT_STAGED"), List.of());
+        };
     }
 
     private CapabilityResult choiceResult(CapabilityInvocation invocation,

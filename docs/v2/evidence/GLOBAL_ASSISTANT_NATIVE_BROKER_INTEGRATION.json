@@ -1,0 +1,12 @@
+{
+  "recordedAt" : "2026-10-01T13:03:45.524937700Z",
+  "provider" : "OPENCODE_ZEN",
+  "model" : "mimo-v2.6-flash-free",
+  "scope" : "test-host authenticated Java/Python model+checkpoint RPC; real provider; synthetic tool result",
+  "productionAcceptance" : "NOT_RUN",
+  "capabilityDispatch" : "NOT_RUN",
+  "retries" : 0,
+  "status" : "PASS",
+  "providerCalls" : 2,
+  "checkpointRestored" : true
+}

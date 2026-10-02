@@ -1,0 +1,155 @@
+{
+  "$defs": {
+    "EmbeddingProfile": {
+      "additionalProperties": false,
+      "properties": {
+        "profileId": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Profileid",
+          "type": "string"
+        },
+        "provider": {
+          "const": "OLLAMA_LOCAL",
+          "title": "Provider",
+          "type": "string"
+        },
+        "modelTag": {
+          "const": "qwen3-embedding:0.6b",
+          "title": "Modeltag",
+          "type": "string"
+        },
+        "modelDigest": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Modeldigest",
+          "type": "string"
+        },
+        "dimensions": {
+          "const": 1024,
+          "title": "Dimensions",
+          "type": "integer"
+        },
+        "queryStrategy": {
+          "const": "qwen-instruct.v1",
+          "title": "Querystrategy",
+          "type": "string"
+        },
+        "queryInstruction": {
+          "const": "Retrieve relevant Spec Agent product documentation and requirement workspace passages for the query.",
+          "title": "Queryinstruction",
+          "type": "string"
+        },
+        "documentStrategy": {
+          "const": "raw-text.v1",
+          "title": "Documentstrategy",
+          "type": "string"
+        },
+        "normalization": {
+          "const": "l2",
+          "title": "Normalization",
+          "type": "string"
+        },
+        "truncate": {
+          "const": false,
+          "title": "Truncate",
+          "type": "boolean"
+        },
+        "splitterVersion": {
+          "const": "host-source-granularity.v1",
+          "title": "Splitterversion",
+          "type": "string"
+        },
+        "indexSchemaVersion": {
+          "const": "retrieval-index.v2",
+          "title": "Indexschemaversion",
+          "type": "string"
+        }
+      },
+      "required": [
+        "profileId",
+        "provider",
+        "modelTag",
+        "modelDigest",
+        "dimensions",
+        "queryStrategy",
+        "queryInstruction",
+        "documentStrategy",
+        "normalization",
+        "truncate",
+        "splitterVersion",
+        "indexSchemaVersion"
+      ],
+      "title": "EmbeddingProfile",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "protocolVersion": {
+      "const": "retrieval.v1",
+      "title": "Protocolversion",
+      "type": "string"
+    },
+    "retrievalEngineVersion": {
+      "const": "python-rag.v1",
+      "title": "Retrievalengineversion",
+      "type": "string"
+    },
+    "ready": {
+      "title": "Ready",
+      "type": "boolean"
+    },
+    "storeReady": {
+      "title": "Storeready",
+      "type": "boolean"
+    },
+    "ollamaReady": {
+      "title": "Ollamaready",
+      "type": "boolean"
+    },
+    "ollamaVersion": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Ollamaversion"
+    },
+    "profile": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EmbeddingProfile"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "embeddingConcurrency": {
+      "const": 1,
+      "title": "Embeddingconcurrency",
+      "type": "integer"
+    },
+    "maxBatch": {
+      "const": 16,
+      "title": "Maxbatch",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "protocolVersion",
+    "retrievalEngineVersion",
+    "ready",
+    "storeReady",
+    "ollamaReady",
+    "ollamaVersion",
+    "profile",
+    "embeddingConcurrency",
+    "maxBatch"
+  ],
+  "title": "RetrievalHealth",
+  "type": "object"
+}

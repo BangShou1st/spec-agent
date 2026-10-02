@@ -15,7 +15,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @ConfigurationProperties(prefix = "spec.agent.brain")
-public class AgentBrainProperties {
+public class AgentBrainProperties implements com.specagent.common.BrainConnectionSettings {
 
     /** Python agent-brain 服务的基础 URL。 */
     private String baseUrl = "http://localhost:8100";

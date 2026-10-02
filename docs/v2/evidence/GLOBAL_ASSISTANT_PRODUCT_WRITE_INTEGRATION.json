@@ -1,0 +1,12 @@
+{
+  "recordedAt" : "2026-10-01T17:35:25.019772900Z",
+  "model" : "mimo-v2.6-flash-free",
+  "scope" : "real model + actual project.create + product dispatcher/Python/checkpoint/events; isolated test database",
+  "productionAcceptance" : "NOT_RUN",
+  "approvalPolicy" : "existing LOCAL_DURABLE application capability; no new approval override",
+  "status" : "PASS",
+  "modelCalls" : 2,
+  "toolCalls" : 1,
+  "projectRows" : 1,
+  "duplicateDispatchSideEffects" : 0
+}

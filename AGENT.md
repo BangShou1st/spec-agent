@@ -14,6 +14,8 @@ Before implementing or modifying behavior, read:
 6. `docs/MODEL_GATEWAY.md`
 7. `docs/DEVELOPMENT_ENVIRONMENT.md`
 8. For V2 work: `docs/v2/README.md` and the canonical documents it lists.
+9. For Global Assistant LangChain redesign work: `docs/v2/GLOBAL_ASSISTANT_LANGCHAIN_REDESIGN.md` (target design, staged migration and new-session handoff; V1 baseline remains applicable until each cutover).
+10. For retrieval/embedding work: `docs/v2/UNIFIED_PYTHON_RAG_DESIGN.md` (latest target: shared Python RAG/local Ollama for both Agents; Java retains fact, scope and storage ownership; do not add a parallel Java Ollama provider).
 
 Do not infer product scope from a single user example. The system is generic requirement clarification, not a domain-specific requirement generator.
 

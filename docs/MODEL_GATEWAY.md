@@ -331,3 +331,41 @@ V2 flow:       Python brain -> internal inference broker -> ModelInferenceGatewa
 The fake gateway for this seam is test-only
 (`spec.agent.model.inference=fake` with the `test` profile), mirroring the
 legacy fake adapter rules.
+
+## 16. Global Assistant native tool-call contract (migration preparation)
+
+The LangChain migration uses a separate `ga-model-inference.v1` contract,
+specified in `contracts/global-assistant/README.md`. It does not extend
+`model-inference.v1`, relax Project Agent role/run validation, or change §8.1.
+GA messages support assistant/tool roles and typed tool calls. Credentials and
+provider conversion remain in Java. A model binding is frozen per execution.
+
+Native GA protocol conversion is isolated from existing text adapters. Its
+presence is not evidence that a provider/model is qualified. Until native
+tool-call, streamed arguments and tool-result follow-up pass through an
+authenticated, run-scoped Java broker, the LangChain engine must not be enabled
+for product runs. Unsupported transports return `UNSUPPORTED_AGENT_MODEL`;
+no text simulation, model substitution or retry is permitted.
+
+The new GA contract authorizes a separate native tool-call payload containing
+tool schemas, assistant calls and tool results. It does **not** authorize
+changing the frozen OpenCode production transport; that requires a separately
+recorded provider qualification and transport change. No provider SDK is added
+to Python.
+
+### 16.1 Separate GA native SSE transport
+
+The GA transport may reuse the Java OpenCode HTTP client, proxy policy and
+identity headers with an independent native payload (`stream=true`,
+`stream_options.include_usage=true`). It aggregates indexed tool argument
+fragments and validates the completed response before returning any executable
+call. A missing terminal finish, usage or `[DONE]`, malformed arguments,
+multiple parallel calls, cancellation or deadline terminates the request.
+The initial adapter permits one call per model response. Zen retains its
+verified reserved `bash`/`read` declarations in the provider envelope, separate
+from the authorized GA catalog. Neither has a host execution route. A response
+calling either reserved name is rejected before tool dispatch. Catalog names
+colliding with those transport declarations are rejected. This preserves the
+existing free-tier request requirements without granting shell/file access.
+The existing Project completion payload and parser remain unchanged. Adding
+this transport alone does not qualify a model or enable product execution.

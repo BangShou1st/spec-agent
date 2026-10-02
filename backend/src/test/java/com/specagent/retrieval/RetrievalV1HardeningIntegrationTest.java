@@ -393,7 +393,11 @@ class RetrievalV1HardeningIntegrationTest {
         assertThat(entryRepository.findBySourceRef(project.id(), sourceRef).orElseThrow()
                 .embeddingStatus()).isEqualTo("PENDING");
 
-        new EmbeddingEnrichmentWorker(enrichmentService, entryRepository).tick();
+        // Isolate this tick's project selection from unrelated committed suite fixtures.
+        // Enrichment still uses the real repository/transaction and actual test gateway.
+        var workerRepository = org.mockito.Mockito.mock(RetrievalEntryRepository.class);
+        org.mockito.Mockito.when(workerRepository.findPendingProjectIds(32)).thenReturn(List.of(project.id()));
+        new EmbeddingEnrichmentWorker(enrichmentService, workerRepository).tick();
 
         assertThat(entryRepository.findBySourceRef(project.id(), sourceRef).orElseThrow()
                 .embeddingStatus()).isEqualTo("READY");

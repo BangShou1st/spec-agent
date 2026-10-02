@@ -39,7 +39,7 @@ final class AnswerStreamPublisher {
     }
 
     /** 开启下一个 generation;若已有旧草稿则发出 RESET 事件。 */
-    int nextGeneration() {
+    synchronized int nextGeneration() {
         finish();
         if (generationStarted) {
             int superseded = generation;
@@ -54,7 +54,7 @@ final class AnswerStreamPublisher {
     }
 
     /** 接收可释放的明文;趁供应商还在生成时就批量刷出。 */
-    void accept(String text) {
+    synchronized void accept(String text) {
         if (text == null || text.isEmpty()) return;
         if (!generationStarted) {
             generationStarted = true;
@@ -71,9 +71,20 @@ final class AnswerStreamPublisher {
     }
 
     /** 流结束时的最终刷出;没有积压内容时是空操作。 */
-    void finish() {
+    synchronized void finish() {
         if (pending.length() > 0) {
             flush();
+        }
+    }
+
+    /** Retract an unconfirmed candidate without flushing more rejected text. */
+    synchronized void discard() {
+        pending.setLength(0);
+        if (generationStarted) {
+            int superseded = generation++;
+            runEvents.append(runId, GlobalAssistantEventType.ANSWER_STREAM_RESET,
+                    Map.of("supersededGeneration", superseded, "generation", generation));
+            generationStarted = false;
         }
     }
 

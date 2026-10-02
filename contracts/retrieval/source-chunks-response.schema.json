@@ -1,0 +1,207 @@
+{
+  "$defs": {
+    "Grant": {
+      "additionalProperties": false,
+      "properties": {
+        "grantId": {
+          "format": "uuid",
+          "title": "Grantid",
+          "type": "string"
+        },
+        "version": {
+          "minimum": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "expiresAt": {
+          "format": "date-time",
+          "title": "Expiresat",
+          "type": "string"
+        }
+      },
+      "required": [
+        "grantId",
+        "version",
+        "expiresAt"
+      ],
+      "title": "Grant",
+      "type": "object"
+    },
+    "SourceChunk": {
+      "additionalProperties": false,
+      "properties": {
+        "index": {
+          "maximum": 255,
+          "minimum": 0,
+          "title": "Index",
+          "type": "integer"
+        },
+        "text": {
+          "maxLength": 12000,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "startOffset": {
+          "minimum": 0,
+          "title": "Startoffset",
+          "type": "integer"
+        },
+        "endOffset": {
+          "exclusiveMinimum": 0,
+          "title": "Endoffset",
+          "type": "integer"
+        },
+        "contentHash": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Contenthash",
+          "type": "string"
+        },
+        "headings": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 6,
+          "title": "Headings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "index",
+        "text",
+        "startOffset",
+        "endOffset",
+        "contentHash",
+        "headings"
+      ],
+      "title": "SourceChunk",
+      "type": "object"
+    },
+    "Workload": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "PROJECT_RUN",
+            "GA_RUN",
+            "CONTEXT_PROJECTION",
+            "INDEX_JOB"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "executionEpoch": {
+          "maximum": 9223372036854775807,
+          "minimum": 1,
+          "title": "Executionepoch",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "kind",
+        "id",
+        "executionEpoch"
+      ],
+      "title": "Workload",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "protocolVersion": {
+      "const": "retrieval.v1",
+      "title": "Protocolversion",
+      "type": "string"
+    },
+    "requestId": {
+      "format": "uuid",
+      "title": "Requestid",
+      "type": "string"
+    },
+    "workload": {
+      "$ref": "#/$defs/Workload"
+    },
+    "scopeGrant": {
+      "$ref": "#/$defs/Grant"
+    },
+    "profileId": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Profileid",
+      "type": "string"
+    },
+    "indexGeneration": {
+      "format": "uuid",
+      "title": "Indexgeneration",
+      "type": "string"
+    },
+    "deadline": {
+      "format": "date-time",
+      "title": "Deadline",
+      "type": "string"
+    },
+    "jobId": {
+      "format": "uuid",
+      "title": "Jobid",
+      "type": "string"
+    },
+    "leaseId": {
+      "format": "uuid",
+      "title": "Leaseid",
+      "type": "string"
+    },
+    "expectedVersion": {
+      "minimum": 0,
+      "title": "Expectedversion",
+      "type": "integer"
+    },
+    "sourceRef": {
+      "maxLength": 240,
+      "minLength": 1,
+      "title": "Sourceref",
+      "type": "string"
+    },
+    "sourceVersion": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Sourceversion",
+      "type": "string"
+    },
+    "contentHash": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Contenthash",
+      "type": "string"
+    },
+    "chunks": {
+      "items": {
+        "$ref": "#/$defs/SourceChunk"
+      },
+      "maxItems": 256,
+      "minItems": 1,
+      "title": "Chunks",
+      "type": "array"
+    }
+  },
+  "required": [
+    "protocolVersion",
+    "requestId",
+    "workload",
+    "scopeGrant",
+    "profileId",
+    "indexGeneration",
+    "deadline",
+    "jobId",
+    "leaseId",
+    "expectedVersion",
+    "sourceRef",
+    "sourceVersion",
+    "contentHash",
+    "chunks"
+  ],
+  "title": "SplitResponse",
+  "type": "object"
+}

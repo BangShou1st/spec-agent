@@ -31,6 +31,19 @@ public class HybridRetriever {
 
     private final RetrievalEntryRepository repository;
     private final VectorCandidateRetriever vectorCandidateRetriever;
+    private com.specagent.retrieval.protocol.SharedRetrievalHost shared;
+    private com.specagent.retrieval.protocol.RetrievalStore store;
+    private String engine="java-hybrid.v1";
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void configureShared(com.specagent.retrieval.protocol.SharedRetrievalHost shared,
+            com.specagent.retrieval.protocol.RetrievalStore store,
+            @org.springframework.beans.factory.annotation.Value("${spec.agent.retrieval.engine:java-hybrid.v1}") String engine) {
+        if(!java.util.Set.of("java-hybrid.v1","python-rag.v1").contains(engine)) throw new IllegalArgumentException("Unsupported retrieval engine");
+        this.shared=shared; this.store=store; this.engine=engine;
+    }
+    public boolean usesSharedPython() { return engine.equals("python-rag.v1"); }
+    public record Outcome(List<Candidate> candidates,Map<String,Object> state) {}
 
     public HybridRetriever(RetrievalEntryRepository repository,
                            VectorCandidateRetriever vectorCandidateRetriever) {
@@ -39,6 +52,30 @@ public class HybridRetriever {
     }
 
     public List<Candidate> retrieve(RetrievalQuery query) {
+        return usesSharedPython()?retrieveOutcome(query,java.util.UUID.randomUUID(),"CONTEXT_PROJECTION",java.util.Set.of()).candidates():retrieveLegacy(query);
+    }
+
+    public Outcome retrieveOutcome(RetrievalQuery query,java.util.UUID workload,String kind,java.util.Set<String> excluded) {
+        if(!usesSharedPython()) return new Outcome(retrieveLegacy(query),Map.of());
+        var result=shared.search(query,workload,kind,excluded);
+        List<Candidate> candidates=new ArrayList<>();
+        for(var ranked:result.items()) {
+            var source=ranked.source();
+            var metadata=new LinkedHashMap<>(store.metadataFor(source));
+            metadata.put("retrievalEngineVersion",result.retrievalEngineVersion()); metadata.put("profileId",result.profileId());
+            metadata.put("indexGeneration",result.indexGeneration().toString()); metadata.put("vectorUnavailable",result.vectorUnavailable());
+            var row=repository.findBySourceRef(query.projectId(),source.sourceRef()).orElseThrow(()->new IllegalStateException("SOURCE_VERSION_MISMATCH"));
+            if(!row.id().equals(source.entryId()) || !row.contentHash().equals(source.contentHash())) throw new IllegalStateException("SOURCE_VERSION_MISMATCH");
+            var entry=new RetrievalEntry(source.entryId(),source.projectId(),source.originRouteId(),row.sourceKind(),row.sourceId(),source.sourceRef(),
+                    RetrievalScope.valueOf(source.scope()),MemoryAuthority.valueOf(source.authority()),source.content(),source.contentHash(),
+                    metadata,row.embeddingModel(),row.embeddingDimensions(),row.embeddingStatus(),row.retractedAt());
+            candidates.add(new Candidate(entry,ranked.rankScore(),ranked.lanes()));
+        }
+        return new Outcome(List.copyOf(candidates),Map.of("retrievalEngineVersion",result.retrievalEngineVersion(),"profileId",result.profileId(),
+                "indexGeneration",result.indexGeneration().toString(),"vectorUnavailable",result.vectorUnavailable(),"supplementalRetrievalUnavailable",false));
+    }
+
+    private List<Candidate> retrieveLegacy(RetrievalQuery query) {
         Map<String, CandidateAccumulator> fused = new LinkedHashMap<>();
         if (query.scopes().contains(RetrievalScope.ROUTE)) {
             addLane(fused, "route-lexical", repository.lexical(

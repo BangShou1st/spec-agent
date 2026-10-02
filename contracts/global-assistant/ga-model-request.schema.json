@@ -1,0 +1,200 @@
+{
+  "$defs": {
+    "Message": {
+      "additionalProperties": false,
+      "properties": {
+        "role": {
+          "enum": [
+            "system",
+            "user",
+            "assistant",
+            "tool"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "content": {
+          "maxLength": 131072,
+          "title": "Content",
+          "type": "string"
+        },
+        "toolCalls": {
+          "items": {
+            "$ref": "#/$defs/ToolCall"
+          },
+          "maxItems": 5,
+          "title": "Toolcalls",
+          "type": "array"
+        },
+        "toolCallId": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Toolcallid"
+        }
+      },
+      "required": [
+        "role",
+        "content"
+      ],
+      "title": "Message",
+      "type": "object"
+    },
+    "ToolCall": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "pattern": "^[A-Za-z0-9_-]{1,64}$",
+          "title": "Name",
+          "type": "string"
+        },
+        "arguments": {
+          "additionalProperties": true,
+          "title": "Arguments",
+          "type": "object"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "arguments"
+      ],
+      "title": "ToolCall",
+      "type": "object"
+    },
+    "ToolDefinition": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "pattern": "^[A-Za-z0-9_-]{1,64}$",
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "parameters": {
+          "additionalProperties": true,
+          "title": "Parameters",
+          "type": "object"
+        }
+      },
+      "required": [
+        "name",
+        "description",
+        "parameters"
+      ],
+      "title": "ToolDefinition",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "runId": {
+      "format": "uuid",
+      "title": "Runid",
+      "type": "string"
+    },
+    "executionEpoch": {
+      "maximum": 9223372036854775807,
+      "minimum": 1,
+      "title": "Executionepoch",
+      "type": "integer"
+    },
+    "leaseId": {
+      "format": "uuid",
+      "title": "Leaseid",
+      "type": "string"
+    },
+    "protocolVersion": {
+      "const": "ga-model-inference.v1",
+      "title": "Protocolversion",
+      "type": "string"
+    },
+    "callId": {
+      "format": "uuid",
+      "title": "Callid",
+      "type": "string"
+    },
+    "callType": {
+      "enum": [
+        "AGENT",
+        "SUMMARY"
+      ],
+      "title": "Calltype",
+      "type": "string"
+    },
+    "modelBindingId": {
+      "format": "uuid",
+      "title": "Modelbindingid",
+      "type": "string"
+    },
+    "messages": {
+      "items": {
+        "$ref": "#/$defs/Message"
+      },
+      "maxItems": 128,
+      "minItems": 1,
+      "title": "Messages",
+      "type": "array"
+    },
+    "tools": {
+      "items": {
+        "$ref": "#/$defs/ToolDefinition"
+      },
+      "maxItems": 12,
+      "title": "Tools",
+      "type": "array"
+    },
+    "toolChoice": {
+      "enum": [
+        "auto",
+        "none",
+        "required"
+      ],
+      "title": "Toolchoice",
+      "type": "string"
+    },
+    "maxOutputTokens": {
+      "maximum": 8192,
+      "minimum": 1,
+      "title": "Maxoutputtokens",
+      "type": "integer"
+    },
+    "stream": {
+      "default": false,
+      "title": "Stream",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "runId",
+    "executionEpoch",
+    "leaseId",
+    "protocolVersion",
+    "callId",
+    "callType",
+    "modelBindingId",
+    "messages",
+    "toolChoice",
+    "maxOutputTokens"
+  ],
+  "title": "ModelRequest",
+  "type": "object"
+}

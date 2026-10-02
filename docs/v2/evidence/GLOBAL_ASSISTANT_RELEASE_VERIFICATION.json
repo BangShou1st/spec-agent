@@ -1,0 +1,120 @@
+{
+  "recordedAt": "2026-10-01T23:30:44.509975+00:00",
+  "status": "REGRESSION_PASS_ACCEPTANCE_GATED",
+  "productionEngineChanged": false,
+  "modelChanged": false,
+  "phase1OverallAcceptance": "PENDING_BLOCKED_OLD_TEMP_CLEANUP",
+  "unifiedRagOverallAcceptance": "PENDING_HUMAN_LABEL_REVIEW",
+  "productionAcceptance": "NOT_RUN",
+  "javaFullRegression": {
+    "tests": 1739,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 13,
+    "status": "PASS",
+    "skippedTests": [
+      "com.specagent.assistant.GaExecutionCoordinatorIntegrationTest.liveConfiguredModelSearchesSummarizesAndNavigatesVerifiedProject()",
+      "com.specagent.assistant.GaExecutionCoordinatorIntegrationTest.freshJavaStartupAndBrowserRestoreLegacyHistoryAndUnknownWriteWithoutReplay()",
+      "com.specagent.assistant.GaExecutionCoordinatorIntegrationTest.liveLongConversationSummaryContinuityAndInjectedSummaryFailureRecoverFromCompletedBoundary()",
+      "com.specagent.assistant.GaExecutionCoordinatorIntegrationTest.liveConfiguredModelUsesHostQuestionWithoutAnotherModelTurn()",
+      "com.specagent.assistant.GaExecutionCoordinatorIntegrationTest.liveConfiguredModelCompletesActualProductDispatchWithReadOnlyCapability()",
+      "com.specagent.assistant.GaExecutionCoordinatorIntegrationTest.liveConfiguredModelCreatesOneProjectWithoutDuplicateDispatchEffects()",
+      "com.specagent.assistant.GaExecutionCoordinatorIntegrationTest.actualBrowserUiReconnectRefreshNavigationCancellationAndTurnHistory()",
+      "com.specagent.assistant.GaExecutionCoordinatorIntegrationTest.liveConfiguredModelDiscoversAndStagesSkillWithControlledGitFixture()",
+      "com.specagent.assistant.GaHostRpcIntegrationTest.capabilityLiveFrameworkBusinessRpcAgainstConfiguredModel()",
+      "com.specagent.assistant.GaHostRpcIntegrationTest.capabilityLiveGitHttpsDiscoveryAndStagingWithActualJgit()",
+      "com.specagent.assistant.GaHostRpcIntegrationTest.liveNativeBrokerAndCheckpointRoundtripAgainstConfiguredHostModel()",
+      "com.specagent.retrieval.SharedRetrievalIntegrationTest.liveUnchangedConfiguredModelInvokesBothSharedRetrievalToolsWithFullCatalog()",
+      "com.specagent.skill.importing.GitHttpsFaultAcceptanceTest.missingRefWireBudgetCancellationAndAbsoluteTimeoutCleanEveryNewTemporaryDirectory()"
+    ],
+    "environmentFlags": [
+      "SPEC_AGENT_GA_CROSS_LANGUAGE_TEST",
+      "SPEC_AGENT_RAG_LIVE_TEST",
+      "SPEC_AGENT_RAG_EVALUATION",
+      "SPEC_AGENT_RAG_U3_TEST"
+    ],
+    "pythonTestRuntime": "isolated CPython 3.11.14, same locked dependency versions and same pydantic native module hash; original .venv unchanged"
+  },
+  "pythonFullRegression": {
+    "status": "PASS",
+    "tests": 221,
+    "warnings": 1,
+    "runtimes": [
+      "original CPython 3.11.15 standalone pytest only",
+      "isolated CPython 3.11.14; full Java subprocess integration also passed"
+    ],
+    "dependencyCheck": "PASS"
+  },
+  "frontendRegression": {
+    "passed": 119,
+    "skipped": 1,
+    "typecheck": "PASS",
+    "viteBuild": "PASS"
+  },
+  "retrievalEvaluation": {
+    "queryCount": 52,
+    "humanReviewStatus": "PENDING",
+    "recallAt8": 0.95,
+    "mrr": 0.9375,
+    "p50Ms": 264,
+    "p95Ms": 438,
+    "canonicalStaleLeaks": 0,
+    "permissionLeaks": 0,
+    "zeroHitCorrectness": 1.0,
+    "resourceSamples": {
+      "pythonTreeWorkingSetObservedPeakBytes": 127111168,
+      "scope": "1-second fixed delay plus probe duration; Python launcher+descendants; whole GPU device shared with other apps; sampled observations, not instantaneous exclusive RAG peak",
+      "gpuDeviceMemoryObservedPeakMiB": 2683,
+      "samples": 12,
+      "gpuDeviceBaselineMiB": 2675
+    },
+    "evaluationUse": "calibration fixture, not independent held-out human-labelled acceptance"
+  },
+  "limitations": [
+    "52-query calibration labels are AI-authored, not human approved",
+    "production Flyway/engine cutover not performed",
+    "original uv CPython 3.11.15 intermittent Windows native access violation in Ollama/Pydantic imports; isolated 3.11.14 passed with same dependency binaries",
+    "old owned Git temp deletion rejected by automatic approval: blocked by policy"
+  ],
+  "evidenceHashes": {
+    "GLOBAL_ASSISTANT_FRAMEWORK_BUSINESS_INTEGRATION.json": "9772726e82d183ca08365186725ca41b17f8f57c0175525fcda33a7790267565",
+    "GLOBAL_ASSISTANT_NATIVE_BROKER_INTEGRATION.json": "ffa5bb01ae3b6ae2b4e36a07da4896deb3caa0ed6538e8a2bdcb5864d6a6c490",
+    "GLOBAL_ASSISTANT_NATIVE_SSE_QUALIFICATION.json": "7d43b5df083ca191bcdd1b2c1009283f5a849a5a68011a13ccdfd66198c142d4",
+    "GLOBAL_ASSISTANT_PHASE1_STREAM_FAULT_ACCEPTANCE.json": "9abf389e457fc8b22db966e136ece29cd241ad876577ed7158f667bdd6c6a127",
+    "GLOBAL_ASSISTANT_PRODUCT_CLARIFICATION_INTEGRATION.json": "398619bb066d3a2f2e759d3c0c28a42de49db0318e5334298bfe91516ddb1999",
+    "GLOBAL_ASSISTANT_PRODUCT_DISPATCH_INTEGRATION.json": "3cc8445aaf00377724d25663ec01cc35fe485199020822584a1f9dcfbd8a4047",
+    "GLOBAL_ASSISTANT_PRODUCT_QUERY_NAVIGATION_INTEGRATION.json": "4f1793fd914f4347b5db9989f1355f2521e2ea95ca463c59a420bdccb09f8bcb",
+    "GLOBAL_ASSISTANT_PRODUCT_SKILL_STAGING_INTEGRATION.json": "414da8036316fb992af3f22fd050fc084b507389e9c7246d119d7ba406e07c28",
+    "GLOBAL_ASSISTANT_PRODUCT_WRITE_INTEGRATION.json": "8789e9c255f86fb359fd5e12013c66c49c9bc4746ad5b7fd2cf6a16c76826842",
+    "GLOBAL_ASSISTANT_PYTHON_RUNTIME_QUALIFICATION.json": "1ba445b577b650c61cb7efd9204c6d30e7a8913eeda05725be8cca69abbc7102",
+    "GLOBAL_ASSISTANT_REAL_BROWSER.json": "b916446651e21b85c7d76ff6539b30219a55d4ab6891031ee9806e3748b3485c",
+    "GLOBAL_ASSISTANT_REAL_GIT_FAULTS.json": "c3743a08b5bd133a418045a32aa081d8fd2dd93475cacb5b35b784b20159720c",
+    "GLOBAL_ASSISTANT_REAL_GIT_STAGING.json": "5442c272d951bdba92eb0d45a4d24cfe56551f673fd98c2b6e27b2722e7a8341",
+    "GLOBAL_ASSISTANT_REAL_LONG_SUMMARY.json": "b3db9ad81c51d06603b1642447e8c7956a41491d35093de92ca689d2b7d628f0",
+    "GLOBAL_ASSISTANT_REAL_RAG_BROWSER.json": "6276d4e784837fbfceecedd81d1241e2c0aca67570118f8bc7bb171d21175898",
+    "GLOBAL_ASSISTANT_REAL_RESTART_BROWSER.json": "e455c10f1dc56c10299656b93a4051c6bc53834f97b0d1ebe239bdd610e99da6",
+    "SHARED_RAG_52_QUERY_EVALUATION.json": "d34773caac86c4c3311eb29d2330eb1723c7045658ecb9b660a44929ac28b51c",
+    "SHARED_RAG_REAL_OLLAMA_UNAVAILABLE.json": "d4918313df5fd5b0c7b21437ed7813137a547686b0e2e15f200d328e375bb991",
+    "SHARED_RAG_U1_REAL_INTEGRATION.json": "e8724614591ceafbe9f0d6f6dcbe0814b3942549e5fce5878eac4130eae45785",
+    "SHARED_RAG_U3_REAL_MODEL.json": "22748882a89a815eb7e25b8c390778830b0e29f8fe8b8420fd9bf2f2aaf0957f",
+    "SHARED_RAG_U3_TOOL_INTEGRATION.json": "65a8bacbb13dd7fafe14db5af940bab54a62d0614b134fbaec4622e7216157a3",
+    "UNIFIED_PYTHON_RAG_U0_EMBEDDING.json": "2a777924875958043b863c4fd699aabe523bf49b6a46cdddab25a9df99252d32"
+  },
+  "freshPackagedJavaBrowserRecovery": {
+    "status": "PASS",
+    "boundary": "fresh packaged Java JVM startup + real browser; isolated DB; controlled model; explicit UNKNOWN committed-write crash fixture, not automatic tool replay",
+    "evidence": "GLOBAL_ASSISTANT_REAL_RESTART_BROWSER.json"
+  },
+  "reviewableFileHashes": {
+    "agent-brain/requirements.lock": "eb1bb4f240aeabb94e3a7fdee5edd6abe94590aec9e3431ca58a9794701a4ef6",
+    "agent-brain/src/spec_agent_brain/retrieval/embedding.py": "7f72c0706779f7512d4ebce260b6e7f0e11f499b132c618757b12e96130ac69d",
+    "backend/src/main/resources/application.yml": "604fdba447bb8e5bae25bf5da2b58305665bb23c7a50243be2c9d8dfc1a4c9c8",
+    "backend/src/main/java/com/specagent/common/BrainConnectionSettings.java": "bee4f9370c448816639ee2adfcf174aa760b1bed13755c81f4eb23d41d88fda7",
+    "backend/src/main/java/com/specagent/retrieval/index/ResourceProjectionJobs.java": "9a479c415b2cd5137b7b620e98a210ed8d1adb9396e8be97b4f4f1aaf72b1983",
+    "backend/src/main/java/com/specagent/retrieval/index/RetrievalSourceProjector.java": "e5e501ab20bc44522de5404990782468be657e2f5c4620004cebb1b8fc78c9e1",
+    "backend/src/main/java/com/specagent/model/provider/GaNativeSseDecoder.java": "14e64297f1302abf3864b12b53ebc1872011f02d72565f41d0dfea2125c6ce9b",
+    "frontend/src/features/global-assistant/presentation/gaTurns.ts": "965f0f4fb833aee81f107ea273ab612678756e8db2220c30677d5f8d4f79e4c8",
+    "contracts/retrieval/evaluation/chinese-queries.v1.json": "d0425f7cda74fa9c972dc72c3ec2f8c599b11e101d780cd59d6bcdf4c4b077e8"
+  },
+  "packagedJavaSha256": "88a44117776abd07e03ac54af333126479893c804d8d7f54026e5c394fa9020b"
+}

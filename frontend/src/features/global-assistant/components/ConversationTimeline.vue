@@ -5,7 +5,8 @@
        滚动容器自动吸底:用户贴近底部时新内容自动滚动,否则显示"回到底部"按钮。
 -->
 <script setup lang="ts">
-import { nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
+import { groupGaTurns } from '../presentation/gaTurns'
 import AssistantMessage from './AssistantMessage.vue'
 import ToolActivityItem from './ToolActivityItem.vue'
 import type { GaMessage } from '@/features/global-assistant/api/globalAssistant'
@@ -13,6 +14,7 @@ import type { GaToolActivity } from '@/features/global-assistant/state/globalAss
 import { GA_EMPTY_SUGGESTIONS } from '@/features/global-assistant/presentation/globalAssistantPresentation'
 
 const props = defineProps<{
+  activeRunId?: string | null
   messages: GaMessage[]
   activities: GaToolActivity[]
   streamingText: string
@@ -24,6 +26,20 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{ (e: 'suggestion', prompt: string): void }>()
+
+const turns = computed(() => {
+  const grouped = groupGaTurns(props.messages, props.activities)
+  if (props.activeRunId && !grouped.some(turn => turn.key === props.activeRunId)) {
+    grouped.push({ key: props.activeRunId, requests: [], answers: [], activities: [] })
+  }
+  return grouped
+})
+const transientTurnKey = computed(() => props.activeRunId ?? turns.value.at(-1)?.key)
+const expandedTurns = ref<Record<string, boolean>>({})
+function processOpen(key: string): boolean {
+  return expandedTurns.value[key] ?? (key === props.activeRunId || (!props.activeRunId && props.running))
+}
+function toggleProcess(key: string): void { expandedTurns.value[key] = !processOpen(key) }
 
 const scrollRef = ref<HTMLElement | null>(null)
 const nearBottom = ref(true)
@@ -88,18 +104,23 @@ watch(
           </button>
         </div>
       </div>
-      <AssistantMessage
-        v-for="message in props.messages"
-        :key="message.id"
-        :role="message.role"
-        :content="message.content"
-        :created-at="message.createdAt"
-        :provider-label="message.providerLabel"
-        :model-id="message.modelId"
-      />
-      <div v-if="props.activities.length > 0" class="ga-activity-group" data-test="ga-activity-group">
-        <ToolActivityItem v-for="activity in props.activities" :key="activity.key" :activity="activity" />
-      </div>
+      <section v-for="turn in turns" :key="turn.key" class="ga-turn" data-test="ga-turn" :data-run-id="turn.key">
+        <AssistantMessage v-for="message in turn.requests" :key="message.id" :role="message.role"
+          :content="message.content" :created-at="message.createdAt" />
+        <div v-if="turn.activities.length" class="ga-activity-group" data-test="ga-activity-group">
+          <button type="button" class="ga-process-toggle" data-test="ga-process-toggle"
+            :aria-expanded="processOpen(turn.key)" @click="toggleProcess(turn.key)">
+            本轮处理过程 · {{ turn.activities.length }} 项
+            <span>{{ processOpen(turn.key) ? '收起' : '展开' }}</span>
+          </button>
+          <div v-show="processOpen(turn.key)" data-test="ga-process-details">
+            <ToolActivityItem v-for="activity in turn.activities" :key="activity.key" :activity="activity" />
+          </div>
+        </div>
+        <AssistantMessage v-for="message in turn.answers" :key="message.id" :role="message.role"
+          :content="message.content" :created-at="message.createdAt" :provider-label="message.providerLabel"
+          :model-id="message.modelId" />
+        <template v-if="turn.key === transientTurnKey">
       <div v-if="props.waitingQuestion" class="ga-clarify" data-test="ga-clarification" role="status">
         <p class="ga-clarify__label">需要你补充信息</p>
         <p class="ga-clarify__q">{{ props.waitingQuestion }}</p>
@@ -119,6 +140,9 @@ watch(
       <div v-if="props.streamingText" class="ga-streaming" data-test="ga-streaming">
         <AssistantMessage role="ASSISTANT" :content="props.streamingText" />
       </div>
+        </template>
+      </section>
+
     </div>
     <button
       v-if="hasNewActivity"
@@ -150,6 +174,9 @@ watch(
 .ga-steer__title { margin: 0 0 2px; font-size: 12.5px; font-weight: 700; color: var(--color-accent-strong); }
 .ga-steer__msg { margin: 0; font-size: 13px; color: var(--color-text); line-height: 1.55; word-break: break-word; }
 .ga-stopped { margin: 10px 0 0; padding: 8px 12px; font-size: 12.5px; color: var(--color-text-secondary); background: var(--color-surface-subtle); border: 1px solid var(--color-border); border-radius: 999px; text-align: center; }
+.ga-turn { margin-bottom: 12px; }
+.ga-process-toggle { display: flex; justify-content: space-between; width: 100%; padding: 8px 4px; border: 0; background: transparent; color: var(--color-text-secondary); font: inherit; font-size: 12px; cursor: pointer; }
+.ga-process-toggle:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .ga-activity-group { margin: 4px 0; }
 .ga-clarify { margin: 10px 0 4px; padding: 10px 12px; border-radius: 12px; background: linear-gradient(135deg, var(--color-focus-soft), rgba(255,255,255,0.6)); border: 1px solid var(--color-focus); line-height: 1.55; box-shadow: 0 4px 16px -8px rgba(90,70,180,0.25); }
 .ga-clarify__label { margin: 0 0 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; color: var(--color-focus-strong); }

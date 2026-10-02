@@ -27,7 +27,7 @@ import java.util.Map;
  * 可以放心调用它来回答"这个仓库有哪些 Skill"。
  */
 @Component
-public class SkillDiscoverCapability implements InternalCapabilityAdapter {
+public class SkillDiscoverCapability implements com.specagent.capability.PreparedCapabilityAdapter {
 
     public static final String CAPABILITY_ID = "skill.import.discover";
 
@@ -81,6 +81,19 @@ public class SkillDiscoverCapability implements InternalCapabilityAdapter {
 
     @Override
     public CapabilityResult invoke(CapabilityInvocation invocation) {
+        return invokeWithGuard(invocation, null);
+    }
+
+    @Override
+    public java.util.function.Function<CapabilityInvocation,CapabilityResult> prepare(Map<String,Object> arguments,
+            java.util.function.BooleanSupplier active) {
+        var temporary = new CapabilityInvocation(java.util.UUID.randomUUID(), "prepare", CAPABILITY_ID, null, null, arguments);
+        var result = invokeWithGuard(temporary, active);
+        return invocation -> new CapabilityResult(invocation.invocationId(), invocation.invocationKey(), CAPABILITY_ID,
+                result.status(), result.content(), result.sourceRefs(), result.provenance(), result.warnings());
+    }
+
+    private CapabilityResult invokeWithGuard(CapabilityInvocation invocation, java.util.function.BooleanSupplier active) {
         Map<String, Object> arguments = invocation.arguments();
         for (String key : arguments.keySet()) {
             if (!GlobalAssistantToolCatalog.allowedArguments(CAPABILITY_ID).contains(key)) {
@@ -102,7 +115,8 @@ public class SkillDiscoverCapability implements InternalCapabilityAdapter {
 
         SkillImportService.DiscoveryResult discovery;
         try {
-            discovery = imports.discoverGit(url, ref);
+            discovery = active == null ? imports.discoverGit(url, ref)
+                    : imports.discoverInventory(imports.prepareGit(url, ref, active));
         } catch (SkillImportException ex) {
             return failure(invocation, ex.getMessage());
         }

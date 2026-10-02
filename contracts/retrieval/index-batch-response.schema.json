@@ -1,0 +1,257 @@
+{
+  "$defs": {
+    "Grant": {
+      "additionalProperties": false,
+      "properties": {
+        "grantId": {
+          "format": "uuid",
+          "title": "Grantid",
+          "type": "string"
+        },
+        "version": {
+          "minimum": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "expiresAt": {
+          "format": "date-time",
+          "title": "Expiresat",
+          "type": "string"
+        }
+      },
+      "required": [
+        "grantId",
+        "version",
+        "expiresAt"
+      ],
+      "title": "Grant",
+      "type": "object"
+    },
+    "IndexVector": {
+      "additionalProperties": false,
+      "properties": {
+        "entryId": {
+          "format": "uuid",
+          "title": "Entryid",
+          "type": "string"
+        },
+        "sourceRef": {
+          "maxLength": 240,
+          "minLength": 1,
+          "title": "Sourceref",
+          "type": "string"
+        },
+        "sourceVersion": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Sourceversion",
+          "type": "string"
+        },
+        "contentHash": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Contenthash",
+          "type": "string"
+        },
+        "location": {
+          "$ref": "#/$defs/Location"
+        },
+        "vector": {
+          "$ref": "#/$defs/QueryVector"
+        }
+      },
+      "required": [
+        "entryId",
+        "sourceRef",
+        "sourceVersion",
+        "contentHash",
+        "location",
+        "vector"
+      ],
+      "title": "IndexVector",
+      "type": "object"
+    },
+    "Location": {
+      "additionalProperties": false,
+      "properties": {
+        "chunkIndex": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Chunkindex"
+        },
+        "startOffset": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Startoffset"
+        },
+        "endOffset": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Endoffset"
+        }
+      },
+      "title": "Location",
+      "type": "object"
+    },
+    "QueryVector": {
+      "additionalProperties": false,
+      "properties": {
+        "dimensions": {
+          "const": 1024,
+          "title": "Dimensions",
+          "type": "integer"
+        },
+        "values": {
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 1024,
+          "minItems": 1024,
+          "title": "Values",
+          "type": "array"
+        },
+        "checksum": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Checksum",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dimensions",
+        "values",
+        "checksum"
+      ],
+      "title": "QueryVector",
+      "type": "object"
+    },
+    "Workload": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "PROJECT_RUN",
+            "GA_RUN",
+            "CONTEXT_PROJECTION",
+            "INDEX_JOB"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "executionEpoch": {
+          "maximum": 9223372036854775807,
+          "minimum": 1,
+          "title": "Executionepoch",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "kind",
+        "id",
+        "executionEpoch"
+      ],
+      "title": "Workload",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "protocolVersion": {
+      "const": "retrieval.v1",
+      "title": "Protocolversion",
+      "type": "string"
+    },
+    "requestId": {
+      "format": "uuid",
+      "title": "Requestid",
+      "type": "string"
+    },
+    "workload": {
+      "$ref": "#/$defs/Workload"
+    },
+    "scopeGrant": {
+      "$ref": "#/$defs/Grant"
+    },
+    "profileId": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Profileid",
+      "type": "string"
+    },
+    "indexGeneration": {
+      "format": "uuid",
+      "title": "Indexgeneration",
+      "type": "string"
+    },
+    "deadline": {
+      "format": "date-time",
+      "title": "Deadline",
+      "type": "string"
+    },
+    "jobId": {
+      "format": "uuid",
+      "title": "Jobid",
+      "type": "string"
+    },
+    "leaseId": {
+      "format": "uuid",
+      "title": "Leaseid",
+      "type": "string"
+    },
+    "expectedVersion": {
+      "minimum": 0,
+      "title": "Expectedversion",
+      "type": "integer"
+    },
+    "vectors": {
+      "items": {
+        "$ref": "#/$defs/IndexVector"
+      },
+      "maxItems": 16,
+      "minItems": 1,
+      "title": "Vectors",
+      "type": "array"
+    }
+  },
+  "required": [
+    "protocolVersion",
+    "requestId",
+    "workload",
+    "scopeGrant",
+    "profileId",
+    "indexGeneration",
+    "deadline",
+    "jobId",
+    "leaseId",
+    "expectedVersion",
+    "vectors"
+  ],
+  "title": "IndexBatchResponse",
+  "type": "object"
+}

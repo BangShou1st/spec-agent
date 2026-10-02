@@ -24,6 +24,8 @@ public final class GlobalAssistantToolPresentation {
             "project.search", new Presentation("Searching projects", "PROJECT_LIST"),
             "project.list_recent", new Presentation("Listing recent projects", "PROJECT_LIST"),
             "project.get_summary", new Presentation("Reading project summary", "PROJECT"),
+            "project.content.discover", new Presentation("Searching project content", "PROJECT_LIST"),
+            "help.search", new Presentation("Searching product help", "SOURCE_LIST"),
             "skill.import", new Presentation("Staging skill import", null),
             "skill.import.discover", new Presentation("Inspecting skill repository", null));
 
@@ -62,6 +64,7 @@ public final class GlobalAssistantToolPresentation {
     private static final java.util.Map<String, ResultShape> RESULT_SHAPES = java.util.Map.of(
             "project.create", new ResultShape(null),
             "project.search", new ResultShape("candidates"),
+            "project.content.discover", new ResultShape("candidates"),
             "project.list_recent", new ResultShape("projects"),
             "project.get_summary", new ResultShape(null));
 
@@ -127,6 +130,34 @@ public final class GlobalAssistantToolPresentation {
             if (out.size() >= MAX_REFS) break;
         }
         return out;
+    }
+
+    /** Versioned source cards are projected only from host-verified retrieval results. */
+    public static java.util.List<java.util.Map<String,Object>> retrievalResources(String capabilityId,java.util.Map<String,Object> content) {
+        if(!java.util.Set.of("help.search","project.content.discover").contains(capabilityId)) return java.util.List.of();
+        java.util.List<Object> raw=new java.util.ArrayList<>();
+        if(content.get("sources") instanceof java.util.List<?> items) raw.addAll(items);
+        if(content.get("candidates") instanceof java.util.List<?> projects) for(var project:projects)
+            if(project instanceof java.util.Map<?,?> item && item.get("sources") instanceof java.util.List<?> sources) raw.addAll(sources);
+        var mapper=new com.fasterxml.jackson.databind.ObjectMapper();
+        java.util.List<java.util.Map<String,Object>> cards=new java.util.ArrayList<>(); java.util.Set<UUID> seen=new java.util.HashSet<>();
+        for(var value:raw) {
+            try {
+                var ranked=value instanceof com.specagent.retrieval.protocol.RetrievalWire.Ranked r ? r
+                    : mapper.convertValue(value,com.specagent.retrieval.protocol.RetrievalWire.Ranked.class);
+                var source=ranked.source(); if(!seen.add(source.entryId())) continue;
+                var metadata=new java.util.LinkedHashMap<String,Object>();
+                metadata.put("sourceRef",source.sourceRef()); metadata.put("sourceVersion",source.sourceVersion());
+                metadata.put("contentHash",source.contentHash()); metadata.put("scope",source.scope());
+                metadata.put("excerpt",source.content().substring(0,source.content().offsetByCodePoints(0,Math.min(800,source.content().codePointCount(0,source.content().length())))));
+                if(source.projectId()!=null) metadata.put("projectId",source.projectId().toString());
+                if(source.location().startOffset()!=null) metadata.put("startOffset",source.location().startOffset());
+                if(source.location().endOffset()!=null) metadata.put("endOffset",source.location().endOffset());
+                cards.add(java.util.Map.of("kind","SOURCE","id",source.entryId().toString(),"label",truncateLabel(source.sourceRef()),"metadata",metadata));
+                if(cards.size()>=8) break;
+            } catch(RuntimeException invalid) { /* Never invent a source if a stored result is incompatible. */ }
+        }
+        return java.util.List.copyOf(cards);
     }
 
     /**

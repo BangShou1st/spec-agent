@@ -91,11 +91,24 @@ public interface OpenCodeZenTransport {
         return response;
     }
 
+    /** Independent native GA path. Unsupported implementations must not simulate tool calls. */
+    default com.specagent.model.contract.GaModelContract.Response completeNativeGa(
+            String apiKey, String sessionId, com.specagent.model.contract.GaModelContract.Request request,
+            String pinnedModel, java.time.Duration remainingBudget, java.util.function.BooleanSupplier active) {
+        throw new UnsupportedOperationException("UNSUPPORTED_AGENT_MODEL");
+    }
+
+    /** Native GA candidates during generation; final tool calls remain fully validated. */
+    default com.specagent.model.contract.GaModelContract.Response streamNativeGa(
+            String apiKey, String sessionId, com.specagent.model.contract.GaModelContract.Request request,
+            String pinnedModel, java.time.Duration remainingBudget, java.util.function.BooleanSupplier active,
+            FragmentListener listener) {
+        throw new UnsupportedOperationException("UNSUPPORTED_AGENT_MODEL_STREAM");
+    }
+
     /**
      * 向 {@code GET /models} 获取当前模型列表。
-     *
-     * @param apiKey 可选的 bearer 凭据;模型发现是公开接口,可为 null 或空白,
-     *               但传输层仍会附加 OpenCode 的 User-Agent 策略
+     * @param apiKey 可选的 bearer 凭据;模型发现是公开接口,可为 null 或空白。
      */
     OpenCodeModelList listModels(String apiKey);
 

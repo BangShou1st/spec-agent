@@ -1,0 +1,670 @@
+{
+  "version": "retrieval-evaluation.v1",
+  "authorship": "AI-authored reviewable fixtures; not human-labelled",
+  "humanReviewStatus": "PENDING",
+  "sources": [
+    {
+      "alias": "F00",
+      "kind": "NODE",
+      "text": "订单导出格式为 CSV，UTF-8 编码。接口编号 REQ-100。"
+    },
+    {
+      "alias": "F01",
+      "kind": "NODE",
+      "text": "上传文件限制为 20 MiB，超过后返回提示。规则编号 REQ-101。"
+    },
+    {
+      "alias": "F02",
+      "kind": "NODE",
+      "text": "通知发送失败最多重试 3 次，间隔 10 秒。规则编号 REQ-102。"
+    },
+    {
+      "alias": "F03",
+      "kind": "NODE",
+      "text": "操作审计日志保留 180 天，到期安全删除。规则编号 REQ-103。"
+    },
+    {
+      "alias": "F04",
+      "kind": "NODE",
+      "text": "登录会话闲置 30 分钟后失效。规则编号 REQ-104。"
+    },
+    {
+      "alias": "F05",
+      "kind": "NODE",
+      "text": "金额保存到小数点后 2 位，不使用浮点数计算。规则编号 REQ-105。"
+    },
+    {
+      "alias": "F06",
+      "kind": "NODE",
+      "text": "重复请求通过 Idempotency-Key 合并，不重复执行写操作。规则编号 REQ-106。"
+    },
+    {
+      "alias": "F07",
+      "kind": "NODE",
+      "text": "用户取消后不得继续追加回答正文。规则编号 REQ-107。"
+    },
+    {
+      "alias": "F08",
+      "kind": "NODE",
+      "text": "检索仅访问当前项目授权来源。规则编号 REQ-108。"
+    },
+    {
+      "alias": "F09",
+      "kind": "NODE",
+      "text": "引用包含来源 ID、版本和原始位置。规则编号 REQ-109。"
+    },
+    {
+      "alias": "F10",
+      "kind": "NODE",
+      "text": "资源解析失败保留错误状态，不伪造提取成功。规则编号 REQ-110。"
+    },
+    {
+      "alias": "F11",
+      "kind": "NODE",
+      "text": "派生缓存的 TTL 为 300 秒。规则编号 REQ-111。"
+    },
+    {
+      "alias": "F12",
+      "kind": "NODE",
+      "text": "工具执行的总超时预算为 15 秒。规则编号 REQ-112。"
+    },
+    {
+      "alias": "F13",
+      "kind": "NODE",
+      "text": "精确接口路径是 /v1/reports/export。规则编号 REQ-113。"
+    },
+    {
+      "alias": "F14",
+      "kind": "NODE",
+      "text": "Agent 必需 lineage 由业务 Runtime 保证。规则编号 REQ-114。"
+    },
+    {
+      "alias": "F15",
+      "kind": "NODE",
+      "text": "首次输入冻结后不随索引变化而重检索。规则编号 REQ-115。"
+    },
+    {
+      "alias": "R00",
+      "kind": "RESOURCE",
+      "text": "# 资源接口\n\n导出端点为 /resources/export-A，返回压缩 CSV 文件。\n"
+    },
+    {
+      "alias": "R01",
+      "kind": "RESOURCE",
+      "text": "# 备份文档\n\n备份恢复指南编号 RESTORE-B2，每周日 02:00 备份。\n"
+    },
+    {
+      "alias": "R02",
+      "kind": "RESOURCE",
+      "text": "# 保留说明 😀\r\n\r\n归档资源保留 90 天；管理员可以撤回，文档编号 ARCHIVE-C3。\r\n"
+    },
+    {
+      "alias": "R03",
+      "kind": "RESOURCE",
+      "text": "# 导入资料\n\n资源文档 IMPORT-D4，上传支持 TXT 和 Markdown。\n"
+    },
+    {
+      "alias": "S00",
+      "kind": "STALE_NODE",
+      "text": "已撤回旧版本规则 OLD-S00。旧值不可继续用作事实。"
+    },
+    {
+      "alias": "S01",
+      "kind": "STALE_NODE",
+      "text": "已撤回旧版本规则 OLD-S01。旧值不可继续用作事实。"
+    },
+    {
+      "alias": "S02",
+      "kind": "STALE_NODE",
+      "text": "已撤回旧版本规则 OLD-S02。旧值不可继续用作事实。"
+    },
+    {
+      "alias": "S03",
+      "kind": "STALE_NODE",
+      "text": "已撤回旧版本规则 OLD-S03。旧值不可继续用作事实。"
+    },
+    {
+      "alias": "I00",
+      "kind": "PRIVATE_NODE",
+      "text": "另一项目的私有退款账号标识 ISOLATED-00，仅授权该项目使用。"
+    },
+    {
+      "alias": "I01",
+      "kind": "PRIVATE_NODE",
+      "text": "另一项目的私有退款账号标识 ISOLATED-01，仅授权该项目使用。"
+    },
+    {
+      "alias": "I02",
+      "kind": "PRIVATE_NODE",
+      "text": "另一项目的私有退款账号标识 ISOLATED-02，仅授权该项目使用。"
+    },
+    {
+      "alias": "I03",
+      "kind": "PRIVATE_NODE",
+      "text": "另一项目的私有退款账号标识 ISOLATED-03，仅授权该项目使用。"
+    }
+  ],
+  "queries": [
+    {
+      "category": "CHINESE_PARAPHRASE",
+      "query": "把订单下载成表格该选哪种文件格式？",
+      "expectedAliases": [
+        "F00"
+      ],
+      "forbiddenAliases": [],
+      "id": "Q001",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "CHINESE_PARAPHRASE",
+      "query": "导出来的订单文件是什么编码？",
+      "expectedAliases": [
+        "F00"
+      ],
+      "forbiddenAliases": [],
+      "id": "Q002",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "EXACT_IDENTIFIER",
+      "query": "REQ-100",
+      "expectedAliases": [
+        "F00"
+      ],
+      "forbiddenAliases": [],
+      "id": "Q003",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "CHINESE_PARAPHRASE",
+      "query": "最多可以传多大的文件？",
+      "expectedAliases": [
+        "F01"
+      ],
+      "forbiddenAliases": [],
+      "id": "Q004",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "CHINESE_PARAPHRASE",
+      "query": "附件太大时系统怎样反馈？",
+      "expectedAliases": [
+        "F01"
+      ],
+      "forbiddenAliases": [],
+      "id": "Q005",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "EXACT_IDENTIFIER",
+      "query": "REQ-101",
+      "expectedAliases": [
+        "F01"
+      ],
+      "forbiddenAliases": [],
+      "id": "Q006",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "CHINESE_PARAPHRASE",
+      "query": "消息发不出去会再试几回？",
+      "expectedAliases": [
+        "F02"
+      ],
+      "forbiddenAliases": [],
+      "id": "Q007",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "CHINESE_PARAPHRASE",
+      "query": "通知两次重发之间等多久？",
+      "expectedAliases": [
+        "F02"
+      ],
+      "forbiddenAliases": [],
+      "id": "Q008",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "EXACT_IDENTIFIER",
+      "query": "REQ-102",
+      "expectedAliases": [
+        "F02"
+      ],
+      "forbiddenAliases": [],
+      "id": "Q009",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "CHINESE_PARAPHRASE",
+      "query": "用户操作的记录存多久？",
+      "expectedAliases": [
+        "F03"
+      ],
+      "forbiddenAliases": [],
+      "id": "Q010",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "CHINESE_PARAPHRASE",
+      "query": "审计资料过期怎么处理？",
+      "expectedAliases": [
+        "F03"
+      ],
+      "forbiddenAliases": [],
+      "id": "Q011",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "EXACT_IDENTIFIER",
+      "query": "REQ-103",
+      "expectedAliases": [
+        "F03"
+      ],
+      "forbiddenAliases": [],
+      "id": "Q012",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "CHINESE_PARAPHRASE",
+      "query": "多久不操作会被退出登录？",
+      "expectedAliases": [
+        "F04"
+      ],
+      "forbiddenAliases": [],
+      "id": "Q013",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "CHINESE_PARAPHRASE",
+      "query": "空闲会话的有效期是多少？",
+      "expectedAliases": [
+        "F04"
+      ],
+      "forbiddenAliases": [],
+      "id": "Q014",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "EXACT_IDENTIFIER",
+      "query": "REQ-104",
+      "expectedAliases": [
+        "F04"
+      ],
+      "forbiddenAliases": [],
+      "id": "Q015",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "CHINESE_PARAPHRASE",
+      "query": "钱数要精确到第几位小数？",
+      "expectedAliases": [
+        "F05"
+      ],
+      "forbiddenAliases": [],
+      "id": "Q016",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "CHINESE_PARAPHRASE",
+      "query": "财务计算允许用浮点表示吗？",
+      "expectedAliases": [
+        "F05"
+      ],
+      "forbiddenAliases": [],
+      "id": "Q017",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "EXACT_IDENTIFIER",
+      "query": "REQ-105",
+      "expectedAliases": [
+        "F05"
+      ],
+      "forbiddenAliases": [],
+      "id": "Q018",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "CHINESE_PARAPHRASE",
+      "query": "网络重试会再次写入数据吗？",
+      "expectedAliases": [
+        "F06"
+      ],
+      "forbiddenAliases": [],
+      "id": "Q019",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "CHINESE_PARAPHRASE",
+      "query": "避免重复提交用什么请求头？",
+      "expectedAliases": [
+        "F06"
+      ],
+      "forbiddenAliases": [],
+      "id": "Q020",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "EXACT_IDENTIFIER",
+      "query": "REQ-106",
+      "expectedAliases": [
+        "F06"
+      ],
+      "forbiddenAliases": [],
+      "id": "Q021",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "CHINESE_PARAPHRASE",
+      "query": "按了停止还会继续显示答案吗？",
+      "expectedAliases": [
+        "F07"
+      ],
+      "forbiddenAliases": [],
+      "id": "Q022",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "CHINESE_PARAPHRASE",
+      "query": "终止对话后的正文有什么约束？",
+      "expectedAliases": [
+        "F07"
+      ],
+      "forbiddenAliases": [],
+      "id": "Q023",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "EXACT_IDENTIFIER",
+      "query": "REQ-107",
+      "expectedAliases": [
+        "F07"
+      ],
+      "forbiddenAliases": [],
+      "id": "Q024",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "EXACT_IDENTIFIER",
+      "query": "REQ-108",
+      "expectedAliases": [
+        "F08"
+      ],
+      "forbiddenAliases": [],
+      "id": "Q025",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "EXACT_IDENTIFIER",
+      "query": "REQ-109",
+      "expectedAliases": [
+        "F09"
+      ],
+      "forbiddenAliases": [],
+      "id": "Q026",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "EXACT_IDENTIFIER",
+      "query": "REQ-110",
+      "expectedAliases": [
+        "F10"
+      ],
+      "forbiddenAliases": [],
+      "id": "Q027",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "EXACT_IDENTIFIER",
+      "query": "REQ-111",
+      "expectedAliases": [
+        "F11"
+      ],
+      "forbiddenAliases": [],
+      "id": "Q028",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "EXACT_IDENTIFIER",
+      "query": "REQ-112",
+      "expectedAliases": [
+        "F12"
+      ],
+      "forbiddenAliases": [],
+      "id": "Q029",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "EXACT_IDENTIFIER",
+      "query": "REQ-113",
+      "expectedAliases": [
+        "F13"
+      ],
+      "forbiddenAliases": [],
+      "id": "Q030",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "EXACT_IDENTIFIER",
+      "query": "REQ-114",
+      "expectedAliases": [
+        "F14"
+      ],
+      "forbiddenAliases": [],
+      "id": "Q031",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "EXACT_IDENTIFIER",
+      "query": "REQ-115",
+      "expectedAliases": [
+        "F15"
+      ],
+      "forbiddenAliases": [],
+      "id": "Q032",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "RESOURCE_CONTENT",
+      "query": "/resources/export-A",
+      "expectedAliases": [
+        "R00"
+      ],
+      "forbiddenAliases": [],
+      "id": "Q033",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "RESOURCE_CONTENT",
+      "query": "资源资料下载的文件是什么格式？",
+      "expectedAliases": [
+        "R00"
+      ],
+      "forbiddenAliases": [],
+      "id": "Q034",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "RESOURCE_CONTENT",
+      "query": "RESTORE-B2",
+      "expectedAliases": [
+        "R01"
+      ],
+      "forbiddenAliases": [],
+      "id": "Q035",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "RESOURCE_CONTENT",
+      "query": "哪一天几点进行备份？",
+      "expectedAliases": [
+        "R01"
+      ],
+      "forbiddenAliases": [],
+      "id": "Q036",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "RESOURCE_CONTENT",
+      "query": "ARCHIVE-C3",
+      "expectedAliases": [
+        "R02"
+      ],
+      "forbiddenAliases": [],
+      "id": "Q037",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "RESOURCE_CONTENT",
+      "query": "归档的外部资料保留多长时间？",
+      "expectedAliases": [
+        "R02"
+      ],
+      "forbiddenAliases": [],
+      "id": "Q038",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "RESOURCE_CONTENT",
+      "query": "IMPORT-D4",
+      "expectedAliases": [
+        "R03"
+      ],
+      "forbiddenAliases": [],
+      "id": "Q039",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "RESOURCE_CONTENT",
+      "query": "输入资料接受哪些文档格式？",
+      "expectedAliases": [
+        "R03"
+      ],
+      "forbiddenAliases": [],
+      "id": "Q040",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "STALE_VERSION",
+      "query": "OLD-S00",
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "S00"
+      ],
+      "id": "Q041",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "STALE_VERSION",
+      "query": "OLD-S01",
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "S01"
+      ],
+      "id": "Q042",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "STALE_VERSION",
+      "query": "OLD-S02",
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "S02"
+      ],
+      "id": "Q043",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "STALE_VERSION",
+      "query": "OLD-S03",
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "S03"
+      ],
+      "id": "Q044",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "NO_ANSWER",
+      "query": "火星轨道 MARS-Z999 的速度是多少？",
+      "expectedAliases": [],
+      "forbiddenAliases": [],
+      "id": "Q045",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "NO_ANSWER",
+      "query": "量子纠缠实验 QBIT-X88 的样本数是多少？",
+      "expectedAliases": [],
+      "forbiddenAliases": [],
+      "id": "Q046",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "NO_ANSWER",
+      "query": "古代陶器 ANCIENT-T77 的出土坐标是什么？",
+      "expectedAliases": [],
+      "forbiddenAliases": [],
+      "id": "Q047",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "NO_ANSWER",
+      "query": "太阳能发电 SOLAR-Y66 的效率是多少？",
+      "expectedAliases": [],
+      "forbiddenAliases": [],
+      "id": "Q048",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "PERMISSION_ISOLATION",
+      "query": "ISOLATED-00",
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "I00"
+      ],
+      "id": "Q049",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "PERMISSION_ISOLATION",
+      "query": "ISOLATED-01",
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "I01"
+      ],
+      "id": "Q050",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "PERMISSION_ISOLATION",
+      "query": "ISOLATED-02",
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "I02"
+      ],
+      "id": "Q051",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "category": "PERMISSION_ISOLATION",
+      "query": "ISOLATED-03",
+      "expectedAliases": [],
+      "forbiddenAliases": [
+        "I03"
+      ],
+      "id": "Q052",
+      "labelReview": "PENDING_HUMAN_REVIEW"
+    }
+  ],
+  "datasetRole": "DEVELOPMENT_CALIBRATION",
+  "calibrationHistory": {
+    "maxVectorDistanceCandidates": [
+      0.65,
+      0.5
+    ],
+    "selected": 0.5,
+    "independentAcceptanceEligible": false
+  }
+}

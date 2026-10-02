@@ -1,5 +1,7 @@
 # Agent Memory + RAG V1
 
+> 2026-10-01 后续设计：[UNIFIED_PYTHON_RAG_DESIGN.md](UNIFIED_PYTHON_RAG_DESIGN.md) 将既有检索算法与真实 embedding 迁至共享 Python LangChain 模块，保留 Java 业务/权限/存储。本文仍是已实现基线，不表示已经切换；新实施不再增加平行的 Java Ollama provider。
+
 基于 `a9deda73e399f94fbebd40cb331736f753fe76a4` 的增量实现记录。
 
 ## 已冻结的边界

@@ -70,11 +70,44 @@ public class CapabilityRuntime {
         return execute(invocationKey, capabilityId, null, runId, arguments);
     }
 
+    public record PreparedApplicationCall(String capabilityId, Map<String,Object> arguments,
+            java.util.function.Function<CapabilityInvocation,CapabilityResult> commit) {
+        public PreparedApplicationCall { arguments = Map.copyOf(arguments); }
+    }
+
+    /** Called only after the caller has durably reserved and authorized this invocation. */
+    public PreparedApplicationCall prepareApplicationScoped(String capabilityId, Map<String,Object> arguments,
+            java.util.function.BooleanSupplier active) {
+        return prepareApplicationScoped(capabilityId,arguments,active,null);
+    }
+    public PreparedApplicationCall prepareApplicationScoped(String capabilityId,Map<String,Object> arguments,
+            java.util.function.BooleanSupplier active,UUID runId) {
+        CapabilityAdapter adapter = registry.findAdapter(capabilityId).orElse(null);
+        if (!(adapter instanceof PreparedCapabilityAdapter prepared)) return null;
+        if (!active.getAsBoolean()) throw new IllegalStateException("GA_EXECUTION_FENCE");
+        var commit = prepared.prepare(arguments, active,runId);
+        if (!active.getAsBoolean()) throw new IllegalStateException("GA_EXECUTION_FENCE");
+        return new PreparedApplicationCall(capabilityId, arguments, commit);
+    }
+
+    @Transactional
+    public CapabilityResult invokePreparedApplicationScoped(String invocationKey, String capabilityId, UUID runId,
+            Map<String,Object> arguments, PreparedApplicationCall prepared) {
+        if (!prepared.capabilityId().equals(capabilityId) || !prepared.arguments().equals(arguments))
+            throw new IllegalArgumentException("Prepared capability identity mismatch");
+        return execute(invocationKey, capabilityId, null, runId, arguments, prepared);
+    }
+
     private CapabilityResult execute(String invocationKey,
                                      String capabilityId,
                                      UUID projectId,
                                      UUID runId,
                                      Map<String, Object> arguments) {
+        return execute(invocationKey, capabilityId, projectId, runId, arguments, null);
+    }
+
+    private CapabilityResult execute(String invocationKey, String capabilityId, UUID projectId, UUID runId,
+            Map<String,Object> arguments, PreparedApplicationCall prepared) {
         CapabilityInvocation invocation = new CapabilityInvocation(
                 Ids.random(), invocationKey, capabilityId, projectId, runId, arguments);
 
@@ -100,7 +133,7 @@ public class CapabilityRuntime {
 
         CapabilityResult result;
         try {
-            result = adapter.invoke(invocation);
+            result = prepared == null ? adapter.invoke(invocation) : prepared.commit().apply(invocation);
         } catch (RuntimeException ex) {
             result = CapabilityResult.failed(
                     invocation.invocationId(), invocationKey, capabilityId,

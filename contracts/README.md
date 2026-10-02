@@ -16,6 +16,16 @@
 | Internal model inference (Python → Spring broker) | `model-inference.v1` |
 
 Unknown protocol versions are rejected by both sides, fail-closed.
+
+Global Assistant LangChain migration uses separate contracts under
+[`global-assistant/`](global-assistant/README.md). These preparation contracts
+do not change any Project Agent protocol in this table. Only the native GA
+model DTOs currently have Java/Python golden-fixture parity; other host routes
+remain gated on their separate implementation and integration tests.
+
+The independent shared [`retrieval.v1`](retrieval/README.md) preparation
+contract serves both Agents via Java-authorized scope grants. It does not
+change Project Agent snapshot replay or the agent-input versions above.
 Unknown fields are rejected by both sides (`extra = forbid` in Pydantic,
 `FAIL_ON_UNKNOWN_PROPERTIES` in the Java strict mapper).
 

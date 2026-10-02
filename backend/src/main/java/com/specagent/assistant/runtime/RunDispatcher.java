@@ -24,6 +24,16 @@ public class RunDispatcher {
     private final ObjectProvider<GlobalAssistantRuntime> runtime;
     private final GlobalAssistantRunLifecycleService lifecycle;
     private final com.specagent.assistant.conversation.GlobalAssistantRunRepository runs;
+    private ObjectProvider<GaExecutionCoordinator> coordinator;
+    private String engine="java-legacy.v1";
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void configureEngine(ObjectProvider<GaExecutionCoordinator> coordinator,
+            @org.springframework.beans.factory.annotation.Value("${spec.global-assistant.engine:java-legacy.v1}") String engine) {
+        if(!java.util.Set.of("java-legacy.v1","langchain-ga.v1").contains(engine))
+            throw new IllegalArgumentException("Unknown Global Assistant engine");
+        this.coordinator=coordinator; this.engine=engine;
+    }
 
     public RunDispatcher(Executor gaExecutor, ObjectProvider<GlobalAssistantRuntime> runtime,
             GlobalAssistantRunLifecycleService lifecycle,
@@ -46,7 +56,8 @@ public class RunDispatcher {
 
     private void executeSafely(UUID threadId, UUID runId, String message, GlobalAssistantContextBuilder.UiRequest uiRequest) {
         try {
-            runtime.getObject().executeRun(threadId, runId, message, uiRequest);
+            if("langchain-ga.v1".equals(engine)) coordinator.getObject().executeRun(threadId,runId,message,uiRequest);
+            else runtime.getObject().executeRun(threadId, runId, message, uiRequest);
         } catch (Exception ex) {
             // 这里必须打完整堆栈:这个 catch 是终态化的最后一道网,
             // 缺了它,运行时 bug(比如工具结果之后的 NPE)就会不可见——

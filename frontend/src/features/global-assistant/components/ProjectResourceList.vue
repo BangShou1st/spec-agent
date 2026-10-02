@@ -10,7 +10,7 @@ export interface GaResourceRef { kind: string; id: string; label: string; metada
 const props = defineProps<{ resources: GaResourceRef[] }>()
 const router = useRouter()
 const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
-const items = computed(() => (props.resources ?? []).filter((r) => r && r.kind === 'PROJECT' && typeof r.id === 'string' && UUID_RE.test(r.id) && typeof r.label === 'string' && r.label.length > 0).slice(0, 10))
+const items = computed(() => (props.resources ?? []).filter((r) => r && (r.kind === 'PROJECT' || r.kind === 'SOURCE') && typeof r.id === 'string' && UUID_RE.test(r.id) && typeof r.label === 'string' && r.label.length > 0).slice(0, 10))
 function updatedAtOf(r: GaResourceRef): string {
   const m = (r.metadata ?? {}) as Record<string, unknown>
   const v = m['updatedAt']
@@ -23,13 +23,18 @@ async function openProject(id: string): Promise<void> { await router.push('/proj
 </script>
 <template>
   <div v-if="items.length" class="ga-resources" data-test="ga-tool-resources">
-    <p class="ga-resources__title">相关项目</p>
+    <p class="ga-resources__title">相关来源</p>
     <ul class="ga-resources__list">
       <li v-for="r in items" :key="r.id" class="ga-resources__item">
-        <button type="button" class="ga-resources__btn" :data-test="'ga-resource-' + r.id" @click="openProject(r.id)">
+        <button v-if="r.kind === 'PROJECT'" type="button" class="ga-resources__btn" :data-test="'ga-resource-' + r.id" @click="openProject(r.id)">
           <span class="ga-resources__label">{{ r.label }}</span>
           <span v-if="updatedAtOf(r)" class="ga-resources__meta">更新于 {{ updatedAtOf(r) }}</span>
         </button>
+        <div v-else class="ga-resources__btn" data-test="ga-source-evidence">
+          <span class="ga-resources__label">{{ r.label }}</span>
+          <span class="ga-resources__meta">来源版本 {{ r.metadata?.sourceVersion }}<template v-if="r.metadata?.startOffset !== undefined"> · 位置 {{ r.metadata.startOffset }}–{{ r.metadata.endOffset }}</template></span>
+          <p class="ga-source-excerpt">{{ r.metadata?.excerpt }}</p>
+        </div>
       </li>
     </ul>
   </div>
@@ -42,5 +47,6 @@ async function openProject(id: string): Promise<void> { await router.push('/proj
 .ga-resources__btn:hover:not(:disabled) { border-color: var(--color-accent); background: var(--color-accent-soft); }
 .ga-resources__btn:focus-visible { outline: none; box-shadow: var(--focus-ring); border-color: var(--color-focus); }
 .ga-resources__label { font-size: 13px; font-weight: 600; color: var(--color-text); overflow-wrap: anywhere; }
+.ga-source-excerpt { margin: 4px 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.5; }
 .ga-resources__meta { font-size: 12px; color: var(--color-text-muted); }
 </style>

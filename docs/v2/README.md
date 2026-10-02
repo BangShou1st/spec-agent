@@ -36,6 +36,15 @@
 - `GRAPH_OPERATION_HISTORY.md` — Undo / Redo、补偿操作、不可逆副作用。
 - `AGENT_EVALUATION_MODEL.md` — Agent 质量、延迟、调用次数、groundedness 和防过拟合评估。
 - `PYTHON_AGENT_RUNTIME_BOUNDARY.md` — Java Graph Runtime 与未来 Python Brain Adapter 的稳定边界。
+- [UNIFIED_PYTHON_RAG_DESIGN.md](UNIFIED_PYTHON_RAG_DESIGN.md) — 2026-10-01 统一 RAG 目标设计：项目 Agent / 全局助手共用 Python LangChain 检索与本地 Ollama embedding；Java 保留事实、权限、pgvector 存储与来源校验。替代全局助手设计中先新增 Java 真实 embedding provider 的迁移选择，U1–U3 功能与真实集成已落地，人工标签质量验收及生产切换仍未完成。
+
+### 全局助手专项设计
+
+- `GLOBAL_ASSISTANT_IMPLEMENTATION_PLAN.md`、`GLOBAL_ASSISTANT_PHASE0_FREEZE.md` — 已实现全局助手 V1 的基线与冻结集成约束。
+- [GLOBAL_ASSISTANT_LANGCHAIN_REDESIGN.md](GLOBAL_ASSISTANT_LANGCHAIN_REDESIGN.md) — 2026-10-01 的下一阶段目标设计：Python LangChain 编排、应用级 Skill/MCP、产品帮助与项目内容检索、执行状态和迁移验收。目标功能尚未生产切换；按该文档阶段生效，不改变 Project Agent / Graph 核心语义。新开发会话从其 §16–17 开始。
+- [GLOBAL_ASSISTANT_LANGCHAIN_IMPLEMENTATION_STATUS.md](GLOBAL_ASSISTANT_LANGCHAIN_IMPLEMENTATION_STATUS.md) — 阶段 1 / 统一 RAG U1–U3 当前清单、真实模型/HTTPS/浏览器/重启证据、人工评测及剩余生产门禁。
+- [AGENT_RAG_TECHNOLOGY_REVIEW.md](AGENT_RAG_TECHNOLOGY_REVIEW.md) — 2026-10-01 技术演进评审：现代 Agent/RAG 路径、Agentic RAG / GraphRAG / Deep Agents 的适用条件与版本升级门槛；不重置当前实施阶段。
+- [GLOBAL_ASSISTANT_TUTORIAL_REVIEW.md](GLOBAL_ASSISTANT_TUTORIAL_REVIEW.md) — 2026-10-02 本地教程源码评审：工具轨迹、正文与推理的区分、按轮次组织过程展示及新 event streaming 的隔离评估；未修改业务实现。
 
 ## 3. 当前代码必须保留的基础能力
 
@@ -73,3 +82,7 @@ V2 第一阶段不做：
 3. 再进入实现/测试。
 
 不要为了方便编码，静默选择一个与产品语义不同的解释。
+
+- [GLOBAL_ASSISTANT_LANGCHAIN_RELEASE_RUNBOOK.md](GLOBAL_ASSISTANT_LANGCHAIN_RELEASE_RUNBOOK.md) — 本轮成套发布准备、同表索引回滚限制、checkpoint 恢复范围与人工标签审阅入口；生产操作未执行。
+
+- [GLOBAL_ASSISTANT_PRE_RELEASE_CLOSEOUT.md](GLOBAL_ASSISTANT_PRE_RELEASE_CLOSEOUT.md) — 运行环境现象与根因推测分离、候选构建/连续启动资格、校准开发集与68条冻结独立候选、最终分级待办；生产仍未授权。

@@ -1,0 +1,60 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "protocolVersion": {
+      "const": "ga-capability-result.v1",
+      "title": "Protocolversion",
+      "type": "string"
+    },
+    "toolCallId": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Toolcallid",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "SUCCEEDED",
+        "FAILED",
+        "USER_INPUT_REQUIRED",
+        "APPROVAL_REQUIRED"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "content": {
+      "additionalProperties": true,
+      "title": "Content",
+      "type": "object"
+    },
+    "sourceRefs": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 64,
+      "title": "Sourcerefs",
+      "type": "array"
+    },
+    "errorCode": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Errorcode"
+    }
+  },
+  "required": [
+    "protocolVersion",
+    "toolCallId",
+    "status",
+    "content"
+  ],
+  "title": "CapabilityResponse",
+  "type": "object"
+}

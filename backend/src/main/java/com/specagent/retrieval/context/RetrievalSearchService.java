@@ -80,6 +80,10 @@ public class RetrievalSearchService {
                 break;
             }
             String content = item.content();
+            if (content.length() > remaining && retriever.usesSharedPython()) {
+                refs.remove(item.sourceRef());
+                continue; // Preserve the verified content hash and original source position.
+            }
             if (content.length() > remaining) {
                 item = new RetrievedContextItem(item.sourceRef(), item.sourceKind(), item.scope(),
                         item.originRouteId(), item.authority(), content.substring(0, remaining),
@@ -123,6 +127,8 @@ public class RetrievalSearchService {
         provenance.put("contentHash", entry.contentHash());
         provenance.put("sourceKind", entry.sourceKind().name());
         provenance.put("retrievalLanes", lanes);
+        for(String key:List.of("sourceVersion","retrievalEngineVersion","profileId","indexGeneration","vectorUnavailable"))
+            if(entry.metadata().containsKey(key)) provenance.put(key,entry.metadata().get(key));
         putRouteProvenance(entry, provenance);
         return new RetrievedContextItem(entry.sourceRef(), entry.sourceKind(), scope,
                 originRoute, entry.authority(), entry.content(),

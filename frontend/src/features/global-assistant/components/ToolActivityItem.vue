@@ -18,6 +18,7 @@ const expanded = ref(false)
 const stateLabel = computed(() => {
   if (props.activity.state === 'running') return '执行中'
   if (props.activity.state === 'success') return '完成'
+  if (props.activity.state === 'interrupted') return '未确认完成'
   return '失败'
 })
 
@@ -74,7 +75,7 @@ function toggle(): void {
       <p v-if="formatDuration(props.activity.durationMs)" class="ga-tool__meta">
         用时 {{ formatDuration(props.activity.durationMs) }}
       </p>
-      <p v-else class="ga-tool__meta muted">进行中…</p>
+      <p v-else-if="props.activity.state === 'running'" class="ga-tool__meta muted">进行中…</p>
     </div>
   </div>
 </template>

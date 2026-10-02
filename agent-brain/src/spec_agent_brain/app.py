@@ -133,6 +133,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             },
         }
 
+    from .global_assistant.execution import execution_router
+    app.include_router(execution_router(resolved, [Depends(require_internal_token)]))
+    from .retrieval.api import retrieval_router
+    app.include_router(retrieval_router(resolved, [Depends(require_internal_token)]))
+
     @app.post("/v1/state-updates", dependencies=[Depends(require_internal_token)])
     def state_updates(request: Dict[str, Any]) -> Dict[str, Any]:
         envelope = _parse(request)

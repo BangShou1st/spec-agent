@@ -12,7 +12,9 @@ import com.specagent.skill.domain.SkillPackageFile;
 public record SkillSourceFile(String relativePath, byte[] content,
                               SkillPackageFile.FileKind kind) {
 
+    @Override public byte[] content() { return content.clone(); }
+
     public SkillSourceFile {
-        content = content == null ? new byte[0] : content;
+        content = content == null ? new byte[0] : content.clone();
     }
 }

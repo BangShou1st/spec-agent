@@ -54,6 +54,13 @@ public class RetrievalSourceProjector implements RouteMembershipProjectionPort {
     private final RouteHistoryResolver routeHistoryResolver;
     private final RetrievalEntryRepository entryRepository;
     private final Json json;
+    private ResourceProjectionJobs sourceJobs;
+    private boolean sharedPython;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void configureSourceJobs(ResourceProjectionJobs jobs,
+            @org.springframework.beans.factory.annotation.Value("${spec.agent.retrieval.engine:java-hybrid.v1}") String engine) {
+        this.sourceJobs=jobs; this.sharedPython="python-rag.v1".equals(engine);
+    }
     private final ResourceChunker chunker = new ResourceChunker();
     private final RetrievalSourcePolicy sourcePolicy = new RetrievalSourcePolicy();
 
@@ -144,8 +151,13 @@ public class RetrievalSourceProjector implements RouteMembershipProjectionPort {
             return;
         }
         UUID projectId = node.projectId();
+        if(sharedPython) sourceJobs.invalidate(node.id());
         entryRepository.deleteSourcePrefix(projectId, "resource-chunk:" + node.id() + ":");
         entryRepository.deleteSource(projectId, "node:" + node.id());
+        if (sharedPython && node.kind() == NodeKind.RESOURCE) {
+            projectResource(projectId, node);
+            return;
+        }
         if (!sourcePolicy.allow(node)) {
             return;
         }
@@ -192,6 +204,7 @@ public class RetrievalSourceProjector implements RouteMembershipProjectionPort {
         UUID routeId = routeIdFor(routeIds);
         boolean workspaceScoped = routeIds.isEmpty();
         if (node.kind() == NodeKind.RESOURCE) {
+            if(sharedPython) { projectResource(projectId,node); return; }
             entryRepository.updateRouteProvenancePrefix(
                     projectId, "resource-chunk:" + node.id() + ":", routeId, routeIds, workspaceScoped);
         } else {
@@ -241,7 +254,7 @@ public class RetrievalSourceProjector implements RouteMembershipProjectionPort {
         metadata.put("kind", node.kind().code());
         metadata.put("subtype", node.subtype() == null ? "" : node.subtype());
         addRouteProvenance(projectId, node.id(), metadata);
-        if (text.isBlank() || !sourcePolicy.allowText(text)
+        if (text.isBlank() || sharedPython && text.length()>12000 || !sourcePolicy.allowText(text)
                 || !sourcePolicy.allowMetadata(metadata)) {
             return;
         }
@@ -253,6 +266,13 @@ public class RetrievalSourceProjector implements RouteMembershipProjectionPort {
 
     private void projectResource(UUID projectId, Node node) {
         String text = node.contentText();
+        if(sharedPython) {
+            Map<String,Object> metadata=new LinkedHashMap<>();
+            metadata.put("resourceId",node.id().toString()); metadata.put("subtype",node.subtype());
+            addRouteProvenance(projectId,node.id(),metadata);
+            for(String key:List.of("page","url")) if(node.content().get(key)!=null) metadata.put(key,node.content().get(key));
+            sourceJobs.enqueue(node,metadata); return;
+        }
         if (text == null || text.isBlank() || !sourcePolicy.allowText(text)) {
             return;
         }
@@ -286,7 +306,7 @@ public class RetrievalSourceProjector implements RouteMembershipProjectionPort {
         String text = joinText(answer.freeText(), answer.selectedOptionId());
         Map<String, Object> metadata = Map.of(
                 "nodeId", answer.nodeId().toString(), "routeId", answer.routeId().toString());
-        if (text.isBlank() || !sourcePolicy.allowText(text)
+        if (text.isBlank() || sharedPython && text.length()>12000 || !sourcePolicy.allowText(text)
                 || !sourcePolicy.allowMetadata(metadata)) {
             return;
         }
@@ -298,7 +318,7 @@ public class RetrievalSourceProjector implements RouteMembershipProjectionPort {
     private void projectPatch(AnswerPatch patch) {
         int claimOrdinal = 0;
         for (Claim claim : patch.claims()) {
-            if (claim.text() == null || claim.text().isBlank()
+            if (claim.text() == null || claim.text().isBlank() || sharedPython && claim.text().length()>12000
                     || !sourcePolicy.allowText(claim.text())) {
                 claimOrdinal++;
                 continue;
@@ -376,7 +396,7 @@ public class RetrievalSourceProjector implements RouteMembershipProjectionPort {
         }
     }
 
-    private MemoryAuthority nodeAuthority(Node node) {
+    public static MemoryAuthority nodeAuthority(Node node) {
         if (node.authorKind() == NodeAuthorKind.USER) {
             return node.knowledgeStatus() == KnowledgeStatus.CONFIRMED
                     ? MemoryAuthority.CONFIRMED : MemoryAuthority.USER_AUTHORED;
@@ -388,7 +408,7 @@ public class RetrievalSourceProjector implements RouteMembershipProjectionPort {
                 ? MemoryAuthority.UNRESOLVED : MemoryAuthority.DERIVED;
     }
 
-    private MemoryAuthority claimAuthority(ClaimStatus status) {
+    public static MemoryAuthority claimAuthority(ClaimStatus status) {
         if (status == null) {
             return MemoryAuthority.DERIVED;
         }
@@ -400,7 +420,7 @@ public class RetrievalSourceProjector implements RouteMembershipProjectionPort {
         };
     }
 
-    private String joinText(String... values) {
+    public static String joinText(String... values) {
         List<String> present = new ArrayList<>();
         for (String value : values) {
             if (value != null && !value.isBlank()) {
