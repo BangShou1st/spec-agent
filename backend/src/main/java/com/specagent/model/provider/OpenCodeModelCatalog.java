@@ -108,6 +108,49 @@ public class OpenCodeModelCatalog {
     }
 
     /**
+     * <b>运行期协议门禁(失败关闭)</b>:Spec Agent 的 GA 执行链只实现
+     * {@code POST /chat/completions},因此只有经可信元数据确认协议为
+     * {@link OpenCodeModelProtocol#CHAT} 的模型才允许进入执行信封。
+     *
+     * <p>与 {@link #chatExecutable(String)} 的关键区别:后者是<i>目录展示</i>的资格
+     * 判定,元数据不可用时退回既有可用列表以不误伤正在工作的模型;本方法用于
+     * <i>运行期执行门禁</i>,只读<b>已缓存</b>的可信元数据(绝不触发网络刷新,因而
+     * 可以安全地运行在持有 Run 锁的准备事务内),并且:
+     * <ul>
+     *   <li>元数据不可用(冷启动/刷新失败)→ 无法确认 → {@code false};</li>
+     *   <li>模型未登记或已下线 → {@code false};</li>
+     *   <li>协议为 RESPONSES / ANTHROPIC / OTHER / UNKNOWN → {@code false}。</li>
+     * </ul>
+     * 绝不把"无法确认"当成 Chat,从而旧配置里保存的异协议模型不可能被发到
+     * {@code /chat/completions}。
+     */
+    public boolean verifiedChatExecutable(String modelId) {
+        if (modelId == null || modelId.isBlank()) {
+            return false;
+        }
+        if (metadata == null) {
+            return false;
+        }
+        OpenCodeZenModelMetadataSource.View view = metadata.cachedView();
+        if (!view.available()) {
+            return false;
+        }
+        return view.find(modelId).map(OpenCodeZenModelMetadata::chatExecutable).orElse(false);
+    }
+
+    /**
+     * 预热/读取可信元数据视图(允许触发 TTL 刷新,单飞且失败同样按 TTL 节流)。
+     * <b>只允许在业务事务与 Run 锁之外调用</b>:GA 分发入口在进入
+     * {@code GaExecutionPreparation}(它持有 Run 锁并在事务内运行)之前调用它,
+     * 使运行期门禁随后能纯内存判定协议——绝不为协议门禁引入持有 Run 锁的网络请求。
+     */
+    public void warmMetadata() {
+        if (metadata != null) {
+            metadata.view();
+        }
+    }
+
+    /**
      * 免费判定。元数据可用:必须由价格元数据证明(input=0 且 output=0,且未下线),
      * 名字里带 {@code -free} 的付费模型不算免费;未登记的模型不算免费。
      * 元数据不可用:退回 {@code -free} 后缀(既有规则),"没有价格"绝不等于免费。

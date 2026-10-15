@@ -20,14 +20,22 @@ public class GaExecutionCoordinator {
     private final GaExecutionCompletion completion;
     private final GaExecutionStore executions;
     private final GaBrainSettings properties;
+    private final com.specagent.model.provider.OpenCodeModelCatalog modelProtocols;
     public GaExecutionCoordinator(GaExecutionPreparation preparation,GaExecutionCompletion completion,
-            GaExecutionStore executions,GaBrainSettings properties) {
+            GaExecutionStore executions,GaBrainSettings properties,
+            com.specagent.model.provider.OpenCodeModelCatalog modelProtocols) {
         this.preparation=preparation; this.completion=completion; this.executions=executions; this.properties=properties;
+        this.modelProtocols=modelProtocols;
     }
     public void executeRun(UUID thread,UUID run,String text,GaHostContext.UiRequest ui) {
         GaExecutionPreparation.Prepared prepared=null;
         GaExecutionCompletion.StreamState state=null;
         try {
+            // 协议门禁依赖可信模型元数据。这里(执行准备事务与 Run 锁之外)先预热
+            // 元数据缓存,使 GaExecutionPreparation 内的门禁能纯内存判定——绝不在
+            // 持有 Run 锁的准备工作事务内引入网络请求。刷新按 TTL 单飞与节流,
+            // 失败不抛出(视图标记为不可用,交由门禁失败关闭)。
+            modelProtocols.warmMetadata();
             prepared=preparation.prepare(thread,run,text,ui);
             if(prepared==null) return;
             state=completion.newStream(run);

@@ -39,4 +39,11 @@ public final class GlobalAssistantErrorCode {
      * 装配进执行信封之前失败关闭,不向 Python/模型发送旧项目观察。
      */
     public static final String GA_SOURCE_REVOKED = "GA_SOURCE_REVOKED";
+    /**
+     * 已选 OpenCode Zen 模型的协议未被可信元数据确认为 Chat Completions
+     * (Responses / Anthropic / OTHER / UNKNOWN,含元数据不可用)。宿主只实现
+     * {@code /chat/completions} 调用链,因此在构造执行信封之前失败关闭,绝不把
+     * 异协议或无法确认的模型发到该端点。
+     */
+    public static final String GA_MODEL_PROTOCOL_UNSUPPORTED = "GA_MODEL_PROTOCOL_UNSUPPORTED";
 }

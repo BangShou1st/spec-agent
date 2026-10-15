@@ -58,6 +58,7 @@ class OpenCodeModelProtocolGateIntegrationTest {
                 "big-pickle":{"cost":{"input":0,"output":0}},
                 "cat-jam-free":{"cost":{"input":0,"output":0}},
                 "deepseek-v4-pro":{"cost":{"input":1.2,"output":3.4}},
+                "paid-named-free":{"cost":{"input":1,"output":2}},
                 "muse-spark-1.3-contributor-free":{"provider":{"npm":"@ai-sdk/openai"},
                   "cost":{"input":0,"output":0}},
                 "claude-opus-5":{"provider":{"npm":"@ai-sdk/anthropic"},"cost":{"input":5,"output":25}},
@@ -84,6 +85,9 @@ class OpenCodeModelProtocolGateIntegrationTest {
     @BeforeEach
     void fixture() {
         jdbc.getJdbcTemplate().update("DELETE FROM opencode_settings");
+        // 运行期门禁只读已缓存的可信元数据(绝不触发网络刷新);这里预热缓存,
+        // 等价于生产路径中 GA 分发入口在进入准备事务之前完成的预热。
+        catalog.warmMetadata();
         when(transport.listModels(any())).thenReturn(new OpenCodeModelList(List.of(
                 new OpenCodeModel("big-pickle", "opencode"),
                 new OpenCodeModel("cat-jam-free", "opencode"),
@@ -123,8 +127,27 @@ class OpenCodeModelProtocolGateIntegrationTest {
         assertThat(catalog.chatExecutable("muse-spark-1.3-contributor-free")).isFalse();
         assertThat(catalog.isFreeModel("unregistered-model"))
                 .as("元数据未登记 → 未被证明免费").isFalse();
+        assertThat(catalog.isFreeModel("paid-named-free"))
+                .as("名字以 -free 结尾但价格元数据显示收费 → 不算免费").isFalse();
         assertThat(catalog.isFreeModel("muse-spark-1.2-contributor-free"))
                 .as("已下线模型即使免费也不可选").isFalse();
+    }
+
+    @Test
+    void runtimeGateAgreesWithEverySelectionEntrypointWhenMetadataIsAvailable() {
+        // 保存/切换/列表入口只接受协议已验证的 Chat 模型(见 savingRefuses...),
+        // 运行期门禁对同一事实给出同一个结论——前端可选 == 运行期可执行。
+        assertThat(catalog.verifiedChatExecutable("big-pickle")).isTrue();
+        assertThat(catalog.verifiedChatExecutable("deepseek-v4-pro")).isTrue();
+        assertThat(catalog.verifiedChatExecutable("muse-spark-1.3-contributor-free")).isFalse();
+        assertThat(catalog.verifiedChatExecutable("claude-opus-5")).isFalse();
+        assertThat(catalog.verifiedChatExecutable("unregistered-model")).isFalse();
+        assertThat(catalog.verifiedChatExecutable("muse-spark-1.2-contributor-free")).isFalse();
+
+        settings.save("candidate-key", "big-pickle");
+        assertThat(settings.requireRuntimeSettings().selectedModel()).isEqualTo("big-pickle");
+        assertThat(catalog.verifiedChatExecutable(settings.requireRuntimeSettings().selectedModel()))
+                .as("已保存的工作模型必然通过运行期协议门禁").isTrue();
     }
 
     @Test

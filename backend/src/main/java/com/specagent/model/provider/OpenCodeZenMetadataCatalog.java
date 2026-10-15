@@ -97,6 +97,15 @@ public class OpenCodeZenMetadataCatalog implements OpenCodeZenModelMetadataSourc
         }
     }
 
+    /**
+     * 只读当前缓存快照,绝不触发刷新与网络请求。运行期协议门禁在持有业务 Run 锁的
+     * 准备事务内使用它:元数据冷启动/刷新失败时不返回任何"猜测",交由调用方失败关闭。
+     */
+    @Override
+    public View cachedView() {
+        return cached.view();
+    }
+
     private boolean stale(Cached snapshot) {
         return System.currentTimeMillis() - snapshot.loadedAtMillis() >= ttlSeconds * 1000L;
     }

@@ -109,11 +109,20 @@ project:11111111-…                      | starts_with(v,'project:') = t
   选择列表只来自已验证模型，保存/切换模型因此不可能选中异协议模型。
 
 失效边界（如实记录）：
-- 元数据不可用时退回既有 `-free` 后缀规则（协议无法判定，保持既有可用列表），
-  **不假设任何模型免费**；此时不新增协议过滤（避免误伤正在工作的模型）；
-- 本轮**未**在推理热路径加协议断言：`GaExecutionPreparation` 仍可能为一个
-  **本轮之前已保存**的异协议模型发 `/chat/completions`。补齐它需要在热路径上引入
-  元数据读取与新的失败语义（控制面终态化），属独立的一小步设计，未在本轮硬做。
+- 元数据不可用时，**目录展示**仍退回既有 `-free` 后缀规则（协议无法判定，保持既有可用列表），
+  **不假设任何模型免费**；该回退只影响展示层，**绝不**让未知协议模型进入执行路径；
+- 本轮已在**运行期执行边界**补齐协议门禁（失败关闭）：
+  `GaExecutionPreparation` 在构造执行信封、认领预算之前，用 `OpenCodeModelCatalog.verifiedChatExecutable`
+  校验已选模型协议；`RESPONSES / ANTHROPIC / OTHER / UNKNOWN` 以及**元数据不可用而无法确认**
+  的模型一律拒绝（`GA_MODEL_PROTOCOL_UNSUPPORTED`，控制面终态化）。因此升级前保存的异协议
+  模型不再可能被发到 `/chat/completions`。
+- 门禁只读**已缓存**的可信元数据（`cachedView()`，绝不触发网络刷新），由 GA 分发入口
+  `GaExecutionCoordinator.executeRun` 在进入准备事务与 Run 锁**之前**预热缓存
+  （`warmMetadata()`），因此绝不为协议门禁引入持有 Run 锁的网络请求。
+- 残留边界（刻意取舍）：每次 GA 分发都会先预热缓存，因此正常运行下门禁总能拿到可信视图；
+  当官方目录**确实不可达**时，缓存保持"不可用" → 门禁按"无法确认"失败关闭（run 以
+  `GA_MODEL_PROTOCOL_UNSUPPORTED` 终态化）。这是"宁拒绝、勿误发"的失败关闭语义，
+  元数据恢复可达后自愈；代价是元数据不可达期间连合法 Chat 模型也会被拒绝。
 
 ---
 
@@ -122,14 +131,17 @@ project:11111111-…                      | starts_with(v,'project:') = t
 | 项目 | 命令 | 结果 |
 | --- | --- | --- |
 | F1 真实 broker 账本 | `testNonLive --tests *RevokedProjectObservationReuseIntegrationTest` | 5/5 通过（修复前 1 失败） |
-| 跨语言夹具 | `SPEC_AGENT_GA_CROSS_LANGUAGE_TEST=true testNonLive --tests *GaExecutionCoordinatorIntegrationTest` | 通过（修复前 `@AfterEach` 读已删线程失败） |
+| 跨语言夹具 | `SPEC_AGENT_GA_CROSS_LANGUAGE_TEST=true testNonLive --tests *GaExecutionCoordinatorIntegrationTest` | 25 项（16 实跑 / 9 opt-in 跳过），0 失败 |
 | 模型目录/协议/元数据 | `--tests *model.provider.* *model.inference.* *modelsettings.*` | 239 通过 |
-| 全量 | `testNonLive`（隔离 PostgreSQL `127.0.0.1:5546/spec_agent_test`） | 见提交报告 |
+| 运行期协议门禁 | `testNonLive --tests *OpenCodeModelProtocolRuntimeGateIntegrationTest --tests *OpenCodeModelProtocolOfflineMetadataGateTest` | 7/7 通过（Chat 放行 / Responses·Anthropic·UNKNOWN·元数据不可用拒绝 / 终态化 / 无信封 / 无上游请求） |
+| 全量 | `testNonLive`（隔离 PostgreSQL `127.0.0.1:5546/spec_agent_test`） | 326 套件 / 2011 项 / 0 失败 / 0 错误 / 34 跳过 |
 
 测试档离线化：`application-test.yml` 把 `spec.agent.model.opencode.metadata-url` 指向
-本机保留端口（连接必然失败 → 视图不可用 → 退回 `-free` 规则），需要真实元数据事实的
-测试用 `@DynamicPropertySource` 指向本机 stub（`OpenCodeModelProtocolGateIntegrationTest`），
-全量测试**不访问公网**。
+本机保留端口（连接必然失败 → 视图不可用 → 目录展示退回 `-free` 规则、运行期门禁失败关闭），
+需要真实元数据事实的测试用 `@DynamicPropertySource` 指向本机 stub
+（`OpenCodeModelProtocolGateIntegrationTest`、`OpenCodeModelProtocolRuntimeGateIntegrationTest`、
+以及需要放行合法 Chat 模型的 `GaExecutionCoordinatorIntegrationTest` 复用
+`OpenCodeVerifiedChatMetadataStub`），全量测试**不访问公网**。
 
 ---
 

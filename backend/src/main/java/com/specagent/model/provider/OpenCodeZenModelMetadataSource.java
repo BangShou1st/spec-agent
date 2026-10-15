@@ -20,6 +20,19 @@ public interface OpenCodeZenModelMetadataSource {
 
     View view();
 
+    /**
+     * 当前<b>已缓存</b>的可信视图,绝不触发刷新。运行期协议门禁(它们运行在
+     * 持有业务 Run 锁的准备事务内)必须用本方法读取,从而绝不在锁内发起网络请求。
+     *
+     * <p>默认实现退回 {@link #view()}:对无网络副作用的确定性实现(单测 stub)而言
+     * 两者等价;真正持有远端来源的实现必须覆写它以只返回缓存快照。
+     *
+     * @see OpenCodeZenMetadataCatalog#cachedView()
+     */
+    default View cachedView() {
+        return view();
+    }
+
     record View(boolean available, Map<String, OpenCodeZenModelMetadata> models) {
 
         public View {

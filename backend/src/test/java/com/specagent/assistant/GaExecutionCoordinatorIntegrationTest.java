@@ -21,6 +21,8 @@ import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -29,6 +31,13 @@ import static org.mockito.Mockito.*;
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
 class GaExecutionCoordinatorIntegrationTest {
+    static { com.specagent.support.OpenCodeVerifiedChatMetadataStub.registerChatModel("test-model"); }
+    @DynamicPropertySource
+    static void openCodeMetadata(DynamicPropertyRegistry registry) {
+        // 运行期协议门禁依赖可信模型元数据:本机 stub 把夹具模型标记为 Chat Completions,不触网。
+        registry.add("spec.agent.model.opencode.metadata-url",
+                com.specagent.support.OpenCodeVerifiedChatMetadataStub::url);
+    }
     @Autowired GlobalAssistantConversationService conversations;
     @Autowired GlobalAssistantApplicationService application;
     @Autowired GlobalAssistantRunRepository runs;
@@ -43,6 +52,7 @@ class GaExecutionCoordinatorIntegrationTest {
     @Autowired GlobalAssistantRunLifecycleService lifecycle;
     @Autowired GaBrainSettings properties;
     @Autowired JdbcTemplate jdbc;
+    @Autowired com.specagent.model.provider.OpenCodeModelCatalog modelProtocols;
     @Autowired com.specagent.access.OrganizationConfigurationScope orgScope;
     @LocalServerPort int port;
     @MockBean OpenCodeSettingsRepository settings;
@@ -56,6 +66,9 @@ class GaExecutionCoordinatorIntegrationTest {
     String oldBase;
     @BeforeEach void fixture() {
         thread=conversations.createThread().id();
+        // 预热可信元数据缓存:直接调用 preparation.prepare 的用例不经过协调器预热,
+        // 运行期协议门禁因此需要在夹具阶段先填充缓存(等价于生产路径的分发预热)。
+        modelProtocols.warmMetadata();
         Instant revision=Instant.now();
         when(settings.find()).thenReturn(Optional.of(new OpenCodeSettings("test-key-no-network","work","test-model",revision,revision)));
         when(transport.completeNativeGa(any(),any(),any(),any(),any(),any())).thenReturn(reply("已完成"));

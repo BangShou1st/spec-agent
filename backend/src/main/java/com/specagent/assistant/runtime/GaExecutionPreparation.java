@@ -7,6 +7,7 @@ import com.specagent.assistant.tool.GaCatalogProjection;
 import com.specagent.common.Hashes;
 import com.specagent.common.Maps;
 import com.specagent.model.contract.ModelProvider;
+import com.specagent.model.provider.OpenCodeModelCatalog;
 import com.specagent.modelsettings.*;
 import java.time.Instant;
 import java.util.*;
@@ -28,13 +29,15 @@ public class GaExecutionPreparation {
     private final ModelProviderSettingsService providers;
     private final GaBrainSettings properties;
     private final JdbcTemplate jdbc;
+    private final OpenCodeModelCatalog modelProtocols;
     public GaExecutionPreparation(GaExecutionStore executions, GlobalAssistantRunRepository runs,
             GlobalAssistantConversationService conversations, GlobalAssistantRunLifecycleService lifecycle,
             GaHostContext context, GaCatalogProjection catalogs, OpenCodeSettingsRepository settings,
-            ModelProviderSettingsService providers, GaBrainSettings properties, JdbcTemplate jdbc) {
+            ModelProviderSettingsService providers, GaBrainSettings properties, JdbcTemplate jdbc,
+            OpenCodeModelCatalog modelProtocols) {
         this.executions=executions; this.runs=runs; this.conversations=conversations; this.lifecycle=lifecycle;
         this.context=context; this.catalogs=catalogs; this.settings=settings; this.providers=providers;
-        this.properties=properties; this.jdbc=jdbc;
+        this.properties=properties; this.jdbc=jdbc; this.modelProtocols=modelProtocols;
     }
     @Transactional
     public Prepared prepare(UUID thread, UUID runId, String text, GaHostContext.UiRequest ui) {
@@ -80,6 +83,20 @@ public class GaExecutionPreparation {
         } catch (com.specagent.access.AccessDeniedException revoked) {
             lifecycle.failWithoutContent(runId, com.specagent.assistant.GlobalAssistantErrorCode.GA_SOURCE_REVOKED,
                     "Conversation depends on project sources that are no longer authorized");
+            return null;
+        }
+        // 协议门禁(失败关闭):宿主只实现 /chat/completions 调用链,只有经可信元数据
+        // 确认协议为 Chat Completions 的模型才允许进入执行信封。升级前保存的
+        // Responses / Anthropic / OTHER / UNKNOWN 模型(以及元数据不可用而无法确认的
+        // 模型)在此被拒绝,不再被误发到 /chat/completions。
+        // 判定只读已缓存的可信元数据(绝不触发网络刷新),因此不会在本事务持有 Run 锁
+        // 期间发起网络请求——缓存由 GaExecutionCoordinator 在进入本方法之前预热。
+        // 拒绝发生在信封创建与预算认领之前:run 按控制面语义终态化、公开发布失败事件,
+        // 不写助手正文、不消耗预算、不创建租约、不派发 Python 执行信封。
+        if (!modelProtocols.verifiedChatExecutable(model.selectedModel())) {
+            lifecycle.failWithoutContent(runId,
+                    com.specagent.assistant.GlobalAssistantErrorCode.GA_MODEL_PROTOCOL_UNSUPPORTED,
+                    "The selected OpenCode model is not a metadata-verified Chat Completions model");
             return null;
         }
         var messages=conversations.listMessages(thread);
