@@ -25,8 +25,13 @@ public class GaCheckpointStore {
             .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
     private final NamedParameterJdbcTemplate jdbc;
     private final GaExecutionStore executions;
-    public GaCheckpointStore(NamedParameterJdbcTemplate jdbc, GaExecutionStore executions) {
-        this.jdbc = jdbc; this.executions = executions;
+    private final com.specagent.assistant.conversation.GaRunActorRepository actors;
+    private final com.specagent.assistant.conversation.GaSourceDependencyGuard sourceDependencies;
+    public GaCheckpointStore(NamedParameterJdbcTemplate jdbc, GaExecutionStore executions,
+            com.specagent.assistant.conversation.GaRunActorRepository actors,
+            com.specagent.assistant.conversation.GaSourceDependencyGuard sourceDependencies) {
+        this.jdbc = jdbc; this.executions = executions; this.actors = actors;
+        this.sourceDependencies = sourceDependencies;
     }
 
     @Transactional
@@ -44,6 +49,14 @@ public class GaCheckpointStore {
         var binding = executions.authorize(scope); // Run lock precedes head lock in every operation.
         UUID thread = uuid(request, "threadId");
         require(thread.equals(binding.threadId()));
+        // 来源依赖判定插在 Run 锁之后、checkpoint head 锁之前,因此不改变
+        // "authorization scope → business Run → checkpoint" 的既有锁顺序。
+        // 读取、恢复与写入(GET/LIST/PUT/PUT_WRITES)都必须先确认这条会话依赖的
+        // 项目对执行主体仍可读;DELETE_THREAD 是清理路径,绝不能因隔离而挡住,
+        // 否则用户永远无法清除一条被隔离会话的 checkpoint。
+        if (!"DELETE_THREAD".equals(operation)) {
+            sourceDependencies.requireSourcesReadable(actors.require(scope.runId()), thread);
+        }
         Map<String, Object> params = Maps.of("thread", thread);
         long version = jdbc.queryForObject("SELECT version FROM ga_checkpoint_heads WHERE thread_id=:thread FOR UPDATE", params, Long.class);
         require(expectedVersion <= version);

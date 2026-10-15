@@ -103,7 +103,7 @@ public class GlobalAssistantController {
     }
     @GetMapping("/threads/{threadId}")
     public ThreadResponse getThread(@PathVariable UUID threadId) {
-        GlobalAssistantThread thread = application.requireThread(threadId);
+        GlobalAssistantThread thread = application.requireThreadReadable(threadId);
         return new ThreadResponse(thread.id().toString(), thread.summary(),
                 thread.summaryVersion(), thread.workingStateVersion(),
                 thread.createdAt().toString(), thread.updatedAt().toString());

@@ -71,6 +71,17 @@ public class GaExecutionPreparation {
         if (properties.getInternalSecret().isBlank() || providers.activeProvider()!=ModelProvider.OPENCODE_ZEN)
             throw new IllegalStateException("GA_MODEL_NOT_CONFIGURED");
         var model=settings.find().orElseThrow(() -> new IllegalStateException("GA_MODEL_NOT_CONFIGURED"));
+        // 来源依赖判定:派生记忆依赖的项目已撤权或无法确认时,历史不得进入执行信封
+        // (第二阶段 §6.5"不得只过滤下一次检索却继续把旧摘要送模型")。此时按控制面
+        // 终态化失败关闭:不带内容、不写助手消息——撤权会话的正文一个字节都不外发,
+        // 也不会因 run 滞留 CREATED 而卡死该线程(V28 uq_ga_runs_single_active)。
+        try {
+            conversations.requireSourceDependenciesReadable(thread);
+        } catch (com.specagent.access.AccessDeniedException revoked) {
+            lifecycle.failWithoutContent(runId, com.specagent.assistant.GlobalAssistantErrorCode.GA_SOURCE_REVOKED,
+                    "Conversation depends on project sources that are no longer authorized");
+            return null;
+        }
         var messages=conversations.listMessages(thread);
         var current=messages.stream().filter(m -> m.role()==GlobalAssistantMessage.Role.USER && runId.equals(m.runId())).toList();
         if (current.size()!=1 || !current.getFirst().content().equals(text)) throw new IllegalArgumentException("GA current message mismatch");

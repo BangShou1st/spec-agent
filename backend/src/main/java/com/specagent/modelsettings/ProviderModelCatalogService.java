@@ -73,12 +73,14 @@ public class ProviderModelCatalogService {
     }
 
     private Discovery discoverOpenCode(String apiKey) {
-        List<String> all = openCodeCatalog.listAllModels(apiKey);
+        // 只暴露协议已验证为 Chat Completions 的模型:Spec Agent 只有这条调用链,
+        // 把 Responses / Anthropic 模型显示成可选会让请求必然失败。
+        List<String> all = openCodeCatalog.listAvailableModels(apiKey);
         if (all.isEmpty()) {
             throw new OpenCodeModelException(OpenCodeModelErrorCategory.INVALID_MODEL,
                     "OpenCode has no currently available models");
         }
-        List<String> free = all.stream().filter(OpenCodeModelCatalog::isFreeModel).toList();
+        List<String> free = openCodeCatalog.listFreeModels(apiKey);
         return new Discovery(all, free, false, null);
     }
 

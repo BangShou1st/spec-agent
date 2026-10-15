@@ -26,6 +26,7 @@ class GlobalAssistantReplayRevocationIntegrationTest {
     @Autowired GlobalAssistantRunRepository runs;
     @Autowired AuthorizationGuard guard;
     @Autowired BrowserSessionValidity sessions;
+    @Autowired GaSourceDependencyGuard sourceDependencies;
     @Autowired JdbcTemplate jdbc;
     private final List<Fixture> touched=new ArrayList<>();
     private record Fixture(ActorContext actor,UUID thread,UUID run,String session) { }
@@ -49,7 +50,7 @@ class GlobalAssistantReplayRevocationIntegrationTest {
         var fixture=new Fixture(actor,thread.id(),run.id(),session);touched.add(fixture);return fixture;
     }
 
-    private GlobalAssistantStreamService instance() {return new GlobalAssistantStreamService(events,runs,guard,sessions);}
+    private GlobalAssistantStreamService instance() {return new GlobalAssistantStreamService(events,runs,guard,sessions,sourceDependencies);}
     private void subscribe(GlobalAssistantStreamService streams,Fixture f,Capture emitter) {
         try(var actor=ActorContextHolder.bind(f.actor());var session=BrowserSessionContext.bind(f.session())) {
             streams.subscribe(f.run(),0,()->emitter);

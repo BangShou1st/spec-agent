@@ -66,6 +66,12 @@ spec:
     model:
       gateway: fake
       inference: fake
+      opencode:
+        # 测试档必须离线且确定:官方模型目录元数据指向本机保留端口,连接必然失败,
+        # 元数据视图因此标记为"不可用",免费/协议判定退回已验证的 "-free" 后缀规则。
+        # 需要真实元数据事实的测试显式用 @DynamicPropertySource 指向本机 stub 服务器
+        # (见 OpenCodeModelProtocolGateIntegrationTest),绝不访问公网。
+        metadata-url: http://127.0.0.1:1/spec-agent-test-offline-metadata.json
     brain:
       # Tests drive RunWorker synchronously through test drivers; the
       # background poller stays off to keep runs deterministic.

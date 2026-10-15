@@ -194,6 +194,35 @@ public class ProjectRepository implements ProjectActiveRoutePort, ProjectRowLock
         return jdbcTemplate.query(sql, Maps.of("orgId", orgId, "userId", userId), rowMapper);
     }
 
+    /**
+     * 主体在组织内<b>可见</b>、按最近更新排序的有界项目(GA 隐式内容检索的
+     * 候选来源)。
+     *
+     * 与 {@link #findVisibleInOrg} 同一套可见性谓词(组织 + 项目角色),但排序
+     * 为 {@code updated_at DESC, id} 且有界({@code LIMIT})——"最近更新的四个
+     * 候选"必须由 SQL 选出,不能在应用层先取回候选再过滤:数量与排序本身就
+     * 是信息,先取全库再隐藏会把其他组织/无角色项目的名次泄露出去。
+     */
+    public List<Project> findVisibleRecentInOrg(UUID orgId, UUID userId,
+                                                boolean unrestrictedInOrg, int limit) {
+        if (orgId == null || limit < 1) {
+            return List.of();
+        }
+        if (unrestrictedInOrg) {
+            return jdbcTemplate.query(
+                    "SELECT * FROM projects WHERE org_id = :orgId ORDER BY updated_at DESC, id LIMIT :limit",
+                    Maps.of("orgId", orgId, "limit", limit), rowMapper);
+        }
+        String sql = """
+                SELECT p.* FROM projects p
+                WHERE p.org_id = :orgId
+                  AND EXISTS (SELECT 1 FROM project_members m
+                              WHERE m.project_id = p.id AND m.user_id = :userId)
+                ORDER BY p.updated_at DESC, p.id LIMIT :limit
+                """;
+        return jdbcTemplate.query(sql, Maps.of("orgId", orgId, "userId", userId, "limit", limit), rowMapper);
+    }
+
     public List<Project> findVisibleByTitleContaining(UUID orgId, UUID userId,
                                                       boolean unrestrictedInOrg, String rawTitle) {
         if (unrestrictedInOrg) {

@@ -22,7 +22,8 @@ class GlobalAssistantReplayAuthorizationTest {
     private final GlobalAssistantRunRepository runs=mock(GlobalAssistantRunRepository.class);
     private final AuthorizationGuard guard=mock(AuthorizationGuard.class);
     private final BrowserSessionValidity sessions=mock(BrowserSessionValidity.class);
-    private final GlobalAssistantStreamService streams=new GlobalAssistantStreamService(events,runs,guard,sessions);
+    private final GaSourceDependencyGuard sourceDependencies=mock(GaSourceDependencyGuard.class);
+    private final GlobalAssistantStreamService streams=new GlobalAssistantStreamService(events,runs,guard,sessions,sourceDependencies);
     private final AtomicBoolean sessionActive=new AtomicBoolean(true), owned=new AtomicBoolean(true);
     private final GlobalAssistantRun run=mock(GlobalAssistantRun.class);
 

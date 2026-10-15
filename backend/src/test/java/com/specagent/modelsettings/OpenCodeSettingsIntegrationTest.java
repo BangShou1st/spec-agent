@@ -26,6 +26,12 @@ import static org.mockito.Mockito.when;
  * 不持久化候选键;save 重新校验凭证与模型并原子持久化(toString 不泄漏明文 Key);
  * 校验失败时保留原有可用设置;已保存 Key 可列出模型并免重提交地切换模型,
  * 切换失败时保持既有配置不变。
+ *
+ * <p>模型目录在这里被替换为 Mockito 桩:选择列表来自
+ * {@code listAvailableModels}(只含协议已验证为 Chat Completions 的模型),
+ * 免费子集来自 {@code listFreeModels}——即服务层只消费"已验证"的目录事实,
+ * 协议门禁本身的判定由 {@code OpenCodeModelCatalogTest} 与
+ * {@code OpenCodeModelProtocolGateIntegrationTest} 覆盖。
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -53,8 +59,9 @@ class OpenCodeSettingsIntegrationTest {
 
     @Test
     void probeDiscoversFreeModelsWithoutPersistingCandidate() {
-        when(catalog.listAllModels("candidate-key"))
+        when(catalog.listAvailableModels("candidate-key"))
                 .thenReturn(List.of("alpha-free", "beta-free", "paid-model"));
+        when(catalog.listFreeModels("candidate-key")).thenReturn(List.of("alpha-free", "beta-free"));
         doNothing().when(transport).validateCredential(org.mockito.ArgumentMatchers.eq("candidate-key"),
                 org.mockito.ArgumentMatchers.eq("alpha-free"));
 
@@ -68,7 +75,7 @@ class OpenCodeSettingsIntegrationTest {
 
     @Test
     void saveRevalidatesAndPersistsKeyAndModelAtomically() {
-        when(catalog.listAllModels("candidate-key")).thenReturn(List.of("alpha-free", "beta-free"));
+        when(catalog.listAvailableModels("candidate-key")).thenReturn(List.of("alpha-free", "beta-free"));
         doNothing().when(transport).validateCredential("candidate-key", "alpha-free");
 
         OpenCodeSettingsStatus saved = service.save("candidate-key", "alpha-free");
@@ -83,11 +90,11 @@ class OpenCodeSettingsIntegrationTest {
 
     @Test
     void invalidModelLeavesPreviousWorkingSettingsUntouched() {
-        when(catalog.listAllModels("first-key")).thenReturn(List.of("alpha-free"));
+        when(catalog.listAvailableModels("first-key")).thenReturn(List.of("alpha-free"));
         doNothing().when(transport).validateCredential("first-key", "alpha-free");
         service.save("first-key", "alpha-free");
 
-        when(catalog.listAllModels("second-key")).thenReturn(List.of("beta-free"));
+        when(catalog.listAvailableModels("second-key")).thenReturn(List.of("beta-free"));
 
         assertThatThrownBy(() -> service.save("second-key", "alpha-free"))
                 .isInstanceOf(RuntimeException.class);
@@ -97,7 +104,7 @@ class OpenCodeSettingsIntegrationTest {
 
     @Test
     void savedKeyListsModelsAndChangesModelWithoutBeingSubmittedAgain() {
-        when(catalog.listAllModels("saved-key")).thenReturn(List.of("alpha-free", "beta-free"));
+        when(catalog.listAvailableModels("saved-key")).thenReturn(List.of("alpha-free", "beta-free"));
         doNothing().when(transport).validateCredential("saved-key", "alpha-free");
         service.save("saved-key", "alpha-free");
         OpenCodeSettings before = repository.find().orElseThrow();
@@ -119,11 +126,11 @@ class OpenCodeSettingsIntegrationTest {
 
     @Test
     void failedSavedKeyModelChangePreservesTheExistingConfiguration() {
-        when(catalog.listAllModels("saved-key")).thenReturn(List.of("alpha-free"));
+        when(catalog.listAvailableModels("saved-key")).thenReturn(List.of("alpha-free"));
         doNothing().when(transport).validateCredential("saved-key", "alpha-free");
         service.save("saved-key", "alpha-free");
 
-        when(catalog.listAllModels("saved-key")).thenReturn(List.of("beta-free"));
+        when(catalog.listAvailableModels("saved-key")).thenReturn(List.of("beta-free"));
         assertThatThrownBy(() -> service.changeModel("alpha-free"))
                 .isInstanceOf(RuntimeException.class);
 

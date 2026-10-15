@@ -74,7 +74,11 @@ class GaExecutionCoordinatorIntegrationTest {
         stopPython();
         properties.setBaseUrl(oldBase);
         jdbc.update("UPDATE global_assistant_runs SET status='FAILED' WHERE thread_id=? AND status IN ('CREATED','RUNNING')",thread);
-        if(conversations.findThread(thread).isPresent()) deletion.deleteThread(thread);
+        // 夹具清理:有些用例(如 pythonCrashKeeps...Fresh)自己已经删过线程。
+        // conversations.findThread 会先做属主判定,对"已删除"的线程按
+        // "不是你的会话"抛 AccessDeniedException,不能用它当存在性检查。
+        if(jdbc.queryForObject("SELECT count(*) FROM global_assistant_threads WHERE id=?",Integer.class,thread)>0)
+            deletion.deleteThread(thread);
         for(UUID project:jdbc.queryForList("SELECT id FROM projects WHERE title=?",UUID.class,"ga-live-write-test-"+thread))
             projectDeletion.deleteProject(project);
         for(UUID staged:jdbc.queryForList("SELECT id FROM skill_staged_imports WHERE manifest LIKE ?",UUID.class,

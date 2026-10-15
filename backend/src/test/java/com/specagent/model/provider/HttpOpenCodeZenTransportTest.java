@@ -382,6 +382,58 @@ class HttpOpenCodeZenTransportTest {
                 });
     }
 
+    // ------------------------------------------------------- 上游基址与路径拼接(B2)
+
+    /**
+     * 上游基址有三种互不相同的含义,绝不能混为一谈:
+     * <ul>
+     *   <li>{@code https://opencode.ai/zen/v1} —— 产品当前默认基址(真实端点仍返回 200);</li>
+     *   <li>{@code https://opencode.ai/inference/v1} —— 官方模型目录元数据
+     *       ({@code models.opencode.ai/api.json} 的 {@code opencode.api})给出的规范基址,
+     *       真实端点同样返回 200;</li>
+     *   <li>第三方本地兼容网关的 {@code http://127.0.0.1:18991/v1} 形态 —— 与本产品的
+     *       传输层无关,绝不能被当作默认基址写进产品。</li>
+     * </ul>
+     * 因此本测试断言:配置机制把三种基址都原样拼接({@code <base>/models}、
+     * {@code <base>/chat/completions}),且默认生产基址未被替换。
+     */
+    @Test
+    void configuredBaseUrlIsUsedVerbatimForEveryPathWhileTheDefaultStaysUnchanged() throws IOException {
+        assertThat(OpenCodeZenTransport.BASE_URL).isEqualTo("https://opencode.ai/zen/v1");
+        for (String configured : List.of("/zen/v1", "/inference/v1", "/v1")) {
+            captured.clear();
+            String base = "http://127.0.0.1:" + server.getAddress().getPort() + configured;
+            OpenCodeZenTransport configuredTransport = new HttpOpenCodeZenTransport(mapper, base, 5, "DIRECT");
+
+            stubBody = mapper.writeValueAsString(Map.of("object", "list",
+                    "data", List.of(Map.of("id", "big-pickle"))));
+            configuredTransport.listModels(null);
+
+            stubBody = streamingJson("{\"action\":\"finish\"}");
+            configuredTransport.complete(TEST_KEY, TEST_SESSION, completionRequest());
+
+            assertThat(captured).extracting(CapturedRequest::path)
+                    .containsExactly(configured + "/models", configured + "/chat/completions");
+            assertThat(configuredTransport.endpoint()).isEqualTo(base);
+        }
+    }
+
+    @Test
+    void trailingSlashOrBlankBaseUrlNeverProducesADoubledOrMissingSegment() throws IOException {
+        stubBody = mapper.writeValueAsString(Map.of("object", "list",
+                "data", List.of(Map.of("id", "big-pickle"))));
+        String origin = "http://127.0.0.1:" + server.getAddress().getPort();
+        captured.clear();
+        OpenCodeZenTransport withSlash = new HttpOpenCodeZenTransport(mapper, origin + "/inference/v1/", 5, "DIRECT");
+        withSlash.listModels(null);
+        assertThat(captured.getFirst().path()).isEqualTo("/inference/v1/models");
+        assertThat(withSlash.endpoint()).isEqualTo(origin + "/inference/v1");
+
+        // 空白基址回落到产品默认值,不会拼出缺段的 URL。
+        assertThat(new HttpOpenCodeZenTransport(mapper, "   ", 5, "DIRECT").endpoint())
+                .isEqualTo(OpenCodeZenTransport.BASE_URL);
+    }
+
     @Test
     void otherClientErrorIsMapped() {
         stubStatus = 400;

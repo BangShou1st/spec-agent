@@ -1,8 +1,10 @@
 package com.specagent.assistant.tool;
 
+import com.specagent.access.AuthorizationGuard;
 import com.specagent.capability.*;
 import com.specagent.retrieval.*;
 import com.specagent.retrieval.protocol.*;
+import com.specagent.workspace.project.ProjectRepository;
 import static com.specagent.retrieval.protocol.RetrievalWire.*;
 import java.util.*;
 import java.util.function.*;
@@ -16,12 +18,16 @@ public class ProjectContentDiscoverCapability implements PreparedCapabilityAdapt
     private final SharedRetrievalHost retrieval;
     private final RetrievalStore store;
     private final NamedParameterJdbcTemplate jdbc;
-    public ProjectContentDiscoverCapability(GaRetrievalAccess retrieval,RetrievalStore store,NamedParameterJdbcTemplate jdbc) {
+    private final AuthorizationGuard guard;
+    private final ProjectRepository projectRepository;
+    public ProjectContentDiscoverCapability(GaRetrievalAccess retrieval,RetrievalStore store,NamedParameterJdbcTemplate jdbc,
+            AuthorizationGuard guard,ProjectRepository projectRepository) {
         this.retrieval=retrieval.host(); this.store=store; this.jdbc=jdbc;
+        this.guard=guard; this.projectRepository=projectRepository;
     }
     public CapabilityDescriptor descriptor() {
         return new CapabilityDescriptor("project.content.discover","1",
-            "Search actual project node/resource content using shared Python RAG. With projectId search only that project; otherwise search at most 4 most recently updated projects. Returns candidate projects and versioned evidence, not confirmed graph facts. No whole-history scan, no external writes. Limit 1-8 sources per project, total excerpts at most 4000 chars per project.",
+            "Search actual project node/resource content using shared Python RAG. With projectId search only that project (unauthorized projects are refused by the project read authorization); otherwise search at most 4 most recently updated projects the caller may see in the selected organization. Returns candidate projects and versioned evidence, not confirmed graph facts. No whole-history scan, no external writes. Limit 1-8 sources per project, total excerpts at most 4000 chars per project.",
             Map.of("query",Map.of("type","string","required",true,"maxLength",2000),"projectId",Map.of("type","string","required",false),
                     "limit",Map.of("type","integer","required",false,"minimum",1,"maximum",8)),Map.of("candidates",Map.of("type","array")),
             true,SideEffectClass.NONE,List.of(),List.of(GlobalAssistantToolCatalog.SUPPORT_MARKER));
@@ -43,7 +49,11 @@ public class ProjectContentDiscoverCapability implements PreparedCapabilityAdapt
         if(arguments.containsKey("projectId")) {
             try { projects=List.of(UUID.fromString((String)arguments.get("projectId"))); }
             catch(RuntimeException invalid) { return invocation->GlobalAssistantToolFailures.failed(invocation,descriptor().capabilityId(),"TOOL_ARGUMENT_INVALID","Invalid project identity"); }
-        } else projects=jdbc.queryForList("SELECT id FROM projects ORDER BY updated_at DESC,id LIMIT 4",Map.of(),UUID.class);
+        } else {
+            var scope=guard.visibilityScope();
+            projects=projectRepository.findVisibleRecentInOrg(scope.orgId(),scope.userId(),scope.unrestrictedInOrg(),4)
+                    .stream().map(com.specagent.workspace.project.Project::id).toList();
+        }
         List<SearchResult> results=new ArrayList<>(); Map<UUID,String> titles=new LinkedHashMap<>();
         Set<String> preparationWarnings=new LinkedHashSet<>();
         for(UUID project:projects) {

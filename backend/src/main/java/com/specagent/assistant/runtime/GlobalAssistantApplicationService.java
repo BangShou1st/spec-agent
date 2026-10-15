@@ -104,8 +104,20 @@ public class GlobalAssistantApplicationService {
         return conversations.findThread(threadId)
                 .orElseThrow(() -> ApiException.notFound("THREAD_NOT_FOUND", "Thread not found"));
     }
+    /**
+     * 会话<b>读取</b>(详情/摘要/消息/活动)的收口:在属主资格之上叠加来源依赖判定。
+     * 依赖已撤权或未知的会话按"会话不存在"处理。
+     *
+     * <p>刻意与 {@link #requireThread} 分开:删除、停止、取消、创建等控制/写入路径
+     * 只做属主资格,否则用户永远无法清理一条被隔离的会话。
+     */
+    public GlobalAssistantThread requireThreadReadable(UUID threadId) {
+        GlobalAssistantThread thread = requireThread(threadId);
+        conversations.requireSourceDependenciesReadable(threadId);
+        return thread;
+    }
     public List<GlobalAssistantMessage> listMessages(UUID threadId) {
-        requireThread(threadId);
+        requireThreadReadable(threadId);
         return conversations.listMessages(threadId);
     }
     public GlobalAssistantRun requireRun(UUID runId) {
@@ -191,7 +203,8 @@ public class GlobalAssistantApplicationService {
         }
     }
     public ThreadActivity threadActivity(UUID threadId) {
-        requireThread(threadId);
+        // pending steer 携带消息正文,属于内容级读取,必须与消息列表同一套来源依赖判定。
+        requireThreadReadable(threadId);
         return activity.read(threadId);
     }
     public ThreadActivity stopThread(UUID threadId) {

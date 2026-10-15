@@ -48,6 +48,7 @@ public class GlobalAssistantStreamService {
     private final GlobalAssistantRunRepository runs;
     private final com.specagent.access.AuthorizationGuard guard;
     private final com.specagent.access.BrowserSessionValidity sessions;
+    private final com.specagent.assistant.conversation.GaSourceDependencyGuard sourceDependencies;
     private final Map<UUID, SubscriptionBucket> buckets = new ConcurrentHashMap<>();
     // Cursor notifications coalesce per subscriber; no event payload queue is retained in memory.
     private final java.util.concurrent.ThreadPoolExecutor delivery = new java.util.concurrent.ThreadPoolExecutor(
@@ -63,11 +64,13 @@ public class GlobalAssistantStreamService {
     }
     public GlobalAssistantStreamService(GlobalAssistantRunEventRepository events,
             GlobalAssistantRunRepository runs, com.specagent.access.AuthorizationGuard guard,
-            com.specagent.access.BrowserSessionValidity sessions) {
+            com.specagent.access.BrowserSessionValidity sessions,
+            com.specagent.assistant.conversation.GaSourceDependencyGuard sourceDependencies) {
         this.events = events;
         this.runs = runs;
         this.guard=guard;
         this.sessions=sessions;
+        this.sourceDependencies=sourceDependencies;
     }
     record Subscriber(UUID id, SseEmitter emitter, java.util.concurrent.atomic.AtomicInteger lastSent,
                       com.specagent.access.ActorContext actor,String sessionId,
@@ -281,6 +284,10 @@ public class GlobalAssistantStreamService {
         UUID thread=runs.findById(runId).map(r->r.threadId()).orElseThrow(() ->
                 com.specagent.access.AccessDeniedException.notVisible("Run not found"));
         guard.requireThreadOwnershipFor(actor,thread);
+        // 公开事件载荷携带 Host 投影的项目资源引用与来源卡片(excerpt),是内容级
+        // 泄漏面:依赖已撤权/未知的 run 不得再回放,订阅者在补发时也会被这里挡下
+        // (authorized() 捕获后关闭连接,不会让业务 Run 失败)。
+        sourceDependencies.requireSourcesReadable(actor,thread);
     }
     private boolean authorized(UUID runId, Subscriber sub) {
         try {

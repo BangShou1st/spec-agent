@@ -35,16 +35,26 @@ import org.springframework.stereotype.Repository;
 public class GlobalAssistantThreadListRepository {
     private final NamedParameterJdbcTemplate jdbc;
     private final IdentityModeProperties properties;
+    private final GaSourceDependencyGuard dependencies;
 
     public GlobalAssistantThreadListRepository(NamedParameterJdbcTemplate jdbc,
-                                               IdentityModeProperties properties) {
+                                               IdentityModeProperties properties,
+                                               GaSourceDependencyGuard dependencies) {
         this.jdbc = jdbc;
         this.properties = properties;
+        this.dependencies = dependencies;
     }
 
     public List<GlobalAssistantThreadListItem> listRecent(int limit) {
         int bounded = Math.max(1, Math.min(limit, GlobalAssistantConversationLibrary.LIST_LIMIT));
         ActorContext owner = OwnershipAttribution.currentOrDefault(properties.accessMode());
+        java.util.Map<String, Object> params = new java.util.LinkedHashMap<>();
+        // uuid 列对 varchar 没有隐式转换,驱动按文本发送未知类型参数,因此比较两侧显式对齐类型。
+        params.put("orgId", owner.orgId().toString());
+        params.put("userId", owner.userId().toString());
+        // 候选生成阶段即排除"依赖已撤权 / 依赖未知"的会话:谓词是 NOT EXISTS,
+        // 作用在 LIMIT 之前,因此被隔离会话既不出现,也不占用分页名额。
+        String isolationFilter = dependencies.notIsolatedClause("t.id", owner, params);
         String sql = """
                 SELECT t.id AS thread_id, t.created_at AS thread_created,
                        first_msg.content AS title_src,
@@ -68,11 +78,12 @@ public class GlobalAssistantThreadListRepository {
                         FROM global_assistant_messages
                     ) ranked WHERE rn = 1
                 ) last_msg ON last_msg.thread_id = t.id
-                WHERE t.org_id = ? AND t.owner_user_id = ?
+                WHERE t.org_id = CAST(:orgId AS uuid) AND t.owner_user_id = CAST(:userId AS uuid)
+                """ + isolationFilter + """
                 ORDER BY last_msg.created_at DESC, t.id DESC
                 LIMIT %d
                 """.formatted(bounded);
-        return jdbc.getJdbcOperations().query(sql, (rs, rowNum) -> {
+        return jdbc.query(sql, params, (rs, rowNum) -> {
             UUID threadId = rs.getObject("thread_id", UUID.class);
             Instant threadCreated = rs.getTimestamp("thread_created").toInstant();
             String titleSrc = rs.getString("title_src");
@@ -85,6 +96,6 @@ public class GlobalAssistantThreadListRepository {
                     GlobalAssistantConversationLibrary.toPreview(previewSrc),
                     updatedAt,
                     threadCreated);
-        }, owner.orgId(), owner.userId());
+        });
     }
 }

@@ -36,7 +36,7 @@ class GlobalAssistantSlowSubscriberTest {
         var event=new GlobalAssistantRunEvent(UUID.randomUUID(),runId,1,"ANSWER_DELTA",Map.of(),Instant.now());
         when(events.findAfter(eq(runId),anyInt(),eq(200))).thenAnswer(call -> ready.get()?List.of(event):List.of());
         var entered=new CountDownLatch(4);var unblock=new CountDownLatch(1);
-        var streams=new GlobalAssistantStreamService(events,runs,guard,sessions);
+        var streams=new GlobalAssistantStreamService(events,runs,guard,sessions,mock(GaSourceDependencyGuard.class));
         try {
             try(var context=BrowserSessionContext.bind("test-session")) {
                 for(int i=0;i<140;i++) streams.subscribe(runId,0,()->new SseEmitter(30_000L) {
@@ -83,7 +83,7 @@ class GlobalAssistantSlowSubscriberTest {
         var fast=new SseEmitter(0L) {
             @Override public void send(SseEventBuilder builder) { fastSent.countDown(); }
         };
-        var streams=new GlobalAssistantStreamService(events,runs,guard,sessions);
+        var streams=new GlobalAssistantStreamService(events,runs,guard,sessions,mock(GaSourceDependencyGuard.class));
         try {
             try(var context=BrowserSessionContext.bind("test-session")) {
                 streams.subscribe(runId,0,()->slow);streams.subscribe(runId,0,()->fast);

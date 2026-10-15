@@ -35,19 +35,22 @@ public class GlobalAssistantConversationService {
     private final Json json;
     private final GlobalAssistantThreadListRepository threadLists;
     private final AuthorizationGuard guard;
+    private final GaSourceDependencyGuard sourceDependencies;
     public GlobalAssistantConversationService(
             GlobalAssistantThreadRepository threads,
             GlobalAssistantMessageRepository messages,
             GlobalAssistantRunRepository runs,
             Json json,
             GlobalAssistantThreadListRepository threadLists,
-            AuthorizationGuard guard) {
+            AuthorizationGuard guard,
+            GaSourceDependencyGuard sourceDependencies) {
         this.threads = threads;
         this.messages = messages;
         this.runs = runs;
         this.json = json;
         this.threadLists = threadLists;
         this.guard = guard;
+        this.sourceDependencies = sourceDependencies;
     }
     @Transactional
     public GlobalAssistantThread createThread() {
@@ -141,6 +144,21 @@ public class GlobalAssistantConversationService {
     public Optional<GlobalAssistantThread> findThreadOwned(UUID threadId) {
         guard.requireThreadOwnership(threadId);
         return threads.findById(threadId);
+    }
+
+    /**
+     * 派生记忆读取的来源依赖判定(第二阶段 §6.5)。
+     *
+     * <p>会话属主资格回答"这是不是你的会话";这里回答"这条会话引用的项目来源
+     * 你现在还能不能读"。项目撤权后,旧消息正文、摘要、事件来源卡片与 checkpoint
+     * 都不得再被读取:<b>依赖已撤权或无法确认即按"会话不存在"拒绝整条会话</b>。
+     *
+     * <p>判定收敛在这里而不是逐个入口,是为了让"新增一个读取入口"不会静默漏检;
+     * 列表走同一套 SQL 谓词的候选生成(见
+     * {@link GlobalAssistantThreadListRepository#listRecent}),不另写过滤逻辑。
+     */
+    public void requireSourceDependenciesReadable(UUID threadId) {
+        sourceDependencies.requireSourcesReadable(guard.ownershipActor(), threadId);
     }
 
     private GlobalAssistantThread requireThread(UUID threadId) {

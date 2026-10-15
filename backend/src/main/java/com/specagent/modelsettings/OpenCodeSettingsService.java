@@ -183,14 +183,14 @@ public class OpenCodeSettingsService implements OpenCodeRuntimeSettingsPort {
 
     /** 一次实时调用得到完整提供商目录与免费子集。 */
     private OpenCodeCandidateModels currentCandidateModels(String apiKey) {
-        List<String> allModels = catalog.listAllModels(apiKey);
+        // 候选选择列表只含协议已验证为 Chat Completions 的模型:保存/切换都对照
+        // 这份列表门禁,因此异协议模型不可能被选中后又在执行时必然失败。
+        List<String> allModels = catalog.listAvailableModels(apiKey);
         if (allModels.isEmpty()) {
             throw new OpenCodeModelException(OpenCodeModelErrorCategory.INVALID_MODEL,
                     "OpenCode has no currently available models");
         }
-        List<String> freeModels = allModels.stream()
-                .filter(OpenCodeModelCatalog::isFreeModel)
-                .toList();
+        List<String> freeModels = catalog.listFreeModels(apiKey);
         // 可达性探测优先用免费模型,密钥检查绝不消耗额度;任何已暴露模型都可作兜底
         String probeModel = !freeModels.isEmpty() ? freeModels.get(0) : allModels.get(0);
         return new OpenCodeCandidateModels(allModels, freeModels, probeModel);

@@ -34,4 +34,9 @@ public final class GlobalAssistantErrorCode {
      * 这是部署错误(两端版本不同步),如实暴露,绝不默认放行。
      */
     public static final String GA_PROTOCOL_MISMATCH = "GA_PROTOCOL_MISMATCH";
+    /**
+     * 会话派生记忆依赖的项目已撤权或无法确认(第二阶段 §6.5):该轮执行在把历史
+     * 装配进执行信封之前失败关闭,不向 Python/模型发送旧项目观察。
+     */
+    public static final String GA_SOURCE_REVOKED = "GA_SOURCE_REVOKED";
 }
